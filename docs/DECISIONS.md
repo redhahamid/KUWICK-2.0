@@ -79,6 +79,45 @@ The PostgreSQL installer's default `postgres` superuser account is never used by
 **Why**: no reason to install a different version before there's a second contributor or a CI pipeline to keep in sync. `package.json` `engines` field will pin a version once that matters.
 **Reversibility**: High.
 
+## D-017 — Interim tenant context: header-based Express middleware + Prisma tenant-scoping extension (not JWT-derived, pending real auth)
+Until real authentication (JWT access/refresh tokens, `SYSTEM_ARCHITECTURE.md` §2) exists, every request beyond
+Core's health check must carry an `x-tenant-id` header. `TenantContextMiddleware`
+(`apps/api/src/core/tenant-context.middleware.ts`) validates the header is present and a well-formed UUID, confirms
+it matches a real `Tenant` row, and runs the rest of the request inside a Node `AsyncLocalStorage.run()` call so the
+tenant id is available to everything downstream. `PrismaService` is wrapped via a Prisma client extension
+(`apps/api/src/core/tenant-scoped-prisma.provider.ts`, injected via the `TENANT_SCOPED_PRISMA` token) so every query
+run through it first executes `SELECT set_config('app.tenant_id', $1, true)` inside the same transaction as the
+query itself — Prisma's own documented RLS-integration pattern, chosen because a bare `SET LOCAL` in isolation isn't
+reliable under connection pooling. Missing header → 400; header present but no matching tenant → 401.
+**Implemented as middleware, not a `CanActivate` guard**: a guard was tried first and its unit test caught a real
+propagation bug — `AsyncLocalStorage.enterWith()` called inside `canActivate()` does not survive the guard's own
+`await` boundary back into Nest's internal pipeline, so by the time the controller handler ran, the tenant context
+was already gone. Express middleware's `next()` is invoked synchronously *inside* `AsyncLocalStorage.run()`'s
+callback, making the entire downstream pipeline a true descendant of that call, which propagates correctly. Applied
+in `AppModule.configure()` to all routes except `health`.
+**Alternatives considered**: per-endpoint query-param/body `tenant_id` (rejected — easy to forget, doesn't match
+the eventual auth-derived shape); app-code-only `WHERE tenant_id = ...` filtering with no RLS wiring yet (rejected —
+defeats RLS's role as a database-enforced backstop exactly when module code is newest); a `CanActivate` guard
+(rejected — see propagation bug above).
+**Why**: preserves the RLS-as-backstop guarantee from the first line of Appointment/HR code, without waiting for
+real auth; the header source is the only thing that changes when JWT auth ships.
+**Reversibility**: High — swapping the tenant-id source from header to JWT claim is a small change inside the
+middleware; RLS policies and the Prisma extension are untouched.
+
+## D-018 — RBAC guard: deferred entirely, not stubbed
+No RBAC guard (stub, no-op, or otherwise) is introduced in Phase 1b. The permission matrix
+(`PRODUCT_REQUIREMENTS.md` §5) is not enforced at the API layer yet; every 1b endpoint is reachable by any caller
+presenting a valid `x-tenant-id` header.
+**Alternatives considered**: a no-op/always-allow RBAC guard as a placeholder. Rejected — a guard that grants
+everything provides zero real protection while looking, on a quick read of the module list, like access control
+exists; that's a worse state than visibly having none. RBAC fundamentally needs a caller identity + role claim,
+which doesn't exist until JWT auth ships, so building it against a placeholder identity now would likely be rebuilt
+anyway.
+**Why**: none of the Appointment acceptance criteria (`PRODUCT_REQUIREMENTS.md` §18) depend on role enforcement;
+keeps 1b scoped to what's actually specified (`CODING_STANDARDS.md` §1) and avoids security theater. Tracked here
+so the gap is visible, not silent.
+**Reversibility**: N/A — nothing built against a placeholder RBAC shape; the real guard lands with JWT auth.
+
 ---
 
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
