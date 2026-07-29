@@ -1,0 +1,164 @@
+// Core / Shared Foundation only — see docs/DATABASE_ARCHITECTURE.md §2.
+// Clinical, Appointment, HR, Inventory, Panel Claims, and Reports models
+// arrive with their respective Phase 1 sub-phase, not here.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  OWNER_ADMIN
+  DOCTOR_RESIDENT
+  DOCTOR_LOCUM
+  FRONT_DESK_CLINICAL_STAFF
+  FINANCE_STAFF
+  HR_STAFF
+  STOCK_STAFF
+  PANEL_STAFF
+  PATIENT_PORTAL
+}
+
+enum PatientIdentifierType {
+  NRIC
+  PASSPORT
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  clinics          Clinic[]
+  users            User[]
+  patients         Patient[]
+  globalSettings   GlobalSetting[]
+  notificationLogs NotificationLog[]
+  auditLogs        AuditLog[]
+
+  @@map("tenants")
+}
+
+model Clinic {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  address   String?
+  timezone  String   @default("Asia/Kuala_Lumpur")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant  Tenant             @relation(fields: [tenantId], references: [id])
+  access  UserClinicAccess[]
+
+  @@index([tenantId])
+  @@map("clinics")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  tenantId     String    @map("tenant_id")
+  email        String
+  passwordHash String    @map("password_hash")
+  status       String    @default("active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant             @relation(fields: [tenantId], references: [id])
+  access UserClinicAccess[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+model UserClinicAccess {
+  id       String @id @default(uuid())
+  userId   String @map("user_id")
+  clinicId String @map("clinic_id")
+  role     Role
+
+  user   User   @relation(fields: [userId], references: [id])
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+
+  @@unique([userId, clinicId])
+  @@index([clinicId])
+  @@map("user_clinic_access")
+}
+
+model Patient {
+  id               String                @id @default(uuid())
+  tenantId         String                @map("tenant_id")
+  identifierType   PatientIdentifierType @map("identifier_type")
+  identifierValue  String                @map("identifier_value")
+  name             String
+  dob              DateTime?
+  gender           String?
+  race             String?
+  address          String?
+  emergencyContact String?               @map("emergency_contact")
+  allergies        Json?
+  deletedAt        DateTime?             @map("deleted_at")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, identifierType, identifierValue])
+  @@index([tenantId])
+  @@map("patients")
+}
+
+model GlobalSetting {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  key      String
+  value    Json
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, key])
+  @@map("global_settings")
+}
+
+model NotificationLog {
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  triggerType String    @map("trigger_type")
+  channel     String
+  recipient   String
+  payload     Json?
+  status      String    @default("pending")
+  sentAt      DateTime? @map("sent_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("notification_logs")
+}
+
+// Append-only. No update/delete path is exposed at the application layer.
+model AuditLog {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  actorUserId String?  @map("actor_user_id")
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  before      Json?
+  after       Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
