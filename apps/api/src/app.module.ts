@@ -3,9 +3,10 @@ import { ConfigModule } from '@nestjs/config';
 import { CoreModule } from './core/core.module';
 import { TenantContextMiddleware } from './core/tenant-context.middleware';
 import { HrModule } from './hr/hr.module';
+import { AppointmentModule } from './appointment/appointment.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), CoreModule, HrModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), CoreModule, HrModule, AppointmentModule],
 })
 export class AppModule implements NestModule {
   // Interim tenant-context middleware (docs/DECISIONS.md D-017) applies to

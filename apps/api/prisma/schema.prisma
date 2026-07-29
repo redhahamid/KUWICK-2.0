@@ -34,13 +34,19 @@ model Tenant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  clinics          Clinic[]
-  users            User[]
-  patients         Patient[]
-  globalSettings   GlobalSetting[]
-  notificationLogs NotificationLog[]
-  auditLogs        AuditLog[]
-  staff            Staff[]
+  clinics                     Clinic[]
+  users                       User[]
+  patients                    Patient[]
+  globalSettings              GlobalSetting[]
+  notificationLogs            NotificationLog[]
+  auditLogs                   AuditLog[]
+  staff                       Staff[]
+  services                    Service[]
+  doctorSchedules             DoctorSchedule[]
+  scheduleExceptions          ScheduleException[]
+  slotCapacityConfigs         SlotCapacityConfig[]
+  doctorServiceQualifications DoctorServiceQualification[]
+  appointments                Appointment[]
 
   @@map("tenants")
 }
@@ -54,8 +60,12 @@ model Clinic {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant  Tenant             @relation(fields: [tenantId], references: [id])
-  access  UserClinicAccess[]
+  tenant              Tenant               @relation(fields: [tenantId], references: [id])
+  access              UserClinicAccess[]
+  doctorSchedules     DoctorSchedule[]
+  scheduleExceptions  ScheduleException[]
+  slotCapacityConfigs SlotCapacityConfig[]
+  appointments        Appointment[]
 
   @@index([tenantId])
   @@map("clinics")
@@ -110,7 +120,8 @@ model Patient {
   createdAt        DateTime              @default(now()) @map("created_at")
   updatedAt        DateTime              @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  appointments Appointment[]
 
   @@unique([tenantId, identifierType, identifierValue])
   @@index([tenantId])
@@ -179,10 +190,182 @@ model Staff {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  user   User?  @relation(fields: [userId], references: [id])
+  tenant                      Tenant                       @relation(fields: [tenantId], references: [id])
+  user                        User?                        @relation(fields: [userId], references: [id])
+  doctorSchedules             DoctorSchedule[]
+  scheduleExceptions          ScheduleException[]
+  slotCapacityConfigs         SlotCapacityConfig[]
+  doctorServiceQualifications DoctorServiceQualification[]
+  appointments                Appointment[]
 
   @@index([tenantId])
   @@index([tenantId, role])
   @@map("staff")
+}
+
+// Appointment status mirrors packages/shared's AppointmentStatus exactly
+// (docs/CODING_STANDARDS.md §2) — Prisma can't import a TS enum from another
+// package, so keep these two in sync by hand rather than redefining wording.
+enum AppointmentStatus {
+  REQUESTED
+  CONFIRMED
+  REMINDED
+  ARRIVED
+  IN_QUEUE
+  COMPLETED
+  RESCHEDULED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AppointmentSource {
+  ONLINE_PORTAL
+  FRONT_DESK
+}
+
+// TEMPORARY: stands in for Clinical Operations' future ServiceCatalog
+// (docs/DATABASE_ARCHITECTURE.md §3), which doesn't exist yet (1a hasn't been
+// built). Mapped to appointment_services, not service_catalog, specifically
+// so it can't collide with Clinical's eventual table. Flagged in
+// docs/DECISIONS.md for consolidation once Clinical Operations ships.
+model Service {
+  id                     String   @id @default(uuid())
+  tenantId               String   @map("tenant_id")
+  name                   String
+  durationMinutesDefault Int      @map("duration_minutes_default")
+  active                 Boolean  @default(true)
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  tenant                      Tenant                       @relation(fields: [tenantId], references: [id])
+  slotCapacityConfigs         SlotCapacityConfig[]
+  doctorServiceQualifications DoctorServiceQualification[]
+  appointments                Appointment[]
+
+  @@index([tenantId])
+  @@map("appointment_services")
+}
+
+model DoctorSchedule {
+  id            String    @id @default(uuid())
+  tenantId      String    @map("tenant_id")
+  clinicId      String    @map("clinic_id")
+  staffId       String    @map("staff_id")
+  dayOfWeek     Int       @map("day_of_week")
+  startTime     DateTime  @map("start_time") @db.Time
+  endTime       DateTime  @map("end_time") @db.Time
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+  staff  Staff  @relation(fields: [staffId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, clinicId])
+  @@index([tenantId, staffId, dayOfWeek])
+  @@map("doctor_schedules")
+}
+
+// One row per (staff, clinic, date): a populated window overrides the
+// recurring DoctorSchedule for that date; a null window means unavailable
+// that whole date. Deliberately doesn't support split "leave AM, extra
+// session PM" on the same date — flagged as a simplification, not a spec
+// requirement.
+model ScheduleException {
+  id        String    @id @default(uuid())
+  tenantId  String    @map("tenant_id")
+  clinicId  String    @map("clinic_id")
+  staffId   String    @map("staff_id")
+  date      DateTime  @db.Date
+  startTime DateTime? @map("start_time") @db.Time
+  endTime   DateTime? @map("end_time") @db.Time
+  reason    String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+  staff  Staff  @relation(fields: [staffId], references: [id])
+
+  @@unique([tenantId, staffId, clinicId, date])
+  @@index([tenantId, clinicId])
+  @@map("schedule_exceptions")
+}
+
+model SlotCapacityConfig {
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  clinicId          String   @map("clinic_id")
+  staffId           String   @map("staff_id")
+  serviceId         String   @map("service_id")
+  slotLengthMinutes Int      @map("slot_length_minutes")
+  dailyCapacity     Int?     @map("daily_capacity")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  clinic  Clinic  @relation(fields: [clinicId], references: [id])
+  staff   Staff   @relation(fields: [staffId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@unique([tenantId, clinicId, staffId, serviceId])
+  @@index([tenantId, clinicId])
+  @@index([tenantId, staffId])
+  @@map("slot_capacity_configs")
+}
+
+// Presence of a row = qualified; revoke by deleting it.
+model DoctorServiceQualification {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  staffId   String   @map("staff_id")
+  serviceId String   @map("service_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  staff   Staff   @relation(fields: [staffId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@unique([tenantId, staffId, serviceId])
+  @@index([tenantId, staffId])
+  @@index([tenantId, serviceId])
+  @@map("doctor_service_qualifications")
+}
+
+model Appointment {
+  id                String            @id @default(uuid())
+  tenantId          String            @map("tenant_id")
+  clinicId          String            @map("clinic_id")
+  patientId         String            @map("patient_id")
+  staffId           String            @map("staff_id")
+  serviceId         String            @map("service_id")
+  status            AppointmentStatus @default(REQUESTED)
+  source            AppointmentSource
+  scheduledStart    DateTime          @map("scheduled_start")
+  scheduledEnd      DateTime          @map("scheduled_end")
+  notes             String?
+  cancelReason      String?           @map("cancel_reason")
+  arrivedAt         DateTime?         @map("arrived_at")
+  rescheduledFromId String?           @unique @map("rescheduled_from_id")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  tenant          Tenant       @relation(fields: [tenantId], references: [id])
+  clinic          Clinic       @relation(fields: [clinicId], references: [id])
+  patient         Patient      @relation(fields: [patientId], references: [id])
+  staff           Staff        @relation(fields: [staffId], references: [id])
+  service         Service      @relation(fields: [serviceId], references: [id])
+  rescheduledFrom Appointment? @relation("AppointmentReschedule", fields: [rescheduledFromId], references: [id])
+  rescheduledTo   Appointment? @relation("AppointmentReschedule")
+
+  @@index([tenantId])
+  @@index([tenantId, clinicId])
+  @@index([tenantId, staffId, scheduledStart])
+  @@index([tenantId, patientId])
+  @@index([tenantId, status])
+  @@map("appointments")
 }
