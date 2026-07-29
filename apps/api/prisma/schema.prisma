@@ -40,6 +40,7 @@ model Tenant {
   globalSettings   GlobalSetting[]
   notificationLogs NotificationLog[]
   auditLogs        AuditLog[]
+  staff            Staff[]
 
   @@map("tenants")
 }
@@ -72,6 +73,7 @@ model User {
 
   tenant Tenant             @relation(fields: [tenantId], references: [id])
   access UserClinicAccess[]
+  staff  Staff?
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -161,4 +163,26 @@ model AuditLog {
   @@index([tenantId])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+// HR-lite: just enough of a Staff/Doctor entity for the Appointment module
+// (docs/DATABASE_ARCHITECTURE.md §4) to check roster/qualification rules
+// against. Full HR (attendance, leave, incentives) is not built here.
+model Staff {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  userId      String?  @unique @map("user_id")
+  role        Role
+  fullName    String   @map("full_name")
+  staffNumber String?  @map("staff_number")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, role])
+  @@map("staff")
 }
