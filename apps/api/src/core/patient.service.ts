@@ -1,10 +1,11 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   TENANT_SCOPED_PRISMA,
   TenantScopedPrismaClient,
 } from './tenant-scoped-prisma.provider';
 import { currentTenantId } from './tenant-context';
 import { CreatePatientDto } from './dto/create-patient.dto';
+import { UpdatePatientDto } from './dto/update-patient.dto';
 
 @Injectable()
 export class PatientService {
@@ -22,13 +23,48 @@ export class PatientService {
         dob: dto.dob ? new Date(dto.dob) : undefined,
         gender: dto.gender,
         race: dto.race,
+        phone: dto.phone,
         address: dto.address,
-        emergencyContact: dto.emergencyContact,
+        emergencyContactName: dto.emergencyContactName,
+        emergencyContactPhone: dto.emergencyContactPhone,
+        allergies: dto.allergies,
       },
     });
   }
 
-  findAll() {
-    return this.prisma.patient.findMany({ orderBy: { name: 'asc' } });
+  // "Enter patient name, NRIC or phone number" — the combined search field
+  // pattern from the audited Add Appointment wizard's Patient step.
+  findAll(search?: string) {
+    return this.prisma.patient.findMany({
+      where: search
+        ? {
+            OR: [
+              { name: { contains: search, mode: 'insensitive' } },
+              { identifierValue: { contains: search } },
+              { phone: { contains: search } },
+            ],
+          }
+        : undefined,
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async findById(id: string) {
+    const patient = await this.prisma.patient.findUnique({ where: { id } });
+    if (!patient) {
+      throw new NotFoundException('Patient not found');
+    }
+    return patient;
+  }
+
+  async update(id: string, dto: UpdatePatientDto) {
+    await this.findById(id);
+    return this.prisma.patient.update({
+      where: { id },
+      data: {
+        ...dto,
+        dob: dto.dob ? new Date(dto.dob) : undefined,
+      },
+    });
   }
 }

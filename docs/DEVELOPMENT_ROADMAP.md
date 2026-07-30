@@ -38,7 +38,7 @@ These are called out again here (also tracked in `PRODUCT_REQUIREMENTS.md` §17)
 3. Holiday surcharge vs. panel-locked pricing → blocks 1e
 4. Panel pricing override governance → blocks 1e (advanced reconciliation, Phase 2, but the base rule should be settled before 1e ships invoices under an ambiguous rule)
 5. Data migration export mechanism from existing Kuwick → does not block any sub-phase's *build*, but must be resolved before any sub-phase goes live for real use
-6. Foreign patient (non-NRIC) identifier handling → blocks 1a (patient registration)
+6. ~~Foreign patient (non-NRIC) identifier handling~~ — **RESOLVED 2026-07-30 (`DECISIONS.md` D-022)**, no longer blocks 1a.
 7. Booking attribution mechanism for commission billing → blocks 1b's Online Booking Portal specifically, not the rest of 1b (calendar, doctor roster/exception, slot/capacity engine, admin booking, and lifecycle actions were already built without needing this decision and don't depend on it)
 
-Sub-phases without a blocking decision (1d, 1f) can start immediately once Phase 0 is approved. 1b is partially gated: its calendar/roster/slot-engine/admin-booking/lifecycle-actions scope already shipped without needing a decision, but the Online Booking Portal specifically is blocked on item 7 above.
+Sub-phases without a blocking decision (1a, 1d, 1f) can start immediately once Phase 0 is approved. 1b is partially gated: its calendar/roster/slot-engine/admin-booking/lifecycle-actions scope already shipped without needing a decision, but the Online Booking Portal specifically is blocked on item 7 above.

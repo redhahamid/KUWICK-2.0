@@ -137,6 +137,13 @@ Reverses the original 1d design (`stock_levels_quantity_on_hand_check`, a DB `CH
 **Types**: the library ships no bundled TypeScript definitions; `@types/react-big-calendar` (community, DefinitelyTyped) is added as a devDependency.
 **Reversibility**: Medium — confined to the calendar view's rendering layer; the data hooks/queries underneath (`useAppointments`, `useDoctorSchedules`, `useScheduleExceptions`) are library-agnostic and would carry over to any replacement.
 
+## D-022 — Patient ID Type: explicit NRIC/Passport selector, resolving Open Question #6
+**Status: CONFIRMED BY OWNER, not an assumption** (2026-07-30, via direct instruction — this touches the patient record, so it was not decided unilaterally).
+Resolves the open question in `PRODUCT_REQUIREMENTS.md` §17.6 ("foreign-patient, non-NRIC identifier handling"): kuwick.com's own live Add Patient form already answers it with an ID Type selector (NRIC or Passport), so Kuwick 2.0 matches that rather than inventing a different shape. `Patient.identifierType` (`NRIC`/`PASSPORT` enum, already in the schema) is now driven by that selector in both the create and edit forms; `identifierValue` is validated as a 12-digit string when `identifierType = NRIC` and left as free text for `PASSPORT`.
+**Alternatives considered**: a single free-text identifier field with no type distinction (rejected — can't express the NRIC-format validation the audited kuwick.com form applies, and conflates two genuinely different identifier shapes).
+**Reversibility**: High — purely an application-layer validation rule on an existing enum column; no schema change.
+**Supersedes**: strikes item 6 in `DEVELOPMENT_ROADMAP.md`'s gating-decisions list and marks OQ#6 RESOLVED in `PRODUCT_REQUIREMENTS.md` §17.
+
 ---
 
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
@@ -148,4 +155,3 @@ These touch billing, panel claims, clinical workflow, or data ownership and are 
 - Holiday/after-hours surcharge interaction with panel-locked pricing
 - Panel pricing override governance
 - Data migration mechanism from the existing Kuwick system
-- Foreign-patient (non-NRIC) identifier handling
