@@ -34,3 +34,18 @@ npm run dev:web   # http://localhost:5173
 ```
 
 Copy `apps/api/.env.example` to `apps/api/.env` and fill in your local database credentials before running the API.
+
+## Running tests
+
+```
+npm run test:api        # unit tests
+npm run test:api:e2e    # integration tests, against a disposable kuwick_test database
+```
+
+Integration tests never run against `kuwick_dev` (docs/CODING_STANDARDS.md §5). Create the disposable database once:
+
+```
+CREATE DATABASE kuwick_test OWNER kuwick_dev;
+```
+
+Then copy `apps/api/.env.test.example` to `apps/api/.env.test` and point `TEST_DATABASE_URL` at it. `npm run test:api:e2e` applies pending migrations automatically before each run.

@@ -11,7 +11,9 @@
     "dev:web": "npm run dev --workspace=apps/web",
     "dev:api": "npm run start:dev --workspace=apps/api",
     "build": "npm run build --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "test:api": "npm run test --workspace=apps/api",
+    "test:api:e2e": "npm run test:e2e --workspace=apps/api"
   },
   "engines": {
     "node": ">=22"

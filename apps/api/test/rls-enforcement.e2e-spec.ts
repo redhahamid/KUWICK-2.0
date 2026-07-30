@@ -1,0 +1,106 @@
+import { PrismaClient, Role } from '@prisma/client';
+import { createTestPrismaClient, randomId, withTenantContext } from './test-db';
+
+// Proves the database-level backstop itself works, independent of any
+// application code remembering to filter by tenant — the thing
+// tenant-isolation.e2e-spec.ts assumes is true one layer down. Uses a raw,
+// unscoped PrismaClient directly (not TENANT_SCOPED_PRISMA) specifically so
+// these tests can exercise "no tenant context set at all," which the app's
+// own client would refuse to do (core/tenant-scoped-prisma.provider.ts
+// throws in that case) — that refusal is a *different* safety net, and
+// this file is deliberately testing the one underneath it: Postgres RLS
+// with FORCE ROW LEVEL SECURITY (docs/DECISIONS.md, force_rls_core_
+// foundation and add_appointment_module migrations).
+describe('Row-Level Security enforcement (e2e, DB-level)', () => {
+  let prisma: PrismaClient;
+  let tenantA: string;
+  let tenantB: string;
+
+  beforeAll(() => {
+    prisma = createTestPrismaClient();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  beforeEach(async () => {
+    tenantA = randomId();
+    tenantB = randomId();
+    await withTenantContext(prisma, tenantA, (tx) =>
+      tx.tenant.create({ data: { id: tenantA, name: 'RLS Tenant A' } }),
+    );
+    await withTenantContext(prisma, tenantB, (tx) =>
+      tx.tenant.create({ data: { id: tenantB, name: 'RLS Tenant B' } }),
+    );
+  });
+
+  afterEach(async () => {
+    for (const tenantId of [tenantA, tenantB]) {
+      await withTenantContext(prisma, tenantId, async (tx) => {
+        await tx.staff.deleteMany({ where: { tenantId } });
+        await tx.tenant.deleteMany({ where: { id: tenantId } });
+      });
+    }
+  });
+
+  it('a session with no app.tenant_id set sees zero rows on a Core Foundation table (tenants)', async () => {
+    // No withTenantContext wrapper — this connection has never had
+    // app.tenant_id set, which is exactly the state a stray raw query
+    // (CODING_STANDARDS.md §6) would run under.
+    const rows = await prisma.tenant.findMany({ where: { id: { in: [tenantA, tenantB] } } });
+    expect(rows).toEqual([]);
+  });
+
+  it('a session with no app.tenant_id set sees zero rows on an Appointment-module table (staff)', async () => {
+    await withTenantContext(prisma, tenantA, (tx) =>
+      tx.staff.create({ data: { tenantId: tenantA, role: Role.DOCTOR_RESIDENT, fullName: 'RLS Test Doctor' } }),
+    );
+
+    const rows = await prisma.staff.findMany({ where: { tenantId: tenantA } });
+    expect(rows).toEqual([]);
+  });
+
+  it("tenant A's session cannot see tenant B's rows in the same table", async () => {
+    await withTenantContext(prisma, tenantB, (tx) =>
+      tx.staff.create({ data: { tenantId: tenantB, role: Role.DOCTOR_RESIDENT, fullName: 'Tenant B Doctor' } }),
+    );
+
+    const rowsAsA = await withTenantContext(prisma, tenantA, (tx) =>
+      tx.staff.findMany({ where: { tenantId: tenantB } }),
+    );
+    expect(rowsAsA).toEqual([]);
+  });
+
+  it('an INSERT with no app.tenant_id set is rejected outright, not just hidden on read', async () => {
+    // tenants' policy is USING (id = current_setting('app.tenant_id', true)):
+    // with no session variable set, current_setting returns NULL, and
+    // `id = NULL` is never true — even for a brand-new row being inserted.
+    await expect(
+      prisma.tenant.create({ data: { id: randomId(), name: 'Should never be written' } }),
+    ).rejects.toThrow();
+
+    const rows = await withTenantContext(prisma, tenantA, (tx) =>
+      tx.tenant.findMany({ where: { name: 'Should never be written' } }),
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it('an INSERT whose tenant_id does not match the session context is rejected', async () => {
+    // Defense in depth: even if application code's currentTenantId() were
+    // ever buggy or bypassed, RLS's WITH CHECK still refuses a write into
+    // a different tenant than the one the connection is scoped to.
+    await expect(
+      withTenantContext(prisma, tenantA, (tx) =>
+        tx.staff.create({
+          data: { tenantId: tenantB, role: Role.DOCTOR_RESIDENT, fullName: 'Cross-tenant write attempt' },
+        }),
+      ),
+    ).rejects.toThrow();
+
+    const rows = await withTenantContext(prisma, tenantB, (tx) =>
+      tx.staff.findMany({ where: { fullName: 'Cross-tenant write attempt' } }),
+    );
+    expect(rows).toEqual([]);
+  });
+});
