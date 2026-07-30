@@ -13,6 +13,7 @@
     "@kuwick/shared": "*",
     "@tanstack/react-query": "^5.101.4",
     "antd": "^6.5.2",
+    "dayjs": "^1.11.13",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.1",

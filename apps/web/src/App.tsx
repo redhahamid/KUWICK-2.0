@@ -1,23 +1,25 @@
 import { Route, Routes } from 'react-router-dom';
-import { Typography } from 'antd';
 import { AppLayout } from './design-system/components/AppLayout';
-
-const { Title, Paragraph } = Typography;
-
-function PlaceholderPage() {
-  return (
-    <>
-      <Title level={4}>Kuwick 2.0</Title>
-      <Paragraph type="secondary">Select a module from the sidebar.</Paragraph>
-    </>
-  );
-}
+import { ClinicsPage } from './core/ClinicsPage';
+import { PatientsPage } from './core/PatientsPage';
+import { StaffPage } from './hr/StaffPage';
+import { ServicesPage } from './appointment/ServicesPage';
+import { DoctorSchedulesPage } from './appointment/DoctorSchedulesPage';
+import { DoctorServiceQualificationsPage } from './appointment/DoctorServiceQualificationsPage';
+import { SlotCapacityConfigsPage } from './appointment/SlotCapacityConfigsPage';
 
 export function App() {
   return (
     <Routes>
       <Route element={<AppLayout />}>
-        <Route index element={<PlaceholderPage />} />
+        <Route index element={<ClinicsPage />} />
+        <Route path="/clinics" element={<ClinicsPage />} />
+        <Route path="/patients" element={<PatientsPage />} />
+        <Route path="/staff" element={<StaffPage />} />
+        <Route path="/services" element={<ServicesPage />} />
+        <Route path="/doctor-schedules" element={<DoctorSchedulesPage />} />
+        <Route path="/doctor-service-qualifications" element={<DoctorServiceQualificationsPage />} />
+        <Route path="/slot-capacity-configs" element={<SlotCapacityConfigsPage />} />
       </Route>
     </Routes>
   );
