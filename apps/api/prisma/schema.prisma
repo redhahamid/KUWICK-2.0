@@ -60,6 +60,8 @@ model Tenant {
   visits                      Visit[]
   queueTickets                QueueTicket[]
   clinicalNotes               ClinicalNote[]
+  diagnosisCatalogs           DiagnosisCatalog[]
+  diagnoses                   Diagnosis[]
 
   @@map("tenants")
 }
@@ -692,6 +694,7 @@ model Visit {
   staff        Staff         @relation(fields: [staffId], references: [id])
   queueTicket  QueueTicket?
   clinicalNote ClinicalNote?
+  diagnoses    Diagnosis[]
 
   @@unique([tenantId, visitNumber])
   @@index([tenantId, clinicId])
@@ -773,4 +776,46 @@ model ClinicalNote {
 
   @@index([tenantId])
   @@map("clinical_notes")
+}
+
+// Clinical Operations, Phase 2b. Per-tenant catalog matching the audited
+// kuwick.com Diagnosis tab's "search/add diagnosis from catalog" — no
+// dedicated admin CRUD screen this phase; entries are created inline when a
+// diagnosis isn't found (Clinical 2b plan, judgment call #3).
+model DiagnosisCatalog {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  code      String?
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant      @relation(fields: [tenantId], references: [id])
+  diagnoses Diagnosis[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("diagnosis_catalog")
+}
+
+// One row per diagnosis added to a Visit — snapshots code/name from the
+// catalog at add-time (same historical-stability convention as
+// PanelInvoice's price snapshot, docs/DATABASE_ARCHITECTURE.md §7), so a
+// later catalog rename never silently rewrites an existing visit's record.
+model Diagnosis {
+  id                 String   @id @default(uuid())
+  tenantId           String   @map("tenant_id")
+  visitId            String   @map("visit_id")
+  diagnosisCatalogId String?  @map("diagnosis_catalog_id")
+  code               String?
+  name               String
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  visit            Visit             @relation(fields: [visitId], references: [id])
+  diagnosisCatalog DiagnosisCatalog? @relation(fields: [diagnosisCatalogId], references: [id])
+
+  @@index([tenantId, visitId])
+  @@map("diagnoses")
 }

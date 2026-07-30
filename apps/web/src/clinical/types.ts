@@ -95,3 +95,28 @@ export interface UpsertClinicalNoteDto {
   notes?: string;
   noteLanguage?: NoteLanguage;
 }
+
+export interface DiagnosisCatalogEntry {
+  id: string;
+  tenantId: string;
+  code: string | null;
+  name: string;
+  active: boolean;
+}
+
+export interface Diagnosis {
+  id: string;
+  tenantId: string;
+  visitId: string;
+  diagnosisCatalogId: string | null;
+  code: string | null;
+  name: string;
+  createdAt: string;
+}
+
+export interface AddDiagnosisDto {
+  visitId: string;
+  diagnosisCatalogId?: string;
+  name?: string;
+  code?: string;
+}

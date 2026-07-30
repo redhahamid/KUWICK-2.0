@@ -22,17 +22,17 @@ import { usePatient } from '../core/hooks/usePatients';
 import { usePatientVisits } from './hooks/useVisits';
 import { EditPatientDrawer } from './EditPatientDrawer';
 import { ClinicalNotesTab } from './ClinicalNotesTab';
+import { DiagnosisTab } from './DiagnosisTab';
 import { Visit } from './types';
 
 const { Title, Text } = Typography;
 
 // Six Record View tabs from the audited kuwick.com Patient Dashboard.
-// Orders & Services/Diagnosis land in the rest of Phase 2, Medications in
-// Phase 3, Documents in Phase 4, Invoices in Phase 5 — empty states here
-// are placeholders for those phases, not a scope cut.
+// Orders & Services lands in the rest of Phase 2, Medications in Phase 3,
+// Documents in Phase 4, Invoices in Phase 5 — empty states here are
+// placeholders for those phases, not a scope cut.
 const RECORD_TABS = [
   { key: 'orders', label: 'Orders & Services', description: 'Orders & Services (Phase 2)' },
-  { key: 'diagnosis', label: 'Diagnosis', description: 'No diagnoses added' },
   { key: 'medications', label: 'Medications', description: 'Medications (Phase 3)' },
   { key: 'documents', label: 'Documents', description: 'No generated documents yet' },
   { key: 'invoices', label: 'Invoices', description: 'Invoices (Phase 5)' },
@@ -150,6 +150,11 @@ export function PatientDashboardPage() {
                 key: 'notes',
                 label: 'Clinical Notes',
                 children: <ClinicalNotesTab visitId={selectedVisit.id} />,
+              },
+              {
+                key: 'diagnosis',
+                label: 'Diagnosis',
+                children: <DiagnosisTab visitId={selectedVisit.id} />,
               },
               ...RECORD_TABS.map((tab) => ({
                 key: tab.key,
