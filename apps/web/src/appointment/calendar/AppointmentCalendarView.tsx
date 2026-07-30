@@ -9,7 +9,7 @@ import { Role } from '@kuwick/shared';
 import { useAppointments } from '../hooks/useAppointments';
 import { useDoctorSchedules } from '../hooks/useDoctorSchedules';
 import { useScheduleExceptions } from '../hooks/useScheduleExceptions';
-import { useServices } from '../hooks/useServices';
+import { useServices } from '../../clinical/hooks/useServices';
 import { useStaff } from '../../hr/hooks/useStaff';
 import { usePatients } from '../../core/hooks/usePatients';
 import { Appointment } from '../types';

@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   navItem('/appointments', 'Appointments'),
   navItem('/clinics', 'Clinics'),
   navItem('/patients', 'Patients'),
+  navItem('/queue', 'Queue'),
   navItem('/staff', 'Staff'),
   navItem('/services', 'Services'),
   navItem('/doctor-schedules', 'Doctor Schedules'),

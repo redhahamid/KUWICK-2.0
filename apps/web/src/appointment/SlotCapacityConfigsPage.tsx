@@ -4,7 +4,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useSlotCapacityConfigs, useCreateSlotCapacityConfig } from './hooks/useSlotCapacityConfigs';
 import { useClinics } from '../core/hooks/useClinics';
 import { useStaff } from '../hr/hooks/useStaff';
-import { useServices } from './hooks/useServices';
+import { useServices } from '../clinical/hooks/useServices';
 import { CreateSlotCapacityConfigDto } from './types';
 import { ApiError } from '../core/api-client';
 

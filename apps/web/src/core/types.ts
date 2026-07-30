@@ -22,6 +22,12 @@ export interface Patient {
   name: string;
   dob: string | null;
   gender: string | null;
+  race: string | null;
+  phone: string | null;
+  address: string | null;
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
+  allergies: string[] | null;
 }
 
 export interface CreatePatientDto {
@@ -30,4 +36,12 @@ export interface CreatePatientDto {
   name: string;
   dob?: string;
   gender?: string;
+  race?: string;
+  phone?: string;
+  address?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  allergies?: string[];
 }
+
+export type UpdatePatientDto = Partial<CreatePatientDto>;

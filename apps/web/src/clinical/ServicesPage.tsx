@@ -41,6 +41,7 @@ export function ServicesPage() {
         columns={[
           { title: 'Name', dataIndex: 'name' },
           { title: 'Default Duration (min)', dataIndex: 'durationMinutesDefault' },
+          { title: 'Price (RM)', dataIndex: 'price' },
           { title: 'Active', dataIndex: 'active', render: (value: boolean) => (value ? 'Yes' : 'No') },
         ]}
       />
@@ -55,6 +56,9 @@ export function ServicesPage() {
             rules={[{ required: true }]}
           >
             <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="price" label="Price (RM)">
+            <InputNumber min={0} precision={2} style={{ width: '100%' }} />
           </Form.Item>
           <Button type="primary" htmlType="submit" loading={createService.isPending} block>
             Create

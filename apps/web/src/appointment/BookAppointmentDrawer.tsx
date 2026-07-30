@@ -4,7 +4,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import { useClinics } from '../core/hooks/useClinics';
 import { usePatients } from '../core/hooks/usePatients';
 import { useStaff } from '../hr/hooks/useStaff';
-import { useServices } from './hooks/useServices';
+import { useServices } from '../clinical/hooks/useServices';
 import { useAvailability, useCreateAppointment } from './hooks/useAppointments';
 import { AvailableSlot } from './types';
 import { ApiError } from '../core/api-client';

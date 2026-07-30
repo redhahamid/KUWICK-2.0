@@ -1,17 +1,8 @@
 import type { AppointmentStatus } from '@kuwick/shared';
 
-export interface Service {
-  id: string;
-  tenantId: string;
-  name: string;
-  durationMinutesDefault: number;
-  active: boolean;
-}
-
-export interface CreateServiceDto {
-  name: string;
-  durationMinutesDefault: number;
-}
+// Service/CreateServiceDto moved to ../clinical/types.ts — ServiceCatalog is
+// owned by Clinical Operations (docs/DECISIONS.md, Clinical 1a Phase 1),
+// this module only references it by id.
 
 export interface DoctorSchedule {
   id: string;

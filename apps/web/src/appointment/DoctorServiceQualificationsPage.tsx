@@ -3,7 +3,7 @@ import { Button, Drawer, Form, message, Select, Space, Table, Typography } from 
 import { PlusOutlined } from '@ant-design/icons';
 import { useDoctorServiceQualifications, useCreateDoctorServiceQualification } from './hooks/useDoctorServiceQualifications';
 import { useStaff } from '../hr/hooks/useStaff';
-import { useServices } from './hooks/useServices';
+import { useServices } from '../clinical/hooks/useServices';
 import { CreateDoctorServiceQualificationDto } from './types';
 import { ApiError } from '../core/api-client';
 
