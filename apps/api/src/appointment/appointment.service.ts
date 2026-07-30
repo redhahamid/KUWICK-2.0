@@ -10,6 +10,13 @@ import { TERMINAL_APPOINTMENT_STATUSES } from './appointment-status.constants';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 import { CancelAppointmentDto } from './dto/cancel-appointment.dto';
+import { QueueTicketService } from '../clinical/queue-ticket.service';
+
+// No billing-type input exists at the point an appointment is marked
+// arrived (unlike the front-desk "Add to Daily Queue" walk-in flow, which
+// asks for one) — defaulted here rather than left unset. Non-critical,
+// revisit if Appointment ever carries its own billing-type field.
+const DEFAULT_ARRIVAL_BILLING_TYPE = 'Self-pay';
 
 export interface FindAppointmentsFilter {
   clinicId?: string;
@@ -28,6 +35,7 @@ export class AppointmentService {
   constructor(
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly bookingValidator: AppointmentBookingValidator,
+    private readonly queueTickets: QueueTicketService,
   ) {}
 
   async create(dto: CreateAppointmentDto) {
@@ -115,13 +123,25 @@ export class AppointmentService {
     });
   }
 
+  // Marks arrived, then auto-creates a queue ticket (docs/PRODUCT_
+  // REQUIREMENTS.md §6). Two separate writes for the same reason
+  // reschedule() below is: TENANT_SCOPED_PRISMA wraps each query in its own
+  // transaction, so this isn't atomic — an accepted gap, not an oversight.
   async arrived(id: string) {
     const appointment = await this.findById(id);
     assertStatus(appointment.status, ARRIVABLE_FROM, 'mark as arrived');
-    return this.prisma.appointment.update({
+    const updated = await this.prisma.appointment.update({
       where: { id },
       data: { status: AppointmentStatus.ARRIVED, arrivedAt: new Date() },
     });
+    await this.queueTickets.addToQueue({
+      clinicId: appointment.clinicId,
+      patientId: appointment.patientId,
+      staffId: appointment.staffId,
+      billingType: DEFAULT_ARRIVAL_BILLING_TYPE,
+      presentingComplaint: appointment.notes ?? undefined,
+    });
+    return updated;
   }
 
   async reschedule(id: string, dto: RescheduleAppointmentDto) {

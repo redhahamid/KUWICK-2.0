@@ -144,6 +144,29 @@ Resolves the open question in `PRODUCT_REQUIREMENTS.md` §17.6 ("foreign-patient
 **Reversibility**: High — purely an application-layer validation rule on an existing enum column; no schema change.
 **Supersedes**: strikes item 6 in `DEVELOPMENT_ROADMAP.md`'s gating-decisions list and marks OQ#6 RESOLVED in `PRODUCT_REQUIREMENTS.md` §17.
 
+## D-023 — Dispensary & Payment / Completed queue tabs: match kuwick.com's own thin implementation, keep the state machine fully real
+**Status: CONFIRMED BY OWNER** (2026-07-30, via direct instruction answering a flagged decision — "choose A").
+The audited kuwick.com Queue module's Dispensary & Payment and Completed tabs are themselves thin in the live reference system — no itemized payment recording, just a list and a status. Kuwick 2.0's UI matches that exactly rather than building ahead of the reference. Underneath, `QueueTicketStatus` still transitions through real `DISPENSARY_PAYMENT` → `COMPLETED` states via minimal `moveToDispensary`/`complete` actions not shown in the audit, because Invoice/payment recording (Phase 5) needs a real state to close out against — it can't attach to a UI-only label.
+**Alternatives considered** (the other flagged option): building out full itemized payment recording now, ahead of the reference system and ahead of Phase 5's actual scope. Rejected by the owner in favor of matching the reference and deferring payment detail to Phase 5.
+**Reversibility**: High — the thin tabs are a UI-layer choice; the state machine underneath doesn't need to change when Phase 5 adds real payment recording on top of it.
+
+## D-024 — "Arrived" queue action: WAITING → IN_CONSULTATION
+**Status: CONFIRMED BY OWNER** (2026-07-30, direct confirmation of the flagged mapping).
+The audited kuwick.com Queue module's "Arrived" action (Call/Arrived/Cancel) moves a ticket out of Waiting into Consultation — confirmed to mean `QueueTicketStatus.WAITING` → `QueueTicketStatus.IN_CONSULTATION`, distinct from "Call" (`QueueTicket.calledAt`, an announce/highlight action on the monitor display with no status change).
+**Reversibility**: High — an enum transition rule in `QueueTicketService#arrived`, isolated from the rest of the state machine.
+
+## D-025 — Clinical Notes dictation: browser Web Speech API only, no paid STT service
+**Status: CONFIRMED BY OWNER** (2026-07-30, direct instruction — "Yes browser web speech API. No paid").
+The audited Clinical Notes tab's dictation feature is implemented against the browser-native `SpeechRecognition`/`SpeechSynthesisUtterance` Web Speech API, not a paid speech-to-text vendor (e.g. Google Cloud Speech, AWS Transcribe, Deepgram). Deferred to the Documents/Clinical Notes phase (Phase 4) when it's actually built — logged now so the constraint isn't lost.
+**Why**: avoids introducing a paid, per-request-billed external dependency for a feature the reference system itself likely runs client-side; Web Speech API is supported in the target browsers (Chrome/Edge) without additional cost.
+**Reversibility**: Medium — swapping to a paid STT vendor later is an isolated change behind the same dictation-input interface, not a rearchitecture.
+
+## D-026 — Documents/Templates rich-text and drag-drop: Tiptap + `@dnd-kit`, deferred to Phase 4
+**Status: CONFIRMED BY OWNER** (2026-07-30, direct instruction — "Ok" to both proposed libraries).
+The audited Documents/Templates merge-engine (placeholder tokens, header/footer branding designer) needs a rich-text editor and a drag-and-drop layout surface. Tiptap (headless, ProseMirror-based) and `@dnd-kit` (accessible, React-native drag-and-drop) are approved as the libraries for that work, ahead of building it — flagged here so the choice doesn't need to be re-litigated when Phase 4 starts.
+**Alternatives considered**: not raised as alternatives — these were proposed as the standard-industry choice for each need (rich text: Tiptap vs. Slate vs. Quill; drag-drop: `@dnd-kit` vs. `react-beautiful-dnd`, the latter unmaintained) and approved directly.
+**Reversibility**: Medium — confined to the Documents phase's editor/layout components once built; nothing else in Phase 1a depends on either library.
+
 ---
 
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)

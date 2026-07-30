@@ -57,6 +57,8 @@ model Tenant {
   purchaseOrderLines          PurchaseOrderLine[]
   goodsReceivedNotes          GoodsReceivedNote[]
   goodsReceivedNoteLines      GoodsReceivedNoteLine[]
+  visits                      Visit[]
+  queueTickets                QueueTicket[]
 
   @@map("tenants")
 }
@@ -82,6 +84,8 @@ model Clinic {
   procurementRequests ProcurementRequest[]
   purchaseOrders      PurchaseOrder[]
   goodsReceivedNotes  GoodsReceivedNote[]
+  visits              Visit[]
+  queueTickets        QueueTicket[]
 
   @@index([tenantId])
   @@map("clinics")
@@ -140,6 +144,7 @@ model Patient {
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
   appointments Appointment[]
+  visits       Visit[]
 
   @@unique([tenantId, identifierType, identifierValue])
   @@index([tenantId])
@@ -215,6 +220,7 @@ model Staff {
   slotCapacityConfigs         SlotCapacityConfig[]
   doctorServiceQualifications DoctorServiceQualification[]
   appointments                Appointment[]
+  visits                      Visit[]
 
   @@index([tenantId])
   @@index([tenantId, role])
@@ -657,4 +663,73 @@ model GoodsReceivedNoteLine {
 
   @@index([tenantId, goodsReceivedNoteId])
   @@map("goods_received_note_lines")
+}
+
+// Clinical Operations, Phase 1a. The hub entity: Appointment's "Arrived"
+// action and the front-desk "Add to Daily Queue" action both create one of
+// these; Panel Claims' PanelInvoice and HR's IncentiveResult (both target
+// design) will bill/total against it, never write to it.
+model Visit {
+  id                  String    @id @default(uuid())
+  tenantId            String    @map("tenant_id")
+  clinicId            String    @map("clinic_id")
+  patientId           String    @map("patient_id")
+  staffId             String    @map("staff_id")
+  // Count-based sequence ("V-000002"), not a DB sequence — same accepted
+  // non-atomic-race gap as Inventory's document numbers (docs/DECISIONS.md).
+  visitNumber         String    @map("visit_number")
+  billingType         String    @map("billing_type")
+  presentingComplaint String?   @map("presenting_complaint")
+  checkInAt           DateTime  @default(now()) @map("check_in_at")
+  checkOutAt          DateTime? @map("check_out_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  clinic      Clinic       @relation(fields: [clinicId], references: [id])
+  patient     Patient      @relation(fields: [patientId], references: [id])
+  staff       Staff        @relation(fields: [staffId], references: [id])
+  queueTicket QueueTicket?
+
+  @@unique([tenantId, visitNumber])
+  @@index([tenantId, clinicId])
+  @@index([tenantId, patientId])
+  @@map("visits")
+}
+
+enum QueueTicketStatus {
+  WAITING
+  IN_CONSULTATION
+  DISPENSARY_PAYMENT
+  COMPLETED
+  CANCELLED
+}
+
+// Mirrors the audited kuwick.com Queue module's five tabs (Overview folds
+// into the others; Waiting/Consultation/Dispensary & Payment/Completed map
+// 1:1 onto this enum plus CANCELLED). One ticket per Visit — see D-023,
+// D-024 (docs/DECISIONS.md) for why Dispensary & Payment/Completed stay
+// thin here, matching the reference system, while the state machine itself
+// is fully real.
+model QueueTicket {
+  id           String            @id @default(uuid())
+  tenantId     String            @map("tenant_id")
+  clinicId     String            @map("clinic_id")
+  visitId      String            @unique @map("visit_id")
+  // Resets daily per clinic — same accepted gap as Visit.visitNumber.
+  ticketNumber Int               @map("ticket_number")
+  status       QueueTicketStatus @default(WAITING)
+  location     String?
+  calledAt     DateTime?         @map("called_at")
+  cancelReason String?           @map("cancel_reason")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+  visit  Visit  @relation(fields: [visitId], references: [id])
+
+  @@index([tenantId, clinicId, status])
+  @@index([tenantId, clinicId, createdAt])
+  @@map("queue_tickets")
 }

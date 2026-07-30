@@ -1,6 +1,6 @@
 # Kuwick 2.0 — Database Architecture
 
-**Status:** Target design for the full product. Core / Shared Foundation (§2), HR-lite `Staff` only (§5), Appointment (§4, minus `RecurringAppointmentTemplate`), Inventory & Procurement (§6, Phase 1d core), and Clinical Operations (§3, Phase 1a — `ServiceCatalog` only so far) are implemented in the live database. Everything else in this document is the schema later Phase 1 sub-phases build against, not yet created.
+**Status:** Target design for the full product. Core / Shared Foundation (§2), HR-lite `Staff` only (§5), Appointment (§4, minus `RecurringAppointmentTemplate`), Inventory & Procurement (§6, Phase 1d core), and Clinical Operations (§3, Phase 1a — `ServiceCatalog`, `Visit`, `QueueTicket`) are implemented in the live database. `ClinicalNote`, `Diagnosis`, `Prescription`, `OrderService`, `Document`, and `Invoice` (rest of §3) are not yet built — they arrive with Clinical Operations' later phases. Everything else in this document is the schema later Phase 1 sub-phases build against, not yet created.
 
 ## 1. Foundational decisions
 
@@ -43,11 +43,15 @@ CREATE POLICY tenant_isolation ON <table>
 ```
 set per-request by the tenant-isolation guard described in `SYSTEM_ARCHITECTURE.md` §4.
 
-## 3. Clinical Operations — **`ServiceCatalog` implemented (Phase 1a, Phase 1); rest target design**
+## 3. Clinical Operations — **`ServiceCatalog`, `Visit`, `QueueTicket` implemented (Phase 1a, Phase 1); rest target design**
 
 `ServiceCatalog`, `Visit`, `ClinicalNote`, `Diagnosis`, `Prescription`, `OrderService`, `Document`, `Invoice`, `QueueTicket`. `Visit` is the hub: it's what `Appointment` converts into, what `PanelInvoice` bills against, and what `IncentiveResult` totals up. Owned entirely by Clinical Operations per the data-ownership table; every other module reads it, never writes it.
 
 **`ServiceCatalog` consolidates Appointment's temporary `Service` stand-in** (built in 1b, `appointment_services` table) — a table rename plus a new `price` column (selfpay rate; panel-tier pricing stays owned by Panel Claims' future `PanelPriceTier`), not a new table. `SlotCapacityConfig`/`DoctorServiceQualification`/`Appointment` FKs carried over unchanged (Postgres FKs track by OID, not name).
+
+**`Visit`** (visit_number, billing_type, presenting_complaint, check_in_at, check_out_at) is created by two entry points: the front-desk "Add to Daily Queue" action and `AppointmentService.arrived()` (`PRODUCT_REQUIREMENTS.md` §6 — arriving for a booked appointment auto-creates a queue ticket). `visit_number` is a count-based sequence (`V-000006`), the same accepted non-atomic-race gap already documented for Inventory's document numbers — not a DB sequence, so two concurrent check-ins at the same instant could theoretically collide; acceptable at current volume, revisit if it becomes a real problem.
+
+**`QueueTicket`** (one per `Visit`, enforced by a unique FK) carries the state machine behind the audited kuwick.com Queue module's tabs: `QueueTicketStatus` (`WAITING` → `IN_CONSULTATION` → `DISPENSARY_PAYMENT` → `COMPLETED`, or `CANCELLED` from any non-terminal state). "Call" (`called_at`) is a monitor-display announce action, distinct from "Arrived" which is the `WAITING` → `IN_CONSULTATION` transition (`docs/DECISIONS.md` D-024). `ticket_number` resets daily per clinic, same count-based-sequence convention as `visit_number`. The Dispensary & Payment and Completed states stay thin (no itemized payment recording yet) to match the reference system's own current implementation, per D-023 — the state machine transitions are real even though the UI built against `DISPENSARY_PAYMENT`/`COMPLETED` today is minimal, so Invoice/payment recording (a later phase) has a real state to attach to.
 
 ## 4. Appointment — target design (Phase 1)
 
@@ -91,4 +95,4 @@ Every tenant-scoped table is indexed on `(tenant_id, id)` at minimum; tables fre
 
 - PostgreSQL 16 installed as a Windows service, listening on 127.0.0.1:5432.
 - A dedicated, non-superuser role `kuwick_dev` and database `kuwick_dev` — the application never connects as the `postgres` superuser.
-- Migrations to date: Core/Shared Foundation (§2), HR-lite `Staff` (§5), Appointment (§4), Inventory & Procurement (§6, Phase 1d core), and Clinical Operations (§3, Phase 1a — `ServiceCatalog` only) — all with RLS policies enabled. The rest of Clinical Operations and Panel Claims tables don't exist yet — those arrive with their respective Phase 1a passes / Phase 1e.
+- Migrations to date: Core/Shared Foundation (§2), HR-lite `Staff` (§5), Appointment (§4), Inventory & Procurement (§6, Phase 1d core), and Clinical Operations (§3, Phase 1a — `ServiceCatalog`, `Visit`, `QueueTicket`) — all with RLS policies enabled. The rest of Clinical Operations (`ClinicalNote`, `Diagnosis`, `Prescription`, `OrderService`, `Document`, `Invoice`) and Panel Claims tables don't exist yet — those arrive with Clinical Operations' later phases / Phase 1e.

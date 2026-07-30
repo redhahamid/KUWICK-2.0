@@ -38,6 +38,9 @@ describe('Row-Level Security enforcement (e2e, DB-level)', () => {
   afterEach(async () => {
     for (const tenantId of [tenantA, tenantB]) {
       await withTenantContext(prisma, tenantId, async (tx) => {
+        await tx.visit.deleteMany({ where: { tenantId } });
+        await tx.patient.deleteMany({ where: { tenantId } });
+        await tx.clinic.deleteMany({ where: { tenantId } });
         await tx.item.deleteMany({ where: { tenantId } });
         await tx.staff.deleteMany({ where: { tenantId } });
         await tx.tenant.deleteMany({ where: { id: tenantId } });
@@ -68,6 +71,31 @@ describe('Row-Level Security enforcement (e2e, DB-level)', () => {
     );
 
     const rows = await prisma.staff.findMany({ where: { tenantId: tenantA } });
+    expect(rows).toEqual([]);
+  });
+
+  it('a session with no app.tenant_id set sees zero rows on a Clinical-module table (visits)', async () => {
+    await withTenantContext(prisma, tenantA, async (tx) => {
+      const clinic = await tx.clinic.create({ data: { tenantId: tenantA, name: 'RLS Test Clinic' } });
+      const patient = await tx.patient.create({
+        data: { tenantId: tenantA, identifierType: 'NRIC', identifierValue: '900101015009', name: 'RLS Test Patient' },
+      });
+      const staff = await tx.staff.create({
+        data: { tenantId: tenantA, role: Role.DOCTOR_RESIDENT, fullName: 'RLS Test Doctor' },
+      });
+      await tx.visit.create({
+        data: {
+          tenantId: tenantA,
+          clinicId: clinic.id,
+          patientId: patient.id,
+          staffId: staff.id,
+          visitNumber: 'V-000001',
+          billingType: 'Self-pay',
+        },
+      });
+    });
+
+    const rows = await prisma.visit.findMany({ where: { tenantId: tenantA } });
     expect(rows).toEqual([]);
   });
 

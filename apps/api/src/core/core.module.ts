@@ -7,14 +7,23 @@ import { ClinicController } from './clinic.controller';
 import { ClinicService } from './clinic.service';
 import { PatientController } from './patient.controller';
 import { PatientService } from './patient.service';
+import { GlobalSettingController } from './global-setting.controller';
+import { GlobalSettingService } from './global-setting.service';
 
 // Foundation module: Tenant, Clinic, User, Patient, GlobalSetting,
 // NotificationLog, AuditLog, plus the interim tenant-context middleware/client
 // (docs/DECISIONS.md D-017). RBAC guard and the audit interceptor described
 // in docs/SYSTEM_ARCHITECTURE.md land once real auth exists.
 @Module({
-  providers: [PrismaService, TenantContextMiddleware, tenantScopedPrismaProvider, ClinicService, PatientService],
-  controllers: [HealthController, ClinicController, PatientController],
+  providers: [
+    PrismaService,
+    TenantContextMiddleware,
+    tenantScopedPrismaProvider,
+    ClinicService,
+    PatientService,
+    GlobalSettingService,
+  ],
+  controllers: [HealthController, ClinicController, PatientController, GlobalSettingController],
   exports: [PrismaService, TenantContextMiddleware, TENANT_SCOPED_PRISMA],
 })
 export class CoreModule {}
