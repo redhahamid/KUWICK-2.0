@@ -49,7 +49,7 @@ describe('Tenant isolation (e2e)', () => {
         await tx.doctorServiceQualification.deleteMany({ where: { tenantId } });
         await tx.slotCapacityConfig.deleteMany({ where: { tenantId } });
         await tx.doctorSchedule.deleteMany({ where: { tenantId } });
-        await tx.service.deleteMany({ where: { tenantId } });
+        await tx.serviceCatalog.deleteMany({ where: { tenantId } });
         await tx.staff.deleteMany({ where: { tenantId } });
         await tx.patient.deleteMany({ where: { tenantId } });
         await tx.clinic.deleteMany({ where: { tenantId } });
@@ -176,7 +176,7 @@ async function seedBookableDoctor(prisma: PrismaClient, tenantId: string): Promi
     const staff = await tx.staff.create({
       data: { tenantId, role: Role.DOCTOR_RESIDENT, fullName: 'Dr. Isolation Fixture' },
     });
-    const service = await tx.service.create({
+    const service = await tx.serviceCatalog.create({
       data: { tenantId, name: 'Isolation Test Service', durationMinutesDefault: 30 },
     });
     await tx.doctorSchedule.create({

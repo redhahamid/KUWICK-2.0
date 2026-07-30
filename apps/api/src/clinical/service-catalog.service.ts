@@ -13,15 +13,15 @@ export class ServiceCatalogService {
   ) {}
 
   create(dto: CreateServiceDto) {
-    return this.prisma.service.create({ data: { ...dto, tenantId: currentTenantId() } });
+    return this.prisma.serviceCatalog.create({ data: { ...dto, tenantId: currentTenantId() } });
   }
 
   findAll() {
-    return this.prisma.service.findMany({ orderBy: { name: 'asc' } });
+    return this.prisma.serviceCatalog.findMany({ orderBy: { name: 'asc' } });
   }
 
   async findById(id: string) {
-    const service = await this.prisma.service.findUnique({ where: { id } });
+    const service = await this.prisma.serviceCatalog.findUnique({ where: { id } });
     if (!service) {
       throw new NotFoundException('Service not found');
     }

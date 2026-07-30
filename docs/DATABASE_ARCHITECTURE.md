@@ -1,6 +1,6 @@
 # Kuwick 2.0 — Database Architecture
 
-**Status:** Target design for the full product. Core / Shared Foundation (§2), HR-lite `Staff` only (§5), Appointment (§4, minus `RecurringAppointmentTemplate`), and Inventory & Procurement (§6, Phase 1d core) are implemented in the live database. Everything else in this document is the schema later Phase 1 sub-phases build against, not yet created.
+**Status:** Target design for the full product. Core / Shared Foundation (§2), HR-lite `Staff` only (§5), Appointment (§4, minus `RecurringAppointmentTemplate`), Inventory & Procurement (§6, Phase 1d core), and Clinical Operations (§3, Phase 1a — `ServiceCatalog` only so far) are implemented in the live database. Everything else in this document is the schema later Phase 1 sub-phases build against, not yet created.
 
 ## 1. Foundational decisions
 
@@ -43,9 +43,11 @@ CREATE POLICY tenant_isolation ON <table>
 ```
 set per-request by the tenant-isolation guard described in `SYSTEM_ARCHITECTURE.md` §4.
 
-## 3. Clinical Operations — target design (Phase 1)
+## 3. Clinical Operations — **`ServiceCatalog` implemented (Phase 1a, Phase 1); rest target design**
 
 `ServiceCatalog`, `Visit`, `ClinicalNote`, `Diagnosis`, `Prescription`, `OrderService`, `Document`, `Invoice`, `QueueTicket`. `Visit` is the hub: it's what `Appointment` converts into, what `PanelInvoice` bills against, and what `IncentiveResult` totals up. Owned entirely by Clinical Operations per the data-ownership table; every other module reads it, never writes it.
+
+**`ServiceCatalog` consolidates Appointment's temporary `Service` stand-in** (built in 1b, `appointment_services` table) — a table rename plus a new `price` column (selfpay rate; panel-tier pricing stays owned by Panel Claims' future `PanelPriceTier`), not a new table. `SlotCapacityConfig`/`DoctorServiceQualification`/`Appointment` FKs carried over unchanged (Postgres FKs track by OID, not name).
 
 ## 4. Appointment — target design (Phase 1)
 
@@ -89,4 +91,4 @@ Every tenant-scoped table is indexed on `(tenant_id, id)` at minimum; tables fre
 
 - PostgreSQL 16 installed as a Windows service, listening on 127.0.0.1:5432.
 - A dedicated, non-superuser role `kuwick_dev` and database `kuwick_dev` — the application never connects as the `postgres` superuser.
-- Migrations to date: Core/Shared Foundation (§2), HR-lite `Staff` (§5), Appointment (§4), and Inventory & Procurement (§6, Phase 1d core) — all with RLS policies enabled. Clinical Operations and Panel Claims tables don't exist yet — those arrive with their respective Phase 1 sub-phases.
+- Migrations to date: Core/Shared Foundation (§2), HR-lite `Staff` (§5), Appointment (§4), Inventory & Procurement (§6, Phase 1d core), and Clinical Operations (§3, Phase 1a — `ServiceCatalog` only) — all with RLS policies enabled. The rest of Clinical Operations and Panel Claims tables don't exist yet — those arrive with their respective Phase 1a passes / Phase 1e.

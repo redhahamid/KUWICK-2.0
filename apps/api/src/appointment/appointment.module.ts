@@ -1,8 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CoreModule } from '../core/core.module';
 import { HrModule } from '../hr/hr.module';
-import { ServiceCatalogController } from './service-catalog.controller';
-import { ServiceCatalogService } from './service-catalog.service';
+import { ClinicalModule } from '../clinical/clinical.module';
 import { DoctorScheduleController } from './doctor-schedule.controller';
 import { DoctorScheduleService } from './doctor-schedule.service';
 import { ScheduleExceptionController } from './schedule-exception.controller';
@@ -18,9 +17,8 @@ import { AppointmentService } from './appointment.service';
 import { AppointmentBookingValidator } from './appointment-booking-validator.service';
 
 @Module({
-  imports: [CoreModule, HrModule],
+  imports: [CoreModule, HrModule, ClinicalModule],
   controllers: [
-    ServiceCatalogController,
     DoctorScheduleController,
     ScheduleExceptionController,
     SlotCapacityConfigController,
@@ -29,7 +27,6 @@ import { AppointmentBookingValidator } from './appointment-booking-validator.ser
     AppointmentController,
   ],
   providers: [
-    ServiceCatalogService,
     DoctorScheduleService,
     ScheduleExceptionService,
     SlotCapacityConfigService,

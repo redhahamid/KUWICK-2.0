@@ -41,7 +41,7 @@ model Tenant {
   notificationLogs            NotificationLog[]
   auditLogs                   AuditLog[]
   staff                       Staff[]
-  services                    Service[]
+  services                    ServiceCatalog[]
   doctorSchedules             DoctorSchedule[]
   scheduleExceptions          ScheduleException[]
   slotCapacityConfigs         SlotCapacityConfig[]
@@ -239,16 +239,17 @@ enum AppointmentSource {
   FRONT_DESK
 }
 
-// TEMPORARY: stands in for Clinical Operations' future ServiceCatalog
-// (docs/DATABASE_ARCHITECTURE.md §3), which doesn't exist yet (1a hasn't been
-// built). Mapped to appointment_services, not service_catalog, specifically
-// so it can't collide with Clinical's eventual table. Flagged in
-// docs/DECISIONS.md for consolidation once Clinical Operations ships.
-model Service {
+// Owned by Clinical Operations (Phase 1a), consolidating the temporary
+// `appointment_services` stand-in built during 1b (docs/DECISIONS.md).
+// `price` is the base selfpay rate used to itemize "Standard Services" on
+// an Invoice (Phase 1a Phase 5) — panel-tier pricing stays owned by Panel
+// Claims' future `PanelPriceTier`, same convention as Inventory's `Item`.
+model ServiceCatalog {
   id                     String   @id @default(uuid())
   tenantId               String   @map("tenant_id")
   name                   String
   durationMinutesDefault Int      @map("duration_minutes_default")
+  price                  Decimal  @default(0) @db.Decimal(10, 2)
   active                 Boolean  @default(true)
   createdAt              DateTime @default(now()) @map("created_at")
   updatedAt              DateTime @updatedAt @map("updated_at")
@@ -259,7 +260,7 @@ model Service {
   appointments                Appointment[]
 
   @@index([tenantId])
-  @@map("appointment_services")
+  @@map("service_catalog")
 }
 
 model DoctorSchedule {
@@ -322,10 +323,10 @@ model SlotCapacityConfig {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id])
-  clinic  Clinic  @relation(fields: [clinicId], references: [id])
-  staff   Staff   @relation(fields: [staffId], references: [id])
-  service Service @relation(fields: [serviceId], references: [id])
+  tenant  Tenant         @relation(fields: [tenantId], references: [id])
+  clinic  Clinic         @relation(fields: [clinicId], references: [id])
+  staff   Staff          @relation(fields: [staffId], references: [id])
+  service ServiceCatalog @relation(fields: [serviceId], references: [id])
 
   @@unique([tenantId, clinicId, staffId, serviceId])
   @@index([tenantId, clinicId])
@@ -342,9 +343,9 @@ model DoctorServiceQualification {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id])
-  staff   Staff   @relation(fields: [staffId], references: [id])
-  service Service @relation(fields: [serviceId], references: [id])
+  tenant  Tenant         @relation(fields: [tenantId], references: [id])
+  staff   Staff          @relation(fields: [staffId], references: [id])
+  service ServiceCatalog @relation(fields: [serviceId], references: [id])
 
   @@unique([tenantId, staffId, serviceId])
   @@index([tenantId, staffId])
@@ -370,13 +371,13 @@ model Appointment {
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
 
-  tenant          Tenant       @relation(fields: [tenantId], references: [id])
-  clinic          Clinic       @relation(fields: [clinicId], references: [id])
-  patient         Patient      @relation(fields: [patientId], references: [id])
-  staff           Staff        @relation(fields: [staffId], references: [id])
-  service         Service      @relation(fields: [serviceId], references: [id])
-  rescheduledFrom Appointment? @relation("AppointmentReschedule", fields: [rescheduledFromId], references: [id])
-  rescheduledTo   Appointment? @relation("AppointmentReschedule")
+  tenant          Tenant         @relation(fields: [tenantId], references: [id])
+  clinic          Clinic         @relation(fields: [clinicId], references: [id])
+  patient         Patient        @relation(fields: [patientId], references: [id])
+  staff           Staff          @relation(fields: [staffId], references: [id])
+  service         ServiceCatalog @relation(fields: [serviceId], references: [id])
+  rescheduledFrom Appointment?   @relation("AppointmentReschedule", fields: [rescheduledFromId], references: [id])
+  rescheduledTo   Appointment?   @relation("AppointmentReschedule")
 
   @@index([tenantId])
   @@index([tenantId, clinicId])
