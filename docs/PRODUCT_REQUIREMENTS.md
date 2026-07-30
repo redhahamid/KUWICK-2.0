@@ -163,6 +163,11 @@ These affect billing, panel claims, clinical workflow, or data ownership — per
 4. **Panel pricing override governance** — no rule yet for what happens if a panel price needs to be overridden against its centrally contracted tier (from the source PDF's risk register).
 5. **Data migration from existing Kuwick** — no confirmed export mechanism exists since Kuwick 2.0 is being built without access to the old system's source code (from the source PDF's risk register).
 6. **Foreign patients without NRIC** — registration is described around NRIC validation only; Malaysian clinics commonly see passport-holding patients. Needs a decision on identifier handling for non-citizens.
+7. **Booking attribution for commission billing** — the patient-facing Online Booking Portal (§3B, §4) has no defined mechanism for proving a given booking originated from Kuwick's portal rather than a clinic's own walk-in/phone booking, despite this being required to bill clinics commission on portal-driven bookings. Not previously identified as a gap; raised before the portal is built rather than after. Two things need a decision, not just one:
+   - **Billing trigger event** — is commission earned when the booking is *created* through the portal, or only when the resulting visit is *completed* (a portal booking that no-shows or gets cancelled may or may not owe commission)? This mirrors the cash-vs-panel revenue distinction Reports & Analytics (§12) already draws for completed visits.
+   - **Cross-tenant billing/reporting** — generating a commission invoice per clinic requires reading portal-attributed bookings *across* tenants, which is a new capability nothing in the current design accounts for: every table is tenant-isolated via `FORCE ROW LEVEL SECURITY` with no exceptions, including for the application's own database role. A commission report needs a deliberate platform-admin path across that boundary, not an incidental one.
+
+   Whatever is decided, attribution itself must be **provable**, not self-reported: it needs to be derived from which endpoint/auth-context created the booking (the portal and staff-booking paths are structurally distinct entry points a client can't misrepresent) and recorded immutably at creation, not accepted as caller-supplied input on the booking record.
 
 ## 18. Acceptance Criteria (Phase-One, Representative)
 
