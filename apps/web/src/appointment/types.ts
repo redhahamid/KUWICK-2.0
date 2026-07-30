@@ -35,6 +35,26 @@ export interface CreateDoctorScheduleDto {
   effectiveTo?: string;
 }
 
+export interface ScheduleException {
+  id: string;
+  tenantId: string;
+  clinicId: string;
+  staffId: string;
+  date: string;
+  startTime: string | null;
+  endTime: string | null;
+  reason: string | null;
+}
+
+export interface CreateScheduleExceptionDto {
+  clinicId: string;
+  staffId: string;
+  date: string;
+  startTime?: string;
+  endTime?: string;
+  reason?: string;
+}
+
 export interface DoctorServiceQualification {
   id: string;
   tenantId: string;

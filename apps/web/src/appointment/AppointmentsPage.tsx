@@ -17,19 +17,14 @@ import {
 import { Appointment } from './types';
 import { BookAppointmentDrawer } from './BookAppointmentDrawer';
 import { RescheduleAppointmentDrawer } from './RescheduleAppointmentDrawer';
+import { ARRIVABLE_FROM_STATUSES, NON_CANCELLABLE_STATUSES } from './appointment-status.constants';
+import { AppointmentCalendarView } from './calendar/AppointmentCalendarView';
 import { ApiError } from '../core/api-client';
 
 const { Title } = Typography;
 
-const ARRIVABLE_FROM: AppointmentStatus[] = [AppointmentStatus.CONFIRMED, AppointmentStatus.REMINDED];
-const NON_CANCELLABLE: AppointmentStatus[] = [
-  AppointmentStatus.CANCELLED,
-  AppointmentStatus.RESCHEDULED,
-  AppointmentStatus.NO_SHOW,
-  AppointmentStatus.COMPLETED,
-];
-
 export function AppointmentsPage() {
+  const [pageView, setPageView] = useState<'list' | 'calendar'>('list');
   const [clinicId, setClinicId] = useState<string>();
   const [staffId, setStaffId] = useState<string>();
   const [status, setStatus] = useState<AppointmentStatus>();
@@ -92,92 +87,103 @@ export function AppointmentsPage() {
         <Title level={4} style={{ margin: 0 }}>
           Appointments
         </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setBookOpen(true)}>
-          Book Appointment
-        </Button>
+        <Space>
+          <Button onClick={() => setPageView(pageView === 'list' ? 'calendar' : 'list')}>
+            {pageView === 'list' ? 'Calendar view' : 'List view'}
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setBookOpen(true)}>
+            Book Appointment
+          </Button>
+        </Space>
       </Space>
-      <Space style={{ marginBottom: 16 }} wrap>
-        <Select
-          allowClear
-          placeholder="Filter by clinic"
-          style={{ width: 200 }}
-          value={clinicId}
-          onChange={setClinicId}
-          options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
-        />
-        <Select
-          allowClear
-          placeholder="Filter by doctor"
-          style={{ width: 200 }}
-          value={staffId}
-          onChange={setStaffId}
-          options={staff?.map((member) => ({ value: member.id, label: member.fullName }))}
-        />
-        <Select
-          allowClear
-          placeholder="Filter by status"
-          style={{ width: 200 }}
-          value={status}
-          onChange={setStatus}
-          options={Object.values(AppointmentStatus).map((value) => ({ value, label: value }))}
-        />
-      </Space>
-      <Table
-        rowKey="id"
-        loading={isLoading}
-        dataSource={appointments}
-        columns={[
-          { title: 'Patient', render: (_, record: Appointment) => patientName(record.patientId) },
-          { title: 'Doctor', render: (_, record: Appointment) => staffName(record.staffId) },
-          { title: 'Clinic', render: (_, record: Appointment) => clinicName(record.clinicId) },
-          {
-            title: 'Scheduled',
-            render: (_, record: Appointment) =>
-              `${dayjs(record.scheduledStart).format('YYYY-MM-DD HH:mm')}–${dayjs(record.scheduledEnd).format('HH:mm')}`,
-          },
-          {
-            title: 'Status',
-            dataIndex: 'status',
-            render: (value: AppointmentStatus) => (
-              <StatusBadge label={value} tone={APPOINTMENT_STATUS_TONE[value]} />
-            ),
-          },
-          {
-            title: 'Actions',
-            render: (_, record: Appointment) => (
-              <Space wrap>
-                {record.status === AppointmentStatus.REQUESTED && (
-                  <Button size="small" onClick={() => handleConfirm(record.id)}>
-                    Confirm
-                  </Button>
-                )}
-                {ARRIVABLE_FROM.includes(record.status) && (
-                  <Button size="small" onClick={() => handleArrived(record.id)}>
-                    Arrived
-                  </Button>
-                )}
-                {ARRIVABLE_FROM.includes(record.status) && (
-                  <Button size="small" onClick={() => handleNoShow(record.id)}>
-                    No-Show
-                  </Button>
-                )}
-                {!NON_CANCELLABLE.includes(record.status) && (
-                  <Button size="small" onClick={() => setRescheduling(record)}>
-                    Reschedule
-                  </Button>
-                )}
-                {!NON_CANCELLABLE.includes(record.status) && (
-                  <Popconfirm title="Cancel this appointment?" onConfirm={() => handleCancel(record.id)}>
-                    <Button size="small" danger>
-                      Cancel
-                    </Button>
-                  </Popconfirm>
-                )}
-              </Space>
-            ),
-          },
-        ]}
-      />
+      {pageView === 'calendar' ? (
+        <AppointmentCalendarView clinicId={clinicId} onSwitchToList={() => setPageView('list')} />
+      ) : (
+        <>
+          <Space style={{ marginBottom: 16 }} wrap>
+            <Select
+              allowClear
+              placeholder="Filter by clinic"
+              style={{ width: 200 }}
+              value={clinicId}
+              onChange={setClinicId}
+              options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+            />
+            <Select
+              allowClear
+              placeholder="Filter by doctor"
+              style={{ width: 200 }}
+              value={staffId}
+              onChange={setStaffId}
+              options={staff?.map((member) => ({ value: member.id, label: member.fullName }))}
+            />
+            <Select
+              allowClear
+              placeholder="Filter by status"
+              style={{ width: 200 }}
+              value={status}
+              onChange={setStatus}
+              options={Object.values(AppointmentStatus).map((value) => ({ value, label: value }))}
+            />
+          </Space>
+          <Table
+            rowKey="id"
+            loading={isLoading}
+            dataSource={appointments}
+            columns={[
+              { title: 'Patient', render: (_, record: Appointment) => patientName(record.patientId) },
+              { title: 'Doctor', render: (_, record: Appointment) => staffName(record.staffId) },
+              { title: 'Clinic', render: (_, record: Appointment) => clinicName(record.clinicId) },
+              {
+                title: 'Scheduled',
+                render: (_, record: Appointment) =>
+                  `${dayjs(record.scheduledStart).format('YYYY-MM-DD HH:mm')}–${dayjs(record.scheduledEnd).format('HH:mm')}`,
+              },
+              {
+                title: 'Status',
+                dataIndex: 'status',
+                render: (value: AppointmentStatus) => (
+                  <StatusBadge label={value} tone={APPOINTMENT_STATUS_TONE[value]} />
+                ),
+              },
+              {
+                title: 'Actions',
+                render: (_, record: Appointment) => (
+                  <Space wrap>
+                    {record.status === AppointmentStatus.REQUESTED && (
+                      <Button size="small" onClick={() => handleConfirm(record.id)}>
+                        Confirm
+                      </Button>
+                    )}
+                    {ARRIVABLE_FROM_STATUSES.includes(record.status) && (
+                      <Button size="small" onClick={() => handleArrived(record.id)}>
+                        Arrived
+                      </Button>
+                    )}
+                    {ARRIVABLE_FROM_STATUSES.includes(record.status) && (
+                      <Button size="small" onClick={() => handleNoShow(record.id)}>
+                        No-Show
+                      </Button>
+                    )}
+                    {!NON_CANCELLABLE_STATUSES.includes(record.status) && (
+                      <Button size="small" onClick={() => setRescheduling(record)}>
+                        Reschedule
+                      </Button>
+                    )}
+                    {!NON_CANCELLABLE_STATUSES.includes(record.status) && (
+                      <Popconfirm title="Cancel this appointment?" onConfirm={() => handleCancel(record.id)}>
+                        <Button size="small" danger>
+                          Cancel
+                        </Button>
+                      </Popconfirm>
+                    )}
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        </>
+      )}
       <BookAppointmentDrawer open={bookOpen} onClose={() => setBookOpen(false)} />
       <RescheduleAppointmentDrawer appointment={rescheduling} onClose={() => setRescheduling(null)} />
     </>

@@ -131,6 +131,12 @@ Reverses the original 1d design (`stock_levels_quantity_on_hand_check`, a DB `CH
 **Reversibility**: Medium — the constraint can be reinstated as a new migration if this proves wrong operationally, but any negative rows accumulated in the meantime would need a reconciliation pass first.
 **Supersedes**: `PRODUCT_REQUIREMENTS.md` §8's original "stock cannot go negative" wording (updated to match) and resolves Open Question #9 in `PROPOSED_ADDENDUM_2026-07-30_finance-and-audit-gaps.md`.
 
+## D-021 — Calendar view time-grid: `react-big-calendar`, not hand-rolled
+**Alternatives considered**: a custom-built time-grid component (hour rows + absolutely-positioned, overlap-aware appointment blocks).
+**Why**: Ant Design (D-006) covers tables/forms/drill-down but has no time-grid calendar — only a month-panel `Calendar`. `react-big-calendar` is the industry-standard React library for exactly this shape (Day/Week/Month + a `resources` prop that maps directly onto "Provider" as a per-column view), takes a dayjs localizer (dayjs is already a dependency, D-005), and avoids reimplementing overlap-layout math that's easy to get subtly wrong. `PRODUCT_REQUIREMENTS.md` §3B's "Calendar (Day/Week/Month/Provider/List)" only specifies the views, not the implementation — this is a non-critical technical choice under the standing CTO delegation.
+**Types**: the library ships no bundled TypeScript definitions; `@types/react-big-calendar` (community, DefinitelyTyped) is added as a devDependency.
+**Reversibility**: Medium — confined to the calendar view's rendering layer; the data hooks/queries underneath (`useAppointments`, `useDoctorSchedules`, `useScheduleExceptions`) are library-agnostic and would carry over to any replacement.
+
 ---
 
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
