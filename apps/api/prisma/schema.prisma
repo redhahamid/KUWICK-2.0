@@ -59,6 +59,7 @@ model Tenant {
   goodsReceivedNoteLines      GoodsReceivedNoteLine[]
   visits                      Visit[]
   queueTickets                QueueTicket[]
+  clinicalNotes               ClinicalNote[]
 
   @@map("tenants")
 }
@@ -685,11 +686,12 @@ model Visit {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  tenant      Tenant       @relation(fields: [tenantId], references: [id])
-  clinic      Clinic       @relation(fields: [clinicId], references: [id])
-  patient     Patient      @relation(fields: [patientId], references: [id])
-  staff       Staff        @relation(fields: [staffId], references: [id])
-  queueTicket QueueTicket?
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  clinic       Clinic        @relation(fields: [clinicId], references: [id])
+  patient      Patient       @relation(fields: [patientId], references: [id])
+  staff        Staff         @relation(fields: [staffId], references: [id])
+  queueTicket  QueueTicket?
+  clinicalNote ClinicalNote?
 
   @@unique([tenantId, visitNumber])
   @@index([tenantId, clinicId])
@@ -732,4 +734,43 @@ model QueueTicket {
   @@index([tenantId, clinicId, status])
   @@index([tenantId, clinicId, createdAt])
   @@map("queue_tickets")
+}
+
+enum NoteLanguage {
+  EN
+  MS
+}
+
+// Clinical Operations, Phase 2a. One per Visit — matches the audited
+// kuwick.com Clinical Notes tab (Vital Signs, Anthropometry, Point-of-Care,
+// Notes with a language toggle). Filled in progressively during a
+// consultation, so every clinical field is optional; created lazily on
+// first save rather than alongside the Visit (docs/DECISIONS.md). BMI is
+// intentionally not a stored column — it's derived from weight/height at
+// read time so it can't go stale if either is edited later.
+model ClinicalNote {
+  id                String       @id @default(uuid())
+  tenantId          String       @map("tenant_id")
+  visitId           String       @unique @map("visit_id")
+  bpSystolic        Int?         @map("bp_systolic")
+  bpDiastolic       Int?         @map("bp_diastolic")
+  pulse             Int?
+  temperature       Decimal?     @db.Decimal(4, 1)
+  spo2              Int?
+  respRate          Int?         @map("resp_rate")
+  painScore         Int?         @map("pain_score")
+  weight            Decimal?     @db.Decimal(5, 2)
+  height            Decimal?     @db.Decimal(5, 2)
+  headCircumference Decimal?     @map("head_circumference") @db.Decimal(5, 2)
+  glucose           Decimal?     @db.Decimal(5, 2)
+  notes             String?
+  noteLanguage      NoteLanguage @default(EN) @map("note_language")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  visit  Visit  @relation(fields: [visitId], references: [id])
+
+  @@index([tenantId])
+  @@map("clinical_notes")
 }

@@ -55,3 +55,43 @@ export interface AddToQueueDto {
   billingType: string;
   presentingComplaint?: string;
 }
+
+export type NoteLanguage = 'EN' | 'MS';
+
+export interface ClinicalNote {
+  id: string;
+  tenantId: string;
+  visitId: string;
+  bpSystolic: number | null;
+  bpDiastolic: number | null;
+  pulse: number | null;
+  temperature: string | null;
+  spo2: number | null;
+  respRate: number | null;
+  painScore: number | null;
+  weight: string | null;
+  height: string | null;
+  headCircumference: string | null;
+  glucose: string | null;
+  notes: string | null;
+  noteLanguage: NoteLanguage;
+  bmi: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertClinicalNoteDto {
+  bpSystolic?: number;
+  bpDiastolic?: number;
+  pulse?: number;
+  temperature?: number;
+  spo2?: number;
+  respRate?: number;
+  painScore?: number;
+  weight?: number;
+  height?: number;
+  headCircumference?: number;
+  glucose?: number;
+  notes?: string;
+  noteLanguage?: NoteLanguage;
+}

@@ -21,16 +21,16 @@ import dayjs from 'dayjs';
 import { usePatient } from '../core/hooks/usePatients';
 import { usePatientVisits } from './hooks/useVisits';
 import { EditPatientDrawer } from './EditPatientDrawer';
+import { ClinicalNotesTab } from './ClinicalNotesTab';
 import { Visit } from './types';
 
 const { Title, Text } = Typography;
 
 // Six Record View tabs from the audited kuwick.com Patient Dashboard.
-// Clinical Notes/Orders & Services/Diagnosis land in Phase 2, Medications
-// in Phase 3, Documents in Phase 4, Invoices in Phase 5 — empty states here
+// Orders & Services/Diagnosis land in the rest of Phase 2, Medications in
+// Phase 3, Documents in Phase 4, Invoices in Phase 5 — empty states here
 // are placeholders for those phases, not a scope cut.
 const RECORD_TABS = [
-  { key: 'notes', label: 'Clinical Notes', description: 'Clinical Notes (Phase 2)' },
   { key: 'orders', label: 'Orders & Services', description: 'Orders & Services (Phase 2)' },
   { key: 'diagnosis', label: 'Diagnosis', description: 'No diagnoses added' },
   { key: 'medications', label: 'Medications', description: 'Medications (Phase 3)' },
@@ -145,11 +145,18 @@ export function PatientDashboardPage() {
       {selectedVisit && (
         <Card>
           <Tabs
-            items={RECORD_TABS.map((tab) => ({
-              key: tab.key,
-              label: tab.label,
-              children: <Empty description={tab.description} />,
-            }))}
+            items={[
+              {
+                key: 'notes',
+                label: 'Clinical Notes',
+                children: <ClinicalNotesTab visitId={selectedVisit.id} />,
+              },
+              ...RECORD_TABS.map((tab) => ({
+                key: tab.key,
+                label: tab.label,
+                children: <Empty description={tab.description} />,
+              })),
+            ]}
           />
         </Card>
       )}

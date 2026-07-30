@@ -6,6 +6,8 @@ import { VisitController } from './visit.controller';
 import { VisitService } from './visit.service';
 import { QueueTicketController } from './queue-ticket.controller';
 import { QueueTicketService } from './queue-ticket.service';
+import { ClinicalNoteController } from './clinical-note.controller';
+import { ClinicalNoteService } from './clinical-note.service';
 
 // Clinical Operations, Phase 1a. Owns ServiceCatalog, Visit, QueueTicket,
 // ClinicalNote, Diagnosis, OrderService, Prescription, Document, Invoice
@@ -13,8 +15,8 @@ import { QueueTicketService } from './queue-ticket.service';
 // grows as each phase lands.
 @Module({
   imports: [CoreModule],
-  controllers: [ServiceCatalogController, VisitController, QueueTicketController],
-  providers: [ServiceCatalogService, VisitService, QueueTicketService],
-  exports: [ServiceCatalogService, VisitService, QueueTicketService],
+  controllers: [ServiceCatalogController, VisitController, QueueTicketController, ClinicalNoteController],
+  providers: [ServiceCatalogService, VisitService, QueueTicketService, ClinicalNoteService],
+  exports: [ServiceCatalogService, VisitService, QueueTicketService, ClinicalNoteService],
 })
 export class ClinicalModule {}
