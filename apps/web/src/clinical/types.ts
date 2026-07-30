@@ -1,10 +1,15 @@
 import { Staff } from '../hr/types';
 import { Patient } from '../core/types';
 
+export type ServiceOrderType = 'STANDARD_SERVICE' | 'TASK_ORDER';
+
 export interface Service {
   id: string;
   tenantId: string;
   name: string;
+  code: string | null;
+  category: string | null;
+  orderType: ServiceOrderType;
   durationMinutesDefault: number;
   price: string;
   active: boolean;
@@ -12,6 +17,9 @@ export interface Service {
 
 export interface CreateServiceDto {
   name: string;
+  code?: string;
+  category?: string;
+  orderType?: ServiceOrderType;
   durationMinutesDefault: number;
   price?: number;
 }
@@ -96,11 +104,14 @@ export interface UpsertClinicalNoteDto {
   noteLanguage?: NoteLanguage;
 }
 
+export type DiagnosisCategory = 'CUSTOM' | 'SUMMARIZE' | 'FULL';
+
 export interface DiagnosisCatalogEntry {
   id: string;
   tenantId: string;
-  code: string | null;
+  icd10Code: string | null;
   name: string;
+  category: DiagnosisCategory;
   active: boolean;
 }
 
@@ -109,7 +120,7 @@ export interface Diagnosis {
   tenantId: string;
   visitId: string;
   diagnosisCatalogId: string | null;
-  code: string | null;
+  icd10Code: string | null;
   name: string;
   createdAt: string;
 }
@@ -118,5 +129,51 @@ export interface AddDiagnosisDto {
   visitId: string;
   diagnosisCatalogId?: string;
   name?: string;
-  code?: string;
+  icd10Code?: string;
+}
+
+export interface DiagnosisCatalogCounts {
+  summarize: { total: number; active: number };
+  full: { total: number; active: number };
+}
+
+export interface CreateCustomDiagnosisDto {
+  name: string;
+  icd10Code?: string;
+}
+
+export type OrderServiceStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+export interface OrderService {
+  id: string;
+  tenantId: string;
+  clinicId: string;
+  visitId: string;
+  serviceCatalogId: string;
+  code: string | null;
+  procedureName: string;
+  orderType: ServiceOrderType;
+  instruction: string | null;
+  result: string | null;
+  status: OrderServiceStatus;
+  requestedByStaffId: string;
+  requestedAt: string;
+  completedAt: string | null;
+  cancelReason: string | null;
+  visit?: Visit;
+  requestedBy?: Staff;
+}
+
+export interface CreateOrderServiceDto {
+  visitId: string;
+  serviceCatalogId: string;
+  instruction?: string;
+}
+
+export interface CompleteOrderServiceDto {
+  result?: string;
+}
+
+export interface CancelOrderServiceDto {
+  cancelReason?: string;
 }

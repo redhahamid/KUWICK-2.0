@@ -1,26 +1,26 @@
 import { useState } from 'react';
-import { AutoComplete, Button, Empty, List, Segmented, Space, Tag, Typography, message } from 'antd';
-import { CloseOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
+import { AutoComplete, Button, Empty, List, Radio, Space, Typography, message } from 'antd';
+import { CloseOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useAddDiagnosis, useDiagnoses, useDiagnosisCatalogSearch, useRemoveDiagnosis } from './hooks/useDiagnoses';
+import { DiagnosisCategory } from './types';
 import { ApiError } from '../core/api-client';
 
 const { Text } = Typography;
 
-// Display-density modes for the diagnosis list — a frontend-only reading of
-// the audited "Custom/Summarize/Full" toggle (Clinical 2b plan, judgment
-// call #5); no schema impact.
-type ViewMode = 'Custom' | 'Summarize' | 'Full';
-
+// D-027 (docs/DECISIONS.md): Custom/Summarize/Full are catalog *source*
+// categories — Custom (clinic-created, via the Diagnoses Directory admin
+// screen), Summarize (curated global subset), Full (complete ICD-10
+// catalog) — not display-density modes for the already-added list below.
+// This filters which category the search box searches against.
 interface DiagnosisTabProps {
   visitId: string;
 }
 
 export function DiagnosisTab({ visitId }: DiagnosisTabProps) {
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<ViewMode>('Full');
+  const [category, setCategory] = useState<DiagnosisCategory>('SUMMARIZE');
   const { data: diagnoses, isLoading } = useDiagnoses(visitId);
-  const { data: catalogResults } = useDiagnosisCatalogSearch(search);
+  const { data: catalogResults } = useDiagnosisCatalogSearch(search, category);
   const addDiagnosis = useAddDiagnosis(visitId);
   const removeDiagnosis = useRemoveDiagnosis(visitId);
 
@@ -47,35 +47,49 @@ export function DiagnosisTab({ visitId }: DiagnosisTabProps) {
 
   return (
     <div>
+      <Space style={{ marginBottom: 8, width: '100%', justifyContent: 'space-between' }}>
+        <Text strong>Search &amp; Add Diagnosis from Catalog</Text>
+        <Radio.Group
+          size="small"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          options={[
+            { label: 'Custom', value: 'CUSTOM' },
+            { label: 'Summarize', value: 'SUMMARIZE' },
+            { label: 'Full', value: 'FULL' },
+          ]}
+          optionType="button"
+          buttonStyle="solid"
+        />
+      </Space>
+
       <Space style={{ marginBottom: 16, width: '100%' }}>
         <AutoComplete
-          style={{ width: 320 }}
+          style={{ width: 360 }}
           value={search}
           onChange={setSearch}
           onSelect={(value) => handleAdd(value)}
-          options={catalogResults?.map((entry) => ({ value: entry.name, label: entry.code ? `${entry.code} — ${entry.name}` : entry.name }))}
-          placeholder="Search or add a diagnosis..."
+          options={catalogResults?.map((entry) => ({
+            value: entry.name,
+            label: entry.icd10Code ? `${entry.icd10Code} — ${entry.name}` : entry.name,
+          }))}
+          placeholder="Type to search diagnoses..."
         />
         <Button type="primary" loading={addDiagnosis.isPending} onClick={() => handleAdd(search)}>
           Add
         </Button>
-        <Segmented
-          value={viewMode}
-          onChange={(value) => setViewMode(value as ViewMode)}
-          options={['Custom', 'Summarize', 'Full']}
-        />
       </Space>
 
       {!isLoading && (!diagnoses || diagnoses.length === 0) ? (
-        <Empty description="No diagnoses added" />
-      ) : viewMode === 'Custom' ? (
-        <Space wrap>
-          {diagnoses?.map((diagnosis) => (
-            <Tag key={diagnosis.id} closable onClose={() => handleRemove(diagnosis.id)}>
-              {diagnosis.name}
-            </Tag>
-          ))}
-        </Space>
+        <Empty
+          image={<SafetyCertificateOutlined style={{ fontSize: 40, opacity: 0.3 }} />}
+          description={
+            <>
+              <div>No diagnoses added.</div>
+              <Text type="secondary">Search and select diagnoses from the catalog above.</Text>
+            </>
+          }
+        />
       ) : (
         <List
           loading={isLoading}
@@ -93,12 +107,7 @@ export function DiagnosisTab({ visitId }: DiagnosisTabProps) {
               ]}
             >
               <List.Item.Meta
-                title={diagnosis.code ? `${diagnosis.code} — ${diagnosis.name}` : diagnosis.name}
-                description={
-                  viewMode === 'Full' ? (
-                    <Text type="secondary">Added {dayjs(diagnosis.createdAt).format('YYYY-MM-DD HH:mm')}</Text>
-                  ) : undefined
-                }
+                title={diagnosis.icd10Code ? `${diagnosis.icd10Code} — ${diagnosis.name}` : diagnosis.name}
               />
             </List.Item>
           )}

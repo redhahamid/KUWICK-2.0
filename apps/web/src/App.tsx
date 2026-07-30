@@ -5,9 +5,11 @@ import { ClinicsPage } from './core/ClinicsPage';
 import { PatientsPage } from './core/PatientsPage';
 import { StaffPage } from './hr/StaffPage';
 import { ServicesPage } from './clinical/ServicesPage';
+import { DiagnosesDirectoryPage } from './clinical/DiagnosesDirectoryPage';
 import { PatientDashboardPage } from './clinical/PatientDashboardPage';
 import { QueueManagementPage } from './clinical/QueueManagementPage';
 import { QueueMonitorPage } from './clinical/QueueMonitorPage';
+import { ProcedureQueuePage } from './clinical/ProcedureQueuePage';
 import { DoctorSchedulesPage } from './appointment/DoctorSchedulesPage';
 import { DoctorServiceQualificationsPage } from './appointment/DoctorServiceQualificationsPage';
 import { SlotCapacityConfigsPage } from './appointment/SlotCapacityConfigsPage';
@@ -31,8 +33,10 @@ export function App() {
         <Route path="/patients" element={<PatientsPage />} />
         <Route path="/patients/:id" element={<PatientDashboardPage />} />
         <Route path="/queue" element={<QueueManagementPage />} />
+        <Route path="/procedure-queue" element={<ProcedureQueuePage />} />
         <Route path="/staff" element={<StaffPage />} />
         <Route path="/services" element={<ServicesPage />} />
+        <Route path="/diagnoses" element={<DiagnosesDirectoryPage />} />
         <Route path="/doctor-schedules" element={<DoctorSchedulesPage />} />
         <Route path="/doctor-service-qualifications" element={<DoctorServiceQualificationsPage />} />
         <Route path="/slot-capacity-configs" element={<SlotCapacityConfigsPage />} />

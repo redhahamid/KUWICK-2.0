@@ -1,12 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../core/api-client';
-import { AddDiagnosisDto, Diagnosis, DiagnosisCatalogEntry } from '../types';
+import {
+  AddDiagnosisDto,
+  CreateCustomDiagnosisDto,
+  Diagnosis,
+  DiagnosisCatalogCounts,
+  DiagnosisCatalogEntry,
+  DiagnosisCategory,
+} from '../types';
 
-export function useDiagnosisCatalogSearch(search: string) {
+export function useDiagnosisCatalogSearch(search: string, category?: DiagnosisCategory) {
   return useQuery({
-    queryKey: ['diagnosis-catalog', search],
+    queryKey: ['diagnosis-catalog', search, category],
     queryFn: () =>
-      apiClient.get<DiagnosisCatalogEntry[]>(`/diagnosis-catalog?search=${encodeURIComponent(search)}`),
+      apiClient.get<DiagnosisCatalogEntry[]>(
+        `/diagnosis-catalog?search=${encodeURIComponent(search)}${category ? `&category=${category}` : ''}`,
+      ),
     enabled: search.length > 0,
   });
 }
@@ -32,5 +41,59 @@ export function useRemoveDiagnosis(visitId?: string) {
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/diagnoses/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['diagnoses', visitId] }),
+  });
+}
+
+// The Diagnoses Directory admin screen (D-027, docs/DECISIONS.md).
+export function useDiagnosisDirectory(category?: DiagnosisCategory) {
+  return useQuery({
+    queryKey: ['diagnosis-directory', category],
+    queryFn: () =>
+      apiClient.get<DiagnosisCatalogEntry[]>(
+        `/diagnosis-catalog/directory${category ? `?category=${category}` : ''}`,
+      ),
+  });
+}
+
+export function useDiagnosisCatalogCounts() {
+  return useQuery({
+    queryKey: ['diagnosis-catalog-counts'],
+    queryFn: () => apiClient.get<DiagnosisCatalogCounts>('/diagnosis-catalog/counts'),
+  });
+}
+
+export function useCreateCustomDiagnosis() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: CreateCustomDiagnosisDto) =>
+      apiClient.post<DiagnosisCatalogEntry>('/diagnosis-catalog/custom', dto),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['diagnosis-directory'] });
+      queryClient.invalidateQueries({ queryKey: ['diagnosis-catalog-counts'] });
+    },
+  });
+}
+
+export function useSetDiagnosisCatalogActive() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
+      apiClient.patch<DiagnosisCatalogEntry>(`/diagnosis-catalog/${id}/active`, { active }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['diagnosis-directory'] });
+      queryClient.invalidateQueries({ queryKey: ['diagnosis-catalog-counts'] });
+    },
+  });
+}
+
+export function useBulkActivateDiagnosisCategory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ category, active }: { category: DiagnosisCategory; active: boolean }) =>
+      apiClient.patch(`/diagnosis-catalog/category/${category}/active`, { active }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['diagnosis-directory'] });
+      queryClient.invalidateQueries({ queryKey: ['diagnosis-catalog-counts'] });
+    },
   });
 }
