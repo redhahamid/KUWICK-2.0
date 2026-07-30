@@ -2,11 +2,17 @@ import { useState } from 'react';
 import { Button, DatePicker, Drawer, Form, message, Select, Space, Table, TimePicker, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
+import utc from 'dayjs/plugin/utc';
 import { useDoctorSchedules, useCreateDoctorSchedule } from './hooks/useDoctorSchedules';
 import { useClinics } from '../core/hooks/useClinics';
 import { useStaff } from '../hr/hooks/useStaff';
 import { CreateDoctorScheduleDto } from './types';
 import { ApiError } from '../core/api-client';
+
+// DoctorSchedule.startTime/endTime store the wall-clock time-of-day in the
+// UTC hour/minute fields (apps/api/src/appointment/time.util.ts) — reading
+// them without .utc() shifts by the browser's local offset.
+dayjs.extend(utc);
 
 const { Title } = Typography;
 
@@ -80,7 +86,8 @@ export function DoctorSchedulesPage() {
           { title: 'Day', dataIndex: 'dayOfWeek', render: (value: number) => DAY_OPTIONS[value]?.label },
           {
             title: 'Hours',
-            render: (_, record) => `${dayjs(record.startTime).format('HH:mm')}–${dayjs(record.endTime).format('HH:mm')}`,
+            render: (_, record) =>
+              `${dayjs.utc(record.startTime).format('HH:mm')}–${dayjs.utc(record.endTime).format('HH:mm')}`,
           },
           { title: 'Effective From', dataIndex: 'effectiveFrom', render: (value: string) => dayjs(value).format('YYYY-MM-DD') },
           {
