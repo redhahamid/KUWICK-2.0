@@ -21,6 +21,13 @@ const NAV_ITEMS = [
   navItem('/doctor-schedules', 'Doctor Schedules'),
   navItem('/doctor-service-qualifications', 'Qualifications'),
   navItem('/slot-capacity-configs', 'Slot Capacity'),
+  navItem('/items', 'Items'),
+  navItem('/suppliers', 'Suppliers'),
+  navItem('/stock-levels', 'Stock Levels'),
+  navItem('/low-stock', 'Low Stock'),
+  navItem('/negative-stock', 'Negative Stock'),
+  navItem('/procurement-requests', 'Procurement Requests'),
+  navItem('/purchase-orders', 'Purchase Orders'),
 ];
 
 export function AppLayout() {

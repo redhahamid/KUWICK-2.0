@@ -47,6 +47,16 @@ model Tenant {
   slotCapacityConfigs         SlotCapacityConfig[]
   doctorServiceQualifications DoctorServiceQualification[]
   appointments                Appointment[]
+  items                       Item[]
+  suppliers                   Supplier[]
+  stockLevels                 StockLevel[]
+  stockBatches                StockBatch[]
+  stockMovements              StockMovement[]
+  procurementRequests         ProcurementRequest[]
+  purchaseOrders              PurchaseOrder[]
+  purchaseOrderLines          PurchaseOrderLine[]
+  goodsReceivedNotes          GoodsReceivedNote[]
+  goodsReceivedNoteLines      GoodsReceivedNoteLine[]
 
   @@map("tenants")
 }
@@ -66,6 +76,12 @@ model Clinic {
   scheduleExceptions  ScheduleException[]
   slotCapacityConfigs SlotCapacityConfig[]
   appointments        Appointment[]
+  stockLevels         StockLevel[]
+  stockBatches        StockBatch[]
+  stockMovements      StockMovement[]
+  procurementRequests ProcurementRequest[]
+  purchaseOrders      PurchaseOrder[]
+  goodsReceivedNotes  GoodsReceivedNote[]
 
   @@index([tenantId])
   @@map("clinics")
@@ -368,4 +384,274 @@ model Appointment {
   @@index([tenantId, patientId])
   @@index([tenantId, status])
   @@map("appointments")
+}
+
+// Inventory & Procurement — Phase 1 core (docs/DATABASE_ARCHITECTURE.md §6,
+// docs/DEVELOPMENT_ROADMAP.md 1d). Stock take/variance and inter-branch
+// transfer are Phase 2 and not modeled here.
+
+enum StockMovementType {
+  GOODS_RECEIVED
+  ADJUSTMENT
+}
+
+// Mirrors packages/shared's ProcurementRequestStatus and PurchaseOrderStatus
+// exactly (docs/CODING_STANDARDS.md §2) — Prisma can't import a TS enum from
+// another package, so keep these in sync by hand, same as AppointmentStatus.
+enum ProcurementRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CONVERTED
+}
+
+enum PurchaseOrderStatus {
+  ORDERED
+  PARTIALLY_RECEIVED
+  FULLY_RECEIVED
+  CLOSED
+  CANCELLED
+}
+
+// Selfpay price only — panel-tier pricing stays owned by Panel Claims'
+// future PanelPriceTier model (docs/PRODUCT_REQUIREMENTS.md §9 data
+// ownership table), not duplicated here.
+model Item {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  name             String
+  category         String?
+  unitOfMeasure    String?  @map("unit_of_measure")
+  doseDefault      String?  @map("dose_default")
+  frequencyDefault String?  @map("frequency_default")
+  durationDefault  String?  @map("duration_default")
+  instruction      String?
+  indication       String?
+  sellPrice        Decimal  @map("sell_price") @db.Decimal(10, 2)
+  cost             Decimal? @db.Decimal(10, 2)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
+  stockLevels            StockLevel[]
+  stockBatches           StockBatch[]
+  stockMovements         StockMovement[]
+  procurementRequests    ProcurementRequest[]
+  purchaseOrderLines     PurchaseOrderLine[]
+  goodsReceivedNoteLines GoodsReceivedNoteLine[]
+
+  @@index([tenantId])
+  @@map("items")
+}
+
+model Supplier {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String
+  contactName String?  @map("contact_name")
+  phone       String?
+  email       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  purchaseOrders PurchaseOrder[]
+
+  @@index([tenantId])
+  @@map("suppliers")
+}
+
+// Cached/derived total (docs/DATABASE_ARCHITECTURE.md §6) — only ever
+// written in the same transaction as a StockMovement row, never directly.
+// quantityOnHand is deliberately allowed to go negative (docs/DECISIONS.md
+// D-020, product-owner decision 2026-07-30): front-line staff dispense/
+// invoice immediately even when system stock hasn't caught up with
+// physically-received goods, and admin reconciles negative rows afterward
+// via GET /stock/negative-stock (StockService.listNegativeStock) rather
+// than being blocked at the point of dispensing. A DB CHECK constraint
+// enforcing >= 0 was tried first and removed — see the
+// allow_negative_stock migration.
+model StockLevel {
+  id             String   @id @default(uuid())
+  tenantId       String   @map("tenant_id")
+  clinicId       String   @map("clinic_id")
+  itemId         String   @map("item_id")
+  quantityOnHand Int      @default(0) @map("quantity_on_hand")
+  minThreshold   Int      @default(0) @map("min_threshold")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+  item   Item   @relation(fields: [itemId], references: [id])
+
+  @@unique([tenantId, clinicId, itemId])
+  @@index([tenantId, clinicId])
+  @@map("stock_levels")
+}
+
+model StockBatch {
+  id           String    @id @default(uuid())
+  tenantId     String    @map("tenant_id")
+  clinicId     String    @map("clinic_id")
+  itemId       String    @map("item_id")
+  batchNumber  String?   @map("batch_number")
+  quantity     Int
+  expiryDate   DateTime? @map("expiry_date") @db.Date
+  receivedDate DateTime  @map("received_date") @db.Date
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
+  clinic                 Clinic                  @relation(fields: [clinicId], references: [id])
+  item                   Item                    @relation(fields: [itemId], references: [id])
+  stockMovements         StockMovement[]
+  goodsReceivedNoteLines GoodsReceivedNoteLine[]
+
+  @@index([tenantId, clinicId])
+  @@index([tenantId, itemId, expiryDate])
+  @@map("stock_batches")
+}
+
+// Append-only ledger — every quantity change is a row here; StockLevel is
+// the derived/cached total, never the only record of truth
+// (docs/DATABASE_ARCHITECTURE.md §6).
+model StockMovement {
+  id              String            @id @default(uuid())
+  tenantId        String            @map("tenant_id")
+  clinicId        String            @map("clinic_id")
+  itemId          String            @map("item_id")
+  batchId         String?           @map("batch_id")
+  movementType    StockMovementType @map("movement_type")
+  quantityDelta   Int               @map("quantity_delta")
+  referenceType   String?           @map("reference_type")
+  referenceId     String?           @map("reference_id")
+  createdByUserId String?           @map("created_by_user_id")
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id])
+  clinic Clinic      @relation(fields: [clinicId], references: [id])
+  item   Item        @relation(fields: [itemId], references: [id])
+  batch  StockBatch? @relation(fields: [batchId], references: [id])
+
+  @@index([tenantId, clinicId])
+  @@index([tenantId, itemId])
+  @@map("stock_movements")
+}
+
+model ProcurementRequest {
+  id                String                   @id @default(uuid())
+  tenantId          String                   @map("tenant_id")
+  clinicId          String                   @map("clinic_id")
+  itemId            String                   @map("item_id")
+  requestedQuantity Int                      @map("requested_quantity")
+  status            ProcurementRequestStatus @default(PENDING)
+  requestedByUserId String?                  @map("requested_by_user_id")
+  approvedByUserId  String?                  @map("approved_by_user_id")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+
+  tenant             Tenant              @relation(fields: [tenantId], references: [id])
+  clinic             Clinic              @relation(fields: [clinicId], references: [id])
+  item               Item                @relation(fields: [itemId], references: [id])
+  purchaseOrderLines PurchaseOrderLine[]
+
+  @@index([tenantId, clinicId])
+  @@index([tenantId, status])
+  @@map("procurement_requests")
+}
+
+model PurchaseOrder {
+  id         String              @id @default(uuid())
+  tenantId   String              @map("tenant_id")
+  clinicId   String              @map("clinic_id")
+  supplierId String              @map("supplier_id")
+  status     PurchaseOrderStatus @default(ORDERED)
+  orderedAt  DateTime            @default(now()) @map("ordered_at")
+  createdAt  DateTime            @default(now()) @map("created_at")
+  updatedAt  DateTime            @updatedAt @map("updated_at")
+
+  tenant             Tenant              @relation(fields: [tenantId], references: [id])
+  clinic             Clinic              @relation(fields: [clinicId], references: [id])
+  supplier           Supplier            @relation(fields: [supplierId], references: [id])
+  lines              PurchaseOrderLine[]
+  goodsReceivedNotes GoodsReceivedNote[]
+
+  @@index([tenantId, clinicId])
+  @@index([tenantId, status])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLine {
+  id                   String   @id @default(uuid())
+  tenantId             String   @map("tenant_id")
+  purchaseOrderId      String   @map("purchase_order_id")
+  itemId               String   @map("item_id")
+  procurementRequestId String?  @map("procurement_request_id")
+  orderedQuantity      Int      @map("ordered_quantity")
+  receivedQuantity     Int      @default(0) @map("received_quantity")
+  unitCost             Decimal  @map("unit_cost") @db.Decimal(10, 2)
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
+  purchaseOrder          PurchaseOrder           @relation(fields: [purchaseOrderId], references: [id])
+  item                   Item                    @relation(fields: [itemId], references: [id])
+  procurementRequest     ProcurementRequest?     @relation(fields: [procurementRequestId], references: [id])
+  goodsReceivedNoteLines GoodsReceivedNoteLine[]
+
+  @@index([tenantId, purchaseOrderId])
+  @@map("purchase_order_lines")
+}
+
+// Header for one receiving event. D-019 (docs/DECISIONS.md): line detail
+// lives on GoodsReceivedNoteLine, not here, since one delivery routinely
+// covers multiple PO lines with different quantities/batches/expiries.
+model GoodsReceivedNote {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  clinicId         String   @map("clinic_id")
+  purchaseOrderId  String   @map("purchase_order_id")
+  receivedByUserId String?  @map("received_by_user_id")
+  receivedAt       DateTime @default(now()) @map("received_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant        Tenant                  @relation(fields: [tenantId], references: [id])
+  clinic        Clinic                  @relation(fields: [clinicId], references: [id])
+  purchaseOrder PurchaseOrder           @relation(fields: [purchaseOrderId], references: [id])
+  lines         GoodsReceivedNoteLine[]
+
+  @@index([tenantId, clinicId])
+  @@index([tenantId, purchaseOrderId])
+  @@map("goods_received_notes")
+}
+
+// D-019: the line-level detail that makes partial, multi-item receiving
+// possible. Receiving a line is the single write path that must, in one
+// transaction: increment PurchaseOrderLine.receivedQuantity, create/reuse a
+// StockBatch, append a StockMovement, and update StockLevel.quantityOnHand —
+// see InventoryReceivingService (apps/api/src/inventory).
+model GoodsReceivedNoteLine {
+  id                  String    @id @default(uuid())
+  tenantId            String    @map("tenant_id")
+  goodsReceivedNoteId String    @map("goods_received_note_id")
+  purchaseOrderLineId String    @map("purchase_order_line_id")
+  itemId              String    @map("item_id")
+  batchId             String?   @map("batch_id")
+  quantityReceived    Int       @map("quantity_received")
+  batchNumber         String?   @map("batch_number")
+  expiryDate          DateTime? @map("expiry_date") @db.Date
+  unitCost            Decimal?  @map("unit_cost") @db.Decimal(10, 2)
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  tenant            Tenant            @relation(fields: [tenantId], references: [id])
+  goodsReceivedNote GoodsReceivedNote @relation(fields: [goodsReceivedNoteId], references: [id])
+  purchaseOrderLine PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id])
+  item              Item              @relation(fields: [itemId], references: [id])
+  batch             StockBatch?       @relation(fields: [batchId], references: [id])
+
+  @@index([tenantId, goodsReceivedNoteId])
+  @@map("goods_received_note_lines")
 }

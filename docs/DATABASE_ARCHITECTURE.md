@@ -1,6 +1,6 @@
 # Kuwick 2.0 — Database Architecture
 
-**Status:** Target design for the full product. Only the **Core / Shared Foundation** tables (§2) are implemented in the live database during initialization, matching "do not build clinical modules yet." Everything else in this document is the schema Phase 1 builds against, not yet created.
+**Status:** Target design for the full product. Core / Shared Foundation (§2), HR-lite `Staff` only (§5), Appointment (§4, minus `RecurringAppointmentTemplate`), and Inventory & Procurement (§6, Phase 1d core) are implemented in the live database. Everything else in this document is the schema later Phase 1 sub-phases build against, not yet created.
 
 ## 1. Foundational decisions
 
@@ -59,11 +59,15 @@ Business-rule enforcement: a doctor can only be booked for a service they're qua
 
 The rule "locum incentive always computes to zero" (`PRODUCT_REQUIREMENTS.md` §18) is enforced in the calculation service, not the database — but the acceptance test for it lives here as a note so it isn't lost: **any `IncentiveResult` row for a `Staff.role_type = 'locum'` must have `calculated_amount = 0`, checked by a database CHECK constraint** as a second line of defense, not application code alone.
 
-## 6. Inventory & Procurement — target design (Phase 1 core / Phase 2 advanced)
+## 6. Inventory & Procurement — **implemented (Phase 1d)**
 
-`Item`, `StockLevel` (per clinic), `StockBatch` (expiry tracking), `StockMovement` (append-only ledger — every quantity change is a row here, `StockLevel.quantity_on_hand` is a derived/cached total, never the only record of truth), `Supplier`, `ProcurementRequest`, `PurchaseOrder`, `PurchaseOrderLine`, `GoodsReceivedNote`. Phase 2 adds `StockTransfer` and `StockTake`/`StockTakeLine`.
+`Item` (selfpay `sell_price`/`cost`; panel-tier pricing stays owned by the future `PanelPriceTier` model per §9's data-ownership table, not duplicated here), `Supplier`, `StockLevel` (per clinic, cached/derived total), `StockBatch` (expiry tracking), `StockMovement` (append-only ledger — every quantity change is a row here, `StockLevel.quantity_on_hand` is a derived/cached total, never the only record of truth), `ProcurementRequest`, `PurchaseOrder`/`PurchaseOrderLine`, `GoodsReceivedNote`/`GoodsReceivedNoteLine`. Phase 2 adds `StockTransfer` and `StockTake`/`StockTakeLine`.
 
-Business rule "stock cannot go negative": `StockLevel.quantity_on_hand` has `CHECK (quantity_on_hand >= 0)`. Every write goes through `StockMovement` first; `StockLevel` is updated in the same transaction, so the check constraint can never be bypassed by a direct update.
+**`GoodsReceivedNote` is header/line, not flat** (`DECISIONS.md` D-019): a real receiving event routinely covers multiple PO lines with different quantities, batches, and expiries in one delivery — `GoodsReceivedNoteLine` (`goods_received_note_id`, `purchase_order_line_id`, `item_id`, `quantity_received`, `batch_number`, `expiry_date`, `unit_cost`) carries that detail, matching the header/line split already used by `PurchaseOrder`/`PurchaseOrderLine` and `ClaimBatch`/`ClaimBatchLine`.
+
+**Stock is allowed to go negative** (`DECISIONS.md` D-020, owner decision 2026-07-30, superseding the original "stock cannot go negative" design): `StockLevel.quantity_on_hand` had a `CHECK (quantity_on_hand >= 0)` constraint, added in `add_inventory_module` and dropped in `allow_negative_stock` — front-line dispensing/invoicing must not block on system stock catching up with physically-received goods. Negative rows are surfaced for admin reconciliation via `GET /stock/negative-stock` (`StockService.listNegativeStock`), not prevented at write time. Every write still goes through `StockMovement` first with `StockLevel` updated in the same transaction, so the ledger remains the source of truth either way.
+
+Business rule "a goods-received entry against a partial delivery must correctly reduce the outstanding PO quantity" (`PRODUCT_REQUIREMENTS.md` §18): receiving a `GoodsReceivedNoteLine` increments `PurchaseOrderLine.received_quantity` and creates the linked `StockBatch`/`StockMovement`/`StockLevel` update in one service-level transaction; `PurchaseOrder.status` is recomputed to `PARTIALLY_RECEIVED` or `FULLY_RECEIVED` in the same transaction. Application-service logic, not a DB trigger — unlike `ClaimBatch`'s total, this doesn't need to defend against direct writes from outside the app, since nothing else in Phase 1 writes to `PurchaseOrderLine`.
 
 ## 7. Panel Claims — target design (Phase 1 core / Phase 2 advanced)
 
@@ -85,4 +89,4 @@ Every tenant-scoped table is indexed on `(tenant_id, id)` at minimum; tables fre
 
 - PostgreSQL 16 installed as a Windows service, listening on 127.0.0.1:5432.
 - A dedicated, non-superuser role `kuwick_dev` and database `kuwick_dev` — the application never connects as the `postgres` superuser.
-- Initial Prisma migration creates exactly the Core/Shared Foundation tables in §2, with RLS policies enabled. No Clinical/Appointment/HR/Inventory/Panel Claims tables exist yet — those arrive with their respective Phase 1 modules.
+- Migrations to date: Core/Shared Foundation (§2), HR-lite `Staff` (§5), Appointment (§4), and Inventory & Procurement (§6, Phase 1d core) — all with RLS policies enabled. Clinical Operations and Panel Claims tables don't exist yet — those arrive with their respective Phase 1 sub-phases.

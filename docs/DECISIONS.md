@@ -118,6 +118,19 @@ keeps 1b scoped to what's actually specified (`CODING_STANDARDS.md` §1) and avo
 so the gap is visible, not silent.
 **Reversibility**: N/A — nothing built against a placeholder RBAC shape; the real guard lands with JWT auth.
 
+## D-019 — Inventory GRN modeled with a `GoodsReceivedNoteLine` child table, not a flat `GoodsReceivedNote`
+**Alternatives considered**: a single `GoodsReceivedNote` row per receiving event (as literally listed in `DATABASE_ARCHITECTURE.md` §6), with quantity/batch/expiry fields on the header itself.
+**Why**: a real goods-received event routinely covers multiple items/PO lines in one delivery, and the Phase-One acceptance criterion ("a goods-received entry against a partial delivery must correctly reduce the outstanding PO quantity," `PRODUCT_REQUIREMENTS.md` §18) requires per-line quantity and per-line batch/expiry capture — a flat header can't express "3 of these, 10 of those, different expiry dates" in one receiving event. `GoodsReceivedNoteLine` (goods_received_note_id, purchase_order_line_id, item_id, quantity_received, batch_number, expiry_date, unit_cost) is the header/line split every other multi-item document in this schema already uses (`PurchaseOrder`/`PurchaseOrderLine`, `ClaimBatch`/`ClaimBatchLine`).
+**Reversibility**: High — purely additive relative to the documented design; nothing else depends on the flatter shape since it was never built.
+
+## D-020 — Stock CAN go negative — not blocked at the point of dispensing/invoicing
+**Status: CONFIRMED BY OWNER, not an assumption** (2026-07-30, via direct instruction — this touches inventory integrity and clinical/billing workflow, so it was not decided unilaterally).
+Reverses the original 1d design (`stock_levels_quantity_on_hand_check`, a DB `CHECK (quantity_on_hand >= 0)` constraint added in the `add_inventory_module` migration and dropped here in `allow_negative_stock`).
+**Why**: front-line staff must be able to dispense/invoice immediately even when system stock hasn't caught up with physically-received goods (e.g., stock arrived at the branch but hasn't been logged as received yet) — a hard block would stop a legitimate, everyday operation rather than a genuine error. The owner's current CMS (Avixo) works the same way. Negative stock is now a monitored condition admin finds and reconciles afterward (`GET /stock/negative-stock`, `StockService.listNegativeStock`, surfaced on a dedicated Negative Stock page and flagged inline on Stock Levels), not a prevented one.
+**Alternatives considered**: keeping the hard `CHECK` constraint (original 1d design, rejected — blocks a real operational path); allowing negative stock silently with no reporting surface (rejected — the owner explicitly asked for it to stay "visibly flagged/monitored," not merely unblocked).
+**Reversibility**: Medium — the constraint can be reinstated as a new migration if this proves wrong operationally, but any negative rows accumulated in the meantime would need a reconciliation pass first.
+**Supersedes**: `PRODUCT_REQUIREMENTS.md` §8's original "stock cannot go negative" wording (updated to match) and resolves Open Question #9 in `PROPOSED_ADDENDUM_2026-07-30_finance-and-audit-gaps.md`.
+
 ---
 
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)

@@ -40,3 +40,33 @@ export const APPOINTMENT_STATUS_TONE: Record<AppointmentStatus, StatusTone> = {
   [AppointmentStatus.CANCELLED]: 'error',
   [AppointmentStatus.NO_SHOW]: 'error',
 };
+
+export enum ProcurementRequestStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  CONVERTED = 'CONVERTED',
+}
+
+export const PROCUREMENT_REQUEST_STATUS_TONE: Record<ProcurementRequestStatus, StatusTone> = {
+  [ProcurementRequestStatus.PENDING]: 'attention',
+  [ProcurementRequestStatus.APPROVED]: 'active',
+  [ProcurementRequestStatus.REJECTED]: 'error',
+  [ProcurementRequestStatus.CONVERTED]: 'success',
+};
+
+export enum PurchaseOrderStatus {
+  ORDERED = 'ORDERED',
+  PARTIALLY_RECEIVED = 'PARTIALLY_RECEIVED',
+  FULLY_RECEIVED = 'FULLY_RECEIVED',
+  CLOSED = 'CLOSED',
+  CANCELLED = 'CANCELLED',
+}
+
+export const PURCHASE_ORDER_STATUS_TONE: Record<PurchaseOrderStatus, StatusTone> = {
+  [PurchaseOrderStatus.ORDERED]: 'attention',
+  [PurchaseOrderStatus.PARTIALLY_RECEIVED]: 'active',
+  [PurchaseOrderStatus.FULLY_RECEIVED]: 'success',
+  [PurchaseOrderStatus.CLOSED]: 'neutral',
+  [PurchaseOrderStatus.CANCELLED]: 'error',
+};

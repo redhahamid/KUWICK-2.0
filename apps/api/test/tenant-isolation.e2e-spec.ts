@@ -44,6 +44,7 @@ describe('Tenant isolation (e2e)', () => {
     // deleted first via a broad per-tenant cleanup, then the tenant itself.
     for (const tenantId of [tenantA, tenantB]) {
       await withTenantContext(prisma, tenantId, async (tx) => {
+        await tx.item.deleteMany({ where: { tenantId } });
         await tx.appointment.deleteMany({ where: { tenantId } });
         await tx.doctorServiceQualification.deleteMany({ where: { tenantId } });
         await tx.slotCapacityConfig.deleteMany({ where: { tenantId } });
@@ -126,6 +127,25 @@ describe('Tenant isolation (e2e)', () => {
 
     await request(app.getHttpServer())
       .get(`/appointments/${appointment.body.id}`)
+      .set('x-tenant-id', tenantB)
+      .expect(404);
+  });
+
+  it("a tenant cannot see another tenant's items, by list or by direct id", async () => {
+    const created = await request(app.getHttpServer())
+      .post('/items')
+      .set('x-tenant-id', tenantA)
+      .send({ name: 'Isolation Test Item', sellPrice: 12.5 })
+      .expect(201);
+
+    const listAsB = await request(app.getHttpServer())
+      .get('/items')
+      .set('x-tenant-id', tenantB)
+      .expect(200);
+    expect(listAsB.body).toEqual([]);
+
+    await request(app.getHttpServer())
+      .get(`/items/${created.body.id}`)
       .set('x-tenant-id', tenantB)
       .expect(404);
   });

@@ -99,7 +99,7 @@ Executive dashboard with interactive, clickable charts (patients per period, rev
 - Appointment slot length and daily capacity are configurable per doctor and per service, not fixed clinic-wide.
 - Public holidays and defined after-hours windows automatically apply a surcharge consultation rate. *(Interaction with panel-locked pricing is **OPEN** — see §17.3.)*
 - Doctor incentives follow a clinic-wide default rule (minimum sales threshold, flat amount earned above it, plus a percentage of everything beyond that threshold) unless a doctor has an approved custom rule; locum doctors are excluded from incentive calculations by default. *(Exact formula semantics **OPEN** — see §17.2.)*
-- Stock cannot go negative; any item falling below its configured minimum at a branch is automatically flagged for reorder.
+- Stock is allowed to go negative — **CONFIRMED BY OWNER, 2026-07-30** (`DECISIONS.md` D-020), superseding this rule's original "stock cannot go negative" wording: front-line staff dispense/invoice immediately even when system stock hasn't caught up with physically-received goods, and negative rows are surfaced for admin reconciliation (a dedicated negative-stock report) rather than blocked at the point of dispensing. Any item falling below its configured minimum at a branch is separately, automatically flagged for reorder.
 - Panel claims must reference a valid, active panel eligibility on the patient at time of visit, and pricing is locked to that panel's contracted tier rather than the clinic's standard price.
 
 ## 9. Data Ownership & Source of Truth

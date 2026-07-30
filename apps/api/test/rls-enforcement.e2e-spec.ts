@@ -38,6 +38,7 @@ describe('Row-Level Security enforcement (e2e, DB-level)', () => {
   afterEach(async () => {
     for (const tenantId of [tenantA, tenantB]) {
       await withTenantContext(prisma, tenantId, async (tx) => {
+        await tx.item.deleteMany({ where: { tenantId } });
         await tx.staff.deleteMany({ where: { tenantId } });
         await tx.tenant.deleteMany({ where: { id: tenantId } });
       });
@@ -49,6 +50,15 @@ describe('Row-Level Security enforcement (e2e, DB-level)', () => {
     // app.tenant_id set, which is exactly the state a stray raw query
     // (CODING_STANDARDS.md §6) would run under.
     const rows = await prisma.tenant.findMany({ where: { id: { in: [tenantA, tenantB] } } });
+    expect(rows).toEqual([]);
+  });
+
+  it('a session with no app.tenant_id set sees zero rows on an Inventory-module table (items)', async () => {
+    await withTenantContext(prisma, tenantA, (tx) =>
+      tx.item.create({ data: { tenantId: tenantA, name: 'RLS Test Item', sellPrice: 10 } }),
+    );
+
+    const rows = await prisma.item.findMany({ where: { tenantId: tenantA } });
     expect(rows).toEqual([]);
   });
 
