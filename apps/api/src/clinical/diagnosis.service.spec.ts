@@ -1,11 +1,20 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { DiagnosisCategory } from '@prisma/client';
 import { DiagnosisService } from './diagnosis.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { tenantContextStorage } from '../core/tenant-context';
 
 function createService() {
   const prisma = {
-    diagnosisCatalog: { findMany: jest.fn(), findUnique: jest.fn(), upsert: jest.fn() },
+    diagnosisCatalog: {
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      upsert: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+      count: jest.fn(),
+    },
     diagnosis: { findMany: jest.fn(), findUnique: jest.fn(), create: jest.fn(), delete: jest.fn() },
   } as unknown as TenantScopedPrismaClient;
   return { service: new DiagnosisService(prisma), prisma };
@@ -16,11 +25,11 @@ function withTenant<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 describe('DiagnosisService', () => {
-  it('addToVisit snapshots code/name from an existing catalog entry', async () => {
+  it('addToVisit snapshots icd10Code/name from an existing catalog entry', async () => {
     const { service, prisma } = createService();
     (prisma.diagnosisCatalog.findUnique as jest.Mock).mockResolvedValue({
       id: 'cat-1',
-      code: 'J00',
+      icd10Code: 'J00',
       name: 'Common cold',
     });
     (prisma.diagnosis.create as jest.Mock).mockResolvedValue({ id: 'diag-1' });
@@ -32,7 +41,7 @@ describe('DiagnosisService', () => {
         tenantId: 'test-tenant',
         visitId: 'visit-1',
         diagnosisCatalogId: 'cat-1',
-        code: 'J00',
+        icd10Code: 'J00',
         name: 'Common cold',
       },
     });
@@ -47,16 +56,16 @@ describe('DiagnosisService', () => {
     );
   });
 
-  it('addToVisit creates a catalog entry inline when only a name is given', async () => {
+  it('addToVisit creates a CUSTOM catalog entry inline when only a name is given', async () => {
     const { service, prisma } = createService();
-    (prisma.diagnosisCatalog.upsert as jest.Mock).mockResolvedValue({ id: 'cat-2', code: null, name: 'Custom Dx' });
+    (prisma.diagnosisCatalog.upsert as jest.Mock).mockResolvedValue({ id: 'cat-2', icd10Code: null, name: 'Custom Dx' });
     (prisma.diagnosis.create as jest.Mock).mockResolvedValue({ id: 'diag-2' });
 
     await withTenant(() => service.addToVisit({ visitId: 'visit-1', name: 'Custom Dx' }));
 
     expect(prisma.diagnosisCatalog.upsert).toHaveBeenCalledWith({
       where: { tenantId_name: { tenantId: 'test-tenant', name: 'Custom Dx' } },
-      create: { tenantId: 'test-tenant', name: 'Custom Dx', code: undefined },
+      create: { tenantId: 'test-tenant', name: 'Custom Dx', icd10Code: undefined, category: DiagnosisCategory.CUSTOM },
       update: {},
     });
     expect(prisma.diagnosis.create).toHaveBeenCalledWith(
@@ -73,5 +82,46 @@ describe('DiagnosisService', () => {
     const { service, prisma } = createService();
     (prisma.diagnosis.findUnique as jest.Mock).mockResolvedValue(null);
     await expect(service.remove('missing')).rejects.toThrow(NotFoundException);
+  });
+
+  it('searchCatalog filters by category when given', async () => {
+    const { service, prisma } = createService();
+    (prisma.diagnosisCatalog.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.searchCatalog('cold', DiagnosisCategory.FULL);
+
+    expect(prisma.diagnosisCatalog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { active: true, category: DiagnosisCategory.FULL, name: { contains: 'cold', mode: 'insensitive' } },
+      }),
+    );
+  });
+
+  it('createCustom always creates a CUSTOM-category entry', async () => {
+    const { service, prisma } = createService();
+    (prisma.diagnosisCatalog.create as jest.Mock).mockResolvedValue({ id: 'cat-3' });
+
+    await withTenant(() => service.createCustom({ name: 'My Custom Dx', icd10Code: 'X99' }));
+
+    expect(prisma.diagnosisCatalog.create).toHaveBeenCalledWith({
+      data: { tenantId: 'test-tenant', name: 'My Custom Dx', icd10Code: 'X99', category: DiagnosisCategory.CUSTOM },
+    });
+  });
+
+  it('bulkActivateCategory updates every entry in the given category', async () => {
+    const { service, prisma } = createService();
+
+    await service.bulkActivateCategory(DiagnosisCategory.SUMMARIZE, { active: false });
+
+    expect(prisma.diagnosisCatalog.updateMany).toHaveBeenCalledWith({
+      where: { category: DiagnosisCategory.SUMMARIZE },
+      data: { active: false },
+    });
+  });
+
+  it('setCatalogActive throws NotFoundException for an unknown entry', async () => {
+    const { service, prisma } = createService();
+    (prisma.diagnosisCatalog.findUnique as jest.Mock).mockResolvedValue(null);
+    await expect(service.setCatalogActive('missing', true)).rejects.toThrow(NotFoundException);
   });
 });

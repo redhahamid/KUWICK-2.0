@@ -62,6 +62,7 @@ model Tenant {
   clinicalNotes               ClinicalNote[]
   diagnosisCatalogs           DiagnosisCatalog[]
   diagnoses                   Diagnosis[]
+  orderServices               OrderService[]
 
   @@map("tenants")
 }
@@ -89,6 +90,7 @@ model Clinic {
   goodsReceivedNotes  GoodsReceivedNote[]
   visits              Visit[]
   queueTickets        QueueTicket[]
+  orderServices       OrderService[]
 
   @@index([tenantId])
   @@map("clinics")
@@ -224,6 +226,7 @@ model Staff {
   doctorServiceQualifications DoctorServiceQualification[]
   appointments                Appointment[]
   visits                      Visit[]
+  orderServices               OrderService[]
 
   @@index([tenantId])
   @@index([tenantId, role])
@@ -255,20 +258,40 @@ enum AppointmentSource {
 // `price` is the base selfpay rate used to itemize "Standard Services" on
 // an Invoice (Phase 1a Phase 5) — panel-tier pricing stays owned by Panel
 // Claims' future `PanelPriceTier`, same convention as Inventory's `Item`.
+enum ServiceOrderType {
+  STANDARD_SERVICE
+  TASK_ORDER
+}
+
 model ServiceCatalog {
-  id                     String   @id @default(uuid())
-  tenantId               String   @map("tenant_id")
+  id                     String           @id @default(uuid())
+  tenantId               String           @map("tenant_id")
   name                   String
-  durationMinutesDefault Int      @map("duration_minutes_default")
-  price                  Decimal  @default(0) @db.Decimal(10, 2)
-  active                 Boolean  @default(true)
-  createdAt              DateTime @default(now()) @map("created_at")
-  updatedAt              DateTime @updatedAt @map("updated_at")
+  // Procedures (Task Orders, e.g. XRAYCHEST) carry a code; booking-time
+  // consultation services (Standard Services) generally don't.
+  code                   String?
+  // Free text (e.g. "Laboratory", "Imaging", "Procedure", "Consultation") —
+  // matches the audited kuwick.com Services & Procedures admin screen's
+  // CATEGORY column. Not an enum: the clinic's own set of categories isn't
+  // fixed/known ahead of time, unlike orderType's two-value distinction.
+  category               String?
+  // Distinguishes the audited kuwick.com "Orders & Services" sub-filters
+  // (Clinical 2c plan) — unifies Task Orders and Standard Services into one
+  // catalog/picker rather than two, matching the single "Add Order or
+  // Service" selector. Defaults to STANDARD_SERVICE so every row created
+  // before this phase (all booking-time services) is unaffected.
+  orderType              ServiceOrderType @default(STANDARD_SERVICE) @map("order_type")
+  durationMinutesDefault Int              @map("duration_minutes_default")
+  price                  Decimal          @default(0) @db.Decimal(10, 2)
+  active                 Boolean          @default(true)
+  createdAt              DateTime         @default(now()) @map("created_at")
+  updatedAt              DateTime         @updatedAt @map("updated_at")
 
   tenant                      Tenant                       @relation(fields: [tenantId], references: [id])
   slotCapacityConfigs         SlotCapacityConfig[]
   doctorServiceQualifications DoctorServiceQualification[]
   appointments                Appointment[]
+  orderServices               OrderService[]
 
   @@index([tenantId])
   @@map("service_catalog")
@@ -688,13 +711,14 @@ model Visit {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  clinic       Clinic        @relation(fields: [clinicId], references: [id])
-  patient      Patient       @relation(fields: [patientId], references: [id])
-  staff        Staff         @relation(fields: [staffId], references: [id])
-  queueTicket  QueueTicket?
-  clinicalNote ClinicalNote?
-  diagnoses    Diagnosis[]
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  clinic        Clinic         @relation(fields: [clinicId], references: [id])
+  patient       Patient        @relation(fields: [patientId], references: [id])
+  staff         Staff          @relation(fields: [staffId], references: [id])
+  queueTicket   QueueTicket?
+  clinicalNote  ClinicalNote?
+  diagnoses     Diagnosis[]
+  orderServices OrderService[]
 
   @@unique([tenantId, visitNumber])
   @@index([tenantId, clinicId])
@@ -782,25 +806,40 @@ model ClinicalNote {
 // kuwick.com Diagnosis tab's "search/add diagnosis from catalog" — no
 // dedicated admin CRUD screen this phase; entries are created inline when a
 // diagnosis isn't found (Clinical 2b plan, judgment call #3).
+enum DiagnosisCategory {
+  CUSTOM
+  SUMMARIZE
+  FULL
+}
+
+// D-027 (docs/DECISIONS.md): category is the real meaning of the audited
+// kuwick.com "Custom/Summarize/Full" toggle — CUSTOM is clinic-created (via
+// the Diagnoses Directory admin screen), SUMMARIZE is a curated global
+// subset (~162 entries as owner-supplied), FULL is the complete ICD-10
+// standard catalog (~5,064 entries, owner-supplied separately). The visit's
+// diagnosis picker filters its search by this field, not by how the
+// already-added list is displayed.
 model DiagnosisCatalog {
-  id        String   @id @default(uuid())
-  tenantId  String   @map("tenant_id")
-  code      String?
+  id        String            @id @default(uuid())
+  tenantId  String            @map("tenant_id")
+  icd10Code String?           @map("icd10_code")
   name      String
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  category  DiagnosisCategory @default(CUSTOM)
+  active    Boolean           @default(true)
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
 
   tenant    Tenant      @relation(fields: [tenantId], references: [id])
   diagnoses Diagnosis[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
+  @@index([tenantId, category])
   @@map("diagnosis_catalog")
 }
 
-// One row per diagnosis added to a Visit — snapshots code/name from the
-// catalog at add-time (same historical-stability convention as
+// One row per diagnosis added to a Visit — snapshots icd10Code/name from
+// the catalog at add-time (same historical-stability convention as
 // PanelInvoice's price snapshot, docs/DATABASE_ARCHITECTURE.md §7), so a
 // later catalog rename never silently rewrites an existing visit's record.
 model Diagnosis {
@@ -808,7 +847,7 @@ model Diagnosis {
   tenantId           String   @map("tenant_id")
   visitId            String   @map("visit_id")
   diagnosisCatalogId String?  @map("diagnosis_catalog_id")
-  code               String?
+  icd10Code          String?  @map("icd10_code")
   name               String
   createdAt          DateTime @default(now()) @map("created_at")
 
@@ -818,4 +857,51 @@ model Diagnosis {
 
   @@index([tenantId, visitId])
   @@map("diagnoses")
+}
+
+enum OrderServiceStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// Clinical Operations, Phase 2c. Backs both the audited kuwick.com Orders &
+// Services tab (per-visit, all statuses/types) and the standalone Procedure
+// Queue (cross-visit, TASK_ORDER only — Clinical 2c plan, judgment call #1).
+// Snapshots code/procedureName/orderType from ServiceCatalog at order time,
+// same historical-stability convention as Diagnosis and PanelInvoice's
+// price snapshot. clinicId is denormalized for the Procedure Queue's
+// cross-visit query, same as QueueTicket.
+model OrderService {
+  id                 String             @id @default(uuid())
+  tenantId           String             @map("tenant_id")
+  clinicId           String             @map("clinic_id")
+  visitId            String             @map("visit_id")
+  serviceCatalogId   String             @map("service_catalog_id")
+  code               String?
+  procedureName      String             @map("procedure_name")
+  orderType          ServiceOrderType   @map("order_type")
+  instruction        String?
+  result             String?
+  status             OrderServiceStatus @default(PENDING)
+  // Defaults to Visit.staffId at creation — no separate doctor-picker UI
+  // this phase, since no real auth/user-identity exists yet (docs/DECISIONS.md
+  // D-017) and Visit already captures the attending physician.
+  requestedByStaffId String             @map("requested_by_staff_id")
+  requestedAt        DateTime           @default(now()) @map("requested_at")
+  completedAt        DateTime?          @map("completed_at")
+  cancelReason       String?            @map("cancel_reason")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+  clinic         Clinic         @relation(fields: [clinicId], references: [id])
+  visit          Visit          @relation(fields: [visitId], references: [id])
+  serviceCatalog ServiceCatalog @relation(fields: [serviceCatalogId], references: [id])
+  requestedBy    Staff          @relation(fields: [requestedByStaffId], references: [id])
+
+  @@index([tenantId, visitId])
+  @@index([tenantId, clinicId, orderType, status])
+  @@map("order_services")
 }

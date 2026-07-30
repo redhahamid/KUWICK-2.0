@@ -1,9 +1,8 @@
 import { IsOptional, IsString } from 'class-validator';
 
 // Either pick an existing catalog entry (diagnosisCatalogId) or type a new
-// one (name, optionally with a code) — the catalog has no dedicated admin
-// screen this phase, so "add" from the visit's picker is also how new
-// entries get created (Clinical 2b plan, judgment call #3). At least one of
+// one (name, optionally with an ICD-10 code) — typing a new one creates it
+// as a CUSTOM catalog entry (D-027, docs/DECISIONS.md). At least one of
 // diagnosisCatalogId/name is required — enforced in DiagnosisService, not
 // here, since which one is required depends on the other.
 export class AddDiagnosisDto {
@@ -20,5 +19,5 @@ export class AddDiagnosisDto {
 
   @IsOptional()
   @IsString()
-  code?: string;
+  icd10Code?: string;
 }

@@ -11,6 +11,9 @@ import { ClinicalNoteService } from './clinical-note.service';
 import { DiagnosisController } from './diagnosis.controller';
 import { DiagnosisCatalogController } from './diagnosis-catalog.controller';
 import { DiagnosisService } from './diagnosis.service';
+import { OrderServiceController } from './order-service.controller';
+import { ProcedureQueueController } from './procedure-queue.controller';
+import { OrderServiceService } from './order-service.service';
 
 // Clinical Operations, Phase 1a. Owns ServiceCatalog, Visit, QueueTicket,
 // ClinicalNote, Diagnosis, OrderService, Prescription, Document, Invoice
@@ -25,8 +28,24 @@ import { DiagnosisService } from './diagnosis.service';
     ClinicalNoteController,
     DiagnosisController,
     DiagnosisCatalogController,
+    OrderServiceController,
+    ProcedureQueueController,
   ],
-  providers: [ServiceCatalogService, VisitService, QueueTicketService, ClinicalNoteService, DiagnosisService],
-  exports: [ServiceCatalogService, VisitService, QueueTicketService, ClinicalNoteService, DiagnosisService],
+  providers: [
+    ServiceCatalogService,
+    VisitService,
+    QueueTicketService,
+    ClinicalNoteService,
+    DiagnosisService,
+    OrderServiceService,
+  ],
+  exports: [
+    ServiceCatalogService,
+    VisitService,
+    QueueTicketService,
+    ClinicalNoteService,
+    DiagnosisService,
+    OrderServiceService,
+  ],
 })
 export class ClinicalModule {}
