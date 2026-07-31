@@ -5,6 +5,9 @@ import { AppointmentsPage } from './appointment/AppointmentsPage';
 import { ClinicsPage } from './core/ClinicsPage';
 import { PatientsPage } from './core/PatientsPage';
 import { StaffPage } from './hr/StaffPage';
+import { AttendancePage } from './hr/AttendancePage';
+import { LeaveRequestsPage } from './hr/LeaveRequestsPage';
+import { PublicHolidaysPage } from './hr/PublicHolidaysPage';
 import { ServicesPage } from './clinical/ServicesPage';
 import { PanelClinicsPage } from './clinical/PanelClinicsPage';
 import { PanelClaimsPage } from './clinical/PanelClaimsPage';
@@ -24,6 +27,7 @@ import { LowStockPage } from './inventory/LowStockPage';
 import { NegativeStockPage } from './inventory/NegativeStockPage';
 import { ProcurementRequestsPage } from './inventory/ProcurementRequestsPage';
 import { PurchaseOrdersPage } from './inventory/PurchaseOrdersPage';
+import { ReportsPage } from './reports/ReportsPage';
 
 export function App() {
   return (
@@ -43,6 +47,8 @@ export function App() {
             not daily clinical/front-desk operation (matches Klinik Hijraa
             CMS's own admin-panel separation). */}
         <Route element={<ManagementLayout />}>
+          <Route path="/management/reports" element={<ReportsPage />} />
+
           <Route path="/management/operation/clinics" element={<ClinicsPage />} />
           <Route path="/management/operation/services" element={<ServicesPage />} />
           <Route path="/management/operation/doctor-schedules" element={<DoctorSchedulesPage />} />
@@ -51,6 +57,9 @@ export function App() {
           <Route path="/management/operation/diagnoses" element={<DiagnosesDirectoryPage />} />
 
           <Route path="/management/hr/staff" element={<StaffPage />} />
+          <Route path="/management/hr/attendance" element={<AttendancePage />} />
+          <Route path="/management/hr/leave-requests" element={<LeaveRequestsPage />} />
+          <Route path="/management/hr/public-holidays" element={<PublicHolidaysPage />} />
 
           <Route path="/management/stock/items" element={<ItemsPage />} />
           <Route path="/management/stock/suppliers" element={<SuppliersPage />} />

@@ -75,6 +75,8 @@ model Tenant {
   panelExclusions             PanelExclusion[]
   claimBatches                ClaimBatch[]
   claimBatchLines             ClaimBatchLine[]
+  leaveRequests               LeaveRequest[]
+  publicHolidays              PublicHoliday[]
 
   @@map("tenants")
 }
@@ -222,7 +224,13 @@ model AuditLog {
 
 // HR-lite: just enough of a Staff/Doctor entity for the Appointment module
 // (docs/DATABASE_ARCHITECTURE.md §4) to check roster/qualification rules
-// against. Full HR (attendance, leave, incentives) is not built here.
+// against. Extended Phase 1c with Leave/PublicHoliday; Attendance is a
+// read-only derived report over Visit.checkInAt/checkOutAt (no table of
+// its own — matches "attendance via clinical check-in/out",
+// PRODUCT_REQUIREMENTS.md §4 traceability table). The Doctor Incentive
+// Engine stays unbuilt — blocked on Open Question #2 (exact formula
+// semantics need a worked numeric example before this can be built
+// correctly, since it's a compensation calculation).
 model Staff {
   id          String   @id @default(uuid())
   tenantId    String   @map("tenant_id")
@@ -250,10 +258,76 @@ model Staff {
   invoices                    Invoice[]
   stockBatchesAdded           StockBatch[]
   claimBatchesCreated         ClaimBatch[]
+  leaveRequests               LeaveRequest[]               @relation("LeaveRequestStaff")
+  leaveRequestsApproved       LeaveRequest[]               @relation("LeaveRequestApprovedBy")
 
   @@index([tenantId])
   @@index([tenantId, role])
   @@map("staff")
+}
+
+enum LeaveType {
+  ANNUAL
+  MEDICAL
+  EMERGENCY
+  UNPAID
+  OTHER
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// HR, Phase 1c (docs/DEVELOPMENT_ROADMAP.md) — leave request/approval
+// workflow, unblocked and built independently of the Doctor Incentive
+// Engine (still parked on OQ#2). approvedByStaffId is nullable/re-settable
+// rather than immutable-once-set (same convention as Document.signedAt,
+// Phase A6) — correcting who approved a request is more common in practice
+// than needing an audit-locked approval.
+model LeaveRequest {
+  id                String      @id @default(uuid())
+  tenantId          String      @map("tenant_id")
+  staffId           String      @map("staff_id")
+  leaveType         LeaveType   @map("leave_type")
+  startDate         DateTime    @map("start_date") @db.Date
+  endDate           DateTime    @map("end_date") @db.Date
+  reason            String?
+  status            LeaveStatus @default(PENDING)
+  approvedByStaffId String?     @map("approved_by_staff_id")
+  approvedAt        DateTime?   @map("approved_at")
+  rejectReason      String?     @map("reject_reason")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id])
+  staff      Staff  @relation("LeaveRequestStaff", fields: [staffId], references: [id])
+  approvedBy Staff? @relation("LeaveRequestApprovedBy", fields: [approvedByStaffId], references: [id])
+
+  @@index([tenantId, staffId])
+  @@index([tenantId, status])
+  @@map("leave_requests")
+}
+
+// HR, Phase 1c. Tenant-wide (not per-clinic) — Malaysian public holidays
+// apply nationally/state-wide, not per-branch; a per-clinic override can be
+// added later if a real multi-state-branch need appears. Feeds the future
+// holiday/after-hours surcharge engine (D-030) once that's scoped — the
+// calendar itself isn't blocked on that decision, only the surcharge rule
+// is.
+model PublicHoliday {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  date      DateTime @db.Date
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, date])
+  @@index([tenantId])
+  @@map("public_holidays")
 }
 
 // Appointment status mirrors packages/shared's AppointmentStatus exactly

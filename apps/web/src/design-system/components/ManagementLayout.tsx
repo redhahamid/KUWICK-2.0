@@ -17,6 +17,11 @@ function item(path: string, label: string) {
 const MENU_GROUPS = [
   {
     type: 'group' as const,
+    label: 'Reports',
+    children: [item('/management/reports', 'Executive Dashboard')],
+  },
+  {
+    type: 'group' as const,
     label: 'Operation',
     children: [
       item('/management/operation/clinics', 'Clinics'),
@@ -30,7 +35,12 @@ const MENU_GROUPS = [
   {
     type: 'group' as const,
     label: 'HR',
-    children: [item('/management/hr/staff', 'Staff')],
+    children: [
+      item('/management/hr/staff', 'Staff'),
+      item('/management/hr/attendance', 'Attendance'),
+      item('/management/hr/leave-requests', 'Leave Requests'),
+      item('/management/hr/public-holidays', 'Public Holidays'),
+    ],
   },
   {
     type: 'group' as const,
