@@ -37,6 +37,7 @@ export function PanelClinicsPage() {
       name: panel.name,
       code: panel.code ?? undefined,
       limitAmount: panel.limitAmount ? Number(panel.limitAmount) : undefined,
+      paymentTermDays: panel.paymentTermDays ?? undefined,
     });
     setOpen(true);
   };
@@ -86,6 +87,10 @@ export function PanelClinicsPage() {
             render: (_: unknown, r: PanelClinic) => (r.limitAmount ? `RM ${r.limitAmount}` : '—'),
           },
           {
+            title: 'Payment Term',
+            render: (_: unknown, r: PanelClinic) => (r.paymentTermDays ? `${r.paymentTermDays} days` : '—'),
+          },
+          {
             title: 'Status',
             render: (_: unknown, r: PanelClinic) => <Tag color={r.active ? 'green' : 'default'}>{r.active ? 'Active' : 'Inactive'}</Tag>,
           },
@@ -126,6 +131,13 @@ export function PanelClinicsPage() {
             tooltip="Informational only for now — not automatically enforced/deducted."
           >
             <InputNumber min={0} precision={2} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item
+            name="paymentTermDays"
+            label="Payment Term (Days)"
+            tooltip="How long this panel takes to pay — claims older than this show as overdue in the claim listing and aging views."
+          >
+            <InputNumber min={1} style={{ width: '100%' }} placeholder="e.g. 30, 60, 90" />
           </Form.Item>
           <Button type="primary" htmlType="submit" loading={createPanel.isPending || updatePanel.isPending} block>
             {editing ? 'Save Changes' : 'Create'}

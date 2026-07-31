@@ -1021,14 +1021,18 @@ model GoodsReceivedNoteLine {
 // Claims" menu), since that's an external workflow on the panel's own
 // website today.
 model PanelClinic {
-  id          String   @id @default(uuid())
-  tenantId    String   @map("tenant_id")
-  name        String
-  code        String?
-  limitAmount Decimal? @map("limit_amount") @db.Decimal(10, 2)
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  name            String
+  code            String?
+  limitAmount     Decimal? @map("limit_amount") @db.Decimal(10, 2)
+  // Panel workbook upgrade (D-041) — the panel's own payment term; a
+  // claim is overdue when days since submission exceed this, so aging is
+  // judged per panel rather than against fixed buckets.
+  paymentTermDays Int?     @map("payment_term_days")
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   tenant         Tenant               @relation(fields: [tenantId], references: [id])
   visits         Visit[]
@@ -1558,11 +1562,11 @@ model Invoice {
   createdAt          DateTime      @default(now()) @map("created_at")
   updatedAt          DateTime      @updatedAt @map("updated_at")
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id])
-  visit          Visit           @relation(fields: [visitId], references: [id])
-  createdBy      Staff           @relation(fields: [createdByStaffId], references: [id])
-  lines          InvoiceLine[]
-  claimBatchLine ClaimBatchLine?
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  visit           Visit            @relation(fields: [visitId], references: [id])
+  createdBy       Staff            @relation(fields: [createdByStaffId], references: [id])
+  lines           InvoiceLine[]
+  claimBatchLines ClaimBatchLine[]
 
   @@unique([tenantId, invoiceNumber])
   @@index([tenantId, visitId])
@@ -1628,15 +1632,24 @@ model ClaimBatch {
 // paidAmount/status/deductionReason are recorded per line, not just per
 // batch, since a single batch commonly has some lines accepted-and-paid
 // and others rejected/deducted.
+// Panel workbook upgrade (D-041): invoiceId is no longer unique — the
+// owner's real excess/rejected workflow re-claims the same invoice in a
+// *new* claim ("buat claim baru untuk excess claim"), so an invoice may
+// have multiple lines over time. ClaimBatchService guards that only one
+// line can be ACTIVE (not REJECTED/DEDUCTED) at a time. feeAmount is the
+// panel's add-on fee per claim ("claim RM100 → claimed RM108");
+// receivable = claimedAmount + feeAmount.
 model ClaimBatchLine {
   id              String          @id @default(uuid())
   tenantId        String          @map("tenant_id")
   claimBatchId    String          @map("claim_batch_id")
-  invoiceId       String          @unique @map("invoice_id")
+  invoiceId       String          @map("invoice_id")
   claimedAmount   Decimal         @map("claimed_amount") @db.Decimal(10, 2)
+  feeAmount       Decimal         @default(0) @map("fee_amount") @db.Decimal(10, 2)
   status          ClaimLineStatus @default(PENDING)
   paidAmount      Decimal?        @map("paid_amount") @db.Decimal(10, 2)
   deductionReason String?         @map("deduction_reason")
+  remarks         String?
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
 
@@ -1645,6 +1658,7 @@ model ClaimBatchLine {
   invoice    Invoice    @relation(fields: [invoiceId], references: [id])
 
   @@index([tenantId, claimBatchId])
+  @@index([tenantId, invoiceId])
   @@map("claim_batch_lines")
 }
 

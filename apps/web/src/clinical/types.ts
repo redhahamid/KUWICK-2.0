@@ -93,6 +93,8 @@ export interface PanelClinic {
   name: string;
   code: string | null;
   limitAmount: string | null;
+  // D-041 — the panel's payment term in days (drives overdue judgement).
+  paymentTermDays: number | null;
   active: boolean;
 }
 
@@ -100,6 +102,7 @@ export interface CreatePanelClinicDto {
   name: string;
   code?: string;
   limitAmount?: number;
+  paymentTermDays?: number;
 }
 
 export type UpdatePanelClinicDto = Partial<CreatePanelClinicDto> & { active?: boolean };
@@ -448,11 +451,51 @@ export interface ClaimBatchLine {
   claimBatchId: string;
   invoiceId: string;
   claimedAmount: string;
+  // D-041 — the panel's add-on fee; receivable = claimed + fee.
+  feeAmount: string;
   status: ClaimLineStatus;
   paidAmount: string | null;
   deductionReason: string | null;
+  remarks: string | null;
   invoice: Invoice;
   createdAt: string;
+}
+
+// D-041 — the per-panel claim listing row (mirrors the owner's workbook:
+// service date / month / due-days vs term / claimed / fee / to-receive /
+// paid / receivable / remarks).
+export interface PanelClaimLineRow {
+  id: string;
+  claimBatchId: string;
+  batchNumber: string;
+  batchStatus: ClaimBatchStatus;
+  submissionReference: string | null;
+  status: ClaimLineStatus;
+  serviceDate: string;
+  monthKey: string;
+  patientName: string;
+  invoiceNumber: string;
+  claimedAmount: number;
+  feeAmount: number;
+  claimToReceive: number;
+  paidAmount: number;
+  receivable: number;
+  remarks: string | null;
+  deductionReason: string | null;
+  daysSinceSubmission: number | null;
+  paymentTermDays: number | null;
+  overdue: boolean;
+}
+
+export interface PanelYearlySummaryRow {
+  panelClinicId: string;
+  panelName: string;
+  claims: number;
+  claimedTotal: number;
+  feeTotal: number;
+  receivableTotal: number;
+  paidTotal: number;
+  outstandingTotal: number;
 }
 
 export interface ClaimBatch {
@@ -472,9 +515,12 @@ export interface ClaimBatch {
 
 export interface OutstandingClaimBatch extends ClaimBatch {
   claimedTotal: number;
+  feeTotal: number;
   paidTotal: number;
   outstandingAmount: number;
   daysOutstanding: number;
+  paymentTermDays: number | null;
+  overdue: boolean;
   panelClinic: PanelClinic;
 }
 
@@ -482,6 +528,8 @@ export interface CreateClaimBatchDto {
   panelClinicId: string;
   invoiceIds: string[];
   createdByStaffId: string;
+  // D-041 — the panel's add-on fee % ("claim RM100 → claimed RM108" = 8).
+  feePercent?: number;
 }
 
 export interface SubmitClaimBatchDto {
@@ -493,6 +541,7 @@ export interface RecordClaimLinePaymentDto {
   status: Exclude<ClaimLineStatus, 'PENDING'>;
   paidAmount?: number;
   deductionReason?: string;
+  remarks?: string;
 }
 
 export interface CreateInvoiceDto {

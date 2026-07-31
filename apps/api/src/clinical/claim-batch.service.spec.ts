@@ -8,7 +8,8 @@ function createService() {
   const prisma = {
     invoice: { findMany: jest.fn() },
     claimBatch: { count: jest.fn(), create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
-    claimBatchLine: { findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
+    claimBatchLine: { findMany: jest.fn(), create: jest.fn(), update: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn() },
+    panelClinic: { findUnique: jest.fn() },
   } as unknown as TenantScopedPrismaClient;
   return { service: new ClaimBatchService(prisma), prisma };
 }
@@ -49,7 +50,7 @@ describe('ClaimBatchService', () => {
         },
       });
       expect(prisma.claimBatchLine.create).toHaveBeenCalledWith({
-        data: { tenantId: 'test-tenant', claimBatchId: 'batch-1', invoiceId: 'inv-1', claimedAmount: 100 },
+        data: { tenantId: 'test-tenant', claimBatchId: 'batch-1', invoiceId: 'inv-1', claimedAmount: 100, feeAmount: 0 },
       });
     });
 
@@ -260,6 +261,109 @@ describe('ClaimBatchService', () => {
         data: { status: ClaimBatchStatus.RECONCILED, reconciledAt: expect.any(Date) },
         include: { lines: { include: { invoice: true } } },
       });
+    });
+  });
+
+  // ------ Panel workbook upgrade (D-041) ------
+
+  describe('createBatch with feePercent', () => {
+    it('applies the add-on fee per line (claim RM100 at 8% → fee RM8)', async () => {
+      const { service, prisma } = createService();
+      (prisma.invoice.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: 'inv-1',
+          invoiceNumber: 'INV-000001',
+          status: InvoiceStatus.PAID,
+          panelCoveredAmount: 100,
+          visit: { panelClinicId: 'panel-1' },
+        },
+      ]);
+      (prisma.claimBatchLine.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.claimBatch.count as jest.Mock).mockResolvedValue(0);
+      (prisma.claimBatch.create as jest.Mock).mockResolvedValue({ id: 'batch-1' });
+      (prisma.claimBatchLine.create as jest.Mock).mockResolvedValue({ id: 'line-1' });
+      (prisma.claimBatch.findUnique as jest.Mock).mockResolvedValue({ id: 'batch-1', lines: [] });
+
+      await withTenant(() =>
+        service.createBatch({
+          panelClinicId: 'panel-1',
+          invoiceIds: ['inv-1'],
+          createdByStaffId: 'staff-1',
+          feePercent: 8,
+        }),
+      );
+
+      expect(prisma.claimBatchLine.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ claimedAmount: 100, feeAmount: 8 }) }),
+      );
+    });
+
+    it('rejects only invoices with an ACTIVE prior claim — rejected lines do not block re-claiming', async () => {
+      const { service, prisma } = createService();
+      (prisma.invoice.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: 'inv-1',
+          invoiceNumber: 'INV-000001',
+          status: InvoiceStatus.PAID,
+          panelCoveredAmount: 100,
+          visit: { panelClinicId: 'panel-1' },
+        },
+      ]);
+      // The already-claimed guard queries only ACTIVE statuses — an empty
+      // result here means the prior line was REJECTED/DEDUCTED.
+      (prisma.claimBatchLine.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.claimBatch.count as jest.Mock).mockResolvedValue(1);
+      (prisma.claimBatch.create as jest.Mock).mockResolvedValue({ id: 'batch-2' });
+      (prisma.claimBatchLine.create as jest.Mock).mockResolvedValue({ id: 'line-2' });
+      (prisma.claimBatch.findUnique as jest.Mock).mockResolvedValue({ id: 'batch-2', lines: [] });
+
+      await withTenant(() =>
+        service.createBatch({ panelClinicId: 'panel-1', invoiceIds: ['inv-1'], createdByStaffId: 'staff-1' }),
+      );
+
+      expect(prisma.claimBatchLine.findMany).toHaveBeenCalledWith({
+        where: { invoiceId: { in: ['inv-1'] }, status: { in: [ClaimLineStatus.PENDING, ClaimLineStatus.ACCEPTED, ClaimLineStatus.PAID] } },
+      });
+    });
+  });
+
+  describe('listLines', () => {
+    it('computes claim-to-receive/receivable and flags overdue against the panel payment term', async () => {
+      const { service, prisma } = createService();
+      (prisma.panelClinic.findUnique as jest.Mock).mockResolvedValue({ id: 'panel-1', paymentTermDays: 30 });
+      const submittedAt = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
+      (prisma.claimBatchLine.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: 'line-1',
+          claimBatchId: 'batch-1',
+          status: ClaimLineStatus.PENDING,
+          claimedAmount: 100,
+          feeAmount: 8,
+          paidAmount: null,
+          remarks: null,
+          deductionReason: null,
+          createdAt: submittedAt,
+          claimBatch: {
+            batchNumber: 'CLAIM-000001',
+            status: ClaimBatchStatus.SUBMITTED,
+            submittedAt,
+            submissionReference: null,
+          },
+          invoice: {
+            invoiceNumber: 'INV-000001',
+            paidAt: submittedAt,
+            createdAt: submittedAt,
+            visit: { patient: { name: 'Test Patient' } },
+          },
+        },
+      ]);
+
+      const [row] = await service.listLines('panel-1');
+
+      expect(row.claimToReceive).toBe(108);
+      expect(row.receivable).toBe(108);
+      expect(row.paymentTermDays).toBe(30);
+      expect(row.overdue).toBe(true);
     });
   });
 });

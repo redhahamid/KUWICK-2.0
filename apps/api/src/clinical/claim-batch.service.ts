@@ -8,6 +8,19 @@ import { RecordClaimLinePaymentDto } from './dto/record-claim-line-payment.dto';
 
 const BATCH_INCLUDE = { lines: { include: { invoice: true } } } as const;
 
+// A line still "occupying" its invoice — an invoice can only be re-claimed
+// once every prior line is REJECTED or DEDUCTED (D-041's resubmission
+// workflow).
+const ACTIVE_LINE_STATUSES: ClaimLineStatus[] = [
+  ClaimLineStatus.PENDING,
+  ClaimLineStatus.ACCEPTED,
+  ClaimLineStatus.PAID,
+];
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 // Clinical Operations, Phase 1e (Panel Claims Core). One status lifecycle
 // for every panel (D-031) — batching has no fixed period, and "Submitted"
 // records a method rather than branching per panel. Line-level status
@@ -30,7 +43,9 @@ export class ClaimBatchService {
       where: {
         status: InvoiceStatus.PAID,
         panelCoveredAmount: { gt: 0 },
-        claimBatchLine: null,
+        // D-041: an invoice is claimable while no line "occupies" it —
+        // rejected/deducted prior claims don't block a resubmission.
+        claimBatchLines: { none: { status: { in: ACTIVE_LINE_STATUSES } } },
         visit: { panelClinicId },
       },
       include: { visit: { include: { patient: true } } },
@@ -59,7 +74,7 @@ export class ClaimBatchService {
       }
     }
     const alreadyClaimed = await this.prisma.claimBatchLine.findMany({
-      where: { invoiceId: { in: dto.invoiceIds } },
+      where: { invoiceId: { in: dto.invoiceIds }, status: { in: ACTIVE_LINE_STATUSES } },
     });
     if (alreadyClaimed.length > 0) {
       throw new BadRequestException('One or more invoices have already been claimed in another batch');
@@ -74,6 +89,9 @@ export class ClaimBatchService {
       },
     });
 
+    // D-041 — the panel's add-on fee, applied per line at batch creation
+    // ("claim RM100 → claimed RM108"): receivable = claimed + fee.
+    const feePercent = dto.feePercent ?? 0;
     for (const invoice of invoices) {
       await this.prisma.claimBatchLine.create({
         data: {
@@ -81,6 +99,7 @@ export class ClaimBatchService {
           claimBatchId: batch.id,
           invoiceId: invoice.id,
           claimedAmount: invoice.panelCoveredAmount,
+          feeAmount: round2((Number(invoice.panelCoveredAmount) * feePercent) / 100),
         },
       });
     }
@@ -145,6 +164,7 @@ export class ClaimBatchService {
         status: dto.status as ClaimLineStatus,
         paidAmount: dto.paidAmount,
         deductionReason: dto.deductionReason,
+        remarks: dto.remarks,
       },
     });
 
@@ -178,7 +198,9 @@ export class ClaimBatchService {
   }
 
   // Outstanding-aging surface (§3E/§12) — batches not yet fully closed out,
-  // with days-since-submission for reconciliation follow-up.
+  // with days-since-submission for reconciliation follow-up. D-041:
+  // receivable includes the add-on fee, and `overdue` is judged against the
+  // panel's own payment term rather than a fixed bucket.
   async listOutstanding() {
     const batches = await this.prisma.claimBatch.findMany({
       where: { status: { in: [ClaimBatchStatus.SUBMITTED, ClaimBatchStatus.PARTIALLY_PAID] } },
@@ -186,12 +208,121 @@ export class ClaimBatchService {
       orderBy: { submittedAt: 'asc' },
     });
     return batches.map((batch) => {
-      const claimedTotal = batch.lines.reduce((sum, line) => sum + Number(line.claimedAmount), 0);
-      const paidTotal = batch.lines.reduce((sum, line) => sum + Number(line.paidAmount ?? 0), 0);
+      const claimedTotal = round2(batch.lines.reduce((sum, line) => sum + Number(line.claimedAmount), 0));
+      const feeTotal = round2(batch.lines.reduce((sum, line) => sum + Number(line.feeAmount), 0));
+      const paidTotal = round2(batch.lines.reduce((sum, line) => sum + Number(line.paidAmount ?? 0), 0));
       const daysOutstanding = batch.submittedAt
         ? Math.floor((Date.now() - batch.submittedAt.getTime()) / (1000 * 60 * 60 * 24))
         : 0;
-      return { ...batch, claimedTotal, paidTotal, outstandingAmount: claimedTotal - paidTotal, daysOutstanding };
+      const paymentTermDays = batch.panelClinic.paymentTermDays ?? null;
+      return {
+        ...batch,
+        claimedTotal,
+        feeTotal,
+        paidTotal,
+        outstandingAmount: round2(claimedTotal + feeTotal - paidTotal),
+        daysOutstanding,
+        paymentTermDays,
+        overdue: paymentTermDays !== null && daysOutstanding > paymentTermDays,
+      };
     });
+  }
+
+  // ------ Panel workbook upgrade (D-041) ------
+
+  // Per-panel claim listing — the working view staff actually use day to
+  // day, mirroring the owner's per-panel sheet: one row per claim with
+  // service date / month / due-days-vs-term / claimed / fee / to-receive /
+  // paid / receivable / remarks.
+  async listLines(panelClinicId: string, month?: string) {
+    const panel = await this.prisma.panelClinic.findUnique({ where: { id: panelClinicId } });
+    if (!panel) {
+      throw new NotFoundException('Panel not found');
+    }
+    const lines = await this.prisma.claimBatchLine.findMany({
+      where: { claimBatch: { panelClinicId } },
+      include: {
+        claimBatch: true,
+        invoice: { include: { visit: { include: { patient: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    const termDays = panel.paymentTermDays ?? null;
+    return lines
+      .map((line) => {
+        const serviceDate = line.invoice.paidAt ?? line.invoice.createdAt;
+        const monthKey = serviceDate.toISOString().slice(0, 7);
+        const claimed = Number(line.claimedAmount);
+        const fee = Number(line.feeAmount);
+        const paid = Number(line.paidAmount ?? 0);
+        const submittedAt = line.claimBatch.submittedAt;
+        const daysSinceSubmission = submittedAt
+          ? Math.floor((Date.now() - submittedAt.getTime()) / (1000 * 60 * 60 * 24))
+          : null;
+        return {
+          id: line.id,
+          claimBatchId: line.claimBatchId,
+          batchNumber: line.claimBatch.batchNumber,
+          batchStatus: line.claimBatch.status,
+          submissionReference: line.claimBatch.submissionReference,
+          status: line.status,
+          serviceDate,
+          monthKey,
+          patientName: line.invoice.visit.patient.name,
+          invoiceNumber: line.invoice.invoiceNumber,
+          claimedAmount: claimed,
+          feeAmount: fee,
+          claimToReceive: round2(claimed + fee),
+          paidAmount: paid,
+          receivable: round2(claimed + fee - paid),
+          remarks: line.remarks,
+          deductionReason: line.deductionReason,
+          daysSinceSubmission,
+          paymentTermDays: termDays,
+          overdue:
+            termDays !== null &&
+            daysSinceSubmission !== null &&
+            daysSinceSubmission > termDays &&
+            line.status !== ClaimLineStatus.PAID &&
+            line.status !== ClaimLineStatus.REJECTED,
+        };
+      })
+      .filter((line) => !month || line.monthKey === month);
+  }
+
+  // Yearly per-panel rollup — the owner's SUMMARY PANEL CLAIMS sheet:
+  // claimed / fee / receivable / paid / outstanding per panel for a year.
+  async getYearlySummary(year: number) {
+    const from = new Date(Date.UTC(year, 0, 1));
+    const to = new Date(Date.UTC(year + 1, 0, 1));
+    const lines = await this.prisma.claimBatchLine.findMany({
+      where: { createdAt: { gte: from, lt: to } },
+      include: { claimBatch: { include: { panelClinic: true } } },
+    });
+    const byPanel = new Map<
+      string,
+      { panelName: string; claims: number; claimed: number; fee: number; paid: number }
+    >();
+    for (const line of lines) {
+      const panel = line.claimBatch.panelClinic;
+      const bucket = byPanel.get(panel.id) ?? { panelName: panel.name, claims: 0, claimed: 0, fee: 0, paid: 0 };
+      bucket.claims += 1;
+      bucket.claimed += Number(line.claimedAmount);
+      bucket.fee += Number(line.feeAmount);
+      bucket.paid += Number(line.paidAmount ?? 0);
+      byPanel.set(panel.id, bucket);
+    }
+    return Array.from(byPanel.entries())
+      .map(([panelClinicId, bucket]) => ({
+        panelClinicId,
+        panelName: bucket.panelName,
+        claims: bucket.claims,
+        claimedTotal: round2(bucket.claimed),
+        feeTotal: round2(bucket.fee),
+        receivableTotal: round2(bucket.claimed + bucket.fee),
+        paidTotal: round2(bucket.paid),
+        outstandingTotal: round2(bucket.claimed + bucket.fee - bucket.paid),
+      }))
+      .sort((a, b) => b.claimedTotal - a.claimedTotal);
   }
 }

@@ -18,4 +18,10 @@ export class RecordClaimLinePaymentDto {
   @IsOptional()
   @IsString()
   deductionReason?: string;
+
+  // D-041 — free-text follow-up notes, mirroring the workbook's REMARKS
+  // column.
+  @IsOptional()
+  @IsString()
+  remarks?: string;
 }

@@ -1,4 +1,4 @@
-import { IsBoolean, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
 
 export class CreatePanelClinicDto {
   @IsString()
@@ -13,6 +13,13 @@ export class CreatePanelClinicDto {
   @IsNumber()
   @Min(0)
   limitAmount?: number;
+
+  // D-041 — the panel's payment term in days; drives per-panel overdue
+  // judgement in the claim listing and aging views.
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  paymentTermDays?: number;
 }
 
 export class UpdatePanelClinicDto {
@@ -29,6 +36,11 @@ export class UpdatePanelClinicDto {
   @IsNumber()
   @Min(0)
   limitAmount?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  paymentTermDays?: number;
 
   @IsOptional()
   @IsBoolean()

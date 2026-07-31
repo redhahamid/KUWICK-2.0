@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ClaimBatchService } from './claim-batch.service';
 import { CreateClaimBatchDto } from './dto/create-claim-batch.dto';
 import { SubmitClaimBatchDto } from './dto/submit-claim-batch.dto';
@@ -17,6 +17,26 @@ export class ClaimBatchController {
   listOutstanding() {
     return this.claimBatches.listOutstanding();
   }
+
+  // ------ Panel workbook upgrade (D-041) ------
+
+  @Get('lines')
+  listLines(@Query('panelClinicId') panelClinicId: string, @Query('month') month?: string) {
+    if (!panelClinicId) {
+      throw new BadRequestException('panelClinicId is required');
+    }
+    return this.claimBatches.listLines(panelClinicId, month);
+  }
+
+  @Get('yearly-summary')
+  getYearlySummary(@Query('year') year?: string) {
+    const parsed = year ? Number(year) : new Date().getFullYear();
+    if (!Number.isInteger(parsed) || parsed < 2000 || parsed > 2100) {
+      throw new BadRequestException('year must be a 4-digit year');
+    }
+    return this.claimBatches.getYearlySummary(parsed);
+  }
+
 
   @Get()
   listByPanel(@Query('panelClinicId') panelClinicId?: string) {
