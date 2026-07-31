@@ -205,6 +205,23 @@ export interface AddToQueueDto {
   presentingComplaint?: string;
 }
 
+// Document builder (D-040) — a clinic's own document templates with
+// {{merge.field}} placeholders.
+export interface CustomDocumentTemplate {
+  id: string;
+  name: string;
+  content: string;
+  active: boolean;
+  sourceDefaultId: string | null;
+}
+
+export interface CreateDocumentTemplateDto {
+  name: string;
+  content: string;
+}
+
+export type UpdateDocumentTemplateDto = Partial<CreateDocumentTemplateDto> & { active?: boolean };
+
 // What the unauthenticated waiting-room monitor endpoint returns —
 // numbers and room names only, never patient PII.
 export interface PublicQueueTicket {
@@ -350,12 +367,14 @@ export interface Attachment {
   createdAt: string;
 }
 
-export type DocumentType = 'MC' | 'REFERRAL' | 'MEMO' | 'QUARANTINE';
+export type DocumentType = 'MC' | 'REFERRAL' | 'MEMO' | 'QUARANTINE' | 'CUSTOM';
 
 export interface ClinicalDocument {
   id: string;
   visitId: string;
   type: DocumentType;
+  // Display name for CUSTOM documents (the template's name, D-040).
+  title: string | null;
   content: string;
   issuedByStaffId: string;
   issuedDate: string;
@@ -372,6 +391,7 @@ export interface ClinicalDocument {
 export interface CreateDocumentDto {
   visitId: string;
   type: DocumentType;
+  title?: string;
   content: string;
   issuedByStaffId?: string;
   issuedDate?: string;

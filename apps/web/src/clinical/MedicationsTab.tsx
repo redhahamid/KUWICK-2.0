@@ -17,8 +17,10 @@ import {
   Typography,
   message,
 } from 'antd';
-import { CalculatorOutlined, MedicineBoxOutlined } from '@ant-design/icons';
+import { CalculatorOutlined, MedicineBoxOutlined, PrinterOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { useClinics } from '../core/hooks/useClinics';
+import { printDrugLabel } from './printTextDocument';
 import { useItems } from '../inventory/hooks/useItems';
 import { useItemAgeDosages } from '../inventory/hooks/useItemAgeDosages';
 import { useVisit } from './hooks/useVisits';
@@ -54,6 +56,7 @@ interface MedicationsTabProps {
 export function MedicationsTab({ visitId }: MedicationsTabProps) {
   const { data: visit } = useVisit(visitId);
   const { data: note } = useClinicalNote(visitId);
+  const { data: clinics } = useClinics();
   const { data: items } = useItems();
   const { data: prescriptions, isLoading } = usePrescriptions(visitId);
   const { data: copySources } = usePrescriptionCopySources(visit?.patientId, visitId);
@@ -423,9 +426,33 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
               },
               {
                 title: 'Action',
-                render: (_: unknown, r: Prescription) =>
-                  r.status === 'ORDERED' ? (
-                    <Space>
+                render: (_: unknown, r: Prescription) => (
+                  <Space>
+                    {/* D-040 (owner #10) — drug label with clinic letterhead,
+                        patient, drug, dose/frequency/duration/indication. */}
+                    <Button
+                      size="small"
+                      icon={<PrinterOutlined />}
+                      title="Print drug label"
+                      onClick={() => {
+                        const clinic = clinics?.find((c) => c.id === visit?.clinicId);
+                        printDrugLabel({
+                          clinicName: clinic?.name ?? '',
+                          clinicAddress: clinic?.address,
+                          clinicPhone: clinic?.phone,
+                          clinicEmail: clinic?.email,
+                          patientName: visit?.patient?.name ?? '',
+                          drugName: r.item?.name ?? '',
+                          dose: `${r.amount}${r.unit ?? ''}`,
+                          frequency: r.frequency,
+                          durationDays: r.durationDays,
+                          indication: r.indication,
+                          quantity: r.quantity,
+                        });
+                      }}
+                    />
+                    {r.status === 'ORDERED' && (
+                      <>
                       <Button
                         size="small"
                         onClick={() =>
@@ -454,8 +481,10 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
                           Delete
                         </Button>
                       </Popconfirm>
-                    </Space>
-                  ) : null,
+                      </>
+                    )}
+                  </Space>
+                ),
               },
             ]}
           />

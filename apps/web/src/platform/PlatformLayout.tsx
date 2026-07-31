@@ -12,8 +12,8 @@ function navItem(path: string, label: string) {
 
 // System Owner console shell (D-037) — top nav mirrors the owner's real
 // system (Dashboard | Clinics | Plans | Subscriptions | Panel Clinics |
-// Procedures | Settings). Diagnoses and Document Templates from the
-// reference are deliberately absent until their global-catalog phases land.
+// Procedures | Document Templates | Settings). Diagnoses from the
+// reference stays absent until the global-diagnoses catalog phase lands.
 const NAV_ITEMS = [
   navItem('/platform/dashboard', 'Dashboard'),
   navItem('/platform/clinics', 'Clinics'),
@@ -21,6 +21,7 @@ const NAV_ITEMS = [
   navItem('/platform/subscriptions', 'Subscriptions'),
   navItem('/platform/panel-clinics', 'Panel Clinics'),
   navItem('/platform/procedures', 'Procedures'),
+  navItem('/platform/document-templates', 'Document Templates'),
   navItem('/platform/settings', 'Settings'),
 ];
 

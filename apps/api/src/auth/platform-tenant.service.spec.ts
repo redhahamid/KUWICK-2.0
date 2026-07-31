@@ -8,8 +8,10 @@ function createService() {
     clinic: { create: jest.fn() },
     defaultPanelClinic: { findMany: jest.fn().mockResolvedValue([]) },
     defaultProcedure: { findMany: jest.fn().mockResolvedValue([]) },
+    defaultDocumentTemplate: { findMany: jest.fn().mockResolvedValue([]) },
     panelClinic: { createMany: jest.fn() },
     serviceCatalog: { createMany: jest.fn() },
+    customDocumentTemplate: { createMany: jest.fn() },
     tenantSubscription: { create: jest.fn() },
     $executeRaw: jest.fn(),
   } as unknown as PrismaService;

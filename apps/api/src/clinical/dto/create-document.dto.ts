@@ -8,6 +8,11 @@ export class CreateDocumentDto {
   @IsEnum(DocumentType)
   type!: DocumentType;
 
+  // Display name for CUSTOM documents — the template's name (D-040).
+  @IsOptional()
+  @IsString()
+  title?: string;
+
   @IsString()
   @IsNotEmpty()
   content!: string;

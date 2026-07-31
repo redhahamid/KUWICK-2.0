@@ -30,6 +30,8 @@ import { ClaimBatchController } from './claim-batch.controller';
 import { ClaimBatchService } from './claim-batch.service';
 import { RoomController } from './room.controller';
 import { RoomService } from './room.service';
+import { DocumentTemplateController } from './document-template.controller';
+import { DocumentTemplateService } from './document-template.service';
 import { QueueDisplayConfigService } from './queue-display-config.service';
 import { PublicQueueController } from './public-queue.controller';
 import { PublicQueueService } from './public-queue.service';
@@ -58,6 +60,7 @@ import { PublicQueueService } from './public-queue.service';
     ClaimBatchController,
     RoomController,
     PublicQueueController,
+    DocumentTemplateController,
   ],
   providers: [
     ServiceCatalogService,
@@ -76,6 +79,7 @@ import { PublicQueueService } from './public-queue.service';
     RoomService,
     QueueDisplayConfigService,
     PublicQueueService,
+    DocumentTemplateService,
   ],
   exports: [
     ServiceCatalogService,

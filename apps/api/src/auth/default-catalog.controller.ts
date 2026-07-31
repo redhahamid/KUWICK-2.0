@@ -50,4 +50,24 @@ export class DefaultCatalogController {
   removeProcedure(@Param('id') id: string) {
     return this.catalogs.removeProcedure(id);
   }
+
+  @Get('document-templates')
+  listDocumentTemplates() {
+    return this.catalogs.listDocumentTemplates();
+  }
+
+  @Post('document-templates')
+  createDocumentTemplate(@Body() dto: { name: string; content: string; active?: boolean }) {
+    return this.catalogs.createDocumentTemplate(dto);
+  }
+
+  @Patch('document-templates/:id')
+  updateDocumentTemplate(@Param('id') id: string, @Body() dto: { name?: string; content?: string; active?: boolean }) {
+    return this.catalogs.updateDocumentTemplate(id, dto);
+  }
+
+  @Delete('document-templates/:id')
+  removeDocumentTemplate(@Param('id') id: string) {
+    return this.catalogs.removeDocumentTemplate(id);
+  }
 }

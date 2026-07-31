@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { Button, Card, DatePicker, Empty, Input, List, Popconfirm, Select, Space, Tag, Typography, message } from 'antd';
-import { CheckCircleOutlined, DeleteOutlined, FileTextOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, DeleteOutlined, FileTextOutlined, PrinterOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useCreateDocument, useDeleteDocument, useDocuments, useSignDocument } from './hooks/useDocuments';
 import { useClinicalNote } from './hooks/useClinicalNote';
 import { useDiagnoses } from './hooks/useDiagnoses';
+import { useDocumentTemplates } from './hooks/useDocumentTemplates';
 import { useStaff } from '../hr/hooks/useStaff';
 import { useClinics } from '../core/hooks/useClinics';
 import { buildTemplate, doctorRoleLabel, formatDiagnosisList, formatVitals, htmlToPlainText } from './documentTemplates';
+import { resolveTemplate } from './mergeFields';
+import { printTextDocument } from './printTextDocument';
 import { ClinicalDocument, DocumentType, Visit } from './types';
 import { ApiError } from '../core/api-client';
 
@@ -26,7 +29,17 @@ const TYPE_COLOR: Record<DocumentType, string> = {
   REFERRAL: 'blue',
   MEMO: 'default',
   QUARANTINE: 'orange',
+  CUSTOM: 'purple',
 };
+
+// D-040 — the Select mixes the four built-in types with the clinic's own
+// active templates; custom entries are keyed "custom:<templateId>".
+const CUSTOM_PREFIX = 'custom:';
+
+function documentLabel(document: ClinicalDocument): string {
+  if (document.type === 'CUSTOM') return document.title ?? 'Custom Document';
+  return TYPE_OPTIONS.find((o) => o.value === document.type)?.label ?? document.type;
+}
 
 interface DocumentsTabProps {
   visit: Visit;
@@ -40,7 +53,8 @@ interface DocumentsTabProps {
 // "Generate Template" composes starter text into Content — still fully
 // editable before saving, no server-side PDF rendering this phase.
 export function DocumentsTab({ visit, patientName, patientIdentifier }: DocumentsTabProps) {
-  const [type, setType] = useState<DocumentType>('MC');
+  // Either a built-in DocumentType or "custom:<templateId>" (D-040).
+  const [typeKey, setTypeKey] = useState<string>('MC');
   const [content, setContent] = useState('');
   const [issuedByStaffId, setIssuedByStaffId] = useState<string | undefined>(visit.staffId);
   const [issuedDate, setIssuedDate] = useState<Dayjs>(dayjs());
@@ -53,8 +67,23 @@ export function DocumentsTab({ visit, patientName, patientIdentifier }: Document
   const { data: diagnoses } = useDiagnoses(visit.id);
   const { data: staff } = useStaff();
   const { data: clinics } = useClinics();
+  const { data: customTemplates } = useDocumentTemplates(true);
   const clinic = clinics?.find((c) => c.id === visit.clinicId);
   const doctor = staff?.find((s) => s.id === issuedByStaffId);
+
+  const isCustom = typeKey.startsWith(CUSTOM_PREFIX);
+  const selectedTemplate = isCustom
+    ? customTemplates?.find((template) => template.id === typeKey.slice(CUSTOM_PREFIX.length))
+    : undefined;
+  const type: DocumentType = isCustom ? 'CUSTOM' : (typeKey as DocumentType);
+
+  const typeSelectOptions = [
+    ...TYPE_OPTIONS,
+    ...(customTemplates ?? []).map((template) => ({
+      value: `${CUSTOM_PREFIX}${template.id}`,
+      label: template.name,
+    })),
+  ];
 
   const createDocument = useCreateDocument(visit.id);
   const deleteDocument = useDeleteDocument(visit.id);
@@ -65,6 +94,20 @@ export function DocumentsTab({ visit, patientName, patientIdentifier }: Document
   };
 
   const handleGenerate = () => {
+    if (selectedTemplate) {
+      setContent(
+        resolveTemplate(selectedTemplate.content, {
+          clinic,
+          patient: visit.patient,
+          doctor,
+          visit,
+          clinicalNote,
+          diagnoses,
+          issuedDate,
+        }),
+      );
+      return;
+    }
     const generated = buildTemplate(type, {
       clinicName: clinic?.name,
       clinic,
@@ -90,6 +133,7 @@ export function DocumentsTab({ visit, patientName, patientIdentifier }: Document
       await createDocument.mutateAsync({
         visitId: visit.id,
         type,
+        title: selectedTemplate?.name,
         content: content.trim(),
         issuedByStaffId,
         issuedDate: issuedDate.format('YYYY-MM-DD'),
@@ -126,7 +170,14 @@ export function DocumentsTab({ visit, patientName, patientIdentifier }: Document
           <Space wrap size={12} style={{ width: '100%' }}>
             <div>
               <Text type="secondary">Type</Text>
-              <Select style={{ width: 200, display: 'block' }} value={type} onChange={setType} options={TYPE_OPTIONS} />
+              <Select
+                style={{ width: 220, display: 'block' }}
+                value={typeKey}
+                onChange={setTypeKey}
+                options={typeSelectOptions}
+                showSearch
+                optionFilterProp="label"
+              />
             </div>
             <div>
               <Text type="secondary">Doctor</Text>
@@ -213,6 +264,15 @@ export function DocumentsTab({ visit, patientName, patientIdentifier }: Document
             renderItem={(document: ClinicalDocument) => (
               <List.Item
                 actions={[
+                  <Button
+                    key="print"
+                    type="text"
+                    size="small"
+                    icon={<PrinterOutlined />}
+                    onClick={() => printTextDocument(documentLabel(document), document.content)}
+                  >
+                    Print
+                  </Button>,
                   document.signedAt ? null : (
                     <Button
                       key="sign"
@@ -243,7 +303,7 @@ export function DocumentsTab({ visit, patientName, patientIdentifier }: Document
                 <List.Item.Meta
                   title={
                     <Space wrap>
-                      <Tag color={TYPE_COLOR[document.type]}>{TYPE_OPTIONS.find((o) => o.value === document.type)?.label}</Tag>
+                      <Tag color={TYPE_COLOR[document.type]}>{documentLabel(document)}</Tag>
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         Issued {dayjs(document.issuedDate).format('YYYY-MM-DD')}
                       </Text>

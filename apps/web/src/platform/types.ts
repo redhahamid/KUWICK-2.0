@@ -51,6 +51,13 @@ export interface DefaultProcedure {
   active: boolean;
 }
 
+export interface DefaultDocumentTemplate {
+  id: string;
+  name: string;
+  content: string;
+  active: boolean;
+}
+
 export interface PlatformDashboardSummary {
   totalActiveClinics: number;
   activeSubscriptionCount: number;

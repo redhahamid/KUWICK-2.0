@@ -54,9 +54,10 @@ export class PlatformTenantService {
         data: { tenantId: tenant.id, name: dto.name, address: dto.address, phone: dto.phone, email: dto.email },
       });
 
-      const [defaultPanels, defaultProcedures] = await Promise.all([
+      const [defaultPanels, defaultProcedures, defaultDocumentTemplates] = await Promise.all([
         tx.defaultPanelClinic.findMany({ where: { active: true } }),
         tx.defaultProcedure.findMany({ where: { active: true } }),
+        tx.defaultDocumentTemplate.findMany({ where: { active: true } }),
       ]);
       if (defaultPanels.length > 0) {
         await tx.panelClinic.createMany({
@@ -72,6 +73,17 @@ export class PlatformTenantService {
             price: procedure.price,
             orderType: 'TASK_ORDER',
             durationMinutesDefault: DEFAULT_PROCEDURE_DURATION_MINUTES,
+          })),
+        });
+      }
+
+      if (defaultDocumentTemplates.length > 0) {
+        await tx.customDocumentTemplate.createMany({
+          data: defaultDocumentTemplates.map((template) => ({
+            tenantId: tenant.id,
+            name: template.name,
+            content: template.content,
+            sourceDefaultId: template.id,
           })),
         });
       }

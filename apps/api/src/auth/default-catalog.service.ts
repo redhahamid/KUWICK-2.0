@@ -41,6 +41,30 @@ export class DefaultCatalogService {
     return this.prisma.defaultProcedure.findMany({ orderBy: { name: 'asc' } });
   }
 
+  listDocumentTemplates() {
+    return this.prisma.defaultDocumentTemplate.findMany({ orderBy: { name: 'asc' } });
+  }
+
+  createDocumentTemplate(dto: { name: string; content: string; active?: boolean }) {
+    return this.prisma.defaultDocumentTemplate.create({ data: dto });
+  }
+
+  async updateDocumentTemplate(id: string, dto: { name?: string; content?: string; active?: boolean }) {
+    const existing = await this.prisma.defaultDocumentTemplate.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException('Default document template not found');
+    }
+    return this.prisma.defaultDocumentTemplate.update({ where: { id }, data: dto });
+  }
+
+  async removeDocumentTemplate(id: string) {
+    const existing = await this.prisma.defaultDocumentTemplate.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException('Default document template not found');
+    }
+    await this.prisma.defaultDocumentTemplate.delete({ where: { id } });
+  }
+
   createProcedure(dto: CreateDefaultProcedureDto) {
     return this.prisma.defaultProcedure.create({ data: dto });
   }

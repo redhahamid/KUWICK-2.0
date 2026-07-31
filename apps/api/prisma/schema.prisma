@@ -88,6 +88,7 @@ model Tenant {
   publicHolidays              PublicHoliday[]
   rooms                       Room[]
   queueDisplayConfigs         QueueDisplayConfig[]
+  customDocumentTemplates     CustomDocumentTemplate[]
 
   @@map("tenants")
 }
@@ -1425,6 +1426,49 @@ enum DocumentType {
   REFERRAL
   MEMO
   QUARANTINE
+  // Document builder (D-040) — a document generated from a
+  // CustomDocumentTemplate; Document.title carries its display name.
+  CUSTOM
+}
+
+// Document builder (D-040) — a clinic's own document templates: the copies
+// of platform defaults deployed at tenant creation (sourceDefault kept for
+// provenance) plus any the clinic writes itself. Content is plain text
+// with {{merge.field}} placeholders resolved client-side at generate time
+// (same client-side convention as the Phase A4 hardcoded builders these
+// replace).
+model CustomDocumentTemplate {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  name            String
+  content         String
+  active          Boolean  @default(true)
+  // The DefaultDocumentTemplate this was copied from at tenant creation —
+  // informational only; edits never sync back or forward (D-037's
+  // no-retro-sync rule).
+  sourceDefaultId String?  @map("source_default_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("custom_document_templates")
+}
+
+// Platform console (D-037/D-040) — the "Default Document Templates" the
+// owner curates once; copied into each new tenant. No RLS, like the other
+// default catalogs.
+model DefaultDocumentTemplate {
+  id        String   @id @default(uuid())
+  name      String
+  content   String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("default_document_templates")
 }
 
 // Clinical Operations, Phase A4 (owner feedback round 2). Structured
@@ -1442,6 +1486,9 @@ model Document {
   tenantId        String       @map("tenant_id")
   visitId         String       @map("visit_id")
   type            DocumentType
+  // Display name for CUSTOM documents (the template's name at generate
+  // time) — null for the four built-in types, which label themselves.
+  title           String?
   content         String
   issuedByStaffId String       @map("issued_by_staff_id")
   issuedDate      DateTime     @default(now()) @map("issued_date") @db.Date

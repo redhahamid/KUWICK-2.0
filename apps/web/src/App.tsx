@@ -29,6 +29,8 @@ import { QueueManagementPage } from './clinical/QueueManagementPage';
 import { QueueMonitorPage } from './clinical/QueueMonitorPage';
 import { RoomsPage } from './clinical/RoomsPage';
 import { QueueDisplaySettingsPage } from './clinical/QueueDisplaySettingsPage';
+import { DocumentTemplatesPage } from './clinical/DocumentTemplatesPage';
+import { PlatformDocumentTemplatesPage } from './platform/PlatformDocumentTemplatesPage';
 import { PrintOrderResultPage } from './clinical/PrintOrderResultPage';
 import { ProcedureQueuePage } from './clinical/ProcedureQueuePage';
 import { DoctorSchedulesPage } from './appointment/DoctorSchedulesPage';
@@ -69,6 +71,7 @@ export function App() {
           <Route path="/platform/subscriptions" element={<PlatformSubscriptionsPage />} />
           <Route path="/platform/panel-clinics" element={<PlatformPanelClinicsPage />} />
           <Route path="/platform/procedures" element={<PlatformProceduresPage />} />
+          <Route path="/platform/document-templates" element={<PlatformDocumentTemplatesPage />} />
           <Route path="/platform/settings" element={<PlatformSettingsPage />} />
         </Route>
       </Route>
@@ -102,6 +105,7 @@ export function App() {
             <Route path="/management/operation/diagnoses" element={<DiagnosesDirectoryPage />} />
             <Route path="/management/operation/rooms" element={<RoomsPage />} />
             <Route path="/management/operation/queue-display" element={<QueueDisplaySettingsPage />} />
+            <Route path="/management/operation/document-templates" element={<DocumentTemplatesPage />} />
 
             <Route path="/management/hr/staff" element={<StaffPage />} />
             <Route path="/management/hr/attendance" element={<AttendancePage />} />

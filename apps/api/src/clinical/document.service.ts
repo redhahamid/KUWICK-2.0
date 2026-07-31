@@ -22,6 +22,7 @@ export class DocumentService {
         tenantId: currentTenantId(),
         visitId: visit.id,
         type: dto.type,
+        title: dto.title,
         content: dto.content,
         issuedByStaffId: dto.issuedByStaffId ?? visit.staffId,
         issuedDate: dto.issuedDate ? new Date(dto.issuedDate) : undefined,

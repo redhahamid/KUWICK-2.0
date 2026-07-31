@@ -40,6 +40,7 @@ const MENU_GROUPS = [
       item('/management/operation/diagnoses', 'Diagnoses Directory'),
       item('/management/operation/rooms', 'Rooms & Stations'),
       item('/management/operation/queue-display', 'Queue Screen'),
+      item('/management/operation/document-templates', 'Document Templates'),
     ],
   },
   {
