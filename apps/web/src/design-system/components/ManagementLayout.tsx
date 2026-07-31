@@ -26,6 +26,8 @@ const MENU_GROUPS = [
       item('/management/reports/procedures', 'Procedure Analysis'),
       item('/management/reports/doctors', 'Doctor Performance'),
       item('/management/reports/invoices', 'Invoice Listing'),
+      item('/management/reports/drug-movement', 'Drug Movement'),
+      item('/management/reports/wait-times', 'Waiting Times'),
     ],
   },
   {

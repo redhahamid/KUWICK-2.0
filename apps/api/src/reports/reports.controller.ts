@@ -60,6 +60,16 @@ export class ReportsController {
     return this.reports.getDoctorPerformanceDetailed({ from, to, clinicId });
   }
 
+  @Get('drug-movement')
+  getDrugMovement(@Query('from') from?: string, @Query('to') to?: string, @Query('clinicId') clinicId?: string) {
+    return this.reports.getDrugMovement({ from, to, clinicId });
+  }
+
+  @Get('wait-times')
+  getWaitTimes(@Query('from') from?: string, @Query('to') to?: string, @Query('clinicId') clinicId?: string) {
+    return this.reports.getWaitTimes({ from, to, clinicId });
+  }
+
   @Get('invoices')
   getInvoiceListing(
     @Query('from') from?: string,

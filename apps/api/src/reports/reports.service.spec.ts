@@ -1,5 +1,5 @@
 import { AppointmentStatus, InvoiceStatus } from '@prisma/client';
-import { ReportsService } from './reports.service';
+import { ReportsService, classifyMovement } from './reports.service';
 import { ClaimBatchService } from '../clinical/claim-batch.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 
@@ -7,6 +7,9 @@ function createService() {
   const prisma = {
     invoice: { findMany: jest.fn() },
     appointment: { findMany: jest.fn() },
+    invoiceLine: { findMany: jest.fn() },
+    item: { findMany: jest.fn() },
+    visit: { findMany: jest.fn() },
   } as unknown as TenantScopedPrismaClient;
   const claimBatches = { listOutstanding: jest.fn() } as unknown as ClaimBatchService;
   return { service: new ReportsService(prisma, claimBatches), prisma, claimBatches };
@@ -118,6 +121,75 @@ describe('ReportsService', () => {
 
       expect(claimBatches.listOutstanding).toHaveBeenCalled();
       expect(result).toEqual([{ id: 'batch-1' }]);
+    });
+  });
+
+  // ------ D-042: drug movement + wait times ------
+
+  describe('classifyMovement', () => {
+    it('splits sold items into FAST / MEDIUM / SLOW tertiles', () => {
+      // 6 sold items: ranks 0-1 FAST, 2-3 MEDIUM, 4-5 SLOW.
+      expect(classifyMovement(0, 6)).toBe('FAST');
+      expect(classifyMovement(1, 6)).toBe('FAST');
+      expect(classifyMovement(2, 6)).toBe('MEDIUM');
+      expect(classifyMovement(3, 6)).toBe('MEDIUM');
+      expect(classifyMovement(4, 6)).toBe('SLOW');
+      expect(classifyMovement(5, 6)).toBe('SLOW');
+      expect(classifyMovement(0, 0)).toBe('SLOW');
+    });
+  });
+
+  describe('getDrugMovement', () => {
+    it('aggregates quantity/revenue per item and lists never-sold items as SLOW', async () => {
+      const { service, prisma } = createService();
+      (prisma.invoiceLine.findMany as jest.Mock).mockResolvedValue([
+        { quantity: 2, amount: 16, sourcePrescription: { itemId: 'item-1', item: { name: 'Paracetamol', category: 'Medication' } } },
+        { quantity: 1, amount: 8, sourcePrescription: { itemId: 'item-1', item: { name: 'Paracetamol', category: 'Medication' } } },
+        { quantity: 1, amount: 18, sourcePrescription: { itemId: 'item-2', item: { name: 'Amoxicillin', category: 'Medication' } } },
+      ]);
+      (prisma.item.findMany as jest.Mock).mockResolvedValue([
+        { id: 'item-1', name: 'Paracetamol', category: 'Medication' },
+        { id: 'item-2', name: 'Amoxicillin', category: 'Medication' },
+        { id: 'item-3', name: 'Never Sold Syrup', category: 'Medication' },
+      ]);
+
+      const rows = await service.getDrugMovement({});
+
+      const paracetamol = rows.find((r) => r.itemId === 'item-1');
+      expect(paracetamol).toMatchObject({ quantity: 3, revenue: 24, prescriptions: 2 });
+      const neverSold = rows.find((r) => r.itemId === 'item-3');
+      expect(neverSold).toMatchObject({ quantity: 0, movement: 'SLOW' });
+      // Sorted sold-first by quantity.
+      expect(rows[0].itemId).toBe('item-1');
+    });
+  });
+
+  describe('getWaitTimes', () => {
+    it('computes averages and buckets from ticket/visit timestamps, ignoring insane outliers', async () => {
+      const { service, prisma } = createService();
+      const t0 = new Date('2026-07-01T09:00:00Z');
+      const plus = (minutes: number) => new Date(t0.getTime() + minutes * 60000);
+      (prisma.visit.findMany as jest.Mock).mockResolvedValue([
+        // 10-minute wait, 30-minute service, 40 total.
+        { checkInAt: t0, checkOutAt: plus(40), queueTicket: { createdAt: t0, calledAt: plus(10) } },
+        // 45-minute wait, no checkout yet.
+        { checkInAt: t0, checkOutAt: null, queueTicket: { createdAt: t0, calledAt: plus(45) } },
+        // Forgotten checkout: 20h total — excluded from totals as insane.
+        { checkInAt: t0, checkOutAt: plus(20 * 60), queueTicket: { createdAt: t0, calledAt: plus(5) } },
+      ]);
+
+      const result = await service.getWaitTimes({});
+
+      expect(result.visitCount).toBe(3);
+      expect(result.measuredWaits).toBe(3);
+      expect(result.averageWaitMinutes).toBe(20); // (10 + 45 + 5) / 3
+      expect(result.averageTotalVisitMinutes).toBe(40); // 20h visit excluded
+      expect(result.waitBuckets).toEqual([
+        { bucket: '0-15 min', count: 2 },
+        { bucket: '15-30 min', count: 0 },
+        { bucket: '30-60 min', count: 1 },
+        { bucket: '60+ min', count: 0 },
+      ]);
     });
   });
 });

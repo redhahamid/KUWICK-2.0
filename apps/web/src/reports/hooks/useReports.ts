@@ -6,12 +6,14 @@ import {
   DayEndSummary,
   DoctorPerformance,
   DoctorPerformanceDetailed,
+  DrugMovementRow,
   InvoiceListingRow,
   PatientAnalysis,
   ProcedureAnalysis,
   ReportDateRangeParams,
   SalesAnalysis,
   SalesSummary,
+  WaitTimesSummary,
 } from '../types';
 
 function toQueryString(params: ReportDateRangeParams): string {
@@ -87,6 +89,20 @@ export function useDoctorPerformanceDetailed(params: ReportDateRangeParams) {
   return useQuery({
     queryKey: ['reports-doctor-performance-detailed', params],
     queryFn: () => apiClient.get<DoctorPerformanceDetailed[]>(`/reports/doctor-performance-detailed${toQueryString(params)}`),
+  });
+}
+
+export function useDrugMovement(params: ReportDateRangeParams) {
+  return useQuery({
+    queryKey: ['reports-drug-movement', params],
+    queryFn: () => apiClient.get<DrugMovementRow[]>(`/reports/drug-movement${toQueryString(params)}`),
+  });
+}
+
+export function useWaitTimes(params: ReportDateRangeParams) {
+  return useQuery({
+    queryKey: ['reports-wait-times', params],
+    queryFn: () => apiClient.get<WaitTimesSummary>(`/reports/wait-times${toQueryString(params)}`),
   });
 }
 

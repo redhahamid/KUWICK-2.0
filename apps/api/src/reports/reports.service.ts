@@ -520,6 +520,140 @@ export class ReportsService {
       .sort((a, b) => b.sales - a.sales);
   }
 
+  // Drug movement (D-042, owner requirement "drug revenue — fast moving vs
+  // slow moving") — dispensed-drug sales over PAID invoice lines sourced
+  // from Prescriptions, including never-sold items so slow movers surface.
+  async getDrugMovement(range: ReportDateRange) {
+    const [lines, items] = await Promise.all([
+      this.prisma.invoiceLine.findMany({
+        where: {
+          sourcePrescriptionId: { not: null },
+          invoice: this.paidInvoicesWhere(range),
+        },
+        select: {
+          quantity: true,
+          amount: true,
+          sourcePrescription: { select: { itemId: true, item: { select: { name: true, category: true } } } },
+        },
+      }),
+      this.prisma.item.findMany({ select: { id: true, name: true, category: true } }),
+    ]);
+
+    const byItem = new Map<string, { name: string; category: string | null; quantity: number; revenue: number; prescriptions: number }>();
+    for (const line of lines) {
+      const itemId = line.sourcePrescription?.itemId;
+      if (!itemId) continue;
+      const bucket = byItem.get(itemId) ?? {
+        name: line.sourcePrescription!.item.name,
+        category: line.sourcePrescription!.item.category,
+        quantity: 0,
+        revenue: 0,
+        prescriptions: 0,
+      };
+      bucket.quantity += line.quantity;
+      bucket.revenue += Number(line.amount);
+      bucket.prescriptions += 1;
+      byItem.set(itemId, bucket);
+    }
+
+    const sold = Array.from(byItem.entries())
+      .map(([itemId, bucket]) => ({
+        itemId,
+        name: bucket.name,
+        category: bucket.category,
+        quantity: bucket.quantity,
+        revenue: round2(bucket.revenue),
+        prescriptions: bucket.prescriptions,
+      }))
+      .sort((a, b) => b.quantity - a.quantity);
+
+    const soldIds = new Set(sold.map((row) => row.itemId));
+    const neverSold = items
+      .filter((item) => !soldIds.has(item.id))
+      .map((item) => ({
+        itemId: item.id,
+        name: item.name,
+        category: item.category,
+        quantity: 0,
+        revenue: 0,
+        prescriptions: 0,
+      }));
+
+    return [
+      ...sold.map((row, index) => ({ ...row, movement: classifyMovement(index, sold.length) })),
+      ...neverSold.map((row) => ({ ...row, movement: 'SLOW' as const })),
+    ];
+  }
+
+  // Waiting-time analysis (D-042, owner requirement "waiting-consultation-
+  // dispensary time") — from the timestamps the system already records:
+  // queue-ticket creation → called (waiting), called → check-out
+  // (consultation + dispensary), check-in → check-out (total visit).
+  async getWaitTimes(range: ReportDateRange) {
+    const visits = await this.prisma.visit.findMany({
+      where: {
+        ...dateRangeWhere('checkInAt', range),
+        ...(range.clinicId ? { clinicId: range.clinicId } : {}),
+      },
+      select: {
+        checkInAt: true,
+        checkOutAt: true,
+        queueTicket: { select: { createdAt: true, calledAt: true } },
+      },
+    });
+
+    const MAX_SANE_MINUTES = 8 * 60; // guard against forgotten check-outs skewing averages
+    const waitSamples: number[] = [];
+    const serviceSamples: number[] = [];
+    const totalSamples: number[] = [];
+    const byDay = new Map<string, { waitSum: number; waitCount: number }>();
+    const buckets = { '0-15 min': 0, '15-30 min': 0, '30-60 min': 0, '60+ min': 0 };
+
+    const minutesBetween = (from: Date, to: Date) => Math.round((to.getTime() - from.getTime()) / 60000);
+
+    for (const visit of visits) {
+      const ticket = visit.queueTicket;
+      if (ticket?.calledAt) {
+        const wait = minutesBetween(ticket.createdAt, ticket.calledAt);
+        if (wait >= 0 && wait <= MAX_SANE_MINUTES) {
+          waitSamples.push(wait);
+          if (wait < 15) buckets['0-15 min'] += 1;
+          else if (wait < 30) buckets['15-30 min'] += 1;
+          else if (wait < 60) buckets['30-60 min'] += 1;
+          else buckets['60+ min'] += 1;
+          const day = visit.checkInAt.toISOString().slice(0, 10);
+          const dayBucket = byDay.get(day) ?? { waitSum: 0, waitCount: 0 };
+          dayBucket.waitSum += wait;
+          dayBucket.waitCount += 1;
+          byDay.set(day, dayBucket);
+        }
+        if (visit.checkOutAt) {
+          const service = minutesBetween(ticket.calledAt, visit.checkOutAt);
+          if (service >= 0 && service <= MAX_SANE_MINUTES) serviceSamples.push(service);
+        }
+      }
+      if (visit.checkOutAt) {
+        const total = minutesBetween(visit.checkInAt, visit.checkOutAt);
+        if (total >= 0 && total <= MAX_SANE_MINUTES) totalSamples.push(total);
+      }
+    }
+
+    const average = (samples: number[]) =>
+      samples.length > 0 ? round2(samples.reduce((sum, value) => sum + value, 0) / samples.length) : null;
+
+    return {
+      visitCount: visits.length,
+      measuredWaits: waitSamples.length,
+      averageWaitMinutes: average(waitSamples),
+      averageServiceMinutes: average(serviceSamples),
+      averageTotalVisitMinutes: average(totalSamples),
+      waitBuckets: Object.entries(buckets).map(([bucket, count]) => ({ bucket, count })),
+      byDay: Array.from(byDay.entries())
+        .map(([date, bucket]) => ({ date, averageWaitMinutes: round2(bucket.waitSum / bucket.waitCount) }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    };
+  }
+
   // Invoice / sales listing with status filter — feeds the exportable
   // Invoices table.
   async getInvoiceListing(range: ReportDateRange, status?: InvoiceStatus) {
@@ -571,6 +705,17 @@ export class ReportsService {
 }
 
 const AGE_GROUP_ORDER = ['0-12', '13-17', '18-39', '40-59', '60+', 'Unknown'];
+
+// Fast/slow classification: top third of sold items by quantity = FAST,
+// bottom third (plus never-sold items) = SLOW, middle = MEDIUM. A simple
+// tertile rule — deliberately explainable to a clinic owner at a glance.
+export function classifyMovement(rankIndex: number, soldCount: number): 'FAST' | 'MEDIUM' | 'SLOW' {
+  if (soldCount === 0) return 'SLOW';
+  const tertile = soldCount / 3;
+  if (rankIndex < tertile) return 'FAST';
+  if (rankIndex >= soldCount - tertile) return 'SLOW';
+  return 'MEDIUM';
+}
 
 function ageGroupOf(dob: Date | null, atDate: Date): string {
   if (!dob) return 'Unknown';

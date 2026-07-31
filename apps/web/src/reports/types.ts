@@ -102,6 +102,27 @@ export interface DoctorPerformanceDetailed {
   averageChargePerPatient: number;
 }
 
+// D-042 — drug fast/slow movers + wait times.
+export interface DrugMovementRow {
+  itemId: string;
+  name: string;
+  category: string | null;
+  quantity: number;
+  revenue: number;
+  prescriptions: number;
+  movement: 'FAST' | 'MEDIUM' | 'SLOW';
+}
+
+export interface WaitTimesSummary {
+  visitCount: number;
+  measuredWaits: number;
+  averageWaitMinutes: number | null;
+  averageServiceMinutes: number | null;
+  averageTotalVisitMinutes: number | null;
+  waitBuckets: { bucket: string; count: number }[];
+  byDay: { date: string; averageWaitMinutes: number }[];
+}
+
 export interface InvoiceListingRow {
   id: string;
   invoiceNumber: string;

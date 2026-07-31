@@ -50,6 +50,8 @@ import { PatientAnalysisPage } from './reports/PatientAnalysisPage';
 import { ProcedureAnalysisPage } from './reports/ProcedureAnalysisPage';
 import { DoctorPerformancePage } from './reports/DoctorPerformancePage';
 import { InvoiceListingPage } from './reports/InvoiceListingPage';
+import { DrugMovementPage } from './reports/DrugMovementPage';
+import { WaitTimesPage } from './reports/WaitTimesPage';
 
 export function App() {
   return (
@@ -96,6 +98,8 @@ export function App() {
             <Route path="/management/reports/procedures" element={<ProcedureAnalysisPage />} />
             <Route path="/management/reports/doctors" element={<DoctorPerformancePage />} />
             <Route path="/management/reports/invoices" element={<InvoiceListingPage />} />
+            <Route path="/management/reports/drug-movement" element={<DrugMovementPage />} />
+            <Route path="/management/reports/wait-times" element={<WaitTimesPage />} />
 
             <Route path="/management/operation/clinics" element={<ClinicsPage />} />
             <Route path="/management/operation/services" element={<ServicesPage />} />
