@@ -28,17 +28,21 @@ enum PatientIdentifierType {
 }
 
 model Tenant {
-  id        String   @id @default(uuid())
-  name      String
+  id             String   @id @default(uuid())
+  name           String
   // Phase auth — login identifier, since User.email is only unique *per
   // tenant* (the same email can legitimately exist at two different
   // clinics, D-034). Nullable: existing/legacy tenants may not have one set
   // yet; new tenants created via the platform-admin console always get one.
-  slug      String?  @unique
-  status    String   @default("active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  slug           String?  @unique
+  status         String   @default("active")
+  // Platform console (D-037) — SSM/MEPCSA business registration number,
+  // matching the owner's real system-owner console's Create Clinic form.
+  registrationNo String?  @map("registration_no")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
+  subscriptions               TenantSubscription[]
   clinics                     Clinic[]
   users                       User[]
   patients                    Patient[]
@@ -172,6 +176,98 @@ model PlatformAdmin {
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
   @@map("platform_admins")
+}
+
+// Platform console (D-037) — deliberately outside RLS/tenant scoping, same
+// as PlatformAdmin: these are the system owner's own billing catalog, not
+// any single clinic's data.
+model SubscriptionPlan {
+  id           String   @id @default(uuid())
+  name         String
+  description  String?
+  priceMyr     Decimal  @default(0) @map("price_myr") @db.Decimal(10, 2)
+  durationDays Int      @map("duration_days")
+  maxUsers     Int?     @map("max_users")
+  maxPatients  Int?     @map("max_patients")
+  // Null = unlimited (matches the owner's "Storage: ∞" reference screen).
+  maxStorageMb Int?     @map("max_storage_mb")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  subscriptions TenantSubscription[]
+
+  @@map("subscription_plans")
+}
+
+enum TenantSubscriptionStatus {
+  TRIAL
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+// tenantId carries the ordinary tenant_isolation RLS policy (like every
+// other tenant-scoped table) — a clinic could read its own subscription
+// history someday. The platform console reads/writes across all tenants via
+// the same app.bypass_tenant_scope GUC already used for the tenants table
+// itself (migration 20260731280000, D-036).
+model TenantSubscription {
+  id          String                   @id @default(uuid())
+  tenantId    String                   @map("tenant_id")
+  planId      String?                  @map("plan_id")
+  status      TenantSubscriptionStatus @default(TRIAL)
+  startsAt    DateTime                 @default(now()) @map("starts_at")
+  endsAt      DateTime                 @map("ends_at")
+  cancelledAt DateTime?                @map("cancelled_at")
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
+
+  tenant Tenant            @relation(fields: [tenantId], references: [id])
+  plan   SubscriptionPlan? @relation(fields: [planId], references: [id])
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("tenant_subscriptions")
+}
+
+// Platform console (D-037) — global template catalogs the owner curates
+// once; each gets copied into a new tenant's own table at creation time
+// (the owner's reference screens: "these serve as the initial default list
+// deployed to each clinic"). Deliberately outside RLS, like PlatformAdmin.
+model DefaultPanelClinic {
+  id        String   @id @default(uuid())
+  name      String
+  url       String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("default_panel_clinics")
+}
+
+model DefaultProcedure {
+  id        String   @id @default(uuid())
+  code      String?
+  name      String
+  price     Decimal  @default(0) @db.Decimal(10, 2)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("default_procedures")
+}
+
+// Platform console (D-037) — singleton key/value store for system-wide
+// settings (General/Billing/Notification/LHDN fallback credentials in the
+// owner's reference screens). One row per key, no tenantId — this is the
+// operator's own configuration, not any clinic's.
+model PlatformSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_settings")
 }
 
 model Patient {

@@ -5,10 +5,16 @@ import { PrismaService } from '../core/prisma.service';
 function createService() {
   const prisma = {
     tenant: { create: jest.fn(), findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    clinic: { create: jest.fn() },
+    defaultPanelClinic: { findMany: jest.fn().mockResolvedValue([]) },
+    defaultProcedure: { findMany: jest.fn().mockResolvedValue([]) },
+    panelClinic: { createMany: jest.fn() },
+    serviceCatalog: { createMany: jest.fn() },
+    tenantSubscription: { create: jest.fn() },
     $executeRaw: jest.fn(),
   } as unknown as PrismaService;
-  // Every call wraps in $transaction to set the app.bypass_tenant_scope
-  // GUC first — the mock just runs the callback against the same client.
+  // Every call wraps in $transaction to set a session GUC first — the mock
+  // just runs the callback against the same client.
   (prisma as unknown as { $transaction: jest.Mock }).$transaction = jest.fn((fn: (tx: PrismaService) => unknown) =>
     fn(prisma),
   );
@@ -16,13 +22,60 @@ function createService() {
 }
 
 describe('PlatformTenantService', () => {
-  it('creates a tenant with the given name and slug', async () => {
+  it('creates a tenant with its first clinic', async () => {
     const { service, prisma } = createService();
     (prisma.tenant.create as jest.Mock).mockResolvedValue({ id: 'tenant-1' });
 
+    await service.create({ name: 'New Clinic', slug: 'new-clinic', address: '123 Jalan Alpha', phone: '+60123', email: 'info@new.com' });
+
+    expect(prisma.tenant.create).toHaveBeenCalledWith({
+      data: { name: 'New Clinic', slug: 'new-clinic', registrationNo: undefined },
+    });
+    expect(prisma.clinic.create).toHaveBeenCalledWith({
+      data: { tenantId: 'tenant-1', name: 'New Clinic', address: '123 Jalan Alpha', phone: '+60123', email: 'info@new.com' },
+    });
+    expect(prisma.tenantSubscription.create).not.toHaveBeenCalled();
+  });
+
+  it('copies active default panels and procedures into the new tenant', async () => {
+    const { service, prisma } = createService();
+    (prisma.tenant.create as jest.Mock).mockResolvedValue({ id: 'tenant-1' });
+    (prisma.defaultPanelClinic.findMany as jest.Mock).mockResolvedValue([{ id: 'dp-1', name: 'AIA' }]);
+    (prisma.defaultProcedure.findMany as jest.Mock).mockResolvedValue([
+      { id: 'dproc-1', name: 'XRAY CHEST', code: 'XRAYCHEST', price: 80 },
+    ]);
+
     await service.create({ name: 'New Clinic', slug: 'new-clinic' });
 
-    expect(prisma.tenant.create).toHaveBeenCalledWith({ data: { name: 'New Clinic', slug: 'new-clinic' } });
+    expect(prisma.panelClinic.createMany).toHaveBeenCalledWith({
+      data: [{ tenantId: 'tenant-1', name: 'AIA' }],
+    });
+    expect(prisma.serviceCatalog.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          tenantId: 'tenant-1',
+          name: 'XRAY CHEST',
+          code: 'XRAYCHEST',
+          price: 80,
+          orderType: 'TASK_ORDER',
+          durationMinutesDefault: 15,
+        },
+      ],
+    });
+  });
+
+  it('grants a 14-day trial subscription when startAsTrial is set', async () => {
+    const { service, prisma } = createService();
+    (prisma.tenant.create as jest.Mock).mockResolvedValue({ id: 'tenant-1' });
+
+    await service.create({ name: 'New Clinic', slug: 'new-clinic', startAsTrial: true });
+
+    expect(prisma.tenantSubscription.create).toHaveBeenCalledWith({
+      data: { tenantId: 'tenant-1', status: 'TRIAL', endsAt: expect.any(Date) },
+    });
+    const endsAt = (prisma.tenantSubscription.create as jest.Mock).mock.calls[0][0].data.endsAt as Date;
+    const days = Math.round((endsAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+    expect(days).toBe(14);
   });
 
   it('update throws NotFoundException for a missing tenant', async () => {

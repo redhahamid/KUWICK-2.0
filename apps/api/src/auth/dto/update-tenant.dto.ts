@@ -15,4 +15,8 @@ export class UpdateTenantDto {
   @IsString()
   @IsIn(['active', 'suspended'])
   status?: string;
+
+  @IsOptional()
+  @IsString()
+  registrationNo?: string;
 }

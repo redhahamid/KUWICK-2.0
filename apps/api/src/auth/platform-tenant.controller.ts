@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { PlatformAuthGuard } from './platform-auth.guard';
 import { PlatformTenantService } from './platform-tenant.service';
+import { AuthService } from './auth.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 
@@ -10,7 +11,10 @@ import { UpdateTenantDto } from './dto/update-tenant.dto';
 @Controller('platform/tenants')
 @UseGuards(PlatformAuthGuard)
 export class PlatformTenantController {
-  constructor(private readonly tenants: PlatformTenantService) {}
+  constructor(
+    private readonly tenants: PlatformTenantService,
+    private readonly auth: AuthService,
+  ) {}
 
   @Get()
   findAll() {
@@ -25,5 +29,10 @@ export class PlatformTenantController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateTenantDto) {
     return this.tenants.update(id, dto);
+  }
+
+  @Post(':id/login-as')
+  loginAs(@Param('id') id: string) {
+    return this.auth.loginAsTenant(id);
   }
 }

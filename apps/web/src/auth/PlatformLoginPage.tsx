@@ -44,7 +44,7 @@ export function PlatformLoginPage() {
       }
       const data = (await response.json()) as PlatformLoginResponse;
       setSession({ accessToken: data.accessToken, admin: data.admin });
-      navigate('/platform/tenants');
+      navigate('/platform/dashboard');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to sign in');
     } finally {

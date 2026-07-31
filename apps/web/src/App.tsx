@@ -3,9 +3,16 @@ import { AppLayout } from './design-system/components/AppLayout';
 import { ManagementLayout } from './design-system/components/ManagementLayout';
 import { LoginPage } from './auth/LoginPage';
 import { PlatformLoginPage } from './auth/PlatformLoginPage';
-import { PlatformTenantsPage } from './auth/PlatformTenantsPage';
 import { RequireAuth } from './auth/RequireAuth';
 import { RequirePlatformAuth } from './auth/RequirePlatformAuth';
+import { PlatformLayout } from './platform/PlatformLayout';
+import { PlatformDashboardPage } from './platform/PlatformDashboardPage';
+import { PlatformClinicsPage } from './platform/PlatformClinicsPage';
+import { PlatformPlansPage } from './platform/PlatformPlansPage';
+import { PlatformSubscriptionsPage } from './platform/PlatformSubscriptionsPage';
+import { PlatformPanelClinicsPage } from './platform/PlatformPanelClinicsPage';
+import { PlatformProceduresPage } from './platform/PlatformProceduresPage';
+import { PlatformSettingsPage } from './platform/PlatformSettingsPage';
 import { AppointmentsPage } from './appointment/AppointmentsPage';
 import { ClinicsPage } from './core/ClinicsPage';
 import { PatientsPage } from './core/PatientsPage';
@@ -45,7 +52,17 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/platform/login" element={<PlatformLoginPage />} />
       <Route element={<RequirePlatformAuth />}>
-        <Route path="/platform/tenants" element={<PlatformTenantsPage />} />
+        <Route element={<PlatformLayout />}>
+          <Route path="/platform/dashboard" element={<PlatformDashboardPage />} />
+          <Route path="/platform/clinics" element={<PlatformClinicsPage />} />
+          {/* Old bookmark from the first console iteration. */}
+          <Route path="/platform/tenants" element={<PlatformClinicsPage />} />
+          <Route path="/platform/plans" element={<PlatformPlansPage />} />
+          <Route path="/platform/subscriptions" element={<PlatformSubscriptionsPage />} />
+          <Route path="/platform/panel-clinics" element={<PlatformPanelClinicsPage />} />
+          <Route path="/platform/procedures" element={<PlatformProceduresPage />} />
+          <Route path="/platform/settings" element={<PlatformSettingsPage />} />
+        </Route>
       </Route>
 
       <Route element={<RequireAuth />}>

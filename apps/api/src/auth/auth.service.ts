@@ -145,6 +145,50 @@ export class AuthService {
     });
   }
 
+  // "Login As" (D-037, owner's reference screen) — a platform admin opens a
+  // clinic's own workspace without knowing any password, for support. Finds
+  // the tenant's most-senior active login (OWNER_ADMIN first) and issues
+  // ordinary tenant tokens for it — from that point on the session is
+  // indistinguishable from that staff member logging in themselves.
+  async loginAsTenant(tenantId: string) {
+    const tenant = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.bypass_tenant_scope', 'true', true)`;
+      return tx.tenant.findUnique({ where: { id: tenantId } });
+    });
+    if (!tenant || tenant.status !== 'active') {
+      throw new UnauthorizedException('Unknown or inactive tenant');
+    }
+
+    const staff = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+      const ownerAdmin = await tx.staff.findFirst({
+        where: { active: true, role: 'OWNER_ADMIN', userId: { not: null } },
+        include: { user: true },
+      });
+      if (ownerAdmin) return ownerAdmin;
+      return tx.staff.findFirst({
+        where: { active: true, userId: { not: null } },
+        include: { user: true },
+      });
+    });
+    if (!staff || !staff.user || staff.user.status !== 'active') {
+      throw new UnauthorizedException('This clinic has no active staff login to impersonate');
+    }
+
+    const tokens = this.issueTenantTokens({
+      sub: staff.user.id,
+      tenantId: tenant.id,
+      staffId: staff.id,
+      role: staff.role,
+    });
+    return {
+      ...tokens,
+      user: { id: staff.user.id, email: staff.user.email },
+      staff: { id: staff.id, fullName: staff.fullName, role: staff.role },
+      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
+    };
+  }
+
   async loginPlatformAdmin(dto: PlatformLoginDto) {
     const admin = await this.prisma.platformAdmin.findUnique({ where: { email: dto.email } });
     if (!admin || !admin.active) {

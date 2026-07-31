@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, Matches, MinLength } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 
 export class CreateTenantDto {
   @IsString()
@@ -11,4 +11,27 @@ export class CreateTenantDto {
   @IsNotEmpty()
   @Matches(/^[a-z0-9-]+$/, { message: 'slug may only contain lowercase letters, numbers, and hyphens' })
   slug!: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  // SSM/MEPCSA business registration number (D-037).
+  @IsOptional()
+  @IsString()
+  registrationNo?: string;
+
+  // Platform console (D-037) — grants a 14-day trial TenantSubscription
+  // immediately, matching the owner's reference "Start as Trial" checkbox.
+  @IsOptional()
+  @IsBoolean()
+  startAsTrial?: boolean;
 }
