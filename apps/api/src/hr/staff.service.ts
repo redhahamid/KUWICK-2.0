@@ -1,5 +1,6 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { Role } from '@prisma/client';
+import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, Role } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 import {
   TENANT_SCOPED_PRISMA,
   TenantScopedPrismaClient,
@@ -9,6 +10,7 @@ import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 
 const DOCTOR_ROLES: Role[] = [Role.DOCTOR_RESIDENT, Role.DOCTOR_LOCUM];
+const PASSWORD_HASH_ROUNDS = 10;
 
 @Injectable()
 export class StaffService {
@@ -16,8 +18,29 @@ export class StaffService {
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
   ) {}
 
-  create(dto: CreateStaffDto) {
-    return this.prisma.staff.create({ data: { ...dto, tenantId: currentTenantId() } });
+  async create(dto: CreateStaffDto) {
+    const { loginEmail, loginPassword, ...staffFields } = dto;
+    const tenantId = currentTenantId();
+
+    if (!loginEmail || !loginPassword) {
+      return this.prisma.staff.create({ data: { ...staffFields, tenantId } });
+    }
+
+    let userId: string;
+    try {
+      const passwordHash = await bcrypt.hash(loginPassword, PASSWORD_HASH_ROUNDS);
+      const user = await this.prisma.user.create({
+        data: { tenantId, email: loginEmail, passwordHash },
+      });
+      userId = user.id;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('A user with this email already exists for this clinic');
+      }
+      throw error;
+    }
+
+    return this.prisma.staff.create({ data: { ...staffFields, userId, tenantId } });
   }
 
   findAll() {

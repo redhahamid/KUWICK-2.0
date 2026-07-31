@@ -2,12 +2,11 @@ import { Provider } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { tenantContextStorage } from './tenant-context';
 
-// TODO(real-auth): see docs/DECISIONS.md D-017. This is the query-wrapping half
-// of the interim tenant-context mechanism; the request-scoping half is
-// TenantContextGuard. Every model query run through the injected
+// Query-wrapping half of the tenant-context mechanism; the request-scoping
+// half is TenantContextMiddleware. Every model query run through the injected
 // TENANT_SCOPED_PRISMA client first sets the RLS session variable in the same
 // transaction as the query itself — Prisma's own documented pattern for RLS
-// integration (a bare SET LOCAL in the guard alone is not reliable under
+// integration (a bare SET LOCAL in the middleware alone is not reliable under
 // connection pooling).
 export const TENANT_SCOPED_PRISMA = Symbol('TENANT_SCOPED_PRISMA');
 

@@ -1,4 +1,4 @@
-import { useTenantStore } from './tenant-store';
+import { useAuthStore } from './auth-store';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
 
@@ -26,17 +26,59 @@ function extractMessage(body: unknown, fallback: string): string {
   return fallback;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const { tenantId } = useTenantStore.getState();
+function authHeader(): Record<string, string> {
+  const { accessToken } = useAuthStore.getState();
+  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+}
+
+// Real auth (D-034) — a 401 tries exactly one silent refresh-and-retry
+// before giving up and sending the user back to /login. This is the one
+// place in the app that knows how to recover from an expired access token;
+// every hook/page above this just sees a normal (or failed) response.
+async function refreshAccessToken(): Promise<string | null> {
+  const { refreshToken, setTokens, clearAuth } = useAuthStore.getState();
+  if (!refreshToken) return null;
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!response.ok) {
+      clearAuth();
+      return null;
+    }
+    const data = (await response.json()) as { accessToken: string; refreshToken: string };
+    setTokens(data.accessToken, data.refreshToken);
+    return data.accessToken;
+  } catch {
+    clearAuth();
+    return null;
+  }
+}
+
+function redirectToLogin(): never {
+  useAuthStore.getState().clearAuth();
+  window.location.href = '/login';
+  throw new ApiError('Session expired', 401, null);
+}
+
+async function request<T>(path: string, init?: RequestInit, retried = false): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    ...authHeader(),
     ...(init?.headers as Record<string, string> | undefined),
   };
-  if (tenantId) {
-    headers['x-tenant-id'] = tenantId;
-  }
 
   const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+
+  if (response.status === 401 && !retried) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      return request<T>(path, init, true);
+    }
+    redirectToLogin();
+  }
 
   if (!response.ok) {
     let body: unknown = null;
@@ -58,12 +100,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 // boundary, which it can only do if we let it (setting one manually breaks
 // the boundary the FormData body actually uses).
 async function requestFile<T>(path: string, formData: FormData): Promise<T> {
-  const { tenantId } = useTenantStore.getState();
-  const headers: Record<string, string> = {};
-  if (tenantId) {
-    headers['x-tenant-id'] = tenantId;
+  const response = await fetch(`${API_BASE_URL}${path}`, { method: 'POST', headers: authHeader(), body: formData });
+  if (response.status === 401) {
+    redirectToLogin();
   }
-  const response = await fetch(`${API_BASE_URL}${path}`, { method: 'POST', headers, body: formData });
   if (!response.ok) {
     let body: unknown = null;
     try {
@@ -77,12 +117,10 @@ async function requestFile<T>(path: string, formData: FormData): Promise<T> {
 }
 
 export async function downloadFile(path: string, fileName: string): Promise<void> {
-  const { tenantId } = useTenantStore.getState();
-  const headers: Record<string, string> = {};
-  if (tenantId) {
-    headers['x-tenant-id'] = tenantId;
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers: authHeader() });
+  if (response.status === 401) {
+    redirectToLogin();
   }
-  const response = await fetch(`${API_BASE_URL}${path}`, { headers });
   if (!response.ok) {
     throw new ApiError(response.statusText, response.status, null);
   }
@@ -96,15 +134,13 @@ export async function downloadFile(path: string, fileName: string): Promise<void
 }
 
 // For inline display (e.g. an X-ray <img>), not download — a plain <img
-// src="..."> can't send the x-tenant-id header, so the bytes have to be
+// src="..."> can't send the Authorization header, so the bytes have to be
 // fetched here and handed back as an object URL. Caller owns revoking it.
 export async function fetchBlobUrl(path: string): Promise<string> {
-  const { tenantId } = useTenantStore.getState();
-  const headers: Record<string, string> = {};
-  if (tenantId) {
-    headers['x-tenant-id'] = tenantId;
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers: authHeader() });
+  if (response.status === 401) {
+    redirectToLogin();
   }
-  const response = await fetch(`${API_BASE_URL}${path}`, { headers });
   if (!response.ok) {
     throw new ApiError(response.statusText, response.status, null);
   }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Drawer, Form, Input, message, Select, Space, Table, Typography } from 'antd';
+import { Button, Checkbox, Drawer, Form, Input, message, Select, Space, Table, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { Role } from '@kuwick/shared';
 import { useStaff, useCreateStaff } from './hooks/useStaff';
@@ -10,13 +10,18 @@ const { Title } = Typography;
 
 const ROLE_OPTIONS = Object.values(Role).map((role) => ({ value: role, label: role }));
 
+interface StaffFormValues extends CreateStaffDto {
+  setupLogin?: boolean;
+}
+
 export function StaffPage() {
   const { data: staff, isLoading } = useStaff();
   const createStaff = useCreateStaff();
   const [open, setOpen] = useState(false);
-  const [form] = Form.useForm<CreateStaffDto>();
+  const [form] = Form.useForm<StaffFormValues>();
+  const setupLogin = Form.useWatch('setupLogin', form);
 
-  const handleSubmit = async (values: CreateStaffDto) => {
+  const handleSubmit = async ({ setupLogin: _setupLogin, ...values }: StaffFormValues) => {
     try {
       await createStaff.mutateAsync(values);
       message.success('Staff member created');
@@ -59,6 +64,27 @@ export function StaffPage() {
           <Form.Item name="staffNumber" label="Staff Number">
             <Input />
           </Form.Item>
+          <Form.Item name="setupLogin" valuePropName="checked" style={{ marginBottom: setupLogin ? 12 : 24 }}>
+            <Checkbox>Set up login for this staff member</Checkbox>
+          </Form.Item>
+          {setupLogin && (
+            <>
+              <Form.Item
+                name="loginEmail"
+                label="Login Email"
+                rules={[{ required: setupLogin, type: 'email', message: 'Enter a valid email' }]}
+              >
+                <Input placeholder="staff@clinic.com" />
+              </Form.Item>
+              <Form.Item
+                name="loginPassword"
+                label="Temporary Password"
+                rules={[{ required: setupLogin, min: 8, message: 'At least 8 characters' }]}
+              >
+                <Input.Password />
+              </Form.Item>
+            </>
+          )}
           <Button type="primary" htmlType="submit" loading={createStaff.isPending} block>
             Create
           </Button>

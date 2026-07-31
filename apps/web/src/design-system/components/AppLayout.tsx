@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
-import { Avatar, Dropdown, Layout, Menu, Input, Space, Typography } from 'antd';
+import { useMemo } from 'react';
+import { Avatar, Dropdown, Layout, Menu, Space, Typography } from 'antd';
 import { ArrowLeftOutlined, LogoutOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useTenantStore } from '../../core/tenant-store';
+import { useAuthStore } from '../../core/auth-store';
 
 const { Header, Content } = Layout;
 const { Text } = Typography;
@@ -35,18 +35,23 @@ const PRIMARY_NAV_ITEMS = [
 export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const tenantId = useTenantStore((state) => state.tenantId);
-  const setTenantId = useTenantStore((state) => state.setTenantId);
-  const [draftTenantId, setDraftTenantId] = useState(tenantId ?? '');
+  const staff = useAuthStore((state) => state.staff);
+  const tenant = useAuthStore((state) => state.tenant);
+  const clearAuth = useAuthStore((state) => state.clearAuth);
 
   const inManagement = location.pathname.startsWith('/management');
+
+  const handleLogout = () => {
+    clearAuth();
+    navigate('/login');
+  };
 
   const userMenuItems = useMemo(
     () =>
       inManagement
         ? [
             { key: 'back', icon: <ArrowLeftOutlined />, label: 'Back to Main Menu', onClick: () => navigate('/appointments') },
-            { key: 'logout', icon: <LogoutOutlined />, label: 'Logout', disabled: true },
+            { key: 'logout', icon: <LogoutOutlined />, label: 'Logout', onClick: handleLogout },
           ]
         : [
             {
@@ -55,8 +60,9 @@ export function AppLayout() {
               label: 'Management',
               onClick: () => navigate('/management/operation/clinics'),
             },
-            { key: 'logout', icon: <LogoutOutlined />, label: 'Logout', disabled: true },
+            { key: 'logout', icon: <LogoutOutlined />, label: 'Logout', onClick: handleLogout },
           ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [inManagement, navigate],
   );
 
@@ -98,17 +104,12 @@ export function AppLayout() {
         )}
 
         <Space size={12} style={{ flexShrink: 0 }}>
-          {/* Interim tenant context (docs/DECISIONS.md D-017) — replaced
-              by a real session once auth exists. */}
-          <Text type="secondary">Tenant ID:</Text>
-          <Input
-            style={{ width: 260 }}
-            placeholder="paste a tenant UUID"
-            value={draftTenantId}
-            onChange={(event) => setDraftTenantId(event.target.value)}
-            onBlur={() => setTenantId(draftTenantId.trim() || null)}
-            onPressEnter={() => setTenantId(draftTenantId.trim() || null)}
-          />
+          <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>{staff?.fullName}</div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {tenant?.name}
+            </Text>
+          </div>
           <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
             <Avatar style={{ cursor: 'pointer', backgroundColor: '#4338ca' }} icon={<UserOutlined />} />
           </Dropdown>

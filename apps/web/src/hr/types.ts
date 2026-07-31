@@ -13,6 +13,10 @@ export interface CreateStaffDto {
   role: Role;
   fullName: string;
   staffNumber?: string;
+  // Login credentials (D-034) — optional; give both to let this staff
+  // member sign in, omit both to leave them without a login.
+  loginEmail?: string;
+  loginPassword?: string;
 }
 
 // HR, Phase 1c. Leave request/approval workflow — no accrual balances or
