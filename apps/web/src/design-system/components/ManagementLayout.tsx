@@ -18,7 +18,15 @@ const MENU_GROUPS = [
   {
     type: 'group' as const,
     label: 'Reports',
-    children: [item('/management/reports', 'Executive Dashboard')],
+    children: [
+      item('/management/reports', 'Executive Dashboard'),
+      item('/management/reports/day-end', 'Day-End Closing'),
+      item('/management/reports/sales', 'Sales Analysis'),
+      item('/management/reports/patients', 'Patient Analysis'),
+      item('/management/reports/procedures', 'Procedure Analysis'),
+      item('/management/reports/doctors', 'Doctor Performance'),
+      item('/management/reports/invoices', 'Invoice Listing'),
+    ],
   },
   {
     type: 'group' as const,

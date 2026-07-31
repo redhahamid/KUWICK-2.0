@@ -42,6 +42,12 @@ import { NegativeStockPage } from './inventory/NegativeStockPage';
 import { ProcurementRequestsPage } from './inventory/ProcurementRequestsPage';
 import { PurchaseOrdersPage } from './inventory/PurchaseOrdersPage';
 import { ReportsPage } from './reports/ReportsPage';
+import { DayEndPage } from './reports/DayEndPage';
+import { SalesAnalysisPage } from './reports/SalesAnalysisPage';
+import { PatientAnalysisPage } from './reports/PatientAnalysisPage';
+import { ProcedureAnalysisPage } from './reports/ProcedureAnalysisPage';
+import { DoctorPerformancePage } from './reports/DoctorPerformancePage';
+import { InvoiceListingPage } from './reports/InvoiceListingPage';
 
 export function App() {
   return (
@@ -81,6 +87,12 @@ export function App() {
               CMS's own admin-panel separation). */}
           <Route element={<ManagementLayout />}>
             <Route path="/management/reports" element={<ReportsPage />} />
+            <Route path="/management/reports/day-end" element={<DayEndPage />} />
+            <Route path="/management/reports/sales" element={<SalesAnalysisPage />} />
+            <Route path="/management/reports/patients" element={<PatientAnalysisPage />} />
+            <Route path="/management/reports/procedures" element={<ProcedureAnalysisPage />} />
+            <Route path="/management/reports/doctors" element={<DoctorPerformancePage />} />
+            <Route path="/management/reports/invoices" element={<InvoiceListingPage />} />
 
             <Route path="/management/operation/clinics" element={<ClinicsPage />} />
             <Route path="/management/operation/services" element={<ServicesPage />} />

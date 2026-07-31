@@ -156,4 +156,428 @@ export class ReportsService {
   getPanelAging() {
     return this.claimBatches.listOutstanding();
   }
+
+  // ---------------------------------------------------------------------
+  // Report suite (D-039) — built to the owner's own Power BI file
+  // (docs/PROPOSED_ADDENDUM_2026-07-31_powerbi-report-reference.md). All
+  // read-only aggregation over PAID invoices / visits, same as above.
+  // ---------------------------------------------------------------------
+
+  // Revenue category, matching the reference's CONSULTATION / DRUGS /
+  // SERVICES / OTHERS split. Heuristic by line provenance: a line pulled
+  // from a Prescription is Drugs, from an OrderService is Services, a
+  // description containing "consult" is Consultation, anything else Others.
+  private categorizeLine(line: { sourcePrescriptionId: string | null; sourceOrderServiceId: string | null; description: string }): string {
+    if (line.sourcePrescriptionId) return 'Drugs';
+    if (line.sourceOrderServiceId) return 'Services';
+    if (/consult/i.test(line.description)) return 'Consultation';
+    return 'Others';
+  }
+
+  private paidInvoicesWhere(range: ReportDateRange) {
+    return {
+      status: InvoiceStatus.PAID,
+      ...dateRangeWhere('paidAt', range),
+      ...(range.clinicId ? { visit: { clinicId: range.clinicId } } : {}),
+    };
+  }
+
+  // Day-End Closing — the owner's "closing that day" summary: total sales,
+  // panel vs cash patients, cash collections split by payment method,
+  // panel billings split by panel company with patient counts.
+  async getDayEndSummary(clinicId: string | undefined, date: string) {
+    const invoices = await this.prisma.invoice.findMany({
+      where: this.paidInvoicesWhere({ from: date, to: date, clinicId }),
+      select: {
+        totalAmount: true,
+        patientPaidAmount: true,
+        panelCoveredAmount: true,
+        paymentMethod: true,
+        visit: { select: { billingType: true, panelClinic: { select: { name: true } } } },
+      },
+    });
+
+    let totalSales = 0;
+    let cashCollected = 0;
+    let panelBilled = 0;
+    let panelPatients = 0;
+    let cashPatients = 0;
+    const byPaymentMethod = new Map<string, { amount: number; count: number }>();
+    const byPanel = new Map<string, { amount: number; patients: number }>();
+
+    for (const invoice of invoices) {
+      totalSales += Number(invoice.totalAmount);
+      cashCollected += Number(invoice.patientPaidAmount);
+      panelBilled += Number(invoice.panelCoveredAmount);
+      const isPanel = Number(invoice.panelCoveredAmount) > 0 || !!invoice.visit.panelClinic;
+      if (isPanel) {
+        panelPatients += 1;
+        const panelName = invoice.visit.panelClinic?.name ?? invoice.visit.billingType;
+        const bucket = byPanel.get(panelName) ?? { amount: 0, patients: 0 };
+        bucket.amount += Number(invoice.panelCoveredAmount);
+        bucket.patients += 1;
+        byPanel.set(panelName, bucket);
+      } else {
+        cashPatients += 1;
+      }
+      // Payment method applies to what the patient paid at the counter.
+      if (Number(invoice.patientPaidAmount) > 0) {
+        const method = invoice.paymentMethod ?? 'UNKNOWN';
+        const bucket = byPaymentMethod.get(method) ?? { amount: 0, count: 0 };
+        bucket.amount += Number(invoice.patientPaidAmount);
+        bucket.count += 1;
+        byPaymentMethod.set(method, bucket);
+      }
+    }
+
+    const unpaidCount = await this.prisma.invoice.count({
+      where: {
+        status: InvoiceStatus.UNPAID,
+        ...dateRangeWhere('createdAt', { from: date, to: date }),
+        ...(clinicId ? { visit: { clinicId } } : {}),
+      },
+    });
+
+    return {
+      date,
+      invoiceCount: invoices.length,
+      totalSales: round2(totalSales),
+      cashCollected: round2(cashCollected),
+      panelBilled: round2(panelBilled),
+      cashPatients,
+      panelPatients,
+      unpaidCount,
+      byPaymentMethod: Array.from(byPaymentMethod.entries()).map(([paymentMethod, bucket]) => ({
+        paymentMethod,
+        amount: round2(bucket.amount),
+        count: bucket.count,
+      })),
+      byPanel: Array.from(byPanel.entries())
+        .map(([panelName, bucket]) => ({ panelName, amount: round2(bucket.amount), patients: bucket.patients }))
+        .sort((a, b) => b.amount - a.amount),
+    };
+  }
+
+  // Sales Analysis — the reference's SALES ANALYSIS pages: panel vs
+  // non-panel sales, revenue by category, % of sales by doctor / by panel
+  // company, average charge per patient (overall / panel / non-panel),
+  // daily trend of sales + patient count.
+  async getSalesAnalysis(range: ReportDateRange) {
+    const invoices = await this.prisma.invoice.findMany({
+      where: this.paidInvoicesWhere(range),
+      select: {
+        totalAmount: true,
+        patientPaidAmount: true,
+        panelCoveredAmount: true,
+        paidAt: true,
+        lines: { select: { amount: true, description: true, sourcePrescriptionId: true, sourceOrderServiceId: true } },
+        visit: {
+          select: {
+            staff: { select: { fullName: true } },
+            panelClinic: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    let totalSales = 0;
+    let panelSales = 0;
+    let nonPanelSales = 0;
+    let panelInvoices = 0;
+    let nonPanelInvoices = 0;
+    const byCategory = new Map<string, number>();
+    const byDoctor = new Map<string, number>();
+    const byPanel = new Map<string, number>();
+    const byDay = new Map<string, { sales: number; patients: number }>();
+
+    for (const invoice of invoices) {
+      const total = Number(invoice.totalAmount);
+      totalSales += total;
+      const isPanel = Number(invoice.panelCoveredAmount) > 0 || !!invoice.visit.panelClinic;
+      if (isPanel) {
+        panelSales += total;
+        panelInvoices += 1;
+        const panelName = invoice.visit.panelClinic?.name ?? 'Panel';
+        byPanel.set(panelName, (byPanel.get(panelName) ?? 0) + total);
+      } else {
+        nonPanelSales += total;
+        nonPanelInvoices += 1;
+      }
+      const doctor = invoice.visit.staff.fullName;
+      byDoctor.set(doctor, (byDoctor.get(doctor) ?? 0) + total);
+      for (const line of invoice.lines) {
+        const category = this.categorizeLine(line);
+        byCategory.set(category, (byCategory.get(category) ?? 0) + Number(line.amount));
+      }
+      if (invoice.paidAt) {
+        const day = invoice.paidAt.toISOString().slice(0, 10);
+        const bucket = byDay.get(day) ?? { sales: 0, patients: 0 };
+        bucket.sales += total;
+        bucket.patients += 1;
+        byDay.set(day, bucket);
+      }
+    }
+
+    return {
+      totalSales: round2(totalSales),
+      panelSales: round2(panelSales),
+      nonPanelSales: round2(nonPanelSales),
+      averageChargePerPatient: invoices.length > 0 ? round2(totalSales / invoices.length) : 0,
+      averageChargePerPanelPatient: panelInvoices > 0 ? round2(panelSales / panelInvoices) : 0,
+      averageChargePerNonPanelPatient: nonPanelInvoices > 0 ? round2(nonPanelSales / nonPanelInvoices) : 0,
+      byCategory: Array.from(byCategory.entries()).map(([category, amount]) => ({ category, amount: round2(amount) })),
+      byDoctor: Array.from(byDoctor.entries())
+        .map(([doctorName, amount]) => ({ doctorName, amount: round2(amount) }))
+        .sort((a, b) => b.amount - a.amount),
+      byPanel: Array.from(byPanel.entries())
+        .map(([panelName, amount]) => ({ panelName, amount: round2(amount) }))
+        .sort((a, b) => b.amount - a.amount),
+      byDay: Array.from(byDay.entries())
+        .map(([date, bucket]) => ({ date, sales: round2(bucket.sales), patients: bucket.patients }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    };
+  }
+
+  // Patient Analysis — the reference's PATIENT ANALYSIS page: new vs
+  // existing, panel vs non-panel, gender, age group, % by panel,
+  // attendance by hour and by day of week. Visit-grain over checkInAt.
+  async getPatientAnalysis(range: ReportDateRange) {
+    const visits = await this.prisma.visit.findMany({
+      where: {
+        ...dateRangeWhere('checkInAt', range),
+        ...(range.clinicId ? { clinicId: range.clinicId } : {}),
+      },
+      select: {
+        checkInAt: true,
+        patientId: true,
+        panelClinicId: true,
+        panelClinic: { select: { name: true } },
+        patient: { select: { dob: true, gender: true, createdAt: true } },
+      },
+    });
+
+    const rangeStart = range.from ? new Date(range.from) : null;
+    let newPatients = 0;
+    let existingPatients = 0;
+    let panelVisits = 0;
+    let cashVisits = 0;
+    const byGender = new Map<string, number>();
+    const byAgeGroup = new Map<string, number>();
+    const byPanel = new Map<string, number>();
+    const byHour = new Map<number, number>();
+    const byDayOfWeek = new Map<string, number>();
+    const seenPatients = new Set<string>();
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    for (const visit of visits) {
+      // "New" = the patient record itself was created inside the range —
+      // a first-ever registration, not merely their first visit this month.
+      if (!seenPatients.has(visit.patientId)) {
+        seenPatients.add(visit.patientId);
+        if (rangeStart && visit.patient.createdAt >= rangeStart) newPatients += 1;
+        else existingPatients += 1;
+      }
+      if (visit.panelClinicId) {
+        panelVisits += 1;
+        byPanel.set(visit.panelClinic?.name ?? 'Panel', (byPanel.get(visit.panelClinic?.name ?? 'Panel') ?? 0) + 1);
+      } else {
+        cashVisits += 1;
+      }
+      const gender = visit.patient.gender ?? 'Unknown';
+      byGender.set(gender, (byGender.get(gender) ?? 0) + 1);
+      const ageGroup = ageGroupOf(visit.patient.dob, visit.checkInAt);
+      byAgeGroup.set(ageGroup, (byAgeGroup.get(ageGroup) ?? 0) + 1);
+      byHour.set(visit.checkInAt.getHours(), (byHour.get(visit.checkInAt.getHours()) ?? 0) + 1);
+      const dayName = dayNames[visit.checkInAt.getDay()];
+      byDayOfWeek.set(dayName, (byDayOfWeek.get(dayName) ?? 0) + 1);
+    }
+
+    return {
+      totalVisits: visits.length,
+      uniquePatients: seenPatients.size,
+      newPatients,
+      existingPatients,
+      panelVisits,
+      cashVisits,
+      byGender: Array.from(byGender.entries()).map(([gender, count]) => ({ gender, count })),
+      byAgeGroup: Array.from(byAgeGroup.entries())
+        .map(([ageGroup, count]) => ({ ageGroup, count }))
+        .sort((a, b) => AGE_GROUP_ORDER.indexOf(a.ageGroup) - AGE_GROUP_ORDER.indexOf(b.ageGroup)),
+      byPanel: Array.from(byPanel.entries())
+        .map(([panelName, count]) => ({ panelName, count }))
+        .sort((a, b) => b.count - a.count),
+      byHour: Array.from({ length: 24 }, (_, hour) => ({ hour, count: byHour.get(hour) ?? 0 })),
+      byDayOfWeek: dayNames.map((day) => ({ day, count: byDayOfWeek.get(day) ?? 0 })),
+    };
+  }
+
+  // Procedure Analysis — the reference's PROCEDURE ANALYSIS page: revenue
+  // and count by charge description and by charge-description group
+  // (ServiceCatalog.category), over PAID invoice lines sourced from
+  // OrderServices.
+  async getProcedureAnalysis(range: ReportDateRange) {
+    const lines = await this.prisma.invoiceLine.findMany({
+      where: {
+        sourceOrderServiceId: { not: null },
+        invoice: this.paidInvoicesWhere(range),
+      },
+      select: {
+        description: true,
+        amount: true,
+        sourceOrderService: {
+          select: { serviceCatalog: { select: { category: true } }, requestedBy: { select: { fullName: true } } },
+        },
+      },
+    });
+
+    const byDescription = new Map<string, { revenue: number; count: number }>();
+    const byGroup = new Map<string, { revenue: number; count: number }>();
+    const byDoctor = new Map<string, number>();
+    let totalRevenue = 0;
+
+    for (const line of lines) {
+      totalRevenue += Number(line.amount);
+      const description = line.description;
+      const descBucket = byDescription.get(description) ?? { revenue: 0, count: 0 };
+      descBucket.revenue += Number(line.amount);
+      descBucket.count += 1;
+      byDescription.set(description, descBucket);
+      const group = line.sourceOrderService?.serviceCatalog?.category ?? 'Uncategorised';
+      const groupBucket = byGroup.get(group) ?? { revenue: 0, count: 0 };
+      groupBucket.revenue += Number(line.amount);
+      groupBucket.count += 1;
+      byGroup.set(group, groupBucket);
+      const doctor = line.sourceOrderService?.requestedBy?.fullName ?? 'Unassigned';
+      byDoctor.set(doctor, (byDoctor.get(doctor) ?? 0) + Number(line.amount));
+    }
+
+    const toSorted = (map: Map<string, { revenue: number; count: number }>, key: string) =>
+      Array.from(map.entries())
+        .map(([name, bucket]) => ({ [key]: name, revenue: round2(bucket.revenue), count: bucket.count }))
+        .sort((a, b) => (b.revenue as number) - (a.revenue as number));
+
+    return {
+      totalRevenue: round2(totalRevenue),
+      lineCount: lines.length,
+      byDescription: toSorted(byDescription, 'description'),
+      byGroup: toSorted(byGroup, 'group'),
+      byDoctor: Array.from(byDoctor.entries())
+        .map(([doctorName, revenue]) => ({ doctorName, revenue: round2(revenue) }))
+        .sort((a, b) => b.revenue - a.revenue),
+    };
+  }
+
+  // Doctor Performance (extended, D-039) — adds the reference's per-doctor
+  // Consultation/Drugs/Services/Others revenue split and average charge.
+  // The reference's per-doctor SCORE is a DAX measure whose formula is not
+  // recoverable from the report layout — deliberately not invented (same
+  // treatment as OQ#2's incentive formula).
+  async getDoctorPerformanceDetailed(range: ReportDateRange) {
+    const invoices = await this.prisma.invoice.findMany({
+      where: this.paidInvoicesWhere(range),
+      select: {
+        totalAmount: true,
+        lines: { select: { amount: true, description: true, sourcePrescriptionId: true, sourceOrderServiceId: true } },
+        visit: { select: { staffId: true, staff: { select: { fullName: true } } } },
+      },
+    });
+
+    interface DoctorBucket {
+      staffName: string;
+      patients: number;
+      sales: number;
+      categories: Map<string, number>;
+    }
+    const byStaff = new Map<string, DoctorBucket>();
+    for (const invoice of invoices) {
+      const bucket = byStaff.get(invoice.visit.staffId) ?? {
+        staffName: invoice.visit.staff.fullName,
+        patients: 0,
+        sales: 0,
+        categories: new Map<string, number>(),
+      };
+      bucket.patients += 1;
+      bucket.sales += Number(invoice.totalAmount);
+      for (const line of invoice.lines) {
+        const category = this.categorizeLine(line);
+        bucket.categories.set(category, (bucket.categories.get(category) ?? 0) + Number(line.amount));
+      }
+      byStaff.set(invoice.visit.staffId, bucket);
+    }
+
+    return Array.from(byStaff.entries())
+      .map(([staffId, bucket]) => ({
+        staffId,
+        staffName: bucket.staffName,
+        patients: bucket.patients,
+        sales: round2(bucket.sales),
+        consultationRevenue: round2(bucket.categories.get('Consultation') ?? 0),
+        drugsRevenue: round2(bucket.categories.get('Drugs') ?? 0),
+        servicesRevenue: round2(bucket.categories.get('Services') ?? 0),
+        othersRevenue: round2(bucket.categories.get('Others') ?? 0),
+        averageChargePerPatient: bucket.patients > 0 ? round2(bucket.sales / bucket.patients) : 0,
+      }))
+      .sort((a, b) => b.sales - a.sales);
+  }
+
+  // Invoice / sales listing with status filter — feeds the exportable
+  // Invoices table.
+  async getInvoiceListing(range: ReportDateRange, status?: InvoiceStatus) {
+    const invoices = await this.prisma.invoice.findMany({
+      where: {
+        ...(status ? { status } : {}),
+        ...dateRangeWhere(status === InvoiceStatus.PAID ? 'paidAt' : 'createdAt', range),
+        ...(range.clinicId ? { visit: { clinicId: range.clinicId } } : {}),
+      },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        status: true,
+        totalAmount: true,
+        patientPaidAmount: true,
+        panelCoveredAmount: true,
+        paymentMethod: true,
+        paidAt: true,
+        createdAt: true,
+        visit: {
+          select: {
+            billingType: true,
+            patient: { select: { name: true } },
+            staff: { select: { fullName: true } },
+            panelClinic: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
+
+    return invoices.map((invoice) => ({
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      status: invoice.status,
+      patientName: invoice.visit.patient.name,
+      doctorName: invoice.visit.staff.fullName,
+      billingType: invoice.visit.billingType,
+      panelName: invoice.visit.panelClinic?.name ?? null,
+      totalAmount: Number(invoice.totalAmount),
+      patientPaidAmount: Number(invoice.patientPaidAmount),
+      panelCoveredAmount: Number(invoice.panelCoveredAmount),
+      paymentMethod: invoice.paymentMethod,
+      paidAt: invoice.paidAt,
+      createdAt: invoice.createdAt,
+    }));
+  }
+}
+
+const AGE_GROUP_ORDER = ['0-12', '13-17', '18-39', '40-59', '60+', 'Unknown'];
+
+function ageGroupOf(dob: Date | null, atDate: Date): string {
+  if (!dob) return 'Unknown';
+  const age = Math.floor((atDate.getTime() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+  if (age <= 12) return '0-12';
+  if (age <= 17) return '13-17';
+  if (age <= 39) return '18-39';
+  if (age <= 59) return '40-59';
+  return '60+';
 }

@@ -1,7 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../core/api-client';
 import { OutstandingClaimBatch } from '../../clinical/types';
-import { AppointmentAnalytics, DoctorPerformance, ReportDateRangeParams, SalesSummary } from '../types';
+import {
+  AppointmentAnalytics,
+  DayEndSummary,
+  DoctorPerformance,
+  DoctorPerformanceDetailed,
+  InvoiceListingRow,
+  PatientAnalysis,
+  ProcedureAnalysis,
+  ReportDateRangeParams,
+  SalesAnalysis,
+  SalesSummary,
+} from '../types';
 
 function toQueryString(params: ReportDateRangeParams): string {
   const search = new URLSearchParams();
@@ -37,5 +48,54 @@ export function useReportsPanelAging() {
   return useQuery({
     queryKey: ['reports-panel-aging'],
     queryFn: () => apiClient.get<OutstandingClaimBatch[]>('/reports/panel-aging'),
+  });
+}
+
+// ---- Report suite (D-039) ----
+
+export function useDayEndSummary(date: string, clinicId?: string) {
+  return useQuery({
+    queryKey: ['reports-day-end', date, clinicId],
+    queryFn: () =>
+      apiClient.get<DayEndSummary>(`/reports/day-end?date=${date}${clinicId ? `&clinicId=${clinicId}` : ''}`),
+    enabled: !!date,
+  });
+}
+
+export function useSalesAnalysis(params: ReportDateRangeParams) {
+  return useQuery({
+    queryKey: ['reports-sales-analysis', params],
+    queryFn: () => apiClient.get<SalesAnalysis>(`/reports/sales-analysis${toQueryString(params)}`),
+  });
+}
+
+export function usePatientAnalysis(params: ReportDateRangeParams) {
+  return useQuery({
+    queryKey: ['reports-patient-analysis', params],
+    queryFn: () => apiClient.get<PatientAnalysis>(`/reports/patient-analysis${toQueryString(params)}`),
+  });
+}
+
+export function useProcedureAnalysis(params: ReportDateRangeParams) {
+  return useQuery({
+    queryKey: ['reports-procedure-analysis', params],
+    queryFn: () => apiClient.get<ProcedureAnalysis>(`/reports/procedure-analysis${toQueryString(params)}`),
+  });
+}
+
+export function useDoctorPerformanceDetailed(params: ReportDateRangeParams) {
+  return useQuery({
+    queryKey: ['reports-doctor-performance-detailed', params],
+    queryFn: () => apiClient.get<DoctorPerformanceDetailed[]>(`/reports/doctor-performance-detailed${toQueryString(params)}`),
+  });
+}
+
+export function useInvoiceListing(params: ReportDateRangeParams & { status?: string }) {
+  return useQuery({
+    queryKey: ['reports-invoices', params],
+    queryFn: () =>
+      apiClient.get<InvoiceListingRow[]>(
+        `/reports/invoices${toQueryString(params)}${params.status ? `${params.from || params.to || params.clinicId ? '&' : '?'}status=${params.status}` : ''}`,
+      ),
   });
 }
