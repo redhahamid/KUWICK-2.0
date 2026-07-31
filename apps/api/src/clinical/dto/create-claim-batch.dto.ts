@@ -1,4 +1,4 @@
-import { ArrayMinSize, IsArray, IsNumber, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { ArrayMinSize, IsArray, IsUUID } from 'class-validator';
 
 export class CreateClaimBatchDto {
   @IsUUID()
@@ -11,13 +11,5 @@ export class CreateClaimBatchDto {
 
   @IsUUID()
   createdByStaffId!: string;
-
-  // D-041 — the panel's add-on fee % applied per line ("claim RM100 →
-  // claimed RM108" = 8). Optional; 0 when omitted.
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(100)
-  feePercent?: number;
 }
 

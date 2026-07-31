@@ -53,6 +53,9 @@ const BATCH_STATUS_COLOR: Record<string, string> = {
 };
 
 const LINE_STATUS_COLOR: Record<string, string> = {
+  UNCLAIMED: 'gold',
+  BATCHED: 'default',
+  SUBMITTED: 'blue',
   PENDING: 'default',
   ACCEPTED: 'blue',
   REJECTED: 'red',
@@ -81,20 +84,26 @@ interface CreateBatchCardProps {
 function CreateBatchCard({ panelClinicId }: CreateBatchCardProps) {
   const { data: eligibleInvoices, isLoading } = useEligibleClaimInvoices(panelClinicId);
   const { data: staff } = useStaff();
+  const { data: panels } = usePanelClinics();
   const createBatch = useCreateClaimBatch();
   const [selected, setSelected] = useState<string[]>([]);
   const [createdByStaffId, setCreatedByStaffId] = useState<string>();
-  const [feePercent, setFeePercent] = useState<number>(0);
+
+  // D-041 — the fee comes from the panel's own configuration (Panel
+  // Clinics screen), applied automatically server-side; shown here so
+  // staff know what will be added.
+  const panel = panels?.find((p) => p.id === panelClinicId);
+  const feeLabel =
+    panel?.claimFeeType && panel.claimFeeValue != null
+      ? panel.claimFeeType === 'PERCENT'
+        ? `${Number(panel.claimFeeValue)}% per claim`
+        : `RM ${Number(panel.claimFeeValue).toFixed(2)} per claim`
+      : null;
 
   const handleCreate = async () => {
     if (!createdByStaffId || selected.length === 0) return;
     try {
-      await createBatch.mutateAsync({
-        panelClinicId,
-        invoiceIds: selected,
-        createdByStaffId,
-        feePercent: feePercent || undefined,
-      });
+      await createBatch.mutateAsync({ panelClinicId, invoiceIds: selected, createdByStaffId });
       message.success('Claim batch created');
       setSelected([]);
     } catch (error) {
@@ -135,15 +144,11 @@ function CreateBatchCard({ panelClinicId }: CreateBatchCardProps) {
               filterOption={(input, option) => (option?.label as string).toLowerCase().includes(input.toLowerCase())}
               options={staff?.map((s) => ({ value: s.id, label: s.fullName }))}
             />
-            {/* D-041 — the panel's add-on fee ("claim RM100 → claimed RM108"). */}
-            <InputNumber
-              style={{ width: 140 }}
-              min={0}
-              max={100}
-              addonAfter="% fee"
-              value={feePercent}
-              onChange={(v) => setFeePercent(v ?? 0)}
-            />
+            {feeLabel && (
+              <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+                Fee: {feeLabel} (from panel settings)
+              </Tag>
+            )}
             <Button
               type="primary"
               icon={<PlusOutlined />}
@@ -417,7 +422,11 @@ function ClaimListingTab({ panelClinicId }: { panelClinicId?: string }) {
           { title: 'Service Date', render: (_: unknown, r: PanelClaimLineRow) => dayjs(r.serviceDate).format('YYYY-MM-DD') },
           { title: 'Month', dataIndex: 'monthKey' },
           { title: 'Patient', dataIndex: 'patientName' },
-          { title: 'Invoice / Claim No.', render: (_: unknown, r: PanelClaimLineRow) => `${r.invoiceNumber} · ${r.batchNumber}` },
+          {
+            title: 'Invoice / Claim No.',
+            render: (_: unknown, r: PanelClaimLineRow) =>
+              r.batchNumber ? `${r.invoiceNumber} · ${r.batchNumber}` : r.invoiceNumber,
+          },
           { title: 'Claimed (RM)', render: (_: unknown, r: PanelClaimLineRow) => r.claimedAmount.toFixed(2) },
           { title: 'Fee (RM)', render: (_: unknown, r: PanelClaimLineRow) => r.feeAmount.toFixed(2) },
           { title: 'To Receive (RM)', render: (_: unknown, r: PanelClaimLineRow) => r.claimToReceive.toFixed(2) },
@@ -427,7 +436,7 @@ function ClaimListingTab({ panelClinicId }: { panelClinicId?: string }) {
             title: 'Due Days',
             render: (_: unknown, r: PanelClaimLineRow) =>
               r.daysSinceSubmission == null ? (
-                <Tag>not submitted</Tag>
+                <Tag>{r.status === 'UNCLAIMED' ? 'to claim' : 'not submitted'}</Tag>
               ) : (
                 <Space size={4}>
                   {r.daysSinceSubmission}

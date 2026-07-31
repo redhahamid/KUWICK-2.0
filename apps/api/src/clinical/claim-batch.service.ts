@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { ClaimBatchStatus, ClaimLineStatus, InvoiceStatus } from '@prisma/client';
+import { ClaimBatchStatus, ClaimLineStatus, InvoiceStatus, PanelClaimFeeType, Prisma } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { currentTenantId } from '../core/tenant-context';
 import { CreateClaimBatchDto } from './dto/create-claim-batch.dto';
@@ -19,6 +19,19 @@ const ACTIVE_LINE_STATUSES: ClaimLineStatus[] = [
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+// D-041 (owner refinement) — per-panel claim fee: % of claimed amount or
+// flat RM per claim; 0 when the panel has no fee configured.
+export function panelClaimFee(
+  feeType: PanelClaimFeeType | null,
+  feeValue: Prisma.Decimal | number | null,
+  claimedAmount: number,
+): number {
+  if (!feeType || feeValue === null || feeValue === undefined) return 0;
+  const value = Number(feeValue);
+  if (feeType === PanelClaimFeeType.PERCENT) return round2((claimedAmount * value) / 100);
+  return round2(value);
 }
 
 // Clinical Operations, Phase 1e (Panel Claims Core). One status lifecycle
@@ -55,6 +68,10 @@ export class ClaimBatchService {
 
   async createBatch(dto: CreateClaimBatchDto) {
     const tenantId = currentTenantId();
+    const panel = await this.prisma.panelClinic.findUnique({ where: { id: dto.panelClinicId } });
+    if (!panel) {
+      throw new NotFoundException('Panel not found');
+    }
     const invoices = await this.prisma.invoice.findMany({
       where: { id: { in: dto.invoiceIds } },
       include: { visit: true },
@@ -89,9 +106,10 @@ export class ClaimBatchService {
       },
     });
 
-    // D-041 — the panel's add-on fee, applied per line at batch creation
-    // ("claim RM100 → claimed RM108"): receivable = claimed + fee.
-    const feePercent = dto.feePercent ?? 0;
+    // D-041 (owner refinement) — the fee comes from the panel's own
+    // configuration: PERCENT of the claimed amount or a flat AMOUNT in RM
+    // per claim. Panels with no fee configured (e.g. AIA) get 0.
+    // receivable = claimed + fee.
     for (const invoice of invoices) {
       await this.prisma.claimBatchLine.create({
         data: {
@@ -99,7 +117,7 @@ export class ClaimBatchService {
           claimBatchId: batch.id,
           invoiceId: invoice.id,
           claimedAmount: invoice.panelCoveredAmount,
-          feeAmount: round2((Number(invoice.panelCoveredAmount) * feePercent) / 100),
+          feeAmount: panelClaimFee(panel.claimFeeType, panel.claimFeeValue, Number(invoice.panelCoveredAmount)),
         },
       });
     }
@@ -230,64 +248,127 @@ export class ClaimBatchService {
 
   // ------ Panel workbook upgrade (D-041) ------
 
-  // Per-panel claim listing — the working view staff actually use day to
-  // day, mirroring the owner's per-panel sheet: one row per claim with
-  // service date / month / due-days-vs-term / claimed / fee / to-receive /
-  // paid / receivable / remarks.
+  // Per-panel claim tracking — the working view staff use day to day
+  // (owner refinement 2026-08-01: "the panel patient's invoice auto listed
+  // in the panel tracking... once submitted it's changed to submitted, then
+  // once panel paid, changed to paid, so can reconcile directly"). One row
+  // per panel invoice: appears automatically as UNCLAIMED the moment the
+  // patient's invoice is settled at the counter, becomes BATCHED/SUBMITTED
+  // through the claim workflow, then PAID/REJECTED/DEDUCTED as the panel
+  // settles — a single list to reconcile from.
   async listLines(panelClinicId: string, month?: string) {
     const panel = await this.prisma.panelClinic.findUnique({ where: { id: panelClinicId } });
     if (!panel) {
       throw new NotFoundException('Panel not found');
     }
-    const lines = await this.prisma.claimBatchLine.findMany({
-      where: { claimBatch: { panelClinicId } },
-      include: {
-        claimBatch: true,
-        invoice: { include: { visit: { include: { patient: true } } } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
     const termDays = panel.paymentTermDays ?? null;
-    return lines
-      .map((line) => {
-        const serviceDate = line.invoice.paidAt ?? line.invoice.createdAt;
-        const monthKey = serviceDate.toISOString().slice(0, 7);
-        const claimed = Number(line.claimedAmount);
-        const fee = Number(line.feeAmount);
-        const paid = Number(line.paidAmount ?? 0);
-        const submittedAt = line.claimBatch.submittedAt;
-        const daysSinceSubmission = submittedAt
-          ? Math.floor((Date.now() - submittedAt.getTime()) / (1000 * 60 * 60 * 24))
-          : null;
+
+    const [lines, unclaimedInvoices] = await Promise.all([
+      this.prisma.claimBatchLine.findMany({
+        where: { claimBatch: { panelClinicId } },
+        include: {
+          claimBatch: true,
+          invoice: { include: { visit: { include: { patient: true } } } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      // Auto-listed: settled panel invoices not yet claimed.
+      this.prisma.invoice.findMany({
+        where: {
+          status: InvoiceStatus.PAID,
+          panelCoveredAmount: { gt: 0 },
+          claimBatchLines: { none: { status: { in: ACTIVE_LINE_STATUSES } } },
+          visit: { panelClinicId },
+        },
+        include: { visit: { include: { patient: true } } },
+        orderBy: { paidAt: 'desc' },
+      }),
+    ]);
+
+    const claimedRows = lines.map((line) => {
+      const serviceDate = line.invoice.paidAt ?? line.invoice.createdAt;
+      const monthKey = serviceDate.toISOString().slice(0, 7);
+      const claimed = Number(line.claimedAmount);
+      const fee = Number(line.feeAmount);
+      const paid = Number(line.paidAmount ?? 0);
+      const submittedAt = line.claimBatch.submittedAt;
+      const daysSinceSubmission = submittedAt
+        ? Math.floor((Date.now() - submittedAt.getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+      // A PENDING line's real-world state is its batch's: still being
+      // prepared (BATCHED) or sent and awaiting the panel (SUBMITTED).
+      const displayStatus =
+        line.status === ClaimLineStatus.PENDING
+          ? line.claimBatch.status === ClaimBatchStatus.BATCHED
+            ? 'BATCHED'
+            : 'SUBMITTED'
+          : line.status;
+      return {
+        id: line.id,
+        claimBatchId: line.claimBatchId as string | null,
+        batchNumber: line.claimBatch.batchNumber as string | null,
+        batchStatus: line.claimBatch.status as string | null,
+        submissionReference: line.claimBatch.submissionReference,
+        status: displayStatus as string,
+        serviceDate,
+        monthKey,
+        patientName: line.invoice.visit.patient.name,
+        invoiceNumber: line.invoice.invoiceNumber,
+        claimedAmount: claimed,
+        feeAmount: fee,
+        claimToReceive: round2(claimed + fee),
+        paidAmount: paid,
+        receivable: round2(claimed + fee - paid),
+        remarks: line.remarks,
+        deductionReason: line.deductionReason,
+        daysSinceSubmission,
+        paymentTermDays: termDays,
+        overdue:
+          termDays !== null &&
+          daysSinceSubmission !== null &&
+          daysSinceSubmission > termDays &&
+          line.status !== ClaimLineStatus.PAID &&
+          line.status !== ClaimLineStatus.REJECTED,
+      };
+    });
+
+    // Excludes invoices whose prior claim was rejected/deducted — those
+    // already appear above with their outcome; listing them again as
+    // UNCLAIMED would double-count the receivable.
+    const claimedInvoiceIds = new Set(lines.map((line) => line.invoiceId));
+    const unclaimedRows = unclaimedInvoices
+      .filter((invoice) => !claimedInvoiceIds.has(invoice.id))
+      .map((invoice) => {
+        const serviceDate = invoice.paidAt ?? invoice.createdAt;
+        const claimed = Number(invoice.panelCoveredAmount);
+        const fee = panelClaimFee(panel.claimFeeType, panel.claimFeeValue, claimed);
         return {
-          id: line.id,
-          claimBatchId: line.claimBatchId,
-          batchNumber: line.claimBatch.batchNumber,
-          batchStatus: line.claimBatch.status,
-          submissionReference: line.claimBatch.submissionReference,
-          status: line.status,
+          id: `unclaimed-${invoice.id}`,
+          claimBatchId: null as string | null,
+          batchNumber: null as string | null,
+          batchStatus: null as string | null,
+          submissionReference: null as string | null,
+          status: 'UNCLAIMED',
           serviceDate,
-          monthKey,
-          patientName: line.invoice.visit.patient.name,
-          invoiceNumber: line.invoice.invoiceNumber,
+          monthKey: serviceDate.toISOString().slice(0, 7),
+          patientName: invoice.visit.patient.name,
+          invoiceNumber: invoice.invoiceNumber,
           claimedAmount: claimed,
           feeAmount: fee,
           claimToReceive: round2(claimed + fee),
-          paidAmount: paid,
-          receivable: round2(claimed + fee - paid),
-          remarks: line.remarks,
-          deductionReason: line.deductionReason,
-          daysSinceSubmission,
+          paidAmount: 0,
+          receivable: round2(claimed + fee),
+          remarks: null as string | null,
+          deductionReason: null as string | null,
+          daysSinceSubmission: null as number | null,
           paymentTermDays: termDays,
-          overdue:
-            termDays !== null &&
-            daysSinceSubmission !== null &&
-            daysSinceSubmission > termDays &&
-            line.status !== ClaimLineStatus.PAID &&
-            line.status !== ClaimLineStatus.REJECTED,
+          overdue: false,
         };
-      })
-      .filter((line) => !month || line.monthKey === month);
+      });
+
+    return [...unclaimedRows, ...claimedRows]
+      .filter((row) => !month || row.monthKey === month)
+      .sort((a, b) => b.serviceDate.getTime() - a.serviceDate.getTime());
   }
 
   // Yearly per-panel rollup — the owner's SUMMARY PANEL CLAIMS sheet:

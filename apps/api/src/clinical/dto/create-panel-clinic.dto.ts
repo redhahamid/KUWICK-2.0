@@ -1,4 +1,5 @@
-import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { PanelClaimFeeType } from '@prisma/client';
 
 export class CreatePanelClinicDto {
   @IsString()
@@ -20,6 +21,17 @@ export class CreatePanelClinicDto {
   @IsInt()
   @Min(1)
   paymentTermDays?: number;
+
+  // D-041 (owner refinement) — per-panel claim fee: % of the claimed
+  // amount or a flat RM value; omit both for panels with no fee (AIA).
+  @IsOptional()
+  @IsEnum(PanelClaimFeeType)
+  claimFeeType?: PanelClaimFeeType;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  claimFeeValue?: number;
 }
 
 export class UpdatePanelClinicDto {
@@ -41,6 +53,15 @@ export class UpdatePanelClinicDto {
   @IsInt()
   @Min(1)
   paymentTermDays?: number;
+
+  @IsOptional()
+  @IsEnum(PanelClaimFeeType)
+  claimFeeType?: PanelClaimFeeType;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  claimFeeValue?: number;
 
   @IsOptional()
   @IsBoolean()

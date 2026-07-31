@@ -1021,18 +1021,24 @@ model GoodsReceivedNoteLine {
 // Claims" menu), since that's an external workflow on the panel's own
 // website today.
 model PanelClinic {
-  id              String   @id @default(uuid())
-  tenantId        String   @map("tenant_id")
+  id              String             @id @default(uuid())
+  tenantId        String             @map("tenant_id")
   name            String
   code            String?
-  limitAmount     Decimal? @map("limit_amount") @db.Decimal(10, 2)
+  limitAmount     Decimal?           @map("limit_amount") @db.Decimal(10, 2)
   // Panel workbook upgrade (D-041) — the panel's own payment term; a
   // claim is overdue when days since submission exceed this, so aging is
   // judged per panel rather than against fixed buckets.
-  paymentTermDays Int?     @map("payment_term_days")
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  paymentTermDays Int?               @map("payment_term_days")
+  // D-041 (owner refinement) — per-panel claim fee: some panels carry an
+  // admin fee per claim, as a % of the claimed amount or a flat RM value;
+  // most (e.g. AIA) have none. Applied automatically at batch creation
+  // from this configuration — never a manual per-batch entry.
+  claimFeeType    PanelClaimFeeType? @map("claim_fee_type")
+  claimFeeValue   Decimal?           @map("claim_fee_value") @db.Decimal(10, 2)
+  active          Boolean            @default(true)
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
 
   tenant         Tenant               @relation(fields: [tenantId], references: [id])
   visits         Visit[]
@@ -1571,6 +1577,13 @@ model Invoice {
   @@unique([tenantId, invoiceNumber])
   @@index([tenantId, visitId])
   @@map("invoices")
+}
+
+// D-041 — how a panel's per-claim fee is expressed: % of the claimed
+// amount, or a flat RM value per claim.
+enum PanelClaimFeeType {
+  PERCENT
+  AMOUNT
 }
 
 enum ClaimBatchStatus {

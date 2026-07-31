@@ -87,6 +87,9 @@ export interface Visit {
   queueTicket?: QueueTicket | null;
 }
 
+// D-041 — how a panel's per-claim fee is expressed.
+export type PanelClaimFeeType = 'PERCENT' | 'AMOUNT';
+
 export interface PanelClinic {
   id: string;
   tenantId: string;
@@ -95,6 +98,9 @@ export interface PanelClinic {
   limitAmount: string | null;
   // D-041 — the panel's payment term in days (drives overdue judgement).
   paymentTermDays: number | null;
+  // D-041 — per-panel claim fee (% of claimed or flat RM); null = no fee.
+  claimFeeType: PanelClaimFeeType | null;
+  claimFeeValue: string | null;
   active: boolean;
 }
 
@@ -103,6 +109,8 @@ export interface CreatePanelClinicDto {
   code?: string;
   limitAmount?: number;
   paymentTermDays?: number;
+  claimFeeType?: PanelClaimFeeType;
+  claimFeeValue?: number;
 }
 
 export type UpdatePanelClinicDto = Partial<CreatePanelClinicDto> & { active?: boolean };
@@ -461,16 +469,18 @@ export interface ClaimBatchLine {
   createdAt: string;
 }
 
-// D-041 — the per-panel claim listing row (mirrors the owner's workbook:
-// service date / month / due-days vs term / claimed / fee / to-receive /
-// paid / receivable / remarks).
+// D-041 — the per-panel tracking row: every panel invoice auto-listed as
+// UNCLAIMED once settled at the counter, then BATCHED → SUBMITTED →
+// PAID/REJECTED/DEDUCTED through the claim workflow.
+export type PanelTrackingStatus = 'UNCLAIMED' | 'BATCHED' | 'SUBMITTED' | 'ACCEPTED' | 'REJECTED' | 'DEDUCTED' | 'PAID';
+
 export interface PanelClaimLineRow {
   id: string;
-  claimBatchId: string;
-  batchNumber: string;
-  batchStatus: ClaimBatchStatus;
+  claimBatchId: string | null;
+  batchNumber: string | null;
+  batchStatus: string | null;
   submissionReference: string | null;
-  status: ClaimLineStatus;
+  status: PanelTrackingStatus;
   serviceDate: string;
   monthKey: string;
   patientName: string;
@@ -528,8 +538,6 @@ export interface CreateClaimBatchDto {
   panelClinicId: string;
   invoiceIds: string[];
   createdByStaffId: string;
-  // D-041 — the panel's add-on fee % ("claim RM100 → claimed RM108" = 8).
-  feePercent?: number;
 }
 
 export interface SubmitClaimBatchDto {
