@@ -80,7 +80,7 @@ export function AppLayout() {
           lineHeight: '56px',
         }}
       >
-        <div style={{ fontWeight: 600, fontSize: 16, flexShrink: 0 }}>Kuwick 2.0</div>
+        <img src="/kuwick-logo.png" alt="Kuwick" style={{ height: 22, flexShrink: 0 }} />
 
         {inManagement && (
           <>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Alert, Button, Card, Form, Input, Typography } from 'antd';
+import { Alert, Button, Form, Input, Typography } from 'antd';
+import { LockOutlined, MailOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { usePlatformAuthStore } from '../core/platform-auth-store';
 import { ApiError } from '../core/api-client';
@@ -19,7 +20,10 @@ interface PlatformLoginResponse {
 }
 
 // Real auth (D-034). A wholly separate login from clinic staff — manages
-// tenants themselves, so there's no clinic/slug field here at all.
+// tenants themselves, so there's no clinic/slug field here at all. Styled
+// as a dark variant of the clinic LoginPage's branding (same logo lockup)
+// so the two are recognizably part of the same product, but never visually
+// confusable — this is the system-owner console, not a clinic's own login.
 export function PlatformLoginPage() {
   const navigate = useNavigate();
   const setSession = usePlatformAuthStore((state) => state.setSession);
@@ -49,27 +53,42 @@ export function PlatformLoginPage() {
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#1f1f1f' }}>
-      <Card style={{ width: 380 }}>
-        <Title level={3} style={{ textAlign: 'center', marginBottom: 4 }}>
-          Kuwick Platform
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        background: 'radial-gradient(circle at 30% 20%, #1c2540 0%, #0b0e1a 65%)',
+      }}
+    >
+      <div style={{ width: 380, padding: 40, background: '#151a2c', borderRadius: 16, boxShadow: '0 20px 60px rgba(0,0,0,0.45)' }}>
+        <div style={{ background: '#fff', borderRadius: 10, padding: '8px 16px', width: 'fit-content', margin: '0 auto 28px' }}>
+          <img src="/kuwick-logo.png" alt="Kuwick" style={{ height: 24, display: 'block' }} />
+        </div>
+        <Title level={4} style={{ textAlign: 'center', marginBottom: 4, color: '#fff' }}>
+          Platform Console
         </Title>
-        <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginBottom: 24 }}>
-          Platform administrator sign-in
+        <Text style={{ display: 'block', textAlign: 'center', marginBottom: 24, color: '#8b93a8' }}>
+          System owner sign-in
         </Text>
         {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
         <Form layout="vertical" onFinish={handleSubmit}>
-          <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Enter your email' }]}>
-            <Input placeholder="owner@kuwick.dev" autoComplete="username" />
+          <Form.Item name="email" label={<span style={{ color: '#c3c9d9' }}>Email</span>} rules={[{ required: true, message: 'Enter your email' }]}>
+            <Input prefix={<MailOutlined style={{ color: '#6b7280' }} />} placeholder="owner@kuwick.dev" autoComplete="username" />
           </Form.Item>
-          <Form.Item name="password" label="Password" rules={[{ required: true, message: 'Enter your password' }]}>
-            <Input.Password autoComplete="current-password" />
+          <Form.Item
+            name="password"
+            label={<span style={{ color: '#c3c9d9' }}>Password</span>}
+            rules={[{ required: true, message: 'Enter your password' }]}
+          >
+            <Input.Password prefix={<LockOutlined style={{ color: '#6b7280' }} />} autoComplete="current-password" />
           </Form.Item>
-          <Button type="primary" htmlType="submit" loading={loading} block>
+          <Button type="primary" htmlType="submit" loading={loading} block size="large">
             Sign In
           </Button>
         </Form>
-      </Card>
+      </div>
     </div>
   );
 }
