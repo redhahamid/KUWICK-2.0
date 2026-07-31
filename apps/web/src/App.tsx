@@ -27,6 +27,8 @@ import { DiagnosesDirectoryPage } from './clinical/DiagnosesDirectoryPage';
 import { PatientDashboardPage } from './clinical/PatientDashboardPage';
 import { QueueManagementPage } from './clinical/QueueManagementPage';
 import { QueueMonitorPage } from './clinical/QueueMonitorPage';
+import { RoomsPage } from './clinical/RoomsPage';
+import { QueueDisplaySettingsPage } from './clinical/QueueDisplaySettingsPage';
 import { PrintOrderResultPage } from './clinical/PrintOrderResultPage';
 import { ProcedureQueuePage } from './clinical/ProcedureQueuePage';
 import { DoctorSchedulesPage } from './appointment/DoctorSchedulesPage';
@@ -86,6 +88,8 @@ export function App() {
             <Route path="/management/operation/qualifications" element={<DoctorServiceQualificationsPage />} />
             <Route path="/management/operation/slot-capacity" element={<SlotCapacityConfigsPage />} />
             <Route path="/management/operation/diagnoses" element={<DiagnosesDirectoryPage />} />
+            <Route path="/management/operation/rooms" element={<RoomsPage />} />
+            <Route path="/management/operation/queue-display" element={<QueueDisplaySettingsPage />} />
 
             <Route path="/management/hr/staff" element={<StaffPage />} />
             <Route path="/management/hr/attendance" element={<AttendancePage />} />

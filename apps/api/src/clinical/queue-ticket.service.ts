@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { QueueTicketStatus } from '@prisma/client';
+import { QueueTicketStatus, QueueType } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { currentTenantId } from '../core/tenant-context';
 import { VisitService, CreateVisitInput } from './visit.service';
@@ -8,6 +8,24 @@ import { CancelQueueTicketDto } from './dto/cancel-queue-ticket.dto';
 export interface FindQueueTicketsFilter {
   clinicId?: string;
   status?: QueueTicketStatus;
+  queueType?: QueueType;
+}
+
+export interface AddToQueueInput extends CreateVisitInput {
+  queueType?: QueueType;
+}
+
+// Queue overhaul (D-038) — kuwick.com's real 4-stream numbering. Each
+// stream numbers independently per clinic per day: W001, E001, A003...
+const QUEUE_TYPE_PREFIX: Record<QueueType, string> = {
+  [QueueType.APPOINTMENT]: 'A',
+  [QueueType.OTC]: 'C',
+  [QueueType.WALK_IN]: 'W',
+  [QueueType.EMERGENCY]: 'E',
+};
+
+export function formatDisplayNumber(queueType: QueueType, ticketNumber: number): string {
+  return `${QUEUE_TYPE_PREFIX[queueType]}${String(ticketNumber).padStart(3, '0')}`;
 }
 
 // Sequential, not a nested $transaction: TENANT_SCOPED_PRISMA
@@ -22,38 +40,43 @@ export class QueueTicketService {
     private readonly visits: VisitService,
   ) {}
 
-  // Resets daily per clinic — same accepted count-based-sequence gap as
-  // Visit.visitNumber.
-  private async nextTicketNumber(clinicId: string): Promise<number> {
+  // Resets daily per clinic *per queue type* (D-038) — same accepted
+  // count-based-sequence gap as Visit.visitNumber.
+  private async nextTicketNumber(clinicId: string, queueType: QueueType): Promise<number> {
     const startOfDay = new Date();
     startOfDay.setUTCHours(0, 0, 0, 0);
     const count = await this.prisma.queueTicket.count({
-      where: { clinicId, createdAt: { gte: startOfDay } },
+      where: { clinicId, queueType, createdAt: { gte: startOfDay } },
     });
     return count + 1;
   }
 
   // The single operation behind both entry points: the front-desk "Add to
   // Daily Queue" action and AppointmentService.arrived() (docs/PRODUCT_
-  // REQUIREMENTS.md §6 — "arrived auto-creates a queue ticket").
-  async addToQueue(input: CreateVisitInput) {
-    const visit = await this.visits.create(input);
-    const ticketNumber = await this.nextTicketNumber(input.clinicId);
+  // REQUIREMENTS.md §6 — "arrived auto-creates a queue ticket", which
+  // passes queueType APPOINTMENT).
+  async addToQueue(input: AddToQueueInput) {
+    const queueType = input.queueType ?? QueueType.WALK_IN;
+    const { queueType: _ignored, ...visitInput } = input;
+    const visit = await this.visits.create(visitInput);
+    const ticketNumber = await this.nextTicketNumber(input.clinicId, queueType);
     return this.prisma.queueTicket.create({
       data: {
         tenantId: currentTenantId(),
         clinicId: input.clinicId,
         visitId: visit.id,
         ticketNumber,
+        queueType,
+        displayNumber: formatDisplayNumber(queueType, ticketNumber),
       },
-      include: { visit: { include: { patient: true, staff: true } } },
+      include: { visit: { include: { patient: true, staff: true } }, room: true },
     });
   }
 
   findAll(filter: FindQueueTicketsFilter) {
     return this.prisma.queueTicket.findMany({
-      where: { clinicId: filter.clinicId, status: filter.status },
-      include: { visit: { include: { patient: true, staff: true } } },
+      where: { clinicId: filter.clinicId, status: filter.status, queueType: filter.queueType },
+      include: { visit: { include: { patient: true, staff: true } }, room: true },
       orderBy: { createdAt: 'asc' },
     });
   }
@@ -61,7 +84,7 @@ export class QueueTicketService {
   async findById(id: string) {
     const ticket = await this.prisma.queueTicket.findUnique({
       where: { id },
-      include: { visit: { include: { patient: true, staff: true } } },
+      include: { visit: { include: { patient: true, staff: true } }, room: true },
     });
     if (!ticket) {
       throw new NotFoundException('Queue ticket not found');
@@ -70,10 +93,22 @@ export class QueueTicketService {
   }
 
   // Announces/highlights the ticket on the monitor display — no status
-  // change (distinct from "Arrived", D-024 docs/DECISIONS.md).
-  async call(id: string) {
+  // change (distinct from "Arrived", D-024 docs/DECISIONS.md). D-038: also
+  // records which room/station the patient is being called to, so the
+  // monitor can pair "W001" with "Consultation 1".
+  async call(id: string, roomId?: string) {
     await this.findById(id);
-    return this.prisma.queueTicket.update({ where: { id }, data: { calledAt: new Date() } });
+    if (roomId) {
+      const room = await this.prisma.room.findUnique({ where: { id: roomId } });
+      if (!room || !room.active) {
+        throw new BadRequestException('Unknown or inactive room');
+      }
+    }
+    return this.prisma.queueTicket.update({
+      where: { id },
+      data: { calledAt: new Date(), roomId: roomId ?? null },
+      include: { room: true },
+    });
   }
 
   // D-024 (docs/DECISIONS.md): WAITING -> IN_CONSULTATION.

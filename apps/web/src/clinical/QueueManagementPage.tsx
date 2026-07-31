@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
-import { Button, Card, Empty, Input, List, Popconfirm, Select, Space, Table, Tabs, Tag, Typography, message } from 'antd';
-import { SoundOutlined } from '@ant-design/icons';
+import { useState } from 'react';
+import { Button, Card, Empty, List, Modal, Popconfirm, Select, Space, Table, Tabs, Tag, Typography, message } from 'antd';
+import { PrinterOutlined, SoundOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useClinics } from '../core/hooks/useClinics';
-import { useGlobalSetting, useSetGlobalSetting } from '../core/hooks/useGlobalSetting';
 import {
   useArrivedTicket,
   useCallTicket,
@@ -11,9 +10,11 @@ import {
   useCompleteTicket,
   useMoveToDispensary,
   useQueueTickets,
+  useRooms,
 } from './hooks/useQueueTickets';
-import { QueueTicket } from './types';
+import { QueueTicket, QueueType } from './types';
 import { ApiError } from '../core/api-client';
+import { printQueueTicket } from './printQueueTicket';
 
 const { Title, Text } = Typography;
 
@@ -24,6 +25,18 @@ const STATUS_COLOR: Record<string, string> = {
   COMPLETED: 'green',
   CANCELLED: 'default',
 };
+
+// D-038 — the 4 queue streams and their monitor colours.
+const QUEUE_TYPE_TAG: Record<QueueType, { label: string; color: string }> = {
+  APPOINTMENT: { label: 'A · Appointment', color: 'blue' },
+  OTC: { label: 'C · OTC', color: 'cyan' },
+  WALK_IN: { label: 'W · Walk-in', color: 'green' },
+  EMERGENCY: { label: 'E · Emergency', color: 'red' },
+};
+
+function ticketNumberLabel(ticket: QueueTicket): string {
+  return ticket.displayNumber ?? `#${ticket.ticketNumber}`;
+}
 
 function duration(from: string): string {
   const minutes = dayjs().diff(dayjs(from), 'minute');
@@ -48,7 +61,16 @@ function detailColumns(showActions: {
   onComplete: (id: string) => void;
 }) {
   return [
-    { title: 'No.', dataIndex: 'ticketNumber' },
+    {
+      title: 'No.',
+      render: (_: unknown, record: QueueTicket) => <Text strong>{ticketNumberLabel(record)}</Text>,
+    },
+    {
+      title: 'Type',
+      render: (_: unknown, record: QueueTicket) => (
+        <Tag color={QUEUE_TYPE_TAG[record.queueType].color}>{QUEUE_TYPE_TAG[record.queueType].label}</Tag>
+      ),
+    },
     { title: 'Visit No.', render: (_: unknown, record: QueueTicket) => record.visit.visitNumber },
     { title: 'Date', render: (_: unknown, record: QueueTicket) => dayjs(record.visit.checkInAt).format('YYYY-MM-DD') },
     {
@@ -75,7 +97,7 @@ function detailColumns(showActions: {
       render: (_: unknown, record: QueueTicket) => record.visit.presentingComplaint ?? '—',
     },
     { title: 'Doctor', render: (_: unknown, record: QueueTicket) => record.visit.staff?.fullName ?? '—' },
-    { title: 'Location', render: (_: unknown, record: QueueTicket) => record.location ?? '—' },
+    { title: 'Room', render: (_: unknown, record: QueueTicket) => record.room?.name ?? record.location ?? '—' },
     {
       title: 'Actions',
       render: (_: unknown, record: QueueTicket) => (
@@ -113,21 +135,18 @@ function detailColumns(showActions: {
   ];
 }
 
-const MONITOR_RUNNING_TEXT_KEY = 'queue_monitor_running_text';
-
 export function QueueManagementPage() {
   const [clinicId, setClinicId] = useState<string>();
   const { data: clinics } = useClinics();
   const { data: allTickets, isLoading } = useQueueTickets({ clinicId });
 
-  const { data: runningText } = useGlobalSetting<string>(MONITOR_RUNNING_TEXT_KEY);
-  const setRunningText = useSetGlobalSetting<string>(MONITOR_RUNNING_TEXT_KEY);
-  const [runningTextDraft, setRunningTextDraft] = useState('');
-  useEffect(() => {
-    if (typeof runningText === 'string') {
-      setRunningTextDraft(runningText);
-    }
-  }, [runningText]);
+  // D-038 — calling a patient asks which room/station they're headed to,
+  // so the monitor can pair "W001" with "Consultation 1".
+  const [callTarget, setCallTarget] = useState<QueueTicket | null>(null);
+  const [callRoomId, setCallRoomId] = useState<string>();
+  // Rooms come from the *ticket's* clinic, not the page filter — the filter
+  // is often unset when the clinic only has one location.
+  const { data: rooms } = useRooms(callTarget?.clinicId ?? clinicId, true);
 
   const callTicket = useCallTicket();
   const arrivedTicket = useArrivedTicket();
@@ -139,8 +158,25 @@ export function QueueManagementPage() {
     message.error(error instanceof ApiError ? error.message : fallback);
   };
 
+  const confirmCall = async () => {
+    if (!callTarget) return;
+    try {
+      await callTicket.mutateAsync({ id: callTarget.id, input: { roomId: callRoomId } });
+      const roomName = rooms?.find((room) => room.id === callRoomId)?.name;
+      message.success(`Called ${ticketNumberLabel(callTarget)}${roomName ? ` to ${roomName}` : ''}`);
+      setCallTarget(null);
+      setCallRoomId(undefined);
+    } catch (error) {
+      reportFailure(error, 'Failed to call');
+    }
+  };
+
   const handlers = {
-    onCall: (id: string) => callTicket.mutateAsync({ id }).catch((e) => reportFailure(e, 'Failed to call')),
+    onCall: (id: string) => {
+      const ticket = allTickets?.find((t) => t.id === id) ?? null;
+      setCallTarget(ticket);
+      setCallRoomId(ticket?.roomId ?? undefined);
+    },
     onArrived: (id: string) =>
       arrivedTicket.mutateAsync({ id }).catch((e) => reportFailure(e, 'Failed to mark arrived')),
     onCancel: (id: string) => cancelTicket.mutateAsync({ id }).catch((e) => reportFailure(e, 'Failed to cancel')),
@@ -182,16 +218,29 @@ export function QueueManagementPage() {
         </Space>
       </Space>
 
-      <Space style={{ marginBottom: 16, width: '100%' }}>
-        <Input
-          prefix={<SoundOutlined />}
-          placeholder="Monitor running text (e.g. a welcome message)"
-          style={{ width: 420 }}
-          value={runningTextDraft}
-          onChange={(e) => setRunningTextDraft(e.target.value)}
-          onBlur={() => runningTextDraft !== runningText && setRunningText.mutate(runningTextDraft)}
+      <Modal
+        title={callTarget ? `Call ${ticketNumberLabel(callTarget)}` : 'Call'}
+        open={!!callTarget}
+        onCancel={() => setCallTarget(null)}
+        onOk={confirmCall}
+        okText="Call"
+        okButtonProps={{ icon: <SoundOutlined /> }}
+        confirmLoading={callTicket.isPending}
+      >
+        <Select
+          placeholder="Call to which room/station? (optional)"
+          style={{ width: '100%' }}
+          allowClear
+          value={callRoomId}
+          onChange={setCallRoomId}
+          options={rooms?.map((room) => ({ value: room.id, label: room.name }))}
         />
-      </Space>
+        {(rooms?.length ?? 0) === 0 && (
+          <Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
+            No rooms set up yet — add them under Management &gt; Operation &gt; Rooms.
+          </Text>
+        )}
+      </Modal>
 
       <Tabs
         items={[
@@ -203,10 +252,18 @@ export function QueueManagementPage() {
                 <Card title="Consultation">
                   {current ? (
                     <Space direction="vertical">
-                      <Text strong>
-                        #{current.ticketNumber} — {current.visit.patient?.name}
+                      <Space>
+                        <Text strong>
+                          {ticketNumberLabel(current)} — {current.visit.patient?.name}
+                        </Text>
+                        <Tag color={QUEUE_TYPE_TAG[current.queueType].color}>
+                          {QUEUE_TYPE_TAG[current.queueType].label}
+                        </Tag>
+                      </Space>
+                      <Text type="secondary">
+                        {current.visit.billingType}
+                        {current.room ? ` · ${current.room.name}` : ''}
                       </Text>
-                      <Text type="secondary">{current.visit.billingType}</Text>
                     </Space>
                   ) : (
                     <Text type="secondary">No patient is currently being served.</Text>
@@ -226,6 +283,19 @@ export function QueueManagementPage() {
                             <Button key="arrived" size="small" onClick={() => handlers.onArrived(ticket.id)}>
                               Arrived
                             </Button>,
+                            <Button
+                              key="print"
+                              size="small"
+                              icon={<PrinterOutlined />}
+                              disabled={!ticket.displayNumber}
+                              onClick={() =>
+                                ticket.displayNumber &&
+                                printQueueTicket(
+                                  ticket.displayNumber,
+                                  clinics?.find((clinic) => clinic.id === ticket.clinicId)?.name ?? '',
+                                )
+                              }
+                            />,
                             <Popconfirm key="cancel" title="Cancel this ticket?" onConfirm={() => handlers.onCancel(ticket.id)}>
                               <Button size="small" danger>
                                 Cancel
@@ -234,9 +304,14 @@ export function QueueManagementPage() {
                           ]}
                         >
                           <Space direction="vertical" size={0}>
-                            <Text strong>
-                              #{ticket.ticketNumber} — {ticket.visit.patient?.name}
-                            </Text>
+                            <Space>
+                              <Text strong>
+                                {ticketNumberLabel(ticket)} — {ticket.visit.patient?.name}
+                              </Text>
+                              <Tag color={QUEUE_TYPE_TAG[ticket.queueType].color}>
+                                {QUEUE_TYPE_TAG[ticket.queueType].label}
+                              </Tag>
+                            </Space>
                             <Text type="secondary">{ticket.visit.billingType}</Text>
                           </Space>
                         </List.Item>
@@ -250,7 +325,7 @@ export function QueueManagementPage() {
                       renderItem={(ticket: QueueTicket) => (
                         <List.Item>
                           <Text>
-                            #{ticket.ticketNumber} — {ticket.visit.patient?.name}
+                            {ticketNumberLabel(ticket)} — {ticket.visit.patient?.name}
                           </Text>
                         </List.Item>
                       )}
@@ -296,7 +371,7 @@ export function QueueManagementPage() {
                   size="small"
                   dataSource={dispensary}
                   columns={[
-                    { title: 'No.', dataIndex: 'ticketNumber' },
+                    { title: 'No.', render: (_: unknown, r: QueueTicket) => ticketNumberLabel(r) },
                     { title: 'Patient', render: (_: unknown, r: QueueTicket) => r.visit.patient?.name },
                     { title: 'Doctor', render: (_: unknown, r: QueueTicket) => r.visit.staff?.fullName },
                     {
@@ -323,7 +398,7 @@ export function QueueManagementPage() {
                   size="small"
                   dataSource={completed}
                   columns={[
-                    { title: 'No.', dataIndex: 'ticketNumber' },
+                    { title: 'No.', render: (_: unknown, r: QueueTicket) => ticketNumberLabel(r) },
                     { title: 'Patient', render: (_: unknown, r: QueueTicket) => r.visit.patient?.name },
                     { title: 'Doctor', render: (_: unknown, r: QueueTicket) => r.visit.staff?.fullName },
                     {

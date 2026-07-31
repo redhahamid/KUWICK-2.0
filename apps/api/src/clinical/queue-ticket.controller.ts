@@ -1,12 +1,18 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { QueueTicketStatus } from '@prisma/client';
+import { Body, Controller, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { QueueTicketStatus, QueueType } from '@prisma/client';
 import { QueueTicketService } from './queue-ticket.service';
+import { QueueDisplayConfigService } from './queue-display-config.service';
 import { AddToQueueDto } from './dto/add-to-queue.dto';
 import { CancelQueueTicketDto } from './dto/cancel-queue-ticket.dto';
+import { CallQueueTicketDto } from './dto/call-queue-ticket.dto';
+import { UpdateQueueDisplayConfigDto } from './dto/update-queue-display-config.dto';
 
 @Controller('queue-tickets')
 export class QueueTicketController {
-  constructor(private readonly queueTickets: QueueTicketService) {}
+  constructor(
+    private readonly queueTickets: QueueTicketService,
+    private readonly displayConfig: QueueDisplayConfigService,
+  ) {}
 
   @Post()
   addToQueue(@Body() dto: AddToQueueDto) {
@@ -14,8 +20,23 @@ export class QueueTicketController {
   }
 
   @Get()
-  findAll(@Query('clinicId') clinicId?: string, @Query('status') status?: QueueTicketStatus) {
-    return this.queueTickets.findAll({ clinicId, status });
+  findAll(
+    @Query('clinicId') clinicId?: string,
+    @Query('status') status?: QueueTicketStatus,
+    @Query('queueType') queueType?: QueueType,
+  ) {
+    return this.queueTickets.findAll({ clinicId, status, queueType });
+  }
+
+  // Static segment before ':id' so "display-config" never matches as an id.
+  @Get('display-config')
+  getDisplayConfig(@Query('clinicId') clinicId: string) {
+    return this.displayConfig.get(clinicId);
+  }
+
+  @Put('display-config')
+  putDisplayConfig(@Query('clinicId') clinicId: string, @Body() dto: UpdateQueueDisplayConfigDto) {
+    return this.displayConfig.upsert(clinicId, dto);
   }
 
   @Get(':id')
@@ -24,8 +45,8 @@ export class QueueTicketController {
   }
 
   @Patch(':id/call')
-  call(@Param('id') id: string) {
-    return this.queueTickets.call(id);
+  call(@Param('id') id: string, @Body() dto: CallQueueTicketDto) {
+    return this.queueTickets.call(id, dto.roomId);
   }
 
   @Patch(':id/arrived')

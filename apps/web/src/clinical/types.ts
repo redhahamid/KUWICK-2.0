@@ -141,14 +141,54 @@ export interface CreatePanelExclusionDto {
   reason?: string;
 }
 
+// Queue overhaul (D-038) — kuwick.com's real 4-stream numbering:
+// A=appointment, C=OTC, W=walk-in, E=emergency.
+export type QueueType = 'APPOINTMENT' | 'OTC' | 'WALK_IN' | 'EMERGENCY';
+
+export interface Room {
+  id: string;
+  clinicId: string;
+  name: string;
+  active: boolean;
+}
+
+export interface CreateRoomDto {
+  clinicId: string;
+  name: string;
+}
+
+export interface QueueDisplayConfig {
+  clinicId: string;
+  youtubeUrl: string | null;
+  runningText: string | null;
+  voiceName: string | null;
+  voiceRate: number;
+  voicePitch: number;
+  voiceVolume: number;
+}
+
+export type UpdateQueueDisplayConfigDto = Partial<{
+  youtubeUrl: string;
+  runningText: string;
+  voiceName: string;
+  voiceRate: number;
+  voicePitch: number;
+  voiceVolume: number;
+}>;
+
 export interface QueueTicket {
   id: string;
   tenantId: string;
   clinicId: string;
   visitId: string;
   ticketNumber: number;
+  // "W001"/"A003"/... — null only for tickets created before D-038.
+  displayNumber: string | null;
+  queueType: QueueType;
   status: QueueTicketStatus;
   location: string | null;
+  roomId: string | null;
+  room?: Room | null;
   calledAt: string | null;
   cancelReason: string | null;
   createdAt: string;
@@ -160,8 +200,26 @@ export interface AddToQueueDto {
   patientId: string;
   staffId: string;
   billingType: string;
+  queueType?: QueueType;
   panelClinicId?: string;
   presentingComplaint?: string;
+}
+
+// What the unauthenticated waiting-room monitor endpoint returns —
+// numbers and room names only, never patient PII.
+export interface PublicQueueTicket {
+  id: string;
+  displayNumber: string;
+  queueType: QueueType;
+  status: QueueTicketStatus;
+  calledAt: string | null;
+  roomName: string | null;
+}
+
+export interface PublicQueueMonitorData {
+  clinic: { id: string; name: string };
+  config: QueueDisplayConfig;
+  tickets: PublicQueueTicket[];
 }
 
 export type NoteLanguage = 'EN' | 'MS';

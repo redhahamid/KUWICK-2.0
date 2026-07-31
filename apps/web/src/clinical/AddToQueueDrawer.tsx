@@ -6,8 +6,19 @@ import { useStaff } from '../hr/hooks/useStaff';
 import { useAddToQueue } from './hooks/useQueueTickets';
 import { usePanelClinics } from './hooks/usePanelClinics';
 import { Patient } from '../core/types';
-import { AddToQueueDto } from './types';
+import { AddToQueueDto, QueueType } from './types';
 import { ApiError } from '../core/api-client';
+import { printQueueTicket } from './printQueueTicket';
+
+// D-038 — the 4 real queue streams. Appointment arrivals get their "A"
+// ticket automatically from the Appointments page, so the front-desk drawer
+// offers the three manually-chosen streams (walk-in default).
+const QUEUE_TYPE_OPTIONS: { label: string; value: QueueType }[] = [
+  { label: 'Walk-in (W)', value: 'WALK_IN' },
+  { label: 'OTC (C)', value: 'OTC' },
+  { label: 'Emergency (E)', value: 'EMERGENCY' },
+  { label: 'Appointment (A)', value: 'APPOINTMENT' },
+];
 
 interface AddToQueueDrawerProps {
   patient: Patient | null;
@@ -37,13 +48,17 @@ export function AddToQueueDrawer({ patient, onClose }: AddToQueueDrawerProps) {
   const handleSubmit = async (values: Omit<AddToQueueDto, 'patientId' | 'billingType'>) => {
     if (!patient) return;
     try {
-      await addToQueue.mutateAsync({
+      const ticket = await addToQueue.mutateAsync({
         ...values,
         patientId: patient.id,
         billingType: visitKind === 'panel' && selectedPanel ? selectedPanel.name : 'Self-pay',
         panelClinicId: visitKind === 'panel' ? selectedPanelId : undefined,
       });
-      message.success('Added to today\'s queue');
+      message.success(`Added to today's queue — ${ticket.displayNumber ?? `#${ticket.ticketNumber}`}`);
+      if (ticket.displayNumber) {
+        const clinicName = clinics?.find((clinic) => clinic.id === values.clinicId)?.name ?? '';
+        printQueueTicket(ticket.displayNumber, clinicName);
+      }
       form.resetFields();
       setVisitKind('cash');
       setSelectedPanelId(undefined);
@@ -62,6 +77,9 @@ export function AddToQueueDrawer({ patient, onClose }: AddToQueueDrawerProps) {
         </Form.Item>
         <Form.Item name="staffId" label="Doctor" rules={[{ required: true }]}>
           <Select options={staff?.map((member) => ({ value: member.id, label: member.fullName }))} />
+        </Form.Item>
+        <Form.Item name="queueType" label="Queue Type" initialValue="WALK_IN">
+          <Radio.Group optionType="button" buttonStyle="solid" options={QUEUE_TYPE_OPTIONS} />
         </Form.Item>
         <Form.Item label="Billing Type" required>
           <Radio.Group

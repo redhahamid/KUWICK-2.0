@@ -28,6 +28,11 @@ import { PanelPricingController } from './panel-pricing.controller';
 import { PanelPricingService } from './panel-pricing.service';
 import { ClaimBatchController } from './claim-batch.controller';
 import { ClaimBatchService } from './claim-batch.service';
+import { RoomController } from './room.controller';
+import { RoomService } from './room.service';
+import { QueueDisplayConfigService } from './queue-display-config.service';
+import { PublicQueueController } from './public-queue.controller';
+import { PublicQueueService } from './public-queue.service';
 
 // Clinical Operations, Phase 1a. Owns ServiceCatalog, Visit, QueueTicket,
 // ClinicalNote, Diagnosis, OrderService, Prescription, Document, Invoice
@@ -51,6 +56,8 @@ import { ClaimBatchService } from './claim-batch.service';
     FormTemplateController,
     PanelPricingController,
     ClaimBatchController,
+    RoomController,
+    PublicQueueController,
   ],
   providers: [
     ServiceCatalogService,
@@ -66,6 +73,9 @@ import { ClaimBatchService } from './claim-batch.service';
     FormTemplateService,
     PanelPricingService,
     ClaimBatchService,
+    RoomService,
+    QueueDisplayConfigService,
+    PublicQueueService,
   ],
   exports: [
     ServiceCatalogService,

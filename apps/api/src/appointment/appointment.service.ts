@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { AppointmentSource, AppointmentStatus } from '@prisma/client';
+import { AppointmentSource, AppointmentStatus, QueueType } from '@prisma/client';
 import {
   TENANT_SCOPED_PRISMA,
   TenantScopedPrismaClient,
@@ -140,6 +140,8 @@ export class AppointmentService {
       staffId: appointment.staffId,
       billingType: DEFAULT_ARRIVAL_BILLING_TYPE,
       presentingComplaint: appointment.notes ?? undefined,
+      // D-038 — appointment arrivals join the "A" queue stream.
+      queueType: QueueType.APPOINTMENT,
     });
     return updated;
   }

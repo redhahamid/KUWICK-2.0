@@ -31,7 +31,7 @@ export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(TenantContextMiddleware)
-      .exclude('health', 'auth/login', 'auth/refresh', 'auth/platform/login', 'platform', 'platform/(.*)')
+      .exclude('health', 'auth/login', 'auth/refresh', 'auth/platform/login', 'platform', 'platform/(.*)', 'public/(.*)')
       .forRoutes('*');
   }
 }

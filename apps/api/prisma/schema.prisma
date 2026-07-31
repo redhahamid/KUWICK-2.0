@@ -86,6 +86,8 @@ model Tenant {
   claimBatchLines             ClaimBatchLine[]
   leaveRequests               LeaveRequest[]
   publicHolidays              PublicHoliday[]
+  rooms                       Room[]
+  queueDisplayConfigs         QueueDisplayConfig[]
 
   @@map("tenants")
 }
@@ -118,6 +120,8 @@ model Clinic {
   visits              Visit[]
   queueTickets        QueueTicket[]
   orderServices       OrderService[]
+  rooms               Room[]
+  queueDisplayConfig  QueueDisplayConfig?
 
   @@index([tenantId])
   @@map("clinics")
@@ -1140,6 +1144,62 @@ enum QueueTicketStatus {
   CANCELLED
 }
 
+// Queue overhaul (D-038) — kuwick.com's real 4-stream numbering: A for
+// appointment arrivals, C for OTC (over-the-counter, no consultation),
+// W for walk-ins, E for emergencies. Each stream numbers independently per
+// clinic per day (W001, E001, ...).
+enum QueueType {
+  APPOINTMENT
+  OTC
+  WALK_IN
+  EMERGENCY
+}
+
+// Physical stations a patient can be called to — Consultation 1/2,
+// Treatment Room 1/2, Dispensary Counter (D-038). Per clinic, staff-
+// maintained under Management > Operation.
+model Room {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  clinicId  String   @map("clinic_id")
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  clinic       Clinic        @relation(fields: [clinicId], references: [id])
+  queueTickets QueueTicket[]
+
+  @@unique([tenantId, clinicId, name])
+  @@index([tenantId, clinicId])
+  @@map("rooms")
+}
+
+// Waiting-room monitor configuration (D-038) — one per clinic: the
+// clinic's own YouTube video, scrolling text, and the announcement voice's
+// name/rate/pitch/volume (browser SpeechSynthesis, D-025 — voiceName
+// matches a SpeechSynthesisVoice.name on the display machine).
+model QueueDisplayConfig {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  clinicId    String   @unique @map("clinic_id")
+  youtubeUrl  String?  @map("youtube_url")
+  runningText String?  @map("running_text")
+  voiceName   String?  @map("voice_name")
+  voiceRate   Float    @default(1) @map("voice_rate")
+  voicePitch  Float    @default(1) @map("voice_pitch")
+  voiceVolume Float    @default(1) @map("voice_volume")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+
+  @@index([tenantId])
+  @@map("queue_display_configs")
+}
+
 // Mirrors the audited kuwick.com Queue module's five tabs (Overview folds
 // into the others; Waiting/Consultation/Dispensary & Payment/Completed map
 // 1:1 onto this enum plus CANCELLED). One ticket per Visit — see D-023,
@@ -1147,22 +1207,32 @@ enum QueueTicketStatus {
 // thin here, matching the reference system, while the state machine itself
 // is fully real.
 model QueueTicket {
-  id           String            @id @default(uuid())
-  tenantId     String            @map("tenant_id")
-  clinicId     String            @map("clinic_id")
-  visitId      String            @unique @map("visit_id")
-  // Resets daily per clinic — same accepted gap as Visit.visitNumber.
-  ticketNumber Int               @map("ticket_number")
-  status       QueueTicketStatus @default(WAITING)
-  location     String?
-  calledAt     DateTime?         @map("called_at")
-  cancelReason String?           @map("cancel_reason")
-  createdAt    DateTime          @default(now()) @map("created_at")
-  updatedAt    DateTime          @updatedAt @map("updated_at")
+  id            String            @id @default(uuid())
+  tenantId      String            @map("tenant_id")
+  clinicId      String            @map("clinic_id")
+  visitId       String            @unique @map("visit_id")
+  // Per-queue-type sequence, resets daily per clinic — same accepted
+  // count-based gap as Visit.visitNumber.
+  ticketNumber  Int               @map("ticket_number")
+  // Queue overhaul (D-038): "W001"/"A003"/... — prefix from queueType +
+  // zero-padded ticketNumber, snapshotted at creation so renumbering rules
+  // can change later without rewriting history. Nullable only for tickets
+  // created before this phase.
+  displayNumber String?           @map("display_number")
+  queueType     QueueType         @default(WALK_IN) @map("queue_type")
+  status        QueueTicketStatus @default(WAITING)
+  location      String?
+  // Where the patient was called to (D-038) — set by the Call action.
+  roomId        String?           @map("room_id")
+  calledAt      DateTime?         @map("called_at")
+  cancelReason  String?           @map("cancel_reason")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
   clinic Clinic @relation(fields: [clinicId], references: [id])
   visit  Visit  @relation(fields: [visitId], references: [id])
+  room   Room?  @relation(fields: [roomId], references: [id])
 
   @@index([tenantId, clinicId, status])
   @@index([tenantId, clinicId, createdAt])

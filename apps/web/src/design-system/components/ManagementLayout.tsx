@@ -30,6 +30,8 @@ const MENU_GROUPS = [
       item('/management/operation/qualifications', 'Qualifications'),
       item('/management/operation/slot-capacity', 'Slot Capacity'),
       item('/management/operation/diagnoses', 'Diagnoses Directory'),
+      item('/management/operation/rooms', 'Rooms & Stations'),
+      item('/management/operation/queue-display', 'Queue Screen'),
     ],
   },
   {
