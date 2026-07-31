@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Button, Card, Col, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography, message } from 'antd';
+import { Button, Card, Col, Popconfirm, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography, message } from 'antd';
+import { CheckOutlined, PaperClipOutlined, PrinterOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useClinics } from '../core/hooks/useClinics';
-import { useCompleteProcedure, useProcedureQueue } from './hooks/useProcedureQueue';
+import { useAcceptProcedure, useCancelProcedure, useCompleteProcedure, useProcedureQueue } from './hooks/useProcedureQueue';
+import { CompleteOrderModal } from './CompleteOrderModal';
 import { OrderService, OrderServiceStatus } from './types';
 import { ApiError } from '../core/api-client';
 
@@ -27,15 +29,20 @@ const SUMMARY_CARDS: { key: StatusFilter; label: string }[] = [
 
 // The standalone Procedure Task Queue (docs/PRODUCT_REQUIREMENTS.md §4) —
 // TASK_ORDER-only, generated automatically when a doctor adds a procedure
-// via Orders & Services (Clinical 2c plan, judgment call #1). "Complete" is
-// the only action, matching the audited kuwick.com reference exactly
-// (D-023 precedent) — Start/Cancel live on the per-visit Orders & Services
-// tab instead.
+// via Orders & Services (Clinical 2c plan, judgment call #1). Full
+// lifecycle lives here now (owner feedback: staff work this queue
+// directly, not the per-visit Orders & Services tab) — Accept moves
+// PENDING -> IN_PROGRESS, Complete records the result/attachments,
+// Cancel is available before completion, and Print opens a formatted
+// result view once done.
 export function ProcedureQueuePage() {
   const [clinicId, setClinicId] = useState<string>();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
+  const [activeOrder, setActiveOrder] = useState<OrderService | null>(null);
   const { data: clinics } = useClinics();
   const { data: allOrders, isLoading } = useProcedureQueue({ clinicId });
+  const acceptProcedure = useAcceptProcedure();
+  const cancelProcedure = useCancelProcedure();
   const completeProcedure = useCompleteProcedure();
 
   const counts: Record<StatusFilter, number> = {
@@ -48,10 +55,25 @@ export function ProcedureQueuePage() {
 
   const filtered = statusFilter === 'All' ? allOrders : allOrders?.filter((o) => o.status === statusFilter);
 
-  const handleComplete = (id: string) => {
-    completeProcedure
-      .mutateAsync({ id })
-      .catch((error) => message.error(error instanceof ApiError ? error.message : 'Failed to complete'));
+  const handleComplete = async (
+    id: string,
+    result: string,
+    formTemplateId?: string,
+    formData?: Record<string, unknown>,
+  ) => {
+    await completeProcedure.mutateAsync({ id, input: { result: result || undefined, formTemplateId, formData } });
+  };
+
+  const handleAccept = (id: string) => {
+    acceptProcedure.mutateAsync({ id }).catch((e) => message.error(e instanceof ApiError ? e.message : 'Failed to accept'));
+  };
+
+  const handleCancel = (id: string) => {
+    cancelProcedure.mutateAsync({ id }).catch((e) => message.error(e instanceof ApiError ? e.message : 'Failed to cancel'));
+  };
+
+  const handlePrint = (id: string) => {
+    window.open(`/print/order-service/${id}`, '_blank');
   };
 
   return (
@@ -127,14 +149,57 @@ export function ProcedureQueuePage() {
           },
           {
             title: 'Action',
-            render: (_: unknown, r: OrderService) =>
-              r.status === 'IN_PROGRESS' ? (
-                <Button size="small" onClick={() => handleComplete(r.id)}>
-                  Complete
-                </Button>
-              ) : null,
+            render: (_: unknown, r: OrderService) => {
+              if (r.status === 'PENDING') {
+                return (
+                  <Space>
+                    <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => handleAccept(r.id)}>
+                      Accept
+                    </Button>
+                    <Popconfirm title="Cancel this task?" onConfirm={() => handleCancel(r.id)}>
+                      <Button size="small" danger>
+                        Cancel
+                      </Button>
+                    </Popconfirm>
+                  </Space>
+                );
+              }
+              if (r.status === 'IN_PROGRESS') {
+                return (
+                  <Space>
+                    <Button size="small" onClick={() => setActiveOrder(r)}>
+                      Complete
+                    </Button>
+                    <Popconfirm title="Cancel this task?" onConfirm={() => handleCancel(r.id)}>
+                      <Button size="small" danger>
+                        Cancel
+                      </Button>
+                    </Popconfirm>
+                  </Space>
+                );
+              }
+              if (r.status === 'COMPLETED') {
+                return (
+                  <Space>
+                    <Button size="small" type="text" icon={<PaperClipOutlined />} onClick={() => setActiveOrder(r)}>
+                      Attachments
+                    </Button>
+                    <Button size="small" type="text" icon={<PrinterOutlined />} onClick={() => handlePrint(r.id)}>
+                      Print
+                    </Button>
+                  </Space>
+                );
+              }
+              return null;
+            },
           },
         ]}
+      />
+      <CompleteOrderModal
+        order={activeOrder}
+        onClose={() => setActiveOrder(null)}
+        onComplete={handleComplete}
+        completing={completeProcedure.isPending}
       />
     </>
   );

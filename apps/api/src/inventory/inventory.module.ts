@@ -11,6 +11,8 @@ import { ProcurementRequestService } from './procurement-request.service';
 import { PurchaseOrderController } from './purchase-order.controller';
 import { PurchaseOrderService } from './purchase-order.service';
 import { GoodsReceivingService } from './goods-receiving.service';
+import { ItemAgeDosageController } from './item-age-dosage.controller';
+import { ItemAgeDosageService } from './item-age-dosage.service';
 
 // Inventory & Procurement, Phase 1d (docs/DEVELOPMENT_ROADMAP.md). Owns
 // Item/Stock (docs/PRODUCT_REQUIREMENTS.md §9 data-ownership table) — Item
@@ -25,6 +27,7 @@ import { GoodsReceivingService } from './goods-receiving.service';
     StockController,
     ProcurementRequestController,
     PurchaseOrderController,
+    ItemAgeDosageController,
   ],
   providers: [
     ItemService,
@@ -33,6 +36,7 @@ import { GoodsReceivingService } from './goods-receiving.service';
     ProcurementRequestService,
     PurchaseOrderService,
     GoodsReceivingService,
+    ItemAgeDosageService,
   ],
   exports: [ItemService, StockService],
 })

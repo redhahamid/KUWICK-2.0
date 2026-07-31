@@ -6,6 +6,7 @@ import dayjs from 'dayjs';
 import { usePatients, useCreatePatient } from './hooks/usePatients';
 import { CreatePatientDto, Patient } from './types';
 import { ApiError } from './api-client';
+import { parseNric } from './nric';
 import { AddToQueueDrawer } from '../clinical/AddToQueueDrawer';
 
 const { Title } = Typography;
@@ -20,6 +21,35 @@ export function PatientsPage() {
   const [open, setOpen] = useState(false);
   const [queuingPatient, setQueuingPatient] = useState<Patient | null>(null);
   const [form] = Form.useForm<PatientFormValues>();
+
+  // Auto-fills DOB/Gender from the NRIC digits as the doctor/staff types —
+  // Malaysian NRIC encodes both (docs/DECISIONS.md Phase A2: manual entry
+  // only for now, no physical MyKad reader hardware). Only fires while the
+  // fields are still blank, so it never silently overwrites a value
+  // someone already typed or corrected by hand.
+  const handleValuesChange = (changed: Partial<PatientFormValues>) => {
+    if (!('identifierValue' in changed) && !('identifierType' in changed)) {
+      return;
+    }
+    const values = form.getFieldsValue();
+    if (values.identifierType !== 'NRIC' || !values.identifierValue) {
+      return;
+    }
+    const parsed = parseNric(values.identifierValue);
+    if (!parsed) {
+      return;
+    }
+    const patch: Partial<PatientFormValues> = {};
+    if (!values.dob) {
+      patch.dob = parsed.dob;
+    }
+    if (!values.gender) {
+      patch.gender = parsed.gender;
+    }
+    if (Object.keys(patch).length > 0) {
+      form.setFieldsValue(patch);
+    }
+  };
 
   const handleSubmit = async (values: PatientFormValues) => {
     try {
@@ -67,7 +97,13 @@ export function PatientsPage() {
         ]}
       />
       <Drawer title="Add Patient" open={open} onClose={() => setOpen(false)} destroyOnHidden width={420}>
-        <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ identifierType: 'NRIC' }}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={handleSubmit}
+          onValuesChange={handleValuesChange}
+          initialValues={{ identifierType: 'NRIC' }}
+        >
           <Form.Item name="name" label="Name" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -79,8 +115,13 @@ export function PatientsPage() {
               ]}
             />
           </Form.Item>
-          <Form.Item name="identifierValue" label="ID Number" rules={[{ required: true }]}>
-            <Input />
+          <Form.Item
+            name="identifierValue"
+            label="ID Number"
+            rules={[{ required: true }]}
+            tooltip="For NRIC, Date of Birth and Gender below fill in automatically."
+          >
+            <Input placeholder="e.g. 900101015001" />
           </Form.Item>
           <Form.Item name="phone" label="Phone">
             <Input />

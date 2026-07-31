@@ -14,6 +14,20 @@ import { DiagnosisService } from './diagnosis.service';
 import { OrderServiceController } from './order-service.controller';
 import { ProcedureQueueController } from './procedure-queue.controller';
 import { OrderServiceService } from './order-service.service';
+import { PrescriptionController } from './prescription.controller';
+import { PrescriptionService } from './prescription.service';
+import { PanelClinicController } from './panel-clinic.controller';
+import { PanelClinicService } from './panel-clinic.service';
+import { DocumentController } from './document.controller';
+import { DocumentService } from './document.service';
+import { InvoiceController } from './invoice.controller';
+import { InvoiceService } from './invoice.service';
+import { FormTemplateController } from './form-template.controller';
+import { FormTemplateService } from './form-template.service';
+import { PanelPricingController } from './panel-pricing.controller';
+import { PanelPricingService } from './panel-pricing.service';
+import { ClaimBatchController } from './claim-batch.controller';
+import { ClaimBatchService } from './claim-batch.service';
 
 // Clinical Operations, Phase 1a. Owns ServiceCatalog, Visit, QueueTicket,
 // ClinicalNote, Diagnosis, OrderService, Prescription, Document, Invoice
@@ -30,6 +44,13 @@ import { OrderServiceService } from './order-service.service';
     DiagnosisCatalogController,
     OrderServiceController,
     ProcedureQueueController,
+    PrescriptionController,
+    PanelClinicController,
+    DocumentController,
+    InvoiceController,
+    FormTemplateController,
+    PanelPricingController,
+    ClaimBatchController,
   ],
   providers: [
     ServiceCatalogService,
@@ -38,6 +59,13 @@ import { OrderServiceService } from './order-service.service';
     ClinicalNoteService,
     DiagnosisService,
     OrderServiceService,
+    PrescriptionService,
+    PanelClinicService,
+    DocumentService,
+    InvoiceService,
+    FormTemplateService,
+    PanelPricingService,
+    ClaimBatchService,
   ],
   exports: [
     ServiceCatalogService,
@@ -46,6 +74,13 @@ import { OrderServiceService } from './order-service.service';
     ClinicalNoteService,
     DiagnosisService,
     OrderServiceService,
+    PrescriptionService,
+    PanelClinicService,
+    DocumentService,
+    InvoiceService,
+    FormTemplateService,
+    PanelPricingService,
+    ClaimBatchService,
   ],
 })
 export class ClinicalModule {}

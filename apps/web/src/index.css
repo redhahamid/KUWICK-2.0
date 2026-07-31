@@ -1,0 +1,17 @@
+/* Canvas layout's compact Notes editor (RichTextEditor.tsx) — no visible
+   box around the text, even while focused/typing (user feedback: "don't
+   want border while typing the notes"). Browsers put a default focus
+   outline on contenteditable elements; ProseMirror is the actual
+   contenteditable div Tiptap renders inside EditorContent. */
+.kw-notes-borderless .ProseMirror {
+  outline: none;
+  border: none;
+  box-shadow: none;
+}
+
+.kw-notes-borderless .ProseMirror:focus,
+.kw-notes-borderless .ProseMirror:focus-visible {
+  outline: none;
+  border: none;
+  box-shadow: none;
+}

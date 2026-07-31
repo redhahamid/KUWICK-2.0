@@ -34,6 +34,16 @@ export function useOrderServices(visitId?: string, filter: OrderServiceFilter = 
   });
 }
 
+// Single order, with visit/patient/clinic/requestedBy joined — backs the
+// print-result view.
+export function useOrderService(id?: string) {
+  return useQuery({
+    queryKey: ['order-service', id],
+    queryFn: () => apiClient.get<OrderService>(`/order-services/${id}`),
+    enabled: Boolean(id),
+  });
+}
+
 export function useCreateOrderService(visitId?: string) {
   const queryClient = useQueryClient();
   return useMutation({

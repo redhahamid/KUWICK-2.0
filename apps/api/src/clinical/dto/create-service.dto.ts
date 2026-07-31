@@ -27,3 +27,35 @@ export class CreateServiceDto {
   @Min(0)
   price?: number;
 }
+
+export class UpdateServiceDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  code?: string;
+
+  @IsOptional()
+  @IsEnum(ServiceOrderType)
+  orderType?: ServiceOrderType;
+
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  durationMinutesDefault?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  price?: number;
+
+  @IsOptional()
+  active?: boolean;
+}

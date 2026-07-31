@@ -1,5 +1,6 @@
 import { Staff } from '../hr/types';
-import { Patient } from '../core/types';
+import { Clinic, Patient } from '../core/types';
+import { Item } from '../inventory/types';
 
 export type ServiceOrderType = 'STANDARD_SERVICE' | 'TASK_ORDER';
 
@@ -24,6 +25,48 @@ export interface CreateServiceDto {
   price?: number;
 }
 
+export type UpdateServiceDto = Partial<CreateServiceDto> & { active?: boolean };
+
+// Not a DB enum on the backend (fields are stored as JSON) — kept as a
+// union here for the same reason. Mirrors the owner's audited kuwick.com
+// "Result Form Builder" type picker; grids/rating/linear-scale/file-
+// upload/title-description are deferred (see form-field.dto.ts).
+export type FormFieldType = 'TEXT' | 'NUMBER' | 'TEXTAREA' | 'RADIO' | 'CHECKBOX' | 'SELECT' | 'DATE' | 'TIME';
+
+export interface FormField {
+  id: string;
+  label: string;
+  type: FormFieldType;
+  unit?: string;
+  options?: string[];
+  normalRangeMin?: number;
+  normalRangeMax?: number;
+  required?: boolean;
+}
+
+export interface FormTemplate {
+  id: string;
+  name: string;
+  serviceCatalogId: string | null;
+  fields: FormField[];
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateFormTemplateDto {
+  name: string;
+  serviceCatalogId?: string;
+  fields: FormField[];
+}
+
+export interface UpdateFormTemplateDto {
+  name?: string;
+  serviceCatalogId?: string;
+  fields?: FormField[];
+  active?: boolean;
+}
+
 export type QueueTicketStatus = 'WAITING' | 'IN_CONSULTATION' | 'DISPENSARY_PAYMENT' | 'COMPLETED' | 'CANCELLED';
 
 export interface Visit {
@@ -34,12 +77,68 @@ export interface Visit {
   staffId: string;
   visitNumber: string;
   billingType: string;
+  panelClinicId: string | null;
   presentingComplaint: string | null;
   checkInAt: string;
   checkOutAt: string | null;
   staff?: Staff;
   patient?: Patient;
+  clinic?: Clinic;
   queueTicket?: QueueTicket | null;
+}
+
+export interface PanelClinic {
+  id: string;
+  tenantId: string;
+  name: string;
+  code: string | null;
+  limitAmount: string | null;
+  active: boolean;
+}
+
+export interface CreatePanelClinicDto {
+  name: string;
+  code?: string;
+  limitAmount?: number;
+}
+
+export type UpdatePanelClinicDto = Partial<CreatePanelClinicDto> & { active?: boolean };
+
+// Phase A8 — per-panel negotiated rate / non-coverage rule for a
+// medication/vaccine/consumable (Item) or a service/procedure
+// (ServiceCatalog). Exactly one of itemId/serviceCatalogId is set.
+export interface PanelPriceOverride {
+  id: string;
+  panelClinicId: string;
+  itemId: string | null;
+  serviceCatalogId: string | null;
+  overridePrice: string;
+  item?: Item;
+  serviceCatalog?: Service;
+  createdAt: string;
+}
+
+export interface CreatePanelPriceOverrideDto {
+  itemId?: string;
+  serviceCatalogId?: string;
+  overridePrice: number;
+}
+
+export interface PanelExclusion {
+  id: string;
+  panelClinicId: string;
+  itemId: string | null;
+  serviceCatalogId: string | null;
+  reason: string | null;
+  item?: Item;
+  serviceCatalog?: Service;
+  createdAt: string;
+}
+
+export interface CreatePanelExclusionDto {
+  itemId?: string;
+  serviceCatalogId?: string;
+  reason?: string;
 }
 
 export interface QueueTicket {
@@ -61,6 +160,7 @@ export interface AddToQueueDto {
   patientId: string;
   staffId: string;
   billingType: string;
+  panelClinicId?: string;
   presentingComplaint?: string;
 }
 
@@ -160,6 +260,8 @@ export interface OrderService {
   requestedAt: string;
   completedAt: string | null;
   cancelReason: string | null;
+  formTemplateId: string | null;
+  formData: Record<string, unknown> | null;
   visit?: Visit;
   requestedBy?: Staff;
 }
@@ -172,8 +274,223 @@ export interface CreateOrderServiceDto {
 
 export interface CompleteOrderServiceDto {
   result?: string;
+  formTemplateId?: string;
+  formData?: Record<string, unknown>;
 }
 
 export interface CancelOrderServiceDto {
   cancelReason?: string;
+}
+
+export interface Attachment {
+  id: string;
+  orderServiceId: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  uploadedByStaffId: string;
+  createdAt: string;
+}
+
+export type DocumentType = 'MC' | 'REFERRAL' | 'MEMO' | 'QUARANTINE';
+
+export interface ClinicalDocument {
+  id: string;
+  visitId: string;
+  type: DocumentType;
+  content: string;
+  issuedByStaffId: string;
+  issuedDate: string;
+  startDate: string | null;
+  endDate: string | null;
+  diagnosisText: string | null;
+  referredTo: string | null;
+  signedAt: string | null;
+  signedByStaffId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateDocumentDto {
+  visitId: string;
+  type: DocumentType;
+  content: string;
+  issuedByStaffId?: string;
+  issuedDate?: string;
+  startDate?: string;
+  endDate?: string;
+  diagnosisText?: string;
+  referredTo?: string;
+}
+
+export type InvoiceStatus = 'UNPAID' | 'PAID' | 'CANCELLED';
+
+export interface InvoiceLine {
+  id: string;
+  invoiceId: string;
+  description: string;
+  quantity: number;
+  unitPrice: string;
+  amount: string;
+  sourceOrderServiceId: string | null;
+  sourcePrescriptionId: string | null;
+  excludedFromPanel: boolean;
+  createdAt: string;
+}
+
+export interface Invoice {
+  id: string;
+  visitId: string;
+  invoiceNumber: string;
+  status: InvoiceStatus;
+  totalAmount: string;
+  createdByStaffId: string;
+  cancelReason: string | null;
+  paidAt: string | null;
+  paymentMethod: string | null;
+  // Phase 1e — snapshotted server-side at pay-time (InvoiceService#pay),
+  // never live-recomputed afterward. 0/0 for an UNPAID invoice.
+  panelCoveredAmount: string;
+  patientPaidAmount: string;
+  createdAt: string;
+  updatedAt: string;
+  lines: InvoiceLine[];
+  visit?: Visit;
+}
+
+// Phase 1e (Panel Claims Core). One status lifecycle for every panel
+// (D-031) — per-panel variance (AIA/MARA/etc.) is captured as data
+// (submissionMethod + free batching cadence), not as a workflow fork.
+export type ClaimBatchStatus = 'BATCHED' | 'SUBMITTED' | 'PARTIALLY_PAID' | 'PAID' | 'RECONCILED';
+export type ClaimLineStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'DEDUCTED' | 'PAID';
+export type ClaimSubmissionMethod = 'PORTAL' | 'COURIER' | 'EMAIL' | 'OTHER';
+
+export interface ClaimBatchLine {
+  id: string;
+  claimBatchId: string;
+  invoiceId: string;
+  claimedAmount: string;
+  status: ClaimLineStatus;
+  paidAmount: string | null;
+  deductionReason: string | null;
+  invoice: Invoice;
+  createdAt: string;
+}
+
+export interface ClaimBatch {
+  id: string;
+  panelClinicId: string;
+  batchNumber: string;
+  status: ClaimBatchStatus;
+  submissionMethod: string | null;
+  submissionReference: string | null;
+  submittedAt: string | null;
+  reconciledAt: string | null;
+  createdByStaffId: string;
+  lines: ClaimBatchLine[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OutstandingClaimBatch extends ClaimBatch {
+  claimedTotal: number;
+  paidTotal: number;
+  outstandingAmount: number;
+  daysOutstanding: number;
+  panelClinic: PanelClinic;
+}
+
+export interface CreateClaimBatchDto {
+  panelClinicId: string;
+  invoiceIds: string[];
+  createdByStaffId: string;
+}
+
+export interface SubmitClaimBatchDto {
+  submissionMethod: ClaimSubmissionMethod;
+  submissionReference?: string;
+}
+
+export interface RecordClaimLinePaymentDto {
+  status: Exclude<ClaimLineStatus, 'PENDING'>;
+  paidAmount?: number;
+  deductionReason?: string;
+}
+
+export interface CreateInvoiceDto {
+  visitId: string;
+  createdByStaffId: string;
+}
+
+export interface AddInvoiceLineDto {
+  description: string;
+  quantity?: number;
+  unitPrice: number;
+  sourceOrderServiceId?: string;
+  sourcePrescriptionId?: string;
+}
+
+export interface CancelInvoiceDto {
+  cancelReason?: string;
+}
+
+// Cash/Card/QR/Bank Transfer are the patient-facing methods a staff member
+// picks in the payment picker. PANEL is used internally for the "fully
+// covered, no patient copay" settlement action — never shown as a picker
+// option (see InvoiceTab's PATIENT_PAYMENT_METHOD_OPTIONS).
+export type PaymentMethod = 'CASH' | 'CARD' | 'QR' | 'BANK_TRANSFER' | 'PANEL';
+
+export interface PayInvoiceDto {
+  paymentMethod: PaymentMethod;
+}
+
+export type PrescriptionStatus = 'ORDERED' | 'DISPENSED' | 'CANCELLED';
+export type DosageCalcMethod = 'WEIGHT_BASED' | 'AGE_BASED' | 'MANUAL';
+
+export interface Prescription {
+  id: string;
+  tenantId: string;
+  visitId: string;
+  itemId: string;
+  quantity: number;
+  amount: string;
+  unit: string | null;
+  frequency: string;
+  durationDays: number;
+  indication: string | null;
+  remark: string | null;
+  calcMethod: DosageCalcMethod | null;
+  calcWeightKg: string | null;
+  calcDoseRateMgKg: string | null;
+  calcTargetDoseMg: string | null;
+  status: PrescriptionStatus;
+  prescribedByStaffId: string;
+  prescribedAt: string;
+  dispensedAt: string | null;
+  cancelReason: string | null;
+  item?: Item;
+}
+
+export interface CreatePrescriptionDto {
+  visitId: string;
+  itemId: string;
+  quantity: number;
+  amount: number;
+  unit?: string;
+  frequency: string;
+  durationDays: number;
+  indication?: string;
+  remark?: string;
+  calcMethod?: DosageCalcMethod;
+  calcWeightKg?: number;
+  calcDoseRateMgKg?: number;
+}
+
+export interface CancelPrescriptionDto {
+  cancelReason?: string;
+}
+
+export interface CopyPrescriptionsDto {
+  sourceVisitId: string;
+  targetVisitId: string;
 }

@@ -19,6 +19,10 @@ export class AddToQueueDto {
   billingType!: string;
 
   @IsOptional()
+  @IsUUID()
+  panelClinicId?: string;
+
+  @IsOptional()
   @IsString()
   presentingComplaint?: string;
 }

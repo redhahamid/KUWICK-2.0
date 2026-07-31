@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Badge, Button, Card, Empty, Input, Popconfirm, Select, Space, Table, Tabs, Tag, Typography, message } from 'antd';
-import { MedicineBoxOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { MedicineBoxOutlined, PaperClipOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useServices } from './hooks/useServices';
 import {
@@ -10,6 +10,7 @@ import {
   useOrderServices,
   useStartOrderService,
 } from './hooks/useOrderServices';
+import { CompleteOrderModal } from './CompleteOrderModal';
 import { OrderService, OrderServiceStatus } from './types';
 import { ApiError } from '../core/api-client';
 
@@ -32,6 +33,7 @@ export function OrdersServicesTab({ visitId }: OrdersServicesTabProps) {
   const [serviceCatalogId, setServiceCatalogId] = useState<string>();
   const [instruction, setInstruction] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
+  const [activeOrder, setActiveOrder] = useState<OrderService | null>(null);
 
   const { data: services } = useServices();
   const { data: allOrders, isLoading } = useOrderServices(visitId);
@@ -42,6 +44,15 @@ export function OrdersServicesTab({ visitId }: OrdersServicesTabProps) {
 
   const reportFailure = (error: unknown, fallback: string) => {
     message.error(error instanceof ApiError ? error.message : fallback);
+  };
+
+  const handleComplete = async (
+    id: string,
+    result: string,
+    formTemplateId?: string,
+    formData?: Record<string, unknown>,
+  ) => {
+    await completeOrder.mutateAsync({ id, input: { result: result || undefined, formTemplateId, formData } });
   };
 
   const handleAdd = async () => {
@@ -164,13 +175,13 @@ export function OrdersServicesTab({ visitId }: OrdersServicesTabProps) {
                       </Button>
                     )}
                     {r.status === 'IN_PROGRESS' && (
-                      <Button
-                        size="small"
-                        onClick={() =>
-                          completeOrder.mutateAsync({ id: r.id }).catch((e) => reportFailure(e, 'Failed to complete'))
-                        }
-                      >
+                      <Button size="small" onClick={() => setActiveOrder(r)}>
                         Complete
+                      </Button>
+                    )}
+                    {r.status === 'COMPLETED' && (
+                      <Button size="small" type="text" icon={<PaperClipOutlined />} onClick={() => setActiveOrder(r)}>
+                        Attachments
                       </Button>
                     )}
                     {(r.status === 'PENDING' || r.status === 'IN_PROGRESS') && (
@@ -192,6 +203,12 @@ export function OrdersServicesTab({ visitId }: OrdersServicesTabProps) {
           />
         )}
       </Card>
+      <CompleteOrderModal
+        order={activeOrder}
+        onClose={() => setActiveOrder(null)}
+        onComplete={handleComplete}
+        completing={completeOrder.isPending}
+      />
     </div>
   );
 }

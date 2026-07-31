@@ -7,6 +7,7 @@ export interface CreateVisitInput {
   patientId: string;
   staffId: string;
   billingType: string;
+  panelClinicId?: string;
   presentingComplaint?: string;
 }
 
@@ -26,14 +27,27 @@ export class VisitService {
     return `V-${String(count + 1).padStart(6, '0')}`;
   }
 
+  // A panel visit's billingType is derived from the panel's own name, not
+  // trusted from client-supplied text (docs/DECISIONS.md D-028-style
+  // reasoning: the panel is the source of truth for what it's called on a
+  // bill, same as OrderService/Diagnosis snapshot from their catalogs).
   async create(input: CreateVisitInput) {
+    let billingType = input.billingType;
+    if (input.panelClinicId) {
+      const panel = await this.prisma.panelClinic.findUnique({ where: { id: input.panelClinicId } });
+      if (!panel) {
+        throw new NotFoundException('Panel clinic not found');
+      }
+      billingType = panel.name;
+    }
     return this.prisma.visit.create({
       data: {
         tenantId: currentTenantId(),
         clinicId: input.clinicId,
         patientId: input.patientId,
         staffId: input.staffId,
-        billingType: input.billingType,
+        billingType,
+        panelClinicId: input.panelClinicId,
         presentingComplaint: input.presentingComplaint,
         visitNumber: await this.nextVisitNumber(),
       },

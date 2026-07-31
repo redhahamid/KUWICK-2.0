@@ -178,14 +178,45 @@ Live screenshots of kuwick.com surfaced after Phase 2a/2b/2c were built revealed
 **Alternatives considered**: leaving 2a/2b as originally built and only fixing 2c going forward — rejected by the owner ("Redo 2a + 2b now"), since shipping known-wrong Diagnosis semantics (real catalog filtering vs. cosmetic display toggle) would need a data-model change later regardless.
 **Reversibility**: Low to redo now while Diagnosis has no production data; would become progressively more expensive to correct once real visits have `Diagnosis` rows keyed against the wrong catalog shape.
 
+## D-028 — Prescriptions deduct stock at dispense time, not at prescribe time
+**Status: CONFIRMED BY OWNER** (2026-07-31, direct instruction — "At dispense time").
+Writing a `Prescription` (Clinical 3a) only creates the record — it does not touch `StockMovement`/`StockLevel`. Stock deducts only when the prescription is explicitly marked `DISPENSED`, mirroring the physical handoff and the Queue's own "Dispensary & Payment" stage. `StockMovementType` gains a `DISPENSED` value for this ledger entry, reusing `GoodsReceivingService`'s write pattern (movement row + `StockLevel` update in one service-level transaction) in the negative direction.
+**Why**: this touches both clinical workflow and stock/billing integrity (same critical category as D-020's negative-stock decision) — a prescription that's written but later cancelled, or never actually picked up, must not have already moved stock.
+**Alternatives considered**: deducting at prescribe time (rejected — would deduct stock for medications that get cancelled or never dispensed, and doesn't match the STATUS column visible on the audited kuwick.com Medications tab, which implies a PRESCRIBED → DISPENSED transition).
+**Reversibility**: Medium — the deduction call site is isolated to `PrescriptionService#dispense`; moving it to `#create` later is a small change, but any prescriptions already written under this rule would need a reconciliation pass.
+
+## D-029 — Front-desk panel visibility: read-only reference (limit + exclusions), not eligibility verification, resolving OQ#1
+**Status: CONFIRMED BY OWNER** (2026-07-31, direct instruction).
+Eligibility verification itself (active membership, coverage amount, per-visit limit, exclusions) stays an **external, manual process** — staff ask the patient which panel, then check the panel's own website/portal before registration, exactly as today. Kuwick 2.0's role is narrower: surface what it already knows (the panel's `limitAmount` and `PanelExclusion` list, both built in Phase A8) at the registration/Add-to-Queue step, so staff have a quick on-screen reference while they do that external check — not to replace it. "Limit exhausted" tracking (a patient's cumulative usage against a period allocation, distinct from the existing per-visit `limitAmount`) is **not** built now — it depends on the claims-history data Phase 1e is about to add, and no period-based allocation field exists yet. Revisit once 1e's claim batches give real utilization data to check exhaustion against.
+**Alternatives considered**: building live eligibility-API integration per panel (rejected — no panel API exists per the owner's description; verification is manual/portal-based for every panel mentioned); full silence on panel data at registration (rejected — staff already need the limit/exclusions info in front of them while they do the external check).
+**Reversibility**: High — purely additive UI on the existing Add-to-Queue drawer.
+
+## D-030 — Holiday/after-hours surcharge vs. panel pricing: per-panel override, deferred until the base surcharge feature exists, resolving OQ#3
+**Status: CONFIRMED BY OWNER** (2026-07-31, direct instruction — "Depends on the panel (per-panel rule)").
+Confirms surcharge behavior varies per panel (e.g. a panel-specific "night consultation" rate) rather than a single clinic-wide rule always winning or always losing against panel-locked pricing. **Not implemented yet**: no holiday/after-hours surcharge feature exists at all in Kuwick 2.0 today, for cash or panel visits — this decision fixes the *interaction rule* (per-panel override, layered on `PanelPriceOverride`) so it isn't re-litigated later, but the surcharge engine itself is a separate, unbuilt feature (Appointment/HR-adjacent) and stays out of Phase 1e's scope.
+**Alternatives considered**: surcharge always applies on top of panel price (rejected — contradicts §8's "pricing locked to contracted tier" default for panels without their own rule); surcharge never applies to panel visits (rejected — some panels do define their own time-based rate per the Klinik Hijraa AIA sub-module audit).
+**Reversibility**: High — nothing built against this yet; the rule is recorded ahead of the feature.
+
+## D-031 — Claim submission: one flexible workflow, per-panel variance captured as data (submission method + free batching cadence), resolving OQ#10
+**Status: CONFIRMED BY OWNER, interpretation per standing delegation** (2026-07-31; owner confirmed per-panel variance is real — AIA: aggregate within 24h then a second submit step; other panels: their own portal; MARA: manual courier — the concrete workflow shape below is the industry-standard way to satisfy that without forking code per panel).
+No panel in the owner's description has a real API Kuwick could submit to — every path (portal, courier, "own portal") ends in a human manually acting outside Kuwick. So `ClaimBatch` supports **one** status lifecycle (`PRODUCT_REQUIREMENTS.md` §7: Invoice Generated → Batched → Submitted → Accepted/Rejected/Deducted → Paid → Reconciled → Aging) with two things that vary by data, not by code path: (1) batch creation has **no fixed period** — staff can create a batch from any subset of unclaimed panel-settled invoices at any time, so AIA's near-daily 24h aggregation and another panel's monthly cycle are just different staff habits against the same feature; (2) marking a batch Submitted records a **submission method** (Portal / Courier / Email / Other, free-text reference) rather than triggering a per-panel code branch.
+**Alternatives considered**: a hardcoded per-panel workflow fork (e.g. `if panel === AIA`) — rejected, brittle and doesn't scale to new panels without a code change; a rigid fixed-period (e.g. monthly-only) batch cycle — rejected, doesn't fit AIA's near-daily cadence.
+**Reversibility**: High — a true panel-side API integration later would slot in underneath the same status lifecycle without changing it.
+
+## D-032 — E-Invoice (LHDN MyInvois): moved from "deferred/conceptual" to in-scope, pending kuwick.com reference screenshots
+**Status: CONFIRMED BY OWNER** (2026-07-31, direct instruction — "In kuwick also done the e invoice... please go through it").
+Reverses the earlier working assumption (this session, prior to today) that SST/e-Invoice stays conceptual/not-ready. The owner states the existing live kuwick.com already has e-Invoice built, and LHDN MyInvois exposes its own API with separate sandbox/production environments — this is a real, government-mandated integration, not a hypothetical. Since kuwick.com's own screens are the correct fidelity reference (`PRODUCT_REQUIREMENTS.md` §1, §19 — only Yezza/management-reference UI must not be reproduced; kuwick's own UI should be preserved/refined), building this requires the owner's kuwick.com e-Invoice/Finance-settings screenshots, the same pattern already used for the MC template and Result Form Builder. LHDN's public MyInvois API/SDK documentation is fair game for backend integration research (government developer docs, not competitor IP). **Not started yet** — this decision only re-opens the scope; screenshots requested, work not yet begun.
+**Alternatives considered**: building against the Klinik Hijraa audit's Finance-module description alone (`PROPOSED_ADDENDUM_2026-07-30_finance-and-audit-gaps.md` Part 1) without kuwick.com screenshots — rejected, since kuwick.com already has a real, working implementation to match rather than a description to interpret.
+**Reversibility**: N/A — nothing built yet.
+
 ---
 
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:
 
-- Front-desk visibility into panel eligibility
-- Doctor incentive formula, precise worked semantics
-- Holiday/after-hours surcharge interaction with panel-locked pricing
-- Panel pricing override governance
+- Doctor incentive formula, precise worked semantics (OQ#2, blocks 1c only)
+- Booking-commission attribution mechanism (OQ#7, blocks the Online Booking Portal only)
+- Yezza-audit drafts: multi-session packages (OQ#16), front-desk booking-rule override (OQ#17), payment-at-booking (OQ#18)
+- Klinik Hijraa audit drafts not yet addressed: staff price tier (OQ#11), inter-branch billing (OQ#12), patient-app scope (OQ#13), clinical program generalization (OQ#14), WhatsApp delivery risk (OQ#15)
 - Data migration mechanism from the existing Kuwick system

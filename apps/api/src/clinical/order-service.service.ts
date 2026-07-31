@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from '@nes
 import { OrderServiceStatus, ServiceOrderType } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { currentTenantId } from '../core/tenant-context';
+import { deleteUploadedFile, saveUploadedFile } from '../core/file-storage';
 import { VisitService } from './visit.service';
 import { CreateOrderServiceDto } from './dto/create-order-service.dto';
 import { CompleteOrderServiceDto } from './dto/complete-order-service.dto';
@@ -68,8 +69,15 @@ export class OrderServiceService {
     });
   }
 
+  // Includes visit/patient/clinic/requestedBy so this one call backs both
+  // internal status-transition validation and the print-result view
+  // (GET /order-services/:id) — extra joined fields are harmless to the
+  // former, no separate "detail" method needed.
   async findById(id: string) {
-    const order = await this.prisma.orderService.findUnique({ where: { id } });
+    const order = await this.prisma.orderService.findUnique({
+      where: { id },
+      include: { visit: { include: { patient: true, clinic: true } }, requestedBy: true },
+    });
     if (!order) {
       throw new NotFoundException('Order/service not found');
     }
@@ -87,12 +95,32 @@ export class OrderServiceService {
     return this.prisma.orderService.update({ where: { id }, data: { status: OrderServiceStatus.IN_PROGRESS } });
   }
 
+  // Phase A7 — when a form template's structured formData is submitted
+  // without explicit free-text `result`, a plain-text summary is derived
+  // from it so every existing reader (the table's Result column, the
+  // print view) keeps working without knowing about forms at all.
   async complete(id: string, dto: CompleteOrderServiceDto) {
     const order = await this.findById(id);
     assertStatus(order.status, OrderServiceStatus.IN_PROGRESS, 'complete');
+    let result = dto.result;
+    if (!result && dto.formTemplateId && dto.formData) {
+      const template = await this.prisma.formTemplate.findUnique({ where: { id: dto.formTemplateId } });
+      if (template) {
+        const fields = template.fields as unknown as { id: string; label: string; unit?: string }[];
+        result = fields
+          .map((field) => `${field.label}: ${dto.formData?.[field.id] ?? '-'}${field.unit ? ` ${field.unit}` : ''}`)
+          .join('\n');
+      }
+    }
     return this.prisma.orderService.update({
       where: { id },
-      data: { status: OrderServiceStatus.COMPLETED, result: dto.result, completedAt: new Date() },
+      data: {
+        status: OrderServiceStatus.COMPLETED,
+        result,
+        formTemplateId: dto.formTemplateId,
+        formData: dto.formData as object | undefined,
+        completedAt: new Date(),
+      },
     });
   }
 
@@ -105,6 +133,47 @@ export class OrderServiceService {
       where: { id },
       data: { status: OrderServiceStatus.CANCELLED, cancelReason: dto.cancelReason },
     });
+  }
+
+  listAttachments(orderServiceId: string) {
+    return this.prisma.attachment.findMany({
+      where: { orderServiceId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  // uploadedByStaffId defaults to the order's own requestedByStaffId — no
+  // separate doctor/staff picker this phase (D-017, same convention as
+  // OrderService.requestedByStaffId itself).
+  async addAttachment(orderServiceId: string, file: Express.Multer.File) {
+    const order = await this.findById(orderServiceId);
+    const tenantId = currentTenantId();
+    const stored = await saveUploadedFile(tenantId, order.id, file.buffer, file.originalname);
+    return this.prisma.attachment.create({
+      data: {
+        tenantId,
+        orderServiceId: order.id,
+        fileName: file.originalname,
+        filePath: stored.relativePath,
+        mimeType: file.mimetype,
+        fileSize: file.size,
+        uploadedByStaffId: order.requestedByStaffId,
+      },
+    });
+  }
+
+  async findAttachment(orderServiceId: string, attachmentId: string) {
+    const attachment = await this.prisma.attachment.findUnique({ where: { id: attachmentId } });
+    if (!attachment || attachment.orderServiceId !== orderServiceId) {
+      throw new NotFoundException('Attachment not found');
+    }
+    return attachment;
+  }
+
+  async deleteAttachment(orderServiceId: string, attachmentId: string) {
+    const attachment = await this.findAttachment(orderServiceId, attachmentId);
+    await this.prisma.attachment.delete({ where: { id: attachmentId } });
+    await deleteUploadedFile(attachment.filePath);
   }
 }
 

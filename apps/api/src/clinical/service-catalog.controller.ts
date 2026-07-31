@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { ServiceCatalogService } from './service-catalog.service';
-import { CreateServiceDto } from './dto/create-service.dto';
+import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
 
 @Controller('services')
 export class ServiceCatalogController {
@@ -19,5 +19,10 @@ export class ServiceCatalogController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.serviceCatalog.findById(id);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() dto: UpdateServiceDto) {
+    return this.serviceCatalog.update(id, dto);
   }
 }

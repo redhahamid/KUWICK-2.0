@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../core/api-client';
-import { SetStockMinThresholdDto, StockLevel } from '../types';
+import { QuickAddStockDto, SetStockMinThresholdDto, StockBatch, StockLevel } from '../types';
 
 function clinicQuery(clinicId?: string): string {
   return clinicId ? `?clinicId=${clinicId}` : '';
@@ -34,6 +34,20 @@ export function useSetStockMinThreshold() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stock-levels'] });
       queryClient.invalidateQueries({ queryKey: ['stock-low-stock'] });
+    },
+  });
+}
+
+// "Inventory In" quick modal (Task #62) — records incoming stock without a
+// formal Purchase Order.
+export function useQuickAddStock() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: QuickAddStockDto) => apiClient.post<StockBatch>('/stock/quick-add', dto),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-levels'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-low-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-negative-stock'] });
     },
   });
 }

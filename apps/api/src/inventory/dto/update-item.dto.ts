@@ -1,6 +1,10 @@
-import { IsBoolean, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
 
 export class UpdateItemDto {
+  @IsOptional()
+  @IsString()
+  code?: string;
+
   @IsOptional()
   @IsString()
   @MinLength(1)
@@ -20,6 +24,10 @@ export class UpdateItemDto {
 
   @IsOptional()
   @IsString()
+  doseUnitDefault?: string;
+
+  @IsOptional()
+  @IsString()
   frequencyDefault?: string;
 
   @IsOptional()
@@ -33,6 +41,33 @@ export class UpdateItemDto {
   @IsOptional()
   @IsString()
   indication?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  concVolMl?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  strengthMg?: number;
+
+  @IsOptional()
+  @IsString()
+  consumptionMethod?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  defaultDispenseQuantity?: number;
+
+  @IsOptional()
+  @IsString()
+  prescriptionReference?: string;
+
+  @IsOptional()
+  @IsString()
+  remark?: string;
 
   @IsOptional()
   @IsNumber()

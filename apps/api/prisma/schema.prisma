@@ -63,6 +63,18 @@ model Tenant {
   diagnosisCatalogs           DiagnosisCatalog[]
   diagnoses                   Diagnosis[]
   orderServices               OrderService[]
+  itemAgeDosages              ItemAgeDosage[]
+  prescriptions               Prescription[]
+  panelClinics                PanelClinic[]
+  attachments                 Attachment[]
+  documents                   Document[]
+  invoices                    Invoice[]
+  invoiceLines                InvoiceLine[]
+  formTemplates               FormTemplate[]
+  panelPriceOverrides         PanelPriceOverride[]
+  panelExclusions             PanelExclusion[]
+  claimBatches                ClaimBatch[]
+  claimBatchLines             ClaimBatchLine[]
 
   @@map("tenants")
 }
@@ -72,6 +84,10 @@ model Clinic {
   tenantId  String   @map("tenant_id")
   name      String
   address   String?
+  // Printed on document letterheads (MC/Referral/Memo, Phase A4) — kept
+  // optional since not every existing seeded clinic has these set yet.
+  phone     String?
+  email     String?
   timezone  String   @default("Asia/Kuala_Lumpur")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -227,6 +243,13 @@ model Staff {
   appointments                Appointment[]
   visits                      Visit[]
   orderServices               OrderService[]
+  prescriptions               Prescription[]
+  attachments                 Attachment[]
+  documentsIssued             Document[]                   @relation("DocumentIssuedBy")
+  documentsSigned             Document[]                   @relation("DocumentSignedBy")
+  invoices                    Invoice[]
+  stockBatchesAdded           StockBatch[]
+  claimBatchesCreated         ClaimBatch[]
 
   @@index([tenantId])
   @@index([tenantId, role])
@@ -292,9 +315,39 @@ model ServiceCatalog {
   doctorServiceQualifications DoctorServiceQualification[]
   appointments                Appointment[]
   orderServices               OrderService[]
+  formTemplates               FormTemplate[]
+  panelPriceOverrides         PanelPriceOverride[]
+  panelExclusions             PanelExclusion[]
 
   @@index([tenantId])
   @@map("service_catalog")
+}
+
+// Clinical Operations, Phase A7. Admin-defined result forms ("Google
+// Forms but for lab/procedure results") — clinic owner builds a field
+// list once per service (e.g. "Full Blood Count": Hb/WBC/Platelets with
+// units and normal ranges), and every future FBC completion renders that
+// form instead of a bare free-text box. `fields` is JSON, not a normalized
+// child table: a field list is edited as a whole array in the builder UI
+// and read as a whole array when rendering, so there's no per-field query
+// need that would justify the extra join.
+model FormTemplate {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  name             String
+  serviceCatalogId String?  @map("service_catalog_id")
+  fields           Json
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  serviceCatalog ServiceCatalog? @relation(fields: [serviceCatalogId], references: [id])
+  orderServices  OrderService[]
+
+  @@index([tenantId])
+  @@index([tenantId, serviceCatalogId])
+  @@map("form_templates")
 }
 
 model DoctorSchedule {
@@ -428,6 +481,9 @@ model Appointment {
 enum StockMovementType {
   GOODS_RECEIVED
   ADJUSTMENT
+  // D-028 (docs/DECISIONS.md): stock deducts when a Prescription is marked
+  // DISPENSED, not when it's written — this is that ledger entry.
+  DISPENSED
 }
 
 // Mirrors packages/shared's ProcurementRequestStatus and PurchaseOrderStatus
@@ -448,25 +504,42 @@ enum PurchaseOrderStatus {
   CANCELLED
 }
 
-// Selfpay price only — panel-tier pricing stays owned by Panel Claims'
-// future PanelPriceTier model (docs/PRODUCT_REQUIREMENTS.md §9 data
-// ownership table), not duplicated here.
+// Selfpay price only — panel-tier pricing lives on PanelPriceOverride
+// (Phase A8), not duplicated here.
 model Item {
-  id               String   @id @default(uuid())
-  tenantId         String   @map("tenant_id")
-  name             String
-  category         String?
-  unitOfMeasure    String?  @map("unit_of_measure")
-  doseDefault      String?  @map("dose_default")
-  frequencyDefault String?  @map("frequency_default")
-  durationDefault  String?  @map("duration_default")
-  instruction      String?
-  indication       String?
-  sellPrice        Decimal  @map("sell_price") @db.Decimal(10, 2)
-  cost             Decimal? @db.Decimal(10, 2)
-  active           Boolean  @default(true)
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id                      String   @id @default(uuid())
+  tenantId                String   @map("tenant_id")
+  code                    String?
+  name                    String
+  category                String?
+  // "Stock Unit (Form)" on the audited kuwick.com Edit Inventory screen —
+  // the packaging unit (e.g. "Bottle / Botol"), distinct from
+  // doseUnitDefault (the per-dose unit, e.g. "ml").
+  unitOfMeasure           String?  @map("unit_of_measure")
+  doseDefault             String?  @map("dose_default")
+  doseUnitDefault         String?  @map("dose_unit_default")
+  frequencyDefault        String?  @map("frequency_default")
+  durationDefault         String?  @map("duration_default")
+  instruction             String?
+  indication              String?
+  // Clinical Phase 3 (Medications): "Conc. Vol (mL)" / "Strength (mg)" on
+  // the audited Edit Inventory screen — e.g. 457mg per 5mL — feeds the
+  // weight-based dosage calculator's volume step (Dose × concVolMl ÷
+  // strengthMg). Nullable: only liquid/syrup medicines carry these.
+  concVolMl               Decimal? @map("conc_vol_ml") @db.Decimal(10, 2)
+  strengthMg              Decimal? @map("strength_mg") @db.Decimal(10, 2)
+  consumptionMethod       String?  @map("consumption_method")
+  defaultDispenseQuantity Int?     @map("default_dispense_quantity")
+  // Free-text clinician guidance (e.g. "25-40MG/KG") — not a structured
+  // default plugged into the calculator; the doctor reads this and types
+  // the Dose Rate manually at prescribe time.
+  prescriptionReference   String?
+  remark                  String?
+  sellPrice               Decimal  @map("sell_price") @db.Decimal(10, 2)
+  cost                    Decimal? @db.Decimal(10, 2)
+  active                  Boolean  @default(true)
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
 
   tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
   stockLevels            StockLevel[]
@@ -475,9 +548,37 @@ model Item {
   procurementRequests    ProcurementRequest[]
   purchaseOrderLines     PurchaseOrderLine[]
   goodsReceivedNoteLines GoodsReceivedNoteLine[]
+  ageDosages             ItemAgeDosage[]
+  prescriptions          Prescription[]
+  panelPriceOverrides    PanelPriceOverride[]
+  panelExclusions        PanelExclusion[]
 
   @@index([tenantId])
   @@map("items")
+}
+
+// Clinical Phase 3 (Medications): per-medicine age-based dosage brackets
+// (e.g. "2y-5y: 2.5ml OD", "5y-11y: 5ml OD") — a lookup table, not a
+// formula, since age-based dosing doesn't scale linearly the way
+// weight-based dosing does. No admin screen for this exists in the
+// audited kuwick.com reference yet (owner confirmed it's unfinished
+// there); built here with a minimal editor so the mechanism is usable.
+model ItemAgeDosage {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  itemId        String   @map("item_id")
+  ageFromMonths Int      @map("age_from_months")
+  ageToMonths   Int      @map("age_to_months")
+  amount        Decimal  @db.Decimal(10, 2)
+  unit          String
+  frequency     String
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  item   Item   @relation(fields: [itemId], references: [id])
+
+  @@index([tenantId, itemId])
+  @@map("item_age_dosages")
 }
 
 model Supplier {
@@ -493,6 +594,7 @@ model Supplier {
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id])
   purchaseOrders PurchaseOrder[]
+  stockBatches   StockBatch[]
 
   @@index([tenantId])
   @@map("suppliers")
@@ -527,21 +629,32 @@ model StockLevel {
   @@map("stock_levels")
 }
 
+// supplierId/addedByStaffId are only ever set by the quick "Inventory In"
+// modal (StockService.quickAdd) — batches coming from a formal Purchase
+// Order receive (GoodsReceivingService) leave both null, since the
+// supplier is already known from the PO and there's no separate "who
+// added this" picker in that flow. Both nullable/optional at the DTO
+// level, same no-real-auth convention as OrderService.requestedByStaffId
+// (D-017).
 model StockBatch {
-  id           String    @id @default(uuid())
-  tenantId     String    @map("tenant_id")
-  clinicId     String    @map("clinic_id")
-  itemId       String    @map("item_id")
-  batchNumber  String?   @map("batch_number")
-  quantity     Int
-  expiryDate   DateTime? @map("expiry_date") @db.Date
-  receivedDate DateTime  @map("received_date") @db.Date
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  clinicId       String    @map("clinic_id")
+  itemId         String    @map("item_id")
+  batchNumber    String?   @map("batch_number")
+  quantity       Int
+  expiryDate     DateTime? @map("expiry_date") @db.Date
+  receivedDate   DateTime  @map("received_date") @db.Date
+  supplierId     String?   @map("supplier_id")
+  addedByStaffId String?   @map("added_by_staff_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
   clinic                 Clinic                  @relation(fields: [clinicId], references: [id])
   item                   Item                    @relation(fields: [itemId], references: [id])
+  supplier               Supplier?               @relation(fields: [supplierId], references: [id])
+  addedByStaff           Staff?                  @relation(fields: [addedByStaffId], references: [id])
   stockMovements         StockMovement[]
   goodsReceivedNoteLines GoodsReceivedNoteLine[]
 
@@ -695,6 +808,92 @@ model GoodsReceivedNoteLine {
 // action and the front-desk "Add to Daily Queue" action both create one of
 // these; Panel Claims' PanelInvoice and HR's IncentiveResult (both target
 // design) will bill/total against it, never write to it.
+// Clinical Operations, Phase A1 (Queue End-to-End), extended Phase A8.
+// Panel/TPA catalog — audited against the live kuwick.com "Panel Clinics"
+// admin screen (26 pre-loaded TPA panels with pricing overrides/
+// exclusions) and Klinik Hijraa's "Panel Companies" section. limitAmount
+// is still informational only — not automatically deducted across visits,
+// just used to compute a single visit's copay (Invoice.totalAmount minus
+// this limit, for the non-excluded portion — see InvoiceLine). Full claims
+// submission/reconciliation stays a later phase (future admin "Panel
+// Claims" menu), since that's an external workflow on the panel's own
+// website today.
+model PanelClinic {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String
+  code        String?
+  limitAmount Decimal? @map("limit_amount") @db.Decimal(10, 2)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant               @relation(fields: [tenantId], references: [id])
+  visits         Visit[]
+  priceOverrides PanelPriceOverride[]
+  exclusions     PanelExclusion[]
+  claimBatches   ClaimBatch[]
+
+  @@index([tenantId])
+  @@map("panel_clinics")
+}
+
+// Clinical Operations, Phase A8. Per-panel negotiated rate for a
+// medication/vaccine/consumable (Item) or a service/procedure
+// (ServiceCatalog) — panels frequently pay a different price than the
+// clinic's self-pay rate. Exactly one of itemId/serviceCatalogId is set
+// per row (enforced in the DTO, not a DB constraint, matching how other
+// optional "which kind of thing" FKs are handled in this schema). Read at
+// invoice Quick-Add time to suggest the correct unit price for a panel
+// visit; never retroactively rewrites an already-added InvoiceLine
+// (snapshot-at-add-time, same convention as every other invoice line).
+model PanelPriceOverride {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  panelClinicId    String   @map("panel_clinic_id")
+  itemId           String?  @map("item_id")
+  serviceCatalogId String?  @map("service_catalog_id")
+  overridePrice    Decimal  @map("override_price") @db.Decimal(10, 2)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  panelClinic    PanelClinic     @relation(fields: [panelClinicId], references: [id])
+  item           Item?           @relation(fields: [itemId], references: [id])
+  serviceCatalog ServiceCatalog? @relation(fields: [serviceCatalogId], references: [id])
+
+  @@index([tenantId, panelClinicId])
+  @@index([tenantId, itemId])
+  @@index([tenantId, serviceCatalogId])
+  @@map("panel_price_overrides")
+}
+
+// Clinical Operations, Phase A8. Items/services a panel does NOT cover.
+// When a staff member Quick-Adds a completed OrderService/Prescription to
+// a panel visit's invoice, InvoiceService checks this table and stamps
+// InvoiceLine.excludedFromPanel — so that line is always counted as
+// patient-payable copay, on top of (not netted against) the panel's
+// per-visit limitAmount.
+model PanelExclusion {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  panelClinicId    String   @map("panel_clinic_id")
+  itemId           String?  @map("item_id")
+  serviceCatalogId String?  @map("service_catalog_id")
+  reason           String?
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  panelClinic    PanelClinic     @relation(fields: [panelClinicId], references: [id])
+  item           Item?           @relation(fields: [itemId], references: [id])
+  serviceCatalog ServiceCatalog? @relation(fields: [serviceCatalogId], references: [id])
+
+  @@index([tenantId, panelClinicId])
+  @@index([tenantId, itemId])
+  @@index([tenantId, serviceCatalogId])
+  @@map("panel_exclusions")
+}
+
 model Visit {
   id                  String    @id @default(uuid())
   tenantId            String    @map("tenant_id")
@@ -704,7 +903,13 @@ model Visit {
   // Count-based sequence ("V-000002"), not a DB sequence — same accepted
   // non-atomic-race gap as Inventory's document numbers (docs/DECISIONS.md).
   visitNumber         String    @map("visit_number")
+  // Display label ("Self-pay" or the panel's name) — kept as the single
+  // source of truth for existing UI that already reads this field.
+  // panelClinicId is the structured relation added alongside it; when set,
+  // VisitService derives billingType from the panel's name server-side
+  // rather than trusting client-supplied text for a panel visit.
   billingType         String    @map("billing_type")
+  panelClinicId       String?   @map("panel_clinic_id")
   presentingComplaint String?   @map("presenting_complaint")
   checkInAt           DateTime  @default(now()) @map("check_in_at")
   checkOutAt          DateTime? @map("check_out_at")
@@ -715,10 +920,14 @@ model Visit {
   clinic        Clinic         @relation(fields: [clinicId], references: [id])
   patient       Patient        @relation(fields: [patientId], references: [id])
   staff         Staff          @relation(fields: [staffId], references: [id])
+  panelClinic   PanelClinic?   @relation(fields: [panelClinicId], references: [id])
   queueTicket   QueueTicket?
   clinicalNote  ClinicalNote?
   diagnoses     Diagnosis[]
   orderServices OrderService[]
+  prescriptions Prescription[]
+  documents     Document[]
+  invoices      Invoice[]
 
   @@unique([tenantId, visitNumber])
   @@index([tenantId, clinicId])
@@ -892,6 +1101,16 @@ model OrderService {
   requestedAt        DateTime           @default(now()) @map("requested_at")
   completedAt        DateTime?          @map("completed_at")
   cancelReason       String?            @map("cancel_reason")
+  // Phase A7 — set together at complete-time when the service has a
+  // matching FormTemplate. formTemplateId is the template used at
+  // completion time (kept even if the template is edited/deactivated
+  // later, so a historical result still shows which form it came from);
+  // formData is the filled-in {fieldId: value} map. `result` (free text)
+  // stays populated too — either typed directly, or an auto-generated
+  // plain-text summary of formData — so every existing reader (table
+  // column, print view) keeps working without a template.
+  formTemplateId     String?            @map("form_template_id")
+  formData           Json?              @map("form_data")
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
 
@@ -900,8 +1119,317 @@ model OrderService {
   visit          Visit          @relation(fields: [visitId], references: [id])
   serviceCatalog ServiceCatalog @relation(fields: [serviceCatalogId], references: [id])
   requestedBy    Staff          @relation(fields: [requestedByStaffId], references: [id])
+  formTemplate   FormTemplate?  @relation(fields: [formTemplateId], references: [id])
+  attachments    Attachment[]
+  invoiceLines   InvoiceLine[]
 
   @@index([tenantId, visitId])
   @@index([tenantId, clinicId, orderType, status])
   @@map("order_services")
+}
+
+// Clinical Operations, Phase A3. Files attached to a task/procedure result
+// (e.g. an X-ray image for an imaging order) — stored on local disk
+// (docs/DECISIONS.md), not blob content in the DB. uploadedByStaffId
+// defaults to the order's own requestedByStaffId at upload time, same
+// no-separate-picker convention as OrderService.requestedByStaffId (D-017:
+// no real auth/user-identity yet).
+model Attachment {
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  orderServiceId    String   @map("order_service_id")
+  fileName          String   @map("file_name")
+  filePath          String   @map("file_path")
+  mimeType          String   @map("mime_type")
+  fileSize          Int      @map("file_size")
+  uploadedByStaffId String   @map("uploaded_by_staff_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  orderService OrderService @relation(fields: [orderServiceId], references: [id])
+  uploadedBy   Staff        @relation(fields: [uploadedByStaffId], references: [id])
+
+  @@index([tenantId, orderServiceId])
+  @@map("attachments")
+}
+
+enum DocumentType {
+  MC
+  REFERRAL
+  MEMO
+  QUARANTINE
+}
+
+// Clinical Operations, Phase A4 (owner feedback round 2). Structured
+// fields (date range, diagnosis, issuing doctor, issued date, referred-to
+// department) back a client-side generated starter template per type —
+// still no server-side PDF rendering, `content` remains the single
+// editable source of truth the doctor/staff can adjust before saving.
+// issuedByStaffId is a real doctor picker now (not silently defaulted) —
+// per the owner's clinical flow, invoices/documents must be
+// staff-creatable for locum coverage, so the issuing doctor is whoever
+// the form says, defaulting to the visit's attending physician only as a
+// convenience starting value.
+model Document {
+  id              String       @id @default(uuid())
+  tenantId        String       @map("tenant_id")
+  visitId         String       @map("visit_id")
+  type            DocumentType
+  content         String
+  issuedByStaffId String       @map("issued_by_staff_id")
+  issuedDate      DateTime     @default(now()) @map("issued_date") @db.Date
+  startDate       DateTime?    @map("start_date") @db.Date
+  endDate         DateTime?    @map("end_date") @db.Date
+  diagnosisText   String?      @map("diagnosis_text")
+  referredTo      String?      @map("referred_to")
+  // Dispensary "prep, sign MC" step (Phase A6) — a lightweight sign-off
+  // checkbox, not a cryptographic signature. Nullable/re-settable rather
+  // than a one-way status: correcting who signed is more common in
+  // practice than needing an immutable audit lock this phase.
+  signedAt        DateTime?    @map("signed_at")
+  signedByStaffId String?      @map("signed_by_staff_id")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+  visit    Visit  @relation(fields: [visitId], references: [id])
+  issuedBy Staff  @relation("DocumentIssuedBy", fields: [issuedByStaffId], references: [id])
+  signedBy Staff? @relation("DocumentSignedBy", fields: [signedByStaffId], references: [id])
+
+  @@index([tenantId, visitId])
+  @@map("documents")
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PAID
+  CANCELLED
+}
+
+// Clinical Operations, Phase A5. Invoice creation is deliberately
+// staff-creatable — not gated to the visit's own attending doctor — so a
+// locum covering someone else's queue can still bill the visit
+// (docs/DECISIONS.md D-017: no real auth/user-identity yet, so this is
+// simply "no ownership check", not a role-based grant). Marking an
+// invoice PAID is Phase A6's job (dispensary/payment step); this phase
+// only creates the bill and its line items.
+model Invoice {
+  id                 String        @id @default(uuid())
+  tenantId           String        @map("tenant_id")
+  visitId            String        @map("visit_id")
+  // Count-based sequence ("INV-000002"), same accepted non-atomic-race gap
+  // as Visit.visitNumber.
+  invoiceNumber      String        @map("invoice_number")
+  status             InvoiceStatus @default(UNPAID)
+  totalAmount        Decimal       @default(0) @map("total_amount") @db.Decimal(10, 2)
+  createdByStaffId   String        @map("created_by_staff_id")
+  cancelReason       String?       @map("cancel_reason")
+  // Dispensary payment step (Phase A6) — paymentMethod is free text (same
+  // convention as Visit.billingType) rather than a DB enum, since the
+  // frontend's fixed option list can grow without a migration.
+  paidAt             DateTime?     @map("paid_at")
+  paymentMethod      String?       @map("payment_method")
+  // Phase 1e — computed and snapshotted server-side by InvoiceService#pay
+  // (never trusted from the client, never live-recomputed after payment):
+  // panelCoveredAmount is what the panel company owes the clinic for this
+  // visit (0 for a self-pay invoice); patientPaidAmount is what the
+  // patient actually paid at pay-time (the full total for self-pay, the
+  // copay for a panel visit, or 0 for "Mark Fully Covered by Panel"). This
+  // is the one place the Panel-Covers/Patient-Copay split becomes a fact
+  // instead of a live UI computation — ClaimBatchLine.claimedAmount reads
+  // panelCoveredAmount, so a later change to the panel's limit/exclusions
+  // can never retroactively alter what's already been claimed.
+  panelCoveredAmount Decimal       @default(0) @map("panel_covered_amount") @db.Decimal(10, 2)
+  patientPaidAmount  Decimal       @default(0) @map("patient_paid_amount") @db.Decimal(10, 2)
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  visit          Visit           @relation(fields: [visitId], references: [id])
+  createdBy      Staff           @relation(fields: [createdByStaffId], references: [id])
+  lines          InvoiceLine[]
+  claimBatchLine ClaimBatchLine?
+
+  @@unique([tenantId, invoiceNumber])
+  @@index([tenantId, visitId])
+  @@map("invoices")
+}
+
+enum ClaimBatchStatus {
+  BATCHED
+  SUBMITTED
+  PARTIALLY_PAID
+  PAID
+  RECONCILED
+}
+
+enum ClaimLineStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  DEDUCTED
+  PAID
+}
+
+// Phase 1e (Panel Claims Core). No panel in the owner's description has a
+// real API Kuwick submits to — every path (AIA's own portal, MARA's
+// courier, others' own portals) ends in a human acting outside Kuwick
+// (D-031). So there's one status lifecycle for every panel
+// (`PRODUCT_REQUIREMENTS.md` §7): batch creation has no fixed period —
+// staff pick whichever unclaimed PAID panel invoices they want, whenever
+// they want (AIA's near-daily aggregation and another panel's monthly
+// cycle are just different staff habits against the same feature) — and
+// "Submitted" records a method (Portal/Courier/Email/Other) rather than
+// branching into different code per panel.
+model ClaimBatch {
+  id                  String           @id @default(uuid())
+  tenantId            String           @map("tenant_id")
+  panelClinicId       String           @map("panel_clinic_id")
+  // Count-based sequence ("CLAIM-000002"), same accepted non-atomic-race
+  // gap as Visit.visitNumber/Invoice.invoiceNumber.
+  batchNumber         String           @map("batch_number")
+  status              ClaimBatchStatus @default(BATCHED)
+  submissionMethod    String?          @map("submission_method")
+  submissionReference String?          @map("submission_reference")
+  submittedAt         DateTime?        @map("submitted_at")
+  reconciledAt        DateTime?        @map("reconciled_at")
+  createdByStaffId    String           @map("created_by_staff_id")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id])
+  panelClinic PanelClinic      @relation(fields: [panelClinicId], references: [id])
+  createdBy   Staff            @relation(fields: [createdByStaffId], references: [id])
+  lines       ClaimBatchLine[]
+
+  @@unique([tenantId, batchNumber])
+  @@index([tenantId, panelClinicId])
+  @@map("claim_batches")
+}
+
+// One row per invoice ever claimed — @@unique([tenantId, invoiceId])
+// prevents the same invoice being pulled into a second batch. claimedAmount
+// snapshots Invoice.panelCoveredAmount at batch-creation time (the batch
+// total must stay fixed even if the invoice is somehow altered later);
+// paidAmount/status/deductionReason are recorded per line, not just per
+// batch, since a single batch commonly has some lines accepted-and-paid
+// and others rejected/deducted.
+model ClaimBatchLine {
+  id              String          @id @default(uuid())
+  tenantId        String          @map("tenant_id")
+  claimBatchId    String          @map("claim_batch_id")
+  invoiceId       String          @unique @map("invoice_id")
+  claimedAmount   Decimal         @map("claimed_amount") @db.Decimal(10, 2)
+  status          ClaimLineStatus @default(PENDING)
+  paidAmount      Decimal?        @map("paid_amount") @db.Decimal(10, 2)
+  deductionReason String?         @map("deduction_reason")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  claimBatch ClaimBatch @relation(fields: [claimBatchId], references: [id])
+  invoice    Invoice    @relation(fields: [invoiceId], references: [id])
+
+  @@index([tenantId, claimBatchId])
+  @@map("claim_batch_lines")
+}
+
+// Snapshots description/unitPrice/amount at add-time (same historical-
+// stability convention as OrderService/Diagnosis catalog snapshots) —
+// never a live reference to ServiceCatalog/Item pricing, so a later price
+// change never silently alters an already-issued invoice.
+//
+// Phase A8: sourceOrderServiceId/sourcePrescriptionId are set when a line
+// was Quick-Added from a completed service/dispensed medication (nullable
+// — a line can still be typed freehand via AddLineForm), so the Quick-Add
+// UI can tell which services/medications are already billed. excludedFromPanel
+// is stamped server-side at add-time from PanelExclusion — always
+// patient-payable, on top of the panel's per-visit limit rather than
+// netted against it.
+model InvoiceLine {
+  id                   String   @id @default(uuid())
+  tenantId             String   @map("tenant_id")
+  invoiceId            String   @map("invoice_id")
+  description          String
+  quantity             Int      @default(1)
+  unitPrice            Decimal  @map("unit_price") @db.Decimal(10, 2)
+  amount               Decimal  @db.Decimal(10, 2)
+  sourceOrderServiceId String?  @map("source_order_service_id")
+  sourcePrescriptionId String?  @map("source_prescription_id")
+  excludedFromPanel    Boolean  @default(false) @map("excluded_from_panel")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  tenant             Tenant        @relation(fields: [tenantId], references: [id])
+  invoice            Invoice       @relation(fields: [invoiceId], references: [id])
+  sourceOrderService OrderService? @relation(fields: [sourceOrderServiceId], references: [id])
+  sourcePrescription Prescription? @relation(fields: [sourcePrescriptionId], references: [id])
+
+  @@index([tenantId, invoiceId])
+  @@map("invoice_lines")
+}
+
+enum PrescriptionStatus {
+  ORDERED
+  DISPENSED
+  CANCELLED
+}
+
+// Weight-based vs. age-based dosage calculator method used, if any —
+// audit trail only (docs/DECISIONS.md D-028); doesn't drive behaviour.
+enum DosageCalcMethod {
+  WEIGHT_BASED
+  AGE_BASED
+  MANUAL
+}
+
+// Clinical Operations, Phase 3. Snapshots dose/unit/frequency/duration/
+// indication from Item at prescribe-time (same historical-stability
+// convention as Diagnosis/OrderService), so a later Item edit never
+// rewrites a historical prescription. No hard delete
+// (docs/DATABASE_ARCHITECTURE.md §1) — `remove()` sets deletedAt instead,
+// only while still ORDERED.
+model Prescription {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  visitId  String @map("visit_id")
+  itemId   String @map("item_id")
+
+  // "Dispense Quantity" — stock units (e.g. bottles), decremented from
+  // StockLevel only at DISPENSED (D-028), never at ORDERED.
+  quantity Int @default(1)
+
+  // "Dosage Instructions" — the per-dose amount (e.g. 1.64 mL), distinct
+  // from quantity (stock units dispensed).
+  amount       Decimal @db.Decimal(10, 2)
+  unit         String?
+  frequency    String
+  durationDays Int     @map("duration_days")
+  indication   String?
+  remark       String?
+
+  // Calculator audit trail (docs/DECISIONS.md D-028) — nullable, populated
+  // only when the doctor used Calculate Dosage rather than typing amount
+  // directly.
+  calcMethod       DosageCalcMethod? @map("calc_method")
+  calcWeightKg     Decimal?          @map("calc_weight_kg") @db.Decimal(6, 2)
+  calcDoseRateMgKg Decimal?          @map("calc_dose_rate_mg_kg") @db.Decimal(6, 2)
+  calcTargetDoseMg Decimal?          @map("calc_target_dose_mg") @db.Decimal(10, 2)
+
+  status              PrescriptionStatus @default(ORDERED)
+  prescribedByStaffId String             @map("prescribed_by_staff_id")
+  prescribedAt        DateTime           @default(now()) @map("prescribed_at")
+  dispensedAt         DateTime?          @map("dispensed_at")
+  cancelReason        String?            @map("cancel_reason")
+  deletedAt           DateTime?          @map("deleted_at")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  visit        Visit         @relation(fields: [visitId], references: [id])
+  item         Item          @relation(fields: [itemId], references: [id])
+  prescribedBy Staff         @relation(fields: [prescribedByStaffId], references: [id])
+  invoiceLines InvoiceLine[]
+
+  @@index([tenantId, visitId])
+  @@map("prescriptions")
 }

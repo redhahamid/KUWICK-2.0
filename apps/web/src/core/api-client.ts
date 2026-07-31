@@ -54,10 +54,69 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+// No Content-Type header here — the browser must set its own multipart
+// boundary, which it can only do if we let it (setting one manually breaks
+// the boundary the FormData body actually uses).
+async function requestFile<T>(path: string, formData: FormData): Promise<T> {
+  const { tenantId } = useTenantStore.getState();
+  const headers: Record<string, string> = {};
+  if (tenantId) {
+    headers['x-tenant-id'] = tenantId;
+  }
+  const response = await fetch(`${API_BASE_URL}${path}`, { method: 'POST', headers, body: formData });
+  if (!response.ok) {
+    let body: unknown = null;
+    try {
+      body = await response.json();
+    } catch {
+      // No JSON body — fall back to the status text below.
+    }
+    throw new ApiError(extractMessage(body, response.statusText), response.status, body);
+  }
+  return (await response.json()) as T;
+}
+
+export async function downloadFile(path: string, fileName: string): Promise<void> {
+  const { tenantId } = useTenantStore.getState();
+  const headers: Record<string, string> = {};
+  if (tenantId) {
+    headers['x-tenant-id'] = tenantId;
+  }
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers });
+  if (!response.ok) {
+    throw new ApiError(response.statusText, response.status, null);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// For inline display (e.g. an X-ray <img>), not download — a plain <img
+// src="..."> can't send the x-tenant-id header, so the bytes have to be
+// fetched here and handed back as an object URL. Caller owns revoking it.
+export async function fetchBlobUrl(path: string): Promise<string> {
+  const { tenantId } = useTenantStore.getState();
+  const headers: Record<string, string> = {};
+  if (tenantId) {
+    headers['x-tenant-id'] = tenantId;
+  }
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers });
+  if (!response.ok) {
+    throw new ApiError(response.statusText, response.status, null);
+  }
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
 export const apiClient = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) }),
+  postFile: <T>(path: string, formData: FormData) => requestFile<T>(path, formData),
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PATCH', body: body === undefined ? undefined : JSON.stringify(body) }),
   put: <T>(path: string, body?: unknown) =>

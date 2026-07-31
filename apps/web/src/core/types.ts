@@ -3,6 +3,8 @@ export interface Clinic {
   tenantId: string;
   name: string;
   address: string | null;
+  phone: string | null;
+  email: string | null;
   timezone: string;
 }
 
@@ -10,7 +12,11 @@ export interface CreateClinicDto {
   name: string;
   address?: string;
   timezone?: string;
+  phone?: string;
+  email?: string;
 }
+
+export type UpdateClinicDto = Partial<CreateClinicDto>;
 
 export type PatientIdentifierType = 'NRIC' | 'PASSPORT';
 

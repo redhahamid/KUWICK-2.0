@@ -1,30 +1,112 @@
-import { useState } from 'react';
-import { Button, Drawer, Form, InputNumber, Input, Radio, Select, message, Space, Table, Typography } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
-import { useServices, useCreateService } from './hooks/useServices';
-import { CreateServiceDto, Service, ServiceOrderType } from './types';
+import { useEffect, useState } from 'react';
+import { Button, Card, Drawer, Form, InputNumber, Input, Radio, Select, Space, Switch, Table, Typography, message } from 'antd';
+import { FileTextOutlined, PlusOutlined } from '@ant-design/icons';
+import { useServices, useCreateService, useUpdateService } from './hooks/useServices';
+import { useCreateFormTemplate, useFormTemplateForService, useUpdateFormTemplate } from './hooks/useFormTemplates';
+import { FormFieldBuilder } from './FormFieldBuilder';
+import { CreateServiceDto, FormField, Service, ServiceOrderType } from './types';
 import { ApiError } from '../core/api-client';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 type TypeFilter = 'ALL' | ServiceOrderType;
+
+function ResultFormBuilder({ service }: { service: Service }) {
+  const { data: template, isLoading } = useFormTemplateForService(service.id);
+  const createTemplate = useCreateFormTemplate(service.id);
+  const updateTemplate = useUpdateFormTemplate(service.id);
+  const [fields, setFields] = useState<FormField[]>([]);
+
+  useEffect(() => {
+    setFields(template?.fields ?? []);
+  }, [template]);
+
+  const handleSave = async () => {
+    try {
+      if (template) {
+        await updateTemplate.mutateAsync({ id: template.id, dto: { fields } });
+      } else {
+        await createTemplate.mutateAsync({ name: `${service.name} Result Form`, serviceCatalogId: service.id, fields });
+      }
+      message.success('Result form saved');
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Failed to save result form');
+    }
+  };
+
+  if (isLoading) return null;
+
+  return (
+    <Card
+      size="small"
+      title={
+        <Space>
+          <FileTextOutlined /> Result Form Builder
+        </Space>
+      }
+      style={{ marginTop: 16 }}
+    >
+      <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+        Define the fields staff fill in when completing a {service.name} task — shown instead of a bare free-text
+        result box.
+      </Text>
+      <FormFieldBuilder fields={fields} onChange={setFields} />
+      <Button
+        type="primary"
+        style={{ marginTop: 12 }}
+        loading={createTemplate.isPending || updateTemplate.isPending}
+        disabled={fields.length === 0}
+        onClick={handleSave}
+      >
+        Save Result Form
+      </Button>
+    </Card>
+  );
+}
 
 export function ServicesPage() {
   const { data: services, isLoading } = useServices();
   const createService = useCreateService();
+  const updateService = useUpdateService();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Service | null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
   const [form] = Form.useForm<CreateServiceDto>();
 
+  const openCreate = () => {
+    setEditing(null);
+    form.resetFields();
+    setOpen(true);
+  };
+
+  const openEdit = (service: Service) => {
+    setEditing(service);
+    form.setFieldsValue({
+      name: service.name,
+      code: service.code ?? undefined,
+      orderType: service.orderType,
+      category: service.category ?? undefined,
+      durationMinutesDefault: service.durationMinutesDefault,
+      price: Number(service.price),
+    });
+    setOpen(true);
+  };
+
   const handleSubmit = async (values: CreateServiceDto) => {
     try {
-      await createService.mutateAsync(values);
-      message.success('Service created');
+      if (editing) {
+        await updateService.mutateAsync({ id: editing.id, dto: values });
+        message.success('Service updated');
+      } else {
+        await createService.mutateAsync(values);
+        message.success('Service created');
+      }
       form.resetFields();
       setOpen(false);
+      setEditing(null);
     } catch (error) {
-      message.error(error instanceof ApiError ? error.message : 'Failed to create service');
+      message.error(error instanceof ApiError ? error.message : 'Failed to save service');
     }
   };
 
@@ -46,7 +128,7 @@ export function ServicesPage() {
         <Title level={4} style={{ margin: 0 }}>
           Services &amp; Procedures
         </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
           Add Service
         </Button>
       </Space>
@@ -83,9 +165,23 @@ export function ServicesPage() {
           { title: 'Default Duration (min)', dataIndex: 'durationMinutesDefault' },
           { title: 'Price (RM)', dataIndex: 'price' },
           { title: 'Active', dataIndex: 'active', render: (value: boolean) => (value ? 'Yes' : 'No') },
+          {
+            title: 'Actions',
+            render: (_: unknown, r: Service) => (
+              <Button size="small" onClick={() => openEdit(r)}>
+                Edit
+              </Button>
+            ),
+          },
         ]}
       />
-      <Drawer title="Add Service" open={open} onClose={() => setOpen(false)} destroyOnHidden>
+      <Drawer
+        title={editing ? `Edit Service — ${editing.name}` : 'Add Service'}
+        open={open}
+        onClose={() => setOpen(false)}
+        destroyOnHidden
+        width={editing?.orderType === 'TASK_ORDER' ? 560 : undefined}
+      >
         <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ orderType: 'STANDARD_SERVICE' }}>
           <Form.Item name="name" label="Name" rules={[{ required: true }]}>
             <Input />
@@ -114,10 +210,16 @@ export function ServicesPage() {
           <Form.Item name="price" label="Price (RM)">
             <InputNumber min={0} precision={2} style={{ width: '100%' }} />
           </Form.Item>
-          <Button type="primary" htmlType="submit" loading={createService.isPending} block>
-            Create
+          {editing && (
+            <Form.Item name="active" label="Active" valuePropName="checked" initialValue={editing.active}>
+              <Switch />
+            </Form.Item>
+          )}
+          <Button type="primary" htmlType="submit" loading={createService.isPending || updateService.isPending} block>
+            {editing ? 'Save Changes' : 'Create'}
           </Button>
         </Form>
+        {editing && editing.orderType === 'TASK_ORDER' && <ResultFormBuilder service={editing} />}
       </Drawer>
     </>
   );

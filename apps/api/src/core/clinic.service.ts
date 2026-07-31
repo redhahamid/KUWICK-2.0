@@ -4,7 +4,7 @@ import {
   TenantScopedPrismaClient,
 } from './tenant-scoped-prisma.provider';
 import { currentTenantId } from './tenant-context';
-import { CreateClinicDto } from './dto/create-clinic.dto';
+import { CreateClinicDto, UpdateClinicDto } from './dto/create-clinic.dto';
 
 @Injectable()
 export class ClinicService {
@@ -18,5 +18,9 @@ export class ClinicService {
 
   findAll() {
     return this.prisma.clinic.findMany({ orderBy: { name: 'asc' } });
+  }
+
+  update(id: string, dto: UpdateClinicDto) {
+    return this.prisma.clinic.update({ where: { id }, data: dto });
   }
 }

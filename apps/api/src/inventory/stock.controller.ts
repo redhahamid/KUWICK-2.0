@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { StockService } from './stock.service';
 import { SetStockMinThresholdDto } from './dto/set-stock-min-threshold.dto';
+import { QuickAddStockDto } from './dto/quick-add-stock.dto';
 
 @Controller('stock')
 export class StockController {
@@ -34,5 +35,10 @@ export class StockController {
   @Post('min-threshold')
   setMinThreshold(@Body() dto: SetStockMinThresholdDto) {
     return this.stockService.setMinThreshold(dto);
+  }
+
+  @Post('quick-add')
+  quickAdd(@Body() dto: QuickAddStockDto) {
+    return this.stockService.quickAdd(dto);
   }
 }

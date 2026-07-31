@@ -35,11 +35,15 @@ interface RichTextEditorProps {
   content: string;
   onChange: (html: string) => void;
   placeholder?: string;
+  // Canvas layout needs the whole record visible without page scroll
+  // (user feedback) — compact gives the editor a short, internally-
+  // scrollable content area instead of a tall fixed minHeight.
+  compact?: boolean;
 }
 
 const FONT_FAMILIES = ['Sans Serif', 'Serif', 'Monospace'];
 
-export function RichTextEditor({ content, onChange, placeholder }: RichTextEditorProps) {
+export function RichTextEditor({ content, onChange, placeholder, compact }: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -84,8 +88,8 @@ export function RichTextEditor({ content, onChange, placeholder }: RichTextEdito
   };
 
   return (
-    <div style={{ border: '1px solid #d9d9d9', borderRadius: 6 }}>
-      <div style={{ padding: 8, borderBottom: '1px solid #f0f0f0' }}>
+    <div style={compact ? undefined : { border: '1px solid #d9d9d9', borderRadius: 6 }}>
+      <div style={{ padding: compact ? 4 : 8, borderBottom: '1px solid #f0f0f0' }}>
         <Space wrap size={4}>
           <Button
             size="small"
@@ -153,47 +157,53 @@ export function RichTextEditor({ content, onChange, placeholder }: RichTextEdito
           </Button>
         </Space>
       </div>
-      <div style={{ padding: 8, borderBottom: '1px solid #f0f0f0' }}>
-        <Space wrap size={4}>
-          <Select
-            size="small"
-            style={{ width: 130 }}
-            placeholder="Font"
-            options={FONT_FAMILIES.map((font) => ({ value: font, label: font }))}
-            onChange={(font) => editor.chain().focus().setFontFamily(font).run()}
-          />
-          <ColorPicker
-            size="small"
-            onChange={(color) => editor.chain().focus().setColor(color.toHexString()).run()}
-          />
-          <Button
-            size="small"
-            type={editor.isActive({ textAlign: 'left' }) ? 'primary' : 'default'}
-            icon={<AlignLeftOutlined />}
-            onClick={() => editor.chain().focus().setTextAlign('left').run()}
-          />
-          <Button
-            size="small"
-            type={editor.isActive({ textAlign: 'center' }) ? 'primary' : 'default'}
-            icon={<AlignCenterOutlined />}
-            onClick={() => editor.chain().focus().setTextAlign('center').run()}
-          />
-          <Button
-            size="small"
-            type={editor.isActive({ textAlign: 'right' }) ? 'primary' : 'default'}
-            icon={<AlignRightOutlined />}
-            onClick={() => editor.chain().focus().setTextAlign('right').run()}
-          />
-          <Button size="small" icon={<LinkOutlined />} onClick={addLink} />
-          <Button size="small" icon={<PictureOutlined />} onClick={addImage} />
-          <Button
-            size="small"
-            icon={<ClearOutlined />}
-            onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}
-          />
-        </Space>
-      </div>
-      <EditorContent editor={editor} style={{ padding: 12, minHeight: 240 }} />
+      {!compact && (
+        <div style={{ padding: 8, borderBottom: '1px solid #f0f0f0' }}>
+          <Space wrap size={4}>
+            <Select
+              size="small"
+              style={{ width: 130 }}
+              placeholder="Font"
+              options={FONT_FAMILIES.map((font) => ({ value: font, label: font }))}
+              onChange={(font) => editor.chain().focus().setFontFamily(font).run()}
+            />
+            <ColorPicker
+              size="small"
+              onChange={(color) => editor.chain().focus().setColor(color.toHexString()).run()}
+            />
+            <Button
+              size="small"
+              type={editor.isActive({ textAlign: 'left' }) ? 'primary' : 'default'}
+              icon={<AlignLeftOutlined />}
+              onClick={() => editor.chain().focus().setTextAlign('left').run()}
+            />
+            <Button
+              size="small"
+              type={editor.isActive({ textAlign: 'center' }) ? 'primary' : 'default'}
+              icon={<AlignCenterOutlined />}
+              onClick={() => editor.chain().focus().setTextAlign('center').run()}
+            />
+            <Button
+              size="small"
+              type={editor.isActive({ textAlign: 'right' }) ? 'primary' : 'default'}
+              icon={<AlignRightOutlined />}
+              onClick={() => editor.chain().focus().setTextAlign('right').run()}
+            />
+            <Button size="small" icon={<LinkOutlined />} onClick={addLink} />
+            <Button size="small" icon={<PictureOutlined />} onClick={addImage} />
+            <Button
+              size="small"
+              icon={<ClearOutlined />}
+              onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}
+            />
+          </Space>
+        </div>
+      )}
+      <EditorContent
+        editor={editor}
+        className={compact ? 'kw-notes-borderless' : undefined}
+        style={compact ? { padding: 6, minHeight: 100 } : { padding: 12, minHeight: 240 }}
+      />
     </div>
   );
 }

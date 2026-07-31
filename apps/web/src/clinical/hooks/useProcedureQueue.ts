@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../core/api-client';
-import { CompleteOrderServiceDto, OrderService, OrderServiceStatus } from '../types';
+import { CancelOrderServiceDto, CompleteOrderServiceDto, OrderService, OrderServiceStatus } from '../types';
 
 export interface ProcedureQueueFilter {
   [key: string]: string | undefined;
@@ -32,6 +32,27 @@ export function useCompleteProcedure() {
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input?: CompleteOrderServiceDto }) =>
       apiClient.patch<OrderService>(`/procedure-queue/${id}/complete`, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['procedure-queue'] }),
+  });
+}
+
+// "Accept" a pending task — reuses OrderServiceController's generic
+// start/cancel endpoints (a procedure-queue row IS an OrderService row,
+// just filtered to TASK_ORDER), invalidating the procedure-queue query
+// key instead of the per-visit one since this page is cross-visit.
+export function useAcceptProcedure() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) => apiClient.patch<OrderService>(`/order-services/${id}/start`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['procedure-queue'] }),
+  });
+}
+
+export function useCancelProcedure() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input?: CancelOrderServiceDto }) =>
+      apiClient.patch<OrderService>(`/order-services/${id}/cancel`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['procedure-queue'] }),
   });
 }

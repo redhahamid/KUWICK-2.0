@@ -3,30 +3,71 @@ import { ProcurementRequestStatus, PurchaseOrderStatus } from '@kuwick/shared';
 export interface Item {
   id: string;
   tenantId: string;
+  code: string | null;
   name: string;
   category: string | null;
   unitOfMeasure: string | null;
   doseDefault: string | null;
+  doseUnitDefault: string | null;
   frequencyDefault: string | null;
   durationDefault: string | null;
   instruction: string | null;
   indication: string | null;
+  // "Conc. Vol (mL)" / "Strength (mg)" on the audited Edit Inventory
+  // screen — feeds the weight-based dosage calculator (docs/DECISIONS.md
+  // D-028). Only liquid/syrup medicines carry these.
+  concVolMl: string | null;
+  strengthMg: string | null;
+  consumptionMethod: string | null;
+  defaultDispenseQuantity: number | null;
+  prescriptionReference: string | null;
+  remark: string | null;
   sellPrice: string;
   cost: string | null;
   active: boolean;
 }
 
 export interface CreateItemDto {
+  code?: string;
   name: string;
   category?: string;
   unitOfMeasure?: string;
   doseDefault?: string;
+  doseUnitDefault?: string;
   frequencyDefault?: string;
   durationDefault?: string;
   instruction?: string;
   indication?: string;
+  concVolMl?: number;
+  strengthMg?: number;
+  consumptionMethod?: string;
+  defaultDispenseQuantity?: number;
+  prescriptionReference?: string;
+  remark?: string;
   sellPrice: number;
   cost?: number;
+}
+
+export type UpdateItemDto = Partial<CreateItemDto> & { active?: boolean };
+
+export interface ItemAgeDosage {
+  id: string;
+  tenantId: string;
+  itemId: string;
+  ageFromMonths: number;
+  ageToMonths: number;
+  amount: string;
+  unit: string;
+  frequency: string;
+}
+
+export interface CreateItemAgeDosageDto {
+  itemId: string;
+  ageFromMonths: number;
+  ageToMonths: number;
+  amount: number;
+  unit: string;
+  frequency: string;
 }
 
 export interface Supplier {
@@ -64,12 +105,26 @@ export interface StockBatch {
   quantity: number;
   expiryDate: string | null;
   receivedDate: string;
+  supplierId: string | null;
+  addedByStaffId: string | null;
 }
 
 export interface SetStockMinThresholdDto {
   clinicId: string;
   itemId: string;
   minThreshold: number;
+}
+
+// "Inventory In" quick modal (Task #62) — records incoming stock without a
+// formal Purchase Order, e.g. free samples or a walk-in supplier drop-off.
+export interface QuickAddStockDto {
+  clinicId: string;
+  itemId: string;
+  quantity: number;
+  supplierId?: string;
+  expiryDate?: string;
+  batchNumber?: string;
+  addedByStaffId?: string;
 }
 
 export interface ProcurementRequest {

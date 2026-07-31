@@ -4,7 +4,7 @@ import {
   TenantScopedPrismaClient,
 } from '../core/tenant-scoped-prisma.provider';
 import { currentTenantId } from '../core/tenant-context';
-import { CreateServiceDto } from './dto/create-service.dto';
+import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
 
 @Injectable()
 export class ServiceCatalogService {
@@ -26,5 +26,10 @@ export class ServiceCatalogService {
       throw new NotFoundException('Service not found');
     }
     return service;
+  }
+
+  async update(id: string, dto: UpdateServiceDto) {
+    await this.findById(id);
+    return this.prisma.serviceCatalog.update({ where: { id }, data: dto });
   }
 }

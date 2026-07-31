@@ -58,9 +58,14 @@ declare global {
 
 interface ClinicalNotesTabProps {
   visitId: string;
+  // Canvas layout needs the whole record visible without page scroll
+  // (user feedback) — compact collapses Vitals/Anthropometry/Point-of-Care
+  // into one strip and shrinks the Notes editor to a short, internally-
+  // scrollable box instead of Flow mode's full three-card layout.
+  compact?: boolean;
 }
 
-export function ClinicalNotesTab({ visitId }: ClinicalNotesTabProps) {
+export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
   const { data: note, isLoading } = useClinicalNote(visitId);
   const saveNote = useSaveClinicalNote(visitId);
   const [form] = Form.useForm<UpsertClinicalNoteDto>();
@@ -134,114 +139,203 @@ export function ClinicalNotesTab({ visitId }: ClinicalNotesTabProps) {
   };
 
   return (
-    <Form form={form} layout="vertical" disabled={isLoading}>
-      <Card
-        size="small"
-        title={
-          <Space>
-            <HeartOutlined /> Vital Signs
-          </Space>
-        }
-        style={{ marginBottom: 16 }}
-      >
-        <Row gutter={16}>
-          <Col span={8}>
-            <Form.Item label="BP (Sys/Dia)">
-              <Space.Compact>
-                <Form.Item name="bpSystolic" noStyle>
-                  <InputNumber style={{ width: '50%' }} />
+    <Form form={form} layout="vertical" disabled={isLoading} size="small">
+      {compact ? (
+        <Card
+          size="small"
+          title={
+            <Space>
+              <HeartOutlined /> Vitals &amp; Measurements
+            </Space>
+          }
+          style={{ marginBottom: 6 }}
+          styles={{ header: { padding: '2px 10px', minHeight: 24 }, body: { padding: '6px 10px' } }}
+        >
+          <Row gutter={[6, 0]} wrap={false} style={{ overflowX: 'auto' }}>
+            <Col flex="0 0 88px">
+              <Form.Item label="BP" style={{ marginBottom: 0 }}>
+                <Space.Compact>
+                  <Form.Item name="bpSystolic" noStyle>
+                    <InputNumber controls={false} style={{ width: '50%', fontSize: 12, height: 26 }} />
+                  </Form.Item>
+                  <Form.Item name="bpDiastolic" noStyle>
+                    <InputNumber controls={false} style={{ width: '50%', fontSize: 12, height: 26 }} />
+                  </Form.Item>
+                </Space.Compact>
+              </Form.Item>
+            </Col>
+            <Col flex="0 0 44px">
+              <Form.Item name="pulse" label="Pulse" style={{ marginBottom: 0 }}>
+                <InputNumber controls={false} style={{ width: '100%', fontSize: 12, height: 26 }} />
+              </Form.Item>
+            </Col>
+            <Col flex="0 0 44px">
+              <Form.Item name="temperature" label="Temp" style={{ marginBottom: 0 }}>
+                <InputNumber controls={false} style={{ width: '100%', fontSize: 12, height: 26 }} step={0.1} />
+              </Form.Item>
+            </Col>
+            <Col flex="0 0 44px">
+              <Form.Item name="spo2" label="SpO2" style={{ marginBottom: 0 }}>
+                <InputNumber controls={false} style={{ width: '100%', fontSize: 12, height: 26 }} min={0} max={100} />
+              </Form.Item>
+            </Col>
+            <Col flex="0 0 44px">
+              <Form.Item name="respRate" label="Resp" style={{ marginBottom: 0 }}>
+                <InputNumber controls={false} style={{ width: '100%', fontSize: 12, height: 26 }} />
+              </Form.Item>
+            </Col>
+            <Col flex="0 0 64px">
+              <Form.Item name="painScore" label="Pain" style={{ marginBottom: 0 }}>
+                <Select allowClear options={PAIN_SCORE_OPTIONS} style={{ fontSize: 12 }} />
+              </Form.Item>
+            </Col>
+            <Col flex="0 0 50px">
+              <Form.Item name="weight" label="Wt (kg)" style={{ marginBottom: 0 }}>
+                <InputNumber<number>
+                  controls={false}
+                  style={{ width: '100%', fontSize: 12, height: 26 }}
+                  step={0.1}
+                  onChange={(v) => setWeight(v ?? undefined)}
+                />
+              </Form.Item>
+            </Col>
+            <Col flex="0 0 50px">
+              <Form.Item name="height" label="Ht (cm)" style={{ marginBottom: 0 }}>
+                <InputNumber<number>
+                  controls={false}
+                  style={{ width: '100%', fontSize: 12, height: 26 }}
+                  step={0.1}
+                  onChange={(v) => setHeight(v ?? undefined)}
+                />
+              </Form.Item>
+            </Col>
+            <Col flex="0 0 44px">
+              <Form.Item label="BMI" style={{ marginBottom: 0 }}>
+                <InputNumber controls={false} style={{ width: '100%', fontSize: 12, height: 26 }} value={bmi ?? undefined} disabled />
+              </Form.Item>
+            </Col>
+            <Col flex="0 0 50px">
+              <Form.Item name="glucose" label="Glucose" style={{ marginBottom: 0 }}>
+                <InputNumber controls={false} style={{ width: '100%', fontSize: 12, height: 26 }} step={0.1} />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Card>
+      ) : (
+        <>
+          <Card
+            size="small"
+            title={
+              <Space>
+                <HeartOutlined /> Vital Signs
+              </Space>
+            }
+            style={{ marginBottom: 8 }}
+            styles={{ header: { padding: '4px 12px', minHeight: 32 }, body: { padding: '8px 12px' } }}
+          >
+            <Row gutter={[16, 0]}>
+              <Col span={6}>
+                <Form.Item label="BP (Sys/Dia)" style={{ marginBottom: 2 }}>
+                  <Space.Compact>
+                    <Form.Item name="bpSystolic" noStyle>
+                      <InputNumber style={{ width: '50%' }} />
+                    </Form.Item>
+                    <Form.Item name="bpDiastolic" noStyle>
+                      <InputNumber style={{ width: '50%' }} />
+                    </Form.Item>
+                  </Space.Compact>
                 </Form.Item>
-                <Form.Item name="bpDiastolic" noStyle>
-                  <InputNumber style={{ width: '50%' }} />
+              </Col>
+              <Col span={6}>
+                <Form.Item name="pulse" label="Pulse (bpm)" style={{ marginBottom: 2 }}>
+                  <InputNumber style={{ width: '100%' }} />
                 </Form.Item>
-              </Space.Compact>
-            </Form.Item>
-          </Col>
-          <Col span={8}>
-            <Form.Item name="pulse" label="Pulse (bpm)">
-              <InputNumber style={{ width: '100%' }} />
-            </Form.Item>
-          </Col>
-          <Col span={8}>
-            <Form.Item name="temperature" label="Temp (°C)">
-              <InputNumber style={{ width: '100%' }} step={0.1} />
-            </Form.Item>
-          </Col>
-          <Col span={8}>
-            <Form.Item name="spo2" label="SpO2 (%)">
-              <InputNumber style={{ width: '100%' }} min={0} max={100} />
-            </Form.Item>
-          </Col>
-          <Col span={8}>
-            <Form.Item name="respRate" label="Resp. Rate (r)">
-              <InputNumber style={{ width: '100%' }} />
-            </Form.Item>
-          </Col>
-          <Col span={8}>
-            <Form.Item name="painScore" label="Pain Score (0-10)">
-              <Select allowClear options={PAIN_SCORE_OPTIONS} />
-            </Form.Item>
-          </Col>
-        </Row>
-      </Card>
+              </Col>
+              <Col span={6}>
+                <Form.Item name="temperature" label="Temp (°C)" style={{ marginBottom: 2 }}>
+                  <InputNumber style={{ width: '100%' }} step={0.1} />
+                </Form.Item>
+              </Col>
+              <Col span={6}>
+                <Form.Item name="spo2" label="SpO2 (%)" style={{ marginBottom: 2 }}>
+                  <InputNumber style={{ width: '100%' }} min={0} max={100} />
+                </Form.Item>
+              </Col>
+              <Col span={6}>
+                <Form.Item name="respRate" label="Resp. Rate (r)" style={{ marginBottom: 0 }}>
+                  <InputNumber style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={6}>
+                <Form.Item name="painScore" label="Pain Score (0-10)" style={{ marginBottom: 0 }}>
+                  <Select allowClear options={PAIN_SCORE_OPTIONS} />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
 
-      <Card
-        size="small"
-        title={
-          <Space>
-            <MedicineBoxOutlined /> Anthropometry
-          </Space>
-        }
-        style={{ marginBottom: 16 }}
-      >
-        <Row gutter={16}>
-          <Col span={8}>
-            <Form.Item name="weight" label="Weight (kg)">
-              <InputNumber<number>
-                style={{ width: '100%' }}
-                step={0.1}
-                onChange={(v) => setWeight(v ?? undefined)}
-              />
-            </Form.Item>
-          </Col>
-          <Col span={8}>
-            <Form.Item name="height" label="Height (cm)">
-              <InputNumber<number>
-                style={{ width: '100%' }}
-                step={0.1}
-                onChange={(v) => setHeight(v ?? undefined)}
-              />
-            </Form.Item>
-          </Col>
-          <Col span={8}>
-            <Form.Item label="BMI (kg/m²)">
-              <InputNumber style={{ width: '100%' }} value={bmi ?? undefined} disabled />
-            </Form.Item>
-          </Col>
-        </Row>
-      </Card>
+          <Card
+            size="small"
+            title={
+              <Space>
+                <MedicineBoxOutlined /> Anthropometry
+              </Space>
+            }
+            style={{ marginBottom: 8 }}
+            styles={{ header: { padding: '4px 12px', minHeight: 32 }, body: { padding: '8px 12px' } }}
+          >
+            <Row gutter={[16, 0]}>
+              <Col span={8}>
+                <Form.Item name="weight" label="Weight (kg)" style={{ marginBottom: 0 }}>
+                  <InputNumber<number>
+                    style={{ width: '100%' }}
+                    step={0.1}
+                    onChange={(v) => setWeight(v ?? undefined)}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item name="height" label="Height (cm)" style={{ marginBottom: 0 }}>
+                  <InputNumber<number>
+                    style={{ width: '100%' }}
+                    step={0.1}
+                    onChange={(v) => setHeight(v ?? undefined)}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item label="BMI (kg/m²)" style={{ marginBottom: 0 }}>
+                  <InputNumber style={{ width: '100%' }} value={bmi ?? undefined} disabled />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
 
-      <Card
-        size="small"
-        title={
-          <Space>
-            <WarningOutlined /> Point-of-Care / Others
-          </Space>
-        }
-        style={{ marginBottom: 16 }}
-      >
-        <Row gutter={16}>
-          <Col span={8}>
-            <Form.Item name="glucose" label="Glucose (mmol/L)">
-              <InputNumber style={{ width: '100%' }} step={0.1} />
-            </Form.Item>
-          </Col>
-        </Row>
-      </Card>
+          <Card
+            size="small"
+            title={
+              <Space>
+                <WarningOutlined /> Point-of-Care / Others
+              </Space>
+            }
+            style={{ marginBottom: 8 }}
+            styles={{ header: { padding: '4px 12px', minHeight: 32 }, body: { padding: '8px 12px' } }}
+          >
+            <Row gutter={[16, 0]}>
+              <Col span={8}>
+                <Form.Item name="glucose" label="Glucose (mmol/L)" style={{ marginBottom: 0 }}>
+                  <InputNumber style={{ width: '100%' }} step={0.1} />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
+        </>
+      )}
 
       <Card
         size="small"
         title="Notes"
+        styles={compact ? { header: { padding: '4px 12px', minHeight: 28 }, body: { padding: 8 } } : undefined}
         extra={
           <Space>
             <Select
@@ -278,10 +372,10 @@ export function ClinicalNotesTab({ visitId }: ClinicalNotesTabProps) {
           </Space>
         }
       >
-        <RichTextEditor content={notesHtml} onChange={setNotesHtml} />
+        <RichTextEditor content={notesHtml} onChange={setNotesHtml} compact={compact} />
       </Card>
 
-      <Button type="primary" loading={saveNote.isPending} onClick={handleSave} style={{ marginTop: 16 }}>
+      <Button type="primary" loading={saveNote.isPending} onClick={handleSave} style={{ marginTop: compact ? 8 : 16 }}>
         Save Clinical Note
       </Button>
     </Form>

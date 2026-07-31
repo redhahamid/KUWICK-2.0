@@ -1,7 +1,21 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Avatar, Badge, Button, Card, Col, Descriptions, Divider, Row, Space, Spin, Statistic, Tag, Typography } from 'antd';
-import { EditOutlined, UserOutlined } from '@ant-design/icons';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  Col,
+  Descriptions,
+  Row,
+  Segmented,
+  Space,
+  Spin,
+  Statistic,
+  Tag,
+  Typography,
+} from 'antd';
+import { AppstoreOutlined, EditOutlined, UnorderedListOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { usePatient } from '../core/hooks/usePatients';
 import { usePatientVisits } from './hooks/useVisits';
@@ -9,21 +23,31 @@ import { EditPatientDrawer } from './EditPatientDrawer';
 import { ClinicalNotesTab } from './ClinicalNotesTab';
 import { DiagnosisTab } from './DiagnosisTab';
 import { OrdersServicesTab } from './OrdersServicesTab';
+import { MedicationsTab } from './MedicationsTab';
+import { DocumentsTab } from './DocumentsTab';
+import { InvoiceTab } from './InvoiceTab';
 import { useOrderServices } from './hooks/useOrderServices';
+import { useIsDesktop } from '../core/hooks/useMediaQuery';
+import { useRecordViewLayoutStore } from './record-view-layout-store';
+import { CanvasPatientHeader } from './CanvasPatientHeader';
+import { PatientSummarySidebar } from './PatientSummarySidebar';
+import { DiagnosisSummaryCard } from './DiagnosisSummaryCard';
+import { OrdersSummaryCard } from './OrdersSummaryCard';
+import { MedicationsSummaryCard } from './MedicationsSummaryCard';
+import { DocumentsInvoiceSummaryCard } from './DocumentsInvoiceSummaryCard';
 import { Visit } from './types';
 
 const { Title, Text } = Typography;
 
 // The six numbered "Record View" tabs from the audited kuwick.com Patient
-// Dashboard. Medications lands in Phase 3, Documents in Phase 4, Invoices
-// in Phase 5 — placeholders here are not a scope cut.
+// Dashboard.
 const RECORD_TABS = [
   { key: 'notes', label: 'Clinical Notes' },
   { key: 'orders', label: 'Orders & Services' },
   { key: 'diagnosis', label: 'Diagnosis' },
-  { key: 'medications', label: 'Medications', description: 'Medications (Phase 3)' },
-  { key: 'documents', label: 'Documents', description: 'No generated documents yet' },
-  { key: 'invoices', label: 'Invoices', description: 'Invoices (Phase 5)' },
+  { key: 'medications', label: 'Medications' },
+  { key: 'documents', label: 'Documents' },
+  { key: 'invoices', label: 'Invoices' },
 ];
 
 export function PatientDashboardPage() {
@@ -34,6 +58,9 @@ export function PatientDashboardPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [selectedVisitId, setSelectedVisitId] = useState<string>();
   const [activeRecordTab, setActiveRecordTab] = useState('notes');
+  const layout = useRecordViewLayoutStore((state) => state.layout);
+  const setLayout = useRecordViewLayoutStore((state) => state.setLayout);
+  const isDesktop = useIsDesktop();
 
   const selectedVisit: Visit | undefined =
     visits?.find((visit) => visit.id === selectedVisitId) ?? visits?.[0];
@@ -53,12 +80,20 @@ export function PatientDashboardPage() {
   const hasProcedures = procedureOrders && procedureOrders.length > 0;
 
   const activeTab = RECORD_TABS.find((tab) => tab.key === activeRecordTab) ?? RECORD_TABS[0];
+  // "No page scroll" only makes sense as a desktop affordance — on mobile/
+  // tablet widths Canvas falls back to a stacked, naturally-scrolling
+  // layout instead of fighting for space in a short viewport (user
+  // feedback: needs to be responsive to all device sizes).
+  const canvasFill = layout === 'canvas' && Boolean(selectedVisit) && isDesktop;
 
   return (
-    <>
+    <div style={canvasFill ? { display: 'flex', flexDirection: 'column', height: '100%' } : undefined}>
+      {layout === 'canvas' && selectedVisit ? (
+        <CanvasPatientHeader patient={patient} visit={selectedVisit} />
+      ) : (
       <Card style={{ marginBottom: 16 }}>
-        <Row gutter={24}>
-          <Col span={10}>
+        <Row gutter={[24, 16]}>
+          <Col xs={24} md={10}>
             <Space align="start" size="large">
               <Avatar size={64} icon={<UserOutlined />} />
               <div>
@@ -105,14 +140,18 @@ export function PatientDashboardPage() {
               )}
             </div>
           </Col>
-          <Col span={7} style={{ borderLeft: '1px solid #f0f0f0', textAlign: 'center' }}>
+          <Col
+            xs={24}
+            md={7}
+            style={isDesktop ? { borderLeft: '1px solid #f0f0f0', textAlign: 'center' } : { textAlign: 'center' }}
+          >
             <Text type="secondary">ATTENDING PHYSICIAN</Text>
             <Avatar size={40} icon={<UserOutlined />} style={{ display: 'block', margin: '12px auto 8px' }} />
             <div>
               <Text strong>{selectedVisit?.staff ? selectedVisit.staff.fullName : 'No active visit'}</Text>
             </div>
           </Col>
-          <Col span={7} style={{ borderLeft: '1px solid #f0f0f0', paddingLeft: 16 }}>
+          <Col xs={24} md={7} style={isDesktop ? { borderLeft: '1px solid #f0f0f0', paddingLeft: 16 } : undefined}>
             <Text type="secondary">PROCEDURE STATUS</Text>
             {hasProcedures ? (
               <Space size="large" style={{ marginTop: 12 }} wrap>
@@ -131,9 +170,25 @@ export function PatientDashboardPage() {
           </Col>
         </Row>
       </Card>
+      )}
 
-      <Row gutter={16}>
-        <Col span={5}>
+      {selectedVisit && (
+        <Space wrap style={{ marginBottom: 6, width: '100%', justifyContent: 'flex-end', flex: '0 0 auto' }}>
+          <Text type="secondary">Layout:</Text>
+          <Segmented
+            value={layout}
+            onChange={(value) => setLayout(value as 'canvas' | 'flow')}
+            options={[
+              { label: 'Canvas', value: 'canvas', icon: <AppstoreOutlined /> },
+              { label: 'Flow', value: 'flow', icon: <UnorderedListOutlined /> },
+            ]}
+          />
+        </Space>
+      )}
+
+      <Row gutter={[16, 16]} style={canvasFill ? { flex: '1 1 auto', minHeight: 0 } : undefined}>
+        {layout === 'flow' && (
+        <Col xs={24} lg={5}>
           <Card
             title={
               <Space>
@@ -178,10 +233,11 @@ export function PatientDashboardPage() {
             </Space>
           </Card>
         </Col>
+        )}
 
-        {selectedVisit && (
+        {selectedVisit && layout === 'flow' && (
           <>
-            <Col span={5}>
+            <Col xs={24} lg={5}>
               <Card title="Record View" size="small">
                 <Space direction="vertical" size={4} style={{ width: '100%' }}>
                   {RECORD_TABS.map((tab, index) => (
@@ -209,7 +265,7 @@ export function PatientDashboardPage() {
               </Card>
             </Col>
 
-            <Col span={14}>
+            <Col xs={24} lg={14}>
               <Card
                 title={
                   <Space>
@@ -222,19 +278,82 @@ export function PatientDashboardPage() {
                 {activeTab.key === 'notes' && <ClinicalNotesTab visitId={selectedVisit.id} />}
                 {activeTab.key === 'orders' && <OrdersServicesTab visitId={selectedVisit.id} />}
                 {activeTab.key === 'diagnosis' && <DiagnosisTab visitId={selectedVisit.id} />}
-                {activeTab.description && (
-                  <>
-                    <Divider />
-                    <Text type="secondary">{activeTab.description}</Text>
-                  </>
+                {activeTab.key === 'medications' && <MedicationsTab visitId={selectedVisit.id} />}
+                {activeTab.key === 'documents' && (
+                  <DocumentsTab visit={selectedVisit} patientName={patient.name} patientIdentifier={patient.identifierValue} />
                 )}
+                {activeTab.key === 'invoices' && <InvoiceTab visit={selectedVisit} />}
               </Card>
+            </Col>
+          </>
+        )}
+
+        {selectedVisit && layout === 'canvas' && (
+          <>
+            <Col xs={24} lg={16} style={canvasFill ? { height: '100%' } : undefined}>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  height: canvasFill ? '100%' : undefined,
+                  gap: 6,
+                }}
+              >
+                <Card
+                  size="small"
+                  title={<Space>Clinical Notes <Tag>{selectedVisit.visitNumber}</Tag></Space>}
+                  style={
+                    canvasFill
+                      ? { flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }
+                      : undefined
+                  }
+                  styles={
+                    canvasFill
+                      ? {
+                          header: { padding: '4px 12px', minHeight: 28 },
+                          body: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', padding: 6 },
+                        }
+                      : undefined
+                  }
+                >
+                  <ClinicalNotesTab visitId={selectedVisit.id} compact />
+                </Card>
+                <Row gutter={[8, 8]} style={canvasFill ? { flex: '0 0 118px', minHeight: 0 } : undefined}>
+                  <Col xs={12} sm={12} lg={6} style={canvasFill ? { height: '100%' } : undefined}>
+                    <DiagnosisSummaryCard visitId={selectedVisit.id} />
+                  </Col>
+                  <Col xs={12} sm={12} lg={6} style={canvasFill ? { height: '100%' } : undefined}>
+                    <OrdersSummaryCard visitId={selectedVisit.id} />
+                  </Col>
+                  <Col xs={12} sm={12} lg={6} style={canvasFill ? { height: '100%' } : undefined}>
+                    <MedicationsSummaryCard visitId={selectedVisit.id} />
+                  </Col>
+                  <Col xs={12} sm={12} lg={6} style={canvasFill ? { height: '100%' } : undefined}>
+                    <DocumentsInvoiceSummaryCard
+                      visit={selectedVisit}
+                      patientName={patient.name}
+                      patientIdentifier={patient.identifierValue}
+                    />
+                  </Col>
+                </Row>
+              </div>
+            </Col>
+
+            <Col xs={24} lg={8} style={canvasFill ? { height: '100%', overflowY: 'auto' } : undefined}>
+              <PatientSummarySidebar
+                patient={patient}
+                visits={visits}
+                selectedVisitId={selectedVisit.id}
+                onSelectVisit={setSelectedVisitId}
+                expanded={expandProfile}
+                onToggleExpand={() => setExpandProfile((prev) => !prev)}
+              />
             </Col>
           </>
         )}
       </Row>
 
       <EditPatientDrawer patient={patient} open={editOpen} onClose={() => setEditOpen(false)} />
-    </>
+    </div>
   );
 }
