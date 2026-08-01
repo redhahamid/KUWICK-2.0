@@ -120,7 +120,7 @@ export interface WaitTimesSummary {
   averageServiceMinutes: number | null;
   averageTotalVisitMinutes: number | null;
   waitBuckets: { bucket: string; count: number }[];
-  byDay: { date: string; averageWaitMinutes: number }[];
+  byDay: { date: string; averageWaitMinutes: number | null; averageServiceMinutes: number | null }[];
 }
 
 export interface InvoiceListingRow {

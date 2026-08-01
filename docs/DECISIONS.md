@@ -293,11 +293,23 @@ Fix: `Staff.clinicId` (nullable, migration `20260801160000_add_staff_home_clinic
 
 ---
 
+## D-047 — Executive Dashboard redesign: hand-rolled interactive charts against real data, modeled on Klinik Hijraa's Operation dashboard
+Owner: reports/analytics looked "old school", asked for a Klinik Hijraa CMS review (`https://klinik-hijraa.onrender.com`, owner-authorized live login) as design reference, explicitly required every number stay real ("the data can be used as meeting") not dummy, and to tour Klinik Hijraa's other Admin tabs (Stock/Panel/HR/Finance) before locking in a KUWICK design. Full review captured in `docs/PROPOSED_ADDENDUM_2026-08-01_klinik-hijraa-admin-reference.md`: only Klinik Hijraa's **Operation** tab is a real interactive dashboard (date-range pills, KPI tiles, a segmented filter that re-scopes multiple charts at once, a doctor leaderboard, a donut with values in the legend) — Stock/Panel/Finance there are tabular, same as KUWICK's equivalents already are, so the redesign scope is the Executive Dashboard specifically, not the whole report suite.
+
+Built a small hand-rolled SVG chart library (`apps/web/src/reports/charts/`: `TrendChart`, `DonutChart`, `Leaderboard`, `KpiTile`) replacing `@ant-design/plots` Column/Pie on `ReportsPage.tsx`, following the dataviz skill's mark spec (2px lines, 4px rounded bar caps, 2px surface gaps/rings, thin recessive gridlines) and its validated 8-hue categorical palette — chosen over pulling in a bigger charting dependency since the interactions needed (crosshair+tooltip, click-to-highlight donut segment, click-to-expand leaderboard row) are each a few dozen lines of SVG/state, and `@ant-design/plots` (AntV G2) doesn't expose a click-driven cross-chart-filter primitive without dropping to its lower-level API anyway. Every figure is real: KPI deltas compare against a same-length prior period fetched via a second `/reports/*` call (`previousRange()` in `ReportRangeBar.tsx`), sparklines read real per-day series (`SalesSummary.byDay`, `SalesAnalysis.byDay.patients`, `WaitTimesSummary.byDay`) — omitted, not faked, for the two KPIs (Completed Rate, Panel Outstanding) with no comparable backend series. `getWaitTimes` (`reports.service.ts`) was extended to also aggregate `averageServiceMinutes` per day (same visit timestamps already used for the single-day average, just grouped), giving a real 2-series wait-time trend (waiting vs. consultation+dispensary) instead of Klinik Hijraa's un-copyable 3-series version (KUWICK has no separate dispensary timestamp, per D-042).
+
+The "segmented filter scopes multiple charts" pattern from Klinik Hijraa was **not** copied literally: their filter re-renders a whole panel of charts because their backend evidently has category-by-day data; KUWICK's `SalesAnalysis.byCategory` is a single-range total with no daily breakdown, so faking a category-filtered trend chart would mean fabricating numbers. Instead, clicking a revenue-by-category donut segment highlights that segment (donut + legend) and surfaces its real share as text — honest given what the backend actually returns, rather than replicating the interaction and lying about the data behind it.
+
+Incidentally captured the complete Doctor Incentive Engine formula (resident sales-commission threshold/flat/percent + per-procedure resident/locum rate table + locum OT) while touring Klinik Hijraa's HR tab — written up in the same reference doc but explicitly out of scope here; still blocks 1c pending owner prioritization (see OQ#2 below, now unblocked on spec but not yet built).
+**Reversibility**: High — additive frontend components + one backend field addition (`WaitTimesSummary.byDay[].averageServiceMinutes`); no schema change, no data migration, other Reports pages (Day-End, Sales/Patient/Procedure Analysis, Invoice Listing, Drug Movement, Waiting Times) untouched.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:
 
-- Doctor incentive formula, precise worked semantics (OQ#2, blocks 1c only)
+- Doctor incentive formula: worked semantics now captured in full from Klinik Hijraa (`docs/PROPOSED_ADDENDUM_2026-08-01_klinik-hijraa-admin-reference.md`) — spec is no longer the blocker, building it is; still needs owner go-ahead to schedule (OQ#2, blocks 1c only)
 - Booking-commission attribution mechanism (OQ#7, blocks the Online Booking Portal only)
 - Yezza-audit drafts: multi-session packages (OQ#16), front-desk booking-rule override (OQ#17), payment-at-booking (OQ#18)
 - Klinik Hijraa audit drafts not yet addressed: staff price tier (OQ#11), inter-branch billing (OQ#12), patient-app scope (OQ#13), clinical program generalization (OQ#14), WhatsApp delivery risk (OQ#15)

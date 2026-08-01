@@ -606,13 +606,14 @@ export class ReportsService {
     const waitSamples: number[] = [];
     const serviceSamples: number[] = [];
     const totalSamples: number[] = [];
-    const byDay = new Map<string, { waitSum: number; waitCount: number }>();
+    const byDay = new Map<string, { waitSum: number; waitCount: number; serviceSum: number; serviceCount: number }>();
     const buckets = { '0-15 min': 0, '15-30 min': 0, '30-60 min': 0, '60+ min': 0 };
 
     const minutesBetween = (from: Date, to: Date) => Math.round((to.getTime() - from.getTime()) / 60000);
 
     for (const visit of visits) {
       const ticket = visit.queueTicket;
+      const day = visit.checkInAt.toISOString().slice(0, 10);
       if (ticket?.calledAt) {
         const wait = minutesBetween(ticket.createdAt, ticket.calledAt);
         if (wait >= 0 && wait <= MAX_SANE_MINUTES) {
@@ -621,15 +622,20 @@ export class ReportsService {
           else if (wait < 30) buckets['15-30 min'] += 1;
           else if (wait < 60) buckets['30-60 min'] += 1;
           else buckets['60+ min'] += 1;
-          const day = visit.checkInAt.toISOString().slice(0, 10);
-          const dayBucket = byDay.get(day) ?? { waitSum: 0, waitCount: 0 };
+          const dayBucket = byDay.get(day) ?? { waitSum: 0, waitCount: 0, serviceSum: 0, serviceCount: 0 };
           dayBucket.waitSum += wait;
           dayBucket.waitCount += 1;
           byDay.set(day, dayBucket);
         }
         if (visit.checkOutAt) {
           const service = minutesBetween(ticket.calledAt, visit.checkOutAt);
-          if (service >= 0 && service <= MAX_SANE_MINUTES) serviceSamples.push(service);
+          if (service >= 0 && service <= MAX_SANE_MINUTES) {
+            serviceSamples.push(service);
+            const dayBucket = byDay.get(day) ?? { waitSum: 0, waitCount: 0, serviceSum: 0, serviceCount: 0 };
+            dayBucket.serviceSum += service;
+            dayBucket.serviceCount += 1;
+            byDay.set(day, dayBucket);
+          }
         }
       }
       if (visit.checkOutAt) {
@@ -649,7 +655,11 @@ export class ReportsService {
       averageTotalVisitMinutes: average(totalSamples),
       waitBuckets: Object.entries(buckets).map(([bucket, count]) => ({ bucket, count })),
       byDay: Array.from(byDay.entries())
-        .map(([date, bucket]) => ({ date, averageWaitMinutes: round2(bucket.waitSum / bucket.waitCount) }))
+        .map(([date, bucket]) => ({
+          date,
+          averageWaitMinutes: bucket.waitCount > 0 ? round2(bucket.waitSum / bucket.waitCount) : null,
+          averageServiceMinutes: bucket.serviceCount > 0 ? round2(bucket.serviceSum / bucket.serviceCount) : null,
+        }))
         .sort((a, b) => a.date.localeCompare(b.date)),
     };
   }

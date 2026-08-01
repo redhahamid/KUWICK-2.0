@@ -10,6 +10,16 @@ export function defaultRange(days = 30): ReportRange {
   return { from: dayjs().subtract(days, 'day').format('YYYY-MM-DD'), to: dayjs().format('YYYY-MM-DD') };
 }
 
+// The immediately preceding period of equal length — powers "vs last
+// period" KPI deltas without fabricating a benchmark.
+export function previousRange({ from, to }: ReportRange): ReportRange {
+  const spanDays = dayjs(to).diff(dayjs(from), 'day') + 1;
+  return {
+    from: dayjs(from).subtract(spanDays, 'day').format('YYYY-MM-DD'),
+    to: dayjs(from).subtract(1, 'day').format('YYYY-MM-DD'),
+  };
+}
+
 const PRESETS: { label: string; days?: number; startOf?: 'month' | 'year' }[] = [
   { label: '7D', days: 7 },
   { label: '30D', days: 30 },
