@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { StockService } from './stock.service';
 import { SetStockMinThresholdDto } from './dto/set-stock-min-threshold.dto';
 import { QuickAddStockDto } from './dto/quick-add-stock.dto';
+import { StockTakeDto } from './dto/stock-take.dto';
 
 @Controller('stock')
 export class StockController {
@@ -32,6 +33,11 @@ export class StockController {
     return this.stockService.listMovements(clinicId, itemId);
   }
 
+  @Get('near-expiry')
+  listNearExpiry(@Query('clinicId') clinicId?: string, @Query('withinDays') withinDays?: string) {
+    return this.stockService.listNearExpiry(clinicId, withinDays ? Number(withinDays) : undefined);
+  }
+
   @Post('min-threshold')
   setMinThreshold(@Body() dto: SetStockMinThresholdDto) {
     return this.stockService.setMinThreshold(dto);
@@ -40,5 +46,10 @@ export class StockController {
   @Post('quick-add')
   quickAdd(@Body() dto: QuickAddStockDto) {
     return this.stockService.quickAdd(dto);
+  }
+
+  @Post('stock-take')
+  performStockTake(@Body() dto: StockTakeDto) {
+    return this.stockService.performStockTake(dto);
   }
 }

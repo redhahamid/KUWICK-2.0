@@ -4,6 +4,7 @@ import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-s
 import { currentTenantId } from '../core/tenant-context';
 import { SetStockMinThresholdDto } from './dto/set-stock-min-threshold.dto';
 import { QuickAddStockDto } from './dto/quick-add-stock.dto';
+import { StockTakeDto } from './dto/stock-take.dto';
 
 @Injectable()
 export class StockService {
@@ -45,6 +46,91 @@ export class StockService {
       where: { clinicId, itemId },
       orderBy: { expiryDate: 'asc' },
     });
+  }
+
+  // Near-expiry surface (D-043) — batches with stock still on hand whose
+  // expiry falls within the window (or has already passed). The expiry
+  // data has been captured since Task #62's quick-add / GRN flows; this is
+  // the report that finally surfaces it.
+  async listNearExpiry(clinicId?: string, withinDays = 90) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() + withinDays);
+    const batches = await this.prisma.stockBatch.findMany({
+      where: {
+        clinicId,
+        quantity: { gt: 0 },
+        expiryDate: { not: null, lte: cutoff },
+      },
+      include: { item: true, clinic: true, supplier: true },
+      orderBy: { expiryDate: 'asc' },
+    });
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return batches.map((batch) => ({
+      ...batch,
+      daysToExpiry: Math.ceil((batch.expiryDate!.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)),
+    }));
+  }
+
+  // Stock take (D-043) — physical count vs system. Each variance writes an
+  // ADJUSTMENT movement (the ledger stays the single source of quantity
+  // change, same rule as every other flow) and sets the StockLevel to the
+  // counted quantity. Items counted equal to system are recorded as
+  // zero-variance results but write nothing.
+  async performStockTake(dto: StockTakeDto) {
+    const tenantId = currentTenantId();
+    const results: {
+      itemId: string;
+      itemName: string;
+      systemQuantity: number;
+      countedQuantity: number;
+      variance: number;
+    }[] = [];
+
+    for (const count of dto.counts) {
+      const level = await this.prisma.stockLevel.findUnique({
+        where: { tenantId_clinicId_itemId: { tenantId, clinicId: dto.clinicId, itemId: count.itemId } },
+        include: { item: true },
+      });
+      const item = level?.item ?? (await this.prisma.item.findUnique({ where: { id: count.itemId } }));
+      if (!item) continue;
+      const systemQuantity = level?.quantityOnHand ?? 0;
+      const variance = count.countedQuantity - systemQuantity;
+
+      if (variance !== 0) {
+        await this.prisma.stockMovement.create({
+          data: {
+            tenantId,
+            clinicId: dto.clinicId,
+            itemId: count.itemId,
+            movementType: StockMovementType.ADJUSTMENT,
+            quantityDelta: variance,
+            referenceType: 'StockTake',
+            createdByUserId: dto.countedByStaffId,
+          },
+        });
+        await this.prisma.stockLevel.upsert({
+          where: { tenantId_clinicId_itemId: { tenantId, clinicId: dto.clinicId, itemId: count.itemId } },
+          create: { tenantId, clinicId: dto.clinicId, itemId: count.itemId, quantityOnHand: count.countedQuantity },
+          update: { quantityOnHand: count.countedQuantity },
+        });
+      }
+
+      results.push({
+        itemId: count.itemId,
+        itemName: item.name,
+        systemQuantity,
+        countedQuantity: count.countedQuantity,
+        variance,
+      });
+    }
+
+    return {
+      clinicId: dto.clinicId,
+      countedItems: results.length,
+      adjustedItems: results.filter((row) => row.variance !== 0).length,
+      results,
+    };
   }
 
   listMovements(clinicId?: string, itemId?: string) {

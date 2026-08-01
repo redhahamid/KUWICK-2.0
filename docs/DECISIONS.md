@@ -267,6 +267,12 @@ Two more owner Finance/Operation requirements ("drug revenue — fast moving vs 
 
 ---
 
+## D-043 — Inventory: near-expiry, stock take, one-click reorder
+Owner asked whether Inventory already covered near-expiry tracking, reordering, and stock take — it didn't; all three were built this phase, none needed a schema change since the underlying fields (`StockBatch.expiryDate`, `StockMovementType.ADJUSTMENT`, `StockLevel.minThreshold`, `ProcurementRequest`) already existed from earlier phases. **Near-Expiry Stock** (Management > Stock): batches with `quantity > 0` and `expiryDate` within a configurable window (30/60/90/180 days), sorted soonest-first, with a `daysToExpiry` badge (red once past due). **Stock Take**: staff enter a physical count per item for a clinic; only entries that differ from `StockLevel.quantityOnHand` write anything — each variance becomes an `ADJUSTMENT` `StockMovement` (`referenceType: 'StockTake'`) and the level is set to the counted value, so the movement ledger stays the single source of truth for every quantity change, same rule as every other stock flow (goods-received, quick-add). Matched items are recorded in the result summary but touch nothing. **One-click Reorder**: a Reorder button on the Low Stock report raises a `ProcurementRequest` pre-filled with the shortfall quantity (`minThreshold - quantityOnHand`, floored at 1) against the existing procurement flow — no new approval/PO logic, it only accelerates request creation; the button switches to a disabled "Request pending" state once an open request exists for that item/clinic, so it can't be double-fired.
+**Reversibility**: High — near-expiry is read-only; stock take writes through the existing movement ledger with no new mutation path; reorder just pre-fills the existing procurement-request creation endpoint.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:

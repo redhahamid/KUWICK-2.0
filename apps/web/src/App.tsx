@@ -41,6 +41,8 @@ import { SuppliersPage } from './inventory/SuppliersPage';
 import { StockLevelsPage } from './inventory/StockLevelsPage';
 import { LowStockPage } from './inventory/LowStockPage';
 import { NegativeStockPage } from './inventory/NegativeStockPage';
+import { NearExpiryPage } from './inventory/NearExpiryPage';
+import { StockTakePage } from './inventory/StockTakePage';
 import { ProcurementRequestsPage } from './inventory/ProcurementRequestsPage';
 import { PurchaseOrdersPage } from './inventory/PurchaseOrdersPage';
 import { ReportsPage } from './reports/ReportsPage';
@@ -121,6 +123,8 @@ export function App() {
             <Route path="/management/stock/levels" element={<StockLevelsPage />} />
             <Route path="/management/stock/low-stock" element={<LowStockPage />} />
             <Route path="/management/stock/negative-stock" element={<NegativeStockPage />} />
+            <Route path="/management/stock/near-expiry" element={<NearExpiryPage />} />
+            <Route path="/management/stock/stock-take" element={<StockTakePage />} />
             <Route path="/management/stock/procurement-requests" element={<ProcurementRequestsPage />} />
             <Route path="/management/stock/purchase-orders" element={<PurchaseOrdersPage />} />
 

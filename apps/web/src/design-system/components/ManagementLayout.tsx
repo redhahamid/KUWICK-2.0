@@ -64,6 +64,8 @@ const MENU_GROUPS = [
       item('/management/stock/levels', 'Stock Levels'),
       item('/management/stock/low-stock', 'Low Stock'),
       item('/management/stock/negative-stock', 'Negative Stock'),
+      item('/management/stock/near-expiry', 'Near-Expiry Stock'),
+      item('/management/stock/stock-take', 'Stock Take'),
       item('/management/stock/procurement-requests', 'Procurement Requests'),
       item('/management/stock/purchase-orders', 'Purchase Orders'),
     ],

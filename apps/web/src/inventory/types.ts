@@ -115,6 +115,44 @@ export interface SetStockMinThresholdDto {
   minThreshold: number;
 }
 
+// Near-expiry surface (D-043) — a StockBatch with stock still on hand,
+// enriched with the item/clinic/supplier it belongs to and the number of
+// days left before it expires (negative once already expired).
+export interface NearExpiryBatch extends StockBatch {
+  item: Item;
+  clinic: { id: string; name: string };
+  supplier: Supplier | null;
+  daysToExpiry: number;
+}
+
+// Stock take (D-043) — physical count vs system, reconciled via an
+// ADJUSTMENT stock movement for any variance.
+export interface StockTakeCountDto {
+  itemId: string;
+  countedQuantity: number;
+}
+
+export interface StockTakeDto {
+  clinicId: string;
+  countedByStaffId?: string;
+  counts: StockTakeCountDto[];
+}
+
+export interface StockTakeResultRow {
+  itemId: string;
+  itemName: string;
+  systemQuantity: number;
+  countedQuantity: number;
+  variance: number;
+}
+
+export interface StockTakeResult {
+  clinicId: string;
+  countedItems: number;
+  adjustedItems: number;
+  results: StockTakeResultRow[];
+}
+
 // "Inventory In" quick modal (Task #62) — records incoming stock without a
 // formal Purchase Order, e.g. free samples or a walk-in supplier drop-off.
 export interface QuickAddStockDto {
