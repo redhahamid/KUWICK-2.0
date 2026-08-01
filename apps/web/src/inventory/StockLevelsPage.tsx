@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button, DatePicker, Drawer, Form, Input, InputNumber, message, Select, Space, Table, Tag, Typography } from 'antd';
 import { ImportOutlined, SettingOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useClinics } from '../core/hooks/useClinics';
+import { useClinicFilter, useDefaultClinicId } from '../core/hooks/useClinicFilter';
 import { useStaff } from '../hr/hooks/useStaff';
 import { useItems } from './hooks/useItems';
 import { useSuppliers } from './hooks/useSuppliers';
@@ -23,8 +23,8 @@ interface QuickAddStockFormValues {
 }
 
 export function StockLevelsPage() {
-  const [clinicId, setClinicId] = useState<string>();
-  const { data: clinics } = useClinics();
+  const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
+  const defaultClinicId = useDefaultClinicId();
   const { data: items } = useItems();
   const { data: suppliers } = useSuppliers();
   const { data: staff } = useStaff();
@@ -84,16 +84,18 @@ export function StockLevelsPage() {
           </Button>
         </Space>
       </Space>
-      <Space style={{ marginBottom: 16 }} wrap>
-        <Select
-          allowClear
-          placeholder="Filter by clinic"
-          style={{ width: 220 }}
-          value={clinicId}
-          onChange={setClinicId}
-          options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
-        />
-      </Space>
+      {showSelector && (
+        <Space style={{ marginBottom: 16 }} wrap>
+          <Select
+            allowClear
+            placeholder="Filter by clinic"
+            style={{ width: 220 }}
+            value={clinicId}
+            onChange={setClinicId}
+            options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+          />
+        </Space>
+      )}
       <Table
         rowKey="id"
         loading={isLoading}
@@ -110,7 +112,7 @@ export function StockLevelsPage() {
         ]}
       />
       <Drawer title="Set Minimum Threshold" open={open} onClose={() => setOpen(false)} destroyOnHidden>
-        <Form form={form} layout="vertical" onFinish={handleSubmit}>
+        <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ clinicId: defaultClinicId }}>
           <Form.Item name="clinicId" label="Clinic" rules={[{ required: true }]}>
             <Select options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))} />
           </Form.Item>
@@ -130,7 +132,12 @@ export function StockLevelsPage() {
         </Form>
       </Drawer>
       <Drawer title="Stock In" open={stockInOpen} onClose={() => setStockInOpen(false)} destroyOnHidden>
-        <Form form={stockInForm} layout="vertical" onFinish={handleStockIn}>
+        <Form
+          form={stockInForm}
+          layout="vertical"
+          onFinish={handleStockIn}
+          initialValues={{ clinicId: defaultClinicId }}
+        >
           <Form.Item name="clinicId" label="Clinic" rules={[{ required: true }]}>
             <Select options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))} />
           </Form.Item>

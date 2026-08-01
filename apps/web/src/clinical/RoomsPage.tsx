@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, Form, Input, message, Modal, Select, Space, Switch, Table, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import { useClinics } from '../core/hooks/useClinics';
+import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { useCreateRoom, useRooms, useUpdateRoom } from './hooks/useQueueTickets';
 import { Room } from './types';
 import { ApiError } from '../core/api-client';
@@ -11,8 +11,7 @@ const { Title, Text } = Typography;
 // D-038 — rooms/stations patients get called to (Consultation 1/2,
 // Treatment Room 1/2, Dispensary Counter). Management > Operation.
 export function RoomsPage() {
-  const { data: clinics } = useClinics();
-  const [clinicId, setClinicId] = useState<string>();
+  const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
   const { data: rooms, isLoading } = useRooms(clinicId);
   const createRoom = useCreateRoom();
   const updateRoom = useUpdateRoom();
@@ -38,13 +37,15 @@ export function RoomsPage() {
           Rooms & Stations
         </Title>
         <Space>
-          <Select
-            placeholder="Select clinic"
-            style={{ width: 220 }}
-            value={clinicId}
-            onChange={setClinicId}
-            options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
-          />
+          {showSelector && (
+            <Select
+              placeholder="Select clinic"
+              style={{ width: 220 }}
+              value={clinicId}
+              onChange={setClinicId}
+              options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+            />
+          )}
           <Button type="primary" icon={<PlusOutlined />} disabled={!clinicId} onClick={() => setOpen(true)}>
             Add Room
           </Button>

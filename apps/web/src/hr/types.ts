@@ -7,17 +7,22 @@ export interface Staff {
   fullName: string;
   staffNumber: string | null;
   active: boolean;
+  // D-045 — home branch; null = works across every clinic in the tenant.
+  clinicId: string | null;
 }
 
 export interface CreateStaffDto {
   role: Role;
   fullName: string;
   staffNumber?: string;
+  clinicId?: string;
   // Login credentials (D-034) — optional; give both to let this staff
   // member sign in, omit both to leave them without a login.
   loginEmail?: string;
   loginPassword?: string;
 }
+
+export type UpdateStaffDto = Partial<CreateStaffDto> & { active?: boolean; clinicId?: string | null };
 
 // HR, Phase 1c. Leave request/approval workflow — no accrual balances or
 // leave-type quotas yet, matching PRODUCT_REQUIREMENTS.md §14's MVP

@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, DatePicker, Drawer, Select, Space, Spin, Tag, Typography, message } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { useClinics } from '../core/hooks/useClinics';
+import { useDefaultClinicId } from '../core/hooks/useClinicFilter';
 import { usePatients } from '../core/hooks/usePatients';
 import { useStaff } from '../hr/hooks/useStaff';
 import { useServices } from '../clinical/hooks/useServices';
@@ -21,6 +22,7 @@ export function BookAppointmentDrawer({ open, onClose }: BookAppointmentDrawerPr
   const { data: patients } = usePatients();
   const { data: staff } = useStaff();
   const { data: services } = useServices();
+  const defaultClinicId = useDefaultClinicId();
   const createAppointment = useCreateAppointment();
 
   const [clinicId, setClinicId] = useState<string>();
@@ -29,6 +31,15 @@ export function BookAppointmentDrawer({ open, onClose }: BookAppointmentDrawerPr
   const [serviceId, setServiceId] = useState<string>();
   const [date, setDate] = useState<Dayjs>();
   const [selectedSlot, setSelectedSlot] = useState<AvailableSlot>();
+
+  // A single-clinic tenant, or a staff member tied to one branch, never
+  // needs to pick this — pre-fill it the moment the drawer opens.
+  useEffect(() => {
+    if (open && defaultClinicId && !clinicId) {
+      setClinicId(defaultClinicId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, defaultClinicId]);
 
   const { data: slots, isFetching: loadingSlots } = useAvailability({
     clinicId,

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Card, Form, Input, message, Select, Slider, Space, Typography } from 'antd';
 import { SoundOutlined } from '@ant-design/icons';
-import { useClinics } from '../core/hooks/useClinics';
+import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { useQueueDisplayConfig, useUpdateQueueDisplayConfig } from './hooks/useQueueTickets';
 import { ApiError } from '../core/api-client';
 
@@ -35,8 +35,7 @@ function useSpeechVoices(): SpeechSynthesisVoice[] {
 // button. The voice list is the *browser's* installed voices — pick on the
 // machine that actually drives the TV for the truest preview.
 export function QueueDisplaySettingsPage() {
-  const { data: clinics } = useClinics();
-  const [clinicId, setClinicId] = useState<string>();
+  const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
   const { data: config, isLoading } = useQueueDisplayConfig(clinicId);
   const updateConfig = useUpdateQueueDisplayConfig();
   const voices = useSpeechVoices();
@@ -82,13 +81,15 @@ export function QueueDisplaySettingsPage() {
         <Title level={4} style={{ margin: 0 }}>
           Queue Screen Settings
         </Title>
-        <Select
-          placeholder="Select clinic"
-          style={{ width: 220 }}
-          value={clinicId}
-          onChange={setClinicId}
-          options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
-        />
+        {showSelector && (
+          <Select
+            placeholder="Select clinic"
+            style={{ width: 220 }}
+            value={clinicId}
+            onChange={setClinicId}
+            options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+          />
+        )}
       </Space>
       {!clinicId ? (
         <Text type="secondary">Select a clinic to configure its waiting-room screen.</Text>

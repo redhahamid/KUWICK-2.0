@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, Col, DatePicker, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography } from 'antd';
 import { Column, Pie } from '@ant-design/plots';
 import dayjs, { Dayjs } from 'dayjs';
-import { useClinics } from '../core/hooks/useClinics';
+import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { OutstandingClaimBatch } from '../clinical/types';
 import { useAppointmentAnalytics, useDoctorPerformance, useReportsPanelAging, useSalesSummary } from './hooks/useReports';
 import { DoctorPerformance } from './types';
@@ -171,8 +171,7 @@ function PanelAgingTab() {
 // §14): Sales (cash vs panel), Appointment Analytics, Doctor Performance,
 // Panel Aging. Lives under Management, its own top-level group.
 export function ReportsPage() {
-  const { data: clinics } = useClinics();
-  const [clinicId, setClinicId] = useState<string>();
+  const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>([dayjs().subtract(30, 'day'), dayjs()]);
 
   const from = range?.[0]?.format('YYYY-MM-DD');
@@ -186,14 +185,16 @@ export function ReportsPage() {
         </Title>
         <Space>
           <RangePicker value={range} onChange={(dates) => setRange(dates as [Dayjs, Dayjs] | null)} />
-          <Select
-            allowClear
-            style={{ width: 200 }}
-            placeholder="All clinics"
-            value={clinicId}
-            onChange={setClinicId}
-            options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
-          />
+          {showSelector && (
+            <Select
+              allowClear
+              style={{ width: 200 }}
+              placeholder="All clinics"
+              value={clinicId}
+              onChange={setClinicId}
+              options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+            />
+          )}
         </Space>
       </Space>
       <Tabs

@@ -3,7 +3,7 @@ import { Button, Card, Empty, List, Modal, Popconfirm, Select, Space, Table, Tab
 import { FileTextOutlined, PlusOutlined, PrinterOutlined, SoundOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { useClinics } from '../core/hooks/useClinics';
+import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { useStaff } from '../hr/hooks/useStaff';
 import { useAuthStore } from '../core/auth-store';
 import {
@@ -162,8 +162,7 @@ function detailColumns(showActions: {
 }
 
 export function QueueManagementPage() {
-  const [clinicId, setClinicId] = useState<string>();
-  const { data: clinics } = useClinics();
+  const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
   const { data: staff } = useStaff();
   const currentStaff = useAuthStore((state) => state.staff);
   const { data: allTickets, isLoading } = useQueueTickets({ clinicId });
@@ -235,14 +234,16 @@ export function QueueManagementPage() {
           Queue Management
         </Title>
         <Space>
-          <Select
-            allowClear
-            placeholder="Select clinic"
-            style={{ width: 220 }}
-            value={clinicId}
-            onChange={setClinicId}
-            options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
-          />
+          {showSelector && (
+            <Select
+              allowClear
+              placeholder="Select clinic"
+              style={{ width: 220 }}
+              value={clinicId}
+              onChange={setClinicId}
+              options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+            />
+          )}
           <Button icon={<PlusOutlined />} onClick={() => setAddPatientOpen(true)}>
             Add to Queue
           </Button>

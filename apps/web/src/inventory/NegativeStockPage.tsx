@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { Select, Space, Table, Typography } from 'antd';
-import { useClinics } from '../core/hooks/useClinics';
+import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { useNegativeStock } from './hooks/useStock';
 
 const { Title, Text } = Typography;
@@ -10,8 +9,7 @@ const { Title, Text } = Typography;
 // staff dispense/invoice immediately even when system stock hasn't caught
 // up with physically-received goods.
 export function NegativeStockPage() {
-  const [clinicId, setClinicId] = useState<string>();
-  const { data: clinics } = useClinics();
+  const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
   const { data: negativeStock, isLoading } = useNegativeStock(clinicId);
 
   const clinicName = (id: string) => clinics?.find((clinic) => clinic.id === id)?.name ?? id;
@@ -24,16 +22,18 @@ export function NegativeStockPage() {
       <Text type="secondary">
         Items below zero pending reconciliation — dispensing is never blocked on system stock catching up.
       </Text>
-      <Space style={{ margin: '16px 0' }} wrap>
-        <Select
-          allowClear
-          placeholder="Filter by clinic"
-          style={{ width: 220 }}
-          value={clinicId}
-          onChange={setClinicId}
-          options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
-        />
-      </Space>
+      {showSelector && (
+        <Space style={{ margin: '16px 0' }} wrap>
+          <Select
+            allowClear
+            placeholder="Filter by clinic"
+            style={{ width: 220 }}
+            value={clinicId}
+            onChange={setClinicId}
+            options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+          />
+        </Space>
+      )}
       <Table
         rowKey="id"
         loading={isLoading}

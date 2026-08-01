@@ -3,6 +3,7 @@ import { Alert, Button, Drawer, Form, Input, InputNumber, Radio, Select, Space, 
 import { EditOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useClinics } from '../core/hooks/useClinics';
+import { useDefaultClinicId } from '../core/hooks/useClinicFilter';
 import { useStaff } from '../hr/hooks/useStaff';
 import { useAddToQueue } from './hooks/useQueueTickets';
 import { usePanelClinics, useUpdatePanelClinic } from './hooks/usePanelClinics';
@@ -38,6 +39,7 @@ export function AddToQueueDrawer({ patient, onClose }: AddToQueueDrawerProps) {
   const { data: staff } = useStaff();
   const { data: allPanels } = usePanelClinics();
   const panels = allPanels?.filter((panel) => panel.active);
+  const defaultClinicId = useDefaultClinicId();
   const addToQueue = useAddToQueue();
   const updatePanelClinic = useUpdatePanelClinic();
   const [form] = Form.useForm<Omit<AddToQueueDto, 'patientId' | 'billingType'>>();
@@ -94,7 +96,7 @@ export function AddToQueueDrawer({ patient, onClose }: AddToQueueDrawerProps) {
 
   return (
     <Drawer title={patient ? `Add ${patient.name} to Daily Queue` : 'Add to Daily Queue'} open={Boolean(patient)} onClose={onClose} destroyOnHidden>
-      <Form form={form} layout="vertical" onFinish={handleSubmit}>
+      <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ clinicId: defaultClinicId }}>
         <Form.Item name="clinicId" label="Clinic" rules={[{ required: true }]}>
           <Select options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))} />
         </Form.Item>

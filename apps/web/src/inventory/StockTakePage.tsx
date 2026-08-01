@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Alert, Button, InputNumber, message, Select, Space, Table, Tag, Typography } from 'antd';
-import { useClinics } from '../core/hooks/useClinics';
+import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { useStaff } from '../hr/hooks/useStaff';
 import { usePerformStockTake } from './hooks/useStock';
 import { useStockLevels } from './hooks/useStock';
@@ -20,11 +20,10 @@ function varianceTag(variance: number) {
 // movement (apps/api/src/inventory/stock.service.ts performStockTake),
 // same ledger every other stock change goes through.
 export function StockTakePage() {
-  const [clinicId, setClinicId] = useState<string>();
+  const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
   const [countedByStaffId, setCountedByStaffId] = useState<string>();
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [result, setResult] = useState<StockTakeResult | null>(null);
-  const { data: clinics } = useClinics();
   const { data: staff } = useStaff();
   const { data: levels, isLoading } = useStockLevels(clinicId);
   const performStockTake = usePerformStockTake();
@@ -67,13 +66,15 @@ export function StockTakePage() {
         Enter the physical count for items that differ from system quantity — matching items need no entry.
       </Text>
       <Space style={{ margin: '16px 0' }} wrap>
-        <Select
-          placeholder="Select clinic"
-          style={{ width: 220 }}
-          value={clinicId}
-          onChange={handleClinicChange}
-          options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
-        />
+        {showSelector && (
+          <Select
+            placeholder="Select clinic"
+            style={{ width: 220 }}
+            value={clinicId}
+            onChange={handleClinicChange}
+            options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+          />
+        )}
         <Select
           allowClear
           showSearch

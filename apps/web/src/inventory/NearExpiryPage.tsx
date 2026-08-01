@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Select, Space, Table, Tag, Typography } from 'antd';
-import { useClinics } from '../core/hooks/useClinics';
+import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { useNearExpiry } from './hooks/useStock';
 import { NearExpiryBatch } from './types';
 
@@ -23,9 +23,8 @@ function expiryTag(daysToExpiry: number) {
 // D-043 — surfaces StockBatch.expiryDate, captured since the Task #62
 // quick-add/GRN flows but never reported on until now.
 export function NearExpiryPage() {
-  const [clinicId, setClinicId] = useState<string>();
+  const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
   const [withinDays, setWithinDays] = useState(90);
-  const { data: clinics } = useClinics();
   const { data: batches, isLoading } = useNearExpiry(clinicId, withinDays);
 
   return (
@@ -35,14 +34,16 @@ export function NearExpiryPage() {
       </Title>
       <Text type="secondary">Batches with stock still on hand, ordered by soonest expiry first.</Text>
       <Space style={{ margin: '16px 0' }} wrap>
-        <Select
-          allowClear
-          placeholder="Filter by clinic"
-          style={{ width: 220 }}
-          value={clinicId}
-          onChange={setClinicId}
-          options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
-        />
+        {showSelector && (
+          <Select
+            allowClear
+            placeholder="Filter by clinic"
+            style={{ width: 220 }}
+            value={clinicId}
+            onChange={setClinicId}
+            options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+          />
+        )}
         <Select style={{ width: 180 }} value={withinDays} onChange={setWithinDays} options={WINDOW_OPTIONS} />
       </Space>
       <Table

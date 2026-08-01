@@ -4,7 +4,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { PurchaseOrderStatus, PURCHASE_ORDER_STATUS_TONE } from '@kuwick/shared';
 import { StatusBadge } from '../design-system/components/StatusBadge';
-import { useClinics } from '../core/hooks/useClinics';
+import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { usePurchaseOrders } from './hooks/usePurchaseOrders';
 import { CreatePurchaseOrderDrawer } from './CreatePurchaseOrderDrawer';
 import { ReceivePurchaseOrderDrawer } from './ReceivePurchaseOrderDrawer';
@@ -18,12 +18,11 @@ const RECEIVABLE_STATUSES: PurchaseOrderStatus[] = [
 ];
 
 export function PurchaseOrdersPage() {
-  const [clinicId, setClinicId] = useState<string>();
+  const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
   const [status, setStatus] = useState<PurchaseOrderStatus>();
   const [createOpen, setCreateOpen] = useState(false);
   const [receiving, setReceiving] = useState<PurchaseOrder | null>(null);
 
-  const { data: clinics } = useClinics();
   const { data: purchaseOrders, isLoading } = usePurchaseOrders({ clinicId, status });
 
   const clinicName = (id: string) => clinics?.find((clinic) => clinic.id === id)?.name ?? id;
@@ -39,14 +38,16 @@ export function PurchaseOrdersPage() {
         </Button>
       </Space>
       <Space style={{ marginBottom: 16 }} wrap>
-        <Select
-          allowClear
-          placeholder="Filter by clinic"
-          style={{ width: 200 }}
-          value={clinicId}
-          onChange={setClinicId}
-          options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
-        />
+        {showSelector && (
+          <Select
+            allowClear
+            placeholder="Filter by clinic"
+            style={{ width: 200 }}
+            value={clinicId}
+            onChange={setClinicId}
+            options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+          />
+        )}
         <Select
           allowClear
           placeholder="Filter by status"

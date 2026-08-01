@@ -4,7 +4,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { AppointmentStatus, APPOINTMENT_STATUS_TONE } from '@kuwick/shared';
 import { StatusBadge } from '../design-system/components/StatusBadge';
-import { useClinics } from '../core/hooks/useClinics';
+import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { usePatients } from '../core/hooks/usePatients';
 import { useStaff } from '../hr/hooks/useStaff';
 import {
@@ -25,14 +25,13 @@ const { Title } = Typography;
 
 export function AppointmentsPage() {
   const [pageView, setPageView] = useState<'list' | 'calendar'>('list');
-  const [clinicId, setClinicId] = useState<string>();
+  const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
   const [staffId, setStaffId] = useState<string>();
   const [status, setStatus] = useState<AppointmentStatus>();
   const [bookOpen, setBookOpen] = useState(false);
   const [rescheduling, setRescheduling] = useState<Appointment | null>(null);
 
   const { data: appointments, isLoading } = useAppointments({ clinicId, staffId, status });
-  const { data: clinics } = useClinics();
   const { data: patients } = usePatients();
   const { data: staff } = useStaff();
 
@@ -101,14 +100,16 @@ export function AppointmentsPage() {
       ) : (
         <>
           <Space style={{ marginBottom: 16 }} wrap>
-            <Select
-              allowClear
-              placeholder="Filter by clinic"
-              style={{ width: 200 }}
-              value={clinicId}
-              onChange={setClinicId}
-              options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
-            />
+            {showSelector && (
+              <Select
+                allowClear
+                placeholder="Filter by clinic"
+                style={{ width: 200 }}
+                value={clinicId}
+                onChange={setClinicId}
+                options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+              />
+            )}
             <Select
               allowClear
               placeholder="Filter by doctor"

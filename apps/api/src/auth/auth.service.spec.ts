@@ -89,7 +89,14 @@ describe('AuthService', () => {
         email: dto.email,
         status: 'active',
         passwordHash: 'hashed',
-        staff: { id: 'staff-1', active: true, role: 'DOCTOR_RESIDENT', fullName: 'Dr. Amira Rahman' },
+        staff: {
+          id: 'staff-1',
+          active: true,
+          role: 'DOCTOR_RESIDENT',
+          fullName: 'Dr. Amira Rahman',
+          clinicId: 'clinic-1',
+          clinic: { id: 'clinic-1', name: 'Main Branch' },
+        },
       });
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
 
@@ -102,7 +109,13 @@ describe('AuthService', () => {
       );
       expect(result.accessToken).toBe('signed-token');
       expect(result.refreshToken).toBe('signed-token');
-      expect(result.staff).toEqual({ id: 'staff-1', fullName: 'Dr. Amira Rahman', role: 'DOCTOR_RESIDENT' });
+      expect(result.staff).toEqual({
+        id: 'staff-1',
+        fullName: 'Dr. Amira Rahman',
+        role: 'DOCTOR_RESIDENT',
+        clinicId: 'clinic-1',
+        clinicName: 'Main Branch',
+      });
     });
   });
 

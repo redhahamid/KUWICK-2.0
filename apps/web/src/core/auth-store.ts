@@ -8,6 +8,11 @@ export interface AuthenticatedStaff {
   id: string;
   fullName: string;
   role: string;
+  // D-045 — this staff member's home branch, if the tenant has more than
+  // one clinic and they're assigned to a specific one. Null/undefined =
+  // works across every clinic (owner/finance/HR-type roles).
+  clinicId?: string | null;
+  clinicName?: string | null;
 }
 
 export interface AuthenticatedTenant {

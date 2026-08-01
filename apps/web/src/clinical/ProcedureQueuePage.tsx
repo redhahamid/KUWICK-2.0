@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button, Card, Col, Popconfirm, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography, message } from 'antd';
 import { CheckOutlined, PaperClipOutlined, PrinterOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useClinics } from '../core/hooks/useClinics';
+import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { useAcceptProcedure, useCancelProcedure, useCompleteProcedure, useProcedureQueue } from './hooks/useProcedureQueue';
 import { CompleteOrderModal } from './CompleteOrderModal';
 import { OrderService, OrderServiceStatus } from './types';
@@ -36,10 +36,9 @@ const SUMMARY_CARDS: { key: StatusFilter; label: string }[] = [
 // Cancel is available before completion, and Print opens a formatted
 // result view once done.
 export function ProcedureQueuePage() {
-  const [clinicId, setClinicId] = useState<string>();
+  const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('All');
   const [activeOrder, setActiveOrder] = useState<OrderService | null>(null);
-  const { data: clinics } = useClinics();
   const { data: allOrders, isLoading } = useProcedureQueue({ clinicId });
   const acceptProcedure = useAcceptProcedure();
   const cancelProcedure = useCancelProcedure();
@@ -82,14 +81,16 @@ export function ProcedureQueuePage() {
         <Title level={4} style={{ margin: 0 }}>
           Procedure Task Queue
         </Title>
-        <Select
-          allowClear
-          placeholder="Select clinic"
-          style={{ width: 220 }}
-          value={clinicId}
-          onChange={setClinicId}
-          options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
-        />
+        {showSelector && (
+          <Select
+            allowClear
+            placeholder="Select clinic"
+            style={{ width: 220 }}
+            value={clinicId}
+            onChange={setClinicId}
+            options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+          />
+        )}
       </Space>
 
       <Row gutter={16} style={{ marginBottom: 16 }}>

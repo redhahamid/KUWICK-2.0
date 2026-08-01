@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button, message, Select, Space, Table, Tag, Typography } from 'antd';
 import { ShoppingCartOutlined } from '@ant-design/icons';
 import { ProcurementRequestStatus } from '@kuwick/shared';
-import { useClinics } from '../core/hooks/useClinics';
+import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { useLowStock } from './hooks/useStock';
 import { useCreateProcurementRequest, useProcurementRequests } from './hooks/useProcurementRequests';
 import { ApiError } from '../core/api-client';
@@ -11,8 +11,7 @@ import { StockLevel } from './types';
 const { Title } = Typography;
 
 export function LowStockPage() {
-  const [clinicId, setClinicId] = useState<string>();
-  const { data: clinics } = useClinics();
+  const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
   const { data: lowStock, isLoading } = useLowStock(clinicId);
   const { data: openRequests } = useProcurementRequests({ status: ProcurementRequestStatus.PENDING });
   const createProcurementRequest = useCreateProcurementRequest();
@@ -45,16 +44,18 @@ export function LowStockPage() {
       <Title level={4} style={{ marginBottom: 16 }}>
         Low Stock
       </Title>
-      <Space style={{ marginBottom: 16 }} wrap>
-        <Select
-          allowClear
-          placeholder="Filter by clinic"
-          style={{ width: 220 }}
-          value={clinicId}
-          onChange={setClinicId}
-          options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
-        />
-      </Space>
+      {showSelector && (
+        <Space style={{ marginBottom: 16 }} wrap>
+          <Select
+            allowClear
+            placeholder="Filter by clinic"
+            style={{ width: 220 }}
+            value={clinicId}
+            onChange={setClinicId}
+            options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+          />
+        </Space>
+      )}
       <Table
         rowKey="id"
         loading={isLoading}

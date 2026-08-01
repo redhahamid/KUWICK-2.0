@@ -124,6 +124,7 @@ model Clinic {
   orderServices       OrderService[]
   rooms               Room[]
   queueDisplayConfig  QueueDisplayConfig?
+  staff               Staff[]
 
   @@index([tenantId])
   @@map("clinics")
@@ -368,11 +369,18 @@ model Staff {
   fullName    String   @map("full_name")
   staffNumber String?  @map("staff_number")
   active      Boolean  @default(true)
+  // D-045 — this staff member's home branch. Null means they work across
+  // every clinic in the tenant (owner/finance/HR-type roles) and still see
+  // a clinic picker; set means every clinic-scoped screen auto-resolves to
+  // this clinic and the picker never shows at all — "log in and you're
+  // already at your clinic," not a re-selection every screen.
+  clinicId    String?  @map("clinic_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   tenant                      Tenant                       @relation(fields: [tenantId], references: [id])
   user                        User?                        @relation(fields: [userId], references: [id])
+  clinic                      Clinic?                      @relation(fields: [clinicId], references: [id])
   doctorSchedules             DoctorSchedule[]
   scheduleExceptions          ScheduleException[]
   slotCapacityConfigs         SlotCapacityConfig[]
@@ -393,6 +401,7 @@ model Staff {
 
   @@index([tenantId])
   @@index([tenantId, role])
+  @@index([tenantId, clinicId])
   @@map("staff")
 }
 

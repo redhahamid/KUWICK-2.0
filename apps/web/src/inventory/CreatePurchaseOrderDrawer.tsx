@@ -1,6 +1,7 @@
 import { Button, Drawer, Form, InputNumber, Select, Space, message } from 'antd';
 import { PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { useClinics } from '../core/hooks/useClinics';
+import { useDefaultClinicId } from '../core/hooks/useClinicFilter';
 import { useSuppliers } from './hooks/useSuppliers';
 import { useItems } from './hooks/useItems';
 import { useCreatePurchaseOrder } from './hooks/usePurchaseOrders';
@@ -16,6 +17,7 @@ export function CreatePurchaseOrderDrawer({ open, onClose }: CreatePurchaseOrder
   const { data: clinics } = useClinics();
   const { data: suppliers } = useSuppliers();
   const { data: items } = useItems();
+  const defaultClinicId = useDefaultClinicId();
   const createPurchaseOrder = useCreatePurchaseOrder();
   const [form] = Form.useForm<CreatePurchaseOrderDto>();
 
@@ -39,7 +41,7 @@ export function CreatePurchaseOrderDrawer({ open, onClose }: CreatePurchaseOrder
       width={480}
       afterOpenChange={(isOpen) => !isOpen && form.resetFields()}
     >
-      <Form form={form} layout="vertical" onFinish={handleSubmit}>
+      <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ clinicId: defaultClinicId }}>
         <Form.Item name="clinicId" label="Clinic" rules={[{ required: true }]}>
           <Select options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))} />
         </Form.Item>

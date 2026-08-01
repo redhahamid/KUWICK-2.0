@@ -3,7 +3,7 @@ import { Button, Drawer, Form, InputNumber, message, Select, Space, Table, Typog
 import { PlusOutlined } from '@ant-design/icons';
 import { ProcurementRequestStatus, PROCUREMENT_REQUEST_STATUS_TONE } from '@kuwick/shared';
 import { StatusBadge } from '../design-system/components/StatusBadge';
-import { useClinics } from '../core/hooks/useClinics';
+import { useClinicFilter, useDefaultClinicId } from '../core/hooks/useClinicFilter';
 import { useItems } from './hooks/useItems';
 import {
   useApproveProcurementRequest,
@@ -17,12 +17,12 @@ import { ApiError } from '../core/api-client';
 const { Title } = Typography;
 
 export function ProcurementRequestsPage() {
-  const [clinicId, setClinicId] = useState<string>();
+  const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
+  const defaultClinicId = useDefaultClinicId();
   const [status, setStatus] = useState<ProcurementRequestStatus>();
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm<CreateProcurementRequestDto>();
 
-  const { data: clinics } = useClinics();
   const { data: items } = useItems();
   const { data: requests, isLoading } = useProcurementRequests({ clinicId, status });
   const createRequest = useCreateProcurementRequest();
@@ -73,14 +73,16 @@ export function ProcurementRequestsPage() {
         </Button>
       </Space>
       <Space style={{ marginBottom: 16 }} wrap>
-        <Select
-          allowClear
-          placeholder="Filter by clinic"
-          style={{ width: 200 }}
-          value={clinicId}
-          onChange={setClinicId}
-          options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
-        />
+        {showSelector && (
+          <Select
+            allowClear
+            placeholder="Filter by clinic"
+            style={{ width: 200 }}
+            value={clinicId}
+            onChange={setClinicId}
+            options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+          />
+        )}
         <Select
           allowClear
           placeholder="Filter by status"
@@ -122,7 +124,7 @@ export function ProcurementRequestsPage() {
         ]}
       />
       <Drawer title="New Procurement Request" open={open} onClose={() => setOpen(false)} destroyOnHidden>
-        <Form form={form} layout="vertical" onFinish={handleSubmit}>
+        <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ clinicId: defaultClinicId }}>
           <Form.Item name="clinicId" label="Clinic" rules={[{ required: true }]}>
             <Select options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))} />
           </Form.Item>

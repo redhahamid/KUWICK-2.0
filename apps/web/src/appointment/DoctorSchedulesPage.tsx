@@ -5,6 +5,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import { useDoctorSchedules, useCreateDoctorSchedule } from './hooks/useDoctorSchedules';
 import { useClinics } from '../core/hooks/useClinics';
+import { useDefaultClinicId } from '../core/hooks/useClinicFilter';
 import { useStaff } from '../hr/hooks/useStaff';
 import { CreateDoctorScheduleDto } from './types';
 import { ApiError } from '../core/api-client';
@@ -39,6 +40,7 @@ export function DoctorSchedulesPage() {
   const { data: schedules, isLoading } = useDoctorSchedules();
   const { data: clinics } = useClinics();
   const { data: staff } = useStaff();
+  const defaultClinicId = useDefaultClinicId();
   const createSchedule = useCreateDoctorSchedule();
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm<DoctorScheduleFormValues>();
@@ -98,7 +100,7 @@ export function DoctorSchedulesPage() {
         ]}
       />
       <Drawer title="Add Doctor Schedule" open={open} onClose={() => setOpen(false)} destroyOnHidden>
-        <Form form={form} layout="vertical" onFinish={handleSubmit}>
+        <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ clinicId: defaultClinicId }}>
           <Form.Item name="clinicId" label="Clinic" rules={[{ required: true }]}>
             <Select options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))} />
           </Form.Item>

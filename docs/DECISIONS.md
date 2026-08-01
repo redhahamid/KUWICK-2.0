@@ -285,6 +285,14 @@ A large owner punch list across three modules, all fixed this phase with no back
 
 ---
 
+## D-045 — Clinic selection removed from screens where it isn't real ambiguity
+Owner: *"why there is the need to select clinic ... once log in supposed to under that clinic. Its saas cms system, many clinics use it."* Root cause, confirmed by reading the schema: `Staff` had no field recording which clinic a staff member belongs to, so ~19 screens (Queue, Appointments, Rooms, Reports, Stock lists, Purchase Orders, Procurement, Doctor Schedules, Slot Capacity, Add-to-Queue/New-Visit forms) each asked independently every time, with no way to know the answer was already implied by who was logged in.
+
+Fix: `Staff.clinicId` (nullable, migration `20260801160000_add_staff_home_clinic`) — a staff member's home branch. **Null** means they legitimately work across every clinic in the tenant (owner/finance/HR-type roles) and keep a picker; **set** means every clinic-scoped screen resolves to that clinic automatically and the picker never renders. Independently, **any tenant with exactly one clinic** (the common case — most SaaS customers here are a single-location clinic, not a multi-branch chain) auto-resolves the same way regardless of `Staff.clinicId`, since there's nothing real to choose between. `AuthService.login`/`loginAsTenant` now return `staff.clinicId`/`clinicName`; a shared frontend hook (`useClinicFilter` for list/filter screens, `useDefaultClinicId` for create-form Clinic fields) implements the resolution once and every screen consumes it — filter Selects hide entirely when resolved, form Clinic fields pre-fill via `initialValues` (every such form already uses `destroyOnHidden`, so a fresh default applies each time it opens). `StaffPage` gained a "Home Clinic" field on create/edit (only rendered when the tenant actually has 2+ clinics — moot otherwise) and its first-ever edit capability (`PATCH /staff/:id` already existed server-side, just had no frontend consumer). `UserClinicAccess` (an unused many-to-many staff↔clinic model already in the schema) was left alone rather than wired up — a single home-clinic field matches how staff actually work here and is simpler; the many-to-many table can be revisited if a real multi-clinic-per-staff need shows up.
+**Reversibility**: High — additive nullable column; every affected screen still supports manual clinic selection for staff without a home clinic in a genuinely multi-branch tenant, nothing was removed, only defaulted.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:

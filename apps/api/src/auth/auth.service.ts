@@ -76,7 +76,7 @@ export class AuthService {
       await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenant.id}, true)`;
       return tx.user.findUnique({
         where: { tenantId_email: { tenantId: tenant.id, email: dto.email } },
-        include: { staff: true },
+        include: { staff: { include: { clinic: true } } },
       });
     });
     if (!user || user.status !== 'active') {
@@ -106,7 +106,13 @@ export class AuthService {
     return {
       ...tokens,
       user: { id: user.id, email: user.email },
-      staff: { id: user.staff.id, fullName: user.staff.fullName, role: user.staff.role },
+      staff: {
+        id: user.staff.id,
+        fullName: user.staff.fullName,
+        role: user.staff.role,
+        clinicId: user.staff.clinicId,
+        clinicName: user.staff.clinic?.name ?? null,
+      },
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
     };
   }
@@ -163,12 +169,12 @@ export class AuthService {
       await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
       const ownerAdmin = await tx.staff.findFirst({
         where: { active: true, role: 'OWNER_ADMIN', userId: { not: null } },
-        include: { user: true },
+        include: { user: true, clinic: true },
       });
       if (ownerAdmin) return ownerAdmin;
       return tx.staff.findFirst({
         where: { active: true, userId: { not: null } },
-        include: { user: true },
+        include: { user: true, clinic: true },
       });
     });
     if (!staff || !staff.user || staff.user.status !== 'active') {
@@ -184,7 +190,13 @@ export class AuthService {
     return {
       ...tokens,
       user: { id: staff.user.id, email: staff.user.email },
-      staff: { id: staff.id, fullName: staff.fullName, role: staff.role },
+      staff: {
+        id: staff.id,
+        fullName: staff.fullName,
+        role: staff.role,
+        clinicId: staff.clinicId,
+        clinicName: staff.clinic?.name ?? null,
+      },
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
     };
   }

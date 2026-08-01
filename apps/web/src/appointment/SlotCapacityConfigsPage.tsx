@@ -3,6 +3,7 @@ import { Button, Drawer, Form, InputNumber, message, Select, Space, Table, Typog
 import { PlusOutlined } from '@ant-design/icons';
 import { useSlotCapacityConfigs, useCreateSlotCapacityConfig } from './hooks/useSlotCapacityConfigs';
 import { useClinics } from '../core/hooks/useClinics';
+import { useDefaultClinicId } from '../core/hooks/useClinicFilter';
 import { useStaff } from '../hr/hooks/useStaff';
 import { useServices } from '../clinical/hooks/useServices';
 import { CreateSlotCapacityConfigDto } from './types';
@@ -15,6 +16,7 @@ export function SlotCapacityConfigsPage() {
   const { data: clinics } = useClinics();
   const { data: staff } = useStaff();
   const { data: services } = useServices();
+  const defaultClinicId = useDefaultClinicId();
   const createConfig = useCreateSlotCapacityConfig();
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm<CreateSlotCapacityConfigDto>();
@@ -61,7 +63,7 @@ export function SlotCapacityConfigsPage() {
         ]}
       />
       <Drawer title="Add Slot Capacity Config" open={open} onClose={() => setOpen(false)} destroyOnHidden>
-        <Form form={form} layout="vertical" onFinish={handleSubmit}>
+        <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ clinicId: defaultClinicId }}>
           <Form.Item name="clinicId" label="Clinic" rules={[{ required: true }]}>
             <Select options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))} />
           </Form.Item>
