@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../core/prisma.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
+import { UpdateTenantOwnerDto } from './dto/update-tenant-owner.dto';
 
 const TRIAL_DURATION_DAYS = 14;
 const PASSWORD_HASH_ROUNDS = 10;
@@ -162,16 +164,23 @@ export class PlatformTenantService {
     return Promise.all(
       tenants.map(async (tenant) => {
         const stats = await this.withTenantScope(tenant.id, async (tx) => {
-          const [clinic, staffCount, patientCount] = await Promise.all([
+          const [clinic, staffCount, patientCount, ownerStaff] = await Promise.all([
             tx.clinic.findFirst({ where: { tenantId: tenant.id } }),
             tx.staff.count({ where: { tenantId: tenant.id } }),
             tx.patient.count({ where: { tenantId: tenant.id } }),
+            tx.staff.findFirst({
+              where: { role: 'OWNER_ADMIN', userId: { not: null } },
+              include: { user: { select: { email: true } } },
+            }),
           ]);
-          return { clinic, staffCount, patientCount };
+          return { clinic, staffCount, patientCount, ownerStaff };
         });
         return {
           ...tenant,
           clinics: stats.clinic ? [stats.clinic] : [],
+          owner: stats.ownerStaff
+            ? { staffId: stats.ownerStaff.id, fullName: stats.ownerStaff.fullName, email: stats.ownerStaff.user!.email }
+            : null,
           _count: { staff: stats.staffCount, patients: stats.patientCount },
         };
       }),
@@ -214,5 +223,61 @@ export class PlatformTenantService {
       });
     }
     return tenant;
+  }
+
+  // D-049 — edit the tenant's OWNER_ADMIN login (name/email/password;
+  // password omitted = unchanged). A tenant with no owner login yet
+  // (created before owner-at-creation existed) gets one created instead —
+  // all three fields required in that case, since there's nothing to
+  // partially update.
+  async updateOwner(id: string, dto: UpdateTenantOwnerDto) {
+    await this.findById(id);
+    const passwordHash = dto.password ? await bcrypt.hash(dto.password, PASSWORD_HASH_ROUNDS) : null;
+
+    return this.withTenantScope(id, async (tx) => {
+      const owner = await tx.staff.findFirst({
+        where: { role: 'OWNER_ADMIN', userId: { not: null } },
+        include: { user: true },
+      });
+
+      try {
+        if (!owner) {
+          if (!dto.fullName || !dto.email || !dto.password) {
+            throw new BadRequestException(
+              'This clinic has no owner login yet — full name, email, and password are all required to create one',
+            );
+          }
+          const clinic = await tx.clinic.findFirst({ where: { tenantId: id }, orderBy: { createdAt: 'asc' } });
+          const user = await tx.user.create({ data: { tenantId: id, email: dto.email, passwordHash: passwordHash! } });
+          const staff = await tx.staff.create({
+            data: { tenantId: id, userId: user.id, role: 'OWNER_ADMIN', fullName: dto.fullName, clinicId: clinic?.id ?? null },
+          });
+          return { staffId: staff.id, fullName: staff.fullName, email: user.email };
+        }
+
+        if (dto.fullName !== undefined) {
+          await tx.staff.update({ where: { id: owner.id }, data: { fullName: dto.fullName } });
+        }
+        if (dto.email !== undefined || passwordHash) {
+          await tx.user.update({
+            where: { id: owner.userId! },
+            data: {
+              ...(dto.email !== undefined ? { email: dto.email } : {}),
+              ...(passwordHash ? { passwordHash } : {}),
+            },
+          });
+        }
+        return {
+          staffId: owner.id,
+          fullName: dto.fullName ?? owner.fullName,
+          email: dto.email ?? owner.user!.email,
+        };
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          throw new ConflictException('A user with this email already exists for this clinic');
+        }
+        throw error;
+      }
+    });
   }
 }

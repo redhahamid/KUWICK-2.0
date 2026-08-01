@@ -4,6 +4,7 @@ import { PlatformTenantService } from './platform-tenant.service';
 import { AuthService } from './auth.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
+import { UpdateTenantOwnerDto } from './dto/update-tenant-owner.dto';
 
 // Excluded from TenantContextMiddleware (AppModule) — guarded instead by
 // PlatformAuthGuard, since these routes manage tenants themselves and have
@@ -29,6 +30,11 @@ export class PlatformTenantController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateTenantDto) {
     return this.tenants.update(id, dto);
+  }
+
+  @Patch(':id/owner')
+  updateOwner(@Param('id') id: string, @Body() dto: UpdateTenantOwnerDto) {
+    return this.tenants.updateOwner(id, dto);
   }
 
   @Post(':id/login-as')

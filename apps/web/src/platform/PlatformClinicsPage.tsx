@@ -28,6 +28,9 @@ interface EditClinicFormValues {
   address?: string;
   phone?: string;
   email?: string;
+  ownerFullName?: string;
+  ownerEmail?: string;
+  ownerPassword?: string;
 }
 
 export function PlatformClinicsPage() {
@@ -63,8 +66,17 @@ export function PlatformClinicsPage() {
   });
 
   const updateTenant = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: EditClinicFormValues }) =>
-      platformApi.patch<PlatformTenant>(`/platform/tenants/${id}`, values),
+    mutationFn: async ({ id, values }: { id: string; values: EditClinicFormValues }) => {
+      const { ownerFullName, ownerEmail, ownerPassword, ...clinicFields } = values;
+      await platformApi.patch<PlatformTenant>(`/platform/tenants/${id}`, clinicFields);
+      if (ownerFullName || ownerEmail || ownerPassword) {
+        await platformApi.patch(`/platform/tenants/${id}/owner`, {
+          fullName: ownerFullName,
+          email: ownerEmail,
+          password: ownerPassword || undefined,
+        });
+      }
+    },
     onSuccess: () => {
       message.success('Clinic updated');
       setEditing(null);
@@ -81,6 +93,9 @@ export function PlatformClinicsPage() {
       address: tenant.clinics?.[0]?.address ?? undefined,
       phone: tenant.clinics?.[0]?.phone ?? undefined,
       email: tenant.clinics?.[0]?.email ?? undefined,
+      ownerFullName: tenant.owner?.fullName,
+      ownerEmail: tenant.owner?.email,
+      ownerPassword: undefined,
     });
   };
 
@@ -135,6 +150,9 @@ export function PlatformClinicsPage() {
                 <div style={{ fontSize: 12, color: '#8b93a8' }}>
                   {tenant.clinics?.[0]?.address ?? '—'}
                   {tenant.clinics?.[0]?.email ? ` · ${tenant.clinics[0].email}` : ''}
+                </div>
+                <div style={{ fontSize: 12, color: tenant.owner ? '#8b93a8' : '#d03b3b' }}>
+                  {tenant.owner ? `Owner: ${tenant.owner.fullName} (${tenant.owner.email})` : 'No owner login yet — use Edit to create one'}
                 </div>
               </div>
             ),
@@ -226,6 +244,45 @@ export function PlatformClinicsPage() {
           <Form.Item name="registrationNo" label="Registration No. (SSM/MEPCSA)">
             <Input placeholder="202401000001" />
           </Form.Item>
+          <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 12, marginBottom: 12 }}>
+            <Text strong style={{ display: 'block', marginBottom: 4 }}>
+              Owner Admin Login
+            </Text>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
+              {editing?.owner
+                ? 'Leave the password blank to keep the current one.'
+                : 'This clinic has no owner login yet — fill in all three fields to create one.'}
+            </Text>
+            <Form.Item
+              name="ownerFullName"
+              label="Owner Full Name"
+              rules={editing?.owner ? undefined : [{ required: true, message: 'Enter the owner’s name' }]}
+            >
+              <Input placeholder="Dr. Aisyah Binti Ahmad" />
+            </Form.Item>
+            <Space style={{ display: 'flex' }} styles={{ item: { flex: 1 } }}>
+              <Form.Item
+                name="ownerEmail"
+                label="Owner Login Email"
+                rules={[
+                  ...(editing?.owner ? [] : [{ required: true, message: 'Enter a valid email' }]),
+                  { type: 'email' as const, message: 'Enter a valid email' },
+                ]}
+              >
+                <Input placeholder="owner@clinic.com" />
+              </Form.Item>
+              <Form.Item
+                name="ownerPassword"
+                label={editing?.owner ? 'New Password (optional)' : 'Owner Password'}
+                rules={[
+                  ...(editing?.owner ? [] : [{ required: true, message: 'At least 8 characters' }]),
+                  { min: 8, message: 'At least 8 characters' },
+                ]}
+              >
+                <Input.Password placeholder="Min 8 characters" />
+              </Form.Item>
+            </Space>
+          </div>
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
             <Button onClick={() => setEditing(null)}>Cancel</Button>
             <Button type="primary" htmlType="submit" loading={updateTenant.isPending}>

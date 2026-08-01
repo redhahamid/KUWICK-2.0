@@ -1,13 +1,13 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PlatformTenantService } from './platform-tenant.service';
 import { PrismaService } from '../core/prisma.service';
 
 function createService() {
   const prisma = {
     tenant: { create: jest.fn(), findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn(), update: jest.fn() },
-    clinic: { create: jest.fn().mockResolvedValue({ id: 'clinic-1' }) },
-    user: { create: jest.fn().mockResolvedValue({ id: 'owner-user-1' }) },
-    staff: { create: jest.fn() },
+    clinic: { create: jest.fn().mockResolvedValue({ id: 'clinic-1' }), findFirst: jest.fn().mockResolvedValue({ id: 'clinic-1' }) },
+    user: { create: jest.fn().mockResolvedValue({ id: 'owner-user-1', email: 'new@owner.com' }), update: jest.fn() },
+    staff: { create: jest.fn().mockResolvedValue({ id: 'owner-staff-1', fullName: 'New Owner' }), findFirst: jest.fn(), update: jest.fn() },
     defaultPanelClinic: { findMany: jest.fn().mockResolvedValue([]) },
     defaultProcedure: { findMany: jest.fn().mockResolvedValue([]) },
     defaultDocumentTemplate: { findMany: jest.fn().mockResolvedValue([]) },
@@ -148,5 +148,66 @@ describe('PlatformTenantService', () => {
     await service.update('tenant-1', { status: 'suspended' });
 
     expect(prisma.tenant.update).toHaveBeenCalledWith({ where: { id: 'tenant-1' }, data: { status: 'suspended' } });
+  });
+
+  // D-049 — editing the owner login from the console.
+  describe('updateOwner', () => {
+    const existingOwner = {
+      id: 'owner-staff-1',
+      userId: 'owner-user-1',
+      fullName: 'Old Name',
+      user: { id: 'owner-user-1', email: 'old@owner.com', passwordHash: 'old-hash' },
+    };
+
+    it('updates name and email, leaving the password untouched when omitted', async () => {
+      const { service, prisma } = createService();
+      (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({ id: 'tenant-1' });
+      (prisma.staff.findFirst as jest.Mock).mockResolvedValue(existingOwner);
+
+      const result = await service.updateOwner('tenant-1', { fullName: 'New Name', email: 'new@owner.com' });
+
+      expect(prisma.staff.update).toHaveBeenCalledWith({ where: { id: 'owner-staff-1' }, data: { fullName: 'New Name' } });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'owner-user-1' },
+        data: { email: 'new@owner.com' },
+      });
+      expect(result).toEqual({ staffId: 'owner-staff-1', fullName: 'New Name', email: 'new@owner.com' });
+    });
+
+    it('rehashes and stores a new password when provided', async () => {
+      const { service, prisma } = createService();
+      (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({ id: 'tenant-1' });
+      (prisma.staff.findFirst as jest.Mock).mockResolvedValue(existingOwner);
+
+      await service.updateOwner('tenant-1', { password: 'brand-new-pass' });
+
+      const data = (prisma.user.update as jest.Mock).mock.calls[0][0].data as { passwordHash: string };
+      expect(data.passwordHash).toBeDefined();
+      expect(data.passwordHash).not.toBe('brand-new-pass');
+      expect(prisma.staff.update).not.toHaveBeenCalled();
+    });
+
+    it('creates the owner login when the tenant has none and all fields are given', async () => {
+      const { service, prisma } = createService();
+      (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({ id: 'tenant-1' });
+      (prisma.staff.findFirst as jest.Mock).mockResolvedValue(null);
+
+      await service.updateOwner('tenant-1', { fullName: 'New Owner', email: 'new@owner.com', password: 'super-secret' });
+
+      expect(prisma.user.create).toHaveBeenCalledWith({
+        data: { tenantId: 'tenant-1', email: 'new@owner.com', passwordHash: expect.any(String) },
+      });
+      expect(prisma.staff.create).toHaveBeenCalledWith({
+        data: { tenantId: 'tenant-1', userId: 'owner-user-1', role: 'OWNER_ADMIN', fullName: 'New Owner', clinicId: 'clinic-1' },
+      });
+    });
+
+    it('rejects a partial create when the tenant has no owner login yet', async () => {
+      const { service, prisma } = createService();
+      (prisma.tenant.findUnique as jest.Mock).mockResolvedValue({ id: 'tenant-1' });
+      (prisma.staff.findFirst as jest.Mock).mockResolvedValue(null);
+
+      await expect(service.updateOwner('tenant-1', { email: 'only@email.com' })).rejects.toThrow(BadRequestException);
+    });
   });
 });

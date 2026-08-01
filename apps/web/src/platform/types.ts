@@ -6,6 +6,9 @@ export interface PlatformTenant {
   registrationNo: string | null;
   createdAt: string;
   clinics?: { id: string; name: string; address: string | null; phone: string | null; email: string | null }[];
+  // D-049 — the tenant's OWNER_ADMIN login, editable from the console; null
+  // for tenants created before owner-at-creation existed (edit creates it).
+  owner?: { staffId: string; fullName: string; email: string } | null;
   subscriptions?: TenantSubscription[];
   _count?: { staff: number; patients: number };
 }
