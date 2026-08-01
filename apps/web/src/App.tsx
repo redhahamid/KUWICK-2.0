@@ -1,8 +1,7 @@
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from './design-system/components/AppLayout';
 import { ManagementLayout } from './design-system/components/ManagementLayout';
 import { LoginPage } from './auth/LoginPage';
-import { PlatformLoginPage } from './auth/PlatformLoginPage';
 import { RequireAuth } from './auth/RequireAuth';
 import { RequirePlatformAuth } from './auth/RequirePlatformAuth';
 import { PlatformLayout } from './platform/PlatformLayout';
@@ -62,9 +61,12 @@ export function App() {
       <Route path="/queue/monitor/:clinicId" element={<QueueMonitorPage />} />
       <Route path="/print/order-service/:id" element={<PrintOrderResultPage />} />
 
-      {/* Auth (D-034) — separate identities: clinic staff vs platform admin. */}
+      {/* Auth (D-034/D-049) — one login form for everyone; the response
+          decides platform console vs clinic workspace. The old separate
+          platform login page is gone — it rejected clinic credentials and
+          confused real users within minutes, so the bookmark redirects. */}
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/platform/login" element={<PlatformLoginPage />} />
+      <Route path="/platform/login" element={<Navigate to="/login" replace />} />
       <Route element={<RequirePlatformAuth />}>
         <Route element={<PlatformLayout />}>
           <Route path="/platform/dashboard" element={<PlatformDashboardPage />} />
