@@ -263,10 +263,55 @@ export interface PublicQueueMonitorData {
 
 export type NoteLanguage = 'EN' | 'MS';
 
+// C0 (D-051) — clinical-record integrity.
+export type ClinicalNoteType = 'DOCTOR_NARRATIVE' | 'STAFF_REMARK';
+export type ClinicalNoteStatus = 'DRAFT' | 'SIGNED';
+export type ClinicalNoteEntryType = 'STANDARD' | 'AMENDMENT';
+export type ObservationSource = 'MANUAL' | 'DEVICE' | 'IMPORTED';
+
+export interface StaffRef {
+  id: string;
+  fullName: string;
+  role: string;
+}
+
 export interface ClinicalNote {
   id: string;
   tenantId: string;
+  clinicId: string | null;
   visitId: string;
+  notes: string | null;
+  noteLanguage: NoteLanguage;
+  createdAt: string;
+  updatedAt: string;
+
+  // Authorship + signing (C0). Snapshots are the historical truth — the
+  // *Ref objects only exist for convenience and may reflect a later rename.
+  noteType: ClinicalNoteType;
+  status: ClinicalNoteStatus;
+  entryType: ClinicalNoteEntryType;
+  version: number;
+  authorStaffId: string | null;
+  authorNameSnapshot: string | null;
+  authorRoleSnapshot: string | null;
+  authorDesignationSnapshot: string | null;
+  signedByStaffId: string | null;
+  signerNameSnapshot: string | null;
+  signerRoleSnapshot: string | null;
+  signerDesignationSnapshot: string | null;
+  signedAt: string | null;
+  clinicalEntryAt: string | null;
+  lateEntryReason: string | null;
+  supersedesNoteId: string | null;
+  amendmentReason: string | null;
+  legacyAuthorUnknown: boolean;
+  author?: StaffRef | null;
+  signedBy?: StaffRef | null;
+  hasAmendment?: boolean;
+  isLateEntry?: boolean;
+
+  // Frozen legacy vitals — live vitals moved to VisitObservation in C0.
+  // Still returned so historical notes keep displaying what they recorded.
   bpSystolic: number | null;
   bpDiastolic: number | null;
   pulse: number | null;
@@ -278,14 +323,44 @@ export interface ClinicalNote {
   height: string | null;
   headCircumference: string | null;
   glucose: string | null;
-  notes: string | null;
-  noteLanguage: NoteLanguage;
   bmi: number | null;
-  createdAt: string;
-  updatedAt: string;
 }
 
-export interface UpsertClinicalNoteDto {
+// Vitals/anthropometry/point-of-care with their own recorder attribution.
+export interface VisitObservation {
+  id: string;
+  tenantId: string;
+  clinicId: string;
+  visitId: string;
+  recordedByStaffId: string | null;
+  recorderNameSnapshot: string | null;
+  recorderRoleSnapshot: string | null;
+  recorderDesignationSnapshot: string | null;
+  recordedAt: string;
+  updatedByStaffId: string | null;
+  updaterNameSnapshot: string | null;
+  updaterRoleSnapshot: string | null;
+  updatedAt: string;
+  version: number;
+  bpSystolic: number | null;
+  bpDiastolic: number | null;
+  pulse: number | null;
+  temperature: string | null;
+  spo2: number | null;
+  respRate: number | null;
+  painScore: number | null;
+  weight: string | null;
+  height: string | null;
+  headCircumference: string | null;
+  glucose: string | null;
+  bmi: number | null;
+  source: ObservationSource;
+  legacyRecorderUnknown: boolean;
+  recordedBy?: StaffRef | null;
+  updatedBy?: StaffRef | null;
+}
+
+export interface RecordObservationDto {
   bpSystolic?: number;
   bpDiastolic?: number;
   pulse?: number;
@@ -297,8 +372,50 @@ export interface UpsertClinicalNoteDto {
   height?: number;
   headCircumference?: number;
   glucose?: number;
+  source?: ObservationSource;
+}
+
+export interface CorrectObservationDto extends RecordObservationDto {
+  expectedVersion: number;
+  correctionReason: string;
+}
+
+export interface ClinicalNoteRevision {
+  id: string;
+  noteId: string;
+  versionNo: number;
+  contentSnapshot: Record<string, unknown>;
+  contentHash: string | null;
+  hashSchemaVersion: number | null;
+  changeType: 'CREATED' | 'UPDATED' | 'SIGNED';
+  previousStatus: ClinicalNoteStatus | null;
+  newStatus: ClinicalNoteStatus;
+  editedByStaffId: string | null;
+  editorNameSnapshot: string | null;
+  editorRoleSnapshot: string | null;
+  editedAt: string;
+  reason: string | null;
+}
+
+export interface SignClinicalNoteDto {
+  expectedVersion: number;
+}
+
+export interface AmendClinicalNoteDto {
+  amendmentReason: string;
   notes?: string;
   noteLanguage?: NoteLanguage;
+}
+
+// Narrative only — vitals live on VisitObservation now, and author/signer
+// are never sent by the client (the server takes them from the session).
+export interface UpsertClinicalNoteDto {
+  notes?: string;
+  noteLanguage?: NoteLanguage;
+  noteType?: ClinicalNoteType;
+  clinicalEntryAt?: string;
+  lateEntryReason?: string;
+  expectedVersion?: number;
 }
 
 export type DiagnosisCategory = 'CUSTOM' | 'SUMMARIZE' | 'FULL';

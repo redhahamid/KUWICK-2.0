@@ -27,6 +27,56 @@ enum PatientIdentifierType {
   PASSPORT
 }
 
+// C0 (clinical record integrity) — professional/clinical identity is
+// deliberately SEPARATE from the administrative Role above. An OWNER_ADMIN
+// may or may not be a practising doctor; signing eligibility is never
+// derived from Role (owner: "Administrative role and professional clinical
+// identity must be separate").
+enum ProfessionalType {
+  NON_CLINICAL
+  MEDICAL_DOCTOR
+}
+
+// A doctor's narrative vs. a non-doctor's administrative/observational
+// remark ("patient refused medication", "called 3x, no answer"). Both live
+// on ClinicalNote so remarks inherit the same append-only audit trail, but
+// a STAFF_REMARK can never be signed (DB CHECK) and never renders as a
+// doctor's clinical note.
+enum ClinicalNoteType {
+  DOCTOR_NARRATIVE
+  STAFF_REMARK
+}
+
+enum ClinicalNoteStatus {
+  DRAFT
+  SIGNED
+}
+
+// LATE_ENTRY is deliberately NOT an entry type — a late entry is orthogonal
+// to being an amendment (a note may be a late standard entry OR a late
+// amendment). Lateness is carried by clinicalEntryAt + lateEntryReason.
+enum ClinicalNoteEntryType {
+  STANDARD
+  AMENDMENT
+}
+
+enum ClinicalNoteChangeType {
+  CREATED
+  UPDATED
+  SIGNED
+}
+
+enum ObservationSource {
+  MANUAL
+  DEVICE
+  IMPORTED
+}
+
+enum ObservationChangeType {
+  CREATED
+  CORRECTED
+}
+
 model Tenant {
   id             String   @id @default(uuid())
   name           String
@@ -92,6 +142,9 @@ model Tenant {
   visitAttachments            VisitAttachment[]
   chatMessages                ChatMessage[]
   chatChannels                ChatChannel[]
+  clinicalNoteRevisions       ClinicalNoteRevision[]
+  visitObservations           VisitObservation[]
+  visitObservationRevisions   VisitObservationRevision[]
 
   @@map("tenants")
 }
@@ -129,6 +182,8 @@ model Clinic {
   staff               Staff[]
   chatMessages        ChatMessage[]
   chatChannels        ChatChannel[]
+  clinicalNotes       ClinicalNote[]
+  visitObservations   VisitObservation[]
 
   @@index([tenantId])
   @@map("clinics")
@@ -382,6 +437,29 @@ model Staff {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
+  // C0 — professional (clinical) identity, separate from `role` above.
+  // Every field defaults to the non-signing state so that nobody can sign a
+  // clinical note until a Clinic Group explicitly records verification and
+  // enables signing (fail-safe: a fresh deploy has zero eligible signers).
+  //
+  // professionalVerifiedAt/By records that THE CLINIC GROUP recorded a
+  // verification — Kuwick performs no MMC registry lookup and the UI must
+  // never claim otherwise (no such integration exists).
+  professionalType                ProfessionalType @default(NON_CLINICAL) @map("professional_type")
+  medicalRegistrationNo           String?          @map("medical_registration_no")
+  // Normalised (uppercased, inner whitespace/punctuation stripped) copy used
+  // for duplicate detection. Indexed but NOT unique in C0 — the hard
+  // constraint waits for the multi-branch phase, since a tenant could today
+  // be using duplicate Staff rows as a multi-branch workaround and we cannot
+  // preflight production data from here.
+  medicalRegistrationNoNormalised String?          @map("medical_registration_no_normalised")
+  professionalActive              Boolean          @default(false) @map("professional_active")
+  canSignClinicalNotes            Boolean          @default(false) @map("can_sign_clinical_notes")
+  professionalVerifiedAt          DateTime?        @map("professional_verified_at")
+  professionalVerifiedByStaffId   String?          @map("professional_verified_by_staff_id")
+  clinicalSigningEnabledAt        DateTime?        @map("clinical_signing_enabled_at")
+  clinicalSigningEnabledByStaffId String?          @map("clinical_signing_enabled_by_staff_id")
+
   tenant                      Tenant                       @relation(fields: [tenantId], references: [id])
   user                        User?                        @relation(fields: [userId], references: [id])
   clinic                      Clinic?                      @relation(fields: [clinicId], references: [id])
@@ -403,10 +481,15 @@ model Staff {
   claimBatchesCreated         ClaimBatch[]
   leaveRequests               LeaveRequest[]               @relation("LeaveRequestStaff")
   leaveRequestsApproved       LeaveRequest[]               @relation("LeaveRequestApprovedBy")
+  clinicalNotesAuthored       ClinicalNote[]               @relation("ClinicalNoteAuthor")
+  clinicalNotesSigned         ClinicalNote[]               @relation("ClinicalNoteSigner")
+  observationsRecorded        VisitObservation[]           @relation("ObservationRecorder")
+  observationsUpdated         VisitObservation[]           @relation("ObservationUpdater")
 
   @@index([tenantId])
   @@index([tenantId, role])
   @@index([tenantId, clinicId])
+  @@index([tenantId, medicalRegistrationNoNormalised])
   @@map("staff")
 }
 
@@ -1151,6 +1234,7 @@ model Visit {
   panelClinic   PanelClinic?      @relation(fields: [panelClinicId], references: [id])
   queueTicket   QueueTicket?
   clinicalNotes ClinicalNote[]
+  observations  VisitObservation[]
   diagnoses     Diagnosis[]
   orderServices OrderService[]
   prescriptions Prescription[]
@@ -1282,31 +1366,205 @@ enum NoteLanguage {
 // derived from weight/height at read time so it can't go stale if either
 // is edited later.
 model ClinicalNote {
-  id                String       @id @default(uuid())
-  tenantId          String       @map("tenant_id")
-  visitId           String       @map("visit_id")
-  bpSystolic        Int?         @map("bp_systolic")
-  bpDiastolic       Int?         @map("bp_diastolic")
-  pulse             Int?
-  temperature       Decimal?     @db.Decimal(4, 1)
-  spo2              Int?
-  respRate          Int?         @map("resp_rate")
-  painScore         Int?         @map("pain_score")
-  weight            Decimal?     @db.Decimal(5, 2)
-  height            Decimal?     @db.Decimal(5, 2)
-  headCircumference Decimal?     @map("head_circumference") @db.Decimal(5, 2)
-  glucose           Decimal?     @db.Decimal(5, 2)
-  notes             String?
-  noteLanguage      NoteLanguage @default(EN) @map("note_language")
-  createdAt         DateTime     @default(now()) @map("created_at")
-  updatedAt         DateTime     @updatedAt @map("updated_at")
+  id           String       @id @default(uuid())
+  tenantId     String       @map("tenant_id")
+  clinicId     String?      @map("clinic_id")
+  visitId      String       @map("visit_id")
+  notes        String?
+  noteLanguage NoteLanguage @default(EN) @map("note_language")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  visit  Visit  @relation(fields: [visitId], references: [id])
+  // ---- C0: vitals columns below are FROZEN LEGACY ----------------------
+  // Vitals moved to VisitObservation so a front-desk member recording BP
+  // can never become the author of a doctor's narrative (owner: "A staff
+  // member recording vitals must not become the author of the doctor's
+  // narrative"). These columns are retained read-only for backward
+  // compatibility and are never written again; dropping them is a separate
+  // approved cleanup after verification.
+  bpSystolic        Int?     @map("bp_systolic")
+  bpDiastolic       Int?     @map("bp_diastolic")
+  pulse             Int?
+  temperature       Decimal? @db.Decimal(4, 1)
+  spo2              Int?
+  respRate          Int?     @map("resp_rate")
+  painScore         Int?     @map("pain_score")
+  weight            Decimal? @db.Decimal(5, 2)
+  height            Decimal? @db.Decimal(5, 2)
+  headCircumference Decimal? @map("head_circumference") @db.Decimal(5, 2)
+  glucose           Decimal? @db.Decimal(5, 2)
+  // ----------------------------------------------------------------------
+
+  noteType  ClinicalNoteType      @default(DOCTOR_NARRATIVE) @map("note_type")
+  status    ClinicalNoteStatus    @default(DRAFT)
+  entryType ClinicalNoteEntryType @default(STANDARD) @map("entry_type")
+  // Optimistic concurrency — every mutation bumps this and every mutating
+  // request must send the value it read, or it gets a 409 instead of
+  // silently clobbering a newer save.
+  version   Int                   @default(1)
+
+  // Author = whoever actually typed this entry, taken from the authenticated
+  // session, never from the request body and never inferred from the visit's
+  // attending doctor. Snapshots are written once and never refreshed, so a
+  // later rename/role change can't rewrite history. Stored as String (not the
+  // Role enum) so historical records survive an enum rename.
+  authorStaffId             String? @map("author_staff_id")
+  authorNameSnapshot        String? @map("author_name_snapshot")
+  authorRoleSnapshot        String? @map("author_role_snapshot")
+  authorDesignationSnapshot String? @map("author_designation_snapshot")
+
+  signedByStaffId           String?   @map("signed_by_staff_id")
+  signerNameSnapshot        String?   @map("signer_name_snapshot")
+  signerRoleSnapshot        String?   @map("signer_role_snapshot")
+  signerDesignationSnapshot String?   @map("signer_designation_snapshot")
+  signedAt                  DateTime? @map("signed_at")
+
+  // Late entry: the clinical event happened earlier than the system entry.
+  // createdAt is NEVER backdated — both times are kept and displayed.
+  clinicalEntryAt DateTime? @map("clinical_entry_at")
+  lateEntryReason String?   @map("late_entry_reason")
+
+  // An amendment is a NEW row pointing at the signed original; the original
+  // is never mutated out of SIGNED. "Amended" is derived from the existence
+  // of a linked amendment, not stored on the original.
+  supersedesNoteId String? @map("supersedes_note_id")
+  amendmentReason  String? @map("amendment_reason")
+
+  // True only for rows that predate authorship tracking. Distinguishes a
+  // genuine legacy record from a bug that produced a NULL author later.
+  legacyAuthorUnknown Boolean @default(false) @map("legacy_author_unknown")
+
+  tenant     Tenant                 @relation(fields: [tenantId], references: [id])
+  clinic     Clinic?                @relation(fields: [clinicId], references: [id])
+  visit      Visit                  @relation(fields: [visitId], references: [id])
+  author     Staff?                 @relation("ClinicalNoteAuthor", fields: [authorStaffId], references: [id])
+  signedBy   Staff?                 @relation("ClinicalNoteSigner", fields: [signedByStaffId], references: [id])
+  supersedes ClinicalNote?          @relation("ClinicalNoteAmendment", fields: [supersedesNoteId], references: [id])
+  amendments ClinicalNote[]         @relation("ClinicalNoteAmendment")
+  revisions  ClinicalNoteRevision[]
 
   @@index([tenantId])
   @@index([tenantId, visitId])
+  @@index([tenantId, supersedesNoteId])
   @@map("clinical_notes")
+}
+
+// C0 — append-only audit trail for clinical notes. No update or delete API
+// is ever exposed for these rows; `updatedAt` on the note alone cannot
+// answer "what changed", so every mutation writes a full content snapshot.
+model ClinicalNoteRevision {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  noteId   String @map("note_id")
+  // Matches ClinicalNote.version AFTER the change this row records.
+  versionNo Int   @map("version_no")
+
+  contentSnapshot Json                   @map("content_snapshot")
+  // sha256 over a canonical serialisation (see canonical-content-hash.ts).
+  // Set on SIGNED revisions so the exact signed content can be verified
+  // later; hashSchemaVersion records which canonicalisation produced it, so
+  // the rules can evolve without invalidating historical hashes.
+  contentHash       String?              @map("content_hash")
+  hashSchemaVersion Int?                 @map("hash_schema_version")
+  changeType        ClinicalNoteChangeType @map("change_type")
+  previousStatus    ClinicalNoteStatus?  @map("previous_status")
+  newStatus         ClinicalNoteStatus   @map("new_status")
+
+  editedByStaffId           String?  @map("edited_by_staff_id")
+  editorNameSnapshot        String?  @map("editor_name_snapshot")
+  editorRoleSnapshot        String?  @map("editor_role_snapshot")
+  editorDesignationSnapshot String?  @map("editor_designation_snapshot")
+  editedAt                  DateTime @default(now()) @map("edited_at")
+  reason                    String?
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id])
+  note   ClinicalNote @relation(fields: [noteId], references: [id])
+
+  @@unique([noteId, versionNo])
+  @@index([tenantId, noteId])
+  @@map("clinical_note_revisions")
+}
+
+// C0 — vitals/anthropometry/point-of-care, attributed to whoever actually
+// recorded them. Separate from ClinicalNote so vitals entry and narrative
+// authorship are never conflated. A visit may hold several sets: a REPEATED
+// reading (BP at 10:00, repeat at 10:30) is a NEW row; a CORRECTION of a
+// mistyped value updates the row and writes an immutable revision preserving
+// the previous value. BMI stays derived, never stored
+// (docs/DATABASE_ARCHITECTURE.md §3 — a stored BMI goes stale the moment
+// weight or height is edited without the other).
+model VisitObservation {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  clinicId String @map("clinic_id")
+  visitId  String @map("visit_id")
+
+  recordedByStaffId           String?  @map("recorded_by_staff_id")
+  recorderNameSnapshot        String?  @map("recorder_name_snapshot")
+  recorderRoleSnapshot        String?  @map("recorder_role_snapshot")
+  recorderDesignationSnapshot String?  @map("recorder_designation_snapshot")
+  recordedAt                  DateTime @default(now()) @map("recorded_at")
+
+  updatedByStaffId    String?  @map("updated_by_staff_id")
+  updaterNameSnapshot String?  @map("updater_name_snapshot")
+  updaterRoleSnapshot String?  @map("updater_role_snapshot")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  version             Int      @default(1)
+
+  bpSystolic        Int?     @map("bp_systolic")
+  bpDiastolic       Int?     @map("bp_diastolic")
+  pulse             Int?
+  temperature       Decimal? @db.Decimal(4, 1)
+  spo2              Int?
+  respRate          Int?     @map("resp_rate")
+  painScore         Int?     @map("pain_score")
+  weight            Decimal? @db.Decimal(5, 2)
+  height            Decimal? @db.Decimal(5, 2)
+  headCircumference Decimal? @map("head_circumference") @db.Decimal(5, 2)
+  glucose           Decimal? @db.Decimal(5, 2)
+
+  source ObservationSource @default(MANUAL)
+  // True for rows backfilled from legacy ClinicalNote vitals, whose recorder
+  // is genuinely unknown. Never inferred from the note or attending doctor.
+  legacyRecorderUnknown Boolean @default(false) @map("legacy_recorder_unknown")
+
+  tenant     Tenant                     @relation(fields: [tenantId], references: [id])
+  clinic     Clinic                     @relation(fields: [clinicId], references: [id])
+  visit      Visit                      @relation(fields: [visitId], references: [id])
+  recordedBy Staff?                     @relation("ObservationRecorder", fields: [recordedByStaffId], references: [id])
+  updatedBy  Staff?                     @relation("ObservationUpdater", fields: [updatedByStaffId], references: [id])
+  revisions  VisitObservationRevision[]
+
+  @@index([tenantId, visitId, recordedAt])
+  @@map("visit_observations")
+}
+
+// C0 — append-only audit trail for observations. A correction must preserve
+// what the value used to be; updatedBy/updatedAt alone cannot.
+model VisitObservationRevision {
+  id            String @id @default(uuid())
+  tenantId      String @map("tenant_id")
+  observationId String @map("observation_id")
+  versionNo     Int    @map("version_no")
+
+  contentSnapshot   Json                  @map("content_snapshot")
+  contentHash       String?               @map("content_hash")
+  hashSchemaVersion Int?                  @map("hash_schema_version")
+  changeType        ObservationChangeType @map("change_type")
+
+  editedByStaffId           String?  @map("edited_by_staff_id")
+  editorNameSnapshot        String?  @map("editor_name_snapshot")
+  editorRoleSnapshot        String?  @map("editor_role_snapshot")
+  editorDesignationSnapshot String?  @map("editor_designation_snapshot")
+  editedAt                  DateTime @default(now()) @map("edited_at")
+  correctionReason          String?  @map("correction_reason")
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id])
+  observation VisitObservation @relation(fields: [observationId], references: [id])
+
+  @@unique([observationId, versionNo])
+  @@index([tenantId, observationId])
+  @@map("visit_observation_revisions")
 }
 
 // D-044 — free-standing visit-level uploads (photos, scanned results, PDFs)

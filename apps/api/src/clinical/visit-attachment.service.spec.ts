@@ -13,25 +13,26 @@ function createService() {
   return { service: new VisitAttachmentService(prisma), prisma };
 }
 
-function withTenant<T>(fn: () => Promise<T>): Promise<T> {
-  return tenantContextStorage.run({ tenantId: 'test-tenant' }, fn);
+function withTenant<T>(fn: () => Promise<T>, staffId = 'staff-1'): Promise<T> {
+  return tenantContextStorage.run({ tenantId: 'test-tenant', staffId }, fn);
 }
 
+const testFile = {
+  originalname: 'scan.png',
+  mimetype: 'image/png',
+  size: 1234,
+  buffer: Buffer.from('x'),
+} as Express.Multer.File;
+
 describe('VisitAttachmentService', () => {
-  it('create saves the file to disk and records the uploader', async () => {
+  it('create saves the file to disk and takes the uploader from the session', async () => {
     const { service, prisma } = createService();
     (fileStorage.saveUploadedFile as jest.Mock).mockResolvedValue({ relativePath: 'tenant-a/visit-1/uuid-scan.png' });
     (prisma.visitAttachment.create as jest.Mock).mockResolvedValue({ id: 'att-1' });
-    const file = {
-      originalname: 'scan.png',
-      mimetype: 'image/png',
-      size: 1234,
-      buffer: Buffer.from('x'),
-    } as Express.Multer.File;
 
-    await withTenant(() => service.create('visit-1', file, 'staff-1'));
+    await withTenant(() => service.create('visit-1', testFile));
 
-    expect(fileStorage.saveUploadedFile).toHaveBeenCalledWith('test-tenant', 'visit-1', file.buffer, 'scan.png');
+    expect(fileStorage.saveUploadedFile).toHaveBeenCalledWith('test-tenant', 'visit-1', testFile.buffer, 'scan.png');
     expect(prisma.visitAttachment.create).toHaveBeenCalledWith({
       data: {
         tenantId: 'test-tenant',
@@ -43,6 +44,28 @@ describe('VisitAttachmentService', () => {
         uploadedByStaffId: 'staff-1',
       },
     });
+  });
+
+  // C0 (D-051) — the browser used to post uploadedByStaffId in the body. The
+  // service no longer accepts one at all, so a spoofed value cannot land on
+  // the record: attribution comes only from the authenticated session.
+  it('ignores any uploader identity the caller tries to supply', async () => {
+    const { service, prisma } = createService();
+    (fileStorage.saveUploadedFile as jest.Mock).mockResolvedValue({ relativePath: 'p' });
+    (prisma.visitAttachment.create as jest.Mock).mockResolvedValue({ id: 'att-2' });
+
+    await withTenant(
+      () => (service.create as (v: string, f: Express.Multer.File, spoof?: string) => Promise<unknown>)(
+        'visit-1',
+        testFile,
+        'staff-someone-else',
+      ),
+      'staff-real',
+    );
+
+    expect(prisma.visitAttachment.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ uploadedByStaffId: 'staff-real' }) }),
+    );
   });
 
   it('findOne throws NotFoundException when the attachment belongs to a different visit', async () => {

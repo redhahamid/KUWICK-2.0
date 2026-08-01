@@ -1,18 +1,39 @@
-import { useEffect, useState } from 'react';
-import { Button, Card, Col, Divider, Dropdown, Form, InputNumber, Row, Select, Space, Tag, Typography, message } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Alert,
+  Button,
+  Card,
+  Dropdown,
+  Input,
+  Modal,
+  Segmented,
+  Select,
+  Space,
+  Tag,
+  Tooltip,
+  Typography,
+  message,
+} from 'antd';
 import {
   AudioOutlined,
-  HeartOutlined,
-  MedicineBoxOutlined,
+  EditOutlined,
   PlusOutlined,
+  SafetyCertificateOutlined,
   ThunderboltOutlined,
-  WarningOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useClinicalNotes, useCreateClinicalNote, useUpdateClinicalNote } from './hooks/useClinicalNote';
+import {
+  useAmendClinicalNote,
+  useClinicalNotes,
+  useCreateClinicalNote,
+  useSignClinicalNote,
+  useUpdateClinicalNote,
+} from './hooks/useClinicalNote';
 import { RichTextEditor } from './RichTextEditor';
 import { VisitAttachmentsPanel } from './VisitAttachmentsPanel';
-import { NoteLanguage, UpsertClinicalNoteDto } from './types';
+import { VisitObservationsPanel } from './VisitObservationsPanel';
+import { useAuthStore } from '../core/auth-store';
+import { ClinicalNote, ClinicalNoteType, NoteLanguage } from './types';
 import { ApiError } from '../core/api-client';
 
 const { Text } = Typography;
@@ -31,14 +52,6 @@ const SMART_ABBREVIATIONS: Record<string, string> = {
   Dx: 'Diagnosis',
   'c/o': 'Complains of',
 };
-
-const PAIN_SCORE_OPTIONS = [
-  { value: undefined, label: 'No Pain / -' },
-  ...Array.from({ length: 11 }, (_, score) => ({
-    value: score,
-    label: `${score === 0 ? 'No Pain' : score <= 3 ? 'Mild' : score <= 6 ? 'Moderate' : 'Severe'} / ${score}`,
-  })),
-];
 
 // TypeScript's bundled DOM lib doesn't ship SpeechRecognition types (still
 // vendor-prefixed/experimental) — minimal shape declared here rather than
@@ -66,71 +79,108 @@ declare global {
   }
 }
 
+// Which roles may write a doctor's narrative. Mirrors the server rule in
+// clinical-authorization.ts — this only hides the editor for clarity; the
+// server is the actual control and returns 403 regardless.
+const DOCTOR_ROLES = ['DOCTOR_RESIDENT', 'DOCTOR_LOCUM'];
+
+function noteLabel(note: ClinicalNote): string {
+  const when = dayjs(note.createdAt).format('D MMM YYYY, HH:mm');
+  if (note.legacyAuthorUnknown) {
+    return `${when} · Author not recorded — legacy note`;
+  }
+  const who = note.authorNameSnapshot ?? 'Unknown';
+  const amendment = note.entryType === 'AMENDMENT' ? ' · Amendment' : '';
+  const state =
+    note.status === 'SIGNED'
+      ? ` · Signed by ${note.signerNameSnapshot ?? '—'}`
+      : note.noteType === 'STAFF_REMARK'
+        ? ' · Staff remark'
+        : ' · Draft';
+  return `${when} · ${who}${amendment}${state}`;
+}
+
 interface ClinicalNotesTabProps {
   visitId: string;
-  // Canvas layout needs the whole record visible without page scroll
-  // (user feedback) — compact collapses Vitals/Anthropometry/Point-of-Care
-  // into one strip and shrinks the Notes editor to a short, internally-
-  // scrollable box instead of Flow mode's full three-card layout.
+  // Canvas layout needs the whole record visible without page scroll —
+  // compact shrinks paddings and the editor's minimum height.
   compact?: boolean;
 }
 
+// C0 (D-051) — the narrative entry surface.
+//
+// Vitals are NO LONGER part of this form: they live in
+// VisitObservationsPanel with their own recorder attribution, so a staff
+// member taking a BP can never become the author of the doctor's narrative.
 export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
   const { data: notes, isLoading } = useClinicalNotes(visitId);
   const createNote = useCreateClinicalNote(visitId);
   const updateNote = useUpdateClinicalNote(visitId);
-  const [form] = Form.useForm<UpsertClinicalNoteDto>();
+  const signNote = useSignClinicalNote(visitId);
+  const amendNote = useAmendClinicalNote(visitId);
+  const staff = useAuthStore((state) => state.staff);
+
   const [language, setLanguage] = useState<NoteLanguage>('EN');
   const [listening, setListening] = useState(false);
-  const [weight, setWeight] = useState<number | undefined>();
-  const [height, setHeight] = useState<number | undefined>();
   const [notesHtml, setNotesHtml] = useState('');
   const [activeNoteId, setActiveNoteId] = useState<string>();
+  const [draftType, setDraftType] = useState<ClinicalNoteType>('DOCTOR_NARRATIVE');
+  const [isNewDraft, setIsNewDraft] = useState(false);
+  const [amendOpen, setAmendOpen] = useState(false);
+  const [amendReason, setAmendReason] = useState('');
 
-  // D-044 — a visit can carry several notes (triage vitals, then a
-  // reassessment after a nebuliser); newest-first from the backend, so the
-  // most recent is the default unless staff picks an older one.
-  const activeNote = notes?.find((n) => n.id === activeNoteId) ?? notes?.[0];
+  const canWriteNarrative = Boolean(staff && DOCTOR_ROLES.includes(staff.role));
 
+  const activeNote = useMemo(
+    () => (isNewDraft ? undefined : (notes?.find((n) => n.id === activeNoteId) ?? notes?.[0])),
+    [isNewDraft, notes, activeNoteId],
+  );
+
+  // Sync the editor from the selected note. Keyed on the note ID (not the
+  // object) so a background refetch can't wipe what's being typed.
   useEffect(() => {
+    if (isNewDraft) {
+      return;
+    }
     if (activeNote) {
-      form.setFieldsValue({
-        bpSystolic: activeNote.bpSystolic ?? undefined,
-        bpDiastolic: activeNote.bpDiastolic ?? undefined,
-        pulse: activeNote.pulse ?? undefined,
-        temperature: activeNote.temperature ? Number(activeNote.temperature) : undefined,
-        spo2: activeNote.spo2 ?? undefined,
-        respRate: activeNote.respRate ?? undefined,
-        painScore: activeNote.painScore ?? undefined,
-        weight: activeNote.weight ? Number(activeNote.weight) : undefined,
-        height: activeNote.height ? Number(activeNote.height) : undefined,
-        headCircumference: activeNote.headCircumference ? Number(activeNote.headCircumference) : undefined,
-        glucose: activeNote.glucose ? Number(activeNote.glucose) : undefined,
-      });
       setLanguage(activeNote.noteLanguage);
-      setWeight(activeNote.weight ? Number(activeNote.weight) : undefined);
-      setHeight(activeNote.height ? Number(activeNote.height) : undefined);
       setNotesHtml(activeNote.notes ?? '');
+      setDraftType(activeNote.noteType);
     } else {
-      form.resetFields();
       setLanguage('EN');
-      setWeight(undefined);
-      setHeight(undefined);
       setNotesHtml('');
     }
-  }, [activeNote, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeNote?.id, isNewDraft]);
 
-  const bmi = weight && height ? Math.round((weight / (height / 100) ** 2) * 10) / 10 : (activeNote?.bmi ?? null);
+  const isSigned = activeNote?.status === 'SIGNED';
+  const readOnly = isSigned || (!canWriteNarrative && draftType === 'DOCTOR_NARRATIVE' && !isNewDraft);
+
+  // "Add Note" opens a LOCAL draft — no empty row is inserted in the
+  // database. The row (and its authorship) is created on first save.
+  const startNewDraft = (noteType: ClinicalNoteType) => {
+    setIsNewDraft(true);
+    setActiveNoteId(undefined);
+    setDraftType(noteType);
+    setNotesHtml('');
+    setLanguage('EN');
+  };
 
   const handleSave = async () => {
     try {
-      const values = form.getFieldsValue();
-      const dto = { ...values, notes: notesHtml, noteLanguage: language };
-      if (activeNote) {
-        await updateNote.mutateAsync({ id: activeNote.id, dto });
+      if (activeNote && !isNewDraft) {
+        await updateNote.mutateAsync({
+          id: activeNote.id,
+          dto: { notes: notesHtml, noteLanguage: language, expectedVersion: activeNote.version },
+        });
       } else {
-        const created = await createNote.mutateAsync(dto);
+        const created = await createNote.mutateAsync({
+          notes: notesHtml,
+          noteLanguage: language,
+          noteType: draftType,
+        });
         setActiveNoteId(created.id);
+        setIsNewDraft(false);
       }
       message.success('Clinical note saved');
     } catch (error) {
@@ -138,13 +188,29 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
     }
   };
 
-  const handleNewNote = async () => {
+  const handleSign = async () => {
+    if (!activeNote) return;
     try {
-      const created = await createNote.mutateAsync({});
-      setActiveNoteId(created.id);
-      message.success('New note started');
+      await signNote.mutateAsync({ id: activeNote.id, dto: { expectedVersion: activeNote.version } });
+      message.success('Note signed');
     } catch (error) {
-      message.error(error instanceof ApiError ? error.message : 'Failed to start a new note');
+      message.error(error instanceof ApiError ? error.message : 'Failed to sign note');
+    }
+  };
+
+  const handleAmend = async () => {
+    if (!activeNote) return;
+    try {
+      const created = await amendNote.mutateAsync({
+        id: activeNote.id,
+        dto: { amendmentReason: amendReason, notes: notesHtml, noteLanguage: language },
+      });
+      setActiveNoteId(created.id);
+      setAmendOpen(false);
+      setAmendReason('');
+      message.success('Amendment created — the original signed note is unchanged');
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Failed to create amendment');
     }
   };
 
@@ -160,8 +226,7 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
     }
     const recognition = new Recognition();
     // No .lang set — lets the browser's speech engine auto-detect rather
-    // than locking to whatever the Notes language toggle happens to be set
-    // to (owner feedback: dictation shouldn't need a language selection).
+    // than locking to whatever the Notes language toggle happens to be.
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.onresult = (event) => {
@@ -180,238 +245,129 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
   };
 
   return (
-    <Form form={form} layout="vertical" disabled={isLoading} size="small">
+    <>
+      <VisitObservationsPanel visitId={visitId} compact={compact} />
       <VisitAttachmentsPanel visitId={visitId} compact={compact} />
 
-      {(notes?.length ?? 0) > 0 && (
-        <Space wrap style={{ marginBottom: compact ? 6 : 8 }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            Notes:
-          </Text>
-          {notes?.map((n) => (
-            <Button
-              key={n.id}
-              size="small"
-              type={n.id === activeNote?.id ? 'primary' : 'default'}
-              onClick={() => setActiveNoteId(n.id)}
-            >
-              {dayjs(n.createdAt).format('D MMM, HH:mm')}
-            </Button>
-          ))}
-          <Button size="small" icon={<PlusOutlined />} loading={createNote.isPending} onClick={handleNewNote}>
-            New Note
+      {/* Note history: a single selector rather than an unbounded row of
+          timestamp buttons, showing who wrote each entry and its state. */}
+      <Space wrap style={{ marginBottom: compact ? 6 : 8, width: '100%' }}>
+        <Select
+          size="small"
+          style={{ minWidth: 340 }}
+          placeholder="No notes yet"
+          value={isNewDraft ? '__draft__' : activeNote?.id}
+          loading={isLoading}
+          onChange={(value) => {
+            if (value === '__draft__') return;
+            setIsNewDraft(false);
+            setActiveNoteId(value);
+          }}
+          options={[
+            ...(isNewDraft ? [{ value: '__draft__', label: 'New draft (unsaved)' }] : []),
+            ...(notes ?? []).map((n) => ({ value: n.id, label: noteLabel(n) })),
+          ]}
+        />
+        {canWriteNarrative && (
+          <Button size="small" icon={<PlusOutlined />} onClick={() => startNewDraft('DOCTOR_NARRATIVE')}>
+            Add Note
           </Button>
-        </Space>
+        )}
+        {/* Every clinical user can document a remark — this is how a
+            non-doctor records "patient refused medication". It can never be
+            signed and never renders as a doctor's note. */}
+        <Button size="small" icon={<EditOutlined />} onClick={() => startNewDraft('STAFF_REMARK')}>
+          Add Staff Remark
+        </Button>
+      </Space>
+
+      {/* Provenance for the selected entry — the medicolegal record. */}
+      {activeNote && (
+        <div style={{ marginBottom: 6 }}>
+          <Space wrap size={6}>
+            {activeNote.noteType === 'STAFF_REMARK' && <Tag>Staff remark</Tag>}
+            {activeNote.entryType === 'AMENDMENT' && <Tag color="blue">Amendment</Tag>}
+            {activeNote.status === 'SIGNED' ? (
+              <Tag color="green" icon={<SafetyCertificateOutlined />}>
+                Signed
+              </Tag>
+            ) : (
+              <Tag color="gold">Draft</Tag>
+            )}
+            {activeNote.hasAmendment && <Tag color="purple">Amended</Tag>}
+            {activeNote.legacyAuthorUnknown ? (
+              <Text type="secondary" italic style={{ fontSize: 12 }}>
+                Author not recorded — legacy note
+              </Text>
+            ) : (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Entered by <Text strong style={{ fontSize: 12 }}>{activeNote.authorNameSnapshot}</Text>
+                {activeNote.authorRoleSnapshot
+                  ? ` (${activeNote.authorRoleSnapshot.replace(/_/g, ' ').toLowerCase()})`
+                  : ''}{' '}
+                · {dayjs(activeNote.createdAt).format('D MMM YYYY, HH:mm')}
+              </Text>
+            )}
+            {activeNote.status === 'SIGNED' && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                · Electronically signed by{' '}
+                <Text strong style={{ fontSize: 12 }}>{activeNote.signerNameSnapshot}</Text>{' '}
+                {dayjs(activeNote.signedAt!).format('D MMM YYYY, HH:mm')}
+              </Text>
+            )}
+            {activeNote.isLateEntry && (
+              <Tooltip title={activeNote.lateEntryReason ?? undefined}>
+                <Tag color="orange">Late entry</Tag>
+              </Tooltip>
+            )}
+          </Space>
+          {activeNote.entryType === 'AMENDMENT' && activeNote.amendmentReason && (
+            <div>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Reason: {activeNote.amendmentReason}
+              </Text>
+            </div>
+          )}
+        </div>
       )}
 
-      {compact ? (
-        <Card
-          size="small"
-          title={
-            <Space>
-              <HeartOutlined /> Vital Signs and Anthropometry
-            </Space>
-          }
+      {isSigned && (
+        <Alert
+          type="info"
+          showIcon
           style={{ marginBottom: 6 }}
-          styles={{ header: { padding: '2px 10px', minHeight: 24 }, body: { padding: '6px 10px' } }}
-        >
-          <Row gutter={[6, 0]} wrap={false} style={{ overflowX: 'auto' }}>
-            <Col flex="0 0 88px">
-              <Form.Item label="BP" style={{ marginBottom: 0 }}>
-                <Space.Compact>
-                  <Form.Item name="bpSystolic" noStyle>
-                    <InputNumber controls={false} style={{ width: '50%', fontSize: 12, height: 26 }} />
-                  </Form.Item>
-                  <Form.Item name="bpDiastolic" noStyle>
-                    <InputNumber controls={false} style={{ width: '50%', fontSize: 12, height: 26 }} />
-                  </Form.Item>
-                </Space.Compact>
-              </Form.Item>
-            </Col>
-            <Col flex="0 0 44px">
-              <Form.Item name="pulse" label="Pulse" style={{ marginBottom: 0 }}>
-                <InputNumber controls={false} style={{ width: '100%', fontSize: 12, height: 26 }} />
-              </Form.Item>
-            </Col>
-            <Col flex="0 0 44px">
-              <Form.Item name="temperature" label="Temp" style={{ marginBottom: 0 }}>
-                <InputNumber controls={false} style={{ width: '100%', fontSize: 12, height: 26 }} step={0.1} />
-              </Form.Item>
-            </Col>
-            <Col flex="0 0 44px">
-              <Form.Item name="spo2" label="SpO2" style={{ marginBottom: 0 }}>
-                <InputNumber controls={false} style={{ width: '100%', fontSize: 12, height: 26 }} min={0} max={100} />
-              </Form.Item>
-            </Col>
-            <Col flex="0 0 44px">
-              <Form.Item name="respRate" label="Resp" style={{ marginBottom: 0 }}>
-                <InputNumber controls={false} style={{ width: '100%', fontSize: 12, height: 26 }} />
-              </Form.Item>
-            </Col>
-            <Col flex="0 0 64px">
-              <Form.Item name="painScore" label="Pain" style={{ marginBottom: 0 }}>
-                <Select allowClear options={PAIN_SCORE_OPTIONS} style={{ fontSize: 12 }} />
-              </Form.Item>
-            </Col>
-            <Col flex="0 0 50px">
-              <Form.Item name="weight" label="Wt (kg)" style={{ marginBottom: 0 }}>
-                <InputNumber<number>
-                  controls={false}
-                  style={{ width: '100%', fontSize: 12, height: 26 }}
-                  step={0.1}
-                  onChange={(v) => setWeight(v ?? undefined)}
-                />
-              </Form.Item>
-            </Col>
-            <Col flex="0 0 50px">
-              <Form.Item name="height" label="Ht (cm)" style={{ marginBottom: 0 }}>
-                <InputNumber<number>
-                  controls={false}
-                  style={{ width: '100%', fontSize: 12, height: 26 }}
-                  step={0.1}
-                  onChange={(v) => setHeight(v ?? undefined)}
-                />
-              </Form.Item>
-            </Col>
-            <Col flex="0 0 44px">
-              <Form.Item label="BMI" style={{ marginBottom: 0 }}>
-                <InputNumber controls={false} style={{ width: '100%', fontSize: 12, height: 26 }} value={bmi ?? undefined} disabled />
-              </Form.Item>
-            </Col>
-            <Col flex="0 0 0px">
-              <Divider type="vertical" style={{ height: 40, margin: '0 2px' }} />
-            </Col>
-            <Col flex="0 0 50px">
-              <Text type="secondary" style={{ fontSize: 10, display: 'block', lineHeight: '14px' }}>
-                POINT OF CARE
-              </Text>
-              <Form.Item name="glucose" label="Glucose" style={{ marginBottom: 0 }}>
-                <InputNumber controls={false} style={{ width: '100%', fontSize: 12, height: 26 }} step={0.1} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-      ) : (
-        <>
-          <Card
-            size="small"
-            title={
-              <Space>
-                <HeartOutlined /> Vital Signs
-              </Space>
-            }
-            style={{ marginBottom: 8 }}
-            styles={{ header: { padding: '4px 12px', minHeight: 32 }, body: { padding: '8px 12px' } }}
-          >
-            <Row gutter={[16, 0]}>
-              <Col span={6}>
-                <Form.Item label="BP (Sys/Dia)" style={{ marginBottom: 2 }}>
-                  <Space.Compact>
-                    <Form.Item name="bpSystolic" noStyle>
-                      <InputNumber style={{ width: '50%' }} />
-                    </Form.Item>
-                    <Form.Item name="bpDiastolic" noStyle>
-                      <InputNumber style={{ width: '50%' }} />
-                    </Form.Item>
-                  </Space.Compact>
-                </Form.Item>
-              </Col>
-              <Col span={6}>
-                <Form.Item name="pulse" label="Pulse (bpm)" style={{ marginBottom: 2 }}>
-                  <InputNumber style={{ width: '100%' }} />
-                </Form.Item>
-              </Col>
-              <Col span={6}>
-                <Form.Item name="temperature" label="Temp (°C)" style={{ marginBottom: 2 }}>
-                  <InputNumber style={{ width: '100%' }} step={0.1} />
-                </Form.Item>
-              </Col>
-              <Col span={6}>
-                <Form.Item name="spo2" label="SpO2 (%)" style={{ marginBottom: 2 }}>
-                  <InputNumber style={{ width: '100%' }} min={0} max={100} />
-                </Form.Item>
-              </Col>
-              <Col span={6}>
-                <Form.Item name="respRate" label="Resp. Rate (r)" style={{ marginBottom: 0 }}>
-                  <InputNumber style={{ width: '100%' }} />
-                </Form.Item>
-              </Col>
-              <Col span={6}>
-                <Form.Item name="painScore" label="Pain Score (0-10)" style={{ marginBottom: 0 }}>
-                  <Select allowClear options={PAIN_SCORE_OPTIONS} />
-                </Form.Item>
-              </Col>
-            </Row>
-          </Card>
-
-          <Card
-            size="small"
-            title={
-              <Space>
-                <MedicineBoxOutlined /> Anthropometry
-              </Space>
-            }
-            style={{ marginBottom: 8 }}
-            styles={{ header: { padding: '4px 12px', minHeight: 32 }, body: { padding: '8px 12px' } }}
-          >
-            <Row gutter={[16, 0]}>
-              <Col span={8}>
-                <Form.Item name="weight" label="Weight (kg)" style={{ marginBottom: 0 }}>
-                  <InputNumber<number>
-                    style={{ width: '100%' }}
-                    step={0.1}
-                    onChange={(v) => setWeight(v ?? undefined)}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="height" label="Height (cm)" style={{ marginBottom: 0 }}>
-                  <InputNumber<number>
-                    style={{ width: '100%' }}
-                    step={0.1}
-                    onChange={(v) => setHeight(v ?? undefined)}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item label="BMI (kg/m²)" style={{ marginBottom: 0 }}>
-                  <InputNumber style={{ width: '100%' }} value={bmi ?? undefined} disabled />
-                </Form.Item>
-              </Col>
-            </Row>
-          </Card>
-
-          <Card
-            size="small"
-            title={
-              <Space>
-                <WarningOutlined /> Point of Care
-              </Space>
-            }
-            style={{ marginBottom: 8 }}
-            styles={{ header: { padding: '4px 12px', minHeight: 32 }, body: { padding: '8px 12px' } }}
-          >
-            <Row gutter={[16, 0]}>
-              <Col span={8}>
-                <Form.Item name="glucose" label="Glucose (mmol/L)" style={{ marginBottom: 0 }}>
-                  <InputNumber style={{ width: '100%' }} step={0.1} />
-                </Form.Item>
-              </Col>
-            </Row>
-          </Card>
-        </>
+          message="This note is signed and cannot be edited."
+          description="Corrections must be recorded as an amendment, which is kept as a separate linked entry."
+        />
+      )}
+      {!canWriteNarrative && draftType === 'DOCTOR_NARRATIVE' && !activeNote && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 6 }}
+          message="Only a doctor may write the clinical narrative."
+          description="You can record vitals, upload attachments, and add a staff remark."
+        />
       )}
 
       <Card
         size="small"
-        title="Notes"
+        title={draftType === 'STAFF_REMARK' ? 'Staff Remark' : 'Clinical Notes'}
         styles={compact ? { header: { padding: '4px 12px', minHeight: 28 }, body: { padding: 8 } } : undefined}
         extra={
           <Space>
+            {isNewDraft && draftType === 'STAFF_REMARK' && (
+              <Segmented
+                size="small"
+                value={draftType}
+                options={[{ label: 'Staff Remark', value: 'STAFF_REMARK' }]}
+              />
+            )}
             <Select
               size="small"
               value={language}
               onChange={setLanguage}
+              disabled={readOnly}
               style={{ width: 130 }}
               options={[
                 { label: 'ENGLISH', value: 'EN' },
@@ -422,11 +378,13 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
               size="small"
               icon={<AudioOutlined />}
               type={listening ? 'primary' : 'default'}
+              disabled={readOnly}
               onClick={toggleDictation}
             >
               {listening ? 'Stop' : 'Dictate'}
             </Button>
             <Dropdown
+              disabled={readOnly}
               menu={{
                 items: Object.entries(SMART_ABBREVIATIONS).map(([code, expansion]) => ({
                   key: code,
@@ -435,7 +393,7 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
                 })),
               }}
             >
-              <Button size="small" type="primary" icon={<ThunderboltOutlined />}>
+              <Button size="small" type="primary" icon={<ThunderboltOutlined />} disabled={readOnly}>
                 Smart Abbreviation
               </Button>
             </Dropdown>
@@ -445,14 +403,58 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
         <RichTextEditor content={notesHtml} onChange={setNotesHtml} compact={compact} />
       </Card>
 
-      <Button
-        type="primary"
-        loading={updateNote.isPending || createNote.isPending}
-        onClick={handleSave}
-        style={{ marginTop: compact ? 8 : 16 }}
+      <Space style={{ marginTop: compact ? 8 : 16 }} wrap>
+        <Button
+          type="primary"
+          loading={updateNote.isPending || createNote.isPending}
+          onClick={handleSave}
+          disabled={readOnly}
+        >
+          Save Clinical Note
+        </Button>
+        {activeNote && !isSigned && activeNote.noteType === 'DOCTOR_NARRATIVE' && (
+          <Button
+            icon={<SafetyCertificateOutlined />}
+            loading={signNote.isPending}
+            onClick={handleSign}
+          >
+            Sign
+          </Button>
+        )}
+        {isSigned && (
+          <Button icon={<EditOutlined />} onClick={() => setAmendOpen(true)}>
+            Add Amendment
+          </Button>
+        )}
+        {activeNote && (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            v{activeNote.version} · last saved {dayjs(activeNote.updatedAt).format('HH:mm')}
+          </Text>
+        )}
+      </Space>
+
+      <Modal
+        title="Add Amendment"
+        open={amendOpen}
+        onCancel={() => setAmendOpen(false)}
+        onOk={handleAmend}
+        okText="Create Amendment"
+        confirmLoading={amendNote.isPending}
       >
-        Save Clinical Note
-      </Button>
-    </Form>
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="The original signed note stays unchanged."
+          description="This creates a new, separately-signed entry linked to it, shown chronologically in the record."
+        />
+        <Input.TextArea
+          rows={3}
+          value={amendReason}
+          onChange={(e) => setAmendReason(e.target.value)}
+          placeholder="Reason for the amendment (required) — e.g. BP transcribed incorrectly"
+        />
+      </Modal>
+    </>
   );
 }

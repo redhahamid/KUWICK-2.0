@@ -4,6 +4,7 @@ import { CheckCircleOutlined, DeleteOutlined, FileTextOutlined, PrinterOutlined,
 import dayjs, { Dayjs } from 'dayjs';
 import { useCreateDocument, useDeleteDocument, useDocuments, useSignDocument } from './hooks/useDocuments';
 import { useLatestClinicalNote } from './hooks/useClinicalNote';
+import { useLatestVitals } from './hooks/useVisitObservations';
 import { useDiagnoses } from './hooks/useDiagnoses';
 import { useDocumentTemplates } from './hooks/useDocumentTemplates';
 import { useStaff } from '../hr/hooks/useStaff';
@@ -64,6 +65,9 @@ export function DocumentsTab({ visit, patientName, patientIdentifier }: Document
 
   const { data: documents, isLoading } = useDocuments(visit.id);
   const { data: clinicalNote } = useLatestClinicalNote(visit.id);
+  // C0 (D-051) — vitals come from the attributed observation record, falling
+  // back to a legacy note's frozen columns for pre-split visits.
+  const vitals = useLatestVitals(visit.id);
   const { data: diagnoses } = useDiagnoses(visit.id);
   const { data: staff } = useStaff();
   const { data: clinics } = useClinics();
@@ -122,7 +126,7 @@ export function DocumentsTab({ visit, patientName, patientIdentifier }: Document
       referredTo,
       presentingComplaint: visit.presentingComplaint ?? undefined,
       examinationNotes: htmlToPlainText(clinicalNote?.notes),
-      vitalsSummary: formatVitals(clinicalNote),
+      vitalsSummary: formatVitals(vitals),
     });
     setContent(generated);
   };

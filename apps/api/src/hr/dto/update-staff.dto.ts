@@ -1,5 +1,5 @@
 import { IsBoolean, IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
-import { Role } from '@prisma/client';
+import { ProfessionalType, Role } from '@prisma/client';
 
 export class UpdateStaffDto {
   @IsOptional()
@@ -25,4 +25,24 @@ export class UpdateStaffDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  // C0 (D-051) — professional (clinical) identity. The verification and
+  // signing-enable TIMESTAMPS are deliberately absent: StaffService stamps
+  // them (with the acting staff member) when these flags flip, so they can't
+  // be forged by the client.
+  @IsOptional()
+  @IsEnum(ProfessionalType)
+  professionalType?: ProfessionalType;
+
+  @IsOptional()
+  @IsString()
+  medicalRegistrationNo?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  professionalActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  canSignClinicalNotes?: boolean;
 }

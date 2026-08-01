@@ -20,26 +20,18 @@ describe('htmlToPlainText', () => {
 
 describe('formatVitals', () => {
   it('formats a full set of vitals into a single line', () => {
+    // C0 (D-051) — formatVitals now takes the structural VitalsSource shared
+    // by VisitObservation and a legacy note's frozen vitals columns.
     const result = formatVitals({
-      id: 'n1',
-      tenantId: 't1',
-      visitId: 'v1',
       bpSystolic: 120,
       bpDiastolic: 80,
       pulse: 72,
       temperature: '37.0',
       spo2: 98,
       respRate: 18,
-      painScore: null,
       weight: null,
       height: null,
-      headCircumference: null,
       glucose: null,
-      notes: null,
-      noteLanguage: 'EN',
-      bmi: null,
-      createdAt: '',
-      updatedAt: '',
     });
     expect(result).toBe('BP: 120/80 mmHg, Pulse: 72 bpm, Temp: 37.0°C, SpO2: 98%, Resp: 18/min');
   });

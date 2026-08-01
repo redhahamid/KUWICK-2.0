@@ -28,17 +28,17 @@ export class VisitAttachmentController {
     return this.attachments.listByVisitId(visitId);
   }
 
+  // C0 (D-051) — uploadedByStaffId is NO LONGER accepted from the request
+  // body. The browser previously supplied it, which meant uploader identity
+  // was client-controlled; it is now derived from the authenticated session
+  // inside the service, same rule as clinical-note authorship.
   @Post()
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: MAX_ATTACHMENT_BYTES } }))
-  upload(
-    @Param('visitId') visitId: string,
-    @UploadedFile() file?: Express.Multer.File,
-    @Body('uploadedByStaffId') uploadedByStaffId?: string,
-  ) {
+  upload(@Param('visitId') visitId: string, @UploadedFile() file?: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('file is required');
     }
-    return this.attachments.create(visitId, file, uploadedByStaffId);
+    return this.attachments.create(visitId, file);
   }
 
   @Get(':attachmentId/download')

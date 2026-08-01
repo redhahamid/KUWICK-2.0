@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { VitalsSource } from './hooks/useVisitObservations';
 import { ClinicalNote, Diagnosis, DocumentType, Visit } from './types';
 import { Clinic } from '../core/types';
 import { Staff } from '../hr/types';
@@ -29,14 +30,17 @@ export function htmlToPlainText(html: string | null | undefined): string {
     .trim();
 }
 
-export function formatVitals(note?: ClinicalNote | null): string {
-  if (!note) return 'Not recorded';
+// C0 (D-051) — accepts either a VisitObservation (the live source) or a
+// legacy ClinicalNote's frozen vitals columns; the field names are identical
+// on both, so one structural type serves the transition.
+export function formatVitals(source?: VitalsSource | null): string {
+  if (!source) return 'Not recorded';
   const parts: string[] = [];
-  if (note.bpSystolic && note.bpDiastolic) parts.push(`BP: ${note.bpSystolic}/${note.bpDiastolic} mmHg`);
-  if (note.pulse) parts.push(`Pulse: ${note.pulse} bpm`);
-  if (note.temperature) parts.push(`Temp: ${note.temperature}°C`);
-  if (note.spo2) parts.push(`SpO2: ${note.spo2}%`);
-  if (note.respRate) parts.push(`Resp: ${note.respRate}/min`);
+  if (source.bpSystolic && source.bpDiastolic) parts.push(`BP: ${source.bpSystolic}/${source.bpDiastolic} mmHg`);
+  if (source.pulse) parts.push(`Pulse: ${source.pulse} bpm`);
+  if (source.temperature) parts.push(`Temp: ${source.temperature}°C`);
+  if (source.spo2) parts.push(`SpO2: ${source.spo2}%`);
+  if (source.respRate) parts.push(`Resp: ${source.respRate}/min`);
   return parts.length > 0 ? parts.join(', ') : 'Not recorded';
 }
 

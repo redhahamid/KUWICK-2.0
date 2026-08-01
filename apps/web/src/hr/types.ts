@@ -1,5 +1,10 @@
 import { Role } from '@kuwick/shared';
 
+// C0 (D-051) — professional (clinical) identity, deliberately separate from
+// the administrative `role`. An OWNER_ADMIN may or may not be a practising
+// doctor; clinical-note signing is never derived from role.
+export type ProfessionalType = 'NON_CLINICAL' | 'MEDICAL_DOCTOR';
+
 export interface Staff {
   id: string;
   tenantId: string;
@@ -9,6 +14,15 @@ export interface Staff {
   active: boolean;
   // D-045 — home branch; null = works across every clinic in the tenant.
   clinicId: string | null;
+
+  professionalType: ProfessionalType;
+  medicalRegistrationNo: string | null;
+  professionalActive: boolean;
+  canSignClinicalNotes: boolean;
+  professionalVerifiedAt: string | null;
+  professionalVerifiedByStaffId: string | null;
+  clinicalSigningEnabledAt: string | null;
+  clinicalSigningEnabledByStaffId: string | null;
 }
 
 export interface CreateStaffDto {
@@ -20,6 +34,11 @@ export interface CreateStaffDto {
   // member sign in, omit both to leave them without a login.
   loginEmail?: string;
   loginPassword?: string;
+
+  professionalType?: ProfessionalType;
+  medicalRegistrationNo?: string;
+  professionalActive?: boolean;
+  canSignClinicalNotes?: boolean;
 }
 
 export type UpdateStaffDto = Partial<CreateStaffDto> & { active?: boolean; clinicId?: string | null };

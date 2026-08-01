@@ -5,7 +5,8 @@ import {
   TENANT_SCOPED_PRISMA,
   TenantScopedPrismaClient,
 } from '../core/tenant-scoped-prisma.provider';
-import { currentTenantId } from '../core/tenant-context';
+import { currentStaffId, currentTenantId } from '../core/tenant-context';
+import { normaliseRegistrationNo } from '../clinical/clinical-authorization';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 
@@ -55,8 +56,37 @@ export class StaffService {
     return staff;
   }
 
-  update(id: string, dto: UpdateStaffDto) {
-    return this.prisma.staff.update({ where: { id }, data: dto });
+  async update(id: string, dto: UpdateStaffDto) {
+    const existing = await this.findById(id);
+    const data: Prisma.StaffUncheckedUpdateInput = { ...dto, ...this.professionalAudit(dto, existing) };
+    return this.prisma.staff.update({ where: { id }, data });
+  }
+
+  // C0 (D-051) — professional verification and signing-enable are AUDITED
+  // events, not plain fields: the timestamp and the acting staff member are
+  // stamped server-side the moment a Clinic Group turns them on, and cleared
+  // when turned off so a stale "verified" timestamp can never linger behind
+  // a disabled flag. The client cannot set them directly.
+  //
+  // These record only that THE CLINIC GROUP asserted the practitioner's
+  // status — Kuwick performs no MMC registry lookup, and the UI says so.
+  private professionalAudit(dto: UpdateStaffDto, existing: { professionalActive: boolean; canSignClinicalNotes: boolean }) {
+    const actor = currentStaffId() ?? null;
+    const now = new Date();
+    const audit: Prisma.StaffUncheckedUpdateInput = {};
+
+    if (dto.professionalActive !== undefined && dto.professionalActive !== existing.professionalActive) {
+      audit.professionalVerifiedAt = dto.professionalActive ? now : null;
+      audit.professionalVerifiedByStaffId = dto.professionalActive ? actor : null;
+    }
+    if (dto.canSignClinicalNotes !== undefined && dto.canSignClinicalNotes !== existing.canSignClinicalNotes) {
+      audit.clinicalSigningEnabledAt = dto.canSignClinicalNotes ? now : null;
+      audit.clinicalSigningEnabledByStaffId = dto.canSignClinicalNotes ? actor : null;
+    }
+    if (dto.medicalRegistrationNo !== undefined) {
+      audit.medicalRegistrationNoNormalised = normaliseRegistrationNo(dto.medicalRegistrationNo);
+    }
+    return audit;
   }
 
   // The only surface AppointmentModule is allowed to call — it never touches
