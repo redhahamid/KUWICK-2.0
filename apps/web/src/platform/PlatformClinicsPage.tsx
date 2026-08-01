@@ -12,12 +12,22 @@ const { Title, Text } = Typography;
 
 interface CreateClinicFormValues {
   name: string;
-  slug: string;
   address?: string;
   phone?: string;
   email?: string;
   registrationNo?: string;
   startAsTrial?: boolean;
+  ownerFullName: string;
+  ownerEmail: string;
+  ownerPassword: string;
+}
+
+interface EditClinicFormValues {
+  name: string;
+  registrationNo?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
 }
 
 export function PlatformClinicsPage() {
@@ -25,7 +35,9 @@ export function PlatformClinicsPage() {
   const queryClient = useQueryClient();
   const setClinicSession = useAuthStore((state) => state.setSession);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<PlatformTenant | null>(null);
   const [form] = Form.useForm<CreateClinicFormValues>();
+  const [editForm] = Form.useForm<EditClinicFormValues>();
 
   const { data: tenants, isLoading } = useQuery({
     queryKey: ['platform', 'tenants'],
@@ -49,6 +61,28 @@ export function PlatformClinicsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['platform'] }),
     onError: (error) => message.error(error instanceof ApiError ? error.message : 'Failed to update clinic'),
   });
+
+  const updateTenant = useMutation({
+    mutationFn: ({ id, values }: { id: string; values: EditClinicFormValues }) =>
+      platformApi.patch<PlatformTenant>(`/platform/tenants/${id}`, values),
+    onSuccess: () => {
+      message.success('Clinic updated');
+      setEditing(null);
+      queryClient.invalidateQueries({ queryKey: ['platform'] });
+    },
+    onError: (error) => message.error(error instanceof ApiError ? error.message : 'Failed to update clinic'),
+  });
+
+  const openEdit = (tenant: PlatformTenant) => {
+    setEditing(tenant);
+    editForm.setFieldsValue({
+      name: tenant.name,
+      registrationNo: tenant.registrationNo ?? undefined,
+      address: tenant.clinics?.[0]?.address ?? undefined,
+      phone: tenant.clinics?.[0]?.phone ?? undefined,
+      email: tenant.clinics?.[0]?.email ?? undefined,
+    });
+  };
 
   // "Login As" (D-037) — swaps the clinic-staff auth store to the
   // impersonated session and enters the clinic app. Logging out of that
@@ -75,7 +109,16 @@ export function PlatformClinicsPage() {
         <Title level={4} style={{ margin: 0 }}>
           Clinics Management
         </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => {
+            // A previously abandoned attempt's values persist in the form
+            // instance even with destroyOnHidden — always open clean.
+            form.resetFields();
+            setOpen(true);
+          }}
+        >
           Create Clinic
         </Button>
       </Space>
@@ -131,6 +174,9 @@ export function PlatformClinicsPage() {
             title: 'Actions',
             render: (_: unknown, tenant: PlatformTenant) => (
               <Space>
+                <Button type="link" size="small" onClick={() => openEdit(tenant)}>
+                  Edit
+                </Button>
                 <Button type="link" size="small" onClick={() => loginAs.mutate(tenant.id)} loading={loginAs.isPending}>
                   Login As
                 </Button>
@@ -157,17 +203,42 @@ export function PlatformClinicsPage() {
           },
         ]}
       />
+      <Modal title="Edit Clinic" open={Boolean(editing)} onCancel={() => setEditing(null)} footer={null} destroyOnHidden>
+        <Form
+          form={editForm}
+          layout="vertical"
+          onFinish={(values) => editing && updateTenant.mutate({ id: editing.id, values })}
+        >
+          <Form.Item name="name" label="Clinic Name" rules={[{ required: true }]}>
+            <Input placeholder="Clinic Name" />
+          </Form.Item>
+          <Form.Item name="address" label="Address">
+            <Input placeholder="Full Address" />
+          </Form.Item>
+          <Space style={{ display: 'flex' }} styles={{ item: { flex: 1 } }}>
+            <Form.Item name="phone" label="Phone Number">
+              <Input placeholder="+6012..." />
+            </Form.Item>
+            <Form.Item name="email" label="Clinic Email">
+              <Input placeholder="info@clinic.com" />
+            </Form.Item>
+          </Space>
+          <Form.Item name="registrationNo" label="Registration No. (SSM/MEPCSA)">
+            <Input placeholder="202401000001" />
+          </Form.Item>
+          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+            <Button onClick={() => setEditing(null)}>Cancel</Button>
+            <Button type="primary" htmlType="submit" loading={updateTenant.isPending}>
+              Save
+            </Button>
+          </Space>
+        </Form>
+      </Modal>
+
       <Modal title="Create Clinic" open={open} onCancel={() => setOpen(false)} footer={null} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={(values) => createTenant.mutate(values)}>
           <Form.Item name="name" label="Clinic Name" rules={[{ required: true }]}>
             <Input placeholder="Clinic Name" />
-          </Form.Item>
-          <Form.Item
-            name="slug"
-            label="Login Slug"
-            rules={[{ required: true, pattern: /^[a-z0-9-]+$/, message: 'Lowercase letters, numbers, and hyphens only' }]}
-          >
-            <Input placeholder="e.g. klinik-alpha" />
           </Form.Item>
           <Form.Item name="address" label="Address">
             <Input placeholder="Full Address" />
@@ -188,6 +259,34 @@ export function PlatformClinicsPage() {
               <Checkbox>Start as Trial</Checkbox>
             </Form.Item>
           </Space>
+          <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 12, marginBottom: 12 }}>
+            <Text strong style={{ display: 'block', marginBottom: 4 }}>
+              Owner Admin Login
+            </Text>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
+              The clinic owner signs in with these and can then create logins for their own staff (Management → HR →
+              Staff).
+            </Text>
+            <Form.Item name="ownerFullName" label="Owner Full Name" rules={[{ required: true, message: 'Enter the owner’s name' }]}>
+              <Input placeholder="Dr. Aisyah Binti Ahmad" />
+            </Form.Item>
+            <Space style={{ display: 'flex' }} styles={{ item: { flex: 1 } }}>
+              <Form.Item
+                name="ownerEmail"
+                label="Owner Login Email"
+                rules={[{ required: true, type: 'email', message: 'Enter a valid email' }]}
+              >
+                <Input placeholder="owner@clinic.com" />
+              </Form.Item>
+              <Form.Item
+                name="ownerPassword"
+                label="Owner Password"
+                rules={[{ required: true, min: 8, message: 'At least 8 characters' }]}
+              >
+                <Input.Password placeholder="Min 8 characters" />
+              </Form.Item>
+            </Space>
+          </div>
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
             <Button onClick={() => setOpen(false)}>Cancel</Button>
             <Button type="primary" htmlType="submit" loading={createTenant.isPending}>

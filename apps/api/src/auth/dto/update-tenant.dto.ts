@@ -19,4 +19,18 @@ export class UpdateTenantDto {
   @IsOptional()
   @IsString()
   registrationNo?: string;
+
+  // D-049 — contact details live on the tenant's first Clinic row; the
+  // console's Edit Clinic modal writes them through this same endpoint.
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  email?: string;
 }

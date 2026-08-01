@@ -1,9 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../core/prisma.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 
 const TRIAL_DURATION_DAYS = 14;
+const PASSWORD_HASH_ROUNDS = 10;
 // Task Orders (procedures) default to a nominal duration since the owner's
 // "Default Procedures" reference screen has no duration field of its own —
 // clinics can adjust it per-tenant after the copy lands in their own
@@ -44,15 +46,60 @@ export class PlatformTenantService {
     });
   }
 
+  // D-049 — the slug is auto-derived from the clinic name ("Klinik Alpha
+  // Kajang" → klinik-alpha-kajang, then -2/-3... if taken) so the platform
+  // console never has to ask for it; since unified login, it only matters
+  // in the rare multi-clinic-email disambiguation case.
+  private async resolveSlug(tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0], name: string) {
+    const base =
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'clinic';
+    const taken = new Set(
+      (await tx.tenant.findMany({ where: { slug: { startsWith: base } }, select: { slug: true } })).map((t) => t.slug),
+    );
+    if (!taken.has(base)) return base;
+    for (let i = 2; ; i += 1) {
+      if (!taken.has(`${base}-${i}`)) return `${base}-${i}`;
+    }
+  }
+
   async create(dto: CreateTenantDto) {
-    const tenant = await this.withBypass((tx) =>
-      tx.tenant.create({ data: { name: dto.name, slug: dto.slug, registrationNo: dto.registrationNo } }),
+    const tenant = await this.withBypass(async (tx) =>
+      tx.tenant.create({
+        data: { name: dto.name, slug: dto.slug ?? (await this.resolveSlug(tx, dto.name)), registrationNo: dto.registrationNo },
+      }),
     );
 
+    // Hash outside the transaction — bcrypt at 10 rounds takes ~100ms and
+    // has no business holding a DB transaction open.
+    const ownerPasswordHash =
+      dto.ownerEmail && dto.ownerPassword ? await bcrypt.hash(dto.ownerPassword, PASSWORD_HASH_ROUNDS) : null;
+
     await this.withTenantScope(tenant.id, async (tx) => {
-      await tx.clinic.create({
+      const clinic = await tx.clinic.create({
         data: { tenantId: tenant.id, name: dto.name, address: dto.address, phone: dto.phone, email: dto.email },
       });
+
+      // D-049 — the clinic's first OWNER_ADMIN login, so the clinic owner
+      // can sign in on day one and create their own staff logins
+      // (Management > HR > Staff). Home clinic set to the first branch —
+      // a single-location tenant auto-resolves everywhere (D-045).
+      if (ownerPasswordHash && dto.ownerEmail) {
+        const ownerUser = await tx.user.create({
+          data: { tenantId: tenant.id, email: dto.ownerEmail, passwordHash: ownerPasswordHash },
+        });
+        await tx.staff.create({
+          data: {
+            tenantId: tenant.id,
+            userId: ownerUser.id,
+            role: 'OWNER_ADMIN',
+            fullName: dto.ownerFullName?.trim() || 'Clinic Owner',
+            clinicId: clinic.id,
+          },
+        });
+      }
 
       const [defaultPanels, defaultProcedures, defaultDocumentTemplates] = await Promise.all([
         tx.defaultPanelClinic.findMany({ where: { active: true } }),
@@ -139,8 +186,33 @@ export class PlatformTenantService {
     return tenant;
   }
 
+  // D-049 — Edit Clinic in the console: tenant-level fields live on Tenant,
+  // contact details live on the tenant's first Clinic row (same split as
+  // create). Renaming the tenant renames that clinic too — for a
+  // single-location tenant (every clinic onboarded so far) they are the
+  // same real-world thing, and multi-branch tenants rename branches from
+  // their own Management > Operation > Clinics screen.
   async update(id: string, dto: UpdateTenantDto) {
     await this.findById(id);
-    return this.withBypass((tx) => tx.tenant.update({ where: { id }, data: dto }));
+    const { address, phone, email, ...tenantFields } = dto;
+    const tenant = await this.withBypass((tx) => tx.tenant.update({ where: { id }, data: tenantFields }));
+
+    if (address !== undefined || phone !== undefined || email !== undefined || tenantFields.name !== undefined) {
+      await this.withTenantScope(id, async (tx) => {
+        const clinic = await tx.clinic.findFirst({ where: { tenantId: id }, orderBy: { createdAt: 'asc' } });
+        if (clinic) {
+          await tx.clinic.update({
+            where: { id: clinic.id },
+            data: {
+              ...(tenantFields.name !== undefined ? { name: tenantFields.name } : {}),
+              ...(address !== undefined ? { address } : {}),
+              ...(phone !== undefined ? { phone } : {}),
+              ...(email !== undefined ? { email } : {}),
+            },
+          });
+        }
+      });
+    }
+    return tenant;
   }
 }
