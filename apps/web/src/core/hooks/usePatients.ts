@@ -38,3 +38,13 @@ export function useUpdatePatient() {
     },
   });
 }
+
+// Soft-deletes (Patient.deletedAt) — visits/invoices/documents keep
+// referencing the record, it just drops off the active Patients list.
+export function useDeletePatient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete<Patient>(`/patients/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['patients'] }),
+  });
+}

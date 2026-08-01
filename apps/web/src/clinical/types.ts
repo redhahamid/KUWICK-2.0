@@ -87,6 +87,17 @@ export interface Visit {
   queueTicket?: QueueTicket | null;
 }
 
+// D-044 — standalone Visit creation (Patient Dashboard's "New Visit"),
+// independent of the Queue flow.
+export interface CreateVisitDto {
+  clinicId: string;
+  patientId: string;
+  staffId: string;
+  billingType: string;
+  panelClinicId?: string;
+  presentingComplaint?: string;
+}
+
 // D-041 — how a panel's per-claim fee is expressed.
 export type PanelClaimFeeType = 'PERCENT' | 'AMOUNT';
 
@@ -375,6 +386,19 @@ export interface Attachment {
   mimeType: string;
   fileSize: number;
   uploadedByStaffId: string;
+  createdAt: string;
+}
+
+// D-044 — free-standing visit-level uploads (photos, scanned results,
+// PDFs), distinct from Attachment (scoped to a single order/procedure).
+export interface VisitAttachment {
+  id: string;
+  visitId: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  uploadedByStaffId: string | null;
+  uploadedBy?: Staff | null;
   createdAt: string;
 }
 

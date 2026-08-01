@@ -1,10 +1,21 @@
 import { useEffect, useState } from 'react';
-import { Button, Card, Col, Dropdown, Form, InputNumber, Row, Select, Space, message } from 'antd';
-import { AudioOutlined, HeartOutlined, MedicineBoxOutlined, ThunderboltOutlined, WarningOutlined } from '@ant-design/icons';
-import { useClinicalNote, useSaveClinicalNote } from './hooks/useClinicalNote';
+import { Button, Card, Col, Divider, Dropdown, Form, InputNumber, Row, Select, Space, Tag, Typography, message } from 'antd';
+import {
+  AudioOutlined,
+  HeartOutlined,
+  MedicineBoxOutlined,
+  PlusOutlined,
+  ThunderboltOutlined,
+  WarningOutlined,
+} from '@ant-design/icons';
+import dayjs from 'dayjs';
+import { useClinicalNotes, useCreateClinicalNote, useUpdateClinicalNote } from './hooks/useClinicalNote';
 import { RichTextEditor } from './RichTextEditor';
+import { VisitAttachmentsPanel } from './VisitAttachmentsPanel';
 import { NoteLanguage, UpsertClinicalNoteDto } from './types';
 import { ApiError } from '../core/api-client';
+
+const { Text } = Typography;
 
 // A hardcoded starter set, not a per-tenant configurable dictionary — no
 // admin screen manages this (Clinical 2a plan, judgment call #4).
@@ -40,7 +51,6 @@ interface SpeechRecognitionEventLike {
   results: ArrayLike<SpeechRecognitionResultLike>;
 }
 interface SpeechRecognitionLike extends EventTarget {
-  lang: string;
   continuous: boolean;
   interimResults: boolean;
   start(): void;
@@ -66,46 +76,75 @@ interface ClinicalNotesTabProps {
 }
 
 export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
-  const { data: note, isLoading } = useClinicalNote(visitId);
-  const saveNote = useSaveClinicalNote(visitId);
+  const { data: notes, isLoading } = useClinicalNotes(visitId);
+  const createNote = useCreateClinicalNote(visitId);
+  const updateNote = useUpdateClinicalNote(visitId);
   const [form] = Form.useForm<UpsertClinicalNoteDto>();
   const [language, setLanguage] = useState<NoteLanguage>('EN');
   const [listening, setListening] = useState(false);
   const [weight, setWeight] = useState<number | undefined>();
   const [height, setHeight] = useState<number | undefined>();
   const [notesHtml, setNotesHtml] = useState('');
+  const [activeNoteId, setActiveNoteId] = useState<string>();
+
+  // D-044 — a visit can carry several notes (triage vitals, then a
+  // reassessment after a nebuliser); newest-first from the backend, so the
+  // most recent is the default unless staff picks an older one.
+  const activeNote = notes?.find((n) => n.id === activeNoteId) ?? notes?.[0];
 
   useEffect(() => {
-    if (note) {
+    if (activeNote) {
       form.setFieldsValue({
-        bpSystolic: note.bpSystolic ?? undefined,
-        bpDiastolic: note.bpDiastolic ?? undefined,
-        pulse: note.pulse ?? undefined,
-        temperature: note.temperature ? Number(note.temperature) : undefined,
-        spo2: note.spo2 ?? undefined,
-        respRate: note.respRate ?? undefined,
-        painScore: note.painScore ?? undefined,
-        weight: note.weight ? Number(note.weight) : undefined,
-        height: note.height ? Number(note.height) : undefined,
-        headCircumference: note.headCircumference ? Number(note.headCircumference) : undefined,
-        glucose: note.glucose ? Number(note.glucose) : undefined,
+        bpSystolic: activeNote.bpSystolic ?? undefined,
+        bpDiastolic: activeNote.bpDiastolic ?? undefined,
+        pulse: activeNote.pulse ?? undefined,
+        temperature: activeNote.temperature ? Number(activeNote.temperature) : undefined,
+        spo2: activeNote.spo2 ?? undefined,
+        respRate: activeNote.respRate ?? undefined,
+        painScore: activeNote.painScore ?? undefined,
+        weight: activeNote.weight ? Number(activeNote.weight) : undefined,
+        height: activeNote.height ? Number(activeNote.height) : undefined,
+        headCircumference: activeNote.headCircumference ? Number(activeNote.headCircumference) : undefined,
+        glucose: activeNote.glucose ? Number(activeNote.glucose) : undefined,
       });
-      setLanguage(note.noteLanguage);
-      setWeight(note.weight ? Number(note.weight) : undefined);
-      setHeight(note.height ? Number(note.height) : undefined);
-      setNotesHtml(note.notes ?? '');
+      setLanguage(activeNote.noteLanguage);
+      setWeight(activeNote.weight ? Number(activeNote.weight) : undefined);
+      setHeight(activeNote.height ? Number(activeNote.height) : undefined);
+      setNotesHtml(activeNote.notes ?? '');
+    } else {
+      form.resetFields();
+      setLanguage('EN');
+      setWeight(undefined);
+      setHeight(undefined);
+      setNotesHtml('');
     }
-  }, [note, form]);
+  }, [activeNote, form]);
 
-  const bmi = weight && height ? Math.round((weight / (height / 100) ** 2) * 10) / 10 : (note?.bmi ?? null);
+  const bmi = weight && height ? Math.round((weight / (height / 100) ** 2) * 10) / 10 : (activeNote?.bmi ?? null);
 
   const handleSave = async () => {
     try {
       const values = form.getFieldsValue();
-      await saveNote.mutateAsync({ ...values, notes: notesHtml, noteLanguage: language });
+      const dto = { ...values, notes: notesHtml, noteLanguage: language };
+      if (activeNote) {
+        await updateNote.mutateAsync({ id: activeNote.id, dto });
+      } else {
+        const created = await createNote.mutateAsync(dto);
+        setActiveNoteId(created.id);
+      }
       message.success('Clinical note saved');
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : 'Failed to save clinical note');
+    }
+  };
+
+  const handleNewNote = async () => {
+    try {
+      const created = await createNote.mutateAsync({});
+      setActiveNoteId(created.id);
+      message.success('New note started');
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Failed to start a new note');
     }
   };
 
@@ -120,7 +159,9 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
       return;
     }
     const recognition = new Recognition();
-    recognition.lang = language === 'MS' ? 'ms-MY' : 'en-US';
+    // No .lang set — lets the browser's speech engine auto-detect rather
+    // than locking to whatever the Notes language toggle happens to be set
+    // to (owner feedback: dictation shouldn't need a language selection).
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.onresult = (event) => {
@@ -140,12 +181,35 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
 
   return (
     <Form form={form} layout="vertical" disabled={isLoading} size="small">
+      <VisitAttachmentsPanel visitId={visitId} compact={compact} />
+
+      {(notes?.length ?? 0) > 0 && (
+        <Space wrap style={{ marginBottom: compact ? 6 : 8 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Notes:
+          </Text>
+          {notes?.map((n) => (
+            <Button
+              key={n.id}
+              size="small"
+              type={n.id === activeNote?.id ? 'primary' : 'default'}
+              onClick={() => setActiveNoteId(n.id)}
+            >
+              {dayjs(n.createdAt).format('D MMM, HH:mm')}
+            </Button>
+          ))}
+          <Button size="small" icon={<PlusOutlined />} loading={createNote.isPending} onClick={handleNewNote}>
+            New Note
+          </Button>
+        </Space>
+      )}
+
       {compact ? (
         <Card
           size="small"
           title={
             <Space>
-              <HeartOutlined /> Vitals &amp; Measurements
+              <HeartOutlined /> Vital Signs and Anthropometry
             </Space>
           }
           style={{ marginBottom: 6 }}
@@ -214,7 +278,13 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
                 <InputNumber controls={false} style={{ width: '100%', fontSize: 12, height: 26 }} value={bmi ?? undefined} disabled />
               </Form.Item>
             </Col>
+            <Col flex="0 0 0px">
+              <Divider type="vertical" style={{ height: 40, margin: '0 2px' }} />
+            </Col>
             <Col flex="0 0 50px">
+              <Text type="secondary" style={{ fontSize: 10, display: 'block', lineHeight: '14px' }}>
+                POINT OF CARE
+              </Text>
               <Form.Item name="glucose" label="Glucose" style={{ marginBottom: 0 }}>
                 <InputNumber controls={false} style={{ width: '100%', fontSize: 12, height: 26 }} step={0.1} />
               </Form.Item>
@@ -315,7 +385,7 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
             size="small"
             title={
               <Space>
-                <WarningOutlined /> Point-of-Care / Others
+                <WarningOutlined /> Point of Care
               </Space>
             }
             style={{ marginBottom: 8 }}
@@ -375,7 +445,12 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
         <RichTextEditor content={notesHtml} onChange={setNotesHtml} compact={compact} />
       </Card>
 
-      <Button type="primary" loading={saveNote.isPending} onClick={handleSave} style={{ marginTop: compact ? 8 : 16 }}>
+      <Button
+        type="primary"
+        loading={updateNote.isPending || createNote.isPending}
+        onClick={handleSave}
+        style={{ marginTop: compact ? 8 : 16 }}
+      >
         Save Clinical Note
       </Button>
     </Form>

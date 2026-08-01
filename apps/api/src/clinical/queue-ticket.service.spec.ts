@@ -9,6 +9,7 @@ function createService() {
   const prisma = {
     queueTicket: { count: jest.fn(), create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     room: { findUnique: jest.fn() },
+    visit: { update: jest.fn() },
   } as unknown as TenantScopedPrismaClient;
   const visits = { create: jest.fn(), checkOut: jest.fn() } as unknown as VisitService;
   return { service: new QueueTicketService(prisma, visits), prisma, visits };
@@ -85,25 +86,65 @@ describe('QueueTicketService', () => {
 
   it('call records the room and calledAt', async () => {
     const { service, prisma } = createService();
-    (prisma.queueTicket.findUnique as jest.Mock).mockResolvedValue({ id: 't1', status: QueueTicketStatus.WAITING });
+    (prisma.queueTicket.findUnique as jest.Mock).mockResolvedValue({
+      id: 't1',
+      visitId: 'visit-1',
+      status: QueueTicketStatus.WAITING,
+      visit: { staffId: 's-original' },
+    });
     (prisma.room.findUnique as jest.Mock).mockResolvedValue({ id: 'room-1', active: true });
     (prisma.queueTicket.update as jest.Mock).mockResolvedValue({ id: 't1' });
 
     await service.call('t1', 'room-1');
 
+    expect(prisma.visit.update).not.toHaveBeenCalled();
     expect(prisma.queueTicket.update).toHaveBeenCalledWith({
       where: { id: 't1' },
       data: { calledAt: expect.any(Date), roomId: 'room-1' },
-      include: { room: true },
+      include: { room: true, visit: { include: { patient: true, staff: true } } },
     });
   });
 
   it('call rejects an inactive room', async () => {
     const { service, prisma } = createService();
-    (prisma.queueTicket.findUnique as jest.Mock).mockResolvedValue({ id: 't1', status: QueueTicketStatus.WAITING });
+    (prisma.queueTicket.findUnique as jest.Mock).mockResolvedValue({
+      id: 't1',
+      status: QueueTicketStatus.WAITING,
+      visit: { staffId: 's-original' },
+    });
     (prisma.room.findUnique as jest.Mock).mockResolvedValue({ id: 'room-1', active: false });
 
     await expect(service.call('t1', 'room-1')).rejects.toThrow(BadRequestException);
+  });
+
+  it('call reassigns the visit staff (attending doctor) when staffId differs', async () => {
+    const { service, prisma } = createService();
+    (prisma.queueTicket.findUnique as jest.Mock).mockResolvedValue({
+      id: 't1',
+      visitId: 'visit-1',
+      status: QueueTicketStatus.WAITING,
+      visit: { staffId: 's-original' },
+    });
+    (prisma.queueTicket.update as jest.Mock).mockResolvedValue({ id: 't1' });
+
+    await service.call('t1', undefined, 's-new');
+
+    expect(prisma.visit.update).toHaveBeenCalledWith({ where: { id: 'visit-1' }, data: { staffId: 's-new' } });
+  });
+
+  it('call does not touch the visit staff when the same doctor is passed', async () => {
+    const { service, prisma } = createService();
+    (prisma.queueTicket.findUnique as jest.Mock).mockResolvedValue({
+      id: 't1',
+      visitId: 'visit-1',
+      status: QueueTicketStatus.WAITING,
+      visit: { staffId: 's-original' },
+    });
+    (prisma.queueTicket.update as jest.Mock).mockResolvedValue({ id: 't1' });
+
+    await service.call('t1', undefined, 's-original');
+
+    expect(prisma.visit.update).not.toHaveBeenCalled();
   });
 
   it('findById throws NotFoundException when the ticket does not exist', async () => {

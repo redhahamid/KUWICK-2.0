@@ -49,7 +49,7 @@ export function useAddToQueue() {
 function useQueueTicketAction(action: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input?: { cancelReason?: string; roomId?: string } }) =>
+    mutationFn: ({ id, input }: { id: string; input?: { cancelReason?: string; roomId?: string; staffId?: string } }) =>
       apiClient.patch<QueueTicket>(`/queue-tickets/${id}/${action}`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['queue-tickets'] }),
   });

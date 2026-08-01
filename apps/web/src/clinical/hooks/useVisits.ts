@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../core/api-client';
-import { Visit } from '../types';
+import { CreateVisitDto, Visit } from '../types';
 
 export function usePatientVisits(patientId?: string) {
   return useQuery({
@@ -15,5 +15,15 @@ export function useVisit(id?: string) {
     queryKey: ['visits', id],
     queryFn: () => apiClient.get<Visit>(`/visits/${id}`),
     enabled: Boolean(id),
+  });
+}
+
+// D-044 — Patient Dashboard's "New Visit" entry point.
+export function useCreateVisit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: CreateVisitDto) => apiClient.post<Visit>('/visits', dto),
+    onSuccess: (_, { patientId }) =>
+      queryClient.invalidateQueries({ queryKey: ['visits', 'patient', patientId] }),
   });
 }

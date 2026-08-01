@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   Avatar,
   Badge,
@@ -15,11 +15,12 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { AppstoreOutlined, EditOutlined, UnorderedListOutlined, UserOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, EditOutlined, PlusOutlined, UnorderedListOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { usePatient } from '../core/hooks/usePatients';
 import { usePatientVisits } from './hooks/useVisits';
 import { EditPatientDrawer } from './EditPatientDrawer';
+import { NewVisitDrawer } from './NewVisitDrawer';
 import { ClinicalNotesTab } from './ClinicalNotesTab';
 import { DiagnosisTab } from './DiagnosisTab';
 import { OrdersServicesTab } from './OrdersServicesTab';
@@ -52,15 +53,27 @@ const RECORD_TABS = [
 
 export function PatientDashboardPage() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const { data: patient, isLoading } = usePatient(id);
   const { data: visits } = usePatientVisits(id);
   const [expandProfile, setExpandProfile] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [newVisitOpen, setNewVisitOpen] = useState(false);
   const [selectedVisitId, setSelectedVisitId] = useState<string>();
   const [activeRecordTab, setActiveRecordTab] = useState('notes');
   const layout = useRecordViewLayoutStore((state) => state.layout);
   const setLayout = useRecordViewLayoutStore((state) => state.setLayout);
   const isDesktop = useIsDesktop();
+
+  // D-044 — arriving from Queue's "open visit record" link/icon jumps
+  // straight to that visit instead of always defaulting to the most recent.
+  useEffect(() => {
+    const requestedVisitId = searchParams.get('visitId');
+    if (requestedVisitId && visits?.some((visit) => visit.id === requestedVisitId)) {
+      setSelectedVisitId(requestedVisitId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visits, searchParams.get('visitId')]);
 
   const selectedVisit: Visit | undefined =
     visits?.find((visit) => visit.id === selectedVisitId) ?? visits?.[0];
@@ -102,6 +115,9 @@ export function PatientDashboardPage() {
                     {patient.name}
                   </Title>
                   <Button size="small" icon={<EditOutlined />} onClick={() => setEditOpen(true)} />
+                  <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => setNewVisitOpen(true)}>
+                    New Visit
+                  </Button>
                 </Space>
                 <div>
                   <Tag>ID {patient.id.slice(0, 8)}</Tag>
@@ -347,6 +363,7 @@ export function PatientDashboardPage() {
                 onSelectVisit={setSelectedVisitId}
                 expanded={expandProfile}
                 onToggleExpand={() => setExpandProfile((prev) => !prev)}
+                onNewVisit={() => setNewVisitOpen(true)}
               />
             </Col>
           </>
@@ -354,6 +371,12 @@ export function PatientDashboardPage() {
       </Row>
 
       <EditPatientDrawer patient={patient} open={editOpen} onClose={() => setEditOpen(false)} />
+      <NewVisitDrawer
+        patient={patient}
+        open={newVisitOpen}
+        onClose={() => setNewVisitOpen(false)}
+        onCreated={(visitId) => setSelectedVisitId(visitId)}
+      />
     </div>
   );
 }

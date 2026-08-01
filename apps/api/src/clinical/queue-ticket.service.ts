@@ -95,19 +95,24 @@ export class QueueTicketService {
   // Announces/highlights the ticket on the monitor display — no status
   // change (distinct from "Arrived", D-024 docs/DECISIONS.md). D-038: also
   // records which room/station the patient is being called to, so the
-  // monitor can pair "W001" with "Consultation 1".
-  async call(id: string, roomId?: string) {
-    await this.findById(id);
+  // monitor can pair "W001" with "Consultation 1". D-044: staffId lets the
+  // call reassign the visit's attending doctor — front-desk often adds a
+  // walk-in before knowing which doctor will actually see them.
+  async call(id: string, roomId?: string, staffId?: string) {
+    const ticket = await this.findById(id);
     if (roomId) {
       const room = await this.prisma.room.findUnique({ where: { id: roomId } });
       if (!room || !room.active) {
         throw new BadRequestException('Unknown or inactive room');
       }
     }
+    if (staffId && staffId !== ticket.visit.staffId) {
+      await this.prisma.visit.update({ where: { id: ticket.visitId }, data: { staffId } });
+    }
     return this.prisma.queueTicket.update({
       where: { id },
       data: { calledAt: new Date(), roomId: roomId ?? null },
-      include: { room: true },
+      include: { room: true, visit: { include: { patient: true, staff: true } } },
     });
   }
 

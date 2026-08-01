@@ -1,18 +1,23 @@
-import { Body, Controller, Get, Param, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { ClinicalNoteService } from './clinical-note.service';
 import { UpsertClinicalNoteDto } from './dto/upsert-clinical-note.dto';
 
-@Controller('visits/:visitId/clinical-note')
+@Controller('visits/:visitId/clinical-notes')
 export class ClinicalNoteController {
   constructor(private readonly clinicalNotes: ClinicalNoteService) {}
 
   @Get()
-  find(@Param('visitId') visitId: string) {
-    return this.clinicalNotes.findByVisitId(visitId);
+  list(@Param('visitId') visitId: string) {
+    return this.clinicalNotes.listByVisitId(visitId);
   }
 
-  @Put()
-  upsert(@Param('visitId') visitId: string, @Body() dto: UpsertClinicalNoteDto) {
-    return this.clinicalNotes.upsert(visitId, dto);
+  @Post()
+  create(@Param('visitId') visitId: string, @Body() dto: UpsertClinicalNoteDto) {
+    return this.clinicalNotes.create(visitId, dto);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() dto: UpsertClinicalNoteDto) {
+    return this.clinicalNotes.update(id, dto);
   }
 }

@@ -35,6 +35,8 @@ import { DocumentTemplateService } from './document-template.service';
 import { QueueDisplayConfigService } from './queue-display-config.service';
 import { PublicQueueController } from './public-queue.controller';
 import { PublicQueueService } from './public-queue.service';
+import { VisitAttachmentController } from './visit-attachment.controller';
+import { VisitAttachmentService } from './visit-attachment.service';
 
 // Clinical Operations, Phase 1a. Owns ServiceCatalog, Visit, QueueTicket,
 // ClinicalNote, Diagnosis, OrderService, Prescription, Document, Invoice
@@ -61,6 +63,7 @@ import { PublicQueueService } from './public-queue.service';
     RoomController,
     PublicQueueController,
     DocumentTemplateController,
+    VisitAttachmentController,
   ],
   providers: [
     ServiceCatalogService,
@@ -80,6 +83,7 @@ import { PublicQueueService } from './public-queue.service';
     QueueDisplayConfigService,
     PublicQueueService,
     DocumentTemplateService,
+    VisitAttachmentService,
   ],
   exports: [
     ServiceCatalogService,

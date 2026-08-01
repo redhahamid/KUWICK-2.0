@@ -89,6 +89,7 @@ model Tenant {
   rooms                       Room[]
   queueDisplayConfigs         QueueDisplayConfig[]
   customDocumentTemplates     CustomDocumentTemplate[]
+  visitAttachments            VisitAttachment[]
 
   @@map("tenants")
 }
@@ -381,6 +382,7 @@ model Staff {
   orderServices               OrderService[]
   prescriptions               Prescription[]
   attachments                 Attachment[]
+  visitAttachments            VisitAttachment[]
   documentsIssued             Document[]                   @relation("DocumentIssuedBy")
   documentsSigned             Document[]                   @relation("DocumentSignedBy")
   invoices                    Invoice[]
@@ -1128,18 +1130,19 @@ model Visit {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  clinic        Clinic         @relation(fields: [clinicId], references: [id])
-  patient       Patient        @relation(fields: [patientId], references: [id])
-  staff         Staff          @relation(fields: [staffId], references: [id])
-  panelClinic   PanelClinic?   @relation(fields: [panelClinicId], references: [id])
+  tenant        Tenant            @relation(fields: [tenantId], references: [id])
+  clinic        Clinic            @relation(fields: [clinicId], references: [id])
+  patient       Patient           @relation(fields: [patientId], references: [id])
+  staff         Staff             @relation(fields: [staffId], references: [id])
+  panelClinic   PanelClinic?      @relation(fields: [panelClinicId], references: [id])
   queueTicket   QueueTicket?
-  clinicalNote  ClinicalNote?
+  clinicalNotes ClinicalNote[]
   diagnoses     Diagnosis[]
   orderServices OrderService[]
   prescriptions Prescription[]
   documents     Document[]
   invoices      Invoice[]
+  attachments   VisitAttachment[]
 
   @@unique([tenantId, visitNumber])
   @@index([tenantId, clinicId])
@@ -1255,17 +1258,19 @@ enum NoteLanguage {
   MS
 }
 
-// Clinical Operations, Phase 2a. One per Visit — matches the audited
-// kuwick.com Clinical Notes tab (Vital Signs, Anthropometry, Point-of-Care,
-// Notes with a language toggle). Filled in progressively during a
-// consultation, so every clinical field is optional; created lazily on
-// first save rather than alongside the Visit (docs/DECISIONS.md). BMI is
-// intentionally not a stored column — it's derived from weight/height at
-// read time so it can't go stale if either is edited later.
+// Clinical Operations, Phase 2a; extended D-044 to many-per-visit. Matches
+// the audited kuwick.com Clinical Notes tab (Vital Signs, Anthropometry,
+// Point of Care, Notes with a language toggle). Filled in progressively
+// during a consultation, so every clinical field is optional. A visit can
+// carry several of these (e.g. triage vitals, then a reassessment note
+// after a nebuliser) — visitId is a plain FK, not unique, ordered by
+// createdAt for display. BMI is intentionally not a stored column — it's
+// derived from weight/height at read time so it can't go stale if either
+// is edited later.
 model ClinicalNote {
   id                String       @id @default(uuid())
   tenantId          String       @map("tenant_id")
-  visitId           String       @unique @map("visit_id")
+  visitId           String       @map("visit_id")
   bpSystolic        Int?         @map("bp_systolic")
   bpDiastolic       Int?         @map("bp_diastolic")
   pulse             Int?
@@ -1286,7 +1291,31 @@ model ClinicalNote {
   visit  Visit  @relation(fields: [visitId], references: [id])
 
   @@index([tenantId])
+  @@index([tenantId, visitId])
   @@map("clinical_notes")
+}
+
+// D-044 — free-standing visit-level uploads (photos, scanned results, PDFs)
+// shown alongside Clinical Notes/Vitals, distinct from Attachment (which is
+// scoped to a single OrderService/procedure result). Same local-disk
+// storage convention as Attachment (core/file-storage.ts).
+model VisitAttachment {
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  visitId           String   @map("visit_id")
+  fileName          String   @map("file_name")
+  filePath          String   @map("file_path")
+  mimeType          String   @map("mime_type")
+  fileSize          Int      @map("file_size")
+  uploadedByStaffId String?  @map("uploaded_by_staff_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id])
+  visit      Visit  @relation(fields: [visitId], references: [id])
+  uploadedBy Staff? @relation(fields: [uploadedByStaffId], references: [id])
+
+  @@index([tenantId, visitId])
+  @@map("visit_attachments")
 }
 
 // Clinical Operations, Phase 2b. Per-tenant catalog matching the audited

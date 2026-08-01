@@ -24,7 +24,7 @@ import { printDrugLabel } from './printTextDocument';
 import { useItems } from '../inventory/hooks/useItems';
 import { useItemAgeDosages } from '../inventory/hooks/useItemAgeDosages';
 import { useVisit } from './hooks/useVisits';
-import { useClinicalNote } from './hooks/useClinicalNote';
+import { useLatestClinicalNote } from './hooks/useClinicalNote';
 import {
   useCancelPrescription,
   useCopyPrescriptions,
@@ -55,7 +55,7 @@ interface MedicationsTabProps {
 // (which doesn't have this finished), built with explicit owner approval.
 export function MedicationsTab({ visitId }: MedicationsTabProps) {
   const { data: visit } = useVisit(visitId);
-  const { data: note } = useClinicalNote(visitId);
+  const { data: note } = useLatestClinicalNote(visitId);
   const { data: clinics } = useClinics();
   const { data: items } = useItems();
   const { data: prescriptions, isLoading } = usePrescriptions(visitId);

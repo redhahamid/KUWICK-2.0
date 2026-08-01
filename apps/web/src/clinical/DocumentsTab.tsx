@@ -3,7 +3,7 @@ import { Button, Card, DatePicker, Empty, Input, List, Popconfirm, Select, Space
 import { CheckCircleOutlined, DeleteOutlined, FileTextOutlined, PrinterOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useCreateDocument, useDeleteDocument, useDocuments, useSignDocument } from './hooks/useDocuments';
-import { useClinicalNote } from './hooks/useClinicalNote';
+import { useLatestClinicalNote } from './hooks/useClinicalNote';
 import { useDiagnoses } from './hooks/useDiagnoses';
 import { useDocumentTemplates } from './hooks/useDocumentTemplates';
 import { useStaff } from '../hr/hooks/useStaff';
@@ -63,7 +63,7 @@ export function DocumentsTab({ visit, patientName, patientIdentifier }: Document
   const [referredTo, setReferredTo] = useState('');
 
   const { data: documents, isLoading } = useDocuments(visit.id);
-  const { data: clinicalNote } = useClinicalNote(visit.id);
+  const { data: clinicalNote } = useLatestClinicalNote(visit.id);
   const { data: diagnoses } = useDiagnoses(visit.id);
   const { data: staff } = useStaff();
   const { data: clinics } = useClinics();

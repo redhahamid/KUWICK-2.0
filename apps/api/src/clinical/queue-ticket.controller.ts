@@ -46,7 +46,7 @@ export class QueueTicketController {
 
   @Patch(':id/call')
   call(@Param('id') id: string, @Body() dto: CallQueueTicketDto) {
-    return this.queueTickets.call(id, dto.roomId);
+    return this.queueTickets.call(id, dto.roomId, dto.staffId);
   }
 
   @Patch(':id/arrived')

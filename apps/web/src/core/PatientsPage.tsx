@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Button, DatePicker, Drawer, Form, Input, message, Select, Space, Table, Typography } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { Button, DatePicker, Drawer, Form, Input, message, Popconfirm, Select, Space, Table, Typography } from 'antd';
+import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { usePatients, useCreatePatient } from './hooks/usePatients';
+import { usePatients, useCreatePatient, useDeletePatient, usePatientSearch } from './hooks/usePatients';
 import { CreatePatientDto, Patient } from './types';
 import { ApiError } from './api-client';
 import { parseNric } from './nric';
@@ -16,8 +16,12 @@ interface PatientFormValues extends Omit<CreatePatientDto, 'dob'> {
 }
 
 export function PatientsPage() {
-  const { data: patients, isLoading } = usePatients();
+  const [search, setSearch] = useState('');
+  const { data: allPatients, isLoading } = usePatients();
+  const { data: searchResults, isFetching: isSearching } = usePatientSearch(search);
+  const patients = search ? searchResults : allPatients;
   const createPatient = useCreatePatient();
+  const deletePatient = useDeletePatient();
   const [open, setOpen] = useState(false);
   const [queuingPatient, setQueuingPatient] = useState<Patient | null>(null);
   const [form] = Form.useForm<PatientFormValues>();
@@ -62,19 +66,37 @@ export function PatientsPage() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    try {
+      await deletePatient.mutateAsync(id);
+      message.success('Patient deleted');
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Failed to delete patient');
+    }
+  };
+
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
+      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }} wrap>
         <Title level={4} style={{ margin: 0 }}>
           Patients
         </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-          Add Patient
-        </Button>
+        <Space>
+          <Input.Search
+            allowClear
+            placeholder="Search by name, NRIC, or phone"
+            style={{ width: 280 }}
+            loading={isSearching}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+            Add Patient
+          </Button>
+        </Space>
       </Space>
       <Table
         rowKey="id"
-        loading={isLoading}
+        loading={isLoading || isSearching}
         dataSource={patients}
         columns={[
           {
@@ -89,9 +111,18 @@ export function PatientsPage() {
           {
             title: 'Actions',
             render: (_, record: Patient) => (
-              <Button size="small" onClick={() => setQueuingPatient(record)}>
-                Add to Daily Queue
-              </Button>
+              <Space>
+                <Button size="small" onClick={() => setQueuingPatient(record)}>
+                  Add to Daily Queue
+                </Button>
+                <Popconfirm
+                  title="Delete this patient?"
+                  description="This removes them from the active list; existing visits and records are kept."
+                  onConfirm={() => handleDelete(record.id)}
+                >
+                  <Button size="small" danger icon={<DeleteOutlined />} />
+                </Popconfirm>
+              </Space>
             ),
           },
         ]}

@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Alert, Button, Drawer, Form, Input, Radio, Select, message } from 'antd';
+import { Alert, Button, Drawer, Form, Input, InputNumber, Radio, Select, Space, message } from 'antd';
+import { EditOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useClinics } from '../core/hooks/useClinics';
 import { useStaff } from '../hr/hooks/useStaff';
 import { useAddToQueue } from './hooks/useQueueTickets';
-import { usePanelClinics } from './hooks/usePanelClinics';
+import { usePanelClinics, useUpdatePanelClinic } from './hooks/usePanelClinics';
 import { Patient } from '../core/types';
 import { AddToQueueDto, QueueType } from './types';
 import { ApiError } from '../core/api-client';
@@ -38,12 +39,34 @@ export function AddToQueueDrawer({ patient, onClose }: AddToQueueDrawerProps) {
   const { data: allPanels } = usePanelClinics();
   const panels = allPanels?.filter((panel) => panel.active);
   const addToQueue = useAddToQueue();
+  const updatePanelClinic = useUpdatePanelClinic();
   const [form] = Form.useForm<Omit<AddToQueueDto, 'patientId' | 'billingType'>>();
   const [visitKind, setVisitKind] = useState<VisitKind>('cash');
   const [selectedPanelId, setSelectedPanelId] = useState<string>();
+  const [editingLimit, setEditingLimit] = useState(false);
+  const [limitDraft, setLimitDraft] = useState<number | null>(null);
   const navigate = useNavigate();
 
   const selectedPanel = panels?.find((panel) => panel.id === selectedPanelId);
+
+  // D-044 — panel limits are renegotiated often ("can change from time to
+  // time"); staff shouldn't have to leave the queue-add flow and hunt down
+  // Panel Clinics just to bump a number.
+  const startEditLimit = () => {
+    setLimitDraft(selectedPanel?.limitAmount ? Number(selectedPanel.limitAmount) : null);
+    setEditingLimit(true);
+  };
+
+  const saveLimit = async () => {
+    if (!selectedPanelId) return;
+    try {
+      await updatePanelClinic.mutateAsync({ id: selectedPanelId, dto: { limitAmount: limitDraft ?? undefined } });
+      message.success('Panel limit updated');
+      setEditingLimit(false);
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Failed to update panel limit');
+    }
+  };
 
   const handleSubmit = async (values: Omit<AddToQueueDto, 'patientId' | 'billingType'>) => {
     if (!patient) return;
@@ -101,17 +124,40 @@ export function AddToQueueDrawer({ patient, onClose }: AddToQueueDrawerProps) {
               onChange={setSelectedPanelId}
               options={panels?.map((panel) => ({ value: panel.id, label: panel.name }))}
             />
-            {selectedPanel && (
+            {selectedPanel && !editingLimit && (
               <Alert
                 style={{ marginTop: 8 }}
                 type="info"
                 showIcon
                 message={
-                  selectedPanel.limitAmount
-                    ? `Panel limit: RM ${selectedPanel.limitAmount} per visit`
-                    : 'No limit configured for this panel'
+                  <Space>
+                    {selectedPanel.limitAmount
+                      ? `Panel limit: RM ${selectedPanel.limitAmount} per visit`
+                      : 'No limit configured for this panel'}
+                    <Button type="link" size="small" icon={<EditOutlined />} onClick={startEditLimit}>
+                      Edit
+                    </Button>
+                  </Space>
                 }
               />
+            )}
+            {selectedPanel && editingLimit && (
+              <Space style={{ marginTop: 8 }}>
+                <InputNumber
+                  autoFocus
+                  min={0}
+                  prefix="RM"
+                  placeholder="No limit"
+                  value={limitDraft}
+                  onChange={setLimitDraft}
+                />
+                <Button type="primary" size="small" loading={updatePanelClinic.isPending} onClick={saveLimit}>
+                  Save
+                </Button>
+                <Button size="small" onClick={() => setEditingLimit(false)}>
+                  Cancel
+                </Button>
+              </Space>
             )}
           </Form.Item>
         )}

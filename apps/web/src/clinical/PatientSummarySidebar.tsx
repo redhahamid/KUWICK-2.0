@@ -1,4 +1,5 @@
 import { Button, Card, Descriptions, Space, Tag, Typography } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Patient } from '../core/types';
 import { Visit } from './types';
@@ -12,6 +13,7 @@ interface PatientSummarySidebarProps {
   onSelectVisit: (visitId: string) => void;
   expanded: boolean;
   onToggleExpand: () => void;
+  onNewVisit: () => void;
 }
 
 // Right-hand sidebar for Canvas layout, replacing the separate "Visits
@@ -26,6 +28,7 @@ export function PatientSummarySidebar({
   onSelectVisit,
   expanded,
   onToggleExpand,
+  onNewVisit,
 }: PatientSummarySidebarProps) {
   const age = patient.dob ? dayjs().diff(dayjs(patient.dob), 'year') : null;
   const lastVisit = visits?.[0];
@@ -73,7 +76,11 @@ export function PatientSummarySidebar({
         )}
       </Card>
 
-      <Card size="small" title={<Space>Recent Visits <Tag>{visits?.length ?? 0}</Tag></Space>}>
+      <Card
+        size="small"
+        title={<Space>Recent Visits <Tag>{visits?.length ?? 0}</Tag></Space>}
+        extra={<Button size="small" icon={<PlusOutlined />} onClick={onNewVisit} />}
+      >
         <Space direction="vertical" size={8} style={{ width: '100%' }}>
           {visits && visits.length > 0 ? (
             visits.map((visit) => (

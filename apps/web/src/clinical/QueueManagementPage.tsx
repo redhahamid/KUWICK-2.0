@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { Button, Card, Empty, List, Modal, Popconfirm, Select, Space, Table, Tabs, Tag, Typography, message } from 'antd';
-import { PrinterOutlined, SoundOutlined } from '@ant-design/icons';
+import { FileTextOutlined, PlusOutlined, PrinterOutlined, SoundOutlined } from '@ant-design/icons';
+import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { useClinics } from '../core/hooks/useClinics';
+import { useStaff } from '../hr/hooks/useStaff';
+import { useAuthStore } from '../core/auth-store';
 import {
   useArrivedTicket,
   useCallTicket,
@@ -15,8 +18,29 @@ import {
 import { QueueTicket, QueueType } from './types';
 import { ApiError } from '../core/api-client';
 import { printQueueTicket } from './printQueueTicket';
+import { AddQueuePatientDrawer } from './AddQueuePatientDrawer';
 
 const { Title, Text } = Typography;
+
+const DOCTOR_ROLES = new Set(['DOCTOR_RESIDENT', 'DOCTOR_LOCUM']);
+
+// D-044 — the patient's name is now a link into their medical record, and
+// a small hover icon opens the same record directly (both routes into the
+// consultation record staff previously had no way to reach from Queue).
+function PatientCell({ ticket }: { ticket: QueueTicket }) {
+  return (
+    <Space size={6}>
+      <Link to={`/patients/${ticket.visit.patientId}?visitId=${ticket.visitId}`}>{ticket.visit.patient?.name}</Link>
+      <Link
+        to={`/patients/${ticket.visit.patientId}?visitId=${ticket.visitId}`}
+        title="Open visit record"
+        style={{ opacity: 0.5 }}
+      >
+        <FileTextOutlined />
+      </Link>
+    </Space>
+  );
+}
 
 const STATUS_COLOR: Record<string, string> = {
   WAITING: 'gold',
@@ -86,7 +110,9 @@ function detailColumns(showActions: {
       title: 'Patient',
       render: (_: unknown, record: QueueTicket) => (
         <>
-          <div>{record.visit.patient?.name}</div>
+          <div>
+            <PatientCell ticket={record} />
+          </div>
           <Text type="secondary">{record.visit.patient?.identifierValue}</Text>
         </>
       ),
@@ -138,12 +164,18 @@ function detailColumns(showActions: {
 export function QueueManagementPage() {
   const [clinicId, setClinicId] = useState<string>();
   const { data: clinics } = useClinics();
+  const { data: staff } = useStaff();
+  const currentStaff = useAuthStore((state) => state.staff);
   const { data: allTickets, isLoading } = useQueueTickets({ clinicId });
+  const [addPatientOpen, setAddPatientOpen] = useState(false);
 
   // D-038 — calling a patient asks which room/station they're headed to,
-  // so the monitor can pair "W001" with "Consultation 1".
+  // so the monitor can pair "W001" with "Consultation 1". D-044: also lets
+  // staff (re)assign the attending doctor at call time, auto-selecting the
+  // logged-in staff member if they're a doctor.
   const [callTarget, setCallTarget] = useState<QueueTicket | null>(null);
   const [callRoomId, setCallRoomId] = useState<string>();
+  const [callStaffId, setCallStaffId] = useState<string>();
   // Rooms come from the *ticket's* clinic, not the page filter — the filter
   // is often unset when the clinic only has one location.
   const { data: rooms } = useRooms(callTarget?.clinicId ?? clinicId, true);
@@ -161,11 +193,12 @@ export function QueueManagementPage() {
   const confirmCall = async () => {
     if (!callTarget) return;
     try {
-      await callTicket.mutateAsync({ id: callTarget.id, input: { roomId: callRoomId } });
+      await callTicket.mutateAsync({ id: callTarget.id, input: { roomId: callRoomId, staffId: callStaffId } });
       const roomName = rooms?.find((room) => room.id === callRoomId)?.name;
       message.success(`Called ${ticketNumberLabel(callTarget)}${roomName ? ` to ${roomName}` : ''}`);
       setCallTarget(null);
       setCallRoomId(undefined);
+      setCallStaffId(undefined);
     } catch (error) {
       reportFailure(error, 'Failed to call');
     }
@@ -176,6 +209,8 @@ export function QueueManagementPage() {
       const ticket = allTickets?.find((t) => t.id === id) ?? null;
       setCallTarget(ticket);
       setCallRoomId(ticket?.roomId ?? undefined);
+      const isDoctor = currentStaff && DOCTOR_ROLES.has(currentStaff.role);
+      setCallStaffId(isDoctor ? currentStaff!.id : ticket?.visit.staff?.id);
     },
     onArrived: (id: string) =>
       arrivedTicket.mutateAsync({ id }).catch((e) => reportFailure(e, 'Failed to mark arrived')),
@@ -208,6 +243,9 @@ export function QueueManagementPage() {
             onChange={setClinicId}
             options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
           />
+          <Button icon={<PlusOutlined />} onClick={() => setAddPatientOpen(true)}>
+            Add to Queue
+          </Button>
           <Button
             type="primary"
             disabled={!monitorUrl}
@@ -218,6 +256,8 @@ export function QueueManagementPage() {
         </Space>
       </Space>
 
+      <AddQueuePatientDrawer open={addPatientOpen} onClose={() => setAddPatientOpen(false)} />
+
       <Modal
         title={callTarget ? `Call ${ticketNumberLabel(callTarget)}` : 'Call'}
         open={!!callTarget}
@@ -227,19 +267,40 @@ export function QueueManagementPage() {
         okButtonProps={{ icon: <SoundOutlined /> }}
         confirmLoading={callTicket.isPending}
       >
-        <Select
-          placeholder="Call to which room/station? (optional)"
-          style={{ width: '100%' }}
-          allowClear
-          value={callRoomId}
-          onChange={setCallRoomId}
-          options={rooms?.map((room) => ({ value: room.id, label: room.name }))}
-        />
-        {(rooms?.length ?? 0) === 0 && (
-          <Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
-            No rooms set up yet — add them under Management &gt; Operation &gt; Rooms.
-          </Text>
-        )}
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Room / Station
+            </Text>
+            <Select
+              placeholder="Call to which room/station? (optional)"
+              style={{ width: '100%' }}
+              allowClear
+              value={callRoomId}
+              onChange={setCallRoomId}
+              options={rooms?.map((room) => ({ value: room.id, label: room.name }))}
+            />
+            {(rooms?.length ?? 0) === 0 && (
+              <Text type="secondary" style={{ display: 'block', marginTop: 4, fontSize: 12 }}>
+                No rooms set up yet — add them under Management &gt; Operation &gt; Rooms.
+              </Text>
+            )}
+          </div>
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Attending Doctor
+            </Text>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="Assign doctor"
+              style={{ width: '100%' }}
+              value={callStaffId}
+              onChange={setCallStaffId}
+              options={staff?.map((member) => ({ value: member.id, label: member.fullName }))}
+            />
+          </div>
+        </Space>
       </Modal>
 
       <Tabs
@@ -253,9 +314,8 @@ export function QueueManagementPage() {
                   {current ? (
                     <Space direction="vertical">
                       <Space>
-                        <Text strong>
-                          {ticketNumberLabel(current)} — {current.visit.patient?.name}
-                        </Text>
+                        <Text strong>{ticketNumberLabel(current)} —</Text>
+                        <PatientCell ticket={current} />
                         <Tag color={QUEUE_TYPE_TAG[current.queueType].color}>
                           {QUEUE_TYPE_TAG[current.queueType].label}
                         </Tag>
@@ -305,9 +365,8 @@ export function QueueManagementPage() {
                         >
                           <Space direction="vertical" size={0}>
                             <Space>
-                              <Text strong>
-                                {ticketNumberLabel(ticket)} — {ticket.visit.patient?.name}
-                              </Text>
+                              <Text strong>{ticketNumberLabel(ticket)} —</Text>
+                              <PatientCell ticket={ticket} />
                               <Tag color={QUEUE_TYPE_TAG[ticket.queueType].color}>
                                 {QUEUE_TYPE_TAG[ticket.queueType].label}
                               </Tag>
@@ -324,9 +383,10 @@ export function QueueManagementPage() {
                       locale={{ emptyText: 'None yet today' }}
                       renderItem={(ticket: QueueTicket) => (
                         <List.Item>
-                          <Text>
-                            {ticketNumberLabel(ticket)} — {ticket.visit.patient?.name}
-                          </Text>
+                          <Space size={6}>
+                            <Text>{ticketNumberLabel(ticket)} —</Text>
+                            <PatientCell ticket={ticket} />
+                          </Space>
                         </List.Item>
                       )}
                     />
@@ -372,7 +432,7 @@ export function QueueManagementPage() {
                   dataSource={dispensary}
                   columns={[
                     { title: 'No.', render: (_: unknown, r: QueueTicket) => ticketNumberLabel(r) },
-                    { title: 'Patient', render: (_: unknown, r: QueueTicket) => r.visit.patient?.name },
+                    { title: 'Patient', render: (_: unknown, r: QueueTicket) => <PatientCell ticket={r} /> },
                     { title: 'Doctor', render: (_: unknown, r: QueueTicket) => r.visit.staff?.fullName },
                     {
                       title: 'Action',
@@ -399,7 +459,7 @@ export function QueueManagementPage() {
                   dataSource={completed}
                   columns={[
                     { title: 'No.', render: (_: unknown, r: QueueTicket) => ticketNumberLabel(r) },
-                    { title: 'Patient', render: (_: unknown, r: QueueTicket) => r.visit.patient?.name },
+                    { title: 'Patient', render: (_: unknown, r: QueueTicket) => <PatientCell ticket={r} /> },
                     { title: 'Doctor', render: (_: unknown, r: QueueTicket) => r.visit.staff?.fullName },
                     {
                       title: 'Status',
