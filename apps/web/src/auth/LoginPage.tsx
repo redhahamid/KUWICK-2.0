@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Alert, Button, Checkbox, Form, Input, message, Typography } from 'antd';
-import { CloudOutlined, LockOutlined, MailOutlined, SafetyCertificateOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { BankOutlined, CloudOutlined, LockOutlined, MailOutlined, SafetyCertificateOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../core/auth-store';
+import { usePlatformAuthStore } from '../core/platform-auth-store';
 import { ApiError } from '../core/api-client';
 
 const { Title, Text, Paragraph } = Typography;
@@ -10,18 +11,28 @@ const { Title, Text, Paragraph } = Typography;
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
 
 interface LoginFormValues {
-  slug: string;
+  slug?: string;
   email: string;
   password: string;
 }
 
-interface LoginResponse {
-  accessToken: string;
-  refreshToken: string;
-  user: { id: string; email: string };
-  staff: { id: string; fullName: string; role: string };
-  tenant: { id: string; name: string; slug: string | null };
-}
+// D-049 — one login for the whole product (matches the owner's current
+// kuwick.com): platform admin and clinic staff share the same form, and the
+// response `kind` decides which workspace opens.
+type LoginResponse =
+  | {
+      kind: 'tenant';
+      accessToken: string;
+      refreshToken: string;
+      user: { id: string; email: string };
+      staff: { id: string; fullName: string; role: string; clinicId?: string | null; clinicName?: string | null };
+      tenant: { id: string; name: string; slug: string | null };
+    }
+  | {
+      kind: 'platform';
+      accessToken: string;
+      admin: { id: string; email: string; fullName: string };
+    };
 
 const FEATURE_BULLETS = [
   { icon: <SafetyCertificateOutlined />, title: 'Secure & Reliable', body: 'Enterprise-grade security to protect your data' },
@@ -42,8 +53,13 @@ const FEATURE_BULLETS = [
 export function LoginPage() {
   const navigate = useNavigate();
   const setSession = useAuthStore((state) => state.setSession);
+  const setPlatformSession = usePlatformAuthStore((state) => state.setSession);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
+  // Hidden by default — only shown when the backend answers 409 ("this
+  // email+password is valid at more than one clinic"), the one case where
+  // the clinic code is genuinely needed to disambiguate.
+  const [needClinicCode, setNeedClinicCode] = useState(false);
 
   const handleSubmit = async (values: LoginFormValues) => {
     setLoading(true);
@@ -52,12 +68,22 @@ export function LoginPage() {
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
+        body: JSON.stringify(needClinicCode ? values : { email: values.email, password: values.password }),
       });
+      if (response.status === 409) {
+        setNeedClinicCode(true);
+        setError('This email is registered at more than one clinic — enter your clinic code to continue.');
+        return;
+      }
       if (!response.ok) {
-        throw new ApiError('Invalid clinic, email, or password', response.status, null);
+        throw new ApiError('Invalid email or password', response.status, null);
       }
       const data = (await response.json()) as LoginResponse;
+      if (data.kind === 'platform') {
+        setPlatformSession({ accessToken: data.accessToken, admin: data.admin });
+        navigate('/platform/dashboard');
+        return;
+      }
       setSession({
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
@@ -152,9 +178,11 @@ export function LoginPage() {
           </Text>
           {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
           <Form layout="vertical" onFinish={handleSubmit} initialValues={{ remember: true }}>
-            <Form.Item name="slug" label="Clinic" rules={[{ required: true, message: 'Enter your clinic code' }]}>
-              <Input placeholder="e.g. smoke-test-clinic" autoComplete="organization" />
-            </Form.Item>
+            {needClinicCode && (
+              <Form.Item name="slug" label="Clinic" rules={[{ required: true, message: 'Enter your clinic code' }]}>
+                <Input prefix={<BankOutlined style={{ color: '#9aa4b2' }} />} placeholder="e.g. smoke-test-clinic" autoComplete="organization" autoFocus />
+              </Form.Item>
+            )}
             <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Enter your email' }]}>
               <Input prefix={<MailOutlined style={{ color: '#9aa4b2' }} />} placeholder="name@clinic.com" autoComplete="username" />
             </Form.Item>

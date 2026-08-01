@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../core/prisma.service';
@@ -56,17 +56,70 @@ export class AuthService {
   // never reveals whether the slug, email, or password was the wrong part,
   // which would let an attacker enumerate valid clinic slugs/emails.
   //
-  // Both DB calls below run inside a transaction that sets a session GUC
-  // first (see migration 20260731280000): the tenants table's RLS policy
-  // normally requires id = app.tenant_id, which is impossible to satisfy
-  // when resolving a tenant *from* its login slug (there is no tenant
-  // context yet — that's the whole point of this lookup). Once the tenant
-  // is known, the user lookup instead sets the ordinary app.tenant_id GUC
-  // that every other tenant-scoped query already relies on.
+  // D-049 — one login form for the whole product, same as the owner's
+  // current kuwick.com: platform admin (system owner) and clinic staff all
+  // sign in at the same place with just email + password, and the response
+  // `kind` tells the frontend which workspace to open. Resolution order:
+  // platform admin first (their email is globally unique), then clinic
+  // staff. The clinic slug is only needed — and only asked for — when the
+  // same email + password validates at more than one clinic, which is
+  // signalled with a 409 rather than folded into "invalid credentials"
+  // (safe to reveal: the caller has already proven they hold the password).
   async login(dto: LoginDto) {
+    const admin = await this.prisma.platformAdmin.findUnique({ where: { email: dto.email } });
+    if (admin && admin.active && (await bcrypt.compare(dto.password, admin.passwordHash))) {
+      await this.prisma.platformAdmin.update({ where: { id: admin.id }, data: { lastLoginAt: new Date() } });
+      const accessToken = this.jwtService.sign({ sub: admin.id, type: 'platform' } satisfies PlatformTokenClaims, {
+        secret: process.env.JWT_ACCESS_SECRET,
+        expiresIn: PLATFORM_TOKEN_TTL,
+      });
+      return {
+        kind: 'platform' as const,
+        accessToken,
+        admin: { id: admin.id, email: admin.email, fullName: admin.fullName },
+      };
+    }
+
+    if (dto.slug) {
+      return this.loginWithSlug(dto.slug, dto.email, dto.password);
+    }
+    return this.loginByEmail(dto.email, dto.password);
+  }
+
+  // Email-only path: one cross-tenant read (the users/staff policies allow
+  // the same bypass GUC the tenants/clinics bootstrap lookups already use —
+  // migration 20260801190000), then the password decides which account wins.
+  private async loginByEmail(email: string, password: string) {
+    const candidates = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.bypass_tenant_scope', 'true', true)`;
+      return tx.user.findMany({
+        where: { email, status: 'active' },
+        include: { staff: { include: { clinic: true } }, tenant: true },
+      });
+    });
+
+    const matches = [];
+    for (const candidate of candidates) {
+      if (candidate.tenant.status !== 'active' || !candidate.staff || !candidate.staff.active) continue;
+      if (await bcrypt.compare(password, candidate.passwordHash)) {
+        matches.push(candidate);
+      }
+    }
+
+    if (matches.length === 0) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    if (matches.length > 1) {
+      throw new ConflictException('This email is registered at more than one clinic — enter your clinic code');
+    }
+    return this.finalizeTenantLogin(matches[0], matches[0].tenant);
+  }
+
+  // Original slug-scoped path (D-034), kept as the disambiguation fallback.
+  private async loginWithSlug(slug: string, email: string, password: string) {
     const tenant = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.bypass_tenant_scope', 'true', true)`;
-      return tx.tenant.findUnique({ where: { slug: dto.slug } });
+      return tx.tenant.findUnique({ where: { slug } });
     });
     if (!tenant || tenant.status !== 'active') {
       throw new UnauthorizedException('Invalid credentials');
@@ -75,7 +128,7 @@ export class AuthService {
     const user = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenant.id}, true)`;
       return tx.user.findUnique({
-        where: { tenantId_email: { tenantId: tenant.id, email: dto.email } },
+        where: { tenantId_email: { tenantId: tenant.id, email } },
         include: { staff: { include: { clinic: true } } },
       });
     });
@@ -83,7 +136,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
+    const passwordValid = await bcrypt.compare(password, user.passwordHash);
     if (!passwordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -92,6 +145,18 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    return this.finalizeTenantLogin(user, tenant);
+  }
+
+  private async finalizeTenantLogin(
+    user: {
+      id: string;
+      email: string;
+      staff: { id: string; fullName: string; role: string; clinicId: string | null; clinic: { name: string } | null } | null;
+    },
+    tenant: { id: string; name: string; slug: string | null },
+  ) {
+    const staff = user.staff!;
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenant.id}, true)`;
       return tx.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
@@ -100,18 +165,19 @@ export class AuthService {
     const tokens = this.issueTenantTokens({
       sub: user.id,
       tenantId: tenant.id,
-      staffId: user.staff.id,
-      role: user.staff.role,
+      staffId: staff.id,
+      role: staff.role,
     });
     return {
+      kind: 'tenant' as const,
       ...tokens,
       user: { id: user.id, email: user.email },
       staff: {
-        id: user.staff.id,
-        fullName: user.staff.fullName,
-        role: user.staff.role,
-        clinicId: user.staff.clinicId,
-        clinicName: user.staff.clinic?.name ?? null,
+        id: staff.id,
+        fullName: staff.fullName,
+        role: staff.role,
+        clinicId: staff.clinicId,
+        clinicName: staff.clinic?.name ?? null,
       },
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
     };

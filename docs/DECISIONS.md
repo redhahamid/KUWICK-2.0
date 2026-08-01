@@ -323,6 +323,12 @@ Owner, asked after D-046 shipped: "any option group chat" beyond the one general
 
 ---
 
+## D-049 — Unified email-only login: one form for platform owner and clinic staff, clinic code only on real ambiguity
+Owner: *"remove the clinic id column? just by username and password will do"* and *"current kuwick used same website link... there we can log in as kuwick (system owner, developer) and clinics (any clinic), username and password"* — i.e. kuwick.com today has a single login for everything. `POST /auth/login` now takes just email + password (`slug` optional) and returns a discriminated `kind: 'platform' | 'tenant'`: platform admins (globally-unique email) are checked first, then clinic staff resolved by a single cross-tenant users read — the `users`/`staff` RLS policies gained the same `app.bypass_tenant_scope` escape hatch already used for `tenants` (login-by-slug, D-036) and `clinics` (public queue monitor), migration `20260801190000`. The password itself disambiguates: among all active accounts with that email, whichever one bcrypt-validates wins. If the same email **and** password validate at two clinics, the API answers 409 and only then does the login form reveal a Clinic field (safe to disclose — the caller has already proven they hold the password; every other failure stays a flat "Invalid credentials"). `LoginPage` routes by `kind` (platform → `/platform/dashboard` via the platform auth store, tenant → `/appointments`); `PlatformLoginPage` (`/platform/login`) and its endpoint still work but are no longer the required entry point. `User.email` stays unique per-tenant (no schema change) — global uniqueness wasn't forced onto existing data; the 409 fallback handles the collision case instead.
+**Reversibility**: High — `slug` is still accepted and takes the original scoped path when provided; the RLS policy change is the established escape-hatch pattern, GUC settable only by trusted backend code.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:

@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../core/prisma.service';
@@ -8,7 +8,7 @@ jest.mock('bcryptjs');
 function createService() {
   const prisma = {
     tenant: { findUnique: jest.fn() },
-    user: { findUnique: jest.fn(), update: jest.fn() },
+    user: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
     platformAdmin: { findUnique: jest.fn(), update: jest.fn() },
     $executeRaw: jest.fn(),
   } as unknown as PrismaService;
@@ -107,6 +107,8 @@ describe('AuthService', () => {
         { sub: 'user-1', tenantId: 'tenant-1', staffId: 'staff-1', role: 'DOCTOR_RESIDENT' },
         { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '15m' },
       );
+      expect(result.kind).toBe('tenant');
+      if (result.kind !== 'tenant') return;
       expect(result.accessToken).toBe('signed-token');
       expect(result.refreshToken).toBe('signed-token');
       expect(result.staff).toEqual({
@@ -116,6 +118,114 @@ describe('AuthService', () => {
         clinicId: 'clinic-1',
         clinicName: 'Main Branch',
       });
+    });
+  });
+
+  // D-049 — unified email-only login: no slug, tenant resolved from the
+  // email (and password) alone; platform admins share the same form.
+  describe('login (email-only, D-049)', () => {
+    const dto = { email: 'doctor@example.com', password: 'correct-password' };
+
+    function tenantUser(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'user-1',
+        email: dto.email,
+        status: 'active',
+        passwordHash: 'hashed',
+        tenant: { id: 'tenant-1', name: 'Smoke Test Clinic', slug: 'smoke-test-clinic', status: 'active' },
+        staff: {
+          id: 'staff-1',
+          active: true,
+          role: 'DOCTOR_RESIDENT',
+          fullName: 'Dr. Amira Rahman',
+          clinicId: 'clinic-1',
+          clinic: { id: 'clinic-1', name: 'Main Branch' },
+        },
+        ...overrides,
+      };
+    }
+
+    it('logs into the single clinic whose password matches, with no slug', async () => {
+      const { service, prisma } = createService();
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([tenantUser()]);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      const result = await service.login(dto);
+
+      expect(result.kind).toBe('tenant');
+      if (result.kind !== 'tenant') return;
+      expect(result.tenant.id).toBe('tenant-1');
+      expect(result.staff.id).toBe('staff-1');
+    });
+
+    it('rejects when the password matches no account', async () => {
+      const { service, prisma } = createService();
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([tenantUser()]);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(service.login(dto)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('skips accounts on suspended tenants and inactive staff', async () => {
+      const { service, prisma } = createService();
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([
+        tenantUser({ id: 'user-suspended', tenant: { id: 'tenant-2', name: 'X', slug: 'x', status: 'suspended' } }),
+        tenantUser({ id: 'user-nostaff', staff: null }),
+        tenantUser(),
+      ]);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      const result = await service.login(dto);
+
+      expect(result.kind).toBe('tenant');
+      if (result.kind !== 'tenant') return;
+      expect(result.user.id).toBe('user-1');
+    });
+
+    it('asks for the clinic code (409) when the same email+password validates at two clinics', async () => {
+      const { service, prisma } = createService();
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([
+        tenantUser(),
+        tenantUser({ id: 'user-2', tenant: { id: 'tenant-2', name: 'Other Clinic', slug: 'other', status: 'active' } }),
+      ]);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      await expect(service.login(dto)).rejects.toThrow(ConflictException);
+    });
+
+    it('signs a platform admin into the platform console from the same form', async () => {
+      const { service, prisma, jwtService } = createService();
+      (prisma.platformAdmin.findUnique as jest.Mock).mockResolvedValue({
+        id: 'admin-1',
+        email: dto.email,
+        fullName: 'Platform Owner',
+        active: true,
+        passwordHash: 'hashed',
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      const result = await service.login(dto);
+
+      expect(result.kind).toBe('platform');
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        { sub: 'admin-1', type: 'platform' },
+        { secret: process.env.JWT_ACCESS_SECRET, expiresIn: '1h' },
+      );
+    });
+
+    it('falls through to clinic login when the email exists as a platform admin but the password is wrong for it', async () => {
+      const { service, prisma } = createService();
+      (prisma.platformAdmin.findUnique as jest.Mock).mockResolvedValue({
+        id: 'admin-1',
+        active: true,
+        passwordHash: 'admin-hash',
+      });
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([tenantUser()]);
+      (bcrypt.compare as jest.Mock).mockImplementation((_pw: string, hash: string) => Promise.resolve(hash !== 'admin-hash'));
+
+      const result = await service.login(dto);
+
+      expect(result.kind).toBe('tenant');
     });
   });
 
