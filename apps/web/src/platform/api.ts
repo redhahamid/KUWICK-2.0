@@ -15,7 +15,7 @@ function extractMessage(body: unknown, fallback: string): string {
 // Platform console's own API client — separate from apiClient on purpose:
 // it reads the platform-admin token (not the clinic-staff one) and has no
 // refresh flow (platform tokens are single 1h sessions; an expired one just
-// sends the owner back to /platform/login).
+// sends the owner back to the unified /login form, D-049).
 export async function platformRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const { accessToken, clearAuth } = usePlatformAuthStore.getState();
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -28,7 +28,7 @@ export async function platformRequest<T>(path: string, init?: RequestInit): Prom
   });
   if (response.status === 401) {
     clearAuth();
-    window.location.href = '/platform/login';
+    window.location.href = '/login';
     throw new ApiError('Session expired', 401, null);
   }
   if (!response.ok) {

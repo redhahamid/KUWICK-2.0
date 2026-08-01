@@ -39,7 +39,9 @@ export function PlatformLayout() {
         label: 'Log Out',
         onClick: () => {
           clearAuth();
-          navigate('/platform/login');
+          // D-049 — one login for everyone: back to the unified form, same
+          // as a clinic staff logout.
+          navigate('/login');
         },
       },
     ],
