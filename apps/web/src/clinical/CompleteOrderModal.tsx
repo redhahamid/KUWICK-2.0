@@ -16,12 +16,15 @@ import {
   Upload,
   message,
 } from 'antd';
-import { DeleteOutlined, DownloadOutlined, PaperClipOutlined, UploadOutlined } from '@ant-design/icons';
+import { CompressOutlined, DeleteOutlined, DownloadOutlined, ExpandOutlined, PaperClipOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { downloadAttachment, useAttachments, useDeleteAttachment, useUploadAttachment } from './hooks/useAttachments';
 import { useFormTemplateForService } from './hooks/useFormTemplates';
+import { useOrderChat, useSendOrderChat } from './hooks/useChat';
+import { ChatPanel } from './ChatPanel';
 import { FormField, OrderService } from './types';
 import { ApiError } from '../core/api-client';
+import { useAuthStore } from '../core/auth-store';
 
 const { Text } = Typography;
 
@@ -136,19 +139,25 @@ interface CompleteOrderModalProps {
 export function CompleteOrderModal({ order, onClose, onComplete, completing }: CompleteOrderModalProps) {
   const [result, setResult] = useState('');
   const [formValues, setFormValues] = useState<Record<string, unknown>>({});
+  const [fullscreen, setFullscreen] = useState(false);
   const orderId = order?.id;
+  const staff = useAuthStore((state) => state.staff);
   const { data: attachments, isLoading: attachmentsLoading } = useAttachments(orderId);
   const { data: template } = useFormTemplateForService(order?.serviceCatalogId);
   const uploadAttachment = useUploadAttachment(orderId ?? '');
   const deleteAttachment = useDeleteAttachment(orderId ?? '');
+  const { data: orderChat, isLoading: orderChatLoading } = useOrderChat(orderId);
+  const sendOrderChat = useSendOrderChat(orderId);
 
   useEffect(() => {
+    setResult(order?.result ?? '');
     setFormValues((order?.formData as Record<string, unknown>) ?? {});
-  }, [order?.id, order?.formData]);
+  }, [order?.id, order?.result, order?.formData]);
 
   const handleClose = () => {
     setResult('');
     setFormValues({});
+    setFullscreen(false);
     onClose();
   };
 
@@ -170,13 +179,26 @@ export function CompleteOrderModal({ order, onClose, onComplete, completing }: C
   };
 
   const canComplete = order?.status === 'IN_PROGRESS';
+  const hasTemplateValues = Object.keys(formValues).length > 0;
 
   return (
     <Modal
-      title={order ? `Complete: ${order.procedureName}` : 'Complete Procedure'}
+      title={
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 32 }}>
+          <span>{order ? `Complete: ${order.procedureName}` : 'Complete Procedure'}</span>
+          <Button
+            type="text"
+            size="small"
+            icon={fullscreen ? <CompressOutlined /> : <ExpandOutlined />}
+            onClick={() => setFullscreen((f) => !f)}
+            title={fullscreen ? 'Exit fullscreen' : 'Expand to fullscreen'}
+          />
+        </div>
+      }
       open={Boolean(order)}
       onCancel={handleClose}
-      width={template ? 600 : undefined}
+      width={fullscreen ? '95vw' : template ? 600 : undefined}
+      style={fullscreen ? { top: 16 } : undefined}
       footer={
         canComplete
           ? [
@@ -195,87 +217,142 @@ export function CompleteOrderModal({ order, onClose, onComplete, completing }: C
       }
       destroyOnHidden
     >
-      {template ? (
-        <Space direction="vertical" style={{ width: '100%' }} size={12}>
-          {template.fields.map((field) => (
-            <div key={field.id}>
-              <Text strong>
-                {field.label}
-                {field.required && <Text type="danger"> *</Text>}
-              </Text>
-              <div style={{ marginTop: 4 }}>
-                <DynamicField
-                  field={field}
-                  value={formValues[field.id]}
-                  onChange={(value) => setFormValues((prev) => ({ ...prev, [field.id]: value }))}
-                  disabled={!canComplete}
-                />
-              </div>
-            </div>
-          ))}
-        </Space>
-      ) : (
-        <>
-          <Text type="secondary">Result</Text>
-          <Input.TextArea
-            style={{ marginTop: 4, marginBottom: 16 }}
-            rows={3}
-            placeholder="Findings, notes, or result text..."
-            value={result}
-            onChange={(e) => setResult(e.target.value)}
-            disabled={!canComplete}
-          />
-        </>
-      )}
-
-      <Text type="secondary" style={{ display: 'block', marginTop: template ? 16 : 0 }}>
-        Attachments
-      </Text>
-      <div style={{ marginTop: 4, marginBottom: 8 }}>
-        <Upload beforeUpload={handleUpload} showUploadList={false} multiple>
-          <Button icon={<UploadOutlined />} loading={uploadAttachment.isPending} size="small">
-            Attach File
-          </Button>
-        </Upload>
-      </div>
-      <List
-        size="small"
-        loading={attachmentsLoading}
-        dataSource={attachments}
-        locale={{ emptyText: 'No files attached' }}
-        renderItem={(attachment) => (
-          <List.Item
-            actions={[
-              <Button
-                key="download"
-                type="text"
-                size="small"
-                icon={<DownloadOutlined />}
-                onClick={() => downloadAttachment(order!.id, attachment)}
-              />,
-              <Popconfirm
-                key="delete"
-                title="Remove this file?"
-                onConfirm={() =>
-                  deleteAttachment
-                    .mutateAsync(attachment.id)
-                    .catch((error) => message.error(error instanceof ApiError ? error.message : 'Failed to remove file'))
-                }
-              >
-                <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-              </Popconfirm>,
-            ]}
-          >
-            <Space>
-              <PaperClipOutlined />
-              <span>{attachment.fileName}</span>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {formatFileSize(attachment.fileSize)}
-              </Text>
+      <div style={{ display: 'flex', gap: 24, flexDirection: fullscreen ? 'row' : 'column' }}>
+        <div style={{ flex: fullscreen ? '1 1 60%' : '1 1 auto', minWidth: 0, maxHeight: fullscreen ? '78vh' : undefined, overflowY: fullscreen ? 'auto' : undefined }}>
+          {/* A form template is looked up by service, not by this order instance — an order
+              completed before the template existed has a free-text `result` but no `formData`.
+              Showing the template's (empty) fields for that order would silently hide its real
+              historical result, so a view-only order with no form values falls back to the
+              plain text instead of the dynamic form. */}
+          {template && (canComplete || hasTemplateValues) ? (
+            <Space direction="vertical" style={{ width: '100%' }} size={12}>
+              {template.fields.map((field) => (
+                <div key={field.id}>
+                  <Text strong>
+                    {field.label}
+                    {field.required && <Text type="danger"> *</Text>}
+                  </Text>
+                  <div style={{ marginTop: 4 }}>
+                    <DynamicField
+                      field={field}
+                      value={formValues[field.id]}
+                      onChange={(value) => setFormValues((prev) => ({ ...prev, [field.id]: value }))}
+                      disabled={!canComplete}
+                    />
+                  </div>
+                </div>
+              ))}
             </Space>
-          </List.Item>
+          ) : template ? (
+            <>
+              <Text type="secondary">Result</Text>
+              <div
+                style={{
+                  marginTop: 4,
+                  marginBottom: 16,
+                  padding: '8px 12px',
+                  background: '#fafafa',
+                  borderRadius: 4,
+                  whiteSpace: 'pre-wrap',
+                  fontSize: 13,
+                }}
+              >
+                {order?.result || 'No result recorded'}
+              </div>
+            </>
+          ) : (
+            <>
+              <Text type="secondary">Result</Text>
+              <Input.TextArea
+                style={{ marginTop: 4, marginBottom: 16 }}
+                rows={3}
+                placeholder="Findings, notes, or result text..."
+                value={result}
+                onChange={(e) => setResult(e.target.value)}
+                disabled={!canComplete}
+              />
+            </>
+          )}
+
+          <Text type="secondary" style={{ display: 'block', marginTop: template ? 16 : 0 }}>
+            Attachments
+          </Text>
+          <div style={{ marginTop: 4, marginBottom: 8 }}>
+            <Upload beforeUpload={handleUpload} showUploadList={false} multiple>
+              <Button icon={<UploadOutlined />} loading={uploadAttachment.isPending} size="small">
+                Attach File
+              </Button>
+            </Upload>
+          </div>
+          <List
+            size="small"
+            loading={attachmentsLoading}
+            dataSource={attachments}
+            locale={{ emptyText: 'No files attached' }}
+            renderItem={(attachment) => (
+              <List.Item
+                actions={[
+                  <Button
+                    key="download"
+                    type="text"
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    onClick={() => downloadAttachment(order!.id, attachment)}
+                  />,
+                  <Popconfirm
+                    key="delete"
+                    title="Remove this file?"
+                    onConfirm={() =>
+                      deleteAttachment
+                        .mutateAsync(attachment.id)
+                        .catch((error) => message.error(error instanceof ApiError ? error.message : 'Failed to remove file'))
+                    }
+                  >
+                    <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                  </Popconfirm>,
+                ]}
+              >
+                <Space>
+                  <PaperClipOutlined />
+                  <span>{attachment.fileName}</span>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {formatFileSize(attachment.fileSize)}
+                  </Text>
+                </Space>
+              </List.Item>
+            )}
+          />
+        </div>
+
+        {order && (
+          <div
+            style={{
+              flex: fullscreen ? '1 1 40%' : '1 1 auto',
+              minWidth: 0,
+              borderLeft: fullscreen ? '1px solid #f0f0f0' : undefined,
+              paddingLeft: fullscreen ? 20 : 0,
+              borderTop: fullscreen ? undefined : '1px solid #f0f0f0',
+              paddingTop: fullscreen ? 0 : 12,
+              marginTop: fullscreen ? 0 : 16,
+            }}
+          >
+            <Text type="secondary" style={{ display: 'block', marginBottom: 6 }}>
+              Chat about this procedure
+            </Text>
+            <ChatPanel
+              messages={orderChat}
+              isLoading={orderChatLoading}
+              currentStaffId={staff?.id}
+              onSend={(text) =>
+                sendOrderChat.mutateAsync(text).catch((error) => message.error(error instanceof ApiError ? error.message : 'Failed to send'))
+              }
+              sending={sendOrderChat.isPending}
+              height={fullscreen ? 560 : 200}
+              emptyText="No messages yet — ask about this procedure"
+            />
+          </div>
         )}
-      />
+      </div>
     </Modal>
   );
 }

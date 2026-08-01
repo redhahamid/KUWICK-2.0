@@ -37,6 +37,8 @@ import { PublicQueueController } from './public-queue.controller';
 import { PublicQueueService } from './public-queue.service';
 import { VisitAttachmentController } from './visit-attachment.controller';
 import { VisitAttachmentService } from './visit-attachment.service';
+import { ChatController } from './chat.controller';
+import { ChatService } from './chat.service';
 
 // Clinical Operations, Phase 1a. Owns ServiceCatalog, Visit, QueueTicket,
 // ClinicalNote, Diagnosis, OrderService, Prescription, Document, Invoice
@@ -64,6 +66,7 @@ import { VisitAttachmentService } from './visit-attachment.service';
     PublicQueueController,
     DocumentTemplateController,
     VisitAttachmentController,
+    ChatController,
   ],
   providers: [
     ServiceCatalogService,
@@ -84,6 +87,7 @@ import { VisitAttachmentService } from './visit-attachment.service';
     PublicQueueService,
     DocumentTemplateService,
     VisitAttachmentService,
+    ChatService,
   ],
   exports: [
     ServiceCatalogService,

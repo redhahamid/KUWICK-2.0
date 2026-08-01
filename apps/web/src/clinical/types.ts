@@ -653,3 +653,15 @@ export interface CopyPrescriptionsDto {
   sourceVisitId: string;
   targetVisitId: string;
 }
+
+// D-046 — one thread model backs the clinic-wide chat box (orderServiceId
+// null) and per-procedure chat (orderServiceId set).
+export interface ChatMessage {
+  id: string;
+  clinicId: string;
+  orderServiceId: string | null;
+  staffId: string;
+  staff?: { id: string; fullName: string };
+  message: string;
+  createdAt: string;
+}

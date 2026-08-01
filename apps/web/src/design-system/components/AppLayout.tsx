@@ -1,8 +1,10 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Avatar, Dropdown, Layout, Menu, Space, Typography } from 'antd';
 import { ArrowLeftOutlined, LogoutOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../core/auth-store';
+import { NotificationBell } from './NotificationBell';
+import { ClinicChatWidget } from '../../clinical/ClinicChatWidget';
 
 const { Header, Content } = Layout;
 const { Text } = Typography;
@@ -38,6 +40,8 @@ export function AppLayout() {
   const staff = useAuthStore((state) => state.staff);
   const tenant = useAuthStore((state) => state.tenant);
   const clearAuth = useAuthStore((state) => state.clearAuth);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [unreadChat, setUnreadChat] = useState(0);
 
   const inManagement = location.pathname.startsWith('/management');
 
@@ -104,6 +108,7 @@ export function AppLayout() {
         )}
 
         <Space size={12} style={{ flexShrink: 0 }}>
+          <NotificationBell unreadChatCount={unreadChat} onOpenChat={() => setChatOpen(true)} />
           <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
             <div style={{ fontSize: 13, fontWeight: 500 }}>{staff?.fullName}</div>
             <Text type="secondary" style={{ fontSize: 12 }}>
@@ -125,6 +130,7 @@ export function AppLayout() {
       >
         <Outlet />
       </Content>
+      <ClinicChatWidget open={chatOpen} onOpenChange={setChatOpen} onUnreadChange={setUnreadChat} />
     </Layout>
   );
 }

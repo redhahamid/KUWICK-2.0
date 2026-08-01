@@ -90,6 +90,7 @@ model Tenant {
   queueDisplayConfigs         QueueDisplayConfig[]
   customDocumentTemplates     CustomDocumentTemplate[]
   visitAttachments            VisitAttachment[]
+  chatMessages                ChatMessage[]
 
   @@map("tenants")
 }
@@ -125,6 +126,7 @@ model Clinic {
   rooms               Room[]
   queueDisplayConfig  QueueDisplayConfig?
   staff               Staff[]
+  chatMessages        ChatMessage[]
 
   @@index([tenantId])
   @@map("clinics")
@@ -391,6 +393,7 @@ model Staff {
   prescriptions               Prescription[]
   attachments                 Attachment[]
   visitAttachments            VisitAttachment[]
+  chatMessages                ChatMessage[]
   documentsIssued             Document[]                   @relation("DocumentIssuedBy")
   documentsSigned             Document[]                   @relation("DocumentSignedBy")
   invoices                    Invoice[]
@@ -1438,10 +1441,35 @@ model OrderService {
   formTemplate   FormTemplate?  @relation(fields: [formTemplateId], references: [id])
   attachments    Attachment[]
   invoiceLines   InvoiceLine[]
+  chatMessages   ChatMessage[]
 
   @@index([tenantId, visitId])
   @@index([tenantId, clinicId, orderType, status])
   @@map("order_services")
+}
+
+// D-046 — one lightweight thread model backs two owner-requested surfaces:
+// per-procedure chat (orderServiceId set — "tell the doctor this procedure
+// was unsuccessful") and the general clinic-wide chat box (orderServiceId
+// null, clinicId is the channel). Polling-based (no WebSocket
+// infrastructure in this environment), same convention as the Queue's
+// 10s refetchInterval.
+model ChatMessage {
+  id             String   @id @default(uuid())
+  tenantId       String   @map("tenant_id")
+  clinicId       String   @map("clinic_id")
+  orderServiceId String?  @map("order_service_id")
+  staffId        String   @map("staff_id")
+  message        String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  clinic       Clinic        @relation(fields: [clinicId], references: [id])
+  orderService OrderService? @relation(fields: [orderServiceId], references: [id])
+  staff        Staff         @relation(fields: [staffId], references: [id])
+
+  @@index([tenantId, clinicId, orderServiceId, createdAt])
+  @@map("chat_messages")
 }
 
 // Clinical Operations, Phase A3. Files attached to a task/procedure result
