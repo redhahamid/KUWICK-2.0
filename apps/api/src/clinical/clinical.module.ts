@@ -39,6 +39,7 @@ import { VisitAttachmentController } from './visit-attachment.controller';
 import { VisitAttachmentService } from './visit-attachment.service';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
+import { ChatChannelService } from './chat-channel.service';
 
 // Clinical Operations, Phase 1a. Owns ServiceCatalog, Visit, QueueTicket,
 // ClinicalNote, Diagnosis, OrderService, Prescription, Document, Invoice
@@ -88,6 +89,7 @@ import { ChatService } from './chat.service';
     DocumentTemplateService,
     VisitAttachmentService,
     ChatService,
+    ChatChannelService,
   ],
   exports: [
     ServiceCatalogService,

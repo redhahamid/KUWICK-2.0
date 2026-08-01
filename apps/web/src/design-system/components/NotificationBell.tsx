@@ -64,7 +64,7 @@ export function NotificationBell({ unreadChatCount, onOpenChat }: NotificationBe
           <Tag color={unreadChatCount > 0 ? 'blue' : 'default'}>{unreadChatCount}</Tag>
         </div>
         <Button size="small" type="link" style={{ padding: 0, fontSize: 12 }} onClick={onOpenChat}>
-          {unreadChatCount > 0 ? `${unreadChatCount} new message${unreadChatCount > 1 ? 's' : ''} →` : 'Open chat →'}
+          {unreadChatCount > 0 ? `${unreadChatCount} channel${unreadChatCount > 1 ? 's' : ''} with new messages →` : 'Open chat →'}
         </Button>
       </div>
     </div>

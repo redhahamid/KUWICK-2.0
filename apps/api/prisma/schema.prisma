@@ -91,6 +91,7 @@ model Tenant {
   customDocumentTemplates     CustomDocumentTemplate[]
   visitAttachments            VisitAttachment[]
   chatMessages                ChatMessage[]
+  chatChannels                ChatChannel[]
 
   @@map("tenants")
 }
@@ -127,6 +128,7 @@ model Clinic {
   queueDisplayConfig  QueueDisplayConfig?
   staff               Staff[]
   chatMessages        ChatMessage[]
+  chatChannels        ChatChannel[]
 
   @@index([tenantId])
   @@map("clinics")
@@ -1450,14 +1452,14 @@ model OrderService {
 
 // D-046 — one lightweight thread model backs two owner-requested surfaces:
 // per-procedure chat (orderServiceId set — "tell the doctor this procedure
-// was unsuccessful") and the general clinic-wide chat box (orderServiceId
-// null, clinicId is the channel). Polling-based (no WebSocket
-// infrastructure in this environment), same convention as the Queue's
-// 10s refetchInterval.
+// was unsuccessful") and clinic-wide channel chat (channelId set — see
+// D-048/ChatChannel). Polling-based (no WebSocket infrastructure in this
+// environment), same convention as the Queue's 10s refetchInterval.
 model ChatMessage {
   id             String   @id @default(uuid())
   tenantId       String   @map("tenant_id")
   clinicId       String   @map("clinic_id")
+  channelId      String?  @map("channel_id")
   orderServiceId String?  @map("order_service_id")
   staffId        String   @map("staff_id")
   message        String
@@ -1465,11 +1467,37 @@ model ChatMessage {
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
   clinic       Clinic        @relation(fields: [clinicId], references: [id])
+  channel      ChatChannel?  @relation(fields: [channelId], references: [id])
   orderService OrderService? @relation(fields: [orderServiceId], references: [id])
   staff        Staff         @relation(fields: [staffId], references: [id])
 
   @@index([tenantId, clinicId, orderServiceId, createdAt])
+  @@index([tenantId, channelId, createdAt])
   @@map("chat_messages")
+}
+
+// D-048 — named team channels alongside the single "General" channel every
+// clinic gets (owner: "any option group chat" beyond the one general
+// thread — e.g. a "Doctors" or "Front Desk" channel). `isGeneral` marks the
+// one channel every clinic always has (auto-created lazily, never deleted);
+// any staff member can create additional named channels — this app has no
+// RBAC enforcement anywhere yet, so channel creation isn't gated either,
+// consistent with everything else.
+model ChatChannel {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  clinicId  String   @map("clinic_id")
+  name      String
+  isGeneral Boolean  @default(false) @map("is_general")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id])
+  clinic   Clinic        @relation(fields: [clinicId], references: [id])
+  messages ChatMessage[]
+
+  @@unique([clinicId, name])
+  @@index([tenantId, clinicId])
+  @@map("chat_channels")
 }
 
 // Clinical Operations, Phase A3. Files attached to a task/procedure result

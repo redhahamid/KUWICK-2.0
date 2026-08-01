@@ -654,14 +654,29 @@ export interface CopyPrescriptionsDto {
   targetVisitId: string;
 }
 
-// D-046 — one thread model backs the clinic-wide chat box (orderServiceId
-// null) and per-procedure chat (orderServiceId set).
+// D-046 — one thread model backs channel chat (channelId set) and
+// per-procedure chat (orderServiceId set).
 export interface ChatMessage {
   id: string;
   clinicId: string;
+  channelId: string | null;
   orderServiceId: string | null;
   staffId: string;
   staff?: { id: string; fullName: string };
   message: string;
   createdAt: string;
+}
+
+// D-048 — every clinic has one "General" channel plus any number of named
+// team channels. latestMessage* is only present from the
+// GET /clinics/:clinicId/chat-channels list endpoint (powers the unread
+// badge without fetching each channel's full history).
+export interface ChatChannel {
+  id: string;
+  clinicId: string;
+  name: string;
+  isGeneral: boolean;
+  createdAt: string;
+  latestMessageAt?: string | null;
+  latestMessageStaffId?: string | null;
 }

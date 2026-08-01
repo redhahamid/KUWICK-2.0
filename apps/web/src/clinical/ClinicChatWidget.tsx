@@ -1,19 +1,31 @@
-import { useEffect, useMemo } from 'react';
-import { Badge, Button, Drawer, Select, Space, message } from 'antd';
-import { MessageOutlined } from '@ant-design/icons';
+import { useEffect, useMemo, useState } from 'react';
+import { Badge, Button, Drawer, Input, Popover, Select, Space, Typography, message } from 'antd';
+import { MessageOutlined, PlusOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../core/auth-store';
 import { useClinicFilter } from '../core/hooks/useClinicFilter';
-import { useClinicChat, useSendClinicChat } from './hooks/useChat';
+import { useChannelChat, useChatChannels, useCreateChatChannel, useSendChannelChat } from './hooks/useChat';
 import { ChatPanel } from './ChatPanel';
 import { ApiError } from '../core/api-client';
 
+const { Text } = Typography;
+
 const SEEN_STORAGE_PREFIX = 'kuwick-chat-seen-';
 
-// D-046 — the general clinic-wide chat box (owner: "internal clinic chat").
-// A floating button is always reachable across the app (mounted once in
-// AppLayout); the NotificationBell can also drive it open via the same
-// `open`/`onOpenChange` pair so both entry points share one Drawer.
-// "Unread" is tracked client-side (a per-clinic "last seen" timestamp in
+function lastSeen(channelId: string): string | null {
+  return localStorage.getItem(`${SEEN_STORAGE_PREFIX}${channelId}`);
+}
+
+function markSeen(channelId: string) {
+  localStorage.setItem(`${SEEN_STORAGE_PREFIX}${channelId}`, new Date().toISOString());
+}
+
+// D-046/D-048 — the internal chat: one "General" channel every clinic
+// always has, plus any named team channels staff create (owner: "any
+// option group chat" beyond a single thread — e.g. "Doctors", "Front
+// Desk"). A floating button is always reachable across the app (mounted
+// once in AppLayout); the NotificationBell can also drive it open via the
+// same `open`/`onOpenChange` pair so both entry points share one Drawer.
+// "Unread" is tracked client-side (a per-channel "last seen" timestamp in
 // localStorage) rather than a server read-receipts table — this app has no
 // realtime infra, so a lightweight client marker matching the existing
 // polling convention is enough for a badge count.
@@ -26,40 +38,76 @@ interface ClinicChatWidgetProps {
 export function ClinicChatWidget({ open, onOpenChange, onUnreadChange }: ClinicChatWidgetProps) {
   const staff = useAuthStore((state) => state.staff);
   const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
-  const { data: messages, isLoading } = useClinicChat(clinicId);
-  const sendChat = useSendClinicChat(clinicId);
+  const { data: channels } = useChatChannels(clinicId);
+  const createChannel = useCreateChatChannel(clinicId);
+  const [activeChannelId, setActiveChannelId] = useState<string | undefined>();
+  const [newChannelName, setNewChannelName] = useState('');
+  const [creatorOpen, setCreatorOpen] = useState(false);
 
-  const storageKey = clinicId ? `${SEEN_STORAGE_PREFIX}${clinicId}` : undefined;
-
+  const generalChannel = channels?.find((c) => c.isGeneral);
   useEffect(() => {
-    // First-ever visit to this clinic's chat: don't retroactively flag
-    // pre-existing history as unread, only messages from here on.
-    if (storageKey && !localStorage.getItem(storageKey)) {
-      localStorage.setItem(storageKey, new Date().toISOString());
+    if (!activeChannelId && generalChannel) {
+      setActiveChannelId(generalChannel.id);
     }
-  }, [storageKey]);
+  }, [activeChannelId, generalChannel]);
 
-  const unreadCount = useMemo(() => {
-    if (!messages || !storageKey) return 0;
-    const lastSeen = localStorage.getItem(storageKey);
-    if (!lastSeen) return 0;
-    return messages.filter((m) => m.staffId !== staff?.id && m.createdAt > lastSeen).length;
-  }, [messages, storageKey, staff?.id]);
+  const { data: messages, isLoading } = useChannelChat(activeChannelId);
+  const sendChat = useSendChannelChat(activeChannelId, clinicId);
+
+  // First-ever visit to a channel: mark it seen-now rather than
+  // retroactively flagging its whole history as unread. A real effect (not
+  // done inline in the unread computation below, which must stay pure).
+  useEffect(() => {
+    channels?.forEach((c) => {
+      if (!lastSeen(c.id)) markSeen(c.id);
+    });
+  }, [channels]);
+
+  // Every channel with activity newer than its last-seen marker (from
+  // someone else) counts toward the bell's badge.
+  const unreadChannelIds = useMemo(() => {
+    if (!channels) return new Set<string>();
+    return new Set(
+      channels
+        .filter((c) => {
+          if (!c.latestMessageAt || c.latestMessageStaffId === staff?.id) return false;
+          const seen = lastSeen(c.id);
+          return Boolean(seen) && c.latestMessageAt > seen!;
+        })
+        .map((c) => c.id),
+    );
+  }, [channels, staff?.id]);
 
   useEffect(() => {
-    onUnreadChange?.(unreadCount);
-  }, [unreadCount, onUnreadChange]);
+    onUnreadChange?.(unreadChannelIds.size);
+  }, [unreadChannelIds, onUnreadChange]);
 
   const handleOpen = () => {
     onOpenChange(true);
-    if (storageKey) {
-      localStorage.setItem(storageKey, new Date().toISOString());
-    }
+    if (activeChannelId) markSeen(activeChannelId);
+  };
+
+  const handleSwitchChannel = (channelId: string) => {
+    setActiveChannelId(channelId);
+    markSeen(channelId);
+  };
+
+  const handleCreateChannel = () => {
+    const name = newChannelName.trim();
+    if (!name) return;
+    createChannel
+      .mutateAsync(name)
+      .then((channel) => {
+        setNewChannelName('');
+        setCreatorOpen(false);
+        setActiveChannelId(channel.id);
+      })
+      .catch((error) => message.error(error instanceof ApiError ? error.message : 'Failed to create channel'));
   };
 
   return (
     <>
-      <Badge count={unreadCount} size="small" offset={[-6, 6]}>
+      <Badge count={unreadChannelIds.size} size="small" offset={[-6, 6]}>
         <Button
           shape="circle"
           type="primary"
@@ -95,8 +143,61 @@ export function ClinicChatWidget({ open, onOpenChange, onUnreadChange }: ClinicC
         open={open}
         onClose={() => onOpenChange(false)}
         width={380}
-        styles={{ body: { display: 'flex', flexDirection: 'column' } }}
+        styles={{ body: { display: 'flex', flexDirection: 'column', padding: 12 } }}
       >
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+          {channels?.map((channel) => (
+            <Button
+              key={channel.id}
+              size="small"
+              shape="round"
+              type={channel.id === activeChannelId ? 'primary' : 'default'}
+              onClick={() => handleSwitchChannel(channel.id)}
+              style={{ position: 'relative' }}
+            >
+              {channel.name}
+              {unreadChannelIds.has(channel.id) && channel.id !== activeChannelId && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: -2,
+                    right: -2,
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: '#f5222d',
+                    border: '1.5px solid #fff',
+                  }}
+                />
+              )}
+            </Button>
+          ))}
+          <Popover
+            open={creatorOpen}
+            onOpenChange={setCreatorOpen}
+            trigger="click"
+            placement="bottomLeft"
+            content={
+              <Space>
+                <Input
+                  size="small"
+                  placeholder="Channel name"
+                  value={newChannelName}
+                  onChange={(e) => setNewChannelName(e.target.value)}
+                  onPressEnter={handleCreateChannel}
+                  style={{ width: 140 }}
+                  autoFocus
+                />
+                <Button size="small" type="primary" loading={createChannel.isPending} onClick={handleCreateChannel}>
+                  Add
+                </Button>
+              </Space>
+            }
+          >
+            <Button size="small" shape="circle" icon={<PlusOutlined />} title="New channel" />
+          </Popover>
+        </div>
+
         <ChatPanel
           messages={messages}
           isLoading={isLoading}
@@ -105,7 +206,7 @@ export function ClinicChatWidget({ open, onOpenChange, onUnreadChange }: ClinicC
             sendChat.mutateAsync(text).catch((error) => message.error(error instanceof ApiError ? error.message : 'Failed to send'))
           }
           sending={sendChat.isPending}
-          height="calc(100vh - 200px)"
+          height="calc(100vh - 240px)"
           emptyText="No messages yet — say hello to your team"
         />
       </Drawer>

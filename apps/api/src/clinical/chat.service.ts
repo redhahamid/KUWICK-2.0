@@ -28,17 +28,27 @@ export class ChatService {
     return trimmed;
   }
 
-  listClinicWide(clinicId: string) {
+  listChannel(channelId: string) {
     return this.prisma.chatMessage.findMany({
-      where: { clinicId, orderServiceId: null },
+      where: { channelId },
       include: { staff: { select: STAFF_SELECT } },
       orderBy: { createdAt: 'asc' },
     });
   }
 
-  async createClinicWide(clinicId: string, message: string) {
+  async createInChannel(channelId: string, message: string) {
+    const channel = await this.prisma.chatChannel.findUnique({ where: { id: channelId }, select: { clinicId: true } });
+    if (!channel) {
+      throw new NotFoundException('Channel not found');
+    }
     return this.prisma.chatMessage.create({
-      data: { tenantId: currentTenantId(), clinicId, staffId: this.requireStaffId(), message: this.requireMessage(message) },
+      data: {
+        tenantId: currentTenantId(),
+        clinicId: channel.clinicId,
+        channelId,
+        staffId: this.requireStaffId(),
+        message: this.requireMessage(message),
+      },
       include: { staff: { select: STAFF_SELECT } },
     });
   }
