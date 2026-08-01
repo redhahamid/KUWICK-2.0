@@ -77,7 +77,7 @@ export function PanelClinicsPage() {
     <>
       <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
         <Title level={4} style={{ margin: 0 }}>
-          Panel Clinics
+          Panel Companies
         </Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
           Add Panel

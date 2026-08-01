@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Avatar, Dropdown, Layout, Menu, Space, Typography } from 'antd';
-import { ArrowLeftOutlined, LogoutOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, BarChartOutlined, LogoutOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../core/auth-store';
 import { NotificationBell } from './NotificationBell';
@@ -44,6 +44,8 @@ export function AppLayout() {
   const [unreadChat, setUnreadChat] = useState(0);
 
   const inManagement = location.pathname.startsWith('/management');
+  const inSettings = location.pathname.startsWith('/settings');
+  const inHub = inManagement || inSettings;
 
   const handleLogout = () => {
     clearAuth();
@@ -52,22 +54,31 @@ export function AppLayout() {
 
   const userMenuItems = useMemo(
     () =>
-      inManagement
+      inHub
         ? [
             { key: 'back', icon: <ArrowLeftOutlined />, label: 'Back to Main Menu', onClick: () => navigate('/appointments') },
+            inManagement
+              ? { key: 'settings', icon: <SettingOutlined />, label: 'Clinic Settings', onClick: () => navigate('/settings') }
+              : { key: 'management', icon: <BarChartOutlined />, label: 'Management', onClick: () => navigate('/management/reports') },
             { key: 'logout', icon: <LogoutOutlined />, label: 'Logout', onClick: handleLogout },
           ]
         : [
             {
               key: 'management',
-              icon: <SettingOutlined />,
+              icon: <BarChartOutlined />,
               label: 'Management',
-              onClick: () => navigate('/management/operation/clinics'),
+              onClick: () => navigate('/management/reports'),
+            },
+            {
+              key: 'settings',
+              icon: <SettingOutlined />,
+              label: 'Clinic Settings',
+              onClick: () => navigate('/settings'),
             },
             { key: 'logout', icon: <LogoutOutlined />, label: 'Logout', onClick: handleLogout },
           ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [inManagement, navigate],
+    [inHub, inManagement, navigate],
   );
 
   return (
@@ -86,18 +97,18 @@ export function AppLayout() {
       >
         <img src="/kuwick-logo.png" alt="Kuwick" style={{ height: 22, flexShrink: 0 }} />
 
-        {inManagement && (
+        {inHub && (
           <>
             <Link to="/appointments" style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
               <ArrowLeftOutlined /> Back
             </Link>
             <Text strong style={{ flex: 1 }}>
-              Management
+              {inSettings ? 'Clinic Settings' : 'Management'}
             </Text>
           </>
         )}
 
-        {!inManagement && (
+        {!inHub && (
           <Menu
             mode="horizontal"
             theme="light"
@@ -122,10 +133,10 @@ export function AppLayout() {
       </Header>
       <Content
         style={{
-          padding: inManagement ? 0 : 24,
+          padding: inHub ? 0 : 24,
           flex: '1 1 auto',
           minHeight: 0,
-          overflowY: inManagement ? 'hidden' : 'auto',
+          overflowY: inHub ? 'hidden' : 'auto',
         }}
       >
         <Outlet />

@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from './design-system/components/AppLayout';
 import { ManagementLayout } from './design-system/components/ManagementLayout';
+import { SettingsLayout } from './design-system/components/SettingsLayout';
+import { StockHealthPage } from './inventory/StockHealthPage';
 import { LoginPage } from './auth/LoginPage';
 import { RequireAuth } from './auth/RequireAuth';
 import { RequirePlatformAuth } from './auth/RequirePlatformAuth';
@@ -37,10 +39,6 @@ import { DoctorServiceQualificationsPage } from './appointment/DoctorServiceQual
 import { SlotCapacityConfigsPage } from './appointment/SlotCapacityConfigsPage';
 import { ItemsPage } from './inventory/ItemsPage';
 import { SuppliersPage } from './inventory/SuppliersPage';
-import { StockLevelsPage } from './inventory/StockLevelsPage';
-import { LowStockPage } from './inventory/LowStockPage';
-import { NegativeStockPage } from './inventory/NegativeStockPage';
-import { NearExpiryPage } from './inventory/NearExpiryPage';
 import { StockTakePage } from './inventory/StockTakePage';
 import { ProcurementRequestsPage } from './inventory/ProcurementRequestsPage';
 import { PurchaseOrdersPage } from './inventory/PurchaseOrdersPage';
@@ -91,9 +89,10 @@ export function App() {
           <Route path="/queue" element={<QueueManagementPage />} />
           <Route path="/procedure-queue" element={<ProcedureQueuePage />} />
 
-          {/* Management — HR/Stock/Panel/Operation, director/admin-staff use,
-              not daily clinical/front-desk operation (matches Klinik Hijraa
-              CMS's own admin-panel separation). */}
+          {/* Management (M1, owner-approved horizontal layout) — review/
+              approve/report work only; set-once config lives under
+              /settings below. Executive Dashboard is the landing page. */}
+          <Route path="/management" element={<Navigate to="/management/reports" replace />} />
           <Route element={<ManagementLayout />}>
             <Route path="/management/reports" element={<ReportsPage />} />
             <Route path="/management/reports/day-end" element={<DayEndPage />} />
@@ -105,27 +104,15 @@ export function App() {
             <Route path="/management/reports/drug-movement" element={<DrugMovementPage />} />
             <Route path="/management/reports/wait-times" element={<WaitTimesPage />} />
 
-            <Route path="/management/operation/clinics" element={<ClinicsPage />} />
-            <Route path="/management/operation/services" element={<ServicesPage />} />
             <Route path="/management/operation/doctor-schedules" element={<DoctorSchedulesPage />} />
-            <Route path="/management/operation/qualifications" element={<DoctorServiceQualificationsPage />} />
-            <Route path="/management/operation/slot-capacity" element={<SlotCapacityConfigsPage />} />
-            <Route path="/management/operation/diagnoses" element={<DiagnosesDirectoryPage />} />
-            <Route path="/management/operation/rooms" element={<RoomsPage />} />
-            <Route path="/management/operation/queue-display" element={<QueueDisplaySettingsPage />} />
-            <Route path="/management/operation/document-templates" element={<DocumentTemplatesPage />} />
 
             <Route path="/management/hr/staff" element={<StaffPage />} />
             <Route path="/management/hr/attendance" element={<AttendancePage />} />
             <Route path="/management/hr/leave-requests" element={<LeaveRequestsPage />} />
-            <Route path="/management/hr/public-holidays" element={<PublicHolidaysPage />} />
 
+            <Route path="/management/stock/health" element={<StockHealthPage />} />
             <Route path="/management/stock/items" element={<ItemsPage />} />
             <Route path="/management/stock/suppliers" element={<SuppliersPage />} />
-            <Route path="/management/stock/levels" element={<StockLevelsPage />} />
-            <Route path="/management/stock/low-stock" element={<LowStockPage />} />
-            <Route path="/management/stock/negative-stock" element={<NegativeStockPage />} />
-            <Route path="/management/stock/near-expiry" element={<NearExpiryPage />} />
             <Route path="/management/stock/stock-take" element={<StockTakePage />} />
             <Route path="/management/stock/procurement-requests" element={<ProcurementRequestsPage />} />
             <Route path="/management/stock/purchase-orders" element={<PurchaseOrdersPage />} />
@@ -133,6 +120,37 @@ export function App() {
             <Route path="/management/panel/clinics" element={<PanelClinicsPage />} />
             <Route path="/management/panel/claims" element={<PanelClaimsPage />} />
           </Route>
+
+          {/* CMS Settings (M1) — configuration changed a few times a year,
+              extracted from Management. Same page components, new home. */}
+          <Route path="/settings" element={<Navigate to="/settings/organisation/branches" replace />} />
+          <Route element={<SettingsLayout />}>
+            <Route path="/settings/organisation/branches" element={<ClinicsPage />} />
+            <Route path="/settings/scheduling/doctor-service-mapping" element={<DoctorServiceQualificationsPage />} />
+            <Route path="/settings/scheduling/slot-capacity" element={<SlotCapacityConfigsPage />} />
+            <Route path="/settings/queue/rooms" element={<RoomsPage />} />
+            <Route path="/settings/queue/display" element={<QueueDisplaySettingsPage />} />
+            <Route path="/settings/clinical/services" element={<ServicesPage />} />
+            <Route path="/settings/clinical/diagnoses" element={<DiagnosesDirectoryPage />} />
+            <Route path="/settings/documents/templates" element={<DocumentTemplatesPage />} />
+            <Route path="/settings/hr/public-holidays" element={<PublicHolidaysPage />} />
+          </Route>
+
+          {/* Old-URL redirects (M1/M2) — bookmarks and deep links keep
+              working; nothing is deleted. */}
+          <Route path="/management/operation/clinics" element={<Navigate to="/settings/organisation/branches" replace />} />
+          <Route path="/management/operation/services" element={<Navigate to="/settings/clinical/services" replace />} />
+          <Route path="/management/operation/qualifications" element={<Navigate to="/settings/scheduling/doctor-service-mapping" replace />} />
+          <Route path="/management/operation/slot-capacity" element={<Navigate to="/settings/scheduling/slot-capacity" replace />} />
+          <Route path="/management/operation/diagnoses" element={<Navigate to="/settings/clinical/diagnoses" replace />} />
+          <Route path="/management/operation/rooms" element={<Navigate to="/settings/queue/rooms" replace />} />
+          <Route path="/management/operation/queue-display" element={<Navigate to="/settings/queue/display" replace />} />
+          <Route path="/management/operation/document-templates" element={<Navigate to="/settings/documents/templates" replace />} />
+          <Route path="/management/hr/public-holidays" element={<Navigate to="/settings/hr/public-holidays" replace />} />
+          <Route path="/management/stock/levels" element={<Navigate to="/management/stock/health" replace />} />
+          <Route path="/management/stock/low-stock" element={<Navigate to="/management/stock/health?tab=low" replace />} />
+          <Route path="/management/stock/near-expiry" element={<Navigate to="/management/stock/health?tab=near-expiry" replace />} />
+          <Route path="/management/stock/negative-stock" element={<Navigate to="/management/stock/health?tab=negative" replace />} />
         </Route>
       </Route>
     </Routes>

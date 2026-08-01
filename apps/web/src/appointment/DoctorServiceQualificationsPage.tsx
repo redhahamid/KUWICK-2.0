@@ -35,7 +35,7 @@ export function DoctorServiceQualificationsPage() {
     <>
       <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
         <Title level={4} style={{ margin: 0 }}>
-          Doctor Service Qualifications
+          Doctor-Service Mapping
         </Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
           Add Qualification

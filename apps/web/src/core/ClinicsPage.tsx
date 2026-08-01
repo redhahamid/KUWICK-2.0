@@ -54,7 +54,7 @@ export function ClinicsPage() {
     <>
       <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
         <Title level={4} style={{ margin: 0 }}>
-          Clinics
+          Branches
         </Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
           Add Clinic
