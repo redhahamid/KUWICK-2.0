@@ -199,6 +199,15 @@ export class ClinicalNoteService {
       if (existing.status === 'SIGNED') {
         throw new ConflictException('This note is signed and cannot be edited. Add an amendment instead.');
       }
+      // C0 closure — a legacy note predates authorship tracking, so editing it
+      // would silently attribute someone else's historical text to whoever is
+      // logged in now. It is permanently read-only; a correction must be a new
+      // attributed amendment linked to it.
+      if (existing.legacyAuthorUnknown) {
+        throw new ConflictException(
+          'This is a legacy note with no recorded author and is read-only. Add an amendment instead.',
+        );
+      }
       if (!canEditDraft(actor, existing)) {
         throw new ForbiddenException('You may not edit this draft');
       }
@@ -297,8 +306,11 @@ export class ClinicalNoteService {
       }
       const actor = await this.requireActor(tx);
 
-      if (original.status !== 'SIGNED') {
-        throw new ConflictException('Only a signed note can be amended. Edit the draft instead.');
+      // A signed note is amendable because it's locked; a LEGACY note is
+      // amendable for the same reason — it's read-only and cannot be
+      // corrected in place. Everything else is still an editable draft.
+      if (original.status !== 'SIGNED' && !original.legacyAuthorUnknown) {
+        throw new ConflictException('Only a signed or legacy note can be amended. Edit the draft instead.');
       }
       if (!canSignClinicalNotes(actor)) {
         throw new ForbiddenException('Only an authorised doctor may amend a signed clinical note');

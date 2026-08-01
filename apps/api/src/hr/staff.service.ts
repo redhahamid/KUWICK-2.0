@@ -1,5 +1,5 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, Role } from '@prisma/client';
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, ProfessionalAuditField, Role, Staff } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import {
   TENANT_SCOPED_PRISMA,
@@ -56,10 +56,56 @@ export class StaffService {
     return staff;
   }
 
+  // Fields whose change is medicolegally significant: they decide who may
+  // electronically sign a clinical note.
+  private static readonly PROFESSIONAL_FIELDS = [
+    'professionalType',
+    'medicalRegistrationNo',
+    'professionalActive',
+    'canSignClinicalNotes',
+  ] as const;
+
   async update(id: string, dto: UpdateStaffDto) {
     const existing = await this.findById(id);
-    const data: Prisma.StaffUncheckedUpdateInput = { ...dto, ...this.professionalAudit(dto, existing) };
-    return this.prisma.staff.update({ where: { id }, data });
+    // professionalChangeReason is audit metadata, not a Staff column — it is
+    // recorded on the audit rows and must never reach the Prisma update.
+    const { professionalChangeReason, ...staffFields } = dto;
+    const touchesProfessional = StaffService.PROFESSIONAL_FIELDS.some((f) => staffFields[f] !== undefined);
+
+    if (touchesProfessional) {
+      await this.assertMayChangeProfessionalIdentity();
+    }
+
+    const derived = this.derivedProfessionalFields(staffFields, existing);
+    const data: Prisma.StaffUncheckedUpdateInput = { ...staffFields, ...derived };
+    const updated = await this.prisma.staff.update({ where: { id }, data });
+
+    if (touchesProfessional) {
+      await this.writeProfessionalAudit(existing, updated, professionalChangeReason ?? null);
+    }
+    return updated;
+  }
+
+  // C0 closure — only a clinic OWNER_ADMIN may alter professional identity or
+  // clinical-signing permission. Without this, any authenticated account could
+  // grant itself the right to sign clinical notes, which would make the whole
+  // eligibility check decorative.
+  //
+  // Deliberately narrow: the rest of the staff record (name, role, branch)
+  // keeps its existing unrestricted behaviour, consistent with the app's
+  // wider RBAC gap, which is tracked as its own phase. This gate protects the
+  // fields that carry medicolegal weight, not everything.
+  private async assertMayChangeProfessionalIdentity(): Promise<void> {
+    const actorId = currentStaffId();
+    if (!actorId) {
+      throw new ForbiddenException('No authenticated staff member on this session');
+    }
+    const actor = await this.prisma.staff.findUnique({ where: { id: actorId } });
+    if (!actor || !actor.active || actor.role !== Role.OWNER_ADMIN) {
+      throw new ForbiddenException(
+        'Only a clinic owner/administrator may change professional identity or clinical-signing permission',
+      );
+    }
   }
 
   // C0 (D-051) — professional verification and signing-enable are AUDITED
@@ -70,23 +116,75 @@ export class StaffService {
   //
   // These record only that THE CLINIC GROUP asserted the practitioner's
   // status — Kuwick performs no MMC registry lookup, and the UI says so.
-  private professionalAudit(dto: UpdateStaffDto, existing: { professionalActive: boolean; canSignClinicalNotes: boolean }) {
+  private derivedProfessionalFields(
+    dto: UpdateStaffDto,
+    existing: { professionalActive: boolean; canSignClinicalNotes: boolean },
+  ) {
     const actor = currentStaffId() ?? null;
     const now = new Date();
-    const audit: Prisma.StaffUncheckedUpdateInput = {};
+    const derived: Prisma.StaffUncheckedUpdateInput = {};
 
     if (dto.professionalActive !== undefined && dto.professionalActive !== existing.professionalActive) {
-      audit.professionalVerifiedAt = dto.professionalActive ? now : null;
-      audit.professionalVerifiedByStaffId = dto.professionalActive ? actor : null;
+      derived.professionalVerifiedAt = dto.professionalActive ? now : null;
+      derived.professionalVerifiedByStaffId = dto.professionalActive ? actor : null;
     }
     if (dto.canSignClinicalNotes !== undefined && dto.canSignClinicalNotes !== existing.canSignClinicalNotes) {
-      audit.clinicalSigningEnabledAt = dto.canSignClinicalNotes ? now : null;
-      audit.clinicalSigningEnabledByStaffId = dto.canSignClinicalNotes ? actor : null;
+      derived.clinicalSigningEnabledAt = dto.canSignClinicalNotes ? now : null;
+      derived.clinicalSigningEnabledByStaffId = dto.canSignClinicalNotes ? actor : null;
     }
     if (dto.medicalRegistrationNo !== undefined) {
-      audit.medicalRegistrationNoNormalised = normaliseRegistrationNo(dto.medicalRegistrationNo);
+      derived.medicalRegistrationNoNormalised = normaliseRegistrationNo(dto.medicalRegistrationNo);
     }
-    return audit;
+    return derived;
+  }
+
+  // Append-only, one row per field that actually changed. `updatedAt` on Staff
+  // cannot answer "who granted this doctor the right to sign, and when" — this
+  // can. Derived timestamp/actor fields are audited too, so the verification
+  // trail is complete even though the client never sets them.
+  private async writeProfessionalAudit(before: Staff, after: Staff, reason: string | null): Promise<void> {
+    const actorId = currentStaffId() ?? null;
+    const actor = actorId ? await this.prisma.staff.findUnique({ where: { id: actorId } }) : null;
+    const str = (v: unknown) => (v === null || v === undefined ? null : v instanceof Date ? v.toISOString() : String(v));
+
+    const changes: { field: ProfessionalAuditField; prev: unknown; next: unknown }[] = [
+      { field: ProfessionalAuditField.PROFESSIONAL_TYPE, prev: before.professionalType, next: after.professionalType },
+      { field: ProfessionalAuditField.MEDICAL_REGISTRATION_NO, prev: before.medicalRegistrationNo, next: after.medicalRegistrationNo },
+      { field: ProfessionalAuditField.PROFESSIONAL_ACTIVE, prev: before.professionalActive, next: after.professionalActive },
+      { field: ProfessionalAuditField.PROFESSIONAL_VERIFIED_AT, prev: before.professionalVerifiedAt, next: after.professionalVerifiedAt },
+      { field: ProfessionalAuditField.PROFESSIONAL_VERIFIED_BY, prev: before.professionalVerifiedByStaffId, next: after.professionalVerifiedByStaffId },
+      { field: ProfessionalAuditField.CAN_SIGN_CLINICAL_NOTES, prev: before.canSignClinicalNotes, next: after.canSignClinicalNotes },
+      { field: ProfessionalAuditField.CLINICAL_SIGNING_ENABLED_AT, prev: before.clinicalSigningEnabledAt, next: after.clinicalSigningEnabledAt },
+      { field: ProfessionalAuditField.CLINICAL_SIGNING_ENABLED_BY, prev: before.clinicalSigningEnabledByStaffId, next: after.clinicalSigningEnabledByStaffId },
+    ].filter((c) => str(c.prev) !== str(c.next));
+
+    if (changes.length === 0) {
+      return;
+    }
+
+    await this.prisma.staffProfessionalAudit.createMany({
+      data: changes.map((c) => ({
+        tenantId: currentTenantId(),
+        // Branch context AT THE TIME of the change — recorded, not resolved
+        // later, since a staff member's home branch can move.
+        clinicId: after.clinicId,
+        staffId: after.id,
+        field: c.field,
+        previousValue: str(c.prev),
+        newValue: str(c.next),
+        changedByStaffId: actorId,
+        changedByNameSnapshot: actor?.fullName ?? null,
+        changedByRoleSnapshot: actor?.role ?? null,
+        reason,
+      })),
+    });
+  }
+
+  listProfessionalAudit(staffId: string) {
+    return this.prisma.staffProfessionalAudit.findMany({
+      where: { staffId },
+      orderBy: { changedAt: 'desc' },
+    });
   }
 
   // The only surface AppointmentModule is allowed to call — it never touches

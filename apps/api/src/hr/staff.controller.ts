@@ -26,4 +26,12 @@ export class StaffController {
   update(@Param('id') id: string, @Body() dto: UpdateStaffDto) {
     return this.staffService.update(id, dto);
   }
+
+  // C0 closure — read-only history of professional identity / signing
+  // permission changes. There is deliberately no write, update or delete
+  // route for these rows anywhere in the API.
+  @Get(':id/professional-audit')
+  professionalAudit(@Param('id') id: string) {
+    return this.staffService.listProfessionalAudit(id);
+  }
 }

@@ -45,4 +45,10 @@ export class UpdateStaffDto {
   @IsOptional()
   @IsBoolean()
   canSignClinicalNotes?: boolean;
+
+  // Optional free-text justification recorded on the professional audit rows
+  // (e.g. "sighted original MMC certificate", "locum contract ended").
+  @IsOptional()
+  @IsString()
+  professionalChangeReason?: string;
 }

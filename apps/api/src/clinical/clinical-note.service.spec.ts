@@ -341,6 +341,90 @@ describe('ClinicalNoteService — immutability and concurrency (C0/D-051)', () =
   });
 });
 
+describe('Legacy notes are permanently read-only (C0 closure)', () => {
+  // Seed a row exactly as the C0 migration leaves a pre-existing note:
+  // no author, flagged legacy, still DRAFT.
+  function seedLegacy(h: Harness, notes = '<p>Historical entry from 2025</p>') {
+    const id = 'legacy-note-1';
+    h.db.notes.set(id, {
+      id,
+      tenantId: TENANT,
+      clinicId: CLINIC,
+      visitId: 'visit-1',
+      notes,
+      noteLanguage: 'EN',
+      noteType: 'DOCTOR_NARRATIVE',
+      status: 'DRAFT',
+      entryType: 'STANDARD',
+      version: 1,
+      authorStaffId: null,
+      authorNameSnapshot: null,
+      authorRoleSnapshot: null,
+      legacyAuthorUnknown: true,
+      createdAt: new Date('2025-06-01T09:00:00Z'),
+    });
+    return id;
+  }
+
+  it('rejects a direct edit of a legacy note', async () => {
+    const doctor = staff();
+    const h = createHarness([doctor]);
+    const id = seedLegacy(h);
+
+    await expect(
+      as(doctor, () => h.notes.update(id, { notes: 'rewritten', expectedVersion: 1 })),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('leaves the legacy note byte-identical after a rejected edit', async () => {
+    const doctor = staff();
+    const h = createHarness([doctor]);
+    const original = '<p>Historical entry from 2025</p>';
+    const id = seedLegacy(h, original);
+
+    await expect(as(doctor, () => h.notes.update(id, { notes: 'rewritten', expectedVersion: 1 }))).rejects.toThrow();
+
+    const after = h.db.notes.get(id)!;
+    expect(after.notes).toBe(original);
+    expect(after.version).toBe(1);
+    expect(after.authorStaffId).toBeNull();
+    expect(after.legacyAuthorUnknown).toBe(true);
+  });
+
+  it('allows an attributed amendment of a legacy note without modifying the original', async () => {
+    const doctor = staff();
+    const h = createHarness([doctor]);
+    const original = '<p>Historical entry from 2025</p>';
+    const id = seedLegacy(h, original);
+
+    const amendment = await as(doctor, () =>
+      h.notes.amend(id, { amendmentReason: 'Clarifying an unattributed historical entry', notes: '<p>Corrected.</p>' }),
+    );
+
+    // The amendment carries real authorship…
+    expect(amendment.entryType).toBe('AMENDMENT');
+    expect(amendment.supersedesNoteId).toBe(id);
+    expect(amendment.authorStaffId).toBe('staff-doctor');
+    expect(amendment.authorNameSnapshot).toBe('Dr Faizal Hakim');
+    expect(amendment.legacyAuthorUnknown).toBe(false);
+    expect(amendment.amendmentReason).toBe('Clarifying an unattributed historical entry');
+    // …and the legacy original is untouched, still unattributed.
+    const after = h.db.notes.get(id)!;
+    expect(after.notes).toBe(original);
+    expect(after.authorStaffId).toBeNull();
+    expect(after.legacyAuthorUnknown).toBe(true);
+    expect(after.version).toBe(1);
+  });
+
+  it('still refuses to amend an ordinary unsigned draft', async () => {
+    const doctor = staff();
+    const h = createHarness([doctor]);
+    const note = await as(doctor, () => h.notes.create('visit-1', { notes: 'work in progress' }));
+
+    await expect(as(doctor, () => h.notes.amend(note.id, { amendmentReason: 'x' }))).rejects.toThrow(ConflictException);
+  });
+});
+
 describe('Branch access — fail closed (C0/D-051)', () => {
   it('denies a doctor with no home branch in a multi-branch tenant', async () => {
     const roaming = staff({ id: 'staff-roaming', clinicId: null });

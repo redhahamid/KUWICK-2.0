@@ -77,6 +77,19 @@ enum ObservationChangeType {
   CORRECTED
 }
 
+// C0 closure — which professional/signing field changed. Named per field so
+// an auditor can filter "who ever enabled signing" without parsing values.
+enum ProfessionalAuditField {
+  PROFESSIONAL_TYPE
+  MEDICAL_REGISTRATION_NO
+  PROFESSIONAL_ACTIVE
+  PROFESSIONAL_VERIFIED_AT
+  PROFESSIONAL_VERIFIED_BY
+  CAN_SIGN_CLINICAL_NOTES
+  CLINICAL_SIGNING_ENABLED_AT
+  CLINICAL_SIGNING_ENABLED_BY
+}
+
 model Tenant {
   id             String   @id @default(uuid())
   name           String
@@ -145,6 +158,7 @@ model Tenant {
   clinicalNoteRevisions       ClinicalNoteRevision[]
   visitObservations           VisitObservation[]
   visitObservationRevisions   VisitObservationRevision[]
+  staffProfessionalAudits     StaffProfessionalAudit[]
 
   @@map("tenants")
 }
@@ -485,6 +499,8 @@ model Staff {
   clinicalNotesSigned         ClinicalNote[]               @relation("ClinicalNoteSigner")
   observationsRecorded        VisitObservation[]           @relation("ObservationRecorder")
   observationsUpdated         VisitObservation[]           @relation("ObservationUpdater")
+  professionalAudits          StaffProfessionalAudit[]     @relation("ProfessionalAuditSubject")
+  professionalAuditsMade      StaffProfessionalAudit[]     @relation("ProfessionalAuditActor")
 
   @@index([tenantId])
   @@index([tenantId, role])
@@ -1537,6 +1553,38 @@ model VisitObservation {
 
   @@index([tenantId, visitId, recordedAt])
   @@map("visit_observations")
+}
+
+// C0 closure — append-only audit of every change to a staff member's
+// professional identity and clinical-signing permission. `updatedAt` on Staff
+// alone cannot answer "who granted this doctor the right to sign, and when",
+// which is the question that matters medicolegally. One row per changed
+// field, so a value's whole history is queryable.
+model StaffProfessionalAudit {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  // Branch context at the time of the change (the affected staff member's
+  // home branch, if any) — recorded, not resolved later, since it can move.
+  clinicId String? @map("clinic_id")
+  // The staff member whose professional identity changed.
+  staffId  String @map("staff_id")
+
+  field         ProfessionalAuditField
+  previousValue String? @map("previous_value")
+  newValue      String? @map("new_value")
+
+  changedByStaffId    String?  @map("changed_by_staff_id")
+  changedByNameSnapshot String? @map("changed_by_name_snapshot")
+  changedByRoleSnapshot String? @map("changed_by_role_snapshot")
+  changedAt           DateTime @default(now()) @map("changed_at")
+  reason              String?
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  staff     Staff  @relation("ProfessionalAuditSubject", fields: [staffId], references: [id])
+  changedBy Staff? @relation("ProfessionalAuditActor", fields: [changedByStaffId], references: [id])
+
+  @@index([tenantId, staffId, changedAt])
+  @@map("staff_professional_audits")
 }
 
 // C0 — append-only audit trail for observations. A correction must preserve

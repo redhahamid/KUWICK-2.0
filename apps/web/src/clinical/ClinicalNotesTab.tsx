@@ -87,7 +87,7 @@ const DOCTOR_ROLES = ['DOCTOR_RESIDENT', 'DOCTOR_LOCUM'];
 function noteLabel(note: ClinicalNote): string {
   const when = dayjs(note.createdAt).format('D MMM YYYY, HH:mm');
   if (note.legacyAuthorUnknown) {
-    return `${when} · Author not recorded — legacy note`;
+    return `${when} · Author not recorded — legacy note · Read-only`;
   }
   const who = note.authorNameSnapshot ?? 'Unknown';
   const amendment = note.entryType === 'AMENDMENT' ? ' · Amendment' : '';
@@ -154,7 +154,12 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
   }, [activeNote?.id, isNewDraft]);
 
   const isSigned = activeNote?.status === 'SIGNED';
-  const readOnly = isSigned || (!canWriteNarrative && draftType === 'DOCTOR_NARRATIVE' && !isNewDraft);
+  // A legacy note has no recorded author, so editing it would attribute
+  // someone else's historical text to whoever is logged in now. Permanently
+  // read-only; corrections go through an attributed amendment.
+  const isLegacy = Boolean(activeNote?.legacyAuthorUnknown);
+  const isLocked = isSigned || isLegacy;
+  const readOnly = isLocked || (!canWriteNarrative && draftType === 'DOCTOR_NARRATIVE' && !isNewDraft);
 
   // "Add Note" opens a LOCAL draft — no empty row is inserted in the
   // database. The row (and its authorship) is created on first save.
@@ -296,9 +301,12 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
             )}
             {activeNote.hasAmendment && <Tag color="purple">Amended</Tag>}
             {activeNote.legacyAuthorUnknown ? (
-              <Text type="secondary" italic style={{ fontSize: 12 }}>
-                Author not recorded — legacy note
-              </Text>
+              <>
+                <Tag>Read-only</Tag>
+                <Text type="secondary" italic style={{ fontSize: 12 }}>
+                  Author not recorded — legacy note
+                </Text>
+              </>
             ) : (
               <Text type="secondary" style={{ fontSize: 12 }}>
                 Entered by <Text strong style={{ fontSize: 12 }}>{activeNote.authorNameSnapshot}</Text>
@@ -338,6 +346,15 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
           style={{ marginBottom: 6 }}
           message="This note is signed and cannot be edited."
           description="Corrections must be recorded as an amendment, which is kept as a separate linked entry."
+        />
+      )}
+      {isLegacy && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 6 }}
+          message="Legacy note — read-only"
+          description="This entry predates authorship tracking, so its author cannot be verified and its content is preserved unchanged. To correct it, add an amendment: that is recorded against you, with a reason, date and time."
         />
       )}
       {!canWriteNarrative && draftType === 'DOCTOR_NARRATIVE' && !activeNote && (
@@ -412,7 +429,7 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
         >
           Save Clinical Note
         </Button>
-        {activeNote && !isSigned && activeNote.noteType === 'DOCTOR_NARRATIVE' && (
+        {activeNote && !isLocked && activeNote.noteType === 'DOCTOR_NARRATIVE' && (
           <Button
             icon={<SafetyCertificateOutlined />}
             loading={signNote.isPending}
@@ -421,7 +438,9 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
             Sign
           </Button>
         )}
-        {isSigned && (
+        {/* Both signed and legacy notes are locked, so both are corrected the
+            same way — via an attributed amendment. */}
+        {isLocked && (
           <Button icon={<EditOutlined />} onClick={() => setAmendOpen(true)}>
             Add Amendment
           </Button>
@@ -445,8 +464,8 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
           type="info"
           showIcon
           style={{ marginBottom: 12 }}
-          message="The original signed note stays unchanged."
-          description="This creates a new, separately-signed entry linked to it, shown chronologically in the record."
+          message="The original note stays unchanged."
+          description="This creates a new entry linked to it — recorded against you, with your name, the reason and the time — shown chronologically in the record."
         />
         <Input.TextArea
           rows={3}
