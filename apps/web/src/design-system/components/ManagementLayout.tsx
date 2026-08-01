@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { Layout, Menu } from 'antd';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 
@@ -14,9 +15,12 @@ function item(path: string, label: string) {
 // Finance has no pages yet (e-Invoice pending owner's kuwick.com reference
 // screenshots, DECISIONS.md D-032) so its group is omitted until there's
 // something to link to.
+// Collapsible submenus (not `type: 'group'`, which antd always renders
+// fully expanded) — with 5 groups and up to 9 items each, an always-open
+// list ran off the bottom of the Sider with no way to scroll to it.
 const MENU_GROUPS = [
   {
-    type: 'group' as const,
+    key: 'reports',
     label: 'Reports',
     children: [
       item('/management/reports', 'Executive Dashboard'),
@@ -31,7 +35,7 @@ const MENU_GROUPS = [
     ],
   },
   {
-    type: 'group' as const,
+    key: 'operation',
     label: 'Operation',
     children: [
       item('/management/operation/clinics', 'Clinics'),
@@ -46,7 +50,7 @@ const MENU_GROUPS = [
     ],
   },
   {
-    type: 'group' as const,
+    key: 'hr',
     label: 'HR',
     children: [
       item('/management/hr/staff', 'Staff'),
@@ -56,7 +60,7 @@ const MENU_GROUPS = [
     ],
   },
   {
-    type: 'group' as const,
+    key: 'stock',
     label: 'Stock',
     children: [
       item('/management/stock/items', 'Items'),
@@ -71,7 +75,7 @@ const MENU_GROUPS = [
     ],
   },
   {
-    type: 'group' as const,
+    key: 'panel',
     label: 'Panel',
     children: [item('/management/panel/clinics', 'Panel Clinics'), item('/management/panel/claims', 'Panel Claims')],
   },
@@ -79,17 +83,28 @@ const MENU_GROUPS = [
 
 export const MANAGEMENT_PATHS = new Set(MENU_GROUPS.flatMap((group) => group.children.map((child) => child.key)));
 
+function groupKeyForPath(pathname: string): string | undefined {
+  return MENU_GROUPS.find((group) => group.children.some((child) => child.key === pathname))?.key;
+}
+
 export function ManagementLayout() {
   const location = useLocation();
+  const activeGroupKey = useMemo(() => groupKeyForPath(location.pathname), [location.pathname]);
+  const [openKeys, setOpenKeys] = useState<string[]>(activeGroupKey ? [activeGroupKey] : ['reports']);
 
   return (
     <Layout style={{ height: '100%', background: '#fff' }}>
-      <Sider width={220} theme="light" style={{ borderRight: '1px solid #f0f0f0' }}>
+      <Sider width={220} theme="light" style={{ borderRight: '1px solid #f0f0f0', overflowY: 'auto', height: '100%' }}>
         <Menu
           mode="inline"
           items={MENU_GROUPS}
           selectedKeys={[location.pathname]}
-          style={{ height: '100%', borderRight: 'none' }}
+          openKeys={openKeys}
+          // Accordion behaviour — only the most recently opened group stays
+          // expanded, so the list of visible items stays short regardless
+          // of how many groups exist.
+          onOpenChange={(keys) => setOpenKeys(keys.length > 0 ? [keys[keys.length - 1]] : [])}
+          style={{ borderRight: 'none' }}
         />
       </Sider>
       <Content style={{ padding: '0 24px', overflowY: 'auto' }}>
