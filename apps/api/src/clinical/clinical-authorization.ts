@@ -81,6 +81,37 @@ export function canRecordObservations(staff: Staff): boolean {
   return staff.active && (DOCTOR_ROLES.includes(staff.role) || staff.role === 'FRONT_DESK_CLINICAL_STAFF');
 }
 
+// G2 closure (D-061) — who may change a visit's diagnoses.
+//
+// A diagnosis is a clinical judgement, so recording, re-prioritising and
+// removing one are doctor actions. FRONT_DESK_CLINICAL_STAFF may record
+// observations and staff remarks but must not alter a diagnosis.
+//
+// OWNER_ADMIN does NOT qualify on the strength of the administrative role
+// alone — the same rule C0 applies to signing. A practice owner who is not a
+// clinician has every administrative right and no clinical one; conflating
+// the two is how a non-clinical account ends up silently altering a
+// medicolegal record. An owner who IS a doctor qualifies through their
+// professional identity, not their job title.
+export function canModifyDiagnosis(staff: Staff): boolean {
+  if (!staff.active) {
+    return false;
+  }
+  if (DOCTOR_ROLES.includes(staff.role)) {
+    return true;
+  }
+  return staff.professionalType === 'MEDICAL_DOCTOR' && staff.professionalActive;
+}
+
+export function assertCanModifyDiagnosis(staff: Staff): void {
+  if (!canModifyDiagnosis(staff)) {
+    throw new ForbiddenException(
+      'Only a doctor may add, re-prioritise or remove a diagnosis. ' +
+        'An administrative account does not carry clinical modification rights.',
+    );
+  }
+}
+
 export function assertCanAuthor(staff: Staff, noteType: ClinicalNoteType): void {
   const allowed = noteType === 'DOCTOR_NARRATIVE' ? canAuthorNarrative(staff) : canAuthorStaffRemark(staff);
   if (!allowed) {

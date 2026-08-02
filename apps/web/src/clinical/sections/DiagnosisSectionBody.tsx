@@ -1,15 +1,16 @@
 import { useState } from 'react';
-import { AutoComplete, Button, Popconfirm, Radio, Space, Tag, Tooltip, Typography, message } from 'antd';
-import { CloseOutlined, StarFilled, StarOutlined } from '@ant-design/icons';
+import { AutoComplete, Button, Radio, Space, Tag, Tooltip, Typography, message } from 'antd';
+import { HistoryOutlined, StarFilled, StarOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
   useAddDiagnosis,
   useDiagnoses,
   useDiagnosisCatalogSearch,
-  useRemoveDiagnosis,
+  useDiagnosisHistory,
   useSetDiagnosisPriority,
 } from '../hooks/useDiagnoses';
 import { Diagnosis, DiagnosisCategory } from '../types';
+import { RemoveDiagnosisModal } from './RemoveDiagnosisModal';
 import { ApiError } from '../../core/api-client';
 
 const { Text } = Typography;
@@ -64,8 +65,10 @@ export function DiagnosisSectionBody({ visitId }: DiagnosisSectionBodyProps) {
   const { data: diagnoses, isLoading } = useDiagnoses(visitId);
   const { data: catalogResults } = useDiagnosisCatalogSearch(search, category);
   const addDiagnosis = useAddDiagnosis(visitId);
-  const removeDiagnosis = useRemoveDiagnosis(visitId);
   const setPriority = useSetDiagnosisPriority(visitId);
+  const [removing, setRemoving] = useState<Diagnosis | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const { data: history } = useDiagnosisHistory(visitId, showHistory);
 
   const list = diagnoses ?? [];
   const hasPrimary = list.some((d) => d.priority === 'PRIMARY');
@@ -180,22 +183,64 @@ export function DiagnosisSectionBody({ visitId }: DiagnosisSectionBodyProps) {
                     {diagnosis.priority === 'PRIMARY' ? 'Primary' : 'Set primary'}
                   </Button>
                 </Tooltip>
-                <Popconfirm
-                  title="Remove this diagnosis?"
-                  description="It is deleted from the visit and cannot be recovered."
-                  okText="Remove"
-                  okButtonProps={{ danger: true }}
-                  onConfirm={() =>
-                    removeDiagnosis.mutateAsync(diagnosis.id).catch((e) => report(e, 'Failed to remove diagnosis'))
-                  }
-                >
-                  <Button size="small" type="text" danger icon={<CloseOutlined />} aria-label="Remove diagnosis" />
-                </Popconfirm>
+                {/* G2 closure (D-061) — a named action, not a bare trash
+                    icon. It opens a confirmation showing what is being
+                    removed and demanding a reason. */}
+                <Button size="small" danger onClick={() => setRemoving(diagnosis)}>
+                  Remove from visit
+                </Button>
               </Space>
             </div>
           ))}
         </div>
       )}
+
+      {/* G2 closure (D-061) — the audit view. Removed diagnoses never appear
+          in the clinical list above or in its count; they are here, labelled
+          for what they are, with the actor, time and reason. */}
+      <div style={{ marginTop: 12 }}>
+        <Button size="small" type="link" icon={<HistoryOutlined />} onClick={() => setShowHistory((v) => !v)}>
+          {showHistory ? 'Hide removed diagnoses' : 'Show removed diagnoses'}
+        </Button>
+      </div>
+
+      {showHistory && (
+        <div className="kw-dx-list" style={{ marginTop: 4 }}>
+          {(history ?? []).filter((d) => d.recordStatus === 'REMOVED_IN_ERROR').length === 0 ? (
+            <Text type="secondary" italic style={{ fontSize: 12 }}>
+              No diagnosis has been removed from this visit.
+            </Text>
+          ) : (
+            (history ?? [])
+              .filter((d) => d.recordStatus === 'REMOVED_IN_ERROR')
+              .map((d) => (
+                <div key={d.id} className="kw-dx-row">
+                  <div className="kw-dx-main">
+                    <Space wrap size={6}>
+                      {d.icd10Code && <Tag color="geekblue">{d.icd10Code}</Tag>}
+                      <Text delete>{d.name}</Text>
+                      <Tag color="red">Removed from visit — entered in error</Tag>
+                    </Space>
+                    <div>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {attribution(d)}
+                      </Text>
+                    </div>
+                    <div>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        Removed by {d.removedByNameSnapshot ?? 'not recorded'} ·{' '}
+                        {d.removedAt ? dayjs(d.removedAt).format('D MMM YYYY, HH:mm') : '—'} · Reason:{' '}
+                        {d.removalReason ?? '—'}
+                      </Text>
+                    </div>
+                  </div>
+                </div>
+              ))
+          )}
+        </div>
+      )}
+
+      <RemoveDiagnosisModal visitId={visitId} diagnosis={removing} onClose={() => setRemoving(null)} />
     </div>
   );
 }

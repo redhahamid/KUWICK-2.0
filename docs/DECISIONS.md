@@ -571,9 +571,43 @@ The three sections now share one row pattern (`.kw-dx-row`), so they read as one
 
 ---
 
+## D-061 — G2 closure: a saved diagnosis is corrected, never deleted
+
+Closes the governance gap D-059 recorded. The old `DELETE /diagnoses/:id` removed a clinical record outright, leaving no trace that it had existed or who removed it.
+
+**Removal is now a clinical correction.** `recordStatus` moves `ACTIVE` → `REMOVED_IN_ERROR`; the row, its name, ICD-10 code, priority, original attribution and `addedAt` are all left untouched, and the event records `removedAt`, `removedByStaffId`, frozen name/role snapshots, and a **mandatory** reason. There is **no application path that deletes a saved diagnosis** — the DELETE route is gone, and the live check confirms it 404s.
+
+**The one-primary rule is now scoped to ACTIVE rows.** The old index would have kept a removed primary occupying the slot forever, so the doctor could never designate a new one. The removed row keeps its historical priority for audit; it just stops counting. Removing the primary leaves the visit with **no** primary until a doctor deliberately chooses one — nothing is auto-promoted, because picking a replacement would be inventing a clinical judgement.
+
+**Permissions are enforced server-side, and OWNER_ADMIN does not qualify on its own.** `canModifyDiagnosis` allows doctors, or a staff member whose *professional* identity is an active `MEDICAL_DOCTOR` — the same distinction C0 draws for signing. A practice owner who is not a clinician has every administrative right and no clinical one. `FRONT_DESK_CLINICAL_STAFF` may record observations and staff remarks but may not add, re-prioritise or remove a diagnosis. The guard is applied to **all three** write paths, not just removal.
+
+This is a **narrow, diagnosis-specific** clinical-authorisation guard. The wider gap is unchanged and still open: `currentRole()` is used nowhere else, and the invoice, order, medication and document controllers still have no role enforcement at all.
+
+**Legacy diagnoses** remain removable through the same audited flow. The unknown original author is never fabricated; the removal event itself carries reliable current attribution.
+
+**Concurrency.** `version` plus an optional `expectedVersion` — a stale client gets 409 rather than removing a diagnosis that changed underneath it. Re-removing an already-removed row is also 409.
+
+**Migration:** 5 rows, all `ACTIVE`, **0** removed, **0** carrying fabricated removal attribution, all at `version = 1`. Backfill bracketed `NO FORCE`/`FORCE` with a `DO $$` guard that raises if any row came out non-ACTIVE or with invented removal data (D-048). Index `diagnoses_one_primary_per_visit` dropped and replaced by `diagnoses_one_active_primary_per_visit`.
+
+*(The count is 5 here where D-059 reported 8: the three rows created purely to give that migration real data lived on a fixture visit, which the fixture sweep has since removed. No production-shaped row was lost.)*
+
+**UI.** "Remove from visit" — a named action, not a bare trash icon. The confirmation shows the diagnosis, ICD-10 code, current priority, who added it and when, demands a reason, and states plainly that *"This diagnosis will be removed from the active visit record, but the original entry and audit history will remain preserved."* Removed entries vanish from the active list and count, and appear under "Show removed diagnoses" as **"Removed from visit — entered in error"** with actor, time and reason. Flow layout's `DiagnosisTab` was pointed at the same audited modal so there is only ever one removal path, and the unreferenced rollback card's unaudited delete was stripped out rather than left as a landmine.
+
+**Verification:** 44 unit tests plus `prisma/g2a-diagnosis-integrity-check.ts` at **34/34** against the real database and HTTP API.
+
+**Reversibility**: Medium — additive columns and an index swap; reverting would restore an unaudited delete, which is the thing this fixes.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
-- **Diagnosis deletion is a hard delete with no audit trail** (D-059). Removing a diagnosis leaves no record that it ever existed or who removed it. Needs an explicit governance decision — likely alongside the Void Note proposal — before production clinical use.
+- ~~Diagnosis deletion is a hard delete with no audit trail (D-059)~~ — **resolved by D-061.**
+- **Documents are hard-deleted** (`DELETE /documents/:id` → `prisma.document.delete`). A signed MC or referral letter can be erased with no trace of its existence, content or who removed it. Recommended for the **G3 Documents** checkpoint.
+- **Visit attachments are hard-deleted, file included** (`DELETE /visits/:visitId/attachments/:id` removes the row *and* unlinks the file from disk). A clinical image — otoscope, wound, dermatology — is unrecoverable. Recommended for the **G3** checkpoint, or sooner if images are already clinically relied upon.
+- **Order attachments are hard-deleted, file included** (`DELETE /order-services/:id/attachments/:attachmentId`). A lab result attached to a procedure is unrecoverable. Same recommendation.
+- **Prescriptions are soft-deleted but unattributed**: `deletedAt` is set and the row survives, and deletion is blocked once the item leaves `ORDERED` — but no actor and no reason are recorded. Clinically better than the others, still short of the diagnosis standard. Recommended for a **medication-governance checkpoint after G3**.
+- **Orders/procedures have no delete route at all** — only `cancel`, which sets `CANCELLED` and stores `cancelReason`. This one is already acceptable; it lacks a cancelling-actor field, which is a smaller gap.
+- **The wider API RBAC gap remains open** (D-056). Only clinical notes, observations and now diagnoses have server-side role enforcement.
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:
 

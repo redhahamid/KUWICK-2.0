@@ -433,6 +433,10 @@ export interface DiagnosisCatalogEntry {
 // for every diagnosis recorded before G2a. It is never treated as SECONDARY.
 export type DiagnosisPriority = 'PRIMARY' | 'SECONDARY';
 
+// G2 closure (D-061) — a saved diagnosis is never deleted; it is removed from
+// the active record with an audited reason and stays queryable for history.
+export type DiagnosisRecordStatus = 'ACTIVE' | 'REMOVED_IN_ERROR';
+
 export interface Diagnosis {
   id: string;
   tenantId: string;
@@ -448,6 +452,14 @@ export interface Diagnosis {
   addedByRoleSnapshot: string | null;
   addedAt: string;
   legacyAttributionUnknown: boolean;
+  // G2 closure (D-061) — removal audit. All server-written; the client reads.
+  recordStatus: DiagnosisRecordStatus;
+  removedAt: string | null;
+  removedByStaffId: string | null;
+  removedByNameSnapshot: string | null;
+  removedByRoleSnapshot: string | null;
+  removalReason: string | null;
+  version: number;
 }
 
 export interface AddDiagnosisDto {

@@ -244,6 +244,101 @@ async function main() {
   }
   void otherTenantSeed;
 
+  // ---- G2 closure (D-061): audited removal ----
+  const target = made[2];
+  const beforeRemoval = (await api(`/diagnoses?visitId=${visit.id}`, token)).find(
+    (d: { id: string }) => d.id === target.id,
+  );
+
+  const noHardDelete = await call(`/diagnoses/${target.id}`, token, 'DELETE');
+  check(
+    'the hard-delete route is gone',
+    noHardDelete.status === 404,
+    `DELETE /diagnoses/:id → HTTP ${noHardDelete.status}`,
+  );
+
+  const noReason = await call(`/diagnoses/${target.id}/removal`, token, 'PATCH', { removalReason: '' });
+  check('a removal reason is mandatory', noReason.status === 400, `HTTP ${noReason.status}`);
+
+  const spoofRemover = await call(`/diagnoses/${target.id}/removal`, token, 'PATCH', {
+    removalReason: 'Entered in error',
+    removedByStaffId: 'attacker-staff-id',
+  });
+  check('browser-supplied remover identity is rejected', spoofRemover.status === 400, `HTTP ${spoofRemover.status}`);
+
+  // Make it PRIMARY first, so removing it exercises the active-primary rule.
+  await api(`/diagnoses/${target.id}/priority`, token, 'PATCH', { priority: 'PRIMARY' });
+  const removed = await api(`/diagnoses/${target.id}/removal`, token, 'PATCH', {
+    removalReason: 'Recorded on the wrong patient',
+  });
+
+  check(
+    'removed diagnosis keeps its original content byte-for-byte',
+    removed.name === beforeRemoval.name && removed.icd10Code === beforeRemoval.icd10Code,
+    `"${removed.name}" / ${removed.icd10Code}`,
+  );
+  check(
+    'removed diagnosis keeps its ORIGINAL added-by attribution',
+    removed.addedByStaffId === beforeRemoval.addedByStaffId &&
+      removed.addedByNameSnapshot === beforeRemoval.addedByNameSnapshot &&
+      removed.addedAt === beforeRemoval.addedAt,
+    `still added by ${removed.addedByNameSnapshot}`,
+  );
+  check(
+    'removal records actor, time and reason',
+    removed.removedByStaffId === seed.staff_id &&
+      Boolean(removed.removedAt) &&
+      removed.removalReason === 'Recorded on the wrong patient',
+    `removed by ${removed.removedByNameSnapshot}`,
+  );
+  check('historical priority is preserved on the removed row', removed.priority === 'PRIMARY', removed.priority);
+
+  const activeAfter = await api(`/diagnoses?visitId=${visit.id}`, token);
+  check(
+    'removed diagnosis disappears from the active list and count',
+    !activeAfter.some((d: { id: string }) => d.id === target.id),
+    `${activeAfter.length} active diagnoses`,
+  );
+  check(
+    'the removed PRIMARY no longer counts as the active primary',
+    activeAfter.filter((d: { priority: string }) => d.priority === 'PRIMARY').length === 0,
+    'no active primary',
+  );
+  check(
+    'no other diagnosis was silently promoted',
+    activeAfter.every((d: { priority: string }) => d.priority !== 'PRIMARY'),
+    'nothing auto-promoted',
+  );
+
+  const historyAfter = await api(`/diagnoses/history?visitId=${visit.id}`, token);
+  check(
+    'removed diagnosis remains available in the audit history',
+    historyAfter.some(
+      (d: { id: string; recordStatus: string }) => d.id === target.id && d.recordStatus === 'REMOVED_IN_ERROR',
+    ),
+    `${historyAfter.length} rows in history`,
+  );
+
+  // A new primary may still be chosen afterwards.
+  await api(`/diagnoses/${made[0].id}/priority`, token, 'PATCH', { priority: 'PRIMARY' });
+  const afterNewPrimary = await api(`/diagnoses?visitId=${visit.id}`, token);
+  check(
+    'a new primary can be selected after the old one was removed',
+    afterNewPrimary.filter((d: { priority: string }) => d.priority === 'PRIMARY').length === 1,
+    'exactly one active primary again',
+  );
+
+  const removeAgain = await call(`/diagnoses/${target.id}/removal`, token, 'PATCH', {
+    removalReason: 'duplicate attempt',
+  });
+  check('removing an already-removed diagnosis is a conflict', removeAgain.status === 409, `HTTP ${removeAgain.status}`);
+
+  const stale = await call(`/diagnoses/${made[1].id}/removal`, token, 'PATCH', {
+    removalReason: 'stale version check',
+    expectedVersion: 999,
+  });
+  check('a stale expectedVersion is rejected', stale.status === 409, `HTTP ${stale.status}`);
+
   // 9 — catalogue search still works, all three sources
   for (const category of ['SUMMARIZE', 'FULL', 'CUSTOM']) {
     const hits = await api(`/diagnosis-catalog?search=a&category=${category}`, token);

@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { AutoComplete, Card, Empty, Popconfirm, Space, Tag, Typography } from 'antd';
-import { CloseOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
-import { useAddDiagnosis, useDiagnoses, useDiagnosisCatalogSearch, useRemoveDiagnosis } from './hooks/useDiagnoses';
+import { AutoComplete, Card, Empty, Space, Tag, Typography } from 'antd';
+import { SafetyCertificateOutlined } from '@ant-design/icons';
+import { useAddDiagnosis, useDiagnoses, useDiagnosisCatalogSearch } from './hooks/useDiagnoses';
 
 const { Text } = Typography;
 
@@ -19,7 +19,6 @@ export function DiagnosisSummaryCard({ visitId }: DiagnosisSummaryCardProps) {
   const { data: diagnoses } = useDiagnoses(visitId);
   const { data: catalogResults } = useDiagnosisCatalogSearch(search, 'SUMMARIZE');
   const addDiagnosis = useAddDiagnosis(visitId);
-  const removeDiagnosis = useRemoveDiagnosis(visitId);
 
   const handleSelect = async (_value: string, option: { id: string }) => {
     await addDiagnosis.mutateAsync({ visitId, diagnosisCatalogId: option.id });
@@ -60,9 +59,9 @@ export function DiagnosisSummaryCard({ visitId }: DiagnosisSummaryCardProps) {
                 {diagnosis.name}
                 {diagnosis.icd10Code && <Tag style={{ marginLeft: 4 }}>{diagnosis.icd10Code}</Tag>}
               </Text>
-              <Popconfirm title="Remove this diagnosis?" onConfirm={() => removeDiagnosis.mutate(diagnosis.id)}>
-                <CloseOutlined style={{ fontSize: 11, cursor: 'pointer', opacity: 0.5, padding: 4 }} />
-              </Popconfirm>
+              {/* G2 closure (D-061) — the unaudited delete this card used no longer
+                  exists. Kept for rollback only; removal happens through the
+                  audited flow in the clinical section. */}
             </div>
           ))}
         </Space>

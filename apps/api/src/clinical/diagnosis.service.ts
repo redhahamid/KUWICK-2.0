@@ -6,15 +6,21 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DiagnosisCategory, DiagnosisPriority, Prisma, Staff } from '@prisma/client';
+import { DiagnosisCategory, DiagnosisPriority, DiagnosisRecordStatus, Prisma, Staff } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentStaffId, currentTenantId } from '../core/tenant-context';
-import { assertBranchAccess, snapshotOf, type BranchAccessContext } from './clinical-authorization';
+import {
+  assertBranchAccess,
+  assertCanModifyDiagnosis,
+  snapshotOf,
+  type BranchAccessContext,
+} from './clinical-authorization';
 import { AddDiagnosisDto } from './dto/add-diagnosis.dto';
 import { CreateCustomDiagnosisDto } from './dto/create-custom-diagnosis.dto';
 import { BulkActivateCatalogDto } from './dto/bulk-activate-catalog.dto';
 import { SetDiagnosisPriorityDto } from './dto/set-diagnosis-priority.dto';
+import { RemoveDiagnosisDto } from './dto/remove-diagnosis.dto';
 
 type Tx = Prisma.TransactionClient;
 
@@ -143,9 +149,16 @@ export class DiagnosisService {
 
   // G2a — PRIMARY first, then everything else oldest-first. The clinical
   // reading order, not the insertion order.
-  async findByVisitId(visitId: string) {
+  //
+  // G2 closure (D-061) — ACTIVE only by default. A removed diagnosis must
+  // never appear in the normal clinical view or count; `includeRemoved` is
+  // for the audit/history view.
+  async findByVisitId(visitId: string, includeRemoved = false) {
     const rows = await this.prisma.diagnosis.findMany({
-      where: { visitId },
+      where: {
+        visitId,
+        ...(includeRemoved ? {} : { recordStatus: DiagnosisRecordStatus.ACTIVE }),
+      },
       orderBy: { createdAt: 'asc' },
     });
     return [...rows].sort((a, b) => {
@@ -165,6 +178,7 @@ export class DiagnosisService {
 
     return this.withTenantTx(async (tx) => {
       const actor = await this.requireActor(tx);
+      assertCanModifyDiagnosis(actor);
       await this.assertMayTouchVisit(tx, dto.visitId, actor);
 
       let catalogEntry;
@@ -225,11 +239,15 @@ export class DiagnosisService {
 
     return this.withTenantTx(async (tx) => {
       const actor = await this.requireActor(tx);
+      assertCanModifyDiagnosis(actor);
       const diagnosis = await tx.diagnosis.findUnique({ where: { id } });
       if (!diagnosis) {
         throw new NotFoundException('Diagnosis not found');
       }
       await this.assertMayTouchVisit(tx, diagnosis.visitId, actor);
+      if (diagnosis.recordStatus === DiagnosisRecordStatus.REMOVED_IN_ERROR) {
+        throw new ConflictException('This diagnosis has been removed from the visit and cannot be re-prioritised.');
+      }
 
       if (next === DiagnosisPriority.PRIMARY) {
         await this.demoteCurrentPrimary(tx, diagnosis.visitId, id);
@@ -251,6 +269,9 @@ export class DiagnosisService {
       where: {
         visitId,
         priority: DiagnosisPriority.PRIMARY,
+        // Removed rows keep their historical priority for audit and must not
+        // be rewritten by a later demotion.
+        recordStatus: DiagnosisRecordStatus.ACTIVE,
         ...(exceptId ? { id: { not: exceptId } } : {}),
       },
       data: { priority: DiagnosisPriority.SECONDARY },
@@ -261,7 +282,7 @@ export class DiagnosisService {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === UNIQUE_VIOLATION &&
-      String(error.meta?.target ?? '').includes('one_primary_per_visit')
+      String(error.meta?.target ?? '').includes('primary_per_visit')
     ) {
       return new ConflictException(
         'Another primary diagnosis was set for this visit at the same time. Reload the visit and try again.',
@@ -271,25 +292,60 @@ export class DiagnosisService {
   }
 
   /**
-   * Hard delete — unchanged from before G2a, deliberately.
+   * G2 closure (D-061) — remove a diagnosis from the ACTIVE visit record.
    *
-   * The row is removed outright: there is no soft-delete column, no audit
-   * entry and no revision history for diagnoses. G2a does NOT widen that,
-   * because turning deletion into a governed clinical-record action is a
-   * separate decision the owner has to make (recorded as an open governance
-   * item alongside D-059). What G2a does add is that removal now goes through
-   * the same authenticated-actor and branch-access checks as everything else,
-   * so the new UI cannot reach around the server's rules.
+   * This replaces the hard delete entirely. There is no longer any
+   * application path that deletes a saved diagnosis: the row stays, with its
+   * content, ICD-10 code, priority and ORIGINAL attribution untouched. Only
+   * `recordStatus` changes, plus who removed it, when and why.
+   *
+   * The removed row keeps its historical `priority` for audit, but the
+   * one-primary index is scoped to ACTIVE rows, so removing the primary frees
+   * the slot without any diagnosis being silently promoted in its place. A
+   * visit may legitimately have no primary until a doctor chooses one.
    */
-  async remove(id: string) {
+  async removeFromVisit(id: string, dto: RemoveDiagnosisDto) {
+    const reason = dto.removalReason?.trim();
+    if (!reason) {
+      throw new BadRequestException('A removal reason is required.');
+    }
+
     return this.withTenantTx(async (tx) => {
       const actor = await this.requireActor(tx);
+      // Clinical judgement: doctors only. An administrative role does not
+      // qualify on its own (D-061).
+      assertCanModifyDiagnosis(actor);
+
       const diagnosis = await tx.diagnosis.findUnique({ where: { id } });
       if (!diagnosis) {
         throw new NotFoundException('Diagnosis not found');
       }
       await this.assertMayTouchVisit(tx, diagnosis.visitId, actor);
-      await tx.diagnosis.delete({ where: { id } });
+
+      if (diagnosis.recordStatus === DiagnosisRecordStatus.REMOVED_IN_ERROR) {
+        throw new ConflictException('This diagnosis has already been removed from the visit.');
+      }
+      if (dto.expectedVersion !== undefined && dto.expectedVersion !== diagnosis.version) {
+        throw new ConflictException(
+          'This diagnosis changed since you loaded it. Reload the visit and try again.',
+        );
+      }
+
+      const snap = snapshotOf(actor);
+      return tx.diagnosis.update({
+        where: { id },
+        data: {
+          recordStatus: DiagnosisRecordStatus.REMOVED_IN_ERROR,
+          removedAt: new Date(),
+          removedByStaffId: snap.staffId,
+          removedByNameSnapshot: snap.nameSnapshot,
+          removedByRoleSnapshot: snap.roleSnapshot,
+          removalReason: reason,
+          version: { increment: 1 },
+          // priority, name, icd10Code, addedBy* and addedAt are deliberately
+          // NOT touched. The original entry has to survive intact.
+        },
+      });
     });
   }
 }

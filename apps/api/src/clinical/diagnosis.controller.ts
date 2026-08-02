@@ -1,7 +1,8 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UsePipes, ValidationPipe } from '@nestjs/common';
 import { DiagnosisService } from './diagnosis.service';
 import { AddDiagnosisDto } from './dto/add-diagnosis.dto';
 import { SetDiagnosisPriorityDto } from './dto/set-diagnosis-priority.dto';
+import { RemoveDiagnosisDto } from './dto/remove-diagnosis.dto';
 
 // G2a (D-059) — scoped pipe, same reason as the clinical-note controller: a
 // client that tries to post addedByStaffId must fail loudly with a 400 rather
@@ -11,9 +12,19 @@ import { SetDiagnosisPriorityDto } from './dto/set-diagnosis-priority.dto';
 export class DiagnosisController {
   constructor(private readonly diagnoses: DiagnosisService) {}
 
+  // Active diagnoses only. A removed one must never reach the clinical view.
   @Get()
   findByVisit(@Query('visitId') visitId: string) {
     return this.diagnoses.findByVisitId(visitId);
+  }
+
+  // G2 closure (D-061) — the audit/history view: every diagnosis ever recorded
+  // for the visit, including the ones removed in error, with their removal
+  // actor, time and reason. Read-only by design; there is no route that
+  // updates or deletes a removal event.
+  @Get('history')
+  history(@Query('visitId') visitId: string) {
+    return this.diagnoses.findByVisitId(visitId, true);
   }
 
   @Post()
@@ -26,8 +37,13 @@ export class DiagnosisController {
     return this.diagnoses.setPriority(id, dto);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.diagnoses.remove(id);
+  // G2 closure (D-061) — replaces DELETE /diagnoses/:id entirely.
+  //
+  // There is deliberately NO hard-delete route left for a saved diagnosis. A
+  // removal is a clinical correction with a mandatory reason; the row, its
+  // content and its original attribution survive it.
+  @Patch(':id/removal')
+  remove(@Param('id') id: string, @Body() dto: RemoveDiagnosisDto) {
+    return this.diagnoses.removeFromVisit(id, dto);
   }
 }

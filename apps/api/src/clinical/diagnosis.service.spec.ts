@@ -5,7 +5,7 @@ import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider'
 import { PrismaService } from '../core/prisma.service';
 import { tenantContextStorage } from '../core/tenant-context';
 
-const ACTOR = {
+const ACTOR: Record<string, unknown> = {
   id: 'staff-1',
   fullName: 'Dr. Amira Rahman',
   role: 'DOCTOR_RESIDENT',
@@ -17,7 +17,7 @@ const ACTOR = {
 };
 
 interface Options {
-  actor?: Partial<typeof ACTOR> | null;
+  actor?: Record<string, unknown> | null;
   visitClinicId?: string | null;
   tenantBranchCount?: number;
   authorisedClinicIds?: string[];
@@ -301,7 +301,7 @@ describe('DiagnosisService', () => {
       );
 
       expect(tx.diagnosis.updateMany).toHaveBeenCalledWith({
-        where: { visitId: 'visit-1', priority: DiagnosisPriority.PRIMARY },
+        where: { visitId: 'visit-1', priority: DiagnosisPriority.PRIMARY, recordStatus: 'ACTIVE' },
         data: { priority: DiagnosisPriority.SECONDARY },
       });
     });
@@ -313,7 +313,12 @@ describe('DiagnosisService', () => {
       await withTenant(() => service.setPriority('diag-1', { priority: DiagnosisPriority.PRIMARY }));
 
       expect(tx.diagnosis.updateMany).toHaveBeenCalledWith({
-        where: { visitId: 'visit-1', priority: DiagnosisPriority.PRIMARY, id: { not: 'diag-1' } },
+        where: {
+          visitId: 'visit-1',
+          priority: DiagnosisPriority.PRIMARY,
+          recordStatus: 'ACTIVE',
+          id: { not: 'diag-1' },
+        },
         data: { priority: DiagnosisPriority.SECONDARY },
       });
       expect(tx.diagnosis.update).toHaveBeenCalledWith({
@@ -410,27 +415,215 @@ describe('DiagnosisService', () => {
         tenantBranchCount: 3,
         authorisedClinicIds: [],
       });
-      tx.diagnosis.findUnique.mockResolvedValue({ id: 'diag-1', visitId: 'visit-1' });
+      tx.diagnosis.findUnique.mockResolvedValue({ id: 'diag-1', visitId: 'visit-1', recordStatus: 'ACTIVE', version: 1 });
 
-      await expect(withTenant(() => service.remove('diag-1'))).rejects.toThrow(ForbiddenException);
-      expect(tx.diagnosis.delete).not.toHaveBeenCalled();
+      await expect(
+        withTenant(() => service.removeFromVisit('diag-1', { removalReason: 'wrong branch' })),
+      ).rejects.toThrow(ForbiddenException);
+      expect(tx.diagnosis.update).not.toHaveBeenCalled();
     });
   });
 
-  describe('removal', () => {
+  // ---------------------------------------------------------------------
+  // G2 closure (D-061) — audited removal replaces the hard delete
+  // ---------------------------------------------------------------------
+  describe('audited removal', () => {
+    const SAVED = {
+      id: 'diag-1',
+      visitId: 'visit-1',
+      name: 'Common cold',
+      icd10Code: 'J00',
+      priority: DiagnosisPriority.PRIMARY,
+      recordStatus: 'ACTIVE',
+      version: 3,
+      addedByStaffId: 'other-staff',
+      addedByNameSnapshot: 'Dr. Original',
+    };
+
+    it('no longer exposes a hard-delete method', () => {
+      const { service } = createService();
+      expect((service as unknown as Record<string, unknown>).remove).toBeUndefined();
+    });
+
+    it('never calls prisma delete', async () => {
+      const { service, tx } = createService();
+      tx.diagnosis.findUnique.mockResolvedValue(SAVED);
+
+      await withTenant(() => service.removeFromVisit('diag-1', { removalReason: 'Entered in error' }));
+
+      expect(tx.diagnosis.delete).not.toHaveBeenCalled();
+    });
+
+    it('requires a removal reason', async () => {
+      const { service, tx } = createService();
+      tx.diagnosis.findUnique.mockResolvedValue(SAVED);
+
+      await expect(withTenant(() => service.removeFromVisit('diag-1', { removalReason: '   ' }))).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(tx.diagnosis.update).not.toHaveBeenCalled();
+    });
+
+    it('records the remover from the session, not the request', async () => {
+      const { service, tx } = createService();
+      tx.diagnosis.findUnique.mockResolvedValue(SAVED);
+
+      await withTenant(() =>
+        service.removeFromVisit('diag-1', {
+          removalReason: 'Wrong patient',
+          removedByStaffId: 'attacker',
+        } as never),
+      );
+
+      const data = (tx.diagnosis.update as jest.Mock).mock.calls[0][0].data;
+      expect(data.removedByStaffId).toBe('staff-1');
+      expect(data.removedByNameSnapshot).toBe('Dr. Amira Rahman');
+      expect(data.removedByRoleSnapshot).toBe('DOCTOR_RESIDENT');
+      expect(data.removalReason).toBe('Wrong patient');
+    });
+
+    it('preserves the original entry — content, priority and original attribution', async () => {
+      const { service, tx } = createService();
+      tx.diagnosis.findUnique.mockResolvedValue(SAVED);
+
+      await withTenant(() => service.removeFromVisit('diag-1', { removalReason: 'Entered in error' }));
+
+      const data = (tx.diagnosis.update as jest.Mock).mock.calls[0][0].data;
+      // Nothing about the original entry may be rewritten by a removal.
+      expect(data.name).toBeUndefined();
+      expect(data.icd10Code).toBeUndefined();
+      expect(data.priority).toBeUndefined();
+      expect(data.addedByStaffId).toBeUndefined();
+      expect(data.addedByNameSnapshot).toBeUndefined();
+      expect(data.addedAt).toBeUndefined();
+      expect(data.recordStatus).toBe('REMOVED_IN_ERROR');
+    });
+
+    it('rejects a stale expectedVersion as a conflict', async () => {
+      const { service, tx } = createService();
+      tx.diagnosis.findUnique.mockResolvedValue(SAVED);
+
+      await expect(
+        withTenant(() => service.removeFromVisit('diag-1', { removalReason: 'x y z', expectedVersion: 2 })),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('refuses to remove an already-removed diagnosis', async () => {
+      const { service, tx } = createService();
+      tx.diagnosis.findUnique.mockResolvedValue({ ...SAVED, recordStatus: 'REMOVED_IN_ERROR' });
+
+      await expect(
+        withTenant(() => service.removeFromVisit('diag-1', { removalReason: 'again' })),
+      ).rejects.toThrow(ConflictException);
+    });
+
     it('throws NotFoundException when the diagnosis does not exist', async () => {
       const { service, tx } = createService();
       tx.diagnosis.findUnique.mockResolvedValue(null);
-      await expect(withTenant(() => service.remove('missing'))).rejects.toThrow(NotFoundException);
+      await expect(
+        withTenant(() => service.removeFromVisit('missing', { removalReason: 'gone' })),
+      ).rejects.toThrow(NotFoundException);
     });
 
-    it('still hard-deletes — G2a deliberately did not change this', async () => {
+    it('denies removal at an unauthorised branch', async () => {
+      const { service, tx } = createService({
+        visitClinicId: 'clinic-999',
+        tenantBranchCount: 3,
+        authorisedClinicIds: [],
+      });
+      tx.diagnosis.findUnique.mockResolvedValue(SAVED);
+
+      await expect(
+        withTenant(() => service.removeFromVisit('diag-1', { removalReason: 'wrong branch' })),
+      ).rejects.toThrow(ForbiddenException);
+      expect(tx.diagnosis.update).not.toHaveBeenCalled();
+    });
+
+    it('a legacy diagnosis is removable, and its unknown original author is not fabricated', async () => {
       const { service, tx } = createService();
-      tx.diagnosis.findUnique.mockResolvedValue({ id: 'diag-1', visitId: 'visit-1' });
+      tx.diagnosis.findUnique.mockResolvedValue({
+        ...SAVED,
+        addedByStaffId: null,
+        addedByNameSnapshot: null,
+        legacyAttributionUnknown: true,
+      });
 
-      await withTenant(() => service.remove('diag-1'));
+      await withTenant(() => service.removeFromVisit('diag-1', { removalReason: 'Legacy duplicate' }));
 
-      expect(tx.diagnosis.delete).toHaveBeenCalledWith({ where: { id: 'diag-1' } });
+      const data = (tx.diagnosis.update as jest.Mock).mock.calls[0][0].data;
+      expect(data.addedByStaffId).toBeUndefined();
+      expect(data.addedByNameSnapshot).toBeUndefined();
+      // The removal event itself still carries reliable attribution.
+      expect(data.removedByStaffId).toBe('staff-1');
+    });
+  });
+
+  describe('clinical authorisation', () => {
+    const FRONT_DESK = { ...ACTOR, role: 'FRONT_DESK_CLINICAL_STAFF', professionalType: null };
+    const NON_CLINICAL_OWNER = { ...ACTOR, role: 'OWNER_ADMIN', professionalType: null };
+    const DOCTOR_OWNER = {
+      ...ACTOR,
+      role: 'OWNER_ADMIN',
+      professionalType: 'MEDICAL_DOCTOR',
+      professionalActive: true,
+    };
+
+    it('front-desk clinical staff may not remove a diagnosis', async () => {
+      const { service, tx } = createService({ actor: FRONT_DESK });
+      tx.diagnosis.findUnique.mockResolvedValue({ id: 'diag-1', visitId: 'visit-1', recordStatus: 'ACTIVE', version: 1 });
+
+      await expect(
+        withTenant(() => service.removeFromVisit('diag-1', { removalReason: 'nope' })),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('front-desk clinical staff may not add a diagnosis', async () => {
+      const { service } = createService({ actor: FRONT_DESK });
+      await expect(
+        withTenant(() => service.addToVisit({ visitId: 'visit-1', diagnosisCatalogId: 'cat-1' })),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('a NON-CLINICAL owner-admin may not remove a diagnosis', async () => {
+      const { service, tx } = createService({ actor: NON_CLINICAL_OWNER });
+      tx.diagnosis.findUnique.mockResolvedValue({ id: 'diag-1', visitId: 'visit-1', recordStatus: 'ACTIVE', version: 1 });
+
+      await expect(
+        withTenant(() => service.removeFromVisit('diag-1', { removalReason: 'admin override' })),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('an owner-admin who IS a doctor may remove a diagnosis', async () => {
+      const { service, tx } = createService({ actor: DOCTOR_OWNER });
+      tx.diagnosis.findUnique.mockResolvedValue({ id: 'diag-1', visitId: 'visit-1', recordStatus: 'ACTIVE', version: 1 });
+
+      await expect(
+        withTenant(() => service.removeFromVisit('diag-1', { removalReason: 'Entered in error' })),
+      ).resolves.toBeDefined();
+    });
+  });
+
+  describe('active-only reads', () => {
+    it('excludes removed diagnoses by default', async () => {
+      const { service, prisma } = createService();
+      (prisma.diagnosis.findMany as jest.Mock).mockResolvedValue([]);
+
+      await service.findByVisitId('visit-1');
+
+      expect(prisma.diagnosis.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { visitId: 'visit-1', recordStatus: 'ACTIVE' } }),
+      );
+    });
+
+    it('includes removed diagnoses for the audit view', async () => {
+      const { service, prisma } = createService();
+      (prisma.diagnosis.findMany as jest.Mock).mockResolvedValue([]);
+
+      await service.findByVisitId('visit-1', true);
+
+      expect(prisma.diagnosis.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { visitId: 'visit-1' } }),
+      );
     });
   });
 

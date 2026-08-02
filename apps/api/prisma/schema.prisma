@@ -500,6 +500,7 @@ model Staff {
   observationsRecorded        VisitObservation[]           @relation("ObservationRecorder")
   observationsUpdated         VisitObservation[]           @relation("ObservationUpdater")
   diagnosesRecorded           Diagnosis[]                  @relation("DiagnosisRecorder")
+  diagnosesRemoved            Diagnosis[]                  @relation("DiagnosisRemover")
   professionalAudits          StaffProfessionalAudit[]     @relation("ProfessionalAuditSubject")
   professionalAuditsMade      StaffProfessionalAudit[]     @relation("ProfessionalAuditActor")
 
@@ -1686,6 +1687,14 @@ enum DiagnosisPriority {
   SECONDARY
 }
 
+// G2 closure (D-061) — a saved diagnosis is never deleted. Removing one is a
+// clinical correction that leaves the original row, its content and its
+// original attribution intact, and records who removed it, when and why.
+enum DiagnosisRecordStatus {
+  ACTIVE
+  REMOVED_IN_ERROR
+}
+
 model Diagnosis {
   id                 String   @id @default(uuid())
   tenantId           String   @map("tenant_id")
@@ -1715,12 +1724,29 @@ model Diagnosis {
   // by the migration, for rows that predate attribution.
   legacyAttributionUnknown Boolean @default(false) @map("legacy_attribution_unknown")
 
+  // G2 closure (D-061) — removal is a correction, not a delete. The row, its
+  // content, its priority and its ORIGINAL attribution all survive; only
+  // recordStatus changes, plus who removed it, when and why. There is no
+  // application path that deletes a saved diagnosis.
+  recordStatus          DiagnosisRecordStatus @default(ACTIVE) @map("record_status")
+  removedAt             DateTime?             @map("removed_at")
+  removedByStaffId      String?               @map("removed_by_staff_id")
+  removedByNameSnapshot String?               @map("removed_by_name_snapshot")
+  removedByRoleSnapshot String?               @map("removed_by_role_snapshot")
+  removalReason         String?               @map("removal_reason")
+
+  // Optimistic concurrency, so a stale client cannot remove a diagnosis that
+  // has changed since it was read.
+  version Int @default(1)
+
   tenant           Tenant            @relation(fields: [tenantId], references: [id])
   visit            Visit             @relation(fields: [visitId], references: [id])
   diagnosisCatalog DiagnosisCatalog? @relation(fields: [diagnosisCatalogId], references: [id])
   addedBy          Staff?            @relation("DiagnosisRecorder", fields: [addedByStaffId], references: [id])
+  removedBy        Staff?            @relation("DiagnosisRemover", fields: [removedByStaffId], references: [id])
 
   @@index([tenantId, visitId])
+  @@index([tenantId, visitId, recordStatus])
   @@map("diagnoses")
 }
 

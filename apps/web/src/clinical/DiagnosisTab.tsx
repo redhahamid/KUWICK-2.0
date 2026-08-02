@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { AutoComplete, Button, Empty, List, Radio, Space, Typography, message } from 'antd';
 import { CloseOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
-import { useAddDiagnosis, useDiagnoses, useDiagnosisCatalogSearch, useRemoveDiagnosis } from './hooks/useDiagnoses';
-import { DiagnosisCategory } from './types';
+import { useAddDiagnosis, useDiagnoses, useDiagnosisCatalogSearch } from './hooks/useDiagnoses';
+import { RemoveDiagnosisModal } from './sections/RemoveDiagnosisModal';
+import { Diagnosis, DiagnosisCategory } from './types';
 import { ApiError } from '../core/api-client';
 
 const { Text } = Typography;
@@ -22,7 +23,7 @@ export function DiagnosisTab({ visitId }: DiagnosisTabProps) {
   const { data: diagnoses, isLoading } = useDiagnoses(visitId);
   const { data: catalogResults } = useDiagnosisCatalogSearch(search, category);
   const addDiagnosis = useAddDiagnosis(visitId);
-  const removeDiagnosis = useRemoveDiagnosis(visitId);
+  const [removing, setRemoving] = useState<Diagnosis | null>(null);
 
   const handleAdd = async (value: string) => {
     if (!value.trim()) return;
@@ -37,13 +38,6 @@ export function DiagnosisTab({ visitId }: DiagnosisTabProps) {
     }
   };
 
-  const handleRemove = async (id: string) => {
-    try {
-      await removeDiagnosis.mutateAsync(id);
-    } catch (error) {
-      message.error(error instanceof ApiError ? error.message : 'Failed to remove diagnosis');
-    }
-  };
 
   return (
     <div>
@@ -97,13 +91,9 @@ export function DiagnosisTab({ visitId }: DiagnosisTabProps) {
           renderItem={(diagnosis) => (
             <List.Item
               actions={[
-                <Button
-                  key="remove"
-                  type="text"
-                  size="small"
-                  icon={<CloseOutlined />}
-                  onClick={() => handleRemove(diagnosis.id)}
-                />,
+                <Button key="remove" size="small" danger onClick={() => setRemoving(diagnosis)}>
+                  Remove from visit
+                </Button>,
               ]}
             >
               <List.Item.Meta
@@ -113,6 +103,7 @@ export function DiagnosisTab({ visitId }: DiagnosisTabProps) {
           )}
         />
       )}
+      <RemoveDiagnosisModal visitId={visitId} diagnosis={removing} onClose={() => setRemoving(null)} />
     </div>
   );
 }
