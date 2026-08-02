@@ -429,6 +429,10 @@ export interface DiagnosisCatalogEntry {
   active: boolean;
 }
 
+// G2a (D-059) — null means "priority not recorded", which is the honest state
+// for every diagnosis recorded before G2a. It is never treated as SECONDARY.
+export type DiagnosisPriority = 'PRIMARY' | 'SECONDARY';
+
 export interface Diagnosis {
   id: string;
   tenantId: string;
@@ -437,6 +441,13 @@ export interface Diagnosis {
   icd10Code: string | null;
   name: string;
   createdAt: string;
+  priority: DiagnosisPriority | null;
+  // Attribution is server-derived; the client only ever reads these.
+  addedByStaffId: string | null;
+  addedByNameSnapshot: string | null;
+  addedByRoleSnapshot: string | null;
+  addedAt: string;
+  legacyAttributionUnknown: boolean;
 }
 
 export interface AddDiagnosisDto {
@@ -444,6 +455,7 @@ export interface AddDiagnosisDto {
   diagnosisCatalogId?: string;
   name?: string;
   icd10Code?: string;
+  priority?: DiagnosisPriority;
 }
 
 export interface DiagnosisCatalogCounts {

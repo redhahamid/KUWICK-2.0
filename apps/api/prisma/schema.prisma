@@ -499,6 +499,7 @@ model Staff {
   clinicalNotesSigned         ClinicalNote[]               @relation("ClinicalNoteSigner")
   observationsRecorded        VisitObservation[]           @relation("ObservationRecorder")
   observationsUpdated         VisitObservation[]           @relation("ObservationUpdater")
+  diagnosesRecorded           Diagnosis[]                  @relation("DiagnosisRecorder")
   professionalAudits          StaffProfessionalAudit[]     @relation("ProfessionalAuditSubject")
   professionalAuditsMade      StaffProfessionalAudit[]     @relation("ProfessionalAuditActor")
 
@@ -1678,6 +1679,13 @@ model DiagnosisCatalog {
 // the catalog at add-time (same historical-stability convention as
 // PanelInvoice's price snapshot, docs/DATABASE_ARCHITECTURE.md §7), so a
 // later catalog rename never silently rewrites an existing visit's record.
+// G2a (D-059) — a visit's diagnosis is an attributed clinical record in its
+// own right, deliberately NOT part of the ClinicalNote authorship model.
+enum DiagnosisPriority {
+  PRIMARY
+  SECONDARY
+}
+
 model Diagnosis {
   id                 String   @id @default(uuid())
   tenantId           String   @map("tenant_id")
@@ -1687,9 +1695,30 @@ model Diagnosis {
   name               String
   createdAt          DateTime @default(now()) @map("created_at")
 
+  // NULL means "priority not recorded" — the honest state for every row that
+  // existed before G2a. Historical priority is never inferred, so nothing is
+  // backfilled to PRIMARY or SECONDARY. At most one PRIMARY per visit is
+  // enforced by a partial unique index (see the migration), so two concurrent
+  // requests cannot both win.
+  priority DiagnosisPriority?
+
+  // Attribution, always from the authenticated server session — never from
+  // the browser. Snapshots are frozen at write time so a later rename or role
+  // change cannot rewrite who recorded this diagnosis.
+  addedByStaffId      String?  @map("added_by_staff_id")
+  addedByNameSnapshot String?  @map("added_by_name_snapshot")
+  addedByRoleSnapshot String?  @map("added_by_role_snapshot")
+  addedAt             DateTime @default(now()) @map("added_at")
+
+  // Explicit, like ClinicalNote.legacyAuthorUnknown (C0): distinguishes "we
+  // know nobody recorded this" from a null that might just be a bug. Set only
+  // by the migration, for rows that predate attribution.
+  legacyAttributionUnknown Boolean @default(false) @map("legacy_attribution_unknown")
+
   tenant           Tenant            @relation(fields: [tenantId], references: [id])
   visit            Visit             @relation(fields: [visitId], references: [id])
   diagnosisCatalog DiagnosisCatalog? @relation(fields: [diagnosisCatalogId], references: [id])
+  addedBy          Staff?            @relation("DiagnosisRecorder", fields: [addedByStaffId], references: [id])
 
   @@index([tenantId, visitId])
   @@map("diagnoses")

@@ -7,6 +7,7 @@ import {
   DiagnosisCatalogCounts,
   DiagnosisCatalogEntry,
   DiagnosisCategory,
+  DiagnosisPriority,
 } from '../types';
 
 export function useDiagnosisCatalogSearch(search: string, category?: DiagnosisCategory) {
@@ -32,6 +33,19 @@ export function useAddDiagnosis(visitId?: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (dto: AddDiagnosisDto) => apiClient.post<Diagnosis>('/diagnoses', dto),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['diagnoses', visitId] }),
+  });
+}
+
+// G2a (D-059) — mark a diagnosis Primary, or clear its priority back to
+// "not recorded". The server demotes any existing primary in the same
+// transaction and a partial unique index settles concurrent requests, so the
+// client never has to reason about who won.
+export function useSetDiagnosisPriority(visitId?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, priority }: { id: string; priority: DiagnosisPriority | null }) =>
+      apiClient.patch<Diagnosis>(`/diagnoses/${id}/priority`, { priority }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['diagnoses', visitId] }),
   });
 }

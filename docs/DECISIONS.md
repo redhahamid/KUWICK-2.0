@@ -527,7 +527,33 @@ The Canvas workspace ended C2 with four equal-height summary cards (Diagnosis, O
 
 ---
 
+## D-059 — G2a: a diagnosis becomes an attributed clinical record with a clinical priority
+
+Owner-approved additive change. A visit diagnosis previously carried only `icd10Code`, `name` and `createdAt`: no priority, and no record of who entered it.
+
+**Priority is nullable on purpose.** `NULL` means **"priority not recorded"**, which is the honest state for every one of the 8 rows that existed before this migration. Nothing was backfilled to PRIMARY or SECONDARY — a historical diagnosis has no recorded priority, and inventing one would be a clinical claim the record does not support. `SECONDARY` was rejected as a migration default for exactly that reason: it reads as a decision a clinician made.
+
+**One primary per visit is enforced by the database, not by hope.** A partial unique index, `diagnoses_one_primary_per_visit ON diagnoses(visit_id) WHERE priority = 'PRIMARY'`, is the only thing that can settle two requests racing to promote different diagnoses; an application-level read-then-write cannot. The service demotes the incumbent and promotes the new one inside **one** interactive transaction, and a `P2002` on that index surfaces as **409** rather than a silently duplicated primary. Rows with `NULL` priority are outside the index, so any number of "not recorded" diagnoses stay valid. The previous primary is demoted to `SECONDARY`, not to `NULL` — it was deliberately prioritised, and dropping it to "not recorded" would discard information the doctor entered.
+
+**Attribution is server-derived, like C0 authorship.** `addedByStaffId` plus frozen name/role snapshots come from the authenticated session. The DTO *declares* the identity fields and rejects them with `MustNotBeProvided`, because the global `whitelist: true` pipe would otherwise strip them silently and let a client believe it had set the author — the exact failure C0 found with `authorStaffId`. Verified live: posting `addedByStaffId` returns **400**.
+
+**Legacy rows say so.** `legacyAttributionUnknown` is set for every pre-existing row, mirroring `ClinicalNote.legacyAuthorUnknown`, so "nobody recorded this" is explicit rather than an ambiguous null. Attribution was **not** inferred from the attending doctor, the note author, the visit creator, or whoever ran the migration.
+
+**Migration result:** 8 rows before → **8 after**; 8 with priority not recorded; **0** given a fabricated priority; **0** given an invented author; 8 with `added_at = created_at`. The backfill is bracketed by `NO FORCE`/`FORCE ROW LEVEL SECURITY` with a `DO $$` guard that raises if it touched nothing, because a FORCE'd table silently filters an UPDATE to zero rows and reports success (D-048).
+
+**Removal is unchanged, and that is a recorded gap.** `remove()` still hard-deletes: no soft-delete column, no audit row, no revision history. G2a did **not** widen this, because turning deletion into a governed clinical-record action is the owner's decision, not a side effect of a UX phase. What G2a did add is that removal now passes the same authenticated-actor and branch-access checks as everything else, so the new UI cannot reach around server rules. **Open governance item: a deleted diagnosis leaves no trace. This needs an explicit decision before production clinical use.**
+
+**Deleting the primary does not auto-promote another diagnosis.** Zero primaries is a valid state; picking a replacement would be inventing a clinical judgement.
+
+**Verification.** 28 unit tests (mocked Prisma — intent) plus `prisma/g2a-diagnosis-integrity-check.ts`, 20/20 against the real database and real HTTP API — the parts only the database can settle. Two honest notes on that run: the concurrent promotion returned **200/200**, i.e. the two transactions serialised and one primary remained, so the invariant held but the 409 path was not exercised live (the unit test covers the translation); and cross-tenant isolation had to be tested with a token scoped to a different tenant, because every active doctor with a login in this dataset belongs to one tenant — that token saw **0 rows** and got **403** on write.
+
+**Reversibility**: Medium. The columns and index are additive and dropping them loses only G2a data, but the enum and index would need a down-migration.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
+
+- **Diagnosis deletion is a hard delete with no audit trail** (D-059). Removing a diagnosis leaves no record that it ever existed or who removed it. Needs an explicit governance decision — likely alongside the Void Note proposal — before production clinical use.
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:
 
