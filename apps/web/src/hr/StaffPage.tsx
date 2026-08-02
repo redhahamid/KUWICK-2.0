@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Checkbox, Drawer, Form, Input, message, Select, Space, Switch, Table, Typography } from 'antd';
+import { Alert, Button, Checkbox, Divider, Drawer, Form, Input, message, Select, Space, Switch, Table, Tag, Typography } from 'antd';
 import { EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { Role } from '@kuwick/shared';
 import { useStaff, useCreateStaff, useUpdateStaff } from './hooks/useStaff';
@@ -82,6 +82,31 @@ export function StaffPage() {
             : []),
           { title: 'Active', dataIndex: 'active', render: (value: boolean) => (value ? 'Yes' : 'No') },
           {
+            // C0 (D-051) — three DISTINCT states, deliberately not collapsed
+            // into one "verified doctor" badge: a completed professional
+            // profile, a clinic-recorded verification, and clinical-note
+            // signing being enabled.
+            title: 'Clinical Signing',
+            render: (_: unknown, record: Staff) => {
+              if (record.professionalType !== 'MEDICAL_DOCTOR') {
+                return <Tag>Non-clinical</Tag>;
+              }
+              return (
+                <Space direction="vertical" size={0}>
+                  <Tag color={record.medicalRegistrationNo ? 'blue' : 'default'}>
+                    {record.medicalRegistrationNo ? `Profile: ${record.medicalRegistrationNo}` : 'Profile incomplete'}
+                  </Tag>
+                  <Tag color={record.professionalVerifiedAt ? 'cyan' : 'default'}>
+                    {record.professionalVerifiedAt ? 'Verification recorded' : 'Not verified'}
+                  </Tag>
+                  <Tag color={record.clinicalSigningEnabledAt ? 'green' : 'default'}>
+                    {record.clinicalSigningEnabledAt ? 'Signing enabled' : 'Signing off'}
+                  </Tag>
+                </Space>
+              );
+            },
+          },
+          {
             title: 'Actions',
             render: (_: unknown, record: Staff) => (
               <Button
@@ -94,6 +119,10 @@ export function StaffPage() {
                     staffNumber: record.staffNumber ?? undefined,
                     clinicId: record.clinicId ?? undefined,
                     active: record.active,
+                    professionalType: record.professionalType,
+                    medicalRegistrationNo: record.medicalRegistrationNo ?? undefined,
+                    professionalActive: record.professionalActive,
+                    canSignClinicalNotes: record.canSignClinicalNotes,
                   });
                 }}
               />
@@ -175,6 +204,52 @@ export function StaffPage() {
           <Form.Item name="active" label="Active" valuePropName="checked">
             <Switch />
           </Form.Item>
+
+          {/* C0 (D-051) — professional identity, separate from Role above.
+              Clinical-note signing is derived from ALL of these, never from
+              the administrative role. */}
+          <Divider plain style={{ marginTop: 8 }}>
+            Clinical Practitioner Profile
+          </Divider>
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="Recorded by your Clinic Group"
+            description="Kuwick does not verify registration with the MMC — these fields record your own clinic's verification. Signing is only possible when the profile is complete, verification is recorded, and signing is enabled."
+          />
+          <Form.Item name="professionalType" label="Professional Type">
+            <Select
+              options={[
+                { value: 'NON_CLINICAL', label: 'Non-clinical' },
+                { value: 'MEDICAL_DOCTOR', label: 'Medical Doctor' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="medicalRegistrationNo"
+            label="Medical Registration No."
+            tooltip="e.g. MMC number. Required before clinical-note signing can be enabled."
+          >
+            <Input placeholder="e.g. MMC123456" />
+          </Form.Item>
+          <Form.Item
+            name="professionalActive"
+            label="Professional verification recorded"
+            valuePropName="checked"
+            tooltip="Records that your Clinic Group has sighted and verified this practitioner's credentials. The timestamp and who recorded it are stored automatically."
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            name="canSignClinicalNotes"
+            label="Clinical-note signing enabled"
+            valuePropName="checked"
+            tooltip="Allows this practitioner to electronically sign clinical notes. Recorded with a timestamp and the enabling staff member."
+          >
+            <Switch />
+          </Form.Item>
+
           <Button type="primary" htmlType="submit" loading={updateStaff.isPending} block>
             Save
           </Button>

@@ -37,6 +37,8 @@ import { PublicQueueController } from './public-queue.controller';
 import { PublicQueueService } from './public-queue.service';
 import { VisitAttachmentController } from './visit-attachment.controller';
 import { VisitAttachmentService } from './visit-attachment.service';
+import { VisitObservationController } from './visit-observation.controller';
+import { VisitObservationService } from './visit-observation.service';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 import { ChatChannelService } from './chat-channel.service';
@@ -67,6 +69,7 @@ import { ChatChannelService } from './chat-channel.service';
     PublicQueueController,
     DocumentTemplateController,
     VisitAttachmentController,
+    VisitObservationController,
     ChatController,
   ],
   providers: [
@@ -88,6 +91,7 @@ import { ChatChannelService } from './chat-channel.service';
     PublicQueueService,
     DocumentTemplateService,
     VisitAttachmentService,
+    VisitObservationService,
     ChatService,
     ChatChannelService,
   ],

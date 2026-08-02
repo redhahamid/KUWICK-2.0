@@ -1,6 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
-import { currentTenantId } from '../core/tenant-context';
+import { currentStaffId, currentTenantId } from '../core/tenant-context';
 import { deleteUploadedFile, saveUploadedFile } from '../core/file-storage';
 
 // D-044 — free-standing visit-level uploads (photos, scanned results,
@@ -18,8 +18,12 @@ export class VisitAttachmentService {
     });
   }
 
-  async create(visitId: string, file: Express.Multer.File, uploadedByStaffId?: string) {
+  // C0 (D-051) — uploader identity comes from the authenticated session, not
+  // from the caller. The browser used to post uploadedByStaffId in the body,
+  // which made attribution client-controlled; that parameter is gone.
+  async create(visitId: string, file: Express.Multer.File) {
     const tenantId = currentTenantId();
+    const uploadedByStaffId = currentStaffId() ?? null;
     const stored = await saveUploadedFile(tenantId, visitId, file.buffer, file.originalname);
     return this.prisma.visitAttachment.create({
       data: {
