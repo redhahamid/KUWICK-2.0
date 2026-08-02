@@ -1,3 +1,5 @@
+import { unlink } from 'node:fs/promises';
+import * as path from 'node:path';
 import { PrismaClient } from '@prisma/client';
 
 // G0 closure — shared support for the local verification scripts.
@@ -121,17 +123,21 @@ export async function sweepOrphanedFixtures(prisma: PrismaClient, tenantId: stri
   });
 }
 
+const UPLOADS_ROOT = process.env.UPLOADS_DIR ?? path.join(process.cwd(), 'uploads');
+
 /**
  * Tracks what a run created so it can be removed again.
  *
- * Attachments are deleted through the API rather than the database, because
- * the endpoint also removes the file from disk — a direct row delete would
- * leave orphaned uploads accumulating under uploads/.
+ * G3a (D-062) — attachments used to be cleaned up through
+ * `DELETE /visits/:id/attachments/:id`, because that endpoint also unlinked
+ * the file. That endpoint is gone: clinical files are never destroyed through
+ * the application any more. So the ledger removes its own files directly, and
+ * ONLY its own — every path it unlinks belongs to an attachment hanging off a
+ * visit this run created. Nothing else on disk is touched, examined or listed.
  */
 export class FixtureLedger {
   readonly visitIds: string[] = [];
   readonly patientIds: string[] = [];
-  private readonly attachments: { visitId: string; attachmentId: string }[] = [];
 
   constructor(
     private readonly prisma: PrismaClient,
@@ -150,23 +156,10 @@ export class FixtureLedger {
     return id;
   }
 
-  attachment(visitId: string, attachmentId: string): void {
-    this.attachments.push({ visitId, attachmentId });
-  }
-
   /** Never throws — cleanup failure must not mask the real test result. */
   async cleanup(): Promise<void> {
-    for (const { visitId, attachmentId } of this.attachments) {
-      try {
-        await fetch(`${this.apiBase}/visits/${visitId}/attachments/${attachmentId}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${this.token}` },
-        });
-      } catch {
-        console.warn(`  cleanup: could not delete attachment ${attachmentId}`);
-      }
-    }
-
+    void this.apiBase;
+    void this.token;
     if (this.visitIds.length === 0 && this.patientIds.length === 0) return;
 
     try {
@@ -176,6 +169,20 @@ export class FixtureLedger {
 
         if (this.visitIds.length > 0) {
           const list = this.visitIds.map((id) => `'${id}'`).join(',');
+
+          // Files first, scoped strictly to this run's own visits. If the row
+          // delete below then fails, the worst case is a dangling row — never
+          // a file belonging to someone else's record.
+          const files = await tx.$queryRawUnsafe<{ file_path: string }[]>(
+            `SELECT file_path FROM visit_attachments WHERE visit_id IN (${list})
+             UNION ALL
+             SELECT file_path FROM attachments
+              WHERE order_service_id IN (SELECT id FROM order_services WHERE visit_id IN (${list}))`,
+          );
+          for (const { file_path } of files) {
+            await unlink(path.join(UPLOADS_ROOT, file_path)).catch(() => undefined);
+          }
+
           for (const sql of visitDeleteStatements(list)) {
             await tx.$executeRawUnsafe(sql);
           }

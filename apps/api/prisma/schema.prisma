@@ -501,6 +501,9 @@ model Staff {
   observationsUpdated         VisitObservation[]           @relation("ObservationUpdater")
   diagnosesRecorded           Diagnosis[]                  @relation("DiagnosisRecorder")
   diagnosesRemoved            Diagnosis[]                  @relation("DiagnosisRemover")
+  documentsVoided             Document[]                   @relation("DocumentVoidedBy")
+  visitAttachmentsRemoved     VisitAttachment[]            @relation("VisitAttachmentRemovedBy")
+  orderAttachmentsRemoved     Attachment[]                 @relation("OrderAttachmentRemovedBy")
   professionalAudits          StaffProfessionalAudit[]     @relation("ProfessionalAuditSubject")
   professionalAuditsMade      StaffProfessionalAudit[]     @relation("ProfessionalAuditActor")
 
@@ -1632,11 +1635,23 @@ model VisitAttachment {
   uploadedByStaffId String?  @map("uploaded_by_staff_id")
   createdAt         DateTime @default(now()) @map("created_at")
 
+  // G3a (D-062) — audited removal. filePath is deliberately untouched: the
+  // clinical image stays on disk so authorised history can still retrieve it.
+  recordStatus          AttachmentRecordStatus @default(ACTIVE) @map("record_status")
+  removedAt             DateTime?              @map("removed_at")
+  removedByStaffId      String?                @map("removed_by_staff_id")
+  removedByNameSnapshot String?                @map("removed_by_name_snapshot")
+  removedByRoleSnapshot String?                @map("removed_by_role_snapshot")
+  removalReason         String?                @map("removal_reason")
+  version               Int                    @default(1)
+
   tenant     Tenant @relation(fields: [tenantId], references: [id])
   visit      Visit  @relation(fields: [visitId], references: [id])
   uploadedBy Staff? @relation(fields: [uploadedByStaffId], references: [id])
+  removedBy  Staff? @relation("VisitAttachmentRemovedBy", fields: [removedByStaffId], references: [id])
 
   @@index([tenantId, visitId])
+  @@index([tenantId, visitId, recordStatus])
   @@map("visit_attachments")
 }
 
@@ -1878,11 +1893,23 @@ model Attachment {
   uploadedByStaffId String   @map("uploaded_by_staff_id")
   createdAt         DateTime @default(now()) @map("created_at")
 
+  // G3a (D-062) — audited removal for investigation/procedure results. The
+  // order relationship and the file itself are both preserved.
+  recordStatus          AttachmentRecordStatus @default(ACTIVE) @map("record_status")
+  removedAt             DateTime?              @map("removed_at")
+  removedByStaffId      String?                @map("removed_by_staff_id")
+  removedByNameSnapshot String?                @map("removed_by_name_snapshot")
+  removedByRoleSnapshot String?                @map("removed_by_role_snapshot")
+  removalReason         String?                @map("removal_reason")
+  version               Int                    @default(1)
+
   tenant       Tenant       @relation(fields: [tenantId], references: [id])
   orderService OrderService @relation(fields: [orderServiceId], references: [id])
   uploadedBy   Staff        @relation(fields: [uploadedByStaffId], references: [id])
+  removedBy    Staff?       @relation("OrderAttachmentRemovedBy", fields: [removedByStaffId], references: [id])
 
   @@index([tenantId, orderServiceId])
+  @@index([tenantId, orderServiceId, recordStatus])
   @@map("attachments")
 }
 
@@ -1946,6 +1973,21 @@ model DefaultDocumentTemplate {
 // staff-creatable for locum coverage, so the issuing doctor is whoever
 // the form says, defaulting to the visit's attending physician only as a
 // convenience starting value.
+// G3a (D-062) — a saved clinical document is never deleted. Voiding is a
+// correction that leaves the original content, issuer and signature intact.
+enum DocumentRecordStatus {
+  ACTIVE
+  VOIDED
+}
+
+// G3a (D-062) — shared by visit attachments and order/procedure attachments.
+// The underlying FILE is never unlinked by an audited removal; only its
+// status changes, so an authorised history request can still retrieve it.
+enum AttachmentRecordStatus {
+  ACTIVE
+  REMOVED_IN_ERROR
+}
+
 model Document {
   id              String       @id @default(uuid())
   tenantId        String       @map("tenant_id")
@@ -1970,10 +2012,21 @@ model Document {
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
+  // G3a (D-062) — voiding is a correction, not a delete. content, issuedBy,
+  // signedAt/signedBy and every other field survive untouched.
+  recordStatus         DocumentRecordStatus @default(ACTIVE) @map("record_status")
+  voidedAt             DateTime?            @map("voided_at")
+  voidedByStaffId      String?              @map("voided_by_staff_id")
+  voidedByNameSnapshot String?              @map("voided_by_name_snapshot")
+  voidedByRoleSnapshot String?              @map("voided_by_role_snapshot")
+  voidReason           String?              @map("void_reason")
+  version              Int                  @default(1)
+
   tenant   Tenant @relation(fields: [tenantId], references: [id])
   visit    Visit  @relation(fields: [visitId], references: [id])
   issuedBy Staff  @relation("DocumentIssuedBy", fields: [issuedByStaffId], references: [id])
   signedBy Staff? @relation("DocumentSignedBy", fields: [signedByStaffId], references: [id])
+  voidedBy Staff? @relation("DocumentVoidedBy", fields: [voidedByStaffId], references: [id])
 
   @@index([tenantId, visitId])
   @@map("documents")

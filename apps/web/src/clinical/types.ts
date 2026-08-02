@@ -524,7 +524,23 @@ export interface CancelOrderServiceDto {
   cancelReason?: string;
 }
 
-export interface Attachment {
+// G3a (D-062) — clinical files are never deleted. An attachment recorded
+// against the wrong visit/order is marked REMOVED_IN_ERROR: it leaves the
+// active record, the row and the stored file both survive, and the removal
+// carries its own attribution. Every field below is server-written.
+export type AttachmentRecordStatus = 'ACTIVE' | 'REMOVED_IN_ERROR';
+
+export interface ClinicalRemovalAudit {
+  recordStatus: AttachmentRecordStatus;
+  removedAt: string | null;
+  removedByStaffId: string | null;
+  removedByNameSnapshot: string | null;
+  removedByRoleSnapshot: string | null;
+  removalReason: string | null;
+  version: number;
+}
+
+export interface Attachment extends ClinicalRemovalAudit {
   id: string;
   orderServiceId: string;
   fileName: string;
@@ -536,7 +552,7 @@ export interface Attachment {
 
 // D-044 — free-standing visit-level uploads (photos, scanned results,
 // PDFs), distinct from Attachment (scoped to a single order/procedure).
-export interface VisitAttachment {
+export interface VisitAttachment extends ClinicalRemovalAudit {
   id: string;
   visitId: string;
   fileName: string;
@@ -547,7 +563,19 @@ export interface VisitAttachment {
   createdAt: string;
 }
 
+// G3a (D-062) — the request body for an audited removal/void. `reason` is
+// mandatory server-side; identity is NEVER sent, it comes from the session.
+export interface VoidClinicalRecordDto {
+  reason: string;
+  expectedVersion?: number;
+}
+
 export type DocumentType = 'MC' | 'REFERRAL' | 'MEMO' | 'QUARANTINE' | 'CUSTOM';
+
+// G3a (D-062) — an MC or referral that has left the clinic cannot be
+// un-issued by deleting the row; it is VOIDED, and the voided document stays
+// readable so the clinic can answer "what did we give this patient?".
+export type DocumentRecordStatus = 'ACTIVE' | 'VOIDED';
 
 export interface ClinicalDocument {
   id: string;
@@ -566,6 +594,14 @@ export interface ClinicalDocument {
   signedByStaffId: string | null;
   createdAt: string;
   updatedAt: string;
+  // G3a (D-062) — void audit. All server-written; the client only reads.
+  recordStatus: DocumentRecordStatus;
+  voidedAt: string | null;
+  voidedByStaffId: string | null;
+  voidedByNameSnapshot: string | null;
+  voidedByRoleSnapshot: string | null;
+  voidReason: string | null;
+  version: number;
 }
 
 export interface CreateDocumentDto {

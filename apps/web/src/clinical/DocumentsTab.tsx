@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Button, Card, DatePicker, Empty, Input, List, Popconfirm, Select, Space, Tag, Typography, message } from 'antd';
+import { Button, Card, DatePicker, Empty, Input, List, Select, Space, Tag, Tooltip, Typography, message } from 'antd';
 import { CheckCircleOutlined, DeleteOutlined, FileTextOutlined, PrinterOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
-import { useCreateDocument, useDeleteDocument, useDocuments, useSignDocument } from './hooks/useDocuments';
+import { useCreateDocument, useDocuments, useSignDocument, useVoidDocument } from './hooks/useDocuments';
 import { useLatestClinicalNote } from './hooks/useClinicalNote';
 import { useLatestVitals } from './hooks/useVisitObservations';
 import { useDiagnoses } from './hooks/useDiagnoses';
@@ -12,6 +12,7 @@ import { useClinics } from '../core/hooks/useClinics';
 import { buildTemplate, doctorRoleLabel, formatDiagnosisList, formatVitals, htmlToPlainText } from './documentTemplates';
 import { resolveTemplate } from './mergeFields';
 import { printTextDocument } from './printTextDocument';
+import { RemoveClinicalRecordModal } from './sections/RemoveClinicalRecordModal';
 import { ClinicalDocument, DocumentType, Visit } from './types';
 import { ApiError } from '../core/api-client';
 
@@ -90,7 +91,8 @@ export function DocumentsTab({ visit, patientName, patientIdentifier }: Document
   ];
 
   const createDocument = useCreateDocument(visit.id);
-  const deleteDocument = useDeleteDocument(visit.id);
+  const voidDocument = useVoidDocument(visit.id);
+  const [voiding, setVoiding] = useState<ClinicalDocument | null>(null);
   const signDocument = useSignDocument(visit.id);
 
   const reportFailure = (error: unknown, fallback: string) => {
@@ -293,15 +295,17 @@ export function DocumentsTab({ visit, patientName, patientIdentifier }: Document
                       Sign
                     </Button>
                   ),
-                  <Popconfirm
-                    key="delete"
-                    title="Remove this document?"
-                    onConfirm={() =>
-                      deleteDocument.mutateAsync(document.id).catch((e) => reportFailure(e, 'Failed to remove'))
-                    }
-                  >
-                    <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-                  </Popconfirm>,
+                  // G3a (D-062) — an issued MC/referral is voided, never
+                  // deleted: the patient may already be holding a copy.
+                  <Tooltip key="void" title="Void this document (audited)">
+                    <Button
+                      type="text"
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() => setVoiding(document)}
+                    />
+                  </Tooltip>,
                 ]}
               >
                 <List.Item.Meta
@@ -332,6 +336,33 @@ export function DocumentsTab({ visit, patientName, patientIdentifier }: Document
           />
         )}
       </Card>
+
+      <RemoveClinicalRecordModal
+        open={Boolean(voiding)}
+        title="Void document"
+        okText="Confirm void"
+        retentionMessage="The document will be marked VOID and will no longer count as an active issued document. Its full text, issuer and signature are preserved — the clinic can still show exactly what was issued."
+        placeholder="e.g. Wrong dates entered; issued to the wrong patient; superseded by a corrected MC"
+        details={[
+          { label: 'Document', value: voiding ? documentLabel(voiding) : null },
+          { label: 'Issued', value: voiding ? dayjs(voiding.issuedDate).format('D MMM YYYY') : null },
+          {
+            label: 'Covering',
+            value:
+              voiding?.startDate && voiding?.endDate
+                ? `${dayjs(voiding.startDate).format('D MMM YYYY')} – ${dayjs(voiding.endDate).format('D MMM YYYY')}`
+                : null,
+          },
+          { label: 'Signed', value: voiding?.signedAt ? dayjs(voiding.signedAt).format('D MMM YYYY, HH:mm') : 'Unsigned' },
+        ]}
+        pending={voidDocument.isPending}
+        successMessage="Document voided — the original is preserved"
+        errorMessage="Failed to void the document"
+        onConfirm={(reason) =>
+          voidDocument.mutateAsync({ id: voiding!.id, reason, expectedVersion: voiding!.version })
+        }
+        onClose={() => setVoiding(null)}
+      />
     </div>
   );
 }

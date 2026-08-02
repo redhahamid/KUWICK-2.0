@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, downloadFile } from '../../core/api-client';
-import { VisitAttachment } from '../types';
+import { VisitAttachment, VoidClinicalRecordDto } from '../types';
 
 // D-044 — free-standing visit-level uploads (photos, scanned results,
 // PDFs) shown alongside Clinical Notes/Vitals.
@@ -38,11 +38,26 @@ export function useUploadVisitAttachment(visitId?: string) {
   });
 }
 
-export function useDeleteVisitAttachment(visitId?: string) {
+// G3a (D-062) — replaces useDeleteVisitAttachment. A wound photo or scanned
+// result is clinical evidence: removal takes it out of the active record but
+// neither the row nor the stored file is destroyed.
+export function useRemoveVisitAttachment(visitId?: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (attachmentId: string) => apiClient.delete(`/visits/${visitId}/attachments/${attachmentId}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['visit-attachments', visitId] }),
+    mutationFn: ({ attachmentId, ...dto }: VoidClinicalRecordDto & { attachmentId: string }) =>
+      apiClient.patch<VisitAttachment>(`/visits/${visitId}/attachments/${attachmentId}/removal`, dto),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['visit-attachments', visitId] });
+      queryClient.invalidateQueries({ queryKey: ['visit-attachment-history', visitId] });
+    },
+  });
+}
+
+export function useVisitAttachmentHistory(visitId?: string, enabled = false) {
+  return useQuery({
+    queryKey: ['visit-attachment-history', visitId],
+    queryFn: () => apiClient.get<VisitAttachment[]>(`/visits/${visitId}/attachments/history`),
+    enabled: Boolean(visitId) && enabled,
   });
 }
 

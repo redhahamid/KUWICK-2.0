@@ -103,6 +103,35 @@ export function canModifyDiagnosis(staff: Staff): boolean {
   return staff.professionalType === 'MEDICAL_DOCTOR' && staff.professionalActive;
 }
 
+// G3a (D-062) — voiding a clinical document, or removing a clinical image or
+// investigation result, is a clinical act with medicolegal weight. Same rule
+// as diagnosis modification: doctors, or a staff member whose PROFESSIONAL
+// identity is an active medical doctor. Administrative ownership alone does
+// not qualify.
+//
+// Deliberately NOT widened to whoever may CREATE these records: front-desk
+// staff legitimately upload a scanned report or issue a time slip under the
+// existing workflow, and G3 does not broaden or narrow who may create. What
+// it does establish is that un-doing a saved clinical record needs clinical
+// authority.
+export function canVoidClinicalRecord(staff: Staff): boolean {
+  if (!staff.active) {
+    return false;
+  }
+  if (DOCTOR_ROLES.includes(staff.role)) {
+    return true;
+  }
+  return staff.professionalType === 'MEDICAL_DOCTOR' && staff.professionalActive;
+}
+
+export function assertCanVoidClinicalRecord(staff: Staff, what: string): void {
+  if (!canVoidClinicalRecord(staff)) {
+    throw new ForbiddenException(
+      `Only a doctor may ${what}. An administrative account does not carry clinical modification rights.`,
+    );
+  }
+}
+
 export function assertCanModifyDiagnosis(staff: Staff): void {
   if (!canModifyDiagnosis(staff)) {
     throw new ForbiddenException(

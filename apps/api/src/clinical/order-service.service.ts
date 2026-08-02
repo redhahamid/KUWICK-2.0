@@ -1,9 +1,19 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { OrderServiceStatus, ServiceOrderType } from '@prisma/client';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { AttachmentRecordStatus, OrderServiceStatus, ServiceOrderType } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { currentTenantId } from '../core/tenant-context';
-import { deleteUploadedFile, saveUploadedFile } from '../core/file-storage';
+import { saveUploadedFile } from '../core/file-storage';
+import { PrismaService } from '../core/prisma.service';
 import { VisitService } from './visit.service';
+import { assertCanVoidClinicalRecord, snapshotOf } from './clinical-authorization';
+import { assertMayTouchOrder, requireActor, withTenantTx } from './clinical-actor';
+import { VoidClinicalRecordDto } from './dto/void-clinical-record.dto';
 import { CreateOrderServiceDto } from './dto/create-order-service.dto';
 import { CompleteOrderServiceDto } from './dto/complete-order-service.dto';
 import { CancelOrderServiceDto } from './dto/cancel-order-service.dto';
@@ -22,6 +32,7 @@ export interface ProcedureQueueFilter {
 export class OrderServiceService {
   constructor(
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
+    private readonly rawPrisma: PrismaService,
     private readonly visits: VisitService,
   ) {}
 
@@ -143,9 +154,14 @@ export class OrderServiceService {
     });
   }
 
-  listAttachments(orderServiceId: string) {
+  // G3a (D-062) — ACTIVE only by default. A removed result must not read as a
+  // current investigation finding; `includeRemoved` backs the audit view.
+  listAttachments(orderServiceId: string, includeRemoved = false) {
     return this.prisma.attachment.findMany({
-      where: { orderServiceId },
+      where: {
+        orderServiceId,
+        ...(includeRemoved ? {} : { recordStatus: AttachmentRecordStatus.ACTIVE }),
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -178,10 +194,51 @@ export class OrderServiceService {
     return attachment;
   }
 
-  async deleteAttachment(orderServiceId: string, attachmentId: string) {
-    const attachment = await this.findAttachment(orderServiceId, attachmentId);
-    await this.prisma.attachment.delete({ where: { id: attachmentId } });
-    await deleteUploadedFile(attachment.filePath);
+  /**
+   * G3a (D-062) — audited removal of an investigation/procedure result.
+   *
+   * Replaces the hard delete. The row, the order relationship and the FILE all
+   * survive: `deleteUploadedFile` is no longer called, so an authorised
+   * history request can still retrieve the lab result or ECG trace. The
+   * order's own status is untouched — removing a result does not un-complete
+   * a procedure.
+   */
+  async removeAttachment(orderServiceId: string, attachmentId: string, dto: VoidClinicalRecordDto) {
+    const reason = dto.reason?.trim();
+    if (!reason) {
+      throw new BadRequestException('A reason is required to remove an investigation result.');
+    }
+
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      assertCanVoidClinicalRecord(actor, 'remove an investigation or procedure result');
+      await assertMayTouchOrder(tx, orderServiceId, actor);
+
+      const attachment = await tx.attachment.findUnique({ where: { id: attachmentId } });
+      if (!attachment || attachment.orderServiceId !== orderServiceId) {
+        throw new NotFoundException('Attachment not found');
+      }
+      if (attachment.recordStatus === AttachmentRecordStatus.REMOVED_IN_ERROR) {
+        throw new ConflictException('This result has already been removed.');
+      }
+      if (dto.expectedVersion !== undefined && dto.expectedVersion !== attachment.version) {
+        throw new ConflictException('This result changed since you loaded it. Reload and try again.');
+      }
+
+      const snap = snapshotOf(actor);
+      return tx.attachment.update({
+        where: { id: attachmentId },
+        data: {
+          recordStatus: AttachmentRecordStatus.REMOVED_IN_ERROR,
+          removedAt: new Date(),
+          removedByStaffId: snap.staffId,
+          removedByNameSnapshot: snap.nameSnapshot,
+          removedByRoleSnapshot: snap.roleSnapshot,
+          removalReason: reason,
+          version: { increment: 1 },
+        },
+      });
+    });
   }
 }
 

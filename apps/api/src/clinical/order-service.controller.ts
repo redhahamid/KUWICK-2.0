@@ -22,6 +22,7 @@ import { OrderServiceService } from './order-service.service';
 import { CreateOrderServiceDto } from './dto/create-order-service.dto';
 import { CompleteOrderServiceDto } from './dto/complete-order-service.dto';
 import { CancelOrderServiceDto } from './dto/cancel-order-service.dto';
+import { VoidClinicalRecordDto } from './dto/void-clinical-record.dto';
 
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 
@@ -93,9 +94,20 @@ export class OrderServiceController {
     readUploadedFileStream(attachment.filePath).pipe(res);
   }
 
-  @Delete(':id/attachments/:attachmentId')
-  @HttpCode(204)
-  deleteAttachment(@Param('id') id: string, @Param('attachmentId') attachmentId: string) {
-    return this.orderServices.deleteAttachment(id, attachmentId);
+  // G3a (D-062) — audit view for investigation/procedure results.
+  @Get(':id/attachments/history')
+  attachmentHistory(@Param('id') id: string) {
+    return this.orderServices.listAttachments(id, true);
+  }
+
+  // G3a (D-062) — replaces DELETE. The result row, the order relationship and
+  // the file all survive; only the status changes.
+  @Patch(':id/attachments/:attachmentId/removal')
+  removeAttachment(
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+    @Body() dto: VoidClinicalRecordDto,
+  ) {
+    return this.orderServices.removeAttachment(id, attachmentId, dto);
   }
 }

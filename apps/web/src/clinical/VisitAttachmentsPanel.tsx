@@ -1,5 +1,5 @@
-import { useRef } from 'react';
-import { Button, Card, Image, List, Popconfirm, Space, Tag, Tooltip, Typography, message } from 'antd';
+import { useRef, useState } from 'react';
+import { Button, Card, Image, List, Space, Tag, Tooltip, Typography, message } from 'antd';
 import {
   DeleteOutlined,
   DownloadOutlined,
@@ -11,11 +11,12 @@ import {
 import dayjs from 'dayjs';
 import {
   downloadVisitAttachment,
-  useDeleteVisitAttachment,
+  useRemoveVisitAttachment,
   useUploadVisitAttachment,
   useVisitAttachments,
 } from './hooks/useVisitAttachments';
 import { useAttachmentBlobUrls } from './hooks/useAttachmentBlobUrls';
+import { RemoveClinicalRecordModal } from './sections/RemoveClinicalRecordModal';
 import { ApiError } from '../core/api-client';
 import { VisitAttachment } from './types';
 
@@ -59,7 +60,8 @@ interface VisitAttachmentsPanelProps {
 export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPanelProps) {
   const { data: attachments, isLoading } = useVisitAttachments(visitId);
   const uploadAttachment = useUploadVisitAttachment(visitId);
-  const deleteAttachment = useDeleteVisitAttachment(visitId);
+  const removeAttachment = useRemoveVisitAttachment(visitId);
+  const [removing, setRemoving] = useState<VisitAttachment | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const blobUrls = useAttachmentBlobUrls(visitId, attachments);
 
@@ -74,14 +76,33 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
     }
   };
 
-  const handleDelete = async (attachmentId: string) => {
-    try {
-      await deleteAttachment.mutateAsync(attachmentId);
-      message.success('Attachment removed');
-    } catch (error) {
-      message.error(error instanceof ApiError ? error.message : 'Failed to remove attachment');
-    }
-  };
+  // G3a (D-062) — removal is audited and reason-bearing, so it opens the
+  // shared confirmation rather than a one-line Popconfirm.
+  const removalModal = (
+    <RemoveClinicalRecordModal
+      open={Boolean(removing)}
+      title="Remove file from visit"
+      okText="Confirm removal"
+      retentionMessage="This file will be removed from the active visit record. The file itself and its audit history are preserved and remain retrievable."
+      placeholder="e.g. Photo taken on the wrong patient; uploaded to the wrong visit"
+      details={[
+        { label: 'File', value: removing?.fileName },
+        { label: 'Type', value: removing?.mimeType },
+        { label: 'Uploaded', value: removing ? attribution(removing) : null },
+      ]}
+      pending={removeAttachment.isPending}
+      successMessage="File removed from the visit — the original is preserved"
+      errorMessage="Failed to remove the file"
+      onConfirm={(reason) =>
+        removeAttachment.mutateAsync({
+          attachmentId: removing!.id,
+          reason,
+          expectedVersion: removing!.version,
+        })
+      }
+      onClose={() => setRemoving(null)}
+    />
+  );
 
   const hiddenInput = (
     <input
@@ -252,9 +273,15 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
                     icon={<DownloadOutlined />}
                     onClick={() => downloadVisitAttachment(visitId, attachment)}
                   />,
-                  <Popconfirm key="delete" title="Remove this attachment?" onConfirm={() => handleDelete(attachment.id)}>
-                    <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-                  </Popconfirm>,
+                  <Tooltip key="remove" title="Remove from visit (audited)">
+                    <Button
+                      size="small"
+                      type="text"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() => setRemoving(attachment)}
+                    />
+                  </Tooltip>,
                 ]}
               >
                 <List.Item.Meta
@@ -298,6 +325,7 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
           }}
         />
       </Image.PreviewGroup>
+      {removalModal}
     </Card>
   );
 }

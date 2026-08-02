@@ -1,21 +1,10 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Delete,
-  Get,
-  HttpCode,
-  Param,
-  Post,
-  Res,
-  UploadedFile,
-  UseInterceptors,
-} from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { memoryStorage } from 'multer';
 import { readUploadedFileStream } from '../core/file-storage';
 import { VisitAttachmentService } from './visit-attachment.service';
+import { VoidClinicalRecordDto } from './dto/void-clinical-record.dto';
 
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 
@@ -51,9 +40,22 @@ export class VisitAttachmentController {
     readUploadedFileStream(attachment.filePath).pipe(res);
   }
 
-  @Delete(':attachmentId')
-  @HttpCode(204)
-  remove(@Param('visitId') visitId: string, @Param('attachmentId') attachmentId: string) {
-    return this.attachments.remove(visitId, attachmentId);
+  // G3a (D-062) — audit view: every attachment ever uploaded to the visit,
+  // including removed ones. The FILE is still on disk, so the download route
+  // keeps working for authorised history.
+  @Get('history')
+  history(@Param('visitId') visitId: string) {
+    return this.attachments.listByVisitId(visitId, true);
+  }
+
+  // G3a (D-062) — replaces DELETE. Audited removal with a mandatory reason;
+  // the clinical image is never unlinked from storage.
+  @Patch(':attachmentId/removal')
+  remove(
+    @Param('visitId') visitId: string,
+    @Param('attachmentId') attachmentId: string,
+    @Body() dto: VoidClinicalRecordDto,
+  ) {
+    return this.attachments.removeFromVisit(visitId, attachmentId, dto);
   }
 }

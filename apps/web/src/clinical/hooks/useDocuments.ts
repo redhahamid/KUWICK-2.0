@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../core/api-client';
-import { ClinicalDocument, CreateDocumentDto } from '../types';
+import { ClinicalDocument, CreateDocumentDto, VoidClinicalRecordDto } from '../types';
 
 export function useDocuments(visitId?: string) {
   return useQuery({
@@ -18,11 +18,28 @@ export function useCreateDocument(visitId?: string) {
   });
 }
 
-export function useDeleteDocument(visitId?: string) {
+// G3a (D-062) — replaces useDeleteDocument. An issued MC or referral leaves
+// the clinic; deleting the row would erase the only record that it was ever
+// issued. Voiding keeps the document and records who voided it and why.
+export function useVoidDocument(visitId?: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/documents/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['documents', visitId] }),
+    mutationFn: ({ id, ...dto }: VoidClinicalRecordDto & { id: string }) =>
+      apiClient.patch<ClinicalDocument>(`/documents/${id}/void`, dto),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['documents', visitId] });
+      queryClient.invalidateQueries({ queryKey: ['document-history', visitId] });
+    },
+  });
+}
+
+// Every document ever issued for the visit, voided ones included, with the
+// actor, time and reason of each void. Fetched only when the user asks.
+export function useDocumentHistory(visitId?: string, enabled = false) {
+  return useQuery({
+    queryKey: ['document-history', visitId],
+    queryFn: () => apiClient.get<ClinicalDocument[]>(`/documents/history?visitId=${visitId}`),
+    enabled: Boolean(visitId) && enabled,
   });
 }
 

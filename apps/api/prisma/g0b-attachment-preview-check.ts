@@ -169,9 +169,8 @@ async function main() {
   await uploadPdf(token, visit.id, `${FIXTURE_TAG}-lab-result.pdf`);
 
   const listed = await api(`/visits/${visit.id}/attachments`, token);
-  // Registered for cleanup through the API so the uploaded FILES are removed
-  // from disk too, not just their rows.
-  for (const a of listed) ledger.attachment(visit.id, a.id);
+  // G3a (D-062) — no per-attachment registration any more: the ledger unlinks
+  // the files of every attachment hanging off the visits this run created.
   check('4 attachments uploaded (3 images + 1 PDF)', listed.length === 4, `${listed.length} listed`);
   check(
     'uploader attribution recorded server-side from the session',

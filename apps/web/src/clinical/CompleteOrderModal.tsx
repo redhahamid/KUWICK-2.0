@@ -7,7 +7,6 @@ import {
   InputNumber,
   List,
   Modal,
-  Popconfirm,
   Radio,
   Select,
   Space,
@@ -18,11 +17,12 @@ import {
 } from 'antd';
 import { CompressOutlined, DeleteOutlined, DownloadOutlined, ExpandOutlined, PaperClipOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { downloadAttachment, useAttachments, useDeleteAttachment, useUploadAttachment } from './hooks/useAttachments';
+import { downloadAttachment, useAttachments, useRemoveAttachment, useUploadAttachment } from './hooks/useAttachments';
 import { useFormTemplateForService } from './hooks/useFormTemplates';
 import { useOrderChat, useSendOrderChat } from './hooks/useChat';
 import { ChatPanel } from './ChatPanel';
-import { FormField, OrderService } from './types';
+import { RemoveClinicalRecordModal } from './sections/RemoveClinicalRecordModal';
+import { Attachment, FormField, OrderService } from './types';
 import { ApiError } from '../core/api-client';
 import { useAuthStore } from '../core/auth-store';
 
@@ -145,7 +145,8 @@ export function CompleteOrderModal({ order, onClose, onComplete, completing }: C
   const { data: attachments, isLoading: attachmentsLoading } = useAttachments(orderId);
   const { data: template } = useFormTemplateForService(order?.serviceCatalogId);
   const uploadAttachment = useUploadAttachment(orderId ?? '');
-  const deleteAttachment = useDeleteAttachment(orderId ?? '');
+  const removeAttachment = useRemoveAttachment(orderId ?? '');
+  const [removingResult, setRemovingResult] = useState<Attachment | null>(null);
   const { data: orderChat, isLoading: orderChatLoading } = useOrderChat(orderId);
   const sendOrderChat = useSendOrderChat(orderId);
 
@@ -299,17 +300,17 @@ export function CompleteOrderModal({ order, onClose, onComplete, completing }: C
                     icon={<DownloadOutlined />}
                     onClick={() => downloadAttachment(order!.id, attachment)}
                   />,
-                  <Popconfirm
-                    key="delete"
-                    title="Remove this file?"
-                    onConfirm={() =>
-                      deleteAttachment
-                        .mutateAsync(attachment.id)
-                        .catch((error) => message.error(error instanceof ApiError ? error.message : 'Failed to remove file'))
-                    }
-                  >
-                    <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-                  </Popconfirm>,
+                  // G3a (D-062) — a result file is the evidence behind a
+                  // completed procedure; removal is audited, never a delete.
+                  <Button
+                    key="remove"
+                    type="text"
+                    size="small"
+                    danger
+                    title="Remove this result (audited)"
+                    icon={<DeleteOutlined />}
+                    onClick={() => setRemovingResult(attachment)}
+                  />,
                 ]}
               >
                 <Space>
@@ -352,6 +353,32 @@ export function CompleteOrderModal({ order, onClose, onComplete, completing }: C
             />
           </div>
         )}
+      <RemoveClinicalRecordModal
+        open={Boolean(removingResult)}
+        title="Remove investigation result"
+        okText="Confirm removal"
+        retentionMessage="This result will be removed from the order's active results. The file and its audit history are preserved and remain retrievable. The order's own status is not changed."
+        placeholder="e.g. Result belongs to another patient; wrong file uploaded"
+        details={[
+          { label: 'File', value: removingResult?.fileName },
+          { label: 'Size', value: removingResult ? formatFileSize(removingResult.fileSize) : null },
+          {
+            label: 'Uploaded',
+            value: removingResult ? dayjs(removingResult.createdAt).format('D MMM YYYY, HH:mm') : null,
+          },
+        ]}
+        pending={removeAttachment.isPending}
+        successMessage="Result removed — the original file is preserved"
+        errorMessage="Failed to remove the result"
+        onConfirm={(reason) =>
+          removeAttachment.mutateAsync({
+            attachmentId: removingResult!.id,
+            reason,
+            expectedVersion: removingResult!.version,
+          })
+        }
+        onClose={() => setRemovingResult(null)}
+      />
       </div>
     </Modal>
   );

@@ -599,12 +599,38 @@ This is a **narrow, diagnosis-specific** clinical-authorisation guard. The wider
 
 ---
 
+## D-062 — G3a: clinical documents, images and results are voided, never destroyed
+
+Closes the three unsafe permanent-delete workflows D-061 listed as still open. `DELETE /documents/:id`, `DELETE /visits/:visitId/attachments/:id` and `DELETE /order-services/:id/attachments/:attachmentId` all erased a clinical record outright, and the two attachment routes also **unlinked the file from disk** — an otoscope image or a lab report was gone for good, with nothing to say it had ever existed.
+
+**All three routes are gone.** They are replaced by `PATCH /documents/:id/void`, `PATCH /visits/:visitId/attachments/:attachmentId/removal` and `PATCH /order-services/:id/attachments/:attachmentId/removal`, each with a **mandatory** reason, plus read-only `GET …/history` companions. No route edits or deletes the void/removal audit itself. There is no un-void workflow — deliberately out of scope for G3.
+
+**Two enums, one shape.** `DocumentRecordStatus { ACTIVE, VOIDED }` for documents; `AttachmentRecordStatus { ACTIVE, REMOVED_IN_ERROR }` for both attachment tables — a document that should not have been issued is *voided*, a file attached to the wrong record was *put there in error*, and the words follow the clinical meaning rather than being unified for tidiness. Each table gains the actor/time/reason trio with frozen name and role snapshots, and a `version` for optimistic concurrency.
+
+**Nothing about the original record is touched.** Voiding a document leaves `content`, `issuedByStaffId`, `signedAt` and `signedByStaffId` exactly as they were, so the clinic can still answer "what did we actually give this patient?". Removing an attachment leaves `fileName`, `filePath`, `mimeType`, `uploadedByStaffId` and `createdAt` intact. Removing an order result does **not** touch the order's status, `completedAt` or result text — a procedure does not become un-completed because a file was attached to the wrong one.
+
+**Storage: the file stays on disk.** `deleteUploadedFile` is no longer imported by any clinical service. Files live under `uploads/<tenantId>/<ownerId>/<uuid>-<name>` (`apps/api/src/core/file-storage.ts`); an audited removal changes database state only. The existing `…/download` routes read by id and are not status-filtered, so an authorised history request retrieves the original bytes unchanged — verified byte-for-byte in the live check. Active views cannot show it: `findByVisitId`/`listByVisitId`/`listAttachments` all filter to `ACTIVE` unless explicitly asked for history. **No orphan cleanup was run**, and the five previously identified unknown files remain untouched.
+
+**Fixture cleanup had to change with it.** `FixtureLedger` used to delete its uploads *through the DELETE endpoint* precisely because that endpoint unlinked the file. With that endpoint gone it would have silently leaked a file per run, so the ledger now unlinks its own files directly — scoped strictly to attachments hanging off visits the run itself created, never a listing or sweep of the uploads directory.
+
+**Permissions.** `canVoidClinicalRecord` — a doctor role, or a staff member whose professional identity is an active `MEDICAL_DOCTOR`. `FRONT_DESK_CLINICAL_STAFF` and a non-clinical `OWNER_ADMIN` are both refused with 403, verified live against real staff rows, not mocks. Actor identity comes only from the session: `voidedByStaffId`/`removedByStaffId` and the snapshots are declared `MustNotBeProvided`, so a browser that sends one gets **400**, not a silent strip. The wider API RBAC gap (D-056) is unchanged and still open.
+
+**Migration:** 6 documents, 4 visit attachments, 1 order attachment — **all** migrated `ACTIVE`, none lost, **0** carrying fabricated void/removal attribution. Bracketed `NO FORCE`/`FORCE` on all three tables with a `DO $$` guard that raises on any non-ACTIVE row or invented attribution (D-048).
+
+**D-048 trap, hit again and worth recording:** `app.bypass_tenant_scope` does **not** cover `documents`, `visit_attachments` or `attachments`. The first run of the integrity check read all three under the bypass alone and reported `0/0 ACTIVE` — zero rows, no error, over real data. Only `app.tenant_id`, set per tenant on the same connection, makes these tables answer honestly. The check now sums per tenant and refuses to run if the tenant list itself comes back empty.
+
+**Verification:** 299 backend unit tests, and `prisma/g3a-document-attachment-integrity-check.ts` at **45/45** against the real database, the real HTTP API and the real uploads directory — covering all 24 required G3a checks including "the file is still on disk after removal" and "the original bytes still download".
+
+**Reversibility**: Medium — additive columns and enums; reverting would restore three unaudited deletes that destroy files, which is exactly what this fixes.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 - ~~Diagnosis deletion is a hard delete with no audit trail (D-059)~~ — **resolved by D-061.**
-- **Documents are hard-deleted** (`DELETE /documents/:id` → `prisma.document.delete`). A signed MC or referral letter can be erased with no trace of its existence, content or who removed it. Recommended for the **G3 Documents** checkpoint.
-- **Visit attachments are hard-deleted, file included** (`DELETE /visits/:visitId/attachments/:id` removes the row *and* unlinks the file from disk). A clinical image — otoscope, wound, dermatology — is unrecoverable. Recommended for the **G3** checkpoint, or sooner if images are already clinically relied upon.
-- **Order attachments are hard-deleted, file included** (`DELETE /order-services/:id/attachments/:attachmentId`). A lab result attached to a procedure is unrecoverable. Same recommendation.
+- ~~Documents are hard-deleted (D-061)~~ — **resolved by D-062.**
+- ~~Visit attachments are hard-deleted, file included (D-061)~~ — **resolved by D-062.**
+- ~~Order attachments are hard-deleted, file included (D-061)~~ — **resolved by D-062.**
 - **Prescriptions are soft-deleted but unattributed**: `deletedAt` is set and the row survives, and deletion is blocked once the item leaves `ORDERED` — but no actor and no reason are recorded. Clinically better than the others, still short of the diagnosis standard. Recommended for a **medication-governance checkpoint after G3**.
 - **Orders/procedures have no delete route at all** — only `cancel`, which sets `CANCELLED` and stores `cancelReason`. This one is already acceptable; it lacks a cancelling-actor field, which is a smaller gap.
 - **The wider API RBAC gap remains open** (D-056). Only clinical notes, observations and now diagnoses have server-side role enforcement.
