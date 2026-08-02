@@ -433,6 +433,26 @@ Part of Part G (the full Medical Record Workspace review). Owner accepted the au
 
 ---
 
+## D-055 — G0b: clinical images are looked at inside the record, not downloaded out of it
+
+Second of the two Part G defects the owner authorised ahead of the wider restructure. Otoscope, wound, dermatology and endoscopy photos are the reason a visit carries attachments at all, and the only way to see one was to download the file and open it outside Kuwick — during a consultation, with the patient present.
+
+**Why it could not just be an `<img src>`.** The download endpoint requires an `Authorization` header, and a plain `<img>` cannot send one. The bytes are fetched and handed back as object URLs (`useAttachmentBlobUrls`), the same approach `PrintOrderResultPage` already used for order attachments — this reuses existing plumbing rather than adding a public image route, which would have meant clinical images reachable without a token.
+
+**Memory is handled deliberately.** Object URLs pin their blob until revoked, and a clinic gets through a lot of records in a day, so every URL is revoked when the attachment set changes or the component unmounts. Nothing is cached across records: a stale image showing under the wrong patient is a far worse failure than a refetch.
+
+**Presentation.** Compact (Canvas) shows a thumbnail strip beside the count with the Upload action; the full card shows a 48px thumbnail per row. Clicking any thumbnail opens antd's lightbox with zoom, rotate, flip and prev/next across the whole image set. Non-image attachments (PDFs, lab results) stay as named file rows with a download action — and an image whose bytes fail to load falls back to the same file row rather than rendering a blank square, because an empty box in a clinical record invites the reader to assume there is nothing there.
+
+**Attribution is unchanged and still server-side.** `uploadedByStaffId` comes from the authenticated session (C0, D-051); the UI only displays it, now on the thumbnail title and the list row alike. No permission, upload, delete or storage behaviour changed.
+
+**Two wrong turns worth recording.** Wrapping each `Image` in an antd `Tooltip` broke `PreviewGroup`'s context registration — the lightbox opened on a single image with no gallery — so attribution moved to the native `title` attribute. Separately, the verification script first looked for `.ant-image-preview-switch-right`; antd v6 names them `-switch-prev`/`-switch-next`, so a working gallery was reported as failing. The test was wrong, not the code, and it was fixed rather than the result explained away.
+
+**Verification** (`prisma/g0b-attachment-preview-check.ts`, 10/10 in real Chrome): three generated clinical images plus a PDF uploaded to a live visit; thumbnails render from `blob:` sources; no broken placeholders; the PDF is listed as a file; the lightbox opens, pages between all three images with the preview `src` actually changing, and closes back into the record. G0a's 33/33 and the C1 note-selector gate both re-run clean afterwards.
+
+**Reversibility**: High — presentation only, plus one new read-only hook. No schema, endpoint, permission or storage change.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:
