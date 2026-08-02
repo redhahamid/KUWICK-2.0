@@ -1,7 +1,10 @@
-import { useParams } from 'react-router-dom';
-import { Alert, Card, Skeleton, Space, Typography } from 'antd';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { Alert, Card, Result, Skeleton, Space, Typography } from 'antd';
 import dayjs from 'dayjs';
+import { useAuthStore } from '../core/auth-store';
+import { canAccessBilling } from '../core/billing-access';
 import { useVisit } from './hooks/useVisits';
+import { useInvoices } from './hooks/useInvoices';
 import { InvoiceTab } from './InvoiceTab';
 
 const { Title, Text } = Typography;
@@ -29,7 +32,30 @@ const { Title, Text } = Typography;
  */
 export function BillingVisitPage() {
   const { visitId } = useParams<{ visitId: string }>();
-  const { data: visit, isLoading, error } = useVisit(visitId);
+  const [searchParams] = useSearchParams();
+  const requestedInvoiceId = searchParams.get('invoiceId');
+  const staff = useAuthStore((state) => state.staff);
+  const allowed = canAccessBilling(staff?.role);
+
+  // G3c closure (D-066) — the access check runs BEFORE any billing data is
+  // requested, so an unauthorised user's browser never even asks for the
+  // money, let alone mounts a component that could move it. The server
+  // refuses independently; this is what the person sees.
+  const { data: visit, isLoading, error } = useVisit(allowed ? visitId : undefined);
+  const { data: invoices } = useInvoices(allowed ? visitId : undefined);
+
+  if (!allowed) {
+    return (
+      <Result
+        status="403"
+        title="You do not have access to billing"
+        subTitle={
+          'Raising, editing, paying and cancelling invoices is restricted to billing roles. ' +
+          'You can still see this visit’s charges in the patient’s medical record.'
+        }
+      />
+    );
+  }
 
   if (isLoading) {
     return <Skeleton active paragraph={{ rows: 6 }} />;
@@ -45,6 +71,14 @@ export function BillingVisitPage() {
     );
   }
 
+  // G3c closure (§9) — a mismatched ?invoiceId= must not silently open some
+  // other visit's bill. The list here is already scoped to THIS visit by the
+  // branch-guarded read, so an id that is not in it belongs elsewhere and is
+  // reported rather than followed. Nothing is created either way: this page
+  // opens what exists, and creation is an explicit action inside the tab.
+  const mismatched = Boolean(requestedInvoiceId) && Boolean(invoices) &&
+    !invoices!.some((invoice) => invoice.id === requestedInvoiceId);
+
   return (
     <div>
       <Space direction="vertical" size={4} style={{ marginBottom: 16 }}>
@@ -56,6 +90,16 @@ export function BillingVisitPage() {
           {visit.clinic?.name ? ` · ${visit.clinic.name}` : ''}
         </Text>
       </Space>
+
+      {mismatched && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="That invoice does not belong to this visit"
+          description="Showing this visit's own invoices instead. Nothing has been created or changed."
+        />
+      )}
 
       <Card size="small">
         <InvoiceTab visit={visit} />

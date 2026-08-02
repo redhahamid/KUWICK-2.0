@@ -776,6 +776,51 @@ The backend's `totalAmount` is the only total; the frontend never re-sums the li
 
 **Reversibility**: High for the UI; the read-security correction should not be reverted.
 
+*(The "still open" paragraph above is closed by **D-066**.)*
+
+---
+
+## D-066 — G3c closure: who is allowed to move money
+
+D-065 removed the financial controls from the Clinical Workspace and said plainly that this was a UX correction, not a security one: all five invoice mutation routes were still open to any authenticated user of the tenant. This closes that.
+
+### The role model, audited first
+
+The instruction was to stop and report if the schema could not distinguish authorised billing users safely. It can. `Role` is a real enum on `staff` with nine members, and three of them are already financial or administrative in name and use: `OWNER_ADMIN`, `FINANCE_STAFF`, `PANEL_STAFF`. No new role was invented.
+
+There is a second, separate axis — `professionalType` (`DOCTOR` / `NURSE` / …) with `professionalActive`, `verifiedAt` and `signingEnabledAt`. G3b's closure (D-064) uses that axis for clinical authorisation, deliberately, because a *clinical* signature is a professional act and not a job title. Billing is the mirror image: it is a **job function, not a professional one**, so the billing matrix reads `Role` **only**. `professionalType` is never consulted here. A doctor is not a cashier by virtue of being a doctor.
+
+### One matrix, four actions, on the server
+
+`BILLING_MATRIX` lives beside the clinical rules in `clinical-authorization.ts`, and every one of the five routes goes through the same `authoriseBilling()` helper — the guard cannot be applied to four routes and forgotten on the fifth.
+
+| | OWNER_ADMIN | FINANCE_STAFF | FRONT_DESK | DOCTOR (res/locum) | HR / STOCK / PANEL / PORTAL |
+|---|---|---|---|---|---|
+| Create invoice | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Add / remove lines | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Mark paid | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Cancel invoice | ✅ | ✅ | ❌ | ❌ | ❌ |
+
+The two interesting rows are the deliberate ones. A **doctor may raise and itemise** the charges arising from their own consultation — that is clinical work — but may **not take payment and may not cancel**, which are cash-handling and write-off decisions. **Front desk takes payment** (that is the job) but **cannot cancel an issued invoice**, because voiding a bill is the control that matters and it stays with the owner and finance. `PANEL_STAFF` administers claims, which is a different lifecycle, and is not given invoice mutation here.
+
+**Branch is resolved from stored relationships, never from the browser.** For `create` the visit comes from the DTO and is then verified with `assertMayTouchVisit`; for the other four the visit is looked up **from the invoice itself** (`invoiceVisitId`), so a `visitId` in the request body cannot redirect a mutation to another visit's bill. An unknown invoice 404s before any authorisation decision leaks that it exists.
+
+### The page, and the honest part
+
+`/billing/visits/:visitId` refuses unauthorised users with an explained Access Denied — it names what is restricted and where the person can still see the charges — rather than a silent redirect that reads as a broken link. The check runs **before** the data hooks, so an unauthorised browser never even requests the money; the live check asserts zero `/invoices` requests on that page.
+
+`apps/web/src/core/billing-access.ts` mirrors the matrix for rendering, and is labelled in its own source as presentation only. A frontend test asserts the full expected table so a drift from the server fails a test instead of silently over-showing. **Hiding a button is not the rule; the 403 is.** Every denial in the verification below was measured by calling the API directly with a valid token, not by looking at the UI.
+
+### What this closure is not
+
+It is not a permission engine. There is no per-user override, no delegation, no policy store — one table, four actions, read at the point of use. Invoice calculations, panel rules and the billing UI are untouched: the totals check asserts the invoice still equals the sum of its own lines, and the panel/patient split still snapshots at pay time.
+
+Claim submission and the panel workflow remain outside this closure, as instructed.
+
+**Verification:** 54 invoice unit tests (the full 9-role × 4-action matrix, plus inactive staff, branch-from-stored-visit and unknown-invoice), 336 backend tests, 149 frontend tests, both typechecks clean, and `prisma/g3c-closure-billing-rbac-check.ts` — 25 checks against the real database, HTTP API and Chrome, including all five routes denied to a role with no billing rights, the doctor and front-desk boundaries on real accounts, a cross-tenant token, and the three UI states.
+
+**Reversibility**: Low, and intentionally so. Removing this guard re-opens the money.
+
 ---
 
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
@@ -786,7 +831,7 @@ The backend's `totalAmount` is the only total; the frontend never re-sums the li
 - ~~Order attachments are hard-deleted, file included (D-061)~~ — **resolved by D-062.**
 - **Prescriptions are soft-deleted but unattributed**: `deletedAt` is set and the row survives, and deletion is blocked once the item leaves `ORDERED` — but no actor and no reason are recorded. Clinically better than the others, still short of the diagnosis standard. Recommended for a **medication-governance checkpoint after G3**.
 - **Orders/procedures have no delete route at all** — only `cancel`, which sets `CANCELLED` and stores `cancelReason`. This one is already acceptable; it lacks a cancelling-actor field, which is a smaller gap.
-- **The wider API RBAC gap remains open** (D-056). Only clinical notes, observations and now diagnoses have server-side role enforcement.
+- **The wider API RBAC gap remains open** (D-056). Clinical notes, observations, diagnoses, document authorisation (D-064) and the five invoice mutation routes (D-066) now have server-side role enforcement; the rest of the API does not.
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:
 
