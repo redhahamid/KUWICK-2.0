@@ -81,7 +81,17 @@ export class DiagnosisService {
       where: {
         active: true,
         category,
-        name: query ? { contains: query, mode: 'insensitive' } : undefined,
+        // G2b — match the ICD-10 code as well as the name. A GP who knows the
+        // code ("J06.9") could previously only find it by typing the wording,
+        // which is slower than the thing they already had in mind.
+        ...(query
+          ? {
+              OR: [
+                { name: { contains: query, mode: 'insensitive' as const } },
+                { icd10Code: { contains: query, mode: 'insensitive' as const } },
+              ],
+            }
+          : {}),
       },
       orderBy: { name: 'asc' },
       take: 20,

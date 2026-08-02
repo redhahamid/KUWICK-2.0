@@ -448,7 +448,11 @@ export function ClinicalNotesTab({ visitId, patientId, compact }: ClinicalNotesT
       <Space wrap style={{ marginBottom: compact ? 6 : 8, width: '100%' }}>
         <Select
           size="small"
-          style={{ minWidth: 340 }}
+          // G2b — was minWidth: 340, which is wider than the 329px content
+          // area at 375px and pushed the whole page into a horizontal scroll.
+          // maxWidth lets it shrink on a phone and keeps the note label
+          // readable everywhere else.
+          style={{ width: '100%', maxWidth: 340 }}
           placeholder="No notes yet"
           value={isNewDraft ? '__draft__' : selectedNoteId}
           loading={isLoading}
@@ -568,7 +572,10 @@ export function ClinicalNotesTab({ visitId, patientId, compact }: ClinicalNotesT
             : undefined
         }
         extra={
-          <Space>
+          // G2b — `wrap` plus the mobile rule in index.css: this toolbar is
+          // 384px unwrapped, wider than a 329px phone content area, and was
+          // the last thing forcing the record to scroll sideways at 375px.
+          <Space wrap>
             <Select
               size="small"
               value={language}

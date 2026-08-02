@@ -85,7 +85,9 @@ export class PrescriptionService {
   findByVisitId(visitId: string) {
     return this.prisma.prescription.findMany({
       where: { visitId, deletedAt: null },
-      include: { item: true },
+      // G2b — read-only addition: the prescriber, so the medication list can
+      // say who prescribed each item instead of leaving it blank.
+      include: { item: true, prescribedBy: true },
       orderBy: { prescribedAt: 'desc' },
     });
   }

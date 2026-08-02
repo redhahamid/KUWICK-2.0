@@ -106,7 +106,64 @@
   border-top: 1px solid #f5f5f5;
 }
 
+/* G2b (D-060) — clinical rows inside an expanded section.
+   Used by Diagnosis, Orders and Medications so the three read as one system.
+   Rows wrap rather than scroll sideways: a table that needs a horizontal
+   scrollbar hides clinical detail on the device a GP is most likely holding. */
+.kw-dx-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.kw-dx-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.kw-dx-row:last-child {
+  border-bottom: none;
+}
+
+.kw-dx-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kw-dx-actions {
+  flex: 0 0 auto;
+}
+
 @media (max-width: 767px) {
+  /* antd's Card `extra` slot does not shrink on its own, so a toolbar wider
+     than the phone's content area (the note's language + Dictate + Smart
+     Abbreviation row measured 384px against 329px available) forces the whole
+     page to scroll sideways. Let it wrap instead. */
+  .kw-canvas-main .ant-card-extra {
+    max-width: 100%;
+    float: none;
+  }
+
+  /* One column: details first, then the actions as a full-width row of
+     comfortable targets — not a huddle of tiny buttons beside the text. */
+  .kw-dx-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .kw-dx-actions {
+    width: 100%;
+  }
+
+  .kw-dx-actions .ant-btn {
+    min-height: 44px;
+  }
+
   /* Stack the header so nothing is squeezed into a strip of a row, and give
      every control a 44px touch target. */
   .kw-section-header {

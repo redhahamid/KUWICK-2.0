@@ -551,6 +551,26 @@ Owner-approved additive change. A visit diagnosis previously carried only `icd10
 
 ---
 
+## D-060 — G2b: Diagnosis, Orders and Medications as clinical lists rather than tables
+
+The three sections now share one row pattern (`.kw-dx-row`), so they read as one system: details on the left, only the valid next actions on the right, wrapping instead of scrolling sideways.
+
+**Diagnosis** shows what G2a made real — ICD-10 code, name, Primary / Secondary / **"Priority not recorded"**, and either "Added by <name> (role)" or **"Added by not recorded — legacy entry"**. Search matches the ICD-10 code as well as the name (a GP who knows `J06.9` should be able to type it), Enter adds, and the whole add flow is keyboard-only with no modal. Only actions the API supports are offered: set/clear primary, and remove. **There is no edit**, because no update endpoint exists for a diagnosis's name or code — inventing one in the UI would be a lie about what the record can do.
+
+**Orders** use plain words for the real statuses (`PENDING` → "Ordered") and render **only** the actions the current status permits: Ordered → Start/Cancel, In Progress → Complete/Cancel, Completed → View result. No approval states were invented. The attachments indicator and "On invoice" tag are backed by real counts added to the list endpoint (`_count.attachments`, `_count.invoiceLines`) rather than inferred. `CompleteOrderModal` — form templates, attachments, per-order chat — is reused untouched.
+
+**Medications** replace a 6-column table that needed horizontal scrolling below laptop width and buried indication, remark and prescriber in one cramped cell. Each row now carries dose, frequency, duration, quantity, instructions, prescriber, dispensing state, stock on hand, and the `calcMethod` audit trail. Strength is read from the Item and **labelled "Item strength"** — it is a property of the product, not a per-prescription field. Route is not shown at all because it is not modelled. The allergy banner names the recorded allergies with an icon and words, and says plainly that **Kuwick does not automatically check prescriptions against them** — a banner implying a check nobody implemented would be worse than none.
+
+**Three mobile defects found by the check, not by eye.** At 375px the page scrolled sideways; the check reports the offending element rather than leaving it to guesswork. In order: the section search controls used `minWidth` wider than the 281px section; the medication form's fixed `span={6}` columns could not shrink below antd's InputNumber minimum; and finally antd's `Card.extra` slot, holding the note's language + Dictate + Smart Abbreviation toolbar, measured **384px against 329px available** and does not shrink on its own. All three are fixed; the last needed both `wrap` and a scoped CSS rule.
+
+**Two of my own test bugs, recorded rather than quietly fixed:** the weight-based fixture first picked an item with no Conc. Vol/Strength and the server **correctly rejected it** (existing dosage validation working — the fixture was wrong, not the rule); and the "no invalid actions" assertion counted "Cancel" across every section, sweeping up medication buttons and reporting the app wrong.
+
+**Verification:** `prisma/g2b-clinical-ux-check.ts`, **75/75** in real Chrome at four viewports against 4 diagnoses (one Primary, one Secondary, one legacy-attribution), 3 orders in three different statuses, and 5 medications including a weight-based and a dispensed one. Editor height held at the accepted G0/G1 values with every section expanded.
+
+**Reversibility**: High — presentation, plus two read-only `include` additions and an ICD-code search clause.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 - **Diagnosis deletion is a hard delete with no audit trail** (D-059). Removing a diagnosis leaves no record that it ever existed or who removed it. Needs an explicit governance decision — likely alongside the Void Note proposal — before production clinical use.

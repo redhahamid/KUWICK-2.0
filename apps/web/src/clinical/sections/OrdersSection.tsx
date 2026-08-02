@@ -1,6 +1,6 @@
 import { Tag } from 'antd';
 import { useOrderServices } from '../hooks/useOrderServices';
-import { OrdersServicesTab } from '../OrdersServicesTab';
+import { OrdersSectionBody } from './OrdersSectionBody';
 import { OrderServiceStatus } from '../types';
 import { ClinicalSection } from './ClinicalSection';
 
@@ -52,7 +52,7 @@ export function OrdersSection({ visitId, expanded, onToggle }: OrdersSectionProp
       expanded={expanded}
       onToggle={onToggle}
     >
-      <OrdersServicesTab visitId={visitId} />
+      <OrdersSectionBody visitId={visitId} />
     </ClinicalSection>
   );
 }

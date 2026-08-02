@@ -490,6 +490,10 @@ export interface OrderService {
   formData: Record<string, unknown> | null;
   visit?: Visit;
   requestedBy?: Staff;
+  // G2b — read-only counts from the list endpoint, so the section can show an
+  // attachments indicator and whether the order has reached an invoice
+  // without inventing either.
+  _count?: { attachments: number; invoiceLines: number };
 }
 
 export interface CreateOrderServiceDto {
@@ -757,6 +761,8 @@ export interface Prescription {
   dispensedAt: string | null;
   cancelReason: string | null;
   item?: Item;
+  // G2b — read-only, from the list endpoint's include.
+  prescribedBy?: Staff;
 }
 
 export interface CreatePrescriptionDto {

@@ -34,16 +34,11 @@ import {
   usePrescriptions,
   useRemovePrescription,
 } from './hooks/usePrescriptions';
-import { CreatePrescriptionDto, DosageCalcMethod, Prescription, PrescriptionStatus } from './types';
+import { CreatePrescriptionDto, DosageCalcMethod } from './types';
+import { PrescribedMedicationList } from './sections/PrescribedMedicationList';
 import { ApiError } from '../core/api-client';
 
 const { Text } = Typography;
-
-const STATUS_COLOR: Record<PrescriptionStatus, string> = {
-  ORDERED: 'gold',
-  DISPENSED: 'green',
-  CANCELLED: 'default',
-};
 
 interface MedicationsTabProps {
   visitId: string;
@@ -233,19 +228,19 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
         )}
 
         <Row gutter={12} style={{ marginBottom: 12 }}>
-          <Col span={6}>
+          <Col xs={12} sm={12} md={6}>
             <Text type="secondary">Quantity</Text>
             <InputNumber min={1} style={{ width: '100%' }} value={quantity} onChange={(v) => setQuantity(v ?? 1)} />
           </Col>
-          <Col span={6}>
+          <Col xs={12} sm={12} md={6}>
             <Text type="secondary">Dose Amount</Text>
             <InputNumber min={0} style={{ width: '100%' }} value={amount} onChange={(v) => setAmount(v ?? undefined)} />
           </Col>
-          <Col span={6}>
+          <Col xs={12} sm={12} md={6}>
             <Text type="secondary">Unit</Text>
             <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="e.g. ml, tablet" />
           </Col>
-          <Col span={6}>
+          <Col xs={12} sm={12} md={6}>
             <Text type="secondary"> </Text>
             <Button
               block
@@ -359,11 +354,11 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
         )}
 
         <Row gutter={12} style={{ marginBottom: 12 }}>
-          <Col span={8}>
+          <Col xs={24} sm={12} md={8}>
             <Text type="secondary">Frequency</Text>
             <Input value={frequency} onChange={(e) => setFrequency(e.target.value)} placeholder="e.g. BD" />
           </Col>
-          <Col span={8}>
+          <Col xs={24} sm={12} md={8}>
             <Text type="secondary">Duration (days)</Text>
             <InputNumber
               min={1}
@@ -372,7 +367,7 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
               onChange={(v) => setDurationDays(v ?? 1)}
             />
           </Col>
-          <Col span={8}>
+          <Col xs={24} sm={12} md={8}>
             <Text type="secondary">Indication</Text>
             <Input value={indication} onChange={(e) => setIndication(e.target.value)} />
           </Col>
@@ -392,105 +387,21 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
         </div>
       </Card>
 
+      {/* G2b (D-060) — the 6-column table that lived here needed horizontal
+          scrolling below laptop width and buried indication, remark and
+          prescriber in a cramped cell. PrescribedMedicationList shows the same
+          records as wrapping rows, and adds the allergy banner, prescriber and
+          stock-on-hand the owner asked for. The prescribing form, dosage
+          calculator and every mutation above are untouched. */}
       <Card size="small" title="Prescribed Medications">
-        {!isLoading && (!prescriptions || prescriptions.length === 0) ? (
-          <Empty description="No medications prescribed yet" />
-        ) : (
-          <Table
-            rowKey="id"
-            loading={isLoading}
-            dataSource={prescriptions}
-            columns={[
-              { title: 'Medicine', render: (_: unknown, r: Prescription) => r.item?.name ?? '—' },
-              {
-                title: 'Instructions & Details',
-                render: (_: unknown, r: Prescription) => (
-                  <>
-                    <div>
-                      {r.amount}
-                      {r.unit ?? ''} {r.frequency} for {r.durationDays} Days
-                    </div>
-                    {r.indication && (
-                      <div style={{ fontSize: 12, opacity: 0.65 }}>Indication: {r.indication}</div>
-                    )}
-                    {r.remark && <div style={{ fontSize: 12, opacity: 0.65 }}>{r.remark}</div>}
-                  </>
-                ),
-              },
-              { title: 'Qty', dataIndex: 'quantity' },
-              {
-                title: 'Status',
-                render: (_: unknown, r: Prescription) => <Tag color={STATUS_COLOR[r.status]}>{r.status}</Tag>,
-              },
-              {
-                title: 'Prescribed At',
-                render: (_: unknown, r: Prescription) => dayjs(r.prescribedAt).format('YYYY-MM-DD HH:mm'),
-              },
-              {
-                title: 'Action',
-                render: (_: unknown, r: Prescription) => (
-                  <Space>
-                    {/* D-040 (owner #10) — drug label with clinic letterhead,
-                        patient, drug, dose/frequency/duration/indication. */}
-                    <Button
-                      size="small"
-                      icon={<PrinterOutlined />}
-                      title="Print drug label"
-                      onClick={() => {
-                        const clinic = clinics?.find((c) => c.id === visit?.clinicId);
-                        printDrugLabel({
-                          clinicName: clinic?.name ?? '',
-                          clinicAddress: clinic?.address,
-                          clinicPhone: clinic?.phone,
-                          clinicEmail: clinic?.email,
-                          patientName: visit?.patient?.name ?? '',
-                          drugName: r.item?.name ?? '',
-                          dose: `${r.amount}${r.unit ?? ''}`,
-                          frequency: r.frequency,
-                          durationDays: r.durationDays,
-                          indication: r.indication,
-                          quantity: r.quantity,
-                        });
-                      }}
-                    />
-                    {r.status === 'ORDERED' && (
-                      <>
-                      <Button
-                        size="small"
-                        onClick={() =>
-                          dispensePrescription
-                            .mutateAsync({ id: r.id })
-                            .catch((e) => reportFailure(e, 'Failed to dispense'))
-                        }
-                      >
-                        Dispense
-                      </Button>
-                      <Popconfirm
-                        title="Cancel this prescription?"
-                        onConfirm={() =>
-                          cancelPrescription.mutateAsync({ id: r.id }).catch((e) => reportFailure(e, 'Failed to cancel'))
-                        }
-                      >
-                        <Button size="small" danger>
-                          Cancel
-                        </Button>
-                      </Popconfirm>
-                      <Popconfirm
-                        title="Delete this prescription?"
-                        onConfirm={() => removePrescription.mutateAsync(r.id).catch((e) => reportFailure(e, 'Failed to delete'))}
-                      >
-                        <Button size="small" danger type="text">
-                          Delete
-                        </Button>
-                      </Popconfirm>
-                      </>
-                    )}
-                  </Space>
-                ),
-              },
-            ]}
-          />
-        )}
+        <PrescribedMedicationList
+          visitId={visitId}
+          prescriptions={prescriptions}
+          isLoading={isLoading}
+          patient={visit?.patient}
+          clinic={clinics?.find((c) => c.id === visit?.clinicId)}
+          latestWeightKg={vitals?.weight ?? null}
+        />
       </Card>
     </div>
   );

@@ -1,5 +1,6 @@
+import { Tag } from 'antd';
 import { useDiagnoses } from '../hooks/useDiagnoses';
-import { DiagnosisTab } from '../DiagnosisTab';
+import { DiagnosisSectionBody } from './DiagnosisSectionBody';
 import { ClinicalSection, summarise } from './ClinicalSection';
 
 interface DiagnosisSectionProps {
@@ -16,16 +17,19 @@ export function DiagnosisSection({ visitId, expanded, onToggle }: DiagnosisSecti
   const { data: diagnoses, isLoading, error } = useDiagnoses(visitId);
   const list = diagnoses ?? [];
 
-  // Real fields only: name and icd10Code. There is no primary/secondary
-  // column in the Diagnosis model yet (G2 adds it), so the summary must not
-  // imply one by ordering or labelling.
-  const summary = summarise(list.map((d) => (d.icd10Code ? `${d.icd10Code} ${d.name}` : d.name)));
+  // G2b — the primary diagnosis leads the summary (the API already returns it
+  // first). Everything else follows in the order it was recorded.
+  const primary = list.find((d) => d.priority === 'PRIMARY');
+  const rest = list.filter((d) => d.id !== primary?.id);
+  const label = (d: (typeof list)[number]) => (d.icd10Code ? `${d.icd10Code} ${d.name}` : d.name);
+  const summary = summarise([...(primary ? [label(primary)] : []), ...rest.map(label)]);
 
   return (
     <ClinicalSection
       title="Diagnosis"
       count={list.length}
       summary={summary}
+      status={primary ? <Tag color="blue">Primary: {primary.name}</Tag> : undefined}
       isLoading={isLoading}
       error={error ?? undefined}
       isEmpty={!isLoading && list.length === 0}
@@ -34,7 +38,7 @@ export function DiagnosisSection({ visitId, expanded, onToggle }: DiagnosisSecti
       expanded={expanded}
       onToggle={onToggle}
     >
-      <DiagnosisTab visitId={visitId} />
+      <DiagnosisSectionBody visitId={visitId} />
     </ClinicalSection>
   );
 }

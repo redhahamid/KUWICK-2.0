@@ -95,9 +95,33 @@ describe('DiagnosisService', () => {
 
       expect(prisma.diagnosisCatalog.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { active: true, category: DiagnosisCategory.FULL, name: { contains: 'cold', mode: 'insensitive' } },
+          where: expect.objectContaining({ active: true, category: DiagnosisCategory.FULL }),
         }),
       );
+    });
+
+    // G2b — a GP who knows the code should be able to type it.
+    it('searchCatalog matches the ICD-10 code as well as the name', async () => {
+      const { service, prisma } = createService();
+      (prisma.diagnosisCatalog.findMany as jest.Mock).mockResolvedValue([]);
+
+      await service.searchCatalog('J06.9');
+
+      const where = (prisma.diagnosisCatalog.findMany as jest.Mock).mock.calls[0][0].where;
+      expect(where.OR).toEqual([
+        { name: { contains: 'J06.9', mode: 'insensitive' } },
+        { icd10Code: { contains: 'J06.9', mode: 'insensitive' } },
+      ]);
+    });
+
+    it('searchCatalog applies no text filter when no query is given', async () => {
+      const { service, prisma } = createService();
+      (prisma.diagnosisCatalog.findMany as jest.Mock).mockResolvedValue([]);
+
+      await service.searchCatalog(undefined, DiagnosisCategory.CUSTOM);
+
+      const where = (prisma.diagnosisCatalog.findMany as jest.Mock).mock.calls[0][0].where;
+      expect(where.OR).toBeUndefined();
     });
 
     it('createCustom always creates a CUSTOM-category entry', async () => {

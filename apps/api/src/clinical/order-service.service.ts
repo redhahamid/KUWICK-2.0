@@ -51,9 +51,17 @@ export class OrderServiceService {
     });
   }
 
+  // G2b — read-only additions so the clinical record can show who ordered
+  // something, whether it carries results/attachments, and whether it has
+  // reached an invoice. Counts rather than full rows: the section only needs
+  // to say "2 attachments", and pulling the payloads would be wasteful.
   findByVisitId(visitId: string, filter: FindOrderServicesFilter = {}) {
     return this.prisma.orderService.findMany({
       where: { visitId, orderType: filter.orderType, status: filter.status },
+      include: {
+        requestedBy: true,
+        _count: { select: { attachments: true, invoiceLines: true } },
+      },
       orderBy: { requestedAt: 'desc' },
     });
   }
