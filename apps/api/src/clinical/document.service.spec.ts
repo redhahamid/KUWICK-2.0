@@ -23,6 +23,7 @@ const NON_CLINICAL_OWNER = { ...DOCTOR, role: 'OWNER_ADMIN' };
 function createService(actor: Record<string, unknown> = DOCTOR) {
   const prisma = {
     document: { findMany: jest.fn(), findUnique: jest.fn(), create: jest.fn(), delete: jest.fn(), update: jest.fn() },
+    customDocumentTemplate: { findFirst: jest.fn().mockResolvedValue(null) },
   } as unknown as TenantScopedPrismaClient;
   const visits = { findById: jest.fn() } as unknown as VisitService;
 
@@ -57,6 +58,21 @@ const SAVED_DOC = {
 
 const UNSIGNED_DOC = { ...SAVED_DOC, signedAt: null, signedByStaffId: null, version: 1 };
 
+// G3b closure (D-064) — the two shapes authority now depends on.
+const CLINICAL_DRAFT = {
+  ...UNSIGNED_DOC,
+  type: DocumentType.MC,
+  requiresClinicalAuthorisation: true,
+  authorisationKind: null,
+};
+const ADMIN_DRAFT = {
+  ...UNSIGNED_DOC,
+  type: DocumentType.CUSTOM,
+  title: 'Time Slip',
+  requiresClinicalAuthorisation: false,
+  authorisationKind: null,
+};
+
 describe('DocumentService', () => {
   it('create defaults issuedByStaffId to the visit doctor when not given', async () => {
     const { service, prisma, visits } = createService();
@@ -71,6 +87,7 @@ describe('DocumentService', () => {
         visitId: 'visit-1',
         type: DocumentType.MC,
         content: '3 days rest',
+        requiresClinicalAuthorisation: true,
         issuedByStaffId: 'staff-1',
         issuedDate: undefined,
         startDate: undefined,
@@ -241,85 +258,227 @@ describe('DocumentService', () => {
     );
   });
 
-  it('sign throws NotFoundException for an unknown document', async () => {
+  // =========================================================================
+  // G3b closure (D-064) — authorisation semantics and permissions.
+  // =========================================================================
+
+  it('authorise throws NotFoundException for an unknown document', async () => {
     const { service, tx } = createService();
     tx.document.findUnique.mockResolvedValue(null);
 
-    await expect(withTenant(() => service.sign('missing', {}))).rejects.toThrow(NotFoundException);
+    await expect(withTenant(() => service.authorise('missing', {}))).rejects.toThrow(NotFoundException);
   });
 
-  // G3b — the signer used to come from the request body, and the browser sent
-  // the VISIT's doctor whoever actually clicked. A document could therefore be
-  // attributed to a doctor who never saw it.
-  it('sign takes the signer from the session, never the request', async () => {
+  it('a doctor can clinically authorise a medical certificate', async () => {
     const { service, tx } = createService();
-    tx.document.findUnique.mockResolvedValue(UNSIGNED_DOC);
+    tx.document.findUnique.mockResolvedValue(CLINICAL_DRAFT);
 
-    await withTenant(() => service.sign('doc-1', { staffId: 'someone-else' } as never));
+    await withTenant(() => service.authorise('doc-1', {}));
 
     const data = tx.document.update.mock.calls[0][0].data;
+    expect(data.authorisationKind).toBe('CLINICAL');
     expect(data.signedByStaffId).toBe('staff-1');
-    expect(data.signedAt).toEqual(expect.any(Date));
+    expect(data.authorisedByNameSnapshot).toBe('Dr. Amira Rahman');
   });
 
-  it('sign never touches the document content', async () => {
+  it('a doctor can clinically authorise a referral', async () => {
     const { service, tx } = createService();
-    tx.document.findUnique.mockResolvedValue(UNSIGNED_DOC);
+    tx.document.findUnique.mockResolvedValue({ ...CLINICAL_DRAFT, type: DocumentType.REFERRAL });
 
-    await withTenant(() => service.sign('doc-1', {}));
+    await withTenant(() => service.authorise('doc-1', {}));
+
+    expect(tx.document.update.mock.calls[0][0].data.authorisationKind).toBe('CLINICAL');
+  });
+
+  // THE defect this closure exists to fix: front desk could put what reads as
+  // a doctor's signature on a medical certificate.
+  it('front-desk staff may NOT clinically authorise a medical certificate', async () => {
+    const { service, tx } = createService(FRONT_DESK);
+    tx.document.findUnique.mockResolvedValue(CLINICAL_DRAFT);
+
+    await expect(withTenant(() => service.authorise('doc-1', {}))).rejects.toThrow(ForbiddenException);
+    expect(tx.document.update).not.toHaveBeenCalled();
+  });
+
+  it('front-desk staff may NOT clinically authorise a referral', async () => {
+    const { service, tx } = createService(FRONT_DESK);
+    tx.document.findUnique.mockResolvedValue({ ...CLINICAL_DRAFT, type: DocumentType.REFERRAL });
+
+    await expect(withTenant(() => service.authorise('doc-1', {}))).rejects.toThrow(ForbiddenException);
+  });
+
+  it('a non-clinical owner-admin may NOT clinically authorise', async () => {
+    const { service, tx } = createService(NON_CLINICAL_OWNER);
+    tx.document.findUnique.mockResolvedValue(CLINICAL_DRAFT);
+
+    await expect(withTenant(() => service.authorise('doc-1', {}))).rejects.toThrow(ForbiddenException);
+  });
+
+  // An owner who IS a doctor qualifies through their professional identity,
+  // not their job title.
+  it('an owner-admin with an active MEDICAL_DOCTOR identity may authorise', async () => {
+    const { service, tx } = createService({
+      ...NON_CLINICAL_OWNER,
+      professionalType: 'MEDICAL_DOCTOR',
+      professionalActive: true,
+    });
+    tx.document.findUnique.mockResolvedValue(CLINICAL_DRAFT);
+
+    await withTenant(() => service.authorise('doc-1', {}));
+
+    expect(tx.document.update.mock.calls[0][0].data.authorisationKind).toBe('CLINICAL');
+  });
+
+  // Administrative documents keep the existing staff permission — the closure
+  // says preserve it, not widen or narrow it.
+  it('front-desk staff MAY issue an administrative document', async () => {
+    const { service, tx } = createService(FRONT_DESK);
+    tx.document.findUnique.mockResolvedValue(ADMIN_DRAFT);
+
+    await withTenant(() => service.authorise('doc-1', {}));
+
+    const data = tx.document.update.mock.calls[0][0].data;
+    expect(data.authorisationKind).toBe('ADMINISTRATIVE');
+    expect(data.authorisedByNameSnapshot).toBe('Dr. Amira Rahman');
+  });
+
+  it('an administrative issuance never claims clinical authorisation', async () => {
+    const { service, tx } = createService(FRONT_DESK);
+    tx.document.findUnique.mockResolvedValue(ADMIN_DRAFT);
+
+    await withTenant(() => service.authorise('doc-1', {}));
+
+    expect(tx.document.update.mock.calls[0][0].data.authorisationKind).not.toBe('CLINICAL');
+  });
+
+  it('a finance account may not authorise anything', async () => {
+    const { service, tx } = createService({ ...DOCTOR, role: 'FINANCE_STAFF' });
+    tx.document.findUnique.mockResolvedValue(ADMIN_DRAFT);
+
+    await expect(withTenant(() => service.authorise('doc-1', {}))).rejects.toThrow(ForbiddenException);
+  });
+
+  // Authority is read from the ROW, so editing a template afterwards cannot
+  // change who was allowed to authorise an already-issued document.
+  it('authority follows the requirement frozen on the document', async () => {
+    const { service, tx } = createService(FRONT_DESK);
+    tx.document.findUnique.mockResolvedValue({
+      ...ADMIN_DRAFT,
+      type: DocumentType.CUSTOM,
+      requiresClinicalAuthorisation: true,
+    });
+
+    await expect(withTenant(() => service.authorise('doc-1', {}))).rejects.toThrow(ForbiddenException);
+  });
+
+  it('authorise takes the actor from the session, never the request', async () => {
+    const { service, tx } = createService();
+    tx.document.findUnique.mockResolvedValue(CLINICAL_DRAFT);
+
+    await withTenant(() => service.authorise('doc-1', { staffId: 'someone-else' } as never));
+
+    expect(tx.document.update.mock.calls[0][0].data.signedByStaffId).toBe('staff-1');
+  });
+
+  it('authorise never touches the document content or issuer', async () => {
+    const { service, tx } = createService();
+    tx.document.findUnique.mockResolvedValue(CLINICAL_DRAFT);
+
+    await withTenant(() => service.authorise('doc-1', {}));
 
     const data = tx.document.update.mock.calls[0][0].data;
     expect(data.content).toBeUndefined();
     expect(data.issuedByStaffId).toBeUndefined();
   });
 
-  // G3b — a signed document must not be silently re-attributed. This used to
-  // overwrite signedAt/signedByStaffId without complaint.
-  it('re-signing an already signed document is a conflict', async () => {
+  it('re-authorising an already authorised document is a conflict', async () => {
     const { service, tx } = createService();
-    tx.document.findUnique.mockResolvedValue({ ...UNSIGNED_DOC, signedAt: new Date('2026-08-01') });
+    tx.document.findUnique.mockResolvedValue({ ...CLINICAL_DRAFT, signedAt: new Date('2026-08-01') });
 
-    await expect(withTenant(() => service.sign('doc-1', {}))).rejects.toThrow(ConflictException);
+    await expect(withTenant(() => service.authorise('doc-1', {}))).rejects.toThrow(ConflictException);
     expect(tx.document.update).not.toHaveBeenCalled();
   });
 
-  it('a voided document cannot be signed', async () => {
+  it('a voided document cannot be authorised', async () => {
     const { service, tx } = createService();
-    tx.document.findUnique.mockResolvedValue({ ...UNSIGNED_DOC, recordStatus: 'VOIDED' });
+    tx.document.findUnique.mockResolvedValue({ ...CLINICAL_DRAFT, recordStatus: 'VOIDED' });
 
-    await expect(withTenant(() => service.sign('doc-1', {}))).rejects.toThrow(ConflictException);
+    await expect(withTenant(() => service.authorise('doc-1', {}))).rejects.toThrow(ConflictException);
   });
 
-  it('sign rejects a stale expectedVersion', async () => {
+  it('authorise rejects a stale expectedVersion', async () => {
     const { service, tx } = createService();
-    tx.document.findUnique.mockResolvedValue(UNSIGNED_DOC);
+    tx.document.findUnique.mockResolvedValue(CLINICAL_DRAFT);
 
-    await expect(withTenant(() => service.sign('doc-1', { expectedVersion: 99 }))).rejects.toThrow(
+    await expect(withTenant(() => service.authorise('doc-1', { expectedVersion: 99 }))).rejects.toThrow(
       ConflictException,
     );
   });
 
-  // Deliberately NOT narrowed to doctors: Document.signedAt is the dispensary
-  // "prep, sign MC" workflow step, not the C0 medicolegal signature. Front
-  // desk signing off a printed MC is the existing workflow, and G3b does not
-  // silently take it away.
-  it('front-desk staff may still sign off a document', async () => {
-    const { service, tx } = createService(FRONT_DESK);
-    tx.document.findUnique.mockResolvedValue(UNSIGNED_DOC);
+  it('a legacy sign-off is never converted into a clinical authorisation', async () => {
+    const { service, tx } = createService();
+    tx.document.findUnique.mockResolvedValue({
+      ...CLINICAL_DRAFT,
+      signedAt: new Date('2026-07-01'),
+      authorisationKind: 'LEGACY_SIGN_OFF',
+    });
 
-    await withTenant(() => service.sign('doc-1', {}));
-
-    expect(tx.document.update).toHaveBeenCalled();
+    await expect(withTenant(() => service.authorise('doc-1', {}))).rejects.toThrow(ConflictException);
+    expect(tx.document.update).not.toHaveBeenCalled();
   });
 
-  it('a non-clinical account may not sign a document', async () => {
-    const { service, tx } = createService({ ...DOCTOR, role: 'FINANCE_STAFF' });
-    tx.document.findUnique.mockResolvedValue(UNSIGNED_DOC);
+  // --- classification at creation -----------------------------------------
 
-    await expect(withTenant(() => service.sign('doc-1', {}))).rejects.toThrow(ForbiddenException);
+  it.each([DocumentType.MC, DocumentType.REFERRAL, DocumentType.MEMO, DocumentType.QUARANTINE])(
+    '%s requires clinical authorisation',
+    async (type) => {
+      const { service, prisma, visits } = createService();
+      (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'staff-1' });
+      (prisma.document.create as jest.Mock).mockResolvedValue({ id: 'doc-1' });
+
+      await withTenant(() => service.create({ visitId: 'visit-1', type, content: 'x' }));
+
+      expect(prisma.document.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ requiresClinicalAuthorisation: true }) }),
+      );
+    },
+  );
+
+  it('a CUSTOM document follows its template setting', async () => {
+    const { service, prisma, visits } = createService();
+    (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'staff-1' });
+    (prisma.customDocumentTemplate.findFirst as jest.Mock).mockResolvedValue({
+      requiresClinicalAuthorisation: false,
+    });
+    (prisma.document.create as jest.Mock).mockResolvedValue({ id: 'doc-1' });
+
+    await withTenant(() =>
+      service.create({ visitId: 'visit-1', type: DocumentType.CUSTOM, title: 'Time Slip', content: 'x' }),
+    );
+
+    expect(prisma.document.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ requiresClinicalAuthorisation: false }) }),
+    );
   });
 
-  // G3b — the workspace names who created, signed and voided each document.
+  // Fail closed: an unclassifiable document is the one you least want front
+  // desk authorising.
+  it('a CUSTOM document with no findable template is treated as clinical', async () => {
+    const { service, prisma, visits } = createService();
+    (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'staff-1' });
+    (prisma.customDocumentTemplate.findFirst as jest.Mock).mockResolvedValue(null);
+    (prisma.document.create as jest.Mock).mockResolvedValue({ id: 'doc-1' });
+
+    await withTenant(() =>
+      service.create({ visitId: 'visit-1', type: DocumentType.CUSTOM, title: 'Unknown', content: 'x' }),
+    );
+
+    expect(prisma.document.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ requiresClinicalAuthorisation: true }) }),
+    );
+  });
+
+
   it('the active list resolves the staff behind each document', async () => {
     const { service, prisma } = createService();
     (prisma.document.findMany as jest.Mock).mockResolvedValue([]);

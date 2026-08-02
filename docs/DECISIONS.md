@@ -675,6 +675,62 @@ The rest of that run was harness, and worth recording because it cost several cy
 
 ---
 
+## D-064 — G3b closure: a signature has to say who is responsible for what
+
+G3b established *that* a document was signed off, by whom, and that it could not be silently re-signed. It did not establish **what the signature claims**, and it let `FRONT_DESK_CLINICAL_STAFF` sign a medical certificate — which the UI then displayed as a plain green **"Signed"**. A medical certificate is a doctor's clinical opinion, and a badge that says "Signed" on a front-desk sign-off is a claim the record cannot support.
+
+### Classification — from type and configuration, never from text
+
+Clinical (a doctor must authorise): **MC, Referral, Quarantine, Memo**. All four built-in types generate documents that carry a clinical opinion; MEMO exists in this system as the *clinical* memo the templates produce.
+
+Administrative (permitted staff may issue): a `CUSTOM` document whose template is explicitly marked administrative.
+
+`CustomDocumentTemplate.requiresClinicalAuthorisation` is the new setting, **defaulting to TRUE**. Classifying by template *name* was considered and rejected — the closure forbids inferring clinical purpose from free text, and "Time Slip" is a name a clinic chose, not a guarantee. So an unclassified template is treated as clinical until an administrator says otherwise, and the Document Templates screen is the one place that decision is made. **The existing "Time Slip" template was NOT silently reclassified**; it requires a doctor until someone marks it administrative.
+
+The requirement is **snapshotted onto the document at creation**, so editing a template later cannot change who was allowed to authorise a document already issued. A `CUSTOM` document whose template cannot be found is treated as clinical — an unclassifiable document is the one you least want front desk authorising.
+
+### Permission — enforced in the service, on the row
+
+`canClinicallyAuthoriseDocument` — a doctor role, or an active `MEDICAL_DOCTOR` professional identity. Same rule as diagnosis modification and clinical-record voiding. `FRONT_DESK_CLINICAL_STAFF` is refused; a non-clinical `OWNER_ADMIN` is refused; an owner who *is* a doctor qualifies through their professional identity, not their job title.
+
+`canIssueAdministrativeDocument` is deliberately **unchanged** from the pre-closure rule, because the closure says to preserve explicitly approved existing staff permissions. Front desk issuing a time slip still works; it simply cannot describe itself as clinically authorised.
+
+The check reads `requiresClinicalAuthorisation` **from the stored row**, not from the template. The button is not the gate: front desk still sees "Authorise", presses it, and gets the server's refusal — hidden controls are not security.
+
+### Terminology — no generic "Signed" anywhere
+
+| Record state | Badge | Sentence |
+|---|---|---|
+| Clinical, unauthorised | **Draft — not clinically authorised** | "A doctor must authorise this document before it can be issued." |
+| Clinical, authorised | **Clinically authorised** | "Clinically authorised by Dr X (Medical Doctor (MMC …)) on …" |
+| Administrative, issued | **Issued** | "Issued by X on …" |
+| Administrative, not yet | **Not issued** | — |
+| Pre-closure row | **Legacy sign-off** | "Authorisation type not recorded · signed off … by …" |
+
+`authorisationKind` (`CLINICAL` / `ADMINISTRATIVE` / `LEGACY_SIGN_OFF`) carries this, with frozen name/role/designation snapshots so a doctor who leaves does not turn a year-old authorisation into a blank. **`LEGACY_SIGN_OFF` is never written by new code** — only by the migration, and only for rows that already had `signed_at`.
+
+### Existing records
+
+The migration labels every pre-closure signed row `LEGACY_SIGN_OFF` and **fabricates nothing**: no doctor identity is derived from the visit doctor, the document creator, the note author or the current user. A `DO $$` guard raises if the backfill produces any row claiming CLINICAL/ADMINISTRATIVE, any invented authoriser, or an authorisation on an unsigned row. Live: **3 signed rows, 3 legacy, 0 claiming clinical, 0 with invented authoriser.** A legacy row is not treated as a draft either — it is history, not unfinished work — and re-authorising one is a 409, so it can never be upgraded into a doctor's authorisation.
+
+### Draft output
+
+A clinical document no doctor has authorised **cannot be printed or downloaded** — the closure's preferred behaviour, and the only one that stops an unauthorised "MC" circulating. The controls are disabled with an explanation, and `downloadDocument` throws independently, because a disabled button is presentation and not a rule. Preview stays open so front desk can check the wording, headed **DRAFT — NOT CLINICALLY AUTHORISED**. After authorisation, print and download both carry the responsible party — name, professional designation, timestamp — stated by the system rather than left to the template's free-text signature block. Voided behaviour from G3a/G3b is untouched.
+
+### Technical debt, stated plainly
+
+- **`signedAt`/`signedByStaffId` keep their names.** They now mean "when this was authorised/issued, and by whom", with `authorisationKind` carrying the meaning. Renaming the columns would be churn across the dispensary workflow without changing behaviour; the semantics are correct, the names are legacy.
+- **This is still not a cryptographic signature.** No immutability lock, no verified-signer requirement (unlike C0's `canSignClinicalNotes`), no content hash. Content immutability comes from there being no edit route, not from an enforced lock.
+- **Creation is still unrestricted.** Who may *create* a document carries no role enforcement — part of the wider D-056 RBAC gap. The closure asked not to broaden or narrow existing create permissions, so this is reported, not changed.
+- **No "send to doctor for review" action.** A draft sits in the visit and the section reports "N awaiting clinical authorisation"; there is no notification or hand-off workflow, and inventing one was out of scope.
+- **Time Slip stays a configured template.** First-class support with real time-of-day fields is a document-schema enhancement for a later phase, per §8.
+
+**Verification:** 321 backend unit tests (39 on documents alone, including the full authority matrix), 85 frontend tests, both typechecks clean, and `prisma/g3b-closure-authorisation-check.ts` against the real database, HTTP API and Chrome.
+
+**Reversibility**: Medium — additive columns and an enum; reverting restores a front-desk-signable medical certificate labelled "Signed".
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 - ~~Diagnosis deletion is a hard delete with no audit trail (D-059)~~ — **resolved by D-061.**

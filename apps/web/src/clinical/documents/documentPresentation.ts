@@ -52,6 +52,97 @@ export function staffName(staff?: { fullName: string } | null): string | null {
   return staff?.fullName ?? null;
 }
 
+/**
+ * G3b closure (D-064) — what this document's status actually is.
+ *
+ * One generic "Signed" tag was the defect: it read as a doctor's signature
+ * on documents a front-desk user had signed off, and on legacy rows whose
+ * authority was never recorded at all. Every label below is derived from
+ * stored data — `requiresClinicalAuthorisation` and `authorisationKind` —
+ * and none of them claims more than the record can support.
+ */
+export type AuthorisationTone = 'draft' | 'authorised' | 'issued' | 'legacy';
+
+export interface AuthorisationState {
+  tone: AuthorisationTone;
+  /** The short badge. */
+  label: string;
+  /** The full sentence, where the record supports one. */
+  detail: string | null;
+  /** A clinical document a doctor has not yet authorised. */
+  isDraft: boolean;
+}
+
+function roleWords(role?: string | null): string {
+  return role ? role.replace(/_/g, ' ').toLowerCase() : '';
+}
+
+export function authorisationState(document: ClinicalDocument): AuthorisationState {
+  const when = document.signedAt ? dayjs(document.signedAt).format('D MMM YYYY, HH:mm') : null;
+  const who = document.authorisedByNameSnapshot ?? staffName(document.signedBy);
+
+  // Not signed off at all.
+  if (!document.signedAt) {
+    return document.requiresClinicalAuthorisation
+      ? {
+          tone: 'draft',
+          label: 'Draft — not clinically authorised',
+          detail: 'A doctor must authorise this document before it can be issued.',
+          isDraft: true,
+        }
+      : { tone: 'draft', label: 'Not issued', detail: null, isDraft: false };
+  }
+
+  // Signed off, but by the pre-closure route: we know it happened and who
+  // clicked, and nothing more. Say exactly that.
+  if (document.authorisationKind === 'LEGACY_SIGN_OFF' || document.authorisationKind === null) {
+    return {
+      tone: 'legacy',
+      label: 'Legacy sign-off',
+      detail: `Authorisation type not recorded${when ? ` · signed off ${when}` : ''}${
+        who ? ` by ${who}` : ''
+      }`,
+      // Deliberately NOT a draft: it is a historical record, not something a
+      // doctor is being asked to finish. It simply never claims to be a
+      // clinical authorisation.
+      isDraft: false,
+    };
+  }
+
+  if (document.authorisationKind === 'ADMINISTRATIVE') {
+    return {
+      tone: 'issued',
+      label: 'Issued',
+      detail: `Issued by ${who ?? 'not recorded'}${when ? ` on ${when}` : ''}`,
+      isDraft: false,
+    };
+  }
+
+  // CLINICAL — the only state that may name a doctor as responsible.
+  const designation = document.authorisedByDesignationSnapshot;
+  const role = designation ?? roleWords(document.authorisedByRoleSnapshot);
+  return {
+    tone: 'authorised',
+    label: 'Clinically authorised',
+    detail: `Clinically authorised by ${who ?? 'not recorded'}${role ? ` (${role})` : ''}${
+      when ? ` on ${when}` : ''
+    }`,
+    isDraft: false,
+  };
+}
+
+/**
+ * May this document leave the clinic?
+ *
+ * A clinical document that no doctor has authorised must not be printed or
+ * downloaded — the closure's preferred behaviour, and the only one that
+ * stops an unauthorised "MC" circulating as a real one. Preview stays open
+ * so front desk can still check the wording before a doctor sees it.
+ */
+export function canProduceFinalCopy(document: ClinicalDocument): boolean {
+  return !authorisationState(document).isDraft;
+}
+
 export function inclusiveDays(start?: string | null, end?: string | null): number | null {
   if (!start || !end) return null;
   return dayjs(end).diff(dayjs(start), 'day') + 1;
@@ -125,6 +216,13 @@ export function documentFileName(document: ClinicalDocument, patientName?: strin
  * circulate looking valid.
  */
 export function downloadDocument(document: ClinicalDocument, patientName?: string): void {
+  // G3b closure (D-064) — an unauthorised clinical document is not a
+  // document yet. Callers disable the control; this is the backstop, because
+  // a disabled button is presentation and not a rule.
+  if (!canProduceFinalCopy(document)) {
+    throw new Error('This document has not been clinically authorised and cannot be downloaded.');
+  }
+
   const header =
     document.recordStatus === 'VOIDED'
       ? [
@@ -139,7 +237,12 @@ export function downloadDocument(document: ClinicalDocument, patientName?: strin
           .join('\n')
       : '';
 
-  const blob = new Blob([header + document.content], { type: 'text/plain;charset=utf-8' });
+  // The responsible party, stated in the file itself rather than left to the
+  // template's own signature block — which is free text and may name anyone.
+  const state = authorisationState(document);
+  const footer = state.detail ? `\n\n----------------------------------------\n${state.detail}\n` : '';
+
+  const blob = new Blob([header + document.content + footer], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = window.document.createElement('a');
   link.href = url;

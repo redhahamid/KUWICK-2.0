@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Dropdown, Empty, Grid, Space, Tag, Typography, message } from 'antd';
+import { Button, Dropdown, Empty, Grid, Space, Tag, Tooltip, Typography, message } from 'antd';
 import {
   CheckCircleOutlined,
   DownloadOutlined,
@@ -11,7 +11,7 @@ import {
   StopOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useDocumentHistory, useDocuments, useSignDocument, useVoidDocument } from '../hooks/useDocuments';
+import { useAuthoriseDocument, useDocumentHistory, useDocuments, useVoidDocument } from '../hooks/useDocuments';
 import { printTextDocument } from '../printTextDocument';
 import { RemoveClinicalRecordModal } from '../sections/RemoveClinicalRecordModal';
 import { ApiError } from '../../core/api-client';
@@ -21,6 +21,7 @@ import { DocumentPreviewDrawer } from './DocumentPreviewDrawer';
 import { VoidedDocumentsDrawer } from './VoidedDocumentsDrawer';
 import {
   TYPE_COLOR,
+  authorisationState,
   documentDetails,
   documentLabel,
   downloadDocument,
@@ -28,6 +29,16 @@ import {
 } from './documentPresentation';
 
 const { Text } = Typography;
+
+// A draft is orange because it is unfinished work, not an error; a legacy
+// sign-off is neutral because it is neither a doctor's authorisation nor a
+// problem to fix.
+const STATE_COLOR: Record<string, string> = {
+  draft: 'orange',
+  authorised: 'green',
+  issued: 'blue',
+  legacy: 'default',
+};
 
 interface DocumentsWorkspaceProps {
   visit: Visit;
@@ -78,7 +89,7 @@ export function DocumentsWorkspace({
   // Cheap once loaded, and it is what tells the doctor a voided document
   // exists at all — without it the section silently under-reports history.
   const { data: history } = useDocumentHistory(visit.id, true);
-  const signDocument = useSignDocument(visit.id);
+  const authoriseDocument = useAuthoriseDocument(visit.id);
   const voidDocument = useVoidDocument(visit.id);
 
   const [internalCreate, setInternalCreate] = useState(false);
@@ -95,20 +106,36 @@ export function DocumentsWorkspace({
   const active = documents ?? [];
   const voidedCount = (history ?? []).filter((doc) => doc.recordStatus === 'VOIDED').length;
 
-  const sign = (document: ClinicalDocument) =>
-    signDocument
+  const authorise = (document: ClinicalDocument) =>
+    authoriseDocument
       .mutateAsync({ id: document.id, expectedVersion: document.version })
-      .then(() => message.success('Document signed'))
+      .then(() =>
+        message.success(
+          document.requiresClinicalAuthorisation ? 'Document clinically authorised' : 'Document issued',
+        ),
+      )
       .catch((error) =>
-        message.error(error instanceof ApiError ? error.message : 'Failed to sign the document'),
+        message.error(error instanceof ApiError ? error.message : 'Failed to authorise the document'),
       );
 
-  const print = (document: ClinicalDocument) => printTextDocument(documentLabel(document), document.content);
+  // G3b closure (D-064) — the printed copy carries the responsible party.
+  const print = (document: ClinicalDocument) =>
+    printTextDocument(documentLabel(document), document.content, {
+      authorisation: authorisationState(document).detail,
+    });
 
   // Desktop shows the actions inline with words on them; small screens move
   // the secondary ones into a labelled menu so nothing is a bare icon and no
   // row has to scroll sideways.
   const actionsFor = (document: ClinicalDocument) => {
+    const state = authorisationState(document);
+    // G3b closure (D-064) — a clinical document no doctor has authorised must
+    // not leave the clinic. The control is disabled AND the underlying helper
+    // refuses, because a disabled button is presentation, not a rule.
+    const blocked = state.isDraft;
+    const blockedWhy = 'A doctor must clinically authorise this document before it can leave the clinic.';
+    const authoriseLabel = document.requiresClinicalAuthorisation ? 'Authorise' : 'Issue';
+
     const preview = (
       <Button
         key="preview"
@@ -121,16 +148,30 @@ export function DocumentsWorkspace({
       </Button>
     );
     const menuItems = [
-      { key: 'print', icon: <PrinterOutlined />, label: 'Print', onClick: () => print(document) },
+      {
+        key: 'print',
+        icon: <PrinterOutlined />,
+        label: blocked ? 'Print — needs authorisation' : 'Print',
+        disabled: blocked,
+        onClick: () => print(document),
+      },
       {
         key: 'download',
         icon: <DownloadOutlined />,
-        label: 'Download',
+        label: blocked ? 'Download — needs authorisation' : 'Download',
+        disabled: blocked,
         onClick: () => downloadDocument(document, patientName),
       },
       ...(document.signedAt
         ? []
-        : [{ key: 'sign', icon: <CheckCircleOutlined />, label: 'Sign', onClick: () => void sign(document) }]),
+        : [
+            {
+              key: 'authorise',
+              icon: <CheckCircleOutlined />,
+              label: authoriseLabel,
+              onClick: () => void authorise(document),
+            },
+          ]),
       { type: 'divider' as const, key: 'sep' },
       {
         key: 'void',
@@ -154,27 +195,36 @@ export function DocumentsWorkspace({
       );
     }
 
+    const gated = (node: React.ReactElement) =>
+      blocked ? <Tooltip title={blockedWhy}>{node}</Tooltip> : node;
+
     return (
       <Space size={4} wrap>
         {preview}
-        <Button size="small" icon={<PrinterOutlined />} onClick={() => print(document)}>
-          Print
-        </Button>
-        <Button
-          size="small"
-          icon={<DownloadOutlined />}
-          onClick={() => downloadDocument(document, patientName)}
-        >
-          Download
-        </Button>
+        {gated(
+          <Button size="small" disabled={blocked} icon={<PrinterOutlined />} onClick={() => print(document)}>
+            Print
+          </Button>,
+        )}
+        {gated(
+          <Button
+            size="small"
+            disabled={blocked}
+            icon={<DownloadOutlined />}
+            onClick={() => downloadDocument(document, patientName)}
+          >
+            Download
+          </Button>,
+        )}
         {!document.signedAt && (
           <Button
             size="small"
+            type={blocked ? 'primary' : 'default'}
             icon={<CheckCircleOutlined />}
-            loading={signDocument.isPending}
-            onClick={() => void sign(document)}
+            loading={authoriseDocument.isPending}
+            onClick={() => void authorise(document)}
           >
-            Sign
+            {authoriseLabel}
           </Button>
         )}
         <Button size="small" danger icon={<StopOutlined />} onClick={() => setVoiding(document)}>
@@ -226,9 +276,17 @@ export function DocumentsWorkspace({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {active.map((document) => {
             const details = documentDetails(document);
+            const state = authorisationState(document);
             return (
               <div
                 key={document.id}
+                // A stable hook for the authorisation state, in the same
+                // `kw-` convention the other clinical sections use. It also
+                // lets a check target "the draft row" instead of guessing by
+                // position — which is how three checks reported failures the
+                // app never had.
+                className="kw-doc-row"
+                data-authorisation={state.tone}
                 style={{
                   border: '1px solid #f0f0f0',
                   borderRadius: 8,
@@ -245,13 +303,13 @@ export function DocumentsWorkspace({
                     <Tag color={TYPE_COLOR[document.type]} style={{ marginInlineEnd: 0 }}>
                       {documentLabel(document)}
                     </Tag>
-                    {document.signedAt ? (
-                      <Tag color="green" icon={<CheckCircleOutlined />}>
-                        Signed
-                      </Tag>
-                    ) : (
-                      <Tag>Not signed</Tag>
-                    )}
+                    {/* G3b closure (D-064) — never one generic "Signed". */}
+                    <Tag
+                      color={STATE_COLOR[state.tone]}
+                      icon={state.tone === 'authorised' ? <CheckCircleOutlined /> : undefined}
+                    >
+                      {state.label}
+                    </Tag>
                   </Space>
 
                   {details.length > 0 && (
@@ -270,12 +328,7 @@ export function DocumentsWorkspace({
                       Created by {staffName(document.issuedBy) ?? 'Not recorded'} ·{' '}
                       {dayjs(document.createdAt).format('D MMM YYYY, HH:mm')}
                     </div>
-                    {document.signedAt && (
-                      <div>
-                        Signed {dayjs(document.signedAt).format('D MMM YYYY, HH:mm')}
-                        {staffName(document.signedBy) ? ` by ${staffName(document.signedBy)}` : ''}
-                      </div>
-                    )}
+                    {state.detail && <div>{state.detail}</div>}
                   </div>
                 </div>
 

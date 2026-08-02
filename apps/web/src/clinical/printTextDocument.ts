@@ -6,6 +6,13 @@ export interface PrintDocumentOptions {
    * screen-only — `print-color-adjust: exact` keeps it on paper.
    */
   voided?: { at?: string | null; by?: string | null; reason?: string | null };
+  /**
+   * G3b closure (D-064) — the responsible party, printed under the document.
+   * "Clinically authorised by Dr X (Medical Doctor) on ...", or the
+   * administrative equivalent. Never invented: the caller passes only what
+   * the record stores.
+   */
+  authorisation?: string | null;
 }
 
 // D-040 — prints a plain-text clinical document (MC/Referral/Memo/custom)
@@ -30,6 +37,9 @@ export function printTextDocument(title: string, content: string, options: Print
        </div>`
     : '';
   const watermark = voided ? `<div class="void-watermark">VOID</div>` : '';
+  const authorisation = options.authorisation
+    ? `<div class="authorisation">${escapeHtml(options.authorisation)}</div>`
+    : '';
 
   printWindow.document.write(`<!doctype html>
 <html>
@@ -42,6 +52,10 @@ export function printTextDocument(title: string, content: string, options: Print
   .void-banner {
     border: 2px solid #a8071a; color: #a8071a; padding: 8px 12px; margin-bottom: 20px;
     font-family: Arial, Helvetica, sans-serif; font-size: 12px; line-height: 1.5;
+  }
+  .authorisation {
+    margin-top: 26px; padding-top: 8px; border-top: 1px solid #999;
+    font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #333;
   }
   .void-watermark {
     position: fixed; top: 38%; left: 50%;
@@ -56,7 +70,7 @@ export function printTextDocument(title: string, content: string, options: Print
   }
 </style>
 </head>
-<body>${watermark}${banner}<pre>${escapeHtml(content)}</pre></body>
+<body>${watermark}${banner}<pre>${escapeHtml(content)}</pre>${authorisation}</body>
 </html>`);
   printWindow.document.close();
   printWindow.focus();

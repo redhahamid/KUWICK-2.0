@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { buildMergeValues, computeBmi, resolveTemplate } from '../mergeFields';
 import { ClinicalDocument } from '../types';
-import { documentDetails, documentFileName, documentLabel, shortLabel } from './documentPresentation';
+import {
+  authorisationState,
+  canProduceFinalCopy,
+  documentDetails,
+  documentFileName,
+  documentLabel,
+  downloadDocument,
+  shortLabel,
+} from './documentPresentation';
 
 const BASE: ClinicalDocument = {
   id: 'doc-1',
@@ -19,6 +27,11 @@ const BASE: ClinicalDocument = {
   signedByStaffId: null,
   createdAt: '2026-08-02T09:00:00.000Z',
   updatedAt: '2026-08-02T09:00:00.000Z',
+  requiresClinicalAuthorisation: true,
+  authorisationKind: null,
+  authorisedByNameSnapshot: null,
+  authorisedByRoleSnapshot: null,
+  authorisedByDesignationSnapshot: null,
   recordStatus: 'ACTIVE',
   voidedAt: null,
   voidedByStaffId: null,
@@ -91,6 +104,97 @@ describe('documentFileName', () => {
 
   it('strips characters a filesystem would reject', () => {
     expect(documentFileName(BASE, 'A/B:C*D?')).toBe('MC - A-B-C-D- - 2026-08-02.txt');
+  });
+});
+
+// G3b closure (D-064) — the terminology must never claim more than the record
+// supports. One generic "Signed" for all of these was the defect.
+describe('authorisationState', () => {
+  it('calls an unauthorised clinical document a draft, not "not signed"', () => {
+    const state = authorisationState(BASE);
+    expect(state.label).toBe('Draft — not clinically authorised');
+    expect(state.isDraft).toBe(true);
+  });
+
+  it('names the responsible doctor only for a real clinical authorisation', () => {
+    const state = authorisationState({
+      ...BASE,
+      signedAt: '2026-08-02T10:30:00.000Z',
+      authorisationKind: 'CLINICAL',
+      authorisedByNameSnapshot: 'Dr. Amira Rahman',
+      authorisedByRoleSnapshot: 'DOCTOR_RESIDENT',
+      authorisedByDesignationSnapshot: 'Medical Doctor (MMC 12345)',
+    });
+    expect(state.label).toBe('Clinically authorised');
+    expect(state.detail).toContain('Clinically authorised by Dr. Amira Rahman');
+    expect(state.detail).toContain('Medical Doctor (MMC 12345)');
+    expect(state.isDraft).toBe(false);
+  });
+
+  it('says "Issued", never "Clinically authorised", for an administrative document', () => {
+    const state = authorisationState({
+      ...BASE,
+      type: 'CUSTOM',
+      title: 'Time Slip',
+      requiresClinicalAuthorisation: false,
+      signedAt: '2026-08-02T10:30:00.000Z',
+      authorisationKind: 'ADMINISTRATIVE',
+      authorisedByNameSnapshot: 'Nurse Test Amy',
+    });
+    expect(state.label).toBe('Issued');
+    expect(state.detail).toContain('Issued by Nurse Test Amy');
+    expect(state.detail).not.toContain('Clinically authorised');
+  });
+
+  // The whole point: a front-desk sign-off from before the closure must not
+  // read as a doctor's authorisation.
+  it('presents a legacy sign-off as exactly that', () => {
+    const state = authorisationState({
+      ...BASE,
+      signedAt: '2026-07-01T09:00:00.000Z',
+      authorisationKind: 'LEGACY_SIGN_OFF',
+    });
+    expect(state.label).toBe('Legacy sign-off');
+    expect(state.detail).toContain('Authorisation type not recorded');
+    expect(state.detail).not.toContain('Clinically authorised');
+  });
+
+  it('treats a signed row with no recorded kind as legacy, not as authorised', () => {
+    const state = authorisationState({ ...BASE, signedAt: '2026-07-01T09:00:00.000Z', authorisationKind: null });
+    expect(state.label).toBe('Legacy sign-off');
+  });
+
+  it('an administrative document awaiting issuance is not called a clinical draft', () => {
+    const state = authorisationState({ ...BASE, requiresClinicalAuthorisation: false });
+    expect(state.label).toBe('Not issued');
+    expect(state.isDraft).toBe(false);
+  });
+});
+
+describe('final copies', () => {
+  it('an unauthorised clinical document cannot produce a final copy', () => {
+    expect(canProduceFinalCopy(BASE)).toBe(false);
+    expect(() => downloadDocument(BASE, 'Aminah')).toThrow(/not been clinically authorised/);
+  });
+
+  it('an authorised document can', () => {
+    const authorised = {
+      ...BASE,
+      signedAt: '2026-08-02T10:30:00.000Z',
+      authorisationKind: 'CLINICAL' as const,
+      authorisedByNameSnapshot: 'Dr. Amira Rahman',
+    };
+    expect(canProduceFinalCopy(authorised)).toBe(true);
+  });
+
+  it('an administrative document awaiting issuance is not blocked from printing', () => {
+    expect(canProduceFinalCopy({ ...BASE, requiresClinicalAuthorisation: false })).toBe(true);
+  });
+
+  it('a legacy signed-off document is not retro-blocked', () => {
+    expect(
+      canProduceFinalCopy({ ...BASE, signedAt: '2026-07-01T09:00:00.000Z', authorisationKind: 'LEGACY_SIGN_OFF' }),
+    ).toBe(true);
   });
 });
 

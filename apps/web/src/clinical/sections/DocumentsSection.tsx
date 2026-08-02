@@ -3,7 +3,7 @@ import { Tag } from 'antd';
 import dayjs from 'dayjs';
 import { useDocumentHistory, useDocuments } from '../hooks/useDocuments';
 import { DocumentsWorkspace } from '../documents/DocumentsWorkspace';
-import { shortLabel } from '../documents/documentPresentation';
+import { authorisationState, shortLabel } from '../documents/documentPresentation';
 import { ClinicalDocument, Visit } from '../types';
 import { ClinicalSection } from './ClinicalSection';
 
@@ -59,7 +59,8 @@ export function DocumentsSection({
     .filter(Boolean)
     .join(' — ');
 
-  const unsigned = active.filter((doc) => !doc.signedAt).length;
+  // G3b closure (D-064) — count what a doctor still has to do, and say so.
+  const awaiting = active.filter((doc) => authorisationState(doc).isDraft).length;
 
   return (
     <ClinicalSection
@@ -85,11 +86,11 @@ export function DocumentsSection({
         },
       }}
       secondaryActions={
-        unsigned > 0
+        awaiting > 0
           ? [
               {
-                key: 'unsigned',
-                label: `${unsigned} not signed — open to sign`,
+                key: 'awaiting',
+                label: `${awaiting} awaiting clinical authorisation`,
                 onClick: () => !expanded && onToggle(),
               },
             ]

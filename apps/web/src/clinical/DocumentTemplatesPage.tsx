@@ -90,6 +90,33 @@ export function DocumentTemplatesPage() {
               template.sourceDefaultId ? <Tag>System Default</Tag> : <Tag color="blue">Clinic&apos;s Own</Tag>,
           },
           {
+            // G3b closure (D-064) — the only place a template is classified.
+            // Defaults to clinical, and stays clinical until someone here
+            // says otherwise; nothing infers this from the template's name.
+            title: 'Authorisation',
+            width: 210,
+            render: (_: unknown, template: CustomDocumentTemplate) => (
+              <Space direction="vertical" size={0}>
+                <Switch
+                  size="small"
+                  checked={template.requiresClinicalAuthorisation}
+                  checkedChildren="Doctor"
+                  unCheckedChildren="Admin"
+                  onChange={(checked) =>
+                    updateTemplate
+                      .mutateAsync({ id: template.id, dto: { requiresClinicalAuthorisation: checked } })
+                      .catch((e) => reportFailure(e, 'Failed to update template'))
+                  }
+                />
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  {template.requiresClinicalAuthorisation
+                    ? 'A doctor must authorise'
+                    : 'Administrative — staff may issue'}
+                </Text>
+              </Space>
+            ),
+          },
+          {
             title: 'Status',
             width: 90,
             render: (_: unknown, template: CustomDocumentTemplate) => (

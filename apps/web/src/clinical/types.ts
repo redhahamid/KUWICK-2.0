@@ -235,11 +235,16 @@ export interface CustomDocumentTemplate {
   content: string;
   active: boolean;
   sourceDefaultId: string | null;
+  // G3b closure (D-064) — does a document from this template carry a doctor's
+  // clinical opinion? Defaults true; only an administrator changes it, and
+  // nothing infers it from the template's name.
+  requiresClinicalAuthorisation: boolean;
 }
 
 export interface CreateDocumentTemplateDto {
   name: string;
   content: string;
+  requiresClinicalAuthorisation?: boolean;
 }
 
 export type UpdateDocumentTemplateDto = Partial<CreateDocumentTemplateDto> & { active?: boolean };
@@ -577,6 +582,11 @@ export type DocumentType = 'MC' | 'REFERRAL' | 'MEMO' | 'QUARANTINE' | 'CUSTOM';
 // readable so the clinic can answer "what did we give this patient?".
 export type DocumentRecordStatus = 'ACTIVE' | 'VOIDED';
 
+// G3b closure (D-064) — what a document's sign-off actually claims.
+// LEGACY_SIGN_OFF is a pre-closure row whose authority was never recorded;
+// it is never presented as a doctor's authorisation.
+export type DocumentAuthorisationKind = 'CLINICAL' | 'ADMINISTRATIVE' | 'LEGACY_SIGN_OFF';
+
 export interface ClinicalDocument {
   id: string;
   visitId: string;
@@ -598,6 +608,14 @@ export interface ClinicalDocument {
   issuedBy?: Staff | null;
   signedBy?: Staff | null;
   voidedBy?: Staff | null;
+  // G3b closure (D-064) — authorisation. All server-written; the client reads.
+  // `requiresClinicalAuthorisation` is frozen at creation, so a template
+  // edited later cannot change what an already-issued document needed.
+  requiresClinicalAuthorisation: boolean;
+  authorisationKind: DocumentAuthorisationKind | null;
+  authorisedByNameSnapshot: string | null;
+  authorisedByRoleSnapshot: string | null;
+  authorisedByDesignationSnapshot: string | null;
   // G3a (D-062) — void audit. All server-written; the client only reads.
   recordStatus: DocumentRecordStatus;
   voidedAt: string | null;

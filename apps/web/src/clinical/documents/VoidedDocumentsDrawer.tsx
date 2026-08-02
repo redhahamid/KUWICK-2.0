@@ -3,7 +3,7 @@ import { EyeOutlined, DownloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useDocumentHistory } from '../hooks/useDocuments';
 import { ClinicalDocument } from '../types';
-import { TYPE_COLOR, documentLabel, downloadDocument, staffName } from './documentPresentation';
+import { TYPE_COLOR, authorisationState, documentLabel, downloadDocument, staffName } from './documentPresentation';
 
 const { Text } = Typography;
 
@@ -72,7 +72,7 @@ export function VoidedDocumentsDrawer({
                   <Space wrap size={4}>
                     <Tag color={TYPE_COLOR[document.type]}>{documentLabel(document)}</Tag>
                     <Tag color="error">Voided</Tag>
-                    {document.signedAt && <Tag color="default">Was signed</Tag>}
+                    {document.signedAt && <Tag color="default">{authorisationState(document).label}</Tag>}
                   </Space>
                 }
                 description={
@@ -81,11 +81,8 @@ export function VoidedDocumentsDrawer({
                       Created by {staffName(document.issuedBy) ?? 'Not recorded'} ·{' '}
                       {dayjs(document.createdAt).format('D MMM YYYY, HH:mm')}
                     </div>
-                    {document.signedAt && (
-                      <div>
-                        Signed {dayjs(document.signedAt).format('D MMM YYYY, HH:mm')}
-                        {staffName(document.signedBy) ? ` by ${staffName(document.signedBy)}` : ''}
-                      </div>
+                    {authorisationState(document).detail && (
+                      <div>{authorisationState(document).detail}</div>
                     )}
                     <div>
                       Voided by {document.voidedByNameSnapshot ?? 'Not recorded'}

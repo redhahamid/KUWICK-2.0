@@ -3,7 +3,14 @@ import { CheckCircleOutlined, DownloadOutlined, PrinterOutlined } from '@ant-des
 import dayjs from 'dayjs';
 import { printTextDocument } from '../printTextDocument';
 import { ClinicalDocument } from '../types';
-import { documentDetails, documentLabel, downloadDocument, staffName } from './documentPresentation';
+import {
+  authorisationState,
+  canProduceFinalCopy,
+  documentDetails,
+  documentLabel,
+  downloadDocument,
+  staffName,
+} from './documentPresentation';
 
 interface DocumentPreviewDrawerProps {
   document: ClinicalDocument | null;
@@ -23,6 +30,11 @@ interface DocumentPreviewDrawerProps {
  */
 export function DocumentPreviewDrawer({ document, patientName, onClose }: DocumentPreviewDrawerProps) {
   const voided = document?.recordStatus === 'VOIDED';
+  // G3b closure (D-064) — preview is the ONE surface a draft clinical
+  // document stays open on, so front desk can check the wording. Print and
+  // download are shut until a doctor authorises it.
+  const state = document ? authorisationState(document) : null;
+  const canProduce = document ? canProduceFinalCopy(document) : false;
 
   const voidNotice = document
     ? {
@@ -44,13 +56,21 @@ export function DocumentPreviewDrawer({ document, patientName, onClose }: Docume
           <Space wrap>
             <Button
               icon={<PrinterOutlined />}
+              disabled={!canProduce}
               onClick={() =>
-                printTextDocument(documentLabel(document), document.content, voided ? { voided: voidNotice } : {})
+                printTextDocument(documentLabel(document), document.content, {
+                  ...(voided ? { voided: voidNotice } : {}),
+                  authorisation: state?.detail,
+                })
               }
             >
               Print
             </Button>
-            <Button icon={<DownloadOutlined />} onClick={() => downloadDocument(document, patientName)}>
+            <Button
+              icon={<DownloadOutlined />}
+              disabled={!canProduce}
+              onClick={() => downloadDocument(document, patientName)}
+            >
               Download
             </Button>
           </Space>
@@ -59,6 +79,18 @@ export function DocumentPreviewDrawer({ document, patientName, onClose }: Docume
     >
       {document && (
         <>
+          {/* G3b closure (D-064) — an unauthorised clinical document says so
+              in the loudest place available, and cannot be printed at all. */}
+          {state?.isDraft && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message="DRAFT — NOT CLINICALLY AUTHORISED"
+              description="This document has not been authorised by a doctor. It cannot be printed or downloaded, and must not be given to the patient in this state."
+            />
+          )}
+
           {voided && (
             <Alert
               type="error"
@@ -98,14 +130,15 @@ export function DocumentPreviewDrawer({ document, patientName, onClose }: Docume
                 {detail.value}
               </Descriptions.Item>
             ))}
-            <Descriptions.Item label="Status">
-              {document.signedAt ? (
-                <Tag color="green" icon={<CheckCircleOutlined />}>
-                  Signed {dayjs(document.signedAt).format('D MMM YYYY, HH:mm')}
-                  {staffName(document.signedBy) ? ` — ${staffName(document.signedBy)}` : ''}
-                </Tag>
-              ) : (
-                <Tag>Not signed</Tag>
+            <Descriptions.Item label="Authorisation">
+              <Tag
+                color={state?.tone === 'authorised' ? 'green' : state?.tone === 'issued' ? 'blue' : state?.tone === 'draft' ? 'orange' : 'default'}
+                icon={state?.tone === 'authorised' ? <CheckCircleOutlined /> : undefined}
+              >
+                {state?.label}
+              </Tag>
+              {state?.detail && (
+                <div style={{ marginTop: 4, fontSize: 12, color: '#8c8c8c' }}>{state.detail}</div>
               )}
             </Descriptions.Item>
           </Descriptions>

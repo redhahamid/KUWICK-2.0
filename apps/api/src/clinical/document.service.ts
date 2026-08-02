@@ -1,10 +1,10 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { DocumentRecordStatus } from '@prisma/client';
+import { DocumentAuthorisationKind, DocumentRecordStatus, DocumentType } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { VisitService } from './visit.service';
-import { assertCanSignDocument, assertCanVoidClinicalRecord, snapshotOf } from './clinical-authorization';
+import { assertCanAuthoriseDocument, assertCanVoidClinicalRecord, snapshotOf } from './clinical-authorization';
 import { assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { SignDocumentDto } from './dto/sign-document.dto';
@@ -21,6 +21,32 @@ export class DocumentService {
   // issuedByStaffId is a real doctor picker (falls back to the visit's
   // attending physician only as a convenience default) — invoices/
   // documents must be staff-creatable for locum coverage.
+  /**
+   * G3b closure (D-064) — does a document of this shape carry a doctor's
+   * clinical opinion?
+   *
+   * Decided from the stored TYPE, never from the document's text. The four
+   * built-in types are all clinical: an MC and a quarantine letter are
+   * medical directives, a referral is a clinical hand-over, and MEMO exists
+   * in this system as the clinical memo the templates generate. A CUSTOM
+   * document takes its template's explicit setting, and a template that
+   * cannot be found is treated as clinical — an unclassifiable document is
+   * the one you least want front desk authorising.
+   */
+  private async requiresClinicalAuthorisation(dto: CreateDocumentDto): Promise<boolean> {
+    if (dto.type !== DocumentType.CUSTOM) {
+      return true;
+    }
+    if (!dto.title) {
+      return true;
+    }
+    const template = await this.prisma.customDocumentTemplate.findFirst({
+      where: { name: dto.title },
+      select: { requiresClinicalAuthorisation: true },
+    });
+    return template?.requiresClinicalAuthorisation ?? true;
+  }
+
   async create(dto: CreateDocumentDto) {
     const visit = await this.visits.findById(dto.visitId);
     return this.prisma.document.create({
@@ -30,6 +56,9 @@ export class DocumentService {
         type: dto.type,
         title: dto.title,
         content: dto.content,
+        // Frozen at creation: editing the template later must never change
+        // what an already-issued document required.
+        requiresClinicalAuthorisation: await this.requiresClinicalAuthorisation(dto),
         issuedByStaffId: dto.issuedByStaffId ?? visit.staffId,
         issuedDate: dto.issuedDate ? new Date(dto.issuedDate) : undefined,
         startDate: dto.startDate ? new Date(dto.startDate) : undefined,
@@ -111,31 +140,28 @@ export class DocumentService {
   }
 
   /**
-   * The dispensary "prep, sign MC" sign-off — G3b corrected.
+   * Clinically authorise (or, for administrative documents, issue) a
+   * document — G3b closure (D-064).
    *
-   * Three things were wrong, all found by inspecting the lifecycle rather
-   * than trusting the UI badge:
+   * G3b made the signer server-derived and stopped silent re-signing. What it
+   * did NOT establish is what the signature claims, and it let front desk
+   * sign a medical certificate. Two corrections here:
    *
-   *  1. The signer came from the request body, and the browser sent the
-   *     VISIT's attending doctor regardless of who actually clicked. A
-   *     document could therefore be attributed to a doctor who never saw it.
-   *     Signer identity now comes from the authenticated session only.
-   *  2. Anyone who could reach the route could sign. It now requires a
-   *     clinical role and branch access to the visit.
-   *  3. Re-signing silently overwrote `signedAt`/`signedByStaffId`, so a
-   *     signed document could be re-attributed with no trace. That is now a
-   *     409.
+   *  - **Authority now depends on the document.** A document that carries a
+   *    doctor's clinical opinion may only be authorised by a doctor. An
+   *    administrative document keeps the existing staff permission.
+   *  - **The record says which happened.** `authorisationKind` distinguishes
+   *    a doctor's CLINICAL authorisation from ADMINISTRATIVE issuance, so no
+   *    UI has to guess, and a pre-closure row stays LEGACY_SIGN_OFF rather
+   *    than being dressed up as either.
    *
-   * Deliberately NOT changed: who is eligible. `canSignDocument` is the
-   * clinical-role test, because this sign-off is a workflow step, not the C0
-   * medicolegal signature (see clinical-authorization.ts). Narrowing it here
-   * would have broken the existing front-desk/dispensary workflow on the
-   * strength of a shared word.
+   * Everything G3b established is preserved: identity from the session,
+   * branch access checked, re-authorisation 409, content untouched, and no
+   * un-authorise path.
    */
-  async sign(id: string, dto: SignDocumentDto) {
+  async authorise(id: string, dto: SignDocumentDto) {
     return withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
-      assertCanSignDocument(actor);
 
       const document = await tx.document.findUnique({ where: { id } });
       if (!document) {
@@ -143,23 +169,35 @@ export class DocumentService {
       }
       await assertMayTouchVisit(tx, document.visitId, actor);
 
+      // Authority is checked against what THIS document requires, read from
+      // the row rather than re-derived, so a template edited after the
+      // document was issued cannot change who may authorise it.
+      assertCanAuthoriseDocument(actor, document.requiresClinicalAuthorisation);
+
       if (document.recordStatus === DocumentRecordStatus.VOIDED) {
-        throw new ConflictException('This document has been voided and cannot be signed.');
+        throw new ConflictException('This document has been voided and cannot be authorised.');
       }
       if (document.signedAt) {
         throw new ConflictException(
-          'This document is already signed. A signed document cannot be re-signed or re-attributed.',
+          'This document is already authorised. It cannot be re-authorised or re-attributed.',
         );
       }
       if (dto.expectedVersion !== undefined && dto.expectedVersion !== document.version) {
         throw new ConflictException('This document changed since you loaded it. Reload and try again.');
       }
 
+      const snap = snapshotOf(actor);
       return tx.document.update({
         where: { id },
         data: {
           signedAt: new Date(),
           signedByStaffId: actor.id,
+          authorisationKind: document.requiresClinicalAuthorisation
+            ? DocumentAuthorisationKind.CLINICAL
+            : DocumentAuthorisationKind.ADMINISTRATIVE,
+          authorisedByNameSnapshot: snap.nameSnapshot,
+          authorisedByRoleSnapshot: snap.roleSnapshot,
+          authorisedByDesignationSnapshot: snap.designationSnapshot,
           version: { increment: 1 },
           // content is never touched — there is no route that edits it.
         },

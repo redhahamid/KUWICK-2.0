@@ -43,16 +43,16 @@ export function useDocumentHistory(visitId?: string, enabled = false) {
   });
 }
 
-// Dispensary "prep, sign MC" step (Phase A6).
+// G3b closure (D-064) — clinical authorisation, or administrative issuance.
 //
 // G3b — no staffId on the wire. The browser used to send the visit's
 // attending doctor whoever actually clicked; the signer is now the
 // authenticated session, and sending an identity is a 400.
-export function useSignDocument(visitId?: string) {
+export function useAuthoriseDocument(visitId?: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, expectedVersion }: { id: string; expectedVersion?: number }) =>
-      apiClient.patch<ClinicalDocument>(`/documents/${id}/sign`, { expectedVersion }),
+      apiClient.patch<ClinicalDocument>(`/documents/${id}/authorise`, { expectedVersion }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents', visitId] });
       queryClient.invalidateQueries({ queryKey: ['document-history', visitId] });

@@ -125,31 +125,53 @@ export function canVoidClinicalRecord(staff: Staff): boolean {
 }
 
 /**
- * G3b — who may sign off a clinical document.
+ * G3b closure (D-064) — who may CLINICALLY AUTHORISE a document.
  *
- * Read the schema comment before assuming this means what C0 signing means.
- * `Document.signedAt` is the dispensary "prep, sign MC" step — a workflow
- * sign-off recording that a printed document was checked and handed over. It
- * is explicitly NOT the medicolegal clinical-note signature that
- * `canSignClinicalNotes` guards, which additionally requires a verified
- * professional identity and an explicitly enabled signing right.
+ * A medical certificate, referral or clinical memo carries a doctor's opinion
+ * and their professional responsibility for it. Only a doctor may accept
+ * that. Same rule as diagnosis modification and clinical-record voiding: a
+ * doctor role, or a staff member whose PROFESSIONAL identity is an active
+ * medical doctor.
  *
- * So this is deliberately the CLINICAL-ROLE test and not the signing test:
- * applying `canSignClinicalNotes` here would silently narrow an existing
- * front-desk/dispensary workflow on the strength of a shared English word.
- * What G3b does fix is that the signer is now the authenticated session,
- * with branch access checked — not a staff id chosen by the browser.
- *
- * Upgrading document sign-off to true signature semantics is a policy and
- * schema decision, and is NOT taken here.
+ * OWNER_ADMIN does not qualify on ownership alone, and FRONT_DESK_CLINICAL_
+ * STAFF does not qualify at all — which is precisely the defect this closure
+ * fixes. Front desk may still prepare and preview such a document; they may
+ * not put a doctor's authority on it.
  */
-export function canSignDocument(staff: Staff): boolean {
+export function canClinicallyAuthoriseDocument(staff: Staff): boolean {
+  if (!staff.active) {
+    return false;
+  }
+  if (DOCTOR_ROLES.includes(staff.role)) {
+    return true;
+  }
+  return staff.professionalType === 'MEDICAL_DOCTOR' && staff.professionalActive;
+}
+
+/**
+ * Who may ISSUE an administrative document (a time slip and the like).
+ *
+ * Deliberately unchanged from the pre-closure rule: front desk issuing a time
+ * slip is an existing, legitimate workflow, and the closure says to preserve
+ * explicitly approved existing staff permissions. What changed is that such a
+ * document can no longer describe itself as clinically authorised.
+ */
+export function canIssueAdministrativeDocument(staff: Staff): boolean {
   return staff.active && CLINICAL_ROLES.includes(staff.role);
 }
 
-export function assertCanSignDocument(staff: Staff): void {
-  if (!canSignDocument(staff)) {
-    throw new ForbiddenException('This account may not sign off clinical documents.');
+export function assertCanAuthoriseDocument(staff: Staff, requiresClinical: boolean): void {
+  if (requiresClinical) {
+    if (!canClinicallyAuthoriseDocument(staff)) {
+      throw new ForbiddenException(
+        'Only a doctor may clinically authorise this document. ' +
+          'You can prepare and preview it, but a doctor must authorise it before it can be issued.',
+      );
+    }
+    return;
+  }
+  if (!canIssueAdministrativeDocument(staff)) {
+    throw new ForbiddenException('This account may not issue clinic documents.');
   }
 }
 

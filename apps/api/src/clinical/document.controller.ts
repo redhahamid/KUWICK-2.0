@@ -21,9 +21,12 @@ export class DocumentController {
     return this.documents.create(dto);
   }
 
-  @Patch(':id/sign')
-  sign(@Param('id') id: string, @Body() dto: SignDocumentDto) {
-    return this.documents.sign(id, dto);
+  // G3b closure (D-064) — renamed from /sign. The old name was the defect:
+  // it described a doctor accepting clinical responsibility and a front-desk
+  // hand-over check with the same word, and the route enforced neither.
+  @Patch(':id/authorise')
+  authorise(@Param('id') id: string, @Body() dto: SignDocumentDto) {
+    return this.documents.authorise(id, dto);
   }
 
   // G3a (D-062) — the audit view: every document ever issued for the visit,

@@ -1935,6 +1935,15 @@ model CustomDocumentTemplate {
   name            String
   content         String
   active          Boolean  @default(true)
+  // G3b closure (D-064) — does a document made from this template carry a
+  // doctor's clinical opinion?
+  //
+  // Defaults to TRUE, deliberately: an unclassified template is treated as
+  // clinical until a clinic says otherwise. The alternative — inferring from
+  // the template's name or text — is exactly what the closure forbids, and
+  // getting it wrong the other way lets front desk authorise a referral.
+  // Marking a template administrative is an explicit administrative act.
+  requiresClinicalAuthorisation Boolean @default(true) @map("requires_clinical_authorisation")
   // The DefaultDocumentTemplate this was copied from at tenant creation —
   // informational only; edits never sync back or forward (D-037's
   // no-retro-sync rule).
@@ -1980,6 +1989,25 @@ enum DocumentRecordStatus {
   VOIDED
 }
 
+/// G3b closure (D-064) — WHAT KIND of sign-off a document actually carries.
+///
+/// `signedAt` alone cannot answer this. It was written by a route that let
+/// any reachable user sign, so a historical row proves only that *somebody*
+/// signed something off — not that a doctor accepted clinical responsibility.
+/// Presenting all of those as "Signed" is the defect this closure fixes.
+enum DocumentAuthorisationKind {
+  /// A doctor (or an active MEDICAL_DOCTOR professional identity) accepted
+  /// clinical responsibility. Only ever written by the authorise route.
+  CLINICAL
+  /// An administrative document issued by permitted staff. Carries no
+  /// clinical opinion and never claims a doctor's authority.
+  ADMINISTRATIVE
+  /// Pre-closure rows: an operational sign-off whose authority was never
+  /// recorded. Shown as "Legacy sign-off — authorisation type not recorded",
+  /// never as a doctor's authorisation. Never written by new code.
+  LEGACY_SIGN_OFF
+}
+
 // G3a (D-062) — shared by visit attachments and order/procedure attachments.
 // The underlying FILE is never unlinked by an audited removal; only its
 // status changes, so an authorised history request can still retrieve it.
@@ -2003,12 +2031,30 @@ model Document {
   endDate         DateTime?    @map("end_date") @db.Date
   diagnosisText   String?      @map("diagnosis_text")
   referredTo      String?      @map("referred_to")
-  // Dispensary "prep, sign MC" step (Phase A6) — a lightweight sign-off
-  // checkbox, not a cryptographic signature. Nullable/re-settable rather
-  // than a one-way status: correcting who signed is more common in
-  // practice than needing an immutable audit lock this phase.
+  // The moment a document was signed off. G3b made this one-way (re-signing
+  // is a 409); the G3b CLOSURE gave it meaning, because on its own it never
+  // said WHO was entitled to sign or what the signature claimed.
+  //
+  // Kept rather than renamed: the column is referenced across the dispensary
+  // workflow, and renaming it would be churn without changing behaviour. The
+  // authorisation fields below carry the semantics. Recorded as technical
+  // debt in D-064.
   signedAt        DateTime?    @map("signed_at")
   signedByStaffId String?      @map("signed_by_staff_id")
+
+  // G3b closure (D-064) — is this a document that carries a doctor's clinical
+  // opinion? Snapshotted AT CREATION from the type (or the template's own
+  // setting for CUSTOM), so that editing a template later can never change
+  // what an already-issued document required.
+  requiresClinicalAuthorisation Boolean @default(true) @map("requires_clinical_authorisation")
+
+  // What the sign-off actually was, plus frozen identity of whoever gave it.
+  // Snapshots, not joins: a doctor who leaves the clinic must not turn a
+  // year-old authorisation into a blank.
+  authorisationKind               DocumentAuthorisationKind? @map("authorisation_kind")
+  authorisedByNameSnapshot        String?                    @map("authorised_by_name_snapshot")
+  authorisedByRoleSnapshot        String?                    @map("authorised_by_role_snapshot")
+  authorisedByDesignationSnapshot String?                    @map("authorised_by_designation_snapshot")
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
