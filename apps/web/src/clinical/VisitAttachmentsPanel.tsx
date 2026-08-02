@@ -9,7 +9,6 @@ import {
   UploadOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useAuthStore } from '../core/auth-store';
 import {
   downloadVisitAttachment,
   useDeleteVisitAttachment,
@@ -32,6 +31,15 @@ function isImage(attachment: VisitAttachment): boolean {
   return Boolean(attachment.mimeType?.startsWith('image/'));
 }
 
+// G0 closure — two deliberate sizes. The compact strip sits beside the note
+// and must not push it around, so it stays small and recognisable. The
+// expanded panel is where a doctor actually looks at a wound or a lesion, so
+// it is large enough to judge without opening anything — but still a preview,
+// not a full-resolution image dumped into the page. Full resolution is one
+// click away in the lightbox.
+const COMPACT_THUMB = 48;
+const EXPANDED_THUMB = 96;
+
 // Attribution travels with the image, in the lightbox as well as the list —
 // who took a wound photo is part of the clinical record, not list decoration.
 function attribution(attachment: VisitAttachment): string {
@@ -52,14 +60,14 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
   const { data: attachments, isLoading } = useVisitAttachments(visitId);
   const uploadAttachment = useUploadVisitAttachment(visitId);
   const deleteAttachment = useDeleteVisitAttachment(visitId);
-  const currentStaff = useAuthStore((state) => state.staff);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const blobUrls = useAttachmentBlobUrls(visitId, attachments);
 
   const handleFileChosen = async (file: File | undefined) => {
     if (!file) return;
     try {
-      await uploadAttachment.mutateAsync({ file, uploadedByStaffId: currentStaff?.id });
+      // No uploader id is sent — the server derives it from the session (C0).
+      await uploadAttachment.mutateAsync({ file });
       message.success('File uploaded');
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : 'Failed to upload file');
@@ -160,8 +168,11 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
                 src={blobUrls[attachment.id]}
                 alt={attachment.fileName}
                 title={`${attachment.fileName} — ${attribution(attachment)}`}
-                width={40}
-                height={40}
+                // G0 closure — 48px in the compact strip: big enough to tell
+                // an otoscope view from a wound photo at a glance, small
+                // enough that the strip stays one line beside the note.
+                width={COMPACT_THUMB}
+                height={COMPACT_THUMB}
                 style={{ objectFit: 'cover', borderRadius: 4, cursor: 'zoom-in' }}
               />
             ))}
@@ -252,8 +263,9 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
                       <Image
                         src={url}
                         alt={attachment.fileName}
-                        width={48}
-                        height={48}
+                        title={`${attachment.fileName} — ${attribution(attachment)}`}
+                        width={EXPANDED_THUMB}
+                        height={EXPANDED_THUMB}
                         style={{ objectFit: 'cover', borderRadius: 4, cursor: 'zoom-in' }}
                       />
                     ) : (
@@ -262,8 +274,8 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
                           display: 'inline-flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          width: 48,
-                          height: 48,
+                          width: EXPANDED_THUMB,
+                          height: EXPANDED_THUMB,
                           borderRadius: 4,
                           background: '#fafafa',
                           fontSize: 20,

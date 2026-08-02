@@ -453,6 +453,41 @@ Second of the two Part G defects the owner authorised ahead of the wider restruc
 
 ---
 
+## D-056 — G0 closure: attribution, the two vitals consumers, the real height rule, and fixtures that clean up after themselves
+
+Owner's G0 closure items, done as one commit after G0a/G0b were provisionally approved.
+
+**Client-supplied uploader identity is gone.** C0 (D-051) moved attachment uploader identity to the authenticated session and the controller stopped reading `uploadedByStaffId` from the request — but the browser kept sending it. The server ignored it, so nothing was broken; what was wrong is that the code read as though the client still chose who a clinical image is attributed to. `buildAttachmentFormData` now puts the file and nothing else on the wire, and `attachment-upload.test.ts` asserts that, including a regex sweep for any staff/user/tenant-ish key, so it cannot quietly return.
+
+**Both C0 vitals consumers verified end to end, on both paths** (`prisma/g0-clinical-consumers-check.ts`, 13/13 in real Chrome). Documents: a referral generated from a visit with a real `VisitObservation` carries BP 128/82, pulse 76, temp 37.4, SpO₂ 97%, resp 18/min; the same generation on a pre-split visit with only the FROZEN note columns carries 141/93 and 36.2, and does not leak the other visit's values. Dosage calculator: the weight box seeds 12.6 kg from the observation, 9.8 kg from the legacy columns, with no cross-visit contamination; `calcMethod` and the calculation itself were not touched.
+
+**One honest gap:** `formatVitals()` has never included **weight, height or glucose** — a generated document shows BP/pulse/temp/SpO₂/resp only. That is existing document-content design, not a fault introduced by the vitals split, and what a referral letter says is a clinical-content decision rather than a G0 one. Reported, not silently changed.
+
+**The height rule was reported imprecisely and is now stated exactly.** G0a claimed "a 320px floor" without saying which rule it belongs to, which did not match the 300px measured on tablet and mobile. There are two separate rules and they must not be conflated. Computed values, read from the live page:
+
+| Layout | Rule | Computed height | min-height |
+|---|---|---|---|
+| Desktop Canvas 1920×1080 | `.kw-editor-fill .ProseMirror` | 519.99px | 320px |
+| Desktop Canvas 1366×768 | `.kw-editor-fill .ProseMirror` | 445.54px | 320px |
+| Tablet 900 | `.kw-editor-min .ProseMirror` | 300px | 300px |
+| Mobile 375 | `.kw-editor-min .ProseMirror` | 300px | 300px |
+
+The 320px floor is real but belongs only to `.kw-editor-fill`, and only binds below roughly a 552px viewport height — at 1080p and 768p the `min(58vh, 520px)` height wins. Tablet and mobile never touch that rule: they use `.kw-editor-min`, whose 300px is deliberate, not a failed floor. Desktop heights are unchanged. The check now prints the computed values and asserts each rule declares what it should, so this cannot be described loosely again.
+
+**Fixtures no longer accumulate, and cannot run anywhere real.** `fixture-support.ts` adds a fail-closed guard requiring all of: `NODE_ENV` not production, a `DATABASE_URL` whose host is localhost/127.0.0.1, and an explicit `KUWICK_ALLOW_FIXTURES=yes` — deliberately not satisfiable by one stray environment variable, because these scripts delete clinical records. Everything created is tagged `KUWICK-FIXTURE` (visit complaint, patient name, uploaded filenames), tracked in a ledger, and removed in a `finally` block so a failed run cleans up as thoroughly as a passing one. Attachments are deleted through the API so their files leave disk too. A sweep at the start of each run removes anything an interrupted earlier run left behind. Verified afterwards: 0 fixture visits, 0 fixture patients, 0 `visit_attachments` rows.
+
+**On deleting files I did not create:** the uploads directory held 21 orphans. 16 were mine and were removed; 5 have real clinical-looking names (`X-Rays-NORHAYATI…`, `FBC_MUMS_CLINIC…`, screenshots) and were left untouched. An orphaned row is not permission to delete somebody else's upload.
+
+**Token minting stays test-only.** It exists solely in `prisma/*-check.ts` so a regression check is runnable without holding a staff password. It is not application code, is not exported from `src/`, and the guard above means it will not run against a non-local database.
+
+**Thumbnails sized against real clinical images:** 48px in the compact strip (beside the note, must not push it around), 96px in the expanded panel (where a wound or lesion is actually judged), full resolution one click away in the lightbox. Measured in Chrome, not assumed.
+
+**A test that lied, caught:** the expanded-panel measurement first reported 48px. `context.addInitScript` re-sets the layout to Canvas on *every* navigation, so switching to Flow via localStorage plus a reload never left Canvas — it measured the compact strip while claiming to measure the expanded panel. Fixed by switching through the real Layout control.
+
+**Reversibility**: High — one field removed from a request body, two thumbnail constants, and test tooling. No schema, endpoint, permission, calculation or storage behaviour changed.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:

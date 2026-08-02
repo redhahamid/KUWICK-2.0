@@ -5,6 +5,7 @@ import * as jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { chromium, Page } from 'playwright-core';
+import { FixtureLedger, assertFixturesAllowed, fixtureLabel, sweepOrphanedFixtures } from './fixture-support';
 
 config({ path: join(__dirname, '..', '.env') });
 
@@ -35,6 +36,9 @@ const VIEWPORTS = [
 ];
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
+// Assigned once the session exists; cleaned up in the finally block below
+// whether the run passes, fails or throws.
+let ledger: FixtureLedger | undefined;
 
 const results: { name: string; pass: boolean; detail: string }[] = [];
 function check(name: string, pass: boolean, detail: string) {
@@ -75,6 +79,13 @@ const MEASURE_JS = `(() => {
     editorW: pmRect ? Math.round(pmRect.width) : 0,
     editable: pm ? pm.getAttribute('contenteditable') === 'true' : false,
     mode: fillWrap ? 'fill' : minWrap ? 'min' : 'none',
+    // Report the COMPUTED values so the height rule is evidence, not a claim.
+    computed: pm
+      ? (function () {
+          var cs = getComputedStyle(pm);
+          return { height: cs.height, minHeight: cs.minHeight, overflowY: cs.overflowY };
+        })()
+      : null,
     inCanvas: !!canvas,
     lowerSections: document.querySelectorAll('.kw-canvas-main .ant-card').length,
     scrollers: scrollers,
@@ -89,6 +100,7 @@ async function openVisit(page: Page, patientId: string, visitId: string) {
 }
 
 async function main() {
+  assertFixturesAllowed();
   if (SHOTS) mkdirSync(OUT, { recursive: true });
 
   // --- pick a real doctor, read-only -------------------------------------
@@ -129,14 +141,24 @@ async function main() {
   const clinics = await api('/clinics', token);
   const clinicId: string = clinics[0].id;
 
-  const mkVisit = (complaint: string) =>
-    api('/visits', token, 'POST', {
+  // Anything an interrupted earlier run left behind goes first, so a long
+  // history of test runs cannot silently pile up in the dev database.
+  const swept = await sweepOrphanedFixtures(prisma, seed.tenant_id);
+  if (swept > 0) console.log(`Swept ${swept} leftover fixture visit(s) from previous runs`);
+
+  ledger = new FixtureLedger(prisma, API, token, seed.tenant_id);
+
+  const mkVisit = async (complaint: string) => {
+    const visit = await api('/visits', token, 'POST', {
       clinicId,
       patientId: patient.id,
       staffId: seed.staff_id,
       billingType: 'Cash',
-      presentingComplaint: complaint,
+      presentingComplaint: fixtureLabel(complaint),
     });
+    ledger!.visit(visit.id);
+    return visit;
+  };
 
   const emptyVisit = await mkVisit('G0a zero-note check');
   const fullVisit = await mkVisit('G0a populated check');
@@ -236,6 +258,23 @@ async function main() {
       empty.inCanvas && empty.mode === expectedMode,
       `canvas=${empty.inCanvas}, editor mode=${empty.mode}`,
     );
+    console.log(
+      `      applied rule: ${expectedMode === 'fill' ? '.kw-editor-fill' : '.kw-editor-min'} .ProseMirror` +
+        ` → computed height=${empty.computed?.height} min-height=${empty.computed?.minHeight}` +
+        ` overflow-y=${empty.computed?.overflowY}`,
+    );
+    // The two rules are separate on purpose and must not be conflated:
+    //   .kw-editor-fill (desktop Canvas): height min(58vh, 520px), floor 320px
+    //   .kw-editor-min  (tablet/mobile/Flow): min-height 300px, no height
+    check(
+      `[${vp.name}] ${expectedMode} rule declares the height it should`,
+      expectedMode === 'fill'
+        ? empty.computed?.minHeight === '320px' && parseFloat(empty.computed?.height ?? '0') >= 320
+        : empty.computed?.minHeight === '300px',
+      expectedMode === 'fill'
+        ? `min-height 320px floor, height ${empty.computed?.height}`
+        : `min-height ${empty.computed?.minHeight}`,
+    );
     check(
       `[${vp.name}] zero-note visit shows a usable editor`,
       empty.editorH >= 300 && empty.editable,
@@ -320,15 +359,21 @@ async function main() {
     noteRows === 0,
     `${noteRows} row(s) for the zero-note visit`,
   );
-
-  await prisma.$disconnect();
-
-  const failed = results.filter((r) => !r.pass);
-  console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
-  if (failed.length > 0) process.exit(1);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+// Cleanup runs whatever happened, so a failed run leaves the dev database as
+// clean as a passing one — the previous version accumulated a visit per run.
+main()
+  .then(async () => {
+    const failed = results.filter((r) => !r.pass);
+    console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
+    if (failed.length > 0) process.exitCode = 1;
+  })
+  .catch((e) => {
+    console.error(e);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await ledger?.cleanup();
+    await prisma.$disconnect();
+  });

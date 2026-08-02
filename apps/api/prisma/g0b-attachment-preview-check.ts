@@ -5,6 +5,7 @@ import * as jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { chromium, Page } from 'playwright-core';
+import { FIXTURE_TAG, FixtureLedger, assertFixturesAllowed, fixtureLabel, sweepOrphanedFixtures } from './fixture-support';
 
 config({ path: join(__dirname, '..', '.env') });
 
@@ -29,6 +30,7 @@ function check(name: string, pass: boolean, detail: string) {
 }
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
+let ledger: FixtureLedger | undefined;
 
 async function api(path: string, token: string, method = 'GET', body?: unknown) {
   const res = await fetch(`${API}${path}`, {
@@ -95,6 +97,7 @@ const INSPECT_JS = `(() => {
 })()`;
 
 async function main() {
+  assertFixturesAllowed();
   if (SHOTS) mkdirSync(OUT, { recursive: true });
 
   const seed = await prisma.$transaction(async (tx) => {
@@ -119,13 +122,19 @@ async function main() {
   const patients = await api('/patients', token);
   const patient = patients[0];
   const clinics = await api('/clinics', token);
+
+  const swept = await sweepOrphanedFixtures(prisma, seed.tenant_id);
+  if (swept > 0) console.log(`Swept ${swept} leftover fixture visit(s)`);
+  ledger = new FixtureLedger(prisma, API, token, seed.tenant_id);
+
   const visit = await api('/visits', token, 'POST', {
     clinicId: clinics[0].id,
     patientId: patient.id,
     staffId: seed.staff_id,
     billingType: 'Cash',
-    presentingComplaint: 'G0b attachment preview check',
+    presentingComplaint: fixtureLabel('G0b attachment preview check'),
   });
+  ledger.visit(visit.id);
 
   const browser = await chromium.launch({ executablePath: CHROME, headless: false });
   const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
@@ -150,13 +159,19 @@ async function main() {
     ['WOUND D3', '#7a4a2b'],
     ['DERM LESION', '#5a3f6b'],
   ];
+  // Filenames carry the fixture tag so a test-generated upload is identifiable
+  // on disk, not just in the database — if cleanup is ever interrupted, nobody
+  // has to guess which files are a real clinic's and which are this script's.
   for (const [label, color] of shots) {
     const dataUrl = (await page.evaluate(`${DRAW_JS}(${JSON.stringify(label)}, ${JSON.stringify(color)})`)) as string;
-    await uploadPng(token, visit.id, `${label.toLowerCase().replace(/ /g, '-')}.png`, dataUrl);
+    await uploadPng(token, visit.id, `${FIXTURE_TAG}-${label.toLowerCase().replace(/ /g, '-')}.png`, dataUrl);
   }
-  await uploadPdf(token, visit.id, 'lab-result.pdf');
+  await uploadPdf(token, visit.id, `${FIXTURE_TAG}-lab-result.pdf`);
 
   const listed = await api(`/visits/${visit.id}/attachments`, token);
+  // Registered for cleanup through the API so the uploaded FILES are removed
+  // from disk too, not just their rows.
+  for (const a of listed) ledger.attachment(visit.id, a.id);
   check('4 attachments uploaded (3 images + 1 PDF)', listed.length === 4, `${listed.length} listed`);
   check(
     'uploader attribution recorded server-side from the session',
@@ -222,16 +237,80 @@ async function main() {
     'record still open',
   );
 
+  // ---- thumbnail dimensions actually applied ----
+  const sizes = (await page.evaluate(`(() => {
+    var el = document.querySelector('.ant-image img');
+    if (!el) return null;
+    var r = el.getBoundingClientRect();
+    return { w: Math.round(r.width), h: Math.round(r.height) };
+  })()`)) as { w: number; h: number } | null;
+  check(
+    'compact strip thumbnail is 48px',
+    sizes?.w === 48 && sizes?.h === 48,
+    `${sizes?.w}x${sizes?.h}px`,
+  );
+
+  // Flow layout renders the expanded attachment card, where a doctor actually
+  // judges a wound or a lesion — bigger, but still a preview.
+  //
+  // Switched through the real Layout control, NOT localStorage + reload:
+  // addInitScript re-sets the layout to canvas on every navigation, so the
+  // localStorage route silently stayed in Canvas and measured the 48px strip
+  // while claiming to measure the expanded panel.
+  await page.getByText('Flow', { exact: true }).first().click();
+  await page.waitForTimeout(2000);
+  const expandedSize = (await page.evaluate(`(() => {
+    var el = document.querySelector('.ant-image img');
+    if (!el) return null;
+    var r = el.getBoundingClientRect();
+    return { w: Math.round(r.width), h: Math.round(r.height) };
+  })()`)) as { w: number; h: number } | null;
+  if (SHOTS) await page.screenshot({ path: join(OUT, 'g0b-expanded-panel.png') });
+  check(
+    'expanded panel thumbnail is 96px',
+    expandedSize?.w === 96 && expandedSize?.h === 96,
+    `${expandedSize?.w}x${expandedSize?.h}px`,
+  );
+
+  // ---- image-load failure fallback ----
+  // Block ONE image's bytes so the mixed state is visible: the other two still
+  // render, the failed one becomes a named file row rather than a blank square.
+  const blockedId: string = listed.find((a: { mimeType: string }) => a.mimeType.startsWith('image/')).id;
+  await page.route(`**/attachments/${blockedId}/download`, (route) => route.abort());
+  // Back to Canvas (the reload restores it via addInitScript) so the failure
+  // state is captured in the layout doctors actually use.
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(2500);
+  const degraded = (await page.evaluate(INSPECT_JS)) as any;
+  if (SHOTS) await page.screenshot({ path: join(OUT, 'g0b-image-load-failure-fallback.png') });
+  check(
+    'an unreadable image degrades to a file row, not a blank square',
+    degraded.thumbCount === 2 && degraded.brokenThumbs === 0,
+    `${degraded.thumbCount} thumbnail(s), ${degraded.brokenThumbs} broken`,
+  );
+  check(
+    'the unreadable image is still listed, not silently dropped',
+    degraded.bodyText.includes('Attachments'),
+    'attachment count still reflects every file',
+  );
+  await page.unroute(`**/attachments/${blockedId}/download`);
+
   await context.close();
   await browser.close();
-  await prisma.$disconnect();
-
-  const failed = results.filter((r) => !r.pass);
-  console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
-  if (failed.length > 0) process.exit(1);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    const failed = results.filter((r) => !r.pass);
+    console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
+    if (failed.length > 0) process.exitCode = 1;
+  })
+  .catch((e) => {
+    console.error(e);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    // Attachments go through the API so their files leave the disk too.
+    await ledger?.cleanup();
+    await prisma.$disconnect();
+  });

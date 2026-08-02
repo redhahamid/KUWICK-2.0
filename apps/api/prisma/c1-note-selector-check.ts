@@ -4,6 +4,7 @@ import * as jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { chromium, Page } from 'playwright-core';
+import { FixtureLedger, assertFixturesAllowed, fixtureLabel, sweepOrphanedFixtures } from './fixture-support';
 
 config({ path: join(__dirname, '..', '.env') });
 
@@ -47,8 +48,11 @@ async function openSelector(page: Page) {
   await page.locator('.ant-select-dropdown').waitFor({ state: 'visible', timeout: 5000 });
 }
 
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
+let ledger: FixtureLedger | undefined;
+
 async function main() {
-  const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
+  assertFixturesAllowed();
   // staff/users are FORCE ROW LEVEL SECURITY — without the bypass GUC this
   // returns zero rows rather than erroring (D-048).
   const seed = await prisma.$transaction(async (tx) => {
@@ -63,7 +67,6 @@ async function main() {
     if (rows.length === 0) throw new Error('No active doctor with a user account found');
     return rows[0];
   });
-  await prisma.$disconnect();
 
   const token = jwt.sign(
     { sub: seed.user_id, tenantId: seed.tenant_id, staffId: seed.staff_id, role: seed.role },
@@ -78,20 +81,29 @@ async function main() {
   const clinics = await api('/clinics', token);
   const stamp = Date.now();
 
+  const swept = await sweepOrphanedFixtures(prisma, seed.tenant_id);
+  if (swept > 0) console.log(`Swept ${swept} leftover fixture visit(s)`);
+  ledger = new FixtureLedger(prisma, API, token, seed.tenant_id);
+
   // Two visits for the SAME patient: the second exists purely to prove its
   // draft is NOT collateral damage when the first one's draft is discarded.
   const patient = await api('/patients', token, 'POST', {
-    name: `ZZ C2 Gate Patient ${stamp}`,
+    name: fixtureLabel(`C1 Gate Patient ${stamp}`),
     identifierType: 'NRIC',
     identifierValue: `G${stamp}`.slice(0, 14),
   });
-  const mkVisit = () =>
-    api('/visits', token, 'POST', {
+  ledger.patient(patient.id);
+  const mkVisit = async () => {
+    const visit = await api('/visits', token, 'POST', {
       patientId: patient.id,
       clinicId: clinics[0].id,
       staffId: auth.staff.id,
       billingType: 'Self-pay',
+      presentingComplaint: fixtureLabel('C1 note-selector gate'),
     });
+    ledger!.visit(visit.id);
+    return visit;
+  };
   const visitA = await mkVisit();
   const visitB = await mkVisit();
 
@@ -193,7 +205,12 @@ async function main() {
   process.exitCode = failed.length === 0 ? 0 : 1;
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await ledger?.cleanup();
+    await prisma.$disconnect();
+  });
