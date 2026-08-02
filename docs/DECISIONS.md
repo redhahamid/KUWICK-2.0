@@ -394,6 +394,25 @@ Owner, overruling a recommendation of mine to defer authorship: *"For medicolega
 
 ---
 
+## D-053 — C2: the Canvas clinical workspace, rebuilt around the note the doctor is actually writing
+
+Owner: the Canvas layout buried the doctor's main task. Measured before touching anything (`prisma/c2-canvas-measure.ts`, so "too small" is a number rather than an impression): the typing area was **22px tall at both 1920×1080 and 1366×768**, inside a card that itself scrolled, with 3–4 independent scroll containers on desktop and a sidebar taking a third of the width.
+
+**Why it was 22px.** Two separate causes, and fixing only the obvious one changed nothing. The layout used an antd `16/8` grid with the notes card's body set to `overflowY: auto` and the lower panels pinned to `flex: 0 0 118px` — so the editor got whatever was left, which was almost nothing. But after switching to a flex shell and giving the editor `flex: 1 1 auto`, it *still* measured 22px: Tiptap renders the real `contenteditable` as a `.ProseMirror` div **inside** `EditorContent`, so styling the wrapper grows the wrapper and leaves the text area content-sized. The fix needs CSS on the inner element (`.kw-editor-fill .ProseMirror`), which is why this is in `index.css` rather than inline styles. Result: **324px at 1920×1080, 220px at 1366×768, 260px on tablet and mobile** — and the same inner-element bug was silently affecting tablet/mobile/Flow too, where the editor had been one line high regardless of the wrapper's `minHeight: 240`.
+
+**Layout.** The Canvas is now a flex row: a growing main column and a sidebar bounded to `clamp(280px, 22vw, 360px)` instead of a third of the viewport. Vitals collapse to a single attributed line (`BP 122/78 · Pulse 84 · … · Recorded by Dr X`) with Record/Expand, and the expanded form is unchanged — no observation field or attribution was removed, and vitals stayed on `VisitObservation`. Attachments collapse to `Attachments (0) [Upload]` instead of rendering a full card around an empty-list placeholder. The lower four panels are content-sized rather than crushed into 118px. Below the desktop breakpoint the summary moves into a right-hand Drawer, with the allergy alert staying in the always-visible header so nothing clinically urgent hides behind it.
+
+**Scrolling** went from 3–4 nested containers to **0 on desktop**; tablet/mobile keep exactly one, the page itself. I briefly capped the summary-card bodies at 132px to claw back height for the editor, measured it, found it bought **zero** extra editor height while reintroducing a nested scrollbar, and reverted it — the panels are content-sized instead.
+
+**C0/C1 are untouched.** No schema, authorship, signing, amendment, revision, RLS, concurrency, draft-keying, dirty-state or conflict logic changed; this is layout only. The C1 note-selector gate was re-run after the layout change and still passes end to end.
+
+**On the way in, the real Ant Design note selector finally got verified.** C1 shipped with that path unverified because the in-app browser could not open the antd dropdown with synthetic events. Playwright drives it correctly, so `prisma/c1-note-selector-check.ts` now exercises the actual control: dirty → switch → warning → Continue editing keeps the selection, text and dirty state → switch again → Discard loads the requested note, scoped. Its first run reported a failure on "unrelated visit draft was not cleared", which turned out to be the test's own fault — it changed visits with `page.goto`, a full page load, and the draft store is deliberately memory-only, so every draft dies with the page by design. Corrected rather than explained away.
+
+**Editor height is 324px at 1080p, against an aim of 350–500px.** The remaining ~26px sits in the header, the compact vitals/attachments rows, the note toolbar, the provenance line and the four lower panels. Reaching 350 would mean shrinking the panels to the point of hiding their content, which trades one usability problem for another; flagged rather than forced.
+**Reversibility**: High — presentation only. Reverting restores the previous grid; no clinical data, API or business logic is involved.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:

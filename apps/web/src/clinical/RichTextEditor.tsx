@@ -39,11 +39,14 @@ interface RichTextEditorProps {
   // (user feedback) — compact gives the editor a short, internally-
   // scrollable content area instead of a tall fixed minHeight.
   compact?: boolean;
+  // C2 — the editor should claim all remaining height in the Canvas
+  // workspace rather than being a fixed short box.
+  fill?: boolean;
 }
 
 const FONT_FAMILIES = ['Sans Serif', 'Serif', 'Monospace'];
 
-export function RichTextEditor({ content, onChange, placeholder, compact }: RichTextEditorProps) {
+export function RichTextEditor({ content, onChange, placeholder, compact, fill }: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -88,8 +91,16 @@ export function RichTextEditor({ content, onChange, placeholder, compact }: Rich
   };
 
   return (
-    <div style={compact ? undefined : { border: '1px solid #d9d9d9', borderRadius: 6 }}>
-      <div style={{ padding: compact ? 4 : 8, borderBottom: '1px solid #f0f0f0' }}>
+    // C2 (D-053) — when `fill` is set the editor becomes a flex column so the
+    // typing area takes ALL remaining height instead of sitting at a fixed
+    // minHeight inside a scrolling card (measured at 22px before C2).
+    <div
+      style={{
+        ...(compact ? undefined : { border: '1px solid #d9d9d9', borderRadius: 6 }),
+        ...(fill ? { display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 } : undefined),
+      }}
+    >
+      <div style={{ padding: compact ? 4 : 8, borderBottom: '1px solid #f0f0f0', flex: '0 0 auto' }}>
         <Space wrap size={4}>
           <Button
             size="small"
@@ -201,8 +212,22 @@ export function RichTextEditor({ content, onChange, placeholder, compact }: Rich
       )}
       <EditorContent
         editor={editor}
-        className={compact ? 'kw-notes-borderless' : undefined}
-        style={compact ? { padding: 6, minHeight: 100 } : { padding: 12, minHeight: 240 }}
+        className={
+          [compact ? 'kw-notes-borderless' : '', fill ? 'kw-editor-fill' : 'kw-editor-min']
+            .filter(Boolean)
+            .join(' ') || undefined
+        }
+        style={
+          fill
+            ? // The wrapper grows; the .ProseMirror inside it grows too (see
+              // .kw-editor-fill in index.css) and scrolls only once the
+              // doctor's own text outgrows the space — a scrollbar they
+              // caused, not one the layout imposed.
+              { padding: 8, flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }
+            : compact
+              ? { padding: 6, minHeight: 100 }
+              : { padding: 12, minHeight: 240 }
+        }
       />
     </div>
   );

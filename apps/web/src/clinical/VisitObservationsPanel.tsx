@@ -73,6 +73,9 @@ export function VisitObservationsPanel({ visitId, compact }: VisitObservationsPa
     kind: 'idle',
   });
 
+  // Collapsed by default in Canvas; the doctor opens it only when reading or
+  // editing the full set.
+  const [expanded, setExpanded] = useState(false);
   const latest = observations?.[0];
 
   const openRecord = () => {
@@ -118,6 +121,58 @@ export function VisitObservationsPanel({ visitId, compact }: VisitObservationsPa
     }
   };
 
+  // C2 (D-053) — collapsed by default in Canvas: one line with the latest
+  // reading and who recorded it, so vitals stay visible and attributed
+  // without consuming height the note editor needs. Everything expands
+  // unchanged; no observation field or attribution was removed.
+  if (compact && mode.kind === 'idle' && !expanded) {
+    return (
+      <div
+        style={{
+          padding: '4px 10px',
+          border: '1px solid #f0f0f0',
+          borderRadius: 6,
+          marginBottom: 4,
+          flex: '0 0 auto',
+        }}
+      >
+        <Space wrap size={10} style={{ fontSize: 12, width: '100%' }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            <HeartOutlined /> Vitals
+          </Text>
+          {latest ? (
+            <>
+              <span>BP <strong>{latest.bpSystolic ?? '—'}/{latest.bpDiastolic ?? '—'}</strong></span>
+              <span>Pulse <strong>{latest.pulse ?? '—'}</strong></span>
+              <span>Temp <strong>{latest.temperature ?? '—'}</strong></span>
+              <span>SpO₂ <strong>{latest.spo2 ?? '—'}</strong></span>
+              <span>Wt <strong>{latest.weight ?? '—'}</strong></span>
+              <span>BMI <strong>{latest.bmi ?? '—'}</strong></span>
+              {observations && observations.length > 1 && <Tag>{observations.length} sets</Tag>}
+            </>
+          ) : (
+            <Text type="secondary" italic style={{ fontSize: 12 }}>
+              No vitals recorded yet
+            </Text>
+          )}
+          <Button size="small" type="link" style={{ padding: 0 }} onClick={openRecord}>
+            Record
+          </Button>
+          {latest && (
+            <Button size="small" type="link" style={{ padding: 0 }} onClick={() => setExpanded(true)}>
+              Expand
+            </Button>
+          )}
+        </Space>
+        {latest && (
+          <div style={{ lineHeight: 1.2 }}>
+            <Attribution observation={latest} />
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <Card
       size="small"
@@ -125,6 +180,11 @@ export function VisitObservationsPanel({ visitId, compact }: VisitObservationsPa
         <Space>
           <HeartOutlined /> Vitals &amp; Observations
           {observations && observations.length > 1 && <Tag>{observations.length} sets</Tag>}
+          {compact && (
+            <Button size="small" type="link" style={{ padding: 0 }} onClick={() => setExpanded(false)}>
+              Collapse
+            </Button>
+          )}
         </Space>
       }
       style={{ marginBottom: compact ? 6 : 8 }}

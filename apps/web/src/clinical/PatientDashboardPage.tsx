@@ -10,6 +10,7 @@ import {
   Row,
   Segmented,
   Space,
+  Drawer,
   Modal,
   Spin,
   Statistic,
@@ -69,6 +70,7 @@ export function PatientDashboardPage() {
   const [expandProfile, setExpandProfile] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [newVisitOpen, setNewVisitOpen] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
   const [selectedVisitId, setSelectedVisitId] = useState<string>();
   const [activeRecordTab, setActiveRecordTab] = useState('notes');
   const layout = useRecordViewLayoutStore((state) => state.layout);
@@ -364,18 +366,40 @@ export function PatientDashboardPage() {
         )}
 
         {selectedVisit && layout === 'canvas' && (
-          <>
-            <Col xs={24} lg={16} style={canvasFill ? { height: '100%' } : undefined}>
+          // C2 (D-053) — the Canvas workspace is a flex row, not an antd
+          // 16/8 grid. The old grid gave the sidebar a third of the screen
+          // and left the editor 22px of typing height (measured); a bounded
+          // sidebar plus a growing main column is what makes the note the
+          // dominant surface.
+          <Col span={24} style={canvasFill ? { height: '100%', minHeight: 0 } : undefined}>
+            <div
+              className="kw-canvas-shell"
+              style={{
+                display: 'flex',
+                gap: 12,
+                alignItems: 'stretch',
+                height: canvasFill ? '100%' : undefined,
+                minHeight: 0,
+              }}
+            >
               <div
+                className="kw-canvas-main"
                 style={{
+                  flex: '1 1 auto',
+                  minWidth: 0,
                   display: 'flex',
                   flexDirection: 'column',
+                  gap: 8,
                   height: canvasFill ? '100%' : undefined,
-                  gap: 6,
+                  minHeight: 0,
                 }}
               >
+                {/* The notes card grows; its body does NOT scroll, so the
+                    editor itself is the tall element rather than a short box
+                    inside a scrolling card. */}
                 <Card
                   size="small"
+                  className="kw-notes-card"
                   title={<Space>Clinical Notes <Tag>{selectedVisit.visitNumber}</Tag></Space>}
                   style={
                     canvasFill
@@ -385,25 +409,34 @@ export function PatientDashboardPage() {
                   styles={
                     canvasFill
                       ? {
-                          header: { padding: '4px 12px', minHeight: 28 },
-                          body: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', padding: 6 },
+                          header: { padding: '4px 12px', minHeight: 30 },
+                          body: {
+                            flex: '1 1 auto',
+                            minHeight: 0,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            padding: 8,
+                          },
                         }
                       : undefined
                   }
                 >
-                  <ClinicalNotesTab visitId={selectedVisit.id} patientId={patient.id} compact />
+                  <ClinicalNotesTab visitId={selectedVisit.id} patientId={patient.id} compact={canvasFill} />
                 </Card>
-                <Row gutter={[8, 8]} style={canvasFill ? { flex: '0 0 118px', minHeight: 0 } : undefined}>
-                  <Col xs={12} sm={12} lg={6} style={canvasFill ? { height: '100%' } : undefined}>
+
+                {/* Lower panels: content-aware height instead of the old
+                    fixed 118px, which forced four tiny internal scrollbars. */}
+                <Row gutter={[8, 8]} style={canvasFill ? { flex: '0 0 auto' } : undefined}>
+                  <Col xs={12} sm={12} lg={6}>
                     <DiagnosisSummaryCard visitId={selectedVisit.id} />
                   </Col>
-                  <Col xs={12} sm={12} lg={6} style={canvasFill ? { height: '100%' } : undefined}>
+                  <Col xs={12} sm={12} lg={6}>
                     <OrdersSummaryCard visitId={selectedVisit.id} />
                   </Col>
-                  <Col xs={12} sm={12} lg={6} style={canvasFill ? { height: '100%' } : undefined}>
+                  <Col xs={12} sm={12} lg={6}>
                     <MedicationsSummaryCard visitId={selectedVisit.id} />
                   </Col>
-                  <Col xs={12} sm={12} lg={6} style={canvasFill ? { height: '100%' } : undefined}>
+                  <Col xs={12} sm={12} lg={6}>
                     <DocumentsInvoiceSummaryCard
                       visit={selectedVisit}
                       patientName={patient.name}
@@ -412,22 +445,72 @@ export function PatientDashboardPage() {
                   </Col>
                 </Row>
               </div>
-            </Col>
 
-            <Col xs={24} lg={8} style={canvasFill ? { height: '100%', overflowY: 'auto' } : undefined}>
-              <PatientSummarySidebar
-                patient={patient}
-                visits={visits}
-                selectedVisitId={selectedVisit.id}
-                onSelectVisit={requestVisitChange}
-                expanded={expandProfile}
-                onToggleExpand={() => setExpandProfile((prev) => !prev)}
-                onNewVisit={() => setNewVisitOpen(true)}
-              />
-            </Col>
-          </>
+              {/* Bounded sidebar: min 280px so it stays readable, ~22vw so it
+                  scales, max 360px so it never eats the editor's width. Below
+                  the desktop breakpoint it becomes a drawer (see below). */}
+              {isDesktop && (
+                <aside
+                  className="kw-canvas-sidebar"
+                  style={{
+                    flex: '0 0 clamp(280px, 22vw, 360px)',
+                    width: 'clamp(280px, 22vw, 360px)',
+                    height: canvasFill ? '100%' : undefined,
+                    minHeight: 0,
+                    overflowY: canvasFill ? 'auto' : undefined,
+                  }}
+                >
+                  <PatientSummarySidebar
+                    patient={patient}
+                    visits={visits}
+                    selectedVisitId={selectedVisit.id}
+                    onSelectVisit={requestVisitChange}
+                    expanded={expandProfile}
+                    onToggleExpand={() => setExpandProfile((prev) => !prev)}
+                    onNewVisit={() => setNewVisitOpen(true)}
+                  />
+                </aside>
+              )}
+            </div>
+          </Col>
         )}
       </Row>
+
+      {/* Tablet/mobile: the summary moves out of the editor's way entirely.
+          The allergy alert stays visible in the header, so nothing clinically
+          urgent hides behind a closed drawer. */}
+      {selectedVisit && layout === 'canvas' && !isDesktop && (
+        <>
+          <Button
+            block
+            icon={<UserOutlined />}
+            style={{ marginTop: 12 }}
+            onClick={() => setSummaryOpen(true)}
+          >
+            Patient Summary &amp; Recent Visits
+          </Button>
+          <Drawer
+            title="Patient Summary"
+            placement="right"
+            width={340}
+            open={summaryOpen}
+            onClose={() => setSummaryOpen(false)}
+          >
+            <PatientSummarySidebar
+              patient={patient}
+              visits={visits}
+              selectedVisitId={selectedVisit.id}
+              onSelectVisit={(visitId) => {
+                setSummaryOpen(false);
+                requestVisitChange(visitId);
+              }}
+              expanded={expandProfile}
+              onToggleExpand={() => setExpandProfile((prev) => !prev)}
+              onNewVisit={() => setNewVisitOpen(true)}
+            />
+          </Drawer>
+        </>
+      )}
 
       <EditPatientDrawer patient={patient} open={editOpen} onClose={() => setEditOpen(false)} />
       <NewVisitDrawer

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Button, Card, List, Popconfirm, Space, Tag, Typography, message } from 'antd';
 import { DeleteOutlined, DownloadOutlined, PaperClipOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -33,6 +33,7 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
   const uploadAttachment = useUploadVisitAttachment(visitId);
   const deleteAttachment = useDeleteVisitAttachment(visitId);
   const currentStaff = useAuthStore((state) => state.staff);
+  const [expanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChosen = async (file: File | undefined) => {
@@ -54,16 +55,62 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
     }
   };
 
+  // C2 (D-053) — when there is nothing attached, this used to render a full
+  // card with an empty-list placeholder, eating vertical space the note
+  // editor needs. Collapsed it is a single row: "Attachments (0)  [Upload]".
+  const count = attachments?.length ?? 0;
+  if (compact && count === 0 && !expanded) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '2px 10px',
+          border: '1px solid #f0f0f0',
+          borderRadius: 6,
+          marginBottom: 4,
+          flex: '0 0 auto',
+        }}
+      >
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          <PaperClipOutlined /> Attachments (0)
+        </Text>
+        <>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              void handleFileChosen(e.target.files?.[0]);
+              e.target.value = '';
+            }}
+          />
+          <Button
+            size="small"
+            type="text"
+            icon={<UploadOutlined />}
+            loading={uploadAttachment.isPending}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Upload
+          </Button>
+        </>
+      </div>
+    );
+  }
+
   return (
     <Card
       size="small"
       title={
         <Space>
           <PaperClipOutlined /> Attachments
-          {attachments && attachments.length > 0 && <Tag>{attachments.length}</Tag>}
+          {count > 0 && <Tag>{count}</Tag>}
         </Space>
       }
-      style={{ marginBottom: compact ? 6 : 8 }}
+      style={{ marginBottom: compact ? 6 : 8, flex: '0 0 auto' }}
       styles={
         compact
           ? { header: { padding: '2px 10px', minHeight: 24 }, body: { padding: '6px 10px' } }

@@ -408,7 +408,16 @@ export function ClinicalNotesTab({ visitId, patientId, compact }: ClinicalNotesT
     status.tone === 'warning' ? '#d46b08' : status.tone === 'error' ? '#cf1322' : status.tone === 'success' ? '#389e0d' : undefined;
 
   return (
-    <>
+    // C2 (D-053) — a flex column so the editor can claim the remaining
+    // height. Everything above it is deliberately compact; the note is the
+    // dominant surface.
+    <div
+      style={
+        compact
+          ? { display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0, gap: 4 }
+          : undefined
+      }
+    >
       <VisitObservationsPanel visitId={visitId} compact={compact} />
       <VisitAttachmentsPanel visitId={visitId} compact={compact} />
 
@@ -526,7 +535,15 @@ export function ClinicalNotesTab({ visitId, patientId, compact }: ClinicalNotesT
       <Card
         size="small"
         title={draftType === 'STAFF_REMARK' ? 'Staff Remark' : 'Clinical Notes'}
-        styles={compact ? { header: { padding: '4px 12px', minHeight: 28 }, body: { padding: 8 } } : undefined}
+        style={compact ? { flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' } : undefined}
+        styles={
+          compact
+            ? {
+                header: { padding: '4px 12px', minHeight: 28, flex: '0 0 auto' },
+                body: { padding: 8, flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' },
+              }
+            : undefined
+        }
         extra={
           <Space>
             <Select
@@ -574,6 +591,7 @@ export function ClinicalNotesTab({ visitId, patientId, compact }: ClinicalNotesT
             draftStore.setContent(key, html);
           }}
           compact={compact}
+          fill={compact}
         />
       </Card>
 
@@ -661,7 +679,7 @@ export function ClinicalNotesTab({ visitId, patientId, compact }: ClinicalNotesT
         />
         <Input.TextArea readOnly value={stripHtml(content)} rows={12} />
       </Modal>
-    </>
+    </div>
   );
 }
 
