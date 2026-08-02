@@ -35,6 +35,7 @@ import { PlatformDocumentTemplatesPage } from './platform/PlatformDocumentTempla
 import { PrintOrderResultPage } from './clinical/PrintOrderResultPage';
 import { ProcedureQueuePage } from './clinical/ProcedureQueuePage';
 import { BillingVisitPage } from './clinical/BillingVisitPage';
+import { HistoricalVisitPage } from './clinical/history/HistoricalVisitPage';
 import { DoctorSchedulesPage } from './appointment/DoctorSchedulesPage';
 import { DoctorServiceQualificationsPage } from './appointment/DoctorServiceQualificationsPage';
 import { SlotCapacityConfigsPage } from './appointment/SlotCapacityConfigsPage';
@@ -92,6 +93,8 @@ export function App() {
           {/* G3c (D-065) — the billing workflow's own route. The Clinical
               Workspace shows a read-only summary and links here. */}
           <Route path="/billing/visits/:visitId" element={<BillingVisitPage />} />
+          {/* G4 (D-067) — read-only historical visit, opened in its own tab. */}
+          <Route path="/history/patients/:patientId/visits/:visitId" element={<HistoricalVisitPage />} />
 
           {/* Management (M1, owner-approved horizontal layout) — review/
               approve/report work only; set-once config lives under

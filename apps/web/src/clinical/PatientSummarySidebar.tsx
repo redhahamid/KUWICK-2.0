@@ -1,5 +1,5 @@
 import { Button, Card, Descriptions, Space, Tag, Typography } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { HistoryOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Patient } from '../core/types';
 import { Visit } from './types';
@@ -10,7 +10,9 @@ interface PatientSummarySidebarProps {
   patient: Patient;
   visits: Visit[] | undefined;
   selectedVisitId: string | undefined;
-  onSelectVisit: (visitId: string) => void;
+  // G4 (D-067) — reviewing history, NOT switching to it. This used to be
+  // `onSelectVisit`, which replaced the visit under the open editor.
+  onReviewHistory: () => void;
   expanded: boolean;
   onToggleExpand: () => void;
   onNewVisit: () => void;
@@ -25,7 +27,7 @@ export function PatientSummarySidebar({
   patient,
   visits,
   selectedVisitId,
-  onSelectVisit,
+  onReviewHistory,
   expanded,
   onToggleExpand,
   onNewVisit,
@@ -76,36 +78,55 @@ export function PatientSummarySidebar({
         )}
       </Card>
 
+      {/* G4 (D-067) — a timeline, not a switcher. These entries used to
+          replace the current visit on click, which could swap the record
+          under an open editor mid-consultation. They are now labels; the
+          button below opens the read-only history. */}
       <Card
         size="small"
         title={<Space>Recent Visits <Tag>{visits?.length ?? 0}</Tag></Space>}
         extra={<Button size="small" icon={<PlusOutlined />} onClick={onNewVisit} />}
       >
-        <Space direction="vertical" size={8} style={{ width: '100%' }}>
+        <Space direction="vertical" size={6} style={{ width: '100%' }}>
           {visits && visits.length > 0 ? (
-            visits.map((visit) => (
+            visits.slice(0, 4).map((visit) => (
               <div
                 key={visit.id}
-                onClick={() => onSelectVisit(visit.id)}
+                className="kw-visit-timeline-entry"
                 style={{
-                  cursor: 'pointer',
-                  padding: '8px 10px',
+                  padding: '6px 10px',
                   borderRadius: 6,
-                  background: visit.id === selectedVisitId ? '#4338ca' : '#fafafa',
-                  color: visit.id === selectedVisitId ? '#fff' : undefined,
+                  background: visit.id === selectedVisitId ? '#eef2ff' : '#fafafa',
+                  borderLeft: visit.id === selectedVisitId ? '3px solid #4338ca' : '3px solid transparent',
                 }}
               >
-                <Text strong style={{ color: 'inherit', fontSize: 12 }}>
+                <Text strong style={{ fontSize: 12 }}>
                   {dayjs(visit.checkInAt).format('D MMM YYYY, HH:mm')}
                 </Text>
                 <div>
-                  <Tag style={{ marginTop: 2 }}>{visit.visitNumber}</Tag>
+                  <Space size={4} wrap>
+                    <Tag style={{ marginTop: 2 }}>{visit.visitNumber}</Tag>
+                    {visit.id === selectedVisitId && (
+                      <Tag color="blue" style={{ marginTop: 2 }}>
+                        Current visit
+                      </Tag>
+                    )}
+                  </Space>
                 </div>
               </div>
             ))
           ) : (
             <Text type="secondary">No visits yet</Text>
           )}
+          <Button
+            block
+            icon={<HistoryOutlined />}
+            onClick={onReviewHistory}
+            style={{ minHeight: 44 }}
+            disabled={!visits || visits.length === 0}
+          >
+            Previous Visits
+          </Button>
         </Space>
       </Card>
     </Space>

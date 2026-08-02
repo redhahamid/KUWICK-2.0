@@ -4,6 +4,8 @@ import { ServiceCatalogController } from './service-catalog.controller';
 import { ServiceCatalogService } from './service-catalog.service';
 import { VisitController } from './visit.controller';
 import { VisitService } from './visit.service';
+import { VisitHistoryController } from './visit-history.controller';
+import { VisitHistoryService } from './visit-history.service';
 import { QueueTicketController } from './queue-ticket.controller';
 import { QueueTicketService } from './queue-ticket.service';
 import { ClinicalNoteController } from './clinical-note.controller';
@@ -52,6 +54,7 @@ import { ChatChannelService } from './chat-channel.service';
   controllers: [
     ServiceCatalogController,
     VisitController,
+    VisitHistoryController,
     QueueTicketController,
     ClinicalNoteController,
     DiagnosisController,
@@ -75,6 +78,7 @@ import { ChatChannelService } from './chat-channel.service';
   providers: [
     ServiceCatalogService,
     VisitService,
+    VisitHistoryService,
     QueueTicketService,
     ClinicalNoteService,
     DiagnosisService,

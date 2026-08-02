@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
+  Alert,
   Avatar,
   Badge,
   Button,
@@ -19,6 +20,7 @@ import {
 } from 'antd';
 import {
   AppstoreOutlined,
+  HistoryOutlined,
   EditOutlined,
   ExclamationCircleOutlined,
   PlusOutlined,
@@ -42,6 +44,7 @@ import { useIsDesktop } from '../core/hooks/useMediaQuery';
 import { useRecordViewLayoutStore } from './record-view-layout-store';
 import { CanvasPatientHeader } from './CanvasPatientHeader';
 import { PatientSummarySidebar } from './PatientSummarySidebar';
+import { VisitHistoryPanel } from './history/VisitHistoryPanel';
 // G1 (D-058) — the four *SummaryCard components are deliberately still in the
 // tree but no longer rendered anywhere. They stay until G1 is accepted and
 // functional parity is confirmed, then go in a cleanup commit. Only one
@@ -72,6 +75,9 @@ export function PatientDashboardPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [newVisitOpen, setNewVisitOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  // G4 (D-067) — reviewing previous visits is its own surface, and opening it
+  // changes nothing about the consultation in progress.
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [selectedVisitId, setSelectedVisitId] = useState<string>();
   const [activeRecordTab, setActiveRecordTab] = useState('notes');
   const layout = useRecordViewLayoutStore((state) => state.layout);
@@ -279,29 +285,34 @@ export function PatientDashboardPage() {
             }
             size="small"
           >
+            {/* G4 (D-067) — this list previously called setSelectedVisitId
+                DIRECTLY, with no unsaved-note guard at all: one click on a
+                three-year-old visit replaced the record under the editor and
+                silently abandoned whatever was being typed. It is now a
+                timeline that opens the read-only history. */}
             <Space direction="vertical" size={8} style={{ width: '100%' }}>
               {visits && visits.length > 0 ? (
-                visits.map((visit) => (
+                visits.slice(0, 6).map((visit) => (
                   <div
                     key={visit.id}
-                    onClick={() => setSelectedVisitId(visit.id)}
+                    className="kw-visit-timeline-entry"
                     style={{
-                      cursor: 'pointer',
                       padding: 12,
                       borderRadius: 8,
-                      background: visit.id === selectedVisit?.id ? '#4338ca' : '#fafafa',
-                      color: visit.id === selectedVisit?.id ? '#fff' : undefined,
+                      background: visit.id === selectedVisit?.id ? '#eef2ff' : '#fafafa',
+                      borderLeft: visit.id === selectedVisit?.id ? '3px solid #4338ca' : '3px solid transparent',
                     }}
                   >
-                    <Text strong style={{ color: 'inherit' }}>
-                      {dayjs(visit.checkInAt).format('D MMM YYYY')}
-                    </Text>
+                    <Text strong>{dayjs(visit.checkInAt).format('D MMM YYYY')}</Text>
                     <div>
-                      <Text style={{ color: 'inherit', opacity: 0.8, fontSize: 12 }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
                         {dayjs(visit.checkInAt).format('HH:mm')}
                       </Text>
                     </div>
-                    <Tag style={{ marginTop: 4 }}>{visit.visitNumber}</Tag>
+                    <Space size={4} wrap style={{ marginTop: 4 }}>
+                      <Tag>{visit.visitNumber}</Tag>
+                      {visit.id === selectedVisit?.id && <Tag color="blue">Current visit</Tag>}
+                    </Space>
                     <div style={{ marginTop: 8, fontSize: 12 }}>
                       <div>Billing Type: {visit.billingType}</div>
                       <div>Doctor: {visit.staff?.fullName ?? '—'}</div>
@@ -311,6 +322,15 @@ export function PatientDashboardPage() {
               ) : (
                 <Text type="secondary">No visits yet</Text>
               )}
+              <Button
+                block
+                icon={<HistoryOutlined />}
+                onClick={() => setHistoryOpen(true)}
+                style={{ minHeight: 44 }}
+                disabled={!visits || visits.length === 0}
+              >
+                Previous Visits
+              </Button>
             </Space>
           </Card>
         </Col>
@@ -417,7 +437,7 @@ export function PatientDashboardPage() {
                     patient={patient}
                     visits={visits}
                     selectedVisitId={selectedVisit.id}
-                    onSelectVisit={requestVisitChange}
+                    onReviewHistory={() => setHistoryOpen(true)}
                     expanded={expandProfile}
                     onToggleExpand={() => setExpandProfile((prev) => !prev)}
                     onNewVisit={() => setNewVisitOpen(true)}
@@ -463,9 +483,9 @@ export function PatientDashboardPage() {
               patient={patient}
               visits={visits}
               selectedVisitId={selectedVisit.id}
-              onSelectVisit={(visitId) => {
+              onReviewHistory={() => {
                 setSummaryOpen(false);
-                requestVisitChange(visitId);
+                setHistoryOpen(true);
               }}
               expanded={expandProfile}
               onToggleExpand={() => setExpandProfile((prev) => !prev)}
@@ -475,12 +495,37 @@ export function PatientDashboardPage() {
         </>
       )}
 
+      {/* G4 (D-067) — Previous Visits. Wide on desktop so clinical detail is
+          readable without a horizontal scroll; full-screen on mobile. The
+          consultation stays mounted behind it: closing this drawer returns to
+          the same visit, the same note and the same unsaved text. */}
+      <Drawer
+        title={`Previous Visits — ${patient.name}`}
+        placement="right"
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        styles={{ body: { paddingTop: 12 } }}
+        {...(isDesktop ? { width: 720 } : { height: '92%', placement: 'bottom' as const })}
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="Read only"
+          description="Reviewing a previous visit does not change the visit you are working on, and nothing here can be edited."
+        />
+        <VisitHistoryPanel patientId={patient.id} currentVisitId={selectedVisit?.id} compact={!isDesktop} />
+      </Drawer>
+
       <EditPatientDrawer patient={patient} open={editOpen} onClose={() => setEditOpen(false)} />
       <NewVisitDrawer
         patient={patient}
         open={newVisitOpen}
         onClose={() => setNewVisitOpen(false)}
-        onCreated={(visitId) => setSelectedVisitId(visitId)}
+        // C1 (D-052) — creating a visit also swaps the record under the
+        // editor, so it goes through the same unsaved-note guard as any other
+        // change of current visit.
+        onCreated={(visitId) => requestVisitChange(visitId)}
       />
     </div>
   );

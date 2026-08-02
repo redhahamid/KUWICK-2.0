@@ -912,3 +912,60 @@ export interface ChatChannel {
   latestMessageAt?: string | null;
   latestMessageStaffId?: string | null;
 }
+
+// =============================================================================
+// G4 (D-067) — read-only clinical history.
+//
+// These types describe a SEPARATE read-only API (`/patients/:id/history`),
+// not the current-visit endpoints. The collapsed card is built from the
+// summary; the detail is fetched only when a visit is expanded.
+// =============================================================================
+
+export interface VisitHistoryMedication {
+  name: string;
+  strength: string | null;
+  status: PrescriptionStatus;
+}
+
+export interface VisitHistorySummary {
+  id: string;
+  visitNumber: string;
+  checkInAt: string;
+  checkOutAt: string | null;
+  clinicId: string;
+  clinicName: string | null;
+  doctorName: string | null;
+  doctorRole: string | null;
+  billingType: string;
+  presentingComplaint: string | null;
+  queueNumber: number | null;
+  queueType: QueueType | null;
+  // `isPrimary` is false when priority was never recorded — G2a's honest
+  // state. The card must not imply a primary diagnosis that nobody set.
+  primaryDiagnosis: { name: string; icd10Code: string | null; isPrimary: boolean } | null;
+  diagnosisCount: number;
+  medications: VisitHistoryMedication[];
+  medicationCount: number;
+  mc: { startDate: string | null; endDate: string | null } | null;
+  referral: { referredTo: string | null; title: string | null } | null;
+  documentCount: number;
+  voidedDocumentCount: number;
+}
+
+export interface VisitHistoryPage {
+  items: VisitHistorySummary[];
+  nextCursor: string | null;
+  total: number;
+}
+
+export interface VisitHistoryDetail {
+  visit: Visit;
+  notes: ClinicalNote[];
+  observations: VisitObservation[];
+  diagnoses: Diagnosis[];
+  orders: (OrderService & { attachments: Attachment[] })[];
+  prescriptions: Prescription[];
+  documents: ClinicalDocument[];
+  attachments: VisitAttachment[];
+  invoices: Invoice[];
+}

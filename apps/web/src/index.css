@@ -212,3 +212,25 @@
     min-width: 44px;
   }
 }
+
+/* G4 (D-067) — read-only clinical history.
+   antd's built-in clear "x" inside the history search box renders at 12px,
+   which is a real problem on a phone: measured at 375px it was the only
+   control in the panel under the 44px touch target. The padding/negative
+   margin pair grows the hit area without moving anything on the page. */
+.kw-history-panel .ant-input-clear-icon,
+.kw-history-panel .ant-picker-clear {
+  padding: 15px;
+  margin: -15px;
+  font-size: 14px;
+}
+
+/* Historical note content is rendered exactly as it was written, so it needs
+   the same typography as the editor without any of its affordances. */
+.kw-history-note-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.kw-history-note-body p {
+  margin: 0 0 6px;
+}

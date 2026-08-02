@@ -823,6 +823,52 @@ Claim submission and the panel workflow remain outside this closure, as instruct
 
 ---
 
+## D-067 — G4: a previous visit is read, not opened
+
+Clicking a previous visit **replaced the current visit** in the workspace. Mid-consultation that could swap the record under an open editor, raise an unsaved-note prompt, interrupt prescribing, and leave the doctor unsure which visit they were documenting against. Reviewing history and working on a visit are different acts, and they now use different surfaces.
+
+### What the audit found
+
+| | Before |
+|---|---|
+| Canvas sidebar "Recent Visits" | click → `requestVisitChange` — guarded by the C1 prompt, but still destructive |
+| Flow layout "Visits History" | click → `setSelectedVisitId` **directly — no guard at all**, so one click silently abandoned unsaved text |
+| Data | `GET /visits?patientId=` — every visit, unpaginated, joining only `staff` and `queueTicket` |
+| Summary content | none. No diagnoses, medications or documents to summarise a card from |
+| Authorisation | tenant isolation via RLS only. **Neither `findAll` nor `findById` checked branch access or the patient/visit relationship** — any visit id in the tenant was readable by anyone who knew it |
+
+So this needed both a new read path and a real guard, not a UI change.
+
+### The read-only API
+
+`/patients/:patientId/history` (paginated summaries) and `/patients/:patientId/history/:visitId` (one full visit). `VisitHistoryService` **has no create, update or delete method**, and a test asserts its method list — the read-only promise is enforced by there being nothing to call, not by hiding buttons.
+
+Three checks, all fail-closed: the actor comes from the session; the visit's stored `patientId` must equal the one in the URL (mismatch → **404**, so probing another chart learns nothing); branch is checked against the visit's **own stored clinic**. On the list, branch becomes a Prisma filter rather than a post-filter, so unreadable visits are never loaded, never counted and never paged over — and a staff member with no branch in a multi-branch tenant matches nothing.
+
+**Search is server-side** and reaches diagnoses, ICD-10 codes, medications, documents, doctor and complaint. A filter that returns nothing therefore means the clinic has no such record — not "not on this page". The count line says `10 shown of 14 matching` so the difference is never hidden.
+
+### The current consultation is untouchable from here
+
+Opening, expanding, filtering or closing history cannot change the current visit id, the patient context, the note, or any C1 draft key. History caches are keyed `['visit-history', …]`, disjoint from `['visits'|'clinical-notes'|'diagnoses', …]`, so a historical read can neither populate nor invalidate what the open consultation is reading. Measured live: the unsaved note is **byte-for-byte identical** after opening history, expanding several visits, viewing a clinical image, opening a full visit in another tab and closing the drawer — and **no database row is created or mutated** by any of it.
+
+Several visits stay open at once, deliberately. Comparing two antibiotic courses, repeated MCs or a referral progression is the reason a doctor opens history, so this is not an accordion.
+
+**Open Full Visit** targets `/history/patients/:patientId/visits/:visitId` in a new tab. A separate route rather than a read-only *mode* on `/patients/:id`: a flag can be lost, defaulted wrongly or forgotten by a future caller, and a different URL cannot become accidentally editable.
+
+### Honest presentation
+
+Every summary field returns null when the underlying value was never recorded, and the card renders nothing for a null — a blank "MC:" label would read as "we checked and there wasn't one". A diagnosis with no recorded priority says **"Priority not recorded"**, never "Secondary". Removed diagnoses and voided documents appear in their own blocks, never mixed into the live list with only a colour to tell them apart. MC and referral are shown as words, not colour alone.
+
+### Not fixed here, found here
+
+`VisitService.nextVisitNumber()` is `count(*) + 1`. Once **any** visit has been deleted the count falls behind the highest number in use and every subsequent `POST /visits` fails with a 500 on `visits_tenant_id_visit_number_key`. Reproduced in this cycle. G4 must not change current-visit workflows, so it is reported rather than patched — see the sign-off list below.
+
+**Verification:** 23 new backend tests (386 total), 38 new frontend tests (187 total), both typechecks clean, and `prisma/g4-visit-history-check.ts` — 39 checks against the real database, HTTP API and Chrome at 1920/1366/900/375, on a patient with 13 previous visits, two doctors, a removed diagnosis, a weight-based paediatric course, ordered/in-progress/completed procedures with a result file, clinical images, an authorised MC, a referral, a memo, a voided MC, cash and panel invoices, and a legacy visit with no recorded attribution.
+
+**Reversibility**: High for the UI; the history authorisation should not be reverted.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 - ~~Diagnosis deletion is a hard delete with no audit trail (D-059)~~ — **resolved by D-061.**
@@ -831,6 +877,7 @@ Claim submission and the panel workflow remain outside this closure, as instruct
 - ~~Order attachments are hard-deleted, file included (D-061)~~ — **resolved by D-062.**
 - **Prescriptions are soft-deleted but unattributed**: `deletedAt` is set and the row survives, and deletion is blocked once the item leaves `ORDERED` — but no actor and no reason are recorded. Clinically better than the others, still short of the diagnosis standard. Recommended for a **medication-governance checkpoint after G3**.
 - **Orders/procedures have no delete route at all** — only `cancel`, which sets `CANCELLED` and stores `cancelReason`. This one is already acceptable; it lacks a cancelling-actor field, which is a smaller gap.
+- **Visit numbering breaks after any deletion** (found in G4, D-067): `nextVisitNumber()` is `count(*) + 1`, so once a visit has been deleted every new visit collides on the tenant/number unique index and `POST /visits` returns 500. Needs a real sequence or a max-based allocation; deliberately not changed during G4, which must not touch current-visit workflows.
 - **The wider API RBAC gap remains open** (D-056). Clinical notes, observations, diagnoses, document authorisation (D-064) and the five invoice mutation routes (D-066) now have server-side role enforcement; the rest of the API does not.
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:
