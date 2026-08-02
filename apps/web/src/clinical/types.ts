@@ -85,6 +85,9 @@ export interface Visit {
   patient?: Patient;
   clinic?: Clinic;
   queueTicket?: QueueTicket | null;
+  // G3c (D-065) — the panel lives on the VISIT, not the invoice, so the
+  // Invoice Summary reads the panel's name from here when resolved.
+  panelClinic?: PanelClinic | null;
 }
 
 // D-044 — standalone Visit creation (Patient Dashboard's "New Visit"),
@@ -652,6 +655,20 @@ export interface InvoiceLine {
   sourcePrescriptionId: string | null;
   excludedFromPanel: boolean;
   createdAt: string;
+  // G3c (D-065) — resolved server-side so a line's SOURCE is a real
+  // relationship, never inferred from the description text.
+  sourceOrderService?: {
+    id: string;
+    procedureName: string;
+    orderType: ServiceOrderType;
+    status: OrderServiceStatus;
+  } | null;
+  sourcePrescription?: {
+    id: string;
+    itemId: string;
+    status: PrescriptionStatus;
+    item?: { name: string } | null;
+  } | null;
 }
 
 export interface Invoice {
@@ -672,6 +689,16 @@ export interface Invoice {
   updatedAt: string;
   lines: InvoiceLine[];
   visit?: Visit;
+  // G3c (D-065) — resolved for the read-only Clinical Invoice Summary.
+  createdBy?: StaffRef | null;
+  // The panel-claim lifecycle is SEPARATE from the payment lifecycle and is
+  // never folded into one badge.
+  claimBatchLines?: {
+    id: string;
+    status: ClaimLineStatus;
+    claimedAmount: string;
+    paidAmount: string | null;
+  }[];
 }
 
 // Phase 1e (Panel Claims Core). One status lifecycle for every panel

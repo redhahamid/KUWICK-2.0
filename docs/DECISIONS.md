@@ -731,6 +731,53 @@ A clinical document no doctor has authorised **cannot be printed or downloaded**
 
 ---
 
+## D-065 — G3c: the doctor reads the money, the biller moves it
+
+The Clinical Workspace mounted the **full mutable `InvoiceTab`** — Create Invoice, Quick Add, add/remove line, change quantity and price, Cancel, Mark Paid. G1 mounted it under a parity rule and said outright that making it read-only was G3's job. This is that.
+
+### The audit found something that blocks the instruction as written
+
+There is **no dedicated billing area**. `InvoiceTab` was mounted in exactly two places, both of them the Clinical Workspace (the Canvas section and the Flow tab). `/management/reports/invoices` is a read-only listing with a CSV button; the Queue's "Dispensary & Payment" tab is still an `Empty` placeholder. Removing the controls as instructed, and nothing else, would have left the clinic **unable to bill anybody**.
+
+So G3c also gives the existing workflow a home: `/billing/visits/:visitId`, which mounts the **unchanged** `InvoiceTab`. No billing logic, calculation or rule is touched — the component is simply reachable at its own URL, which is also what lets "Open Full Invoice" point somewhere real. Designing the billing workflow properly is a separate checkpoint.
+
+### What the model actually supports — and what it does not
+
+| Asked for | Reality |
+|---|---|
+| Invoice status | `UNPAID / PAID / CANCELLED`. **No DRAFT**, **no PARTIALLY_PAID** — `pay()` is all-or-nothing. |
+| Payment records | None. A single `paidAt` + `paymentMethod` (free text) on the invoice. |
+| Tax / SST | **No column anywhere.** Not displayed. |
+| Discount | **No column.** Not displayed. |
+| Credit / debit notes | Do not exist. |
+| Copayment | `panelCoveredAmount` / `patientPaidAmount`, snapshotted **at pay time**, `0/0` while unpaid. |
+| Panel | Lives on the **VISIT**, not the invoice. |
+| One invoice per visit? | **No.** No unique constraint on `visitId` — a visit can carry several. |
+
+So "Partially Paid" is not offered: deriving it from `patientPaidAmount < totalAmount` would be wrong, because on a panel invoice the patient legitimately pays only the copay and the invoice is fully PAID. The panel/patient split is shown **only once the pay step has recorded it** — "Panel covered RM 0.00" on an unpaid panel invoice reads as "the panel pays nothing", which is false. And where a visit carries more than one invoice the collapsed line says "+N more on this visit" rather than quietly reporting the newest.
+
+**Payment status and panel-claim status are never merged.** `ClaimBatchLine.status` is its own lifecycle — an invoice can be PAID (patient settled the copay) while the claim is still PENDING with the panel — so it gets its own badge, with words as well as colour.
+
+### Read-only means read-only
+
+`InvoiceSummary` imports `useInvoices` and nothing else. There is no `useCreateInvoice`, `useAddInvoiceLine`, `useRemoveInvoiceLine`, `useCancelInvoice` or `usePayInvoice` in it or in `InvoiceSection`, and no `InvoiceTab`. A test asserts this **against the source with comments stripped** — the files' own prose names those hooks to explain their absence, and a naive scan would have passed or failed for the wrong reason. Both the Canvas section and the Flow tab render the same component, so a control cannot survive on one surface.
+
+**Line sources come only from the stored relationship** — `sourcePrescriptionId` → Medication, `sourceOrderService.orderType` → Procedure or Service. A freehand line shows no source tag. "Panadol" in a description does not make a line a medication.
+
+The backend's `totalAmount` is the only total; the frontend never re-sums the lines into a second figure.
+
+### Read security — the correction this needed
+
+`GET /invoices?visitId=` ran on the tenant-scoped client, so **tenant isolation held via RLS**, but **nothing checked the branch**: a staff member authorised only for Branch A could read Branch B's money for any visit id they could name. Every clinical read added since C0 goes through `assertMayTouchVisit`; the money did not. It does now, fail-closed, before exposing the data in the workspace.
+
+**Still open, and not fixed here:** every invoice MUTATION route — `POST /invoices`, `POST /invoices/:id/lines`, `DELETE /invoices/:id/lines/:lineId`, `PATCH /invoices/:id/cancel`, `PATCH /invoices/:id/pay` — has **no role enforcement and no branch enforcement**. Any authenticated user of the tenant can still create, line, cancel or mark-paid an invoice by calling the API directly. Removing the buttons from the Clinical Workspace is a UX correction, **not** a security one, and this decision does not pretend otherwise. Recommended as a dedicated **financial-RBAC checkpoint** covering those five routes plus claim submission and the panel workflow.
+
+**Verification:** 324 backend unit tests, 109 frontend tests, both typechecks clean, and `prisma/g3c-invoice-summary-check.ts` against the real database, HTTP API and Chrome across four viewports, with ten populated scenarios.
+
+**Reversibility**: High for the UI; the read-security correction should not be reverted.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 - ~~Diagnosis deletion is a hard delete with no audit trail (D-059)~~ — **resolved by D-061.**

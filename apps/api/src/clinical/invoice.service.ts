@@ -1,8 +1,10 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InvoiceStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
+import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { VisitService } from './visit.service';
+import { assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { AddInvoiceLineDto } from './dto/add-invoice-line.dto';
 import { CancelInvoiceDto } from './dto/cancel-invoice.dto';
@@ -16,6 +18,7 @@ function round2(value: number): number {
 export class InvoiceService {
   constructor(
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
+    private readonly rawPrisma: PrismaService,
     private readonly visits: VisitService,
   ) {}
 
@@ -42,10 +45,55 @@ export class InvoiceService {
     });
   }
 
-  findByVisitId(visitId: string) {
+  /**
+   * G3c (D-065) — the read the Clinical Workspace's Invoice Summary uses.
+   *
+   * Two corrections, both read-only:
+   *
+   * **Branch access is now enforced.** Tenant isolation came from RLS on the
+   * scoped client, but nothing checked the BRANCH: a staff member authorised
+   * only for Branch A could read Branch B's invoices for any visit id they
+   * could name. Every clinical read added since C0 goes through
+   * `assertMayTouchVisit`; the money did not. It does now, and the guard
+   * fails closed exactly as C0 specified.
+   *
+   * **It resolves what the summary must show without a second round trip:**
+   * who raised the invoice, the visit's panel (the panel lives on the VISIT,
+   * not the invoice), each line's source order/prescription so a doctor can
+   * see what a charge came from, and any panel-claim lines — claim status is
+   * a separate lifecycle from payment status and must never be folded into
+   * one badge.
+   */
+  async findByVisitId(visitId: string) {
+    await withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      await assertMayTouchVisit(tx, visitId, actor);
+    });
+
     return this.prisma.invoice.findMany({
       where: { visitId },
-      include: { lines: { orderBy: { createdAt: 'asc' } } },
+      include: {
+        lines: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            sourceOrderService: { select: { id: true, procedureName: true, orderType: true, status: true } },
+            sourcePrescription: { select: { id: true, itemId: true, status: true, item: { select: { name: true } } } },
+          },
+        },
+        createdBy: { select: { id: true, fullName: true, role: true } },
+        claimBatchLines: {
+          select: { id: true, status: true, claimedAmount: true, paidAmount: true },
+          orderBy: { createdAt: 'desc' },
+        },
+        visit: {
+          select: {
+            id: true,
+            billingType: true,
+            panelClinicId: true,
+            panelClinic: { select: { id: true, name: true } },
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }

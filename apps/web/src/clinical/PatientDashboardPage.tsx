@@ -36,7 +36,7 @@ import { DiagnosisTab } from './DiagnosisTab';
 import { OrdersServicesTab } from './OrdersServicesTab';
 import { MedicationsTab } from './MedicationsTab';
 import { DocumentsTab } from './DocumentsTab';
-import { InvoiceTab } from './InvoiceTab';
+import { InvoiceSummary } from './invoice/InvoiceSummary';
 import { useOrderServices } from './hooks/useOrderServices';
 import { useIsDesktop } from '../core/hooks/useMediaQuery';
 import { useRecordViewLayoutStore } from './record-view-layout-store';
@@ -363,7 +363,10 @@ export function PatientDashboardPage() {
                 {activeTab.key === 'documents' && (
                   <DocumentsTab visit={selectedVisit} patientName={patient.name} patientIdentifier={patient.identifierValue} />
                 )}
-                {activeTab.key === 'invoices' && <InvoiceTab visit={selectedVisit} />}
+                {/* G3c (D-065) — the Flow layout's invoice tab is the same
+                    read-only summary as the Canvas section. One implementation,
+                    so a mutation control cannot survive on one surface. */}
+                {activeTab.key === 'invoices' && <InvoiceSummary visit={selectedVisit} />}
               </Card>
             </Col>
           </>

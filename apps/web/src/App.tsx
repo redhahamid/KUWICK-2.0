@@ -34,6 +34,7 @@ import { DocumentTemplatesPage } from './clinical/DocumentTemplatesPage';
 import { PlatformDocumentTemplatesPage } from './platform/PlatformDocumentTemplatesPage';
 import { PrintOrderResultPage } from './clinical/PrintOrderResultPage';
 import { ProcedureQueuePage } from './clinical/ProcedureQueuePage';
+import { BillingVisitPage } from './clinical/BillingVisitPage';
 import { DoctorSchedulesPage } from './appointment/DoctorSchedulesPage';
 import { DoctorServiceQualificationsPage } from './appointment/DoctorServiceQualificationsPage';
 import { SlotCapacityConfigsPage } from './appointment/SlotCapacityConfigsPage';
@@ -88,6 +89,9 @@ export function App() {
           <Route path="/patients/:id" element={<PatientDashboardPage />} />
           <Route path="/queue" element={<QueueManagementPage />} />
           <Route path="/procedure-queue" element={<ProcedureQueuePage />} />
+          {/* G3c (D-065) — the billing workflow's own route. The Clinical
+              Workspace shows a read-only summary and links here. */}
+          <Route path="/billing/visits/:visitId" element={<BillingVisitPage />} />
 
           {/* Management (M1, owner-approved horizontal layout) — review/
               approve/report work only; set-once config lives under

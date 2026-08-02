@@ -1,8 +1,9 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InvoiceStatus } from '@prisma/client';
 import { InvoiceService } from './invoice.service';
 import { VisitService } from './visit.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
+import { PrismaService } from '../core/prisma.service';
 import { tenantContextStorage } from '../core/tenant-context';
 
 function createService() {
@@ -16,14 +17,82 @@ function createService() {
     panelClinic: { findUnique: jest.fn() },
   } as unknown as TenantScopedPrismaClient;
   const visits = { findById: jest.fn() } as unknown as VisitService;
-  return { service: new InvoiceService(prisma, visits), prisma, visits };
+
+  // G3c (D-065) — reading a visit's invoices now checks branch access, which
+  // runs through an interactive transaction like every other clinical read.
+  const tx = {
+    $executeRaw: jest.fn(),
+    staff: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'staff-1',
+        fullName: 'Dr. Amira Rahman',
+        role: 'DOCTOR_RESIDENT',
+        active: true,
+        clinicId: 'clinic-1',
+        userId: 'user-1',
+      }),
+    },
+    clinic: { count: jest.fn().mockResolvedValue(1) },
+    userClinicAccess: { findMany: jest.fn().mockResolvedValue([]) },
+    visit: { findUnique: jest.fn().mockResolvedValue({ clinicId: 'clinic-1' }) },
+  };
+  const rawPrisma = { $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) } as unknown as PrismaService;
+
+  return { service: new InvoiceService(prisma, rawPrisma, visits), prisma, visits, tx };
 }
 
 function withTenant<T>(fn: () => Promise<T>): Promise<T> {
-  return tenantContextStorage.run({ tenantId: 'test-tenant' }, fn);
+  return tenantContextStorage.run({ tenantId: 'test-tenant', staffId: 'staff-1' }, fn);
 }
 
 describe('InvoiceService', () => {
+  // G3c (D-065) — the read the Clinical Workspace exposes. Tenant isolation
+  // came from RLS; the BRANCH was never checked, so a staff member authorised
+  // only for Branch A could read Branch B's money for any visit id.
+  it('reading a visit’s invoices enforces branch access', async () => {
+    const { service, tx } = createService();
+    tx.clinic.count.mockResolvedValue(2); // multi-branch tenant
+    tx.visit.findUnique.mockResolvedValue({ clinicId: 'clinic-OTHER' });
+    tx.staff.findUnique.mockResolvedValue({
+      id: 'staff-1',
+      fullName: 'Dr. Amira Rahman',
+      role: 'DOCTOR_RESIDENT',
+      active: true,
+      clinicId: 'clinic-1',
+      userId: 'user-1',
+    });
+
+    await expect(withTenant(() => service.findByVisitId('visit-elsewhere'))).rejects.toThrow(ForbiddenException);
+  });
+
+  it('an authorised branch can read its own visit’s invoices', async () => {
+    const { service, prisma } = createService();
+    (prisma.invoice.findMany as jest.Mock).mockResolvedValue([]);
+
+    await withTenant(() => service.findByVisitId('visit-1'));
+
+    expect(prisma.invoice.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { visitId: 'visit-1' } }),
+    );
+  });
+
+  // The summary needs these to say who raised the invoice, which panel the
+  // visit is on, and what each line came from — without a second round trip
+  // or the frontend guessing from item names.
+  it('the read resolves creator, panel, line sources and claim lines', async () => {
+    const { service, prisma } = createService();
+    (prisma.invoice.findMany as jest.Mock).mockResolvedValue([]);
+
+    await withTenant(() => service.findByVisitId('visit-1'));
+
+    const include = (prisma.invoice.findMany as jest.Mock).mock.calls[0][0].include;
+    expect(include.createdBy).toBeDefined();
+    expect(include.claimBatchLines).toBeDefined();
+    expect(include.visit.select.panelClinic).toBeDefined();
+    expect(include.lines.include.sourceOrderService).toBeDefined();
+    expect(include.lines.include.sourcePrescription).toBeDefined();
+  });
+
   it('create uses the caller-supplied createdByStaffId, not the visit doctor (locum coverage)', async () => {
     const { service, prisma, visits } = createService();
     (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'attending-staff' });
