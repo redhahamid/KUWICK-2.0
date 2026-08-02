@@ -40,6 +40,27 @@ export function draftKey(scope: DraftScope): string {
   ].join('::');
 }
 
+// Prefixes for scoped cleanup. Each ends with '::' so "patient-1" can never
+// match "patient-10" — a silent cross-patient wipe would be exactly the kind
+// of data loss this module exists to prevent.
+export function tenantPrefix(tenantId: string): string {
+  return `${tenantId}::`;
+}
+export function branchPrefix(tenantId: string, clinicId: string | null): string {
+  return `${tenantId}::${clinicId ?? '-'}::`;
+}
+export function patientPrefix(tenantId: string, clinicId: string | null, patientId: string): string {
+  return `${branchPrefix(tenantId, clinicId)}${patientId}::`;
+}
+export function visitPrefix(
+  tenantId: string,
+  clinicId: string | null,
+  patientId: string,
+  visitId: string,
+): string {
+  return `${patientPrefix(tenantId, clinicId, patientId)}${visitId}::`;
+}
+
 export interface DraftState {
   // What the doctor currently sees in the editor.
   content: string;
@@ -141,8 +162,15 @@ interface ClinicalDraftState {
   markSaved: (key: string, savedContent: string, version: number | null) => void;
   discard: (key: string) => void;
   promoteNewDraft: (fromKey: string, toKey: string, noteId: string, savedContent: string, version: number | null) => void;
-  // Wipe everything — logout, auth loss, or a tenant/branch switch. Drafts
-  // must never survive a change of who is looking at the screen.
+
+  // Scoped cleanup. Ordinary navigation must only ever discard the drafts
+  // that the user actually agreed to abandon — clearing everything would
+  // silently destroy another patient's or visit's unsaved work.
+  clearVisitDrafts: (tenantId: string, clinicId: string | null, patientId: string, visitId: string) => void;
+  clearPatientDrafts: (tenantId: string, clinicId: string | null, patientId: string) => void;
+  clearBranchDrafts: (tenantId: string, clinicId: string | null) => void;
+  clearTenantDrafts: (tenantId: string) => void;
+  // Reserved for logout / auth loss / account change only.
   clearAll: () => void;
 }
 
@@ -231,8 +259,37 @@ export const useClinicalDraftStore = create<ClinicalDraftState>()((set) => ({
       return { drafts, loadedNoteId: loaded };
     }),
 
+  clearVisitDrafts: (tenantId, clinicId, patientId, visitId) =>
+    set((state) => removeByPrefix(state, visitPrefix(tenantId, clinicId, patientId, visitId))),
+
+  clearPatientDrafts: (tenantId, clinicId, patientId) =>
+    set((state) => removeByPrefix(state, patientPrefix(tenantId, clinicId, patientId))),
+
+  clearBranchDrafts: (tenantId, clinicId) => set((state) => removeByPrefix(state, branchPrefix(tenantId, clinicId))),
+
+  clearTenantDrafts: (tenantId) => set((state) => removeByPrefix(state, tenantPrefix(tenantId))),
+
   clearAll: () => set({ drafts: {}, loadedNoteId: {} }),
 }));
+
+function removeByPrefix(
+  state: { drafts: Record<string, DraftState>; loadedNoteId: Record<string, string | undefined> },
+  prefix: string,
+) {
+  const drafts: Record<string, DraftState> = {};
+  const loadedNoteId: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(state.drafts)) {
+    if (!key.startsWith(prefix)) {
+      drafts[key] = value;
+    }
+  }
+  for (const [key, value] of Object.entries(state.loadedNoteId)) {
+    if (!key.startsWith(prefix)) {
+      loadedNoteId[key] = value;
+    }
+  }
+  return { drafts, loadedNoteId };
+}
 
 export function hasUnsavedDrafts(drafts: Record<string, DraftState>): boolean {
   return Object.values(drafts).some((draft) => isDraftDirty(draft));

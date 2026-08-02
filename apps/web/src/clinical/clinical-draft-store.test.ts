@@ -209,6 +209,179 @@ describe('clearing', () => {
   });
 });
 
+// C1 closure — scoped cleanup. Ordinary navigation must only discard what
+// the user agreed to abandon; clearing everything would silently destroy
+// another patient's or visit's unsaved work.
+describe('scoped cleanup', () => {
+  const A = { tenantId: 't1', clinicId: 'c1', patientId: 'pA', visitId: 'vA1', noteId: 'n1' };
+  const A2 = { ...A, visitId: 'vA2', noteId: 'n2' };
+  const B = { tenantId: 't1', clinicId: 'c1', patientId: 'pB', visitId: 'vB1', noteId: 'n3' };
+  const OTHER_BRANCH = { tenantId: 't1', clinicId: 'c2', patientId: 'pC', visitId: 'vC1', noteId: 'n4' };
+  const OTHER_TENANT = { tenantId: 't2', clinicId: 'c9', patientId: 'pD', visitId: 'vD1', noteId: 'n5' };
+
+  function seedAll() {
+    const store = useClinicalDraftStore.getState();
+    for (const s of [A, A2, B, OTHER_BRANCH, OTHER_TENANT]) {
+      store.syncFromServer(draftKey(s), s.noteId, draft({ content: `text ${s.noteId}`, baseline: '' }));
+    }
+  }
+  const keys = () => Object.keys(useClinicalDraftStore.getState().drafts);
+
+  it('discarding Visit A clears Visit A only, leaving Visit B intact', () => {
+    seedAll();
+    useClinicalDraftStore.getState().clearVisitDrafts('t1', 'c1', 'pA', 'vA1');
+    const remaining = keys();
+    expect(remaining).not.toContain(draftKey(A));
+    expect(remaining).toContain(draftKey(A2)); // same patient, other visit
+    expect(remaining).toContain(draftKey(B));
+    expect(remaining).toContain(draftKey(OTHER_BRANCH));
+    expect(remaining).toContain(draftKey(OTHER_TENANT));
+  });
+
+  it('clearing Patient A does not clear Patient B', () => {
+    seedAll();
+    useClinicalDraftStore.getState().clearPatientDrafts('t1', 'c1', 'pA');
+    const remaining = keys();
+    expect(remaining).not.toContain(draftKey(A));
+    expect(remaining).not.toContain(draftKey(A2));
+    expect(remaining).toContain(draftKey(B));
+  });
+
+  it('branch cleanup does not affect another branch', () => {
+    seedAll();
+    useClinicalDraftStore.getState().clearBranchDrafts('t1', 'c1');
+    const remaining = keys();
+    expect(remaining).toEqual(expect.arrayContaining([draftKey(OTHER_BRANCH), draftKey(OTHER_TENANT)]));
+    expect(remaining).not.toContain(draftKey(A));
+    expect(remaining).not.toContain(draftKey(B));
+  });
+
+  it('tenant cleanup does not affect another tenant', () => {
+    seedAll();
+    useClinicalDraftStore.getState().clearTenantDrafts('t1');
+    expect(keys()).toEqual([draftKey(OTHER_TENANT)]);
+  });
+
+  it('logout clears everything', () => {
+    seedAll();
+    useClinicalDraftStore.getState().clearAll();
+    expect(keys()).toHaveLength(0);
+  });
+
+  it('also drops the loadedNoteId bookkeeping for cleared scopes only', () => {
+    seedAll();
+    useClinicalDraftStore.getState().clearVisitDrafts('t1', 'c1', 'pA', 'vA1');
+    const loaded = useClinicalDraftStore.getState().loadedNoteId;
+    expect(loaded[draftKey(A)]).toBeUndefined();
+    expect(loaded[draftKey(A2)]).toBe('n2');
+  });
+
+  // A prefix that isn't terminated would let "pA" match "pA2" and silently
+  // wipe a different patient's work.
+  it('does not clear a look-alike id that merely starts the same', () => {
+    const store = useClinicalDraftStore.getState();
+    const short = { tenantId: 't1', clinicId: 'c1', patientId: 'p1', visitId: 'v1', noteId: 'n1' };
+    const longer = { tenantId: 't1', clinicId: 'c1', patientId: 'p10', visitId: 'v1', noteId: 'n1' };
+    store.syncFromServer(draftKey(short), 'n1', draft());
+    store.syncFromServer(draftKey(longer), 'n1', draft());
+
+    store.clearPatientDrafts('t1', 'c1', 'p1');
+    expect(keys()).toEqual([draftKey(longer)]);
+  });
+});
+
+// C1 closure — conflict handling must not quietly become an overwrite.
+describe('conflict state', () => {
+  const scopeA = { ...scope };
+
+  it('keeps local content and dirty state after a 409 (no baseline move)', () => {
+    const store = useClinicalDraftStore.getState();
+    const key = draftKey(scopeA);
+    store.syncFromServer(key, 'note-1', draft({ content: 'server v2', baseline: 'server v2', baselineVersion: 2 }));
+    store.setContent(key, 'server v2 + my edit');
+    // A 409 means markSaved is never called.
+    const after = useClinicalDraftStore.getState().drafts[key];
+    expect(after.content).toBe('server v2 + my edit');
+    expect(after.baseline).toBe('server v2');
+    expect(after.baselineVersion).toBe(2);
+    expect(isDraftDirty(after)).toBe(true);
+  });
+
+  // The important one: expectedVersion is pinned to the version this draft
+  // was built from, so a repeated Save cannot land on the colleague's newer
+  // version and silently overwrite it.
+  it('does not adopt the newer server version while the draft is dirty', () => {
+    const store = useClinicalDraftStore.getState();
+    const key = draftKey(scopeA);
+    store.syncFromServer(key, 'note-1', draft({ content: 'v2 text', baseline: 'v2 text', baselineVersion: 2 }));
+    store.setContent(key, 'v2 text + mine');
+
+    // A refetch brings v3 from a colleague — must NOT refresh the baseline.
+    expect(
+      shouldRefreshBaseline({
+        incomingNoteId: 'note-1',
+        loadedNoteId: 'note-1',
+        isDirty: true,
+        serverContent: 'their v3 text',
+        baseline: 'v2 text',
+      }),
+    ).toBe(false);
+    expect(useClinicalDraftStore.getState().drafts[key].baselineVersion).toBe(2);
+  });
+
+  it('"discard mine and reload" drops the draft so the server version loads fresh', () => {
+    const store = useClinicalDraftStore.getState();
+    const key = draftKey(scopeA);
+    store.syncFromServer(key, 'note-1', draft({ content: 'mine', baseline: 'server', baselineVersion: 2 }));
+    store.discard(key);
+
+    expect(useClinicalDraftStore.getState().drafts[key]).toBeUndefined();
+    expect(useClinicalDraftStore.getState().loadedNoteId[key]).toBeUndefined();
+    // With no draft and no loadedNoteId, the next render syncs from server.
+    expect(shouldSyncFromServer({ incomingNoteId: 'note-1', loadedNoteId: undefined, isDirty: false })).toBe(true);
+  });
+
+  it('copying local text changes nothing about the draft', () => {
+    const store = useClinicalDraftStore.getState();
+    const key = draftKey(scopeA);
+    store.syncFromServer(key, 'note-1', draft({ content: 'mine', baseline: 'server', baselineVersion: 2 }));
+    const before = { ...useClinicalDraftStore.getState().drafts[key] };
+    // Copying is a pure read in the component; nothing here mutates.
+    expect(useClinicalDraftStore.getState().drafts[key]).toEqual(before);
+    expect(isDraftDirty(useClinicalDraftStore.getState().drafts[key])).toBe(true);
+  });
+});
+
+// C1 closure — moving to a read-only record must not carry editable text.
+describe('read-only transition', () => {
+  it('a signed/legacy note has its own key, so no prior draft text can appear under it', () => {
+    const store = useClinicalDraftStore.getState();
+    const editable = draftKey({ ...scope, noteId: 'note-editable' });
+    const signed = draftKey({ ...scope, noteId: 'note-signed' });
+
+    store.syncFromServer(editable, 'note-editable', draft({ content: 'work in progress', baseline: '' }));
+
+    // Selecting the signed note reads a DIFFERENT key — never the draft's.
+    expect(useClinicalDraftStore.getState().drafts[signed]).toBeUndefined();
+    // And it is free to sync from the server, since nothing is loaded there.
+    expect(shouldSyncFromServer({ incomingNoteId: 'note-signed', loadedNoteId: undefined, isDirty: false })).toBe(true);
+  });
+
+  it('discarding the abandoned editable draft leaves the signed note untouched', () => {
+    const store = useClinicalDraftStore.getState();
+    const editable = draftKey({ ...scope, noteId: 'note-editable' });
+    const signed = draftKey({ ...scope, noteId: 'note-signed' });
+    store.syncFromServer(editable, 'note-editable', draft({ content: 'work in progress', baseline: '' }));
+    store.syncFromServer(signed, 'note-signed', draft({ content: 'signed content', baseline: 'signed content' }));
+
+    store.discard(editable);
+
+    expect(useClinicalDraftStore.getState().drafts[editable]).toBeUndefined();
+    expect(useClinicalDraftStore.getState().drafts[signed].content).toBe('signed content');
+    expect(isDraftDirty(useClinicalDraftStore.getState().drafts[signed])).toBe(false);
+  });
+});
+
 // The store must never put patient text into browser storage: clinic machines
 // are shared, and persisted drafts would outlive the session and the user.
 describe('memory-only storage', () => {

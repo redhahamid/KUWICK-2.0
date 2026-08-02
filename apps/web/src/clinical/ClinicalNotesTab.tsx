@@ -256,6 +256,9 @@ export function ClinicalNotesTab({ visitId, patientId, compact }: ClinicalNotesT
         okButtonProps: { danger: true },
         cancelText: 'Continue editing',
         onOk: () => {
+          // Scoped to THIS draft only. Another note, visit or patient may
+          // also have unsaved work open, and the user agreed to abandon
+          // exactly one of them.
           draftStore.discard(key);
           proceed();
         },
@@ -295,9 +298,16 @@ export function ClinicalNotesTab({ visitId, patientId, compact }: ClinicalNotesT
     const attempted = content;
     try {
       if (activeNote && !isNewDraft) {
+        // expectedVersion comes from the DRAFT's baseline, not the live
+        // query. After a 409 the query may refetch to the colleague's newer
+        // version; using that would make a second Save succeed and silently
+        // overwrite their change. Pinning it to the version this draft was
+        // actually built from keeps re-saving a stale edit impossible until
+        // the doctor deliberately reloads.
+        const expectedVersion = draft?.baselineVersion ?? activeNote.version;
         const saved = await updateNote.mutateAsync({
           id: activeNote.id,
-          dto: { notes: attempted, noteLanguage: language, expectedVersion: activeNote.version },
+          dto: { notes: attempted, noteLanguage: language, expectedVersion },
         });
         draftStore.markSaved(key, attempted, saved.version);
       } else {

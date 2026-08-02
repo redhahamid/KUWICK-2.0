@@ -26,6 +26,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { usePatient } from '../core/hooks/usePatients';
+import { useAuthStore } from '../core/auth-store';
 import { usePatientVisits } from './hooks/useVisits';
 import { EditPatientDrawer } from './EditPatientDrawer';
 import { NewVisitDrawer } from './NewVisitDrawer';
@@ -45,7 +46,7 @@ import { OrdersSummaryCard } from './OrdersSummaryCard';
 import { MedicationsSummaryCard } from './MedicationsSummaryCard';
 import { DocumentsInvoiceSummaryCard } from './DocumentsInvoiceSummaryCard';
 import { Visit } from './types';
-import { hasUnsavedDrafts, useClinicalDraftStore } from './clinical-draft-store';
+import { isDraftDirty, useClinicalDraftStore, visitPrefix } from './clinical-draft-store';
 
 const { Title, Text } = Typography;
 
@@ -92,26 +93,46 @@ export function PatientDashboardPage() {
   // so unsaved text must be confirmed first. The draft itself is keyed per
   // visit and stays in memory, so cancelling loses nothing.
   const drafts = useClinicalDraftStore((state) => state.drafts);
-  const clearDrafts = useClinicalDraftStore((state) => state.clearAll);
-  const hasUnsaved = hasUnsavedDrafts(drafts);
+  const clearVisitDrafts = useClinicalDraftStore((state) => state.clearVisitDrafts);
+  const staff = useAuthStore((state) => state.staff);
+  const tenant = useAuthStore((state) => state.tenant);
 
   const requestVisitChange = (visitId: string) => {
-    if (visitId === selectedVisit?.id) {
+    const leavingVisitId = selectedVisit?.id;
+    if (!leavingVisitId || visitId === leavingVisitId) {
       return;
     }
-    if (!hasUnsaved) {
+    // Only ask about the visit being LEFT. Unsaved work on a different visit
+    // or patient is none of this decision's business and must survive it.
+    const leavingPrefix = visitPrefix(
+      tenant?.id ?? 'unknown-tenant',
+      staff?.clinicId ?? null,
+      patient?.id ?? '',
+      leavingVisitId,
+    );
+    const leavingHasUnsaved = Object.entries(drafts).some(
+      ([key, draft]) => key.startsWith(leavingPrefix) && isDraftDirty(draft),
+    );
+
+    if (!leavingHasUnsaved) {
       setSelectedVisitId(visitId);
       return;
     }
     Modal.confirm({
-      title: 'You have unsaved clinical notes',
+      title: 'You have unsaved clinical notes on this visit',
       icon: <ExclamationCircleOutlined />,
-      content: 'Switching to another visit will discard clinical text you have not saved yet.',
+      content: 'Switching to another visit will discard the clinical text you have not saved on this one.',
       okText: 'Discard and switch',
       okButtonProps: { danger: true },
       cancelText: 'Continue editing',
       onOk: () => {
-        clearDrafts();
+        // Scoped to the visit being left — never clearAll.
+        clearVisitDrafts(
+          tenant?.id ?? 'unknown-tenant',
+          staff?.clinicId ?? null,
+          patient?.id ?? '',
+          leavingVisitId,
+        );
         setSelectedVisitId(visitId);
       },
     });
