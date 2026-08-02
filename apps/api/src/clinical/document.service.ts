@@ -4,7 +4,7 @@ import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-s
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { VisitService } from './visit.service';
-import { assertCanVoidClinicalRecord, snapshotOf } from './clinical-authorization';
+import { assertCanSignDocument, assertCanVoidClinicalRecord, snapshotOf } from './clinical-authorization';
 import { assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { SignDocumentDto } from './dto/sign-document.dto';
@@ -48,6 +48,11 @@ export class DocumentService {
         visitId,
         ...(includeVoided ? {} : { recordStatus: DocumentRecordStatus.ACTIVE }),
       },
+      // G3b — the workspace shows "created by", "signed by" and "voided by"
+      // as names. Resolving them here beats making the browser join a
+      // separate staff list, which is also how a staff member who has since
+      // left ends up rendering as a blank.
+      include: { issuedBy: true, signedBy: true, voidedBy: true },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -105,17 +110,60 @@ export class DocumentService {
     });
   }
 
-  // Dispensary "prep, sign MC" step — a lightweight sign-off, not a
-  // one-way status: re-signing (e.g. correcting who signed) just
-  // overwrites signedAt/signedByStaffId rather than being rejected.
+  /**
+   * The dispensary "prep, sign MC" sign-off — G3b corrected.
+   *
+   * Three things were wrong, all found by inspecting the lifecycle rather
+   * than trusting the UI badge:
+   *
+   *  1. The signer came from the request body, and the browser sent the
+   *     VISIT's attending doctor regardless of who actually clicked. A
+   *     document could therefore be attributed to a doctor who never saw it.
+   *     Signer identity now comes from the authenticated session only.
+   *  2. Anyone who could reach the route could sign. It now requires a
+   *     clinical role and branch access to the visit.
+   *  3. Re-signing silently overwrote `signedAt`/`signedByStaffId`, so a
+   *     signed document could be re-attributed with no trace. That is now a
+   *     409.
+   *
+   * Deliberately NOT changed: who is eligible. `canSignDocument` is the
+   * clinical-role test, because this sign-off is a workflow step, not the C0
+   * medicolegal signature (see clinical-authorization.ts). Narrowing it here
+   * would have broken the existing front-desk/dispensary workflow on the
+   * strength of a shared word.
+   */
   async sign(id: string, dto: SignDocumentDto) {
-    const document = await this.prisma.document.findUnique({ where: { id } });
-    if (!document) {
-      throw new NotFoundException('Document not found');
-    }
-    return this.prisma.document.update({
-      where: { id },
-      data: { signedAt: new Date(), signedByStaffId: dto.staffId },
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      assertCanSignDocument(actor);
+
+      const document = await tx.document.findUnique({ where: { id } });
+      if (!document) {
+        throw new NotFoundException('Document not found');
+      }
+      await assertMayTouchVisit(tx, document.visitId, actor);
+
+      if (document.recordStatus === DocumentRecordStatus.VOIDED) {
+        throw new ConflictException('This document has been voided and cannot be signed.');
+      }
+      if (document.signedAt) {
+        throw new ConflictException(
+          'This document is already signed. A signed document cannot be re-signed or re-attributed.',
+        );
+      }
+      if (dto.expectedVersion !== undefined && dto.expectedVersion !== document.version) {
+        throw new ConflictException('This document changed since you loaded it. Reload and try again.');
+      }
+
+      return tx.document.update({
+        where: { id },
+        data: {
+          signedAt: new Date(),
+          signedByStaffId: actor.id,
+          version: { increment: 1 },
+          // content is never touched — there is no route that edits it.
+        },
+      });
     });
   }
 }

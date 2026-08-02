@@ -55,6 +55,8 @@ const SAVED_DOC = {
   version: 2,
 };
 
+const UNSIGNED_DOC = { ...SAVED_DOC, signedAt: null, signedByStaffId: null, version: 1 };
+
 describe('DocumentService', () => {
   it('create defaults issuedByStaffId to the visit doctor when not given', async () => {
     const { service, prisma, visits } = createService();
@@ -240,22 +242,92 @@ describe('DocumentService', () => {
   });
 
   it('sign throws NotFoundException for an unknown document', async () => {
-    const { service, prisma } = createService();
-    (prisma.document.findUnique as jest.Mock).mockResolvedValue(null);
+    const { service, tx } = createService();
+    tx.document.findUnique.mockResolvedValue(null);
 
-    await expect(service.sign('missing', { staffId: 'staff-1' })).rejects.toThrow(NotFoundException);
+    await expect(withTenant(() => service.sign('missing', {}))).rejects.toThrow(NotFoundException);
   });
 
-  it('sign records signedAt/signedByStaffId', async () => {
+  // G3b — the signer used to come from the request body, and the browser sent
+  // the VISIT's doctor whoever actually clicked. A document could therefore be
+  // attributed to a doctor who never saw it.
+  it('sign takes the signer from the session, never the request', async () => {
+    const { service, tx } = createService();
+    tx.document.findUnique.mockResolvedValue(UNSIGNED_DOC);
+
+    await withTenant(() => service.sign('doc-1', { staffId: 'someone-else' } as never));
+
+    const data = tx.document.update.mock.calls[0][0].data;
+    expect(data.signedByStaffId).toBe('staff-1');
+    expect(data.signedAt).toEqual(expect.any(Date));
+  });
+
+  it('sign never touches the document content', async () => {
+    const { service, tx } = createService();
+    tx.document.findUnique.mockResolvedValue(UNSIGNED_DOC);
+
+    await withTenant(() => service.sign('doc-1', {}));
+
+    const data = tx.document.update.mock.calls[0][0].data;
+    expect(data.content).toBeUndefined();
+    expect(data.issuedByStaffId).toBeUndefined();
+  });
+
+  // G3b — a signed document must not be silently re-attributed. This used to
+  // overwrite signedAt/signedByStaffId without complaint.
+  it('re-signing an already signed document is a conflict', async () => {
+    const { service, tx } = createService();
+    tx.document.findUnique.mockResolvedValue({ ...UNSIGNED_DOC, signedAt: new Date('2026-08-01') });
+
+    await expect(withTenant(() => service.sign('doc-1', {}))).rejects.toThrow(ConflictException);
+    expect(tx.document.update).not.toHaveBeenCalled();
+  });
+
+  it('a voided document cannot be signed', async () => {
+    const { service, tx } = createService();
+    tx.document.findUnique.mockResolvedValue({ ...UNSIGNED_DOC, recordStatus: 'VOIDED' });
+
+    await expect(withTenant(() => service.sign('doc-1', {}))).rejects.toThrow(ConflictException);
+  });
+
+  it('sign rejects a stale expectedVersion', async () => {
+    const { service, tx } = createService();
+    tx.document.findUnique.mockResolvedValue(UNSIGNED_DOC);
+
+    await expect(withTenant(() => service.sign('doc-1', { expectedVersion: 99 }))).rejects.toThrow(
+      ConflictException,
+    );
+  });
+
+  // Deliberately NOT narrowed to doctors: Document.signedAt is the dispensary
+  // "prep, sign MC" workflow step, not the C0 medicolegal signature. Front
+  // desk signing off a printed MC is the existing workflow, and G3b does not
+  // silently take it away.
+  it('front-desk staff may still sign off a document', async () => {
+    const { service, tx } = createService(FRONT_DESK);
+    tx.document.findUnique.mockResolvedValue(UNSIGNED_DOC);
+
+    await withTenant(() => service.sign('doc-1', {}));
+
+    expect(tx.document.update).toHaveBeenCalled();
+  });
+
+  it('a non-clinical account may not sign a document', async () => {
+    const { service, tx } = createService({ ...DOCTOR, role: 'FINANCE_STAFF' });
+    tx.document.findUnique.mockResolvedValue(UNSIGNED_DOC);
+
+    await expect(withTenant(() => service.sign('doc-1', {}))).rejects.toThrow(ForbiddenException);
+  });
+
+  // G3b — the workspace names who created, signed and voided each document.
+  it('the active list resolves the staff behind each document', async () => {
     const { service, prisma } = createService();
-    (prisma.document.findUnique as jest.Mock).mockResolvedValue({ id: 'doc-1' });
-    (prisma.document.update as jest.Mock).mockResolvedValue({ id: 'doc-1' });
+    (prisma.document.findMany as jest.Mock).mockResolvedValue([]);
 
-    await service.sign('doc-1', { staffId: 'dispensary-staff' });
+    await service.findByVisitId('visit-1');
 
-    expect(prisma.document.update).toHaveBeenCalledWith({
-      where: { id: 'doc-1' },
-      data: { signedAt: expect.any(Date), signedByStaffId: 'dispensary-staff' },
-    });
+    expect(prisma.document.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ include: { issuedBy: true, signedBy: true, voidedBy: true } }),
+    );
   });
 });

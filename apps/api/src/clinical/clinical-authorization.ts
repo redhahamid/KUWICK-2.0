@@ -124,6 +124,35 @@ export function canVoidClinicalRecord(staff: Staff): boolean {
   return staff.professionalType === 'MEDICAL_DOCTOR' && staff.professionalActive;
 }
 
+/**
+ * G3b — who may sign off a clinical document.
+ *
+ * Read the schema comment before assuming this means what C0 signing means.
+ * `Document.signedAt` is the dispensary "prep, sign MC" step — a workflow
+ * sign-off recording that a printed document was checked and handed over. It
+ * is explicitly NOT the medicolegal clinical-note signature that
+ * `canSignClinicalNotes` guards, which additionally requires a verified
+ * professional identity and an explicitly enabled signing right.
+ *
+ * So this is deliberately the CLINICAL-ROLE test and not the signing test:
+ * applying `canSignClinicalNotes` here would silently narrow an existing
+ * front-desk/dispensary workflow on the strength of a shared English word.
+ * What G3b does fix is that the signer is now the authenticated session,
+ * with branch access checked — not a staff id chosen by the browser.
+ *
+ * Upgrading document sign-off to true signature semantics is a policy and
+ * schema decision, and is NOT taken here.
+ */
+export function canSignDocument(staff: Staff): boolean {
+  return staff.active && CLINICAL_ROLES.includes(staff.role);
+}
+
+export function assertCanSignDocument(staff: Staff): void {
+  if (!canSignDocument(staff)) {
+    throw new ForbiddenException('This account may not sign off clinical documents.');
+  }
+}
+
 export function assertCanVoidClinicalRecord(staff: Staff, what: string): void {
   if (!canVoidClinicalRecord(staff)) {
     throw new ForbiddenException(

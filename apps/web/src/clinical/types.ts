@@ -594,6 +594,10 @@ export interface ClinicalDocument {
   signedByStaffId: string | null;
   createdAt: string;
   updatedAt: string;
+  // G3b — resolved server-side so the workspace can name who did what.
+  issuedBy?: Staff | null;
+  signedBy?: Staff | null;
+  voidedBy?: Staff | null;
   // G3a (D-062) — void audit. All server-written; the client only reads.
   recordStatus: DocumentRecordStatus;
   voidedAt: string | null;

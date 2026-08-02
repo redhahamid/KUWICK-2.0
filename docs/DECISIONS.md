@@ -625,6 +625,56 @@ Closes the three unsafe permanent-delete workflows D-061 listed as still open. `
 
 ---
 
+## D-063 — G3b: the Documents workspace, and what "signed" actually meant
+
+Documents was a permanently-open "New Document" form sitting on top of a list whose every row printed the document's **entire body text** with three unlabelled icon buttons beside it. That is a text-file manager. A GP issuing an MC wants to see *what was issued, to cover which dates, by whom, and whether it has been signed* — none of which that list said.
+
+**The workspace.** Each active document now states its type, the fields that matter *for that type* (an MC's rest period and inclusive day count, a referral's recipient, a memo's title), who created it and when, and whether it is signed. Actions carry words — Preview, Print, Download, Sign, Void. Creating moved into a drawer, so the section is the visit's paperwork rather than a form with paperwork underneath it. Below 768px the secondary actions collapse into a labelled "Actions" menu; nothing becomes a bare icon and no row scrolls sideways.
+
+**Type presentation reads only stored fields.** Where the schema has nothing — a referral with no recorded recipient, a legacy memo with no dates — the line is **omitted**, not rendered as an empty label. A blank "Days:" reads as missing data; no line reads as data we never collect. **Time Slip** is supported the way it already exists, as a clinic-configured `CUSTOM` template. A first-class time slip with an actual time-of-day range would need new columns; that is a schema decision and is **not** taken here.
+
+**One implementation.** Canvas, the Flow tab and the patient dashboard all render `DocumentsWorkspace`; `DocumentsTab` is now a four-line wrapper. Same rule the G2 closure applied to diagnosis removal — a second copy is how one surface quietly keeps the old, unsafe action after the other is fixed. The unreferenced `DocumentsInvoiceSummaryCard` (a leftover of the pre-G1 "Documents & Invoice" pairing, imported by nothing) was deleted rather than left carrying a stale copy of the old form.
+
+### What "signed" was, and the smallest safe correction
+
+The instruction said not to invent signing semantics from a UI badge, so the lifecycle was read rather than assumed. `Document.signedAt` is the dispensary **"prep, sign MC" workflow sign-off** — the schema comment says so outright: *"a lightweight sign-off checkbox, not a cryptographic signature"*. It is **not** the C0 medicolegal signature that `canSignClinicalNotes` guards behind a verified professional identity and an explicitly enabled signing right.
+
+Three things were wrong, and all three are fixed without touching the schema:
+
+1. **The signer came from the request body** — and the browser sent the *visit's attending doctor* regardless of who actually clicked. A document could be attributed to a doctor who never saw it. The signer is now the authenticated session; a supplied `staffId` is a **400**, not a silent strip.
+2. **Anyone reaching the route could sign.** It now requires a clinical role and branch access to the visit.
+3. **Re-signing silently overwrote `signedAt`/`signedByStaffId`**, so a signed document could be re-attributed with no trace. That is now a **409**, and a voided document cannot be signed at all.
+
+**Eligibility was deliberately NOT narrowed.** `canSignDocument` is the clinical-role test, not `canSignClinicalNotes`. Front desk signing off a printed MC is the existing dispensary workflow; narrowing it on the strength of a shared English word would have broken a real workflow and called it a security fix. Verified live: a `FRONT_DESK_CLINICAL_STAFF` can still sign, and the server — not a hidden button — is what decides.
+
+**Immutability of the rest of the document was already sound**, and this is why no schema decision was needed: there is **no route that edits a document's content**, stored text is captured at creation and never regenerated, and a template edited later cannot alter a document already issued. Upgrading document sign-off to true signature semantics (immutability lock, verified signer, content hash as C0 does for notes) remains an open policy decision, **not** taken in G3b.
+
+### Merge fields (§6)
+
+`{{vitals}}` keeps the accepted standard summary — BP, pulse, temperature, SpO2, respiratory rate — unchanged in content and wording. One real bug fixed on the way: `buildMergeValues` read vitals from the **clinical note**, so a custom template printed "Not recorded" for every visit recorded after the C0 observation split. It now reads the attributed observation, with the legacy note as fallback.
+
+Four optional fields added, **opt-in only** — a template gets them only if its author writes the placeholder, so no existing template's output changes: `observation.weight`, `observation.height`, `observation.bmi`, `observation.glucose`. Weight is the one that matters clinically (a paediatric referral quotes a weight); the rest stay template-specific.
+
+**BMI is derived, not stored**: `weight (kg) / (height (cm) / 100)²`, one decimal. It returns empty rather than a figure when either measurement is missing — a fabricated BMI on a referral letter is worse than no BMI. This is the **only** derived field and is not the start of a calculation engine.
+
+**Template audit (§6, exact):** the tenant has **one** configured template, "Time Slip", which uses `clinic.name`, `clinic.address`, `clinic.phone`, `date`, `patient.name`, `patient.nric`, `visit.date`, `diagnosis`, `doctor.name`, `doctor.role`. **No** configured template uses `{{vitals}}`, and none uses weight, height, BMI or glucose — those placeholders exist in zero templates today. The only current consumer of the vitals summary is the built-in **Referral** builder, which passes it as `vitalsSummary`. There are **0** rows in `default_document_templates`.
+
+### Void (§8, §9)
+
+Uses the G3a endpoint unchanged. The confirmation names the document, its type-specific fields, its creator, creation time and signed state, demands a reason, and says plainly that the record is preserved. Voided documents are **not** in the active list at all — they live in their own drawer with creator, signer, voider, time and reason, offering only Preview and Download. No edit, no restore, no delete.
+
+A voided document can never circulate looking valid: the preview carries a red banner, **print** carries the banner *and* a diagonal VOID watermark with `print-color-adjust: exact` so it survives onto paper, and **download** puts a void notice at the top of the file and `- VOIDED` in the filename. Download builds from the **stored** text, never a re-run of the template, so a document retrieved a year later reads as it did when it was handed over.
+
+**Verification:** 306 backend unit tests, 75 frontend tests, and `prisma/g3b-documents-workspace-check.ts` — 111 checks against a populated record (active MC, referral, memo, a signed document, a legacy document, a voided one, plus two G3a attachments) across 1920×1080, 1366×768, tablet 900 and mobile 375 in real Chrome.
+
+**One real defect, found by the check and not by eye:** every mobile action button was **24px** tall against the 44px minimum. antd's `size="small"` is correct for a mouse and far too small for a thumb, and nothing about it looks wrong on a desktop screen. Size is now chosen per breakpoint with an explicit 44px floor — even antd's "large" is 40px.
+
+The rest of that run was harness, and worth recording because it cost several cycles: antd v6 renamed `.ant-modal-content` → `.ant-modal-container` (the check now targets `-body`, whose name has not changed); `getByRole('button', {name:'Void'})` matches substrings case-insensitively, so it hit the **"1 voided"** button, and `exact:'Void'` matches nothing because an antd icon button's accessible name is "stop Void"; and the clinical-section header is a `div role="button"` whose accessible name now contains the "1 voided" tag, so a role-based query hit the header and collapsed the section. Each overlay is now opened from a fresh page load and every trigger is located as a real `button.ant-btn`.
+
+**Reversibility**: High for the UI; Medium for signing, where reverting would restore browser-chosen signer identity and silent re-attribution.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 - ~~Diagnosis deletion is a hard delete with no audit trail (D-059)~~ — **resolved by D-061.**
