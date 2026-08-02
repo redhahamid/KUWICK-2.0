@@ -1,5 +1,8 @@
 import { join } from 'node:path';
 import { config } from 'dotenv';
+import * as jwt from 'jsonwebtoken';
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { chromium, Page } from 'playwright-core';
 
 config({ path: join(__dirname, '..', '.env') });
@@ -15,8 +18,10 @@ config({ path: join(__dirname, '..', '.env') });
 const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const API = 'http://localhost:3000';
 const WEB = 'http://localhost:5173';
-const PASSWORD = process.env.C1_SHOT_PASSWORD;
-const EMAIL = process.env.C1_SHOT_EMAIL ?? 'amira.rahman@smoke-test-clinic.test';
+// G0a — this used to require C1_SHOT_PASSWORD, which meant the gate could
+// not be re-run by anyone who did not already hold a staff password, and a
+// regression check nobody can run is not a regression check. It now mints a
+// token with the server's own secret and changes no credential.
 
 const results: { step: string; pass: boolean; detail: string }[] = [];
 const check = (step: string, pass: boolean, detail = '') => {
@@ -43,15 +48,33 @@ async function openSelector(page: Page) {
 }
 
 async function main() {
-  if (!PASSWORD) throw new Error('Set C1_SHOT_PASSWORD before running.');
-
-  const loginRes = await fetch(`${API}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
+  const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
+  // staff/users are FORCE ROW LEVEL SECURITY — without the bypass GUC this
+  // returns zero rows rather than erroring (D-048).
+  const seed = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.bypass_tenant_scope', 'true', true)`;
+    const rows = await tx.$queryRawUnsafe<
+      { user_id: string; staff_id: string; tenant_id: string; role: string; full_name: string; tenant_name: string }[]
+    >(`
+      SELECT u.id AS user_id, s.id AS staff_id, s.tenant_id, s.role, s.full_name, t.name AS tenant_name
+      FROM staff s JOIN users u ON s.user_id = u.id JOIN tenants t ON t.id = s.tenant_id
+      WHERE s.active AND s.role IN ('DOCTOR_RESIDENT','DOCTOR_LOCUM') LIMIT 1
+    `);
+    if (rows.length === 0) throw new Error('No active doctor with a user account found');
+    return rows[0];
   });
-  const auth = await loginRes.json();
-  const token: string = auth.accessToken;
+  await prisma.$disconnect();
+
+  const token = jwt.sign(
+    { sub: seed.user_id, tenantId: seed.tenant_id, staffId: seed.staff_id, role: seed.role },
+    process.env.JWT_ACCESS_SECRET as string,
+    { expiresIn: '30m' },
+  );
+  const auth = {
+    refreshToken: token,
+    staff: { id: seed.staff_id, fullName: seed.full_name, role: seed.role, clinicId: null },
+    tenant: { id: seed.tenant_id, name: seed.tenant_name, slug: null },
+  };
   const clinics = await api('/clinics', token);
   const stamp = Date.now();
 

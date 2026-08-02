@@ -16,27 +16,30 @@
   box-shadow: none;
 }
 
-/* C2 (D-053) — make the CONTENTEDITABLE itself fill the Canvas workspace.
-   Styling EditorContent's wrapper is not enough: Tiptap renders the actual
-   .ProseMirror div inside it, and that inner div stays content-sized, which
-   is why the typing area measured 22px however tall the card grew. The
-   wrapper becomes a flex column and .ProseMirror is the growing child, so
-   clicking anywhere in the tall area puts the caret in the note. */
-.kw-editor-fill {
-  display: flex;
-  flex-direction: column;
-}
+/* C2 (D-053) — style the CONTENTEDITABLE itself, not EditorContent's
+   wrapper. Tiptap renders the actual .ProseMirror div inside that wrapper,
+   and it stays content-sized, which is why the typing area measured 22px
+   however tall the card grew.
 
+   G0a (D-054) — the height is now DECLARED, not inherited from leftover
+   space. Under C2 the editor was `flex: 1 1 auto` inside a viewport-height
+   shell, so it received whatever the lower sections did not use: every
+   diagnosis, order or medication added shrank the doctor's typing area, and
+   past the old 220px floor the shell overflowed instead. C2 measured 324px
+   only because it was measured on a completely empty record.
+
+   min() keeps it proportional on tall screens and bounded on short ones;
+   min-height is the floor a 768px laptop still honours. Lower clinical
+   sections now continue below the fold on one natural page scroll. */
 .kw-editor-fill .ProseMirror {
-  flex: 1 1 auto;
-  min-height: 220px;
+  height: min(58vh, 520px);
+  min-height: 320px;
   overflow-y: auto;
 }
 
-/* Tablet, mobile and Flow don't have a fixed-height shell to grow into, so
-   the editor gets a generous minimum instead. Without this the
-   contenteditable collapses to one line (22px measured) and the doctor has
-   to aim at a sliver of text to start writing. */
+/* Tablet, mobile and Flow. Without this the contenteditable collapses to one
+   line (22px measured) and the doctor has to aim at a sliver of text to
+   start writing. */
 .kw-editor-min .ProseMirror {
-  min-height: 260px;
+  min-height: 300px;
 }

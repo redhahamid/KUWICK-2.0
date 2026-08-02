@@ -42,12 +42,26 @@ interface RichTextEditorProps {
   // C2 — the editor should claim all remaining height in the Canvas
   // workspace rather than being a fixed short box.
   fill?: boolean;
+  // G0a (D-054) — false for a signed, legacy or permission-locked note.
+  // Until now the caller only swallowed onChange, which left .ProseMirror
+  // contenteditable: a doctor could type into a SIGNED note and the text
+  // stayed on screen unsaved, looking like an accepted edit to a sealed
+  // medicolegal record. Found by prisma/g0a-editor-check.ts.
+  editable?: boolean;
 }
 
 const FONT_FAMILIES = ['Sans Serif', 'Serif', 'Monospace'];
 
-export function RichTextEditor({ content, onChange, placeholder, compact, fill }: RichTextEditorProps) {
+export function RichTextEditor({
+  content,
+  onChange,
+  placeholder,
+  compact,
+  fill,
+  editable = true,
+}: RichTextEditorProps) {
   const editor = useEditor({
+    editable,
     extensions: [
       StarterKit,
       Underline,
@@ -72,6 +86,14 @@ export function RichTextEditor({ content, onChange, placeholder, compact, fill }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content]);
 
+  // Selecting a signed note after editing a draft must lock the editor, not
+  // leave the previous note's editable state behind.
+  useEffect(() => {
+    if (editor && editor.isEditable !== editable) {
+      editor.setEditable(editable);
+    }
+  }, [editor, editable]);
+
   if (!editor) {
     return null;
   }
@@ -91,16 +113,12 @@ export function RichTextEditor({ content, onChange, placeholder, compact, fill }
   };
 
   return (
-    // C2 (D-053) — when `fill` is set the editor becomes a flex column so the
-    // typing area takes ALL remaining height instead of sitting at a fixed
-    // minHeight inside a scrolling card (measured at 22px before C2).
-    <div
-      style={{
-        ...(compact ? undefined : { border: '1px solid #d9d9d9', borderRadius: 6 }),
-        ...(fill ? { display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0 } : undefined),
-      }}
-    >
-      <div style={{ padding: compact ? 4 : 8, borderBottom: '1px solid #f0f0f0', flex: '0 0 auto' }}>
+    // G0a (D-054) — `fill` no longer means "absorb the leftover height of a
+    // viewport-sized shell". It selects the desktop editor height, which is
+    // declared in CSS (.kw-editor-fill), so lower clinical sections can grow
+    // without ever shrinking the doctor's typing area.
+    <div style={compact ? undefined : { border: '1px solid #d9d9d9', borderRadius: 6 }}>
+      <div style={{ padding: compact ? 4 : 8, borderBottom: '1px solid #f0f0f0' }}>
         <Space wrap size={4}>
           <Button
             size="small"
@@ -219,11 +237,10 @@ export function RichTextEditor({ content, onChange, placeholder, compact, fill }
         }
         style={
           fill
-            ? // The wrapper grows; the .ProseMirror inside it grows too (see
-              // .kw-editor-fill in index.css) and scrolls only once the
-              // doctor's own text outgrows the space — a scrollbar they
-              // caused, not one the layout imposed.
-              { padding: 8, flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }
+            ? // The .ProseMirror inside scrolls only once the doctor's own
+              // text outgrows the declared height — a scrollbar they caused,
+              // not one the layout imposed.
+              { padding: 8 }
             : compact
               ? { padding: 6, minHeight: 100 }
               : { padding: 12, minHeight: 240 }

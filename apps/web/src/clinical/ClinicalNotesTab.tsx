@@ -171,14 +171,43 @@ export function ClinicalNotesTab({ visitId, patientId, compact }: ClinicalNotesT
   // Pick an initial note ONCE per visit. After this the selection is the
   // user's; refetches never move it.
   useEffect(() => {
-    if (!notes || initialisedFor.current === visitId) {
+    // Wait for the session before deciding: canWriteNarrative below depends
+    // on it, and initialising early would latch the wrong answer for good.
+    if (!notes || !staff || initialisedFor.current === visitId) {
       return;
     }
     initialisedFor.current = visitId;
     if (notes.length > 0) {
       setSelectedNoteId(notes[0].id);
+      return;
     }
-  }, [notes, visitId]);
+    // G0a — a visit with no notes used to render an editor bound to nothing:
+    // the doctor faced an empty selector reading "No notes yet" and had to
+    // find "Add Note" before they could type. Open ONE local draft instead,
+    // so the first consultation of a visit starts by typing.
+    //
+    // This creates NO database row. The row, and its authorship, are still
+    // created only on first successful save (C0 rule, unchanged). content
+    // and baseline are both '' so the draft starts clean — this must never
+    // raise a false "unsaved changes" prompt.
+    //
+    // Only for staff who may write the narrative. FRONT_DESK_CLINICAL_STAFF
+    // must not be handed the doctor's editor (C0); they still use "Add Staff
+    // Remark" deliberately.
+    if (!canWriteNarrative) {
+      return;
+    }
+    setIsNewDraft(true);
+    setSelectedNoteId(undefined);
+    draftStore.syncFromServer(draftKey({ ...scope, noteId: undefined }), undefined, {
+      content: '',
+      language: 'EN',
+      noteType: 'DOCTOR_NARRATIVE',
+      baseline: '',
+      baselineVersion: null,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notes, visitId, staff, canWriteNarrative]);
 
   // Load server content into the editor — but only when it is safe.
   useEffect(() => {
@@ -408,16 +437,11 @@ export function ClinicalNotesTab({ visitId, patientId, compact }: ClinicalNotesT
     status.tone === 'warning' ? '#d46b08' : status.tone === 'error' ? '#cf1322' : status.tone === 'success' ? '#389e0d' : undefined;
 
   return (
-    // C2 (D-053) — a flex column so the editor can claim the remaining
-    // height. Everything above it is deliberately compact; the note is the
-    // dominant surface.
-    <div
-      style={
-        compact
-          ? { display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0, gap: 4 }
-          : undefined
-      }
-    >
+    // G0a — a plain column. The editor's height is set explicitly in CSS
+    // (.kw-editor-fill), NOT taken from whatever space the lower sections
+    // happen to leave over: under C2 every diagnosis or medication added
+    // subtracted directly from the doctor's typing area.
+    <div style={compact ? { display: 'flex', flexDirection: 'column', gap: 4 } : undefined}>
       <VisitObservationsPanel visitId={visitId} compact={compact} />
       <VisitAttachmentsPanel visitId={visitId} compact={compact} />
 
@@ -535,12 +559,11 @@ export function ClinicalNotesTab({ visitId, patientId, compact }: ClinicalNotesT
       <Card
         size="small"
         title={draftType === 'STAFF_REMARK' ? 'Staff Remark' : 'Clinical Notes'}
-        style={compact ? { flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' } : undefined}
         styles={
           compact
             ? {
-                header: { padding: '4px 12px', minHeight: 28, flex: '0 0 auto' },
-                body: { padding: 8, flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' },
+                header: { padding: '4px 12px', minHeight: 28 },
+                body: { padding: 8 },
               }
             : undefined
         }
@@ -592,6 +615,9 @@ export function ClinicalNotesTab({ visitId, patientId, compact }: ClinicalNotesT
           }}
           compact={compact}
           fill={compact}
+          // G0a — a signed or legacy note must not merely refuse to save an
+          // edit, it must not accept keystrokes at all.
+          editable={!readOnly}
         />
       </Card>
 

@@ -413,6 +413,26 @@ Owner: the Canvas layout buried the doctor's main task. Measured before touching
 
 ---
 
+## D-054 — G0a: the editor's height is declared, not left over; and a visit with no notes opens ready to type
+
+Part of Part G (the full Medical Record Workspace review). Owner accepted the audit and authorised these two defects to be fixed ahead of the wider restructure.
+
+**Correction to D-053 first.** C2 reported 324px and "0 nested scrollers". Those numbers were measured on a record with **zero** diagnoses, orders, medications, documents, invoices and attachments — every recent visit in the dev database is empty (verified by direct query). The editor fix in D-053 was real, but its headline numbers described an empty record and should not have been reported without that caveat.
+
+**Why that mattered.** C2 gave the editor `flex: 1 1 auto` inside a viewport-height shell whose lower sections were `flex: 0 0 auto`. With `flex-basis: auto` the lower row takes its *content* height and the note absorbs the remainder — so every diagnosis or medication added subtracted directly from the doctor's typing area, and past the old 220px floor the shell overflowed instead. The layout was population-dependent by construction.
+
+**The fix is to stop deriving the height.** The viewport-height shell is gone; the page scrolls naturally (the app shell's `Content` already provides exactly one scroller) and `.kw-editor-fill .ProseMirror` declares `height: min(58vh, 520px); min-height: 320px`. Lower sections may now continue below the fold — which is what the owner asked for — because they no longer compete with the note. Measured in real Chrome on a record carrying 4 diagnoses, 3 orders and 5 medications: **520px at 1920×1080, 446px at 1366×768, 300px on tablet and mobile, identical to the same viewports on an empty record.**
+
+**Zero-note visits.** A visit with no notes rendered an editor bound to nothing, behind a selector reading "No notes yet"; the doctor had to find "Add Note" before typing. It now opens one local draft immediately. **No database row is created** — the row and its authorship still appear only on first successful save (C0 unchanged), and `content === baseline === ''` so it starts clean and cannot raise a false unsaved-changes prompt. Auto-open is limited to staff who may write the narrative; `FRONT_DESK_CLINICAL_STAFF` is still not handed the doctor's editor and still uses "Add Staff Remark" deliberately (C0 unchanged).
+
+**A pre-existing medicolegal defect found by the new test.** `RichTextEditor` never received an editable flag: `readOnly` only swallowed `onChange`, leaving `.ProseMirror` `contenteditable="true"` on **signed and legacy notes**. A doctor could type into a sealed note and the text would sit there on screen, unsaved, looking accepted. Now `editable={!readOnly}` reaches Tiptap, with a `setEditable` effect so switching from a draft to a signed note re-locks it. This was not introduced by C2 or G0a — it was simply never tested until `prisma/g0a-editor-check.ts` asserted it.
+
+**Verification** (`prisma/g0a-editor-check.ts`, 33/33 in real Chrome at four viewports): zero-note, draft, signed and legacy states; empty vs populated height equality; no horizontal overflow; one scroller; and a direct DB assertion that opening the editor created no `clinical_notes` row. The harness asserts it is *in* Canvas and in the expected height mode first — an earlier run reported 22/22 while silently measuring **Flow**, where the lower sections are not rendered at all and "population-independent" was trivially true. `prisma/c1-note-selector-check.ts` no longer needs `C1_SHOT_PASSWORD`; both scripts mint a token with the server's own secret, so a regression check is actually runnable by whoever needs to run it.
+
+**Reversibility**: High — presentation only, plus one editable flag. No schema, authorship, signing, amendment, RLS, concurrency, draft-store or conflict behaviour was touched.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:

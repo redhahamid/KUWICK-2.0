@@ -154,14 +154,17 @@ export function PatientDashboardPage() {
   const hasProcedures = procedureOrders && procedureOrders.length > 0;
 
   const activeTab = RECORD_TABS.find((tab) => tab.key === activeRecordTab) ?? RECORD_TABS[0];
-  // "No page scroll" only makes sense as a desktop affordance — on mobile/
-  // tablet widths Canvas falls back to a stacked, naturally-scrolling
-  // layout instead of fighting for space in a short viewport (user
-  // feedback: needs to be responsive to all device sizes).
-  const canvasFill = layout === 'canvas' && Boolean(selectedVisit) && isDesktop;
+  // G0a (D-054) — this used to be `canvasFill`, which pinned the whole
+  // workspace to the viewport height so nothing scrolled. That is what made
+  // the editor a leftover: the lower sections were guaranteed a place on
+  // screen and the note absorbed whatever remained. It now selects desktop
+  // DENSITY only. The page scrolls naturally and the editor's height is
+  // declared (.kw-editor-fill), so lower sections may continue below the
+  // fold instead of competing with the note.
+  const canvasCompact = layout === 'canvas' && Boolean(selectedVisit) && isDesktop;
 
   return (
-    <div style={canvasFill ? { display: 'flex', flexDirection: 'column', height: '100%' } : undefined}>
+    <div>
       {layout === 'canvas' && selectedVisit ? (
         <CanvasPatientHeader patient={patient} visit={selectedVisit} />
       ) : (
@@ -250,7 +253,7 @@ export function PatientDashboardPage() {
       )}
 
       {selectedVisit && (
-        <Space wrap style={{ marginBottom: 6, width: '100%', justifyContent: 'flex-end', flex: '0 0 auto' }}>
+        <Space wrap style={{ marginBottom: 6, width: '100%', justifyContent: 'flex-end' }}>
           <Text type="secondary">Layout:</Text>
           <Segmented
             value={layout}
@@ -263,7 +266,7 @@ export function PatientDashboardPage() {
         </Space>
       )}
 
-      <Row gutter={[16, 16]} style={canvasFill ? { flex: '1 1 auto', minHeight: 0 } : undefined}>
+      <Row gutter={[16, 16]}>
         {layout === 'flow' && (
         <Col xs={24} lg={5}>
           <Card
@@ -371,62 +374,30 @@ export function PatientDashboardPage() {
           // and left the editor 22px of typing height (measured); a bounded
           // sidebar plus a growing main column is what makes the note the
           // dominant surface.
-          <Col span={24} style={canvasFill ? { height: '100%', minHeight: 0 } : undefined}>
+          <Col span={24}>
             <div
               className="kw-canvas-shell"
-              style={{
-                display: 'flex',
-                gap: 12,
-                alignItems: 'stretch',
-                height: canvasFill ? '100%' : undefined,
-                minHeight: 0,
-              }}
+              style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}
             >
               <div
                 className="kw-canvas-main"
-                style={{
-                  flex: '1 1 auto',
-                  minWidth: 0,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                  height: canvasFill ? '100%' : undefined,
-                  minHeight: 0,
-                }}
+                style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}
               >
-                {/* The notes card grows; its body does NOT scroll, so the
-                    editor itself is the tall element rather than a short box
-                    inside a scrolling card. */}
                 <Card
                   size="small"
                   className="kw-notes-card"
                   title={<Space>Clinical Notes <Tag>{selectedVisit.visitNumber}</Tag></Space>}
-                  style={
-                    canvasFill
-                      ? { flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }
-                      : undefined
-                  }
                   styles={
-                    canvasFill
-                      ? {
-                          header: { padding: '4px 12px', minHeight: 30 },
-                          body: {
-                            flex: '1 1 auto',
-                            minHeight: 0,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            padding: 8,
-                          },
-                        }
-                      : undefined
+                    canvasCompact ? { header: { padding: '4px 12px', minHeight: 30 }, body: { padding: 8 } } : undefined
                   }
                 >
-                  <ClinicalNotesTab visitId={selectedVisit.id} patientId={patient.id} compact={canvasFill} />
+                  <ClinicalNotesTab visitId={selectedVisit.id} patientId={patient.id} compact={canvasCompact} />
                 </Card>
 
-                {/* Lower panels: content-aware height instead of the old
-                    fixed 118px, which forced four tiny internal scrollbars. */}
-                <Row gutter={[8, 8]} style={canvasFill ? { flex: '0 0 auto' } : undefined}>
+                {/* Lower panels. G0a only frees them to grow below the fold
+                    without stealing editor height — the four equal cards are
+                    replaced by stacked clinical sections in G1. */}
+                <Row gutter={[8, 8]}>
                   <Col xs={12} sm={12} lg={6}>
                     <DiagnosisSummaryCard visitId={selectedVisit.id} />
                   </Col>
@@ -448,16 +419,15 @@ export function PatientDashboardPage() {
 
               {/* Bounded sidebar: min 280px so it stays readable, ~22vw so it
                   scales, max 360px so it never eats the editor's width. Below
-                  the desktop breakpoint it becomes a drawer (see below). */}
+                  the desktop breakpoint it becomes a drawer (see below).
+                  G0a — natural height, no inner scroller: the page scrolls. */}
               {isDesktop && (
                 <aside
                   className="kw-canvas-sidebar"
                   style={{
                     flex: '0 0 clamp(280px, 22vw, 360px)',
                     width: 'clamp(280px, 22vw, 360px)',
-                    height: canvasFill ? '100%' : undefined,
-                    minHeight: 0,
-                    overflowY: canvasFill ? 'auto' : undefined,
+                    alignSelf: 'flex-start',
                   }}
                 >
                   <PatientSummarySidebar
