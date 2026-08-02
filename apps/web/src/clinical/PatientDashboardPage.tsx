@@ -42,10 +42,11 @@ import { useIsDesktop } from '../core/hooks/useMediaQuery';
 import { useRecordViewLayoutStore } from './record-view-layout-store';
 import { CanvasPatientHeader } from './CanvasPatientHeader';
 import { PatientSummarySidebar } from './PatientSummarySidebar';
-import { DiagnosisSummaryCard } from './DiagnosisSummaryCard';
-import { OrdersSummaryCard } from './OrdersSummaryCard';
-import { MedicationsSummaryCard } from './MedicationsSummaryCard';
-import { DocumentsInvoiceSummaryCard } from './DocumentsInvoiceSummaryCard';
+// G1 (D-058) — the four *SummaryCard components are deliberately still in the
+// tree but no longer rendered anywhere. They stay until G1 is accepted and
+// functional parity is confirmed, then go in a cleanup commit. Only one
+// version is ever public.
+import { ClinicalSectionStack } from './sections/ClinicalSectionStack';
 import { Visit } from './types';
 import { isDraftDirty, useClinicalDraftStore, visitPrefix } from './clinical-draft-store';
 
@@ -394,27 +395,6 @@ export function PatientDashboardPage() {
                   <ClinicalNotesTab visitId={selectedVisit.id} patientId={patient.id} compact={canvasCompact} />
                 </Card>
 
-                {/* Lower panels. G0a only frees them to grow below the fold
-                    without stealing editor height — the four equal cards are
-                    replaced by stacked clinical sections in G1. */}
-                <Row gutter={[8, 8]}>
-                  <Col xs={12} sm={12} lg={6}>
-                    <DiagnosisSummaryCard visitId={selectedVisit.id} />
-                  </Col>
-                  <Col xs={12} sm={12} lg={6}>
-                    <OrdersSummaryCard visitId={selectedVisit.id} />
-                  </Col>
-                  <Col xs={12} sm={12} lg={6}>
-                    <MedicationsSummaryCard visitId={selectedVisit.id} />
-                  </Col>
-                  <Col xs={12} sm={12} lg={6}>
-                    <DocumentsInvoiceSummaryCard
-                      visit={selectedVisit}
-                      patientName={patient.name}
-                      patientIdentifier={patient.identifierValue}
-                    />
-                  </Col>
-                </Row>
               </div>
 
               {/* Bounded sidebar: min 280px so it stays readable, ~22vw so it
@@ -442,6 +422,16 @@ export function PatientDashboardPage() {
                 </aside>
               )}
             </div>
+
+            {/* G1 (D-058) — the clinical sections sit BELOW the editor row and
+                span its full width, including under the sidebar. They are
+                outside the flex row on purpose: nothing here can take height
+                from the note, which declares its own (G0a, D-054). */}
+            <ClinicalSectionStack
+              visit={selectedVisit}
+              patientName={patient.name}
+              patientIdentifier={patient.identifierValue}
+            />
           </Col>
         )}
       </Row>

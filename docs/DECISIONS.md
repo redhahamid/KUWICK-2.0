@@ -488,6 +488,45 @@ The 320px floor is real but belongs only to `.kw-editor-fill`, and only binds be
 
 ---
 
+## D-057 — Document vitals: the generic summary stays; weight becomes a structured merge field in G3
+
+Owner's decision on the gap G0 reported (D-056): `formatVitals()` renders BP, pulse, temperature, SpO₂ and respiratory rate, and has never included weight, height or glucose.
+
+**Accepted as-is.** The observation behaviour verified in G0 is correct, and `formatVitals()` is **not** to be modified during G1.
+
+For the **G3 Documents** phase:
+
+- BP, pulse, temperature, SpO₂ and respiratory rate remain the standard general-vitals summary.
+- **Weight** becomes a structured merge field, used by the templates that need it — paediatric documents especially.
+- Height, BMI and glucose become **optional, template-specific** merge fields.
+- Nothing is auto-inserted: every recorded observation must not be dumped into every referral, MC or memo. A template asks for what it needs.
+
+The distinction that matters: a *general vitals summary* and a *specific measurement a document depends on* are different things, and a paediatric dosage letter needing weight is not a reason to put weight on every memo.
+
+---
+
+## D-058 — G1: one clinical-section structure instead of four dashboard cards
+
+The Canvas workspace ended C2 with four equal-height summary cards (Diagnosis, Orders, Medications, and a combined "Documents & Invoice") sitting in a 4-up grid under the note. That grid was the reason the record read as a dashboard rather than a consultation: every section got the same weight regardless of what it held, at 375px they became two-up cards ~170px wide, and the combined card meant Documents and Invoice — two unrelated workflows — shared one box.
+
+**The shell.** `ClinicalSection` is one component every section renders through: title, count, collapsed summary, optional status, a text-labelled primary action, an optional secondary menu, expand/collapse, and explicit loading, error, empty and permission-disabled states. Actions carry words, never an icon alone. Because every section shares it, "consistent" is structural rather than a thing five components each have to remember.
+
+**Layout.** Five full-width sections stacked in clinical order — Diagnosis, Orders/Procedures, Medications, Documents, Invoice — below the editor row, on the page's own scroll. **Documents and Invoice are separate sections from G1**, even though their internals are G3.
+
+**Editor height is unaffected by construction.** G0a already replaced the viewport-height shell with a declared editor height, so sections growing below cannot take space from the note. G1 keeps that property and re-measures it with a populated record rather than assuming it held.
+
+**Expanded content reuses the existing tabs** (`DiagnosisTab`, `OrdersServicesTab`, `MedicationsTab`, `DocumentsTab`, `InvoiceTab`) unchanged. No business logic was duplicated or rewritten: the detailed redesigns are G2 and G3.
+
+**On the Invoice section specifically:** G1's parity rule (preserve every current action) and D-056's financial-permissions decision (no new Pay/Cancel/Refund inside the clinical workspace) pull in opposite directions here. G1 wins for now — the expanded Invoice section renders the *existing* `InvoiceTab`, so nothing is added and nothing is removed relative to what the modal already exposed. Making it a read-only summary is G3's job, and the underlying gap is still that no server-side RBAC exists.
+
+**Order status labels** are humanised in the collapsed summary only (`PENDING` → "Ordered", `IN_PROGRESS` → "In Progress"). The enum, the API and the expanded tab are untouched.
+
+**Rollback.** The four `*SummaryCard` components are kept in the tree, unreferenced, until G1 is accepted — one public version at a time, but the old one still recoverable. They are deleted in a later cleanup commit once parity is confirmed.
+
+**Reversibility**: High — presentation only. No schema, endpoint, permission, calculation or clinical-workflow change.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:
