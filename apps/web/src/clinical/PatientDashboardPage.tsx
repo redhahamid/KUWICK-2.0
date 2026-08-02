@@ -10,12 +10,20 @@ import {
   Row,
   Segmented,
   Space,
+  Modal,
   Spin,
   Statistic,
   Tag,
   Typography,
 } from 'antd';
-import { AppstoreOutlined, EditOutlined, PlusOutlined, UnorderedListOutlined, UserOutlined } from '@ant-design/icons';
+import {
+  AppstoreOutlined,
+  EditOutlined,
+  ExclamationCircleOutlined,
+  PlusOutlined,
+  UnorderedListOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { usePatient } from '../core/hooks/usePatients';
 import { usePatientVisits } from './hooks/useVisits';
@@ -37,6 +45,7 @@ import { OrdersSummaryCard } from './OrdersSummaryCard';
 import { MedicationsSummaryCard } from './MedicationsSummaryCard';
 import { DocumentsInvoiceSummaryCard } from './DocumentsInvoiceSummaryCard';
 import { Visit } from './types';
+import { hasUnsavedDrafts, useClinicalDraftStore } from './clinical-draft-store';
 
 const { Title, Text } = Typography;
 
@@ -78,6 +87,35 @@ export function PatientDashboardPage() {
   const selectedVisit: Visit | undefined =
     visits?.find((visit) => visit.id === selectedVisitId) ?? visits?.[0];
   const { data: procedureOrders } = useOrderServices(selectedVisit?.id, { orderType: 'TASK_ORDER' });
+
+  // C1 (D-052) — changing visit swaps the clinical record under the editor,
+  // so unsaved text must be confirmed first. The draft itself is keyed per
+  // visit and stays in memory, so cancelling loses nothing.
+  const drafts = useClinicalDraftStore((state) => state.drafts);
+  const clearDrafts = useClinicalDraftStore((state) => state.clearAll);
+  const hasUnsaved = hasUnsavedDrafts(drafts);
+
+  const requestVisitChange = (visitId: string) => {
+    if (visitId === selectedVisit?.id) {
+      return;
+    }
+    if (!hasUnsaved) {
+      setSelectedVisitId(visitId);
+      return;
+    }
+    Modal.confirm({
+      title: 'You have unsaved clinical notes',
+      icon: <ExclamationCircleOutlined />,
+      content: 'Switching to another visit will discard clinical text you have not saved yet.',
+      okText: 'Discard and switch',
+      okButtonProps: { danger: true },
+      cancelText: 'Continue editing',
+      onOk: () => {
+        clearDrafts();
+        setSelectedVisitId(visitId);
+      },
+    });
+  };
 
   if (isLoading || !patient) {
     return <Spin />;
@@ -291,7 +329,7 @@ export function PatientDashboardPage() {
                 }
                 size="small"
               >
-                {activeTab.key === 'notes' && <ClinicalNotesTab visitId={selectedVisit.id} />}
+                {activeTab.key === 'notes' && <ClinicalNotesTab visitId={selectedVisit.id} patientId={patient.id} />}
                 {activeTab.key === 'orders' && <OrdersServicesTab visitId={selectedVisit.id} />}
                 {activeTab.key === 'diagnosis' && <DiagnosisTab visitId={selectedVisit.id} />}
                 {activeTab.key === 'medications' && <MedicationsTab visitId={selectedVisit.id} />}
@@ -332,7 +370,7 @@ export function PatientDashboardPage() {
                       : undefined
                   }
                 >
-                  <ClinicalNotesTab visitId={selectedVisit.id} compact />
+                  <ClinicalNotesTab visitId={selectedVisit.id} patientId={patient.id} compact />
                 </Card>
                 <Row gutter={[8, 8]} style={canvasFill ? { flex: '0 0 118px', minHeight: 0 } : undefined}>
                   <Col xs={12} sm={12} lg={6} style={canvasFill ? { height: '100%' } : undefined}>
@@ -360,7 +398,7 @@ export function PatientDashboardPage() {
                 patient={patient}
                 visits={visits}
                 selectedVisitId={selectedVisit.id}
-                onSelectVisit={setSelectedVisitId}
+                onSelectVisit={requestVisitChange}
                 expanded={expandProfile}
                 onToggleExpand={() => setExpandProfile((prev) => !prev)}
                 onNewVisit={() => setNewVisitOpen(true)}
