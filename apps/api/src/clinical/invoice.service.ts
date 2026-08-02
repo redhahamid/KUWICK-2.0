@@ -5,6 +5,7 @@ import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { VisitService } from './visit.service';
 import { assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
+import { BillingAction, assertCanPerformBilling } from './clinical-authorization';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { AddInvoiceLineDto } from './dto/add-invoice-line.dto';
 import { CancelInvoiceDto } from './dto/cancel-invoice.dto';
@@ -29,11 +30,49 @@ export class InvoiceService {
     return `INV-${String(count + 1).padStart(6, '0')}`;
   }
 
+  /**
+   * G3c closure (D-066) — the ONE billing gate. Every invoice mutation goes
+   * through it; none of them does its own role check.
+   *
+   * Three things, in this order, all server-side:
+   *
+   *  1. the actor is resolved from the authenticated session (never the JWT's
+   *     own role claim — the staff row is the authority, so a re-issued or
+   *     tampered token cannot promote anybody);
+   *  2. the role is checked against the action being attempted;
+   *  3. branch access is checked against the visit **resolved from stored
+   *     data**. For a line/pay/cancel that means loading the invoice and
+   *     using ITS `visitId` — a visit or branch id supplied by the browser is
+   *     never trusted, and a missing or inconsistent relationship fails
+   *     closed with a 404 rather than proceeding.
+   */
+  private async authoriseBilling(action: BillingAction, visitId: string) {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      assertCanPerformBilling(actor, action);
+      await assertMayTouchVisit(tx, visitId, actor);
+      return actor;
+    });
+  }
+
+  /** Resolves an invoice's OWN visit — the only visit id a mutation trusts. */
+  private async invoiceVisitId(invoiceId: string): Promise<string> {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      select: { visitId: true },
+    });
+    if (!invoice) {
+      throw new NotFoundException('Invoice not found');
+    }
+    return invoice.visitId;
+  }
+
   // createdByStaffId is caller-supplied, not defaulted from the visit —
   // invoice creation is deliberately staff-creatable (not gated to the
   // visit's own attending doctor) so a locum covering the queue can bill
   // a visit that isn't "theirs".
   async create(dto: CreateInvoiceDto) {
+    await this.authoriseBilling('CREATE_INVOICE', dto.visitId);
     const visit = await this.visits.findById(dto.visitId);
     return this.prisma.invoice.create({
       data: {
@@ -155,6 +194,7 @@ export class InvoiceService {
   }
 
   async addLine(invoiceId: string, dto: AddInvoiceLineDto) {
+    await this.authoriseBilling('EDIT_LINES', await this.invoiceVisitId(invoiceId));
     const invoice = await this.findById(invoiceId);
     if (invoice.status !== InvoiceStatus.UNPAID) {
       throw new BadRequestException(`Cannot add a line to an invoice in status ${invoice.status}`);
@@ -183,6 +223,7 @@ export class InvoiceService {
   }
 
   async removeLine(invoiceId: string, lineId: string) {
+    await this.authoriseBilling('EDIT_LINES', await this.invoiceVisitId(invoiceId));
     const invoice = await this.findById(invoiceId);
     if (invoice.status !== InvoiceStatus.UNPAID) {
       throw new BadRequestException(`Cannot remove a line from an invoice in status ${invoice.status}`);
@@ -196,6 +237,7 @@ export class InvoiceService {
   }
 
   async cancel(id: string, dto: CancelInvoiceDto) {
+    await this.authoriseBilling('CANCEL_INVOICE', await this.invoiceVisitId(id));
     const invoice = await this.findById(id);
     if (invoice.status !== InvoiceStatus.UNPAID) {
       throw new BadRequestException(`Cannot cancel an invoice in status ${invoice.status}`);
@@ -248,6 +290,7 @@ export class InvoiceService {
   // when the computed copay is actually zero — the frontend already hides
   // that action otherwise, this is the server-side backstop.
   async pay(id: string, dto: PayInvoiceDto) {
+    await this.authoriseBilling('MARK_PAID', await this.invoiceVisitId(id));
     const invoice = await this.findById(id);
     if (invoice.status !== InvoiceStatus.UNPAID) {
       throw new BadRequestException(`Cannot mark an invoice in status ${invoice.status} as paid`);

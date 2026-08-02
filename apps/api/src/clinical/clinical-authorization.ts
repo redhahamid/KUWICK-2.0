@@ -175,6 +175,64 @@ export function assertCanAuthoriseDocument(staff: Staff, requiresClinical: boole
   }
 }
 
+// ---------------------------------------------------------------------------
+// G3c closure (D-066) — BILLING authorisation.
+//
+// Deliberately decided on the administrative ROLE alone, and deliberately NOT
+// on professional identity. That is the mirror image of clinical signing: a
+// non-clinical owner may legitimately run the clinic's finances, whereas
+// ownership alone never confers clinical authority; and being a doctor is a
+// clinical fact, not a licence to move money. `professionalType` is not
+// consulted anywhere below.
+//
+// Actions are separated because they are different jobs. Raising a bill and
+// adding what was done to it is part of running the consultation, so a doctor
+// may do it. Taking payment is counter work. Cancelling an issued invoice is a
+// financial correction, and is the narrowest of the four.
+// ---------------------------------------------------------------------------
+export type BillingAction = 'CREATE_INVOICE' | 'EDIT_LINES' | 'MARK_PAID' | 'CANCEL_INVOICE';
+
+const BILLING_MATRIX: Record<BillingAction, Role[]> = {
+  // Raising the bill and itemising it: counter staff, finance, the owner, and
+  // the doctor who ordered the work.
+  CREATE_INVOICE: ['OWNER_ADMIN', 'FINANCE_STAFF', 'FRONT_DESK_CLINICAL_STAFF', 'DOCTOR_RESIDENT', 'DOCTOR_LOCUM'],
+  EDIT_LINES: ['OWNER_ADMIN', 'FINANCE_STAFF', 'FRONT_DESK_CLINICAL_STAFF', 'DOCTOR_RESIDENT', 'DOCTOR_LOCUM'],
+  // Collecting money is counter work. A doctor gets no cash-handling right
+  // just by being a doctor — "should not automatically receive unrestricted
+  // finance powers".
+  MARK_PAID: ['OWNER_ADMIN', 'FINANCE_STAFF', 'FRONT_DESK_CLINICAL_STAFF'],
+  // Voiding a bill that has already been issued is a financial correction and
+  // stays with finance and the owner.
+  CANCEL_INVOICE: ['OWNER_ADMIN', 'FINANCE_STAFF'],
+};
+
+// Anyone who may perform ANY billing action — the gate for reaching the
+// billing page at all. Read access to the clinical Invoice Summary is a
+// SEPARATE permission and is not affected by this.
+export function canAccessBilling(staff: Staff): boolean {
+  return (
+    staff.active &&
+    (Object.keys(BILLING_MATRIX) as BillingAction[]).some((action) => BILLING_MATRIX[action].includes(staff.role))
+  );
+}
+
+export function canPerformBilling(staff: Staff, action: BillingAction): boolean {
+  return staff.active && BILLING_MATRIX[action].includes(staff.role);
+}
+
+const BILLING_ACTION_WORDS: Record<BillingAction, string> = {
+  CREATE_INVOICE: 'raise an invoice',
+  EDIT_LINES: 'change the items on an invoice',
+  MARK_PAID: 'record a payment',
+  CANCEL_INVOICE: 'cancel an invoice',
+};
+
+export function assertCanPerformBilling(staff: Staff, action: BillingAction): void {
+  if (!canPerformBilling(staff, action)) {
+    throw new ForbiddenException(`Your role is not permitted to ${BILLING_ACTION_WORDS[action]}.`);
+  }
+}
+
 export function assertCanVoidClinicalRecord(staff: Staff, what: string): void {
   if (!canVoidClinicalRecord(staff)) {
     throw new ForbiddenException(

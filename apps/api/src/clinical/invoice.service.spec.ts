@@ -6,7 +6,10 @@ import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider'
 import { PrismaService } from '../core/prisma.service';
 import { tenantContextStorage } from '../core/tenant-context';
 
-function createService() {
+// G3c closure (D-066) — billing authority depends on the ROLE, so the actor
+// is now a parameter. The pay/cancel business-rule tests below run as a
+// billing role; the authorisation tests pick the role deliberately.
+function createService(role = 'FINANCE_STAFF') {
   const prisma = {
     invoice: { count: jest.fn(), create: jest.fn(), findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     invoiceLine: { create: jest.fn(), findMany: jest.fn(), delete: jest.fn() },
@@ -25,8 +28,8 @@ function createService() {
     staff: {
       findUnique: jest.fn().mockResolvedValue({
         id: 'staff-1',
-        fullName: 'Dr. Amira Rahman',
-        role: 'DOCTOR_RESIDENT',
+        fullName: 'Aminah Counter',
+        role,
         active: true,
         clinicId: 'clinic-1',
         userId: 'user-1',
@@ -44,6 +47,101 @@ function createService() {
 function withTenant<T>(fn: () => Promise<T>): Promise<T> {
   return tenantContextStorage.run({ tenantId: 'test-tenant', staffId: 'staff-1' }, fn);
 }
+
+// =============================================================================
+// G3c closure (D-066) — the billing authorisation matrix, on the routes that
+// move money. Before this, ANY authenticated user of the tenant could create,
+// line, pay or cancel an invoice by calling the API directly.
+// =============================================================================
+describe('billing authorisation', () => {
+  const UNPAID_INVOICE = { id: 'inv-1', visitId: 'visit-1', status: InvoiceStatus.UNPAID, lines: [] };
+
+  const arrange = (role: string) => {
+    const ctx = createService(role);
+    (ctx.prisma.invoice.findUnique as jest.Mock).mockResolvedValue(UNPAID_INVOICE);
+    (ctx.visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'staff-9' });
+    (ctx.prisma.invoice.count as jest.Mock).mockResolvedValue(0);
+    (ctx.prisma.invoice.create as jest.Mock).mockResolvedValue({ id: 'inv-1' });
+    (ctx.prisma.invoiceLine.create as jest.Mock).mockResolvedValue({ id: 'l1' });
+    (ctx.prisma.invoiceLine.findMany as jest.Mock).mockResolvedValue([{ amount: 10 }]);
+    (ctx.prisma.invoice.update as jest.Mock).mockResolvedValue({ id: 'inv-1' });
+    return ctx;
+  };
+
+  const ACTIONS = {
+    create: (s: InvoiceService) => s.create({ visitId: 'visit-1', createdByStaffId: 'staff-1' }),
+    addLine: (s: InvoiceService) => s.addLine('inv-1', { description: 'X', unitPrice: 10 }),
+    pay: (s: InvoiceService) => s.pay('inv-1', { paymentMethod: 'CASH' }),
+    cancel: (s: InvoiceService) => s.cancel('inv-1', { cancelReason: 'x' }),
+  };
+
+  // The approved matrix, asserted as data so the table and the guard cannot
+  // drift apart silently.
+  const MATRIX: [string, (keyof typeof ACTIONS)[]][] = [
+    ['OWNER_ADMIN', ['create', 'addLine', 'pay', 'cancel']],
+    ['FINANCE_STAFF', ['create', 'addLine', 'pay', 'cancel']],
+    ['FRONT_DESK_CLINICAL_STAFF', ['create', 'addLine', 'pay']],
+    ['DOCTOR_RESIDENT', ['create', 'addLine']],
+    ['DOCTOR_LOCUM', ['create', 'addLine']],
+    ['HR_STAFF', []],
+    ['STOCK_STAFF', []],
+    ['PANEL_STAFF', []],
+    ['PATIENT_PORTAL', []],
+  ];
+
+  for (const [role, allowed] of MATRIX) {
+    for (const action of Object.keys(ACTIONS) as (keyof typeof ACTIONS)[]) {
+      const permitted = allowed.includes(action);
+      it(`${role} ${permitted ? 'may' : 'may NOT'} ${action}`, async () => {
+        const { service } = arrange(role);
+        const run = () => withTenant(() => ACTIONS[action](service));
+        if (permitted) {
+          await expect(run()).resolves.toBeDefined();
+        } else {
+          await expect(run()).rejects.toThrow(ForbiddenException);
+        }
+      });
+    }
+  }
+
+  it('an inactive staff member may do nothing, whatever their role', async () => {
+    const { service, tx } = arrange('FINANCE_STAFF');
+    tx.staff.findUnique.mockResolvedValue({
+      id: 'staff-1',
+      fullName: 'Former Finance',
+      role: 'FINANCE_STAFF',
+      active: false,
+      clinicId: 'clinic-1',
+      userId: 'user-1',
+    });
+
+    await expect(withTenant(() => ACTIONS.pay(service))).rejects.toThrow();
+  });
+
+  // The browser never chooses which visit a mutation lands on: pay/cancel/
+  // line resolve the invoice's OWN visit before the branch check.
+  it('a mutation resolves the branch from the invoice’s stored visit', async () => {
+    const { service, prisma, tx } = arrange('FINANCE_STAFF');
+    (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
+      ...UNPAID_INVOICE,
+      visitId: 'visit-OWNED-BY-ANOTHER-BRANCH',
+    });
+    tx.clinic.count.mockResolvedValue(2);
+    tx.visit.findUnique.mockResolvedValue({ clinicId: 'clinic-OTHER' });
+
+    await expect(withTenant(() => ACTIONS.pay(service))).rejects.toThrow(ForbiddenException);
+    expect(tx.visit.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'visit-OWNED-BY-ANOTHER-BRANCH' } }),
+    );
+  });
+
+  it('a mutation against an unknown invoice fails closed', async () => {
+    const { service, prisma } = arrange('FINANCE_STAFF');
+    (prisma.invoice.findUnique as jest.Mock).mockResolvedValue(null);
+
+    await expect(withTenant(() => ACTIONS.pay(service))).rejects.toThrow(NotFoundException);
+  });
+});
 
 describe('InvoiceService', () => {
   // G3c (D-065) — the read the Clinical Workspace exposes. Tenant isolation
@@ -199,7 +297,7 @@ describe('InvoiceService', () => {
       lines: [],
     });
 
-    await expect(service.addLine('inv-1', { description: 'X', unitPrice: 10 })).rejects.toThrow(BadRequestException);
+    await expect(withTenant(() => service.addLine('inv-1', { description: 'X', unitPrice: 10 }))).rejects.toThrow(BadRequestException);
   });
 
   it('removeLine throws NotFoundException for a line not on this invoice', async () => {
@@ -210,14 +308,14 @@ describe('InvoiceService', () => {
       lines: [{ id: 'other-line' }],
     });
 
-    await expect(service.removeLine('inv-1', 'missing-line')).rejects.toThrow(NotFoundException);
+    await expect(withTenant(() => service.removeLine('inv-1', 'missing-line'))).rejects.toThrow(NotFoundException);
   });
 
   it('cancel rejects an invoice that is already PAID', async () => {
     const { service, prisma } = createService();
     (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({ id: 'inv-1', status: InvoiceStatus.PAID, lines: [] });
 
-    await expect(service.cancel('inv-1', {})).rejects.toThrow(BadRequestException);
+    await expect(withTenant(() => service.cancel('inv-1', {}))).rejects.toThrow(BadRequestException);
   });
 
   it('pay marks an UNPAID invoice as PAID, recording the full total as patient-paid for a self-pay visit', async () => {
@@ -232,7 +330,7 @@ describe('InvoiceService', () => {
     (prisma.visit.findUnique as jest.Mock).mockResolvedValue({ panelClinicId: null });
     (prisma.invoice.update as jest.Mock).mockResolvedValue({ id: 'inv-1', status: InvoiceStatus.PAID });
 
-    await service.pay('inv-1', { paymentMethod: 'CASH' });
+    await withTenant(() => service.pay('inv-1', { paymentMethod: 'CASH' }));
 
     expect(prisma.invoice.update).toHaveBeenCalledWith({
       where: { id: 'inv-1' },
@@ -259,7 +357,7 @@ describe('InvoiceService', () => {
     (prisma.panelClinic.findUnique as jest.Mock).mockResolvedValue({ limitAmount: 100 });
     (prisma.invoice.update as jest.Mock).mockResolvedValue({ id: 'inv-1', status: InvoiceStatus.PAID });
 
-    await service.pay('inv-1', { paymentMethod: 'CASH' });
+    await withTenant(() => service.pay('inv-1', { paymentMethod: 'CASH' }));
 
     expect(prisma.invoice.update).toHaveBeenCalledWith({
       where: { id: 'inv-1' },
@@ -285,7 +383,7 @@ describe('InvoiceService', () => {
     (prisma.visit.findUnique as jest.Mock).mockResolvedValue({ panelClinicId: 'panel-1' });
     (prisma.panelClinic.findUnique as jest.Mock).mockResolvedValue({ limitAmount: 100 });
 
-    await expect(service.pay('inv-1', { paymentMethod: 'PANEL' })).rejects.toThrow(BadRequestException);
+    await expect(withTenant(() => service.pay('inv-1', { paymentMethod: 'PANEL' }))).rejects.toThrow(BadRequestException);
   });
 
   it('pay allows "Mark Fully Covered by Panel" when the computed copay is zero', async () => {
@@ -301,7 +399,7 @@ describe('InvoiceService', () => {
     (prisma.panelClinic.findUnique as jest.Mock).mockResolvedValue({ limitAmount: 100 });
     (prisma.invoice.update as jest.Mock).mockResolvedValue({ id: 'inv-1', status: InvoiceStatus.PAID });
 
-    await service.pay('inv-1', { paymentMethod: 'PANEL' });
+    await withTenant(() => service.pay('inv-1', { paymentMethod: 'PANEL' }));
 
     expect(prisma.invoice.update).toHaveBeenCalledWith({
       where: { id: 'inv-1' },
@@ -323,6 +421,6 @@ describe('InvoiceService', () => {
       lines: [],
     });
 
-    await expect(service.pay('inv-1', { paymentMethod: 'CASH' })).rejects.toThrow(BadRequestException);
+    await expect(withTenant(() => service.pay('inv-1', { paymentMethod: 'CASH' }))).rejects.toThrow(BadRequestException);
   });
 });
