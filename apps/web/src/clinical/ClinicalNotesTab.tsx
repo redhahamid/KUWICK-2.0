@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -6,7 +6,6 @@ import {
   Dropdown,
   Input,
   Modal,
-  Segmented,
   Select,
   Space,
   Tag,
@@ -17,6 +16,7 @@ import {
 import {
   AudioOutlined,
   EditOutlined,
+  ExclamationCircleOutlined,
   PlusOutlined,
   SafetyCertificateOutlined,
   ThunderboltOutlined,
@@ -29,10 +29,21 @@ import {
   useSignClinicalNote,
   useUpdateClinicalNote,
 } from './hooks/useClinicalNote';
+import { useBeforeUnloadGuard } from './hooks/useUnsavedGuard';
 import { RichTextEditor } from './RichTextEditor';
 import { VisitAttachmentsPanel } from './VisitAttachmentsPanel';
 import { VisitObservationsPanel } from './VisitObservationsPanel';
 import { useAuthStore } from '../core/auth-store';
+import {
+  DraftState,
+  SaveStatus,
+  describeSaveStatus,
+  draftKey,
+  isDraftDirty,
+  shouldRefreshBaseline,
+  shouldSyncFromServer,
+  useClinicalDraftStore,
+} from './clinical-draft-store';
 import { ClinicalNote, ClinicalNoteType, NoteLanguage } from './types';
 import { ApiError } from '../core/api-client';
 
@@ -55,8 +66,7 @@ const SMART_ABBREVIATIONS: Record<string, string> = {
 
 // TypeScript's bundled DOM lib doesn't ship SpeechRecognition types (still
 // vendor-prefixed/experimental) — minimal shape declared here rather than
-// pulling in a types package for one browser API (D-025: browser Web Speech
-// API only, no paid dependency).
+// pulling in a types package for one browser API (D-025).
 interface SpeechRecognitionResultLike {
   0: { transcript: string };
 }
@@ -79,9 +89,8 @@ declare global {
   }
 }
 
-// Which roles may write a doctor's narrative. Mirrors the server rule in
-// clinical-authorization.ts — this only hides the editor for clarity; the
-// server is the actual control and returns 403 regardless.
+// Mirrors the server rule in clinical-authorization.ts. This only hides the
+// editor for clarity; the server is the actual control and returns 403.
 const DOCTOR_ROLES = ['DOCTOR_RESIDENT', 'DOCTOR_LOCUM'];
 
 function noteLabel(note: ClinicalNote): string {
@@ -100,101 +109,239 @@ function noteLabel(note: ClinicalNote): string {
   return `${when} · ${who}${amendment}${state}`;
 }
 
+// A signed or legacy note is read-only, so it must never own an editable
+// draft — otherwise selecting one could carry the previous note's text in.
+function isReadOnlyNote(note: ClinicalNote | undefined): boolean {
+  return Boolean(note && (note.status === 'SIGNED' || note.legacyAuthorUnknown));
+}
+
 interface ClinicalNotesTabProps {
   visitId: string;
-  // Canvas layout needs the whole record visible without page scroll —
-  // compact shrinks paddings and the editor's minimum height.
+  patientId: string;
   compact?: boolean;
 }
 
-// C0 (D-051) — the narrative entry surface.
-//
-// Vitals are NO LONGER part of this form: they live in
-// VisitObservationsPanel with their own recorder attribution, so a staff
-// member taking a BP can never become the author of the doctor's narrative.
-export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
+// C0 (D-051) — narrative entry with real authorship.
+// C1 (D-052) — unsaved-text safety around it.
+export function ClinicalNotesTab({ visitId, patientId, compact }: ClinicalNotesTabProps) {
   const { data: notes, isLoading } = useClinicalNotes(visitId);
   const createNote = useCreateClinicalNote(visitId);
   const updateNote = useUpdateClinicalNote(visitId);
   const signNote = useSignClinicalNote(visitId);
   const amendNote = useAmendClinicalNote(visitId);
   const staff = useAuthStore((state) => state.staff);
+  const tenant = useAuthStore((state) => state.tenant);
 
-  const [language, setLanguage] = useState<NoteLanguage>('EN');
   const [listening, setListening] = useState(false);
-  const [notesHtml, setNotesHtml] = useState('');
-  const [activeNoteId, setActiveNoteId] = useState<string>();
-  const [draftType, setDraftType] = useState<ClinicalNoteType>('DOCTOR_NARRATIVE');
+  // C1 — the ACTIVE note is explicit and only ever changes because the user
+  // asked. It is never re-derived from notes[0], so a newer note arriving
+  // from another session cannot steal the selection mid-consultation.
+  const [selectedNoteId, setSelectedNoteId] = useState<string>();
   const [isNewDraft, setIsNewDraft] = useState(false);
   const [amendOpen, setAmendOpen] = useState(false);
   const [amendReason, setAmendReason] = useState('');
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: 'idle' });
+  const [conflictOpen, setConflictOpen] = useState(false);
+  const initialisedFor = useRef<string | undefined>(undefined);
 
+  // Subscribed to the whole store: this component reads drafts, loadedNoteId
+  // and every action, and the store only changes while this editor is in use.
+  const draftStore = useClinicalDraftStore((state) => state);
   const canWriteNarrative = Boolean(staff && DOCTOR_ROLES.includes(staff.role));
 
+  const scope = useMemo(
+    () => ({
+      tenantId: tenant?.id ?? 'unknown-tenant',
+      clinicId: staff?.clinicId ?? null,
+      patientId,
+      visitId,
+      noteId: isNewDraft ? undefined : selectedNoteId,
+    }),
+    [tenant?.id, staff?.clinicId, patientId, visitId, isNewDraft, selectedNoteId],
+  );
+  const key = draftKey(scope);
+  const draft = draftStore.drafts[key];
+  const dirty = isDraftDirty(draft);
+
   const activeNote = useMemo(
-    () => (isNewDraft ? undefined : (notes?.find((n) => n.id === activeNoteId) ?? notes?.[0])),
-    [isNewDraft, notes, activeNoteId],
+    () => (isNewDraft ? undefined : notes?.find((n) => n.id === selectedNoteId)),
+    [isNewDraft, notes, selectedNoteId],
   );
 
-  // Sync the editor from the selected note. Keyed on the note ID (not the
-  // object) so a background refetch can't wipe what's being typed.
+  // Pick an initial note ONCE per visit. After this the selection is the
+  // user's; refetches never move it.
   useEffect(() => {
-    if (isNewDraft) {
+    if (!notes || initialisedFor.current === visitId) {
       return;
     }
-    if (activeNote) {
-      setLanguage(activeNote.noteLanguage);
-      setNotesHtml(activeNote.notes ?? '');
-      setDraftType(activeNote.noteType);
-    } else {
-      setLanguage('EN');
-      setNotesHtml('');
+    initialisedFor.current = visitId;
+    if (notes.length > 0) {
+      setSelectedNoteId(notes[0].id);
+    }
+  }, [notes, visitId]);
+
+  // Load server content into the editor — but only when it is safe.
+  useEffect(() => {
+    if (isNewDraft || !activeNote) {
+      return;
+    }
+    const loaded = draftStore.loadedNoteId[key];
+    const serverContent = activeNote.notes ?? '';
+
+    if (shouldSyncFromServer({ incomingNoteId: activeNote.id, loadedNoteId: loaded, isDirty: dirty })) {
+      const next: DraftState = {
+        content: serverContent,
+        language: activeNote.noteLanguage,
+        noteType: activeNote.noteType,
+        baseline: serverContent,
+        baselineVersion: activeNote.version,
+      };
+      draftStore.syncFromServer(key, activeNote.id, next);
+      return;
+    }
+    // Same note, nothing local at risk: adopt a colleague's newer text.
+    if (
+      draft &&
+      shouldRefreshBaseline({
+        incomingNoteId: activeNote.id,
+        loadedNoteId: loaded,
+        isDirty: dirty,
+        serverContent,
+        baseline: draft.baseline,
+      })
+    ) {
+      draftStore.refreshBaseline(key, serverContent, activeNote.version);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeNote?.id, isNewDraft]);
+  }, [activeNote?.id, activeNote?.version, activeNote?.notes, key, isNewDraft, dirty]);
+
+  // Reflect dirtiness in the status line without clobbering a terminal state
+  // the user still needs to see (failure/conflict stay until resolved).
+  useEffect(() => {
+    setSaveStatus((current) => {
+      if (current.kind === 'saving' || current.kind === 'error' || current.kind === 'conflict') {
+        return current;
+      }
+      if (dirty) {
+        return { kind: 'dirty' };
+      }
+      return current.kind === 'saved' ? current : { kind: 'idle' };
+    });
+  }, [dirty]);
+
+  useBeforeUnloadGuard(dirty);
+
+  const content = draft?.content ?? '';
+  const language: NoteLanguage = draft?.language ?? 'EN';
+  const draftType: ClinicalNoteType = draft?.noteType ?? 'DOCTOR_NARRATIVE';
 
   const isSigned = activeNote?.status === 'SIGNED';
-  // A legacy note has no recorded author, so editing it would attribute
-  // someone else's historical text to whoever is logged in now. Permanently
-  // read-only; corrections go through an attributed amendment.
   const isLegacy = Boolean(activeNote?.legacyAuthorUnknown);
   const isLocked = isSigned || isLegacy;
   const readOnly = isLocked || (!canWriteNarrative && draftType === 'DOCTOR_NARRATIVE' && !isNewDraft);
 
-  // "Add Note" opens a LOCAL draft — no empty row is inserted in the
-  // database. The row (and its authorship) is created on first save.
+  // One shared confirmation path for every action that would replace what is
+  // in the editor, so two dialogs can never stack on one click.
+  const confirmDiscard = useCallback(
+    (what: string, proceed: () => void) => {
+      if (!dirty) {
+        proceed();
+        return;
+      }
+      Modal.confirm({
+        title: 'You have unsaved changes',
+        icon: <ExclamationCircleOutlined />,
+        content: `Your unsaved clinical text will be lost if you ${what} now. Save it first, or discard it deliberately.`,
+        okText: 'Discard changes',
+        okButtonProps: { danger: true },
+        cancelText: 'Continue editing',
+        onOk: () => {
+          // Scoped to THIS draft only. Another note, visit or patient may
+          // also have unsaved work open, and the user agreed to abandon
+          // exactly one of them.
+          draftStore.discard(key);
+          proceed();
+        },
+      });
+    },
+    [dirty, draftStore, key],
+  );
+
+  const selectNote = (noteId: string) => {
+    confirmDiscard('switch notes', () => {
+      setIsNewDraft(false);
+      setSelectedNoteId(noteId);
+      setSaveStatus({ kind: 'idle' });
+    });
+  };
+
+  // "Add Note" opens ONE local draft — no empty row is inserted in the
+  // database. The row and its authorship are created on first save.
   const startNewDraft = (noteType: ClinicalNoteType) => {
-    setIsNewDraft(true);
-    setActiveNoteId(undefined);
-    setDraftType(noteType);
-    setNotesHtml('');
-    setLanguage('EN');
+    confirmDiscard('start a new note', () => {
+      setIsNewDraft(true);
+      setSelectedNoteId(undefined);
+      setSaveStatus({ kind: 'idle' });
+      const newKey = draftKey({ ...scope, noteId: undefined });
+      draftStore.syncFromServer(newKey, undefined, {
+        content: '',
+        language: 'EN',
+        noteType,
+        baseline: '',
+        baselineVersion: null,
+      });
+    });
   };
 
   const handleSave = async () => {
+    setSaveStatus({ kind: 'saving' });
+    const attempted = content;
     try {
       if (activeNote && !isNewDraft) {
-        await updateNote.mutateAsync({
+        // expectedVersion comes from the DRAFT's baseline, not the live
+        // query. After a 409 the query may refetch to the colleague's newer
+        // version; using that would make a second Save succeed and silently
+        // overwrite their change. Pinning it to the version this draft was
+        // actually built from keeps re-saving a stale edit impossible until
+        // the doctor deliberately reloads.
+        const expectedVersion = draft?.baselineVersion ?? activeNote.version;
+        const saved = await updateNote.mutateAsync({
           id: activeNote.id,
-          dto: { notes: notesHtml, noteLanguage: language, expectedVersion: activeNote.version },
+          dto: { notes: attempted, noteLanguage: language, expectedVersion },
         });
+        draftStore.markSaved(key, attempted, saved.version);
       } else {
         const created = await createNote.mutateAsync({
-          notes: notesHtml,
+          notes: attempted,
           noteLanguage: language,
           noteType: draftType,
         });
-        setActiveNoteId(created.id);
+        // Move the working copy onto the real note id so the editor keeps its
+        // text and the next save targets the right record.
+        draftStore.promoteNewDraft(key, draftKey({ ...scope, noteId: created.id }), created.id, attempted, created.version);
         setIsNewDraft(false);
+        setSelectedNoteId(created.id);
       }
-      message.success('Clinical note saved');
+      setSaveStatus({ kind: 'saved', at: dayjs().format('HH:mm') });
     } catch (error) {
+      // Nothing is discarded and no baseline moves — the text stays exactly
+      // as typed and the draft stays dirty.
+      if (error instanceof ApiError && error.status === 409) {
+        setSaveStatus({ kind: 'conflict', message: error.message });
+        setConflictOpen(true);
+        return;
+      }
+      setSaveStatus({ kind: 'error', message: error instanceof ApiError ? error.message : 'Failed to save' });
       message.error(error instanceof ApiError ? error.message : 'Failed to save clinical note');
     }
   };
 
   const handleSign = async () => {
     if (!activeNote) return;
+    if (dirty) {
+      message.warning('Save your changes before signing.');
+      return;
+    }
     try {
       await signNote.mutateAsync({ id: activeNote.id, dto: { expectedVersion: activeNote.version } });
       message.success('Note signed');
@@ -208,15 +355,24 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
     try {
       const created = await amendNote.mutateAsync({
         id: activeNote.id,
-        dto: { amendmentReason: amendReason, notes: notesHtml, noteLanguage: language },
+        dto: { amendmentReason: amendReason, notes: '', noteLanguage: language },
       });
-      setActiveNoteId(created.id);
       setAmendOpen(false);
       setAmendReason('');
-      message.success('Amendment created — the original signed note is unchanged');
+      setIsNewDraft(false);
+      setSelectedNoteId(created.id);
+      message.success('Amendment created — the original note is unchanged');
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : 'Failed to create amendment');
     }
+  };
+
+  // Reload the server's version, deliberately discarding the local text after
+  // the doctor has had the chance to copy it out of the conflict dialog.
+  const reloadServerVersion = () => {
+    draftStore.discard(key);
+    setConflictOpen(false);
+    setSaveStatus({ kind: 'idle' });
   };
 
   const toggleDictation = () => {
@@ -230,15 +386,13 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
       return;
     }
     const recognition = new Recognition();
-    // No .lang set — lets the browser's speech engine auto-detect rather
-    // than locking to whatever the Notes language toggle happens to be.
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.onresult = (event) => {
       const transcript = Array.from(event.results)
         .map((result) => result[0].transcript)
         .join(' ');
-      setNotesHtml((current) => (current ? `${current}<p>${transcript}</p>` : `<p>${transcript}</p>`));
+      draftStore.setContent(key, content ? `${content}<p>${transcript}</p>` : `<p>${transcript}</p>`);
     };
     recognition.onend = () => setListening(false);
     recognition.start();
@@ -246,27 +400,28 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
   };
 
   const insertAbbreviation = (expansion: string) => {
-    setNotesHtml((current) => (current ? `${current}<p>${expansion}</p>` : `<p>${expansion}</p>`));
+    draftStore.setContent(key, content ? `${content}<p>${expansion}</p>` : `<p>${expansion}</p>`);
   };
+
+  const status = describeSaveStatus(saveStatus);
+  const statusColor =
+    status.tone === 'warning' ? '#d46b08' : status.tone === 'error' ? '#cf1322' : status.tone === 'success' ? '#389e0d' : undefined;
 
   return (
     <>
       <VisitObservationsPanel visitId={visitId} compact={compact} />
       <VisitAttachmentsPanel visitId={visitId} compact={compact} />
 
-      {/* Note history: a single selector rather than an unbounded row of
-          timestamp buttons, showing who wrote each entry and its state. */}
       <Space wrap style={{ marginBottom: compact ? 6 : 8, width: '100%' }}>
         <Select
           size="small"
           style={{ minWidth: 340 }}
           placeholder="No notes yet"
-          value={isNewDraft ? '__draft__' : activeNote?.id}
+          value={isNewDraft ? '__draft__' : selectedNoteId}
           loading={isLoading}
           onChange={(value) => {
             if (value === '__draft__') return;
-            setIsNewDraft(false);
-            setActiveNoteId(value);
+            selectNote(value);
           }}
           options={[
             ...(isNewDraft ? [{ value: '__draft__', label: 'New draft (unsaved)' }] : []),
@@ -278,15 +433,11 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
             Add Note
           </Button>
         )}
-        {/* Every clinical user can document a remark — this is how a
-            non-doctor records "patient refused medication". It can never be
-            signed and never renders as a doctor's note. */}
         <Button size="small" icon={<EditOutlined />} onClick={() => startNewDraft('STAFF_REMARK')}>
           Add Staff Remark
         </Button>
       </Space>
 
-      {/* Provenance for the selected entry — the medicolegal record. */}
       {activeNote && (
         <div style={{ marginBottom: 6 }}>
           <Space wrap size={6}>
@@ -357,13 +508,18 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
           description="This entry predates authorship tracking, so its author cannot be verified and its content is preserved unchanged. To correct it, add an amendment: that is recorded against you, with a reason, date and time."
         />
       )}
-      {!canWriteNarrative && draftType === 'DOCTOR_NARRATIVE' && !activeNote && (
+      {saveStatus.kind === 'conflict' && (
         <Alert
-          type="warning"
+          type="error"
           showIcon
           style={{ marginBottom: 6 }}
-          message="Only a doctor may write the clinical narrative."
-          description="You can record vitals, upload attachments, and add a staff remark."
+          message="Conflict — this note changed on the server"
+          description="Your text has been kept exactly as you typed it and is still unsaved. Review it before deciding."
+          action={
+            <Button size="small" onClick={() => setConflictOpen(true)}>
+              Review my text
+            </Button>
+          }
         />
       )}
 
@@ -373,17 +529,10 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
         styles={compact ? { header: { padding: '4px 12px', minHeight: 28 }, body: { padding: 8 } } : undefined}
         extra={
           <Space>
-            {isNewDraft && draftType === 'STAFF_REMARK' && (
-              <Segmented
-                size="small"
-                value={draftType}
-                options={[{ label: 'Staff Remark', value: 'STAFF_REMARK' }]}
-              />
-            )}
             <Select
               size="small"
               value={language}
-              onChange={setLanguage}
+              onChange={(value) => draftStore.setLanguage(key, value)}
               disabled={readOnly}
               style={{ width: 130 }}
               options={[
@@ -417,7 +566,15 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
           </Space>
         }
       >
-        <RichTextEditor content={notesHtml} onChange={setNotesHtml} compact={compact} />
+        <RichTextEditor
+          content={content}
+          onChange={(html) => {
+            // A read-only note must never produce a dirty draft.
+            if (readOnly) return;
+            draftStore.setContent(key, html);
+          }}
+          compact={compact}
+        />
       </Card>
 
       <Space style={{ marginTop: compact ? 8 : 16 }} wrap>
@@ -425,29 +582,28 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
           type="primary"
           loading={updateNote.isPending || createNote.isPending}
           onClick={handleSave}
-          disabled={readOnly}
+          disabled={readOnly || !dirty}
         >
           Save Clinical Note
         </Button>
         {activeNote && !isLocked && activeNote.noteType === 'DOCTOR_NARRATIVE' && (
-          <Button
-            icon={<SafetyCertificateOutlined />}
-            loading={signNote.isPending}
-            onClick={handleSign}
-          >
+          <Button icon={<SafetyCertificateOutlined />} loading={signNote.isPending} onClick={handleSign}>
             Sign
           </Button>
         )}
-        {/* Both signed and legacy notes are locked, so both are corrected the
-            same way — via an attributed amendment. */}
         {isLocked && (
-          <Button icon={<EditOutlined />} onClick={() => setAmendOpen(true)}>
+          <Button icon={<EditOutlined />} onClick={() => confirmDiscard('start an amendment', () => setAmendOpen(true))}>
             Add Amendment
           </Button>
         )}
+        {status.label && (
+          <Text strong style={{ fontSize: 12, color: statusColor }}>
+            {status.label}
+          </Text>
+        )}
         {activeNote && (
           <Text type="secondary" style={{ fontSize: 12 }}>
-            v{activeNote.version} · last saved {dayjs(activeNote.updatedAt).format('HH:mm')}
+            v{activeNote.version}
           </Text>
         )}
       </Space>
@@ -458,6 +614,7 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
         onCancel={() => setAmendOpen(false)}
         onOk={handleAmend}
         okText="Create Amendment"
+        okButtonProps={{ disabled: !amendReason.trim() }}
         confirmLoading={amendNote.isPending}
       >
         <Alert
@@ -465,7 +622,7 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
           showIcon
           style={{ marginBottom: 12 }}
           message="The original note stays unchanged."
-          description="This creates a new entry linked to it — recorded against you, with your name, the reason and the time — shown chronologically in the record."
+          description="This creates a new entry linked to it — recorded against you, with your name, the reason and the time."
         />
         <Input.TextArea
           rows={3}
@@ -474,6 +631,48 @@ export function ClinicalNotesTab({ visitId, compact }: ClinicalNotesTabProps) {
           placeholder="Reason for the amendment (required) — e.g. BP transcribed incorrectly"
         />
       </Modal>
+
+      {/* C1 — the doctor's text is never thrown away by a conflict. It is
+          shown in full and copyable; reloading the server version is an
+          explicit, deliberate act. */}
+      <Modal
+        title="Conflict — your unsaved text"
+        open={conflictOpen}
+        onCancel={() => setConflictOpen(false)}
+        width={760}
+        footer={[
+          <Button key="copy" onClick={() => void navigator.clipboard?.writeText(stripHtml(content))}>
+            Copy my text
+          </Button>,
+          <Button key="keep" type="primary" onClick={() => setConflictOpen(false)}>
+            Keep editing my version
+          </Button>,
+          <Button key="reload" danger onClick={reloadServerVersion}>
+            Discard mine, reload server version
+          </Button>,
+        ]}
+      >
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="This note was changed by someone else while you were editing."
+          description="Nothing has been overwritten — not your text, and not theirs. Copy anything you need before reloading."
+        />
+        <Input.TextArea readOnly value={stripHtml(content)} rows={12} />
+      </Modal>
     </>
   );
+}
+
+// Rich-text HTML is never auto-merged (C0/C1 rule). For review and copying,
+// a plain-text rendering is what a doctor can actually re-use.
+function stripHtml(html: string): string {
+  return html
+    .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }

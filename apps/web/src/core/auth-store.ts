@@ -45,7 +45,16 @@ export const useAuthStore = create<AuthState>()(
       tenant: null,
       setSession: ({ accessToken, refreshToken, staff, tenant }) => set({ accessToken, refreshToken, staff, tenant }),
       setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken }),
-      clearAuth: () => set({ accessToken: null, refreshToken: null, staff: null, tenant: null }),
+      // C1 (D-052) — losing the session must also drop every in-memory
+      // clinical draft. Otherwise unsaved patient text could still be sitting
+      // in the store when the next person signs in on a shared clinic
+      // machine. Imported lazily to keep core free of a clinical dependency.
+      clearAuth: () => {
+        void import('../clinical/clinical-draft-store').then(({ useClinicalDraftStore }) =>
+          useClinicalDraftStore.getState().clearAll(),
+        );
+        set({ accessToken: null, refreshToken: null, staff: null, tenant: null });
+      },
     }),
     { name: 'kuwick-auth' },
   ),

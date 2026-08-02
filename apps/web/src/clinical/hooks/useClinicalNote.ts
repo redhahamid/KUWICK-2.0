@@ -10,11 +10,23 @@ import {
 
 // D-044 — many-per-visit, newest first. C0 (D-051) added authorship, signing
 // and amendments; vitals moved out to useVisitObservations.
+//
+// C1 (D-052) — refetchOnWindowFocus is disabled for THIS query only.
+//
+// The app-wide default stays on, because refetching on focus is genuinely
+// useful for queues, dashboards and lists. It is wrong here specifically: a
+// doctor alt-tabs mid-consultation constantly, and this is the one query
+// whose result feeds an editor holding unsaved text.
+//
+// This is defence in depth, NOT the protection. The dirty-state guard in
+// clinical-draft-store.ts is what actually prevents loss, because refetches
+// still happen for other reasons — mutation invalidation, remount, reconnect.
 export function useClinicalNotes(visitId?: string) {
   return useQuery({
     queryKey: ['clinical-notes', visitId],
     queryFn: () => apiClient.get<ClinicalNote[]>(`/visits/${visitId}/clinical-notes`),
     enabled: Boolean(visitId),
+    refetchOnWindowFocus: false,
   });
 }
 
