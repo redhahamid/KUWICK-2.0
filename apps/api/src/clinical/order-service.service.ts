@@ -47,6 +47,22 @@ export class OrderServiceService {
       throw new NotFoundException('Service catalog entry not found');
     }
 
+    // G4.5s (D-073) — the two order types are created in different states,
+    // because they mean different things.
+    //
+    // A TASK_ORDER is a request for someone to DO something: it starts
+    // PENDING and moves through the task workflow, unchanged.
+    //
+    // A STANDARD_SERVICE is a direct service — a consultation fee, a
+    // dressing. Nobody is waiting on it and there is no result to come back.
+    // Adding it to the visit IS the delivery event, so it is created in its
+    // final operational state instead of sitting in a queue nobody works.
+    //
+    // The decision keys on the STORED orderType snapshotted from the
+    // catalogue, never on the service's name.
+    const isDirectService = catalogEntry.orderType === ServiceOrderType.STANDARD_SERVICE;
+    const now = new Date();
+
     return this.prisma.orderService.create({
       data: {
         tenantId: currentTenantId(),
@@ -58,6 +74,9 @@ export class OrderServiceService {
         orderType: catalogEntry.orderType,
         instruction: dto.instruction,
         requestedByStaffId: visit.staffId,
+        ...(isDirectService
+          ? { status: OrderServiceStatus.COMPLETED, completedAt: now }
+          : {}),
       },
     });
   }
@@ -110,6 +129,7 @@ export class OrderServiceService {
   // module's thin Dispensary/Completed tabs.
   async start(id: string) {
     const order = await this.findById(id);
+    assertIsTaskOrder(order.orderType, 'started');
     assertStatus(order.status, OrderServiceStatus.PENDING, 'start');
     return this.prisma.orderService.update({ where: { id }, data: { status: OrderServiceStatus.IN_PROGRESS } });
   }
@@ -120,6 +140,7 @@ export class OrderServiceService {
   // print view) keeps working without knowing about forms at all.
   async complete(id: string, dto: CompleteOrderServiceDto) {
     const order = await this.findById(id);
+    assertIsTaskOrder(order.orderType, 'completed');
     assertStatus(order.status, OrderServiceStatus.IN_PROGRESS, 'complete');
     let result = dto.result;
     if (!result && dto.formTemplateId && dto.formData) {
@@ -143,14 +164,53 @@ export class OrderServiceService {
     });
   }
 
+  /**
+   * G4.5s (D-073) — cancellation, with the direct-service case made possible
+   * again.
+   *
+   * The old rule refused to cancel anything COMPLETED. That is right for a
+   * TASK_ORDER: a procedure that has been performed and has a result cannot
+   * be un-performed. It would have made a direct service permanently
+   * uncancellable the moment it was created, since it is now created
+   * COMPLETED — a mis-added consultation fee could never be taken off the
+   * visit. So COMPLETED blocks cancellation for TASK_ORDER only.
+   *
+   * Money is the harder constraint, and it is deliberately NOT resolved here.
+   * If the service has already reached an invoice, cancelling it would leave a
+   * charge for something that is no longer on the record. This does not
+   * quietly delete that line: removing an invoice line is the biller's
+   * existing, authorised, UNPAID-only route (D-066), and a paid invoice must
+   * never be mutated as a side effect of a clinical action. The refusal names
+   * the invoice so the biller knows exactly what to act on.
+   */
   async cancel(id: string, dto: CancelOrderServiceDto) {
     const order = await this.findById(id);
-    if (order.status === OrderServiceStatus.COMPLETED || order.status === OrderServiceStatus.CANCELLED) {
-      throw new BadRequestException(`Cannot cancel an order/service in status ${order.status}`);
+    if (order.status === OrderServiceStatus.CANCELLED) {
+      throw new BadRequestException('This order/service has already been cancelled.');
     }
+    if (order.status === OrderServiceStatus.COMPLETED && order.orderType === ServiceOrderType.TASK_ORDER) {
+      throw new BadRequestException('Cannot cancel a completed procedure or investigation.');
+    }
+
+    const billed = await this.prisma.invoiceLine.findFirst({
+      where: { sourceOrderServiceId: id },
+      select: { invoice: { select: { invoiceNumber: true, status: true } } },
+    });
+    if (billed) {
+      throw new ConflictException(
+        `This service is already charged on invoice ${billed.invoice.invoiceNumber} (${billed.invoice.status}). ` +
+          `Remove the invoice line first, then cancel the service.`,
+      );
+    }
+
     return this.prisma.orderService.update({
       where: { id },
-      data: { status: OrderServiceStatus.CANCELLED, cancelReason: dto.cancelReason },
+      data: {
+        status: OrderServiceStatus.CANCELLED,
+        cancelReason: dto.cancelReason,
+        // The row survives — never a hard delete. It stays visible on the
+        // visit, labelled, so a cancelled charge is auditable.
+      },
     });
   }
 
@@ -245,5 +305,20 @@ export class OrderServiceService {
 function assertStatus(current: OrderServiceStatus, required: OrderServiceStatus, action: string): void {
   if (current !== required) {
     throw new BadRequestException(`Cannot ${action} an order/service in status ${current}`);
+  }
+}
+
+/**
+ * G4.5s (D-073) — the task lifecycle belongs to TASK_ORDER alone.
+ *
+ * The Canvas already hides Start and Complete on direct services, but hiding
+ * a control is not a rule: the routes accepted the transition from anything
+ * that could reach them. This is the rule.
+ */
+function assertIsTaskOrder(orderType: ServiceOrderType, action: string): void {
+  if (orderType !== ServiceOrderType.TASK_ORDER) {
+    throw new BadRequestException(
+      `A direct service has no task workflow and cannot be ${action}. It is complete when it is added.`,
+    );
   }
 }

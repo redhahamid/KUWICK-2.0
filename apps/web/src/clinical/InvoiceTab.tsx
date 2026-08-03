@@ -119,7 +119,21 @@ interface QuickAddProps {
 // add-time (InvoiceService.addLine), so a stale suggestion here can never
 // under-flag a copay.
 function QuickAddSuggestions({ invoice, visit }: QuickAddProps) {
-  const { data: orderServices } = useOrderServices(visit.id, { status: 'COMPLETED' });
+  // G4.5s (D-073) — what is billable is not "status = COMPLETED".
+  //
+  // That filter was written when every OrderService was a task. It quietly
+  // made direct services unbillable: a STANDARD_SERVICE was created PENDING,
+  // the Canvas correctly refuses to Start/Complete it, so it never reached
+  // this list. The audit confirmed it — 0 of 5 direct services in the
+  // database had ever been charged, against 108 of 114 completed task orders.
+  //
+  // Billable now means: a task order that is finished, or a direct service
+  // that has not been cancelled. Legacy direct services still sitting at
+  // PENDING are therefore chargeable without rewriting their rows.
+  const { data: allOrders } = useOrderServices(visit.id);
+  const orderServices = (allOrders ?? []).filter((os) =>
+    os.orderType === 'STANDARD_SERVICE' ? os.status !== 'CANCELLED' : os.status === 'COMPLETED',
+  );
   const { data: prescriptions } = usePrescriptions(visit.id);
   const { data: services } = useServices();
   const { data: items } = useItems();
@@ -131,7 +145,10 @@ function QuickAddSuggestions({ invoice, visit }: QuickAddProps) {
   const linkedPrescriptionIds = new Set(invoice.lines.map((l) => l.sourcePrescriptionId).filter(Boolean));
 
   const dispensedPrescriptions = (prescriptions ?? []).filter((p) => p.status === 'DISPENSED');
-  const pendingServices = (orderServices ?? []).filter((os) => !linkedOrderServiceIds.has(os.id));
+  // Still filtered here so an already-charged item does not appear as a
+  // suggestion, but this is presentation only — the server refuses a second
+  // line for the same source regardless of what this list says (D-073).
+  const pendingServices = orderServices.filter((os) => !linkedOrderServiceIds.has(os.id));
   const pendingPrescriptions = dispensedPrescriptions.filter((p) => !linkedPrescriptionIds.has(p.id));
 
   if (pendingServices.length === 0 && pendingPrescriptions.length === 0) {

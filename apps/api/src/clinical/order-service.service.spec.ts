@@ -28,6 +28,8 @@ function createService(actor: Record<string, unknown> = DOCTOR) {
     serviceCatalog: { findUnique: jest.fn() },
     attachment: { findMany: jest.fn(), findUnique: jest.fn(), create: jest.fn(), delete: jest.fn() },
     formTemplate: { findUnique: jest.fn() },
+    // G4.5s (D-073) — cancel refuses a service that is already charged.
+    invoiceLine: { findFirst: jest.fn().mockResolvedValue(null) },
   } as unknown as TenantScopedPrismaClient;
   const visits = { findById: jest.fn() } as unknown as VisitService;
 
@@ -114,7 +116,7 @@ describe('OrderServiceService', () => {
 
   it('start moves PENDING to IN_PROGRESS', async () => {
     const { service, prisma } = createService();
-    (prisma.orderService.findUnique as jest.Mock).mockResolvedValue({ id: 'o1', status: OrderServiceStatus.PENDING });
+    (prisma.orderService.findUnique as jest.Mock).mockResolvedValue({ id: 'o1', orderType: ServiceOrderType.TASK_ORDER, status: OrderServiceStatus.PENDING });
     (prisma.orderService.update as jest.Mock).mockResolvedValue({ id: 'o1', status: OrderServiceStatus.IN_PROGRESS });
 
     await service.start('o1');
@@ -129,6 +131,7 @@ describe('OrderServiceService', () => {
     const { service, prisma } = createService();
     (prisma.orderService.findUnique as jest.Mock).mockResolvedValue({
       id: 'o1',
+      orderType: ServiceOrderType.TASK_ORDER,
       status: OrderServiceStatus.IN_PROGRESS,
     });
     await expect(service.start('o1')).rejects.toThrow(BadRequestException);
@@ -138,6 +141,7 @@ describe('OrderServiceService', () => {
     const { service, prisma } = createService();
     (prisma.orderService.findUnique as jest.Mock).mockResolvedValue({
       id: 'o1',
+      orderType: ServiceOrderType.TASK_ORDER,
       status: OrderServiceStatus.IN_PROGRESS,
     });
     (prisma.orderService.update as jest.Mock).mockResolvedValue({ id: 'o1', status: OrderServiceStatus.COMPLETED });
@@ -160,6 +164,7 @@ describe('OrderServiceService', () => {
     const { service, prisma } = createService();
     (prisma.orderService.findUnique as jest.Mock).mockResolvedValue({
       id: 'o1',
+      orderType: ServiceOrderType.TASK_ORDER,
       status: OrderServiceStatus.IN_PROGRESS,
     });
     (prisma.formTemplate.findUnique as jest.Mock).mockResolvedValue({
@@ -189,6 +194,7 @@ describe('OrderServiceService', () => {
     const { service, prisma } = createService();
     (prisma.orderService.findUnique as jest.Mock).mockResolvedValue({
       id: 'o1',
+      orderType: ServiceOrderType.TASK_ORDER,
       status: OrderServiceStatus.COMPLETED,
     });
     await expect(service.cancel('o1', {})).rejects.toThrow(BadRequestException);
@@ -354,5 +360,188 @@ describe('OrderServiceService', () => {
     await withTenant(() => service.removeAttachment('o1', 'att-1', { reason: 'Wrong order' }));
 
     expect(prisma.orderService.update).not.toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
+// G4.5s (D-073) — the two order types mean different things, and the server is
+// what says so. The Canvas already hid Start and Complete on a direct service;
+// these assert the RULE, which hiding a button never was.
+// =============================================================================
+describe('direct services vs task orders', () => {
+  const catalog = (orderType: ServiceOrderType) => ({
+    id: 'svc-1',
+    code: 'CONS',
+    name: 'General Consultation',
+    orderType,
+  });
+
+  const arrangeCreate = (orderType: ServiceOrderType) => {
+    const ctx = createService();
+    (ctx.visits.findById as jest.Mock).mockResolvedValue({
+      id: 'visit-1',
+      clinicId: 'clinic-1',
+      staffId: 'staff-doctor',
+    });
+    (ctx.prisma.serviceCatalog.findUnique as jest.Mock).mockResolvedValue(catalog(orderType));
+    (ctx.prisma.orderService.create as jest.Mock).mockResolvedValue({ id: 'o1' });
+    return ctx;
+  };
+
+  const createdData = (prisma: TenantScopedPrismaClient) =>
+    (prisma.orderService.create as jest.Mock).mock.calls[0][0].data;
+
+  it('adding a TASK_ORDER still creates it PENDING, with no completion time', async () => {
+    const { service, prisma } = arrangeCreate(ServiceOrderType.TASK_ORDER);
+
+    await withTenant(() => service.create({ visitId: 'visit-1', serviceCatalogId: 'svc-1' }));
+
+    // Left to the schema default rather than set explicitly — the point is
+    // that create() does not touch the task lifecycle at all.
+    expect(createdData(prisma).status).toBeUndefined();
+    expect(createdData(prisma).completedAt).toBeUndefined();
+  });
+
+  it('adding a STANDARD_SERVICE creates it in its final operational state', async () => {
+    const { service, prisma } = arrangeCreate(ServiceOrderType.STANDARD_SERVICE);
+
+    await withTenant(() => service.create({ visitId: 'visit-1', serviceCatalogId: 'svc-1' }));
+
+    const data = createdData(prisma);
+    expect(data.status).toBe(OrderServiceStatus.COMPLETED);
+    expect(data.completedAt).toBeInstanceOf(Date);
+    // Attribution, visit and branch survive the change.
+    expect(data.visitId).toBe('visit-1');
+    expect(data.requestedByStaffId).toBe('staff-doctor');
+    expect(data.clinicId).toBe('clinic-1');
+  });
+
+  // The catalogue's stored orderType decides, never the service's name — a
+  // "General Consultation" configured as a TASK_ORDER is still a task.
+  it('the decision follows the stored orderType, not the service name', async () => {
+    const { service, prisma } = arrangeCreate(ServiceOrderType.TASK_ORDER);
+
+    await withTenant(() => service.create({ visitId: 'visit-1', serviceCatalogId: 'svc-1' }));
+
+    expect(createdData(prisma).procedureName).toBe('General Consultation');
+    expect(createdData(prisma).status).toBeUndefined();
+  });
+
+  const directService = (status: OrderServiceStatus) => ({
+    id: 'o1',
+    orderType: ServiceOrderType.STANDARD_SERVICE,
+    status,
+  });
+
+  it('a direct service cannot be started', async () => {
+    const { service, prisma } = createService();
+    (prisma.orderService.findUnique as jest.Mock).mockResolvedValue(
+      directService(OrderServiceStatus.COMPLETED),
+    );
+
+    await expect(service.start('o1')).rejects.toThrow(BadRequestException);
+    expect(prisma.orderService.update).not.toHaveBeenCalled();
+  });
+
+  it('a direct service cannot be completed', async () => {
+    const { service, prisma } = createService();
+    (prisma.orderService.findUnique as jest.Mock).mockResolvedValue(
+      directService(OrderServiceStatus.COMPLETED),
+    );
+
+    await expect(service.complete('o1', { result: 'x' })).rejects.toThrow(BadRequestException);
+    expect(prisma.orderService.update).not.toHaveBeenCalled();
+  });
+
+  // Legacy rows sit at PENDING (see the D-073 audit). They must not become
+  // startable just because their status happens to match the old rule.
+  it('a legacy PENDING direct service still cannot be started', async () => {
+    const { service, prisma } = createService();
+    (prisma.orderService.findUnique as jest.Mock).mockResolvedValue(
+      directService(OrderServiceStatus.PENDING),
+    );
+
+    await expect(service.start('o1')).rejects.toThrow(BadRequestException);
+  });
+
+  it('the Procedure Queue asks for TASK_ORDER only', async () => {
+    const { service, prisma } = createService();
+    (prisma.orderService.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.procedureQueue({});
+
+    expect(prisma.orderService.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ orderType: ServiceOrderType.TASK_ORDER }),
+      }),
+    );
+  });
+
+  // A direct service is created COMPLETED, so the old "nothing completed may
+  // be cancelled" rule would have made it permanently uncancellable.
+  it('a completed direct service can still be cancelled', async () => {
+    const { service, prisma } = createService();
+    (prisma.orderService.findUnique as jest.Mock).mockResolvedValue(
+      directService(OrderServiceStatus.COMPLETED),
+    );
+    (prisma.orderService.update as jest.Mock).mockResolvedValue({ id: 'o1' });
+
+    await service.cancel('o1', { cancelReason: 'Added to the wrong visit' });
+
+    expect(prisma.orderService.update).toHaveBeenCalledWith({
+      where: { id: 'o1' },
+      data: expect.objectContaining({
+        status: OrderServiceStatus.CANCELLED,
+        cancelReason: 'Added to the wrong visit',
+      }),
+    });
+  });
+
+  it('a completed TASK_ORDER still cannot be cancelled', async () => {
+    const { service, prisma } = createService();
+    (prisma.orderService.findUnique as jest.Mock).mockResolvedValue({
+      id: 'o1',
+      orderType: ServiceOrderType.TASK_ORDER,
+      status: OrderServiceStatus.COMPLETED,
+    });
+
+    await expect(service.cancel('o1', {})).rejects.toThrow(BadRequestException);
+  });
+
+  // Money: cancelling must never leave a charge behind for something that is
+  // no longer on the record, and must never silently edit an invoice.
+  it('a charged service refuses cancellation and names the invoice', async () => {
+    const { service, prisma } = createService();
+    (prisma.orderService.findUnique as jest.Mock).mockResolvedValue(
+      directService(OrderServiceStatus.COMPLETED),
+    );
+    (prisma.invoiceLine.findFirst as jest.Mock).mockResolvedValue({
+      invoice: { invoiceNumber: 'INV-000042', status: 'PAID' },
+    });
+
+    await expect(service.cancel('o1', { cancelReason: 'oops' })).rejects.toThrow(/INV-000042/);
+    expect(prisma.orderService.update).not.toHaveBeenCalled();
+  });
+
+  it('cancelling preserves the row instead of deleting it', async () => {
+    const { service, prisma } = createService();
+    (prisma.orderService.findUnique as jest.Mock).mockResolvedValue(
+      directService(OrderServiceStatus.COMPLETED),
+    );
+    (prisma.orderService.update as jest.Mock).mockResolvedValue({ id: 'o1' });
+
+    await service.cancel('o1', { cancelReason: 'x' });
+
+    expect(prisma.orderService.update).toHaveBeenCalled();
+    expect((prisma.orderService as unknown as { delete?: unknown }).delete).toBeUndefined();
+  });
+
+  it('cancelling an already-cancelled service is refused', async () => {
+    const { service, prisma } = createService();
+    (prisma.orderService.findUnique as jest.Mock).mockResolvedValue(
+      directService(OrderServiceStatus.CANCELLED),
+    );
+
+    await expect(service.cancel('o1', {})).rejects.toThrow(BadRequestException);
   });
 });

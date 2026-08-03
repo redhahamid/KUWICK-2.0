@@ -1137,6 +1137,71 @@ The ledger also surfaced **two partial records (V-000336, V-000337)** left by ea
 
 ---
 
+## D-073 — G4.5s: a direct service is not a task, and the server is what says so
+
+`STANDARD_SERVICE` and `TASK_ORDER` share the `OrderService` model, which is right — they are both "something added to a visit that may be charged". What was wrong is that they shared a *lifecycle*. A consultation fee was created `PENDING` and offered Start and Complete, as though a member of staff were going to perform it and report a result.
+
+G4.5c hid those controls in the Canvas. Hiding a control is not a rule, and this decision is about the rule.
+
+### What the audit found, before any change
+
+| | Rows | Ever charged |
+|---|---|---|
+| `STANDARD_SERVICE` PENDING | 4 | **0** |
+| `STANDARD_SERVICE` COMPLETED | 1 | **0** |
+| `TASK_ORDER` COMPLETED | 114 | 108 |
+
+**Not one direct service in the database had ever reached an invoice.** That is not a coincidence, it is the defect's financial consequence: the Quick Add suggestion list filtered on `status: 'COMPLETED'`, a direct service was created `PENDING`, and the Canvas correctly refuses to Start or Complete it. So the only route to billing a consultation fee was to walk it through a task workflow that means nothing for it.
+
+The audit also found **one order already charged twice, on a PAID invoice**. Client-side duplicate filtering being insufficient is not a hypothesis here.
+
+### The corrected creation rule
+
+`OrderServiceService.create()` now branches on the **stored** `orderType` snapshotted from the catalogue — never on the service's name, because a "General Consultation" configured as a `TASK_ORDER` is still a task:
+
+- `TASK_ORDER` — untouched. Created `PENDING`, no completion time, full Start → Complete workflow.
+- `STANDARD_SERVICE` — created `COMPLETED` with `completedAt` set. Adding it to the visit *is* the delivery event.
+
+`COMPLETED` is a reuse of the existing enum rather than a new state, as instructed. It reads slightly oddly for a consultation fee, which is noted as an open item below.
+
+`/start` and `/complete` now refuse a `STANDARD_SERVICE` outright — including a *legacy* one sitting at `PENDING`, which must not become startable just because its status happens to match the old rule.
+
+### Invoice linkage: option B, not A
+
+The existing approved mechanism (Phase A8) is the biller's Quick Add, which applies panel price overrides and exclusion checks at add time. Auto-creating a line on service-add would need an invoice to already exist, would bypass the override selection, and would have a clinical action create a charge — against G3c, where the doctor reads the money and the biller moves it.
+
+So: **no second charge mechanism**. What changed is one filter. Billable now means *a task order that is finished, or a direct service that has not been cancelled* — which also makes the 4 legacy `PENDING` rows chargeable without rewriting them.
+
+### Duplicate charge prevention, and why not a unique index
+
+A `UNIQUE` index on `source_order_service_id` is the stronger tool and is deliberately **not** used: creating one would fail against the existing duplicate, and clearing that means editing a paid invoice's lines and total. That is a business decision, not a migration.
+
+Instead `addLine` locks the source row `FOR UPDATE`, then checks for an existing line **across all invoices** (charging the same service on a second invoice is the same double-charge wearing a hat), then inserts — all in one tenant transaction. The lock is what makes it correct rather than merely likely: without it two concurrent adds both read "no line" and both insert. Verified live: four simultaneous adds produced **one** line.
+
+Freehand lines with no source id are never blocked — two identical sundry lines are a legitimate thing for a biller to enter.
+
+### Cancellation
+
+The old rule refused to cancel anything `COMPLETED`. Correct for a task order — a performed procedure with a result cannot be un-performed — but it would have made every direct service *permanently uncancellable*, since they are now created `COMPLETED`. A mis-added consultation fee could never be taken off the visit. So `COMPLETED` blocks cancellation for `TASK_ORDER` only.
+
+Money is the harder constraint and is deliberately not resolved by this route. If the service has reached an invoice, cancel is refused with a `409` **naming the invoice**. Removing a line stays the biller's existing, authorised, UNPAID-only route (D-066); a paid invoice is never mutated as a side effect of a clinical action. The row is never hard-deleted, stays visible on the visit, and is labelled `Cancelled` with its reason.
+
+### Existing records: left alone
+
+4 `PENDING` and 1 `COMPLETED` direct service exist. **None were rewritten.** A `PENDING` legacy row could be argued into `COMPLETED` with `completedAt = requestedAt`, but that asserts a delivery time nobody recorded, and the instruction was not to fabricate completion times. They are chargeable as they stand, they cannot be started, and the Canvas shows them correctly. New rows follow the corrected rule.
+
+The one direct service carrying a free-text result (`"Vitals stable, no acute findings."`) is historical truth from when the task workflow was reachable. It is kept, not scrubbed.
+
+### Reporting and queue
+
+`procedureQueue` already filtered to `TASK_ORDER` — now covered by a test so it cannot regress. No report counts `OrderService` statuses (`getAppointmentAnalytics`'s `completedRate` is Appointments, not services), so nothing inflates a pending-procedure figure. Invoice source linkage is unchanged, so a direct service remains identifiable as the origin of its charge.
+
+**Verification:** `prisma/g45s-direct-service-check.ts` — 40 checks against the running API across two tenants, all passing, zero fixture residue. `prisma/g45s-direct-service-audit.ts` is report-only and re-runnable. 428 backend tests (up from 411), 187 frontend, both typechecks clean.
+
+**Reversibility**: Moderate. New `STANDARD_SERVICE` rows are created `COMPLETED`; reverting leaves them correct but resumes creating new ones `PENDING`.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.
@@ -1169,7 +1234,8 @@ Recorded at the owner's request after G4c1. **Nothing here is changed.** Each de
 - ~~Visit numbering breaks after any deletion (found in G4, D-067)~~ — **resolved by D-068.**
 - ~~`POST /visits` does not verify the patient belongs to the caller’s tenant (found during G4c1)~~ — **resolved by D-069.**
 - ~~`POST /appointments` does not verify the patient or clinic belongs to the caller’s tenant~~ — **resolved by D-070.**
-- **`STANDARD_SERVICE` carries a task lifecycle it does not need** (found in G4.5c, D-071). A directly-billed service is created `PENDING` and can be Started and Completed like a lab order, though nothing is waiting on it. The Canvas therefore shows no Start/Complete on Direct Services — rendering them would make the UI assert something the model does not mean. Correcting the lifecycle is **G4.5s**, deferred at the owner's instruction.
+- ~~`STANDARD_SERVICE` carries a task lifecycle it does not need (found in G4.5c, D-071)~~ — **resolved by D-073.**
+- **One pre-existing duplicate invoice line, on a PAID invoice** (found in the D-073 audit). A single `TASK_ORDER` is charged twice on `DEMO-INV-00178`, which is `PAID`. New duplicates are now refused server-side, but this row predates the guard. Clearing it means editing a paid invoice's lines and total; leaving it blocks adding a `UNIQUE` index on `source_order_service_id`, which would be the stronger long-term protection. **Needs an owner decision**: correct the paid invoice (and how the correction is recorded), or accept the transactional guard as the permanent mechanism.
 - **Three numbering allocators are still `count(*) + 1`** — invoice, claim batch and queue ticket. Detailed in the appendix above; not blocking today, but the invoice one will bite during populated G4.5 testing.
 - **The wider API RBAC gap remains open** (D-056). Clinical notes, observations, diagnoses, document authorisation (D-064) and the five invoice mutation routes (D-066) now have server-side role enforcement; the rest of the API does not.
 

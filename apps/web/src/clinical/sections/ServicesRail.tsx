@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Popconfirm, Select, Space, Tag, Typography, message } from 'antd';
+import { Button, Popconfirm, Select, Space, Tag, Tooltip, Typography, message } from 'antd';
 import { useServices } from '../hooks/useServices';
 import { useCancelOrderService, useCreateOrderService, useOrderServices } from '../hooks/useOrderServices';
 import { ApiError } from '../../core/api-client';
@@ -24,13 +24,12 @@ interface ServicesRailProps {
  * NO new model, and no duplicated business logic: adding a service is the
  * same `useCreateOrderService` the orders panel uses.
  *
- * Start and Complete are deliberately NOT offered here. The backend still
- * creates a STANDARD_SERVICE as PENDING and would still accept those
- * transitions — that lifecycle is meaningless for a service and correcting
- * it is G4.5s, not this checkpoint. Hiding controls is not the fix, so this
- * panel says plainly what a service's state means rather than pretending the
- * workflow does not exist; cancel remains available because it is the only
- * transition that is genuinely useful for a mis-added line.
+ * G4.5s (D-073) — Start and Complete are not offered here, and now the
+ * backend agrees rather than merely being hidden from. A STANDARD_SERVICE is
+ * created in its final operational state, and `/start` and `/complete` refuse
+ * it outright. So this panel shows no task vocabulary at all: no "awaiting
+ * result", no result attachment, no progress. A direct service is added, and
+ * then it is either charged or cancelled.
  */
 export function ServicesRail({ visitId }: ServicesRailProps) {
   const [serviceCatalogId, setServiceCatalogId] = useState<string>();
@@ -85,42 +84,66 @@ export function ServicesRail({ visitId }: ServicesRailProps) {
           </Button>
         </Space.Compact>
       }
-      items={list.map((service) => (
-        <div key={service.id} className="kw-rail-row">
-          <div className="kw-rail-row-main">
-            <Space size={4} wrap>
-              <Text strong style={{ fontSize: 14 }}>
-                {service.procedureName}
-              </Text>
-              {service.code && <Tag>{service.code}</Tag>}
-              {/* Charge state only where an invoice line genuinely links to
-                  it — nothing is inferred when there is none (G2b). */}
-              {(service._count?.invoiceLines ?? 0) > 0 ? (
-                <Tag color="purple">On invoice</Tag>
-              ) : (
-                <Tag>Not yet billed</Tag>
+      items={list.map((service) => {
+        const billed = (service._count?.invoiceLines ?? 0) > 0;
+        const cancelled = service.status === 'CANCELLED';
+        return (
+          <div key={service.id} className="kw-rail-row">
+            <div className="kw-rail-row-main">
+              <Space size={4} wrap>
+                <Text strong style={{ fontSize: 14 }} delete={cancelled}>
+                  {service.procedureName}
+                </Text>
+                {service.code && <Tag>{service.code}</Tag>}
+                {/* No status tag for a live service. Every direct service is
+                    complete the moment it is added (D-073), so "Completed" on
+                    every row would carry no information — what actually varies
+                    is whether it has been charged. Cancelled is different: it
+                    changes what the row means and is always labelled. */}
+                {cancelled ? (
+                  <Tag color="default">Cancelled</Tag>
+                ) : billed ? (
+                  <Tag color="purple">On invoice</Tag>
+                ) : (
+                  <Tag>Not yet billed</Tag>
+                )}
+              </Space>
+              {cancelled && service.cancelReason && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {service.cancelReason}
+                </Text>
               )}
-              {service.status === 'CANCELLED' && <Tag color="default">Cancelled</Tag>}
+            </div>
+            <Space size={4} className="kw-rail-row-actions">
+              {/* Once charged, cancelling is the biller's call, not a control
+                  hidden behind a clinical button: the server refuses it and
+                  says which invoice to act on. Offering a button that always
+                  fails would be worse than not offering one. */}
+              {!cancelled &&
+                (billed ? (
+                  <Tooltip title="Charged on an invoice. Remove the invoice line first, then cancel the service.">
+                    <Button size="small" disabled>
+                      Cancel
+                    </Button>
+                  </Tooltip>
+                ) : (
+                  <Popconfirm
+                    title="Remove this service from the visit?"
+                    okText="Cancel service"
+                    okButtonProps={{ danger: true }}
+                    onConfirm={() =>
+                      cancelService.mutateAsync({ id: service.id }).catch((e) => report(e, 'Failed to cancel'))
+                    }
+                  >
+                    <Button size="small" danger>
+                      Cancel
+                    </Button>
+                  </Popconfirm>
+                ))}
             </Space>
           </div>
-          <Space size={4} className="kw-rail-row-actions">
-            {service.status !== 'CANCELLED' && (
-              <Popconfirm
-                title="Remove this service from the visit?"
-                okText="Cancel service"
-                okButtonProps={{ danger: true }}
-                onConfirm={() =>
-                  cancelService.mutateAsync({ id: service.id }).catch((e) => report(e, 'Failed to cancel'))
-                }
-              >
-                <Button size="small" danger>
-                  Cancel
-                </Button>
-              </Popconfirm>
-            )}
-          </Space>
-        </div>
-      ))}
+        );
+      })}
     />
   );
 }

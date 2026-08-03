@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InvoiceStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
@@ -206,20 +206,79 @@ export class InvoiceService {
     const quantity = dto.quantity ?? 1;
     const amount = round2(quantity * dto.unitPrice);
     const excludedFromPanel = await this.resolveExcludedFromPanel(visit?.panelClinicId ?? null, dto);
-    await this.prisma.invoiceLine.create({
-      data: {
-        tenantId: currentTenantId(),
-        invoiceId,
-        description: dto.description,
-        quantity,
-        unitPrice: dto.unitPrice,
-        amount,
-        sourceOrderServiceId: dto.sourceOrderServiceId,
-        sourcePrescriptionId: dto.sourcePrescriptionId,
-        excludedFromPanel,
-      },
-    });
+
+    await this.insertLineOnce(invoiceId, dto, quantity, amount, excludedFromPanel);
     return this.recalculateTotal(invoiceId);
+  }
+
+  /**
+   * G4.5s (D-073) — one source item, one charge. Enforced on the server.
+   *
+   * The Canvas's Quick Add already filters out anything it can see a line
+   * for, but a client-side filter is a suggestion, not a rule: it is computed
+   * from a list that may be seconds stale, and two rapid clicks or two
+   * billers on the same visit both pass it. The audit found this is not
+   * theoretical — the database already contains a source order charged twice,
+   * on a PAID invoice.
+   *
+   * A UNIQUE index would be the stronger tool and is deliberately NOT used
+   * here: creating one would fail against that existing duplicate, and
+   * clearing it means editing a paid invoice's lines and total. That is a
+   * business decision, not a migration, so it is reported rather than taken.
+   *
+   * What makes this correct rather than merely likely: the source row is
+   * locked FOR UPDATE first. Two concurrent adds for the same service
+   * contend on that lock, so the loser re-reads after the winner has
+   * committed and sees the line. Without the lock both could read "no line"
+   * and both insert.
+   */
+  private async insertLineOnce(
+    invoiceId: string,
+    dto: AddInvoiceLineDto,
+    quantity: number,
+    amount: number,
+    excludedFromPanel: boolean,
+  ) {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      // No ::uuid cast — Prisma's `String @id @default(uuid())` stores these
+      // as TEXT, so casting the parameter makes Postgres look for a
+      // `text = uuid` operator that does not exist.
+      if (dto.sourceOrderServiceId) {
+        await tx.$executeRaw`SELECT id FROM "order_services" WHERE id = ${dto.sourceOrderServiceId} FOR UPDATE`;
+      } else if (dto.sourcePrescriptionId) {
+        await tx.$executeRaw`SELECT id FROM "prescriptions" WHERE id = ${dto.sourcePrescriptionId} FOR UPDATE`;
+      }
+
+      if (dto.sourceOrderServiceId || dto.sourcePrescriptionId) {
+        // Across ALL invoices, not just this one — charging the same service
+        // on a second invoice is the same double-charge wearing a hat.
+        const existing = await tx.invoiceLine.findFirst({
+          where: dto.sourceOrderServiceId
+            ? { sourceOrderServiceId: dto.sourceOrderServiceId }
+            : { sourcePrescriptionId: dto.sourcePrescriptionId },
+          select: { invoice: { select: { invoiceNumber: true } } },
+        });
+        if (existing) {
+          throw new ConflictException(
+            `This item is already charged on invoice ${existing.invoice.invoiceNumber}. It has not been added again.`,
+          );
+        }
+      }
+
+      return tx.invoiceLine.create({
+        data: {
+          tenantId: currentTenantId(),
+          invoiceId,
+          description: dto.description,
+          quantity,
+          unitPrice: dto.unitPrice,
+          amount,
+          sourceOrderServiceId: dto.sourceOrderServiceId,
+          sourcePrescriptionId: dto.sourcePrescriptionId,
+          excludedFromPanel,
+        },
+      });
+    });
   }
 
   async removeLine(invoiceId: string, lineId: string) {

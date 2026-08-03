@@ -38,6 +38,10 @@ function createService(role = 'FINANCE_STAFF') {
     clinic: { count: jest.fn().mockResolvedValue(1) },
     userClinicAccess: { findMany: jest.fn().mockResolvedValue([]) },
     visit: { findUnique: jest.fn().mockResolvedValue({ clinicId: 'clinic-1' }) },
+    // G4.5s (D-073) — the line insert now runs inside the same tenant
+    // transaction so the duplicate check and the insert cannot be separated.
+    // Default: nothing already charged.
+    invoiceLine: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'l1' }) },
   };
   const rawPrisma = { $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) } as unknown as PrismaService;
 
@@ -210,19 +214,19 @@ describe('InvoiceService', () => {
   });
 
   it('addLine computes amount from quantity * unitPrice and recalculates the invoice total', async () => {
-    const { service, prisma } = createService();
+    const { service, prisma, tx } = createService();
     (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
       id: 'inv-1',
       status: InvoiceStatus.UNPAID,
       lines: [],
     });
-    (prisma.invoiceLine.create as jest.Mock).mockResolvedValue({ id: 'line-1' });
+    (tx.invoiceLine.create as jest.Mock).mockResolvedValue({ id: 'line-1' });
     (prisma.invoiceLine.findMany as jest.Mock).mockResolvedValue([{ amount: 150 }]);
     (prisma.invoice.update as jest.Mock).mockResolvedValue({ id: 'inv-1', totalAmount: 150 });
 
     await withTenant(() => service.addLine('inv-1', { description: 'Consultation', quantity: 3, unitPrice: 50 }));
 
-    expect(prisma.invoiceLine.create).toHaveBeenCalledWith({
+    expect(tx.invoiceLine.create).toHaveBeenCalledWith({
       data: {
         tenantId: 'test-tenant',
         invoiceId: 'inv-1',
@@ -239,7 +243,7 @@ describe('InvoiceService', () => {
   });
 
   it('addLine stamps excludedFromPanel when the source service is on the visit panel\'s exclusion list', async () => {
-    const { service, prisma } = createService();
+    const { service, prisma, tx } = createService();
     (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
       id: 'inv-1',
       visitId: 'visit-1',
@@ -249,7 +253,7 @@ describe('InvoiceService', () => {
     (prisma.visit.findUnique as jest.Mock).mockResolvedValue({ panelClinicId: 'panel-1' });
     (prisma.orderService.findUnique as jest.Mock).mockResolvedValue({ serviceCatalogId: 'svc-1' });
     (prisma.panelExclusion.findFirst as jest.Mock).mockResolvedValue({ id: 'excl-1' });
-    (prisma.invoiceLine.create as jest.Mock).mockResolvedValue({ id: 'line-1' });
+    (tx.invoiceLine.create as jest.Mock).mockResolvedValue({ id: 'line-1' });
     (prisma.invoiceLine.findMany as jest.Mock).mockResolvedValue([{ amount: 80 }]);
     (prisma.invoice.update as jest.Mock).mockResolvedValue({ id: 'inv-1', totalAmount: 80 });
 
@@ -260,13 +264,13 @@ describe('InvoiceService', () => {
     expect(prisma.panelExclusion.findFirst).toHaveBeenCalledWith({
       where: { panelClinicId: 'panel-1', serviceCatalogId: 'svc-1' },
     });
-    expect(prisma.invoiceLine.create).toHaveBeenCalledWith(
+    expect(tx.invoiceLine.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ excludedFromPanel: true, sourceOrderServiceId: 'os-1' }) }),
     );
   });
 
   it('addLine does not check exclusions for a self-pay (non-panel) visit', async () => {
-    const { service, prisma } = createService();
+    const { service, prisma, tx } = createService();
     (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
       id: 'inv-1',
       visitId: 'visit-1',
@@ -274,7 +278,7 @@ describe('InvoiceService', () => {
       lines: [],
     });
     (prisma.visit.findUnique as jest.Mock).mockResolvedValue({ panelClinicId: null });
-    (prisma.invoiceLine.create as jest.Mock).mockResolvedValue({ id: 'line-1' });
+    (tx.invoiceLine.create as jest.Mock).mockResolvedValue({ id: 'line-1' });
     (prisma.invoiceLine.findMany as jest.Mock).mockResolvedValue([{ amount: 80 }]);
     (prisma.invoice.update as jest.Mock).mockResolvedValue({ id: 'inv-1', totalAmount: 80 });
 
@@ -284,7 +288,7 @@ describe('InvoiceService', () => {
 
     expect(prisma.orderService.findUnique).not.toHaveBeenCalled();
     expect(prisma.panelExclusion.findFirst).not.toHaveBeenCalled();
-    expect(prisma.invoiceLine.create).toHaveBeenCalledWith(
+    expect(tx.invoiceLine.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ excludedFromPanel: false }) }),
     );
   });
@@ -422,5 +426,99 @@ describe('InvoiceService', () => {
     });
 
     await expect(withTenant(() => service.pay('inv-1', { paymentMethod: 'CASH' }))).rejects.toThrow(BadRequestException);
+  });
+});
+
+// =============================================================================
+// G4.5s (D-073) — one source item, one charge, enforced on the server.
+//
+// The Canvas's Quick Add filters out anything it can already see a line for,
+// but that list can be seconds stale and two billers on the same visit both
+// pass it. The audit found a source order already charged twice in the
+// database, on a PAID invoice — so this is not a hypothetical.
+// =============================================================================
+describe('duplicate charge prevention', () => {
+  const arrangeUnpaid = () => {
+    const ctx = createService('FINANCE_STAFF');
+    (ctx.prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
+      id: 'inv-1',
+      visitId: 'visit-1',
+      status: InvoiceStatus.UNPAID,
+      lines: [],
+    });
+    (ctx.prisma.invoiceLine.findMany as jest.Mock).mockResolvedValue([{ amount: 10 }]);
+    (ctx.prisma.invoice.update as jest.Mock).mockResolvedValue({ id: 'inv-1' });
+    return ctx;
+  };
+
+  it('refuses a second line for the same order service, and names the invoice', async () => {
+    const { service, tx } = arrangeUnpaid();
+    tx.invoiceLine.findFirst.mockResolvedValue({ invoice: { invoiceNumber: 'INV-000007' } });
+
+    await expect(
+      withTenant(() =>
+        service.addLine('inv-1', { description: 'Consultation', unitPrice: 35, sourceOrderServiceId: 'os-1' }),
+      ),
+    ).rejects.toThrow(/INV-000007/);
+
+    expect(tx.invoiceLine.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses a second line for the same prescription', async () => {
+    const { service, tx } = arrangeUnpaid();
+    tx.invoiceLine.findFirst.mockResolvedValue({ invoice: { invoiceNumber: 'INV-000008' } });
+
+    await expect(
+      withTenant(() =>
+        service.addLine('inv-1', { description: 'Amoxicillin', unitPrice: 12, sourcePrescriptionId: 'rx-1' }),
+      ),
+    ).rejects.toThrow(/INV-000008/);
+
+    expect(tx.invoiceLine.create).not.toHaveBeenCalled();
+  });
+
+  // Charging the same service on a SECOND invoice is the same double-charge
+  // wearing a hat, so the check is not scoped to the invoice being edited.
+  it('looks across all invoices, not just the one being edited', async () => {
+    const { service, tx } = arrangeUnpaid();
+    tx.invoiceLine.findFirst.mockResolvedValue({ invoice: { invoiceNumber: 'INV-000009' } });
+
+    await expect(
+      withTenant(() => service.addLine('inv-1', { description: 'X', unitPrice: 1, sourceOrderServiceId: 'os-1' })),
+    ).rejects.toThrow();
+
+    expect(tx.invoiceLine.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { sourceOrderServiceId: 'os-1' } }),
+    );
+  });
+
+  // What makes the check correct rather than merely likely: the source row is
+  // locked first, so two concurrent adds serialise instead of both reading
+  // "no line" and both inserting.
+  it('locks the source row before checking, so concurrent adds serialise', async () => {
+    const { service, tx } = arrangeUnpaid();
+    tx.invoiceLine.findFirst.mockResolvedValue(null);
+
+    await withTenant(() =>
+      service.addLine('inv-1', { description: 'Consultation', unitPrice: 35, sourceOrderServiceId: 'os-1' }),
+    );
+
+    const locked = tx.$executeRaw.mock.calls.some((call: unknown[]) =>
+      String((call[0] as { join?: (s: string) => string })?.join?.('?') ?? call[0]).includes('FOR UPDATE'),
+    );
+    expect(locked).toBe(true);
+    expect(tx.invoiceLine.create).toHaveBeenCalled();
+  });
+
+  it('a freehand line with no source is never blocked', async () => {
+    const { service, tx } = arrangeUnpaid();
+    tx.invoiceLine.findFirst.mockResolvedValue({ invoice: { invoiceNumber: 'INV-000010' } });
+
+    await withTenant(() => service.addLine('inv-1', { description: 'Sundry', unitPrice: 5 }));
+
+    // No source id means nothing to deduplicate against — two identical
+    // freehand lines are a legitimate thing for a biller to enter.
+    expect(tx.invoiceLine.findFirst).not.toHaveBeenCalled();
+    expect(tx.invoiceLine.create).toHaveBeenCalled();
   });
 });
