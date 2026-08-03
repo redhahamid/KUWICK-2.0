@@ -146,13 +146,23 @@
    past the old 220px floor the shell overflowed instead. C2 measured 324px
    only because it was measured on a completely empty record.
 
-   min() keeps it proportional on tall screens and bounded on short ones;
-   min-height is the floor a 768px laptop still honours. Lower clinical
-   sections now continue below the fold on one natural page scroll. */
+   G4.5d3c-3a0v (D-090) — a MINIMUM, not a fixed height. The previous rule
+   (`height: min(58vh, 520px); overflow-y: auto`) reserved ~520px whatever
+   the note held, so a four-line SOAP note carried hundreds of blank pixels
+   and pushed the Consultation Footer most of a viewport further down. The
+   floor keeps comfortable typing room on a 768px laptop; past it the editor
+   grows with the doctor's own text on the page's one natural scroll — no
+   inner scrollbar unless the content itself creates one elsewhere. */
 .kw-editor-fill .ProseMirror {
-  height: min(58vh, 520px);
-  min-height: 320px;
-  overflow-y: auto;
+  min-height: 400px;
+}
+
+/* A signed or otherwise read-only note (D-090). Nobody types here, so it is
+   sized by its CONTENT with a floor that keeps the signed-note banner and
+   amendment actions from crowding a one-line note. Blank reservation below a
+   short note bought nothing except scroll distance to the footer. */
+.kw-editor-signed .ProseMirror {
+  min-height: 260px;
 }
 
 /* Tablet, mobile and Flow. Without this the contenteditable collapses to one
@@ -647,6 +657,7 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
      mid-search. */
   .kw-editor-min .ProseMirror,
   .kw-editor-fill .ProseMirror,
+  .kw-editor-signed .ProseMirror,
   .kw-rail-add input,
   .kw-rail-add textarea,
   /* antd v6 sets 14px on `.ant-select .ant-select-input`, which out-specifies

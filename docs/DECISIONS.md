@@ -1817,6 +1817,52 @@ First DOM tests in the web suite (jsdom, opt-in per file; config moved to `vites
 
 ---
 
+## D-090 — G4.5d3c-3a0v: the scroll between the doctor and the footer
+
+Frontend only, visual closure only. The footer itself — states, wording, colours, state machine — is untouched; this checkpoint changes how far away it is. **No Supply Mode UI, no Queue/Counter Complete Visit, no Flow view.**
+
+### The duplicate sections are gone from the Canvas
+
+The active Canvas rendered the current visit's Documents and Invoice twice: once in the top Visit Actions band (D-075), and again as full accordions below the workspace (D-071's `SecondarySections`). The bottom pair duplicated the top band's summary for the same visit and stood permanently between the clinical work and the Consultation Footer.
+
+They are removed **from the Canvas composition only**. The full surfaces now open as drawers from the top band's own buttons — "More Documents" and "Open Invoice" — mounting the SAME `DocumentsTab` and `InvoiceSummary` the Flow layout's tabs mount, so there is still exactly one implementation per surface. A drawer, never navigation: the consultation stays mounted behind it, closing it returns to the same unsaved text (the History Drawer rule, D-067). The shared components (`SecondarySections`, `DocumentsSection`, `InvoiceSection`) stay in the tree untouched; a test pins both facts — absent from the Canvas, present in the codebase.
+
+Create MC / Create Referral were already direct entries into `CreateDocumentDrawer` and are unchanged.
+
+### The editor reserves what typing needs, not what symmetry wants
+
+The Canvas editor was `height: min(58vh, 520px)` — a FIXED height whatever the note held, originally chosen (D-054) to stop lower sections stealing the typing area. With the page on one natural scroll that protection no longer needs a fixed box, and its cost had become the finding: a four-line SOAP note carried hundreds of blank pixels, all of them between the doctor and the footer.
+
+Two rules replace it, chosen by a CLASS on the same `EditorContent` node (`editorSurfaceClass`), never a remount:
+
+- **Editable** (`.kw-editor-fill`): `min-height: 400px` — inside the owner's 380–440 range — and grows naturally with content. No fixed height, no `overflow-y`, no inner scrollbar the layout imposes.
+- **Signed/read-only** (`.kw-editor-signed`): `min-height: 260px`, sized by its content. Nobody types into a signed note; the reservation bought nothing but scroll distance.
+- Flow/tablet/mobile (`.kw-editor-min`): unchanged at 300px.
+
+### Measured, before → after (1440×900, real fixtures)
+
+| Page | Before | After |
+|---|---|---|
+| Short signed note, completed footer | 1459px tall, footer at 1353px | **1116px, footer at 1011px** |
+| Footer scroll past the fold | ~527px | **~216px** (signed), ~264px (editable) |
+| Duplicate sections in DOM | present | **absent** (asserted at capture time) |
+
+An editable note keeps its full 400px surface and still lands the footer about one-quarter viewport below the fold. The footer stays non-sticky (D-089's reasoning unchanged) and remains the final element of the active Canvas.
+
+### C1
+
+The height is CSS on the same node and the surface choice is a class string — the TipTap instance is never recreated by any of it, which a test pins by asserting `RichTextEditor` renders exactly one `EditorContent` fed by `editorSurfaceClass`. Draft-key semantics untouched; the existing C1 suites and the D-089 footer/editor-isolation tests all run unchanged.
+
+**Verification**: 19 new tests (composition, height rules, class selection, Visit Actions as the now-sole entry point); 294 frontend, 632 backend, both typechecks clean. Screenshots in `docs/g45d3c3a0v-screenshots/` with capture-time geometry printed above.
+
+**Known limitations**:
+
+- The removed sections' collapsed one-line summaries (document counts, invoice total at a glance) are no longer permanently visible on the Canvas; the top band carries a shorter version of the same facts. If the owner misses the richer line, it belongs in the top band, not in a restored bottom section.
+- The editable floor means a *blank* editable note still shows ~400px of empty surface — deliberate (typing room), but it is the one place blank height survives.
+- `kw-anchor-documents` / `kw-anchor-invoice` no longer exist on the Canvas; nothing references them today (quick-nav never did), but a future deep-link to those anchors would need the drawers instead.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

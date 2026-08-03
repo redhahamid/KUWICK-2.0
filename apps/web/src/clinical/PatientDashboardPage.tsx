@@ -54,7 +54,6 @@ import { VisitHistoryPanel } from './history/VisitHistoryPanel';
 // functional parity is confirmed, then go in a cleanup commit. Only one
 // version is ever public.
 import { ClinicalRail } from './sections/ClinicalRail';
-import { SecondarySections } from './sections/SecondarySections';
 import { ClinicalVitalsStrip } from './ClinicalVitalsStrip';
 import { ClinicalImageStrip } from './ClinicalImageStrip';
 import { VisitObservationsPanel } from './VisitObservationsPanel';
@@ -186,21 +185,24 @@ export function PatientDashboardPage() {
   const canvasCompact = layout === 'canvas' && Boolean(selectedVisit) && isDesktop;
 
   /**
-   * G4.5d (D-075) — the completion bar summarises; this is how it hands over
-   * to the full surface. Expand the section, then bring it into view.
+   * G4.5d3c-3a0v (D-090) — the completion bar's "More Documents" and "Open
+   * Invoice" now open DRAWERS over the Canvas instead of scrolling to
+   * duplicate sections below it.
    *
-   * `scrollIntoView`, never a hash: a hash pushes a history entry and C1's
-   * unsaved-note guard keys on navigation, so revealing a section further down
-   * the same record must not look like leaving it (same rule as the mobile
-   * quick-nav, D-072).
+   * The bottom Documents/Invoice accordions duplicated what the top Visit
+   * Actions already summarised, and their standing height was most of what
+   * pushed the Consultation Footer a full viewport below the clinical work.
+   * The full surfaces are unchanged — the drawers mount the SAME
+   * DocumentsTab and InvoiceSummary the Flow layout uses — they simply
+   * appear when asked for rather than occupying the page permanently.
+   *
+   * A drawer, never navigation: the consultation stays mounted behind it,
+   * so closing it returns to the same visit, the same note and the same
+   * unsaved text (the History Drawer rule, D-067).
    */
   const revealSection = (which: 'documents' | 'invoice') => {
     if (which === 'documents') setDocumentsOpen(true);
     else setInvoiceOpen(true);
-    // After the section has expanded, so the scroll lands on its real height.
-    window.setTimeout(() => {
-      document.getElementById(`kw-anchor-${which}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 60);
   };
 
   /**
@@ -542,18 +544,11 @@ export function PatientDashboardPage() {
               </aside>
             </div>
 
-            {/* Secondary, below the working Canvas: Documents and the
-                read-only Invoice Summary. Full width, outside the flex row,
-                so nothing here can take height from the note (G0a, D-054). */}
-            <SecondarySections
-              visit={selectedVisit}
-              patientName={patient.name}
-              patientIdentifier={patient.identifierValue}
-              documentsOpen={documentsOpen}
-              invoiceOpen={invoiceOpen}
-              onToggleDocuments={() => setDocumentsOpen((prev) => !prev)}
-              onToggleInvoice={() => setInvoiceOpen((prev) => !prev)}
-            />
+            {/* G4.5d3c-3a0v (D-090) — the bottom Documents/Invoice sections
+                are gone from the active Canvas. They duplicated the top Visit
+                Actions surface for the same current visit and pushed the
+                footer below them; the full workspaces now open as drawers
+                from that surface instead (see revealSection above). */}
 
             {/* G4.5d3c-3a (D-089) — how the DOCTOR's part of the consultation
                 ends. Last on the page, after everything it summarises, and
@@ -627,6 +622,39 @@ export function PatientDashboardPage() {
         />
         <VisitHistoryPanel patientId={patient.id} currentVisitId={selectedVisit?.id} compact={!isDesktop} />
       </Drawer>
+
+      {/* G4.5d3c-3a0v (D-090) — the full Documents Workspace and the
+          read-only Invoice Summary, on demand. Same components as the Flow
+          layout's tabs — one implementation per surface — mounted only while
+          open, over a Canvas that stays exactly as it was underneath. */}
+      {selectedVisit && (
+        <>
+          <Drawer
+            title="Documents"
+            open={documentsOpen}
+            onClose={() => setDocumentsOpen(false)}
+            styles={{ body: { paddingTop: 12 } }}
+            {...(isDesktop ? { placement: 'right' as const, width: 880 } : { placement: 'bottom' as const, height: '92%' })}
+          >
+            {documentsOpen && (
+              <DocumentsTab
+                visit={selectedVisit}
+                patientName={patient.name}
+                patientIdentifier={patient.identifierValue}
+              />
+            )}
+          </Drawer>
+          <Drawer
+            title="Invoice"
+            open={invoiceOpen}
+            onClose={() => setInvoiceOpen(false)}
+            styles={{ body: { paddingTop: 12 } }}
+            {...(isDesktop ? { placement: 'right' as const, width: 720 } : { placement: 'bottom' as const, height: '92%' })}
+          >
+            {invoiceOpen && <InvoiceSummary visit={selectedVisit} />}
+          </Drawer>
+        </>
+      )}
 
       <EditPatientDrawer patient={patient} open={editOpen} onClose={() => setEditOpen(false)} />
       <NewVisitDrawer

@@ -52,6 +52,24 @@ interface RichTextEditorProps {
 
 const FONT_FAMILIES = ['Sans Serif', 'Serif', 'Monospace'];
 
+/**
+ * G4.5d3c-3a0v (D-090) — which height rule the editor surface gets.
+ *
+ * An EDITABLE Canvas note reserves comfortable typing room and grows with
+ * content (.kw-editor-fill). A SIGNED or otherwise read-only note reserves
+ * far less (.kw-editor-signed): nobody types into it, so hundreds of blank
+ * pixels below a short SOAP note bought nothing except scroll distance
+ * between the doctor and the Consultation Footer.
+ *
+ * A CLASS decides this, not a remount: the TipTap instance and the DOM node
+ * are untouched when a note flips between the two (e.g. on signing), which is
+ * what C1's draft protection relies on.
+ */
+export function editorSurfaceClass(fill: boolean | undefined, editable: boolean): string {
+  if (!fill) return 'kw-editor-min';
+  return editable ? 'kw-editor-fill' : 'kw-editor-signed';
+}
+
 export function RichTextEditor({
   content,
   onChange,
@@ -231,7 +249,7 @@ export function RichTextEditor({
       <EditorContent
         editor={editor}
         className={
-          [compact ? 'kw-notes-borderless' : '', fill ? 'kw-editor-fill' : 'kw-editor-min']
+          [compact ? 'kw-notes-borderless' : '', editorSurfaceClass(fill, editable)]
             .filter(Boolean)
             .join(' ') || undefined
         }
