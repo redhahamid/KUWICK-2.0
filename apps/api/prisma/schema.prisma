@@ -159,8 +159,32 @@ model Tenant {
   visitObservations           VisitObservation[]
   visitObservationRevisions   VisitObservationRevision[]
   staffProfessionalAudits     StaffProfessionalAudit[]
+  visitNumberCounter          VisitNumberCounter?
 
   @@map("tenants")
+}
+
+/// G4c1 (D-068) — the allocator behind Visit.visitNumber.
+///
+/// Replaces `count(*) + 1`, which derived the next number from HOW MANY rows
+/// exist rather than WHICH numbers have been used. Delete one visit and the
+/// count falls behind the highest number in use, so the next create collided
+/// with a live row on `visits_tenant_id_visit_number_key` and surfaced as a
+/// raw 500; two concurrent registrations also read the same count and produced
+/// the same number.
+///
+/// One row per tenant, because the uniqueness constraint that actually exists
+/// is `@@unique([tenantId, visitNumber])` — the scope is the tenant, not the
+/// clinic and not the whole database. `nextValue` is the last number ISSUED;
+/// allocation increments and returns in a single atomic statement.
+model VisitNumberCounter {
+  tenantId  String   @id @map("tenant_id")
+  nextValue Int      @default(0) @map("next_value")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("visit_number_counters")
 }
 
 model Clinic {

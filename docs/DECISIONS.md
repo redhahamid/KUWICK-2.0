@@ -869,6 +869,49 @@ Every summary field returns null when the underlying value was never recorded, a
 
 ---
 
+## D-068 — G4c1: a visit number is allocated, not counted
+
+`VisitService.nextVisitNumber()` was `count(*) + 1`. It derived the next number from **how many rows exist** rather than **which numbers have been used**, which fails two ways:
+
+- **Delete any visit** and the count falls behind the highest number in use, so the next create collides with a live row on `visits_tenant_id_visit_number_key` and surfaces as a raw 500. Reproduced during G4, where it forced the populated-history fixture to insert visits directly instead of through the API.
+- **Two concurrent registrations** read the same count and produce the same number; the unique index rejects one of them.
+
+### Scope, taken from the constraint rather than the method name
+
+The only uniqueness the database enforces is `@@unique([tenantId, visitNumber])`, so the counter is keyed by **tenant** — not clinic, not global. A clinic-scoped counter would immediately produce duplicates inside one tenant. There is no year reset, and the visible format (`V-` + six zero-padded digits) is unchanged.
+
+### The allocator
+
+`visit_number_counters`, one row per tenant, incremented by a single statement:
+
+```sql
+INSERT INTO visit_number_counters (tenant_id, next_value, updated_at)
+VALUES ($1, 1, now())
+ON CONFLICT (tenant_id) DO UPDATE
+  SET next_value = visit_number_counters.next_value + 1, updated_at = now()
+RETURNING next_value
+```
+
+One statement matters: it takes a row lock and increments atomically, so concurrent registrations serialise on that row instead of racing a read-then-write. It runs **inside the visit-creation transaction**, so a failed insert rolls the increment back with it — no number is burned by a visit that never existed, and none is reissued because a visit was later deleted.
+
+All three creation paths funnel through `VisitService.create()` — `POST /visits`, the front desk's `QueueTicketService.addToQueue()`, and `AppointmentService.arrived()` → `addToQueue()` — so there is one allocator and no second place to forget it.
+
+A P2002 is translated into a `ConflictException`, never a raw 500, and triggers a bounded repair: the counter is advanced to the highest number actually in use, in its own transaction, and the create is retried. That path exists because numbers *can* be written outside the allocator — G4's fixture had to do exactly that — and it is exercised in the live check by planting a colliding row.
+
+**Detection is measured, not assumed:** under the pg driver adapter Prisma raises P2002 with `meta.target` reported as "(not available)", so the first version of the guard never matched and the collision still surfaced as a 500. The check reads the constraint name where it exists and otherwise treats a P2002 from the visit insert as the visit-number conflict — `visits` carries exactly two unique constraints and the other is a server-generated uuid primary key.
+
+### The migration bug this caught
+
+The first version of the backfill **seeded nothing at all** and still looked correct. `tenants` and `visits` are `FORCE ROW LEVEL SECURITY` with policies keyed on `current_setting('app.tenant_id')`; a migration runs with that GUC unset, and FORCE means even the table owner is filtered. Every `SELECT` in the backfill returned zero rows. It was caught only because a tenant with 250 visits ended up with no counter row. The migration now lifts `NO FORCE` around the seeding step and restores `FORCE` afterwards — the same pattern the G3b-closure migration uses — and re-running can only raise a counter, never lower one.
+
+Malformed legacy numbers (`DEMO-00001`, `LEGACY/2019/0042`) are ignored for seeding and **never rewritten**. A well-formed number too large for `INTEGER` aborts the migration rather than being silently skipped, because skipping it would let the counter reissue a number already in use.
+
+**Verification:** 12 unit tests and 395 backend tests, 187 frontend tests, both typechecks clean, and `prisma/g4c1-visit-number-check.ts` — 21 checks against the real database and HTTP API with real concurrency: 20 simultaneous creations → 20 unique numbers, 50 → no duplicate, create-after-delete succeeds, a deleted number is never reissued, reads allocate nothing, the queue path advances the same counter, each tenant advances only its own, a planted out-of-band number is survived without a raw error, and a tenant with 250 visits (216 of them malformed) seeded to its true highest, 270.
+
+**Reversibility**: Low. Reverting restores a numbering scheme that breaks after any deletion.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 - ~~Diagnosis deletion is a hard delete with no audit trail (D-059)~~ — **resolved by D-061.**
@@ -877,7 +920,8 @@ Every summary field returns null when the underlying value was never recorded, a
 - ~~Order attachments are hard-deleted, file included (D-061)~~ — **resolved by D-062.**
 - **Prescriptions are soft-deleted but unattributed**: `deletedAt` is set and the row survives, and deletion is blocked once the item leaves `ORDERED` — but no actor and no reason are recorded. Clinically better than the others, still short of the diagnosis standard. Recommended for a **medication-governance checkpoint after G3**.
 - **Orders/procedures have no delete route at all** — only `cancel`, which sets `CANCELLED` and stores `cancelReason`. This one is already acceptable; it lacks a cancelling-actor field, which is a smaller gap.
-- **Visit numbering breaks after any deletion** (found in G4, D-067): `nextVisitNumber()` is `count(*) + 1`, so once a visit has been deleted every new visit collides on the tenant/number unique index and `POST /visits` returns 500. Needs a real sequence or a max-based allocation; deliberately not changed during G4, which must not touch current-visit workflows.
+- ~~Visit numbering breaks after any deletion (found in G4, D-067)~~ — **resolved by D-068.**
+- **`POST /visits` does not verify the patient belongs to the caller’s tenant** (found during G4c1): posting another tenant’s `patientId` with a valid token is accepted, producing a visit whose patient is invisible to it. RLS protects reads, but the foreign key is enforced below RLS so the insert succeeds. Not introduced by G4c1 and deliberately not fixed there; the smallest safe change is to resolve the patient inside the visit-creation transaction and refuse when it is not visible. Same question applies to `clinicId` and `staffId`.
 - **The wider API RBAC gap remains open** (D-056). Clinical notes, observations, diagnoses, document authorisation (D-064) and the five invoice mutation routes (D-066) now have server-side role enforcement; the rest of the API does not.
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:
