@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Visit } from '../types';
-import { DiagnosisSection } from './DiagnosisSection';
+import { DiagnosisRail } from './DiagnosisRail';
 import { OrdersSection } from './OrdersSection';
-import { MedicationsSection } from './MedicationsSection';
+import { MedicationsRail } from './MedicationsRail';
 
-type RailKey = 'diagnosis' | 'medications' | 'orders';
+type RailKey = 'orders';
 
 interface ClinicalRailProps {
   visit: Visit;
@@ -36,12 +36,8 @@ export function ClinicalRail({ visit }: ClinicalRailProps) {
 
   return (
     <div className="kw-clinical-rail">
-      <DiagnosisSection visitId={visit.id} expanded={open.has('diagnosis')} onToggle={() => toggle('diagnosis')} />
-      <MedicationsSection
-        visitId={visit.id}
-        expanded={open.has('medications')}
-        onToggle={() => toggle('medications')}
-      />
+      <DiagnosisRail visitId={visit.id} />
+      <MedicationsRail visitId={visit.id} />
       <OrdersSection visitId={visit.id} expanded={open.has('orders')} onToggle={() => toggle('orders')} />
     </div>
   );

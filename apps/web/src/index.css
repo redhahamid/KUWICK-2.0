@@ -370,3 +370,77 @@
     flex: 0 0 auto;
   }
 }
+
+/* G4.5b (D-071) — always-open rail panels.
+   No collapsed state, no toggle, and no internal scrollbar: a long list
+   truncates to "View all N" and the page grows. */
+.kw-rail-panel {
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 12px 12px;
+}
+
+.kw-rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.kw-rail-add {
+  margin-bottom: 8px;
+}
+
+.kw-rail-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.kw-rail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.kw-rail-row:last-of-type {
+  border-bottom: none;
+}
+
+.kw-rail-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kw-rail-row-actions {
+  flex: 0 0 auto;
+}
+
+.kw-rail-more {
+  align-self: flex-start;
+  padding-inline: 0;
+}
+
+@media (max-width: 767px) {
+  /* One column, full-width targets — never a desktop row squeezed onto a
+     phone. Same rule the clinical rows below the Canvas already follow. */
+  .kw-rail-row {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .kw-rail-row-actions {
+    width: 100%;
+  }
+
+  .kw-rail-row-actions .ant-btn,
+  .kw-rail-add .ant-btn {
+    min-height: 44px;
+  }
+}
