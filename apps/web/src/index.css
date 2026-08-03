@@ -728,10 +728,27 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
     display: flex;
     gap: 6px;
     overflow-x: auto;
-    padding: 6px 4px;
+    padding: 6px 12px 6px 4px;
     margin: 0 -4px 8px;
-    background: #fff;
     border-bottom: 1px solid #f0f0f0;
+    /* D-091 — CSS scroll shadows. The last two layers are soft edge shades
+       that say "more tabs this way"; the first two are white covers pinned to
+       the CONTENT (attachment: local), so each shade disappears exactly when
+       its end of the row is reached. No JS, and nothing looks clipped-broken:
+       an overflowing row visibly fades instead of amputating its last label. */
+    background:
+      linear-gradient(90deg, #fff 40%, rgba(255, 255, 255, 0)) left / 28px 100% no-repeat local,
+      linear-gradient(270deg, #fff 40%, rgba(255, 255, 255, 0)) right / 28px 100% no-repeat local,
+      linear-gradient(90deg, rgba(23, 33, 43, 0.14), transparent) left / 14px 100% no-repeat scroll,
+      linear-gradient(270deg, rgba(23, 33, 43, 0.14), transparent) right / 14px 100% no-repeat scroll,
+      #fff;
+  }
+
+  /* Snap each tab whole into view — a half-tab at the edge is the "broken"
+     look this closure removes; momentum scrolling still works. */
+  .kw-quick-nav .ant-btn {
+    scroll-snap-align: nearest;
+    flex: 0 0 auto;
   }
 
   /* D-072 — the sticky bar overlaps whatever it scrolls to unless the target
@@ -753,6 +770,42 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
     min-height: 44px;
     flex: 0 0 auto;
   }
+}
+
+/* D-091 — quick-nav label pairs. The full name renders by default; below
+   480px the short form takes over so five tabs fit more of the row. The
+   button's aria-label carries the full name at every width. */
+.kw-qn-short {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .kw-qn-full {
+    display: none;
+  }
+
+  .kw-qn-short {
+    display: inline;
+  }
+}
+
+/* D-091 — the supply-mode edit line on the prescribing surface. */
+.kw-supply-edit {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 2px 0;
+}
+
+/* D-091 — where "Review Medications" landed. Outline plus focus, never colour
+   alone, and the class removes itself after a moment. */
+.kw-rail-row.kw-row-attention {
+  outline: 2px solid var(--kw-navy);
+  outline-offset: 2px;
+  border-radius: 6px;
+  background: var(--kw-band-bg);
+  transition: background 0.4s ease;
 }
 
 /* G4.5b (D-071) — always-open rail panels.
@@ -854,6 +907,33 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   .kw-rail-row-actions .ant-btn,
   .kw-rail-add .ant-btn {
     min-height: 44px;
+  }
+
+  /* D-091 — Add Order / Add Service. The compact [select | button] pair
+     overflowed the card's right edge at phone widths; stacked, the field
+     takes the full row and the named action sits full-width beneath it,
+     inside the card at 375px and 390px alike. Desktop/tablet keep the
+     side-by-side compact pair. */
+  .kw-rail-add .ant-space-compact {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 6px;
+  }
+
+  .kw-rail-add .ant-space-compact > .ant-select {
+    width: 100%;
+  }
+
+  .kw-rail-add .ant-space-compact > .ant-btn {
+    width: 100%;
+    /* Stacked, these are no longer visually fused controls — restore each
+       corner so neither reads as a clipped fragment of the other. */
+    border-radius: 6px;
+  }
+
+  .kw-rail-add .ant-space-compact > .ant-select .ant-select-selector {
+    border-radius: 6px;
   }
 }
 

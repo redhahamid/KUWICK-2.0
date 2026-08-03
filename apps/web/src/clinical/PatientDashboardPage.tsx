@@ -222,9 +222,23 @@ export function PatientDashboardPage() {
   const revealCanvasSection = (anchor: 'note' | 'orders' | 'medications') => {
     const target = document.getElementById(`kw-anchor-${anchor}`);
     if (!target) return;
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    target.setAttribute('tabindex', '-1');
-    target.focus({ preventScroll: true });
+    // G4.5d3c-3a1 (D-091) — an unresolved supply mode is a ROW, not a
+    // section, so "Review Medications" lands on the first one where it
+    // exists. The row is found by a DOM marker the rail sets from the same
+    // presentation rule the badge uses — nothing clinical is re-derived
+    // here. Falls back to the section when nothing is unresolved.
+    const unresolvedRow =
+      anchor === 'medications' ? target.querySelector<HTMLElement>('[data-unresolved-supply]') : null;
+    const focusTarget = unresolvedRow ?? target;
+    focusTarget.scrollIntoView({ behavior: 'smooth', block: unresolvedRow ? 'center' : 'start' });
+    focusTarget.setAttribute('tabindex', '-1');
+    focusTarget.focus({ preventScroll: true });
+    if (unresolvedRow) {
+      // A brief, restrained attention ring — colour is not the only signal
+      // (focus lands on the row) and it removes itself.
+      unresolvedRow.classList.add('kw-row-attention');
+      window.setTimeout(() => unresolvedRow.classList.remove('kw-row-attention'), 2600);
+    }
   };
 
   const layoutSwitch = (

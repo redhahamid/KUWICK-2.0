@@ -34,7 +34,8 @@ import {
   usePrescriptions,
   useRemovePrescription,
 } from './hooks/usePrescriptions';
-import { CreatePrescriptionDto, DosageCalcMethod } from './types';
+import { CreatePrescriptionDto, DosageCalcMethod, PrescriptionSupplyMode } from './types';
+import { SUPPLY_MODE_OPTIONS } from './medicationSupplyPresentation';
 import { PrescribedMedicationList } from './sections/PrescribedMedicationList';
 import { ApiError } from '../core/api-client';
 
@@ -73,6 +74,10 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
   const [indication, setIndication] = useState('');
   const [remark, setRemark] = useState('');
   const [calcMethod, setCalcMethod] = useState<DosageCalcMethod>();
+  // D-091 — supply intent, VISIBLY defaulted to clinic dispensing and always
+  // submitted explicitly. There is no hidden database default to fall back
+  // on: what the doctor sees selected is exactly what is stored.
+  const [supplyMode, setSupplyMode] = useState<PrescriptionSupplyMode>('ONSITE_DISPENSE');
   const [calcWeightKg, setCalcWeightKg] = useState<number>();
   const [calcDoseRateMgKg, setCalcDoseRateMgKg] = useState<number>();
   const [calculatorOpen, setCalculatorOpen] = useState(false);
@@ -125,6 +130,7 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
     setCalcMethod(undefined);
     setCalcWeightKg(undefined);
     setCalcDoseRateMgKg(undefined);
+    setSupplyMode('ONSITE_DISPENSE');
   };
 
   const reportFailure = (error: unknown, fallback: string) => {
@@ -149,6 +155,7 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
       calcMethod,
       calcWeightKg: calcMethod === 'WEIGHT_BASED' ? calcWeightKg : undefined,
       calcDoseRateMgKg: calcMethod === 'WEIGHT_BASED' ? calcDoseRateMgKg : undefined,
+      supplyMode,
     };
     try {
       await createPrescription.mutateAsync(dto);
@@ -370,6 +377,22 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
           <Col xs={24} sm={12} md={8}>
             <Text type="secondary">Indication</Text>
             <Input value={indication} onChange={(e) => setIndication(e.target.value)} />
+          </Col>
+        </Row>
+        <Row gutter={12} style={{ marginBottom: 12 }}>
+          <Col xs={24} sm={12} md={8}>
+            {/* A visible label and a visible selection. The doctor reads the
+                supply intent before saving; the DTO carries it explicitly. */}
+            <Text type="secondary">
+              <label htmlFor="kw-supply-mode">Supply Mode</label>
+            </Text>
+            <Select
+              id="kw-supply-mode"
+              style={{ width: '100%' }}
+              value={supplyMode}
+              onChange={(value) => setSupplyMode(value)}
+              options={SUPPLY_MODE_OPTIONS}
+            />
           </Col>
         </Row>
         <Input.TextArea

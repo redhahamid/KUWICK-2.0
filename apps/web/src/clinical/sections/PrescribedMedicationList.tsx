@@ -1,4 +1,4 @@
-import { Alert, Button, Popconfirm, Space, Tag, Tooltip, Typography, message } from 'antd';
+import { Alert, Button, Popconfirm, Select, Space, Tag, Tooltip, Typography, message } from 'antd';
 import { ExclamationCircleFilled, PrinterOutlined, WarningFilled } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { printDrugLabel } from '../printTextDocument';
@@ -6,7 +6,15 @@ import {
   useCancelPrescription,
   useDispensePrescription,
   useRemovePrescription,
+  useSetSupplyMode,
 } from '../hooks/usePrescriptions';
+import {
+  SUPPLY_MODE_OPTIONS,
+  SUPPLY_MODE_UNRESOLVED_LABEL,
+  canOfferDispense,
+  isUnresolvedSupply,
+  supplyModeLabel,
+} from '../medicationSupplyPresentation';
 import { useStockLevels } from '../../inventory/hooks/useStock';
 import { Prescription, PrescriptionStatus } from '../types';
 import { Clinic, Patient } from '../../core/types';
@@ -14,8 +22,12 @@ import { ApiError } from '../../core/api-client';
 
 const { Text } = Typography;
 
+// D-091 — ORDERED is no longer described as "To dispense": whether clinic
+// dispensing is required is the SUPPLY MODE's fact, shown beside it, and an
+// external prescription labelled "to dispense" told the dispensary to expect
+// medicine that was never coming to the counter.
 const STATUS_LABEL: Record<PrescriptionStatus, string> = {
-  ORDERED: 'To dispense',
+  ORDERED: 'Ordered',
   DISPENSED: 'Dispensed',
   CANCELLED: 'Cancelled',
 };
@@ -58,6 +70,7 @@ export function PrescribedMedicationList({
   const dispense = useDispensePrescription(visitId);
   const cancel = useCancelPrescription(visitId);
   const remove = useRemovePrescription(visitId);
+  const setSupply = useSetSupplyMode(visitId);
   const { data: stockLevels } = useStockLevels();
 
   const report = (error: unknown, fallback: string) =>
@@ -147,6 +160,46 @@ export function PrescribedMedicationList({
                     </Text>
                   </div>
 
+                  {/* D-091 — the supply intent. Editable HERE, on the
+                      prescribing surface, while the row is still ORDERED: a
+                      labelled select for the doctor, and plain words for a
+                      row that can no longer change. NULL shows as a
+                      placeholder the doctor must resolve, never as a
+                      preselected clinic dispensing. */}
+                  {prescription.status === 'ORDERED' ? (
+                    <div className="kw-supply-edit">
+                      <Text type="secondary" style={{ fontSize: 12 }} id={`supply-label-${prescription.id}`}>
+                        Supply mode
+                      </Text>
+                      <Select
+                        size="small"
+                        style={{ width: 230 }}
+                        aria-labelledby={`supply-label-${prescription.id}`}
+                        value={prescription.supplyMode ?? undefined}
+                        placeholder={SUPPLY_MODE_UNRESOLVED_LABEL}
+                        status={isUnresolvedSupply(prescription) ? 'warning' : undefined}
+                        options={SUPPLY_MODE_OPTIONS}
+                        loading={setSupply.isPending}
+                        onChange={(value) =>
+                          setSupply
+                            .mutateAsync({ id: prescription.id, dto: { supplyMode: value } })
+                            .catch((e) => report(e, 'Failed to update the supply mode'))
+                        }
+                      />
+                      {isUnresolvedSupply(prescription) && (
+                        <Text type="warning" style={{ fontSize: 12 }}>
+                          {SUPPLY_MODE_UNRESOLVED_LABEL}
+                        </Text>
+                      )}
+                    </div>
+                  ) : prescription.status === 'DISPENSED' ? (
+                    <div>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {supplyModeLabel(prescription.supplyMode)}
+                      </Text>
+                    </div>
+                  ) : null}
+
                   {prescription.indication && (
                     <div>
                       <Text type="secondary" style={{ fontSize: 12 }}>
@@ -201,18 +254,22 @@ export function PrescribedMedicationList({
                       DISPENSED only — that rule is the server's, unchanged. */}
                   {prescription.status === 'ORDERED' && (
                     <>
-                      <Button
-                        size="small"
-                        type="primary"
-                        loading={dispense.isPending}
-                        onClick={() =>
-                          dispense
-                            .mutateAsync({ id: prescription.id })
-                            .catch((e) => report(e, 'Failed to dispense'))
-                        }
-                      >
-                        Dispense
-                      </Button>
+                      {/* D-091 — only where clinic dispensing is the RECORDED
+                          intent (see medicationSupplyPresentation). */}
+                      {canOfferDispense(prescription) && (
+                        <Button
+                          size="small"
+                          type="primary"
+                          loading={dispense.isPending}
+                          onClick={() =>
+                            dispense
+                              .mutateAsync({ id: prescription.id })
+                              .catch((e) => report(e, 'Failed to dispense'))
+                          }
+                        >
+                          Dispense
+                        </Button>
+                      )}
                       <Popconfirm
                         title="Cancel this prescription?"
                         okText="Cancel"

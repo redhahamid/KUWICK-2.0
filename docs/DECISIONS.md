@@ -1863,6 +1863,43 @@ The height is CSS on the same node and the surface choice is a class string — 
 
 ---
 
+## D-091 — G4.5d3c-3a1: the supply intent gets a control, and the counts stop lying
+
+`Prescription.supplyMode` had columns (D-084), routing rules (D-086/D-088) and a blocker — and no way for a doctor to set it except a database fixture. This checkpoint is that way, plus the corrections its absence had been hiding. **No Queue/Counter Complete Visit, no Flow view, no Dispensary Workspace, no OTC workflow.**
+
+### Where the control lives
+
+In the prescribing workflow and nowhere else: a labelled select in the **Add Medication form**, visibly defaulting to "Dispense from clinic" and submitting `ONSITE_DISPENSE` **explicitly** — the stored value is what the doctor saw selected, never a hidden database default (a test pins that an absent value stores NULL). On each ORDERED row: the prescribing drawer carries an inline labelled select; the Canvas rail carries a "Supply mode" submenu under the row's More menu, so the intent is editable without leaving the Canvas. Not in the footer, the invoice, documents, the queue or settings.
+
+The owner's five labels live in `medicationSupplyPresentation.ts`; no raw enum value renders anywhere (tested, including the status chips, which used to print `ORDERED` verbatim and now say "Ordered"). **NULL reads "Supply mode not confirmed"** — its own words, never clinic dispensing — and existing NULL rows are not backfilled or auto-converted.
+
+### The server side
+
+`PATCH /prescriptions/:id/supply-mode`, one field. The same author gate as prescribing itself (`requireClinicalAuthor`, D-085): front desk, finance, stock, anonymous and inactive accounts are refused at the server; cross-branch is refused; a foreign tenant's row is RLS-invisible and 404s like a missing one. **Authorship is never rewritten** — the update's payload is `{supplyMode}` alone (tested), so `prescribedByStaffId` keeps recording who prescribed; a colleague's change acts under their own authenticated identity. DISPENSED refuses with a reason (the mode is now a historical fact about medicine already handed over); CANCELLED refuses as not editable. Copy-Previous deliberately does NOT copy the source's supply mode: this visit's supply intent is this visit's decision, so copied rows arrive unresolved.
+
+### Rail accuracy
+
+"To dispense" now means `ORDERED + ONSITE_DISPENSE` — nothing else. The old count treated every ORDERED row as dispensary work, telling the counter to expect medicine that was never coming. NULL rows get their own separate badge ("1 supply mode unresolved" / "2 supply modes unresolved" — pluralised), never folded into the dispensing number. **Dispense buttons obey the same rule**: only an ORDERED + ONSITE row offers one, on both surfaces; external/own-supply/deferred/no-supply/NULL/DISPENSED/CANCELLED offer none. Doctor dispensing permissions are not widened — this narrows where the existing action is offered; the real dispensing surface remains the future Dispensary Workspace.
+
+### The footer loop
+
+Every prescription mutation invalidates exactly two queries: the visit's prescriptions and its `doctor-phase-status`. Nothing else — the clinical-notes query is untouched (tested), so no medication change can push a server seed toward an editor holding C1 draft text. Eligibility appears only from the server's status response; nothing in the browser derives it, and nothing ever calls completion automatically. "Review Medications" now lands on the **first unresolved row** where one exists (found by a DOM marker the rail sets from the same presentation rule as the badge — nothing re-derived), focuses it, and rings it briefly; otherwise it falls back to the section.
+
+### Mobile closure
+
+**Quick-nav**: CSS scroll shadows (content-pinned covers over edge shades, no JS) say "more tabs this way" and vanish at each end of the scroll; a tapped tab scrolls itself fully into view; Diagnosis/Medications render as "Dx"/"Meds" below 480px while `aria-label` keeps the full names. **Add Order / Add Service**: the compact [select | button] pair overflowed its card at phone widths; at ≤767px they stack — full-width field, full-width named button beneath — measured 0px document overflow at 390px. Desktop and tablet keep the side-by-side pair.
+
+**Verification**: 10 new backend tests (22 in the prescription suite), 33 new frontend tests across four files; 645 backend, 328 frontend, both typechecks clean. Screenshots in `docs/g45d3c3a1-screenshots/`, including the end-to-end frame (07b): supply mode resolved through the UI and the footer flipped to the server-derived eligible action in the same session.
+
+**Known limitations**:
+
+- Copied prescriptions arrive with supply mode unresolved (deliberate — see above), which means Copy-Previous now routinely produces the unresolved badge until the doctor confirms each mode.
+- The Doctor Canvas still offers Dispense at all (correctly gated); whether it should remain once the Dispensary Workspace exists is that checkpoint's decision.
+- The "Item strength" tag and stock line on the drawer list are untouched; only supply facts changed.
+- Quick-nav scroll shadows rely on `background-attachment: local`, which iOS Safari has historically been inconsistent about; the fallback is a plain white row with the snap/scroll-into-view behaviour still active.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

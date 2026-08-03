@@ -871,6 +871,10 @@ export interface Prescription {
   calcDoseRateMgKg: string | null;
   calcTargetDoseMg: string | null;
   status: PrescriptionStatus;
+  // G4.5d3c-1b (D-084) — the supply INTENT. NULL is a real state: nobody has
+  // said how this medication reaches the patient, which blocks doctor-phase
+  // completion and is never displayed as "dispense from clinic".
+  supplyMode: PrescriptionSupplyMode | null;
   prescribedByStaffId: string;
   prescribedAt: string;
   dispensedAt: string | null;
@@ -878,6 +882,19 @@ export interface Prescription {
   item?: Item;
   // G2b — read-only, from the list endpoint's include.
   prescribedBy?: Staff;
+}
+
+export type PrescriptionSupplyMode =
+  | 'ONSITE_DISPENSE'
+  | 'EXTERNAL_PRESCRIPTION'
+  | 'PATIENT_OWN_SUPPLY'
+  | 'DEFERRED'
+  | 'NO_SUPPLY_REQUIRED';
+
+// G4.5d3c-3a1 (D-091) — the one field PATCH /prescriptions/:id/supply-mode
+// accepts.
+export interface UpdateSupplyModeDto {
+  supplyMode: PrescriptionSupplyMode;
 }
 
 export interface CreatePrescriptionDto {
@@ -893,6 +910,10 @@ export interface CreatePrescriptionDto {
   calcMethod?: DosageCalcMethod;
   calcWeightKg?: number;
   calcDoseRateMgKg?: number;
+  // D-091 — submitted EXPLICITLY by the form (which visibly defaults to
+  // ONSITE_DISPENSE). Optional in the type because the server accepts its
+  // absence as NULL; the Add Medication form always sends a value.
+  supplyMode?: PrescriptionSupplyMode;
 }
 
 export interface CancelPrescriptionDto {

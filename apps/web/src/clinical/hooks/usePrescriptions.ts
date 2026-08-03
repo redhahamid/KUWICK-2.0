@@ -1,6 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../core/api-client';
-import { CancelPrescriptionDto, CopyPrescriptionsDto, CreatePrescriptionDto, Prescription, Visit } from '../types';
+import {
+  CancelPrescriptionDto,
+  CopyPrescriptionsDto,
+  CreatePrescriptionDto,
+  Prescription,
+  UpdateSupplyModeDto,
+  Visit,
+} from '../types';
+
+// G4.5d3c-3a1 (D-091) — every prescription mutation refreshes the rows AND,
+// narrowly, the doctor-phase status: prescriptions are an input to the
+// footer's blockers (D-088), so a supply mode set or a medication added must
+// reach it without waiting for a remount. NOTHING ELSE is invalidated —
+// clinical notes in particular are never refetched by a medication change,
+// because that query feeds an editor that may be holding unsaved text (C1).
+function useInvalidatePrescriptionWork(visitId?: string) {
+  const queryClient = useQueryClient();
+  return () => {
+    queryClient.invalidateQueries({ queryKey: ['prescriptions', visitId] });
+    queryClient.invalidateQueries({ queryKey: ['doctor-phase-status', visitId] });
+  };
+}
 
 export function usePrescriptions(visitId?: string) {
   return useQuery({
@@ -23,37 +44,48 @@ export function usePrescriptionCopySources(patientId?: string, excludeVisitId?: 
 }
 
 export function useCreatePrescription(visitId?: string) {
-  const queryClient = useQueryClient();
+  const invalidate = useInvalidatePrescriptionWork(visitId);
   return useMutation({
     mutationFn: (dto: CreatePrescriptionDto) => apiClient.post<Prescription>('/prescriptions', dto),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['prescriptions', visitId] }),
+    onSuccess: invalidate,
   });
 }
 
 export function useCopyPrescriptions(visitId?: string) {
-  const queryClient = useQueryClient();
+  const invalidate = useInvalidatePrescriptionWork(visitId);
   return useMutation({
     mutationFn: (dto: CopyPrescriptionsDto) => apiClient.post<Prescription[]>('/prescriptions/copy', dto),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['prescriptions', visitId] }),
+    onSuccess: invalidate,
   });
 }
 
 function usePrescriptionAction(visitId: string | undefined, action: string) {
-  const queryClient = useQueryClient();
+  const invalidate = useInvalidatePrescriptionWork(visitId);
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input?: CancelPrescriptionDto }) =>
       apiClient.patch<Prescription>(`/prescriptions/${id}/${action}`, input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['prescriptions', visitId] }),
+    onSuccess: invalidate,
   });
 }
 
 export const useDispensePrescription = (visitId?: string) => usePrescriptionAction(visitId, 'dispense');
 export const useCancelPrescription = (visitId?: string) => usePrescriptionAction(visitId, 'cancel');
 
+// D-091 — the supply intent. The server re-checks author, branch and status;
+// this refreshes only what the change genuinely moved.
+export function useSetSupplyMode(visitId?: string) {
+  const invalidate = useInvalidatePrescriptionWork(visitId);
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: string; dto: UpdateSupplyModeDto }) =>
+      apiClient.patch<Prescription>(`/prescriptions/${id}/supply-mode`, dto),
+    onSuccess: invalidate,
+  });
+}
+
 export function useRemovePrescription(visitId?: string) {
-  const queryClient = useQueryClient();
+  const invalidate = useInvalidatePrescriptionWork(visitId);
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/prescriptions/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['prescriptions', visitId] }),
+    onSuccess: invalidate,
   });
 }

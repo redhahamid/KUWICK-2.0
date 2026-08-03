@@ -1,12 +1,14 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { DosageCalcMethod, PrescriptionStatus, StockMovementType } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
+import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { requireClinicalAuthor } from './clinical-actor';
+import { assertMayTouchVisit, requireClinicalAuthor, withTenantTx } from './clinical-actor';
 import { VisitService } from './visit.service';
 import { CreatePrescriptionDto } from './dto/create-prescription.dto';
 import { CancelPrescriptionDto } from './dto/cancel-prescription.dto';
 import { CopyPrescriptionsDto } from './dto/copy-prescriptions.dto';
+import { UpdateSupplyModeDto } from './dto/update-supply-mode.dto';
 import { calculateWeightBasedDose, findAgeBracket } from './dosage-calculator';
 
 @Injectable()
@@ -14,6 +16,7 @@ export class PrescriptionService {
   constructor(
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly visits: VisitService,
+    private readonly rawPrisma: PrismaService,
   ) {}
 
   // Snapshots dose/unit/frequency/duration/indication from Item at
@@ -89,7 +92,52 @@ export class PrescriptionService {
         // work. Never the visit's attending doctor by default: that recorded
         // Dr A as having prescribed something Dr A may never have seen.
         prescribedByStaffId: author.id,
+        // G4.5d3c-3a1 (D-091) — the supply intent, exactly as submitted. The
+        // UI defaults visibly and submits explicitly; the server adds no
+        // hidden default, so an absent value stores NULL — honest "not
+        // established", never a silent dispensing instruction.
+        supplyMode: dto.supplyMode,
       },
+    });
+  }
+
+  /**
+   * G4.5d3c-3a1 (D-091) — set or change how a medication will be supplied.
+   *
+   * A clinical decision, so it takes the same author gate as prescribing
+   * itself: front desk, finance and stock accounts are refused here, not
+   * merely denied a control. The prescription's AUTHORSHIP is untouched —
+   * `prescribedByStaffId` records who prescribed and this route never
+   * rewrites it; a colleague changing the supply intent acts under their own
+   * authenticated identity, refused unless they too can author clinical work.
+   *
+   * Only while ORDERED. A DISPENSED row's supply mode is a historical fact
+   * about medicine already handed over, and a CANCELLED row is terminal —
+   * both refuse rather than quietly rewriting the record.
+   */
+  async setSupplyMode(id: string, dto: UpdateSupplyModeDto) {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireClinicalAuthor(tx, 'set how a medication is supplied');
+      const prescription = await tx.prescription.findUnique({ where: { id } });
+      if (!prescription || prescription.deletedAt) {
+        // A foreign tenant's row is invisible to RLS and lands here too:
+        // the same 404 as a row that never existed, disclosing nothing.
+        throw new NotFoundException('Prescription not found');
+      }
+      await assertMayTouchVisit(tx, prescription.visitId, actor);
+      if (prescription.status === PrescriptionStatus.DISPENSED) {
+        throw new BadRequestException(
+          'This medication has already been dispensed, so its supply mode can no longer be changed.',
+        );
+      }
+      if (prescription.status !== PrescriptionStatus.ORDERED) {
+        throw new BadRequestException('A cancelled prescription cannot be edited.');
+      }
+      return tx.prescription.update({
+        where: { id },
+        data: { supplyMode: dto.supplyMode },
+        include: { item: true, prescribedBy: true },
+      });
     });
   }
 

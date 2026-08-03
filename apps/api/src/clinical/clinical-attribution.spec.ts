@@ -41,7 +41,8 @@ function prescriptions(staffDirectory: Record<string, unknown>) {
   const visits = {
     findById: jest.fn().mockResolvedValue({ id: 'visit-1', clinicId: 'clinic-1', staffId: DR_A.id }),
   } as unknown as VisitService;
-  return { service: new PrescriptionService(prisma, visits), prisma, visits };
+  const rawPrisma = { $transaction: jest.fn(async (fn: any) => fn({ ...(prisma as object), $executeRaw: jest.fn() })) } as never;
+  return { service: new PrescriptionService(prisma, visits, rawPrisma), prisma, visits };
 }
 
 function documents(staffDirectory: Record<string, unknown>) {

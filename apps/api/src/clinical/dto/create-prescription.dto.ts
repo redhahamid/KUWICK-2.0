@@ -1,5 +1,5 @@
 import { IsEnum, IsInt, IsNumber, IsOptional, IsPositive, IsString, Min } from 'class-validator';
-import { DosageCalcMethod } from '@prisma/client';
+import { DosageCalcMethod, PrescriptionSupplyMode } from '@prisma/client';
 
 export class CreatePrescriptionDto {
   @IsString()
@@ -34,6 +34,15 @@ export class CreatePrescriptionDto {
   @IsOptional()
   @IsString()
   remark?: string;
+
+  // G4.5d3c-3a1 (D-091) — the SUPPLY INTENT, submitted explicitly by the
+  // prescribing UI (which visibly defaults to ONSITE_DISPENSE). Optional at
+  // the DTO level deliberately: there is no hidden server default, so a
+  // caller that says nothing stores NULL — "not established" — rather than
+  // being silently converted into a dispensing instruction.
+  @IsOptional()
+  @IsEnum(PrescriptionSupplyMode)
+  supplyMode?: PrescriptionSupplyMode;
 
   // Calculator audit trail (docs/DECISIONS.md D-028). WEIGHT_BASED is
   // recomputed server-side from calcWeightKg/calcDoseRateMgKg — `amount`
