@@ -269,7 +269,7 @@
 .kw-clinical-rail {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .kw-secondary-sections {
@@ -318,10 +318,16 @@
 
 /* --- Tablet and below: one column, in clinical reading order. ------------ */
 @media (max-width: 1100px) {
+  /* `align-items: flex-start` is right in ROW direction — it stops the rail
+     stretching to the note's height. Once the shell turns into a column it
+     means shrink-to-content WIDTH instead, which left the note 125px
+     narrower than the rail below it on a 900px tablet. */
   .kw-canvas-shell {
     flex-direction: column;
+    align-items: stretch;
   }
 
+  .kw-canvas-main,
   .kw-canvas-rail {
     flex: 1 1 auto;
     width: 100%;
@@ -331,6 +337,15 @@
   .kw-clinical-rail {
     gap: 10px;
   }
+}
+
+/* The quick-nav is a phone affordance only — above 640px the four panels are
+   either beside the note or a short scroll away, and a jump bar there is
+   chrome competing with the record. Declared BEFORE the mobile block on
+   purpose: same specificity, so source order decides, and the phone rule must
+   be the one that wins. */
+.kw-quick-nav {
+  display: none;
 }
 
 /* --- Mobile ------------------------------------------------------------- */
@@ -378,7 +393,7 @@
   border: 1px solid #f0f0f0;
   border-radius: 8px;
   background: #fff;
-  padding: 10px 12px 12px;
+  padding: 8px 10px;
 }
 
 .kw-rail-head {
@@ -386,11 +401,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .kw-rail-add {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .kw-rail-body {
@@ -398,11 +413,15 @@
   flex-direction: column;
 }
 
+/* Row height is the budget that decides whether all four panels fit the
+   first screen at 1920x1080. Measured: 4 diagnoses + 5 medications + 3 orders
+   + 2 services must share roughly 590px of rail below the headers and add
+   controls, so a row averages about 42px. */
 .kw-rail-row {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 8px 0;
+  padding: 5px 0;
   border-bottom: 1px solid #f5f5f5;
 }
 
@@ -415,7 +434,22 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+}
+
+/* Rail rows are read, not composed in. Antd's default 1.57 line-height is
+   sized for body copy; at four panels it spends ~80px of the first screen on
+   leading alone, which is what pushed Direct Services below the fold. The
+   text sizes themselves are NOT reduced — 13px name and 12px detail stay
+   legible; only the space between the lines is tightened. */
+.kw-rail-row-main,
+.kw-rail-row-main .ant-typography {
+  line-height: 1.32;
+}
+
+.kw-rail-row .ant-tag {
+  line-height: 17px;
+  margin-inline-end: 0;
 }
 
 .kw-rail-row-actions {

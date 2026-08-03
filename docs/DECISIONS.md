@@ -994,6 +994,77 @@ Every existing booking rule still runs, unchanged and in the same order relative
 
 ---
 
+## D-071 — G4.5: the clinical work is on screen, not behind a reveal
+
+The C2 workspace showed Diagnosis, Medications, Orders/Procedures and Direct Services as collapsed rows below the clinical note. Reading what a patient was already on took a click; so did seeing whether a lab had come back. Worse, the "+ Add Diagnosis" button on a collapsed section did not add anything:
+
+```
+primaryAction={{ label: '+ Add Diagnosis', onClick: () => !expanded && onToggle() }}
+```
+
+It expanded the section. Every clinical action therefore started with a click that revealed rather than did, and the doctor could not see the state of the visit without four of them.
+
+### The shape
+
+Two zones, not one column of accordions:
+
+| Zone | Holds | Why |
+|---|---|---|
+| Left (`.kw-canvas-main`) | recorded vitals, this visit's images, the clinical note | what the doctor **writes** |
+| Right (`.kw-canvas-rail`, 420–480px) | Diagnosis, Medications, Orders/Procedures, Direct Services | what the doctor **does** |
+
+The rail took the width the C2 right column used for patient summary, allergies and recent visits. Those did not disappear: allergies moved into the context band, because they change what may safely be prescribed and belong where prescribing is decided; recent visits became the G4 read-only history drawer; the rest is behind one Patient Summary control.
+
+**The rule that decides every number:** the note never shrinks to make room for the rail. The benchmarked reference CMS did the opposite — it refused to scroll, so at 1366 the note collapsed to seven lines while a free-text sidebar kept twice that height. Here the rail truncates its previews to "View all N" and the page scrolls once. Measured: the editor is **520px at 1920** and **445px at 1366**, against a 420px floor.
+
+### Always open, and no scroller inside a scroller
+
+`RailPanel` has no collapsed state and no toggle. Preview limits are 4 diagnoses / 5 medications / 4 orders / 3 services; beyond that, "View all N" expands **in place** and lets the page grow. There is deliberately no internal scrollbar — a scroller inside a rail beside a scrolling page is the trap G0a removed, and it hides clinical content behind a gesture nobody makes.
+
+Verified rather than asserted: `collapsedHeadersInRail` is **0** at all four viewports, on a fully populated visit.
+
+### Density is spacing, never information
+
+Getting all four panels with their Add controls into a 1920×1080 first screen took ~100px. It was taken from chrome, not content:
+
+- the Canvas/Flow switch had its own 38px row; it now rides in the context band (Flow keeps its row)
+- rail line-height 1.57 → 1.32 — the 13px name and 12px detail text sizes are unchanged
+- panel and row padding tightened; diagnosis attribution moved into a tooltip on the name
+
+Attribution is server-derived and legally meaningful, so it stays reachable — but a line of it on every row across four panels was exactly the height that pushed Direct Services off the first screen.
+
+### What was deliberately not done
+
+Prescribing is **not** reduced to one click. The full workflow — item search, weight- and age-based calculators, copy-previous, dispensing, labels, every existing validation — is the unchanged `MedicationsTab`, opened in a Drawer. Dose, frequency, duration and quantity remain deliberate clinical decisions. What was removed is the reveal-only click in front of them. Every mutation still goes through the same hooks the section bodies used, so the one-active-PRIMARY invariant, the mandatory removal reason and the audited removal history are untouched.
+
+Direct Services get no Start/Complete control. The backend still creates `STANDARD_SERVICE` with a `PENDING` lifecycle it does not need; showing task-style buttons on a billing line would make the UI assert something the model does not mean. Correcting the lifecycle is G4.5s, not this change.
+
+`ClinicalSectionStack` and the four `*SummaryCard` components remain in the tree, unreferenced, as the rollback path. Only one layout is ever public.
+
+### Smaller screens
+
+Below 1100px the shell becomes one column in clinical reading order, every panel still open. Two real defects were found and fixed there: `align-items: flex-start` is correct in row direction (it stops the rail stretching to the note's height) but means shrink-to-content **width** once the shell is a column, which left the note 125px narrower than the rail on a 900px tablet; and the `.kw-quick-nav` base rule was declared after the mobile block at equal specificity, so source order silently won and the phone nav rendered at zero height.
+
+On phones a sticky quick-nav (Note / Diagnosis / Medications / Orders / Services) moves the viewport between the five surfaces. It uses `scrollIntoView`, not a hash link — a hash pushes a history entry and C1's unsaved-note guard keys on navigation, so moving the viewport must never look like leaving the record. It opens and closes nothing.
+
+**Verification:** `prisma/g45-canvas-verify.ts` against a populated visit (V-000338: 4 diagnoses, 5 medications, 3 orders in three states, 2 services, 2 images, full vitals) at 1920×1080, 1366×768, 900 and 375.
+
+| | 1920 | 1366 | 900 | 375 |
+|---|---|---|---|---|
+| All 4 panels + Add controls in first screen | **yes** | no (768px tall) | n/a | n/a |
+| Editor height | 520px | **445px** | 300px | 300px |
+| Collapsed headers in rail | 0 | 0 | 0 | 0 |
+| One column, equal widths | — | — | **yes** | **yes** |
+| Horizontal overflow | none | none | none | none |
+| Controls under 44px | — | — | — | **0** |
+| Editable text size | — | — | — | **16px** |
+
+All five quick-nav jumps land their target at the top of the screen (Services at the page's scroll end, which is the correct outcome for the last section). 411 backend tests, 187 frontend, both typechecks clean.
+
+**Reversibility**: Moderate. The rollback components are still present; reverting restores the reveal-click workspace.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.
@@ -1026,6 +1097,7 @@ Recorded at the owner's request after G4c1. **Nothing here is changed.** Each de
 - ~~Visit numbering breaks after any deletion (found in G4, D-067)~~ — **resolved by D-068.**
 - ~~`POST /visits` does not verify the patient belongs to the caller’s tenant (found during G4c1)~~ — **resolved by D-069.**
 - ~~`POST /appointments` does not verify the patient or clinic belongs to the caller’s tenant~~ — **resolved by D-070.**
+- **`STANDARD_SERVICE` carries a task lifecycle it does not need** (found in G4.5c, D-071). A directly-billed service is created `PENDING` and can be Started and Completed like a lab order, though nothing is waiting on it. The Canvas therefore shows no Start/Complete on Direct Services — rendering them would make the UI assert something the model does not mean. Correcting the lifecycle is **G4.5s**, deferred at the owner's instruction.
 - **Three numbering allocators are still `count(*) + 1`** — invoice, claim batch and queue ticket. Detailed in the appendix above; not blocking today, but the invoice one will bite during populated G4.5 testing.
 - **The wider API RBAC gap remains open** (D-056). Clinical notes, observations, diagnoses, document authorisation (D-064) and the five invoice mutation routes (D-066) now have server-side role enforcement; the rest of the API does not.
 

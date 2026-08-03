@@ -86,6 +86,7 @@ export function DiagnosisRail({ visitId }: DiagnosisRailProps) {
     <>
       <RailPanel
         title="Diagnosis"
+        anchorId="kw-anchor-diagnosis"
         count={list.length}
         status={primary ? <Tag color="blue">1° {primary.name}</Tag> : undefined}
         isLoading={isLoading}
@@ -118,17 +119,25 @@ export function DiagnosisRail({ visitId }: DiagnosisRailProps) {
           <div key={diagnosis.id} className="kw-rail-row">
             <div className="kw-rail-row-main">
               <Space size={4} wrap>
-                <Text strong style={{ fontSize: 13 }}>
-                  {diagnosis.name}
-                </Text>
+                <Tooltip
+                  title={
+                    diagnosis.addedByNameSnapshot
+                      ? `Added by ${diagnosis.addedByNameSnapshot}`
+                      : 'Added by: not recorded'
+                  }
+                >
+                  <Text strong style={{ fontSize: 13 }}>
+                    {diagnosis.name}
+                  </Text>
+                </Tooltip>
                 {diagnosis.icd10Code && <Tag color="geekblue">{diagnosis.icd10Code}</Tag>}
                 {priorityTag(diagnosis)}
               </Space>
-              <Text type="secondary" style={{ fontSize: 11 }}>
-                {diagnosis.addedByNameSnapshot
-                  ? `Added by ${diagnosis.addedByNameSnapshot}`
-                  : 'Added by: not recorded'}
-              </Text>
+              {/* Attribution is the tooltip above, not a second line. It is
+                  server-derived and legally meaningful so it must stay
+                  reachable, but rendering it on every row costs a line of
+                  height in every panel — and that height is exactly what
+                  pushed Orders and Services off the first screen. */}
             </div>
             <Space size={4} className="kw-rail-row-actions">
               <Button size="small" loading={setPriority.isPending} onClick={() => togglePrimary(diagnosis)}>

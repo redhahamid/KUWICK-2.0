@@ -18,6 +18,8 @@ export interface RailPanelProps {
   /** Already ordered by the caller — clinically, not by id. */
   items: ReactNode[];
   children?: ReactNode;
+  /** Anchor target for the mobile quick-nav. */
+  anchorId?: string;
 }
 
 function errorMessage(error: unknown): string {
@@ -52,13 +54,14 @@ export function RailPanel({
   previewLimit,
   items,
   children,
+  anchorId,
 }: RailPanelProps) {
   const [showAll, setShowAll] = useState(false);
   const hidden = Math.max(items.length - previewLimit, 0);
   const visible = showAll ? items : items.slice(0, previewLimit);
 
   return (
-    <section className="kw-rail-panel" data-panel={title}>
+    <section className="kw-rail-panel" data-panel={title} id={anchorId}>
       <div className="kw-rail-head">
         <Space size={6} align="center">
           <Text strong style={{ fontSize: 13 }}>

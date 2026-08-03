@@ -90,6 +90,7 @@ export function OrdersRail({ visitId }: OrdersRailProps) {
     <>
       <RailPanel
         title="Orders / Procedures"
+        anchorId="kw-anchor-orders"
         count={list.length}
         status={outstanding > 0 ? <Tag color="gold">{outstanding} awaiting result</Tag> : undefined}
         isLoading={isLoading}

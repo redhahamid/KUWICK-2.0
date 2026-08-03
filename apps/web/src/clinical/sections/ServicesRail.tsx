@@ -59,6 +59,7 @@ export function ServicesRail({ visitId }: ServicesRailProps) {
   return (
     <RailPanel
       title="Direct Services"
+        anchorId="kw-anchor-services"
       count={list.length}
       isLoading={isLoading}
       error={error ?? undefined}

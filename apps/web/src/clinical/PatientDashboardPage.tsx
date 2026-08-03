@@ -43,6 +43,7 @@ import { useOrderServices } from './hooks/useOrderServices';
 import { useIsDesktop } from '../core/hooks/useMediaQuery';
 import { useRecordViewLayoutStore } from './record-view-layout-store';
 import { CanvasPatientHeader } from './CanvasPatientHeader';
+import { CanvasQuickNav } from './CanvasQuickNav';
 import { PatientSummarySidebar } from './PatientSummarySidebar';
 import { VisitHistoryPanel } from './history/VisitHistoryPanel';
 // G1 (D-058) — the four *SummaryCard components are deliberately still in the
@@ -173,10 +174,27 @@ export function PatientDashboardPage() {
   // fold instead of competing with the note.
   const canvasCompact = layout === 'canvas' && Boolean(selectedVisit) && isDesktop;
 
+  const layoutSwitch = (
+    <Segmented
+      size="small"
+      value={layout}
+      onChange={(value) => setLayout(value as 'canvas' | 'flow')}
+      options={[
+        { label: 'Canvas', value: 'canvas', icon: <AppstoreOutlined /> },
+        { label: 'Flow', value: 'flow', icon: <UnorderedListOutlined /> },
+      ]}
+    />
+  );
+
   return (
     <div>
       {layout === 'canvas' && selectedVisit ? (
-        <CanvasPatientHeader patient={patient} visit={selectedVisit} onReviewHistory={() => setHistoryOpen(true)} />
+        <CanvasPatientHeader
+          patient={patient}
+          visit={selectedVisit}
+          onReviewHistory={() => setHistoryOpen(true)}
+          layoutControl={layoutSwitch}
+        />
       ) : (
       <Card style={{ marginBottom: 16 }}>
         <Row gutter={[24, 16]}>
@@ -262,17 +280,13 @@ export function PatientDashboardPage() {
       </Card>
       )}
 
-      {selectedVisit && (
+      {/* In Canvas the switch rides in the context band. A dedicated row for it
+          cost ~38px of the first screen, and the first screen is the whole
+          point of G4.5 — see the band above. Flow keeps its own row. */}
+      {selectedVisit && layout === 'flow' && (
         <Space wrap style={{ marginBottom: 6, width: '100%', justifyContent: 'flex-end' }}>
           <Text type="secondary">Layout:</Text>
-          <Segmented
-            value={layout}
-            onChange={(value) => setLayout(value as 'canvas' | 'flow')}
-            options={[
-              { label: 'Canvas', value: 'canvas', icon: <AppstoreOutlined /> },
-              { label: 'Flow', value: 'flow', icon: <UnorderedListOutlined /> },
-            ]}
-          />
+          {layoutSwitch}
         </Space>
       )}
 
@@ -409,10 +423,15 @@ export function PatientDashboardPage() {
           // (they change what may be prescribed), recent visits became the G4
           // read-only history drawer, and the rail took the freed width.
           <Col span={24}>
+            {/* Phone only (CSS-gated): the one column becomes a long scroll,
+                so this moves the viewport between the five surfaces. It never
+                collapses anything — every panel stays open at every width. */}
+            {!isDesktop && <CanvasQuickNav />}
             <div className="kw-canvas-shell">
               <div className="kw-canvas-main">
                 <Card
                   size="small"
+                  id="kw-anchor-note"
                   className="kw-notes-card"
                   title={<Space>Clinical Notes <Tag>{selectedVisit.visitNumber}</Tag></Space>}
                   styles={

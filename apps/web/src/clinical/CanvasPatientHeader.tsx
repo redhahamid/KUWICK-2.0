@@ -10,6 +10,8 @@ interface CanvasPatientHeaderProps {
   patient: Patient;
   visit: Visit;
   onReviewHistory?: () => void;
+  /** The Canvas/Flow switch, folded into the band rather than given its own row. */
+  layoutControl?: React.ReactNode;
 }
 
 /**
@@ -25,7 +27,7 @@ interface CanvasPatientHeaderProps {
  * reference CMS used two bars and it cost the note ~90px of height at the
  * viewport where height is scarcest.
  */
-export function CanvasPatientHeader({ patient, visit, onReviewHistory }: CanvasPatientHeaderProps) {
+export function CanvasPatientHeader({ patient, visit, onReviewHistory, layoutControl }: CanvasPatientHeaderProps) {
   const age = patient.dob ? dayjs().diff(dayjs(patient.dob), 'year') : null;
   const allergies = patient.allergies ?? [];
   const hasAllergies = allergies.length > 0;
@@ -93,11 +95,14 @@ export function CanvasPatientHeader({ patient, visit, onReviewHistory }: CanvasP
         {visit.visitNumber} · {dayjs(visit.checkInAt).format('D MMM, HH:mm')}
       </Text>
 
-      {onReviewHistory && (
-        <Button size="small" icon={<HistoryOutlined />} onClick={onReviewHistory} className="kw-context-action">
-          Previous Visits
-        </Button>
-      )}
+      <Space size={6} className="kw-context-action">
+        {layoutControl}
+        {onReviewHistory && (
+          <Button size="small" icon={<HistoryOutlined />} onClick={onReviewHistory}>
+            Previous Visits
+          </Button>
+        )}
+      </Space>
     </div>
   );
 }

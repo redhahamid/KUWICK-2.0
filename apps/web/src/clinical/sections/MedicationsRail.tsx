@@ -79,6 +79,7 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
     <>
       <RailPanel
         title="Medications"
+        anchorId="kw-anchor-medications"
         count={list.length}
         status={awaitingDispense > 0 ? <Tag color="gold">{awaitingDispense} to dispense</Tag> : undefined}
         isLoading={isLoading}
@@ -114,12 +115,14 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
                   {prescription.unit ? ` ${prescription.unit}` : ''} · {prescription.frequency} ·{' '}
                   {prescription.durationDays} day{prescription.durationDays === 1 ? '' : 's'} · qty{' '}
                   {prescription.quantity}
+                  {(prescription.remark || prescription.indication) && (
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      {' · '}
+                      {prescription.remark ?? prescription.indication}
+                    </Text>
+                  )}
                 </Text>
-                {(prescription.remark || prescription.indication) && (
-                  <Text type="secondary" style={{ fontSize: 11 }}>
-                    {prescription.remark ?? prescription.indication}
-                  </Text>
-                )}
+
                 {calculated && (
                   <Tooltip title="The calculation recorded at prescribing time, kept with the prescription.">
                     <Text type="secondary" style={{ fontSize: 11 }}>
