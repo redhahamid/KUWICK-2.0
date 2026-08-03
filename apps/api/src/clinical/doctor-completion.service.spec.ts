@@ -94,6 +94,22 @@ const run = (ctx: ReturnType<typeof build>, dto = {}) =>
     ctx.service.completeDoctorPhase('visit-1', dto),
   );
 
+const read = (ctx: ReturnType<typeof build>) =>
+  tenantContextStorage.run({ tenantId: 'test-tenant', staffId: ctx.actorId } as never, () =>
+    ctx.service.doctorPhaseStatus('visit-1'),
+  );
+
+/** Every mock on the transaction that would change something. */
+const writeMocks = (ctx: ReturnType<typeof build>) => [
+  ctx.tx.visit.update,
+  ctx.tx.visit.updateMany,
+  ctx.tx.queueTicket.update,
+  ctx.tx.visitWorkflowEvent.create,
+];
+
+const rawSql = (ctx: ReturnType<typeof build>) =>
+  (ctx.tx.$executeRaw as jest.Mock).mock.calls.map((call) => (call[0] as string[]).join('?'));
+
 const RX = (supplyMode: string | null, status = 'ORDERED') => ({ supplyMode, status });
 
 describe('authorisation', () => {
@@ -388,5 +404,326 @@ describe('atomicity, idempotency and checkOutAt', () => {
     // field, and the derivation ignores anything extra.
     const r = await run(ctx, { destination: 'NONE' } as never);
     expect(r.destination).toBe('DISPENSARY');
+  });
+});
+
+// ===========================================================================
+// G4.5d3c-2c (D-088) — DOCTOR-PHASE STATUS READ AND STRUCTURED BLOCKERS
+//
+// One evaluator serves the preview, the refusal and the commit. The tests
+// below exist to stop those three drifting apart, and to pin the two
+// properties that are easy to lose in a later edit: the read writes nothing,
+// and a completed phase is never re-derived.
+// ===========================================================================
+
+/** Everything blocked at once: wrong queue stage, unsigned note, open
+ *  procedure, one unset supply mode and one deferred. */
+const ALL_BLOCKED = {
+  ticketStatus: QueueTicketStatus.WAITING,
+  signedNotes: 0,
+  openProcedures: 1,
+  prescriptions: [RX(null), RX('DEFERRED')],
+} as const;
+
+describe('doctor-phase status: side-effect freedom', () => {
+  it('the read is opened in a transaction PostgreSQL will refuse writes in', async () => {
+    const ctx = build(DR_A);
+    await read(ctx);
+    // Not a promise in a comment: `transaction_read_only` is the GUC
+    // `SET TRANSACTION READ ONLY` sets, so a write added to this path later
+    // fails at the server rather than landing quietly.
+    expect(rawSql(ctx).some((sql) => sql.includes('transaction_read_only'))).toBe(true);
+    expect(rawSql(ctx).some((sql) => sql.includes('app.tenant_id'))).toBe(true);
+  });
+
+  it.each([
+    ['a blocked visit', {}],
+    ['a completable visit', { invoices: [{ patientResponsibilityAmount: 85, patientPaidAmount: 0 }] }],
+    ['a fully blocked visit', ALL_BLOCKED],
+    [
+      'a completed visit',
+      {
+        visit: {
+          id: 'visit-1', clinicId: 'clinic-1', staffId: DR_A.id, checkOutAt: null,
+          doctorCompletedAt: new Date('2026-08-04T09:00:00Z'), doctorCompletedByStaffId: DR_A.id,
+          doctorCompletedDestination: 'DISPENSARY', doctorCompletedRoutingReason: 'DISPENSARY_REQUIRED',
+        },
+      },
+    ],
+  ])('%s: reading it changes nothing', async (_n, world) => {
+    const ctx = build(DR_A, world as never);
+    await read(ctx);
+    for (const mock of writeMocks(ctx)) {
+      expect(mock).not.toHaveBeenCalled();
+    }
+  });
+});
+
+describe('doctor-phase status: tenant, branch and non-disclosure', () => {
+  it('an anonymous read is denied', async () => {
+    await expect(read(build(null))).rejects.toThrow(ForbiddenException);
+  });
+
+  it('a staff member without access to the visit’s branch is denied', async () => {
+    const ctx = build({ ...DR_A, clinicId: 'clinic-9' }, { branchCount: 2 });
+    await expect(read(ctx)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('a visit outside the caller’s tenant is a 404, same as a missing one', async () => {
+    // RLS makes the row invisible, so the read cannot tell the two apart —
+    // which is the point. Neither answer confirms the visit exists.
+    const ctx = build(DR_A, { visit: null });
+    await expect(read(ctx)).rejects.toThrow(NotFoundException);
+  });
+
+  it.each([
+    ['front desk', FRONT_DESK],
+    ['finance', FINANCE],
+  ])('%s may READ the status even though they may not complete the phase', async (_n, actor) => {
+    // Workflow state, not clinical content: no note text, no diagnosis, no
+    // medication name. The same information the visit-completion blocker read
+    // already gives the counter.
+    const ctx = build(actor);
+    await expect(read(ctx)).resolves.toMatchObject({ completed: false });
+    await expect(run(build(actor))).rejects.toThrow(ForbiddenException);
+  });
+
+  it('a doctor who is not attending may still read', async () => {
+    // Reading does not take the visit, and refusing here would leave a
+    // covering doctor unable to see why the consultation is stuck.
+    const ctx = build(DR_B);
+    await expect(read(ctx)).resolves.toMatchObject({ completed: false });
+  });
+});
+
+describe('doctor-phase status: structured blockers', () => {
+  const codes = (s: { blockers: Array<{ code: string }> }) => s.blockers.map((b) => b.code);
+
+  it('every blocker is collected in one pass, in a stable order', async () => {
+    const ctx = build(DR_A, ALL_BLOCKED as never);
+    const status = await read(ctx);
+    expect(codes(status)).toEqual([
+      'QUEUE_STATE_INELIGIBLE',
+      'SIGNED_NOTE_REQUIRED',
+      'PROCEDURE_PENDING',
+      'MEDICATION_SUPPLY_UNCONFIRMED',
+      'MEDICATION_SUPPLY_DEFERRED',
+    ]);
+  });
+
+  it('the order does not depend on which query resolved first', async () => {
+    // Two independent runs of the same world must produce the same sequence;
+    // a UI that renders "the first blocker" cannot have it change under it.
+    const first = await read(build(DR_A, ALL_BLOCKED as never));
+    const second = await read(build(DR_A, ALL_BLOCKED as never));
+    expect(codes(first)).toEqual(codes(second));
+  });
+
+  it.each([
+    ['a ticket at the wrong stage', { ticketStatus: QueueTicketStatus.WAITING }],
+    ['no queue ticket at all', { ticketStatus: null }],
+  ])('%s reports QUEUE_STATE_INELIGIBLE', async (_n, world) => {
+    const status = await read(build(DR_A, world as never));
+    expect(codes(status)).toContain('QUEUE_STATE_INELIGIBLE');
+  });
+
+  it('an unsigned note reports SIGNED_NOTE_REQUIRED', async () => {
+    const status = await read(build(DR_A, { signedNotes: 0 }));
+    expect(codes(status)).toEqual(['SIGNED_NOTE_REQUIRED']);
+  });
+
+  it('NULL and DEFERRED supply modes are separate blockers, not one', async () => {
+    // Different facts about the clinic: nobody has said, versus somebody said
+    // "later". Collapsing them tells a doctor to set a mode already set.
+    const status = await read(build(DR_A, { prescriptions: [RX(null), RX('DEFERRED')] }));
+    expect(codes(status)).toEqual(['MEDICATION_SUPPLY_UNCONFIRMED', 'MEDICATION_SUPPLY_DEFERRED']);
+  });
+
+  it('a resolved, dispensable prescription is not a blocker', async () => {
+    const status = await read(build(DR_A, { prescriptions: [RX('ONSITE_DISPENSE')] }));
+    expect(status.blockers).toEqual([]);
+    expect(status).toMatchObject({ destination: 'DISPENSARY', routingReason: 'DISPENSARY_REQUIRED' });
+  });
+
+  it('blocker messages name nothing from the schema', async () => {
+    const status = await read(build(DR_A, ALL_BLOCKED as never));
+    for (const blocker of status.blockers) {
+      expect(blocker.message).not.toMatch(
+        /visit|queue_ticket|prescription|supply_mode|ONSITE_DISPENSE|DEFERRED|IN_CONSULTATION|NULL/,
+      );
+      expect(blocker.message.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('doctor-phase status: billing is routing, never a blocker', () => {
+  const inv = (responsibility: number | null, paid = 0) => ({
+    patientResponsibilityAmount: responsibility,
+    patientPaidAmount: paid,
+  });
+
+  it.each([
+    ['an outstanding balance', { invoices: [inv(85)] }, 'PATIENT_PAYMENT_REQUIRED'],
+    ['a responsibility nobody has computed', { invoices: [inv(null)] }, 'BILLING_REVIEW_REQUIRED'],
+    ['chargeable work with no invoice raised', { invoices: [], services: 2 }, 'BILLING_REVIEW_REQUIRED'],
+  ])('%s does not block the doctor — it sets the routing reason', async (_n, world, reason) => {
+    const status = await read(build(DR_A, world as never));
+    // The doctor is finished; the money is the counter's problem. A billing
+    // state that held a clinician at their desk would let a slow front desk
+    // stop a clinic.
+    expect(status.blockers).toEqual([]);
+    expect(status).toMatchObject({ destination: 'PAYMENT', routingReason: reason });
+  });
+
+  it('nothing outstanding routes to NONE with a reason, not to null', async () => {
+    const status = await read(build(DR_A, { invoices: [inv(0)] }));
+    expect(status).toMatchObject({ destination: 'NONE', routingReason: 'NO_DOWNSTREAM_WORK' });
+  });
+
+  it('a clinical blocker does not suppress the routing preview', async () => {
+    // The note being unsigned says nothing about where the patient goes once
+    // it is signed, so the preview still answers.
+    const status = await read(build(DR_A, { signedNotes: 0, invoices: [inv(85)] }));
+    expect(status).toMatchObject({
+      blockers: [{ code: 'SIGNED_NOTE_REQUIRED' }],
+      destination: 'PAYMENT',
+      routingReason: 'PATIENT_PAYMENT_REQUIRED',
+    });
+  });
+});
+
+describe('doctor-phase status: a pending procedure withholds the destination', () => {
+  it('PROCEDURE_PENDING returns destination null and routingReason null', async () => {
+    const ctx = build(DR_A, { openProcedures: 1, invoices: [{ patientResponsibilityAmount: 85, patientPaidAmount: 0 }] });
+    const status = await read(ctx);
+    expect(status).toMatchObject({ destination: null, routingReason: null });
+    expect(status.blockers.map((b) => b.code)).toContain('PROCEDURE_PENDING');
+  });
+
+  it('the billing question is not even asked while a procedure is open', async () => {
+    // The procedure's findings are an input to it: they can add an order, a
+    // medication or a charge. Answering now would be a guess about a visit
+    // that has not stopped changing.
+    const ctx = build(DR_A, { openProcedures: 1 });
+    await read(ctx);
+    expect(ctx.tx.invoice.findMany).not.toHaveBeenCalled();
+  });
+
+  it('NONE is never substituted for "not yet knowable"', async () => {
+    const status = await read(build(DR_A, { openProcedures: 1, invoices: [], services: 0 }));
+    // Without the carve-out this visit derives NONE — "nothing further" — for
+    // a patient whose procedure has not reported.
+    expect(status.destination).toBeNull();
+  });
+
+  it('a completed procedure restores the destination', async () => {
+    const status = await read(build(DR_A, { openProcedures: 0 }));
+    expect(status.destination).toBe('NONE');
+  });
+});
+
+describe('doctor-phase status: a completed phase is read back, never re-derived', () => {
+  const COMPLETED_AT = new Date('2026-08-04T09:00:00Z');
+  const completedWorld = (destination: string | null, routingReason: string | null) => ({
+    visit: {
+      id: 'visit-1', clinicId: 'clinic-1', staffId: DR_A.id, checkOutAt: null,
+      doctorCompletedAt: COMPLETED_AT, doctorCompletedByStaffId: DR_A.id,
+      doctorCompletedDestination: destination, doctorCompletedRoutingReason: routingReason,
+    },
+    // The medication has since been dispensed and the bill has been settled.
+    // A re-derivation would now say NONE.
+    prescriptions: [RX('ONSITE_DISPENSE', 'DISPENSED')],
+    invoices: [{ patientResponsibilityAmount: 0, patientPaidAmount: 0 }],
+  });
+
+  it('the STORED destination and reason are returned', async () => {
+    const ctx = build(DR_A, completedWorld('DISPENSARY', 'DISPENSARY_REQUIRED') as never);
+    await expect(read(ctx)).resolves.toMatchObject({
+      completed: true,
+      destination: 'DISPENSARY',
+      routingReason: 'DISPENSARY_REQUIRED',
+      doctorCompletedAt: COMPLETED_AT,
+      doctorCompletedByStaffId: DR_A.id,
+      blockers: [],
+    });
+  });
+
+  it('nothing is re-derived: the derivation queries are never issued', async () => {
+    const ctx = build(DR_A, completedWorld('DISPENSARY', 'DISPENSARY_REQUIRED') as never);
+    await read(ctx);
+    expect(ctx.tx.prescription.findMany).not.toHaveBeenCalled();
+    expect(ctx.tx.invoice.findMany).not.toHaveBeenCalled();
+    expect(ctx.tx.clinicalNote.count).not.toHaveBeenCalled();
+    expect(ctx.tx.orderService.count).not.toHaveBeenCalled();
+  });
+
+  it('a completed phase reports no blockers even from an ineligible queue state', async () => {
+    const ctx = build(DR_A, {
+      ...completedWorld('NONE', 'NO_DOWNSTREAM_WORK'),
+      ticketStatus: QueueTicketStatus.COMPLETED,
+    } as never);
+    await expect(read(ctx)).resolves.toMatchObject({ blockers: [], queueStatus: 'COMPLETED' });
+  });
+
+  it('a reason recorded before D-087 reads NULL, not NO_DOWNSTREAM_WORK', async () => {
+    // Not captured. Inferring one now from today's prescriptions and invoices
+    // is exactly the re-derivation the stored column exists to prevent.
+    const ctx = build(DR_A, completedWorld('DISPENSARY', null) as never);
+    await expect(read(ctx)).resolves.toMatchObject({ destination: 'DISPENSARY', routingReason: null });
+  });
+});
+
+describe('the write refuses with the same structured blockers', () => {
+  it('all of them travel in the rejection, not just the first', async () => {
+    const ctx = build(DR_A, ALL_BLOCKED as never);
+    await expect(run(ctx)).rejects.toMatchObject({
+      response: {
+        blockers: [
+          { code: 'QUEUE_STATE_INELIGIBLE' },
+          { code: 'SIGNED_NOTE_REQUIRED' },
+          { code: 'PROCEDURE_PENDING' },
+          { code: 'MEDICATION_SUPPLY_UNCONFIRMED' },
+          { code: 'MEDICATION_SUPPLY_DEFERRED' },
+        ],
+      },
+    });
+    expect(ctx.tx.visit.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('the preview and the refusal report the same codes for the same visit', async () => {
+    // The whole point of the shared evaluator. If these two ever disagree, a
+    // screen offers a button the server then refuses.
+    const previewed = await read(build(DR_A, ALL_BLOCKED as never));
+    const rejection = await run(build(DR_A, ALL_BLOCKED as never)).catch((e) => e);
+    expect(rejection.response.blockers).toEqual(previewed.blockers);
+  });
+
+  it('the write re-evaluates inside its OWN transaction, not from a preview', async () => {
+    // Every evaluator query is issued against the transaction client the write
+    // opened. A caller cannot hand in a status read taken seconds ago.
+    const ctx = build(DR_A, { prescriptions: [RX('ONSITE_DISPENSE')] });
+    await run(ctx);
+    expect(ctx.tx.clinicalNote.count).toHaveBeenCalled();
+    expect(ctx.tx.orderService.count).toHaveBeenCalled();
+    expect(ctx.tx.prescription.findMany).toHaveBeenCalled();
+  });
+
+  it('a preview that says PAYMENT does not let the caller skip the dispensary', async () => {
+    // The DTO carries no destination and none is accepted; the write derives
+    // DISPENSARY from the same stored data whatever was previewed.
+    const ctx = build(DR_A, {
+      prescriptions: [RX('ONSITE_DISPENSE')],
+      invoices: [{ patientResponsibilityAmount: 85, patientPaidAmount: 0 }],
+    });
+    await expect(run(ctx, { destination: 'PAYMENT', routingReason: 'PATIENT_PAYMENT_REQUIRED' } as never))
+      .resolves.toMatchObject({ destination: 'DISPENSARY', reason: 'DISPENSARY_REQUIRED' });
+  });
+
+  it('a visit with no queue ticket is refused as an ineligible queue state', async () => {
+    const ctx = build(DR_A, { ticketStatus: null });
+    await expect(run(ctx)).rejects.toMatchObject({
+      response: { blockers: [{ code: 'QUEUE_STATE_INELIGIBLE' }] },
+    });
+    expect(ctx.tx.visit.updateMany).not.toHaveBeenCalled();
   });
 });

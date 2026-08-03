@@ -14,7 +14,14 @@ import {
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { ClinicalTx, assertMayTouchVisit, requireClinicalAuthor, withTenantTx } from './clinical-actor';
+import {
+  ClinicalTx,
+  assertMayTouchVisit,
+  requireActor,
+  requireClinicalAuthor,
+  withReadOnlyTenantTx,
+  withTenantTx,
+} from './clinical-actor';
 import { isEligibleAttendingDoctor } from './queue-authorization';
 import { CompleteDoctorPhaseDto } from './dto/complete-doctor-phase.dto';
 
@@ -28,6 +35,63 @@ export type DestinationReason =
   | 'PATIENT_PAYMENT_REQUIRED'
   | 'BILLING_REVIEW_REQUIRED'
   | 'NO_DOWNSTREAM_WORK';
+
+/**
+ * G4.5d3c-2c (D-088) — what stands between this consultation and being
+ * finished. The CODE is what a screen branches on; the MESSAGE is what clinic
+ * staff read, so it says what to do and never names a table, column, enum
+ * value or constraint.
+ *
+ * Billing is deliberately absent from this list. An unraised invoice or an
+ * unpaid balance changes where the patient goes NEXT — it has never stopped a
+ * doctor finishing a consultation, and turning a billing state into a clinical
+ * blocker would let a slow front desk hold a clinician at their desk.
+ */
+export type DoctorPhaseBlockerCode =
+  | 'QUEUE_STATE_INELIGIBLE'
+  | 'SIGNED_NOTE_REQUIRED'
+  | 'PROCEDURE_PENDING'
+  | 'MEDICATION_SUPPLY_UNCONFIRMED'
+  | 'MEDICATION_SUPPLY_DEFERRED';
+
+export interface DoctorPhaseBlocker {
+  code: DoctorPhaseBlockerCode;
+  message: string;
+}
+
+/**
+ * The order blockers are reported in, fixed here rather than emerging from
+ * whichever query resolved first. A screen that lists them, a test that pins
+ * them and the message chosen for a rejected write all read the same sequence
+ * on every call: queue state, then the record, then the work, then the
+ * medicine.
+ */
+const BLOCKER_MESSAGES: Record<DoctorPhaseBlockerCode, string> = {
+  QUEUE_STATE_INELIGIBLE: 'The consultation can only be completed while the patient is in consultation.',
+  SIGNED_NOTE_REQUIRED: 'Sign the clinical note before completing the consultation.',
+  PROCEDURE_PENDING:
+    'A procedure or investigation is still open. Complete or cancel it before completing the consultation.',
+  MEDICATION_SUPPLY_UNCONFIRMED:
+    'Medication has no supply mode recorded. Set how it is supplied before completing consultation.',
+  MEDICATION_SUPPLY_DEFERRED:
+    'Medication supply is deferred and unresolved. Resolve the supply mode before completing consultation.',
+};
+
+/** One evaluation of a doctor phase that has not been completed yet. */
+export interface DoctorPhaseEvaluation {
+  blockers: DoctorPhaseBlocker[];
+  /** NULL when the visit is not in a state where routing can be answered. */
+  destination: DoctorCompletionDestination | null;
+  routingReason: DestinationReason | null;
+}
+
+export interface DoctorPhaseStatus extends DoctorPhaseEvaluation {
+  visitId: string;
+  completed: boolean;
+  doctorCompletedAt: Date | null;
+  doctorCompletedByStaffId: string | null;
+  queueStatus: QueueTicketStatus | null;
+}
 
 export interface DoctorCompletionResult {
   visitId: string;
@@ -65,6 +129,13 @@ const QUEUE_STATUS_FOR: Record<DoctorCompletionDestination, QueueTicketStatus | 
  * D-084 gave the model the fields to answer honestly, and where those fields
  * are NULL this service reports UNDETERMINED rather than guessing.
  *
+ * G4.5d3c-2c (D-088) adds the read. `doctorPhaseStatus` and
+ * `completeDoctorPhase` share ONE evaluator: a screen that asks what is
+ * outstanding and a write that refuses for the same reason must never be able
+ * to disagree, and two implementations of "can this consultation finish" is
+ * how they would. The write still runs the evaluator itself, inside its own
+ * transaction — a preview taken seconds earlier is evidence about the past.
+ *
  * NOT built here: the Canvas footer, any queue screen, and the overall visit
  * completion step. This service never sets `Visit.checkOutAt`.
  */
@@ -74,6 +145,72 @@ export class DoctorCompletionService {
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly rawPrisma: PrismaService,
   ) {}
+
+  /**
+   * What is outstanding, and where the patient would go — without changing
+   * anything. The transaction is read-only at the database level, so this is
+   * a property the server enforces rather than a claim this comment makes.
+   *
+   * Readable by any active staff member with access to the visit's branch,
+   * matching the visit-completion blocker read: the payload is workflow state
+   * — queue stage, whether a note is signed, whether medicine is outstanding —
+   * and carries no clinical content. A visit outside the caller's tenant does
+   * not exist as far as this endpoint is concerned.
+   */
+  async doctorPhaseStatus(visitId: string): Promise<DoctorPhaseStatus> {
+    return withReadOnlyTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      await assertMayTouchVisit(tx, visitId, actor);
+
+      const visit = await tx.visit.findUnique({
+        where: { id: visitId },
+        select: {
+          id: true,
+          clinicId: true,
+          checkOutAt: true,
+          doctorCompletedAt: true,
+          doctorCompletedByStaffId: true,
+          doctorCompletedDestination: true,
+          doctorCompletedRoutingReason: true,
+        },
+      });
+      if (!visit) {
+        throw new NotFoundException('Visit not found');
+      }
+
+      const ticket = await tx.queueTicket.findUnique({ where: { visitId }, select: { status: true } });
+      const queueStatus = ticket?.status ?? null;
+
+      // A completed phase reports what was RECORDED. Re-deriving it here would
+      // reintroduce, on every screen refresh, exactly the defect D-087's
+      // stored reason exists to prevent: prescriptions get dispensed and bills
+      // get paid afterwards, so a re-derivation an hour later describes a
+      // patient who has already moved on. A visit completed before that column
+      // existed reads NULL — not captured, never NO_DOWNSTREAM_WORK.
+      if (visit.doctorCompletedAt) {
+        return {
+          visitId: visit.id,
+          completed: true,
+          doctorCompletedAt: visit.doctorCompletedAt,
+          doctorCompletedByStaffId: visit.doctorCompletedByStaffId ?? null,
+          destination: visit.doctorCompletedDestination ?? null,
+          routingReason: (visit.doctorCompletedRoutingReason as DestinationReason | null) ?? null,
+          queueStatus,
+          blockers: [],
+        };
+      }
+
+      const evaluation = await evaluateDoctorPhase(tx, visitId, queueStatus);
+      return {
+        visitId: visit.id,
+        completed: false,
+        doctorCompletedAt: null,
+        doctorCompletedByStaffId: null,
+        queueStatus,
+        ...evaluation,
+      };
+    });
+  }
 
   async completeDoctorPhase(
     visitId: string,
@@ -134,41 +271,32 @@ export class DoctorCompletionService {
       if (visit.checkOutAt) {
         throw new BadRequestException('This visit is already closed.');
       }
-      // The ticket is re-read inside this transaction, so a racing request
-      // that already moved it cannot be overwritten by a stale view.
-      if (!ticket) {
-        throw new BadRequestException('This visit is not in the queue, so the consultation cannot be completed.');
-      }
-      if (ticket.status !== QueueTicketStatus.IN_CONSULTATION) {
-        throw new BadRequestException(
-          `The consultation can only be completed while the patient is in consultation (currently ${ticket.status}).`,
-        );
+
+      // Re-evaluated HERE, inside the transaction, against the ticket status
+      // read inside the same transaction. Whatever a preview said, a racing
+      // request that moved the ticket or signed the note is visible to this
+      // evaluation and not to that one.
+      const evaluation = await evaluateDoctorPhase(tx, visitId, ticket?.status ?? null);
+      if (evaluation.blockers.length > 0) {
+        // The first blocker is the message; all of them travel in the payload
+        // so a doctor can see everything outstanding in one pass instead of
+        // clearing them one refresh at a time.
+        throw new BadRequestException({
+          message: evaluation.blockers[0].message,
+          error: 'Bad Request',
+          statusCode: 400,
+          blockers: evaluation.blockers,
+        });
       }
 
-      await assertClinicalRecordReady(tx, visitId);
-      const needsDispensing = await evaluateDispensing(tx, visitId);
-      const billing = await evaluateBilling(tx, visitId);
-
-      // --- Destination precedence -----------------------------------------
-      // Order matters and is the owner's: clinical blockers first, then
-      // dispensing, then money. Money never jumps the queue over medicine.
-      let destination: DoctorCompletionDestination;
-      let reason: DestinationReason;
-      if (needsDispensing) {
-        destination = DoctorCompletionDestination.DISPENSARY;
-        reason = 'DISPENSARY_REQUIRED';
-      } else if (billing === 'UNDETERMINED') {
-        // Deliberately NOT phrased as "payment due". The clinic has to look;
-        // telling the patient they owe money we cannot compute is worse than
-        // saying we have not worked it out.
-        destination = DoctorCompletionDestination.PAYMENT;
-        reason = 'BILLING_REVIEW_REQUIRED';
-      } else if (billing > 0) {
-        destination = DoctorCompletionDestination.PAYMENT;
-        reason = 'PATIENT_PAYMENT_REQUIRED';
-      } else {
-        destination = DoctorCompletionDestination.NONE;
-        reason = 'NO_DOWNSTREAM_WORK';
+      const { destination, routingReason: reason } = evaluation;
+      if (!ticket || destination === null || reason === null) {
+        // Unreachable: a missing ticket and a pending procedure are both
+        // blockers, and nothing else withholds a destination. Kept so the
+        // types narrow on a real check rather than a non-null assertion —
+        // if a future blocker suppresses routing, this refuses rather than
+        // writing a destination nobody derived.
+        throw new BadRequestException(BLOCKER_MESSAGES.QUEUE_STATE_INELIGIBLE);
       }
 
       const completedAt = new Date();
@@ -288,8 +416,33 @@ function assertMayCompleteThisVisit(actor: Staff, attendingStaffId: string | nul
   }
 }
 
-/** The clinical record has to be finished before the phase can be. */
-async function assertClinicalRecordReady(tx: ClinicalTx, visitId: string): Promise<void> {
+/**
+ * G4.5d3c-2c (D-088) — THE evaluator. One implementation, three callers: the
+ * status read, the write that refuses, and the write that proceeds.
+ *
+ * Every blocker is collected; none short-circuits. A doctor told to sign the
+ * note, who signs it and is then told about a procedure, and then about a
+ * medication, has been made to do three round trips to learn one thing.
+ *
+ * Billing NEVER appears here. It decides the routing reason — where the
+ * patient goes after the doctor is done — and has no say in whether the
+ * doctor is done.
+ */
+async function evaluateDoctorPhase(
+  tx: ClinicalTx,
+  visitId: string,
+  queueStatus: QueueTicketStatus | null,
+): Promise<DoctorPhaseEvaluation> {
+  const blockers: DoctorPhaseBlocker[] = [];
+  const add = (code: DoctorPhaseBlockerCode) => blockers.push({ code, message: BLOCKER_MESSAGES[code] });
+
+  // NULL means the visit has no queue ticket at all — a record-only visit
+  // created outside the front desk. It has no consultation to finish, which
+  // is the same answer as a ticket at the wrong stage.
+  if (queueStatus !== QueueTicketStatus.IN_CONSULTATION) {
+    add('QUEUE_STATE_INELIGIBLE');
+  }
+
   const signedNotes = await tx.clinicalNote.count({
     where: {
       visitId,
@@ -299,13 +452,11 @@ async function assertClinicalRecordReady(tx: ClinicalTx, visitId: string): Promi
     },
   });
   if (signedNotes === 0) {
-    throw new BadRequestException(
-      'Sign the clinical note before completing the consultation.',
-    );
+    add('SIGNED_NOTE_REQUIRED');
   }
 
-  // A procedure still running is the strongest blocker there is: the doctor
-  // is meant to review its result before finishing (owner decision 4), so
+  // A procedure still running is the strongest blocker there is: the doctor is
+  // meant to review its result before finishing (owner decision 4), so
   // completing now would close a phase whose findings do not exist yet.
   const openProcedures = await tx.orderService.count({
     where: {
@@ -314,43 +465,75 @@ async function assertClinicalRecordReady(tx: ClinicalTx, visitId: string): Promi
     },
   });
   if (openProcedures > 0) {
-    throw new BadRequestException(
-      `${openProcedures} procedure or investigation is still open. Complete or cancel it before completing the consultation.`,
-    );
+    add('PROCEDURE_PENDING');
   }
-}
 
-/**
- * Does the clinic still have medicine to hand over?
- *
- * Only ONSITE_DISPENSE counts, and only while still ORDERED. Everything else
- * is either supplied elsewhere, already in the patient's hands, or already
- * dispensed. DEFERRED and NULL are not "no" — they are "not established", and
- * they stop completion rather than being resolved by assumption.
- */
-async function evaluateDispensing(tx: ClinicalTx, visitId: string): Promise<boolean> {
   const active = await tx.prescription.findMany({
     where: { visitId, deletedAt: null, status: { not: PrescriptionStatus.CANCELLED } },
-    select: { id: true, supplyMode: true, status: true },
+    select: { supplyMode: true, status: true },
   });
-
-  const unresolved = active.filter(
-    (p) => p.supplyMode === null || p.supplyMode === PrescriptionSupplyMode.DEFERRED,
-  );
-  if (unresolved.length > 0) {
-    const deferred = unresolved.some((p) => p.supplyMode === PrescriptionSupplyMode.DEFERRED);
-    throw new BadRequestException(
-      deferred
-        ? 'Medication supply is deferred and unresolved. Resolve the supply mode before completing consultation.'
-        : `${unresolved.length} medication has no supply mode recorded. Set how it is supplied before completing consultation.`,
-    );
+  // Separate codes, both reportable at once. NULL and DEFERRED are different
+  // facts about the clinic — nobody has said, versus somebody said "later" —
+  // and collapsing them would tell a doctor to set a supply mode that is
+  // already set.
+  if (active.some((p) => p.supplyMode === null)) {
+    add('MEDICATION_SUPPLY_UNCONFIRMED');
+  }
+  if (active.some((p) => p.supplyMode === PrescriptionSupplyMode.DEFERRED)) {
+    add('MEDICATION_SUPPLY_DEFERRED');
   }
 
-  return active.some(
+  if (openProcedures > 0) {
+    // No destination, and no reason for one. The procedure's findings are the
+    // input to this decision: they can add an order, a prescription or a
+    // charge, so any routing computed now is a guess about a visit that has
+    // not stopped changing. Reporting NULL says "not yet knowable", which is
+    // true; reporting NONE would say "nothing further", which is not.
+    return { blockers, destination: null, routingReason: null };
+  }
+
+  // Only ONSITE_DISPENSE counts, and only while still ORDERED. Everything else
+  // is either supplied elsewhere, already in the patient's hands, or already
+  // dispensed.
+  const needsDispensing = active.some(
     (p) =>
       p.supplyMode === PrescriptionSupplyMode.ONSITE_DISPENSE &&
       p.status === PrescriptionStatus.ORDERED,
   );
+  const billing = await evaluateBilling(tx, visitId);
+
+  // --- Destination precedence -----------------------------------------
+  // Order matters and is the owner's: clinical blockers first, then
+  // dispensing, then money. Money never jumps the queue over medicine.
+  if (needsDispensing) {
+    return {
+      blockers,
+      destination: DoctorCompletionDestination.DISPENSARY,
+      routingReason: 'DISPENSARY_REQUIRED',
+    };
+  }
+  if (billing === 'UNDETERMINED') {
+    // Deliberately NOT phrased as "payment due". The clinic has to look;
+    // telling the patient they owe money we cannot compute is worse than
+    // saying we have not worked it out.
+    return {
+      blockers,
+      destination: DoctorCompletionDestination.PAYMENT,
+      routingReason: 'BILLING_REVIEW_REQUIRED',
+    };
+  }
+  if (billing > 0) {
+    return {
+      blockers,
+      destination: DoctorCompletionDestination.PAYMENT,
+      routingReason: 'PATIENT_PAYMENT_REQUIRED',
+    };
+  }
+  return {
+    blockers,
+    destination: DoctorCompletionDestination.NONE,
+    routingReason: 'NO_DOWNSTREAM_WORK',
+  };
 }
 
 /**
@@ -398,4 +581,3 @@ async function countBillableItems(tx: ClinicalTx, visitId: string): Promise<numb
   ]);
   return services + medications;
 }
-

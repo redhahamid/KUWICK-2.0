@@ -31,6 +31,14 @@ export class VisitController {
   findOne(@Param('id') id: string) {
     return this.visits.findById(id);
   }
+  // G4.5d3c-2c (D-088) - what is outstanding and where the patient would go,
+  // without changing anything. Same evaluator the write uses, in a
+  // database-enforced read-only transaction.
+  @Get(':id/doctor-phase-status')
+  doctorPhaseStatus(@Param('id') id: string) {
+    return this.doctorCompletion.doctorPhaseStatus(id);
+  }
+
   // G4.5d3c-2 (D-086) - the doctor finishes their part. The destination is
   // DERIVED, never accepted: there is no destination field on the DTO.
   @Patch(':id/complete-doctor-phase')

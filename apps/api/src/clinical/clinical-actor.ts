@@ -25,6 +25,34 @@ export function withTenantTx<T>(prisma: PrismaService, fn: (tx: ClinicalTx) => P
 }
 
 /**
+ * G4.5d3c-2c (D-088) — a transaction that PostgreSQL will not let write.
+ *
+ * Status reads are supposed to be side-effect free, but "supposed to" is a
+ * comment, and comments do not survive the next edit. `transaction_read_only`
+ * is the same GUC `SET TRANSACTION READ ONLY` sets; with `is_local = true` it
+ * lasts exactly as long as this transaction. Any INSERT, UPDATE or DELETE
+ * issued inside the block — today's or one added in six months by someone
+ * "just recording that the status was checked" — is refused by the server
+ * with error 25006, so the freedom from side effects is enforced rather than
+ * promised.
+ *
+ * Set through `set_config` rather than `SET`, matching the tenant line below:
+ * a plain `SET` is a utility statement and does not survive being prepared,
+ * which is how Prisma sends it.
+ */
+export function withReadOnlyTenantTx<T>(
+  prisma: PrismaService,
+  fn: (tx: ClinicalTx) => Promise<T>,
+): Promise<T> {
+  const tenantId = currentTenantId();
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+    await tx.$executeRaw`SELECT set_config('transaction_read_only', 'on', true)`;
+    return fn(tx);
+  });
+}
+
+/**
  * The acting staff member, from the verified JWT claim only — never from a
  * request body. Who performed a clinical correction must not be spoofable.
  */

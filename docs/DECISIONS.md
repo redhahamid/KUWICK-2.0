@@ -1717,6 +1717,69 @@ All of them are collected and returned together — a counter clerk fixing four 
 
 ---
 
+## D-088 — G4.5d3c-2c: asking without changing, and the two answers that must agree
+
+Backend only. `GET /visits/:id/doctor-phase-status`. **No Canvas footer, no Send to Procedure, no UI of any kind** — this checkpoint gives a screen something true to ask, and stops there.
+
+### One evaluator, three callers
+
+The preview, the refusal and the commit all run `evaluateDoctorPhase`. There is no second implementation of "can this consultation finish", because two of them is how a screen comes to offer a button the server then refuses — and the person who pays for that is a doctor who has already told the patient they are done.
+
+The write still runs the evaluator **itself, inside its own transaction**, against the queue ticket read in that same transaction. A preview is evidence about the past: between the read and the write a colleague can take the visit, a nurse can start a procedure, a ticket can move. The read is a courtesy to the UI and is never an input to the decision.
+
+### Blockers are collected, not raced
+
+All of them, every time, in a fixed source order — queue state, then the record, then the work, then the medicine. The order is declared rather than emergent, so "the first blocker" is a stable thing for a screen to render and for a rejected write to use as its message. The previous write threw on the first problem it found: a doctor told to sign the note, who signed it and was then told about a procedure, and then about a medication, made three round trips to learn one thing.
+
+`MEDICATION_SUPPLY_UNCONFIRMED` and `MEDICATION_SUPPLY_DEFERRED` stayed separate codes. They are different facts about the clinic — nobody has said, versus somebody said "later" — and collapsing them would tell a doctor to set a supply mode that is already set.
+
+Messages name no table, column, enum value or constraint. The old queue-state message interpolated the raw `QueueTicketStatus`; it now reads as a sentence, and a test asserts no schema vocabulary reaches a user through this path.
+
+### Billing decides where, never whether
+
+**Billing produces no blocker.** An unraised invoice or an outstanding balance changes the routing reason — where the patient goes *after* the doctor is done — and has never been a reason a clinician cannot finish a consultation. Making a billing state a clinical blocker would let a slow front desk hold a doctor at their desk, and the doctor could do nothing about it.
+
+This is the one place the doctor phase and the *visit* phase deliberately differ: `UNBILLED_CHARGEABLE_ITEMS` and `PATIENT_BALANCE_REMAINING` do block **visit** completion (D-087), because closing the visit is the assertion that the money is settled. Finishing the consultation asserts nothing of the kind.
+
+### `PROCEDURE_PENDING` withholds the destination
+
+Destination `null`, routing reason `null` — not `NONE`.
+
+The procedure's findings are an **input** to the routing decision: they can add an order, a prescription, or a charge. Any destination computed while one is open is a guess about a visit that has not stopped changing, and `NONE` in particular would say "nothing further" about a patient whose investigation has not reported. `null` says "not yet knowable", which is the true answer. The billing query is not even issued in this branch.
+
+It is the only blocker that suppresses routing, and deliberately so: an unsigned note and a ticket at the wrong stage say nothing about where the patient goes once they are fixed, so the preview still answers.
+
+### A completed phase is read back, never re-derived
+
+The stored `doctorCompletedDestination` and `doctorCompletedRoutingReason`, with no evaluation performed — a test asserts the four derivation queries are never issued. This matters more on the read than it did on the write: a screen refreshes. Prescriptions get dispensed and bills get settled afterwards, so a re-derivation an hour later describes a patient who has already moved on, and would do it on every poll.
+
+A visit completed before D-087's column existed reads `null`. **Not captured** — never `NO_DOWNSTREAM_WORK`.
+
+### Side-effect freedom: enforced, not asserted
+
+The read runs in a transaction that sets `transaction_read_only` locally — the same GUC `SET TRANSACTION READ ONLY` sets. PostgreSQL refuses any `INSERT`, `UPDATE` or `DELETE` inside it with SQLSTATE **25006**. "This endpoint has no side effects" is otherwise a comment, and comments do not survive the next edit; this survives someone adding a write six months from now, because their write fails loudly at the server.
+
+Set through `set_config` rather than `SET`: a plain `SET` is a utility statement and does not survive being prepared, which is how Prisma sends raw SQL.
+
+Verified against a **live PostgreSQL 16 over the extended protocol**: `UPDATE`, `INSERT` and `DELETE` each refused with 25006; tenant scoping still applied inside the read-only block; the setting confined to its own transaction. **And a control: the same `UPDATE` commits in a transaction without the setting.** A proof that cannot fail proves nothing.
+
+### Who may read it
+
+Any active staff member with access to the visit's branch — the same gate as the visit-completion blocker read, and deliberately **wider than the write**, which still admits only the attending clinician. The payload is workflow state: queue stage, whether a note is signed, whether medicine or a procedure is outstanding. No note text, no diagnosis, no medication name, no amount. A covering doctor and a front desk asking why a consultation is stuck get an answer; nobody gets clinical content they could not already see.
+
+Tenant, branch and non-disclosure protections are unchanged: a visit in another tenant is invisible to RLS and returns the same 404 as one that does not exist.
+
+**Verification**: 78 tests in this service (37 new), 7 live-database read-only checks including the control; 632 backend, 195 frontend, both typechecks clean.
+
+**Known limitations**:
+
+- The preview's destination is computed from supply modes **as they stand**. A visit whose only medication is `DEFERRED` previews the destination as if that medication needed no dispensary — correct for the data recorded, but it will change when the mode is set. The blocker is reported alongside it, and the commit re-evaluates, so no patient can be routed on this; it is a preview that can move, not a wrong answer.
+- A visit with no queue ticket at all (a record-only visit created outside the front desk) reports `QUEUE_STATE_INELIGIBLE`. That preserves the existing rule — the doctor phase has always required a queue presence — but the code says "wrong stage" for what is really "no queue at all".
+- The read is per-visit; there is no batch endpoint, so a queue screen wanting this for twenty visits would issue twenty requests. Not needed by anything built today.
+- The signed-note rule is still "at least one signed `DOCTOR_NARRATIVE`" and nothing subtler.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.
