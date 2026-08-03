@@ -1549,6 +1549,60 @@ A backend transfer **cannot** inspect text held only in another browser's memory
 
 ---
 
+## D-083 — S3d: "append-only by construction" was a claim, not a fact
+
+D-080 said `VisitWorkflowEvent` was append-only and pointed at `ON DELETE RESTRICT`. That was **too strong, and the owner was right to ask for proof.** RESTRICT stops a *parent* row being deleted out from under an event; it says nothing about the event itself. `UPDATE visit_workflow_events SET reason = '…'` and `DELETE FROM visit_workflow_events` were both permitted. A history anyone can rewrite is not a history.
+
+### The policy set is the mechanism, not the role name
+
+The table is already `FORCE ROW LEVEL SECURITY`, and under FORCE **a command with no applicable policy is denied — including for the table owner**, which is what the application connects as. So the single `ALL` policy is split into `SELECT` and `INSERT`, and **no UPDATE or DELETE policy is written. That absence is the enforcement.** This was chosen over `REVOKE` alone because it does not depend on the role's *name* (which differs per environment) and cannot be sidestepped by a connection that happens to own the table. REVOKE is added as well, so a future `ALTER TABLE … NO FORCE` does not silently reopen the door.
+
+### TRUNCATE — found by the check, not by the plan
+
+`TRUNCATE` is a **separate privilege from DELETE and is not filtered by row-level security at all**. Revoking UPDATE and DELETE without it would have left the loudest possible hole behind the tidiest possible proof: one statement empties the entire audit trail while every other check still reads green. The verification now asserts it explicitly.
+
+### Verified as the application role, against the real database
+
+A mocked service proving no endpoint calls `update` would show only that today's code is well behaved — nothing about raw SQL, a future endpoint, or a mistake. 15 checks run on the live connection, including that the prober is **not** a superuser (a superuser bypasses RLS and would prove nothing), that INSERT still works, and that cross-tenant insert and read remain refused after the split.
+
+**Known limitation, stated plainly**: a superuser or the database owner can drop the policies or turn FORCE off. No in-database mechanism prevents that. What is guaranteed is that the *application* cannot update, delete or truncate a workflow event through any route.
+
+---
+
+## D-084 — G4.5d3c-1b: the two questions the model could not answer
+
+Schema only. No completion service, no destination rule, no UI.
+
+### "Does this patient need the dispensary?"
+
+Nothing distinguished a script the clinic fills from one the patient takes elsewhere, so the only available rule was **"a Prescription row exists"** — wrong for an external script, for medicine the patient already has, and for advice with no supply at all. `Prescription.supplyMode` is the missing input: `ONSITE_DISPENSE` / `EXTERNAL_PRESCRIPTION` / `PATIENT_OWN_SUPPLY` / `DEFERRED` / `NO_SUPPLY_REQUIRED`. It describes **intent at prescribing time** and is not a dispensing status — `PrescriptionStatus` still records what happened. `DEFERRED` is explicitly *unresolved*, not *dispensed*.
+
+### "Does this patient need the payment counter?"
+
+`patientPaidAmount` is money **received**, and it is only computed at pay time. So a fully panel-covered invoice sits at UNPAID with `patientPaidAmount = 0` — **indistinguishable from a cash invoice nobody has paid.** `Invoice.patientResponsibilityAmount` is what is **owed**:
+
+| | total | panel | responsibility | paid | remaining |
+|---|---|---|---|---|---|
+| Cash | 85 | 0 | **85** | 0 | 85 → counter |
+| Fully panel-covered | 120 | 120 | **0** | 0 | 0 → **no counter** |
+| Copayment | 150 | 120 | **30** | 0 | 30 → counter |
+
+Invariant for newly calculated invoices: `panelCoveredAmount + patientResponsibilityAmount = totalAmount`. Remaining work: `max(responsibility − paid, 0)`. **`Invoice.status = UNPAID` must never be the sole test** — rows 1 and 2 are both UNPAID and need opposite destinations, which is asserted as a check in its own right.
+
+### No defaults, deliberately
+
+Both columns are nullable with **no database DEFAULT and no backfill**. A default would make every row written during the compatibility period indistinguishable from one where a human actually chose — and the entire purpose of these columns is to stop the system guessing. NULL means *not captured*, and a destination rule must report **UNDETERMINED**.
+
+No CHECK constraint enforces the invariant. It holds for invoices calculated by the *future* billing rule; existing rows are all NULL, so a constraint would be vacuous now and could reject legitimate data later if a rounding rule changes. It belongs where the amounts are computed, not frozen into the table before the rule that maintains it exists.
+
+### Where responsibility must later be set
+
+`InvoiceService` — on create, on line add/remove, on quantity change, on panel selection and coverage calculation, and on copayment adjustment. Not on payment (that is `patientPaidAmount`) and not on cancellation. `InvoiceStatus` is unchanged: DRAFT/ISSUED/SUBMITTED belongs to G4.5d6, and overloading financial status with an issue/submission lifecycle is the exact conflation the audit warned about.
+
+**Verification**: 18 live-database checks — 360 prescriptions and 235 invoices readable, zero backfilled, no PAID or CANCELLED invoice touched, all five supply modes written and rolled back, cross-tenant access still denied. 546 backend tests, 195 frontend, both typechecks clean.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

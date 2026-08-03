@@ -2319,6 +2319,27 @@ model Invoice {
   // can never retroactively alter what's already been claimed.
   panelCoveredAmount Decimal       @default(0) @map("panel_covered_amount") @db.Decimal(10, 2)
   patientPaidAmount  Decimal       @default(0) @map("patient_paid_amount") @db.Decimal(10, 2)
+  /**
+   * G4.5d3c-1b (D-084) — what the patient (or their responsible party) OWES,
+   * as distinct from what has been RECEIVED.
+   *
+   * `patientPaidAmount` is money already collected, and it is only computed
+   * at pay time. That left no way to ask "does this patient still need to go
+   * to the payment counter" before payment: a fully panel-covered invoice sits
+   * at UNPAID with patientPaidAmount 0, exactly like a cash invoice nobody has
+   * paid yet. This field is the difference between those two.
+   *
+   * Invariant for newly calculated invoices:
+   *   panelCoveredAmount + patientResponsibilityAmount = totalAmount
+   * Remaining patient-facing work:
+   *   max(patientResponsibilityAmount - patientPaidAmount, 0)
+   *
+   * Nullable with no default and no backfill. NULL means payment
+   * responsibility was not captured, and a destination rule must report it as
+   * UNDETERMINED rather than guess. `Invoice.status = UNPAID` must never be
+   * the sole test for whether the patient owes anything.
+   */
+  patientResponsibilityAmount Decimal? @map("patient_responsibility_amount") @db.Decimal(10, 2)
   createdAt          DateTime      @default(now()) @map("created_at")
   updatedAt          DateTime      @updatedAt @map("updated_at")
 
@@ -2469,6 +2490,35 @@ enum PrescriptionStatus {
   CANCELLED
 }
 
+/**
+ * G4.5d3c-1b (D-084) — where the medicine actually comes from.
+ *
+ * Nothing in the model previously distinguished a script the clinic fills
+ * from one the patient takes elsewhere, so the only available rule for "does
+ * this patient need to go to the dispensary" was "a Prescription row exists"
+ * — which is wrong for an external script, for medicine the patient already
+ * has, and for advice with no supply at all. This is the missing input.
+ *
+ * It describes INTENT at prescribing time. It is not a dispensing status:
+ * `PrescriptionStatus` still records what happened.
+ */
+enum PrescriptionSupplyMode {
+  /** The clinic supplies and dispenses it. May require READY_FOR_DISPENSARY. */
+  ONSITE_DISPENSE
+  /** Supplied outside the clinic. No clinic dispensary step. */
+  EXTERNAL_PRESCRIPTION
+  /** The patient already has it. No dispensing. */
+  PATIENT_OWN_SUPPLY
+  /**
+   * Supply deliberately left open. NOT dispensed, and NOT resolved — a future
+   * completion workflow must treat it as unresolved rather than assuming
+   * either way.
+   */
+  DEFERRED
+  /** A medication/advice record needing no supply at all. */
+  NO_SUPPLY_REQUIRED
+}
+
 // Weight-based vs. age-based dosage calculator method used, if any —
 // audit trail only (docs/DECISIONS.md D-028); doesn't drive behaviour.
 enum DosageCalcMethod {
@@ -2511,6 +2561,15 @@ model Prescription {
   calcTargetDoseMg Decimal?          @map("calc_target_dose_mg") @db.Decimal(10, 2)
 
   status              PrescriptionStatus @default(ORDERED)
+  /**
+   * G4.5d3c-1b (D-084) — nullable, with NO database default, deliberately.
+   *
+   * A default would make every row written during the compatibility period
+   * indistinguishable from one where a prescriber actually chose. NULL means
+   * supply mode was not captured, and a destination rule must treat it as
+   * undetermined rather than assume ONSITE.
+   */
+  supplyMode          PrescriptionSupplyMode? @map("supply_mode")
   prescribedByStaffId String             @map("prescribed_by_staff_id")
   prescribedAt        DateTime           @default(now()) @map("prescribed_at")
   dispensedAt         DateTime?          @map("dispensed_at")
