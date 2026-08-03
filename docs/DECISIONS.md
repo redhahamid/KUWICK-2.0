@@ -1780,6 +1780,43 @@ Tenant, branch and non-disclosure protections are unchanged: a visit in another 
 
 ---
 
+## D-089 — G4.5d3c-3a: the Consultation Footer, and what it refuses to know
+
+Frontend only. The Canvas gains a Consultation Footer — the doctor's end of the consultation — after the clinical workspace content. **No Queue/Counter Complete Visit UI, no Flow view, no procedure transition, no Dispensary Workspace.** Nothing above the footer changed: context band, snapshot, note, rail, drawers and the C1 protections are untouched.
+
+### The footer computes nothing clinical
+
+Every judgement it renders is the server's. `doctorPhasePresentation.ts` is pure mapping — blocker code → approved sentence, routing reason → button copy — and the tests prove there is no input by which a prescription count, an invoice or an order status could reach it. The read (`GET doctor-phase-status`, D-088) is **advisory for presentation**; the write stays authoritative and re-evaluates in its own transaction. When a preview goes stale, the write's refusal carries fresh structured blockers and the footer swaps the enabled button for them — the one currency both sides share is the blocker code.
+
+The owner's wording is pinned in one table, client-side, and rendered **from the code, never from the server's message string** — so no server change can put an enum, a column name or a driver string in front of a doctor. An unrecognised code from a newer server is dropped, not rendered raw. Blockers are re-ordered against the declared list, all shown together, each mapped to at most one review action (two medication blockers → ONE "Review Medications"), and review actions only navigate — `scrollIntoView` + focus on the existing section, same no-hash rule as the quick-nav (D-072). `QUEUE_STATE_INELIGIBLE` deliberately maps to **no action**: there is no reliable doctor-side queue control, and inventing one implies the doctor can fix it alone. `PROCEDURE_PENDING` maps to "Review Orders", never "Send to Procedure" — no transition service exists, and a button that looks like it moves a patient but does not is worse than no button.
+
+### What the doctor is never offered
+
+**"Complete Visit" — in any state.** Closing the visit asserts dispensing and billing are done, which is counter work under a different permission (D-087). The completed footer says "Awaiting overall completion" until `checkOutAt` exists, and nothing on the bar can set it. The eligible button exists only when the server reports zero blockers AND a routing reason — a derived destination arriving alongside a blocker is a preview, not permission, and a null reason (a pending procedure) yields no button even with no blockers. `BILLING_REVIEW_REQUIRED` is never phrased as payment anywhere: button, supporting copy, confirmation and the completed "Next station: Billing Review" all say the clinic has not confirmed responsibility, because the alternative is telling a patient they owe money nobody has computed.
+
+One compact confirmation, destination never a choice. The completed summary renders stored values only — the presentation module has no invoice or prescription input, so later billing/dispensing events *cannot* change it, which is D-088's no-re-derivation rule carried through to the pixels.
+
+### C1, and the invalidation that was not written
+
+The obvious post-mutation move — invalidate everything about the visit — would refetch clinical notes and push a server seed under an editor holding unsaved text. The mutation invalidates **only** the phase status, queue tickets and the visit row. The footer owns no clinical content and cannot remount the note; the component tests render a mount-counting editor beside it and assert the count stays at 1 and the text survives preview, success, failure and refetch. `refetchOnWindowFocus` is off for the status query, same reasoning as C1's note query.
+
+### Sticky, considered and refused
+
+The footer is the last element on the record, not a sticky bar. Sticky here would sit over the note editor's lower lines on a laptop, over rail dropdowns, and interact with the mobile quick-nav that is already sticky at the top — three overlap problems to solve for a bar the doctor reaches once, at the end. The brief permitted sticky "where safe"; not-sticky is the safe choice and costs one scroll.
+
+### Verification
+
+First DOM tests in the web suite (jsdom, opt-in per file; config moved to `vitest.config.ts` because vitest 4 stopped honouring the `test` block in `vite.config.ts`). 100 new frontend tests (48 presentation + 32 component + 20 existing-suite growth): 275 frontend, 632 backend, both typechecks clean. Screenshots in `docs/g45d3c3a-screenshots/` from the populated professional fixture: desktop eligible/blocked/confirmation/completed, tablet billing-review, mobile blocked/completed — all states real API round-trips, the completion performed through the actual UI.
+
+**Known limitations**:
+
+- **Supply mode has no entry UI**, so `MEDICATION_SUPPLY_UNCONFIRMED` can only be cleared by a checkpoint that builds one (the fixtures set it in the database). The blocker is honest; the fix-it path is not built yet.
+- The Medications rail's "N to dispense" badge counts `ORDERED` rows without reading `supplyMode`, so a patient-own-supply item still shows as "to dispense" in the rail while the footer correctly routes past the dispensary. Pre-existing display, out of scope here, worth a cleanup.
+- "Completed by" resolves the staff name from the staff list; a completer outside that list (rare — a deactivated account) renders "Not recorded" rather than fetching the name individually.
+- The footer is per-visit and polls nothing: a phase completed at another station appears on the next query refresh (mutation, remount or manual retry), not live.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

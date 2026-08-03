@@ -845,3 +845,193 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
     min-height: 44px;
   }
 }
+
+/* ===========================================================================
+   G4.5d3c-3a (D-089) — the Consultation Footer.
+
+   The doctor's end of the consultation: what is outstanding, or where the
+   patient goes next, and one action. Deliberately NOT sticky. A sticky bar on
+   this page would sit over the note editor's lower lines on a laptop, over the
+   rail's More menus, and over the mobile quick-nav that is already sticky at
+   the top — three overlaps to solve for a bar the doctor reaches once, at the
+   end, by scrolling to it. It is the last thing on the record instead, which
+   is where a doctor looks for it and costs nothing above.
+   =========================================================================== */
+.kw-consult-footer {
+  margin-top: var(--kw-s3);
+  padding: var(--kw-s3) var(--kw-s4);
+  background: var(--kw-card);
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+  /* Navy edge: this is where the consultation concludes, and the band reads as
+     one deliberate surface rather than a sixth card. */
+  border-top: 3px solid var(--kw-navy);
+}
+
+/* Summary left, one dominant action right — the desktop consultation bar. */
+.kw-consult-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--kw-s3) var(--kw-s6);
+}
+
+.kw-consult-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s1);
+  min-width: 0;
+}
+
+.kw-consult-primary .ant-btn {
+  min-height: 44px;
+}
+
+.kw-consult-footer .ant-btn-primary {
+  background: var(--kw-navy);
+  border-color: var(--kw-navy);
+}
+
+.kw-consult-footer .ant-btn-primary:not(:disabled):hover {
+  background: var(--kw-navy-hover) !important;
+  border-color: var(--kw-navy-hover) !important;
+}
+
+.kw-consult-status {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s3);
+  min-height: 44px;
+}
+
+/* Blocked. Amber, not red: nothing has gone wrong and nothing is destructive
+   — the consultation simply is not finished. Red here would read as an error
+   the doctor caused. */
+.kw-consult-blocked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s2);
+}
+
+.kw-consult-blocked-head {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s2);
+  color: var(--kw-pending-fg);
+}
+
+/* A plain list, one line each, all of them at once. Never a card per blocker:
+   five nested cards inside a footer is the "cards inside cards" the Canvas
+   was rebuilt to remove. */
+.kw-consult-blocker-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--kw-text);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.kw-consult-reviews .ant-btn {
+  min-height: 32px;
+}
+
+/* Completed — a read-only record of what the server stored. */
+.kw-consult-done {
+  background: var(--kw-rail-bg);
+}
+
+.kw-consult-done-head {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s2);
+  margin-bottom: var(--kw-s2);
+}
+
+/* Label above value, wrapping across the available width. A definition list
+   because that is what it is — five stored facts, each with its name. */
+.kw-consult-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kw-s2) var(--kw-s6);
+  margin: 0;
+}
+
+.kw-consult-facts > div {
+  min-width: 0;
+}
+
+.kw-consult-facts dt {
+  font-size: 12px;
+  color: var(--kw-text-secondary);
+}
+
+.kw-consult-facts dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--kw-text);
+}
+
+/* The confirmation modal portals outside the Canvas scopes above, so the
+   navy primary is re-scoped to it here. */
+.kw-consult-confirm .ant-btn-primary {
+  background: var(--kw-navy);
+  border-color: var(--kw-navy);
+}
+
+.kw-consult-confirm .ant-btn-primary:not(:disabled):hover {
+  background: var(--kw-navy-hover) !important;
+  border-color: var(--kw-navy-hover) !important;
+}
+
+/* Focus must be visible on every control here — a doctor completing a
+   consultation from the keyboard has to see where they are. */
+.kw-consult-footer .ant-btn:focus-visible {
+  outline: 2px solid var(--kw-navy);
+  outline-offset: 2px;
+}
+
+/* Tablet and phone: the action goes full width and nothing is allowed to
+   overflow sideways. */
+@media (max-width: 1024px) {
+  .kw-consult-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--kw-s3);
+  }
+
+  .kw-consult-primary,
+  .kw-consult-primary .ant-btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 767px) {
+  .kw-consult-footer {
+    padding: var(--kw-s3);
+    /* Clear of the phone browser's own bottom controls, which overlay the
+       viewport rather than reserving space in it. */
+    margin-bottom: calc(var(--kw-s6) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* One fact per row rather than a squeezed grid, and the review buttons at a
+     44px target. */
+  .kw-consult-facts {
+    flex-direction: column;
+    gap: var(--kw-s2);
+  }
+
+  .kw-consult-reviews {
+    width: 100%;
+  }
+
+  .kw-consult-reviews .ant-btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .kw-consult-blocker-list {
+    padding-left: 18px;
+  }
+}

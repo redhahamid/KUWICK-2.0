@@ -67,7 +67,18 @@ export interface UpdateFormTemplateDto {
   active?: boolean;
 }
 
-export type QueueTicketStatus = 'WAITING' | 'IN_CONSULTATION' | 'DISPENSARY_PAYMENT' | 'COMPLETED' | 'CANCELLED';
+// G4.5d3c-1 (D-080) added the operational stations the original five could
+// not express. DISPENSARY_PAYMENT is kept: legacy tickets still carry it and
+// dropping it here would make real rows unrenderable.
+export type QueueTicketStatus =
+  | 'WAITING'
+  | 'IN_CONSULTATION'
+  | 'AT_PROCEDURE'
+  | 'READY_FOR_DISPENSARY'
+  | 'READY_FOR_PAYMENT'
+  | 'DISPENSARY_PAYMENT'
+  | 'COMPLETED'
+  | 'CANCELLED';
 
 export interface Visit {
   id: string;
@@ -981,4 +992,61 @@ export interface VisitHistoryDetail {
   documents: ClinicalDocument[];
   attachments: VisitAttachment[];
   invoices: Invoice[];
+}
+
+// ---------------------------------------------------------------------------
+// G4.5d3c-2/2b/2c (D-086/D-087/D-088) — the doctor phase.
+//
+// Every field here is SERVER-DERIVED. The frontend mirrors these shapes and
+// never computes a destination, a routing reason or an eligibility of its own.
+// ---------------------------------------------------------------------------
+export type DoctorCompletionDestination = 'DISPENSARY' | 'PAYMENT' | 'NONE';
+
+export type DoctorRoutingReason =
+  | 'DISPENSARY_REQUIRED'
+  | 'PATIENT_PAYMENT_REQUIRED'
+  | 'BILLING_REVIEW_REQUIRED'
+  | 'NO_DOWNSTREAM_WORK';
+
+export type DoctorPhaseBlockerCode =
+  | 'QUEUE_STATE_INELIGIBLE'
+  | 'SIGNED_NOTE_REQUIRED'
+  | 'PROCEDURE_PENDING'
+  | 'MEDICATION_SUPPLY_UNCONFIRMED'
+  | 'MEDICATION_SUPPLY_DEFERRED';
+
+export interface DoctorPhaseBlocker {
+  code: DoctorPhaseBlockerCode;
+  message: string;
+}
+
+/** `GET /visits/:id/doctor-phase-status` — advisory, side-effect free. */
+export interface DoctorPhaseStatus {
+  visitId: string;
+  completed: boolean;
+  doctorCompletedAt: string | null;
+  doctorCompletedByStaffId: string | null;
+  queueStatus: QueueTicketStatus | null;
+  blockers: DoctorPhaseBlocker[];
+  /** NULL while a procedure is open — "not yet knowable", never NONE. */
+  destination: DoctorCompletionDestination | null;
+  routingReason: DoctorRoutingReason | null;
+}
+
+/** `PATCH /visits/:id/complete-doctor-phase` — authoritative. */
+export interface DoctorCompletionResult {
+  visitId: string;
+  destination: DoctorCompletionDestination;
+  reason: DoctorRoutingReason | null;
+  queueStatus: QueueTicketStatus;
+  doctorCompletedAt: string;
+  doctorCompletedByStaffId: string;
+  alreadyCompleted: boolean;
+}
+
+// There is deliberately no `destination` field: the server derives it, and a
+// DTO that could carry one would be a route round the derivation.
+export interface CompleteDoctorPhaseDto {
+  note?: string;
+  correlationId?: string;
 }

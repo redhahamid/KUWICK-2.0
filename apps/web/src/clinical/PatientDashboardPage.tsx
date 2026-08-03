@@ -45,6 +45,7 @@ import { useRecordViewLayoutStore } from './record-view-layout-store';
 import { CanvasPatientHeader } from './CanvasPatientHeader';
 import { CanvasQuickNav } from './CanvasQuickNav';
 import { VisitCompletionBar } from './VisitCompletionBar';
+import { ConsultationFooter } from './ConsultationFooter';
 import { LastVisitSnapshot } from './LastVisitSnapshot';
 import { PatientSummarySidebar } from './PatientSummarySidebar';
 import { VisitHistoryPanel } from './history/VisitHistoryPanel';
@@ -200,6 +201,28 @@ export function PatientDashboardPage() {
     window.setTimeout(() => {
       document.getElementById(`kw-anchor-${which}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 60);
+  };
+
+  /**
+   * G4.5d3c-3a (D-089) — how the Consultation Footer hands a blocker back to
+   * the section that can clear it.
+   *
+   * The footer implements NOTHING it points at: no second signing control, no
+   * medication editor, and deliberately no Send to Procedure — there is no
+   * approved procedure-transition service, and a button that looks like it
+   * moves a patient but does not is worse than no button.
+   *
+   * `scrollIntoView` for the same reason as the quick-nav (D-072): a hash
+   * would push a history entry and C1's unsaved-note guard keys on
+   * navigation. Focus follows the scroll so a keyboard user actually arrives
+   * somewhere rather than being told they have.
+   */
+  const revealCanvasSection = (anchor: 'note' | 'orders' | 'medications') => {
+    const target = document.getElementById(`kw-anchor-${anchor}`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    target.setAttribute('tabindex', '-1');
+    target.focus({ preventScroll: true });
   };
 
   const layoutSwitch = (
@@ -531,6 +554,12 @@ export function PatientDashboardPage() {
               onToggleDocuments={() => setDocumentsOpen((prev) => !prev)}
               onToggleInvoice={() => setInvoiceOpen((prev) => !prev)}
             />
+
+            {/* G4.5d3c-3a (D-089) — how the DOCTOR's part of the consultation
+                ends. Last on the page, after everything it summarises, and
+                carrying no "Complete Visit": closing the visit is counter
+                work under a different permission (D-087). */}
+            <ConsultationFooter visit={selectedVisit} onReview={revealCanvasSection} />
           </Col>
         )}
       </Row>
