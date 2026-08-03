@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { QueueTicketStatus, QueueType } from '@prisma/client';
+import { QueueTicketStatus, QueueType, VisitWorkflowEventType } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { currentTenantId } from '../core/tenant-context';
 import { VisitService, CreateVisitInput } from './visit.service';
@@ -7,7 +7,21 @@ import { CancelQueueTicketDto } from './dto/cancel-queue-ticket.dto';
 import { PrismaService } from '../core/prisma.service';
 import { ClinicalTx, assertMayTouchVisit, branchContext, requireActor, withTenantTx } from './clinical-actor';
 import { hasBranchAccess } from './clinical-authorization';
-import { QueueAction, assertCanPerformQueueAction, isLegalQueueTransition } from './queue-authorization';
+import {
+  QueueAction,
+  assertCanPerformQueueAction,
+  assertMayChangeAttendingClinician,
+  attendingChangeNeedsReason,
+  classifyAttendingChange,
+  isLegalQueueTransition,
+} from './queue-authorization';
+
+export interface ChangeAttendingClinicianInput {
+  staffId: string;
+  reason?: string;
+  /** Idempotency key, so a retried handover writes one event rather than two. */
+  correlationId?: string;
+}
 
 export interface FindQueueTicketsFilter {
   clinicId?: string;
@@ -176,24 +190,102 @@ export class QueueTicketService {
       }
     }
 
-    // S3F — reassigning the attending clinician is a change of clinical
-    // authorship, not a queue movement, so it needs its OWN permission and
-    // its own validation. Before this, calling a patient could silently
-    // rewrite Visit.staffId to any id the caller sent, including a staff
-    // member from another tenant or branch, or an inactive one.
+    // S3F/S3b — reassigning the attending clinician is a change of clinical
+    // authorship, not a queue movement, so it goes through its own rule.
+    // Before this, calling a patient could silently rewrite Visit.staffId to
+    // any id the caller sent, including a staff member from another tenant or
+    // branch, or an inactive one.
     if (staffId && staffId !== current.visit.staffId) {
-      await withTenantTx(this.rawPrisma, async (tx) => {
-        const actor = await requireActor(tx);
-        assertCanPerformQueueAction(actor, 'ASSIGN_CLINICIAN');
-        await resolveClinicianForVisit(tx, staffId, ticket.clinicId);
-      });
-      await this.prisma.visit.update({ where: { id: ticket.visitId }, data: { staffId } });
+      await this.changeAttendingClinician(id, { staffId });
     }
     return this.prisma.queueTicket.update({
       where: { id },
       data: { calledAt: new Date(), roomId: roomId ?? null },
       include: { room: true, visit: { include: { patient: true, staff: true } } },
     });
+  }
+
+  /**
+   * S3b (D-081) — assign or transfer the attending clinician.
+   *
+   * The owner's correction: doctor-to-doctor transfer is real clinical work
+   * (shift handover, escalation, a doctor called away), and forcing it through
+   * the front desk — or through cancelling and recreating the visit — is worse
+   * than the risk of allowing it. What is still refused is a doctor taking a
+   * patient who is actively with a colleague.
+   *
+   * PROSPECTIVE ONLY. This writes `Visit.staffId` and nothing else. Notes,
+   * signatures, amendments, diagnoses, prescriptions, orders, services,
+   * documents and authorisation records keep the author they already have —
+   * Dr A's signed note stays Dr A's after the visit moves to Dr B. The queue
+   * status, checkOutAt, doctor-completion state and every invoice are
+   * untouched: a change of doctor is not a change of workflow position.
+   */
+  async changeAttendingClinician(ticketId: string, input: ChangeAttendingClinicianInput) {
+    const { ticket } = await this.authoriseTicket(ticketId, 'ASSIGN_CLINICIAN');
+
+    await withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+
+      // Re-read inside the transaction: the visit may have changed hands
+      // between the authorisation read and this write, and the whole point of
+      // the rule is who holds it NOW.
+      const visit = await tx.visit.findUnique({
+        where: { id: ticket.visitId },
+        select: { id: true, staffId: true },
+      });
+      if (!visit) {
+        throw new NotFoundException('Visit not found');
+      }
+
+      // Idempotent: asking for the doctor who already holds the visit is a
+      // double-click. No write, and NO event — a handover that did not happen
+      // must not appear in the history.
+      if (visit.staffId === input.staffId) {
+        return;
+      }
+
+      const current = await tx.staff.findUnique({ where: { id: visit.staffId } });
+      if (!current) {
+        throw new NotFoundException('Visit not found');
+      }
+      const target = await resolveClinicianForVisit(tx, input.staffId, ticket.clinicId);
+
+      assertMayChangeAttendingClinician(actor, current, target);
+
+      const kind = classifyAttendingChange(current, actor);
+      const reason = input.reason?.trim();
+      if (attendingChangeNeedsReason(kind) && !reason) {
+        throw new BadRequestException(
+          'Give a reason for changing the attending doctor, so the handover is on record.',
+        );
+      }
+
+      await tx.visit.update({ where: { id: visit.id }, data: { staffId: target.id } });
+
+      // Same transaction as the write it describes: an unrecorded handover and
+      // a recorded one that did not happen are both wrong, and only atomicity
+      // rules out each.
+      await tx.visitWorkflowEvent.create({
+        data: {
+          tenantId: currentTenantId(),
+          clinicId: ticket.clinicId,
+          visitId: visit.id,
+          queueTicketId: ticket.id,
+          eventType: VisitWorkflowEventType.ATTENDING_CLINICIAN_CHANGED,
+          previousStaffId: current.id,
+          newStaffId: target.id,
+          actorStaffId: actor.id,
+          actorNameSnapshot: actor.fullName,
+          actorRoleSnapshot: actor.role,
+          reason: reason ?? null,
+          metadata: { kind },
+          correlationId: input.correlationId ?? null,
+        },
+      });
+    });
+
+    return this.findById(ticketId);
   }
 
   // D-024 (docs/DECISIONS.md): WAITING -> IN_CONSULTATION.

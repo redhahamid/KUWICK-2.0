@@ -5,6 +5,7 @@ import { QueueDisplayConfigService } from './queue-display-config.service';
 import { AddToQueueDto } from './dto/add-to-queue.dto';
 import { CancelQueueTicketDto } from './dto/cancel-queue-ticket.dto';
 import { CallQueueTicketDto } from './dto/call-queue-ticket.dto';
+import { ChangeAttendingClinicianDto } from './dto/change-attending-clinician.dto';
 import { UpdateQueueDisplayConfigDto } from './dto/update-queue-display-config.dto';
 
 @Controller('queue-tickets')
@@ -47,6 +48,15 @@ export class QueueTicketController {
   @Patch(':id/call')
   call(@Param('id') id: string, @Body() dto: CallQueueTicketDto) {
     return this.queueTickets.call(id, dto.roomId, dto.staffId);
+  }
+
+  // S3b (D-081) — assign or transfer the attending clinician. Its own route
+  // rather than a corner of `call`, because it is its own clinical act: it
+  // carries a reason, it writes a handover event, and it is the one queue
+  // operation whose permission depends on who currently holds the visit.
+  @Patch(':id/attending-clinician')
+  changeAttendingClinician(@Param('id') id: string, @Body() dto: ChangeAttendingClinicianDto) {
+    return this.queueTickets.changeAttendingClinician(id, dto);
   }
 
   @Patch(':id/arrived')

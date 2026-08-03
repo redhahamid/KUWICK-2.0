@@ -41,12 +41,16 @@ const QUEUE_MATRIX: Record<QueueAction, Role[]> = {
   // calls their own next patient.
   CALL_PATIENT: ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF', 'DOCTOR_RESIDENT', 'DOCTOR_LOCUM'],
 
-  // JUDGEMENT CALL 1 — reassigning the ATTENDING CLINICIAN is a change to the
-  // clinical record's authorship, not a queue movement. D-044 established
-  // that front desk registers a walk-in before anyone knows who will see the
-  // patient, so the power is real; it is kept to front desk and the owner
-  // rather than granted to every doctor.
-  ASSIGN_CLINICIAN: ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF'],
+  // S3b — the ROLES that may change the attending clinician at all. Which
+  // change each may make is a further question the matrix cannot express,
+  // because it depends on who currently holds the visit — see
+  // assertMayChangeAttendingClinician below.
+  ASSIGN_CLINICIAN: [
+    'OWNER_ADMIN',
+    'FRONT_DESK_CLINICAL_STAFF',
+    'DOCTOR_RESIDENT',
+    'DOCTOR_LOCUM',
+  ],
 
   // Starting the consultation is the clinician's own act.
   START_CONSULTATION: ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF', 'DOCTOR_RESIDENT', 'DOCTOR_LOCUM'],
@@ -124,4 +128,110 @@ const LEGAL_TRANSITIONS: Record<QueueTicketStatus, QueueTicketStatus[]> = {
 
 export function isLegalQueueTransition(from: QueueTicketStatus, to: QueueTicketStatus): boolean {
   return LEGAL_TRANSITIONS[from].includes(to);
+}
+
+// ===========================================================================
+// S3b — ATTENDING CLINICIAN ASSIGNMENT AND TRANSFER (owner correction)
+//
+// The first version of this rule kept doctors out of clinician assignment
+// entirely. That was too narrow and the owner corrected it: doctor-to-doctor
+// transfer is real clinical work — shift handover, escalation, a doctor
+// called away — and forcing it through the front desk, or through cancelling
+// and recreating the visit, is worse than the risk it was guarding against.
+//
+// The risk that remains is a doctor SEIZING a patient who is actively with a
+// colleague. So the rule is not "which role", it is "which role, given who
+// holds the visit now":
+//
+//   OWNER / FRONT DESK   may assign or reassign freely.
+//   DOCTOR               may claim a visit no doctor holds, and may hand on a
+//                        visit they hold themselves. They may not take a
+//                        visit out of another doctor's hands.
+//
+// The target is always validated as an eligible doctor (see
+// isEligibleAttendingDoctor); a doctor cannot hand a patient to a non-doctor.
+// ===========================================================================
+
+const ELIGIBLE_ATTENDING_ROLES: Role[] = ['DOCTOR_RESIDENT', 'DOCTOR_LOCUM'];
+
+/**
+ * May this staff member be recorded as a visit's attending clinician?
+ *
+ * Role only — tenant, active and branch are checked separately, against the
+ * database, because those are facts about the row rather than about the role.
+ */
+export function isEligibleAttendingDoctor(staff: Staff): boolean {
+  return staff.active && ELIGIBLE_ATTENDING_ROLES.includes(staff.role);
+}
+
+export type AttendingChangeKind = 'CLAIM' | 'TRANSFER' | 'REASSIGN';
+
+/**
+ * NOTE ON "UNASSIGNED". `Visit.staffId` is NOT nullable, so a visit with no
+ * attending clinician cannot be represented at all — every visit is assigned
+ * to whoever registered it. The real-world "unassigned" case is D-044's:
+ * front desk registers a walk-in under themselves before anyone knows which
+ * doctor will see the patient, so the visit is held by a NON-DOCTOR.
+ *
+ * That is what CLAIM means here. A genuinely nullable attending clinician is
+ * a schema change and is reported as a gap rather than faked with a sentinel
+ * staff row.
+ */
+export function classifyAttendingChange(current: Staff, actor: Staff): AttendingChangeKind {
+  if (!isEligibleAttendingDoctor(current)) {
+    return 'CLAIM';
+  }
+  return current.id === actor.id ? 'TRANSFER' : 'REASSIGN';
+}
+
+export function assertMayChangeAttendingClinician(actor: Staff, current: Staff, target: Staff): void {
+  assertCanPerformQueueAction(actor, 'ASSIGN_CLINICIAN');
+
+  if (!isEligibleAttendingDoctor(target)) {
+    throw new ForbiddenException(
+      'Only an active doctor can be recorded as the attending clinician for a visit.',
+    );
+  }
+
+  const kind = classifyAttendingChange(current, actor);
+  const actorIsDoctor = isEligibleAttendingDoctor(actor);
+
+  // Owner and front desk: no further restriction. Assigning and reassigning
+  // patients between doctors is the counter's job.
+  if (!actorIsDoctor) {
+    return;
+  }
+
+  if (kind === 'CLAIM') {
+    // A doctor picking up a patient nobody is seeing takes them for THEMSELVES.
+    // Handing an unclaimed patient to a specific colleague is a scheduling
+    // decision, and scheduling belongs to the counter.
+    if (target.id !== actor.id) {
+      throw new ForbiddenException(
+        'You can take this visit yourself, but assigning it to another doctor is done by the front desk.',
+      );
+    }
+    return;
+  }
+
+  if (kind === 'REASSIGN') {
+    // The one thing this rule exists to prevent: taking a patient who is
+    // actively with a colleague. The message says what to do instead rather
+    // than naming who currently holds the visit.
+    throw new ForbiddenException(
+      'This visit is with another doctor. They can transfer it to you, or the front desk can reassign it.',
+    );
+  }
+
+  // TRANSFER — the actor holds the visit and is handing it on. Permitted.
+}
+
+/**
+ * A reason is required when a doctor is REPLACED, and not when a visit is
+ * simply picked up. "Why did the attending doctor change mid-consultation" is
+ * a question a clinic has to be able to answer; "why did a doctor start
+ * seeing the walk-in" is not.
+ */
+export function attendingChangeNeedsReason(kind: AttendingChangeKind): boolean {
+  return kind !== 'CLAIM';
 }

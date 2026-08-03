@@ -514,7 +514,9 @@ model Staff {
   // separately rather than one being assumed from the other.
   visits                      Visit[]                      @relation("VisitAttendingStaff")
   visitsDoctorCompleted       Visit[]                      @relation("VisitDoctorCompletedBy")
-  workflowEvents              VisitWorkflowEvent[]
+  workflowEvents              VisitWorkflowEvent[]         @relation("WorkflowEventActor")
+  workflowEventsHandedOver    VisitWorkflowEvent[]         @relation("WorkflowEventPreviousStaff")
+  workflowEventsReceived      VisitWorkflowEvent[]         @relation("WorkflowEventNewStaff")
   orderServices               OrderService[]
   prescriptions               Prescription[]
   attachments                 Attachment[]
@@ -1388,6 +1390,9 @@ enum VisitWorkflowEventType {
   PAYMENT_WORK_COMPLETED
   VISIT_COMPLETED
   VISIT_CANCELLED
+  // S3b (D-081) — a visit changed hands between clinicians. Prospective only:
+  // it never rewrites the authorship of anything already recorded.
+  ATTENDING_CLINICIAN_CHANGED
 }
 
 model VisitWorkflowEvent {
@@ -1412,6 +1417,12 @@ model VisitWorkflowEvent {
   // Only meaningful on DOCTOR_PHASE_COMPLETED.
   destination DoctorCompletionDestination?
 
+  // S3b — who held the visit before and after. Typed, not a corner of
+  // `metadata`: "every visit Dr A handed over last month" should be an
+  // ordinary indexed query. Both null unless the event is a handover.
+  previousStaffId String? @map("previous_staff_id")
+  newStaffId      String? @map("new_staff_id")
+
   // Identity snapshot, same principle as C0's clinical events: the role is
   // stored as plain text at the moment it happened, so a later promotion or
   // enum rename cannot rewrite who did what.
@@ -1433,7 +1444,9 @@ model VisitWorkflowEvent {
   clinic      Clinic       @relation(fields: [clinicId], references: [id])
   visit       Visit        @relation(fields: [visitId], references: [id])
   queueTicket QueueTicket? @relation(fields: [queueTicketId], references: [id])
-  actor       Staff        @relation(fields: [actorStaffId], references: [id])
+  actor       Staff        @relation("WorkflowEventActor", fields: [actorStaffId], references: [id])
+  previousStaff Staff?     @relation("WorkflowEventPreviousStaff", fields: [previousStaffId], references: [id])
+  newStaff      Staff?     @relation("WorkflowEventNewStaff", fields: [newStaffId], references: [id])
 
   @@unique([tenantId, correlationId])
   @@index([tenantId, visitId, createdAt])

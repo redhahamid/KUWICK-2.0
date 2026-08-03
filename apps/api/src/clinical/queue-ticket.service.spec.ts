@@ -47,8 +47,12 @@ function createService(actor: Record<string, unknown> | null = FRONT_DESK) {
     },
     clinic: { count: jest.fn().mockResolvedValue(1) },
     userClinicAccess: { findMany: jest.fn().mockResolvedValue([]) },
-    visit: { findUnique: jest.fn().mockResolvedValue({ clinicId: 'clinic-1' }), update: jest.fn() },
+    visit: {
+      findUnique: jest.fn().mockResolvedValue({ id: 'visit-1', clinicId: 'clinic-1', staffId: 'staff-1' }),
+      update: jest.fn(),
+    },
     queueTicket: { findUnique: jest.fn(), update: jest.fn() },
+    visitWorkflowEvent: { create: jest.fn() },
   };
   const rawPrisma = { $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) } as unknown as PrismaService;
 
@@ -188,7 +192,13 @@ describe('QueueTicketService', () => {
     const { service, prisma } = ctx;
     // S3F — the incoming clinician is now resolved under the tenant, so they
     // have to actually exist. That is the point of the check.
+    //
+    // S3b — and so does the OUTGOING one: the rule now depends on who holds
+    // the visit, so 's-original' has to be a real row too. Front desk holds
+    // it here, which makes this a claim rather than a replacement.
     ctx.staffDirectory['s-new'] = staffOf({ id: 's-new', role: 'DOCTOR_RESIDENT' });
+    ctx.staffDirectory['s-original'] = staffOf({ id: 's-original', userId: 'u-orig' });
+    ctx.tx.visit.findUnique.mockResolvedValue({ id: 'visit-1', clinicId: 'clinic-1', staffId: 's-original' });
     const setTicket = makeSetTicket(ctx);
     setTicket({
       id: 't1',
@@ -200,7 +210,10 @@ describe('QueueTicketService', () => {
 
     await withTenant(() => service.call('t1', undefined, 's-new'));
 
-    expect(prisma.visit.update).toHaveBeenCalledWith({ where: { id: 'visit-1' }, data: { staffId: 's-new' } });
+    // S3b — the write moved inside the transaction that also records the
+    // handover event, so the two cannot come apart.
+    expect(ctx.tx.visit.update).toHaveBeenCalledWith({ where: { id: 'visit-1' }, data: { staffId: 's-new' } });
+    expect(ctx.tx.visitWorkflowEvent.create).toHaveBeenCalledTimes(1);
   });
 
   it('call does not touch the visit staff when the same doctor is passed', async () => {

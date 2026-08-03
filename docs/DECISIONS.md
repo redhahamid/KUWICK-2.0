@@ -1464,6 +1464,49 @@ PostgreSQL cannot DROP a value from an enum type. The columns and the table can 
 
 ---
 
+## D-081 — S3b: a visit can change doctors without changing who wrote what
+
+**This corrects D-079's judgement call 1**, on the owner's instruction. S3 kept doctors out of attending-clinician assignment entirely. That was too narrow: shift handover, escalation and a doctor called away are ordinary clinical events, and routing every one of them through the front desk — or through cancelling and recreating the visit — costs more than the risk it was guarding against.
+
+### The rule is not "which role", it is "which role, given who holds the visit"
+
+| | Claim a visit no doctor holds | Hand on a visit they hold | Take a visit from another doctor |
+|---|---|---|---|
+| **Owner / front desk** | ✅ to any doctor | ✅ | ✅ |
+| **Doctor** | ✅ **to themselves only** | ✅ | ❌ |
+
+A doctor picking up an unclaimed patient is clinical; deciding which *colleague* sees an unclaimed patient is scheduling, and scheduling belongs to the counter. The one thing still refused is a doctor taking a patient who is actively with someone else — that needs the holder to hand over, or the counter to reassign. The refusal says what to do instead and **never names the doctor currently holding the visit**.
+
+The target is always resolved server-side and must be an active doctor in this tenant with access to the visit's branch. A doctor cannot hand a patient to a non-doctor.
+
+### "Unassigned" does not exist, and was not faked
+
+`Visit.staffId` is **not nullable** — every visit is assigned to whoever registered it, so a visit with no attending clinician cannot be represented at all. Rather than invent a sentinel staff row, CLAIM is defined against the real case: D-044's, where front desk registers a walk-in under themselves before anyone knows which doctor will see the patient, leaving the visit held by a **non-doctor**. A genuinely nullable attending clinician is a schema change and is **recorded as an open gap**, not quietly simulated.
+
+### Prospective only
+
+The operation writes `Visit.staffId` and nothing else — a test asserts the update payload has exactly one key. Notes, signatures, amendments, diagnoses, prescriptions, orders, services, documents and authorisation records keep the author they already have. Dr A's signed note stays Dr A's after the visit moves to Dr B. Queue status, `checkOutAt` and doctor-completion state are untouched: a change of doctor is not a change of workflow position.
+
+### A reason when a doctor is replaced, not when one is picked up
+
+"Why did the attending doctor change mid-consultation" is a question a clinic has to be able to answer. "Why did a doctor start seeing the walk-in" is not. Whitespace does not count.
+
+Each change writes exactly **one** `ATTENDING_CLINICIAN_CHANGED` workflow event, in the **same transaction** as the visit write — an unrecorded handover and a recorded handover that did not happen are both wrong, and only atomicity rules out each. `previousStaffId` and `newStaffId` are **typed columns**, not a corner of `metadata`, for the same reason the status columns are: "every visit Dr A handed over last month" should be an ordinary indexed query. Both FKs are `ON DELETE RESTRICT` — a handover record whose doctors have been erased is not a handover record.
+
+Transferring to the doctor who already holds the visit is a **no-op that writes no event**. The holder is re-read **inside** the transaction, so a doctor cannot win a race against a colleague who claimed the patient a moment earlier.
+
+### Unsaved clinical text
+
+Four frontend tests hold the C1 guarantee across a transfer: the draft key is tenant/branch/patient/visit/note and contains **no staff id**, so a transfer cannot re-key a draft; a refetch of the same note never syncs over local text whether dirty or not; unsaved text stays flagged so the doctor must resolve it explicitly; and the store holds content but never an author, which is why a transfer cannot misattribute one.
+
+**Not built:** a pending-transfer/accept handshake. There is no such state in the model, and the direct path the owner described (Dr A transfers to Dr B) is what exists. Building an accept step is a new workflow, flagged rather than invented.
+
+**Verification**: 94 queue security tests (up from 69), 539 backend, 195 frontend, both typechecks clean, 25 schema checks still green.
+
+**Reversibility**: Low for the code. The enum value cannot be dropped (as D-080).
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.
