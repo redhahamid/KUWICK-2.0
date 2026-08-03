@@ -1202,6 +1202,46 @@ The one direct service carrying a free-text result (`"Vitals stable, no acute fi
 
 ---
 
+## D-074 — S2: the last endpoint that took an id on trust
+
+`OrderServiceService.create()` read the visit and the catalogue entry through the tenant-scoped client and wrote immediately. RLS meant a foreign tenant's visit came back empty, so cross-**tenant** creation already failed. Nothing checked the **branch**.
+
+A staff member authorised only for Branch A could add a procedure — or a chargeable direct service — to a Branch B visit by naming its id. Same defect D-069 closed for visit creation and D-070 for appointment booking, on the third and last endpoint that had it.
+
+### The gate
+
+Everything resolves inside one tenant transaction, before anything is written:
+
+| Reference | Rule | Failure |
+|---|---|---|
+| Session | authenticated staff required | 401 |
+| Visit | visible in this tenant **and** actor authorised for its stored branch | 404 / 403 |
+| ServiceCatalog | visible in this tenant | 404 |
+
+`assertMayTouchVisit` is the project's existing central guard, not a local restatement: it loads the visit's own `clinicId` and checks it against the actor's branch context. The browser's idea of tenant, clinic or branch is never consulted — only the visit id, which is then resolved. The row is written from the resolved visit (`clinicId`, `staffId`) and the resolved catalogue entry (`code`, `name`, `orderType`).
+
+Both order types go through the identical gate. A direct service is chargeable, so "it is only a service" is a reason for more care, not less.
+
+`VisitService` was dropped from the constructor — creation no longer uses it, and an injected dependency that nothing calls is a misleading signal.
+
+### What was deliberately not changed
+
+Orders and Direct Services are not redesigned. The stored `orderType` still decides the created state (D-073), Start/Complete/Cancel are untouched, and the Procedure Queue filter is unchanged.
+
+### Two harness mistakes worth recording, because both were real damage
+
+**A security check must not reshape what it measures.** The first version of the live check created a second clinic when the tenant had only one, so that a cross-branch case would exist. Adding a branch flips a tenant from single- to multi-branch, and every staff member with a null home clinic and no explicit grant instantly loses access to everything — including the doctor the script was running as. The clinic was removed and the tenant restored. The check now seeds two fixture doctors into a tenant that is *already* multi-branch, which changes nobody else's access, and skips loudly if no such tenant exists.
+
+**A cleanup that cannot see its own rows deletes nothing and says nothing.** The seeded `service_catalog` rows were removed with only `app.bypass_tenant_scope` set. That table's policies key on `app.tenant_id` (the D-048 family), so the DELETE matched no rows, raised no error, and left a fixture row behind. A residue check run the same way *also* read zero and confirmed the false result. Both now set `app.tenant_id`, and cleanup re-reads and reports what remains rather than asserting success.
+
+**Verification:** `prisma/s2-order-branch-check.ts` — 18 checks against the running API, all passing, residue verified zero. Authorised branch succeeds for both types; unauthorised branch refused **403 for both**; foreign and nonexistent visits return an identical non-disclosing 404 with no database wording; foreign and unknown catalogue entries refused; order count unchanged across every rejection; no invoice line and no queue task from a rejected request; TASK_ORDER Start/Complete unchanged; D-073 direct-service behaviour unchanged; unauthenticated and forged-token calls refused 401.
+
+11 new unit tests. 439 backend tests (up from 428), 187 frontend, both typechecks clean.
+
+**Reversibility**: Low. Reverting re-opens cross-branch order and service creation.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.
@@ -1235,7 +1275,7 @@ Recorded at the owner's request after G4c1. **Nothing here is changed.** Each de
 - ~~`POST /visits` does not verify the patient belongs to the caller’s tenant (found during G4c1)~~ — **resolved by D-069.**
 - ~~`POST /appointments` does not verify the patient or clinic belongs to the caller’s tenant~~ — **resolved by D-070.**
 - ~~`STANDARD_SERVICE` carries a task lifecycle it does not need (found in G4.5c, D-071)~~ — **resolved by D-073.**
-- **One pre-existing duplicate invoice line, on a PAID invoice** (found in the D-073 audit). A single `TASK_ORDER` is charged twice on `DEMO-INV-00178`, which is `PAID`. New duplicates are now refused server-side, but this row predates the guard. Clearing it means editing a paid invoice's lines and total; leaving it blocks adding a `UNIQUE` index on `source_order_service_id`, which would be the stronger long-term protection. **Needs an owner decision**: correct the paid invoice (and how the correction is recorded), or accept the transactional guard as the permanent mechanism.
+- **One pre-existing duplicate invoice line, on a PAID invoice** (found in the D-073 audit). A single `TASK_ORDER` is charged twice on `DEMO-INV-00178`, which is `PAID`. **Owner decision (recorded):** do not modify or delete it — it stands as a legacy financial anomaly. The transactional duplicate guard stays; a database `UNIQUE` constraint waits until Kuwick has an audited credit-note / debit-note / financial-adjustment workflow able to correct a paid record safely.
 - **Three numbering allocators are still `count(*) + 1`** — invoice, claim batch and queue ticket. Detailed in the appendix above; not blocking today, but the invoice one will bite during populated G4.5 testing.
 - **The wider API RBAC gap remains open** (D-056). Clinical notes, observations, diagnoses, document authorisation (D-064) and the five invoice mutation routes (D-066) now have server-side role enforcement; the rest of the API does not.
 

@@ -10,9 +10,8 @@ import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-s
 import { currentTenantId } from '../core/tenant-context';
 import { saveUploadedFile } from '../core/file-storage';
 import { PrismaService } from '../core/prisma.service';
-import { VisitService } from './visit.service';
 import { assertCanVoidClinicalRecord, snapshotOf } from './clinical-authorization';
-import { assertMayTouchOrder, requireActor, withTenantTx } from './clinical-actor';
+import { assertMayTouchOrder, assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
 import { VoidClinicalRecordDto } from './dto/void-clinical-record.dto';
 import { CreateOrderServiceDto } from './dto/create-order-service.dto';
 import { CompleteOrderServiceDto } from './dto/complete-order-service.dto';
@@ -33,19 +32,59 @@ export class OrderServiceService {
   constructor(
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly rawPrisma: PrismaService,
-    private readonly visits: VisitService,
   ) {}
 
-  // Snapshots code/procedureName/orderType from the catalog at order time
-  // (docs/DATABASE_ARCHITECTURE.md §3) and defaults requestedByStaffId to
-  // the visit's attending physician — no separate doctor-picker UI this
-  // phase, since no real auth/user-identity exists yet (D-017).
+  /**
+   * Snapshots code/procedureName/orderType from the catalogue at order time
+   * (docs/DATABASE_ARCHITECTURE.md §3) and defaults requestedByStaffId to the
+   * visit's attending physician — no separate doctor-picker UI this phase
+   * (D-017).
+   *
+   * S2 (D-074) — resolve everything, in one tenant transaction, BEFORE writing.
+   *
+   * Creation used to read the visit and the catalogue entry through the
+   * tenant-scoped client and write straight away. RLS meant a foreign tenant's
+   * visit came back empty, so cross-TENANT creation already failed — but
+   * nothing checked the BRANCH. A staff member authorised only for Branch A
+   * could add an order or a chargeable service to a Branch B visit by naming
+   * its id, which is the same gap D-069 closed for visits and D-070 for
+   * appointments. This is the third and last of those endpoints.
+   *
+   * `assertMayTouchVisit` is the project's existing central guard: it loads
+   * the visit's OWN stored `clinicId` and checks it against the actor's branch
+   * context. The browser's idea of the tenant, clinic or branch is never
+   * consulted — only the visit id, which is then resolved.
+   *
+   * Both order types go through the identical gate. A direct service is
+   * chargeable, so "it is only a service" is a reason for more care, not less.
+   */
   async create(dto: CreateOrderServiceDto) {
-    const visit = await this.visits.findById(dto.visitId);
-    const catalogEntry = await this.prisma.serviceCatalog.findUnique({ where: { id: dto.serviceCatalogId } });
-    if (!catalogEntry) {
-      throw new NotFoundException('Service catalog entry not found');
-    }
+    const { visit, catalogEntry } = await withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+
+      // Resolves the visit AND the actor's right to work at its stored
+      // branch. 404 for a visit that does not exist or belongs to another
+      // tenant — identical responses, so this cannot be used to probe.
+      await assertMayTouchVisit(tx, dto.visitId, actor);
+
+      const resolvedVisit = await tx.visit.findUnique({
+        where: { id: dto.visitId },
+        select: { id: true, clinicId: true, staffId: true },
+      });
+      if (!resolvedVisit) {
+        throw new NotFoundException('Visit not found');
+      }
+
+      const resolvedCatalog = await tx.serviceCatalog.findUnique({
+        where: { id: dto.serviceCatalogId },
+        select: { id: true, code: true, name: true, orderType: true },
+      });
+      if (!resolvedCatalog) {
+        throw new NotFoundException('Service catalog entry not found');
+      }
+
+      return { visit: resolvedVisit, catalogEntry: resolvedCatalog };
+    });
 
     // G4.5s (D-073) — the two order types are created in different states,
     // because they mean different things.

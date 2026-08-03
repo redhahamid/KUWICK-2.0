@@ -1,7 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { OrderServiceStatus, ServiceOrderType } from '@prisma/client';
 import { OrderServiceService } from './order-service.service';
-import { VisitService } from './visit.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { tenantContextStorage } from '../core/tenant-context';
@@ -31,7 +30,6 @@ function createService(actor: Record<string, unknown> = DOCTOR) {
     // G4.5s (D-073) — cancel refuses a service that is already charged.
     invoiceLine: { findFirst: jest.fn().mockResolvedValue(null) },
   } as unknown as TenantScopedPrismaClient;
-  const visits = { findById: jest.fn() } as unknown as VisitService;
 
   // G3a — audited result removal runs through an interactive transaction.
   const tx = {
@@ -40,11 +38,15 @@ function createService(actor: Record<string, unknown> = DOCTOR) {
     clinic: { count: jest.fn().mockResolvedValue(1) },
     userClinicAccess: { findMany: jest.fn().mockResolvedValue([]) },
     orderService: { findUnique: jest.fn().mockResolvedValue({ clinicId: 'clinic-1' }) },
+    // S2 (D-074) — creation resolves the visit and the catalogue entry inside
+    // the tenant transaction, behind the central branch guard.
+    visit: { findUnique: jest.fn().mockResolvedValue({ id: 'visit-1', clinicId: 'clinic-1', staffId: 'staff-1' }) },
+    serviceCatalog: { findUnique: jest.fn() },
     attachment: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({ id: 'att-1' }), delete: jest.fn() },
   };
   const rawPrisma = { $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) } as unknown as PrismaService;
 
-  return { service: new OrderServiceService(prisma, rawPrisma, visits), prisma, visits, tx };
+  return { service: new OrderServiceService(prisma, rawPrisma), prisma, tx };
 }
 
 function withTenant<T>(fn: () => Promise<T>): Promise<T> {
@@ -64,9 +66,8 @@ const SAVED_RESULT = {
 
 describe('OrderServiceService', () => {
   it('create snapshots code/procedureName/orderType and defaults requestedByStaffId to the visit doctor', async () => {
-    const { service, prisma, visits } = createService();
-    (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', clinicId: 'clinic-1', staffId: 'staff-1' });
-    (prisma.serviceCatalog.findUnique as jest.Mock).mockResolvedValue({
+    const { service, prisma, tx } = createService();
+    tx.serviceCatalog.findUnique.mockResolvedValue({
       id: 'cat-1',
       code: 'XRAYCHEST',
       name: 'Chest X-Ray',
@@ -92,9 +93,8 @@ describe('OrderServiceService', () => {
   });
 
   it('create throws NotFoundException for an unknown serviceCatalogId', async () => {
-    const { service, prisma, visits } = createService();
-    (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', clinicId: 'clinic-1', staffId: 'staff-1' });
-    (prisma.serviceCatalog.findUnique as jest.Mock).mockResolvedValue(null);
+    const { service, prisma, tx } = createService();
+    tx.serviceCatalog.findUnique.mockResolvedValue(null);
 
     await expect(
       withTenant(() => service.create({ visitId: 'visit-1', serviceCatalogId: 'missing' })),
@@ -378,12 +378,13 @@ describe('direct services vs task orders', () => {
 
   const arrangeCreate = (orderType: ServiceOrderType) => {
     const ctx = createService();
-    (ctx.visits.findById as jest.Mock).mockResolvedValue({
+    // S2 (D-074) — both are resolved on the tenant transaction now.
+    ctx.tx.visit.findUnique.mockResolvedValue({
       id: 'visit-1',
       clinicId: 'clinic-1',
       staffId: 'staff-doctor',
     });
-    (ctx.prisma.serviceCatalog.findUnique as jest.Mock).mockResolvedValue(catalog(orderType));
+    ctx.tx.serviceCatalog.findUnique.mockResolvedValue(catalog(orderType));
     (ctx.prisma.orderService.create as jest.Mock).mockResolvedValue({ id: 'o1' });
     return ctx;
   };
@@ -543,5 +544,147 @@ describe('direct services vs task orders', () => {
     );
 
     await expect(service.cancel('o1', {})).rejects.toThrow(BadRequestException);
+  });
+});
+
+// =============================================================================
+// S2 (D-074) — branch integrity on order/service creation.
+//
+// RLS already stopped cross-TENANT creation, because a foreign visit reads
+// back empty. Nothing checked the BRANCH: a staff member authorised only for
+// Branch A could add an order — or a chargeable direct service — to a Branch B
+// visit by naming its id. This is the same gap D-069 closed for visits and
+// D-070 for appointments, on the last endpoint that still had it.
+// =============================================================================
+describe('order/service creation branch integrity', () => {
+  const CATALOG = (orderType: ServiceOrderType) => ({
+    id: 'cat-1',
+    code: 'CONS',
+    name: 'General Consultation',
+    orderType,
+  });
+
+  // A multi-branch tenant: the actor is homed at clinic-1 with no extra
+  // grants, and the visit under test lives wherever the test says.
+  const arrange = (visitClinicId: string, orderType: ServiceOrderType = ServiceOrderType.TASK_ORDER) => {
+    const ctx = createService();
+    ctx.tx.clinic.count.mockResolvedValue(3);
+    ctx.tx.visit.findUnique.mockResolvedValue({
+      id: 'visit-1',
+      clinicId: visitClinicId,
+      staffId: 'staff-1',
+    });
+    ctx.tx.serviceCatalog.findUnique.mockResolvedValue(CATALOG(orderType));
+    (ctx.prisma.orderService.create as jest.Mock).mockResolvedValue({ id: 'o1' });
+    return ctx;
+  };
+
+  const add = (ctx: ReturnType<typeof createService>) =>
+    withTenant(() => ctx.service.create({ visitId: 'visit-1', serviceCatalogId: 'cat-1' }));
+
+  it('1. a TASK_ORDER on an authorised branch succeeds', async () => {
+    const ctx = arrange('clinic-1', ServiceOrderType.TASK_ORDER);
+
+    await expect(add(ctx)).resolves.toBeDefined();
+    expect(ctx.prisma.orderService.create).toHaveBeenCalled();
+  });
+
+  it('2. a STANDARD_SERVICE on an authorised branch succeeds', async () => {
+    const ctx = arrange('clinic-1', ServiceOrderType.STANDARD_SERVICE);
+
+    await expect(add(ctx)).resolves.toBeDefined();
+    const data = (ctx.prisma.orderService.create as jest.Mock).mock.calls[0][0].data;
+    // e4ae300's behaviour is unchanged by the new gate.
+    expect(data.status).toBe(OrderServiceStatus.COMPLETED);
+  });
+
+  it('3. an unauthorised branch is refused', async () => {
+    const ctx = arrange('clinic-OTHER');
+
+    await expect(add(ctx)).rejects.toThrow(ForbiddenException);
+  });
+
+  // Both types, because a direct service is chargeable — "it is only a
+  // service" is a reason for more care, not less.
+  it('3b. an unauthorised branch is refused for a direct service too', async () => {
+    const ctx = arrange('clinic-OTHER', ServiceOrderType.STANDARD_SERVICE);
+
+    await expect(add(ctx)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('4. a foreign or unknown visit is a non-disclosing 404', async () => {
+    const ctx = createService();
+    // RLS makes another tenant's visit genuinely absent, so this is the same
+    // response an id that never existed gets.
+    ctx.tx.visit.findUnique.mockResolvedValue(null);
+
+    await expect(add(ctx)).rejects.toThrow(NotFoundException);
+  });
+
+  it('5. a foreign or unknown service catalogue entry is refused', async () => {
+    const ctx = arrange('clinic-1');
+    ctx.tx.serviceCatalog.findUnique.mockResolvedValue(null);
+
+    await expect(add(ctx)).rejects.toThrow(NotFoundException);
+  });
+
+  it('6. no OrderService survives a rejected request', async () => {
+    for (const ctx of [arrange('clinic-OTHER'), arrange('clinic-OTHER', ServiceOrderType.STANDARD_SERVICE)]) {
+      await expect(add(ctx)).rejects.toThrow();
+      expect(ctx.prisma.orderService.create).not.toHaveBeenCalled();
+    }
+
+    const unknownVisit = createService();
+    unknownVisit.tx.visit.findUnique.mockResolvedValue(null);
+    await expect(add(unknownVisit)).rejects.toThrow();
+    expect(unknownVisit.prisma.orderService.create).not.toHaveBeenCalled();
+
+    const unknownService = arrange('clinic-1');
+    unknownService.tx.serviceCatalog.findUnique.mockResolvedValue(null);
+    await expect(add(unknownService)).rejects.toThrow();
+    expect(unknownService.prisma.orderService.create).not.toHaveBeenCalled();
+  });
+
+  // The whole gate runs BEFORE the write, so a rejection cannot leave a
+  // half-made record behind for a later step to pick up.
+  it('7. validation happens before any write', async () => {
+    const ctx = arrange('clinic-OTHER');
+
+    await expect(add(ctx)).rejects.toThrow(ForbiddenException);
+
+    expect(ctx.prisma.orderService.create).not.toHaveBeenCalled();
+    expect(ctx.prisma.orderService.update).not.toHaveBeenCalled();
+    expect(ctx.prisma.attachment.create).not.toHaveBeenCalled();
+  });
+
+  it('an unauthenticated caller cannot create anything', async () => {
+    const ctx = arrange('clinic-1');
+    ctx.tx.staff.findUnique.mockResolvedValue(null);
+
+    await expect(add(ctx)).rejects.toThrow();
+    expect(ctx.prisma.orderService.create).not.toHaveBeenCalled();
+  });
+
+  // The row is built from the RESOLVED visit, never from anything the caller
+  // could have supplied.
+  it('the stored row takes its branch from the visit, not the request', async () => {
+    const ctx = arrange('clinic-1');
+
+    await add(ctx);
+
+    const data = (ctx.prisma.orderService.create as jest.Mock).mock.calls[0][0].data;
+    expect(data.clinicId).toBe('clinic-1');
+    expect(data.requestedByStaffId).toBe('staff-1');
+    expect(data.orderType).toBe(ServiceOrderType.TASK_ORDER);
+  });
+
+  it('the branch check reads the visit’s own stored clinic', async () => {
+    const ctx = arrange('clinic-1');
+
+    await add(ctx);
+
+    expect(ctx.tx.visit.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'visit-1' } }),
+    );
   });
 });
