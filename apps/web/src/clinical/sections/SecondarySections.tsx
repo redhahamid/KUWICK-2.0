@@ -7,6 +7,15 @@ interface SecondarySectionsProps {
   visit: Visit;
   patientName?: string;
   patientIdentifier?: string;
+  /**
+   * G4.5d (D-075) — optionally controlled, so the Visit Completion Bar can
+   * open the full workspace it summarises. Left uncontrolled these keep their
+   * own state and behave exactly as before.
+   */
+  documentsOpen?: boolean;
+  invoiceOpen?: boolean;
+  onToggleDocuments?: () => void;
+  onToggleInvoice?: () => void;
 }
 
 /**
@@ -18,21 +27,44 @@ interface SecondarySectionsProps {
  * D-066). Keeping them below the fold is what makes room for the note and the
  * action rail to be visible together above it — and neither loses any
  * behaviour by being here rather than in the rail.
+ *
+ * G4.5d (D-075) — the *summary* of both now lives in the completion bar at the
+ * top. These stay as the full detail: the document list, void history, other
+ * templates, and every invoice line. Nothing moved; a shortcut was added.
  */
-export function SecondarySections({ visit, patientName, patientIdentifier }: SecondarySectionsProps) {
-  const [openDocuments, setOpenDocuments] = useState(false);
-  const [openInvoice, setOpenInvoice] = useState(false);
+export function SecondarySections({
+  visit,
+  patientName,
+  patientIdentifier,
+  documentsOpen,
+  invoiceOpen,
+  onToggleDocuments,
+  onToggleInvoice,
+}: SecondarySectionsProps) {
+  const [ownDocuments, setOwnDocuments] = useState(false);
+  const [ownInvoice, setOwnInvoice] = useState(false);
+
+  const docsExpanded = documentsOpen ?? ownDocuments;
+  const invExpanded = invoiceOpen ?? ownInvoice;
 
   return (
     <div className="kw-secondary-sections">
-      <DocumentsSection
-        visit={visit}
-        patientName={patientName}
-        patientIdentifier={patientIdentifier}
-        expanded={openDocuments}
-        onToggle={() => setOpenDocuments((prev) => !prev)}
-      />
-      <InvoiceSection visit={visit} expanded={openInvoice} onToggle={() => setOpenInvoice((prev) => !prev)} />
+      <div id="kw-anchor-documents">
+        <DocumentsSection
+          visit={visit}
+          patientName={patientName}
+          patientIdentifier={patientIdentifier}
+          expanded={docsExpanded}
+          onToggle={onToggleDocuments ?? (() => setOwnDocuments((prev) => !prev))}
+        />
+      </div>
+      <div id="kw-anchor-invoice">
+        <InvoiceSection
+          visit={visit}
+          expanded={invExpanded}
+          onToggle={onToggleInvoice ?? (() => setOwnInvoice((prev) => !prev))}
+        />
+      </div>
     </div>
   );
 }

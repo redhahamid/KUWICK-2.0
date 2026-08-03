@@ -44,6 +44,7 @@ import { useIsDesktop } from '../core/hooks/useMediaQuery';
 import { useRecordViewLayoutStore } from './record-view-layout-store';
 import { CanvasPatientHeader } from './CanvasPatientHeader';
 import { CanvasQuickNav } from './CanvasQuickNav';
+import { VisitCompletionBar } from './VisitCompletionBar';
 import { PatientSummarySidebar } from './PatientSummarySidebar';
 import { VisitHistoryPanel } from './history/VisitHistoryPanel';
 // G1 (D-058) — the four *SummaryCard components are deliberately still in the
@@ -82,6 +83,9 @@ export function PatientDashboardPage() {
   // G4 (D-067) — reviewing previous visits is its own surface, and opening it
   // changes nothing about the consultation in progress.
   const [historyOpen, setHistoryOpen] = useState(false);
+  // G4.5d (D-075) — lifted so the completion bar can open the full sections.
+  const [documentsOpen, setDocumentsOpen] = useState(false);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [selectedVisitId, setSelectedVisitId] = useState<string>();
   const [activeRecordTab, setActiveRecordTab] = useState('notes');
   const layout = useRecordViewLayoutStore((state) => state.layout);
@@ -174,6 +178,24 @@ export function PatientDashboardPage() {
   // fold instead of competing with the note.
   const canvasCompact = layout === 'canvas' && Boolean(selectedVisit) && isDesktop;
 
+  /**
+   * G4.5d (D-075) — the completion bar summarises; this is how it hands over
+   * to the full surface. Expand the section, then bring it into view.
+   *
+   * `scrollIntoView`, never a hash: a hash pushes a history entry and C1's
+   * unsaved-note guard keys on navigation, so revealing a section further down
+   * the same record must not look like leaving it (same rule as the mobile
+   * quick-nav, D-072).
+   */
+  const revealSection = (which: 'documents' | 'invoice') => {
+    if (which === 'documents') setDocumentsOpen(true);
+    else setInvoiceOpen(true);
+    // After the section has expanded, so the scroll lands on its real height.
+    window.setTimeout(() => {
+      document.getElementById(`kw-anchor-${which}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+  };
+
   const layoutSwitch = (
     <Segmented
       size="small"
@@ -189,12 +211,24 @@ export function PatientDashboardPage() {
   return (
     <div>
       {layout === 'canvas' && selectedVisit ? (
-        <CanvasPatientHeader
-          patient={patient}
-          visit={selectedVisit}
-          onReviewHistory={() => setHistoryOpen(true)}
-          layoutControl={layoutSwitch}
-        />
+        <>
+          <CanvasPatientHeader
+            patient={patient}
+            visit={selectedVisit}
+            onReviewHistory={() => setHistoryOpen(true)}
+            layoutControl={layoutSwitch}
+          />
+          {/* G4.5d (D-075) — how the consultation ENDS, immediately below the
+              context band instead of at the bottom of the page. A summary and
+              entry points only; the full workspaces stay below the Canvas. */}
+          <VisitCompletionBar
+            visit={selectedVisit}
+            patientName={patient.name}
+            patientIdentifier={patient.identifierValue}
+            onOpenDocuments={() => revealSection('documents')}
+            onOpenInvoice={() => revealSection('invoice')}
+          />
+        </>
       ) : (
       <Card style={{ marginBottom: 16 }}>
         <Row gutter={[24, 16]}>
@@ -460,6 +494,10 @@ export function PatientDashboardPage() {
               visit={selectedVisit}
               patientName={patient.name}
               patientIdentifier={patient.identifierValue}
+              documentsOpen={documentsOpen}
+              invoiceOpen={invoiceOpen}
+              onToggleDocuments={() => setDocumentsOpen((prev) => !prev)}
+              onToggleInvoice={() => setInvoiceOpen((prev) => !prev)}
             />
           </Col>
         )}

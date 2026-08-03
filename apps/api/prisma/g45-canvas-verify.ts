@@ -133,6 +133,43 @@ const MEASURE_JS = `(() => {
       }
     : null;
 
+  // G4.5d (D-075) — the Visit Completion Bar. Everything below is measured
+  // BEFORE any scrolling: the whole point is that a GP can issue an MC and
+  // read the bill without hunting for them.
+  var bar = document.querySelector('.kw-completion-bar');
+  var barBtns = bar ? bar.querySelectorAll('.ant-btn') : [];
+  var barLabels = [];
+  var barSmall = 0;
+  for (var m = 0; m < barBtns.length; m++) {
+    var br = barBtns[m].getBoundingClientRect();
+    barLabels.push({
+      text: (barBtns[m].textContent || '').trim(),
+      inFold: br.top >= 0 && br.bottom <= vh,
+      h: Math.round(br.height)
+    });
+    if (br.height < 44) barSmall++;
+  }
+  var barText = bar ? (bar.textContent || '').replace(/\\s+/g, ' ').trim() : null;
+
+  // No control on this bar may move money. Anything matching these words
+  // would mean the billing surface leaked into the clinical band.
+  var forbidden = [];
+  for (var n = 0; n < barBtns.length; n++) {
+    var label = (barBtns[n].textContent || '').trim().toLowerCase();
+    if (/\\bpay\\b|\\bcancel\\b|quick add|add line|remove line|refund|void/.test(label)) {
+      forbidden.push(label);
+    }
+  }
+
+  // The completion bar must not overlap the sticky quick-nav on a phone.
+  var navEl = document.querySelector('.kw-quick-nav');
+  var overlapsQuickNav = false;
+  if (bar && navEl && window.getComputedStyle(navEl).display !== 'none') {
+    var b = bar.getBoundingClientRect();
+    var nv = navEl.getBoundingClientRect();
+    overlapsQuickNav = b.bottom > nv.top && b.top < nv.bottom;
+  }
+
   var mainEl = document.querySelector('.kw-canvas-main');
   var railEl = document.querySelector('.kw-canvas-rail');
   return {
@@ -153,6 +190,15 @@ const MEASURE_JS = `(() => {
       ? Math.abs(mainEl.getBoundingClientRect().width - railEl.getBoundingClientRect().width) < 4
       : null,
     quickNav: navLinks,
+    completionBar: {
+      present: Boolean(bar),
+      buttons: barLabels,
+      allButtonsInFold: barLabels.length > 0 && barLabels.every(function (b) { return b.inFold; }),
+      moneyMutatingControls: forbidden,
+      buttonsUnder44px: barSmall,
+      overlapsQuickNav: overlapsQuickNav,
+      text: barText
+    },
     fonts: fonts,
     attribution: attribution,
     controlsUnder44px: small,

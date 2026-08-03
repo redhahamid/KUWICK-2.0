@@ -26,6 +26,15 @@ interface CreateDocumentDrawerProps {
   patientName?: string;
   patientIdentifier?: string;
   onClose: () => void;
+  /**
+   * G4.5d (D-075) — the type to land on when the drawer opens, so the
+   * completion bar's "+ MC" arrives on the MC form instead of a chooser.
+   *
+   * A preselection, NOT a separate creation path: the drawer, its templates,
+   * its validation and its authorisation rules are the same ones the
+   * Documents Workspace uses, and the doctor can still change the type here.
+   */
+  initialType?: string;
 }
 
 /**
@@ -46,8 +55,9 @@ export function CreateDocumentDrawer({
   patientName,
   patientIdentifier,
   onClose,
+  initialType,
 }: CreateDocumentDrawerProps) {
-  const [typeKey, setTypeKey] = useState<string>('MC');
+  const [typeKey, setTypeKey] = useState<string>(initialType ?? 'MC');
   const [content, setContent] = useState('');
   const [contentTouched, setContentTouched] = useState(false);
   const [issuedByStaffId, setIssuedByStaffId] = useState<string | undefined>(visit.staffId);
@@ -146,7 +156,9 @@ export function CreateDocumentDrawer({
 
   useEffect(() => {
     if (!open) return;
-    setTypeKey('MC');
+    // Reopening resets everything, including the type — so a quick action
+    // always lands where it says it will, whatever the last use left behind.
+    setTypeKey(initialType ?? 'MC');
     setContent('');
     setContentTouched(false);
     setIssuedByStaffId(visit.staffId);

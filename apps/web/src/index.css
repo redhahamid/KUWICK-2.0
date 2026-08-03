@@ -296,6 +296,36 @@
   margin-left: auto;
 }
 
+/* G4.5d (D-075) — the Visit Completion Bar.
+   One compact strip under the context band: what the consultation still owes
+   (documents, the bill) and the way into each. It wraps into two rows on a
+   narrow desktop rather than shrinking its text, and it takes no height from
+   the note — the note's height is declared separately and untouched. */
+.kw-completion-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+  padding: 6px 14px;
+  margin-bottom: 8px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+}
+
+.kw-completion-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.kw-completion-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
 /* Recorded observations only — see ClinicalVitalsStrip. */
 .kw-vitals-strip {
   display: flex;
@@ -413,6 +443,30 @@
     height: 44px;
     min-width: 44px;
     min-height: 44px;
+  }
+
+  /* The completion bar stacks into two labelled rows and takes full-width
+     44px targets. It sits ABOVE the sticky quick-nav in the document, so it
+     scrolls away rather than covering it — the two never overlap. */
+  .kw-completion-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 8px 10px;
+  }
+
+  .kw-completion-group {
+    align-items: flex-start;
+  }
+
+  .kw-completion-actions {
+    width: 100%;
+  }
+
+  /* Named, never an unexplained icon: MC, Referral, Documents, Invoice. */
+  .kw-completion-actions .ant-btn {
+    min-height: 44px;
+    flex: 1 1 auto;
   }
 
   .kw-quick-nav {
