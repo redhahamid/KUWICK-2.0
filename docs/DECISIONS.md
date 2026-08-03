@@ -964,6 +964,57 @@ The attending staff member is **not** required to hold a clinical role. D-044 es
 
 ---
 
+## D-070 — S1: the same trust boundary, applied to appointment booking
+
+The D-069 audit found `AppointmentService.create()` carrying the same defect visit creation had: it wrote `dto.patientId` and `dto.clinicId` straight into the row. The booking validator did real work — active doctor, service qualification, roster, leave exceptions, overlap, slot capacity — but never asked whether the **patient** or the **branch** belonged to the caller. A foreign key is enforced below row-level security, so an appointment could be booked against another tenant's patient.
+
+### One copy of the rules, not two
+
+The resolvers were extracted from `VisitService` into `clinical-references.ts` and are now used by both. Two implementations of a tenant boundary is how one of them quietly becomes the weaker one, so `VisitService` was refactored onto the shared helpers in the same change rather than left with a private copy.
+
+Booking now resolves, inside one tenant transaction and **before** the validator runs or any row is written:
+
+| Reference | Rule | Failure |
+|---|---|---|
+| Session | authenticated staff required | 403 |
+| Patient | visible in this tenant | 404 |
+| Clinic | visible in this tenant + actor branch access | 404 / 403 |
+| Doctor / staff | visible, `active`, authorised for that branch | 404 / 400 |
+| Service | visible in this tenant, still active | 404 / 400 |
+
+The row is then written from the **resolved** entities, never the request values.
+
+### What was deliberately left alone
+
+Every existing booking rule still runs, unchanged and in the same order relative to each other — qualification, roster, exceptions, overlap, capacity. Reference resolution is a gate in **front** of them, not a replacement for any. The appointment UI, calendar, schedules, capacity, reminders, status lifecycle and the arrival-to-queue behaviour are untouched. Non-disclosure matches D-069: a foreign id and an unknown id return the identical 404.
+
+**Verification:** `prisma/s1-appointment-integrity-check.ts` — 16 checks against the real database and HTTP API across two tenants. Cross-tenant patient, clinic, staff and service all refused; cross-tenant and nonexistent indistinguishable; inactive doctor refused; anonymous refused; **no appointment row and no queue ticket survives any rejected attempt** (11 → 11 tickets across 6 rejections); no Prisma or database text in any response; overlap still 409 and qualification still 422; and arrival still creates a visit through the approved allocator (`V-000335`). 411 backend tests, 187 frontend, both typechecks clean, zero fixture residue.
+
+**Reversibility**: Low. Reverting re-opens cross-tenant appointment booking.
+
+---
+
+## Appendix — deletion-sensitive numbering still outstanding (report only)
+
+Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.
+
+| | Invoice | Claim batch | Queue ticket |
+|---|---|---|---|
+| **Model / table** | `Invoice` / `invoices` | `ClaimBatch` / `claim_batches` | `QueueTicket` / `queue_tickets` |
+| **Visible format** | `INV-000001` | `CLAIM-000001` | `ticketNumber` int → `displayNumber` `W001`, `A001`, … |
+| **Allocation** | `invoice.count() + 1` | `claimBatch.count() + 1` | `count()+1` filtered to today, per clinic **per queue type** |
+| **Unique constraint** | `@@unique([tenantId, invoiceNumber])` | `@@unique([tenantId, batchNumber])` | **none** — indexes only |
+| **Scope** | tenant | tenant | intended: clinic + queue type + day |
+| **Deletion possible?** | No API delete route (cancel only), but fixtures, data migration and manual correction all delete rows — Kuwick's own fixture ledger does | Same | Yes, and rows are naturally short-lived |
+| **Impact of collision** | Unique index rejects → **invoice creation fails with a 500**; the clinic cannot bill | Batch creation fails; panel claims cannot be submitted | **No constraint to reject it** — two patients silently share a display number, e.g. two "W001" called to different rooms |
+| **Reuse `VisitNumberCounter`?** | **Yes, directly** — same tenant scope, same shape; needs a series key or a second counter table | **Yes, directly** | **Partly.** The key would be (tenant, clinic, queueType, date) and it must reset daily, which a monotonic counter does not do by itself. It also needs a unique constraint before a counter is worth adding |
+
+**Does any of this block Medical Record testing?** Not today: measured across all four tenants, `count` equals `max` for both invoices and claim batches, so no collision is pending. It becomes blocking the moment a populated fixture deletes an invoice — which Kuwick's own fixtures do — so it will bite during G4.5 populated testing rather than before it.
+
+**Suggested order if approved:** invoice first (highest impact, direct reuse), claim batch second (same change), queue ticket last and separately, because it needs a unique constraint and a daily-reset key design first.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 - ~~Diagnosis deletion is a hard delete with no audit trail (D-059)~~ — **resolved by D-061.**
@@ -974,7 +1025,8 @@ The attending staff member is **not** required to hold a clinical role. D-044 es
 - **Orders/procedures have no delete route at all** — only `cancel`, which sets `CANCELLED` and stores `cancelReason`. This one is already acceptable; it lacks a cancelling-actor field, which is a smaller gap.
 - ~~Visit numbering breaks after any deletion (found in G4, D-067)~~ — **resolved by D-068.**
 - ~~`POST /visits` does not verify the patient belongs to the caller’s tenant (found during G4c1)~~ — **resolved by D-069.**
-- **`POST /appointments` does not verify the patient or clinic belongs to the caller’s tenant** (found during the D-069 audit): `AppointmentService.create()` writes `dto.patientId` and `dto.clinicId` unresolved. The booking validator checks doctor qualification, schedule and capacity, but never the patient or the branch — so the same cross-tenant insert that D-069 closed for visits is still possible for appointments. Recommended as a small dedicated checkpoint reusing the D-069 resolve-then-write pattern.
+- ~~`POST /appointments` does not verify the patient or clinic belongs to the caller’s tenant~~ — **resolved by D-070.**
+- **Three numbering allocators are still `count(*) + 1`** — invoice, claim batch and queue ticket. Detailed in the appendix above; not blocking today, but the invoice one will bite during populated G4.5 testing.
 - **The wider API RBAC gap remains open** (D-056). Clinical notes, observations, diagnoses, document authorisation (D-064) and the five invoice mutation routes (D-066) now have server-side role enforcement; the rest of the API does not.
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:

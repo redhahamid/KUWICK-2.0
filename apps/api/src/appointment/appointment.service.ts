@@ -11,6 +11,14 @@ import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 import { CancelAppointmentDto } from './dto/cancel-appointment.dto';
 import { QueueTicketService } from '../clinical/queue-ticket.service';
+import { PrismaService } from '../core/prisma.service';
+import { requireActor, withTenantTx } from '../clinical/clinical-actor';
+import {
+  resolveActiveStaffForClinic,
+  resolveClinicForActor,
+  resolvePatient,
+  resolveService,
+} from '../clinical/clinical-references';
 
 // No billing-type input exists at the point an appointment is marked
 // arrived (unlike the front-desk "Add to Daily Queue" walk-in flow, which
@@ -36,6 +44,7 @@ export class AppointmentService {
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly bookingValidator: AppointmentBookingValidator,
     private readonly queueTickets: QueueTicketService,
+    private readonly rawPrisma: PrismaService,
   ) {}
 
   async create(dto: CreateAppointmentDto) {
@@ -43,10 +52,34 @@ export class AppointmentService {
     const scheduledEnd = new Date(dto.scheduledEnd);
     assertValidWindow(scheduledStart, scheduledEnd);
 
+    // S1 (D-070) — resolve every browser-supplied relationship under the
+    // authenticated tenant BEFORE anything is written or any side effect runs.
+    //
+    // This endpoint previously wrote `dto.patientId` and `dto.clinicId`
+    // straight into the row. The booking validator checked the doctor's
+    // qualification, the schedule and the capacity — all real rules — but
+    // never asked whether the patient or the branch belonged to the caller.
+    // A foreign key is enforced below row-level security, so an appointment
+    // could be booked against another tenant's patient. Same defect class as
+    // D-069, same fix, and deliberately the SAME helpers rather than a second
+    // copy of the rules.
+    const resolved = await withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      const patient = await resolvePatient(tx, dto.patientId);
+      const clinic = await resolveClinicForActor(tx, dto.clinicId, actor);
+      const staff = await resolveActiveStaffForClinic(tx, dto.staffId, clinic.id);
+      const service = await resolveService(tx, dto.serviceId);
+      return { patient, clinic, staff, service };
+    });
+
+    // Existing booking rules are untouched and still run: doctor
+    // qualification, working hours, schedule exceptions, overlap and slot
+    // capacity. Reference resolution is an additional gate in front of them,
+    // not a replacement for any of them.
     await this.bookingValidator.validate({
-      clinicId: dto.clinicId,
-      staffId: dto.staffId,
-      serviceId: dto.serviceId,
+      clinicId: resolved.clinic.id,
+      staffId: resolved.staff.id,
+      serviceId: resolved.service.id,
       scheduledStart,
       scheduledEnd,
     });
@@ -59,10 +92,10 @@ export class AppointmentService {
     return this.prisma.appointment.create({
       data: {
         tenantId: currentTenantId(),
-        clinicId: dto.clinicId,
-        patientId: dto.patientId,
-        staffId: dto.staffId,
-        serviceId: dto.serviceId,
+        clinicId: resolved.clinic.id,
+        patientId: resolved.patient.id,
+        staffId: resolved.staff.id,
+        serviceId: resolved.service.id,
         source: dto.source,
         status: initialStatus,
         scheduledStart,
