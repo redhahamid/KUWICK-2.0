@@ -1309,6 +1309,12 @@ model Visit {
   doctorCompletedAt          DateTime?                    @map("doctor_completed_at")
   doctorCompletedByStaffId   String?                      @map("doctor_completed_by_staff_id")
   doctorCompletedDestination DoctorCompletionDestination? @map("doctor_completed_destination")
+  // G4.5d3c-2b (D-087) — WHY that destination. READY_FOR_PAYMENT has two
+  // meanings (a real balance, or billing nobody has worked out yet) and the
+  // queue status cannot tell them apart. Stored rather than re-derived: the
+  // reason must survive a refresh and must NOT change when prescriptions or
+  // invoices move on afterwards.
+  doctorCompletedRoutingReason VisitRoutingReason? @map("doctor_completed_routing_reason")
 
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
@@ -1347,6 +1353,20 @@ model Visit {
  * NONE means the doctor determined no dispensing and no patient-facing
  * payment work remained — it does NOT mean the visit is closed.
  */
+/**
+ * G4.5d3c-2b (D-087) — the recorded reason a visit was routed where it was.
+ *
+ * NO_DOWNSTREAM_WORK is not the same as "the visit is finished": it means the
+ * doctor left nothing outstanding, and closing the visit is still a separate
+ * explicit act.
+ */
+enum VisitRoutingReason {
+  DISPENSARY_REQUIRED
+  PATIENT_PAYMENT_REQUIRED
+  BILLING_REVIEW_REQUIRED
+  NO_DOWNSTREAM_WORK
+}
+
 enum DoctorCompletionDestination {
   DISPENSARY
   PAYMENT

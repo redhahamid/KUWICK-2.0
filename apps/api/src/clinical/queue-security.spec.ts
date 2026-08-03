@@ -9,6 +9,7 @@ import { QueueTicketService } from './queue-ticket.service';
 import { VisitService } from './visit.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
+import { VisitCompletionService } from './visit-completion.service';
 import { tenantContextStorage } from '../core/tenant-context';
 
 // ===========================================================================
@@ -74,12 +75,13 @@ function createService(actor: Record<string, unknown> | null = FRONT_DESK) {
     queueTicket: { findUnique: jest.fn(), update: jest.fn() },
     visitWorkflowEvent: { create: jest.fn() },
   };
+  const visitCompletion = { completeVisit: jest.fn().mockResolvedValue({ visitId: 'visit-1' }) } as unknown as VisitCompletionService;
   const rawPrisma = {
     $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
   } as unknown as PrismaService;
 
   return {
-    service: new QueueTicketService(prisma, rawPrisma, visits),
+    service: new QueueTicketService(prisma, rawPrisma, visits, visitCompletion),
     prisma,
     visits,
     tx,
@@ -433,14 +435,11 @@ describe('S3D — legal transitions', () => {
 
   const ILLEGAL: Array<[QueueTicketStatus, string, (ctx: Ctx) => Promise<unknown>]> = [
     [QueueTicketStatus.WAITING, 'moveToDispensary', (c) => c.service.moveToDispensary('t1')],
-    [QueueTicketStatus.WAITING, 'complete', (c) => c.service.complete('t1')],
-    [QueueTicketStatus.IN_CONSULTATION, 'complete', (c) => c.service.complete('t1')],
     [QueueTicketStatus.COMPLETED, 'arrived', (c) => c.service.arrived('t1')],
     [QueueTicketStatus.COMPLETED, 'moveToDispensary', (c) => c.service.moveToDispensary('t1')],
     [QueueTicketStatus.COMPLETED, 'cancel', (c) => c.service.cancel('t1', { cancelReason: 'x' })],
     [QueueTicketStatus.CANCELLED, 'arrived', (c) => c.service.arrived('t1')],
     [QueueTicketStatus.CANCELLED, 'moveToDispensary', (c) => c.service.moveToDispensary('t1')],
-    [QueueTicketStatus.CANCELLED, 'complete', (c) => c.service.complete('t1')],
     [QueueTicketStatus.DISPENSARY_PAYMENT, 'arrived', (c) => c.service.arrived('t1')],
   ];
 
@@ -470,13 +469,11 @@ describe('S3D — legal transitions', () => {
     });
   });
 
-  it('DISPENSARY_PAYMENT -> COMPLETED remains functional', async () => {
+  it('DISPENSARY_PAYMENT -> COMPLETED is now VisitCompletionService s decision', async () => {
     const ctx = ticketIn(QueueTicketStatus.DISPENSARY_PAYMENT);
     await withTenant(() => ctx.service.complete('t1'));
-    expect(ctx.tx.queueTicket.update).toHaveBeenCalledWith({
-      where: { id: 't1' },
-      data: { status: QueueTicketStatus.COMPLETED },
-    });
+    // No transition is written here any more - see the delegation block below.
+    expect(ctx.tx.queueTicket.update).not.toHaveBeenCalled();
   });
 
   it('a repeated move to dispensary is idempotent, not an error', async () => {
@@ -494,404 +491,46 @@ describe('S3D — legal transitions', () => {
 
   it('an illegal transition leaves the visit untouched', async () => {
     const ctx = ticketIn(QueueTicketStatus.WAITING);
-    await expect(withTenant(() => ctx.service.complete('t1'))).rejects.toThrow(BadRequestException);
+    await expect(withTenant(() => ctx.service.moveToDispensary('t1'))).rejects.toThrow(BadRequestException);
     expect(ctx.prisma.visit.update).not.toHaveBeenCalled();
     expect(ctx.tx.visit.update).not.toHaveBeenCalled();
   });
 });
 
-describe('S3E — atomic completion', () => {
-  it('both writes happen inside ONE transaction', async () => {
+describe('S3E/D-087 — completion now DELEGATES, and cannot bypass', () => {
+  // S3 made this route atomic and authorised. What it still did was set
+  // Visit.checkOutAt after checking ONE thing — that the ticket was in
+  // DISPENSARY_PAYMENT — so it would close a visit with medication
+  // undispensed, a bill nobody had raised, or a doctor phase that never
+  // happened. D-087 removed the implementation entirely rather than teach a
+  // second copy of the rules.
+  it('complete() delegates to the visit-completion service', async () => {
     const ctx = createService();
-    setTicket(ctx, { id: 't1', visitId: 'visit-1', status: QueueTicketStatus.DISPENSARY_PAYMENT });
+    setTicket(ctx, { id: 't1', visitId: 'visit-1', clinicId: 'clinic-1', status: QueueTicketStatus.DISPENSARY_PAYMENT });
 
     await withTenant(() => ctx.service.complete('t1'));
 
-    expect(ctx.tx.queueTicket.update).toHaveBeenCalledTimes(1);
-    expect(ctx.tx.visit.update).toHaveBeenCalledWith({
-      where: { id: 'visit-1' },
-      data: { checkOutAt: expect.any(Date) },
-    });
-    // The separate, unprotected second write is gone.
-    expect(ctx.visits.checkOut).not.toHaveBeenCalled();
-    expect(ctx.prisma.queueTicket.update).not.toHaveBeenCalled();
-  });
-
-  it('a failing visit update aborts the whole completion', async () => {
-    const ctx = createService();
-    setTicket(ctx, { id: 't1', visitId: 'visit-1', status: QueueTicketStatus.DISPENSARY_PAYMENT });
-    ctx.tx.visit.update.mockRejectedValue(new Error('connection lost'));
-
-    await expect(withTenant(() => ctx.service.complete('t1'))).rejects.toThrow();
-    // The ticket update was ISSUED, but inside the same transaction as the
-    // failure, so Postgres discards it. What this asserts is that the failure
-    // PROPAGATES rather than being swallowed — the old two-call version
-    // returned success and left a completed ticket on an open visit.
-  });
-
-  it('a repeated completion is a no-op, not a second checkout', async () => {
-    const ctx = createService();
-    setTicket(ctx, { id: 't1', visitId: 'visit-1', status: QueueTicketStatus.COMPLETED });
-
-    await expect(withTenant(() => ctx.service.complete('t1'))).resolves.toBeDefined();
-
+    expect((ctx as any).service).toBeDefined();
+    // The unsafe writes are gone from this path completely.
+    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
     expect(ctx.tx.queueTicket.update).not.toHaveBeenCalled();
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
+    expect(ctx.prisma.visit.update).not.toHaveBeenCalled();
   });
 
-  it('the status is re-read INSIDE the transaction, so a stale read cannot win', async () => {
+  it('complete() never writes checkOutAt itself', async () => {
     const ctx = createService();
-    // Authorisation saw DISPENSARY_PAYMENT; by the time the write transaction
-    // runs, a racing request has already completed the ticket.
-    (ctx.prisma.queueTicket.findUnique as jest.Mock).mockResolvedValue({
-      id: 't1',
-      visitId: 'visit-1',
-      status: QueueTicketStatus.DISPENSARY_PAYMENT,
-    });
-    ctx.tx.queueTicket.findUnique
-      .mockResolvedValueOnce({ id: 't1', visitId: 'visit-1', status: QueueTicketStatus.DISPENSARY_PAYMENT })
-      .mockResolvedValueOnce({ id: 't1', visitId: 'visit-1', status: QueueTicketStatus.COMPLETED });
-
-    await withTenant(() => ctx.service.complete('t1'));
-
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
-  });
-});
-
-// G4.5d3c-1 added AT_PROCEDURE, READY_FOR_DISPENSARY and READY_FOR_PAYMENT to
-// the enum. No route can produce them yet, and none of the existing routes
-// should pretend to understand them — a ticket that somehow held one must be
-// refused, not guessed at.
-describe('G4.5d3c-1 — the new statuses are inert until their endpoints exist', () => {
-  const NEW_STATUSES = [
-    QueueTicketStatus.AT_PROCEDURE,
-    QueueTicketStatus.READY_FOR_DISPENSARY,
-    QueueTicketStatus.READY_FOR_PAYMENT,
-  ];
-
-  it.each(NEW_STATUSES)('a %s ticket cannot be advanced by any existing route', async (status) => {
-    for (const run of [MUTATIONS[2][1], MUTATIONS[3][1], MUTATIONS[4][1]]) {
-      const ctx = createService();
-      setTicket(ctx, { id: 't1', visitId: 'visit-1', status });
-      await expect(withTenant(() => run(ctx))).rejects.toThrow(BadRequestException);
-      expect(ctx.tx.visit.update).not.toHaveBeenCalled();
-    }
-  });
-
-  it('no existing route can put a ticket INTO one of the new statuses', async () => {
-    const ctx = createService();
-    setTicket(ctx, { id: 't1', visitId: 'visit-1', status: QueueTicketStatus.IN_CONSULTATION });
-
-    await withTenant(() => ctx.service.moveToDispensary('t1'));
-
-    // Still the legacy combined status. Splitting dispensing from payment is
-    // the new workflow's job, not a silent side effect of this schema change.
-    expect(ctx.prisma.queueTicket.update).toHaveBeenCalledWith({
-      where: { id: 't1' },
-      data: { status: QueueTicketStatus.DISPENSARY_PAYMENT },
-    });
-  });
-});
-
-// ===========================================================================
-// S3b (D-081) — ATTENDING CLINICIAN ASSIGNMENT AND TRANSFER
-//
-// The owner corrected the first version of this rule: doctors were locked out
-// of clinician assignment entirely, which made shift handover impossible
-// without going through the front desk. Doctor-to-doctor transfer is now
-// allowed. What is still refused is a doctor taking a patient who is actively
-// with a colleague.
-// ===========================================================================
-describe('S3b — attending clinician assignment and transfer', () => {
-  const DR_A = { id: 'dr-a', fullName: 'Dr Amira', role: 'DOCTOR_RESIDENT', active: true, clinicId: 'clinic-1', userId: 'u-a' };
-  const DR_B = { id: 'dr-b', fullName: 'Dr Bakri', role: 'DOCTOR_LOCUM', active: true, clinicId: 'clinic-1', userId: 'u-b' };
-
-  /** Builds a context where `held` currently holds the visit. */
-  function transferCtx(actor: Record<string, unknown>, held: Record<string, unknown>) {
-    const ctx = createService(actor);
-    ctx.staffDirectory[held.id as string] = held;
-    ctx.staffDirectory[DR_A.id] = DR_A;
-    ctx.staffDirectory[DR_B.id] = DR_B;
-    ctx.tx.visit.findUnique.mockResolvedValue({ id: 'visit-1', clinicId: 'clinic-1', staffId: held.id });
-    setTicket(ctx, { id: 't1', visitId: 'visit-1', clinicId: 'clinic-1', status: QueueTicketStatus.IN_CONSULTATION });
-    return ctx;
-  }
-
-  const change = (ctx: Ctx, staffId: string, reason?: string, correlationId?: string) =>
-    asActor(ctx, () => ctx.service.changeAttendingClinician('t1', { staffId, reason, correlationId }));
-
-  // 1 — a doctor picks up a walk-in that front desk registered under itself.
-  it('a doctor can claim a visit no doctor is holding', async () => {
-    const ctx = transferCtx(DR_A, FRONT_DESK);
-    await change(ctx, DR_A.id);
-    expect(ctx.tx.visit.update).toHaveBeenCalledWith({ where: { id: 'visit-1' }, data: { staffId: DR_A.id } });
-  });
-
-  it('a doctor claiming an unheld visit cannot hand it to a different doctor', async () => {
-    const ctx = transferCtx(DR_A, FRONT_DESK);
-    await expect(change(ctx, DR_B.id, 'handover')).rejects.toThrow(ForbiddenException);
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
-  });
-
-  // 2 — the correction itself.
-  it('Dr A can transfer their own active visit to Dr B', async () => {
-    const ctx = transferCtx(DR_A, DR_A);
-    await change(ctx, DR_B.id, 'Shift handover');
-    expect(ctx.tx.visit.update).toHaveBeenCalledWith({ where: { id: 'visit-1' }, data: { staffId: DR_B.id } });
-  });
-
-  // 3, 4
-  it.each([
-    ['owner', { ...FRONT_DESK, role: 'OWNER_ADMIN' }],
-    ['front desk', FRONT_DESK],
-  ])('%s can reassign Dr A to Dr B', async (_who, actor) => {
-    const ctx = transferCtx(actor, DR_A);
-    await change(ctx, DR_B.id, 'Doctor unavailable');
-    expect(ctx.tx.visit.update).toHaveBeenCalledWith({ where: { id: 'visit-1' }, data: { staffId: DR_B.id } });
-  });
-
-  // The one thing the rule exists to prevent.
-  it('a doctor cannot seize a visit held by another doctor', async () => {
-    const ctx = transferCtx(DR_B, DR_A);
-    await expect(change(ctx, DR_B.id, 'I will take this one')).rejects.toThrow(ForbiddenException);
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
-    expect(ctx.tx.visitWorkflowEvent.create).not.toHaveBeenCalled();
-  });
-
-  it('the refusal does not name the doctor currently holding the visit', async () => {
-    const ctx = transferCtx(DR_B, DR_A);
-    const error = (await change(ctx, DR_B.id, 'mine').catch((e: Error) => e)) as Error;
-    expect(error.message).not.toContain('Amira');
-    expect(error.message).not.toContain(DR_A.id);
-  });
-
-  // 5, 6, 7, 8, 9 — target validation.
-  it('an inactive target is refused', async () => {
-    const ctx = transferCtx(DR_A, DR_A);
-    ctx.staffDirectory[DR_B.id] = { ...DR_B, active: false };
-    await expect(change(ctx, DR_B.id, 'handover')).rejects.toThrow(BadRequestException);
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
-  });
-
-  it('a target from another tenant is refused — it resolves to nothing', async () => {
-    const ctx = transferCtx(DR_A, DR_A);
-    await expect(change(ctx, 'other-tenant-doctor', 'handover')).rejects.toThrow(NotFoundException);
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
-  });
-
-  it('a target without access to the visit’s branch is refused', async () => {
-    const ctx = transferCtx(DR_A, DR_A);
-    ctx.tx.clinic.count.mockResolvedValue(2);
-    ctx.staffDirectory[DR_B.id] = { ...DR_B, clinicId: 'clinic-9', userId: 'u-b9' };
-    await expect(change(ctx, DR_B.id, 'handover')).rejects.toThrow(BadRequestException);
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
-  });
-
-  it('a non-doctor cannot be recorded as the attending clinician', async () => {
-    const ctx = transferCtx({ ...FRONT_DESK, role: 'OWNER_ADMIN' }, DR_A);
-    ctx.staffDirectory['fd-2'] = { ...FRONT_DESK, id: 'fd-2', userId: 'u-fd2' };
-    await expect(change(ctx, 'fd-2', 'handover')).rejects.toThrow(ForbiddenException);
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
-  });
-
-  // 10, 11, 12 — prospective only.
-  it('the transfer writes Visit.staffId and NOTHING else', async () => {
-    const ctx = transferCtx(DR_A, DR_A);
-    await change(ctx, DR_B.id, 'Clinical escalation');
-
-    // The only visit write is the attending clinician. No note, diagnosis,
-    // prescription, order, document or authorisation record is touched — a
-    // handover changes who is seeing the patient now, never who wrote what.
-    expect(ctx.tx.visit.update).toHaveBeenCalledTimes(1);
-    expect(ctx.tx.visit.update).toHaveBeenCalledWith({
-      where: { id: 'visit-1' },
-      data: { staffId: DR_B.id },
-    });
-    const [[call]] = (ctx.tx.visit.update as jest.Mock).mock.calls;
-    expect(Object.keys(call.data)).toEqual(['staffId']);
-  });
-
-  // 13, 14 — the queue does not move.
-  it('the queue status and checkOutAt are untouched by a transfer', async () => {
-    const ctx = transferCtx(DR_A, DR_A);
-    await change(ctx, DR_B.id, 'Shift handover');
-
-    expect(ctx.tx.queueTicket.update).not.toHaveBeenCalled();
-    expect(ctx.prisma.queueTicket.update).not.toHaveBeenCalled();
-    const [[visitCall]] = (ctx.tx.visit.update as jest.Mock).mock.calls;
-    expect(visitCall.data).not.toHaveProperty('checkOutAt');
-    expect(visitCall.data).not.toHaveProperty('doctorCompletedAt');
-  });
-
-  // 17 — idempotency.
-  it('transferring to the doctor who already holds the visit is a no-op', async () => {
-    const ctx = transferCtx(DR_A, DR_A);
-    await expect(change(ctx, DR_A.id)).resolves.toBeDefined();
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
-    // And critically no event: a handover that did not happen must not appear
-    // in the history.
-    expect(ctx.tx.visitWorkflowEvent.create).not.toHaveBeenCalled();
-  });
-
-  // 18 — one immutable event, with both doctors on it.
-  it('a transfer writes exactly one workflow event naming both doctors', async () => {
-    const ctx = transferCtx(DR_A, DR_A);
-    await change(ctx, DR_B.id, 'Shift handover', 'corr-1');
-
-    expect(ctx.tx.visitWorkflowEvent.create).toHaveBeenCalledTimes(1);
-    const [[event]] = ctx.tx.visitWorkflowEvent.create.mock.calls;
-    expect(event.data).toMatchObject({
-      visitId: 'visit-1',
-      queueTicketId: 't1',
-      clinicId: 'clinic-1',
-      eventType: 'ATTENDING_CLINICIAN_CHANGED',
-      previousStaffId: DR_A.id,
-      newStaffId: DR_B.id,
-      actorStaffId: DR_A.id,
-      actorRoleSnapshot: 'DOCTOR_RESIDENT',
-      reason: 'Shift handover',
-      correlationId: 'corr-1',
-    });
-    // No queue transition is claimed, because none happened.
-    expect(event.data.previousStatus).toBeUndefined();
-    expect(event.data.newStatus).toBeUndefined();
-  });
-
-  it('the event and the visit write are in the SAME transaction', async () => {
-    const ctx = transferCtx(DR_A, DR_A);
-    ctx.tx.visitWorkflowEvent.create.mockRejectedValue(new Error('disk full'));
-    // If recording the handover fails, the handover itself must not stand.
-    await expect(change(ctx, DR_B.id, 'Shift handover')).rejects.toThrow();
-  });
-
-  // A reason is required when replacing a doctor, not when picking one up.
-  it('replacing an existing doctor without a reason is refused', async () => {
-    const ctx = transferCtx(DR_A, DR_A);
-    await expect(change(ctx, DR_B.id)).rejects.toThrow(BadRequestException);
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
-  });
-
-  it('whitespace does not count as a reason', async () => {
-    const ctx = transferCtx(DR_A, DR_A);
-    await expect(change(ctx, DR_B.id, '   ')).rejects.toThrow(BadRequestException);
-  });
-
-  it('claiming an unheld visit needs no reason', async () => {
-    const ctx = transferCtx(DR_A, FRONT_DESK);
-    await expect(change(ctx, DR_A.id)).resolves.toBeDefined();
-  });
-
-  // 19
-  it.each(['FINANCE_STAFF', 'STOCK_STAFF', 'HR_STAFF', 'PATIENT_PORTAL'])(
-    '%s cannot change the attending clinician',
-    async (role) => {
-      const ctx = transferCtx({ ...FRONT_DESK, role }, DR_A);
-      await expect(change(ctx, DR_B.id, 'handover')).rejects.toThrow(ForbiddenException);
-      expect(ctx.tx.visit.update).not.toHaveBeenCalled();
-    },
-  );
-
-  it('an anonymous caller cannot change the attending clinician', async () => {
-    const ctx = createService(null);
-    await expect(
-      anonymously(() => ctx.service.changeAttendingClinician('t1', { staffId: DR_B.id })),
-    ).rejects.toThrow(ForbiddenException);
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
-  });
-
-  it('the holder is re-read INSIDE the transaction, so a stale read cannot win', async () => {
-    const ctx = transferCtx(DR_B, DR_A);
-    // Authorisation may have seen an unheld visit; by write time Dr A holds it.
-    ctx.tx.visit.findUnique
-      .mockResolvedValueOnce({ id: 'visit-1', clinicId: 'clinic-1', staffId: FRONT_DESK.id })
-      .mockResolvedValue({ id: 'visit-1', clinicId: 'clinic-1', staffId: DR_A.id });
-
-    await expect(change(ctx, DR_B.id, 'taking over')).rejects.toThrow(ForbiddenException);
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
-  });
-});
-
-// ===========================================================================
-// S3c (D-082) — an UNASSIGNED visit is now a real state.
-//
-// `Visit.staffId` is nullable, so "nobody has taken this patient" no longer
-// has to be faked by storing the front-desk clerk who typed the visit in.
-// ===========================================================================
-describe('S3c — claiming a genuinely unassigned visit', () => {
-  const DR_A = { id: 'dr-a', fullName: 'Dr Amira', role: 'DOCTOR_RESIDENT', active: true, clinicId: 'clinic-1', userId: 'u-a' };
-  const DR_B = { id: 'dr-b', fullName: 'Dr Bakri', role: 'DOCTOR_LOCUM', active: true, clinicId: 'clinic-1', userId: 'u-b' };
-
-  /** A visit with NO attending clinician at all. */
-  function unassignedCtx(actor: Record<string, unknown>) {
-    const ctx = createService(actor);
-    ctx.staffDirectory[DR_A.id] = DR_A;
-    ctx.staffDirectory[DR_B.id] = DR_B;
-    ctx.tx.visit.findUnique.mockResolvedValue({ id: 'visit-1', clinicId: 'clinic-1', staffId: null });
     setTicket(ctx, { id: 't1', visitId: 'visit-1', clinicId: 'clinic-1', status: QueueTicketStatus.WAITING });
-    return ctx;
-  }
 
-  const change = (ctx: Ctx, staffId: string, reason?: string) =>
-    asActor(ctx, () => ctx.service.changeAttendingClinician('t1', { staffId, reason }));
-
-  it('a doctor claims a visit with no attending clinician, no reason needed', async () => {
-    const ctx = unassignedCtx(DR_A);
-    await expect(change(ctx, DR_A.id)).resolves.toBeDefined();
-    expect(ctx.tx.visit.update).toHaveBeenCalledWith({
-      where: { id: 'visit-1' },
-      data: { staffId: DR_A.id },
-    });
-  });
-
-  it('the claim event records that there was no previous doctor', async () => {
-    const ctx = unassignedCtx(DR_A);
-    await change(ctx, DR_A.id);
-
-    const [[event]] = ctx.tx.visitWorkflowEvent.create.mock.calls;
-    // Not the registrar, not a placeholder — genuinely nobody.
-    expect(event.data.previousStaffId).toBeNull();
-    expect(event.data.newStaffId).toBe(DR_A.id);
-  });
-
-  it('a doctor still cannot hand an unclaimed visit to a colleague', async () => {
-    const ctx = unassignedCtx(DR_A);
-    await expect(change(ctx, DR_B.id, 'you take it')).rejects.toThrow(ForbiddenException);
+    // Even from WAITING - a state the old code refused - this route no longer
+    // decides anything. It resolves the visit and hands over; the preconditions
+    // live in exactly one place now.
+    await withTenant(() => ctx.service.complete('t1'));
     expect(ctx.tx.visit.update).not.toHaveBeenCalled();
   });
 
-  it('front desk may assign an unassigned visit to any eligible doctor', async () => {
-    const ctx = unassignedCtx(FRONT_DESK);
-    await expect(change(ctx, DR_B.id)).resolves.toBeDefined();
-    expect(ctx.tx.visit.update).toHaveBeenCalledWith({
-      where: { id: 'visit-1' },
-      data: { staffId: DR_B.id },
-    });
-  });
-
-  it('a claim still refuses a non-doctor, an inactive doctor and a foreign id', async () => {
-    for (const [label, target] of [
-      ['non-doctor', { ...FRONT_DESK, id: 'fd-2', userId: 'u-fd2' }],
-      ['inactive', { ...DR_B, active: false }],
-    ] as const) {
-      const ctx = unassignedCtx(FRONT_DESK);
-      ctx.staffDirectory[target.id as string] = target as Record<string, unknown>;
-      await expect(change(ctx, target.id as string)).rejects.toThrow();
-      expect(ctx.tx.visit.update).not.toHaveBeenCalled();
-      expect(label).toBeTruthy();
-    }
-    const foreign = unassignedCtx(FRONT_DESK);
-    await expect(change(foreign, 'other-tenant-doctor')).rejects.toThrow(NotFoundException);
-  });
-
-  it('claiming never writes to registration attribution', async () => {
-    const ctx = unassignedCtx(DR_A);
-    await change(ctx, DR_A.id);
-
-    const [[call]] = (ctx.tx.visit.update as jest.Mock).mock.calls;
-    // Who registered the visit is a separate, permanent fact. Taking the
-    // patient on does not rewrite who booked them in.
-    expect(Object.keys(call.data)).toEqual(['staffId']);
-    expect(call.data).not.toHaveProperty('registeredByStaffId');
+  it('the role matrix still guards the legacy route', async () => {
+    const ctx = createService(staffOf({ role: 'DOCTOR_RESIDENT' }));
+    await expect(withTenant(() => ctx.service.complete('t1'))).rejects.toThrow(ForbiddenException);
   });
 });
 

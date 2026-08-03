@@ -24,15 +24,16 @@ import { CompleteDoctorPhaseDto } from './dto/complete-doctor-phase.dto';
  * and PAYMENT each have more than one cause.
  */
 export type DestinationReason =
-  | 'DISPENSING_REQUIRED'
+  | 'DISPENSARY_REQUIRED'
   | 'PATIENT_PAYMENT_REQUIRED'
   | 'BILLING_REVIEW_REQUIRED'
-  | 'NOTHING_OUTSTANDING';
+  | 'NO_DOWNSTREAM_WORK';
 
 export interface DoctorCompletionResult {
   visitId: string;
   destination: DoctorCompletionDestination;
-  reason: DestinationReason;
+  /** NULL only for visits completed before D-087 recorded it. */
+  reason: DestinationReason | null;
   queueStatus: QueueTicketStatus;
   doctorCompletedAt: Date;
   doctorCompletedByStaffId: string;
@@ -95,6 +96,7 @@ export class DoctorCompletionService {
           doctorCompletedAt: true,
           doctorCompletedByStaffId: true,
           doctorCompletedDestination: true,
+          doctorCompletedRoutingReason: true,
         },
       });
       if (!visit) {
@@ -115,7 +117,11 @@ export class DoctorCompletionService {
         return {
           visitId: visit.id,
           destination: visit.doctorCompletedDestination ?? DoctorCompletionDestination.NONE,
-          reason: reasonFor(visit.doctorCompletedDestination),
+          // D-087 — the STORED reason, not a re-derivation. READY_FOR_PAYMENT
+          // has two meanings and the destination alone cannot say which.
+          // A visit completed before that column existed reads NULL, which is
+          // reported honestly rather than guessed at.
+          reason: (visit.doctorCompletedRoutingReason as DestinationReason | null) ?? null,
           queueStatus: ticket?.status ?? QueueTicketStatus.COMPLETED,
           doctorCompletedAt: visit.doctorCompletedAt,
           doctorCompletedByStaffId: visit.doctorCompletedByStaffId ?? actor.id,
@@ -150,7 +156,7 @@ export class DoctorCompletionService {
       let reason: DestinationReason;
       if (needsDispensing) {
         destination = DoctorCompletionDestination.DISPENSARY;
-        reason = 'DISPENSING_REQUIRED';
+        reason = 'DISPENSARY_REQUIRED';
       } else if (billing === 'UNDETERMINED') {
         // Deliberately NOT phrased as "payment due". The clinic has to look;
         // telling the patient they owe money we cannot compute is worse than
@@ -162,19 +168,63 @@ export class DoctorCompletionService {
         reason = 'PATIENT_PAYMENT_REQUIRED';
       } else {
         destination = DoctorCompletionDestination.NONE;
-        reason = 'NOTHING_OUTSTANDING';
+        reason = 'NO_DOWNSTREAM_WORK';
       }
 
       const completedAt = new Date();
-      await tx.visit.update({
-        where: { id: visitId },
+
+      // --- Concurrency: the atomic claim ----------------------------------
+      //
+      // The earlier version re-read the visit inside the transaction and
+      // trusted what it saw. Under READ COMMITTED that is not enough: two
+      // requests can both read doctorCompletedAt as NULL, both pass, and both
+      // write — producing two DOCTOR_PHASE_COMPLETED events and, worse, two
+      // queue transitions.
+      //
+      // `updateMany` with the precondition IN THE WHERE CLAUSE turns the
+      // check and the write into one atomic statement. The row is locked by
+      // the first writer; the second blocks, re-evaluates the predicate after
+      // the first commits, matches nothing, and gets count 0. Exactly one
+      // request can ever see count 1, whatever their idempotency keys.
+      const claim = await tx.visit.updateMany({
+        where: { id: visitId, doctorCompletedAt: null },
         data: {
           doctorCompletedAt: completedAt,
           doctorCompletedByStaffId: actor.id,
           doctorCompletedDestination: destination,
-          // checkOutAt is NOT set here, in ANY branch. See the note below.
+          doctorCompletedRoutingReason: reason,
+          // checkOutAt is NOT set here, in ANY branch. Closing the visit is
+          // VisitCompletionService's job.
         },
       });
+
+      if (claim.count === 0) {
+        // Another request won while this one was evaluating. Report what THEY
+        // committed rather than failing: the caller asked for the phase to be
+        // complete, and it is.
+        const winner = await tx.visit.findUnique({
+          where: { id: visitId },
+          select: {
+            doctorCompletedAt: true,
+            doctorCompletedByStaffId: true,
+            doctorCompletedDestination: true,
+            doctorCompletedRoutingReason: true,
+          },
+        });
+        const fresh = await tx.queueTicket.findUnique({
+          where: { visitId },
+          select: { status: true },
+        });
+        return {
+          visitId,
+          destination: winner?.doctorCompletedDestination ?? DoctorCompletionDestination.NONE,
+          reason: (winner?.doctorCompletedRoutingReason as DestinationReason) ?? 'NO_DOWNSTREAM_WORK',
+          queueStatus: fresh?.status ?? ticket.status,
+          doctorCompletedAt: winner?.doctorCompletedAt ?? completedAt,
+          doctorCompletedByStaffId: winner?.doctorCompletedByStaffId ?? actor.id,
+          alreadyCompleted: true,
+        };
+      }
 
       const nextQueueStatus = QUEUE_STATUS_FOR[destination];
       if (nextQueueStatus) {
@@ -349,16 +399,3 @@ async function countBillableItems(tx: ClinicalTx, visitId: string): Promise<numb
   return services + medications;
 }
 
-function reasonFor(destination: DoctorCompletionDestination | null): DestinationReason {
-  switch (destination) {
-    case DoctorCompletionDestination.DISPENSARY:
-      return 'DISPENSING_REQUIRED';
-    case DoctorCompletionDestination.PAYMENT:
-      // A recorded PAYMENT destination cannot be re-attributed to its original
-      // cause without re-deriving it, and re-deriving is exactly what
-      // idempotency must not do. The safer of the two is reported.
-      return 'BILLING_REVIEW_REQUIRED';
-    default:
-      return 'NOTHING_OUTSTANDING';
-  }
-}

@@ -1,0 +1,313 @@
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  InvoiceStatus,
+  OrderServiceStatus,
+  PrescriptionStatus,
+  PrescriptionSupplyMode,
+  QueueTicketStatus,
+  Role,
+  Staff,
+  VisitWorkflowEventType,
+} from '@prisma/client';
+import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
+import { PrismaService } from '../core/prisma.service';
+import { currentTenantId } from '../core/tenant-context';
+import { ClinicalTx, assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
+import { CompleteVisitDto } from './dto/complete-visit.dto';
+
+/**
+ * Structured blockers. The CODE is for the UI to branch on; the MESSAGE is
+ * shown to clinic staff and therefore says what to do, never what the schema
+ * is called. No enum name, table name, constraint or driver text reaches a
+ * user through this path.
+ */
+export type VisitCompletionBlockerCode =
+  | 'DOCTOR_PHASE_NOT_COMPLETED'
+  | 'PROCEDURE_PENDING'
+  | 'MEDICATION_SUPPLY_UNCONFIRMED'
+  | 'MEDICATION_SUPPLY_DEFERRED'
+  | 'DISPENSING_PENDING'
+  | 'BILLING_REVIEW_REQUIRED'
+  | 'PATIENT_BALANCE_REMAINING'
+  | 'UNBILLED_CHARGEABLE_ITEMS'
+  | 'QUEUE_STATE_INELIGIBLE';
+
+export interface VisitCompletionBlocker {
+  code: VisitCompletionBlockerCode;
+  message: string;
+}
+
+export interface VisitCompletionResult {
+  visitId: string;
+  checkOutAt: Date;
+  queueStatus: QueueTicketStatus;
+  completedByStaffId: string;
+  alreadyCompleted: boolean;
+}
+
+const MESSAGES: Record<VisitCompletionBlockerCode, string> = {
+  DOCTOR_PHASE_NOT_COMPLETED: 'The doctor consultation phase has not been completed.',
+  PROCEDURE_PENDING: 'A procedure is still pending or in progress.',
+  MEDICATION_SUPPLY_UNCONFIRMED: 'Medication supply mode must be confirmed.',
+  MEDICATION_SUPPLY_DEFERRED: 'Deferred medication supply must be resolved.',
+  DISPENSING_PENDING: 'Medication dispensing is not complete.',
+  BILLING_REVIEW_REQUIRED: 'Billing responsibility has not been confirmed.',
+  PATIENT_BALANCE_REMAINING: 'Patient payment is still outstanding.',
+  UNBILLED_CHARGEABLE_ITEMS: 'Billing contains items that have not been invoiced.',
+  QUEUE_STATE_INELIGIBLE: 'This visit is not at a stage where it can be completed.',
+};
+
+/**
+ * G4.5d3c-2b (D-087) — who may declare a visit finished.
+ *
+ * Operational, not clinical. Closing the visit asserts that dispensing and
+ * billing are done, which is counter work — the same reasoning that put
+ * COMPLETE_TICKET and MARK_PAID with the counter in D-066 and D-079. A doctor
+ * does not acquire it by being a doctor; they finish the CONSULTATION, which
+ * is a different operation with a different permission.
+ */
+const MAY_COMPLETE_VISIT: Role[] = ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF', 'FINANCE_STAFF'];
+
+/** Queue states from which a visit may legitimately be closed. */
+const COMPLETABLE_FROM: QueueTicketStatus[] = [
+  QueueTicketStatus.READY_FOR_DISPENSARY,
+  QueueTicketStatus.READY_FOR_PAYMENT,
+  // Legacy rows that never split dispensing from payment.
+  QueueTicketStatus.DISPENSARY_PAYMENT,
+  // Destination NONE leaves the ticket here: the doctor finished and nothing
+  // downstream was required.
+  QueueTicketStatus.IN_CONSULTATION,
+];
+
+/**
+ * G4.5d3c-2b (D-087) — the explicit act of closing a visit.
+ *
+ * This is the ONLY operation that sets `Visit.checkOutAt`. Doctor-phase
+ * completion deliberately does not, and neither does paying an invoice,
+ * signing a note or printing a label.
+ *
+ * Everything is re-resolved from stored data inside the transaction. A caller
+ * cannot assert that dispensing is finished or that the bill is settled — the
+ * service looks.
+ */
+@Injectable()
+export class VisitCompletionService {
+  constructor(
+    @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
+    private readonly rawPrisma: PrismaService,
+  ) {}
+
+  /** The blockers standing between this visit and completion, if any. */
+  async blockers(visitId: string): Promise<VisitCompletionBlocker[]> {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      await assertMayTouchVisit(tx, visitId, actor);
+      const visit = await tx.visit.findUnique({
+        where: { id: visitId },
+        select: { id: true, doctorCompletedAt: true },
+      });
+      if (!visit) {
+        throw new NotFoundException('Visit not found');
+      }
+      const ticket = await tx.queueTicket.findUnique({ where: { visitId }, select: { status: true } });
+      return collectBlockers(tx, visitId, visit.doctorCompletedAt, ticket?.status ?? null);
+    });
+  }
+
+  async completeVisit(visitId: string, dto: CompleteVisitDto = {}): Promise<VisitCompletionResult> {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      assertMayCompleteVisit(actor);
+      await assertMayTouchVisit(tx, visitId, actor);
+
+      const visit = await tx.visit.findUnique({
+        where: { id: visitId },
+        select: { id: true, clinicId: true, checkOutAt: true, doctorCompletedAt: true },
+      });
+      if (!visit) {
+        throw new NotFoundException('Visit not found');
+      }
+
+      const ticket = await tx.queueTicket.findUnique({
+        where: { visitId },
+        select: { id: true, status: true },
+      });
+
+      // Idempotent: a closed visit reports its ORIGINAL checkOutAt. Rewriting
+      // it would move the clinic's record of when the patient left.
+      if (visit.checkOutAt) {
+        return {
+          visitId,
+          checkOutAt: visit.checkOutAt,
+          queueStatus: ticket?.status ?? QueueTicketStatus.COMPLETED,
+          completedByStaffId: actor.id,
+          alreadyCompleted: true,
+        };
+      }
+
+      if (ticket?.status === QueueTicketStatus.CANCELLED) {
+        throw new BadRequestException('This visit was cancelled and cannot be completed.');
+      }
+
+      const blocking = await collectBlockers(tx, visitId, visit.doctorCompletedAt, ticket?.status ?? null);
+      if (blocking.length > 0) {
+        // The first blocker is the message; all of them travel in the payload
+        // so a screen can list everything outstanding in one pass instead of
+        // making staff fix them one refresh at a time.
+        throw new BadRequestException({
+          message: blocking[0].message,
+          error: 'Bad Request',
+          statusCode: 400,
+          blockers: blocking,
+        });
+      }
+
+      const checkOutAt = new Date();
+
+      // Same atomic-claim pattern as doctor-phase completion: the precondition
+      // lives in the WHERE clause, so two concurrent requests cannot both
+      // close the visit. Exactly one sees count 1.
+      const claim = await tx.visit.updateMany({
+        where: { id: visitId, checkOutAt: null },
+        data: { checkOutAt },
+      });
+      if (claim.count === 0) {
+        const winner = await tx.visit.findUnique({ where: { id: visitId }, select: { checkOutAt: true } });
+        const fresh = await tx.queueTicket.findUnique({ where: { visitId }, select: { status: true } });
+        return {
+          visitId,
+          checkOutAt: winner?.checkOutAt ?? checkOutAt,
+          queueStatus: fresh?.status ?? QueueTicketStatus.COMPLETED,
+          completedByStaffId: actor.id,
+          alreadyCompleted: true,
+        };
+      }
+
+      if (ticket) {
+        await tx.queueTicket.update({
+          where: { id: ticket.id },
+          data: { status: QueueTicketStatus.COMPLETED },
+        });
+      }
+
+      await tx.visitWorkflowEvent.create({
+        data: {
+          tenantId: currentTenantId(),
+          clinicId: visit.clinicId,
+          visitId,
+          queueTicketId: ticket?.id ?? null,
+          eventType: VisitWorkflowEventType.VISIT_COMPLETED,
+          previousStatus: ticket?.status ?? null,
+          newStatus: ticket ? QueueTicketStatus.COMPLETED : null,
+          actorStaffId: actor.id,
+          actorNameSnapshot: actor.fullName,
+          actorRoleSnapshot: actor.role,
+          reason: dto.note?.trim() || null,
+          correlationId: dto.correlationId ?? null,
+        },
+      });
+
+      return {
+        visitId,
+        checkOutAt,
+        queueStatus: QueueTicketStatus.COMPLETED,
+        completedByStaffId: actor.id,
+        alreadyCompleted: false,
+      };
+    });
+  }
+}
+
+function assertMayCompleteVisit(actor: Staff): void {
+  if (!actor.active || !MAY_COMPLETE_VISIT.includes(actor.role)) {
+    throw new ForbiddenException('Your role is not permitted to complete a visit.');
+  }
+}
+
+/**
+ * Everything still standing between this visit and the door.
+ *
+ * Deliberately collects ALL of them rather than throwing on the first: a
+ * counter clerk fixing four problems one refresh at a time is how a queue
+ * backs up.
+ */
+async function collectBlockers(
+  tx: ClinicalTx,
+  visitId: string,
+  doctorCompletedAt: Date | null,
+  queueStatus: QueueTicketStatus | null,
+): Promise<VisitCompletionBlocker[]> {
+  const blockers: VisitCompletionBlocker[] = [];
+  const add = (code: VisitCompletionBlockerCode) => blockers.push({ code, message: MESSAGES[code] });
+
+  if (!doctorCompletedAt) {
+    add('DOCTOR_PHASE_NOT_COMPLETED');
+  }
+  if (queueStatus !== null && !COMPLETABLE_FROM.includes(queueStatus)) {
+    // WAITING, AT_PROCEDURE, CANCELLED and COMPLETED all land here.
+    add('QUEUE_STATE_INELIGIBLE');
+  }
+
+  const openProcedures = await tx.orderService.count({
+    where: { visitId, status: { in: [OrderServiceStatus.PENDING, OrderServiceStatus.IN_PROGRESS] } },
+  });
+  if (openProcedures > 0) {
+    add('PROCEDURE_PENDING');
+  }
+
+  const active = await tx.prescription.findMany({
+    where: { visitId, deletedAt: null, status: { not: PrescriptionStatus.CANCELLED } },
+    select: { supplyMode: true, status: true },
+  });
+  if (active.some((p) => p.supplyMode === null)) {
+    add('MEDICATION_SUPPLY_UNCONFIRMED');
+  }
+  if (active.some((p) => p.supplyMode === PrescriptionSupplyMode.DEFERRED)) {
+    add('MEDICATION_SUPPLY_DEFERRED');
+  }
+  if (
+    active.some(
+      (p) =>
+        p.supplyMode === PrescriptionSupplyMode.ONSITE_DISPENSE &&
+        p.status === PrescriptionStatus.ORDERED,
+    )
+  ) {
+    add('DISPENSING_PENDING');
+  }
+
+  const invoices = await tx.invoice.findMany({
+    where: { visitId, status: { not: InvoiceStatus.CANCELLED } },
+    select: { patientResponsibilityAmount: true, patientPaidAmount: true },
+  });
+  if (invoices.length === 0) {
+    // No bill raised. Chargeable work with no invoice is money about to walk
+    // out of the door, so it blocks rather than being waved through.
+    const [services, medications] = await Promise.all([
+      tx.orderService.count({ where: { visitId, status: { not: OrderServiceStatus.CANCELLED } } }),
+      tx.prescription.count({
+        where: { visitId, deletedAt: null, status: { not: PrescriptionStatus.CANCELLED } },
+      }),
+    ]);
+    if (services + medications > 0) {
+      add('UNBILLED_CHARGEABLE_ITEMS');
+    }
+  } else if (invoices.some((i) => i.patientResponsibilityAmount === null)) {
+    add('BILLING_REVIEW_REQUIRED');
+  } else {
+    const remaining = invoices.reduce(
+      (sum, i) =>
+        sum + Math.max(Number(i.patientResponsibilityAmount) - Number(i.patientPaidAmount), 0),
+      0,
+    );
+    if (remaining >= 0.005) {
+      add('PATIENT_BALANCE_REMAINING');
+    }
+  }
+
+  // Documents deliberately do NOT appear here. Kuwick has no concept of a
+  // document being REQUIRED for a visit, so every optional draft would block
+  // every completion — an MC the patient decided not to take would trap the
+  // visit open forever. Reported as a limitation rather than invented.
+
+  return blockers;
+}

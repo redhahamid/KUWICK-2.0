@@ -5,6 +5,7 @@ import { currentTenantId } from '../core/tenant-context';
 import { VisitService, CreateVisitInput } from './visit.service';
 import { CancelQueueTicketDto } from './dto/cancel-queue-ticket.dto';
 import { PrismaService } from '../core/prisma.service';
+import { VisitCompletionService } from './visit-completion.service';
 import { ClinicalTx, assertMayTouchVisit, branchContext, requireActor, withTenantTx } from './clinical-actor';
 import { hasBranchAccess } from './clinical-authorization';
 import {
@@ -57,6 +58,7 @@ export class QueueTicketService {
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly rawPrisma: PrismaService,
     private readonly visits: VisitService,
+    private readonly visitCompletion: VisitCompletionService,
   ) {}
 
   // Resets daily per clinic *per queue type* (D-038) — same accepted
@@ -340,27 +342,20 @@ export class QueueTicketService {
    * existing state rather than closing the visit twice.
    */
   async complete(id: string) {
-    await this.authoriseTicket(id, 'COMPLETE_TICKET');
-
-    await withTenantTx(this.rawPrisma, async (tx) => {
-      const fresh = await tx.queueTicket.findUnique({
-        where: { id },
-        select: { id: true, status: true, visitId: true },
-      });
-      if (!fresh) {
-        throw new NotFoundException('Queue ticket not found');
-      }
-      // Idempotent: a repeated completion is a no-op, not a second checkout.
-      if (fresh.status === QueueTicketStatus.COMPLETED) {
-        return;
-      }
-      assertTransition(fresh.status, QueueTicketStatus.COMPLETED, 'complete');
-
-      await tx.queueTicket.update({ where: { id }, data: { status: QueueTicketStatus.COMPLETED } });
-      // Same transaction: if this fails, the ticket update rolls back with it.
-      await tx.visit.update({ where: { id: fresh.visitId }, data: { checkOutAt: new Date() } });
-    });
-
+    // G4.5d3c-2b (D-087) — THIS WAS A BYPASS, and closing it is the point.
+    //
+    // S3 made this route atomic and authorised, which was the problem it had
+    // then. What it still did was set `Visit.checkOutAt` after checking one
+    // thing: that the ticket was in DISPENSARY_PAYMENT. It would happily
+    // close a visit with medication still undispensed, a bill nobody had
+    // raised, or a doctor phase that never happened — every rule
+    // VisitCompletionService enforces, walked straight past.
+    //
+    // Two implementations of "finish the visit" is how they drift, so this one
+    // no longer has an implementation. It resolves the visit and delegates.
+    // The legacy route keeps working; the unsafe path underneath it does not.
+    const { ticket } = await this.authoriseTicket(id, 'COMPLETE_TICKET');
+    await this.visitCompletion.completeVisit(ticket.visitId);
     return this.findById(id);
   }
 

@@ -4,6 +4,7 @@ import { QueueTicketService, formatDisplayNumber } from './queue-ticket.service'
 import { VisitService } from './visit.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
+import { VisitCompletionService } from './visit-completion.service';
 import { tenantContextStorage } from '../core/tenant-context';
 
 // S3 (D-079) — every queue mutation now resolves an authenticated actor and
@@ -54,9 +55,10 @@ function createService(actor: Record<string, unknown> | null = FRONT_DESK) {
     queueTicket: { findUnique: jest.fn(), update: jest.fn() },
     visitWorkflowEvent: { create: jest.fn() },
   };
+  const visitCompletion = { completeVisit: jest.fn().mockResolvedValue({ visitId: 'visit-1' }) } as unknown as VisitCompletionService;
   const rawPrisma = { $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) } as unknown as PrismaService;
 
-  return { service: new QueueTicketService(prisma, rawPrisma, visits), prisma, visits, tx, staffDirectory };
+  return { service: new QueueTicketService(prisma, rawPrisma, visits, visitCompletion), prisma, visits, tx, staffDirectory };
 }
 
 /**
@@ -289,25 +291,21 @@ describe('QueueTicketService', () => {
     await expect(withTenant(() => service.cancel('t1', {}))).rejects.toThrow(BadRequestException);
   });
 
-  // S3E — both writes are now inside ONE transaction, so they are asserted on
-  // the transaction client. `visits.checkOut` is deliberately no longer used:
-  // it was the separate, unprotected second write.
-  it('complete checks the visit out and moves DISPENSARY_PAYMENT to COMPLETED, in one transaction', async () => {
+  // SUPERSEDED BY D-087. This asserted that complete() itself wrote
+  // checkOutAt and the queue status. It did - after checking only that the
+  // ticket was in DISPENSARY_PAYMENT - which is exactly the bypass that let a
+  // visit close with medication undispensed or a bill never raised. The route
+  // now resolves the visit and delegates to VisitCompletionService, so there
+  // is one set of completion rules rather than two.
+  it('complete delegates instead of closing the visit itself', async () => {
     const ctx = createService();
     const { service, prisma, visits, tx } = ctx;
-    makeSetTicket(ctx)({ id: 't1', visitId: 'visit-1', status: QueueTicketStatus.DISPENSARY_PAYMENT });
+    makeSetTicket(ctx)({ id: 't1', visitId: 'visit-1', clinicId: 'clinic-1', status: QueueTicketStatus.DISPENSARY_PAYMENT });
 
     await withTenant(() => service.complete('t1'));
 
-    expect(tx.queueTicket.update).toHaveBeenCalledWith({
-      where: { id: 't1' },
-      data: { status: QueueTicketStatus.COMPLETED },
-    });
-    expect(tx.visit.update).toHaveBeenCalledWith({
-      where: { id: 'visit-1' },
-      data: { checkOutAt: expect.any(Date) },
-    });
-    // The unprotected second write is gone.
+    expect(tx.visit.update).not.toHaveBeenCalled();
+    expect(tx.queueTicket.update).not.toHaveBeenCalled();
     expect(visits.checkOut).not.toHaveBeenCalled();
     expect(prisma.queueTicket.update).not.toHaveBeenCalled();
   });

@@ -1681,6 +1681,42 @@ Three cases came out `PAYMENT` where the first draft of the tests expected `NONE
 
 ---
 
+## D-087 — G4.5d3c-2b: closing a visit, and the bypass that could do it anyway
+
+### The reason had to be stored, not re-derived
+
+`READY_FOR_PAYMENT` has two meanings — a real balance, and billing nobody has worked out — and the queue status cannot tell them apart. After a refresh the screen could only guess, and guessing here means telling a patient they owe money nobody has calculated.
+
+Option A: one nullable typed column, `Visit.doctorCompletedRoutingReason`. Chosen over reading it back out of the workflow event because "the DOCTOR_PHASE_COMPLETED event for this visit" is a query with an ordering assumption baked in, and a visit completed, corrected and completed again would have two. A column has one value and no retrieval rule to get wrong.
+
+**Not backfilled.** Visits completed before this read NULL — *not captured*, never `NO_DOWNSTREAM_WORK`. Inferring one now from today's prescriptions and invoices is exactly the re-derivation the column exists to prevent, and would produce a reason contradicting where the patient was actually sent.
+
+### Concurrency: proved, not asserted
+
+The previous version re-read inside the transaction and trusted what it saw. **Under READ COMMITTED that is not enough** — two requests can both read NULL, both pass, and both write.
+
+Both services now put the precondition **in the WHERE clause** (`updateMany … WHERE checkOutAt IS NULL`), making check-and-write one atomic statement. The first writer locks the row; the second blocks, re-evaluates after the commit, matches nothing, and gets count 0. Exactly one can ever see count 1, whatever their idempotency keys.
+
+Verified against the **live database under real READ COMMITTED**, with genuinely overlapping transactions (`pg_sleep` inside each, after BEGIN, before the write). Two concurrent claims → [1, 0]. Three → one winner. **And a control: the naive read-then-write shape gives [1, 1] — both commit.** A concurrency test that cannot fail proves nothing, so this one demonstrates it can.
+
+### The legacy bypass
+
+`QueueTicketService.complete` was made atomic and authorised by S3 — but it still set `Visit.checkOutAt` after checking one thing: that the ticket was in DISPENSARY_PAYMENT. It would close a visit with medication undispensed, a bill nobody raised, or a doctor phase that never happened. **Every rule the new service enforces, walked straight past.**
+
+Two implementations of "finish the visit" is how they drift, so this one no longer has an implementation: it resolves the visit and delegates. The route keeps working; the unsafe path underneath it does not.
+
+### Blockers
+
+All of them are collected and returned together — a counter clerk fixing four problems one refresh at a time is how a queue backs up. Codes for the UI to branch on; messages that say what to do and never name a table, enum or constraint.
+
+**Documents deliberately do not block.** Kuwick has no concept of a document being *required* for a visit, so every optional draft would block every completion — an MC the patient decided not to take would trap the visit open forever. Reported as a limitation rather than invented.
+
+**Verification**: 31 tests in the completion service, 7 real-database concurrency checks; 595 backend, 195 frontend, both typechecks clean.
+
+**Known limitations**: the routing reason is NULL for visits completed before this migration; `PrescriptionSupplyMode` cannot express "partially dispensed"; there is still no required-document concept.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

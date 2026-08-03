@@ -61,6 +61,8 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
         select?.clinicId && !select?.checkOutAt ? { clinicId: 'clinic-1' } : visit,
       ),
       update: jest.fn(),
+      // D-087 — the atomic claim. count 1 = this request won.
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     queueTicket: {
       findUnique: jest.fn().mockResolvedValue(ticketStatus === null ? null : { id: 't1', status: ticketStatus }),
@@ -105,7 +107,7 @@ describe('authorisation', () => {
   ])('2. %s cannot complete the doctor phase', async (_n, actor) => {
     const ctx = build(actor);
     await expect(run(ctx)).rejects.toThrow(ForbiddenException);
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
+    expect(ctx.tx.visit.updateMany).not.toHaveBeenCalled();
   });
 
   it('4. a doctor without access to the visit’s branch is denied', async () => {
@@ -116,7 +118,7 @@ describe('authorisation', () => {
   it('5. a non-attending doctor is denied — there is no override', async () => {
     const ctx = build(DR_B);
     await expect(run(ctx)).rejects.toThrow(ForbiddenException);
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
+    expect(ctx.tx.visit.updateMany).not.toHaveBeenCalled();
   });
 
   it('the attending doctor is allowed', async () => {
@@ -139,7 +141,7 @@ describe('preconditions', () => {
   it('6. an unsigned clinical note blocks completion', async () => {
     const ctx = build(DR_A, { signedNotes: 0 });
     await expect(run(ctx)).rejects.toThrow(/Sign the clinical note/i);
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
+    expect(ctx.tx.visit.updateMany).not.toHaveBeenCalled();
   });
 
   it('7. an open procedure blocks completion', async () => {
@@ -162,7 +164,7 @@ describe('prescription destination', () => {
   it('8. ONSITE_DISPENSE still ORDERED routes to the dispensary', async () => {
     const ctx = build(DR_A, { prescriptions: [RX('ONSITE_DISPENSE')] });
     const r = await run(ctx);
-    expect(r).toMatchObject({ destination: 'DISPENSARY', reason: 'DISPENSING_REQUIRED', queueStatus: 'READY_FOR_DISPENSARY' });
+    expect(r).toMatchObject({ destination: 'DISPENSARY', reason: 'DISPENSARY_REQUIRED', queueStatus: 'READY_FOR_DISPENSARY' });
   });
 
   it.each([
@@ -208,7 +210,7 @@ describe('prescription destination', () => {
     await expect(run(ctx)).rejects.toThrow(
       /Medication supply is deferred and unresolved\. Resolve the supply mode before completing consultation\./,
     );
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
+    expect(ctx.tx.visit.updateMany).not.toHaveBeenCalled();
   });
 
   it('13. a NULL supply mode blocks completion — it is never assumed to be ONSITE', async () => {
@@ -234,7 +236,7 @@ describe('billing destination', () => {
     // UNPAID, patientPaidAmount 0 — the naive rule sends this patient to a
     // counter to pay nothing.
     const ctx = build(DR_A, { invoices: [inv(0)] });
-    await expect(run(ctx)).resolves.toMatchObject({ destination: 'NONE', reason: 'NOTHING_OUTSTANDING' });
+    await expect(run(ctx)).resolves.toMatchObject({ destination: 'NONE', reason: 'NO_DOWNSTREAM_WORK' });
   });
 
   it('15. a cash balance routes to payment', async () => {
@@ -305,8 +307,8 @@ describe('atomicity, idempotency and checkOutAt', () => {
     const ctx = build(DR_A, { prescriptions: [RX('ONSITE_DISPENSE')] });
     await run(ctx, { correlationId: 'corr-1' });
 
-    expect(ctx.tx.visit.update).toHaveBeenCalledTimes(1);
-    const data = (ctx.tx.visit.update as jest.Mock).mock.calls[0][0].data;
+    expect(ctx.tx.visit.updateMany).toHaveBeenCalledTimes(1);
+    const data = (ctx.tx.visit.updateMany as jest.Mock).mock.calls[0][0].data;
     expect(data.doctorCompletedByStaffId).toBe(DR_A.id);
     expect(data.doctorCompletedDestination).toBe('DISPENSARY');
     expect(data.doctorCompletedAt).toBeInstanceOf(Date);
@@ -349,7 +351,7 @@ describe('atomicity, idempotency and checkOutAt', () => {
     const r = await run(ctx);
 
     expect(r).toMatchObject({ destination: 'DISPENSARY', alreadyCompleted: true, doctorCompletedAt: completedAt });
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
+    expect(ctx.tx.visit.updateMany).not.toHaveBeenCalled();
     expect(ctx.tx.visitWorkflowEvent.create).not.toHaveBeenCalled();
   });
 
@@ -364,7 +366,7 @@ describe('atomicity, idempotency and checkOutAt', () => {
     // The idempotent read happens BEFORE the attending check, so a completed
     // visit reports its result rather than 403-ing a colleague who asked.
     await expect(run(ctx)).resolves.toMatchObject({ alreadyCompleted: true });
-    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
+    expect(ctx.tx.visit.updateMany).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -376,7 +378,7 @@ describe('atomicity, idempotency and checkOutAt', () => {
     await run(ctx);
     // Doctor-phase completion is NOT visit completion. Closing the visit is a
     // separate explicit act, and this service never performs it.
-    const data = (ctx.tx.visit.update as jest.Mock).mock.calls[0][0].data;
+    const data = (ctx.tx.visit.updateMany as jest.Mock).mock.calls[0][0].data;
     expect(data).not.toHaveProperty('checkOutAt');
   });
 
