@@ -1635,6 +1635,52 @@ The status change moved **into the same transaction** as the event — an unreco
 
 ---
 
+## D-086 — G4.5d3c-2: the server decides where the patient goes
+
+Backend only. No Canvas footer, no queue screen, no Flow view.
+
+### The two shortcuts this exists to refuse
+
+> "a Prescription exists" does **not** mean dispensing is required
+> "an Invoice is UNPAID" does **not** mean the patient owes anything
+
+An external prescription needs no dispensary. A fully panel-covered invoice sits at UNPAID with nothing for the patient to pay. Both were unanswerable before D-084 added the fields; where those fields are NULL this service reports **UNDETERMINED** instead of guessing. The DTO has **no destination field** — accepting one would let a browser route a patient past the dispensary.
+
+### Precedence
+
+Clinical blockers, then medicine, then money — money never jumps the queue over medicine.
+
+1. **Unsigned note** or **open procedure** → blocked. A procedure still running is the strongest blocker there is: completing would close a phase whose findings do not exist yet.
+2. **DEFERRED or NULL supply mode** → blocked, in the owner's exact words for DEFERRED.
+3. **ONSITE_DISPENSE still ORDERED** → `DISPENSARY` / `READY_FOR_DISPENSARY`.
+4. **Billing UNDETERMINED** → `PAYMENT` / `READY_FOR_PAYMENT`, reason `BILLING_REVIEW_REQUIRED`. Deliberately not phrased as payment due: telling a patient they owe money we cannot compute is worse than admitting we have not worked it out.
+5. **Remaining > 0** → `PAYMENT`, reason `PATIENT_PAYMENT_REQUIRED`.
+6. **Remaining = 0** → `NONE`.
+
+Every non-cancelled invoice is summed, `max(owed, 0)` **per invoice** — a credit on one bill is not change owed on the next, and netting them would hide a real balance. One NULL responsibility makes the whole visit undetermined; substituting `totalAmount` would invent a debt for a panel patient who owes nothing.
+
+### Who may complete
+
+The attending clinician, and nobody else. **There is deliberately no override permission**: none exists in the `Role` enum, and inventing one would put a clinical bypass in the same commit that introduces the rule it bypasses. A colleague who needs to finish the consultation takes the visit first — S3b made that a one-step audited action.
+
+### `Visit.checkOutAt` — the decision
+
+**Never set, in any branch, including `NONE`.** Doctor-phase completion is not visit completion (owner decision 2), and collapsing them for the one convenient case would destroy the distinction everywhere else. Closing the visit stays a separate explicit act. Three tests assert the update payload has no `checkOutAt` key.
+
+### Idempotency
+
+A repeat returns the **recorded** result and **re-derives nothing**. That matters more than it looks: prescriptions get dispensed and invoices get paid afterwards, so a second call an hour later would otherwise "correct" a completed consultation to somewhere the patient has already been. The completed-check runs *before* the attending check, so a colleague who asks about a finished visit gets the answer rather than a 403.
+
+### A test that was wrong, and the service that was right
+
+Three cases came out `PAYMENT` where the first draft of the tests expected `NONE`. The service was correct: a prescription is a chargeable item, so a visit carrying one with **no invoice raised** has unbilled work on it, and the owner's rule is explicit — do not silently close a visit containing unbilled chargeable items. The tests were corrected to assert what the requirement actually says (*not* DISPENSARY), and two cases were added to pin the billing behaviour deliberately rather than by accident.
+
+**Verification**: 41 tests in this service; 603 backend, 195 frontend, both typechecks clean.
+
+**Known limitations**: the signed-note rule requires at least one signed `DOCTOR_NARRATIVE` and nothing subtler; concurrency rests on the transaction plus the in-transaction re-read, not on `SELECT … FOR UPDATE`; `BILLING_REVIEW_REQUIRED` cannot be distinguished from `PATIENT_PAYMENT_REQUIRED` on a repeat call, so the safer of the two is reported.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

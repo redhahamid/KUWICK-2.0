@@ -4,6 +4,7 @@ import { ServiceCatalogController } from './service-catalog.controller';
 import { ServiceCatalogService } from './service-catalog.service';
 import { VisitController } from './visit.controller';
 import { VisitService } from './visit.service';
+import { DoctorCompletionService } from './doctor-completion.service';
 import { VisitHistoryController } from './visit-history.controller';
 import { VisitHistoryService } from './visit-history.service';
 import { QueueTicketController } from './queue-ticket.controller';
@@ -78,6 +79,7 @@ import { ChatChannelService } from './chat-channel.service';
   providers: [
     ServiceCatalogService,
     VisitService,
+    DoctorCompletionService,
     VisitHistoryService,
     QueueTicketService,
     ClinicalNoteService,
@@ -102,6 +104,7 @@ import { ChatChannelService } from './chat-channel.service';
   exports: [
     ServiceCatalogService,
     VisitService,
+    DoctorCompletionService,
     QueueTicketService,
     ClinicalNoteService,
     DiagnosisService,
