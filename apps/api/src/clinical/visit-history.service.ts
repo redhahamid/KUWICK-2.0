@@ -128,6 +128,12 @@ export class VisitHistoryService {
               recordStatus: true,
             },
           },
+          // G4.5d2 (D-076) — read-only money, for the Last Visit Snapshot.
+          // Additive to the existing authorised summary rather than a new
+          // endpoint: the branch and patient checks above already cover it,
+          // and a second route would be a second place to get them wrong.
+          invoices: { select: { id: true, invoiceNumber: true, totalAmount: true, status: true } },
+          panelClinic: { select: { id: true, name: true } },
         },
       });
 
@@ -266,6 +272,8 @@ type SummaryRow = Prisma.VisitGetPayload<{
         recordStatus: true;
       };
     };
+    invoices: { select: { id: true; invoiceNumber: true; totalAmount: true; status: true } };
+    panelClinic: { select: { id: true; name: true } };
   };
 }>;
 
@@ -306,7 +314,17 @@ function toSummary(row: SummaryRow) {
     medicationCount: row.prescriptions.length,
     mc: mc ? { startDate: mc.startDate, endDate: mc.endDate } : null,
     referral: referral ? { referredTo: referral.referredTo, title: referral.title } : null,
+    memo: active.some((doc) => doc.type === 'MEMO'),
     documentCount: active.length,
     voidedDocumentCount: row.documents.length - active.length,
+    // Totals are NOT combined across several invoices — no visit-level total
+    // is stored, and adding them here would invent one.
+    invoices: row.invoices.map((i) => ({
+      id: i.id,
+      invoiceNumber: i.invoiceNumber,
+      totalAmount: String(i.totalAmount),
+      status: i.status,
+    })),
+    panelName: row.panelClinic?.name ?? null,
   };
 }

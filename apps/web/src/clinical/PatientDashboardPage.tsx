@@ -45,6 +45,7 @@ import { useRecordViewLayoutStore } from './record-view-layout-store';
 import { CanvasPatientHeader } from './CanvasPatientHeader';
 import { CanvasQuickNav } from './CanvasQuickNav';
 import { VisitCompletionBar } from './VisitCompletionBar';
+import { LastVisitSnapshot } from './LastVisitSnapshot';
 import { PatientSummarySidebar } from './PatientSummarySidebar';
 import { VisitHistoryPanel } from './history/VisitHistoryPanel';
 // G1 (D-058) — the four *SummaryCard components are deliberately still in the
@@ -217,6 +218,14 @@ export function PatientDashboardPage() {
             visit={selectedVisit}
             onReviewHistory={() => setHistoryOpen(true)}
             layoutControl={layoutSwitch}
+          />
+          {/* G4.5d2 (D-076) — "what happened last time?", answered without
+              opening anything. Read-only, and it never touches the current
+              visit, the URL or the C1 draft. */}
+          <LastVisitSnapshot
+            patientId={patient.id}
+            currentVisitId={selectedVisit.id}
+            onViewHistory={() => setHistoryOpen(true)}
           />
           {/* G4.5d (D-075) — how the consultation ENDS, immediately below the
               context band instead of at the bottom of the page. A summary and

@@ -948,8 +948,14 @@ export interface VisitHistorySummary {
   medicationCount: number;
   mc: { startDate: string | null; endDate: string | null } | null;
   referral: { referredTo: string | null; title: string | null } | null;
+  memo: boolean;
   documentCount: number;
   voidedDocumentCount: number;
+  // G4.5d2 (D-076) — read-only money for the Last Visit Snapshot. A LIST, not
+  // a total: no visit-level total is stored, so combining several invoices
+  // would be inventing a figure. The snapshot says "2 invoices" instead.
+  invoices: { id: string; invoiceNumber: string; totalAmount: string; status: InvoiceStatus }[];
+  panelName: string | null;
 }
 
 export interface VisitHistoryPage {

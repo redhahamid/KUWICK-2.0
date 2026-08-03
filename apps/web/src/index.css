@@ -321,9 +321,57 @@
   min-width: 0;
 }
 
+/* 12px, not 11 — the D-072 floor applies to these band labels too. They sit
+   beside clinical text and are read in the same glance. */
 .kw-completion-label {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.04em;
+}
+
+/* G4.5d2 (D-076) — the Last Visit Snapshot.
+   A band, not a card: one identity line, one clinical line, meds, outcome.
+   Deliberately kept near 120–150px so it answers "what happened last time?"
+   without becoming a second dashboard, and it takes no height from the note. */
+.kw-last-visit {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  padding: 8px 14px;
+  margin-bottom: 8px;
+  background: #f6f9ff;
+  border: 1px solid #e3ecfb;
+  border-radius: 8px;
+}
+
+.kw-last-visit-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  grid-column: 1 / -1;
+}
+
+.kw-last-visit-label {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.kw-last-visit-body {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  min-width: 0;
+}
+
+.kw-last-visit-clinical,
+.kw-last-visit-meds,
+.kw-last-visit-outcome {
+  min-width: 0;
+}
+
+.kw-last-visit-action {
+  align-self: start;
 }
 
 /* Recorded observations only — see ClinicalVitalsStrip. */
@@ -442,6 +490,25 @@
     width: 44px;
     height: 44px;
     min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* The snapshot stacks and its View History target reaches 44px. It sits
+     above both the completion bar and the sticky quick-nav in the document,
+     so none of the three can overlap. */
+  .kw-last-visit {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .kw-last-visit-body {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .kw-last-visit-action {
+    width: 100%;
     min-height: 44px;
   }
 

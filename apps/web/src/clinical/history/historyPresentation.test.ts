@@ -44,6 +44,10 @@ const base: VisitHistorySummary = {
   referral: { referredTo: 'HKL Medical', title: null },
   documentCount: 2,
   voidedDocumentCount: 0,
+  // G4.5d2 (D-076) — the snapshot's read-only money and memo indicator.
+  memo: false,
+  invoices: [],
+  panelName: null,
 };
 
 describe('previous-visit summary', () => {

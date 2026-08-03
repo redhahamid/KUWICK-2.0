@@ -139,6 +139,9 @@ describe('VisitHistoryService — paging and search', () => {
       diagnoses: [],
       prescriptions: [],
       documents: [],
+      // G4.5d2 (D-076) — read-only money on the summary.
+      invoices: [],
+      panelClinic: null,
     }));
 
   it('pages with a cursor and reports whether more history exists', async () => {
@@ -192,7 +195,7 @@ describe('VisitHistoryService — summaries say only what is stored', () => {
   const listWith = async (overrides: Record<string, unknown>) => {
     const { service, tx } = createService();
     tx.visit.findMany.mockResolvedValue([
-      { ...VISIT, diagnoses: [], prescriptions: [], documents: [], ...overrides },
+      { ...VISIT, diagnoses: [], prescriptions: [], documents: [], invoices: [], panelClinic: null, ...overrides },
     ]);
     const page = await withTenant(() => service.listForPatient('patient-1', {}));
     return page.items[0];
@@ -275,5 +278,83 @@ describe('VisitHistoryService — read-only by construction', () => {
         }
       }
     }
+  });
+});
+
+// =============================================================================
+// G4.5d2 (D-076) — the money and memo the Last Visit Snapshot reads.
+//
+// Added to the EXISTING authorised summary rather than a new endpoint: the
+// patient and branch checks above already cover it, and a second route would
+// be a second place to get them wrong.
+// =============================================================================
+describe('VisitHistoryService — the snapshot’s read-only money', () => {
+  const listWith = async (overrides: Record<string, unknown>) => {
+    const { service, tx } = createService();
+    tx.visit.findMany.mockResolvedValue([
+      { ...VISIT, diagnoses: [], prescriptions: [], documents: [], invoices: [], panelClinic: null, ...overrides },
+    ]);
+    const page = await withTenant(() => service.listForPatient('patient-1', {}));
+    return page.items[0];
+  };
+
+  it('carries an invoice as stored — total, number and status', async () => {
+    const item = await listWith({
+      invoices: [{ id: 'i1', invoiceNumber: 'INV-000042', totalAmount: '85.00', status: 'PAID' }],
+    });
+
+    expect(item.invoices).toEqual([
+      { id: 'i1', invoiceNumber: 'INV-000042', totalAmount: '85.00', status: 'PAID' },
+    ]);
+  });
+
+  // No visit-level total is stored, so combining several would be inventing a
+  // figure. The summary hands over the list and lets the UI say "2 invoices".
+  it('does NOT combine several invoices into a total', async () => {
+    const item = await listWith({
+      invoices: [
+        { id: 'i1', invoiceNumber: 'INV-1', totalAmount: '40.00', status: 'PAID' },
+        { id: 'i2', invoiceNumber: 'INV-2', totalAmount: '60.00', status: 'UNPAID' },
+      ],
+    });
+
+    expect(item.invoices).toHaveLength(2);
+    expect(item).not.toHaveProperty('invoiceTotal');
+    expect(item).not.toHaveProperty('totalAmount');
+  });
+
+  it('reports no invoice as an empty list, not a zero total', async () => {
+    const item = await listWith({ invoices: [] });
+
+    expect(item.invoices).toEqual([]);
+    // No fabricated zero: the summary exposes no visit-level total field at
+    // all, so there is nothing for a UI to render as RM0.00. (Asserting on the
+    // serialised string would match the "0.00" inside an ISO timestamp.)
+    expect(item).not.toHaveProperty('invoiceTotal');
+    expect(item).not.toHaveProperty('totalAmount');
+    expect(item).not.toHaveProperty('amountDue');
+  });
+
+  it('names the panel only when the visit actually has one', async () => {
+    expect((await listWith({ panelClinic: { id: 'p1', name: 'AIA' } })).panelName).toBe('AIA');
+    expect((await listWith({ panelClinic: null })).panelName).toBeNull();
+  });
+
+  it('flags a memo only when an ACTIVE memo exists', async () => {
+    const withMemo = await listWith({
+      documents: [
+        { id: 'm1', type: 'MEMO', title: null, startDate: null, endDate: null, referredTo: null, recordStatus: 'ACTIVE' },
+      ],
+    });
+    expect(withMemo.memo).toBe(true);
+
+    // A voided memo is not a memo the patient was given.
+    const voided = await listWith({
+      documents: [
+        { id: 'm1', type: 'MEMO', title: null, startDate: null, endDate: null, referredTo: null, recordStatus: 'VOIDED' },
+      ],
+    });
+    expect(voided.memo).toBe(false);
+    expect(voided.documentCount).toBe(0);
   });
 });

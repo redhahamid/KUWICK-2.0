@@ -29,7 +29,9 @@ config({ path: join(__dirname, '..', '.env') });
 // The rebuilt visit gets the NEXT visit number, not V-000338 again. The
 // allocator is monotonic by design (D-068); a reset that reused the number
 // would be re-introducing the bug G4c1 fixed.
-const PATIENT_PREFIX = `${FIXTURE_TAG} G45 Canvas Patient`;
+// Covers every G4.5 review patient: the Canvas record and the G4.5d2 history
+// record both start `KUWICK-FIXTURE G45 `.
+const PATIENT_PREFIX = `${FIXTURE_TAG} G45 `;
 const CONFIRM = process.argv.includes('--confirm');
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });

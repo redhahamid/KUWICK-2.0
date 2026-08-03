@@ -1242,6 +1242,79 @@ Orders and Direct Services are not redesigned. The stored `orderType` still deci
 
 ---
 
+## D-075 — G4.5d: the Visit Completion Bar
+
+Documents and the invoice are how a GP consultation *ends*, and both were collapsed rows at the very bottom of the record. Writing an MC — one of the most frequent actions in general practice — meant scrolling past the whole note and expanding a section.
+
+A compact strip now sits immediately below the patient context band: the active document count and the latest one, `+ MC`, `+ Referral`, `More Documents`; and read-only invoice number, total, status and cash/panel with `Open Invoice`.
+
+### What it is not
+
+A summary and entry points, not a second workspace. The Documents Workspace and the invoice do **not** move into the clinical rail — that stays Diagnosis, Medications, Orders, Direct Services — and the bar carries **no money-mutating control**: no Pay, no Cancel, no Quick Add, no line editing. Those stay on the billing surface behind the billing RBAC (D-066). A payment button in the clinical band is exactly the confusion G3c removed.
+
+### One creation path
+
+Both quick actions open the **same** `CreateDocumentDrawer` the workspace opens, via a new optional `initialType`. Same templates, same validation, same G3b authorisation. The drawer's existing reset-on-open now resets the type too, so a quick action always lands where it says it will.
+
+`SecondarySections` became optionally controlled so the bar can expand and scroll to the full surface. `scrollIntoView`, not a hash — a hash pushes a history entry and C1's unsaved-note guard keys on navigation (the D-072 rule).
+
+### Honest about absence
+
+No invoice reads "No invoice created", never RM0.00 — a zero total reads as a bill for nothing when the truth is there is no bill. Several invoices show a count. Voided documents are never counted as active.
+
+**Measured before any scrolling:** bar present and all four buttons in the first screen at 1920/1366/900/375; zero money-mutating controls; zero buttons under 44px on mobile; no overlap with the sticky quick-nav; no horizontal overflow; editor height unchanged at 520/445/300/300.
+
+---
+
+## D-076 — G4.5d2: the Last Visit Snapshot
+
+A GP's first question is almost always "what happened last time?", and the answer was behind the Previous Visits drawer. The snapshot puts the headline on screen: when, who, what for, what was found, what was given, what was issued, what it cost.
+
+### Read-only by construction, not by intention
+
+It renders from `useVisitHistory` — the G4 hook that contains no mutation and whose cache keys are namespaced to `visit-history`, so nothing here can write and nothing here can invalidate the current visit's caches out from under an open consultation. It does not touch the selected visit id, the URL, or the C1 draft key. "View History" opens the same approved G4 drawer. Click-to-switch is **not** restored.
+
+### Data: the existing summary, extended
+
+No new endpoint. `VisitHistoryService`'s summary gained `invoices`, `panelName` and `memo` — the patient and branch checks already on that route cover them, and a second route would be a second place to get them wrong.
+
+Invoices are exposed as a **list, never a total**. No visit-level total is stored, so combining several would be inventing a figure; the snapshot says "2 invoices" instead. Tests assert the payload has no `invoiceTotal`, `totalAmount` or `amountDue` field at all, so there is nothing for a UI to render as RM0.00.
+
+### Honest missing-data handling
+
+Every field is a stored value. Where one is absent the snapshot says *"Complaint not recorded"*, *"Diagnosis not recorded"*, *"Medication details not recorded"*, *"Attending doctor not recorded"*, *"No invoice created"* — never "None", "Normal" or a zero.
+
+The one that matters most clinically: a diagnosis is labelled **Primary only when the priority was explicitly recorded as PRIMARY** (the summary's `isPrimary`). Being first in the list is not evidence of anything — G2a made "priority not recorded" a real state and the snapshot respects it.
+
+### Seeded history
+
+`prisma/g45d2-history-populate.ts` builds a patient with six previous visits and one open current visit with no saved note, covering: full well-recorded case (MC 2 days, cash PAID, 3 medications → "+1 more"); panel UNPAID with an ENT referral; a memo instead of an MC; three diagnoses with a 1-day MC; no document at all; and a legacy record with no recorded priority, no medication and no invoice. Different attending doctors, cash and panel.
+
+Every visit is created through `POST /visits`, so all six use the approved monotonic allocator (D-068) — no visit number is written directly and none is reused. Only `check_in_at` is backdated, so the history reads as a real timeline while every row was still written through the API's own rules.
+
+Retirement is the existing `g45-fixture-retire.ts`, whose prefix was widened to `KUWICK-FIXTURE G45 ` so it covers both review patients. Dry-run by default; `--confirm` retires; deterministic reset is retire-then-repopulate.
+
+### C1 and current-visit safety, measured
+
+Typed an unsaved 58-character draft, opened the History drawer, closed it:
+
+- the unsaved note is **byte-for-byte unchanged**
+- the URL is unchanged and still carries the current visit id
+- no unsaved-note prompt appeared
+- **no database row was created or removed** across the whole review (visits, notes, diagnoses, prescriptions, documents and invoices counted before and after)
+
+### One thing the checks caught
+
+The band labels were 11px. That is below the floor D-072 set for clinical text, and these labels sit beside clinical text and are read in the same glance — raised to 12px on both the snapshot and the completion bar.
+
+**Verification:** `prisma/g45d2-snapshot-verify.ts` — 30 checks at 1920×1080, 1366×768, 900 and 375, all passing: correct visit selected, date/time/number/doctor/complaint/diagnosis accurate against the backend, Primary label only when recorded, at most two medications with an accurate "+N more", MC and referral summaries accurate, invoice total and status matching stored values, panel named, no horizontal overflow, no text below 12px, 44px View History on mobile, cross-tenant history refused 404, unauthenticated refused 401.
+
+444 backend tests (up from 439), 187 frontend, both typechecks clean.
+
+**Reversibility**: Low for both. Neither changes stored data; the bottom Documents and Invoice sections remain for rollback.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.
