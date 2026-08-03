@@ -1419,6 +1419,51 @@ No new statuses, no doctor-completion fields, no schema change. `QueueTicket.vis
 
 ---
 
+## D-080 — G4.5d3c-1: the doctor's phase is not the visit's end
+
+Schema, migration and data contract only. No endpoint, no button, no destination service — those are G4.5d3c-2.
+
+### Three events that were one
+
+Kuwick could record that a note was signed and that a visit was checked out, and nothing in between. So "the doctor has finished; the patient is going to the dispensary" had nowhere to live, and the only way to express it was to close the visit — which is false while medication is still unprepared.
+
+`Visit` gains `doctorCompletedAt`, `doctorCompletedByStaffId` and `doctorCompletedDestination` (DISPENSARY / PAYMENT / NONE). All nullable, none backfilled. **NULL means the data was not captured, never that it did not happen** — a timestamp invented here would be indistinguishable from one a doctor actually recorded. `NONE` means no dispensing and no patient-facing payment remained; it does not mean the visit is closed.
+
+The completing doctor is stored separately from the attending clinician rather than assumed from it, because a locum can finish a colleague's consultation.
+
+### AuditLog was inspected first, and rejected
+
+Required by the brief, and the answer is no, on four counts:
+
+- **No `visitId`, `clinicId` or `queueTicketId`.** Per-visit and branch-scoped history could only be reached by JSON extraction over an unindexed column.
+- **Its actor is `actorUserId` — a User.** Every clinical attribution in Kuwick is Staff-based; recording workflow actors differently would split the answer to "who did this".
+- **No typed previous/new status.** "Which visits went from a procedure back to the doctor" would be a JSON scan.
+- **No relations at all**, so nothing prevents a row claiming a visit that belongs to another tenant.
+
+It also has **zero call sites anywhere in the codebase**. Reusing an unused generic log would have been forcing history into a shape that cannot answer the questions asked of it.
+
+`VisitWorkflowEvent` is append-only by construction: `ON DELETE RESTRICT` on visit, tenant, clinic and actor means history cannot be erased by deleting what it describes. The queue ticket is the deliberate exception — `ON DELETE SET NULL`, because a ticket is operational, not historical, and the event keeps its own copy of both statuses. `@@unique([tenantId, correlationId])` makes a retried request write one event rather than two.
+
+### One ticket, many stations
+
+`QueueTicket.visitId` stays `@unique` per the owner's revision. The ticket is the patient's **current** location; the event table is where they have been. That is what makes `IN_CONSULTATION → AT_PROCEDURE → IN_CONSULTATION` reconstructable without giving one visit several tickets.
+
+`AT_PROCEDURE`, `READY_FOR_DISPENSARY` and `READY_FOR_PAYMENT` are **added, not substituted**. `DISPENSARY_PAYMENT` keeps its meaning and its rows; a historical record is what happened, not what the model now prefers.
+
+### The new statuses are deliberately inert
+
+Adding them to the enum made S3's exhaustive transition map demand entries, which is the type system doing its job. Those entries are **empty**. No route can produce these statuses, so writing their outgoing edges now would be deciding the new workflow's policy ahead of approval, inside the file whose purpose is to enforce approved policy. Empty is also the safe reading if a row somehow acquires one: refuse to move it rather than guess. Nine tests hold this — every existing route refuses a ticket in a new status, and `moveToDispensary` still writes the legacy combined status rather than silently splitting it.
+
+### Rollback, stated plainly
+
+PostgreSQL cannot DROP a value from an enum type. The columns and the table can be dropped cleanly; **the three enum values cannot**. Reverting them requires recreating the type and rewriting every dependent column, which is not a safe automatic down-migration. An unused enum value is harmless, so the practical rollback is: drop the new columns and table, leave the enum.
+
+**Verification**: 25 schema checks against the live database — existing rows readable across 4 tenants and 267 visits, zero fabricated doctor-completion values, `visitId` uniqueness intact, FK delete rules as designed, a cross-tenant event INSERT refused by the WITH CHECK policy while a same-tenant one using a new status succeeds, and no probe row left behind. Both the tenant list and the backfill scan run with the correct GUC — read blind, each returns zero rows and *confirms its own false result* (D-048). 510 backend tests, 191 frontend, both typechecks clean.
+
+**Reversibility**: Medium — see the enum limitation above.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

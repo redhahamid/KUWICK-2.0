@@ -112,6 +112,7 @@ model Tenant {
   globalSettings              GlobalSetting[]
   notificationLogs            NotificationLog[]
   auditLogs                   AuditLog[]
+  visitWorkflowEvents         VisitWorkflowEvent[]
   staff                       Staff[]
   services                    ServiceCatalog[]
   doctorSchedules             DoctorSchedule[]
@@ -214,6 +215,7 @@ model Clinic {
   goodsReceivedNotes  GoodsReceivedNote[]
   visits              Visit[]
   queueTickets        QueueTicket[]
+  visitWorkflowEvents VisitWorkflowEvent[]
   orderServices       OrderService[]
   rooms               Room[]
   queueDisplayConfig  QueueDisplayConfig?
@@ -506,7 +508,13 @@ model Staff {
   slotCapacityConfigs         SlotCapacityConfig[]
   doctorServiceQualifications DoctorServiceQualification[]
   appointments                Appointment[]
-  visits                      Visit[]
+  // Two different roles on a visit: the attending clinician, and whoever
+  // completed the doctor phase. Usually the same person, but not necessarily
+  // — a locum can finish a colleague's consultation — so they are recorded
+  // separately rather than one being assumed from the other.
+  visits                      Visit[]                      @relation("VisitAttendingStaff")
+  visitsDoctorCompleted       Visit[]                      @relation("VisitDoctorCompletedBy")
+  workflowEvents              VisitWorkflowEvent[]
   orderServices               OrderService[]
   prescriptions               Prescription[]
   attachments                 Attachment[]
@@ -1268,24 +1276,39 @@ model Visit {
   panelClinicId       String?   @map("panel_clinic_id")
   presentingComplaint String?   @map("presenting_complaint")
   checkInAt           DateTime  @default(now()) @map("check_in_at")
+  // The overall OPERATIONAL closure of the visit, and nothing else (D-080).
+  // Not set by signing a note, completing the doctor phase, sending the
+  // patient onward, printing a label, or paying an invoice.
   checkOutAt          DateTime? @map("check_out_at")
+
+  // G4.5d3c-1 (D-080) — the doctor's CLINICAL PHASE, which is a different
+  // event from both signing a note and closing the visit. All three are
+  // nullable and are never backfilled: NULL means "doctor-phase completion
+  // was not captured", never "it did not happen". Inferring a historical
+  // actor or timestamp would be fabricating an audit trail.
+  doctorCompletedAt          DateTime?                    @map("doctor_completed_at")
+  doctorCompletedByStaffId   String?                      @map("doctor_completed_by_staff_id")
+  doctorCompletedDestination DoctorCompletionDestination? @map("doctor_completed_destination")
+
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  tenant        Tenant            @relation(fields: [tenantId], references: [id])
-  clinic        Clinic            @relation(fields: [clinicId], references: [id])
-  patient       Patient           @relation(fields: [patientId], references: [id])
-  staff         Staff             @relation(fields: [staffId], references: [id])
-  panelClinic   PanelClinic?      @relation(fields: [panelClinicId], references: [id])
-  queueTicket   QueueTicket?
-  clinicalNotes ClinicalNote[]
-  observations  VisitObservation[]
-  diagnoses     Diagnosis[]
-  orderServices OrderService[]
-  prescriptions Prescription[]
-  documents     Document[]
-  invoices      Invoice[]
-  attachments   VisitAttachment[]
+  tenant                Tenant             @relation(fields: [tenantId], references: [id])
+  clinic                Clinic             @relation(fields: [clinicId], references: [id])
+  patient               Patient            @relation(fields: [patientId], references: [id])
+  staff                 Staff              @relation("VisitAttendingStaff", fields: [staffId], references: [id])
+  doctorCompletedByStaff Staff?            @relation("VisitDoctorCompletedBy", fields: [doctorCompletedByStaffId], references: [id])
+  panelClinic           PanelClinic?       @relation(fields: [panelClinicId], references: [id])
+  queueTicket           QueueTicket?
+  clinicalNotes         ClinicalNote[]
+  observations          VisitObservation[]
+  diagnoses             Diagnosis[]
+  orderServices         OrderService[]
+  prescriptions         Prescription[]
+  documents             Document[]
+  invoices              Invoice[]
+  attachments           VisitAttachment[]
+  workflowEvents        VisitWorkflowEvent[]
 
   @@unique([tenantId, visitNumber])
   @@index([tenantId, clinicId])
@@ -1293,12 +1316,131 @@ model Visit {
   @@map("visits")
 }
 
+/**
+ * G4.5d3c-1 (D-080) — where the patient goes after the doctor finishes.
+ *
+ * Recorded at the moment the doctor completes their phase, so the decision is
+ * preserved even if the invoice or the prescription changes afterwards. The
+ * server derives it; it is never accepted from the browser.
+ *
+ * NONE means the doctor determined no dispensing and no patient-facing
+ * payment work remained — it does NOT mean the visit is closed.
+ */
+enum DoctorCompletionDestination {
+  DISPENSARY
+  PAYMENT
+  NONE
+}
+
 enum QueueTicketStatus {
   WAITING
   IN_CONSULTATION
+
+  // G4.5d3c-1 (D-080) — the operational stations the current enum could not
+  // express. Added, not substituted: no existing value changes meaning, and
+  // no existing row is rewritten.
+  //
+  // AT_PROCEDURE returns to IN_CONSULTATION by owner decision: the doctor
+  // reviews the completed procedure before finishing their phase. There is
+  // deliberately no direct AT_PROCEDURE -> dispensary/payment edge.
+  AT_PROCEDURE
+  READY_FOR_DISPENSARY
+  READY_FOR_PAYMENT
+
+  // LEGACY, still valid. Dispensing and payment are separate states, but
+  // rows written before this phase conflated them and are not rewritten —
+  // a historical record is what happened, not what the model now prefers.
+  // New workflow code should not create this status.
   DISPENSARY_PAYMENT
+
   COMPLETED
   CANCELLED
+}
+
+/**
+ * G4.5d3c-1 (D-080) — the append-only operational history of a visit.
+ *
+ * One QueueTicket represents the patient's CURRENT location (visitId stays
+ * @unique, by owner decision), so the ticket's own row cannot carry where the
+ * patient has been. This does: the ticket moves, and each move leaves an
+ * immutable event behind. That is what makes a round trip through a procedure
+ * — IN_CONSULTATION -> AT_PROCEDURE -> IN_CONSULTATION — reconstructable.
+ *
+ * WHY NOT AuditLog. It was inspected first, as required, and is unsuitable on
+ * four counts: it has no visitId, clinicId or queueTicketId, so branch-scoped
+ * and per-visit history could only be reached by JSON extraction over an
+ * unindexed column; its actor is `actorUserId`, a User, while every clinical
+ * attribution in Kuwick is Staff-based; it holds no typed previous/new status;
+ * and it has no relations, so nothing enforces that a row's tenant matches
+ * the visit it claims to describe. It also has zero call sites anywhere in the
+ * codebase — reusing an unused generic log would be forcing workflow history
+ * into a shape that cannot answer the questions asked of it.
+ */
+enum VisitWorkflowEventType {
+  PATIENT_CALLED
+  CONSULTATION_STARTED
+  SENT_TO_PROCEDURE
+  RETURNED_TO_DOCTOR
+  DOCTOR_PHASE_COMPLETED
+  SENT_TO_DISPENSARY
+  DISPENSING_COMPLETED
+  SENT_TO_PAYMENT
+  PAYMENT_WORK_COMPLETED
+  VISIT_COMPLETED
+  VISIT_CANCELLED
+}
+
+model VisitWorkflowEvent {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  // Denormalised from the visit so branch-scoped reporting does not need a
+  // join, and so a row cannot silently describe another branch's work.
+  clinicId String @map("clinic_id")
+  visitId  String @map("visit_id")
+  // Nullable: a visit event can outlive its ticket, and some events (a
+  // doctor-phase completion recorded without a queue) have no ticket at all.
+  queueTicketId String? @map("queue_ticket_id")
+
+  eventType VisitWorkflowEventType @map("event_type")
+
+  // Typed, not JSON — "which visits went from AT_PROCEDURE back to the
+  // doctor" is an ordinary indexed query, not a JSON scan. Both are nullable
+  // because not every event is a queue transition.
+  previousStatus QueueTicketStatus? @map("previous_status")
+  newStatus      QueueTicketStatus? @map("new_status")
+
+  // Only meaningful on DOCTOR_PHASE_COMPLETED.
+  destination DoctorCompletionDestination?
+
+  // Identity snapshot, same principle as C0's clinical events: the role is
+  // stored as plain text at the moment it happened, so a later promotion or
+  // enum rename cannot rewrite who did what.
+  actorStaffId       String  @map("actor_staff_id")
+  actorNameSnapshot  String  @map("actor_name_snapshot")
+  actorRoleSnapshot  String  @map("actor_role_snapshot")
+
+  reason   String?
+  metadata Json?
+
+  // Idempotency: a retried request carrying the same key writes one event,
+  // not two. Unique per tenant so one clinic's key cannot collide with
+  // another's.
+  correlationId String? @map("correlation_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  clinic      Clinic       @relation(fields: [clinicId], references: [id])
+  visit       Visit        @relation(fields: [visitId], references: [id])
+  queueTicket QueueTicket? @relation(fields: [queueTicketId], references: [id])
+  actor       Staff        @relation(fields: [actorStaffId], references: [id])
+
+  @@unique([tenantId, correlationId])
+  @@index([tenantId, visitId, createdAt])
+  @@index([tenantId, clinicId, createdAt])
+  @@index([tenantId, eventType, createdAt])
+  @@index([tenantId, actorStaffId, createdAt])
+  @@map("visit_workflow_events")
 }
 
 // Queue overhaul (D-038) — kuwick.com's real 4-stream numbering: A for
@@ -1390,6 +1532,8 @@ model QueueTicket {
   clinic Clinic @relation(fields: [clinicId], references: [id])
   visit  Visit  @relation(fields: [visitId], references: [id])
   room   Room?  @relation(fields: [roomId], references: [id])
+  // The ticket holds the CURRENT location; these hold where it has been.
+  workflowEvents VisitWorkflowEvent[]
 
   @@index([tenantId, clinicId, status])
   @@index([tenantId, clinicId, createdAt])

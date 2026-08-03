@@ -532,6 +532,41 @@ describe('S3E — atomic completion', () => {
   });
 });
 
+// G4.5d3c-1 added AT_PROCEDURE, READY_FOR_DISPENSARY and READY_FOR_PAYMENT to
+// the enum. No route can produce them yet, and none of the existing routes
+// should pretend to understand them — a ticket that somehow held one must be
+// refused, not guessed at.
+describe('G4.5d3c-1 — the new statuses are inert until their endpoints exist', () => {
+  const NEW_STATUSES = [
+    QueueTicketStatus.AT_PROCEDURE,
+    QueueTicketStatus.READY_FOR_DISPENSARY,
+    QueueTicketStatus.READY_FOR_PAYMENT,
+  ];
+
+  it.each(NEW_STATUSES)('a %s ticket cannot be advanced by any existing route', async (status) => {
+    for (const run of [MUTATIONS[2][1], MUTATIONS[3][1], MUTATIONS[4][1]]) {
+      const ctx = createService();
+      setTicket(ctx, { id: 't1', visitId: 'visit-1', status });
+      await expect(withTenant(() => run(ctx))).rejects.toThrow(BadRequestException);
+      expect(ctx.tx.visit.update).not.toHaveBeenCalled();
+    }
+  });
+
+  it('no existing route can put a ticket INTO one of the new statuses', async () => {
+    const ctx = createService();
+    setTicket(ctx, { id: 't1', visitId: 'visit-1', status: QueueTicketStatus.IN_CONSULTATION });
+
+    await withTenant(() => ctx.service.moveToDispensary('t1'));
+
+    // Still the legacy combined status. Splitting dispensing from payment is
+    // the new workflow's job, not a silent side effect of this schema change.
+    expect(ctx.prisma.queueTicket.update).toHaveBeenCalledWith({
+      where: { id: 't1' },
+      data: { status: QueueTicketStatus.DISPENSARY_PAYMENT },
+    });
+  });
+});
+
 describe('S3G — cancellation', () => {
   it('cancels an active ticket, retaining the row and the reason', async () => {
     const ctx = createService();

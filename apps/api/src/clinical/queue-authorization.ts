@@ -100,6 +100,24 @@ const LEGAL_TRANSITIONS: Record<QueueTicketStatus, QueueTicketStatus[]> = {
   WAITING: [QueueTicketStatus.IN_CONSULTATION, QueueTicketStatus.CANCELLED],
   IN_CONSULTATION: [QueueTicketStatus.DISPENSARY_PAYMENT, QueueTicketStatus.CANCELLED],
   DISPENSARY_PAYMENT: [QueueTicketStatus.COMPLETED, QueueTicketStatus.CANCELLED],
+
+  // G4.5d3c-1 added these three statuses to the enum, which made this
+  // exhaustive Record demand entries for them. They are deliberately EMPTY.
+  //
+  // No route can put a ticket into any of them — the completion and procedure
+  // endpoints are G4.5d3c-2, not this phase — so writing their outgoing edges
+  // now would be deciding the new workflow's policy ahead of approval, in a
+  // file whose whole purpose is to enforce approved policy. Empty is also the
+  // safe reading if a row somehow acquires one of these: refuse to move it
+  // rather than guess where it should go.
+  //
+  // The approved shape is on record (owner decision 4: AT_PROCEDURE returns
+  // to IN_CONSULTATION, never straight to dispensary or payment); it gets
+  // filled in when the endpoints that use it are built.
+  AT_PROCEDURE: [],
+  READY_FOR_DISPENSARY: [],
+  READY_FOR_PAYMENT: [],
+
   COMPLETED: [],
   CANCELLED: [],
 };
