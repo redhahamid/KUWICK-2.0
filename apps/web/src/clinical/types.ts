@@ -74,7 +74,14 @@ export interface Visit {
   tenantId: string;
   clinicId: string;
   patientId: string;
-  staffId: string;
+  // S3c (D-082) — the ATTENDING CLINICIAN, nullable. `null` means no doctor
+  // has taken this visit yet, which is a real state now rather than something
+  // front desk had to fake by storing themselves here.
+  staffId: string | null;
+  // Who registered the visit. Administrative provenance only — never render
+  // this as the attending clinician.
+  registeredByStaffId?: string | null;
+  registeredByStaff?: Staff | null;
   visitNumber: string;
   billingType: string;
   panelClinicId: string | null;

@@ -5,7 +5,7 @@ import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { VisitService } from './visit.service';
 import { assertCanAuthoriseDocument, assertCanVoidClinicalRecord, snapshotOf } from './clinical-authorization';
-import { assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
+import { assertMayTouchVisit, authorForVisitWork, requireActor, withTenantTx } from './clinical-actor';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { SignDocumentDto } from './dto/sign-document.dto';
 import { VoidClinicalRecordDto } from './dto/void-clinical-record.dto';
@@ -59,7 +59,7 @@ export class DocumentService {
         // Frozen at creation: editing the template later must never change
         // what an already-issued document required.
         requiresClinicalAuthorisation: await this.requiresClinicalAuthorisation(dto),
-        issuedByStaffId: dto.issuedByStaffId ?? visit.staffId,
+        issuedByStaffId: dto.issuedByStaffId ?? authorForVisitWork(visit.staffId),
         issuedDate: dto.issuedDate ? new Date(dto.issuedDate) : undefined,
         startDate: dto.startDate ? new Date(dto.startDate) : undefined,
         endDate: dto.endDate ? new Date(dto.endDate) : undefined,

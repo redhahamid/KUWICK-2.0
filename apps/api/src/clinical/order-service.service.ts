@@ -11,7 +11,7 @@ import { currentTenantId } from '../core/tenant-context';
 import { saveUploadedFile } from '../core/file-storage';
 import { PrismaService } from '../core/prisma.service';
 import { assertCanVoidClinicalRecord, snapshotOf } from './clinical-authorization';
-import { assertMayTouchOrder, assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
+import { assertMayTouchOrder, assertMayTouchVisit, authorForVisitWork, requireActor, withTenantTx } from './clinical-actor';
 import { VoidClinicalRecordDto } from './dto/void-clinical-record.dto';
 import { CreateOrderServiceDto } from './dto/create-order-service.dto';
 import { CompleteOrderServiceDto } from './dto/complete-order-service.dto';
@@ -112,7 +112,7 @@ export class OrderServiceService {
         procedureName: catalogEntry.name,
         orderType: catalogEntry.orderType,
         instruction: dto.instruction,
-        requestedByStaffId: visit.staffId,
+        requestedByStaffId: authorForVisitWork(visit.staffId),
         ...(isDirectService
           ? { status: OrderServiceStatus.COMPLETED, completedAt: now }
           : {}),

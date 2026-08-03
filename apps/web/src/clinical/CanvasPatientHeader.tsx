@@ -30,7 +30,10 @@ interface CanvasPatientHeaderProps {
  * viewport where height is scarcest.
  */
 export function CanvasPatientHeader({ patient, visit, onPatientSummary, layoutControl }: CanvasPatientHeaderProps) {
-  const attending = attendingClinician(visit.staff?.fullName, visit.staff?.role);
+  // S3c (D-082) — passing staffId lets the band distinguish "no doctor has
+  // taken this visit yet" (actionable) from "the record does not say" (a data
+  // gap). It never falls back to the registrar.
+  const attending = attendingClinician(visit.staff?.fullName, visit.staff?.role, visit.staffId);
   const age = patient.dob ? dayjs().diff(dayjs(patient.dob), 'year') : null;
   const allergies = patient.allergies ?? [];
   const hasAllergies = allergies.length > 0;

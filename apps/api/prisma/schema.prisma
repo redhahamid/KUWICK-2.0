@@ -513,6 +513,7 @@ model Staff {
   // — a locum can finish a colleague's consultation — so they are recorded
   // separately rather than one being assumed from the other.
   visits                      Visit[]                      @relation("VisitAttendingStaff")
+  visitsRegistered            Visit[]                      @relation("VisitRegisteredBy")
   visitsDoctorCompleted       Visit[]                      @relation("VisitDoctorCompletedBy")
   workflowEvents              VisitWorkflowEvent[]         @relation("WorkflowEventActor")
   workflowEventsHandedOver    VisitWorkflowEvent[]         @relation("WorkflowEventPreviousStaff")
@@ -1265,7 +1266,24 @@ model Visit {
   tenantId            String    @map("tenant_id")
   clinicId            String    @map("clinic_id")
   patientId           String    @map("patient_id")
-  staffId             String    @map("staff_id")
+  // S3c (D-082) — the CURRENT ATTENDING CLINICIAN, and only that.
+  //
+  // Nullable since S3c. It was required, which forced front desk to store
+  // THEMSELVES as the attending clinician when registering a walk-in nobody
+  // had been assigned to yet — so the field could not tell "Dr Amira is
+  // seeing this patient" apart from "Amy at the counter typed this in".
+  // NULL now means exactly what it says: no clinician has taken this visit.
+  //
+  // The name is kept rather than corrected to attendingStaffId: it is read
+  // across the queue, canvas, documents, orders, prescriptions and reports,
+  // and a rename would be churn without changing behaviour. Recorded as
+  // technical debt in D-082.
+  staffId             String?   @map("staff_id")
+  // Who created the visit. Administrative provenance, NEVER clinical
+  // attribution — a registrar is not an author and must never be rendered as
+  // the attending doctor. Nullable because it cannot be recovered for rows
+  // written before this phase; NULL means it was not captured.
+  registeredByStaffId String?   @map("registered_by_staff_id")
   // Count-based sequence ("V-000002"), not a DB sequence — same accepted
   // non-atomic-race gap as Inventory's document numbers (docs/DECISIONS.md).
   visitNumber         String    @map("visit_number")
@@ -1298,7 +1316,8 @@ model Visit {
   tenant                Tenant             @relation(fields: [tenantId], references: [id])
   clinic                Clinic             @relation(fields: [clinicId], references: [id])
   patient               Patient            @relation(fields: [patientId], references: [id])
-  staff                 Staff              @relation("VisitAttendingStaff", fields: [staffId], references: [id])
+  staff                 Staff?             @relation("VisitAttendingStaff", fields: [staffId], references: [id])
+  registeredByStaff     Staff?             @relation("VisitRegisteredBy", fields: [registeredByStaffId], references: [id])
   doctorCompletedByStaff Staff?            @relation("VisitDoctorCompletedBy", fields: [doctorCompletedByStaffId], references: [id])
   panelClinic           PanelClinic?       @relation(fields: [panelClinicId], references: [id])
   queueTicket           QueueTicket?

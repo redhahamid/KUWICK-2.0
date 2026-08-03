@@ -60,7 +60,9 @@ export function CreateDocumentDrawer({
   const [typeKey, setTypeKey] = useState<string>(initialType ?? 'MC');
   const [content, setContent] = useState('');
   const [contentTouched, setContentTouched] = useState(false);
-  const [issuedByStaffId, setIssuedByStaffId] = useState<string | undefined>(visit.staffId);
+  // S3c (D-082) — no attending clinician means no default issuer. The user
+  // picks, rather than the form proposing whoever registered the patient.
+  const [issuedByStaffId, setIssuedByStaffId] = useState<string | undefined>(visit.staffId ?? undefined);
   const [issuedDate, setIssuedDate] = useState<Dayjs>(dayjs());
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [diagnosisText, setDiagnosisText] = useState('');
@@ -161,7 +163,7 @@ export function CreateDocumentDrawer({
     setTypeKey(initialType ?? 'MC');
     setContent('');
     setContentTouched(false);
-    setIssuedByStaffId(visit.staffId);
+    setIssuedByStaffId(visit.staffId ?? undefined);
     setIssuedDate(dayjs());
     setDateRange(null);
     setDiagnosisText('');

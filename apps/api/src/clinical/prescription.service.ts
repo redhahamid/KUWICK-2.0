@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from '@nes
 import { DosageCalcMethod, PrescriptionStatus, StockMovementType } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { currentTenantId } from '../core/tenant-context';
+import { authorForVisitWork } from './clinical-actor';
 import { VisitService } from './visit.service';
 import { CreatePrescriptionDto } from './dto/create-prescription.dto';
 import { CancelPrescriptionDto } from './dto/cancel-prescription.dto';
@@ -77,7 +78,7 @@ export class PrescriptionService {
         calcWeightKg: dto.calcMethod === DosageCalcMethod.WEIGHT_BASED ? dto.calcWeightKg : undefined,
         calcDoseRateMgKg: dto.calcMethod === DosageCalcMethod.WEIGHT_BASED ? dto.calcDoseRateMgKg : undefined,
         calcTargetDoseMg,
-        prescribedByStaffId: visit.staffId,
+        prescribedByStaffId: authorForVisitWork(visit.staffId),
       },
     });
   }
@@ -134,7 +135,7 @@ export class PrescriptionService {
             durationDays: source.durationDays,
             indication: source.indication,
             remark: source.remark,
-            prescribedByStaffId: targetVisit.staffId,
+            prescribedByStaffId: authorForVisitWork(targetVisit.staffId),
           },
         }),
       ),

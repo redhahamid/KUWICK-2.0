@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { MAX_VISIT_NUMBER, VisitService, formatVisitNumber, isVisitNumberConflict } from './visit.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
@@ -305,9 +305,31 @@ describe('VisitService.create — relationship validation', () => {
     ).rejects.toThrow('not authorised for this branch');
   });
 
-  it('still allows any active in-branch staff member as attending (D-044)', async () => {
-    // Front desk registers a walk-in before a doctor is known; the Queue's
-    // call step reassigns. A clinical role is deliberately NOT required.
+  // SUPERSEDED BY S3c (D-082). This used to assert that ANY active in-branch
+  // staff member could be stored as the attending clinician — which was not a
+  // policy so much as a consequence: `staffId` was NOT NULL, so front desk
+  // registering a walk-in had to name somebody, and the only somebody
+  // available was themselves.
+  //
+  // The field is nullable now, so D-044's real requirement — register a
+  // walk-in before a doctor is known — is met honestly, and the attending
+  // clinician can be held to actually being a clinician.
+  it('front desk registers a walk-in with NO attending clinician (D-044, corrected)', async () => {
+    const { service, tx } = createService();
+
+    await withTenant(() => service.create({ ...BASE, staffId: undefined }));
+
+    expect(tx.visit.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        staffId: null,
+        // ...and the registrar is recorded where it belongs, from the
+        // authenticated session rather than the request.
+        registeredByStaffId: 'staff-1',
+      }),
+    });
+  });
+
+  it('a non-doctor can no longer be stored as the attending clinician', async () => {
     const { service, tx } = createService();
     tx.staff.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
       Promise.resolve({
@@ -315,10 +337,11 @@ describe('VisitService.create — relationship validation', () => {
         active: true, clinicId: 'clinic-1', userId: 'u1',
       }),
     );
-    await withTenant(() => service.create({ ...BASE, staffId: 'staff-FRONTDESK' }));
-    expect(tx.visit.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ staffId: 'staff-FRONTDESK' }),
-    });
+
+    await expect(
+      withTenant(() => service.create({ ...BASE, staffId: 'staff-FRONTDESK' })),
+    ).rejects.toThrow(BadRequestException);
+    expect(tx.visit.create).not.toHaveBeenCalled();
   });
 
   it('writes the RESOLVED ids, never the raw request values', async () => {

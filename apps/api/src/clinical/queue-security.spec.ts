@@ -812,6 +812,90 @@ describe('S3b — attending clinician assignment and transfer', () => {
   });
 });
 
+// ===========================================================================
+// S3c (D-082) — an UNASSIGNED visit is now a real state.
+//
+// `Visit.staffId` is nullable, so "nobody has taken this patient" no longer
+// has to be faked by storing the front-desk clerk who typed the visit in.
+// ===========================================================================
+describe('S3c — claiming a genuinely unassigned visit', () => {
+  const DR_A = { id: 'dr-a', fullName: 'Dr Amira', role: 'DOCTOR_RESIDENT', active: true, clinicId: 'clinic-1', userId: 'u-a' };
+  const DR_B = { id: 'dr-b', fullName: 'Dr Bakri', role: 'DOCTOR_LOCUM', active: true, clinicId: 'clinic-1', userId: 'u-b' };
+
+  /** A visit with NO attending clinician at all. */
+  function unassignedCtx(actor: Record<string, unknown>) {
+    const ctx = createService(actor);
+    ctx.staffDirectory[DR_A.id] = DR_A;
+    ctx.staffDirectory[DR_B.id] = DR_B;
+    ctx.tx.visit.findUnique.mockResolvedValue({ id: 'visit-1', clinicId: 'clinic-1', staffId: null });
+    setTicket(ctx, { id: 't1', visitId: 'visit-1', clinicId: 'clinic-1', status: QueueTicketStatus.WAITING });
+    return ctx;
+  }
+
+  const change = (ctx: Ctx, staffId: string, reason?: string) =>
+    asActor(ctx, () => ctx.service.changeAttendingClinician('t1', { staffId, reason }));
+
+  it('a doctor claims a visit with no attending clinician, no reason needed', async () => {
+    const ctx = unassignedCtx(DR_A);
+    await expect(change(ctx, DR_A.id)).resolves.toBeDefined();
+    expect(ctx.tx.visit.update).toHaveBeenCalledWith({
+      where: { id: 'visit-1' },
+      data: { staffId: DR_A.id },
+    });
+  });
+
+  it('the claim event records that there was no previous doctor', async () => {
+    const ctx = unassignedCtx(DR_A);
+    await change(ctx, DR_A.id);
+
+    const [[event]] = ctx.tx.visitWorkflowEvent.create.mock.calls;
+    // Not the registrar, not a placeholder — genuinely nobody.
+    expect(event.data.previousStaffId).toBeNull();
+    expect(event.data.newStaffId).toBe(DR_A.id);
+  });
+
+  it('a doctor still cannot hand an unclaimed visit to a colleague', async () => {
+    const ctx = unassignedCtx(DR_A);
+    await expect(change(ctx, DR_B.id, 'you take it')).rejects.toThrow(ForbiddenException);
+    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
+  });
+
+  it('front desk may assign an unassigned visit to any eligible doctor', async () => {
+    const ctx = unassignedCtx(FRONT_DESK);
+    await expect(change(ctx, DR_B.id)).resolves.toBeDefined();
+    expect(ctx.tx.visit.update).toHaveBeenCalledWith({
+      where: { id: 'visit-1' },
+      data: { staffId: DR_B.id },
+    });
+  });
+
+  it('a claim still refuses a non-doctor, an inactive doctor and a foreign id', async () => {
+    for (const [label, target] of [
+      ['non-doctor', { ...FRONT_DESK, id: 'fd-2', userId: 'u-fd2' }],
+      ['inactive', { ...DR_B, active: false }],
+    ] as const) {
+      const ctx = unassignedCtx(FRONT_DESK);
+      ctx.staffDirectory[target.id as string] = target as Record<string, unknown>;
+      await expect(change(ctx, target.id as string)).rejects.toThrow();
+      expect(ctx.tx.visit.update).not.toHaveBeenCalled();
+      expect(label).toBeTruthy();
+    }
+    const foreign = unassignedCtx(FRONT_DESK);
+    await expect(change(foreign, 'other-tenant-doctor')).rejects.toThrow(NotFoundException);
+  });
+
+  it('claiming never writes to registration attribution', async () => {
+    const ctx = unassignedCtx(DR_A);
+    await change(ctx, DR_A.id);
+
+    const [[call]] = (ctx.tx.visit.update as jest.Mock).mock.calls;
+    // Who registered the visit is a separate, permanent fact. Taking the
+    // patient on does not rewrite who booked them in.
+    expect(Object.keys(call.data)).toEqual(['staffId']);
+    expect(call.data).not.toHaveProperty('registeredByStaffId');
+  });
+});
+
 describe('S3G — cancellation', () => {
   it('cancels an active ticket, retaining the row and the reason', async () => {
     const ctx = createService();

@@ -47,9 +47,23 @@ export interface AttendingLabel {
 export function attendingClinician(
   fullName: string | null | undefined,
   role: string | null | undefined,
+  /**
+   * S3c (D-082) — the stored `Visit.staffId`, when the caller has it.
+   *
+   * Pass it and the two empty cases stop being one case. Explicit `null` is a
+   * visit waiting for a doctor: a live, actionable state a doctor can resolve
+   * by claiming it. `undefined` means the caller does not know, which is the
+   * older "the record does not say" reading. Saying "not assigned" about a
+   * visit that simply loaded without its staff relation would invite someone
+   * to fix a problem that is not there.
+   */
+  attendingStaffId?: string | null,
 ): AttendingLabel {
   if (!fullName) {
-    // Never inferred, never "Not assigned" — the record simply does not say.
+    if (attendingStaffId === null) {
+      return { name: null, prefix: '', text: 'Attending clinician not assigned' };
+    }
+    // Never inferred, never the registrar — the record simply does not say.
     return { name: null, prefix: '', text: 'Attending clinician not recorded' };
   }
   if (isDoctorRole(role)) {

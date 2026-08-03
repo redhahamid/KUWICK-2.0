@@ -177,14 +177,21 @@ export type AttendingChangeKind = 'CLAIM' | 'TRANSFER' | 'REASSIGN';
  * a schema change and is reported as a gap rather than faked with a sentinel
  * staff row.
  */
-export function classifyAttendingChange(current: Staff, actor: Staff): AttendingChangeKind {
-  if (!isEligibleAttendingDoctor(current)) {
+export function classifyAttendingChange(current: Staff | null, actor: Staff): AttendingChangeKind {
+  // S3c — `null` is the honest unassigned state the schema can now hold. The
+  // non-doctor case below is the LEGACY shape: rows written while staffId was
+  // required, where front desk had to name somebody. Both are a CLAIM.
+  if (!current || !isEligibleAttendingDoctor(current)) {
     return 'CLAIM';
   }
   return current.id === actor.id ? 'TRANSFER' : 'REASSIGN';
 }
 
-export function assertMayChangeAttendingClinician(actor: Staff, current: Staff, target: Staff): void {
+export function assertMayChangeAttendingClinician(
+  actor: Staff,
+  current: Staff | null,
+  target: Staff,
+): void {
   assertCanPerformQueueAction(actor, 'ASSIGN_CLINICIAN');
 
   if (!isEligibleAttendingDoctor(target)) {

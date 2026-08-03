@@ -3,6 +3,18 @@ import { AppointmentStatus, InvoiceStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { ClaimBatchService } from '../clinical/claim-batch.service';
 
+/**
+ * S3c (D-082) — revenue from a visit with no attending clinician.
+ *
+ * `Visit.staffId` is nullable now, and these reports group money by doctor.
+ * The money is real and must still appear in the totals, so it goes to an
+ * explicit bucket rather than being dropped (which would make the report
+ * disagree with the ledger) or attributed to whoever registered the patient
+ * (which would credit the front desk with a consultation).
+ */
+const UNASSIGNED_CLINICIAN = 'Attending clinician not assigned';
+const UNASSIGNED_CLINICIAN_KEY = '__unassigned__';
+
 export interface ReportDateRange {
   from?: string;
   to?: string;
@@ -128,9 +140,9 @@ export class ReportsService {
 
     const byStaff = new Map<string, { staffName: string; visitCount: number; revenue: number }>();
     for (const invoice of invoices) {
-      const staffId = invoice.visit.staffId;
+      const staffId = invoice.visit.staffId ?? UNASSIGNED_CLINICIAN_KEY;
       const bucket = byStaff.get(staffId) ?? {
-        staffName: invoice.visit.staff.fullName,
+        staffName: invoice.visit.staff?.fullName ?? UNASSIGNED_CLINICIAN,
         visitCount: 0,
         revenue: 0,
       };
@@ -303,7 +315,7 @@ export class ReportsService {
         nonPanelSales += total;
         nonPanelInvoices += 1;
       }
-      const doctor = invoice.visit.staff.fullName;
+      const doctor = invoice.visit.staff?.fullName ?? UNASSIGNED_CLINICIAN;
       byDoctor.set(doctor, (byDoctor.get(doctor) ?? 0) + total);
       for (const line of invoice.lines) {
         const category = this.categorizeLine(line);
@@ -490,8 +502,8 @@ export class ReportsService {
     }
     const byStaff = new Map<string, DoctorBucket>();
     for (const invoice of invoices) {
-      const bucket = byStaff.get(invoice.visit.staffId) ?? {
-        staffName: invoice.visit.staff.fullName,
+      const bucket = byStaff.get(invoice.visit.staffId ?? UNASSIGNED_CLINICIAN_KEY) ?? {
+        staffName: invoice.visit.staff?.fullName ?? UNASSIGNED_CLINICIAN,
         patients: 0,
         sales: 0,
         categories: new Map<string, number>(),
@@ -502,7 +514,7 @@ export class ReportsService {
         const category = this.categorizeLine(line);
         bucket.categories.set(category, (bucket.categories.get(category) ?? 0) + Number(line.amount));
       }
-      byStaff.set(invoice.visit.staffId, bucket);
+      byStaff.set(invoice.visit.staffId ?? UNASSIGNED_CLINICIAN_KEY, bucket);
     }
 
     return Array.from(byStaff.entries())
@@ -701,7 +713,7 @@ export class ReportsService {
       invoiceNumber: invoice.invoiceNumber,
       status: invoice.status,
       patientName: invoice.visit.patient.name,
-      doctorName: invoice.visit.staff.fullName,
+      doctorName: invoice.visit.staff?.fullName ?? UNASSIGNED_CLINICIAN,
       billingType: invoice.visit.billingType,
       panelName: invoice.visit.panelClinic?.name ?? null,
       totalAmount: Number(invoice.totalAmount),

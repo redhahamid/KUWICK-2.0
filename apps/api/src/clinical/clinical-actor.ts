@@ -40,6 +40,27 @@ export async function requireActor(tx: ClinicalTx): Promise<Staff> {
   return staff;
 }
 
+/**
+ * S3c (D-082) — who to attribute a piece of visit work to.
+ *
+ * Documents, orders and prescriptions each have a REQUIRED author, and each
+ * used to default it to `Visit.staffId`. That field is nullable now, so an
+ * unassigned walk-in would break the insert.
+ *
+ * The visit's attending clinician stays the first choice, so existing
+ * behaviour is unchanged wherever one is assigned. The fallback is the
+ * authenticated actor — which is not a compromise but the more accurate
+ * answer: if nobody is formally attending, the person who wrote the thing is
+ * the one who wrote it. Nothing is ever attributed to a request-supplied id.
+ */
+export function authorForVisitWork(visitStaffId: string | null | undefined): string {
+  const staffId = visitStaffId ?? currentStaffId();
+  if (!staffId) {
+    throw new ForbiddenException('No authenticated staff member on this session');
+  }
+  return staffId;
+}
+
 // Fail-closed branch context: a null home branch grants nothing unless the
 // tenant genuinely has a single branch or explicit access exists (C0).
 export async function branchContext(tx: ClinicalTx, staff: Staff): Promise<BranchAccessContext> {

@@ -245,8 +245,14 @@ export class QueueTicketService {
         return;
       }
 
-      const current = await tx.staff.findUnique({ where: { id: visit.staffId } });
-      if (!current) {
+      // S3c — genuinely nobody is attending, which is now a real state rather
+      // than something front desk had to fake. A missing staff ROW for a
+      // non-null id is different and would be a broken reference, so it is
+      // not silently treated as unassigned.
+      const current = visit.staffId
+        ? await tx.staff.findUnique({ where: { id: visit.staffId } })
+        : null;
+      if (visit.staffId && !current) {
         throw new NotFoundException('Visit not found');
       }
       const target = await resolveClinicianForVisit(tx, input.staffId, ticket.clinicId);
@@ -273,7 +279,7 @@ export class QueueTicketService {
           visitId: visit.id,
           queueTicketId: ticket.id,
           eventType: VisitWorkflowEventType.ATTENDING_CLINICIAN_CHANGED,
-          previousStaffId: current.id,
+          previousStaffId: current?.id ?? null,
           newStaffId: target.id,
           actorStaffId: actor.id,
           actorNameSnapshot: actor.fullName,

@@ -13,6 +13,7 @@ import { currentTenantId } from '../core/tenant-context';
 import { ClinicalTx, requireActor, withTenantTx } from './clinical-actor';
 import {
   resolveActiveStaffForClinic,
+  resolveEligibleAttendingDoctor,
   resolveClinicForActor,
   resolvePatient,
 } from './clinical-references';
@@ -20,7 +21,15 @@ import {
 export interface CreateVisitInput {
   clinicId: string;
   patientId: string;
-  staffId: string;
+  /**
+   * S3c (D-082) — the ATTENDING CLINICIAN, and now OPTIONAL.
+   *
+   * Front desk registering a walk-in nobody has been assigned to yet leaves
+   * this out, and the visit is stored with no attending clinician rather than
+   * with the registrar impersonating one. Who registered the visit is taken
+   * from the authenticated actor, never from the request.
+   */
+  staffId?: string;
   billingType: string;
   panelClinicId?: string;
   presentingComplaint?: string;
@@ -184,7 +193,12 @@ export class VisitService {
           const actor = await requireActor(tx);
           const patient = await resolvePatient(tx, input.patientId);
           const clinic = await resolveClinicForActor(tx, input.clinicId, actor);
-          const attending = await resolveActiveStaffForClinic(tx, input.staffId, clinic.id);
+          // S3c — resolved only when one was actually chosen. An omitted
+          // attending clinician is a real state now, not a missing argument
+          // to be filled in with whoever happened to be at the keyboard.
+          const attending = input.staffId
+            ? await resolveEligibleAttendingDoctor(tx, input.staffId, clinic.id)
+            : null;
           const billingType = await this.resolveBillingType(tx, input);
 
           const visitNumber = await this.allocateVisitNumber(tx);
@@ -194,7 +208,11 @@ export class VisitService {
               // Resolved rows, not the raw request values.
               clinicId: clinic.id,
               patientId: patient.id,
-              staffId: attending.id,
+              staffId: attending?.id ?? null,
+              // Provenance, from the verified session only. A browser that
+              // sends a registrar is ignored: "who typed this in" is not a
+              // claim a caller gets to make about itself.
+              registeredByStaffId: actor.id,
               billingType,
               panelClinicId: input.panelClinicId,
               presentingComplaint: input.presentingComplaint,

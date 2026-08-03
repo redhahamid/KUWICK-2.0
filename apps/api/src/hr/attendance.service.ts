@@ -42,6 +42,13 @@ export class AttendanceService {
     >();
 
     for (const visit of visits) {
+      // S3c (D-082) — attendance is derived from visits, so a visit with no
+      // attending clinician contributes nothing: it is evidence that a
+      // PATIENT arrived, not that any particular doctor was present. Counting
+      // it would either crash or invent a shift for nobody.
+      if (!visit.staffId || !visit.staff) {
+        continue;
+      }
       const date = visit.checkInAt.toISOString().slice(0, 10);
       const key = `${visit.staffId}:${date}`;
       const bucket = byStaffDay.get(key) ?? {

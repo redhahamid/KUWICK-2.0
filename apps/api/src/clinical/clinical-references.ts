@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { Staff } from '@prisma/client';
 import { branchContext, ClinicalTx } from './clinical-actor';
 import { hasBranchAccess } from './clinical-authorization';
+import { isEligibleAttendingDoctor } from './queue-authorization';
 
 /**
  * D-069 / S1 — resolve-before-write, in one place.
@@ -68,6 +69,31 @@ export async function resolveActiveStaffForClinic(tx: ClinicalTx, staffId: strin
   if (!hasBranchAccess(staff, clinicId, await branchContext(tx, staff))) {
     throw new BadRequestException(
       'That staff member is not authorised for this branch, so they cannot be recorded against work there.',
+    );
+  }
+  return staff;
+}
+
+/**
+ * S3c (D-082) — a staff member who may be recorded as a visit's ATTENDING
+ * CLINICIAN. Everything `resolveActiveStaffForClinic` checks, plus the one
+ * thing that separates attending from merely present: they have to be a
+ * doctor.
+ *
+ * Before S3c this check did not exist anywhere, because `Visit.staffId` was
+ * required and front desk had to put someone in it — so "the attending
+ * clinician is a doctor" could not be enforced without breaking walk-in
+ * registration. Now that the field is nullable, it can be.
+ */
+export async function resolveEligibleAttendingDoctor(
+  tx: ClinicalTx,
+  staffId: string,
+  clinicId: string,
+): Promise<Staff> {
+  const staff = await resolveActiveStaffForClinic(tx, staffId, clinicId);
+  if (!isEligibleAttendingDoctor(staff)) {
+    throw new BadRequestException(
+      'Only an active doctor can be recorded as the attending clinician for a visit.',
     );
   }
   return staff;

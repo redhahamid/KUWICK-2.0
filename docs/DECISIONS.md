@@ -1507,6 +1507,48 @@ Four frontend tests hold the C1 guarantee across a transfer: the draft key is te
 
 ---
 
+## D-082 — S3c: the person who typed the visit in is not the person seeing the patient
+
+S3b had to define CLAIM as "the visit is held by a non-doctor", because `Visit.staffId` was `NOT NULL` and a walk-in nobody had been assigned to still had to name somebody. Front desk put themselves there. The field therefore could not distinguish **"Dr Amira is seeing this patient"** from **"Amy at the counter typed this in"** — and every screen, report and document default that read it inherited the ambiguity.
+
+### Two facts, two fields
+
+- **`Visit.staffId` is now nullable** and means only the current attending clinician. `NULL` is a real state: no doctor has taken this visit.
+- **`Visit.registeredByStaffId`** records who created it, derived from the **authenticated actor**, never from the request. It is administrative provenance and must never be rendered as the attending clinician.
+
+The name `staffId` is kept rather than corrected to `attendingStaffId`: it is read across the queue, canvas, documents, orders, prescriptions and reports, and renaming it would be churn without changing behaviour. Recorded as technical debt.
+
+### Nothing existing was rewritten
+
+All 267 visits across 4 tenants keep their stored `staffId` — a historical value may be a genuine attending clinician or a registrar stored under the old constraint, and there is **no reliable way to tell which**, so nothing was guessed. `registeredByStaffId` is `NULL` everywhere: Kuwick stores no separate record of who created a visit, so there is nothing to backfill *from*, and copying `staffId` into it would manufacture an attribution that was never captured.
+
+### What the nullability forced into the open
+
+Four call sites were silently relying on "a visit always has a doctor", and each needed a real answer rather than a `!`:
+
+- **Documents, orders and prescriptions** have a *required* author that defaulted to `visit.staffId`. `authorForVisitWork` keeps the attending clinician as first choice, falling back to the authenticated actor — which is not a compromise but more accurate: if nobody is formally attending, the person who wrote the thing wrote it.
+- **Attendance** is derived from visits. An unassigned visit now contributes nothing: it is evidence a *patient* arrived, not that any doctor was present. Counting it would invent a shift for nobody.
+- **Revenue reports** group money by doctor. The money is real, so it goes to an explicit `Attending clinician not assigned` bucket — not dropped (the report would disagree with the ledger) and not credited to the front desk.
+- **Invoice and document forms** preselected the visit's doctor. With none assigned they now preselect nobody rather than proposing the registrar.
+
+### One thing S3c could newly enforce
+
+Because the field can be empty, **the attending clinician can be held to actually being a doctor**. `resolveEligibleAttendingDoctor` refuses a non-doctor. The old test asserting "any active in-branch staff member" is superseded — that was never a policy, only a consequence of the `NOT NULL`.
+
+### Presentation
+
+`attendingClinician()` now takes the stored id, so two empty cases stop being one: explicit `null` reads **"Attending clinician not assigned"** (live and actionable — a doctor can claim it), while `undefined` keeps **"not recorded"** (the caller does not know). Saying "not assigned" about a visit that merely loaded without its staff relation would invite someone to fix a problem that is not there.
+
+### Unsaved-draft contract, stated honestly
+
+A backend transfer **cannot** inspect text held only in another browser's memory, and this does not pretend otherwise. What is guaranteed: the draft key contains no staff id, so a transfer cannot re-key a draft; a refetch never syncs over local text; the store holds content but never an author, so nothing can be re-attributed. What is **not** guaranteed: front-desk reassignment from another device cannot see, block on, or transfer a doctor's local draft. The blocking rule belongs in the transfer UI, on the browser that holds the draft. No browser persistence was added to paper over this.
+
+**Verification**: 10 live-database checks and 546 backend tests, 195 frontend, both typechecks clean.
+
+**Reversibility**: Reverting `staff_id` to `NOT NULL` is only safe while no unassigned visit exists. Once the new walk-in path is used, a down-migration would have to invent a doctor for every one — the exact fabrication this change exists to stop.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

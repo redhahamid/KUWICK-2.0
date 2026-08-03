@@ -436,7 +436,9 @@ function InvoiceCard({ invoice, visit }: InvoiceCardProps) {
 // automatically enforced across visits" status as PanelClinic.limitAmount
 // itself.
 export function InvoiceTab({ visit }: InvoiceTabProps) {
-  const [createdByStaffId, setCreatedByStaffId] = useState<string | undefined>(visit.staffId);
+  // S3c (D-082) — an unassigned visit preselects nobody. The registrar is not
+  // a sensible default: they did not do the clinical work being billed.
+  const [createdByStaffId, setCreatedByStaffId] = useState<string | undefined>(visit.staffId ?? undefined);
   const { data: staff } = useStaff();
   const { data: invoices, isLoading } = useInvoices(visit.id);
   const createInvoice = useCreateInvoice(visit.id);
