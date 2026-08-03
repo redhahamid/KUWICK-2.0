@@ -205,7 +205,24 @@ export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: Clin
     }
     setIsNewDraft(true);
     setSelectedNoteId(undefined);
-    draftStore.syncFromServer(draftKey({ ...scope, noteId: undefined }), undefined, {
+
+    // D-078 — SEED, never overwrite.
+    //
+    // This effect runs once per mount, and `initialisedFor` is a ref, so a
+    // REMOUNT re-runs it. Switching Canvas <-> Flow remounts this component,
+    // and on a visit with no saved notes the blank seed below was landing on
+    // top of a draft the doctor had already typed: `syncFromServer` replaces
+    // `drafts[key]` unconditionally. Measured before the guard: 61 characters
+    // of unsaved clinical text became 0 on a single view switch.
+    //
+    // The store is keyed by draftKey and survives the remount by design, so
+    // if a draft already exists for this key it IS the doctor's work and must
+    // be left exactly as it is.
+    const blankKey = draftKey({ ...scope, noteId: undefined });
+    if (draftStore.drafts[blankKey]) {
+      return;
+    }
+    draftStore.syncFromServer(blankKey, undefined, {
       content: '',
       language: 'EN',
       noteType: 'DOCTOR_NARRATIVE',
