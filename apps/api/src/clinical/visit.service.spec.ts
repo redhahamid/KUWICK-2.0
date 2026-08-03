@@ -1,6 +1,6 @@
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { VisitService, formatVisitNumber } from './visit.service';
+import { MAX_VISIT_NUMBER, VisitService, formatVisitNumber, isVisitNumberConflict } from './visit.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { tenantContextStorage } from '../core/tenant-context';
@@ -76,8 +76,17 @@ describe('visit number format', () => {
     expect(formatVisitNumber(999999)).toBe('V-999999');
   });
 
-  it('does not truncate a number that outgrows six digits', () => {
-    expect(formatVisitNumber(1000000)).toBe('V-1000000');
+  it('refuses to allocate past the six-digit ceiling', async () => {
+    const { service } = createService({ allocations: [MAX_VISIT_NUMBER + 1] });
+    await expect(withTenant(() => service.create(BASE))).rejects.toThrow(/maximum visit number/i);
+  });
+
+  it('still allocates the last number the format can hold', async () => {
+    const { service, tx } = createService({ allocations: [MAX_VISIT_NUMBER] });
+    await withTenant(() => service.create(BASE));
+    expect(tx.visit.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ visitNumber: 'V-999999' }),
+    });
   });
 });
 
@@ -105,6 +114,17 @@ describe('VisitService.create — allocation', () => {
     expect(tx.visit.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ visitNumber: 'V-000007' }),
     });
+  });
+
+  it('classifies only the visit-number constraint as a numbering conflict', () => {
+    const withConstraint = (message: string) =>
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002', clientVersion: 'test',
+        meta: { driverAdapterError: { cause: { originalMessage: message } } },
+      });
+    expect(isVisitNumberConflict(withConstraint('… unique constraint \"visits_tenant_id_visit_number_key\"'))).toBe(true);
+    expect(isVisitNumberConflict(withConstraint('… unique constraint \"patients_tenant_id_identifier_key\"'))).toBe(false);
+    expect(isVisitNumberConflict(withConstraint('… unique constraint \"invoices_tenant_id_invoice_number_key\"'))).toBe(false);
   });
 
   it('retries past a unique-index collision instead of failing', async () => {

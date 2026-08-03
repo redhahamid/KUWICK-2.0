@@ -910,6 +910,16 @@ Malformed legacy numbers (`DEMO-00001`, `LEGACY/2019/0042`) are ignored for seed
 
 **Reversibility**: Low. Reverting restores a numbering scheme that breaks after any deletion.
 
+### Hardened after review (same checkpoint)
+
+Three points were tightened once the allocator was reviewed against its own brief:
+
+- **The six-digit ceiling is now enforced.** `V-999999` is the last number the format can hold; the next allocation is refused with a named error rather than silently widening every printed number to seven digits. The transaction rolls back, so the counter stops AT the ceiling and a clinic can be migrated to a wider format deliberately.
+- **Retry is bounded to exactly one repair.** A collision can only mean the counter is behind a number written outside the allocator; the repair advances it past everything in use, so a second failure is something this code cannot reason about and surfaces as a controlled error instead of looping.
+- **Conflict classification is now specific.** It matches `visits_tenant_id_visit_number_key` by name — read from the nested driver error, where the pg adapter actually keeps it — instead of treating any unidentifiable P2002 as a numbering problem. An unrelated unique violation is never silently retried.
+
+**Still count-based elsewhere, and reported rather than changed:** `InvoiceService` (`INV-`) and `ClaimBatchService` (`CLAIM-`) both derive their next number from `count(*) + 1`, and `QueueTicketService` does the same for its daily per-clinic ticket number. All three carry the same class of defect this checkpoint fixed for visits. They were out of G4c1’s scope; the allocator built here is directly reusable for the first two.
+
 ---
 
 ## D-069 — G4c1 closure: a foreign key accepting an id is not permission to use it

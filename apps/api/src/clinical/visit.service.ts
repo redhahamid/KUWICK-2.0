@@ -30,42 +30,53 @@ export interface FindVisitsFilter {
 // G4c1 (D-068) — the visible format, unchanged: "V-000001".
 const VISIT_NUMBER_PREFIX = 'V-';
 const VISIT_NUMBER_DIGITS = 6;
-// Bounded: a collision advances the counter past the conflicting row, so two
-// attempts always suffice in practice. The third exists so a pathological
-// state ends in a controlled error rather than a loop.
-const MAX_ALLOCATION_ATTEMPTS = 3;
+/**
+ * The six-digit format's real ceiling. Exceeding it would silently widen every
+ * printed number to seven digits and break the fixed-width assumption the
+ * clinic's paperwork and the sort order rely on, so it is refused instead.
+ */
+export const MAX_VISIT_NUMBER = 999999;
+/**
+ * One initial attempt plus exactly ONE repair-and-retry.
+ *
+ * A collision can only mean the counter is behind a number written outside the
+ * allocator; the repair advances it past every number in use, so a second
+ * failure indicates something this code cannot reason about and must surface
+ * as a controlled error rather than loop.
+ */
+const MAX_ALLOCATION_ATTEMPTS = 2;
 
 export function formatVisitNumber(value: number): string {
   return `${VISIT_NUMBER_PREFIX}${String(value).padStart(VISIT_NUMBER_DIGITS, '0')}`;
 }
 
 /**
- * Is this the visit-number unique index rejecting the insert?
+ * The constraint name behind a unique violation, wherever the driver put it.
  *
- * Measured, not assumed: under the pg driver adapter Prisma raises P2002 with
- * `meta.target` reported as "(not available)" — the constraint name survives
- * only in the nested driver error. So the name is read where it exists, and
- * where it does not, a P2002 from the visit insert is treated as the
- * visit-number conflict: `visits` carries exactly two unique constraints, and
- * the other is a server-generated uuid primary key.
+ * Measured against the real stack rather than assumed: under the pg driver
+ * adapter Prisma reports `meta.target` as "(not available)", but the nested
+ * driver error carries the true name — e.g.
+ * `duplicate key value violates unique constraint "visits_tenant_id_visit_number_key"`.
  */
-function isVisitNumberConflict(error: unknown): boolean {
+function conflictConstraint(error: Prisma.PrismaClientKnownRequestError): string {
+  const target = error.meta?.target;
+  const named = Array.isArray(target) ? target.join(',') : String(target ?? '');
+  return `${named} ${JSON.stringify(error.meta ?? {})}`;
+}
+
+/**
+ * Is this specifically the (tenant_id, visit_number) index rejecting the insert?
+ *
+ * Deliberately narrow: it matches that one constraint by name and nothing
+ * else, so an unrelated unique violation is never mistaken for a numbering
+ * problem and silently retried.
+ */
+export function isVisitNumberConflict(error: unknown): boolean {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
     return false;
   }
-  const target = error.meta?.target;
-  const named = Array.isArray(target) ? target.join(',') : String(target ?? '');
-  if (named.includes('visit_number') || named.includes('visitNumber')) {
-    return true;
-  }
-  // Best effort: the driver adapter keeps the real constraint name nested.
-  const nested = JSON.stringify(error.meta ?? {});
-  if (nested.includes('visits_tenant_id_visit_number_key')) {
-    return true;
-  }
-  // Unidentifiable target: the only other unique constraint on `visits` is its
-  // uuid primary key, so retrying is both correct and harmless.
-  return named === '' || named === 'undefined' || named.includes('not available');
+  const where = conflictConstraint(error);
+  return where.includes('visits_tenant_id_visit_number_key') || /visit_?[nN]umber/.test(where);
 }
 
 @Injectable()
@@ -97,6 +108,14 @@ export class VisitService {
     const next = rows[0]?.next_value;
     if (!next) {
       throw new ConflictException('Could not allocate a visit number. Please try again.');
+    }
+    if (next > MAX_VISIT_NUMBER) {
+      // The transaction rolls back, so the counter is not left past the
+      // ceiling and the clinic can be migrated to a wider format deliberately.
+      throw new ConflictException(
+        `This clinic has reached the maximum visit number (${formatVisitNumber(MAX_VISIT_NUMBER)}). ` +
+          'A wider visit-number format is required before more visits can be created.',
+      );
     }
     return formatVisitNumber(next);
   }

@@ -113,6 +113,10 @@ async function main() {
 
   const swept = await sweepOrphanedFixtures(prisma, primary.tenant_id);
   if (swept > 0) console.log(`Swept ${swept} leftover fixture visit(s)`);
+  if (secondary) {
+    const sweptB = await sweepOrphanedFixtures(prisma, secondary.tenant_id);
+    if (sweptB > 0) console.log(`Swept ${sweptB} leftover fixture visit(s) in ${secondary.tenant_name}`);
+  }
   ledger = new FixtureLedger(prisma, API, primary.token, primary.tenant_id);
 
   // ---------------------------------------------------------------- baseline
@@ -378,6 +382,172 @@ async function main() {
     'a malformed historical number does not block allocation',
     afterCollision.status === 201,
     'LEGACY/2019/0042 present and ignored for seeding',
+  );
+
+  // ============================================ additional allocator evidence
+
+  // 2 · a known existing number is followed exactly.
+  //
+  // Run in the SECONDARY tenant, whose numbering is still low. Forcing the
+  // primary tenant's counter down to 125 would legitimately collide with the
+  // V-000126 this run already created and trigger the repair — correct
+  // behaviour, but it would prove nothing about "125 → 126".
+  if (secondary) {
+    const patientS = await api('/patients', secondary.token, 'POST', {
+      name: fixtureLabel('G4c1 Sequence Patient'),
+      identifierType: 'PASSPORT',
+      identifierValue: `G4C1S${Date.now()}`.slice(0, 14),
+    });
+    secondaryLedger = secondaryLedger ?? new FixtureLedger(prisma, API, secondary.token, secondary.tenant_id);
+    secondaryLedger.patient(patientS.id);
+
+    // What matters is that V-000126 and V-000127 are FREE, not that the tenant
+    // numbers below 125 — a higher number elsewhere in the sequence does not
+    // stop the counter being set to 125 and continuing correctly from there.
+    const inTheWay = await asTenant(secondary.tenant_id, (tx) =>
+      tx.$queryRawUnsafe<{ n: number }[]>(
+        `SELECT count(*)::int AS n FROM visits WHERE visit_number IN ('V-000126','V-000127')`),
+    );
+    if (inTheWay[0].n === 0) {
+      await asTenant(secondary.tenant_id, (tx) =>
+        tx.$executeRawUnsafe(
+          `UPDATE visit_number_counters SET next_value = 125 WHERE tenant_id = '${secondary.tenant_id}'`),
+      );
+      const mkS = (label: string) =>
+        call('/visits', secondary.token, 'POST', {
+          clinicId: secondary.clinicId, patientId: patientS.id, staffId: secondary.staff_id,
+          billingType: 'Cash', presentingComplaint: fixtureLabel(label),
+        });
+
+      const after125 = await mkS('G4c1 after 125');
+      if (after125.status === 201) secondaryLedger.visit(after125.body.id);
+      check(
+        'a counter at 125 produces V-000126',
+        after125.body?.visitNumber === 'V-000126',
+        `issued ${after125.body?.visitNumber} (HTTP ${after125.status})`,
+      );
+
+      // 3 · deleting that number does not make it available again.
+      if (after125.status === 201) {
+        await asTenant(secondary.tenant_id, (tx) =>
+          tx.$executeRawUnsafe(`DELETE FROM visits WHERE id = '${after125.body.id}'`),
+        );
+      }
+      const afterMiddleDelete = await mkS('G4c1 after middle delete');
+      if (afterMiddleDelete.status === 201) secondaryLedger.visit(afterMiddleDelete.body.id);
+      check(
+        'a deleted number is not reissued',
+        afterMiddleDelete.body?.visitNumber === 'V-000127',
+        `deleted ${after125.body?.visitNumber} → next ${afterMiddleDelete.body?.visitNumber}`,
+      );
+    } else {
+      check('a counter at 125 produces V-000126', false,
+        `secondary tenant already numbers above 125 (highest ${highestInSecondary[0].highest})`);
+      check('a deleted number is not reissued', false, 'not exercised');
+    }
+  } else {
+    check('a counter at 125 produces V-000126', false, 'no second tenant available');
+    check('a deleted number is not reissued', false, 'not exercised');
+  }
+
+  // 7 · every branch in a tenant draws from ONE sequence.
+  //
+  // D-069 requires the acting staff member to be authorised for the branch, so
+  // this needs a real staff member per branch rather than one token used for
+  // both — which is exactly how a clinic would do it.
+  const branchStaff = await asTenant(primary.tenant_id, (tx) =>
+    tx.$queryRawUnsafe<{ user_id: string; staff_id: string; role: string; clinic_id: string }[]>(`
+      SELECT DISTINCT ON (s.clinic_id) u.id AS user_id, s.id AS staff_id, s.role::text AS role, s.clinic_id
+        FROM staff s JOIN users u ON s.user_id = u.id
+       WHERE s.active AND s.clinic_id IS NOT NULL AND s.tenant_id = '${primary.tenant_id}'
+       ORDER BY s.clinic_id, s.id`),
+  );
+  // Only tokens that the API itself accepts — a row can look active in SQL and
+  // still be refused by requireActor, and a fixture must not assert against a
+  // session the server would reject.
+  const usableBranchStaff: typeof branchStaff = [];
+  for (const s of branchStaff) {
+    const probe = await call('/clinics', tokenFor({ ...s, tenant_id: primary.tenant_id }));
+    if (probe.status === 200) usableBranchStaff.push(s);
+    if (usableBranchStaff.length === 2) break;
+  }
+  if (usableBranchStaff.length > 1) {
+    const [one, two] = usableBranchStaff;
+    const mk = (s: typeof one, label: string) =>
+      call('/visits', tokenFor({ ...s, tenant_id: primary.tenant_id }), 'POST', {
+        clinicId: s.clinic_id, patientId: patient.id, staffId: s.staff_id,
+        billingType: 'Cash', presentingComplaint: fixtureLabel(label),
+      });
+    const inBranchA = await mk(one, 'G4c1 branch A');
+    const inBranchB = await mk(two, 'G4c1 branch B');
+    if (inBranchA.status === 201) ledger.visit(inBranchA.body.id);
+    if (inBranchB.status === 201) ledger.visit(inBranchB.body.id);
+    const a = Number(String(inBranchA.body?.visitNumber ?? '').slice(2));
+    const b = Number(String(inBranchB.body?.visitNumber ?? '').slice(2));
+    check(
+      'branches inside one tenant share a single sequence',
+      inBranchA.status === 201 && inBranchB.status === 201 && b === a + 1,
+      `${inBranchA.body?.visitNumber} (HTTP ${inBranchA.status}) → ${inBranchB.body?.visitNumber} (HTTP ${inBranchB.status}: ${inBranchB.body?.message ?? ""})`,
+    );
+  } else {
+    // Structural fallback: the counter is keyed by tenant alone, so a branch
+    // cannot have its own sequence even in principle.
+    const key = await asTenant(primary.tenant_id, (tx) =>
+      tx.$queryRawUnsafe<{ indexdef: string }[]>(
+        `SELECT indexdef FROM pg_indexes WHERE tablename = 'visit_number_counters'`),
+    );
+    check(
+      'branches inside one tenant share a single sequence',
+      key.every((k) => !k.indexdef.includes('clinic')),
+      `no staff assigned to a second branch; counter key is tenant-only: ${key.map((k) => k.indexdef.split('USING')[1]?.trim()).join(', ')}`,
+    );
+  }
+
+  // 16 · the six-digit ceiling is refused, clearly, and the last number is usable.
+  const restore = await counterFor(primary.tenant_id);
+  await asTenant(primary.tenant_id, (tx) =>
+    tx.$executeRawUnsafe(`UPDATE visit_number_counters SET next_value = 999998 WHERE tenant_id = '${primary.tenant_id}'`),
+  );
+  const lastUsable = await makeVisit(primary, 'G4c1 last usable');
+  if (lastUsable.status === 201) ledger.visit(lastUsable.body.id);
+  check(
+    'the last number the format can hold is still issued',
+    lastUsable.body?.visitNumber === 'V-999999',
+    `issued ${lastUsable.body?.visitNumber}`,
+  );
+  const overflow = await makeVisit(primary, 'G4c1 overflow');
+  check(
+    'allocation beyond V-999999 is refused with a clear message',
+    overflow.status === 409 && /maximum visit number/i.test(JSON.stringify(overflow.body ?? {})),
+    `HTTP ${overflow.status} — ${overflow.body?.message ?? ''}`,
+  );
+  const counterAfterOverflow = await counterFor(primary.tenant_id);
+  check(
+    'a refused overflow leaves the counter at the ceiling, not past it',
+    counterAfterOverflow === 999999,
+    `counter ${counterAfterOverflow}`,
+  );
+  await asTenant(primary.tenant_id, (tx) =>
+    tx.$executeRawUnsafe(`UPDATE visit_number_counters SET next_value = ${restore ?? 0} WHERE tenant_id = '${primary.tenant_id}'`),
+  );
+
+  // 17 · the counter table is tenant-isolated like the visits it numbers.
+  const visibleToPrimary = await asTenant(primary.tenant_id, (tx) =>
+    tx.$queryRawUnsafe<{ tenant_id: string }[]>('SELECT tenant_id FROM visit_number_counters'),
+  );
+  check(
+    'the counter table is tenant-isolated',
+    visibleToPrimary.length === 1 && visibleToPrimary[0].tenant_id === primary.tenant_id,
+    `${visibleToPrimary.length} row(s) visible under this tenant context`,
+  );
+  const withoutTenantGuc = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.bypass_tenant_scope', 'true', true)`;
+    return tx.$queryRawUnsafe<{ n: number }[]>('SELECT count(*)::int AS n FROM visit_number_counters');
+  });
+  check(
+    'the bypass GUC alone does not expose counters (matches the visits policy)',
+    withoutTenantGuc[0].n === 0,
+    `${withoutTenantGuc[0].n} row(s) without app.tenant_id — same rule as visits`,
   );
 
   // ---------------------------------------------- 1 · nothing was renumbered
