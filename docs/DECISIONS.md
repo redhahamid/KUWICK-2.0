@@ -912,6 +912,48 @@ Malformed legacy numbers (`DEMO-00001`, `LEGACY/2019/0042`) are ignored for seed
 
 ---
 
+## D-069 — G4c1 closure: a foreign key accepting an id is not permission to use it
+
+G4c1's own verification found it by accident: a token for one tenant created a visit using **another tenant's `patientId`**, and the API accepted it. Three such rows existed in the dev database before this closure removed them.
+
+### Why row-level security did not stop it
+
+RLS filters **reads**. A foreign key is enforced **below** RLS, at the storage layer, and does not care which tenant is asking — so `INSERT … patient_id = <foreign uuid>` simply succeeded. The result was a visit owned by tenant A whose patient was invisible to tenant A: unreadable in the workspace, unjoinable in history, and silently corrupting any per-patient count.
+
+`VisitService.create()` wrote `dto.patientId`, `dto.clinicId` and `dto.staffId` straight into the row. Nothing resolved them first, and the foreign key's acceptance was doing duty as an authorisation check.
+
+### What it does now
+
+Inside the same tenant transaction that allocates the number, **before** anything is written:
+
+1. `requireActor` — a visit cannot be created without an authenticated staff session.
+2. `resolvePatient` — looked up on the tenant-scoped transaction; absent → **404 "Patient not found"**.
+3. `resolveClinic` — same, then the project's existing `hasBranchAccess` rule → **403** when the actor is not authorised for that branch.
+4. `resolveAttendingStaff` — exists in this tenant, is `active`, and is authorised for the visit's branch.
+5. Panel, then number allocation, then the insert — **using the resolved rows, not the request values**.
+
+A rejected request therefore allocates nothing: the counter is untouched across every failure path, measured live.
+
+**The response cannot be used to probe.** "Belongs to another tenant" and "does not exist" are the same code path and the same message, because RLS makes a foreign row genuinely absent rather than forbidden. The check asserts the two responses are byte-identical.
+
+### What is deliberately NOT enforced
+
+The attending staff member is **not** required to hold a clinical role. D-044 established that a walk-in is registered before anyone knows which doctor will see the patient, and the Queue's call step reassigns `visit.staffId` later. Requiring a doctor here would break front-desk registration. What is enforced is what the record must be able to claim: the person exists, is active, and belongs to that branch.
+
+`Clinic` has no `active` column in the current schema, so there is no activation state to check. Nothing was invented to fill the gap.
+
+### The other two paths
+
+`QueueTicketService.addToQueue()` delegates to `create()` and so inherits every rule — proven live: a cross-tenant `patientId` on `POST /queue-tickets` returns the same 404. `AppointmentService.arrived()` reads patient, clinic and doctor from the **stored appointment** and passes only the appointment id from the client, so there is no id to inject; it was still exercised end to end.
+
+**Still open, and reported rather than fixed:** `AppointmentService.create()` has the same shape of defect — it writes `dto.patientId` and `dto.clinicId` without resolving either. Its booking validator checks doctor qualification, schedule and capacity (all tenant-scoped), but never the patient or the clinic. Fixing it is a separate checkpoint; this closure was scoped to visit creation.
+
+**Verification:** 26 unit tests on `VisitService` (409 backend, 187 frontend, both typechecks clean) and `prisma/g4c1-closure-visit-integrity-check.ts` — 16 checks against the real database and HTTP API across two tenants: the original cross-tenant abuse now 404s, unknown and cross-tenant are indistinguishable, cross-tenant clinic and staff are refused, an inactive staff member is refused, no rejected attempt consumed a visit number, no Prisma or foreign-key text reaches the client, the queue and appointment paths both go through the same validation, no cross-tenant row survives, and creation remains safe under concurrency.
+
+**Reversibility**: Low. Reverting re-opens cross-tenant visit creation.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 - ~~Diagnosis deletion is a hard delete with no audit trail (D-059)~~ — **resolved by D-061.**
@@ -921,7 +963,8 @@ Malformed legacy numbers (`DEMO-00001`, `LEGACY/2019/0042`) are ignored for seed
 - **Prescriptions are soft-deleted but unattributed**: `deletedAt` is set and the row survives, and deletion is blocked once the item leaves `ORDERED` — but no actor and no reason are recorded. Clinically better than the others, still short of the diagnosis standard. Recommended for a **medication-governance checkpoint after G3**.
 - **Orders/procedures have no delete route at all** — only `cancel`, which sets `CANCELLED` and stores `cancelReason`. This one is already acceptable; it lacks a cancelling-actor field, which is a smaller gap.
 - ~~Visit numbering breaks after any deletion (found in G4, D-067)~~ — **resolved by D-068.**
-- **`POST /visits` does not verify the patient belongs to the caller’s tenant** (found during G4c1): posting another tenant’s `patientId` with a valid token is accepted, producing a visit whose patient is invisible to it. RLS protects reads, but the foreign key is enforced below RLS so the insert succeeds. Not introduced by G4c1 and deliberately not fixed there; the smallest safe change is to resolve the patient inside the visit-creation transaction and refuse when it is not visible. Same question applies to `clinicId` and `staffId`.
+- ~~`POST /visits` does not verify the patient belongs to the caller’s tenant (found during G4c1)~~ — **resolved by D-069.**
+- **`POST /appointments` does not verify the patient or clinic belongs to the caller’s tenant** (found during the D-069 audit): `AppointmentService.create()` writes `dto.patientId` and `dto.clinicId` unresolved. The booking validator checks doctor qualification, schedule and capacity, but never the patient or the branch — so the same cross-tenant insert that D-069 closed for visits is still possible for appointments. Recommended as a small dedicated checkpoint reusing the D-069 resolve-then-write pattern.
 - **The wider API RBAC gap remains open** (D-056). Clinical notes, observations, diagnoses, document authorisation (D-064) and the five invoice mutation routes (D-066) now have server-side role enforcement; the rest of the API does not.
 
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:

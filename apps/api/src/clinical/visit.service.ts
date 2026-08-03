@@ -1,9 +1,17 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma, Staff } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { ClinicalTx, withTenantTx } from './clinical-actor';
+import { branchContext, ClinicalTx, requireActor, withTenantTx } from './clinical-actor';
+import { hasBranchAccess } from './clinical-authorization';
 
 export interface CreateVisitInput {
   clinicId: string;
@@ -120,6 +128,76 @@ export class VisitService {
     });
   }
 
+  /**
+   * G4c1 closure (D-069) — every id in the request is resolved under the
+   * authenticated tenant before anything is written.
+   *
+   * The defect this closes was found by G4c1's own verification: a token for
+   * one tenant could create a visit using ANOTHER tenant's patientId. RLS
+   * protects reads, but a foreign key is enforced below RLS, so the insert
+   * simply succeeded and produced a visit whose patient was invisible to the
+   * tenant that owned the visit. A foreign key accepting an id is not
+   * evidence that the caller may use it.
+   *
+   * Every lookup below runs on `tx`, which has `app.tenant_id` set, so a row
+   * belonging to another tenant is not "found" at all — the same code path
+   * that reports a genuinely unknown id reports an inaccessible one, and the
+   * response cannot be used to probe for cross-tenant existence.
+   */
+  private async resolvePatient(tx: ClinicalTx, patientId: string) {
+    const patient = await tx.patient.findUnique({ where: { id: patientId }, select: { id: true, name: true } });
+    if (!patient) {
+      // Deliberately identical for "does not exist" and "belongs to another
+      // tenant". Distinguishing them would leak the existence of a patient.
+      throw new NotFoundException('Patient not found');
+    }
+    return patient;
+  }
+
+  private async resolveClinic(tx: ClinicalTx, clinicId: string, actor: Staff) {
+    const clinic = await tx.clinic.findUnique({ where: { id: clinicId }, select: { id: true, name: true } });
+    if (!clinic) {
+      throw new NotFoundException('Clinic not found');
+    }
+    // NOTE: `Clinic` has no `active` flag in the current schema, so there is
+    // no activation state to check here. Nothing is invented to fill the gap;
+    // if branch deactivation is introduced later, this is where it belongs.
+    // The project's existing branch rule, not a weaker copy of it.
+    if (!hasBranchAccess(actor, clinic.id, await branchContext(tx, actor))) {
+      throw new ForbiddenException(
+        'You are not authorised for this branch. Ask an administrator to assign your branch or grant explicit access.',
+      );
+    }
+    return clinic;
+  }
+
+  /**
+   * The visit's attending staff member.
+   *
+   * Deliberately NOT restricted to a doctor role. D-044 established that a
+   * walk-in is often added before anyone knows which doctor will see the
+   * patient, and the Queue's call step reassigns `visit.staffId` at that
+   * point. Requiring a clinical role here would break front-desk
+   * registration, so what is enforced is what the record must be able to
+   * claim: the staff member exists in this tenant, is active, and is
+   * authorised for the branch the visit is being created in.
+   */
+  private async resolveAttendingStaff(tx: ClinicalTx, staffId: string, clinicId: string) {
+    const staff = await tx.staff.findUnique({ where: { id: staffId } });
+    if (!staff) {
+      throw new NotFoundException('Staff member not found');
+    }
+    if (!staff.active) {
+      throw new BadRequestException('That staff member is not active.');
+    }
+    if (!hasBranchAccess(staff, clinicId, await branchContext(tx, staff))) {
+      throw new BadRequestException(
+        'That staff member is not authorised for this branch, so they cannot be recorded as attending.',
+      );
+    }
+    return staff;
+  }
+
   // A panel visit's billingType is derived from the panel's own name, not
   // trusted from client-supplied text (docs/DECISIONS.md D-028-style
   // reasoning: the panel is the source of truth for what it's called on a
@@ -146,14 +224,24 @@ export class VisitService {
     for (let attempt = 1; attempt <= MAX_ALLOCATION_ATTEMPTS; attempt += 1) {
       try {
         return await withTenantTx(this.rawPrisma, async (tx) => {
+          // Order matters (D-069): every relationship is validated BEFORE a
+          // number is allocated, so a rejected request consumes nothing. The
+          // allocation and the insert then share this transaction, so a
+          // failed insert rolls the increment back with it.
+          const actor = await requireActor(tx);
+          const patient = await this.resolvePatient(tx, input.patientId);
+          const clinic = await this.resolveClinic(tx, input.clinicId, actor);
+          const attending = await this.resolveAttendingStaff(tx, input.staffId, clinic.id);
           const billingType = await this.resolveBillingType(tx, input);
+
           const visitNumber = await this.allocateVisitNumber(tx);
           return tx.visit.create({
             data: {
               tenantId: currentTenantId(),
-              clinicId: input.clinicId,
-              patientId: input.patientId,
-              staffId: input.staffId,
+              // Resolved rows, not the raw request values.
+              clinicId: clinic.id,
+              patientId: patient.id,
+              staffId: attending.id,
               billingType,
               panelClinicId: input.panelClinicId,
               presentingComplaint: input.presentingComplaint,
@@ -163,6 +251,16 @@ export class VisitService {
         });
       } catch (error) {
         if (!isVisitNumberConflict(error)) {
+          // Every id is resolved above, so a foreign-key failure here means a
+          // referenced row disappeared between validation and insert. Report
+          // it as a conflict rather than letting a driver error reach the
+          // client as a 500. Only P2003 is caught: an unrelated failure must
+          // not be disguised as a validation problem.
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+            throw new ConflictException(
+              'One of the records this visit refers to changed while it was being created. Please try again.',
+            );
+          }
           throw error;
         }
         // The whole attempt rolled back, so nothing partial survives and no

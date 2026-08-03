@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { VisitService, formatVisitNumber } from './visit.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
@@ -14,6 +14,20 @@ function createService(options: { allocations?: number[] } = {}) {
 
   const tx = {
     $executeRaw: jest.fn(),
+    // D-069 — creation now resolves every submitted id under the tenant
+    // transaction before writing, so the mock must answer those lookups.
+    staff: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'staff-1', fullName: 'Dr Test', role: 'DOCTOR_RESIDENT',
+        active: true, clinicId: 'clinic-1', userId: 'user-1',
+      }),
+    },
+    patient: { findUnique: jest.fn().mockResolvedValue({ id: 'patient-1', name: 'Test Patient' }) },
+    clinic: {
+      findUnique: jest.fn().mockResolvedValue({ id: 'clinic-1', name: 'Main' }),
+      count: jest.fn().mockResolvedValue(1),
+    },
+    userClinicAccess: { findMany: jest.fn().mockResolvedValue([]) },
     $queryRaw: jest.fn().mockImplementation(() => {
       const value = allocations[Math.min(allocationIndex, allocations.length - 1)];
       allocationIndex += 1;
@@ -32,7 +46,7 @@ function createService(options: { allocations?: number[] } = {}) {
 }
 
 function withTenant<T>(fn: () => Promise<T>): Promise<T> {
-  return tenantContextStorage.run({ tenantId: 'test-tenant' }, fn);
+  return tenantContextStorage.run({ tenantId: 'test-tenant', staffId: 'staff-1' }, fn);
 }
 
 const uniqueViolation = () =>
@@ -181,5 +195,152 @@ describe('VisitService.create — billing type', () => {
     expect(tx.visit.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ billingType: 'Self-pay', panelClinicId: undefined }),
     });
+  });
+});
+
+// =============================================================================
+// G4c1 closure (D-069) — every submitted id is resolved under the authenticated
+// tenant before anything is written. The defect: a token for one tenant could
+// create a visit using another tenant's patientId, because a foreign key is
+// enforced BELOW row-level security and simply accepted it.
+// =============================================================================
+describe('VisitService.create — relationship validation', () => {
+  it('creates the visit when every reference resolves in this tenant', async () => {
+    const { service, tx } = createService();
+    await withTenant(() => service.create(BASE));
+    expect(tx.visit.create).toHaveBeenCalled();
+  });
+
+  it('rejects a patient that is not visible in this tenant', async () => {
+    const { service, tx } = createService();
+    // RLS makes another tenant's row simply absent — the same result as an
+    // id that never existed.
+    tx.patient.findUnique.mockResolvedValue(null);
+    await expect(withTenant(() => service.create(BASE))).rejects.toThrow(NotFoundException);
+  });
+
+  it('does not reveal whether an inaccessible patient exists', async () => {
+    const { service, tx } = createService();
+    tx.patient.findUnique.mockResolvedValue(null);
+    await expect(withTenant(() => service.create(BASE))).rejects.toThrow('Patient not found');
+  });
+
+  it('rejects a clinic that is not visible in this tenant', async () => {
+    const { service, tx } = createService();
+    tx.clinic.findUnique.mockResolvedValue(null);
+    await expect(withTenant(() => service.create(BASE))).rejects.toThrow(NotFoundException);
+  });
+
+  it('refuses a branch the acting staff member may not use', async () => {
+    const { service, tx } = createService();
+    // Multi-branch tenant, actor's home branch is elsewhere, no explicit grant.
+    tx.clinic.count.mockResolvedValue(3);
+    tx.staff.findUnique.mockResolvedValue({
+      id: 'staff-1', fullName: 'Dr Test', role: 'DOCTOR_RESIDENT',
+      active: true, clinicId: 'clinic-OTHER', userId: 'user-1',
+    });
+    await expect(withTenant(() => service.create(BASE))).rejects.toThrow(ForbiddenException);
+  });
+
+  it('rejects a staff member that is not visible in this tenant', async () => {
+    const { service, tx } = createService();
+    tx.staff.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+      Promise.resolve(
+        where.id === 'staff-1'
+          ? { id: 'staff-1', fullName: 'Actor', role: 'OWNER_ADMIN', active: true, clinicId: 'clinic-1', userId: 'u1' }
+          : null,
+      ),
+    );
+    await expect(
+      withTenant(() => service.create({ ...BASE, staffId: 'staff-FOREIGN' })),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('rejects an inactive staff member as attending', async () => {
+    const { service, tx } = createService();
+    tx.staff.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+      Promise.resolve(
+        where.id === 'staff-1'
+          ? { id: 'staff-1', fullName: 'Actor', role: 'OWNER_ADMIN', active: true, clinicId: 'clinic-1', userId: 'u1' }
+          : { id: where.id, fullName: 'Retired', role: 'DOCTOR_LOCUM', active: false, clinicId: 'clinic-1', userId: 'u2' },
+      ),
+    );
+    await expect(
+      withTenant(() => service.create({ ...BASE, staffId: 'staff-INACTIVE' })),
+    ).rejects.toThrow('That staff member is not active.');
+  });
+
+  it('rejects an attending staff member without access to the visit branch', async () => {
+    const { service, tx } = createService();
+    tx.clinic.count.mockResolvedValue(3);
+    tx.staff.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+      Promise.resolve(
+        where.id === 'staff-1'
+          ? { id: 'staff-1', fullName: 'Actor', role: 'OWNER_ADMIN', active: true, clinicId: 'clinic-1', userId: 'u1' }
+          : { id: where.id, fullName: 'Other branch', role: 'DOCTOR_LOCUM', active: true, clinicId: 'clinic-9', userId: 'u2' },
+      ),
+    );
+    await expect(
+      withTenant(() => service.create({ ...BASE, staffId: 'staff-ELSEWHERE' })),
+    ).rejects.toThrow('not authorised for this branch');
+  });
+
+  it('still allows any active in-branch staff member as attending (D-044)', async () => {
+    // Front desk registers a walk-in before a doctor is known; the Queue's
+    // call step reassigns. A clinical role is deliberately NOT required.
+    const { service, tx } = createService();
+    tx.staff.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+      Promise.resolve({
+        id: where.id, fullName: 'Front Desk', role: 'FRONT_DESK_CLINICAL_STAFF',
+        active: true, clinicId: 'clinic-1', userId: 'u1',
+      }),
+    );
+    await withTenant(() => service.create({ ...BASE, staffId: 'staff-FRONTDESK' }));
+    expect(tx.visit.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ staffId: 'staff-FRONTDESK' }),
+    });
+  });
+
+  it('writes the RESOLVED ids, never the raw request values', async () => {
+    const { service, tx } = createService();
+    tx.patient.findUnique.mockResolvedValue({ id: 'patient-RESOLVED', name: 'P' });
+    tx.clinic.findUnique.mockResolvedValue({ id: 'clinic-RESOLVED', name: 'C' });
+    await withTenant(() => service.create(BASE));
+    expect(tx.visit.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ patientId: 'patient-RESOLVED', clinicId: 'clinic-RESOLVED' }),
+    });
+  });
+
+  it('allocates NO visit number when a relationship fails validation', async () => {
+    const { service, tx } = createService();
+    tx.patient.findUnique.mockResolvedValue(null);
+    await expect(withTenant(() => service.create(BASE))).rejects.toThrow(NotFoundException);
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
+    expect(tx.visit.create).not.toHaveBeenCalled();
+  });
+
+  it('validates before allocating, in that order', async () => {
+    const { service, tx } = createService();
+    await withTenant(() => service.create(BASE));
+    const patientCall = tx.patient.findUnique.mock.invocationCallOrder[0];
+    const clinicCall = tx.clinic.findUnique.mock.invocationCallOrder[0];
+    const allocationCall = tx.$queryRaw.mock.invocationCallOrder[0];
+    expect(patientCall).toBeLessThan(allocationCall);
+    expect(clinicCall).toBeLessThan(allocationCall);
+  });
+
+  it('refuses to create a visit with no authenticated staff session', async () => {
+    const { service } = createService();
+    await expect(
+      tenantContextStorage.run({ tenantId: 'test-tenant' }, () => service.create(BASE)),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('turns a late foreign-key failure into a controlled conflict, not a 500', async () => {
+    const { service, tx } = createService();
+    tx.visit.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('FK failed', { code: 'P2003', clientVersion: 'test' }),
+    );
+    await expect(withTenant(() => service.create(BASE))).rejects.toThrow(ConflictException);
   });
 });
