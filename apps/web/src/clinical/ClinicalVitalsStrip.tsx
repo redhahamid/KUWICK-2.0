@@ -1,5 +1,5 @@
-import { Space, Typography } from 'antd';
-import dayjs from 'dayjs';
+import { Button, Space, Typography } from 'antd';
+import { formatClinicTime } from './clinicTime';
 import { useLatestObservation } from './hooks/useVisitObservations';
 
 const { Text } = Typography;
@@ -18,6 +18,9 @@ const { Text } = Typography;
  * untouched: this strip reads, it does not write.
  */
 interface ClinicalVitalsStripProps {
+  /** D-077 — reveals the full Vitals & Observations panel below the strip. */
+  expanded?: boolean;
+  onToggleExpand?: () => void;
   visitId: string;
   onRecord?: () => void;
 }
@@ -32,7 +35,7 @@ function bmiFrom(weight: string | null, height: string | null): string | null {
   return (kg / (metres * metres)).toFixed(1);
 }
 
-export function ClinicalVitalsStrip({ visitId, onRecord }: ClinicalVitalsStripProps) {
+export function ClinicalVitalsStrip({ visitId, onRecord, expanded, onToggleExpand }: ClinicalVitalsStripProps) {
   const { data: latest, isLoading } = useLatestObservation(visitId);
 
   if (isLoading) {
@@ -44,16 +47,10 @@ export function ClinicalVitalsStrip({ visitId, onRecord }: ClinicalVitalsStripPr
         <Text type="secondary" style={{ fontSize: 12 }}>
           No vitals recorded yet
         </Text>
-        {onRecord && (
-          <Text
-            className="kw-vitals-record"
-            onClick={onRecord}
-            style={{ fontSize: 12, cursor: 'pointer' }}
-            type="secondary"
-            underline
-          >
-            Record
-          </Text>
+        {onToggleExpand && (
+          <Button size="small" type="link" className="kw-vitals-action" onClick={onToggleExpand}>
+            {expanded ? 'Hide' : 'Record vitals'}
+          </Button>
         )}
       </div>
     );
@@ -94,23 +91,17 @@ export function ClinicalVitalsStrip({ visitId, onRecord }: ClinicalVitalsStripPr
           ))}
         </Space>
       )}
-      <Text type="secondary" style={{ fontSize: 11, marginLeft: 'auto' }}>
-        {dayjs(latest.recordedAt).format('HH:mm')}
-        {onRecord && (
-          <>
-            {' · '}
-            <Text
-              className="kw-vitals-record"
-              onClick={onRecord}
-              style={{ fontSize: 11, cursor: 'pointer' }}
-              type="secondary"
-              underline
-            >
-              Update
-            </Text>
-          </>
-        )}
+      {/* D-077 — attribution and time stay, as muted secondary information;
+          the actions that used to live in a second, duplicate vitals card are
+          here instead, so the values appear exactly once on the screen. */}
+      <Text type="secondary" style={{ fontSize: 12, marginLeft: 'auto' }}>
+        {formatClinicTime(latest.recordedAt)}
       </Text>
+      {onToggleExpand && (
+        <Button size="small" type="link" className="kw-vitals-action" onClick={onToggleExpand}>
+          {expanded ? 'Hide' : 'Record / Edit'}
+        </Button>
+      )}
     </div>
   );
 }

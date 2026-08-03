@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Button, Drawer, Space, Tag, Tooltip, Typography, message } from 'antd';
-import { ExperimentOutlined } from '@ant-design/icons';
+import { Button, Drawer, Dropdown, Space, Tag, Tooltip, Typography, message } from 'antd';
+import { ExperimentOutlined, MoreOutlined } from '@ant-design/icons';
 import {
   useCancelPrescription,
   useDispensePrescription,
@@ -17,10 +17,11 @@ interface MedicationsRailProps {
   visitId: string;
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  ORDERED: 'gold',
-  DISPENSED: 'green',
-  CANCELLED: 'default',
+// Token colour pairs, each rendered WITH its word (D-077 §4).
+const STATUS_CHIP: Record<string, string> = {
+  ORDERED: 'kw-chip-pending',
+  DISPENSED: 'kw-chip-success',
+  CANCELLED: 'kw-chip-neutral',
 };
 
 /**
@@ -81,7 +82,7 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
         title="Medications"
         anchorId="kw-anchor-medications"
         count={list.length}
-        status={awaitingDispense > 0 ? <Tag color="gold">{awaitingDispense} to dispense</Tag> : undefined}
+        status={awaitingDispense > 0 ? <Tag className="kw-chip-pending">{awaitingDispense} to dispense</Tag> : undefined}
         isLoading={isLoading}
         error={error ?? undefined}
         emptyText="No medications prescribed for this visit"
@@ -108,7 +109,7 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
                     {prescription.item?.name ?? 'Medication'}
                   </Text>
                   {strength && <Text type="secondary" style={{ fontSize: 12 }}>{strength}</Text>}
-                  <Tag color={STATUS_COLOR[prescription.status]}>{prescription.status}</Tag>
+                  <Tag className={STATUS_CHIP[prescription.status]}>{prescription.status}</Tag>
                 </Space>
                 <Text style={{ fontSize: 12 }}>
                   {prescription.amount}
@@ -131,6 +132,10 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
                   </Tooltip>
                 )}
               </div>
+              {/* D-077 — ONE next action, plus More. Dispense is what the row
+                  is usually for; cancelling is real but rare, and a red button
+                  beside every prescription made the panel read as a list of
+                  things to undo. The cancel call itself is unchanged. */}
               <Space size={4} className="kw-rail-row-actions">
                 {prescription.status === 'ORDERED' && (
                   <>
@@ -144,17 +149,31 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
                     >
                       Dispense
                     </Button>
-                    <Button
-                      size="small"
-                      danger
-                      onClick={() =>
-                        cancel
-                          .mutateAsync({ id: prescription.id, input: { cancelReason: 'Cancelled by prescriber' } })
-                          .catch((e) => report(e, 'Failed to cancel'))
-                      }
+                    <Dropdown
+                      trigger={['click']}
+                      menu={{
+                        items: [
+                          {
+                            key: 'cancel',
+                            danger: true,
+                            label: 'Cancel prescription',
+                            onClick: () =>
+                              cancel
+                                .mutateAsync({
+                                  id: prescription.id,
+                                  input: { cancelReason: 'Cancelled by prescriber' },
+                                })
+                                .catch((e) => report(e, 'Failed to cancel')),
+                          },
+                        ],
+                      }}
                     >
-                      Cancel
-                    </Button>
+                      <Button
+                        size="small"
+                        icon={<MoreOutlined />}
+                        aria-label={`More actions for ${prescription.item?.name ?? 'this medication'}`}
+                      />
+                    </Dropdown>
                   </>
                 )}
               </Space>

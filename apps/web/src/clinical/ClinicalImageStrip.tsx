@@ -1,4 +1,4 @@
-import { Image, Space, Typography } from 'antd';
+import { Button, Image, Space, Typography } from 'antd';
 import { useVisitAttachments } from './hooks/useVisitAttachments';
 import { useAttachmentBlobUrls } from './hooks/useAttachmentBlobUrls';
 
@@ -21,18 +21,35 @@ const { Text } = Typography;
  * panel already uses, and antd's existing preview group for the lightbox.
  */
 interface ClinicalImageStripProps {
+  /** D-077 — reveals the full attachments panel (upload, non-image files). */
+  expanded?: boolean;
+  onToggleExpand?: () => void;
   visitId: string;
 }
 
-export function ClinicalImageStrip({ visitId }: ClinicalImageStripProps) {
+export function ClinicalImageStrip({ visitId, expanded, onToggleExpand }: ClinicalImageStripProps) {
   const { data: attachments } = useVisitAttachments(visitId);
   const active = (attachments ?? []).filter((file) => file.recordStatus === 'ACTIVE');
   const blobUrls = useAttachmentBlobUrls(visitId, active);
   const images = active.filter((file) => file.mimeType?.startsWith('image/') && blobUrls[file.id]);
   const otherFiles = active.length - images.length;
 
+  // D-077 — ONE compact row when nothing is attached. The full panel rendered
+  // a large empty placeholder that ate most of a tablet screen on a visit with
+  // no images, for information that amounts to the number zero.
   if (active.length === 0) {
-    return null;
+    return (
+      <div className="kw-image-strip">
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          Attachments 0
+        </Text>
+        {onToggleExpand && (
+          <Button size="small" style={{ marginLeft: 'auto' }} onClick={onToggleExpand}>
+            {expanded ? 'Hide' : 'Upload'}
+          </Button>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -53,10 +70,14 @@ export function ClinicalImageStrip({ visitId }: ClinicalImageStripProps) {
           </Space>
         </Image.PreviewGroup>
       )}
-      {otherFiles > 0 && (
-        <Text type="secondary" style={{ fontSize: 11 }}>
-          {otherFiles} non-image file{otherFiles === 1 ? '' : 's'} attached
-        </Text>
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        Attachments {active.length}
+        {otherFiles > 0 && ` · ${otherFiles} non-image`}
+      </Text>
+      {onToggleExpand && (
+        <Button size="small" style={{ marginLeft: 'auto' }} onClick={onToggleExpand}>
+          {expanded ? 'Hide' : 'Upload'}
+        </Button>
       )}
     </div>
   );

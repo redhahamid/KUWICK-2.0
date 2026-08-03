@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Popconfirm, Select, Space, Tag, Typography, message } from 'antd';
-import { PaperClipOutlined } from '@ant-design/icons';
+import { MoreOutlined, PaperClipOutlined } from '@ant-design/icons';
 import { useServices } from '../hooks/useServices';
 import {
   useCancelOrderService,
@@ -25,11 +25,13 @@ const STATUS_LABEL: Record<OrderServiceStatus, string> = {
   CANCELLED: 'Cancelled',
 };
 
-const STATUS_COLOR: Record<OrderServiceStatus, string> = {
-  PENDING: 'gold',
-  IN_PROGRESS: 'blue',
-  COMPLETED: 'green',
-  CANCELLED: 'default',
+// Token colour PAIRS. The label is always rendered too — status is never
+// carried by colour alone (D-077 §4).
+const STATUS_CHIP: Record<OrderServiceStatus, string> = {
+  PENDING: 'kw-chip-pending',
+  IN_PROGRESS: 'kw-chip-progress',
+  COMPLETED: 'kw-chip-success',
+  CANCELLED: 'kw-chip-neutral',
 };
 
 // Outstanding work first: what still needs doing is why a doctor looks.
@@ -92,7 +94,7 @@ export function OrdersRail({ visitId }: OrdersRailProps) {
         title="Orders / Procedures"
         anchorId="kw-anchor-orders"
         count={list.length}
-        status={outstanding > 0 ? <Tag color="gold">{outstanding} awaiting result</Tag> : undefined}
+        status={outstanding > 0 ? <Tag className="kw-chip-pending">{outstanding} awaiting result</Tag> : undefined}
         isLoading={isLoading}
         error={error ?? undefined}
         emptyText="No orders or procedures for this visit"
@@ -125,11 +127,11 @@ export function OrdersRail({ visitId }: OrdersRailProps) {
                   {order.procedureName}
                 </Text>
                 {/* A word, never colour alone. */}
-                <Tag color={STATUS_COLOR[order.status]}>{STATUS_LABEL[order.status]}</Tag>
+                <Tag className={STATUS_CHIP[order.status]}>{STATUS_LABEL[order.status]}</Tag>
                 {(order._count?.attachments ?? 0) > 0 && (
                   <Tag icon={<PaperClipOutlined />}>{order._count!.attachments}</Tag>
                 )}
-                {(order._count?.invoiceLines ?? 0) > 0 && <Tag color="purple">On invoice</Tag>}
+                {(order._count?.invoiceLines ?? 0) > 0 && <Tag className="kw-chip-clinical">On invoice</Tag>}
               </Space>
               {order.result && (
                 <Text style={{ fontSize: 12 }} ellipsis>
@@ -162,9 +164,12 @@ export function OrdersRail({ visitId }: OrdersRailProps) {
               )}
               {order.status === 'COMPLETED' && (
                 <Button size="small" onClick={() => setActiveOrder(order)}>
-                  View result
+                  View Result
                 </Button>
               )}
+              {/* D-077 — Cancel moves into More. The confirmation step is
+                  kept: it is now the menu item's own Popconfirm, so nothing
+                  can be cancelled in a single unguarded click. */}
               {(order.status === 'PENDING' || order.status === 'IN_PROGRESS') && (
                 <Popconfirm
                   title="Cancel this order?"
@@ -172,9 +177,7 @@ export function OrdersRail({ visitId }: OrdersRailProps) {
                   okButtonProps={{ danger: true }}
                   onConfirm={() => cancelOrder.mutateAsync({ id: order.id }).catch((e) => report(e, 'Failed to cancel'))}
                 >
-                  <Button size="small" danger>
-                    Cancel
-                  </Button>
+                  <Button size="small" icon={<MoreOutlined />} aria-label={`Cancel ${order.procedureName}`} />
                 </Popconfirm>
               )}
             </Space>

@@ -56,6 +56,8 @@ import { ClinicalRail } from './sections/ClinicalRail';
 import { SecondarySections } from './sections/SecondarySections';
 import { ClinicalVitalsStrip } from './ClinicalVitalsStrip';
 import { ClinicalImageStrip } from './ClinicalImageStrip';
+import { VisitObservationsPanel } from './VisitObservationsPanel';
+import { VisitAttachmentsPanel } from './VisitAttachmentsPanel';
 import { Visit } from './types';
 import { isDraftDirty, useClinicalDraftStore, visitPrefix } from './clinical-draft-store';
 
@@ -87,6 +89,9 @@ export function PatientDashboardPage() {
   // G4.5d (D-075) — lifted so the completion bar can open the full sections.
   const [documentsOpen, setDocumentsOpen] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
+  // D-077 — the compact strips own the values; these reveal the full panels.
+  const [vitalsExpanded, setVitalsExpanded] = useState(false);
+  const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
   const [selectedVisitId, setSelectedVisitId] = useState<string>();
   const [activeRecordTab, setActiveRecordTab] = useState('notes');
   const layout = useRecordViewLayoutStore((state) => state.layout);
@@ -216,12 +221,13 @@ export function PatientDashboardPage() {
           <CanvasPatientHeader
             patient={patient}
             visit={selectedVisit}
-            onReviewHistory={() => setHistoryOpen(true)}
+            onPatientSummary={() => setSummaryOpen(true)}
             layoutControl={layoutSwitch}
           />
           {/* G4.5d2 (D-076) — "what happened last time?", answered without
               opening anything. Read-only, and it never touches the current
               visit, the URL or the C1 draft. */}
+          <div className="kw-visit-band">
           <LastVisitSnapshot
             patientId={patient.id}
             currentVisitId={selectedVisit.id}
@@ -237,6 +243,7 @@ export function PatientDashboardPage() {
             onOpenDocuments={() => revealSection('documents')}
             onOpenInvoice={() => revealSection('invoice')}
           />
+          </div>
         </>
       ) : (
       <Card style={{ marginBottom: 16 }}>
@@ -481,9 +488,25 @@ export function PatientDashboardPage() {
                     canvasCompact ? { header: { padding: '4px 12px', minHeight: 30 }, body: { padding: 8 } } : undefined
                   }
                 >
-                  <ClinicalVitalsStrip visitId={selectedVisit.id} />
-                  <ClinicalImageStrip visitId={selectedVisit.id} />
-                  <ClinicalNotesTab visitId={selectedVisit.id} patientId={patient.id} compact={canvasCompact} />
+                  {/* D-077 — ONE compact component per fact. The strips carry
+                      the values and the actions; the full panels appear below
+                      only when asked for, so no vital is printed twice and an
+                      empty attachments box is one row rather than a slab. */}
+                  <ClinicalVitalsStrip
+                    visitId={selectedVisit.id}
+                    expanded={vitalsExpanded}
+                    onToggleExpand={() => setVitalsExpanded((prev) => !prev)}
+                  />
+                  {vitalsExpanded && <VisitObservationsPanel visitId={selectedVisit.id} compact={canvasCompact} />}
+                  <ClinicalImageStrip
+                    visitId={selectedVisit.id}
+                    expanded={attachmentsExpanded}
+                    onToggleExpand={() => setAttachmentsExpanded((prev) => !prev)}
+                  />
+                  {attachmentsExpanded && (
+                    <VisitAttachmentsPanel visitId={selectedVisit.id} compact={canvasCompact} />
+                  )}
+                  <ClinicalNotesTab visitId={selectedVisit.id} patientId={patient.id} compact={canvasCompact} embedded />
                 </Card>
               </div>
 
@@ -515,16 +538,22 @@ export function PatientDashboardPage() {
       {/* Tablet/mobile: the summary moves out of the editor's way entirely.
           The allergy alert stays visible in the header, so nothing clinically
           urgent hides behind a closed drawer. */}
-      {selectedVisit && layout === 'canvas' && !isDesktop && (
+      {/* D-077 — the drawer is now available at EVERY width, because the
+          context band's Patient Summary control exists on desktop too (it took
+          the space the duplicated Previous Visits button was using). The
+          full-width button below stays phone-only. */}
+      {selectedVisit && layout === 'canvas' && (
         <>
-          <Button
-            block
-            icon={<UserOutlined />}
-            style={{ marginTop: 12 }}
-            onClick={() => setSummaryOpen(true)}
-          >
-            Patient Summary &amp; Recent Visits
-          </Button>
+          {!isDesktop && (
+            <Button
+              block
+              icon={<UserOutlined />}
+              style={{ marginTop: 12 }}
+              onClick={() => setSummaryOpen(true)}
+            >
+              Patient Summary &amp; Recent Visits
+            </Button>
+          )}
           <Drawer
             title="Patient Summary"
             placement="right"

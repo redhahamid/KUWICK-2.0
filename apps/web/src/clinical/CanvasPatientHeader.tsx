@@ -1,15 +1,17 @@
 import { Avatar, Button, Space, Tag, Typography } from 'antd';
-import { HistoryOutlined, UserOutlined, WarningFilled } from '@ant-design/icons';
+import { UserOutlined, WarningFilled } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Patient } from '../core/types';
 import { Visit } from './types';
+import { attendingClinician } from './attendingClinician';
+import { formatClinicDateTime } from './clinicTime';
 
 const { Text } = Typography;
 
 interface CanvasPatientHeaderProps {
   patient: Patient;
   visit: Visit;
-  onReviewHistory?: () => void;
+  onPatientSummary?: () => void;
   /** The Canvas/Flow switch, folded into the band rather than given its own row. */
   layoutControl?: React.ReactNode;
 }
@@ -27,7 +29,8 @@ interface CanvasPatientHeaderProps {
  * reference CMS used two bars and it cost the note ~90px of height at the
  * viewport where height is scarcest.
  */
-export function CanvasPatientHeader({ patient, visit, onReviewHistory, layoutControl }: CanvasPatientHeaderProps) {
+export function CanvasPatientHeader({ patient, visit, onPatientSummary, layoutControl }: CanvasPatientHeaderProps) {
+  const attending = attendingClinician(visit.staff?.fullName, visit.staff?.role);
   const age = patient.dob ? dayjs().diff(dayjs(patient.dob), 'year') : null;
   const allergies = patient.allergies ?? [];
   const hasAllergies = allergies.length > 0;
@@ -72,12 +75,17 @@ export function CanvasPatientHeader({ patient, visit, onReviewHistory, layoutCon
         </span>
       )}
 
+      {/* D-077 — the visit's STORED attending relationship, labelled by the
+          stored role. "DR Dr. Amira Rahman" doubled a title the clinic had
+          already typed, and worse, it printed "DR" over a nurse. */}
       <span className="kw-context-item">
-        <Text type="secondary" style={{ fontSize: 11 }}>
-          DR{' '}
-        </Text>
-        <Text strong style={{ fontSize: 12 }}>
-          {visit.staff?.fullName ?? 'Not assigned'}
+        {attending.prefix && (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {attending.prefix}{' '}
+          </Text>
+        )}
+        <Text strong={Boolean(attending.name)} italic={!attending.name} style={{ fontSize: 13 }}>
+          {attending.name ?? 'Attending clinician not recorded'}
         </Text>
       </span>
 
@@ -92,14 +100,18 @@ export function CanvasPatientHeader({ patient, visit, onReviewHistory, layoutCon
       <Tag color={visit.checkOutAt ? 'default' : 'gold'}>{visit.checkOutAt ? 'Completed' : 'In Progress'}</Tag>
 
       <Text className="kw-context-item" type="secondary" style={{ fontSize: 11 }}>
-        {visit.visitNumber} · {dayjs(visit.checkInAt).format('D MMM, HH:mm')}
+        {visit.visitNumber} · {formatClinicDateTime(visit.checkInAt)}
       </Text>
 
+      {/* D-077 — Previous Visits is GONE from here. The Last Visit Snapshot
+          immediately below carries "View History", and two controls opening
+          the same drawer is two places to look for one thing. The freed space
+          goes to Patient Summary, which nothing else offered on desktop. */}
       <Space size={6} className="kw-context-action">
         {layoutControl}
-        {onReviewHistory && (
-          <Button size="small" icon={<HistoryOutlined />} onClick={onReviewHistory}>
-            Previous Visits
+        {onPatientSummary && (
+          <Button size="small" icon={<UserOutlined />} onClick={onPatientSummary}>
+            Patient Summary
           </Button>
         )}
       </Space>

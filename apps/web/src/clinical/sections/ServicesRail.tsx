@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Button, Popconfirm, Select, Space, Tag, Tooltip, Typography, message } from 'antd';
+import { Button, Dropdown, Popconfirm, Select, Space, Tag, Tooltip, Typography, message } from 'antd';
+import { MoreOutlined } from '@ant-design/icons';
 import { useServices } from '../hooks/useServices';
 import { useCancelOrderService, useCreateOrderService, useOrderServices } from '../hooks/useOrderServices';
 import { ApiError } from '../../core/api-client';
@@ -101,11 +102,11 @@ export function ServicesRail({ visitId }: ServicesRailProps) {
                     is whether it has been charged. Cancelled is different: it
                     changes what the row means and is always labelled. */}
                 {cancelled ? (
-                  <Tag color="default">Cancelled</Tag>
+                  <Tag className="kw-chip-neutral">Cancelled</Tag>
                 ) : billed ? (
-                  <Tag color="purple">On invoice</Tag>
+                  <Tag className="kw-chip-clinical">On invoice</Tag>
                 ) : (
-                  <Tag>Not yet billed</Tag>
+                  <Tag className="kw-chip-neutral">Not yet billed</Tag>
                 )}
               </Space>
               {cancelled && service.cancelReason && (
@@ -119,12 +120,12 @@ export function ServicesRail({ visitId }: ServicesRailProps) {
                   hidden behind a clinical button: the server refuses it and
                   says which invoice to act on. Offering a button that always
                   fails would be worse than not offering one. */}
+              {/* D-077 — a More menu, not a red button on every row. Direct
+                  Services still show no Start or Complete (D-073). */}
               {!cancelled &&
                 (billed ? (
                   <Tooltip title="Charged on an invoice. Remove the invoice line first, then cancel the service.">
-                    <Button size="small" disabled>
-                      Cancel
-                    </Button>
+                    <Button size="small" icon={<MoreOutlined />} disabled aria-label="No actions available" />
                   </Tooltip>
                 ) : (
                   <Popconfirm
@@ -135,9 +136,11 @@ export function ServicesRail({ visitId }: ServicesRailProps) {
                       cancelService.mutateAsync({ id: service.id }).catch((e) => report(e, 'Failed to cancel'))
                     }
                   >
-                    <Button size="small" danger>
-                      Cancel
-                    </Button>
+                    <Button
+                      size="small"
+                      icon={<MoreOutlined />}
+                      aria-label={`Cancel ${service.procedureName}`}
+                    />
                   </Popconfirm>
                 ))}
             </Space>

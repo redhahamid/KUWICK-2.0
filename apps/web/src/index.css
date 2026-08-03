@@ -1,3 +1,121 @@
+/* ===========================================================================
+   G4.5d3 (D-077) — the Kuwick design tokens.
+
+   Declared once, here, as custom properties rather than as colours typed into
+   one page's rules. The brief asked for a professional product identity, not
+   a differently-painted Clinical Workspace: anything that hard-codes navy
+   inside a single component becomes the next inconsistency the moment a
+   second screen is styled. Every rule below and every component in the
+   workspace reads these, so the same tokens can carry the rest of the app.
+
+   Navy leads (identity, primary actions). Teal is the CLINICAL accent —
+   selected state and positive clinical status, never decoration. Red is
+   reserved: allergy, warning, destructive confirmation. Nothing else.
+   =========================================================================== */
+:root {
+  /* Primary */
+  --kw-navy: #184a6b;
+  --kw-navy-hover: #123a55;
+  --kw-teal: #0f766e;
+  --kw-teal-hover: #0b5f59;
+
+  /* Surfaces */
+  --kw-page-bg: #f4f7fa;
+  --kw-card: #ffffff;
+  --kw-rail-bg: #f8fafc;
+  --kw-band-bg: #edf6fb;
+  --kw-band-border: #cfe3ef;
+  --kw-border: #dce4ea;
+
+  /* Text */
+  --kw-text: #17212b;
+  --kw-text-secondary: #667085;
+  --kw-text-muted: #98a2b3;
+
+  /* Status — each is a PAIR, because colour alone never carries meaning
+     (WCAG, and a colour-blind GP reading a result at 7pm). Every use below
+     is accompanied by a word. */
+  --kw-success-fg: #166534;
+  --kw-success-bg: #dcfce7;
+  --kw-progress-fg: #1d4ed8;
+  --kw-progress-bg: #dbeafe;
+  --kw-pending-fg: #92400e;
+  --kw-pending-bg: #fef3c7;
+  --kw-danger-fg: #b42318;
+  --kw-danger-bg: #fee4e2;
+  --kw-neutral-fg: #475467;
+  --kw-neutral-bg: #f2f4f7;
+
+  /* Spacing scale — 4 / 8 / 12 / 16 / 24, nothing between. */
+  --kw-s1: 4px;
+  --kw-s2: 8px;
+  --kw-s3: 12px;
+  --kw-s4: 16px;
+  --kw-s6: 24px;
+}
+
+/* The clinical workspace sits on the page background, so white cards read as
+   surfaces rather than as the page itself. */
+.ant-layout-content {
+  background: var(--kw-page-bg);
+}
+
+/* Navy is the product's primary action colour. antd's default blue is left
+   for nothing in this workspace. */
+.kw-canvas-shell .ant-btn-primary,
+.kw-completion-bar .ant-btn-primary,
+.kw-last-visit .ant-btn-primary {
+  background: var(--kw-navy);
+  border-color: var(--kw-navy);
+}
+
+.kw-canvas-shell .ant-btn-primary:not(:disabled):hover,
+.kw-completion-bar .ant-btn-primary:not(:disabled):hover,
+.kw-last-visit .ant-btn-primary:not(:disabled):hover {
+  background: var(--kw-navy-hover) !important;
+  border-color: var(--kw-navy-hover) !important;
+}
+
+/* Status chips. Each one is rendered WITH its word — the class only supplies
+   the colour pair, it never replaces the label. */
+.kw-chip-success {
+  color: var(--kw-success-fg) !important;
+  background: var(--kw-success-bg) !important;
+  border-color: var(--kw-success-bg) !important;
+}
+
+.kw-chip-progress {
+  color: var(--kw-progress-fg) !important;
+  background: var(--kw-progress-bg) !important;
+  border-color: var(--kw-progress-bg) !important;
+}
+
+.kw-chip-pending {
+  color: var(--kw-pending-fg) !important;
+  background: var(--kw-pending-bg) !important;
+  border-color: var(--kw-pending-bg) !important;
+}
+
+.kw-chip-danger {
+  color: var(--kw-danger-fg) !important;
+  background: var(--kw-danger-bg) !important;
+  border-color: var(--kw-danger-bg) !important;
+}
+
+.kw-chip-neutral {
+  color: var(--kw-neutral-fg) !important;
+  background: var(--kw-neutral-bg) !important;
+  border-color: var(--kw-neutral-bg) !important;
+}
+
+/* Teal marks CLINICAL emphasis — a recorded primary diagnosis, a delivered
+   service. Not a second brand colour to sprinkle. */
+.kw-chip-clinical {
+  color: var(--kw-teal) !important;
+  background: #e6f4f2 !important;
+  border-color: #cce9e5 !important;
+}
+
 /* Canvas layout's compact Notes editor (RichTextEditor.tsx) — no visible
    box around the text, even while focused/typing (user feedback: "don't
    want border while typing the notes"). Browsers put a default focus
@@ -261,6 +379,8 @@
 /* 420–480px: wide enough to read a medication line without wrapping every
    field, narrow enough that the note keeps the majority of a 1366 screen. */
 .kw-canvas-rail {
+  background: var(--kw-rail-bg);
+  border-radius: 8px;
   flex: 0 0 clamp(420px, 26vw, 480px);
   width: clamp(420px, 26vw, 480px);
   align-self: flex-start;
@@ -284,11 +404,11 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 14px;
-  padding: 8px 14px;
-  margin-bottom: 8px;
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  gap: var(--kw-s2) var(--kw-s4);
+  padding: var(--kw-s2) var(--kw-s4);
+  margin-bottom: var(--kw-s2);
+  background: var(--kw-card);
+  border: 1px solid var(--kw-border);
   border-radius: 8px;
 }
 
@@ -305,11 +425,11 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 24px;
-  padding: 6px 14px;
-  margin-bottom: 8px;
-  background: #fafafa;
-  border: 1px solid #f0f0f0;
+  gap: var(--kw-s2) var(--kw-s6);
+  padding: var(--kw-s2) var(--kw-s4);
+  margin-bottom: var(--kw-s2);
+  background: var(--kw-band-bg);
+  border: 1px solid var(--kw-band-border);
   border-radius: 8px;
 }
 
@@ -328,6 +448,28 @@
   letter-spacing: 0.04em;
 }
 
+/* D-077 — on a wide desktop the snapshot and the completion bar share ONE
+   strip, the way the approved mockup composes them. Two stacked bands cost
+   ~50px of the first screen for information that reads perfectly well side by
+   side. Below 1500px they stack again rather than squeezing. */
+@media (min-width: 1500px) {
+  .kw-visit-band {
+    display: flex;
+    align-items: stretch;
+    gap: var(--kw-s2);
+  }
+
+  .kw-visit-band > .kw-last-visit {
+    flex: 1 1 60%;
+    margin-bottom: var(--kw-s2);
+  }
+
+  .kw-visit-band > .kw-completion-bar {
+    flex: 1 1 40%;
+    align-content: center;
+  }
+}
+
 /* G4.5d2 (D-076) — the Last Visit Snapshot.
    A band, not a card: one identity line, one clinical line, meds, outcome.
    Deliberately kept near 120–150px so it answers "what happened last time?"
@@ -338,8 +480,8 @@
   gap: 4px 12px;
   padding: 8px 14px;
   margin-bottom: 8px;
-  background: #f6f9ff;
-  border: 1px solid #e3ecfb;
+  background: var(--kw-band-bg);
+  border: 1px solid var(--kw-band-border);
   border-radius: 8px;
 }
 
@@ -414,6 +556,38 @@
   /* No narrow two-up cards on a tablet: a clinical row needs its width. */
   .kw-clinical-rail {
     gap: 10px;
+  }
+}
+
+/* D-077 — the chat launcher.
+   Fixed, but never over a clinical control. On a phone it docks above the
+   safe area with room for the sticky completion actions, and inside the
+   Clinical Workspace it is hidden entirely: the workspace has its own sticky
+   controls at the bottom edge and chat remains reachable from the header. */
+.kw-chat-launcher {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 900;
+}
+
+/* Inside a patient record the bottom-right corner belongs to the clinical
+   rail: at 1920 the launcher sat directly on top of an order row's "View
+   Result" button. Chat stays reachable from the global header. */
+body:has(.kw-canvas-shell) .kw-chat-launcher {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .kw-chat-launcher {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 88px);
+    right: 12px;
+  }
+
+  /* Inside a patient record on a phone, the launcher is removed rather than
+     moved — every corner already belongs to a clinical action. */
+  body:has(.kw-canvas-shell) .kw-chat-launcher {
+    display: none;
   }
 }
 
@@ -574,7 +748,7 @@
    No collapsed state, no toggle, and no internal scrollbar: a long list
    truncates to "View all N" and the page grows. */
 .kw-rail-panel {
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--kw-border);
   border-radius: 8px;
   background: #fff;
   padding: 8px 10px;

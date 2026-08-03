@@ -144,8 +144,27 @@ async function main() {
       // --- Content correctness, against the backend's own values ------------
       check('1. uses the latest PREVIOUS visit, not the current one', snap.text.includes(expected.visitNumber), expected.visitNumber);
       check('   the current visit number is absent', !snap.text.includes('V-000355') || expected.visitNumber === 'V-000355');
-      check('2. date and time shown', /\d{1,2} \w{3} \d{4}/.test(snap.text) && /\d{1,2}:\d{2} (AM|PM)/.test(snap.text));
-      check('3. attending doctor accurate', !expected.doctorName || snap.text.includes(expected.doctorName), expected.doctorName ?? 'none');
+      // D-077 — one clock for the whole workspace: 24-hour, never AM/PM.
+      // No \b before the time: the date and the time are separate elements
+      // (visually spaced by the flex gap), so textContent runs them together
+      // as "…202617:15" and a word boundary never appears.
+      check(
+        '2. date and 24-hour time shown',
+        /\d{1,2} \w{3} \d{4}/.test(snap.text) && /\d{2}:\d{2}/.test(snap.text),
+      );
+      check('   no 12-hour clock anywhere in the snapshot', !/\b\d{1,2}:\d{2}\s?(AM|PM)\b/i.test(snap.text));
+
+      // The UI strips a stored "Dr."/"Dr" prefix and re-applies one, so
+      // "Dr. Amira Rahman" renders as "Dr Amira Rahman". Compare on the bare
+      // name: the assertion is that the right PERSON is named, not that the
+      // clinic's stored punctuation survived.
+      const bareName = (expected.doctorName ?? '').replace(/^\s*(dr\.?|doctor)\s+/i, '').trim();
+      check(
+        '3. attending clinician accurate',
+        !expected.doctorName || snap.text.includes(bareName),
+        expected.doctorName ?? 'none',
+      );
+      check('   no doubled title', !/DR\s+Dr\.?/i.test(snap.text) && !snap.text.includes('Dr. Dr'));
       check('4. complaint accurate', !expected.presentingComplaint || snap.text.includes(expected.presentingComplaint));
       check('5. diagnosis accurate', !expected.primaryDiagnosis || snap.text.includes(expected.primaryDiagnosis.name));
       check(

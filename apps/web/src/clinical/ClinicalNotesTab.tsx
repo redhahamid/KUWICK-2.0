@@ -119,11 +119,17 @@ interface ClinicalNotesTabProps {
   visitId: string;
   patientId: string;
   compact?: boolean;
+  /**
+   * D-077 — true when the Canvas already shows vitals and attachments in its
+   * own compact strips above this component, so they must not be rendered a
+   * second time. Flow leaves it false and keeps the full panels.
+   */
+  embedded?: boolean;
 }
 
 // C0 (D-051) — narrative entry with real authorship.
 // C1 (D-052) — unsaved-text safety around it.
-export function ClinicalNotesTab({ visitId, patientId, compact }: ClinicalNotesTabProps) {
+export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: ClinicalNotesTabProps) {
   const { data: notes, isLoading } = useClinicalNotes(visitId);
   const createNote = useCreateClinicalNote(visitId);
   const updateNote = useUpdateClinicalNote(visitId);
@@ -442,8 +448,16 @@ export function ClinicalNotesTab({ visitId, patientId, compact }: ClinicalNotesT
     // happen to leave over: under C2 every diagnosis or medication added
     // subtracted directly from the doctor's typing area.
     <div style={compact ? { display: 'flex', flexDirection: 'column', gap: 4 } : undefined}>
-      <VisitObservationsPanel visitId={visitId} compact={compact} />
-      <VisitAttachmentsPanel visitId={visitId} compact={compact} />
+      {/* D-077 — the Canvas renders its own compact vitals and image strips
+          ABOVE the note, so rendering these here as well printed every vital
+          twice on one screen and gave an empty attachments box a large
+          placeholder. They stay for the Flow layout, which has no strips. */}
+      {!embedded && (
+        <>
+          <VisitObservationsPanel visitId={visitId} compact={compact} />
+          <VisitAttachmentsPanel visitId={visitId} compact={compact} />
+        </>
+      )}
 
       <Space wrap style={{ marginBottom: compact ? 6 : 8, width: '100%' }}>
         <Select

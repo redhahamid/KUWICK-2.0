@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { AutoComplete, Button, Space, Tag, Typography, message } from 'antd';
+import { AutoComplete, Button, Dropdown, Space, Tag, Typography, message } from 'antd';
+import { MoreOutlined } from '@ant-design/icons';
 import {
   useAddDiagnosis,
   useDiagnoses,
@@ -74,16 +75,11 @@ export function DiagnosisRail({ visitId }: DiagnosisRailProps) {
   };
 
   const priorityTag = (diagnosis: Diagnosis) => {
-    if (diagnosis.priority === 'PRIMARY')
-      return (
-        <Tag color="red">
-          Primary
-        </Tag>
-      );
-    if (diagnosis.priority === 'SECONDARY') return <Tag>Secondary</Tag>;
+    if (diagnosis.priority === 'PRIMARY') return <Tag className="kw-chip-clinical">Primary</Tag>;
+    if (diagnosis.priority === 'SECONDARY') return <Tag className="kw-chip-neutral">Secondary</Tag>;
     // G2a made "no priority" a real state. Saying it in the tag itself, rather
     // than only in a tooltip, keeps it readable without a pointer.
-    return <Tag>Priority not recorded</Tag>;
+    return <Tag className="kw-chip-neutral">Priority not recorded</Tag>;
   };
 
   return (
@@ -145,13 +141,29 @@ export function DiagnosisRail({ visitId }: DiagnosisRailProps) {
                 {priorityTag(diagnosis)}
               </Space>
             </div>
+            {/* D-077 — one primary action, everything else in More. A red
+                "Remove" on every row made destruction the most eye-catching
+                thing in the panel. The removal itself is unchanged: same
+                modal, same mandatory reason, same audit trail. */}
             <Space size={4} className="kw-rail-row-actions">
               <Button size="small" loading={setPriority.isPending} onClick={() => togglePrimary(diagnosis)}>
                 {diagnosis.priority === 'PRIMARY' ? 'Unset 1°' : 'Set Primary'}
               </Button>
-              <Button size="small" danger onClick={() => setRemoving(diagnosis)}>
-                Remove
-              </Button>
+              <Dropdown
+                trigger={['click']}
+                menu={{
+                  items: [
+                    {
+                      key: 'remove',
+                      danger: true,
+                      label: 'Remove from visit…',
+                      onClick: () => setRemoving(diagnosis),
+                    },
+                  ],
+                }}
+              >
+                <Button size="small" icon={<MoreOutlined />} aria-label={`More actions for ${diagnosis.name}`} />
+              </Dropdown>
             </Space>
           </div>
         ))}

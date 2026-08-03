@@ -108,7 +108,51 @@ describe('previous-visit summary', () => {
 
   it('only offers context chips whose data exists', () => {
     const chips = contextChips({ ...base, clinicName: null, queueNumber: null, queueType: null });
-    expect(chips.map((chip) => chip.label)).toEqual(['Billing']);
+    // D-077 — the billing chip became an INVOICE chip. It is always present
+    // because "no invoice created" is itself information a biller needs; every
+    // other chip still disappears when its field is unrecorded.
+    expect(chips.map((chip) => chip.label)).toEqual(['Invoice']);
+  });
+
+  // D-077 — the card used to say only "Billing: Cash" while the amount and the
+  // payment status sat unread in the same payload.
+  it('reports a single invoice with its amount, status and cash/panel', () => {
+    const chips = contextChips({
+      ...base,
+      invoices: [{ id: 'i1', invoiceNumber: 'INV-1', totalAmount: '85.00', status: 'PAID' }],
+      panelName: null,
+    });
+    expect(chips.find((c) => c.label === 'Invoice')?.value).toBe('RM85.00 · Paid · Cash');
+  });
+
+  it('names the panel when the visit was billed to one', () => {
+    const chips = contextChips({
+      ...base,
+      invoices: [{ id: 'i1', invoiceNumber: 'INV-2', totalAmount: '120.00', status: 'UNPAID' }],
+      panelName: 'AIA',
+    });
+    expect(chips.find((c) => c.label === 'Invoice')?.value).toBe('RM120.00 · Unpaid · Panel AIA');
+  });
+
+  it('counts several invoices instead of adding them together', () => {
+    const chips = contextChips({
+      ...base,
+      invoices: [
+        { id: 'i1', invoiceNumber: 'INV-1', totalAmount: '40.00', status: 'PAID' },
+        { id: 'i2', invoiceNumber: 'INV-2', totalAmount: '60.00', status: 'UNPAID' },
+      ],
+      panelName: null,
+    });
+    const value = chips.find((c) => c.label === 'Invoice')?.value ?? '';
+    expect(value).toContain('2 invoices');
+    // No combined figure — RM100 is not a number the clinic stores anywhere.
+    expect(value).not.toContain('100');
+  });
+
+  it('says no invoice was created rather than showing a zero', () => {
+    const value = contextChips({ ...base, invoices: [] }).find((c) => c.label === 'Invoice')?.value ?? '';
+    expect(value).toContain('No invoice created');
+    expect(value).not.toContain('RM0');
   });
 
   it('translates the queue source into words', () => {

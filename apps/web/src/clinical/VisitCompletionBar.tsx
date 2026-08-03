@@ -20,10 +20,11 @@ interface VisitCompletionBarProps {
   onOpenInvoice: () => void;
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  UNPAID: 'gold',
-  PAID: 'green',
-  CANCELLED: 'default',
+// Token colour pairs, always rendered WITH the status word (D-077 §4).
+const STATUS_CHIP: Record<string, string> = {
+  UNPAID: 'kw-chip-pending',
+  PAID: 'kw-chip-success',
+  CANCELLED: 'kw-chip-neutral',
 };
 
 function typeLabel(document: ClinicalDocument): string {
@@ -87,7 +88,7 @@ export function VisitCompletionBar({
         {invoice.invoiceNumber}
       </Text>
       <Text style={{ fontSize: 13 }}>{money(invoice.totalAmount)}</Text>
-      <Tag color={STATUS_COLOR[invoice.status]}>{invoice.status}</Tag>
+      <Tag className={STATUS_CHIP[invoice.status]}>{invoice.status}</Tag>
     </>
   );
 
@@ -116,13 +117,13 @@ export function VisitCompletionBar({
           )}
           <Space size={6} wrap className="kw-completion-actions">
             <Button size="small" type="primary" ghost icon={<FileTextOutlined />} onClick={() => setCreating('MC')}>
-              MC
+              Create MC
             </Button>
             <Button size="small" icon={<SwapOutlined />} onClick={() => setCreating('REFERRAL')}>
-              Referral
+              Create Referral
             </Button>
             <Button size="small" onClick={onOpenDocuments}>
-              Documents
+              More Documents
             </Button>
           </Space>
         </div>
@@ -140,28 +141,35 @@ export function VisitCompletionBar({
           ) : single ? (
             <Space size={6} wrap>
               {invoiceSummary(single)}
-              <Tag color={onPanel ? 'purple' : 'default'}>
+              <Tag className="kw-chip-neutral">
                 {onPanel ? `Panel · ${visit.panelClinic?.name ?? visit.billingType}` : 'Cash'}
               </Tag>
             </Space>
           ) : (
+            // D-077 — the count only. The earlier version added the invoices
+            // together and called it a total; no visit-level total is stored,
+            // so that figure was this component's invention rather than the
+            // clinic's number.
             <Space size={6} wrap>
-              <Text strong style={{ fontSize: 13 }}>
-                {invoiceList.length} invoices
-              </Text>
-              <Tooltip title="This visit has more than one invoice. Open the invoice summary to see them all.">
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {money(invoiceList.reduce((sum, i) => sum + Number(i.totalAmount), 0))} total
+              <Tooltip title="This visit has more than one invoice. Open the invoice list to see each one.">
+                <Text strong style={{ fontSize: 13 }}>
+                  {invoiceList.length} invoices
                 </Text>
               </Tooltip>
-              <Tag color={onPanel ? 'purple' : 'default'}>{onPanel ? 'Panel' : 'Cash'}</Tag>
+              <Tag className="kw-chip-neutral">{onPanel ? 'Panel' : 'Cash'}</Tag>
             </Space>
           )}
           <Space size={6} className="kw-completion-actions">
-            {/* Read-only entry point. Everything that moves money is on the
-                billing surface, behind the billing RBAC. */}
+            {/* D-077 — the LABEL matches the state. "No invoice created" beside
+                a button saying "Open Invoice" promises to open something that
+                does not exist. Read-only either way: everything that moves
+                money is on the billing surface, behind the billing RBAC. */}
             <Button size="small" onClick={onOpenInvoice}>
-              Open Invoice
+              {invoiceList.length === 0
+                ? 'Open Billing'
+                : invoiceList.length === 1
+                  ? 'Open Invoice'
+                  : 'View Invoices'}
             </Button>
           </Space>
         </div>

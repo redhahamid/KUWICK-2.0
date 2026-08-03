@@ -2,6 +2,9 @@ import { Button, Skeleton, Space, Tag, Typography } from 'antd';
 import { HistoryOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useVisitHistory } from './history/useVisitHistory';
+import { attendingClinician } from './attendingClinician';
+import { formatClinicDate, formatClinicDateShort, formatClinicTime } from './clinicTime';
+import { useIsDesktop } from '../core/hooks/useMediaQuery';
 import { VisitHistorySummary } from './types';
 
 const { Text } = Typography;
@@ -13,10 +16,12 @@ interface LastVisitSnapshotProps {
   onViewHistory: () => void;
 }
 
-const INVOICE_COLOR: Record<string, string> = {
-  UNPAID: 'gold',
-  PAID: 'green',
-  CANCELLED: 'default',
+// Colour PAIRS from the token set, and every one is rendered with its word —
+// status is never carried by colour alone (D-077 §4).
+const INVOICE_CHIP: Record<string, string> = {
+  UNPAID: 'kw-chip-pending',
+  PAID: 'kw-chip-success',
+  CANCELLED: 'kw-chip-neutral',
 };
 
 function money(amount: string): string {
@@ -62,6 +67,8 @@ function mcSummary(mc: { startDate: string | null; endDate: string | null }): st
  */
 export function LastVisitSnapshot({ patientId, currentVisitId, onViewHistory }: LastVisitSnapshotProps) {
   const { data, isLoading } = useVisitHistory(patientId);
+  // Phones get a shorter hierarchy — same facts, fewer words (D-077 §7).
+  const compact = !useIsDesktop();
 
   const visits: VisitHistorySummary[] = data?.pages.flatMap((page) => page.items) ?? [];
   // The most recent visit that is NOT the one being worked on. The list is
@@ -90,7 +97,7 @@ export function LastVisitSnapshot({ patientId, currentVisitId, onViewHistory }: 
     );
   }
 
-  const when = dayjs(last.checkInAt);
+  const attending = attendingClinician(last.doctorName, last.doctorRole);
   const meds = last.medications.slice(0, 2);
   const moreMeds = Math.max(last.medicationCount - meds.length, 0);
   const extraDiagnoses = Math.max(last.diagnosisCount - 1, 0);
@@ -103,16 +110,22 @@ export function LastVisitSnapshot({ patientId, currentVisitId, onViewHistory }: 
           LAST VISIT
         </Text>
         <Text strong style={{ fontSize: 13 }}>
-          {when.format('D MMM YYYY')}
+          {compact ? formatClinicDateShort(last.checkInAt) : formatClinicDate(last.checkInAt)}
         </Text>
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          {when.format('h:mm A')} · {last.visitNumber}
-        </Text>
-        {last.doctorName ? (
-          <Text style={{ fontSize: 12 }}>{last.doctorName}</Text>
-        ) : (
-          absent('Attending doctor')
+        {!compact && (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {formatClinicTime(last.checkInAt)} · {last.visitNumber}
+          </Text>
         )}
+        {/* D-077 — the stored attending relationship, labelled by the stored
+            role. A nurse is never printed under a doctor's title. */}
+        <Text
+          style={{ fontSize: 12 }}
+          italic={!attending.name}
+          type={attending.name ? undefined : 'secondary'}
+        >
+          {compact && attending.name ? attending.name : attending.text}
+        </Text>
       </div>
 
       <div className="kw-last-visit-body">
@@ -125,7 +138,9 @@ export function LastVisitSnapshot({ patientId, currentVisitId, onViewHistory }: 
               </Text>
               {last.primaryDiagnosis.icd10Code && <Tag color="geekblue">{last.primaryDiagnosis.icd10Code}</Tag>}
               {/* Only when the priority was actually recorded. */}
-              {last.primaryDiagnosis.isPrimary && <Tag color="red">Primary</Tag>}
+              {/* Teal: a recorded clinical judgement. Red is reserved for allergy
+                  and destructive actions (D-077 §4). */}
+              {last.primaryDiagnosis.isPrimary && <Tag className="kw-chip-clinical">Primary</Tag>}
               {extraDiagnoses > 0 && (
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   +{extraDiagnoses} more
@@ -155,7 +170,7 @@ export function LastVisitSnapshot({ patientId, currentVisitId, onViewHistory }: 
           ) : meds.length === 0 ? (
             absent('Medication details')
           ) : (
-            <Text style={{ fontSize: 12 }}>
+            <Text style={{ fontSize: 12 }} ellipsis={{ tooltip: true }}>
               {meds.map((m) => `${m.name}${m.strength ? ` ${m.strength}mg` : ''}`).join(' · ')}
               {moreMeds > 0 ? ` · +${moreMeds} more` : ''}
             </Text>
@@ -164,16 +179,17 @@ export function LastVisitSnapshot({ patientId, currentVisitId, onViewHistory }: 
 
         <div className="kw-last-visit-outcome">
           <Space size={4} wrap>
-            {last.mc && <Tag color="blue">{mcSummary(last.mc)}</Tag>}
+            {last.mc && <Tag className="kw-chip-progress">{mcSummary(last.mc)}</Tag>}
             {last.referral && (
-              <Tag color="cyan">
+              <Tag className="kw-chip-neutral">
                 {last.referral.referredTo ? `Referral ${last.referral.referredTo}` : 'Referral'}
               </Tag>
             )}
-            {last.memo && <Tag>Memo</Tag>}
-            {last.documentCount > (last.mc ? 1 : 0) + (last.referral ? 1 : 0) + (last.memo ? 1 : 0) && (
-              <Tag>{last.documentCount} documents</Tag>
-            )}
+            {!compact && last.memo && <Tag className="kw-chip-neutral">Memo</Tag>}
+            {!compact &&
+              last.documentCount > (last.mc ? 1 : 0) + (last.referral ? 1 : 0) + (last.memo ? 1 : 0) && (
+                <Tag className="kw-chip-neutral">{last.documentCount} documents</Tag>
+              )}
 
             {last.invoices.length === 0 ? (
               <Text type="secondary" style={{ fontSize: 12 }}>
@@ -182,8 +198,8 @@ export function LastVisitSnapshot({ patientId, currentVisitId, onViewHistory }: 
             ) : invoice ? (
               <>
                 <Text style={{ fontSize: 12 }}>Invoice {money(invoice.totalAmount)}</Text>
-                <Tag color={INVOICE_COLOR[invoice.status]}>{invoice.status}</Tag>
-                <Tag color={last.panelName ? 'purple' : 'default'}>
+                <Tag className={INVOICE_CHIP[invoice.status]}>{invoice.status}</Tag>
+                <Tag className="kw-chip-neutral">
                   {last.panelName ? `Panel ${last.panelName}` : 'Cash'}
                 </Tag>
               </>

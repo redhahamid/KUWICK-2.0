@@ -93,6 +93,11 @@ export function referralLabel(summary: VisitHistorySummary): string | null {
   return to ? `Referral · ${to}` : 'Referral';
 }
 
+/** PAID -> Paid. The enum shouts; a summary card should not. */
+function titleCase(value: string): string {
+  return value.charAt(0) + value.slice(1).toLowerCase();
+}
+
 export interface ContextChip {
   label: string;
   value: string;
@@ -108,8 +113,25 @@ export function contextChips(summary: VisitHistorySummary): ContextChip[] {
   if (summary.clinicName) {
     chips.push({ label: 'Branch', value: summary.clinicName });
   }
-  if (summary.billingType) {
-    chips.push({ label: 'Billing', value: summary.billingType });
+  // D-077 — the INVOICE, when there is one, not just how the visit was billed.
+  // "Billing: Cash" was all the card said while the amount and the payment
+  // status were sitting unread in the same payload.
+  //
+  // Several invoices are reported as a count. No visit-level total is stored,
+  // so adding them together would be this function inventing a figure.
+  const cashOrPanel = summary.panelName ? `Panel ${summary.panelName}` : (summary.billingType ?? 'Cash');
+  if (summary.invoices.length === 1) {
+    const invoice = summary.invoices[0];
+    chips.push({
+      label: 'Invoice',
+      value: `RM${Number(invoice.totalAmount).toFixed(2)} · ${titleCase(invoice.status)} · ${cashOrPanel}`,
+    });
+  } else if (summary.invoices.length > 1) {
+    chips.push({ label: 'Invoice', value: `${summary.invoices.length} invoices · ${cashOrPanel}` });
+  } else {
+    // Never RM0.00 — the visit has no bill, which is not the same as a bill
+    // for nothing.
+    chips.push({ label: 'Invoice', value: `No invoice created · ${cashOrPanel}` });
   }
   if (summary.queueType) {
     chips.push({ label: 'Source', value: QUEUE_TYPE_LABEL[summary.queueType] ?? summary.queueType });

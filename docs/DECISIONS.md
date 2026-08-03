@@ -1315,6 +1315,59 @@ The band labels were 11px. That is below the floor D-072 set for clinical text, 
 
 ---
 
+## D-077 — G4.5d3: the Clinical Canvas as a product, not a page
+
+The functional work was accepted; this is the visual and workflow closure against the approved mockup. Three of the changes are data-semantic corrections, not styling.
+
+### The attending clinician was mislabelled, not mis-sourced
+
+The fixture put a **nurse** in the attending position and the band printed `DR` above her name. Two separate faults:
+
+- **The source was always right.** Both the band and the history summary read the visit's own stored `staffId → staff.fullName/role`. Nothing consulted the record creator, the registrar or "the first staff member the tenant returned".
+- **The wording was wrong.** `attendingClinician()` now follows the stored ROLE: a doctor is `Dr Amira Rahman`; anyone else is `Attending clinician: Amy Tan` with no title; nobody stored is `Attending clinician not recorded`. Stored `Dr.`/`Dr` prefixes are stripped and re-applied once, so `DR Dr. Amira Rahman` is gone.
+- **The fixture was wrong.** The seed now selects from active DOCTOR roles only and *throws* if the tenant has none, rather than quietly using a nurse.
+
+### One clock
+
+`17:19` in the band and `1:19 AM` in the snapshot were on the same screen. `clinicTime.ts` is now the single formatter — `3 Aug 2026 · 17:19`, 24-hour. Kuwick stores no per-tenant IANA timezone, so rendering is the browser's zone; inventing one would assert a fact the database does not hold. When that field exists, three functions change.
+
+### Design tokens, not painted components
+
+`:root` custom properties carry navy/teal, surfaces, text and the five status PAIRS. Anything hard-coding navy inside one component becomes the next inconsistency, so the tokens are declared once and can carry the rest of the app. Navy for primary actions; teal for clinical emphasis (a recorded Primary, a delivered service); **red reserved** for allergy and destructive confirmation. Every status chip renders its word — colour never carries meaning alone.
+
+### Duplication removed
+
+- **Vitals appeared twice** — the Canvas strip *and* `VisitObservationsPanel`. The strip is now the single compact component and owns `Record / Edit`; the full panel appears only when expanded. Flow is untouched.
+- **Attachments** rendered a large empty placeholder. Empty is now one row: `Attachments 0  [Upload]`.
+- **Previous Visits** existed twice — a band button and the snapshot's View History. The band button is gone; the freed space became **Patient Summary**, which desktop never had.
+
+### Action hierarchy
+
+One primary action per row, everything else behind More: Diagnosis keeps Set Primary (Remove → More), Medications keep Dispense (Cancel → More), Orders show only Start / Complete / View Result. Every confirmation, reason requirement, permission and audit rule is unchanged — a red button on every row made destruction the most eye-catching thing in the panel.
+
+### Completion bar states
+
+The label matches the state: `No invoice created → Open Billing`, one invoice → `Open Invoice`, several → `View Invoices`. The earlier version offered "Open Invoice" beside "No invoice created", promising to open something that does not exist. Several invoices now show a **count only** — the previous combined total was this component's invention.
+
+### History drawer
+
+`Billing: Cash` became `Invoice RM85.00 · Paid · Cash` / `RM120.00 · Unpaid · Panel AIA`, from data already in the payload. Several invoices → a count, never a sum.
+
+### Two defects the screenshots caught
+
+1. **The floating chat button sat on top of an order's "View Result"** at 1920 — not only on mobile as first assumed. It is hidden inside the Clinical Workspace at every width; chat remains in the global header.
+2. **The mockup composes the snapshot and completion bar as ONE strip.** Stacking them cost ~50px of the first screen, which is what pushed Direct Services out of view. Side by side above 1500px, stacked below.
+
+**Verification** on one professional review patient (`KUWICK-FIXTURE G45 Professional Canvas`): current visit with 4 diagnoses, 5 medications, 3 orders across all three states, 2 direct services, MC + referral, invoice, 2 images, vitals, and no saved note; plus 6 previous visits covering panel/cash, paid/unpaid, MC/referral/memo/none, and one legacy record with no recorded priority.
+
+32 snapshot checks and the four-viewport Canvas measurement pass: editor unchanged at 520/445/300/300, no horizontal overflow anywhere, no clinical text below 12px, zero money-mutating controls in the completion bar, no quick-nav overlap, cross-tenant history 404, unauthenticated 401, and the unsaved note byte-for-byte identical across opening History.
+
+444 backend tests, 191 frontend, both typechecks clean.
+
+**Reversibility**: Low. No stored data changes; the tokens and components are additive.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.
