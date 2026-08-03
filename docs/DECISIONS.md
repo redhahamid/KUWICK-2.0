@@ -1368,6 +1368,57 @@ The label matches the state: `No invoice created → Open Billing`, one invoice 
 
 ---
 
+## D-078 — G4.5d3b Part A: a view switch destroyed unsaved clinical text
+
+Found by the mandated pre-implementation audit of the existing Flow view, before any Flow work began.
+
+`ClinicalNotesTab` seeds a blank draft on mount. `initialisedFor` is a **ref**, so a remount re-runs the effect — and switching Canvas ↔ Flow remounts the component. On a visit with no saved notes, the blank seed landed on top of text the doctor had already typed, because `syncFromServer` replaces `drafts[key]` unconditionally.
+
+**Measured: 61 characters of unsaved clinical text became 0 on a single view switch.** No prompt, no warning, no recovery — and the doctor's next action would have been to keep typing into an editor that had silently discarded their assessment.
+
+The fix is one guard: **seed, never overwrite.** If a draft already exists at the blank key, the effect returns without touching it. Saved-note loading is unchanged.
+
+This is the reason a "presentation-only" toggle got an audit before being offered as a clinic default. A layout preference that can destroy an unsigned clinical note is not a presentation change.
+
+**Reversibility**: Trivial. One early return.
+
+---
+
+## D-079 — S3: the queue was completely unauthenticated
+
+Part L found that every queue mutation route — create, call, arrived, move-to-dispensary, complete, cancel — had **no authentication, no role check and no branch check**. Anyone who could reach the API could register an arrival, call a patient to a room, silently reassign the attending doctor on someone else's visit, or close a visit. The Queue screen's buttons were the only thing standing in the way, and a button is presentation.
+
+### Every route now passes one gate
+
+`authoriseTicket` resolves the actor from the verified session (`requireActor`), checks the action against `QUEUE_MATRIX`, reads the ticket under the tenant, and checks branch access against the **visit's stored clinic** — the same authority G3c, S1 and S2 use. A foreign ticket reads back as nothing under RLS and gets the identical 404 a nonexistent id gets.
+
+### Three judgement calls, taken narrowly
+
+`NURSE` and `DISPENSARY` do not exist in the `Role` enum, so neither appears; nothing was invented. Where the intended policy could not be read confidently off existing screens, the **narrower** option was taken — granting a privilege later is an ordinary product change, whereas discovering that a role silently held one is an incident.
+
+1. **`ASSIGN_CLINICIAN` → owner + front desk.** Reassigning the attending clinician changes the clinical record's authorship; it is not a queue movement. Doctors excluded.
+2. **`COMPLETE_TICKET` → owner + front desk + finance.** Completion also sets `Visit.checkOutAt`, so it closes the visit. That is counter work, following `MARK_PAID`'s reasoning exactly (D-066). **Doctors excluded.**
+3. **`CANCEL_TICKET` → owner + front desk.** A doctor who wants a patient removed asks the counter, which is how the paper process already works.
+
+### Four defects fixed beyond authorisation
+
+- **The ticket was written from the request's `clinicId`.** It is now written from the clinic `VisitService` resolved, so a browser cannot file a ticket into a branch it has no access to.
+- **`call` could set `Visit.staffId` to any id at all** — another tenant's staff, another branch's, or an inactive account — as a side effect of calling a patient. It now requires `ASSIGN_CLINICIAN` and resolves the clinician (exists, active, branch-authorised) exactly as D-069 does. A room from another branch is refused too.
+- **Completion was two unprotected writes.** Ticket → `COMPLETED`, then `Visit.checkOutAt` separately. A failure between them left a completed ticket on a visit that never closed, with nothing to say which was true. Both writes are now one transaction, the status is **re-read inside it** so a racing request cannot win on a stale read, and a repeat is a no-op rather than a second checkout.
+- **Transitions were single-status `if`s.** They are now checked against an explicit legal map in which `COMPLETED` and `CANCELLED` have **no outgoing edges** — a closed visit is not reopened by moving a queue ticket. Repeated `arrived`/`moveToDispensary` are idempotent, because a double-click is not an error.
+
+A second ticket for one visit hits `visitId @unique` and is refused as *"This visit is already in the queue."* — the constraint name is never exposed.
+
+### Scope held
+
+No new statuses, no doctor-completion fields, no schema change. `QueueTicket.visitId @unique` is retained per the owner's revision to the Part L proposal. 65 security tests in `queue-security.spec.ts`; 510 backend, 191 frontend, both typechecks clean.
+
+**Known limitation**: cancellation still records only `cancelReason` — no cancelling actor, no timestamp. The schema cannot store them today, and S3 does not fabricate an audit trail. Carried to G4.5d3c-1.
+
+**Reversibility**: Low risk, but this is a genuine behaviour change — roles that could previously do anything to the queue now cannot. Reverting restores an unauthenticated queue.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.
