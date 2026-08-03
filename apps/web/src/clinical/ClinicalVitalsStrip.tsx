@@ -1,0 +1,116 @@
+import { Space, Typography } from 'antd';
+import dayjs from 'dayjs';
+import { useLatestObservation } from './hooks/useVisitObservations';
+
+const { Text } = Typography;
+
+/**
+ * G4.5a (D-071) — the observations a doctor glances at while writing.
+ *
+ * Only RECORDED values appear. The old vitals grid rendered a labelled box
+ * for every observation the schema supports, so an empty visit showed ten
+ * placeholders and a busy one buried the four numbers that mattered — and an
+ * empty box beside "SpO₂" reads as "measured, normal" rather than "never
+ * taken". Nothing here is derived except BMI, which is computed only when
+ * both weight and height exist (D-071 §G).
+ *
+ * Recording and correcting still happen in `VisitObservationsPanel`, which is
+ * untouched: this strip reads, it does not write.
+ */
+interface ClinicalVitalsStripProps {
+  visitId: string;
+  onRecord?: () => void;
+}
+
+function bmiFrom(weight: string | null, height: string | null): string | null {
+  const kg = weight ? Number(weight) : NaN;
+  const cm = height ? Number(height) : NaN;
+  if (!Number.isFinite(kg) || !Number.isFinite(cm) || kg <= 0 || cm <= 0) {
+    return null;
+  }
+  const metres = cm / 100;
+  return (kg / (metres * metres)).toFixed(1);
+}
+
+export function ClinicalVitalsStrip({ visitId, onRecord }: ClinicalVitalsStripProps) {
+  const { data: latest, isLoading } = useLatestObservation(visitId);
+
+  if (isLoading) {
+    return null;
+  }
+  if (!latest) {
+    return (
+      <div className="kw-vitals-strip">
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          No vitals recorded yet
+        </Text>
+        {onRecord && (
+          <Text
+            className="kw-vitals-record"
+            onClick={onRecord}
+            style={{ fontSize: 12, cursor: 'pointer' }}
+            type="secondary"
+            underline
+          >
+            Record
+          </Text>
+        )}
+      </div>
+    );
+  }
+
+  const bmi = latest.bmi != null ? String(latest.bmi) : bmiFrom(latest.weight, latest.height);
+  const entries: [string, string | null][] = [
+    ['BP', latest.bpSystolic && latest.bpDiastolic ? `${latest.bpSystolic}/${latest.bpDiastolic}` : null],
+    ['PR', latest.pulse ? `${latest.pulse}` : null],
+    ['Temp', latest.temperature ? `${latest.temperature}°C` : null],
+    ['SpO₂', latest.spo2 ? `${latest.spo2}%` : null],
+    ['RR', latest.respRate ? `${latest.respRate}` : null],
+    ['Weight', latest.weight ? `${latest.weight}kg` : null],
+    ['Height', latest.height ? `${latest.height}cm` : null],
+    ['BMI', bmi],
+    ['Glucose', latest.glucose ? `${latest.glucose}` : null],
+    ['Pain', latest.painScore != null ? `${latest.painScore}/10` : null],
+  ];
+  const recorded = entries.filter(([, value]) => value !== null);
+
+  return (
+    <div className="kw-vitals-strip">
+      {recorded.length === 0 ? (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          No vitals recorded yet
+        </Text>
+      ) : (
+        <Space size={4} wrap split={<Text type="secondary">·</Text>}>
+          {recorded.map(([label, value]) => (
+            <Text key={label} style={{ fontSize: 12 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {label}{' '}
+              </Text>
+              <Text strong style={{ fontSize: 12 }}>
+                {value}
+              </Text>
+            </Text>
+          ))}
+        </Space>
+      )}
+      <Text type="secondary" style={{ fontSize: 11, marginLeft: 'auto' }}>
+        {dayjs(latest.recordedAt).format('HH:mm')}
+        {onRecord && (
+          <>
+            {' · '}
+            <Text
+              className="kw-vitals-record"
+              onClick={onRecord}
+              style={{ fontSize: 11, cursor: 'pointer' }}
+              type="secondary"
+              underline
+            >
+              Update
+            </Text>
+          </>
+        )}
+      </Text>
+    </div>
+  );
+}

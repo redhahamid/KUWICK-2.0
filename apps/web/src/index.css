@@ -234,3 +234,139 @@
 .kw-history-note-body p {
   margin: 0 0 6px;
 }
+
+/* ===========================================================================
+   G4.5a (D-071) — the two-zone Clinical Canvas.
+
+   Left writes, right acts. The rule that decides every number below: the note
+   never shrinks to make room for the rail. The benchmarked reference CMS did
+   the opposite — it refused to scroll, so at 1366 the note collapsed to seven
+   lines while a free-text sidebar kept twice that height. Here the rail
+   truncates its previews instead, and the page scrolls once.
+   =========================================================================== */
+.kw-canvas-shell {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.kw-canvas-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 420–480px: wide enough to read a medication line without wrapping every
+   field, narrow enough that the note keeps the majority of a 1366 screen. */
+.kw-canvas-rail {
+  flex: 0 0 clamp(420px, 26vw, 480px);
+  width: clamp(420px, 26vw, 480px);
+  align-self: flex-start;
+}
+
+.kw-clinical-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kw-secondary-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* One context band. Wraps rather than growing a second toolbar. */
+.kw-context-band {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 8px 14px;
+  margin-bottom: 8px;
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+}
+
+.kw-context-action {
+  margin-left: auto;
+}
+
+/* Recorded observations only — see ClinicalVitalsStrip. */
+.kw-vitals-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  background: #fafafa;
+  border-radius: 6px;
+}
+
+.kw-image-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+/* --- Tablet and below: one column, in clinical reading order. ------------ */
+@media (max-width: 1100px) {
+  .kw-canvas-shell {
+    flex-direction: column;
+  }
+
+  .kw-canvas-rail {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  /* No narrow two-up cards on a tablet: a clinical row needs its width. */
+  .kw-clinical-rail {
+    gap: 10px;
+  }
+}
+
+/* --- Mobile ------------------------------------------------------------- */
+@media (max-width: 640px) {
+  .kw-context-band {
+    gap: 6px 10px;
+    padding: 8px 10px;
+  }
+
+  .kw-context-action {
+    margin-left: 0;
+    width: 100%;
+    min-height: 44px;
+  }
+
+  /* 16px keeps iOS from zooming the whole page when the editor is focused. */
+  .kw-editor-min .ProseMirror,
+  .kw-editor-fill .ProseMirror {
+    font-size: 16px;
+  }
+
+  .kw-quick-nav {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 6px 4px;
+    margin: 0 -4px 8px;
+    background: #fff;
+    border-bottom: 1px solid #f0f0f0;
+  }
+
+  .kw-quick-nav button {
+    min-height: 44px;
+    flex: 0 0 auto;
+  }
+}

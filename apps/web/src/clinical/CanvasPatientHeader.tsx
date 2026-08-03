@@ -1,72 +1,103 @@
-import { Avatar, Card, Space, Tag, Typography } from 'antd';
-import { UserOutlined } from '@ant-design/icons';
+import { Avatar, Button, Space, Tag, Typography } from 'antd';
+import { HistoryOutlined, UserOutlined, WarningFilled } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Patient } from '../core/types';
 import { Visit } from './types';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface CanvasPatientHeaderProps {
   patient: Patient;
   visit: Visit;
+  onReviewHistory?: () => void;
 }
 
-// The compact single-row header from the "Recommended Web Consultation
-// Workspace" reference mockup — replaces the full profile Card only in
-// Canvas layout (Flow keeps the existing detailed header; this is a
-// scoped redesign, not a shared change). Only shows fields we actually
-// track: no fabricated Blood Group/Panel/MRN — those aren't in the data
-// model yet, so a real value can never appear there.
-export function CanvasPatientHeader({ patient, visit }: CanvasPatientHeaderProps) {
+/**
+ * G4.5a (D-071) — ONE context band, not a second header.
+ *
+ * The band carries what the doctor needs to know about *who* and *which
+ * visit* before touching anything: identity, allergies, complaint, attending
+ * doctor, branch, visit state, and — only for panel patients — the panel.
+ * A "Cash" chip on every self-pay visit would be noise on the majority of
+ * records, so it is not shown; the absence of a panel chip is the signal.
+ *
+ * Deliberately a single row that wraps, never two stacked toolbars: the
+ * reference CMS used two bars and it cost the note ~90px of height at the
+ * viewport where height is scarcest.
+ */
+export function CanvasPatientHeader({ patient, visit, onReviewHistory }: CanvasPatientHeaderProps) {
   const age = patient.dob ? dayjs().diff(dayjs(patient.dob), 'year') : null;
-  const hasAllergies = patient.allergies && patient.allergies.length > 0;
+  const allergies = patient.allergies ?? [];
+  const hasAllergies = allergies.length > 0;
+  // The panel lives on the VISIT (D-065). Shown only when there is one.
+  const panelName = visit.panelClinic?.name ?? (visit.panelClinicId ? visit.billingType : null);
 
   return (
-    <Card size="small" style={{ marginBottom: 6 }} styles={{ body: { padding: '8px 16px' } }}>
-      <Space size="large" align="center" wrap style={{ width: '100%', justifyContent: 'space-between' }}>
-        <Space align="center">
-          <Avatar size={48} icon={<UserOutlined />} />
+    <div className="kw-context-band">
+      <Space align="center" size={10} className="kw-context-identity">
+        <Avatar size={36} icon={<UserOutlined />} />
+        <div style={{ minWidth: 0 }}>
+          <Text strong style={{ fontSize: 14 }}>
+            {patient.name}
+          </Text>
           <div>
-            <Title level={5} style={{ margin: 0 }}>
-              {patient.name}
-            </Title>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {patient.identifierType} {patient.identifierValue} · {age ?? '—'}y · {patient.gender ?? '—'}
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              {age !== null ? `${age}y` : '—'} · {patient.gender ?? '—'} · {patient.identifierType}{' '}
+              {patient.identifierValue}
             </Text>
           </div>
-        </Space>
-
-        <Space size="middle" wrap>
-          <div>
-            <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
-              COMPLAINT
-            </Text>
-            <Text strong type={visit.presentingComplaint ? 'danger' : 'secondary'}>
-              {visit.presentingComplaint ?? '—'}
-            </Text>
-          </div>
-          <div>
-            <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
-              ALLERGY
-            </Text>
-            <Text strong type={hasAllergies ? 'danger' : 'secondary'}>
-              {hasAllergies ? patient.allergies!.join(', ') : 'None'}
-            </Text>
-          </div>
-          <div>
-            <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
-              ATTENDING
-            </Text>
-            <Text strong>{visit.staff?.fullName ?? '—'}</Text>
-          </div>
-          <div>
-            <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
-              VISIT STATUS
-            </Text>
-            <Tag color={visit.checkOutAt ? 'default' : 'gold'}>{visit.checkOutAt ? 'Completed' : 'In Progress'}</Tag>
-          </div>
-        </Space>
+        </div>
       </Space>
-    </Card>
+
+      {/* Allergies lead the chips: it is the one item that changes what the
+          doctor may safely prescribe, so it is never a quiet grey label. */}
+      {hasAllergies ? (
+        <Tag color="red" icon={<WarningFilled />} className="kw-context-allergy">
+          {allergies.join(', ')}
+        </Tag>
+      ) : (
+        <Tag className="kw-context-allergy">No known allergy</Tag>
+      )}
+
+      {visit.presentingComplaint && (
+        <span className="kw-context-item">
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            COMPLAINT{' '}
+          </Text>
+          <Text strong style={{ fontSize: 12 }}>
+            {visit.presentingComplaint}
+          </Text>
+        </span>
+      )}
+
+      <span className="kw-context-item">
+        <Text type="secondary" style={{ fontSize: 11 }}>
+          DR{' '}
+        </Text>
+        <Text strong style={{ fontSize: 12 }}>
+          {visit.staff?.fullName ?? 'Not assigned'}
+        </Text>
+      </span>
+
+      {visit.clinic?.name && (
+        <Text className="kw-context-item" type="secondary" style={{ fontSize: 12 }}>
+          {visit.clinic.name}
+        </Text>
+      )}
+
+      {panelName && <Tag color="purple">Panel · {panelName}</Tag>}
+
+      <Tag color={visit.checkOutAt ? 'default' : 'gold'}>{visit.checkOutAt ? 'Completed' : 'In Progress'}</Tag>
+
+      <Text className="kw-context-item" type="secondary" style={{ fontSize: 11 }}>
+        {visit.visitNumber} · {dayjs(visit.checkInAt).format('D MMM, HH:mm')}
+      </Text>
+
+      {onReviewHistory && (
+        <Button size="small" icon={<HistoryOutlined />} onClick={onReviewHistory} className="kw-context-action">
+          Previous Visits
+        </Button>
+      )}
+    </div>
   );
 }

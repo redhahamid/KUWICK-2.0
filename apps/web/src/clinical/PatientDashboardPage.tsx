@@ -49,7 +49,10 @@ import { VisitHistoryPanel } from './history/VisitHistoryPanel';
 // tree but no longer rendered anywhere. They stay until G1 is accepted and
 // functional parity is confirmed, then go in a cleanup commit. Only one
 // version is ever public.
-import { ClinicalSectionStack } from './sections/ClinicalSectionStack';
+import { ClinicalRail } from './sections/ClinicalRail';
+import { SecondarySections } from './sections/SecondarySections';
+import { ClinicalVitalsStrip } from './ClinicalVitalsStrip';
+import { ClinicalImageStrip } from './ClinicalImageStrip';
 import { Visit } from './types';
 import { isDraftDirty, useClinicalDraftStore, visitPrefix } from './clinical-draft-store';
 
@@ -173,7 +176,7 @@ export function PatientDashboardPage() {
   return (
     <div>
       {layout === 'canvas' && selectedVisit ? (
-        <CanvasPatientHeader patient={patient} visit={selectedVisit} />
+        <CanvasPatientHeader patient={patient} visit={selectedVisit} onReviewHistory={() => setHistoryOpen(true)} />
       ) : (
       <Card style={{ marginBottom: 16 }}>
         <Row gutter={[24, 16]}>
@@ -393,20 +396,21 @@ export function PatientDashboardPage() {
         )}
 
         {selectedVisit && layout === 'canvas' && (
-          // C2 (D-053) — the Canvas workspace is a flex row, not an antd
-          // 16/8 grid. The old grid gave the sidebar a third of the screen
-          // and left the editor 22px of typing height (measured); a bounded
-          // sidebar plus a growing main column is what makes the note the
-          // dominant surface.
+          // G4.5a (D-071) — the two-zone Clinical Canvas.
+          //
+          // Left: what the doctor WRITES — recorded vitals, this visit's
+          // clinical images, then the note, which stays the dominant surface.
+          // Right: what the doctor DOES — diagnosis, medications, orders and
+          // services, beside the note rather than scrolled below it.
+          //
+          // Replaces the C2 arrangement, where the right column held patient
+          // summary/allergies/recent visits and every clinical action was a
+          // collapsed row underneath. Allergies moved into the context band
+          // (they change what may be prescribed), recent visits became the G4
+          // read-only history drawer, and the rail took the freed width.
           <Col span={24}>
-            <div
-              className="kw-canvas-shell"
-              style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}
-            >
-              <div
-                className="kw-canvas-main"
-                style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}
-              >
+            <div className="kw-canvas-shell">
+              <div className="kw-canvas-main">
                 <Card
                   size="small"
                   className="kw-notes-card"
@@ -415,42 +419,25 @@ export function PatientDashboardPage() {
                     canvasCompact ? { header: { padding: '4px 12px', minHeight: 30 }, body: { padding: 8 } } : undefined
                   }
                 >
+                  <ClinicalVitalsStrip visitId={selectedVisit.id} />
+                  <ClinicalImageStrip visitId={selectedVisit.id} />
                   <ClinicalNotesTab visitId={selectedVisit.id} patientId={patient.id} compact={canvasCompact} />
                 </Card>
-
               </div>
 
-              {/* Bounded sidebar: min 280px so it stays readable, ~22vw so it
-                  scales, max 360px so it never eats the editor's width. Below
-                  the desktop breakpoint it becomes a drawer (see below).
-                  G0a — natural height, no inner scroller: the page scrolls. */}
-              {isDesktop && (
-                <aside
-                  className="kw-canvas-sidebar"
-                  style={{
-                    flex: '0 0 clamp(280px, 22vw, 360px)',
-                    width: 'clamp(280px, 22vw, 360px)',
-                    alignSelf: 'flex-start',
-                  }}
-                >
-                  <PatientSummarySidebar
-                    patient={patient}
-                    visits={visits}
-                    selectedVisitId={selectedVisit.id}
-                    onReviewHistory={() => setHistoryOpen(true)}
-                    expanded={expandProfile}
-                    onToggleExpand={() => setExpandProfile((prev) => !prev)}
-                    onNewVisit={() => setNewVisitOpen(true)}
-                  />
-                </aside>
-              )}
+              {/* 420–480px at 1920 so the rail is readable without taking the
+                  note's width; the note keeps everything that remains and
+                  never shrinks to accommodate rail content — long lists
+                  truncate to "View all N" instead (G4.5b/c). */}
+              <aside className="kw-canvas-rail">
+                <ClinicalRail visit={selectedVisit} />
+              </aside>
             </div>
 
-            {/* G1 (D-058) — the clinical sections sit BELOW the editor row and
-                span its full width, including under the sidebar. They are
-                outside the flex row on purpose: nothing here can take height
-                from the note, which declares its own (G0a, D-054). */}
-            <ClinicalSectionStack
+            {/* Secondary, below the working Canvas: Documents and the
+                read-only Invoice Summary. Full width, outside the flex row,
+                so nothing here can take height from the note (G0a, D-054). */}
+            <SecondarySections
               visit={selectedVisit}
               patientName={patient.name}
               patientIdentifier={patient.identifierValue}
