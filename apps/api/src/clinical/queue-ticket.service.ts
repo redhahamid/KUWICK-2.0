@@ -371,13 +371,67 @@ export class QueueTicketService {
    */
   async cancel(id: string, dto: CancelQueueTicketDto) {
     const { ticket } = await this.authoriseTicket(id, 'CANCEL_TICKET');
-    if (ticket.status === QueueTicketStatus.COMPLETED || ticket.status === QueueTicketStatus.CANCELLED) {
-      throw new BadRequestException(`Cannot cancel a queue ticket in status ${ticket.status}`);
-    }
-    return this.prisma.queueTicket.update({
-      where: { id },
-      data: { status: QueueTicketStatus.CANCELLED, cancelReason: dto.cancelReason },
+
+    await withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+
+      // Re-read inside the transaction: the status decides both whether this
+      // is legal and what the event records as the previous state.
+      const fresh = await tx.queueTicket.findUnique({
+        where: { id },
+        select: { id: true, status: true, visitId: true },
+      });
+      if (!fresh) {
+        throw new NotFoundException('Queue ticket not found');
+      }
+      // Idempotent: a repeat writes nothing and, critically, records NO
+      // second cancellation. Two cancellation events for one cancellation
+      // would be a false history, which is worse than none.
+      if (fresh.status === QueueTicketStatus.CANCELLED) {
+        return;
+      }
+      if (fresh.status === QueueTicketStatus.COMPLETED) {
+        throw new BadRequestException(`Cannot cancel a queue ticket in status ${fresh.status}`);
+      }
+
+      await tx.queueTicket.update({
+        where: { id },
+        data: { status: QueueTicketStatus.CANCELLED, cancelReason: dto.cancelReason },
+      });
+
+      // G4.5d3c-1c (D-085) — the cancellation audit S3 could not write.
+      //
+      // QueueTicket stores `cancelReason` and nothing else: no actor, no
+      // timestamp. Rather than add two columns that only this one action
+      // uses, the approved immutable event carries it — and, being
+      // append-only at the database level (D-083), it cannot later be edited
+      // to say someone else cancelled the visit.
+      //
+      // Same transaction as the status change: an unrecorded cancellation and
+      // a recorded one that did not happen are both wrong.
+      await tx.visitWorkflowEvent.create({
+        data: {
+          tenantId: currentTenantId(),
+          clinicId: ticket.clinicId,
+          visitId: fresh.visitId,
+          queueTicketId: fresh.id,
+          eventType: VisitWorkflowEventType.VISIT_CANCELLED,
+          previousStatus: fresh.status,
+          newStatus: QueueTicketStatus.CANCELLED,
+          actorStaffId: actor.id,
+          actorNameSnapshot: actor.fullName,
+          actorRoleSnapshot: actor.role,
+          reason: dto.cancelReason ?? null,
+          correlationId: dto.correlationId ?? null,
+        },
+      });
+
+      // Nothing else is touched. The visit, its prescriptions, orders,
+      // documents, invoices and stock movements all survive a cancelled
+      // ticket — a patient who left is not a patient who was never here.
     });
+
+    return this.findById(id);
   }
 }
 

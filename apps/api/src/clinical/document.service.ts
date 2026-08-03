@@ -5,7 +5,7 @@ import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { VisitService } from './visit.service';
 import { assertCanAuthoriseDocument, assertCanVoidClinicalRecord, snapshotOf } from './clinical-authorization';
-import { assertMayTouchVisit, authorForVisitWork, requireActor, withTenantTx } from './clinical-actor';
+import { assertMayTouchVisit, requireActor, requireCreator, withTenantTx } from './clinical-actor';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { SignDocumentDto } from './dto/sign-document.dto';
 import { VoidClinicalRecordDto } from './dto/void-clinical-record.dto';
@@ -18,9 +18,9 @@ export class DocumentService {
     private readonly visits: VisitService,
   ) {}
 
-  // issuedByStaffId is a real doctor picker (falls back to the visit's
-  // attending physician only as a convenience default) — invoices/
-  // documents must be staff-creatable for locum coverage.
+  // issuedByStaffId is the CREATOR, taken from the session (D-085). It was
+  // once a client-supplied picker defaulting to the visit's attending doctor;
+  // both halves of that are gone.
   /**
    * G3b closure (D-064) — does a document of this shape carry a doctor's
    * clinical opinion?
@@ -59,7 +59,19 @@ export class DocumentService {
         // Frozen at creation: editing the template later must never change
         // what an already-issued document required.
         requiresClinicalAuthorisation: await this.requiresClinicalAuthorisation(dto),
-        issuedByStaffId: dto.issuedByStaffId ?? authorForVisitWork(visit.staffId),
+        // G4.5d3c-1c (D-085) — this is the CREATOR, not the clinical author.
+        //
+        // Two things were wrong here. It fell back to the visit's attending
+        // doctor, so a draft typed by front desk was stamped with Dr A's
+        // name; and it accepted `dto.issuedByStaffId` from the browser, so a
+        // caller could name anyone at all. Both are silent "on behalf of"
+        // attribution, which a clinical record must never do.
+        //
+        // Front desk MAY create a draft — that is an approved part of the
+        // document workflow — and is recorded honestly as its creator. The
+        // clinical claim is made separately at authorisation, by a doctor,
+        // with its own frozen identity snapshot (D-064).
+        issuedByStaffId: requireCreator(),
         issuedDate: dto.issuedDate ? new Date(dto.issuedDate) : undefined,
         startDate: dto.startDate ? new Date(dto.startDate) : undefined,
         endDate: dto.endDate ? new Date(dto.endDate) : undefined,

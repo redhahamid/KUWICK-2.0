@@ -441,7 +441,6 @@ describe('S3D — legal transitions', () => {
     [QueueTicketStatus.CANCELLED, 'arrived', (c) => c.service.arrived('t1')],
     [QueueTicketStatus.CANCELLED, 'moveToDispensary', (c) => c.service.moveToDispensary('t1')],
     [QueueTicketStatus.CANCELLED, 'complete', (c) => c.service.complete('t1')],
-    [QueueTicketStatus.CANCELLED, 'cancel', (c) => c.service.cancel('t1', { cancelReason: 'x' })],
     [QueueTicketStatus.DISPENSARY_PAYMENT, 'arrived', (c) => c.service.arrived('t1')],
   ];
 
@@ -899,17 +898,87 @@ describe('S3c — claiming a genuinely unassigned visit', () => {
 describe('S3G — cancellation', () => {
   it('cancels an active ticket, retaining the row and the reason', async () => {
     const ctx = createService();
-    setTicket(ctx, { id: 't1', visitId: 'visit-1', status: QueueTicketStatus.WAITING });
+    setTicket(ctx, { id: 't1', visitId: 'visit-1', clinicId: 'clinic-1', status: QueueTicketStatus.WAITING });
 
     await withTenant(() => ctx.service.cancel('t1', { cancelReason: 'Patient left before consultation' }));
 
-    expect(ctx.prisma.queueTicket.update).toHaveBeenCalledWith({
+    // D-085 — the status change moved into the transaction that also records
+    // the audit event, so the two cannot come apart.
+    expect(ctx.tx.queueTicket.update).toHaveBeenCalledWith({
       where: { id: 't1' },
       data: {
         status: QueueTicketStatus.CANCELLED,
         cancelReason: 'Patient left before consultation',
       },
     });
+  });
+
+  // G4.5d3c-1c (D-085) — S3 could store a cancellation REASON and nothing
+  // else: no actor, no timestamp. The immutable workflow event carries both,
+  // and being append-only at the database level (D-083) it cannot later be
+  // edited to say someone else cancelled the visit.
+  it('cancellation writes exactly one immutable event with actor, reason and both statuses', async () => {
+    const ctx = createService();
+    setTicket(ctx, {
+      id: 't1',
+      visitId: 'visit-1',
+      clinicId: 'clinic-1',
+      status: QueueTicketStatus.IN_CONSULTATION,
+    });
+
+    await withTenant(() =>
+      ctx.service.cancel('t1', { cancelReason: 'Patient left', correlationId: 'corr-c1' }),
+    );
+
+    expect(ctx.tx.visitWorkflowEvent.create).toHaveBeenCalledTimes(1);
+    const [[event]] = ctx.tx.visitWorkflowEvent.create.mock.calls;
+    expect(event.data).toMatchObject({
+      visitId: 'visit-1',
+      queueTicketId: 't1',
+      clinicId: 'clinic-1',
+      eventType: 'VISIT_CANCELLED',
+      previousStatus: QueueTicketStatus.IN_CONSULTATION,
+      newStatus: QueueTicketStatus.CANCELLED,
+      actorStaffId: 'staff-1',
+      actorRoleSnapshot: 'FRONT_DESK_CLINICAL_STAFF',
+      reason: 'Patient left',
+      correlationId: 'corr-c1',
+    });
+    // createdAt is the database default, so the timestamp cannot be back-dated
+    // by the caller.
+    expect(event.data).not.toHaveProperty('createdAt');
+  });
+
+  it('a repeated cancellation writes NO second event', async () => {
+    const ctx = createService();
+    setTicket(ctx, { id: 't1', visitId: 'visit-1', clinicId: 'clinic-1', status: QueueTicketStatus.CANCELLED });
+
+    // Idempotent rather than an error: a double-click is not a second
+    // cancellation, and two events for one cancellation is a false history.
+    await expect(withTenant(() => ctx.service.cancel('t1', { cancelReason: 'again' }))).resolves.toBeDefined();
+
+    expect(ctx.tx.queueTicket.update).not.toHaveBeenCalled();
+    expect(ctx.tx.visitWorkflowEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('a failed event insert rolls the cancellation back', async () => {
+    const ctx = createService();
+    setTicket(ctx, { id: 't1', visitId: 'visit-1', clinicId: 'clinic-1', status: QueueTicketStatus.WAITING });
+    ctx.tx.visitWorkflowEvent.create.mockRejectedValue(new Error('disk full'));
+
+    // An unrecorded cancellation is as wrong as a recorded one that did not
+    // happen. Only atomicity rules out each.
+    await expect(withTenant(() => ctx.service.cancel('t1', { cancelReason: 'x' }))).rejects.toThrow();
+  });
+
+  it('a COMPLETED ticket still cannot be cancelled', async () => {
+    const ctx = createService();
+    setTicket(ctx, { id: 't1', visitId: 'visit-1', clinicId: 'clinic-1', status: QueueTicketStatus.COMPLETED });
+
+    await expect(withTenant(() => ctx.service.cancel('t1', { cancelReason: 'x' }))).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(ctx.tx.visitWorkflowEvent.create).not.toHaveBeenCalled();
   });
 
   it('cancelling deletes nothing and closes nothing', async () => {

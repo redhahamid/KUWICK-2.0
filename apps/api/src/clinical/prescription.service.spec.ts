@@ -12,13 +12,20 @@ function createService() {
     visit: { findMany: jest.fn() },
     stockMovement: { create: jest.fn() },
     stockLevel: { upsert: jest.fn() },
+    // D-085 — prescribing now resolves the AUTHOR from the session and
+    // requires a role entitled to author clinical work.
+    staff: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'dr-1', fullName: 'Dr Test', role: 'DOCTOR_RESIDENT', active: true,
+      }),
+    },
   } as unknown as TenantScopedPrismaClient;
   const visits = { findById: jest.fn() } as unknown as VisitService;
   return { service: new PrescriptionService(prisma, visits), prisma, visits };
 }
 
 function withTenant<T>(fn: () => Promise<T>): Promise<T> {
-  return tenantContextStorage.run({ tenantId: 'test-tenant' }, fn);
+  return tenantContextStorage.run({ tenantId: 'test-tenant', staffId: 'dr-1' }, fn);
 }
 
 describe('PrescriptionService', () => {
@@ -56,7 +63,7 @@ describe('PrescriptionService', () => {
           amount: 1.64,
           calcTargetDoseMg: 150,
           calcMethod: DosageCalcMethod.WEIGHT_BASED,
-          prescribedByStaffId: 'staff-1',
+          prescribedByStaffId: 'dr-1',
         }),
       });
     });

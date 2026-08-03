@@ -411,9 +411,12 @@ describe('direct services vs task orders', () => {
     const data = createdData(prisma);
     expect(data.status).toBe(OrderServiceStatus.COMPLETED);
     expect(data.completedAt).toBeInstanceOf(Date);
-    // Attribution, visit and branch survive the change.
+    // Visit and branch survive the change.
     expect(data.visitId).toBe('visit-1');
-    expect(data.requestedByStaffId).toBe('staff-doctor');
+    // D-085 — the requester is the AUTHENTICATED clinician who ordered it,
+    // not the visit's attending doctor ('staff-doctor'). Ordering is a
+    // clinical decision and belongs to whoever made it.
+    expect(data.requestedByStaffId).toBe('staff-1');
     expect(data.clinicId).toBe('clinic-1');
   });
 

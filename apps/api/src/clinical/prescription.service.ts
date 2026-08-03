@@ -2,7 +2,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from '@nes
 import { DosageCalcMethod, PrescriptionStatus, StockMovementType } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { currentTenantId } from '../core/tenant-context';
-import { authorForVisitWork } from './clinical-actor';
+import { requireClinicalAuthor } from './clinical-actor';
 import { VisitService } from './visit.service';
 import { CreatePrescriptionDto } from './dto/create-prescription.dto';
 import { CancelPrescriptionDto } from './dto/cancel-prescription.dto';
@@ -17,9 +17,11 @@ export class PrescriptionService {
   ) {}
 
   // Snapshots dose/unit/frequency/duration/indication from Item at
-  // prescribe-time (same convention as Diagnosis/OrderService) and
-  // defaults prescribedByStaffId to the visit's attending physician — no
-  // real auth/user-identity exists yet (D-017), same gap as OrderService.
+  // prescribe-time (same convention as Diagnosis/OrderService).
+  //
+  // D-085: prescribedByStaffId is the AUTHENTICATED PRESCRIBER. It used to
+  // default to the visit's attending physician, which recorded Dr A as having
+  // prescribed medication Dr A may never have seen.
   //
   // The calculator exists "to prevent wrong dosage" (owner, D-028), so the
   // dose is never trusted verbatim from the client: WEIGHT_BASED is
@@ -28,6 +30,10 @@ export class PrescriptionService {
   // the item's configured ItemAgeDosage brackets exactly. Only MANUAL (or
   // no calcMethod — the doctor typed the dose directly) is taken as-is.
   async create(dto: CreatePrescriptionDto) {
+    // Before the visit is even read: prescribing is a clinical act, and a
+    // caller who may not author one should be refused without learning
+    // anything about the visit.
+    const author = await requireClinicalAuthor(this.prisma, 'prescribe medication');
     const visit = await this.visits.findById(dto.visitId);
     const item = await this.prisma.item.findUnique({ where: { id: dto.itemId }, include: { ageDosages: true } });
     if (!item) {
@@ -78,7 +84,11 @@ export class PrescriptionService {
         calcWeightKg: dto.calcMethod === DosageCalcMethod.WEIGHT_BASED ? dto.calcWeightKg : undefined,
         calcDoseRateMgKg: dto.calcMethod === DosageCalcMethod.WEIGHT_BASED ? dto.calcDoseRateMgKg : undefined,
         calcTargetDoseMg,
-        prescribedByStaffId: authorForVisitWork(visit.staffId),
+        // G4.5d3c-1c (D-085) — the prescriber is whoever WROTE this, resolved
+        // from the session and required to be entitled to author clinical
+        // work. Never the visit's attending doctor by default: that recorded
+        // Dr A as having prescribed something Dr A may never have seen.
+        prescribedByStaffId: author.id,
       },
     });
   }
@@ -115,6 +125,7 @@ export class PrescriptionService {
   }
 
   async copyFromVisit(dto: CopyPrescriptionsDto) {
+    const author = await requireClinicalAuthor(this.prisma, 'prescribe medication');
     const targetVisit = await this.visits.findById(dto.targetVisitId);
     const sourcePrescriptions = await this.prisma.prescription.findMany({
       where: { visitId: dto.sourceVisitId, deletedAt: null },
@@ -135,7 +146,10 @@ export class PrescriptionService {
             durationDays: source.durationDays,
             indication: source.indication,
             remark: source.remark,
-            prescribedByStaffId: authorForVisitWork(targetVisit.staffId),
+            // Copying a previous visit's medication is a NEW prescribing
+            // decision, so it is authored by whoever made it — not inherited
+            // from the source prescription and not from the target visit.
+            prescribedByStaffId: author.id,
           },
         }),
       ),

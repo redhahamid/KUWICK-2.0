@@ -11,7 +11,13 @@ import { currentTenantId } from '../core/tenant-context';
 import { saveUploadedFile } from '../core/file-storage';
 import { PrismaService } from '../core/prisma.service';
 import { assertCanVoidClinicalRecord, snapshotOf } from './clinical-authorization';
-import { assertMayTouchOrder, assertMayTouchVisit, authorForVisitWork, requireActor, withTenantTx } from './clinical-actor';
+import {
+  assertMayTouchOrder,
+  assertMayTouchVisit,
+  requireActor,
+  requireClinicalAuthor,
+  withTenantTx,
+} from './clinical-actor';
 import { VoidClinicalRecordDto } from './dto/void-clinical-record.dto';
 import { CreateOrderServiceDto } from './dto/create-order-service.dto';
 import { CompleteOrderServiceDto } from './dto/complete-order-service.dto';
@@ -59,8 +65,11 @@ export class OrderServiceService {
    * chargeable, so "it is only a service" is a reason for more care, not less.
    */
   async create(dto: CreateOrderServiceDto) {
-    const { visit, catalogEntry } = await withTenantTx(this.rawPrisma, async (tx) => {
+    const { visit, catalogEntry, orderAuthor } = await withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
+      // Ordering a procedure or investigation is a clinical decision, so the
+      // actor must be entitled to author one — and becomes its author.
+      const orderAuthor = await requireClinicalAuthor(tx, 'order a clinical service');
 
       // Resolves the visit AND the actor's right to work at its stored
       // branch. 404 for a visit that does not exist or belongs to another
@@ -83,7 +92,7 @@ export class OrderServiceService {
         throw new NotFoundException('Service catalog entry not found');
       }
 
-      return { visit: resolvedVisit, catalogEntry: resolvedCatalog };
+      return { visit: resolvedVisit, catalogEntry: resolvedCatalog, orderAuthor };
     });
 
     // G4.5s (D-073) — the two order types are created in different states,
@@ -112,7 +121,9 @@ export class OrderServiceService {
         procedureName: catalogEntry.name,
         orderType: catalogEntry.orderType,
         instruction: dto.instruction,
-        requestedByStaffId: authorForVisitWork(visit.staffId),
+        // G4.5d3c-1c (D-085) — the requesting clinician is the one who
+        // ordered it, not whoever the visit happens to be assigned to.
+        requestedByStaffId: orderAuthor.id,
         ...(isDirectService
           ? { status: OrderServiceStatus.COMPLETED, completedAt: now }
           : {}),

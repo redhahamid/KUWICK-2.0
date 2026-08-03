@@ -2,7 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Prisma, Staff } from '@prisma/client';
 import { PrismaService } from '../core/prisma.service';
 import { currentStaffId, currentTenantId } from '../core/tenant-context';
-import { assertBranchAccess, type BranchAccessContext } from './clinical-authorization';
+import { assertBranchAccess, canAuthorNarrative, type BranchAccessContext } from './clinical-authorization';
 
 export type ClinicalTx = Prisma.TransactionClient;
 
@@ -40,21 +40,54 @@ export async function requireActor(tx: ClinicalTx): Promise<Staff> {
   return staff;
 }
 
+/** Anything with a tenant-scoped `staff.findUnique` — a tx or the scoped client. */
+type StaffReader = { staff: { findUnique(args: { where: { id: string } }): Promise<Staff | null> } };
+
 /**
- * S3c (D-082) — who to attribute a piece of visit work to.
+ * G4.5d3c-1c (D-085) — the CLINICAL AUTHOR of an action.
  *
- * Documents, orders and prescriptions each have a REQUIRED author, and each
- * used to default it to `Visit.staffId`. That field is nullable now, so an
- * unassigned walk-in would break the insert.
+ * This replaces S3c's `authorForVisitWork`, which preferred `Visit.staffId`
+ * and fell back to the actor. That was wrong, and the owner caught it: it
+ * meant a prescription written by anyone on a visit assigned to Dr A was
+ * recorded as Dr A's. Silent "on behalf of" attribution is the one thing a
+ * clinical record must never do — the author of a prescription is a
+ * medico-legal fact about who exercised judgement, not a convenience default.
  *
- * The visit's attending clinician stays the first choice, so existing
- * behaviour is unchanged wherever one is assigned. The fallback is the
- * authenticated actor — which is not a compromise but the more accurate
- * answer: if nobody is formally attending, the person who wrote the thing is
- * the one who wrote it. Nothing is ever attributed to a request-supplied id.
+ * The author is now ALWAYS the authenticated actor who performed the action,
+ * and that actor must be entitled to author clinical work. `Visit.staffId`
+ * says who is currently attending; it does not say who wrote this.
+ *
+ * An on-behalf workflow (a doctor dictating, a scribe entering) needs explicit
+ * permission, visible identity and its own audit. It is deliberately NOT
+ * built here — a silent version of it is exactly the defect being removed.
  */
-export function authorForVisitWork(visitStaffId: string | null | undefined): string {
-  const staffId = visitStaffId ?? currentStaffId();
+export async function requireClinicalAuthor(db: StaffReader, action: string): Promise<Staff> {
+  const staffId = currentStaffId();
+  if (!staffId) {
+    throw new ForbiddenException('No authenticated staff member on this session');
+  }
+  const staff = await db.staff.findUnique({ where: { id: staffId } });
+  if (!staff || !staff.active) {
+    throw new ForbiddenException('Your staff account is inactive');
+  }
+  if (!canAuthorNarrative(staff)) {
+    // Says what was refused, never who else could do it, and never suggests
+    // that recording it under the attending doctor is an option.
+    throw new ForbiddenException(
+      `Your role is not permitted to ${action}. This must be recorded by the clinician who performed it.`,
+    );
+  }
+  return staff;
+}
+
+/**
+ * The authenticated actor as the CREATOR of an administrative record — a
+ * document draft, for instance. Creator is not authorship: it carries no
+ * clinical claim, so it is not gated on a clinical role. Whether the record
+ * can then be *authorised* is a separate check that stays where it is.
+ */
+export function requireCreator(): string {
+  const staffId = currentStaffId();
   if (!staffId) {
     throw new ForbiddenException('No authenticated staff member on this session');
   }

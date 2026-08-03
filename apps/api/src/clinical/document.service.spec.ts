@@ -74,9 +74,15 @@ const ADMIN_DRAFT = {
 };
 
 describe('DocumentService', () => {
-  it('create defaults issuedByStaffId to the visit doctor when not given', async () => {
+  // SUPERSEDED BY D-085. This asserted that a document with no chosen issuer
+  // was stamped with the VISIT'S attending doctor — so a draft typed by front
+  // desk carried Dr A's name. `issuedByStaffId` is the CREATOR, and the
+  // creator is whoever is logged in.
+  it('create records the authenticated CREATOR, not the visit doctor', async () => {
     const { service, prisma, visits } = createService();
-    (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'staff-1' });
+    // The visit belongs to a DIFFERENT doctor, so the assertion below
+    // discriminates instead of passing by coincidence.
+    (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'dr-attending' });
     (prisma.document.create as jest.Mock).mockResolvedValue({ id: 'doc-1' });
 
     await withTenant(() => service.create({ visitId: 'visit-1', type: DocumentType.MC, content: '3 days rest' }));
@@ -98,7 +104,11 @@ describe('DocumentService', () => {
     });
   });
 
-  it('create uses an explicitly chosen issuedByStaffId (locum coverage) over the visit doctor', async () => {
+  // SUPERSEDED BY D-085. `issuedByStaffId` used to be accepted from the
+  // browser, which let a caller name anyone at all as the document's issuer.
+  // Locum coverage is served by the locum being logged in, not by the request
+  // asserting whose name to print.
+  it('create IGNORES a browser-supplied issuedByStaffId', async () => {
     const { service, prisma, visits } = createService();
     (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'staff-1' });
     (prisma.document.create as jest.Mock).mockResolvedValue({ id: 'doc-1' });
@@ -118,7 +128,8 @@ describe('DocumentService', () => {
 
     expect(prisma.document.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        issuedByStaffId: 'locum-staff-2',
+        // 'locum-staff-2' was sent and is discarded; the session wins.
+        issuedByStaffId: 'staff-1',
         issuedDate: new Date('2026-07-31'),
         startDate: new Date('2026-07-31'),
         endDate: new Date('2026-08-01'),

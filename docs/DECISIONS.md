@@ -1603,6 +1603,38 @@ No CHECK constraint enforces the invariant. It holds for invoices calculated by 
 
 ---
 
+## D-085 — G4.5d3c-1c: the author is whoever did it
+
+S3c introduced `authorForVisitWork`, which preferred `Visit.staffId` and fell back to the actor. **That was wrong and the owner caught it.** It meant a prescription written by anyone on a visit assigned to Dr A was recorded as Dr A's. Silent "on behalf of" attribution is the one thing a clinical record must never do: the author of a prescription is a medico-legal statement about who exercised judgement, not a convenience default.
+
+### The rule
+
+The clinical author is **always the authenticated actor who performed the action**, and that actor must hold a role entitled to author clinical work (`canAuthorNarrative` — the rule C0 already established for notes, reused rather than reinvented). `Visit.staffId` says who is currently attending. It does not say who wrote this.
+
+- **Prescriptions and clinical orders** — author is the prescribing/ordering clinician. Front desk and finance are refused outright, and the role is checked **before the visit is read**, so a refusal leaks nothing about the visit.
+- **Copying a previous prescription** is a *new* prescribing decision, so it is authored by whoever made it — not inherited from the source row.
+- **Documents** — `issuedByStaffId` is the **creator**, not the author. Front desk may create a draft (an approved part of the workflow) and is recorded honestly as its creator; the clinical claim is made separately at authorisation, by a doctor, with its own frozen identity snapshot (D-064). Creator is therefore *not* gated on a clinical role — it carries no clinical claim.
+
+A second defect surfaced while fixing the first: **`dto.issuedByStaffId` was accepted from the browser**, so a caller could put any name on a document. Both halves of that are gone.
+
+### Unassigned visits
+
+`Visit.staffId` may be NULL. A missing attending clinician is **never** solved by substituting the registrar, the front-desk actor, the invoice creator or arbitrary staff. A clinical action needing a doctor uses the authenticated doctor, or is **rejected**. "Nobody is attending" is not a reason to lower the bar for who may prescribe.
+
+An on-behalf workflow (a doctor dictating, a scribe entering) needs explicit permission, visible identity and its own audit. It is deliberately **not** built — a silent version of it is exactly the defect being removed.
+
+### Cancellation audit
+
+`QueueTicket` stores `cancelReason` and nothing else — no actor, no timestamp, which S3 reported as a gap and declined to fabricate. Rather than add two columns used by one action, the approved immutable event carries it: `VISIT_CANCELLED` with actor, both statuses, reason and a database-set `createdAt` the caller cannot back-date. Being append-only at the database level (D-083), it cannot later be edited to say someone else cancelled the visit.
+
+The status change moved **into the same transaction** as the event — an unrecorded cancellation and a recorded one that did not happen are both wrong, and only atomicity rules out each. A repeat writes nothing and records **no second event**: two events for one cancellation is a false history, worse than none. A `COMPLETED` ticket still cannot be cancelled. Nothing else is touched — the visit, prescriptions, orders, documents, invoices and stock movements all survive a cancelled ticket, because a patient who left is not a patient who was never here.
+
+**Verification**: 13 new attribution tests plus 5 cancellation-audit tests; 562 backend, 195 frontend, both typechecks clean.
+
+**Reversibility**: Low risk, but a real behaviour change — roles that could previously cause a clinical record to be written under someone else's name now cannot.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.
