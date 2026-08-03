@@ -64,7 +64,7 @@ export function RailPanel({
     <section className="kw-rail-panel" data-panel={title} id={anchorId}>
       <div className="kw-rail-head">
         <Space size={6} align="center">
-          <Text strong style={{ fontSize: 13 }}>
+          <Text strong style={{ fontSize: 14 }}>
             {title}
             {count !== undefined && ` (${count})`}
           </Text>

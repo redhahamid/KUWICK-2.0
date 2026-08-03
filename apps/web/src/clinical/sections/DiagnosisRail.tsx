@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AutoComplete, Button, Space, Tag, Tooltip, Typography, message } from 'antd';
+import { AutoComplete, Button, Space, Tag, Typography, message } from 'antd';
 import {
   useAddDiagnosis,
   useDiagnoses,
@@ -10,6 +10,7 @@ import { Diagnosis } from '../types';
 import { ApiError } from '../../core/api-client';
 import { RemoveDiagnosisModal } from './RemoveDiagnosisModal';
 import { RailPanel } from './RailPanel';
+import { AttributionInfo } from './AttributionInfo';
 
 const { Text } = Typography;
 
@@ -73,13 +74,16 @@ export function DiagnosisRail({ visitId }: DiagnosisRailProps) {
   };
 
   const priorityTag = (diagnosis: Diagnosis) => {
-    if (diagnosis.priority === 'PRIMARY') return <Tag color="red">Primary</Tag>;
+    if (diagnosis.priority === 'PRIMARY')
+      return (
+        <Tag color="red">
+          Primary
+        </Tag>
+      );
     if (diagnosis.priority === 'SECONDARY') return <Tag>Secondary</Tag>;
-    return (
-      <Tooltip title="No priority was recorded for this diagnosis. It is not assumed to be secondary.">
-        <Tag>Priority not recorded</Tag>
-      </Tooltip>
-    );
+    // G2a made "no priority" a real state. Saying it in the tag itself, rather
+    // than only in a tooltip, keeps it readable without a pointer.
+    return <Tag>Priority not recorded</Tag>;
   };
 
   return (
@@ -119,25 +123,27 @@ export function DiagnosisRail({ visitId }: DiagnosisRailProps) {
           <div key={diagnosis.id} className="kw-rail-row">
             <div className="kw-rail-row-main">
               <Space size={4} wrap>
-                <Tooltip
-                  title={
-                    diagnosis.addedByNameSnapshot
-                      ? `Added by ${diagnosis.addedByNameSnapshot}`
-                      : 'Added by: not recorded'
-                  }
-                >
-                  <Text strong style={{ fontSize: 13 }}>
-                    {diagnosis.name}
-                  </Text>
-                </Tooltip>
-                {diagnosis.icd10Code && <Tag color="geekblue">{diagnosis.icd10Code}</Tag>}
+                <Text strong style={{ fontSize: 14 }}>
+                  {diagnosis.name}
+                </Text>
+                {/* Attribution is a focusable control, not a second line and
+                    not a hover-only tooltip. It is server-derived and legally
+                    meaningful so it must be reachable by every input method,
+                    but a permanent line of it on each row is the height that
+                    pushed Orders and Services off the first screen (D-072). */}
+                <AttributionInfo
+                  subject={`Diagnosis: ${diagnosis.name}`}
+                  name={diagnosis.addedByNameSnapshot}
+                  role={diagnosis.addedByRoleSnapshot}
+                  at={diagnosis.addedAt}
+                />
+                {diagnosis.icd10Code && (
+                  <Tag color="geekblue">
+                    {diagnosis.icd10Code}
+                  </Tag>
+                )}
                 {priorityTag(diagnosis)}
               </Space>
-              {/* Attribution is the tooltip above, not a second line. It is
-                  server-derived and legally meaningful so it must stay
-                  reachable, but rendering it on every row costs a line of
-                  height in every panel — and that height is exactly what
-                  pushed Orders and Services off the first screen. */}
             </div>
             <Space size={4} className="kw-rail-row-actions">
               <Button size="small" loading={setPriority.isPending} onClick={() => togglePrimary(diagnosis)}>

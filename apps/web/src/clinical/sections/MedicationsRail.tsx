@@ -104,7 +104,7 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
             <div key={prescription.id} className="kw-rail-row">
               <div className="kw-rail-row-main">
                 <Space size={4} wrap>
-                  <Text strong style={{ fontSize: 13 }}>
+                  <Text strong style={{ fontSize: 14 }}>
                     {prescription.item?.name ?? 'Medication'}
                   </Text>
                   {strength && <Text type="secondary" style={{ fontSize: 12 }}>{strength}</Text>}
@@ -116,7 +116,7 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
                   {prescription.durationDays} day{prescription.durationDays === 1 ? '' : 's'} · qty{' '}
                   {prescription.quantity}
                   {(prescription.remark || prescription.indication) && (
-                    <Text type="secondary" style={{ fontSize: 11 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
                       {' · '}
                       {prescription.remark ?? prescription.indication}
                     </Text>
@@ -125,7 +125,7 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
 
                 {calculated && (
                   <Tooltip title="The calculation recorded at prescribing time, kept with the prescription.">
-                    <Text type="secondary" style={{ fontSize: 11 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
                       ⚖ {calculated}
                     </Text>
                   </Tooltip>

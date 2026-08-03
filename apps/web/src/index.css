@@ -348,6 +348,34 @@
   display: none;
 }
 
+/* The attribution control (D-072). Reachable by mouse, keyboard focus and
+   touch — and carrying the whole attribution in its accessible name, so a
+   screen reader never has to open it. Small on purpose so it stays secondary
+   to the diagnosis it belongs to.
+
+   Declared BEFORE the mobile block for the same reason as the quick-nav above:
+   equal specificity means source order decides, and the phone's 44px target
+   must be the rule that wins. Putting this after the media query silently
+   pinned the control at 24px wide on a phone. */
+.kw-attribution-btn {
+  width: 24px;
+  height: 20px;
+  min-width: 24px;
+  padding: 0;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.kw-attribution-btn:hover,
+.kw-attribution-btn:focus-visible {
+  color: #1677ff;
+}
+
+/* Never let the focus ring be the thing that is invisible. */
+.kw-attribution-btn:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 1px;
+}
+
 /* --- Mobile ------------------------------------------------------------- */
 @media (max-width: 640px) {
   .kw-context-band {
@@ -361,10 +389,30 @@
     min-height: 44px;
   }
 
-  /* 16px keeps iOS from zooming the whole page when the editor is focused. */
+  /* 16px keeps iOS from zooming the whole page when a field is focused. The
+     editor is not the only editable surface — the diagnosis search is one
+     too, and a zoom triggered there lands the doctor on a shifted layout
+     mid-search. */
   .kw-editor-min .ProseMirror,
-  .kw-editor-fill .ProseMirror {
+  .kw-editor-fill .ProseMirror,
+  .kw-rail-add input,
+  .kw-rail-add textarea,
+  /* antd v6 sets 14px on `.ant-select .ant-select-input`, which out-specifies
+     a bare `.kw-rail-add input`. Matched at the same depth so ours wins. */
+  .kw-rail-add .ant-select .ant-select-input,
+  .kw-rail-add .ant-select .ant-select-selection-placeholder,
+  .kw-rail-add .ant-select .ant-select-selection-item {
     font-size: 16px;
+  }
+
+  /* The attribution control is small on purpose at desktop — it must stay
+     secondary to the diagnosis. On a phone "secondary" cannot mean "too small
+     to hit", so it takes the same 44px target as every other control here. */
+  .kw-attribution-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .kw-quick-nav {
@@ -378,6 +426,21 @@
     margin: 0 -4px 8px;
     background: #fff;
     border-bottom: 1px solid #f0f0f0;
+  }
+
+  /* D-072 — the sticky bar overlaps whatever it scrolls to unless the target
+     reserves room for it. Without this the doctor taps "Medications" and the
+     first prescription is the top thing visible: the heading and the Add
+     control are both behind the strip.
+
+     The reserve is 148px, not the bar's own 56px. The app header is sticky
+     too, so by the time the jump settles the quick-nav's bottom edge sits at
+     ~129px, not 56px — measured, not assumed. Overshooting leaves a little
+     whitespace above the heading; undershooting hides the heading, which is
+     the failure this exists to prevent. */
+  .kw-rail-panel,
+  .kw-notes-card {
+    scroll-margin-top: 148px;
   }
 
   .kw-quick-nav button {
@@ -447,8 +510,17 @@
   line-height: 1.32;
 }
 
-.kw-rail-row .ant-tag {
+/* D-072 — one source of truth for tag size in the rail. ICD-10 codes, priority,
+   dispensing status, order status, the attachment count and the billing state
+   are all clinically meaningful, so none of them drops below 12px. Only the
+   leading is tightened. */
+.kw-rail-row .ant-tag,
+.kw-rail-head .ant-tag {
+  font-size: 12px;
   line-height: 17px;
+}
+
+.kw-rail-row .ant-tag {
   margin-inline-end: 0;
 }
 

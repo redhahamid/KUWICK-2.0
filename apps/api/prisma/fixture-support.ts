@@ -125,6 +125,117 @@ export async function sweepOrphanedFixtures(prisma: PrismaClient, tenantId: stri
 
 const UPLOADS_ROOT = process.env.UPLOADS_DIR ?? path.join(process.cwd(), 'uploads');
 
+export interface FixturePatientRecord {
+  patientId: string;
+  patientName: string;
+  visitIds: string[];
+  visitNumbers: string[];
+  filePaths: string[];
+}
+
+/**
+ * D-072 — find, and optionally retire, fixture data identified by the PATIENT
+ * name tag.
+ *
+ * `sweepOrphanedFixtures` matches on the presenting complaint, which works for
+ * scripts that clean up after themselves. It does not work for a deliberately
+ * long-lived review record: `g45-canvas-populate.ts` writes a real complaint
+ * ("Fever and cough for 3 days") because a reviewer has to read a realistic
+ * record, and a complaint reading "KUWICK-FIXTURE …" would defeat the point.
+ *
+ * The patient NAME still carries the tag, is visible in the record header, and
+ * is what makes the data unmistakably test data. So retirement keys on that.
+ *
+ * `dryRun` is the default at every call site. Deleting clinical rows is not
+ * something a script should do because it was run, only because it was run and
+ * then confirmed.
+ */
+export async function findFixturePatients(
+  prisma: PrismaClient,
+  tenantId: string,
+  namePrefix: string,
+): Promise<FixturePatientRecord[]> {
+  if (!namePrefix.startsWith(FIXTURE_TAG)) {
+    // A prefix that is not the fixture tag could match a real patient. There
+    // is no version of this that is worth being flexible about.
+    throw new Error(`Refusing to search on "${namePrefix}" — it must start with ${FIXTURE_TAG}.`);
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.bypass_tenant_scope', 'true', true)`;
+    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+
+    const patients = await tx.$queryRawUnsafe<{ id: string; name: string }[]>(
+      `SELECT id, name FROM patients WHERE tenant_id = '${tenantId}' AND name LIKE '${namePrefix}%' ORDER BY name`,
+    );
+
+    const out: FixturePatientRecord[] = [];
+    for (const patient of patients) {
+      const visits = await tx.$queryRawUnsafe<{ id: string; visit_number: string }[]>(
+        `SELECT id, visit_number FROM visits WHERE patient_id = '${patient.id}' ORDER BY visit_number`,
+      );
+      const list = visits.length > 0 ? visits.map((v) => `'${v.id}'`).join(',') : `'00000000-0000-0000-0000-000000000000'`;
+      const files = await tx.$queryRawUnsafe<{ file_path: string }[]>(
+        `SELECT file_path FROM visit_attachments WHERE visit_id IN (${list})
+         UNION ALL
+         SELECT file_path FROM attachments
+          WHERE order_service_id IN (SELECT id FROM order_services WHERE visit_id IN (${list}))`,
+      );
+      out.push({
+        patientId: patient.id,
+        patientName: patient.name,
+        visitIds: visits.map((v) => v.id),
+        visitNumbers: visits.map((v) => v.visit_number),
+        filePaths: files.map((f) => f.file_path),
+      });
+    }
+    return out;
+  });
+}
+
+/**
+ * Retire the records `findFixturePatients` returned.
+ *
+ * Uses the SAME `visitDeleteStatements` ordering as the per-run ledger and the
+ * orphan sweep, so a third deletion path cannot drift from the other two and
+ * leave a parent deleted with its children behind.
+ *
+ * Visit numbers are NOT reclaimed. `visit_number_counters` is monotonic by
+ * design (D-068) — that is precisely what makes deletion safe — so retiring
+ * this data leaves a gap in the sequence and no collision. That is correct
+ * behaviour, not residue.
+ */
+export async function retireFixturePatients(
+  prisma: PrismaClient,
+  tenantId: string,
+  records: FixturePatientRecord[],
+): Promise<void> {
+  const visitIds = records.flatMap((r) => r.visitIds);
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.bypass_tenant_scope', 'true', true)`;
+    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+
+    if (visitIds.length > 0) {
+      const list = visitIds.map((id) => `'${id}'`).join(',');
+      for (const sql of visitDeleteStatements(list)) {
+        await tx.$executeRawUnsafe(sql);
+      }
+    }
+    for (const record of records) {
+      await tx.$executeRawUnsafe(
+        `DELETE FROM patients WHERE id = '${record.patientId}'
+         AND NOT EXISTS (SELECT 1 FROM visits WHERE patient_id = '${record.patientId}')`,
+      );
+    }
+  });
+
+  // Files last and only this fixture's own, so a failed row delete above can
+  // never leave a real record pointing at a file that is already gone.
+  for (const filePath of records.flatMap((r) => r.filePaths)) {
+    await unlink(path.join(UPLOADS_ROOT, filePath)).catch(() => undefined);
+  }
+}
+
 /**
  * Tracks what a run created so it can be removed again.
  *

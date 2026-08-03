@@ -1065,6 +1065,78 @@ All five quick-nav jumps land their target at the top of the screen (Services at
 
 ---
 
+## D-072 — G4.5 closure: reachable attribution, legible clinical text, and a sticky bar that hides nothing
+
+Three corrections to the accepted Canvas, plus a governance decision about the review fixture.
+
+### Attribution was mouse-only
+
+D-071 moved diagnosis attribution into a tooltip on the diagnosis name, to buy back the height that pushed Direct Services off the first screen. That was the right trade for density and the wrong one for access. A tooltip on a plain `<Text>` has no focusable trigger: unreachable by keyboard, unreliable on touch, invisible to a screen reader. Legally meaningful information was available only to someone holding a mouse.
+
+`AttributionInfo` is a real `<button>`. It shows who added the diagnosis, when, and — for rows predating G2a — says so in those words rather than inventing an "Unknown" author. The permanent per-row attribution line is **not** restored, and nothing here sends an actor, name or role to the API; it renders the server-written snapshot only.
+
+The whole attribution is also written into `aria-label`, so a screen reader announces it without opening anything. The popover is a visual convenience, not the only channel.
+
+**The trigger combination took two wrong attempts.** `click` toggles, and every pointer interaction that clicks also focuses — so with `focus` in the list, focus opened the popover and the click that caused it closed it again. On a phone that reads as a dead control; with a mouse it flickers. `['hover', 'focus']` has one opening rule per input method and no toggle: mouse hovers, keyboard tabs, a tap focuses. Clicking elsewhere blurs it shut.
+
+Measured: reached in **2 tab presses**, opens on focus alone (no activation key to guess at), 24×20px at desktop and **44×44px on a phone**, and a tap opens it.
+
+### Nothing clinically important below 12px
+
+Computed sizes were read from the live page rather than from the source — an inline `fontSize` can be overridden by a class, and what matters is what the screen renders.
+
+| | Before | After |
+|---|---|---|
+| Panel heading | 13px | **14px** |
+| Diagnosis / medication / order / service name | 13px | **14px** |
+| ICD-10, priority, dispensing status, order status, billing state | 12px | 12px |
+| Medication strength, dose, frequency, duration, quantity | 12px | 12px |
+| Medication remark and calculation note | **11px** | **12px** |
+| Order instruction and result line | **11px** | **12px** |
+| Search and add controls (desktop) | 14px | 14px |
+| Editable controls (phone) | editor 16px, **search 14px** | **all 16px** |
+
+The phone search box was the one that mattered: at 14px iOS zooms the whole page on focus, landing the doctor on a shifted layout mid-search. antd v6 sets 14px on `.ant-select .ant-select-input`, which out-specifies a bare `.kw-rail-add input` — the rule had to be matched at the same depth to win.
+
+**This costs the 1920 first screen, as the owner authorised.** Direct Services' second row now sits 57px below the fold. Every panel heading and **all four Add controls remain in the first screen**, as does every row of Diagnosis, Medications and Orders. Readability was the priority; the note height was not touched.
+
+### The sticky quick-nav was covering its own destinations
+
+Tapping "Medications" put the first prescription at the top of the screen with the heading and the Add control behind the strip. Fixed with `scroll-margin-top`, not a hash link — a hash pushes a history entry and C1's unsaved-note guard keys on navigation.
+
+The reserve is **148px, not the bar's own 56px**: the app header is sticky too, so by the time a jump settles the quick-nav's bottom edge sits at ~129px. That was measured, not assumed — a 64px first attempt still left every heading partially covered and the Note card entirely behind the bar. Overshooting leaves a little whitespace; undershooting hides the heading, which is the failure this exists to prevent.
+
+All five destinations now report heading, Add control and first row **clear**, with screenshots in `docs/g45-screenshots/g45-quicknav-*.png`.
+
+### Three cascade and scoping bugs found in the process
+
+1. `.kw-attribution-btn` was declared **after** the mobile block at equal specificity, so source order won and the phone target stayed 24px wide. Same class of bug as the quick-nav one in D-071; both base rules now sit above the media query with a comment saying why.
+2. Removing that misplaced block left an **unterminated CSS comment** which swallowed `.kw-rail-row-actions { flex: 0 0 auto; }`. The actions column then stretched to 458px inside a 480px rail, crushing the content column to 182px and inflating rows to 81–97px. It presented as "the font increase broke the layout" and was nothing of the kind. `index.css` is now checked for comment termination and brace balance as part of verification.
+3. The verification harness itself claimed the touch target was fine while `page.touchscreen.tap` was silently unusable — the browser context had no `hasTouch`. A tap test that cannot tap passes everything.
+
+### Fixture governance
+
+Populated visit **V-000338** is kept for Dr Redha's visual review and is **not** deleted here.
+
+| Requirement | State |
+|---|---|
+| Tagged as test data | Patient name is `KUWICK-FIXTURE G45 Canvas Patient`, visible in the record header |
+| Development tenant only | Present in Smoke Test Tenant only, on a local database |
+| In a cleanup ledger | `prisma/g45-fixture-retire.ts`, dry-run by default |
+| Excluded from production | No `prisma.seed` block, no seed script, and no reference to `g45-*` anywhere outside its own two files. Verified, not assumed |
+
+`sweepOrphanedFixtures` matches on the presenting complaint, which cannot find this record: `g45-canvas-populate.ts` writes a real complaint ("Fever and cough for 3 days") because a reviewer has to read a realistic record. Retirement therefore keys on the **patient name** tag, and refuses any prefix that does not start with `KUWICK-FIXTURE`. It reuses the same `visitDeleteStatements` ordering as the per-run ledger and the orphan sweep, so a third deletion path cannot drift from the other two.
+
+**Deterministic reset** is retire-then-rebuild. The rebuilt visit takes the next number, not V-000338 again: the allocator is monotonic by design (D-068), and reusing a retired number would re-introduce the bug G4c1 fixed.
+
+The ledger also surfaced **two partial records (V-000336, V-000337)** left by earlier populate runs that failed mid-way. They are debris, not the review record; they are reported and left in place because the instruction was to delete nothing before review. `--confirm` retires all three.
+
+**Verification:** `prisma/g45-canvas-verify.ts` at 1920×1080, 1366×768, 900 and 375. 411 backend tests, 187 frontend, both typechecks clean.
+
+**Reversibility**: Low. Reverting returns attribution to mouse-only.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

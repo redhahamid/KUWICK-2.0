@@ -89,7 +89,7 @@ export function ServicesRail({ visitId }: ServicesRailProps) {
         <div key={service.id} className="kw-rail-row">
           <div className="kw-rail-row-main">
             <Space size={4} wrap>
-              <Text strong style={{ fontSize: 13 }}>
+              <Text strong style={{ fontSize: 14 }}>
                 {service.procedureName}
               </Text>
               {service.code && <Tag>{service.code}</Tag>}

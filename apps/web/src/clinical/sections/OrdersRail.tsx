@@ -121,7 +121,7 @@ export function OrdersRail({ visitId }: OrdersRailProps) {
           <div key={order.id} className="kw-rail-row">
             <div className="kw-rail-row-main">
               <Space size={4} wrap>
-                <Text strong style={{ fontSize: 13 }}>
+                <Text strong style={{ fontSize: 14 }}>
                   {order.procedureName}
                 </Text>
                 {/* A word, never colour alone. */}
@@ -132,12 +132,12 @@ export function OrdersRail({ visitId }: OrdersRailProps) {
                 {(order._count?.invoiceLines ?? 0) > 0 && <Tag color="purple">On invoice</Tag>}
               </Space>
               {order.result && (
-                <Text style={{ fontSize: 11 }} ellipsis>
+                <Text style={{ fontSize: 12 }} ellipsis>
                   Result: {order.result}
                 </Text>
               )}
               {order.cancelReason && (
-                <Text type="danger" style={{ fontSize: 11 }}>
+                <Text type="danger" style={{ fontSize: 12 }}>
                   Cancelled: {order.cancelReason}
                 </Text>
               )}
