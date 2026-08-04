@@ -2018,6 +2018,44 @@ States expanded to READY / AWAITING_DISPENSE / UNRESOLVED_SUPPLY / NOT_READY / N
 
 ---
 
+## D-095 — G4.5d3c-3b: the queue tells the truth, and the visit can be closed
+
+Three checkpoints built the machinery to decide whether a visit may end. This one shows it and acts on it. Route unchanged: `/queue`, existing design, existing permission model.
+
+### The queue stopped losing patients
+
+`QueueManagementPage` filtered four statuses. `AT_PROCEDURE`, `READY_FOR_DISPENSARY` and `READY_FOR_PAYMENT` matched nothing — so the moment a doctor completed their phase, that patient **disappeared from the board entirely**. Six stages now, with every status mapped in one table (`queue-stage.ts`, mirrored by `queuePresentation.ts`): Waiting, Consultation (holding both IN_CONSULTATION and AT_PROCEDURE, the latter carrying an "At procedure" indicator rather than a tab of its own), Dispensary, Payment, Completed. CANCELLED has *no* stage and is counted separately, never as active work. The legacy `DISPENSARY_PAYMENT` shows under Payment labelled "Dispensary/Payment — Legacy"; nothing creates new ones. A spec asserts every enum member reaches a stage, because a status with no home is a patient nobody can see.
+
+### One server read, and the browser decides nothing
+
+`GET /queue-tickets/board` returns each ticket with its stage, dispensing progress (clinic-dispensed medication only — an external script is not dispensary work), billing state from the **persisted** 3b1 calculation, outstanding blockers, and `canComplete`. That last field is the point: eligibility is decided by the same `collectBlockers` the completion endpoint runs, **imported rather than reimplemented**, because a board computing its own answer eventually offers a button the server refuses. Blockers are evaluated only for stages where completion is plausible; per-visit evaluation is still several queries and batching it behind one loader is recorded as a limitation rather than solved by duplicating the rules.
+
+### Complete Visit lives in one place and asks first
+
+Queue Management only. Billing Review *resolves billing* and, once clear, says so and offers **Return to Queue** — there is deliberately no second completion button there. Every completion path calls `PATCH /visits/:id/complete`, the one operation that sets `checkOutAt`. The action is offered only where the server said yes; where it said no, the control stays visible but disabled **with the reason attached** (tooltip and `aria-description`), so staff learn what to fix instead of wondering where the button went. A role without the permission sees no button at all. Confirmation is mandatory and states what is being asserted: patient, visit, doctor phase, procedures, dispensing, billing, patient balance, and — where relevant — the panel's share, labelled as claimed by Finance and explicitly **not patient debt**. The preview can go stale, so a 400 carrying blockers is caught and displayed rather than reported as a generic failure.
+
+### Two things cannot be closed over
+
+**Dispensing.** `DISPENSING_PENDING` blocks completion for every role including OWNER_ADMIN; there is no override, and the live proof exercises front desk and owner side by side. Medication that has not been supplied cannot be waved through a queue button — the supply mode or the dispensing itself has to be resolved in the clinical workflow.
+
+**An outstanding patient balance.** The visit stays in Payment. No write-off, no left-without-payment, no credit approval, no owner override: those need an auditable financial policy that does not exist yet, and the patient leaving the building is not the same fact as the bill being settled.
+
+A **panel receivable is not either of those**. A visit whose patient owes nothing completes even though the panel has not paid the clinic — proven live, and the confirmation says so in words.
+
+### Blockers carry destinations, not just complaints
+
+Each blocker names the problem, who resolves it and where to go: clinical blockers to the clinical visit, money blockers to Billing Review. Counter staff are never handed a clinical action — the procedure blocker says in as many words that they must not mark it done. Consultation-tariff review gets no tab of its own: it is badged in the Payment row and counted in the payment workload, per owner decision 5.
+
+### Mobile closures from the 3b2 review
+
+The floating chat launcher sat on top of "Add to invoice" on a phone. Billing Review and Queue Management now carry `kw-operational-surface`; below 992px the launcher stands down there (chat stays in the header), and above it the surface keeps a clear corner — verified by measuring the launcher's rectangle against every button on the page. "Set visit type" became a real control that, once set, reads "Visit type: Consultation [Change]" with the full accessible name retained. Three further defects the screenshots exposed and this checkpoint fixes: the invoice action column clipped at desktop width (columns carrying no information — Discount when nothing is discounted, Panel on a self-pay bill — are no longer rendered), the queue page title crushed to one character per line on a 375px screen, and "RM 60.00" breaking the same way inside the confirmation modal.
+
+**Verification**: 860 backend tests (39 suites) and 447 frontend tests (22 files), both typechecks clean; **34/34 live checks** against the running API and real database (`prisma/g45d3c3b-queue-completion-check.ts`) covering stage mapping, cancelled exclusion, all four valid routes, panel-covered completion, the owner's inability to bypass dispensing, balance blocking, permissions, and completion effects — including that four **concurrent** completions produce exactly one completion and one workflow event, a repeat reports the original `checkOutAt`, and completion changes no stock, no invoice total and no panel receivable. 18 screenshots in `docs/g45d3c3b-screenshots/`, no horizontal overflow at 1440/834/375.
+
+**Known limitations**: the board evaluates blockers per visit rather than through a batch loader, so a very large active queue costs more queries than it should; there is still no queue-side action that moves a ticket from Dispensary to Payment (that transition belongs to the Dispensary Workspace, and the interim path remains the clinical visit); `AT_PROCEDURE` has an indicator but no procedure-specific column; the Waiting and Consultation tabs still read from the ticket list rather than the board, so their rows carry no billing state (they do not need it yet); and completed history is capped at today's tickets.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

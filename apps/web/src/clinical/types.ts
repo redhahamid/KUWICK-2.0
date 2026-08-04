@@ -1224,3 +1224,80 @@ export interface OverridePanelBenefitDto {
   copaymentValue?: number;
   reason: string;
 }
+
+// ---------------------------------------------------------------------------
+// G4.5d3c-3b (D-095) — the queue board.
+//
+// One server read answers the whole six-stage queue. `canComplete` is the
+// SERVER'S decision, from the same evaluator the completion endpoint runs —
+// the browser never derives eligibility.
+// ---------------------------------------------------------------------------
+export type QueueStageName = 'WAITING' | 'CONSULTATION' | 'DISPENSARY' | 'PAYMENT' | 'COMPLETED';
+
+export interface QueueBoardDispensing {
+  onsiteTotal: number;
+  dispensed: number;
+  remaining: number;
+}
+
+export interface QueueBoardBilling {
+  grandTotal: string | null;
+  panelResponsibility: string | null;
+  patientResponsibility: string | null;
+  remainingBalance: string | null;
+  state: 'NO_INVOICE' | 'UNRESOLVED' | 'BALANCE_DUE' | 'SETTLED';
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+}
+
+export interface QueueBoardRow {
+  ticketId: string;
+  visitId: string;
+  displayNumber: string | null;
+  queueType: QueueType;
+  status: QueueTicketStatus;
+  stage: QueueStageName | null;
+  atProcedure: boolean;
+  legacyStatus: boolean;
+  patientName: string;
+  patientId: string;
+  doctorName: string | null;
+  roomName: string | null;
+  billingType: string;
+  panelName: string | null;
+  checkInAt: string;
+  calledAt: string | null;
+  checkOutAt: string | null;
+  doctorCompletedAt: string | null;
+  dispensing: QueueBoardDispensing;
+  billing: QueueBoardBilling;
+  blockers: VisitCompletionBlocker[] | null;
+  canComplete: boolean;
+}
+
+export interface QueueBoard {
+  rows: QueueBoardRow[];
+  counts: {
+    totalToday: number;
+    waiting: number;
+    consultation: number;
+    dispensary: number;
+    payment: number;
+    completed: number;
+    cancelled: number;
+  };
+  mayCompleteVisits: boolean;
+}
+
+export interface VisitCompletionResult {
+  visitId: string;
+  checkOutAt: string;
+  queueStatus: QueueTicketStatus;
+  completedByStaffId: string;
+  alreadyCompleted: boolean;
+}
+
+export interface CompleteVisitDto {
+  note?: string;
+  correlationId?: string;
+}

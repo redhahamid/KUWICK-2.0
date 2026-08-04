@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Put, Query } from '@nestjs/c
 import { QueueTicketStatus, QueueType } from '@prisma/client';
 import { QueueTicketService } from './queue-ticket.service';
 import { QueueDisplayConfigService } from './queue-display-config.service';
+import { QueueBoardService } from './queue-board.service';
 import { AddToQueueDto } from './dto/add-to-queue.dto';
 import { CancelQueueTicketDto } from './dto/cancel-queue-ticket.dto';
 import { CallQueueTicketDto } from './dto/call-queue-ticket.dto';
@@ -13,6 +14,7 @@ export class QueueTicketController {
   constructor(
     private readonly queueTickets: QueueTicketService,
     private readonly displayConfig: QueueDisplayConfigService,
+    private readonly queueBoard: QueueBoardService,
   ) {}
 
   @Post()
@@ -27,6 +29,14 @@ export class QueueTicketController {
     @Query('queueType') queueType?: QueueType,
   ) {
     return this.queueTickets.findAll({ clinicId, status, queueType });
+  }
+
+  // G4.5d3c-3b (D-095) - the six-stage queue board: every active ticket with
+  // its stage, dispensing progress, billing state, outstanding blockers and
+  // the SERVER'S completion decision. Static segment before ':id'.
+  @Get('board')
+  board(@Query('clinicId') clinicId: string) {
+    return this.queueBoard.board(clinicId);
   }
 
   // Static segment before ':id' so "display-config" never matches as an id.

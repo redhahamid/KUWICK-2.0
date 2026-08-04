@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Button,
@@ -58,6 +58,7 @@ const { Title, Text } = Typography;
  */
 export function BillingVisitPage() {
   const { visitId } = useParams<{ visitId: string }>();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const requestedInvoiceId = searchParams.get('invoiceId');
   const staff = useAuthStore((state) => state.staff);
@@ -220,7 +221,10 @@ export function BillingVisitPage() {
   };
 
   return (
-    <div>
+    // kw-operational-surface — this page owns its bottom-right corner, so the
+    // floating chat launcher stands down here rather than sitting on top of
+    // "Add to invoice" or the payment button (D-095).
+    <div className="kw-operational-surface">
       <Space direction="vertical" size={4} style={{ marginBottom: 16, width: '100%' }}>
         <Title level={4} style={{ margin: 0 }}>
           Billing review — {visit.patient?.name ?? 'Patient'}
@@ -230,11 +234,36 @@ export function BillingVisitPage() {
             Visit {visit.visitNumber} · {formatClinicDateTime(visit.checkInAt)}
             {visit.clinic?.name ? ` · ${visit.clinic.name}` : ''}
           </Text>
-          {visit.classification && <Tag>{CLASSIFICATION_LABEL[visit.classification]}</Tag>}
-          {canClassify && !visit.checkOutAt && (
-            <Button size="small" type="link" onClick={() => setClassifyOpen(true)}>
-              {visit.classification ? 'Change visit type' : 'Set visit type'}
-            </Button>
+          {/* D-095 — a real control, not a bare text link. Once a type is
+              recorded the value is stated and the action becomes Change, so
+              the current setting is readable at a glance. */}
+          {visit.classification ? (
+            <Space size={6}>
+              <Text type="secondary">Visit type:</Text>
+              <Tag>{CLASSIFICATION_LABEL[visit.classification]}</Tag>
+              {canClassify && !visit.checkOutAt && (
+                <Button
+                  size="small"
+                  onClick={() => setClassifyOpen(true)}
+                  aria-label={`Change visit type — currently ${CLASSIFICATION_LABEL[visit.classification]}`}
+                  style={{ minHeight: 44 }}
+                >
+                  Change
+                </Button>
+              )}
+            </Space>
+          ) : (
+            canClassify &&
+            !visit.checkOutAt && (
+              <Button
+                size="small"
+                onClick={() => setClassifyOpen(true)}
+                aria-label="Set visit type for billing"
+                style={{ minHeight: 44 }}
+              >
+                Set visit type
+              </Button>
+            )
           )}
         </Space>
       </Space>
@@ -348,6 +377,22 @@ export function BillingVisitPage() {
               </>
             )}
             <BillingBlockersPanel blockers={blockers} worklist={worklist} />
+            {/* D-095 — Billing Review RESOLVES billing; Queue Management
+                closes the visit. There is deliberately no second Complete
+                Visit button here. */}
+            {blockers.length === 0 && (
+              <Card size="small">
+                <Space direction="vertical" size={6}>
+                  <Text strong>Billing resolved.</Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Completing the visit itself is done from Queue Management.
+                  </Text>
+                  <Button type="primary" onClick={() => navigate('/queue')} style={{ minHeight: 44 }}>
+                    Return to Queue
+                  </Button>
+                </Space>
+              </Card>
+            )}
           </Space>
         </Col>
       </Row>

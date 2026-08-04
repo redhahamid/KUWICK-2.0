@@ -234,7 +234,13 @@ function assertMayCompleteVisit(actor: Staff): void {
  * counter clerk fixing four problems one refresh at a time is how a queue
  * backs up.
  */
-async function collectBlockers(
+/**
+ * Exported for the queue board (D-095), which needs the SAME answer for every
+ * visit on screen. Exported rather than reimplemented: two places deciding
+ * whether a visit may close is exactly how a screen ends up offering a button
+ * the server will refuse.
+ */
+export async function collectBlockers(
   tx: ClinicalTx,
   visitId: string,
   doctorCompletedAt: Date | null,

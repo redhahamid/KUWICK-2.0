@@ -588,6 +588,26 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   display: none;
 }
 
+/* G4.5d3c-3b (D-095) — operational surfaces (Billing Review, Queue
+   Management) own their bottom-right corner too. The 3b2 review found the
+   launcher sitting on top of "Add to invoice" on a phone; the same corner on
+   the queue carries Complete Visit. Below the desktop breakpoint the launcher
+   is removed on these surfaces rather than nudged, because every nudge just
+   lands it on a different control. Chat stays reachable from the header. */
+@media (max-width: 991px) {
+  body:has(.kw-operational-surface) .kw-chat-launcher {
+    display: none;
+  }
+}
+
+/* On a wide screen the launcher stays, but the surface keeps a corner clear
+   so a bottom-anchored action can never end up underneath it. */
+@media (min-width: 992px) {
+  .kw-operational-surface {
+    padding-bottom: 88px;
+  }
+}
+
 @media (max-width: 640px) {
   .kw-chat-launcher {
     bottom: calc(env(safe-area-inset-bottom, 0px) + 88px);

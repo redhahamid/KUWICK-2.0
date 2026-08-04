@@ -2,13 +2,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../core/api-client';
 import {
   AddToQueueDto,
+  CompleteVisitDto,
   CreateRoomDto,
+  QueueBoard,
   PublicQueueMonitorData,
   QueueDisplayConfig,
   QueueTicket,
   QueueTicketStatus,
   Room,
   UpdateQueueDisplayConfigDto,
+  VisitCompletionResult,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
@@ -121,5 +124,36 @@ export function usePublicQueueMonitor(clinicId?: string) {
     },
     enabled: !!clinicId,
     refetchInterval: 5_000,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// G4.5d3c-3b (D-095) — the six-stage queue board and Complete Visit.
+// ---------------------------------------------------------------------------
+export function useQueueBoard(clinicId?: string) {
+  return useQuery({
+    queryKey: ['queue-board', clinicId],
+    queryFn: () => apiClient.get<QueueBoard>(`/queue-tickets/board?clinicId=${clinicId}`),
+    enabled: Boolean(clinicId),
+    refetchInterval: 15_000,
+  });
+}
+
+/**
+ * Closes the visit through the AUTHORITATIVE completion service — the same
+ * `PATCH /visits/:id/complete` the doctor-side status read describes, never a
+ * queue-only shortcut. Refreshes the board, the ticket list and the visit.
+ */
+export function useCompleteVisit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ visitId, dto }: { visitId: string; dto?: CompleteVisitDto }) =>
+      apiClient.patch<VisitCompletionResult>(`/visits/${visitId}/complete`, dto ?? {}),
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['queue-board'] });
+      queryClient.invalidateQueries({ queryKey: ['queue-tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['visit', variables.visitId] });
+      queryClient.invalidateQueries({ queryKey: ['completion-blockers', variables.visitId] });
+    },
   });
 }

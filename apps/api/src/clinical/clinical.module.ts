@@ -8,6 +8,7 @@ import { DoctorCompletionService } from './doctor-completion.service';
 import { PanelBenefitService } from './panel-benefit.service';
 import { BillingWorklistService } from './billing-worklist.service';
 import { ConsultationTariffService } from './consultation-tariff.service';
+import { QueueBoardService } from './queue-board.service';
 import { ConsultationTariffController } from './consultation-tariff.controller';
 import { VisitCompletionService } from './visit-completion.service';
 import { VisitHistoryController } from './visit-history.controller';
@@ -89,6 +90,7 @@ import { ChatChannelService } from './chat-channel.service';
     PanelBenefitService,
     BillingWorklistService,
     ConsultationTariffService,
+    QueueBoardService,
     VisitCompletionService,
     VisitHistoryService,
     QueueTicketService,
@@ -118,6 +120,7 @@ import { ChatChannelService } from './chat-channel.service';
     PanelBenefitService,
     BillingWorklistService,
     ConsultationTariffService,
+    QueueBoardService,
     VisitCompletionService,
     QueueTicketService,
     ClinicalNoteService,
