@@ -24,7 +24,7 @@ import {
 } from './clinical-actor';
 import { isEligibleAttendingDoctor } from './queue-authorization';
 import { CompleteDoctorPhaseDto } from './dto/complete-doctor-phase.dto';
-import { collectBillingWorklist, unbilledReadyItems } from './billing-worklist';
+import { collectBillingWorklist, pendingBillingWork, tariffReviewItems } from './billing-worklist';
 
 /**
  * Why the patient is going where they are going. Returned so the caller can
@@ -545,19 +545,24 @@ async function evaluateDoctorPhase(
  * cancelled one contributes nothing.
  */
 async function evaluateBilling(tx: ClinicalTx, visitId: string): Promise<number | 'UNDETERMINED'> {
+  // D-093/D-094: billing work that still lies AHEAD of the patient — a
+  // ready-but-unbilled charge, ordered clinic medication not yet dispensed,
+  // or a consultation the tariff cannot resolve — means the counter has to
+  // look, whatever invoices already exist. Routing past it would lose the
+  // money. An external prescription is not clinic work and never routes a
+  // visit to billing by itself (owner decision 4).
+  const worklist = await collectBillingWorklist(tx, visitId);
+  if (pendingBillingWork(worklist).length > 0 || tariffReviewItems(worklist).length > 0) {
+    return 'UNDETERMINED';
+  }
+
   const invoices = await tx.invoice.findMany({
     where: { visitId, status: { not: InvoiceStatus.CANCELLED } },
     select: { patientResponsibilityAmount: true, patientPaidAmount: true },
   });
 
   if (invoices.length === 0) {
-    // No invoice yet. If the visit has chargeable work on it, the bill has
-    // simply not been raised — routing past the counter would lose the
-    // money. D-093: "chargeable" is now supply-mode-aware (owner decision
-    // 4) — an external prescription is not clinic work and no longer sends
-    // a visit to billing review by itself.
-    const unbilled = unbilledReadyItems(await collectBillingWorklist(tx, visitId));
-    return unbilled.length > 0 ? 'UNDETERMINED' : 0;
+    return 0;
   }
 
   let remaining = 0;

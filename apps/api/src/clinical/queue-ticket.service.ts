@@ -297,18 +297,55 @@ export class QueueTicketService {
   }
 
   // D-024 (docs/DECISIONS.md): WAITING -> IN_CONSULTATION.
+  //
+  // G4.5d3c-3b2 (D-094) — the transition now records a CONSULTATION_STARTED
+  // workflow event in the SAME transaction. The event's createdAt is the
+  // stable consultation-start timestamp the consultation tariff reads: the
+  // fee for a 10:55pm consultation must come from when the consultation
+  // STARTED, never from when the invoice was opened or paid. The enum value
+  // existed since D-083; this is its first writer.
   async arrived(id: string) {
-    const { ticket } = await this.authoriseTicket(id, 'START_CONSULTATION');
+    const { ticket, actor } = await this.authoriseTicket(id, 'START_CONSULTATION');
     // Idempotent: asking again for a state the ticket is already in is a
-    // double-click, not an error.
+    // double-click, not an error — and records NO second start.
     if (ticket.status === QueueTicketStatus.IN_CONSULTATION) {
       return this.findById(id);
     }
     assertTransition(ticket.status, QueueTicketStatus.IN_CONSULTATION, 'mark as arrived');
-    return this.prisma.queueTicket.update({
-      where: { id },
-      data: { status: QueueTicketStatus.IN_CONSULTATION },
+    await withTenantTx(this.rawPrisma, async (tx) => {
+      // Re-read inside the transaction so two racing requests cannot both
+      // record a start: the loser sees IN_CONSULTATION and writes nothing.
+      const fresh = await tx.queueTicket.findUnique({
+        where: { id },
+        select: { id: true, status: true, visitId: true, clinicId: true },
+      });
+      if (!fresh) {
+        throw new NotFoundException('Queue ticket not found');
+      }
+      if (fresh.status === QueueTicketStatus.IN_CONSULTATION) {
+        return;
+      }
+      assertTransition(fresh.status, QueueTicketStatus.IN_CONSULTATION, 'mark as arrived');
+      await tx.queueTicket.update({
+        where: { id },
+        data: { status: QueueTicketStatus.IN_CONSULTATION },
+      });
+      await tx.visitWorkflowEvent.create({
+        data: {
+          tenantId: currentTenantId(),
+          clinicId: fresh.clinicId,
+          visitId: fresh.visitId,
+          queueTicketId: fresh.id,
+          eventType: VisitWorkflowEventType.CONSULTATION_STARTED,
+          previousStatus: fresh.status,
+          newStatus: QueueTicketStatus.IN_CONSULTATION,
+          actorStaffId: actor.id,
+          actorNameSnapshot: actor.fullName,
+          actorRoleSnapshot: actor.role,
+        },
+      });
     });
+    return this.findById(id);
   }
 
   // Not explicitly detailed in the audit — Dispensary & Payment and

@@ -109,6 +109,7 @@ export interface Visit {
   // G4.5d3c-3b1a (D-092) — the visit-specific panel benefit snapshot.
   // Server-derived; NULL means not captured, never unlimited coverage.
   panelMemberReference?: string | null;
+  classification?: VisitClassification | null;
   panelVerificationStatus?: PanelVerificationStatus | null;
   panelVerifiedAt?: string | null;
   panelVerifiedByStaffId?: string | null;
@@ -122,6 +123,16 @@ export interface Visit {
 }
 
 export type PanelVerificationStatus = 'PENDING_VERIFICATION' | 'VERIFIED' | 'FAILED' | 'OVERRIDDEN';
+// G4.5d3c-3b2 (D-094) — the operational kind of visit, for consultation
+// billing only. NULL means "derive" (an OTC-queue visit is OTC_ONLY,
+// everything else is a consultation).
+export type VisitClassification =
+  | 'CONSULTATION'
+  | 'OTC_ONLY'
+  | 'DRESSING_ONLY'
+  | 'PROCEDURE_ONLY'
+  | 'FOLLOW_UP_NO_CONSULTATION';
+
 export type PanelCoverageType = 'UNLIMITED' | 'VISIT_LIMIT';
 export type PanelCopaymentType = 'NONE' | 'FIXED_AMOUNT' | 'PERCENTAGE';
 
@@ -688,6 +699,10 @@ export interface InvoiceLine {
   amount: string;
   sourceOrderServiceId: string | null;
   sourcePrescriptionId: string | null;
+  // D-094 — the consultation charge's source is the visit itself (no order
+  // row exists for consulting), plus the tariff rule that selected it.
+  sourceConsultationVisitId?: string | null;
+  consultationTariffRuleId?: string | null;
   excludedFromPanel: boolean;
   createdAt: string;
   // G3c (D-065) — resolved server-side so a line's SOURCE is a real
@@ -874,8 +889,12 @@ export interface CreateInvoiceDto {
 
 export interface AddInvoiceLineDto {
   description: string;
+  // G4.5d3c-3b2 (D-094) — both OPTIONAL, because for a source-linked line the
+  // server owns them: quantity comes from the source record and the price from
+  // the pricing resolver. They are supplied only for a manual line.
   quantity?: number;
-  unitPrice: number;
+  unitPrice?: number;
+  unit?: string;
   sourceOrderServiceId?: string;
   sourcePrescriptionId?: string;
 }
@@ -1114,4 +1133,94 @@ export interface DoctorCompletionResult {
 export interface CompleteDoctorPhaseDto {
   note?: string;
   correlationId?: string;
+}
+
+// ---------------------------------------------------------------------------
+// G4.5d3c-3b2 (D-094) — Counter Billing Review.
+//
+// Every state below is the SERVER'S answer (GET /visits/:id/billing-worklist).
+// The browser renders it and never re-derives chargeability, quantity or price.
+// ---------------------------------------------------------------------------
+export type BillingWorklistSourceType = 'PRESCRIPTION' | 'ORDER_SERVICE' | 'CONSULTATION';
+
+export type BillingWorklistState =
+  | 'READY'
+  | 'AWAITING_DISPENSE'
+  | 'UNRESOLVED_SUPPLY'
+  | 'NOT_READY'
+  | 'NOT_CHARGEABLE'
+  | 'TARIFF_REVIEW'
+  | 'WAIVED';
+
+export interface BillingWorklistItem {
+  sourceType: BillingWorklistSourceType;
+  sourceId: string;
+  description: string;
+  state: BillingWorklistState;
+  stateReason: string | null;
+  sourceStatus: string | null;
+  supplyMode: PrescriptionSupplyMode | null;
+  billed: boolean;
+  invoiceLineId: string | null;
+  quantity: number | null;
+}
+
+export interface VisitCompletionBlocker {
+  code: string;
+  message: string;
+}
+
+export interface ConsultationTariffRule {
+  id: string;
+  clinicId: string;
+  name: string;
+  active: boolean;
+  classification: VisitClassification;
+  startTime: string;
+  endTime: string;
+  serviceCatalogId: string;
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+  serviceCatalog?: { id: string; name: string; price: string; active: boolean };
+  clinic?: { id: string; name: string };
+}
+
+export interface UpsertConsultationTariffRuleDto {
+  clinicId: string;
+  name: string;
+  active?: boolean;
+  classification: VisitClassification;
+  startTime: string;
+  endTime: string;
+  serviceCatalogId: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+}
+
+export interface ApplyDiscountDto {
+  type: InvoiceDiscountType;
+  value: number;
+  reason: string;
+}
+
+export interface CancelInvoiceLineDto {
+  cancelReason: string;
+}
+
+export interface RecordPanelVerificationDto {
+  status: 'VERIFIED' | 'FAILED';
+  memberReference?: string;
+  verificationReference?: string;
+  coverageType?: PanelCoverageType;
+  visitLimitAmount?: number;
+  copaymentType?: PanelCopaymentType;
+  copaymentValue?: number;
+}
+
+export interface OverridePanelBenefitDto {
+  coverageType: PanelCoverageType;
+  visitLimitAmount?: number;
+  copaymentType?: PanelCopaymentType;
+  copaymentValue?: number;
+  reason: string;
 }

@@ -243,18 +243,30 @@ describe('QueueTicketService', () => {
     await expect(withTenant(() => service.findById('missing'))).rejects.toThrow(NotFoundException);
   });
 
-  it('arrived moves WAITING to IN_CONSULTATION', async () => {
+  it('arrived moves WAITING to IN_CONSULTATION and records CONSULTATION_STARTED in the same transaction', async () => {
     const ctx = createService();
-    const { service, prisma } = ctx;
+    const { service } = ctx;
     const setTicket = makeSetTicket(ctx);
-    setTicket({ id: 't1', status: QueueTicketStatus.WAITING });
-    (prisma.queueTicket.update as jest.Mock).mockResolvedValue({ id: 't1', status: QueueTicketStatus.IN_CONSULTATION });
+    setTicket({ id: 't1', status: QueueTicketStatus.WAITING, visitId: 'visit-1', clinicId: 'clinic-1' });
 
     await withTenant(() => service.arrived('t1'));
 
-    expect(prisma.queueTicket.update).toHaveBeenCalledWith({
+    // G4.5d3c-3b2 (D-094) — the write and the consultation-start record are
+    // one transaction: the tariff's timestamp source cannot be missing for a
+    // visit whose ticket says the consultation happened.
+    expect(ctx.tx.queueTicket.update).toHaveBeenCalledWith({
       where: { id: 't1' },
       data: { status: QueueTicketStatus.IN_CONSULTATION },
+    });
+    expect(ctx.tx.visitWorkflowEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        eventType: 'CONSULTATION_STARTED',
+        visitId: 'visit-1',
+        clinicId: 'clinic-1',
+        previousStatus: QueueTicketStatus.WAITING,
+        newStatus: QueueTicketStatus.IN_CONSULTATION,
+        actorStaffId: 'staff-1',
+      }),
     });
   });
 

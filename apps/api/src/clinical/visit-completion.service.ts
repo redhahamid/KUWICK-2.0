@@ -13,7 +13,7 @@ import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-s
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { ClinicalTx, assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
-import { collectBillingWorklist, unbilledReadyItems } from './billing-worklist';
+import { collectBillingWorklist, tariffReviewItems, unbilledReadyItems } from './billing-worklist';
 import { CompleteVisitDto } from './dto/complete-visit.dto';
 
 /**
@@ -31,6 +31,7 @@ export type VisitCompletionBlockerCode =
   | 'BILLING_REVIEW_REQUIRED'
   | 'PATIENT_BALANCE_REMAINING'
   | 'UNBILLED_CHARGEABLE_ITEMS'
+  | 'CONSULTATION_TARIFF_REVIEW_REQUIRED'
   | 'QUEUE_STATE_INELIGIBLE';
 
 export interface VisitCompletionBlocker {
@@ -55,6 +56,7 @@ const MESSAGES: Record<VisitCompletionBlockerCode, string> = {
   BILLING_REVIEW_REQUIRED: 'Billing responsibility has not been confirmed.',
   PATIENT_BALANCE_REMAINING: 'Patient payment is still outstanding.',
   UNBILLED_CHARGEABLE_ITEMS: 'Billing contains items that have not been invoiced.',
+  CONSULTATION_TARIFF_REVIEW_REQUIRED: 'Consultation tariff requires review.',
   QUEUE_STATE_INELIGIBLE: 'This visit is not at a stage where it can be completed.',
 };
 
@@ -284,6 +286,12 @@ async function collectBlockers(
   const worklist = await collectBillingWorklist(tx, visitId);
   if (unbilledReadyItems(worklist).length > 0) {
     add('UNBILLED_CHARGEABLE_ITEMS');
+  }
+  // G4.5d3c-3b2 (D-094) — the tariff is configured but cannot resolve this
+  // visit (no band covers the consultation time, or the selected service is
+  // inactive). A human must look before the visit can settle.
+  if (tariffReviewItems(worklist).length > 0) {
+    add('CONSULTATION_TARIFF_REVIEW_REQUIRED');
   }
 
   const invoices = await tx.invoice.findMany({

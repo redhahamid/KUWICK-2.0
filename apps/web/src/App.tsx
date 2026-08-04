@@ -22,6 +22,7 @@ import { AttendancePage } from './hr/AttendancePage';
 import { LeaveRequestsPage } from './hr/LeaveRequestsPage';
 import { PublicHolidaysPage } from './hr/PublicHolidaysPage';
 import { ServicesPage } from './clinical/ServicesPage';
+import { ConsultationTariffsPage } from './clinical/ConsultationTariffsPage';
 import { PanelClinicsPage } from './clinical/PanelClinicsPage';
 import { PanelClaimsPage } from './clinical/PanelClaimsPage';
 import { DiagnosesDirectoryPage } from './clinical/DiagnosesDirectoryPage';
@@ -138,6 +139,7 @@ export function App() {
             <Route path="/settings/queue/rooms" element={<RoomsPage />} />
             <Route path="/settings/queue/display" element={<QueueDisplaySettingsPage />} />
             <Route path="/settings/clinical/services" element={<ServicesPage />} />
+            <Route path="/settings/clinical/consultation-tariffs" element={<ConsultationTariffsPage />} />
             <Route path="/settings/clinical/diagnoses" element={<DiagnosesDirectoryPage />} />
             <Route path="/settings/documents/templates" element={<DocumentTemplatesPage />} />
             <Route path="/settings/hr/public-holidays" element={<PublicHolidaysPage />} />

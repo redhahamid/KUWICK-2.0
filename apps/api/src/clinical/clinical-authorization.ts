@@ -190,7 +190,14 @@ export function assertCanAuthoriseDocument(staff: Staff, requiresClinical: boole
 // may do it. Taking payment is counter work. Cancelling an issued invoice is a
 // financial correction, and is the narrowest of the four.
 // ---------------------------------------------------------------------------
-export type BillingAction = 'CREATE_INVOICE' | 'EDIT_LINES' | 'MARK_PAID' | 'CANCEL_INVOICE' | 'APPLY_DISCOUNT';
+export type BillingAction =
+  | 'CREATE_INVOICE'
+  | 'EDIT_LINES'
+  | 'MARK_PAID'
+  | 'CANCEL_INVOICE'
+  | 'APPLY_DISCOUNT'
+  | 'CANCEL_LINE'
+  | 'CLASSIFY_VISIT';
 
 const BILLING_MATRIX: Record<BillingAction, Role[]> = {
   // Raising the bill and itemising it: counter staff, finance, the owner, and
@@ -208,6 +215,14 @@ const BILLING_MATRIX: Record<BillingAction, Role[]> = {
   // has earned, so they sit at the financial-correction tier. Front desk and
   // doctors are refused.
   APPLY_DISCOUNT: ['OWNER_ADMIN', 'FINANCE_STAFF'],
+  // G4.5d3c-3b2 (D-094, owner decision 8/11) — cancelling a line (including
+  // waiving an auto-added consultation) is COUNTER work with a mandatory
+  // reason: front desk may do it, doctors do not manage billing corrections
+  // from the clinical surface.
+  CANCEL_LINE: ['OWNER_ADMIN', 'FINANCE_STAFF', 'FRONT_DESK_CLINICAL_STAFF'],
+  // Recording what KIND of visit this was for consultation billing (OTC-only,
+  // dressing-only, ...) is operational counter work, never a clinical entry.
+  CLASSIFY_VISIT: ['OWNER_ADMIN', 'FINANCE_STAFF', 'FRONT_DESK_CLINICAL_STAFF'],
 };
 
 // Anyone who may perform ANY billing action — the gate for reaching the
@@ -230,6 +245,8 @@ const BILLING_ACTION_WORDS: Record<BillingAction, string> = {
   MARK_PAID: 'record a payment',
   CANCEL_INVOICE: 'cancel an invoice',
   APPLY_DISCOUNT: 'apply a billing discount',
+  CANCEL_LINE: 'cancel an invoice line',
+  CLASSIFY_VISIT: 'change the visit billing classification',
 };
 
 export function assertCanPerformBilling(staff: Staff, action: BillingAction): void {

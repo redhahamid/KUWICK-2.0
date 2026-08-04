@@ -28,15 +28,33 @@ export class InvoiceController {
   }
 
   // G4.5d3c-3b1 (D-093) - the route survives, its semantics changed: the
-  // line is CANCELLED (actor, timestamp, optional reason retained), never
-  // erased. Financial history is not deletable through this API.
+  // line is CANCELLED (actor, timestamp, reason retained), never erased.
+  // 3b2 (D-094): the reason is mandatory, and the action is CANCEL_LINE
+  // (counter/finance/owner) rather than EDIT_LINES.
   @Delete(':id/lines/:lineId')
   cancelLine(
     @Param('id') id: string,
     @Param('lineId') lineId: string,
-    @Body() dto?: CancelInvoiceLineDto,
+    @Body() dto: CancelInvoiceLineDto,
   ) {
-    return this.invoices.cancelLine(id, lineId, dto ?? {});
+    return this.invoices.cancelLine(id, lineId, dto);
+  }
+
+  // G4.5d3c-3b2 (D-094) - the IDEMPOTENT consultation auto-add. Billing
+  // Review invokes it on open; repeated and concurrent calls cannot create a
+  // second charge (FOR UPDATE on the visit + one-active-line rule). A
+  // dedicated write operation, deliberately NOT a side effect of a read.
+  @Post(':id/ensure-consultation')
+  ensureConsultation(@Param('id') id: string) {
+    return this.invoices.ensureConsultationCharge(id);
+  }
+
+  // The EXPLICIT counter action for the owner-approved exceptions: an exempt
+  // visit where a real consultation occurred, or a deliberate re-add after a
+  // waiver. Still tariff-driven and server-priced.
+  @Post(':id/consultation-charge')
+  addConsultationCharge(@Param('id') id: string) {
+    return this.invoices.addConsultationCharge(id);
   }
 
   // D-093 - discounts, owner/finance only, reason mandatory.

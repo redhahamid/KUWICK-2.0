@@ -71,6 +71,13 @@ export async function resolveSourcedPrice(
     panelClinicId: string | null;
     sourcePrescriptionId?: string;
     sourceOrderServiceId?: string;
+    /**
+     * G4.5d3c-3b2 (D-094) — a consultation charge's source is a ServiceCatalog
+     * record selected by the tariff rule; there is no order row. Same
+     * precedence and same service-markup column as an order-sourced service —
+     * one pricing truth, not a consultation-specific fork.
+     */
+    serviceCatalogId?: string;
   },
 ): Promise<ResolvedPrice | null> {
   const { panelClinicId } = params;
@@ -97,6 +104,25 @@ export async function resolveSourcedPrice(
       cashPrice: Number(prescription.item.sellPrice),
       specificPanelPrice: override ? Number(override.overridePrice) : null,
       panelMarkupAmount: panel?.inventoryMarkupAmount != null ? Number(panel.inventoryMarkupAmount) : null,
+    });
+  }
+
+  if (params.serviceCatalogId) {
+    const service = await tx.serviceCatalog.findUnique({
+      where: { id: params.serviceCatalogId },
+      select: { price: true },
+    });
+    if (!service) return null;
+    const override = panelClinicId
+      ? await tx.panelPriceOverride.findFirst({
+          where: { panelClinicId, serviceCatalogId: params.serviceCatalogId },
+          select: { overridePrice: true },
+        })
+      : null;
+    return resolveContractualPrice({
+      cashPrice: Number(service.price),
+      specificPanelPrice: override ? Number(override.overridePrice) : null,
+      panelMarkupAmount: panel?.serviceMarkupAmount != null ? Number(panel.serviceMarkupAmount) : null,
     });
   }
 

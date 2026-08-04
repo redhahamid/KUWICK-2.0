@@ -6,11 +6,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, Staff } from '@prisma/client';
+import { Prisma, Staff, VisitClassification } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { ClinicalTx, requireActor, withTenantTx } from './clinical-actor';
+import { ClinicalTx, assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
+import { assertCanPerformBilling } from './clinical-authorization';
 import {
   resolveActiveStaffForClinic,
   resolveEligibleAttendingDoctor,
@@ -274,5 +275,28 @@ export class VisitService {
   async checkOut(id: string) {
     await this.findById(id);
     return this.prisma.visit.update({ where: { id }, data: { checkOutAt: new Date() } });
+  }
+
+  /**
+   * G4.5d3c-3b2 (D-094) — the visit's operational classification for
+   * consultation billing (OTC-only, dressing-only, ...). Counter work:
+   * front desk, finance and the owner; never a clinical judgement, never
+   * inferred from diagnosis. Locked once the visit is completed — a settled
+   * visit's billing basis is not quietly editable.
+   */
+  async setClassification(id: string, classification: VisitClassification) {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      assertCanPerformBilling(actor, 'CLASSIFY_VISIT');
+      await assertMayTouchVisit(tx, id, actor);
+      const visit = await tx.visit.findUnique({ where: { id }, select: { checkOutAt: true } });
+      if (!visit) {
+        throw new NotFoundException('Visit not found');
+      }
+      if (visit.checkOutAt) {
+        throw new BadRequestException('This visit is completed; its billing classification is locked.');
+      }
+      return tx.visit.update({ where: { id }, data: { classification } });
+    });
   }
 }

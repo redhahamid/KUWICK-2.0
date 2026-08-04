@@ -27,6 +27,15 @@ interface World {
   visit?: Record<string, unknown>;
   invoice?: Record<string, unknown>;
   lines?: Array<Record<string, unknown>>;
+  /** D-094 — active tariff rules for the consultation resolver ([] = feature off). */
+  tariffRules?: Array<Record<string, unknown>>;
+  /** D-094 — the visit as the consultation resolver reads it. */
+  consultVisit?: Record<string, unknown>;
+  /** D-094 — existing consultation lines (active/cancelled) for the visit. */
+  consultationLines?: Array<Record<string, unknown>>;
+  /** D-094 — worklist sources for pay-time completeness checks. */
+  worklistPrescriptions?: Array<Record<string, unknown>>;
+  worklistOrders?: Array<Record<string, unknown>>;
 }
 
 const CASH_VISIT = {
@@ -96,10 +105,26 @@ function createService(role = 'FINANCE_STAFF', world: World = {}) {
     clinic: { count: jest.fn().mockResolvedValue(1) },
     userClinicAccess: { findMany: jest.fn().mockResolvedValue([]) },
     visit: {
-      // Serves both the branch check ({clinicId}) and the benefit snapshot.
-      findUnique: jest.fn(async ({ select }: { select?: Record<string, unknown> }) =>
-        select?.clinicId && !select?.panelClinicId ? { clinicId: 'clinic-1' } : visitState,
-      ),
+      // Serves the branch check ({clinicId}), the consultation resolver's
+      // read (recognised by its `classification` select) and the benefit
+      // snapshot — three different selects against one mock.
+      findUnique: jest.fn(async ({ select }: { select?: Record<string, unknown> }) => {
+        if (select?.classification || select?.queueTicket) {
+          return {
+            id: 'visit-1',
+            clinicId: 'clinic-1',
+            classification: null,
+            checkInAt: new Date('2026-08-04T02:00:00Z'), // 10:00 KL
+            clinic: { timezone: 'Asia/Kuala_Lumpur' },
+            queueTicket: { queueType: 'WALK_IN', status: 'IN_CONSULTATION', calledAt: null },
+            ...(world.consultVisit ?? {}),
+          };
+        }
+        if (select?.clinicId && !select?.panelClinicId) {
+          return { clinicId: 'clinic-1' };
+        }
+        return visitState;
+      }),
     },
     invoice: {
       count: jest.fn().mockResolvedValue(0),
@@ -113,7 +138,10 @@ function createService(role = 'FINANCE_STAFF', world: World = {}) {
     },
     invoiceLine: {
       findFirst: jest.fn().mockResolvedValue(null),
-      findMany: jest.fn(async () => lines),
+      findMany: jest.fn(async ({ where }: { where?: Record<string, unknown> } = {}) => {
+        if (where?.sourceConsultationVisitId) return world.consultationLines ?? [];
+        return lines;
+      }),
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         const line = { id: `line-${lines.length + 1}`, cancelledAt: null, ...data };
         lines.push(line);
@@ -127,11 +155,32 @@ function createService(role = 'FINANCE_STAFF', world: World = {}) {
       }),
     },
     prescription: {
-      findUnique: jest.fn().mockResolvedValue({ itemId: 'item-1', item: { sellPrice: 10 } }),
+      findUnique: jest.fn().mockResolvedValue({
+        itemId: 'item-1',
+        item: { sellPrice: 10 },
+        // D-094 — a chargeable medication source by default: DISPENSED and
+        // clinic-dispensed, with the SOURCE quantity the server must use.
+        status: 'DISPENSED',
+        supplyMode: 'ONSITE_DISPENSE',
+        quantity: 1,
+        deletedAt: null,
+      }),
+      findMany: jest.fn(async () => world.worklistPrescriptions ?? []),
     },
     orderService: {
-      findUnique: jest.fn().mockResolvedValue({ serviceCatalogId: 'svc-1', serviceCatalog: { price: 30 } }),
+      findUnique: jest.fn().mockResolvedValue({
+        serviceCatalogId: 'svc-1',
+        serviceCatalog: { price: 30 },
+        orderType: 'STANDARD_SERVICE',
+        status: 'PENDING',
+      }),
+      findMany: jest.fn(async () => world.worklistOrders ?? []),
     },
+    serviceCatalog: {
+      findUnique: jest.fn().mockResolvedValue({ price: 35 }),
+    },
+    consultationTariffRule: { findMany: jest.fn(async () => world.tariffRules ?? []) },
+    visitWorkflowEvent: { findFirst: jest.fn().mockResolvedValue(null) },
     panelClinic: {
       findUnique: jest.fn().mockResolvedValue({ inventoryMarkupAmount: null, serviceMarkupAmount: null }),
     },
@@ -159,13 +208,17 @@ describe('billing authorisation', () => {
     cancel: (s: InvoiceService) => s.cancel('inv-1', { cancelReason: 'x' }),
     discount: (s: InvoiceService) =>
       s.applyInvoiceDiscount('inv-1', { type: 'FIXED_AMOUNT', value: 1, reason: 'goodwill' } as never),
+    cancelLine: (s: InvoiceService) => s.cancelLine('inv-1', 'line-1', { cancelReason: 'billing correction' }),
   };
 
   const MATRIX: [string, (keyof typeof ACTIONS)[]][] = [
-    ['OWNER_ADMIN', ['create', 'addLine', 'pay', 'cancel', 'discount']],
-    ['FINANCE_STAFF', ['create', 'addLine', 'pay', 'cancel', 'discount']],
-    // 22. Front desk bills and collects but NEVER discounts (owner decision 5).
-    ['FRONT_DESK_CLINICAL_STAFF', ['create', 'addLine', 'pay']],
+    ['OWNER_ADMIN', ['create', 'addLine', 'pay', 'cancel', 'discount', 'cancelLine']],
+    ['FINANCE_STAFF', ['create', 'addLine', 'pay', 'cancel', 'discount', 'cancelLine']],
+    // 5. Front desk bills, collects and corrects lines (incl. waiving a
+    // consultation, D-094) but NEVER discounts (owner decision 5).
+    ['FRONT_DESK_CLINICAL_STAFF', ['create', 'addLine', 'pay', 'cancelLine']],
+    // 4/11. Doctors raise bills during consultation but hold NO counter
+    // corrections: no payment, no line cancellation, no waiver.
     ['DOCTOR_RESIDENT', ['create', 'addLine']],
     ['DOCTOR_LOCUM', ['create', 'addLine']],
     ['HR_STAFF', []],
@@ -341,7 +394,9 @@ describe('server-side pricing', () => {
 
   it('a sourced line whose catalog row vanished cannot fall back to a client price', async () => {
     const ctx = createService('FINANCE_STAFF');
-    ctx.tx.prescription.findUnique.mockResolvedValue(null);
+    ctx.tx.prescription.findUnique.mockResolvedValue({
+      itemId: 'item-1', item: null, status: 'DISPENSED', supplyMode: 'ONSITE_DISPENSE', quantity: 1, deletedAt: null,
+    });
     await expect(sourcedAdd(ctx, { unitPrice: 999 })).rejects.toThrow(/cannot be priced/i);
   });
 
@@ -470,7 +525,7 @@ describe('line cancellation', () => {
 
   it('25. a cancelled line leaves the totals and the responsibility', async () => {
     const ctx = withLines();
-    await withTenant(() => ctx.service.cancelLine('inv-1', 'line-2', {}));
+    await withTenant(() => ctx.service.cancelLine('inv-1', 'line-2', { cancelReason: 'billing correction' }));
     expect(ctx.invoiceState).toMatchObject({
       subtotalAmount: 100,
       totalAmount: 100,
@@ -480,13 +535,13 @@ describe('line cancellation', () => {
 
   it('an already-cancelled line cannot be cancelled again', async () => {
     const ctx = withLines();
-    await withTenant(() => ctx.service.cancelLine('inv-1', 'line-2', {}));
-    await expect(withTenant(() => ctx.service.cancelLine('inv-1', 'line-2', {}))).rejects.toThrow(/already cancelled/i);
+    await withTenant(() => ctx.service.cancelLine('inv-1', 'line-2', { cancelReason: 'billing correction' }));
+    await expect(withTenant(() => ctx.service.cancelLine('inv-1', 'line-2', { cancelReason: 'billing correction' }))).rejects.toThrow(/already cancelled/i);
   });
 
   it('a line not on this invoice is a 404', async () => {
     const ctx = withLines();
-    await expect(withTenant(() => ctx.service.cancelLine('inv-1', 'missing', {}))).rejects.toThrow(NotFoundException);
+    await expect(withTenant(() => ctx.service.cancelLine('inv-1', 'missing', { cancelReason: 'billing correction' }))).rejects.toThrow(NotFoundException);
   });
 
   it('cancellation is refused once the invoice is PAID', async () => {
@@ -494,7 +549,7 @@ describe('line cancellation', () => {
       invoice: { status: InvoiceStatus.PAID },
       lines: [{ id: 'line-1', amount: 10, excludedFromPanel: false, cancelledAt: null, lineDiscountType: null, lineDiscountValue: null }],
     });
-    await expect(withTenant(() => ctx.service.cancelLine('inv-1', 'line-1', {}))).rejects.toThrow(/status PAID/);
+    await expect(withTenant(() => ctx.service.cancelLine('inv-1', 'line-1', { cancelReason: 'billing correction' }))).rejects.toThrow(/status PAID/);
   });
 });
 
@@ -628,5 +683,255 @@ describe('legacy handling', () => {
     await withTenant(() => ctx.service.recalculateVisitInvoices('visit-1'));
     const where = ctx.tx.invoice.findMany.mock.calls[0][0].where;
     expect(where).toMatchObject({ visitId: 'visit-1', status: InvoiceStatus.UNPAID });
+  });
+});
+
+// =============================================================================
+// G4.5d3c-3b2 (D-094) — SOURCED QUANTITY TRUTH (owner tests 26–32).
+// =============================================================================
+describe('sourced quantity truth', () => {
+  it('26/28. medication quantity comes from the Prescription — a client figure is ignored', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    ctx.tx.prescription.findUnique.mockResolvedValue({
+      itemId: 'item-1', item: { sellPrice: 10 }, status: 'DISPENSED', supplyMode: 'ONSITE_DISPENSE', quantity: 7, deletedAt: null,
+    });
+    await withTenant(() =>
+      ctx.service.addLine('inv-1', { description: 'Med', sourcePrescriptionId: 'rx-1', quantity: 99 } as never),
+    );
+    const created = (ctx.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data;
+    expect(created.quantity).toBe(7);
+    expect(created.amount).toBe(70);
+  });
+
+  it('27/29. an order-sourced line is quantity 1, whatever the client sends', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    await withTenant(() =>
+      ctx.service.addLine('inv-1', { description: 'Svc', sourceOrderServiceId: 'os-1', quantity: 42 } as never),
+    );
+    const created = (ctx.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data;
+    expect(created.quantity).toBe(1);
+  });
+
+  it('32. a manual line accepts an explicit quantity and price — and stays MANUAL', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    await withTenant(() => ctx.service.addLine('inv-1', { description: 'Bandage pack', quantity: 3, unitPrice: 4.5 }));
+    const created = (ctx.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data;
+    expect(created).toMatchObject({ quantity: 3, unitPrice: 4.5, amount: 13.5, priceRule: 'MANUAL' });
+  });
+
+  it('an ORDERED medication cannot be finalised — dispense first', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    ctx.tx.prescription.findUnique.mockResolvedValue({
+      itemId: 'item-1', item: { sellPrice: 10 }, status: 'ORDERED', supplyMode: 'ONSITE_DISPENSE', quantity: 7, deletedAt: null,
+    });
+    await expect(
+      withTenant(() => ctx.service.addLine('inv-1', { description: 'Med', sourcePrescriptionId: 'rx-1' } as never)),
+    ).rejects.toThrow(/has not been dispensed/i);
+  });
+
+  it('a non-ONSITE supply mode is never a clinic medication charge', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    ctx.tx.prescription.findUnique.mockResolvedValue({
+      itemId: 'item-1', item: { sellPrice: 10 }, status: 'DISPENSED', supplyMode: 'EXTERNAL_PRESCRIPTION', quantity: 7, deletedAt: null,
+    });
+    await expect(
+      withTenant(() => ctx.service.addLine('inv-1', { description: 'Med', sourcePrescriptionId: 'rx-1' } as never)),
+    ).rejects.toThrow(/dispenses on site/i);
+  });
+
+  it('an uncompleted TASK_ORDER cannot be charged', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    ctx.tx.orderService.findUnique.mockResolvedValue({
+      serviceCatalogId: 'svc-1', serviceCatalog: { price: 30 }, orderType: 'TASK_ORDER', status: 'PENDING',
+    });
+    await expect(
+      withTenant(() => ctx.service.addLine('inv-1', { description: 'ECG', sourceOrderServiceId: 'os-1' } as never)),
+    ).rejects.toThrow(/has not been completed/i);
+  });
+});
+
+// =============================================================================
+// G4.5d3c-3b2 (D-094) — THE CONSULTATION CHARGE (owner tests 30, 36, 52–57, 64/65).
+// =============================================================================
+const DAY_RULE = {
+  id: 'rule-day',
+  classification: 'CONSULTATION',
+  startTime: '08:00',
+  endTime: '22:59',
+  effectiveFrom: null,
+  effectiveTo: null,
+  createdAt: new Date('2026-01-01T00:00:00Z'),
+  serviceCatalog: { id: 'svc-consult', name: 'Consultation (Day)', active: true },
+};
+
+describe('consultation charge', () => {
+  it('36/56/30. ensure adds ONE source-linked, server-priced, quantity-1 line', async () => {
+    const ctx = createService('FRONT_DESK_CLINICAL_STAFF', { tariffRules: [DAY_RULE] });
+    const result = await withTenant(() => ctx.service.ensureConsultationCharge('inv-1'));
+    expect(result.added).toBe(true);
+    const created = (ctx.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data;
+    expect(created).toMatchObject({
+      description: 'Consultation (Day)',
+      quantity: 1,
+      unitPrice: 35, // the ServiceCatalog cash price — never a client figure
+      sourceConsultationVisitId: 'visit-1',
+      consultationTariffRuleId: 'rule-day',
+      priceRule: 'CASH',
+    });
+  });
+
+  it('52. a repeat ensure adds nothing — the active line already exists', async () => {
+    const ctx = createService('FRONT_DESK_CLINICAL_STAFF', {
+      tariffRules: [DAY_RULE],
+      consultationLines: [{ id: 'cl-1', description: 'Consultation (Day)', cancelledAt: null }],
+    });
+    const result = await withTenant(() => ctx.service.ensureConsultationCharge('inv-1'));
+    expect(result.added).toBe(false);
+    expect(ctx.tx.invoiceLine.create).not.toHaveBeenCalled();
+  });
+
+  it('53. concurrent ensures serialise on the visit row lock', async () => {
+    const ctx = createService('FRONT_DESK_CLINICAL_STAFF', { tariffRules: [DAY_RULE] });
+    await withTenant(() => ctx.service.ensureConsultationCharge('inv-1'));
+    expect(ctx.tx.$executeRaw).toHaveBeenCalled();
+    const sql = (ctx.tx.$executeRaw as jest.Mock).mock.calls
+      .map((call: unknown[]) => (call[0] as TemplateStringsArray).join('?'))
+      .find((text: string) => text.includes('FOR UPDATE'));
+    expect(sql).toContain('"visits"');
+  });
+
+  it('51. no matching tariff: ensure reports review and creates NOTHING', async () => {
+    const ctx = createService('FRONT_DESK_CLINICAL_STAFF', {
+      tariffRules: [{ ...DAY_RULE, startTime: '08:00', endTime: '09:00' }],
+    });
+    const result = await withTenant(() => ctx.service.ensureConsultationCharge('inv-1'));
+    expect(result).toMatchObject({ added: false, state: { kind: 'TARIFF_REVIEW' } });
+    expect(ctx.tx.invoiceLine.create).not.toHaveBeenCalled();
+  });
+
+  it('no tariff configured at all: ensure is a quiet no-op', async () => {
+    const ctx = createService('FRONT_DESK_CLINICAL_STAFF', { tariffRules: [] });
+    const result = await withTenant(() => ctx.service.ensureConsultationCharge('inv-1'));
+    expect(result).toMatchObject({ added: false, state: { kind: 'NOT_CONFIGURED' } });
+  });
+
+  it('48. an exempt visit is not auto-charged', async () => {
+    const ctx = createService('FRONT_DESK_CLINICAL_STAFF', {
+      tariffRules: [DAY_RULE],
+      consultVisit: { classification: 'OTC_ONLY' },
+    });
+    const result = await withTenant(() => ctx.service.ensureConsultationCharge('inv-1'));
+    expect(result).toMatchObject({ added: false, state: { kind: 'EXEMPT' } });
+    expect(ctx.tx.invoiceLine.create).not.toHaveBeenCalled();
+  });
+
+  it('65. a waived consultation stays waived on ensure; the EXPLICIT add brings it back', async () => {
+    const world = {
+      tariffRules: [DAY_RULE],
+      consultationLines: [{ id: 'cl-1', description: 'Consultation (Day)', cancelledAt: new Date() }],
+    };
+    const auto = createService('FRONT_DESK_CLINICAL_STAFF', world);
+    expect(await withTenant(() => auto.service.ensureConsultationCharge('inv-1'))).toMatchObject({
+      added: false,
+      state: { kind: 'WAIVED' },
+    });
+    expect(auto.tx.invoiceLine.create).not.toHaveBeenCalled();
+
+    const explicit = createService('FRONT_DESK_CLINICAL_STAFF', world);
+    const result = await withTenant(() => explicit.service.addConsultationCharge('inv-1'));
+    expect(result.added).toBe(true);
+    expect(explicit.tx.invoiceLine.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('64. an exempt visit where a consultation occurred takes the EXPLICIT add', async () => {
+    const ctx = createService('FRONT_DESK_CLINICAL_STAFF', {
+      tariffRules: [DAY_RULE],
+      consultVisit: { classification: 'DRESSING_ONLY' },
+    });
+    const result = await withTenant(() => ctx.service.addConsultationCharge('inv-1'));
+    expect(result.added).toBe(true);
+  });
+
+  it('the explicit add against an already-billed consultation is a conflict', async () => {
+    const ctx = createService('FRONT_DESK_CLINICAL_STAFF', {
+      tariffRules: [DAY_RULE],
+      consultationLines: [{ id: 'cl-1', description: 'Consultation (Day)', cancelledAt: null }],
+    });
+    await expect(withTenant(() => ctx.service.addConsultationCharge('inv-1'))).rejects.toThrow(ConflictException);
+  });
+
+  it('42/43. a panel visit prices the consultation through the approved resolver', async () => {
+    const override = createService('FRONT_DESK_CLINICAL_STAFF', { visit: VERIFIED_PANEL_VISIT, tariffRules: [DAY_RULE] });
+    override.tx.panelPriceOverride.findFirst.mockResolvedValue({ overridePrice: 20 });
+    await withTenant(() => override.service.ensureConsultationCharge('inv-1'));
+    expect((override.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data).toMatchObject({
+      unitPrice: 20,
+      priceRule: 'SPECIFIC_PANEL_PRICE',
+    });
+
+    const markup = createService('FRONT_DESK_CLINICAL_STAFF', { visit: VERIFIED_PANEL_VISIT, tariffRules: [DAY_RULE] });
+    markup.tx.panelClinic.findUnique.mockResolvedValue({ inventoryMarkupAmount: null, serviceMarkupAmount: 5 });
+    await withTenant(() => markup.service.ensureConsultationCharge('inv-1'));
+    expect((markup.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data).toMatchObject({
+      unitPrice: 40,
+      priceRule: 'CASH_PLUS_MARKUP',
+      panelMarkupAmount: 5,
+    });
+  });
+});
+
+// =============================================================================
+// G4.5d3c-3b2 (D-094) — PAY-TIME COMPLETENESS (owner tests 93, 96, 97).
+// =============================================================================
+describe('pay-time completeness', () => {
+  it('96. an unbilled READY source refuses settlement', async () => {
+    const ctx = createService('FINANCE_STAFF', {
+      invoice: { patientResponsibilityAmount: 10, panelResponsibilityAmount: 0 },
+      worklistPrescriptions: [
+        { id: 'rx-1', quantity: 5, supplyMode: 'ONSITE_DISPENSE', status: 'DISPENSED', item: { name: 'Amoxicillin' } },
+      ],
+    });
+    await expect(withTenant(() => ctx.service.pay('inv-1', { paymentMethod: 'CASH' }))).rejects.toThrow(
+      /uninvoiced: Amoxicillin/i,
+    );
+  });
+
+  it('97. a consultation tariff in review refuses settlement', async () => {
+    const ctx = createService('FINANCE_STAFF', {
+      invoice: { patientResponsibilityAmount: 10, panelResponsibilityAmount: 0 },
+      tariffRules: [{ ...DAY_RULE, startTime: '08:00', endTime: '09:00' }],
+    });
+    await expect(withTenant(() => ctx.service.pay('inv-1', { paymentMethod: 'CASH' }))).rejects.toThrow(
+      /Consultation tariff requires review/i,
+    );
+  });
+
+  it('93. PANEL requires zero patient responsibility AND a positive panel amount', async () => {
+    const zeroPanel = createService('FINANCE_STAFF', {
+      invoice: { patientResponsibilityAmount: 0, panelResponsibilityAmount: 0 },
+    });
+    await expect(withTenant(() => zeroPanel.service.pay('inv-1', { paymentMethod: 'PANEL' }))).rejects.toThrow(
+      /positive amount/i,
+    );
+
+    const covered = createService('FINANCE_STAFF', {
+      invoice: { patientResponsibilityAmount: 0, panelResponsibilityAmount: 45 },
+    });
+    const paid = await withTenant(() => covered.service.pay('inv-1', { paymentMethod: 'PANEL' }));
+    expect(paid).toMatchObject({ status: 'PAID', patientPaidAmount: 0, panelCoveredAmount: 45 });
+  });
+
+  it('an ORDERED (not yet dispensed) medication does not block payment by itself', async () => {
+    // Awaiting-dispense is the DISPENSING_PENDING blocker's business; the
+    // charge is not finalisable yet, so pay() does not name it as unbilled.
+    const ctx = createService('FINANCE_STAFF', {
+      invoice: { patientResponsibilityAmount: 10, panelResponsibilityAmount: 0 },
+      worklistPrescriptions: [
+        { id: 'rx-1', quantity: 5, supplyMode: 'ONSITE_DISPENSE', status: 'ORDERED', item: { name: 'Amoxicillin' } },
+      ],
+    });
+    await expect(withTenant(() => ctx.service.pay('inv-1', { paymentMethod: 'CASH' }))).resolves.toMatchObject({
+      status: 'PAID',
+    });
   });
 });

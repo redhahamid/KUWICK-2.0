@@ -451,12 +451,23 @@ describe('S3D — legal transitions', () => {
     expect(ctx.tx.visit.update).not.toHaveBeenCalled();
   });
 
-  it('WAITING -> IN_CONSULTATION remains functional', async () => {
+  it('WAITING -> IN_CONSULTATION remains functional, and records the consultation start atomically', async () => {
     const ctx = ticketIn(QueueTicketStatus.WAITING);
     await withTenant(() => ctx.service.arrived('t1'));
-    expect(ctx.prisma.queueTicket.update).toHaveBeenCalledWith({
+    // G4.5d3c-3b2 (D-094) — the status write moved INTO the transaction that
+    // also writes CONSULTATION_STARTED, so the tariff's timestamp source
+    // cannot be missing for a visit whose ticket says the consultation began.
+    expect(ctx.tx.queueTicket.update).toHaveBeenCalledWith({
       where: { id: 't1' },
       data: { status: QueueTicketStatus.IN_CONSULTATION },
+    });
+    expect(ctx.tx.visitWorkflowEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        eventType: 'CONSULTATION_STARTED',
+        visitId: 'visit-1',
+        previousStatus: QueueTicketStatus.WAITING,
+        newStatus: QueueTicketStatus.IN_CONSULTATION,
+      }),
     });
   });
 

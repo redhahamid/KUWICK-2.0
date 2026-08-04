@@ -31,6 +31,8 @@ interface World {
   invoices?: Array<{ patientResponsibilityAmount: number | null; patientPaidAmount: number }>;
   services?: number;
   branchCount?: number;
+  /** D-094 — active consultation tariff rules ([] = the feature is off). */
+  tariffRules?: Array<Record<string, unknown>>;
 }
 
 function build(actor: Record<string, unknown> | null, world: World = {}) {
@@ -43,6 +45,7 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
     invoices = [],
     services = 0,
     branchCount = 1,
+    tariffRules = [],
   } = world;
 
   const directory: Record<string, unknown> = {};
@@ -90,7 +93,11 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
     },
     invoice: { findMany: jest.fn().mockResolvedValue(invoices) },
     invoiceLine: { findMany: jest.fn().mockResolvedValue([]) },
-    visitWorkflowEvent: { create: jest.fn() },
+    // D-094 — the worklist now resolves the consultation charge too. No
+    // configured tariff (the default) means consultation auto-billing is OFF
+    // for this clinic, so these suites' routing is unchanged by it.
+    consultationTariffRule: { findMany: jest.fn(async () => tariffRules) },
+    visitWorkflowEvent: { create: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) },
   };
 
   const rawPrisma = { $transaction: jest.fn((fn: any) => fn(tx)) } as unknown as PrismaService;
@@ -317,6 +324,33 @@ describe('billing destination', () => {
 
   it('20. no invoice but billable items routes to billing review', async () => {
     const ctx = build(DR_A, { invoices: [], services: 2 });
+    await expect(run(ctx)).resolves.toMatchObject({
+      destination: 'PAYMENT',
+      reason: 'BILLING_REVIEW_REQUIRED',
+    });
+  });
+
+  // G4.5d3c-3b2 (D-094) — a matched consultation tariff is billing work, so a
+  // doctor who recorded nothing else still routes the patient to the counter.
+  // This is the locum-medication-only gap the audit named: the fee no longer
+  // depends on anyone remembering it.
+  it('a matched consultation tariff routes to billing review even with no other work', async () => {
+    const ctx = build(DR_A, {
+      invoices: [],
+      services: 0,
+      tariffRules: [
+        {
+          id: 'rule-day',
+          classification: 'CONSULTATION',
+          startTime: '08:00',
+          endTime: '22:59',
+          effectiveFrom: null,
+          effectiveTo: null,
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+          serviceCatalog: { id: 'svc-consult', name: 'Consultation (Day)', active: true },
+        },
+      ],
+    });
     await expect(run(ctx)).resolves.toMatchObject({
       destination: 'PAYMENT',
       reason: 'BILLING_REVIEW_REQUIRED',

@@ -1976,6 +1976,48 @@ DELETE on an invoice line now stamps `cancelledAt`/actor/reason instead of delet
 
 ---
 
+## D-094 — G4.5d3c-3b2: the counter can finish the bill
+
+3b1 made billing responsibility real and enforced it. This is the workspace that lets someone *resolve* it — and the consultation fee that nobody has to remember. Route: the existing `/billing/visits/:visitId` behind the existing billing gate. No new Finance module, no new design system, no Doctor Canvas changes.
+
+### The consultation fee is configuration, not memory
+
+The 3b0 audit's plainest operational gap: a locum records medications and the consultation fee is simply lost. A clinic now configures **consultation tariff rules** (Clinic Settings → Consultation Tariffs): rule name, active flag, visit classification, a clinic-local `HH:MM`–`HH:MM` band inclusive at both ends, the ServiceCatalog record to charge, optional effective dates, branch scope. `startTime > endTime` crosses midnight, so 23:00–07:59 is one band. **A rule carries no price**: it selects the SERVICE, and the approved 3b1 resolver prices it — specific `PanelPriceOverride` → cash + panel service markup → cash. Panel consultation rates therefore live where every other panel rate lives; there is no second pricing surface to drift. The owner's shapes are all representable and all proven live: cash day RM35 / night RM50, AIA day RM20 / night RM30 (different per band), MARA RM40 in both bands. No panel name, time or price is hard-coded. **A clinic with no active rule has consultation auto-billing off** — existing tenants behave exactly as before until they configure one.
+
+### The tariff follows the consultation, not the clock
+
+The timestamp source, in order: the visit's earliest `CONSULTATION_STARTED` workflow event; else `QueueTicket.calledAt`; else `Visit.checkInAt`. All three are stored before billing opens. The enum value existed since D-083 with no writer — the WAITING → IN_CONSULTATION queue transition now writes it **inside the same transaction as the status change**, so a visit whose ticket says the consultation happened cannot lack the timestamp that prices it. Invoice-creation time, Billing-Review-open time, payment time and the current clock are never consulted. Proven live: a 22:55 consultation bills the DAY tariff no matter when billing runs. Times convert through the clinic's stored IANA timezone via `Intl` — a real conversion of a real instant, deliberately not the appointment module's local-time-in-UTC-getters simplification, because these are event timestamps rather than schedule templates. Overlapping bands resolve narrowest-first, oldest rule as tiebreak: a stable answer, never an arbitrary one.
+
+### Auto-add is an idempotent write, never a read with a side effect
+
+Billing Review invokes `POST /invoices/:id/ensure-consultation` once per invoice on open. It locks the visit `FOR UPDATE`, resolves the state, and adds a source-linked, server-priced, quantity-1 line only when the resolver says READY. **One active consultation line per visit** is the rule; the source link is the visit id (consulting has no order row) plus the rule that selected it. Five concurrent calls produce exactly one charge — proven against the live database, not asserted. A financial write was deliberately kept out of any GET, and out of a browser-only effect.
+
+### Exemptions are recorded, never inferred
+
+`VisitClassification` (CONSULTATION | OTC_ONLY | DRESSING_ONLY | PROCEDURE_ONLY | FOLLOW_UP_NO_CONSULTATION) on the Visit — NULL derives (an OTC-queue visit is OTC_ONLY, everything else a consultation). Set by counter staff, locked once the visit completes, never read from diagnosis or note text. A classification with no configured rule is EXEMPT and silently uncharged; a CONSULTATION visit whose time no band covers is `CONSULTATION_TARIFF_REVIEW_REQUIRED` — a blocker that names the configuration screen, with **no guessed line**. Where a real consultation did occur on an exempt visit, `POST /invoices/:id/consultation-charge` adds it explicitly, still rule-driven and still server-priced.
+
+### Waiving is cancelling, with a reason
+
+An auto-added consultation is waived through 3b1's auditable cancellation: `cancelReason` is now **mandatory** (min 3 chars) at the DTO, and the action moved from EDIT_LINES to a new **CANCEL_LINE** tier — OWNER_ADMIN, FINANCE_STAFF and FRONT_DESK_CLINICAL_STAFF. Doctors are refused: they do not manage billing corrections from the clinical surface. The UI offers the owner's reason list with a free-text "Other". A waived consultation leaves the totals, stays in history, recalculates responsibility, and is **never silently re-added** — only the explicit add brings it back.
+
+### Sourced quantity is the server's too
+
+3b1 moved price server-side and left quantity to the client. Closed: a prescription-sourced line bills `Prescription.quantity`, an order-sourced line bills 1, consultation bills 1, and a client figure is ignored in all three. Only a **DISPENSED + ONSITE_DISPENSE** prescription can be finalised as a medication charge — v1 bills what was actually supplied, so partial dispensing is refused rather than approximated. An uncompleted TASK_ORDER and a cancelled order are refused. Manual lines still take an explicit quantity and price and stay MANUAL, for operational charges with no clinical source.
+
+### The worklist says why, not just what
+
+States expanded to READY / AWAITING_DISPENSE / UNRESOLVED_SUPPLY / NOT_READY / NOT_CHARGEABLE / TARIFF_REVIEW / WAIVED, each with a `stateReason`, the source's own status, supply mode and server quantity. Non-chargeable sources are now **listed with their reason** rather than omitted, so the counter can see that an external prescription was considered and correctly excluded. "Add to invoice" appears only where the server says READY. Doctor-phase routing widened to `pendingBillingWork` (ready-but-unbilled *and* ordered-not-yet-dispensed) plus tariff review, so a visit with billing ahead of it never routes past the counter.
+
+### Payment refuses what the counter cannot yet know
+
+`pay()` additionally refuses while any READY source is unbilled (naming the items) or a consultation tariff needs review, and PANEL now requires a **positive panel amount** as well as zero patient responsibility. Labels: Cash, Card, QR Payment, Bank Transfer, and **"Panel — No Patient Payment"** — which says the patient owes nothing and never that the panel has paid; that receivable stays with Finance → Panel & Claims. All-or-nothing is unchanged: no partial amount input exists. Settling refreshes invoice, worklist and blockers together, and **never completes the visit**.
+
+**Verification**: 820 backend tests (37 suites) and 407 frontend tests (20 files), both typechecks clean; migration `20260804054027_consultation_tariff_and_billing_review`; 32/32 live checks against the running API and real database (`prisma/g45d3c3b2-billing-review-check.ts`) covering the 22:55 example, midnight-crossing bands, five concurrent ensures → one charge, AIA/MARA panel pricing, all three exemptions, waiver reason enforcement, quantity/price truth, discount tiers, and every payment gate; 18 screenshots in `docs/g45d3c3b2-screenshots/` with no horizontal overflow at 1440/834/375. Two existing expectations changed deliberately, both because the approved behaviour changed: the queue's WAITING → IN_CONSULTATION assertions now check the transactional write plus the event, and one line-cancellation test supplies the now-mandatory reason.
+
+**Known limitations**: no partial dispensing, so a short-supplied medication must be corrected by cancelling and re-adding; the tariff has no public-holiday or per-doctor dimension (deliberately out of v1); a rule cannot be deleted, only deactivated; no discount-clearing endpoint; consultation for a walk-in with no ticket falls back to `checkInAt`, which is the registration moment rather than the consultation's; internal pricing provenance is persisted but has no management surface to read it yet.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

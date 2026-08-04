@@ -1,48 +1,75 @@
 import { InvoiceStatus, OrderServiceStatus, PrescriptionStatus, PrescriptionSupplyMode } from '@prisma/client';
 import { ClinicalTx } from './clinical-actor';
+import { resolveConsultationState } from './consultation-tariff';
 
 /**
- * G4.5d3c-3b1 (D-093) — the source-aware billing worklist.
+ * G4.5d3c-3b1 (D-093), reworked for 3b2 (D-094) — the source-aware billing
+ * worklist: every billing-relevant source record with its state, correct
+ * whether or not invoices already exist. The Billing Review screen renders
+ * exactly this; it re-derives nothing.
  *
- * The audit found two holes in unbilled detection: it stopped looking the
- * moment ANY invoice existed, and it counted every prescription as clinic
- * work regardless of supply mode. This is the replacement — an itemised list
- * of every chargeable source record with its billing state, correct whether
- * or not invoices already exist.
+ * STATES (owner's source item rules):
  *
- * CHARGEABILITY (owner decision 4):
- *   Prescriptions — only a valid ONSITE_DISPENSE row (ORDERED or DISPENSED)
- *   is a clinic medication charge. EXTERNAL_PRESCRIPTION, PATIENT_OWN_SUPPLY
- *   and NO_SUPPLY_REQUIRED are never clinic charges. DEFERRED and NULL are
- *   UNRESOLVED — listed so a screen can say why, but not chargeable until a
- *   doctor picks a final mode (their own completion blockers already stand).
- *   CANCELLED and soft-deleted rows do not exist here.
+ *   Prescriptions —
+ *     DISPENSED + ONSITE_DISPENSE            READY (finalisable charge)
+ *     ORDERED   + ONSITE_DISPENSE            AWAITING_DISPENSE (chargeable
+ *                                            work, but no final charge action
+ *                                            until dispensing happens — v1
+ *                                            has no partial dispensing)
+ *     DEFERRED / NULL supply mode            UNRESOLVED_SUPPLY
+ *     EXTERNAL / PATIENT_OWN / NO_SUPPLY     NOT_CHARGEABLE (listed with the
+ *                                            reason, so the screen can say
+ *                                            WHY there is no charge)
+ *     CANCELLED / soft-deleted               omitted entirely
  *
- *   Orders — a TASK_ORDER is chargeable at COMPLETED (never before the work
- *   happened, never after cancellation); a STANDARD_SERVICE is chargeable
- *   unless CANCELLED (D-073's rule, unchanged).
+ *   Orders —
+ *     TASK_ORDER COMPLETED                   READY
+ *     TASK_ORDER PENDING/IN_PROGRESS         NOT_READY
+ *     STANDARD_SERVICE (non-cancelled)       READY
+ *     CANCELLED                              NOT_CHARGEABLE
+ *
+ *   Consultation — one synthetic item (sourceId = visitId) from the tariff
+ *   resolver: READY / TARIFF_REVIEW / WAIVED / billed / EXEMPT. Omitted when
+ *   the clinic has no tariff configured or no consultation occurred.
  *
  * BILLED means an ACTIVE line (not cancelled) on a non-CANCELLED invoice
- * references the source — on ANY invoice of the visit, so a second invoice
- * cannot hide a first invoice's gap, and a cancelled line honestly reopens
- * the item.
+ * references the source — on ANY invoice of the visit.
  *
- * Consultation fee has no source record yet and therefore cannot appear —
- * that is 3b2's auto-propose work, stated rather than papered over.
+ * QUANTITY is the SERVER-SIDE source quantity (owner decision 10): the
+ * prescription's quantity, 1 for orders and consultation. The client never
+ * chooses a sourced quantity.
  */
-export type BillingWorklistSourceType = 'PRESCRIPTION' | 'ORDER_SERVICE';
+export type BillingWorklistSourceType = 'PRESCRIPTION' | 'ORDER_SERVICE' | 'CONSULTATION';
+
+export type BillingWorklistState =
+  | 'READY'
+  | 'AWAITING_DISPENSE'
+  | 'UNRESOLVED_SUPPLY'
+  | 'NOT_READY'
+  | 'NOT_CHARGEABLE'
+  | 'TARIFF_REVIEW'
+  | 'WAIVED';
 
 export interface BillingWorklistItem {
   sourceType: BillingWorklistSourceType;
   sourceId: string;
   description: string;
-  /** READY = chargeable now; UNRESOLVED_SUPPLY = a doctor decision pending. */
-  state: 'READY' | 'UNRESOLVED_SUPPLY';
+  state: BillingWorklistState;
+  /** Human wording for WHY the item is in its state (shown by the UI as-is). */
+  stateReason: string | null;
+  /** The source's own clinical/operational status (ORDERED, COMPLETED, ...). */
+  sourceStatus: string | null;
+  supplyMode: string | null;
   billed: boolean;
-  /** The invoice line that bills it, where one exists. */
   invoiceLineId: string | null;
   quantity: number | null;
 }
+
+const NOT_CHARGEABLE_REASON: Partial<Record<PrescriptionSupplyMode, string>> = {
+  [PrescriptionSupplyMode.EXTERNAL_PRESCRIPTION]: 'Prescribed to an external pharmacy — not a clinic medication charge.',
+  [PrescriptionSupplyMode.PATIENT_OWN_SUPPLY]: "Patient uses their own supply — not a clinic medication charge.",
+  [PrescriptionSupplyMode.NO_SUPPLY_REQUIRED]: 'No supply required — no medication charge.',
+};
 
 export async function collectBillingWorklist(tx: ClinicalTx, visitId: string): Promise<BillingWorklistItem[]> {
   const [prescriptions, orders, activeLines] = await Promise.all([
@@ -83,42 +110,141 @@ export async function collectBillingWorklist(tx: ClinicalTx, visitId: string): P
 
   for (const prescription of prescriptions) {
     const mode = prescription.supplyMode;
-    if (
-      mode === PrescriptionSupplyMode.EXTERNAL_PRESCRIPTION ||
-      mode === PrescriptionSupplyMode.PATIENT_OWN_SUPPLY ||
-      mode === PrescriptionSupplyMode.NO_SUPPLY_REQUIRED
-    ) {
-      continue; // never a clinic medication charge
-    }
-    const unresolved = mode === null || mode === PrescriptionSupplyMode.DEFERRED;
     const lineId = lineByPrescription.get(prescription.id) ?? null;
-    items.push({
-      sourceType: 'PRESCRIPTION',
+    const base = {
+      sourceType: 'PRESCRIPTION' as const,
       sourceId: prescription.id,
       description: prescription.item?.name ?? 'Medication',
-      state: unresolved ? 'UNRESOLVED_SUPPLY' : 'READY',
+      sourceStatus: prescription.status,
+      supplyMode: mode,
       billed: lineId !== null,
       invoiceLineId: lineId,
       quantity: prescription.quantity,
-    });
+    };
+    if (mode && NOT_CHARGEABLE_REASON[mode]) {
+      items.push({ ...base, state: 'NOT_CHARGEABLE', stateReason: NOT_CHARGEABLE_REASON[mode] ?? null });
+      continue;
+    }
+    if (mode === null || mode === PrescriptionSupplyMode.DEFERRED) {
+      items.push({
+        ...base,
+        state: 'UNRESOLVED_SUPPLY',
+        stateReason:
+          mode === PrescriptionSupplyMode.DEFERRED
+            ? 'Deferred medication supply must be resolved by the prescriber.'
+            : 'Medication supply mode has not been confirmed.',
+      });
+      continue;
+    }
+    // ONSITE_DISPENSE — the only clinic medication charge (owner decision 4).
+    // Finalisable only once DISPENSED: v1 bills what was actually supplied.
+    if (prescription.status === PrescriptionStatus.DISPENSED) {
+      items.push({ ...base, state: 'READY', stateReason: null });
+    } else {
+      items.push({
+        ...base,
+        state: 'AWAITING_DISPENSE',
+        stateReason: 'Awaiting dispensing — the charge is finalised from what is actually supplied.',
+      });
+    }
   }
 
   for (const order of orders) {
-    if (order.status === OrderServiceStatus.CANCELLED) continue;
-    const chargeable =
-      order.orderType === 'STANDARD_SERVICE' ? true : order.status === OrderServiceStatus.COMPLETED;
-    if (!chargeable) continue; // a pending procedure is the procedure blocker's business, not billing's
     const lineId = lineByOrder.get(order.id) ?? null;
-    items.push({
-      sourceType: 'ORDER_SERVICE',
+    const base = {
+      sourceType: 'ORDER_SERVICE' as const,
       sourceId: order.id,
       description: order.procedureName,
-      state: 'READY',
+      sourceStatus: order.status,
+      supplyMode: null,
       billed: lineId !== null,
       invoiceLineId: lineId,
       quantity: 1,
+    };
+    if (order.status === OrderServiceStatus.CANCELLED) {
+      items.push({ ...base, state: 'NOT_CHARGEABLE', stateReason: 'Cancelled — not chargeable.' });
+      continue;
+    }
+    if (order.orderType === 'TASK_ORDER' && order.status !== OrderServiceStatus.COMPLETED) {
+      items.push({
+        ...base,
+        state: 'NOT_READY',
+        stateReason: 'The procedure has not been completed yet.',
+      });
+      continue;
+    }
+    items.push({ ...base, state: 'READY', stateReason: null });
+  }
+
+  // --- Consultation (D-094) ------------------------------------------------
+  const consultation = await resolveConsultationState(tx, visitId);
+  if (consultation.kind === 'READY') {
+    items.push({
+      sourceType: 'CONSULTATION',
+      sourceId: visitId,
+      description: consultation.service.name,
+      state: 'READY',
+      stateReason: null,
+      sourceStatus: null,
+      supplyMode: null,
+      billed: false,
+      invoiceLineId: null,
+      quantity: 1,
+    });
+  } else if (consultation.kind === 'BILLED') {
+    items.push({
+      sourceType: 'CONSULTATION',
+      sourceId: visitId,
+      description: consultation.description,
+      state: 'READY',
+      stateReason: null,
+      sourceStatus: null,
+      supplyMode: null,
+      billed: true,
+      invoiceLineId: consultation.invoiceLineId,
+      quantity: 1,
+    });
+  } else if (consultation.kind === 'WAIVED') {
+    items.push({
+      sourceType: 'CONSULTATION',
+      sourceId: visitId,
+      description: consultation.description,
+      state: 'WAIVED',
+      stateReason: 'Consultation charge was waived. It stays in the invoice history.',
+      sourceStatus: null,
+      supplyMode: null,
+      billed: false,
+      invoiceLineId: consultation.invoiceLineId,
+      quantity: 1,
+    });
+  } else if (consultation.kind === 'TARIFF_REVIEW') {
+    items.push({
+      sourceType: 'CONSULTATION',
+      sourceId: visitId,
+      description: 'Consultation',
+      state: 'TARIFF_REVIEW',
+      stateReason: consultation.reason,
+      sourceStatus: null,
+      supplyMode: null,
+      billed: false,
+      invoiceLineId: null,
+      quantity: 1,
+    });
+  } else if (consultation.kind === 'EXEMPT') {
+    items.push({
+      sourceType: 'CONSULTATION',
+      sourceId: visitId,
+      description: 'Consultation',
+      state: 'NOT_CHARGEABLE',
+      stateReason: 'This kind of visit carries no consultation charge.',
+      sourceStatus: null,
+      supplyMode: null,
+      billed: false,
+      invoiceLineId: null,
+      quantity: 1,
     });
   }
+  // NOT_CONFIGURED and NOT_APPLICABLE add no row: nothing to review.
 
   return items;
 }
@@ -126,4 +252,22 @@ export async function collectBillingWorklist(tx: ClinicalTx, visitId: string): P
 /** The completion rule: chargeable-and-ready items that no active line bills. */
 export function unbilledReadyItems(worklist: BillingWorklistItem[]): BillingWorklistItem[] {
   return worklist.filter((item) => item.state === 'READY' && !item.billed);
+}
+
+/**
+ * The doctor-phase routing rule: billing work that still lies AHEAD of the
+ * patient — ready-but-unbilled charges AND ordered clinic medication that
+ * has not been dispensed yet. Wider than unbilledReadyItems on purpose: an
+ * ORDERED onsite medication is not finalisable yet, but the patient plainly
+ * still has dispensary/billing ahead of them.
+ */
+export function pendingBillingWork(worklist: BillingWorklistItem[]): BillingWorklistItem[] {
+  return worklist.filter(
+    (item) => !item.billed && (item.state === 'READY' || item.state === 'AWAITING_DISPENSE'),
+  );
+}
+
+/** The consultation blocker: tariff configured but unresolvable — a human must look. */
+export function tariffReviewItems(worklist: BillingWorklistItem[]): BillingWorklistItem[] {
+  return worklist.filter((item) => item.state === 'TARIFF_REVIEW');
 }

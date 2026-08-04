@@ -30,6 +30,8 @@ interface World {
   services?: number;
   branchCount?: number;
   claimCount?: number;
+  /** D-094 — active consultation tariff rules ([] = the feature is off). */
+  tariffRules?: Array<Record<string, unknown>>;
 }
 
 function build(actor: Record<string, unknown> | null, world: World = {}) {
@@ -43,6 +45,7 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
     services = 0,
     branchCount = 1,
     claimCount = 1,
+    tariffRules = [],
   } = world;
 
   const tx = {
@@ -77,7 +80,10 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
     },
     invoice: { findMany: jest.fn().mockResolvedValue(invoices) },
     invoiceLine: { findMany: jest.fn().mockResolvedValue([]) },
-    visitWorkflowEvent: { create: jest.fn() },
+    // D-094 — the worklist resolves the consultation charge too. No tariff
+    // configured (the default) = consultation auto-billing off for the clinic.
+    consultationTariffRule: { findMany: jest.fn(async () => tariffRules) },
+    visitWorkflowEvent: { create: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) },
   };
 
   const rawPrisma = { $transaction: jest.fn((fn: any) => fn(tx)) } as unknown as PrismaService;
@@ -205,6 +211,36 @@ describe('preconditions', () => {
 
   it('nothing chargeable and no invoice does not block', async () => {
     const ctx = build(FRONT_DESK, { invoices: [], services: 0 });
+    await expect(run(ctx)).resolves.toMatchObject({ alreadyCompleted: false });
+  });
+
+  // G4.5d3c-3b2 (D-094) — the consultation blockers.
+  const DAY_RULE = {
+    id: 'rule-day',
+    classification: 'CONSULTATION',
+    startTime: '08:00',
+    endTime: '22:59',
+    effectiveFrom: null,
+    effectiveTo: null,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    serviceCatalog: { id: 'svc-consult', name: 'Consultation (Day)', active: true },
+  };
+
+  it('a matched-but-uninvoiced consultation is unbilled chargeable work', async () => {
+    const ctx = build(FRONT_DESK, { tariffRules: [DAY_RULE] });
+    expect(await codes(ctx)).toContain('UNBILLED_CHARGEABLE_ITEMS');
+  });
+
+  it('a consultation the tariff cannot resolve raises its own review blocker', async () => {
+    // Configured, but no band covers the consultation start: a human must
+    // look. Never a guessed price, and never silently completable.
+    const ctx = build(FRONT_DESK, { tariffRules: [{ ...DAY_RULE, startTime: '08:00', endTime: '09:00' }] });
+    ctx.tx.visitWorkflowEvent.findFirst.mockResolvedValue({ createdAt: new Date('2026-08-04T14:00:00Z') }); // 22:00 KL
+    expect(await codes(ctx)).toContain('CONSULTATION_TARIFF_REVIEW_REQUIRED');
+  });
+
+  it('a clinic with no configured tariff is unaffected — consultation billing is off', async () => {
+    const ctx = build(FRONT_DESK, { tariffRules: [] });
     await expect(run(ctx)).resolves.toMatchObject({ alreadyCompleted: false });
   });
 

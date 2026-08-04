@@ -161,6 +161,7 @@ model Tenant {
   visitObservationRevisions   VisitObservationRevision[]
   staffProfessionalAudits     StaffProfessionalAudit[]
   visitNumberCounter          VisitNumberCounter?
+  consultationTariffRules     ConsultationTariffRule[]
 
   @@map("tenants")
 }
@@ -201,29 +202,30 @@ model Clinic {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant              Tenant               @relation(fields: [tenantId], references: [id])
-  access              UserClinicAccess[]
-  doctorSchedules     DoctorSchedule[]
-  scheduleExceptions  ScheduleException[]
-  slotCapacityConfigs SlotCapacityConfig[]
-  appointments        Appointment[]
-  stockLevels         StockLevel[]
-  stockBatches        StockBatch[]
-  stockMovements      StockMovement[]
-  procurementRequests ProcurementRequest[]
-  purchaseOrders      PurchaseOrder[]
-  goodsReceivedNotes  GoodsReceivedNote[]
-  visits              Visit[]
-  queueTickets        QueueTicket[]
-  visitWorkflowEvents VisitWorkflowEvent[]
-  orderServices       OrderService[]
-  rooms               Room[]
-  queueDisplayConfig  QueueDisplayConfig?
-  staff               Staff[]
-  chatMessages        ChatMessage[]
-  chatChannels        ChatChannel[]
-  clinicalNotes       ClinicalNote[]
-  visitObservations   VisitObservation[]
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id])
+  access                  UserClinicAccess[]
+  doctorSchedules         DoctorSchedule[]
+  scheduleExceptions      ScheduleException[]
+  slotCapacityConfigs     SlotCapacityConfig[]
+  appointments            Appointment[]
+  stockLevels             StockLevel[]
+  stockBatches            StockBatch[]
+  stockMovements          StockMovement[]
+  procurementRequests     ProcurementRequest[]
+  purchaseOrders          PurchaseOrder[]
+  goodsReceivedNotes      GoodsReceivedNote[]
+  visits                  Visit[]
+  queueTickets            QueueTicket[]
+  visitWorkflowEvents     VisitWorkflowEvent[]
+  orderServices           OrderService[]
+  rooms                   Room[]
+  queueDisplayConfig      QueueDisplayConfig?
+  staff                   Staff[]
+  chatMessages            ChatMessage[]
+  chatChannels            ChatChannel[]
+  clinicalNotes           ClinicalNote[]
+  visitObservations       VisitObservation[]
+  consultationTariffRules ConsultationTariffRule[]
 
   @@index([tenantId])
   @@map("clinics")
@@ -677,9 +679,66 @@ model ServiceCatalog {
   formTemplates               FormTemplate[]
   panelPriceOverrides         PanelPriceOverride[]
   panelExclusions             PanelExclusion[]
+  consultationTariffRules     ConsultationTariffRule[]
 
   @@index([tenantId])
   @@map("service_catalog")
+}
+
+/**
+ * G4.5d3c-3b2 (D-094) — the operational kind of visit, as far as
+ * CONSULTATION BILLING is concerned. The owner's exemption cases: an OTC
+ * purchase, a dressing change, a procedure-only attendance and a no-charge
+ * follow-up must never auto-attract a consultation fee. Deliberately NOT a
+ * broad appointment/workflow taxonomy — it exists to answer exactly one
+ * question: which consultation tariff rules (if any) apply to this visit.
+ */
+enum VisitClassification {
+  CONSULTATION
+  OTC_ONLY
+  DRESSING_ONLY
+  PROCEDURE_ONLY
+  FOLLOW_UP_NO_CONSULTATION
+}
+
+/**
+ * G4.5d3c-3b2 (D-094) — a clinic's consultation tariff: WHICH consultation
+ * service applies at WHAT time of day for WHICH kind of visit.
+ * The rule selects the ServiceCatalog record; the PRICE always comes from the
+ * approved pricing resolver (specific panel price -> cash + panel service
+ * markup -> cash). Panel-specific consultation prices therefore live in
+ * PanelPriceOverride against the selected service, never inside this rule —
+ * one pricing truth, not two.
+ * Times are clinic-local wall-clock "HH:MM", INCLUSIVE at both ends
+ * ("08:00"–"22:59"). startTime > endTime means the band crosses midnight
+ * ("23:00"–"07:59"). Matching converts the consultation-start instant to the
+ * clinic's stored IANA timezone.
+ * A clinic with NO active rules has consultation auto-billing OFF — existing
+ * tenants behave exactly as before until they configure a tariff.
+ */
+model ConsultationTariffRule {
+  id               String              @id @default(uuid())
+  tenantId         String              @map("tenant_id")
+  clinicId         String              @map("clinic_id")
+  name             String
+  active           Boolean             @default(true)
+  classification   VisitClassification @default(CONSULTATION)
+  startTime        String              @map("start_time")
+  endTime          String              @map("end_time")
+  serviceCatalogId String              @map("service_catalog_id")
+  // Optional validity window (clinic-local calendar dates, inclusive).
+  effectiveFrom    DateTime?           @map("effective_from")
+  effectiveTo      DateTime?           @map("effective_to")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+  clinic         Clinic         @relation(fields: [clinicId], references: [id])
+  serviceCatalog ServiceCatalog @relation(fields: [serviceCatalogId], references: [id])
+  invoiceLines   InvoiceLine[]
+
+  @@index([tenantId, clinicId, active])
+  @@map("consultation_tariff_rules")
 }
 
 // Clinical Operations, Phase A7. Admin-defined result forms ("Google
@@ -1270,10 +1329,10 @@ model PanelExclusion {
 }
 
 model Visit {
-  id                  String    @id @default(uuid())
-  tenantId            String    @map("tenant_id")
-  clinicId            String    @map("clinic_id")
-  patientId           String    @map("patient_id")
+  id                  String               @id @default(uuid())
+  tenantId            String               @map("tenant_id")
+  clinicId            String               @map("clinic_id")
+  patientId           String               @map("patient_id")
   // S3c (D-082) — the CURRENT ATTENDING CLINICIAN, and only that.
   //
   // Nullable since S3c. It was required, which forced front desk to store
@@ -1286,28 +1345,33 @@ model Visit {
   // across the queue, canvas, documents, orders, prescriptions and reports,
   // and a rename would be churn without changing behaviour. Recorded as
   // technical debt in D-082.
-  staffId             String?   @map("staff_id")
+  staffId             String?              @map("staff_id")
   // Who created the visit. Administrative provenance, NEVER clinical
   // attribution — a registrar is not an author and must never be rendered as
   // the attending doctor. Nullable because it cannot be recovered for rows
   // written before this phase; NULL means it was not captured.
-  registeredByStaffId String?   @map("registered_by_staff_id")
+  registeredByStaffId String?              @map("registered_by_staff_id")
   // Count-based sequence ("V-000002"), not a DB sequence — same accepted
   // non-atomic-race gap as Inventory's document numbers (docs/DECISIONS.md).
-  visitNumber         String    @map("visit_number")
+  visitNumber         String               @map("visit_number")
   // Display label ("Self-pay" or the panel's name) — kept as the single
   // source of truth for existing UI that already reads this field.
   // panelClinicId is the structured relation added alongside it; when set,
   // VisitService derives billingType from the panel's name server-side
   // rather than trusting client-supplied text for a panel visit.
-  billingType         String    @map("billing_type")
-  panelClinicId       String?   @map("panel_clinic_id")
-  presentingComplaint String?   @map("presenting_complaint")
-  checkInAt           DateTime  @default(now()) @map("check_in_at")
+  billingType         String               @map("billing_type")
+  panelClinicId       String?              @map("panel_clinic_id")
+  // G4.5d3c-3b2 (D-094) — the OPERATIONAL kind of visit, for consultation
+  // billing only. NULL means "derive": an OTC-queue visit is OTC_ONLY,
+  // everything else is CONSULTATION. An explicit value set by counter staff
+  // wins over the derivation. Never inferred from diagnosis or note text.
+  classification      VisitClassification? @map("classification")
+  presentingComplaint String?              @map("presenting_complaint")
+  checkInAt           DateTime             @default(now()) @map("check_in_at")
   // The overall OPERATIONAL closure of the visit, and nothing else (D-080).
   // Not set by signing a note, completing the doctor phase, sending the
   // patient onward, printing a label, or paying an invoice.
-  checkOutAt          DateTime? @map("check_out_at")
+  checkOutAt          DateTime?            @map("check_out_at")
 
   // G4.5d3c-1 (D-080) — the doctor's CLINICAL PHASE, which is a different
   // event from both signing a note and closing the visit. All three are
@@ -1387,6 +1451,7 @@ model Visit {
   invoices                      Invoice[]
   attachments                   VisitAttachment[]
   workflowEvents                VisitWorkflowEvent[]
+  consultationChargeLines       InvoiceLine[]        @relation("VisitConsultationChargeLines")
 
   @@unique([tenantId, visitNumber])
   @@index([tenantId, clinicId])
@@ -2587,6 +2652,13 @@ model InvoiceLine {
   amount                      Decimal  @db.Decimal(10, 2)
   sourceOrderServiceId        String?  @map("source_order_service_id")
   sourcePrescriptionId        String?  @map("source_prescription_id")
+  // G4.5d3c-3b2 (D-094) — the consultation charge's source link. The source
+  // IS the visit's consultation (no order row exists for consulting), so the
+  // visit id doubles as the duplicate-protection key: one ACTIVE consultation
+  // line per visit. The rule that selected the service is kept so the charge
+  // can always answer "which tariff produced this".
+  sourceConsultationVisitId   String?  @map("source_consultation_visit_id")
+  consultationTariffRuleId    String?  @map("consultation_tariff_rule_id")
   excludedFromPanel           Boolean  @default(false) @map("excluded_from_panel")
   // G4.5d3c-3b1a (D-092) — this LINE's share of the split, so patient
   // responsibility is explainable item by item instead of only as a visit
@@ -2625,10 +2697,12 @@ model InvoiceLine {
   cancelReason       String?   @map("cancel_reason")
   createdAt          DateTime  @default(now()) @map("created_at")
 
-  tenant             Tenant        @relation(fields: [tenantId], references: [id])
-  invoice            Invoice       @relation(fields: [invoiceId], references: [id])
-  sourceOrderService OrderService? @relation(fields: [sourceOrderServiceId], references: [id])
-  sourcePrescription Prescription? @relation(fields: [sourcePrescriptionId], references: [id])
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
+  invoice                Invoice                 @relation(fields: [invoiceId], references: [id])
+  sourceOrderService     OrderService?           @relation(fields: [sourceOrderServiceId], references: [id])
+  sourcePrescription     Prescription?           @relation(fields: [sourcePrescriptionId], references: [id])
+  consultationVisit      Visit?                  @relation("VisitConsultationChargeLines", fields: [sourceConsultationVisitId], references: [id])
+  consultationTariffRule ConsultationTariffRule? @relation(fields: [consultationTariffRuleId], references: [id])
 
   @@index([tenantId, invoiceId])
   @@map("invoice_lines")

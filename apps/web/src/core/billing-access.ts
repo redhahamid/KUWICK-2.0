@@ -12,7 +12,14 @@ import { Role } from '@kuwick/shared';
  * Kept as a small explicit table rather than a role list so the two sides can
  * be read against each other without interpretation.
  */
-export type BillingAction = 'CREATE_INVOICE' | 'EDIT_LINES' | 'MARK_PAID' | 'CANCEL_INVOICE';
+export type BillingAction =
+  | 'CREATE_INVOICE'
+  | 'EDIT_LINES'
+  | 'MARK_PAID'
+  | 'CANCEL_INVOICE'
+  | 'APPLY_DISCOUNT'
+  | 'CANCEL_LINE'
+  | 'CLASSIFY_VISIT';
 
 const BILLING_MATRIX: Record<BillingAction, Role[]> = {
   CREATE_INVOICE: [
@@ -31,6 +38,13 @@ const BILLING_MATRIX: Record<BillingAction, Role[]> = {
   ],
   MARK_PAID: [Role.OWNER_ADMIN, Role.FINANCE_STAFF, Role.FRONT_DESK_CLINICAL_STAFF],
   CANCEL_INVOICE: [Role.OWNER_ADMIN, Role.FINANCE_STAFF],
+  // D-093 — discounts move money the clinic has earned: finance tier only.
+  APPLY_DISCOUNT: [Role.OWNER_ADMIN, Role.FINANCE_STAFF],
+  // D-094 — correcting a bill (including waiving an auto-added consultation)
+  // is counter work with a mandatory reason; doctors do not do it from the
+  // clinical surface.
+  CANCEL_LINE: [Role.OWNER_ADMIN, Role.FINANCE_STAFF, Role.FRONT_DESK_CLINICAL_STAFF],
+  CLASSIFY_VISIT: [Role.OWNER_ADMIN, Role.FINANCE_STAFF, Role.FRONT_DESK_CLINICAL_STAFF],
 };
 
 export function canPerformBilling(role: string | undefined, action: BillingAction): boolean {

@@ -1,5 +1,13 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { InvoiceDiscountType, InvoiceLinePriceRule, InvoiceStatus, PanelVerificationStatus } from '@prisma/client';
+import {
+  InvoiceDiscountType,
+  InvoiceLinePriceRule,
+  InvoiceStatus,
+  OrderServiceStatus,
+  PanelVerificationStatus,
+  PrescriptionStatus,
+  PrescriptionSupplyMode,
+} from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
@@ -8,6 +16,12 @@ import { ClinicalTx, assertMayTouchVisit, requireActor, withTenantTx } from './c
 import { BillingAction, assertCanPerformBilling } from './clinical-authorization';
 import { BenefitInput, calculateResponsibility } from './billing-calculation';
 import { resolveSourcedPrice } from './billing-pricing';
+import { collectBillingWorklist, tariffReviewItems, unbilledReadyItems } from './billing-worklist';
+import {
+  ConsultationChargeState,
+  resolveConsultationState,
+  resolveExplicitConsultationAdd,
+} from './consultation-tariff';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { AddInvoiceLineDto } from './dto/add-invoice-line.dto';
 import { ApplyLineDiscountDto } from './dto/apply-line-discount.dto';
@@ -329,6 +343,48 @@ export class InvoiceService {
         }
       }
 
+      // --- Source state and SERVER quantity (D-094, owner decision 10) -----
+      // A source-linked line's quantity is the SOURCE'S, never the client's:
+      // the prescription's quantity for medication, 1 for orders. And a
+      // medication charge is finalisable only for what was actually supplied:
+      // DISPENSED + ONSITE_DISPENSE, nothing else, no partial dispensing.
+      let quantity = dto.quantity ?? 1;
+      if (dto.sourcePrescriptionId) {
+        const prescription = await tx.prescription.findUnique({
+          where: { id: dto.sourcePrescriptionId },
+          select: { status: true, supplyMode: true, quantity: true, deletedAt: true },
+        });
+        if (!prescription || prescription.deletedAt) {
+          throw new NotFoundException('Prescription not found');
+        }
+        if (prescription.supplyMode !== PrescriptionSupplyMode.ONSITE_DISPENSE) {
+          throw new BadRequestException(
+            'Only medication the clinic dispenses on site can be charged. This prescription has a different supply mode.',
+          );
+        }
+        if (prescription.status !== PrescriptionStatus.DISPENSED) {
+          throw new BadRequestException(
+            'This medication has not been dispensed yet. The charge is finalised from what is actually supplied.',
+          );
+        }
+        quantity = prescription.quantity;
+      } else if (dto.sourceOrderServiceId) {
+        const order = await tx.orderService.findUnique({
+          where: { id: dto.sourceOrderServiceId },
+          select: { orderType: true, status: true },
+        });
+        if (!order) {
+          throw new NotFoundException('Order not found');
+        }
+        if (order.status === OrderServiceStatus.CANCELLED) {
+          throw new BadRequestException('A cancelled order is not chargeable.');
+        }
+        if (order.orderType === 'TASK_ORDER' && order.status !== OrderServiceStatus.COMPLETED) {
+          throw new BadRequestException('This procedure has not been completed yet, so it cannot be charged.');
+        }
+        quantity = 1;
+      }
+
       // --- Pricing (D-093) -------------------------------------------------
       let unitPrice: number;
       let priceRule: InvoiceLinePriceRule;
@@ -359,7 +415,6 @@ export class InvoiceService {
 
       // --- Exclusion snapshot ----------------------------------------------
       const exclusion = await this.resolveExclusion(tx, panelClinicId, dto);
-      const quantity = dto.quantity ?? 1;
 
       await tx.invoiceLine.create({
         data: {
@@ -381,6 +436,105 @@ export class InvoiceService {
       });
 
       return this.recalculateInvoice(tx, invoiceId);
+    });
+  }
+
+  // ==========================================================================
+  // G4.5d3c-3b2 (D-094) — THE CONSULTATION CHARGE.
+  //
+  // A consultation fee must never depend on anyone remembering it. Billing
+  // Review invokes `ensureConsultationCharge` — a dedicated IDEMPOTENT
+  // operation, not a side effect of a read — every time it opens. The visit
+  // row is locked FOR UPDATE first, so two concurrent ensures serialise and
+  // the loser re-reads the winner's line: repeated page loads, refetches and
+  // concurrent requests cannot create a duplicate charge.
+  //
+  // The automatic path adds ONLY when the resolver says READY. A waived
+  // (cancelled) consultation stays waived; an exempt visit stays exempt; a
+  // missing tariff becomes a review state, never a guessed price.
+  // `addConsultationCharge` is the EXPLICIT counter action for the two owner-
+  // approved exceptions: an exempt visit where a real consultation did occur,
+  // and a deliberate re-add after a waiver.
+  // ==========================================================================
+  async ensureConsultationCharge(invoiceId: string) {
+    return this.consultationCharge(invoiceId, { explicit: false });
+  }
+
+  async addConsultationCharge(invoiceId: string) {
+    return this.consultationCharge(invoiceId, { explicit: true });
+  }
+
+  private async consultationCharge(invoiceId: string, opts: { explicit: boolean }) {
+    await this.authoriseBilling('EDIT_LINES', await this.invoiceVisitId(invoiceId));
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const invoice = await tx.invoice.findUnique({
+        where: { id: invoiceId },
+        select: { id: true, visitId: true, status: true },
+      });
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
+      if (invoice.status !== InvoiceStatus.UNPAID) {
+        if (opts.explicit) {
+          throw new BadRequestException(`Cannot add a line to an invoice in status ${invoice.status}`);
+        }
+        return { added: false, state: { kind: 'NOT_APPLICABLE' as const } };
+      }
+
+      // Serialise every consultation-charge attempt for this visit.
+      await tx.$executeRaw`SELECT id FROM "visits" WHERE id = ${invoice.visitId} FOR UPDATE`;
+
+      const state: ConsultationChargeState = opts.explicit
+        ? await resolveExplicitConsultationAdd(tx, invoice.visitId)
+        : await resolveConsultationState(tx, invoice.visitId);
+
+      if (state.kind !== 'READY') {
+        if (!opts.explicit) {
+          return { added: false, state: summariseConsultationState(state) };
+        }
+        if (state.kind === 'BILLED') {
+          throw new ConflictException('A consultation charge already exists for this visit.');
+        }
+        if (state.kind === 'TARIFF_REVIEW') {
+          throw new BadRequestException(`Consultation tariff requires review. ${state.reason}`);
+        }
+        if (state.kind === 'NOT_CONFIGURED') {
+          throw new BadRequestException('No consultation tariff is configured for this clinic.');
+        }
+        throw new BadRequestException('No consultation occurred on this visit, so there is nothing to charge.');
+      }
+
+      const visit = await tx.visit.findUnique({
+        where: { id: invoice.visitId },
+        select: { panelClinicId: true },
+      });
+      const panelClinicId = visit?.panelClinicId ?? null;
+      const resolved = await resolveSourcedPrice(tx, { panelClinicId, serviceCatalogId: state.service.id });
+      if (!resolved) {
+        throw new BadRequestException('This item cannot be priced — its catalog record was not found.');
+      }
+      const exclusion = await this.resolveExclusionFor(tx, panelClinicId, { serviceCatalogId: state.service.id });
+
+      await tx.invoiceLine.create({
+        data: {
+          tenantId: currentTenantId(),
+          invoiceId,
+          description: state.service.name,
+          // Server-selected: one consultation, quantity one, always.
+          quantity: 1,
+          unitPrice: resolved.unitPrice,
+          amount: resolved.unitPrice,
+          sourceConsultationVisitId: invoice.visitId,
+          consultationTariffRuleId: state.rule.id,
+          excludedFromPanel: exclusion.excluded,
+          panelExclusionReason: exclusion.reason,
+          priceRule: resolved.priceRule,
+          baseUnitPrice: resolved.baseUnitPrice,
+          panelMarkupAmount: resolved.panelMarkupAmount,
+        },
+      });
+      const updated = await this.recalculateInvoice(tx, invoiceId);
+      return { added: true, state: { kind: 'BILLED' as const }, invoice: updated };
     });
   }
 
@@ -412,12 +566,21 @@ export class InvoiceService {
       // consumable as its own line where needed.
       return { excluded: false, reason: null };
     }
-    if (!itemId && !serviceCatalogId) return { excluded: false, reason: null };
+    return this.resolveExclusionFor(tx, panelClinicId, { itemId, serviceCatalogId });
+  }
+
+  private async resolveExclusionFor(
+    tx: ClinicalTx,
+    panelClinicId: string | null,
+    source: { itemId?: string; serviceCatalogId?: string },
+  ): Promise<{ excluded: boolean; reason: string | null }> {
+    if (!panelClinicId) return { excluded: false, reason: null };
+    if (!source.itemId && !source.serviceCatalogId) return { excluded: false, reason: null };
     const match = await tx.panelExclusion.findFirst({
       where: {
         panelClinicId,
-        ...(itemId ? { itemId } : {}),
-        ...(serviceCatalogId ? { serviceCatalogId } : {}),
+        ...(source.itemId ? { itemId: source.itemId } : {}),
+        ...(source.serviceCatalogId ? { serviceCatalogId: source.serviceCatalogId } : {}),
       },
       select: { reason: true },
     });
@@ -432,8 +595,15 @@ export class InvoiceService {
    * leaves every total, worklist and duplicate check. The DELETE route keeps
    * working; its semantics changed from erase to cancel.
    */
-  async cancelLine(invoiceId: string, lineId: string, dto: CancelInvoiceLineDto = {}) {
-    const actor = await this.authoriseBilling('EDIT_LINES', await this.invoiceVisitId(invoiceId));
+  async cancelLine(invoiceId: string, lineId: string, dto: CancelInvoiceLineDto) {
+    // D-094 — CANCEL_LINE, not EDIT_LINES: counter staff and finance may
+    // correct a bill (including waiving an auto-added consultation); doctors
+    // do not manage billing corrections from the clinical surface.
+    const actor = await this.authoriseBilling('CANCEL_LINE', await this.invoiceVisitId(invoiceId));
+    const reason = dto.cancelReason?.trim();
+    if (!reason) {
+      throw new BadRequestException('A reason is required to cancel an invoice line.');
+    }
     return withTenantTx(this.rawPrisma, async (tx) => {
       const invoice = await tx.invoice.findUnique({
         where: { id: invoiceId },
@@ -457,7 +627,7 @@ export class InvoiceService {
         data: {
           cancelledAt: new Date(),
           cancelledByStaffId: actor.id,
-          cancelReason: dto.cancelReason?.trim() || null,
+          cancelReason: reason,
           // A cancelled line's split is void, not a number.
           panelResponsibilityAmount: null,
           patientResponsibilityAmount: null,
@@ -606,10 +776,32 @@ export class InvoiceService {
         throw new BadRequestException(RESPONSIBILITY_UNRESOLVED);
       }
 
+      // D-094 — settlement is refused while billing work is knowably
+      // incomplete: a ready-but-unbilled source, or a consultation the tariff
+      // cannot resolve. Paying first and discovering the gap later is the
+      // exact workflow this checkpoint exists to end.
+      const worklist = await collectBillingWorklist(tx, invoice.visitId);
+      const unbilled = unbilledReadyItems(worklist);
+      if (unbilled.length > 0) {
+        throw new BadRequestException(
+          `Billing work is not complete — uninvoiced: ${unbilled.map((item) => item.description).join(', ')}.`,
+        );
+      }
+      if (tariffReviewItems(worklist).length > 0) {
+        throw new BadRequestException('Consultation tariff requires review.');
+      }
+
       const patientResponsibility = Number(invoice.patientResponsibilityAmount);
       if (dto.paymentMethod === 'PANEL' && patientResponsibility > 0) {
         throw new BadRequestException(
           `Cannot mark as fully covered by panel — a patient copay of ${patientResponsibility} is still due`,
+        );
+      }
+      // PANEL means "the PANEL carries this bill and the patient pays
+      // nothing" — meaningless unless the panel actually carries something.
+      if (dto.paymentMethod === 'PANEL' && Number(invoice.panelResponsibilityAmount ?? 0) <= 0) {
+        throw new BadRequestException(
+          'Panel — No Patient Payment applies only when the panel carries a positive amount.',
         );
       }
 
@@ -629,6 +821,11 @@ export class InvoiceService {
       });
     });
   }
+}
+
+/** The ensure-op's answer to the browser: what the state is, in one word. */
+function summariseConsultationState(state: ConsultationChargeState): { kind: ConsultationChargeState['kind']; reason?: string } {
+  return state.kind === 'TARIFF_REVIEW' ? { kind: state.kind, reason: state.reason } : { kind: state.kind };
 }
 
 /** Discount guards: positive, percentage ≤ 100, fixed ≤ the eligible amount. */

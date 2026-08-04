@@ -9,6 +9,7 @@ import { PanelBenefitService } from './panel-benefit.service';
 import { BillingWorklistService } from './billing-worklist.service';
 import { RecordPanelVerificationDto } from './dto/record-panel-verification.dto';
 import { OverridePanelBenefitDto } from './dto/override-panel-benefit.dto';
+import { SetVisitClassificationDto } from './dto/set-visit-classification.dto';
 
 @Controller('visits')
 export class VisitController {
@@ -76,6 +77,14 @@ export class VisitController {
   @Get(':id/billing-worklist')
   getBillingWorklist(@Param('id') id: string) {
     return this.billingWorklist.forVisit(id);
+  }
+
+  // G4.5d3c-3b2 (D-094) - the operational kind of visit for consultation
+  // billing (OTC-only, dressing-only, ...). Counter work, refused for
+  // doctors; locked once the visit completes.
+  @Patch(':id/classification')
+  setClassification(@Param('id') id: string, @Body() dto: SetVisitClassificationDto) {
+    return this.visits.setClassification(id, dto.classification);
   }
 
   // What is still outstanding, so a screen can say so before offering the button.
