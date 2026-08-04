@@ -6,6 +6,7 @@ import { CompleteDoctorPhaseDto } from './dto/complete-doctor-phase.dto';
 import { VisitCompletionService } from './visit-completion.service';
 import { CompleteVisitDto } from './dto/complete-visit.dto';
 import { PanelBenefitService } from './panel-benefit.service';
+import { BillingWorklistService } from './billing-worklist.service';
 import { RecordPanelVerificationDto } from './dto/record-panel-verification.dto';
 import { OverridePanelBenefitDto } from './dto/override-panel-benefit.dto';
 
@@ -16,6 +17,7 @@ export class VisitController {
     private readonly doctorCompletion: DoctorCompletionService,
     private readonly visitCompletion: VisitCompletionService,
     private readonly panelBenefit: PanelBenefitService,
+    private readonly billingWorklist: BillingWorklistService,
   ) {}
 
   // Patient Dashboard's "New Visit" — creates a Visit with no queue ticket,
@@ -66,6 +68,14 @@ export class VisitController {
   @Patch(':id/panel-benefit-override')
   overridePanelBenefit(@Param('id') id: string, @Body() dto: OverridePanelBenefitDto) {
     return this.panelBenefit.overrideBenefit(id, dto);
+  }
+
+  // G4.5d3c-3b1 (D-093) - the itemised billing worklist: every chargeable
+  // source with its billed state, for the 3b2 Billing Review surface. Read
+  // only, database-enforced (D-088's read-only transaction).
+  @Get(':id/billing-worklist')
+  getBillingWorklist(@Param('id') id: string) {
+    return this.billingWorklist.forVisit(id);
   }
 
   // What is still outstanding, so a screen can say so before offering the button.

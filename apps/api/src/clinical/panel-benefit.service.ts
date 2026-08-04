@@ -8,6 +8,7 @@ import {
   Staff,
 } from '@prisma/client';
 import { PrismaService } from '../core/prisma.service';
+import { InvoiceService } from './invoice.service';
 import { ClinicalTx, assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
 import { RecordPanelVerificationDto } from './dto/record-panel-verification.dto';
 import { OverridePanelBenefitDto } from './dto/override-panel-benefit.dto';
@@ -44,10 +45,13 @@ interface BenefitTerms {
 
 @Injectable()
 export class PanelBenefitService {
-  constructor(private readonly rawPrisma: PrismaService) {}
+  constructor(
+    private readonly rawPrisma: PrismaService,
+    private readonly invoices: InvoiceService,
+  ) {}
 
   async recordVerification(visitId: string, dto: RecordPanelVerificationDto) {
-    return withTenantTx(this.rawPrisma, async (tx) => {
+    const updated = await withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
       assertRole(actor, MAY_VERIFY, 'record a panel verification');
       await assertMayTouchVisit(tx, visitId, actor);
@@ -95,10 +99,14 @@ export class PanelBenefitService {
         select: BENEFIT_SELECT,
       });
     });
+    // D-093 — the terms changed, so what this visit's open invoices MEAN
+    // changed. Recalculated immediately, not on the next unrelated edit.
+    await this.invoices.recalculateVisitInvoices(visitId);
+    return updated;
   }
 
   async overrideBenefit(visitId: string, dto: OverridePanelBenefitDto) {
-    return withTenantTx(this.rawPrisma, async (tx) => {
+    const updated = await withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
       assertRole(actor, MAY_OVERRIDE, 'override panel benefit terms');
       await assertMayTouchVisit(tx, visitId, actor);
@@ -139,6 +147,8 @@ export class PanelBenefitService {
         select: BENEFIT_SELECT,
       });
     });
+    await this.invoices.recalculateVisitInvoices(visitId);
+    return updated;
   }
 }
 

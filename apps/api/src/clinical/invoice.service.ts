@@ -1,19 +1,27 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { InvoiceStatus } from '@prisma/client';
+import { InvoiceDiscountType, InvoiceLinePriceRule, InvoiceStatus, PanelVerificationStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { VisitService } from './visit.service';
-import { assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
+import { ClinicalTx, assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
 import { BillingAction, assertCanPerformBilling } from './clinical-authorization';
+import { BenefitInput, calculateResponsibility } from './billing-calculation';
+import { resolveSourcedPrice } from './billing-pricing';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { AddInvoiceLineDto } from './dto/add-invoice-line.dto';
+import { ApplyLineDiscountDto } from './dto/apply-line-discount.dto';
+import { ApplyInvoiceDiscountDto } from './dto/apply-invoice-discount.dto';
+import { CancelInvoiceLineDto } from './dto/cancel-invoice-line.dto';
 import { CancelInvoiceDto } from './dto/cancel-invoice.dto';
 import { PayInvoiceDto } from './dto/pay-invoice.dto';
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
+
+/** The approved counter-facing wording — the same sentence the blocker uses. */
+const RESPONSIBILITY_UNRESOLVED = 'Billing responsibility has not been confirmed.';
 
 @Injectable()
 export class InvoiceService {
@@ -25,26 +33,16 @@ export class InvoiceService {
 
   // Count-based sequence ("INV-000002"), same accepted non-atomic-race gap
   // as Visit.visitNumber.
-  private async nextInvoiceNumber(): Promise<string> {
-    const count = await this.prisma.invoice.count();
+  private async nextInvoiceNumber(tx: ClinicalTx): Promise<string> {
+    const count = await tx.invoice.count();
     return `INV-${String(count + 1).padStart(6, '0')}`;
   }
 
   /**
    * G3c closure (D-066) — the ONE billing gate. Every invoice mutation goes
-   * through it; none of them does its own role check.
-   *
-   * Three things, in this order, all server-side:
-   *
-   *  1. the actor is resolved from the authenticated session (never the JWT's
-   *     own role claim — the staff row is the authority, so a re-issued or
-   *     tampered token cannot promote anybody);
-   *  2. the role is checked against the action being attempted;
-   *  3. branch access is checked against the visit **resolved from stored
-   *     data**. For a line/pay/cancel that means loading the invoice and
-   *     using ITS `visitId` — a visit or branch id supplied by the browser is
-   *     never trusted, and a missing or inconsistent relationship fails
-   *     closed with a 404 rather than proceeding.
+   * through it; none of them does its own role check. The actor is resolved
+   * from the session, the role checked against the action, and branch access
+   * checked against the visit resolved FROM STORED DATA.
    */
   private async authoriseBilling(action: BillingAction, visitId: string) {
     return withTenantTx(this.rawPrisma, async (tx) => {
@@ -67,41 +65,169 @@ export class InvoiceService {
     return invoice.visitId;
   }
 
-  // createdByStaffId is caller-supplied, not defaulted from the visit —
-  // invoice creation is deliberately staff-creatable (not gated to the
-  // visit's own attending doctor) so a locum covering the queue can bill
-  // a visit that isn't "theirs".
-  async create(dto: CreateInvoiceDto) {
-    await this.authoriseBilling('CREATE_INVOICE', dto.visitId);
-    const visit = await this.visits.findById(dto.visitId);
-    return this.prisma.invoice.create({
+  // ==========================================================================
+  // G4.5d3c-3b1 (D-093) — THE RESPONSIBILITY WRITER.
+  //
+  // The 3b0 audit's headline finding: patientResponsibilityAmount had no
+  // production writer — both completion services read it as the authority and
+  // nothing ever set it. This is that writer. It runs inside EVERY mutating
+  // transaction (create, line add/cancel, discounts, benefit changes) so the
+  // persisted split can never lag the lines.
+  //
+  // The benefit terms come from the VISIT SNAPSHOT (D-092) and only from it —
+  // the panel's live configuration is never consulted, so a panel whose limit
+  // changes tomorrow cannot reprice today's visit.
+  // ==========================================================================
+  async recalculateInvoice(tx: ClinicalTx, invoiceId: string) {
+    const invoice = await tx.invoice.findUnique({
+      where: { id: invoiceId },
+      select: {
+        id: true,
+        visitId: true,
+        status: true,
+        invoiceDiscountType: true,
+        invoiceDiscountValue: true,
+      },
+    });
+    if (!invoice) {
+      throw new NotFoundException('Invoice not found');
+    }
+    // PAID and CANCELLED invoices are frozen history; every mutation route
+    // already refuses them, and the recalculator refuses to touch them too.
+    if (invoice.status !== InvoiceStatus.UNPAID) {
+      return undefined;
+    }
+
+    const lines = await tx.invoiceLine.findMany({
+      where: { invoiceId },
+      select: {
+        id: true,
+        amount: true,
+        excludedFromPanel: true,
+        cancelledAt: true,
+        lineDiscountType: true,
+        lineDiscountValue: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const benefit = await this.benefitFor(tx, invoice.visitId);
+    const result = calculateResponsibility({
+      lines: lines.map((line) => ({
+        id: line.id,
+        amount: Number(line.amount),
+        excludedFromPanel: line.excludedFromPanel,
+        cancelled: line.cancelledAt !== null,
+        lineDiscountType: line.lineDiscountType,
+        lineDiscountValue: line.lineDiscountValue == null ? null : Number(line.lineDiscountValue),
+      })),
+      invoiceDiscountType: invoice.invoiceDiscountType,
+      invoiceDiscountValue: invoice.invoiceDiscountValue == null ? null : Number(invoice.invoiceDiscountValue),
+      benefit,
+    });
+
+    for (const line of result.lines) {
+      await tx.invoiceLine.update({
+        where: { id: line.id },
+        data: {
+          lineDiscountAmount: line.lineDiscountAmount,
+          panelResponsibilityAmount: line.panelResponsibilityAmount,
+          patientResponsibilityAmount: line.patientResponsibilityAmount,
+        },
+      });
+    }
+
+    return tx.invoice.update({
+      where: { id: invoiceId },
       data: {
-        tenantId: currentTenantId(),
-        visitId: visit.id,
-        createdByStaffId: dto.createdByStaffId,
-        invoiceNumber: await this.nextInvoiceNumber(),
+        subtotalAmount: result.subtotalAmount,
+        totalAmount: result.totalAmount,
+        invoiceDiscountAmount: result.invoiceDiscountAmount,
+        panelResponsibilityAmount: result.panelResponsibilityAmount,
+        patientResponsibilityAmount: result.patientResponsibilityAmount,
       },
     });
   }
 
   /**
+   * The engine's benefit input, from the visit snapshot ONLY. Resolved means
+   * an explicit VERIFIED or OVERRIDDEN status with a coverage type captured;
+   * anything else on a panel visit is honestly unresolved.
+   */
+  private async benefitFor(tx: ClinicalTx, visitId: string): Promise<BenefitInput> {
+    const visit = await tx.visit.findUnique({
+      where: { id: visitId },
+      select: {
+        panelClinicId: true,
+        panelVerificationStatus: true,
+        panelCoverageType: true,
+        panelVisitLimitAmount: true,
+        panelCopaymentType: true,
+        panelCopaymentValue: true,
+      },
+    });
+    if (!visit?.panelClinicId) {
+      return { kind: 'CASH' };
+    }
+    const resolvedStatus =
+      visit.panelVerificationStatus === PanelVerificationStatus.VERIFIED ||
+      visit.panelVerificationStatus === PanelVerificationStatus.OVERRIDDEN;
+    if (!resolvedStatus || !visit.panelCoverageType) {
+      return { kind: 'PANEL_UNRESOLVED' };
+    }
+    return {
+      kind: 'PANEL_RESOLVED',
+      coverageType: visit.panelCoverageType,
+      visitLimitAmount: visit.panelVisitLimitAmount == null ? null : Number(visit.panelVisitLimitAmount),
+      copaymentType: visit.panelCopaymentType ?? 'NONE',
+      copaymentValue: visit.panelCopaymentValue == null ? null : Number(visit.panelCopaymentValue),
+    };
+  }
+
+  /**
+   * D-092/D-093 — a benefit verification or override changes what this
+   * visit's UNPAID invoices mean. Called by PanelBenefitService after every
+   * terms change.
+   */
+  async recalculateVisitInvoices(visitId: string) {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const invoices = await tx.invoice.findMany({
+        where: { visitId, status: InvoiceStatus.UNPAID },
+        select: { id: true },
+      });
+      for (const invoice of invoices) {
+        await this.recalculateInvoice(tx, invoice.id);
+      }
+      return invoices.length;
+    });
+  }
+
+  // createdByStaffId is caller-supplied, not defaulted from the visit —
+  // invoice creation is deliberately staff-creatable so a locum covering the
+  // queue can bill a visit that isn't "theirs".
+  async create(dto: CreateInvoiceDto) {
+    await this.authoriseBilling('CREATE_INVOICE', dto.visitId);
+    const visit = await this.visits.findById(dto.visitId);
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const invoice = await tx.invoice.create({
+        data: {
+          tenantId: currentTenantId(),
+          visitId: visit.id,
+          createdByStaffId: dto.createdByStaffId,
+          invoiceNumber: await this.nextInvoiceNumber(tx),
+        },
+      });
+      // An empty cash invoice resolves to 0/0 immediately; an empty panel
+      // invoice resolves or stays NULL according to the snapshot. Either way
+      // the answer is WRITTEN at creation, not deferred to a later guess.
+      return (await this.recalculateInvoice(tx, invoice.id)) ?? invoice;
+    });
+  }
+
+  /**
    * G3c (D-065) — the read the Clinical Workspace's Invoice Summary uses.
-   *
-   * Two corrections, both read-only:
-   *
-   * **Branch access is now enforced.** Tenant isolation came from RLS on the
-   * scoped client, but nothing checked the BRANCH: a staff member authorised
-   * only for Branch A could read Branch B's invoices for any visit id they
-   * could name. Every clinical read added since C0 goes through
-   * `assertMayTouchVisit`; the money did not. It does now, and the guard
-   * fails closed exactly as C0 specified.
-   *
-   * **It resolves what the summary must show without a second round trip:**
-   * who raised the invoice, the visit's panel (the panel lives on the VISIT,
-   * not the invoice), each line's source order/prescription so a doctor can
-   * see what a charge came from, and any panel-claim lines — claim status is
-   * a separate lifecycle from payment status and must never be folded into
-   * one badge.
+   * Branch access enforced; resolves creator, panel, line sources and claim
+   * lines in one trip.
    */
   async findByVisitId(visitId: string) {
     await withTenantTx(this.rawPrisma, async (tx) => {
@@ -148,114 +274,52 @@ export class InvoiceService {
     return invoice;
   }
 
-  private async recalculateTotal(invoiceId: string) {
-    const lines = await this.prisma.invoiceLine.findMany({ where: { invoiceId } });
-    const totalAmount = round2(lines.reduce((sum, line) => sum + Number(line.amount), 0));
-    return this.prisma.invoice.update({ where: { id: invoiceId }, data: { totalAmount } });
-  }
-
-  // Resolves whether a Quick-Added line's source item/service is on the
-  // visit's panel's exclusion list — computed server-side (not trusted from
-  // the client) so the copay total is always correct even if the frontend's
-  // own exclusion list is stale. Freehand lines (no source id) are never
-  // auto-excluded; staff can still hand-flag those by billing them as a
-  // separate line if needed.
-  private async resolveExcludedFromPanel(
-    panelClinicId: string | null,
-    dto: AddInvoiceLineDto,
-  ): Promise<boolean> {
-    if (!panelClinicId) return false;
-    let itemId: string | undefined;
-    let serviceCatalogId: string | undefined;
-    if (dto.sourcePrescriptionId) {
-      const prescription = await this.prisma.prescription.findUnique({
-        where: { id: dto.sourcePrescriptionId },
-        select: { itemId: true },
-      });
-      itemId = prescription?.itemId;
-    } else if (dto.sourceOrderServiceId) {
-      const orderService = await this.prisma.orderService.findUnique({
-        where: { id: dto.sourceOrderServiceId },
-        select: { serviceCatalogId: true },
-      });
-      serviceCatalogId = orderService?.serviceCatalogId;
-    } else {
-      return false;
-    }
-    if (!itemId && !serviceCatalogId) return false;
-    const match = await this.prisma.panelExclusion.findFirst({
-      where: {
-        panelClinicId,
-        ...(itemId ? { itemId } : {}),
-        ...(serviceCatalogId ? { serviceCatalogId } : {}),
-      },
-    });
-    return Boolean(match);
-  }
-
+  /**
+   * D-093 — a sourced line's price is the SERVER'S. The client's unitPrice is
+   * accepted only for a free-text MANUAL line; for a prescription- or
+   * order-sourced line the contractual price is resolved here (specific panel
+   * price → cash + markup → cash) and anything the browser sent is ignored.
+   */
   async addLine(invoiceId: string, dto: AddInvoiceLineDto) {
     await this.authoriseBilling('EDIT_LINES', await this.invoiceVisitId(invoiceId));
-    const invoice = await this.findById(invoiceId);
-    if (invoice.status !== InvoiceStatus.UNPAID) {
-      throw new BadRequestException(`Cannot add a line to an invoice in status ${invoice.status}`);
-    }
-    const visit = await this.prisma.visit.findUnique({
-      where: { id: invoice.visitId },
-      select: { panelClinicId: true },
-    });
-    const quantity = dto.quantity ?? 1;
-    const amount = round2(quantity * dto.unitPrice);
-    const excludedFromPanel = await this.resolveExcludedFromPanel(visit?.panelClinicId ?? null, dto);
 
-    await this.insertLineOnce(invoiceId, dto, quantity, amount, excludedFromPanel);
-    return this.recalculateTotal(invoiceId);
-  }
-
-  /**
-   * G4.5s (D-073) — one source item, one charge. Enforced on the server.
-   *
-   * The Canvas's Quick Add already filters out anything it can see a line
-   * for, but a client-side filter is a suggestion, not a rule: it is computed
-   * from a list that may be seconds stale, and two rapid clicks or two
-   * billers on the same visit both pass it. The audit found this is not
-   * theoretical — the database already contains a source order charged twice,
-   * on a PAID invoice.
-   *
-   * A UNIQUE index would be the stronger tool and is deliberately NOT used
-   * here: creating one would fail against that existing duplicate, and
-   * clearing it means editing a paid invoice's lines and total. That is a
-   * business decision, not a migration, so it is reported rather than taken.
-   *
-   * What makes this correct rather than merely likely: the source row is
-   * locked FOR UPDATE first. Two concurrent adds for the same service
-   * contend on that lock, so the loser re-reads after the winner has
-   * committed and sees the line. Without the lock both could read "no line"
-   * and both insert.
-   */
-  private async insertLineOnce(
-    invoiceId: string,
-    dto: AddInvoiceLineDto,
-    quantity: number,
-    amount: number,
-    excludedFromPanel: boolean,
-  ) {
     return withTenantTx(this.rawPrisma, async (tx) => {
-      // No ::uuid cast — Prisma's `String @id @default(uuid())` stores these
-      // as TEXT, so casting the parameter makes Postgres look for a
-      // `text = uuid` operator that does not exist.
+      const invoice = await tx.invoice.findUnique({
+        where: { id: invoiceId },
+        select: { id: true, visitId: true, status: true },
+      });
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
+      if (invoice.status !== InvoiceStatus.UNPAID) {
+        throw new BadRequestException(`Cannot add a line to an invoice in status ${invoice.status}`);
+      }
+      const visit = await tx.visit.findUnique({
+        where: { id: invoice.visitId },
+        select: { panelClinicId: true },
+      });
+      const panelClinicId = visit?.panelClinicId ?? null;
+      const sourced = Boolean(dto.sourceOrderServiceId || dto.sourcePrescriptionId);
+
+      // --- G4.5s (D-073) — one source item, one charge, under lock. --------
+      // The source row is locked FOR UPDATE first, so two concurrent adds
+      // for the same source serialise; the loser re-reads after the winner
+      // commits, sees the line, and is refused with the invoice named.
       if (dto.sourceOrderServiceId) {
         await tx.$executeRaw`SELECT id FROM "order_services" WHERE id = ${dto.sourceOrderServiceId} FOR UPDATE`;
       } else if (dto.sourcePrescriptionId) {
         await tx.$executeRaw`SELECT id FROM "prescriptions" WHERE id = ${dto.sourcePrescriptionId} FOR UPDATE`;
       }
-
-      if (dto.sourceOrderServiceId || dto.sourcePrescriptionId) {
-        // Across ALL invoices, not just this one — charging the same service
-        // on a second invoice is the same double-charge wearing a hat.
+      if (sourced) {
+        // Across ALL invoices, and only ACTIVE lines: a cancelled charge is
+        // history, not a standing claim on the source.
         const existing = await tx.invoiceLine.findFirst({
-          where: dto.sourceOrderServiceId
-            ? { sourceOrderServiceId: dto.sourceOrderServiceId }
-            : { sourcePrescriptionId: dto.sourcePrescriptionId },
+          where: {
+            ...(dto.sourceOrderServiceId
+              ? { sourceOrderServiceId: dto.sourceOrderServiceId }
+              : { sourcePrescriptionId: dto.sourcePrescriptionId }),
+            cancelledAt: null,
+          },
           select: { invoice: { select: { invoiceNumber: true } } },
         });
         if (existing) {
@@ -265,34 +329,224 @@ export class InvoiceService {
         }
       }
 
-      return tx.invoiceLine.create({
+      // --- Pricing (D-093) -------------------------------------------------
+      let unitPrice: number;
+      let priceRule: InvoiceLinePriceRule;
+      let baseUnitPrice: number | null;
+      let panelMarkupAmount: number | null;
+      if (sourced) {
+        const resolved = await resolveSourcedPrice(tx, {
+          panelClinicId,
+          sourcePrescriptionId: dto.sourcePrescriptionId,
+          sourceOrderServiceId: dto.sourceOrderServiceId,
+        });
+        if (!resolved) {
+          throw new BadRequestException('This item cannot be priced — its catalog record was not found.');
+        }
+        unitPrice = resolved.unitPrice;
+        priceRule = resolved.priceRule;
+        baseUnitPrice = resolved.baseUnitPrice;
+        panelMarkupAmount = resolved.panelMarkupAmount;
+      } else {
+        if (dto.unitPrice == null) {
+          throw new BadRequestException('A manual line needs a unit price.');
+        }
+        unitPrice = round2(dto.unitPrice);
+        priceRule = InvoiceLinePriceRule.MANUAL;
+        baseUnitPrice = unitPrice;
+        panelMarkupAmount = null;
+      }
+
+      // --- Exclusion snapshot ----------------------------------------------
+      const exclusion = await this.resolveExclusion(tx, panelClinicId, dto);
+      const quantity = dto.quantity ?? 1;
+
+      await tx.invoiceLine.create({
         data: {
           tenantId: currentTenantId(),
           invoiceId,
           description: dto.description,
           quantity,
-          unitPrice: dto.unitPrice,
-          amount,
+          unit: dto.unit,
+          unitPrice,
+          amount: round2(quantity * unitPrice),
           sourceOrderServiceId: dto.sourceOrderServiceId,
           sourcePrescriptionId: dto.sourcePrescriptionId,
-          excludedFromPanel,
+          excludedFromPanel: exclusion.excluded,
+          panelExclusionReason: exclusion.reason,
+          priceRule,
+          baseUnitPrice,
+          panelMarkupAmount,
         },
       });
+
+      return this.recalculateInvoice(tx, invoiceId);
     });
   }
 
-  async removeLine(invoiceId: string, lineId: string) {
-    await this.authoriseBilling('EDIT_LINES', await this.invoiceVisitId(invoiceId));
-    const invoice = await this.findById(invoiceId);
-    if (invoice.status !== InvoiceStatus.UNPAID) {
-      throw new BadRequestException(`Cannot remove a line from an invoice in status ${invoice.status}`);
+  // Resolves whether a sourced line is on the visit's panel's exclusion
+  // list — computed server-side, with the exclusion's reason snapshotted onto
+  // the line so a later list change cannot rewrite this line's history.
+  private async resolveExclusion(
+    tx: ClinicalTx,
+    panelClinicId: string | null,
+    dto: AddInvoiceLineDto,
+  ): Promise<{ excluded: boolean; reason: string | null }> {
+    if (!panelClinicId) return { excluded: false, reason: null };
+    let itemId: string | undefined;
+    let serviceCatalogId: string | undefined;
+    if (dto.sourcePrescriptionId) {
+      const prescription = await tx.prescription.findUnique({
+        where: { id: dto.sourcePrescriptionId },
+        select: { itemId: true },
+      });
+      itemId = prescription?.itemId;
+    } else if (dto.sourceOrderServiceId) {
+      const orderService = await tx.orderService.findUnique({
+        where: { id: dto.sourceOrderServiceId },
+        select: { serviceCatalogId: true },
+      });
+      serviceCatalogId = orderService?.serviceCatalogId;
+    } else {
+      // Freehand lines are never auto-excluded; staff can bill an excluded
+      // consumable as its own line where needed.
+      return { excluded: false, reason: null };
     }
-    const line = invoice.lines.find((candidate) => candidate.id === lineId);
-    if (!line) {
-      throw new NotFoundException('Invoice line not found');
-    }
-    await this.prisma.invoiceLine.delete({ where: { id: lineId } });
-    return this.recalculateTotal(invoiceId);
+    if (!itemId && !serviceCatalogId) return { excluded: false, reason: null };
+    const match = await tx.panelExclusion.findFirst({
+      where: {
+        panelClinicId,
+        ...(itemId ? { itemId } : {}),
+        ...(serviceCatalogId ? { serviceCatalogId } : {}),
+      },
+      select: { reason: true },
+    });
+    return match
+      ? { excluded: true, reason: match.reason ?? 'Not covered by panel' }
+      : { excluded: false, reason: null };
+  }
+
+  /**
+   * D-093 — cancellation, not deletion. A removed charge is a historical
+   * fact: the line stays, stamped with who cancelled it, when and why, and
+   * leaves every total, worklist and duplicate check. The DELETE route keeps
+   * working; its semantics changed from erase to cancel.
+   */
+  async cancelLine(invoiceId: string, lineId: string, dto: CancelInvoiceLineDto = {}) {
+    const actor = await this.authoriseBilling('EDIT_LINES', await this.invoiceVisitId(invoiceId));
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const invoice = await tx.invoice.findUnique({
+        where: { id: invoiceId },
+        select: { status: true, lines: { select: { id: true, cancelledAt: true } } },
+      });
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
+      if (invoice.status !== InvoiceStatus.UNPAID) {
+        throw new BadRequestException(`Cannot remove a line from an invoice in status ${invoice.status}`);
+      }
+      const line = invoice.lines.find((candidate) => candidate.id === lineId);
+      if (!line) {
+        throw new NotFoundException('Invoice line not found');
+      }
+      if (line.cancelledAt) {
+        throw new BadRequestException('This line is already cancelled.');
+      }
+      await tx.invoiceLine.update({
+        where: { id: lineId },
+        data: {
+          cancelledAt: new Date(),
+          cancelledByStaffId: actor.id,
+          cancelReason: dto.cancelReason?.trim() || null,
+          // A cancelled line's split is void, not a number.
+          panelResponsibilityAmount: null,
+          patientResponsibilityAmount: null,
+        },
+      });
+      return this.recalculateInvoice(tx, invoiceId);
+    });
+  }
+
+  /**
+   * D-093 — line-level discount. Owner/finance only (APPLY_DISCOUNT), with a
+   * mandatory reason; refused once the invoice has left UNPAID. `amount`
+   * stays the pre-discount figure, so the original is always retained.
+   */
+  async applyLineDiscount(invoiceId: string, lineId: string, dto: ApplyLineDiscountDto) {
+    const actor = await this.authoriseBilling('APPLY_DISCOUNT', await this.invoiceVisitId(invoiceId));
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const invoice = await tx.invoice.findUnique({
+        where: { id: invoiceId },
+        select: {
+          status: true,
+          lines: { select: { id: true, amount: true, cancelledAt: true } },
+        },
+      });
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
+      if (invoice.status !== InvoiceStatus.UNPAID) {
+        throw new BadRequestException(`Cannot discount an invoice in status ${invoice.status}`);
+      }
+      const line = invoice.lines.find((candidate) => candidate.id === lineId);
+      if (!line) {
+        throw new NotFoundException('Invoice line not found');
+      }
+      if (line.cancelledAt) {
+        throw new BadRequestException('A cancelled line cannot be discounted.');
+      }
+      assertDiscountWithin(dto, Number(line.amount), 'line amount');
+
+      await tx.invoiceLine.update({
+        where: { id: lineId },
+        data: {
+          lineDiscountType: dto.type,
+          lineDiscountValue: dto.value,
+          lineDiscountReason: dto.reason.trim(),
+          lineDiscountByStaffId: actor.id,
+          lineDiscountAt: new Date(),
+        },
+      });
+      return this.recalculateInvoice(tx, invoiceId);
+    });
+  }
+
+  /**
+   * D-093 — overall invoice discount, policy AFTER_PANEL_SPLIT_PATIENT_ONLY.
+   * Refused while responsibility is unresolved: a patient-portion-only
+   * discount has nothing defined to reduce until the split exists.
+   */
+  async applyInvoiceDiscount(invoiceId: string, dto: ApplyInvoiceDiscountDto) {
+    const actor = await this.authoriseBilling('APPLY_DISCOUNT', await this.invoiceVisitId(invoiceId));
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const invoice = await tx.invoice.findUnique({
+        where: { id: invoiceId },
+        select: { status: true, visitId: true, subtotalAmount: true },
+      });
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
+      if (invoice.status !== InvoiceStatus.UNPAID) {
+        throw new BadRequestException(`Cannot discount an invoice in status ${invoice.status}`);
+      }
+      const benefit = await this.benefitFor(tx, invoice.visitId);
+      if (benefit.kind === 'PANEL_UNRESOLVED') {
+        throw new BadRequestException(RESPONSIBILITY_UNRESOLVED);
+      }
+      assertDiscountWithin(dto, Number(invoice.subtotalAmount ?? 0), 'invoice subtotal');
+
+      await tx.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          invoiceDiscountType: dto.type,
+          invoiceDiscountValue: dto.value,
+          invoiceDiscountReason: dto.reason.trim(),
+          invoiceDiscountByStaffId: actor.id,
+          invoiceDiscountAt: new Date(),
+        },
+      });
+      return this.recalculateInvoice(tx, invoiceId);
+    });
   }
 
   async cancel(id: string, dto: CancelInvoiceDto) {
@@ -307,69 +561,89 @@ export class InvoiceService {
     });
   }
 
-  // Phase 1e — the same Panel-Covers/Patient-Copay split InvoiceTab.tsx
-  // computes live for an UNPAID invoice's preview, recomputed here so it can
-  // be snapshotted onto the Invoice at the moment it's actually paid (never
-  // trusted from the client). Excluded lines are always patient-payable, on
-  // top of (not netted against) the panel's per-visit limit — same rule the
-  // frontend preview uses.
-  private async computePanelSplit(invoice: {
-    visitId: string;
-    totalAmount: unknown;
-    lines: { amount: unknown; excludedFromPanel: boolean }[];
-  }): Promise<{ panelCoveredAmount: number; patientCopay: number }> {
-    const visit = await this.prisma.visit.findUnique({
-      where: { id: invoice.visitId },
-      select: { panelClinicId: true },
-    });
-    const totalAmount = Number(invoice.totalAmount);
-    if (!visit?.panelClinicId) {
-      return { panelCoveredAmount: 0, patientCopay: totalAmount };
-    }
-    const panel = await this.prisma.panelClinic.findUnique({
-      where: { id: visit.panelClinicId },
-      select: { limitAmount: true },
-    });
-    const excludedTotal = round2(
-      invoice.lines.filter((line) => line.excludedFromPanel).reduce((sum, line) => sum + Number(line.amount), 0),
-    );
-    const coveredTotal = round2(totalAmount - excludedTotal);
-    const limit = panel?.limitAmount != null ? Number(panel.limitAmount) : undefined;
-    const panelCoveredAmount = round2(limit != null ? Math.min(coveredTotal, limit) : coveredTotal);
-    const patientCopay = round2(coveredTotal - panelCoveredAmount + excludedTotal);
-    return { panelCoveredAmount, patientCopay };
-  }
-
-  // Dispensary payment step (Phase A6, extended Phase 1e). Only UNPAID ->
-  // PAID; once paid, lines are locked (addLine/removeLine both assert
-  // UNPAID) so the billed amount is fixed. panelCoveredAmount/
-  // patientPaidAmount are computed here and never recomputed afterward —
-  // ClaimBatchLine reads panelCoveredAmount as the fixed amount to claim.
-  // paymentMethod 'PANEL' ("Mark Fully Covered by Panel") is only valid
-  // when the computed copay is actually zero — the frontend already hides
-  // that action otherwise, this is the server-side backstop.
+  /**
+   * D-093 — payment reads the PERSISTED calculation and nothing else.
+   *
+   * The old implementation recomputed the panel split at pay-time from the
+   * panel's LIVE configuration — the exact staleness the visit snapshot
+   * exists to prevent — and could "pay" an invoice whose responsibility
+   * nobody had ever computed. Now:
+   *
+   *   - NULL responsibility refuses with the approved counter wording;
+   *   - an unresolved panel verification refuses the same way (defence in
+   *     depth — its responsibility is NULL anyway);
+   *   - 'PANEL' ("Mark Fully Covered by Panel") requires a persisted patient
+   *     responsibility of exactly zero;
+   *   - the amounts snapshotted at pay-time are the persisted ones. Nothing
+   *     is recomputed, so what was shown is what is settled.
+   *
+   * Invoice.status alone is never proof of anything here.
+   */
   async pay(id: string, dto: PayInvoiceDto) {
     await this.authoriseBilling('MARK_PAID', await this.invoiceVisitId(id));
-    const invoice = await this.findById(id);
-    if (invoice.status !== InvoiceStatus.UNPAID) {
-      throw new BadRequestException(`Cannot mark an invoice in status ${invoice.status} as paid`);
-    }
-    const { panelCoveredAmount, patientCopay } = await this.computePanelSplit(invoice);
-    if (dto.paymentMethod === 'PANEL' && patientCopay > 0) {
-      throw new BadRequestException(
-        `Cannot mark as fully covered by panel — a patient copay of ${patientCopay} is still due`,
-      );
-    }
-    const patientPaidAmount = dto.paymentMethod === 'PANEL' ? 0 : patientCopay;
-    return this.prisma.invoice.update({
-      where: { id },
-      data: {
-        status: InvoiceStatus.PAID,
-        paidAt: new Date(),
-        paymentMethod: dto.paymentMethod,
-        panelCoveredAmount,
-        patientPaidAmount,
-      },
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const invoice = await tx.invoice.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          visitId: true,
+          status: true,
+          patientResponsibilityAmount: true,
+          panelResponsibilityAmount: true,
+        },
+      });
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
+      if (invoice.status !== InvoiceStatus.UNPAID) {
+        throw new BadRequestException(`Cannot mark an invoice in status ${invoice.status} as paid`);
+      }
+      if (invoice.patientResponsibilityAmount == null) {
+        throw new BadRequestException(RESPONSIBILITY_UNRESOLVED);
+      }
+      const benefit = await this.benefitFor(tx, invoice.visitId);
+      if (benefit.kind === 'PANEL_UNRESOLVED') {
+        throw new BadRequestException(RESPONSIBILITY_UNRESOLVED);
+      }
+
+      const patientResponsibility = Number(invoice.patientResponsibilityAmount);
+      if (dto.paymentMethod === 'PANEL' && patientResponsibility > 0) {
+        throw new BadRequestException(
+          `Cannot mark as fully covered by panel — a patient copay of ${patientResponsibility} is still due`,
+        );
+      }
+
+      // All-or-nothing model: the payment recorded is exactly the persisted
+      // remaining responsibility, which resolves the balance to zero. Partial
+      // tender is a future payment-table design, not smuggled in here.
+      const patientPaidAmount = dto.paymentMethod === 'PANEL' ? 0 : patientResponsibility;
+      return tx.invoice.update({
+        where: { id },
+        data: {
+          status: InvoiceStatus.PAID,
+          paidAt: new Date(),
+          paymentMethod: dto.paymentMethod,
+          panelCoveredAmount: Number(invoice.panelResponsibilityAmount ?? 0),
+          patientPaidAmount,
+        },
+      });
     });
+  }
+}
+
+/** Discount guards: positive, percentage ≤ 100, fixed ≤ the eligible amount. */
+function assertDiscountWithin(
+  dto: { type: InvoiceDiscountType; value: number },
+  eligibleAmount: number,
+  what: string,
+): void {
+  if (dto.value <= 0) {
+    throw new BadRequestException('A discount must be greater than zero.');
+  }
+  if (dto.type === InvoiceDiscountType.PERCENTAGE && dto.value > 100) {
+    throw new BadRequestException('A percentage discount cannot exceed 100.');
+  }
+  if (dto.type === InvoiceDiscountType.FIXED_AMOUNT && dto.value > eligibleAmount) {
+    throw new BadRequestException(`A fixed discount cannot exceed the ${what}.`);
   }
 }

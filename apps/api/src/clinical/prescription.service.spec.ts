@@ -148,51 +148,100 @@ describe('PrescriptionService', () => {
     });
   });
 
-  describe('dispense', () => {
-    it('writes a DISPENSED stock movement, decrements StockLevel, and marks the prescription DISPENSED', async () => {
-      const { service, prisma, visits } = createService();
-      (prisma.prescription.findUnique as jest.Mock).mockResolvedValue({
+  describe('dispense (D-093 hardened)', () => {
+    function buildDispense(world: { prescription?: Record<string, unknown> | null; claimCount?: number } = {}) {
+      const {
+        prescription = {
+          id: 'rx-1', visitId: 'visit-1', itemId: 'item-1', quantity: 3,
+          status: PrescriptionStatus.ORDERED, supplyMode: 'ONSITE_DISPENSE', deletedAt: null,
+        },
+        claimCount = 1,
+      } = world;
+      const tx = {
+        $executeRaw: jest.fn(),
+        staff: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'staff-disp', fullName: 'Dina Dispenser', role: 'FRONT_DESK_CLINICAL_STAFF',
+            active: true, userId: 'user-disp',
+          }),
+        },
+        prescription: {
+          findUnique: jest.fn(async () => prescription),
+          // The atomic claim: WHERE carries status ORDERED + ONSITE mode.
+          updateMany: jest.fn().mockResolvedValue({ count: claimCount }),
+        },
+        visit: { findUnique: jest.fn().mockResolvedValue({ clinicId: 'clinic-1' }) },
+        stockMovement: { create: jest.fn() },
+        stockLevel: { upsert: jest.fn() },
+      };
+      const rawPrisma = { $transaction: jest.fn((fn: any) => fn(tx)) } as never;
+      const service = new PrescriptionService({} as never, { findById: jest.fn() } as never, rawPrisma);
+      return { service, tx };
+    }
+    const runDispense = (ctx: { service: PrescriptionService }) => withTenant(() => ctx.service.dispense('rx-1'));
+
+    it('31/34. dispensing claims atomically, moves stock once, and records the dispenser', async () => {
+      const ctx = buildDispense();
+      await runDispense(ctx);
+
+      const claim = (ctx.tx.prescription.updateMany as jest.Mock).mock.calls[0][0];
+      // The precondition lives in the WHERE clause — the D-087 pattern. Two
+      // concurrent calls contend on the row; exactly one sees count 1.
+      expect(claim.where).toMatchObject({
         id: 'rx-1',
-        visitId: 'visit-1',
-        itemId: 'item-1',
-        quantity: 3,
         status: PrescriptionStatus.ORDERED,
-        deletedAt: null,
+        supplyMode: 'ONSITE_DISPENSE',
       });
-      (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', clinicId: 'clinic-1' });
-      (prisma.prescription.update as jest.Mock).mockResolvedValue({ id: 'rx-1', status: PrescriptionStatus.DISPENSED });
+      expect(claim.data).toMatchObject({
+        status: PrescriptionStatus.DISPENSED,
+        dispensedByStaffId: 'staff-disp',
+      });
 
-      await withTenant(() => service.dispense('rx-1'));
-
-      expect(prisma.stockMovement.create).toHaveBeenCalledWith({
-        data: {
-          tenantId: 'test-tenant',
-          clinicId: 'clinic-1',
-          itemId: 'item-1',
+      expect(ctx.tx.stockMovement.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
           movementType: StockMovementType.DISPENSED,
           quantityDelta: -3,
-          referenceType: 'Prescription',
           referenceId: 'rx-1',
-        },
+          // 34b. The ledger names who moved the stock.
+          createdByUserId: 'user-disp',
+        }),
       });
-      expect(prisma.stockLevel.upsert).toHaveBeenCalledWith(
+      expect(ctx.tx.stockLevel.upsert).toHaveBeenCalledWith(
         expect.objectContaining({ update: { quantityOnHand: { decrement: 3 } } }),
       );
-      expect(prisma.prescription.update).toHaveBeenCalledWith({
-        where: { id: 'rx-1' },
-        data: { status: PrescriptionStatus.DISPENSED, dispensedAt: expect.any(Date) },
-      });
     });
 
-    it('rejects dispensing a prescription that is not ORDERED', async () => {
-      const { service, prisma } = createService();
-      (prisma.prescription.findUnique as jest.Mock).mockResolvedValue({
-        id: 'rx-1',
-        status: PrescriptionStatus.CANCELLED,
-        deletedAt: null,
-      });
+    it('33. a lost claim moves NO stock — the loser of a race cannot double-deduct', async () => {
+      const ctx = buildDispense({ claimCount: 0 });
+      await expect(runDispense(ctx)).rejects.toThrow(BadRequestException);
+      expect(ctx.tx.stockMovement.create).not.toHaveBeenCalled();
+      expect(ctx.tx.stockLevel.upsert).not.toHaveBeenCalled();
+    });
 
-      await expect(service.dispense('rx-1')).rejects.toThrow(BadRequestException);
+    it.each(['EXTERNAL_PRESCRIPTION', 'PATIENT_OWN_SUPPLY', 'NO_SUPPLY_REQUIRED', 'DEFERRED', null])(
+      '32. supply mode %s is refused at the server',
+      async (mode) => {
+        const ctx = buildDispense({
+          prescription: {
+            id: 'rx-1', visitId: 'visit-1', itemId: 'item-1', quantity: 3,
+            status: PrescriptionStatus.ORDERED, supplyMode: mode, deletedAt: null,
+          },
+          claimCount: 0,
+        });
+        await expect(runDispense(ctx)).rejects.toThrow(/clinic dispensing/i);
+        expect(ctx.tx.stockMovement.create).not.toHaveBeenCalled();
+      },
+    );
+
+    it('an already-DISPENSED prescription says so rather than deducting again', async () => {
+      const ctx = buildDispense({
+        prescription: {
+          id: 'rx-1', visitId: 'visit-1', itemId: 'item-1', quantity: 3,
+          status: PrescriptionStatus.DISPENSED, supplyMode: 'ONSITE_DISPENSE', deletedAt: null,
+        },
+        claimCount: 0,
+      });
+      await expect(runDispense(ctx)).rejects.toThrow(/already been dispensed/i);
     });
   });
 

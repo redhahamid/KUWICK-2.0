@@ -13,6 +13,7 @@ import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-s
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { ClinicalTx, assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
+import { collectBillingWorklist, unbilledReadyItems } from './billing-worklist';
 import { CompleteVisitDto } from './dto/complete-visit.dto';
 
 /**
@@ -275,25 +276,25 @@ async function collectBlockers(
     add('DISPENSING_PENDING');
   }
 
+  // G4.5d3c-3b1 (D-093) — unbilled detection is SOURCE-AWARE and no longer
+  // silenced by the existence of an invoice: the worklist knows exactly which
+  // chargeable items no active line bills, whatever else has been invoiced.
+  // Supply modes that are never clinic charges (external, own supply, none)
+  // do not count; unresolved modes are the medication blockers' business.
+  const worklist = await collectBillingWorklist(tx, visitId);
+  if (unbilledReadyItems(worklist).length > 0) {
+    add('UNBILLED_CHARGEABLE_ITEMS');
+  }
+
   const invoices = await tx.invoice.findMany({
     where: { visitId, status: { not: InvoiceStatus.CANCELLED } },
     select: { patientResponsibilityAmount: true, patientPaidAmount: true },
   });
-  if (invoices.length === 0) {
-    // No bill raised. Chargeable work with no invoice is money about to walk
-    // out of the door, so it blocks rather than being waved through.
-    const [services, medications] = await Promise.all([
-      tx.orderService.count({ where: { visitId, status: { not: OrderServiceStatus.CANCELLED } } }),
-      tx.prescription.count({
-        where: { visitId, deletedAt: null, status: { not: PrescriptionStatus.CANCELLED } },
-      }),
-    ]);
-    if (services + medications > 0) {
-      add('UNBILLED_CHARGEABLE_ITEMS');
-    }
-  } else if (invoices.some((i) => i.patientResponsibilityAmount === null)) {
+  if (invoices.some((i) => i.patientResponsibilityAmount === null)) {
+    // D-093's writer resolves this for every new invoice; a NULL now means a
+    // legacy invoice or an unresolved panel — both genuinely Billing Review.
     add('BILLING_REVIEW_REQUIRED');
-  } else {
+  } else if (invoices.length > 0) {
     const remaining = invoices.reduce(
       (sum, i) =>
         sum + Math.max(Number(i.patientResponsibilityAmount) - Number(i.patientPaidAmount), 0),

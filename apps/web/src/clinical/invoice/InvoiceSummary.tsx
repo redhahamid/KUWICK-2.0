@@ -139,9 +139,9 @@ export function InvoiceSummary({ visit }: InvoiceSummaryProps) {
             {/* --- lines -------------------------------------------------
                 Rows, not a table: a desktop financial table squeezed into
                 375px is unreadable, and this has to work on a phone. */}
-            {invoice.lines.length > 0 && (
+            {invoice.lines.filter((line) => !line.cancelledAt).length > 0 && (
               <div style={{ borderTop: '1px solid #f5f5f5', paddingTop: 8 }}>
-                {invoice.lines.map((line) => {
+                {invoice.lines.filter((line) => !line.cancelledAt).map((line) => {
                   const source = lineSource(line);
                   return (
                     <div

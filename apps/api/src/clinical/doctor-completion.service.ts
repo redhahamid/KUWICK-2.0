@@ -24,6 +24,7 @@ import {
 } from './clinical-actor';
 import { isEligibleAttendingDoctor } from './queue-authorization';
 import { CompleteDoctorPhaseDto } from './dto/complete-doctor-phase.dto';
+import { collectBillingWorklist, unbilledReadyItems } from './billing-worklist';
 
 /**
  * Why the patient is going where they are going. Returned so the caller can
@@ -551,9 +552,12 @@ async function evaluateBilling(tx: ClinicalTx, visitId: string): Promise<number 
 
   if (invoices.length === 0) {
     // No invoice yet. If the visit has chargeable work on it, the bill has
-    // simply not been raised — closing the visit here would lose the money.
-    const billable = await countBillableItems(tx, visitId);
-    return billable > 0 ? 'UNDETERMINED' : 0;
+    // simply not been raised — routing past the counter would lose the
+    // money. D-093: "chargeable" is now supply-mode-aware (owner decision
+    // 4) — an external prescription is not clinic work and no longer sends
+    // a visit to billing review by itself.
+    const unbilled = unbilledReadyItems(await collectBillingWorklist(tx, visitId));
+    return unbilled.length > 0 ? 'UNDETERMINED' : 0;
   }
 
   let remaining = 0;
@@ -569,15 +573,4 @@ async function evaluateBilling(tx: ClinicalTx, visitId: string): Promise<number 
   // Rounding guard: sub-cent residue is not a reason to send someone to a
   // payment counter.
   return remaining < 0.005 ? 0 : remaining;
-}
-
-/** Work on the visit that would normally be charged for. */
-async function countBillableItems(tx: ClinicalTx, visitId: string): Promise<number> {
-  const [services, medications] = await Promise.all([
-    tx.orderService.count({ where: { visitId, status: { not: OrderServiceStatus.CANCELLED } } }),
-    tx.prescription.count({
-      where: { visitId, deletedAt: null, status: { not: PrescriptionStatus.CANCELLED } },
-    }),
-  ]);
-  return services + medications;
 }

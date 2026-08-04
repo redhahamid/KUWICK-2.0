@@ -48,7 +48,13 @@ function build(actor: Record<string, unknown> | null, world: { visit?: Record<st
     },
   };
   const rawPrisma = { $transaction: jest.fn((fn: any) => fn(tx)) } as never;
-  return { service: new PanelBenefitService(rawPrisma), tx, actorId: (actor?.id as string) ?? undefined };
+  const invoices = { recalculateVisitInvoices: jest.fn().mockResolvedValue(0) };
+  return {
+    service: new PanelBenefitService(rawPrisma, invoices as never),
+    tx,
+    invoices,
+    actorId: (actor?.id as string) ?? undefined,
+  };
 }
 
 const runVerify = (ctx: ReturnType<typeof build>, dto: Record<string, unknown>) =>
@@ -119,6 +125,9 @@ describe('what can be recorded', () => {
   it('a VERIFIED result stores the working terms AND the original terms, once', async () => {
     const ctx = build(FRONT_DESK);
     await runVerify(ctx, VERIFIED_LIMITED);
+    // D-093 — new terms change what the visit's open invoices mean, so the
+    // responsibility writer runs immediately.
+    expect(ctx.invoices.recalculateVisitInvoices).toHaveBeenCalledWith('visit-1');
     const data = (ctx.tx.visit.update as jest.Mock).mock.calls[0][0].data;
     expect(data).toMatchObject({
       panelVerificationStatus: 'VERIFIED',

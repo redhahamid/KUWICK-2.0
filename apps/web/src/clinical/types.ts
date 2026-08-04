@@ -704,7 +704,23 @@ export interface InvoiceLine {
     status: PrescriptionStatus;
     item?: { name: string } | null;
   } | null;
+  // D-093 — discounts, responsibility split and auditable cancellation.
+  unit?: string | null;
+  lineDiscountType?: InvoiceDiscountType | null;
+  lineDiscountValue?: string | null;
+  lineDiscountAmount?: string | null;
+  lineDiscountReason?: string | null;
+  panelResponsibilityAmount?: string | null;
+  patientResponsibilityAmount?: string | null;
+  panelExclusionReason?: string | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
 }
+
+// G4.5d3c-3b1 (D-093) — server-computed billing facts. Everything here is
+// read-only on the frontend; the engine writes it.
+export type InvoiceDiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT';
+export type InvoiceLinePriceRule = 'SPECIFIC_PANEL_PRICE' | 'CASH_PLUS_MARKUP' | 'CASH' | 'MANUAL';
 
 export interface Invoice {
   id: string;
@@ -720,6 +736,9 @@ export interface Invoice {
   // never live-recomputed afterward. 0/0 for an UNPAID invoice.
   panelCoveredAmount: string;
   patientPaidAmount: string;
+  // G4.5d3c-1b/3b1 (D-084/D-093) — what the patient OWES, as distinct from
+  // what has been received. NULL = unresolved, never zero.
+  patientResponsibilityAmount?: string | null;
   createdAt: string;
   updatedAt: string;
   lines: InvoiceLine[];
@@ -734,6 +753,13 @@ export interface Invoice {
     claimedAmount: string;
     paidAmount: string | null;
   }[];
+  // D-093 — persisted by the responsibility engine. NULL = unresolved.
+  panelResponsibilityAmount?: string | null;
+  subtotalAmount?: string | null;
+  invoiceDiscountType?: InvoiceDiscountType | null;
+  invoiceDiscountValue?: string | null;
+  invoiceDiscountAmount?: string | null;
+  invoiceDiscountReason?: string | null;
 }
 
 // Phase 1e (Panel Claims Core). One status lifecycle for every panel
@@ -895,6 +921,7 @@ export interface Prescription {
   prescribedByStaffId: string;
   prescribedAt: string;
   dispensedAt: string | null;
+  dispensedByStaffId?: string | null;
   cancelReason: string | null;
   item?: Item;
   // G2b — read-only, from the list endpoint's include.

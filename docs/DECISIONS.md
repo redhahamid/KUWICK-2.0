@@ -1934,6 +1934,48 @@ VISIT_LIMIT requires a positive limit; UNLIMITED refuses one. FIXED/PERCENTAGE c
 
 ---
 
+## D-093 — G4.5d3c-3b1: billing foundation closure
+
+The owner consolidated the planned 3b1a–3b1d sub-checkpoints into a single checkpoint after 3b1a landed (D-092 remains part of it, unreverted). This record closes the 3b0 audit's headline finding: **`Invoice.patientResponsibilityAmount` now has a production writer**, and everything that feeds it — pricing, benefit terms, discounts, cancellation, chargeability — is persisted, attributed and recomputed inside the same transactions that change billing state.
+
+### One pure engine computes responsibility; every mutation calls it
+
+`billing-calculation.ts` is a pure function — no I/O, no Prisma — so money paths are exhaustively testable. Order of operations, fixed: active (non-cancelled) lines → line discounts (clamped to the line) → covered/excluded partition → visit-limit cap `min(eligible, limit)` → copayment → panel total → overall invoice discount → per-line proportional allocation. `InvoiceService.recalculateInvoice` runs it inside every mutating transaction (create, add line, cancel line, both discounts) and `PanelBenefitService` triggers it for a visit's UNPAID invoices after verify/override, reading benefit terms **only from the Visit snapshot** — never live panel configuration. An unresolved snapshot (not VERIFIED/OVERRIDDEN, or terms missing) yields NULL responsibility everywhere, and NULL stays NULL until a human resolves it.
+
+### Discount policy v1: AFTER_PANEL_SPLIT_PATIENT_ONLY (owner decision)
+
+An overall invoice discount reduces **only the patient's portion** — the panel's contractual receivable is never discounted away by the counter. Cash invoices discount the full amount (patient portion = everything). The engine takes the policy as a structural step, not a hard-coded assumption, so a future policy can be added without re-deriving the split. An overall discount is refused while responsibility is unresolved (there is no patient portion to bound it). Line discounts apply before the split and are clamped to the line. Both levels persist type/value/computed amount/reason/actor/timestamp. RBAC (extending D-066's single gate with `APPLY_DISCOUNT`): OWNER_ADMIN and FINANCE_STAFF only — front desk and doctors are refused, and there are no clinic-configured limits yet by owner decision.
+
+### Visit-limit allocation is exact, not approximately proportional
+
+Per-line panel and patient shares are allocated proportionally **in cents**, with the rounding residue assigned deterministically to the final covered line — so the sum of line-level responsibility **exactly equals** the invoice-level responsibility, always. Percentage copayment (owner decision): percentage × the covered amount *after* exclusions and *after* the visit-limit cap — eligible 250 under a 200 limit at 10% gives panel 180, patient 70 — and never touches excluded items.
+
+### Pricing truth moved server-side
+
+`billing-pricing.ts` resolves a sourced line's unit price on the server with the owner's precedence — specific `PanelPriceOverride` REPLACES, never stacks with, the new panel-wide fixed markups (`PanelClinic.inventoryMarkupAmount` / `serviceMarkupAmount` added to cash price); cash price is the floor. The client-sent unit price is **ignored** for sourced lines; an unpriceable source is refused, not defaulted. Provenance persists per line (`priceRule` enum, `baseUnitPrice`, `panelMarkupAmount`) so a price can always answer "why this number" — and none of it renders on a standard invoice. Manual lines require an explicit price and are stamped MANUAL.
+
+### Chargeability follows supply intent (reverses one D-086 behaviour)
+
+Owner decision: only `ONSITE_DISPENSE` is a clinic medication charge. EXTERNAL_PRESCRIPTION / PATIENT_OWN_SUPPLY / NO_SUPPLY_REQUIRED are never billing work — so an external-prescription-only visit no longer routes to billing review (a D-086 test asserted it did; deliberately reversed). DEFERRED and NULL are *unresolved*: listed as work, never chargeable. `billing-worklist.ts` walks the sources — not the invoice — so `UNBILLED_CHARGEABLE_ITEMS` now fires even when an invoice exists (the audit's silencing hole), and a cancelled line honestly reopens its source.
+
+### Lines are cancelled, never erased
+
+DELETE on an invoice line now stamps `cancelledAt`/actor/reason instead of deleting the row — the audit trail keeps what was on the bill and who took it off. Cancelled lines drop out of totals, duplicate-source checks (`cancelledAt: null`), the worklist's billed-state and every rendered surface, but stay queryable.
+
+### Dispensing is an atomic claim, proven live
+
+`dispense()` claims with D-087's pattern — preconditions (`status: ORDERED, supplyMode: ONSITE_DISPENSE`) in the `updateMany WHERE`, stock movement riding the same transaction, dispenser attributed (`dispensedByStaffId`). The supply-mode API bypass is closed: a non-ONSITE prescription cannot be dispensed no matter what the client sends. `prisma/g45d3c3b1-dispense-check.ts` proves it against the live database: two pg_sleep-overlapped claims → exactly one winner and ONE stock movement; three-way race → one winner; EXTERNAL/NULL cannot claim; and the old read-then-write shape run as a CONTROL double-claims [1,1] — a proof that cannot fail proves nothing. (Found along the way: the app role cannot hard-delete a Visit because `visit_workflow_events` is append-only — correct behaviour; the harness soft-cleans around it.)
+
+### Payment refuses to guess
+
+`pay()` uses **persisted** responsibility only: NULL responsibility, an unresolved benefit snapshot, or an unresolvable balance each refuse with "Billing responsibility has not been confirmed." — never recomputed from live panel config at pay time (the audit's staleness defect, now structurally impossible: `computePanelSplit` is deleted). PANEL settlement additionally requires the persisted patient portion to be exactly zero. Legacy invoices with NULL responsibility stay explicitly unresolved — **no silent backfill**, even when PAID with amounts present; the recalculator refuses non-UNPAID invoices.
+
+**Verification**: 48 owner-enumerated tests landed across `billing-calculation.spec` (25), `billing-worklist.spec` (9), invoice + panel-benefit (113), prescription dispense rewrite (28), completion suites updated for source-aware detection; 744 backend, 328 frontend, both typechecks clean; live dispense harness 6/6 including the CONTROL; migration `20260804042144_billing_foundation_closure` applied. Live API smoke of the settled flow recorded in the checkpoint report.
+
+**Known limitations**: no discount-clearing endpoint (cancel-and-reissue territory, owner-gated); consultation fee absent until 3b2's auto-proposed source-linked item; no UI for discounts or benefit capture (3b2); legacy NULL invoices resolve only through explicit Billing Review; percentage-copay base is the post-limit covered amount by owner decision 3.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

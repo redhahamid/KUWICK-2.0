@@ -1,28 +1,86 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InvoiceStatus } from '@prisma/client';
+import { validateSync } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
 import { InvoiceService } from './invoice.service';
 import { VisitService } from './visit.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { tenantContextStorage } from '../core/tenant-context';
+import { ApplyLineDiscountDto } from './dto/apply-line-discount.dto';
 
-// G3c closure (D-066) — billing authority depends on the ROLE, so the actor
-// is now a parameter. The pay/cancel business-rule tests below run as a
-// billing role; the authorisation tests pick the role deliberately.
-function createService(role = 'FINANCE_STAFF') {
+// ===========================================================================
+// G4.5d3c-3b1 (D-093) — THE INVOICE SERVICE AFTER THE BILLING CLOSURE
+//
+// What changed and is pinned here:
+//   - sourced-line prices are the SERVER'S (precedence: specific panel price
+//     → cash + markup → cash); a client figure is ignored;
+//   - every mutation runs the responsibility writer, so
+//     patient/panelResponsibilityAmount are REAL after production flows;
+//   - line removal is auditable cancellation, never deletion;
+//   - discounts are owner/finance, reasoned, guarded and locked;
+//   - pay() reads the persisted split and refuses the unresolved.
+// ===========================================================================
+
+interface World {
+  /** The visit's benefit snapshot as benefitFor() reads it. */
+  visit?: Record<string, unknown>;
+  invoice?: Record<string, unknown>;
+  lines?: Array<Record<string, unknown>>;
+}
+
+const CASH_VISIT = {
+  panelClinicId: null,
+  panelVerificationStatus: null,
+  panelCoverageType: null,
+  panelVisitLimitAmount: null,
+  panelCopaymentType: null,
+  panelCopaymentValue: null,
+};
+
+const VERIFIED_PANEL_VISIT = {
+  panelClinicId: 'panel-aia',
+  panelVerificationStatus: 'VERIFIED',
+  panelCoverageType: 'VISIT_LIMIT',
+  panelVisitLimitAmount: 200,
+  panelCopaymentType: 'FIXED_AMOUNT',
+  panelCopaymentValue: 10,
+};
+
+const UNRESOLVED_PANEL_VISIT = {
+  ...CASH_VISIT,
+  panelClinicId: 'panel-aia',
+  panelVerificationStatus: 'PENDING_VERIFICATION',
+};
+
+function createService(role = 'FINANCE_STAFF', world: World = {}) {
+  const visitState = { ...CASH_VISIT, ...(world.visit ?? {}) };
+  const lines = world.lines ?? [];
+  const invoiceState: Record<string, unknown> = {
+    id: 'inv-1',
+    visitId: 'visit-1',
+    status: InvoiceStatus.UNPAID,
+    invoiceNumber: 'INV-000001',
+    invoiceDiscountType: null,
+    invoiceDiscountValue: null,
+    subtotalAmount: lines.reduce((s, l) => s + Number(l.amount ?? 0), 0),
+    patientResponsibilityAmount: null,
+    panelResponsibilityAmount: null,
+    lines,
+    ...(world.invoice ?? {}),
+  };
+
   const prisma = {
-    invoice: { count: jest.fn(), create: jest.fn(), findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
-    invoiceLine: { create: jest.fn(), findMany: jest.fn(), delete: jest.fn() },
-    visit: { findUnique: jest.fn().mockResolvedValue({ panelClinicId: null }) },
-    prescription: { findUnique: jest.fn() },
-    orderService: { findUnique: jest.fn() },
-    panelExclusion: { findFirst: jest.fn() },
-    panelClinic: { findUnique: jest.fn() },
+    invoice: {
+      findUnique: jest.fn(async () => invoiceState),
+      findMany: jest.fn().mockResolvedValue([]),
+      update: jest.fn(async ({ data }: { data: object }) => ({ ...invoiceState, ...data })),
+    },
   } as unknown as TenantScopedPrismaClient;
-  const visits = { findById: jest.fn() } as unknown as VisitService;
+  const visits = {
+    findById: jest.fn().mockResolvedValue({ id: 'visit-1', staffId: 'attending-staff' }),
+  } as unknown as VisitService;
 
-  // G3c (D-065) — reading a visit's invoices now checks branch access, which
-  // runs through an interactive transaction like every other clinical read.
   const tx = {
     $executeRaw: jest.fn(),
     staff: {
@@ -37,15 +95,52 @@ function createService(role = 'FINANCE_STAFF') {
     },
     clinic: { count: jest.fn().mockResolvedValue(1) },
     userClinicAccess: { findMany: jest.fn().mockResolvedValue([]) },
-    visit: { findUnique: jest.fn().mockResolvedValue({ clinicId: 'clinic-1' }) },
-    // G4.5s (D-073) — the line insert now runs inside the same tenant
-    // transaction so the duplicate check and the insert cannot be separated.
-    // Default: nothing already charged.
-    invoiceLine: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'l1' }) },
+    visit: {
+      // Serves both the branch check ({clinicId}) and the benefit snapshot.
+      findUnique: jest.fn(async ({ select }: { select?: Record<string, unknown> }) =>
+        select?.clinicId && !select?.panelClinicId ? { clinicId: 'clinic-1' } : visitState,
+      ),
+    },
+    invoice: {
+      count: jest.fn().mockResolvedValue(0),
+      create: jest.fn(async ({ data }: { data: object }) => ({ ...invoiceState, ...data })),
+      findUnique: jest.fn(async () => invoiceState),
+      findMany: jest.fn().mockResolvedValue([{ id: 'inv-1' }]),
+      update: jest.fn(async ({ data }: { data: object }) => {
+        Object.assign(invoiceState, data);
+        return { ...invoiceState };
+      }),
+    },
+    invoiceLine: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn(async () => lines),
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        const line = { id: `line-${lines.length + 1}`, cancelledAt: null, ...data };
+        lines.push(line);
+        invoiceState.lines = lines;
+        return line;
+      }),
+      update: jest.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const line = lines.find((l) => l.id === where.id);
+        if (line) Object.assign(line, data);
+        return line;
+      }),
+    },
+    prescription: {
+      findUnique: jest.fn().mockResolvedValue({ itemId: 'item-1', item: { sellPrice: 10 } }),
+    },
+    orderService: {
+      findUnique: jest.fn().mockResolvedValue({ serviceCatalogId: 'svc-1', serviceCatalog: { price: 30 } }),
+    },
+    panelClinic: {
+      findUnique: jest.fn().mockResolvedValue({ inventoryMarkupAmount: null, serviceMarkupAmount: null }),
+    },
+    panelPriceOverride: { findFirst: jest.fn().mockResolvedValue(null) },
+    panelExclusion: { findFirst: jest.fn().mockResolvedValue(null) },
   };
   const rawPrisma = { $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) } as unknown as PrismaService;
 
-  return { service: new InvoiceService(prisma, rawPrisma, visits), prisma, visits, tx };
+  return { service: new InvoiceService(prisma, rawPrisma, visits), prisma, visits, tx, invoiceState, lines };
 }
 
 function withTenant<T>(fn: () => Promise<T>): Promise<T> {
@@ -53,37 +148,23 @@ function withTenant<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 // =============================================================================
-// G3c closure (D-066) — the billing authorisation matrix, on the routes that
-// move money. Before this, ANY authenticated user of the tenant could create,
-// line, pay or cancel an invoice by calling the API directly.
+// G3c closure (D-066) — the billing authorisation matrix, extended by D-093's
+// APPLY_DISCOUNT tier. Asserted as data so table and guard cannot drift.
 // =============================================================================
 describe('billing authorisation', () => {
-  const UNPAID_INVOICE = { id: 'inv-1', visitId: 'visit-1', status: InvoiceStatus.UNPAID, lines: [] };
-
-  const arrange = (role: string) => {
-    const ctx = createService(role);
-    (ctx.prisma.invoice.findUnique as jest.Mock).mockResolvedValue(UNPAID_INVOICE);
-    (ctx.visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'staff-9' });
-    (ctx.prisma.invoice.count as jest.Mock).mockResolvedValue(0);
-    (ctx.prisma.invoice.create as jest.Mock).mockResolvedValue({ id: 'inv-1' });
-    (ctx.prisma.invoiceLine.create as jest.Mock).mockResolvedValue({ id: 'l1' });
-    (ctx.prisma.invoiceLine.findMany as jest.Mock).mockResolvedValue([{ amount: 10 }]);
-    (ctx.prisma.invoice.update as jest.Mock).mockResolvedValue({ id: 'inv-1' });
-    return ctx;
-  };
-
   const ACTIONS = {
     create: (s: InvoiceService) => s.create({ visitId: 'visit-1', createdByStaffId: 'staff-1' }),
     addLine: (s: InvoiceService) => s.addLine('inv-1', { description: 'X', unitPrice: 10 }),
     pay: (s: InvoiceService) => s.pay('inv-1', { paymentMethod: 'CASH' }),
     cancel: (s: InvoiceService) => s.cancel('inv-1', { cancelReason: 'x' }),
+    discount: (s: InvoiceService) =>
+      s.applyInvoiceDiscount('inv-1', { type: 'FIXED_AMOUNT', value: 1, reason: 'goodwill' } as never),
   };
 
-  // The approved matrix, asserted as data so the table and the guard cannot
-  // drift apart silently.
   const MATRIX: [string, (keyof typeof ACTIONS)[]][] = [
-    ['OWNER_ADMIN', ['create', 'addLine', 'pay', 'cancel']],
-    ['FINANCE_STAFF', ['create', 'addLine', 'pay', 'cancel']],
+    ['OWNER_ADMIN', ['create', 'addLine', 'pay', 'cancel', 'discount']],
+    ['FINANCE_STAFF', ['create', 'addLine', 'pay', 'cancel', 'discount']],
+    // 22. Front desk bills and collects but NEVER discounts (owner decision 5).
     ['FRONT_DESK_CLINICAL_STAFF', ['create', 'addLine', 'pay']],
     ['DOCTOR_RESIDENT', ['create', 'addLine']],
     ['DOCTOR_LOCUM', ['create', 'addLine']],
@@ -92,6 +173,12 @@ describe('billing authorisation', () => {
     ['PANEL_STAFF', []],
     ['PATIENT_PORTAL', []],
   ];
+
+  const arrange = (role: string) =>
+    createService(role, {
+      invoice: { patientResponsibilityAmount: 10, panelResponsibilityAmount: 0 },
+      lines: [{ id: 'line-1', amount: 10, excludedFromPanel: false, cancelledAt: null, lineDiscountType: null, lineDiscountValue: null }],
+    });
 
   for (const [role, allowed] of MATRIX) {
     for (const action of Object.keys(ACTIONS) as (keyof typeof ACTIONS)[]) {
@@ -109,416 +196,437 @@ describe('billing authorisation', () => {
   }
 
   it('an inactive staff member may do nothing, whatever their role', async () => {
-    const { service, tx } = arrange('FINANCE_STAFF');
-    tx.staff.findUnique.mockResolvedValue({
-      id: 'staff-1',
-      fullName: 'Former Finance',
-      role: 'FINANCE_STAFF',
-      active: false,
-      clinicId: 'clinic-1',
-      userId: 'user-1',
+    const ctx = arrange('FINANCE_STAFF');
+    ctx.tx.staff.findUnique.mockResolvedValue({
+      id: 'staff-1', fullName: 'Former Finance', role: 'FINANCE_STAFF', active: false, clinicId: 'clinic-1', userId: 'user-1',
     });
-
-    await expect(withTenant(() => ACTIONS.pay(service))).rejects.toThrow();
+    await expect(withTenant(() => ACTIONS.pay(ctx.service))).rejects.toThrow();
   });
 
-  // The browser never chooses which visit a mutation lands on: pay/cancel/
-  // line resolve the invoice's OWN visit before the branch check.
   it('a mutation resolves the branch from the invoice’s stored visit', async () => {
-    const { service, prisma, tx } = arrange('FINANCE_STAFF');
-    (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
-      ...UNPAID_INVOICE,
-      visitId: 'visit-OWNED-BY-ANOTHER-BRANCH',
-    });
-    tx.clinic.count.mockResolvedValue(2);
-    tx.visit.findUnique.mockResolvedValue({ clinicId: 'clinic-OTHER' });
-
-    await expect(withTenant(() => ACTIONS.pay(service))).rejects.toThrow(ForbiddenException);
-    expect(tx.visit.findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'visit-OWNED-BY-ANOTHER-BRANCH' } }),
-    );
+    const ctx = arrange('FINANCE_STAFF');
+    ctx.tx.clinic.count.mockResolvedValue(2);
+    ctx.tx.visit.findUnique.mockResolvedValue({ clinicId: 'clinic-OTHER' });
+    await expect(withTenant(() => ACTIONS.pay(ctx.service))).rejects.toThrow(ForbiddenException);
   });
 
   it('a mutation against an unknown invoice fails closed', async () => {
-    const { service, prisma } = arrange('FINANCE_STAFF');
-    (prisma.invoice.findUnique as jest.Mock).mockResolvedValue(null);
-
-    await expect(withTenant(() => ACTIONS.pay(service))).rejects.toThrow(NotFoundException);
-  });
-});
-
-describe('InvoiceService', () => {
-  // G3c (D-065) — the read the Clinical Workspace exposes. Tenant isolation
-  // came from RLS; the BRANCH was never checked, so a staff member authorised
-  // only for Branch A could read Branch B's money for any visit id.
-  it('reading a visit’s invoices enforces branch access', async () => {
-    const { service, tx } = createService();
-    tx.clinic.count.mockResolvedValue(2); // multi-branch tenant
-    tx.visit.findUnique.mockResolvedValue({ clinicId: 'clinic-OTHER' });
-    tx.staff.findUnique.mockResolvedValue({
-      id: 'staff-1',
-      fullName: 'Dr. Amira Rahman',
-      role: 'DOCTOR_RESIDENT',
-      active: true,
-      clinicId: 'clinic-1',
-      userId: 'user-1',
-    });
-
-    await expect(withTenant(() => service.findByVisitId('visit-elsewhere'))).rejects.toThrow(ForbiddenException);
-  });
-
-  it('an authorised branch can read its own visit’s invoices', async () => {
-    const { service, prisma } = createService();
-    (prisma.invoice.findMany as jest.Mock).mockResolvedValue([]);
-
-    await withTenant(() => service.findByVisitId('visit-1'));
-
-    expect(prisma.invoice.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { visitId: 'visit-1' } }),
-    );
-  });
-
-  // The summary needs these to say who raised the invoice, which panel the
-  // visit is on, and what each line came from — without a second round trip
-  // or the frontend guessing from item names.
-  it('the read resolves creator, panel, line sources and claim lines', async () => {
-    const { service, prisma } = createService();
-    (prisma.invoice.findMany as jest.Mock).mockResolvedValue([]);
-
-    await withTenant(() => service.findByVisitId('visit-1'));
-
-    const include = (prisma.invoice.findMany as jest.Mock).mock.calls[0][0].include;
-    expect(include.createdBy).toBeDefined();
-    expect(include.claimBatchLines).toBeDefined();
-    expect(include.visit.select.panelClinic).toBeDefined();
-    expect(include.lines.include.sourceOrderService).toBeDefined();
-    expect(include.lines.include.sourcePrescription).toBeDefined();
-  });
-
-  it('create uses the caller-supplied createdByStaffId, not the visit doctor (locum coverage)', async () => {
-    const { service, prisma, visits } = createService();
-    (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'attending-staff' });
-    (prisma.invoice.count as jest.Mock).mockResolvedValue(4);
-    (prisma.invoice.create as jest.Mock).mockResolvedValue({ id: 'inv-1' });
-
-    await withTenant(() => service.create({ visitId: 'visit-1', createdByStaffId: 'locum-staff' }));
-
-    expect(prisma.invoice.create).toHaveBeenCalledWith({
-      data: {
-        tenantId: 'test-tenant',
-        visitId: 'visit-1',
-        createdByStaffId: 'locum-staff',
-        invoiceNumber: 'INV-000005',
-      },
-    });
-  });
-
-  it('addLine computes amount from quantity * unitPrice and recalculates the invoice total', async () => {
-    const { service, prisma, tx } = createService();
-    (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
-      id: 'inv-1',
-      status: InvoiceStatus.UNPAID,
-      lines: [],
-    });
-    (tx.invoiceLine.create as jest.Mock).mockResolvedValue({ id: 'line-1' });
-    (prisma.invoiceLine.findMany as jest.Mock).mockResolvedValue([{ amount: 150 }]);
-    (prisma.invoice.update as jest.Mock).mockResolvedValue({ id: 'inv-1', totalAmount: 150 });
-
-    await withTenant(() => service.addLine('inv-1', { description: 'Consultation', quantity: 3, unitPrice: 50 }));
-
-    expect(tx.invoiceLine.create).toHaveBeenCalledWith({
-      data: {
-        tenantId: 'test-tenant',
-        invoiceId: 'inv-1',
-        description: 'Consultation',
-        quantity: 3,
-        unitPrice: 50,
-        amount: 150,
-        sourceOrderServiceId: undefined,
-        sourcePrescriptionId: undefined,
-        excludedFromPanel: false,
-      },
-    });
-    expect(prisma.invoice.update).toHaveBeenCalledWith({ where: { id: 'inv-1' }, data: { totalAmount: 150 } });
-  });
-
-  it('addLine stamps excludedFromPanel when the source service is on the visit panel\'s exclusion list', async () => {
-    const { service, prisma, tx } = createService();
-    (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
-      id: 'inv-1',
-      visitId: 'visit-1',
-      status: InvoiceStatus.UNPAID,
-      lines: [],
-    });
-    (prisma.visit.findUnique as jest.Mock).mockResolvedValue({ panelClinicId: 'panel-1' });
-    (prisma.orderService.findUnique as jest.Mock).mockResolvedValue({ serviceCatalogId: 'svc-1' });
-    (prisma.panelExclusion.findFirst as jest.Mock).mockResolvedValue({ id: 'excl-1' });
-    (tx.invoiceLine.create as jest.Mock).mockResolvedValue({ id: 'line-1' });
-    (prisma.invoiceLine.findMany as jest.Mock).mockResolvedValue([{ amount: 80 }]);
-    (prisma.invoice.update as jest.Mock).mockResolvedValue({ id: 'inv-1', totalAmount: 80 });
-
-    await withTenant(() =>
-      service.addLine('inv-1', { description: 'X-Ray', unitPrice: 80, sourceOrderServiceId: 'os-1' }),
-    );
-
-    expect(prisma.panelExclusion.findFirst).toHaveBeenCalledWith({
-      where: { panelClinicId: 'panel-1', serviceCatalogId: 'svc-1' },
-    });
-    expect(tx.invoiceLine.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ excludedFromPanel: true, sourceOrderServiceId: 'os-1' }) }),
-    );
-  });
-
-  it('addLine does not check exclusions for a self-pay (non-panel) visit', async () => {
-    const { service, prisma, tx } = createService();
-    (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
-      id: 'inv-1',
-      visitId: 'visit-1',
-      status: InvoiceStatus.UNPAID,
-      lines: [],
-    });
-    (prisma.visit.findUnique as jest.Mock).mockResolvedValue({ panelClinicId: null });
-    (tx.invoiceLine.create as jest.Mock).mockResolvedValue({ id: 'line-1' });
-    (prisma.invoiceLine.findMany as jest.Mock).mockResolvedValue([{ amount: 80 }]);
-    (prisma.invoice.update as jest.Mock).mockResolvedValue({ id: 'inv-1', totalAmount: 80 });
-
-    await withTenant(() =>
-      service.addLine('inv-1', { description: 'X-Ray', unitPrice: 80, sourceOrderServiceId: 'os-1' }),
-    );
-
-    expect(prisma.orderService.findUnique).not.toHaveBeenCalled();
-    expect(prisma.panelExclusion.findFirst).not.toHaveBeenCalled();
-    expect(tx.invoiceLine.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ excludedFromPanel: false }) }),
-    );
-  });
-
-  it('addLine rejects adding to a non-UNPAID invoice', async () => {
-    const { service, prisma } = createService();
-    (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
-      id: 'inv-1',
-      status: InvoiceStatus.CANCELLED,
-      lines: [],
-    });
-
-    await expect(withTenant(() => service.addLine('inv-1', { description: 'X', unitPrice: 10 }))).rejects.toThrow(BadRequestException);
-  });
-
-  it('removeLine throws NotFoundException for a line not on this invoice', async () => {
-    const { service, prisma } = createService();
-    (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
-      id: 'inv-1',
-      status: InvoiceStatus.UNPAID,
-      lines: [{ id: 'other-line' }],
-    });
-
-    await expect(withTenant(() => service.removeLine('inv-1', 'missing-line'))).rejects.toThrow(NotFoundException);
-  });
-
-  it('cancel rejects an invoice that is already PAID', async () => {
-    const { service, prisma } = createService();
-    (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({ id: 'inv-1', status: InvoiceStatus.PAID, lines: [] });
-
-    await expect(withTenant(() => service.cancel('inv-1', {}))).rejects.toThrow(BadRequestException);
-  });
-
-  it('pay marks an UNPAID invoice as PAID, recording the full total as patient-paid for a self-pay visit', async () => {
-    const { service, prisma } = createService();
-    (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
-      id: 'inv-1',
-      visitId: 'visit-1',
-      status: InvoiceStatus.UNPAID,
-      totalAmount: 100,
-      lines: [],
-    });
-    (prisma.visit.findUnique as jest.Mock).mockResolvedValue({ panelClinicId: null });
-    (prisma.invoice.update as jest.Mock).mockResolvedValue({ id: 'inv-1', status: InvoiceStatus.PAID });
-
-    await withTenant(() => service.pay('inv-1', { paymentMethod: 'CASH' }));
-
-    expect(prisma.invoice.update).toHaveBeenCalledWith({
-      where: { id: 'inv-1' },
-      data: {
-        status: InvoiceStatus.PAID,
-        paidAt: expect.any(Date),
-        paymentMethod: 'CASH',
-        panelCoveredAmount: 0,
-        patientPaidAmount: 100,
-      },
-    });
-  });
-
-  it('pay snapshots the panel-covered/patient-copay split for a panel visit', async () => {
-    const { service, prisma } = createService();
-    (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
-      id: 'inv-1',
-      visitId: 'visit-1',
-      status: InvoiceStatus.UNPAID,
-      totalAmount: 150,
-      lines: [{ amount: 150, excludedFromPanel: false }],
-    });
-    (prisma.visit.findUnique as jest.Mock).mockResolvedValue({ panelClinicId: 'panel-1' });
-    (prisma.panelClinic.findUnique as jest.Mock).mockResolvedValue({ limitAmount: 100 });
-    (prisma.invoice.update as jest.Mock).mockResolvedValue({ id: 'inv-1', status: InvoiceStatus.PAID });
-
-    await withTenant(() => service.pay('inv-1', { paymentMethod: 'CASH' }));
-
-    expect(prisma.invoice.update).toHaveBeenCalledWith({
-      where: { id: 'inv-1' },
-      data: {
-        status: InvoiceStatus.PAID,
-        paidAt: expect.any(Date),
-        paymentMethod: 'CASH',
-        panelCoveredAmount: 100,
-        patientPaidAmount: 50,
-      },
-    });
-  });
-
-  it('pay rejects "Mark Fully Covered by Panel" when a real copay is still due', async () => {
-    const { service, prisma } = createService();
-    (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
-      id: 'inv-1',
-      visitId: 'visit-1',
-      status: InvoiceStatus.UNPAID,
-      totalAmount: 150,
-      lines: [{ amount: 150, excludedFromPanel: false }],
-    });
-    (prisma.visit.findUnique as jest.Mock).mockResolvedValue({ panelClinicId: 'panel-1' });
-    (prisma.panelClinic.findUnique as jest.Mock).mockResolvedValue({ limitAmount: 100 });
-
-    await expect(withTenant(() => service.pay('inv-1', { paymentMethod: 'PANEL' }))).rejects.toThrow(BadRequestException);
-  });
-
-  it('pay allows "Mark Fully Covered by Panel" when the computed copay is zero', async () => {
-    const { service, prisma } = createService();
-    (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
-      id: 'inv-1',
-      visitId: 'visit-1',
-      status: InvoiceStatus.UNPAID,
-      totalAmount: 50,
-      lines: [{ amount: 50, excludedFromPanel: false }],
-    });
-    (prisma.visit.findUnique as jest.Mock).mockResolvedValue({ panelClinicId: 'panel-1' });
-    (prisma.panelClinic.findUnique as jest.Mock).mockResolvedValue({ limitAmount: 100 });
-    (prisma.invoice.update as jest.Mock).mockResolvedValue({ id: 'inv-1', status: InvoiceStatus.PAID });
-
-    await withTenant(() => service.pay('inv-1', { paymentMethod: 'PANEL' }));
-
-    expect(prisma.invoice.update).toHaveBeenCalledWith({
-      where: { id: 'inv-1' },
-      data: {
-        status: InvoiceStatus.PAID,
-        paidAt: expect.any(Date),
-        paymentMethod: 'PANEL',
-        panelCoveredAmount: 50,
-        patientPaidAmount: 0,
-      },
-    });
-  });
-
-  it('pay rejects an invoice that is already CANCELLED', async () => {
-    const { service, prisma } = createService();
-    (prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
-      id: 'inv-1',
-      status: InvoiceStatus.CANCELLED,
-      lines: [],
-    });
-
-    await expect(withTenant(() => service.pay('inv-1', { paymentMethod: 'CASH' }))).rejects.toThrow(BadRequestException);
+    const ctx = arrange('FINANCE_STAFF');
+    (ctx.prisma.invoice.findUnique as jest.Mock).mockResolvedValue(null);
+    await expect(withTenant(() => ACTIONS.pay(ctx.service))).rejects.toThrow(NotFoundException);
   });
 });
 
 // =============================================================================
-// G4.5s (D-073) — one source item, one charge, enforced on the server.
-//
-// The Canvas's Quick Add filters out anything it can already see a line for,
-// but that list can be seconds stale and two billers on the same visit both
-// pass it. The audit found a source order already charged twice in the
-// database, on a PAID invoice — so this is not a hypothetical.
+// 35/36. THE RESPONSIBILITY WRITER, in production flows.
 // =============================================================================
-describe('duplicate charge prevention', () => {
-  const arrangeUnpaid = () => {
+describe('responsibility writer', () => {
+  it('1/35. a cash invoice resolves immediately: responsibility written at creation', async () => {
     const ctx = createService('FINANCE_STAFF');
-    (ctx.prisma.invoice.findUnique as jest.Mock).mockResolvedValue({
-      id: 'inv-1',
-      visitId: 'visit-1',
-      status: InvoiceStatus.UNPAID,
-      lines: [],
+    await withTenant(() => ctx.service.create({ visitId: 'visit-1', createdByStaffId: 'staff-1' }));
+    expect(ctx.invoiceState.patientResponsibilityAmount).toBe(0);
+    expect(ctx.invoiceState.panelResponsibilityAmount).toBe(0);
+  });
+
+  it('35/36. adding a line writes BOTH responsibilities and the totals', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    await withTenant(() => ctx.service.addLine('inv-1', { description: 'Consultation', quantity: 3, unitPrice: 50 }));
+    expect(ctx.invoiceState).toMatchObject({
+      subtotalAmount: 150,
+      totalAmount: 150,
+      patientResponsibilityAmount: 150,
+      panelResponsibilityAmount: 0,
     });
-    (ctx.prisma.invoiceLine.findMany as jest.Mock).mockResolvedValue([{ amount: 10 }]);
-    (ctx.prisma.invoice.update as jest.Mock).mockResolvedValue({ id: 'inv-1' });
-    return ctx;
-  };
-
-  it('refuses a second line for the same order service, and names the invoice', async () => {
-    const { service, tx } = arrangeUnpaid();
-    tx.invoiceLine.findFirst.mockResolvedValue({ invoice: { invoiceNumber: 'INV-000007' } });
-
-    await expect(
-      withTenant(() =>
-        service.addLine('inv-1', { description: 'Consultation', unitPrice: 35, sourceOrderServiceId: 'os-1' }),
-      ),
-    ).rejects.toThrow(/INV-000007/);
-
-    expect(tx.invoiceLine.create).not.toHaveBeenCalled();
   });
 
-  it('refuses a second line for the same prescription', async () => {
-    const { service, tx } = arrangeUnpaid();
-    tx.invoiceLine.findFirst.mockResolvedValue({ invoice: { invoiceNumber: 'INV-000008' } });
-
-    await expect(
-      withTenant(() =>
-        service.addLine('inv-1', { description: 'Amoxicillin', unitPrice: 12, sourcePrescriptionId: 'rx-1' }),
-      ),
-    ).rejects.toThrow(/INV-000008/);
-
-    expect(tx.invoiceLine.create).not.toHaveBeenCalled();
+  it('2. an unresolved panel visit stays NULL — never guessed', async () => {
+    const ctx = createService('FINANCE_STAFF', { visit: UNRESOLVED_PANEL_VISIT });
+    await withTenant(() => ctx.service.addLine('inv-1', { description: 'Med', unitPrice: 50 }));
+    expect(ctx.invoiceState.patientResponsibilityAmount).toBeNull();
+    expect(ctx.invoiceState.panelResponsibilityAmount).toBeNull();
+    expect(ctx.invoiceState.totalAmount).toBe(50);
   });
 
-  // Charging the same service on a SECOND invoice is the same double-charge
-  // wearing a hat, so the check is not scoped to the invoice being edited.
-  it('looks across all invoices, not just the one being edited', async () => {
-    const { service, tx } = arrangeUnpaid();
-    tx.invoiceLine.findFirst.mockResolvedValue({ invoice: { invoiceNumber: 'INV-000009' } });
+  it('a VERIFIED panel visit computes the split from the SNAPSHOT terms', async () => {
+    const ctx = createService('FINANCE_STAFF', { visit: VERIFIED_PANEL_VISIT });
+    await withTenant(() => ctx.service.addLine('inv-1', { description: 'Bundle', quantity: 1, unitPrice: 250 }));
+    // Limit 200, fixed copay 10 → panel 190, patient 60 (owner case D).
+    expect(ctx.invoiceState).toMatchObject({
+      panelResponsibilityAmount: 190,
+      patientResponsibilityAmount: 60,
+      totalAmount: 250,
+    });
+  });
 
-    await expect(
-      withTenant(() => service.addLine('inv-1', { description: 'X', unitPrice: 1, sourceOrderServiceId: 'os-1' })),
-    ).rejects.toThrow();
+  it('38. the persisted identity holds: total = panel + patient', async () => {
+    const ctx = createService('FINANCE_STAFF', { visit: VERIFIED_PANEL_VISIT });
+    await withTenant(() => ctx.service.addLine('inv-1', { description: 'A', unitPrice: 123.45 }));
+    const total = Number(ctx.invoiceState.totalAmount);
+    const panel = Number(ctx.invoiceState.panelResponsibilityAmount);
+    const patient = Number(ctx.invoiceState.patientResponsibilityAmount);
+    expect(total).toBeCloseTo(panel + patient, 2);
+  });
 
-    expect(tx.invoiceLine.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { sourceOrderServiceId: 'os-1' } }),
+  it('37. line-level responsibility is persisted alongside', async () => {
+    const ctx = createService('FINANCE_STAFF', { visit: VERIFIED_PANEL_VISIT });
+    await withTenant(() => ctx.service.addLine('inv-1', { description: 'A', unitPrice: 250 }));
+    const line = ctx.lines[0];
+    expect(Number(line.panelResponsibilityAmount)).toBe(190);
+    expect(Number(line.patientResponsibilityAmount)).toBe(60);
+  });
+});
+
+// =============================================================================
+// 11–15. SERVER-SIDE PRICING.
+// =============================================================================
+describe('server-side pricing', () => {
+  const sourcedAdd = (ctx: ReturnType<typeof createService>, dto: Record<string, unknown> = {}) =>
+    withTenant(() =>
+      ctx.service.addLine('inv-1', {
+        description: 'Amoxicillin',
+        sourcePrescriptionId: 'rx-1',
+        ...dto,
+      } as never),
     );
+
+  it('15. a client-supplied price on a SOURCED line is ignored — the server resolves it', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    await sourcedAdd(ctx, { unitPrice: 999 });
+    const created = (ctx.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data;
+    expect(created.unitPrice).toBe(10); // the item's cash price, not 999
+    expect(created.priceRule).toBe('CASH');
+    expect(created.baseUnitPrice).toBe(10);
   });
 
-  // What makes the check correct rather than merely likely: the source row is
-  // locked first, so two concurrent adds serialise instead of both reading
-  // "no line" and both inserting.
-  it('locks the source row before checking, so concurrent adds serialise', async () => {
-    const { service, tx } = arrangeUnpaid();
-    tx.invoiceLine.findFirst.mockResolvedValue(null);
+  it('12. panel visit: cash + markup, provenance retained', async () => {
+    const ctx = createService('FINANCE_STAFF', { visit: VERIFIED_PANEL_VISIT });
+    ctx.tx.panelClinic.findUnique.mockResolvedValue({ inventoryMarkupAmount: 2, serviceMarkupAmount: 5 });
+    await sourcedAdd(ctx);
+    const created = (ctx.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data;
+    expect(created).toMatchObject({ unitPrice: 12, priceRule: 'CASH_PLUS_MARKUP', baseUnitPrice: 10, panelMarkupAmount: 2 });
+  });
 
+  it('11. a specific panel price REPLACES the markup', async () => {
+    const ctx = createService('FINANCE_STAFF', { visit: VERIFIED_PANEL_VISIT });
+    ctx.tx.panelClinic.findUnique.mockResolvedValue({ inventoryMarkupAmount: 2, serviceMarkupAmount: null });
+    ctx.tx.panelPriceOverride.findFirst.mockResolvedValue({ overridePrice: 18 });
+    await sourcedAdd(ctx);
+    const created = (ctx.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data;
+    expect(created).toMatchObject({ unitPrice: 18, priceRule: 'SPECIFIC_PANEL_PRICE', panelMarkupAmount: null });
+  });
+
+  it('service lines use the SERVICE markup, not the inventory one', async () => {
+    const ctx = createService('FINANCE_STAFF', { visit: VERIFIED_PANEL_VISIT });
+    ctx.tx.panelClinic.findUnique.mockResolvedValue({ inventoryMarkupAmount: 2, serviceMarkupAmount: 5 });
     await withTenant(() =>
-      service.addLine('inv-1', { description: 'Consultation', unitPrice: 35, sourceOrderServiceId: 'os-1' }),
+      ctx.service.addLine('inv-1', { description: 'Nebuliser', sourceOrderServiceId: 'os-1' } as never),
     );
+    const created = (ctx.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data;
+    expect(created).toMatchObject({ unitPrice: 35, priceRule: 'CASH_PLUS_MARKUP', baseUnitPrice: 30, panelMarkupAmount: 5 });
+  });
 
-    const locked = tx.$executeRaw.mock.calls.some((call: unknown[]) =>
-      String((call[0] as { join?: (s: string) => string })?.join?.('?') ?? call[0]).includes('FOR UPDATE'),
+  it('14. a free-text manual line is stamped MANUAL at the biller’s price', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    await withTenant(() => ctx.service.addLine('inv-1', { description: 'Consultation', unitPrice: 45 }));
+    const created = (ctx.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data;
+    expect(created).toMatchObject({ priceRule: 'MANUAL', unitPrice: 45, baseUnitPrice: 45 });
+  });
+
+  it('a manual line without a price is refused', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    await expect(withTenant(() => ctx.service.addLine('inv-1', { description: 'X' } as never))).rejects.toThrow(
+      /manual line needs a unit price/i,
     );
-    expect(locked).toBe(true);
-    expect(tx.invoiceLine.create).toHaveBeenCalled();
+  });
+
+  it('a sourced line whose catalog row vanished cannot fall back to a client price', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    ctx.tx.prescription.findUnique.mockResolvedValue(null);
+    await expect(sourcedAdd(ctx, { unitPrice: 999 })).rejects.toThrow(/cannot be priced/i);
+  });
+
+  it('the exclusion reason is snapshotted onto the line', async () => {
+    const ctx = createService('FINANCE_STAFF', { visit: VERIFIED_PANEL_VISIT });
+    ctx.tx.panelExclusion.findFirst.mockResolvedValue({ reason: 'Supplements not covered' });
+    await sourcedAdd(ctx);
+    const created = (ctx.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data;
+    expect(created).toMatchObject({ excludedFromPanel: true, panelExclusionReason: 'Supplements not covered' });
+  });
+});
+
+// =============================================================================
+// 16–23. DISCOUNTS.
+// =============================================================================
+describe('discounts', () => {
+  const withLine = (world: World = {}) =>
+    createService('FINANCE_STAFF', {
+      lines: [{ id: 'line-1', amount: 40, excludedFromPanel: false, cancelledAt: null, lineDiscountType: null, lineDiscountValue: null }],
+      ...world,
+    });
+
+  it('16/17. a line discount stores type, value, reason, actor and stamp — and recalculates', async () => {
+    const ctx = withLine();
+    await withTenant(() =>
+      ctx.service.applyLineDiscount('inv-1', 'line-1', { type: 'PERCENTAGE', value: 10, reason: 'Staff family rate' } as never),
+    );
+    const line = ctx.lines[0];
+    expect(line).toMatchObject({
+      lineDiscountType: 'PERCENTAGE',
+      lineDiscountValue: 10,
+      lineDiscountReason: 'Staff family rate',
+      lineDiscountByStaffId: 'staff-1',
+      lineDiscountAmount: 4,
+    });
+    expect(ctx.invoiceState.totalAmount).toBe(36);
+    expect(ctx.invoiceState.patientResponsibilityAmount).toBe(36);
+  });
+
+  it('20. a fixed line discount larger than the line is refused', async () => {
+    const ctx = withLine();
+    await expect(
+      withTenant(() => ctx.service.applyLineDiscount('inv-1', 'line-1', { type: 'FIXED_AMOUNT', value: 500, reason: 'oops' } as never)),
+    ).rejects.toThrow(/cannot exceed the line amount/i);
+  });
+
+  it('a percentage above 100 is refused', async () => {
+    const ctx = withLine();
+    await expect(
+      withTenant(() => ctx.service.applyLineDiscount('inv-1', 'line-1', { type: 'PERCENTAGE', value: 120, reason: 'no' } as never)),
+    ).rejects.toThrow(/cannot exceed 100/i);
+  });
+
+  it('18. overall discount on a cash invoice reduces the (fully patient) total', async () => {
+    const ctx = withLine({ invoice: { subtotalAmount: 40 } });
+    await withTenant(() =>
+      ctx.service.applyInvoiceDiscount('inv-1', { type: 'FIXED_AMOUNT', value: 10, reason: 'Loyalty' } as never),
+    );
+    expect(ctx.invoiceState).toMatchObject({
+      invoiceDiscountAmount: 10,
+      totalAmount: 30,
+      patientResponsibilityAmount: 30,
+      invoiceDiscountByStaffId: 'staff-1',
+    });
+  });
+
+  it('19. overall discount on a panel invoice reduces ONLY the patient portion', async () => {
+    const ctx = createService('FINANCE_STAFF', {
+      visit: VERIFIED_PANEL_VISIT,
+      invoice: { subtotalAmount: 250 },
+      lines: [{ id: 'line-1', amount: 250, excludedFromPanel: false, cancelledAt: null, lineDiscountType: null, lineDiscountValue: null }],
+    });
+    await withTenant(() =>
+      ctx.service.applyInvoiceDiscount('inv-1', { type: 'FIXED_AMOUNT', value: 20, reason: 'Goodwill' } as never),
+    );
+    // Panel keeps its contractual 190; patient 60 − 20 = 40.
+    expect(ctx.invoiceState).toMatchObject({
+      panelResponsibilityAmount: 190,
+      patientResponsibilityAmount: 40,
+      totalAmount: 230,
+    });
+  });
+
+  it('an overall discount is refused while responsibility is unresolved', async () => {
+    const ctx = withLine({ visit: UNRESOLVED_PANEL_VISIT, invoice: { subtotalAmount: 40 } });
+    await expect(
+      withTenant(() => ctx.service.applyInvoiceDiscount('inv-1', { type: 'FIXED_AMOUNT', value: 5, reason: 'x' } as never)),
+    ).rejects.toThrow(/Billing responsibility has not been confirmed/);
+  });
+
+  it('23. a PAID invoice refuses discounts', async () => {
+    const ctx = withLine({ invoice: { status: InvoiceStatus.PAID } });
+    await expect(
+      withTenant(() => ctx.service.applyLineDiscount('inv-1', 'line-1', { type: 'PERCENTAGE', value: 5, reason: 'late' } as never)),
+    ).rejects.toThrow(/status PAID/);
+  });
+
+  it('21. the DTO refuses a discount without a reason', () => {
+    const dto = plainToInstance(ApplyLineDiscountDto, { type: 'PERCENTAGE', value: 10 });
+    const errors = validateSync(dto);
+    expect(errors.some((e) => e.property === 'reason')).toBe(true);
+  });
+});
+
+// =============================================================================
+// 24/25. AUDITABLE LINE CANCELLATION.
+// =============================================================================
+describe('line cancellation', () => {
+  const withLines = () =>
+    createService('FINANCE_STAFF', {
+      lines: [
+        { id: 'line-1', amount: 100, excludedFromPanel: false, cancelledAt: null, lineDiscountType: null, lineDiscountValue: null },
+        { id: 'line-2', amount: 40, excludedFromPanel: false, cancelledAt: null, lineDiscountType: null, lineDiscountValue: null },
+      ],
+    });
+
+  it('24. cancellation stamps actor, time and reason — and preserves the row', async () => {
+    const ctx = withLines();
+    await withTenant(() => ctx.service.cancelLine('inv-1', 'line-2', { cancelReason: 'Charged in error' }));
+    const line = ctx.lines.find((l) => l.id === 'line-2')!;
+    expect(line.cancelledAt).toBeInstanceOf(Date);
+    expect(line).toMatchObject({ cancelledByStaffId: 'staff-1', cancelReason: 'Charged in error' });
+    // Never deleted.
+    expect(ctx.lines).toHaveLength(2);
+  });
+
+  it('25. a cancelled line leaves the totals and the responsibility', async () => {
+    const ctx = withLines();
+    await withTenant(() => ctx.service.cancelLine('inv-1', 'line-2', {}));
+    expect(ctx.invoiceState).toMatchObject({
+      subtotalAmount: 100,
+      totalAmount: 100,
+      patientResponsibilityAmount: 100,
+    });
+  });
+
+  it('an already-cancelled line cannot be cancelled again', async () => {
+    const ctx = withLines();
+    await withTenant(() => ctx.service.cancelLine('inv-1', 'line-2', {}));
+    await expect(withTenant(() => ctx.service.cancelLine('inv-1', 'line-2', {}))).rejects.toThrow(/already cancelled/i);
+  });
+
+  it('a line not on this invoice is a 404', async () => {
+    const ctx = withLines();
+    await expect(withTenant(() => ctx.service.cancelLine('inv-1', 'missing', {}))).rejects.toThrow(NotFoundException);
+  });
+
+  it('cancellation is refused once the invoice is PAID', async () => {
+    const ctx = createService('FINANCE_STAFF', {
+      invoice: { status: InvoiceStatus.PAID },
+      lines: [{ id: 'line-1', amount: 10, excludedFromPanel: false, cancelledAt: null, lineDiscountType: null, lineDiscountValue: null }],
+    });
+    await expect(withTenant(() => ctx.service.cancelLine('inv-1', 'line-1', {}))).rejects.toThrow(/status PAID/);
+  });
+});
+
+// =============================================================================
+// D-073 — duplicate-source protection, now cancellation-aware.
+// =============================================================================
+describe('duplicate charge prevention (44)', () => {
+  it('refuses a second ACTIVE line for the same source, naming the invoice', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    ctx.tx.invoiceLine.findFirst.mockResolvedValue({ invoice: { invoiceNumber: 'INV-000007' } });
+    await expect(
+      withTenant(() => ctx.service.addLine('inv-1', { description: 'X', sourcePrescriptionId: 'rx-1' } as never)),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('the duplicate check ignores CANCELLED lines — a cancelled charge is not a standing claim', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    await withTenant(() => ctx.service.addLine('inv-1', { description: 'X', sourcePrescriptionId: 'rx-1' } as never));
+    const where = ctx.tx.invoiceLine.findFirst.mock.calls[0][0].where;
+    expect(where.cancelledAt).toBeNull();
+  });
+
+  it('locks the source row before checking, so concurrent adds serialise', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    await withTenant(() => ctx.service.addLine('inv-1', { description: 'X', sourceOrderServiceId: 'os-1' } as never));
+    const sql = String(ctx.tx.$executeRaw.mock.calls.map((c: unknown[]) => c[0]).flat());
+    expect(sql).toContain('FOR UPDATE');
   });
 
   it('a freehand line with no source is never blocked', async () => {
-    const { service, tx } = arrangeUnpaid();
-    tx.invoiceLine.findFirst.mockResolvedValue({ invoice: { invoiceNumber: 'INV-000010' } });
+    const ctx = createService('FINANCE_STAFF');
+    await withTenant(() => ctx.service.addLine('inv-1', { description: 'Water', unitPrice: 2 }));
+    expect(ctx.tx.invoiceLine.findFirst).not.toHaveBeenCalled();
+  });
+});
 
-    await withTenant(() => service.addLine('inv-1', { description: 'Sundry', unitPrice: 5 }));
+// =============================================================================
+// 40/41/42. PAY reads persisted state only.
+// =============================================================================
+describe('pay', () => {
+  it('40. refuses while responsibility is unresolved, in the approved wording', async () => {
+    const ctx = createService('FINANCE_STAFF', {
+      invoice: { patientResponsibilityAmount: null },
+    });
+    await expect(withTenant(() => ctx.service.pay('inv-1', { paymentMethod: 'CASH' }))).rejects.toThrow(
+      'Billing responsibility has not been confirmed.',
+    );
+  });
 
-    // No source id means nothing to deduplicate against — two identical
-    // freehand lines are a legitimate thing for a biller to enter.
-    expect(tx.invoiceLine.findFirst).not.toHaveBeenCalled();
-    expect(tx.invoiceLine.create).toHaveBeenCalled();
+  it('40b. refuses an unresolved panel verification even if a number exists', async () => {
+    const ctx = createService('FINANCE_STAFF', {
+      visit: UNRESOLVED_PANEL_VISIT,
+      invoice: { patientResponsibilityAmount: 50, panelResponsibilityAmount: 100 },
+    });
+    await expect(withTenant(() => ctx.service.pay('inv-1', { paymentMethod: 'CASH' }))).rejects.toThrow(
+      'Billing responsibility has not been confirmed.',
+    );
+  });
+
+  it('41. settles from the PERSISTED split — the live panel is never consulted', async () => {
+    const ctx = createService('FINANCE_STAFF', {
+      visit: VERIFIED_PANEL_VISIT,
+      invoice: { patientResponsibilityAmount: 60, panelResponsibilityAmount: 190 },
+    });
+    await withTenant(() => ctx.service.pay('inv-1', { paymentMethod: 'CASH' }));
+    expect(ctx.invoiceState).toMatchObject({
+      status: InvoiceStatus.PAID,
+      patientPaidAmount: 60,
+      panelCoveredAmount: 190,
+    });
+    // The pricing tables were never touched at pay-time.
+    expect(ctx.tx.panelClinic.findUnique).not.toHaveBeenCalled();
+    expect(ctx.tx.panelPriceOverride.findFirst).not.toHaveBeenCalled();
+    expect(ctx.tx.panelExclusion.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('39. paying the persisted responsibility resolves the remaining balance to zero', async () => {
+    const ctx = createService('FINANCE_STAFF', {
+      invoice: { patientResponsibilityAmount: 85, panelResponsibilityAmount: 0 },
+    });
+    await withTenant(() => ctx.service.pay('inv-1', { paymentMethod: 'CASH' }));
+    const remaining = Math.max(
+      Number(ctx.invoiceState.patientResponsibilityAmount) - Number(ctx.invoiceState.patientPaidAmount),
+      0,
+    );
+    expect(remaining).toBe(0);
+  });
+
+  it('"Mark Fully Covered by Panel" requires a persisted patient responsibility of zero', async () => {
+    const due = createService('FINANCE_STAFF', {
+      visit: VERIFIED_PANEL_VISIT,
+      invoice: { patientResponsibilityAmount: 10, panelResponsibilityAmount: 190 },
+    });
+    await expect(withTenant(() => due.service.pay('inv-1', { paymentMethod: 'PANEL' }))).rejects.toThrow(/copay/i);
+
+    const clear = createService('FINANCE_STAFF', {
+      visit: VERIFIED_PANEL_VISIT,
+      invoice: { patientResponsibilityAmount: 0, panelResponsibilityAmount: 200 },
+    });
+    await withTenant(() => clear.service.pay('inv-1', { paymentMethod: 'PANEL' }));
+    expect(clear.invoiceState).toMatchObject({ status: InvoiceStatus.PAID, patientPaidAmount: 0, panelCoveredAmount: 200 });
+  });
+
+  it('a PAID invoice cannot be paid again; a CANCELLED one neither', async () => {
+    const paid = createService('FINANCE_STAFF', { invoice: { status: InvoiceStatus.PAID, patientResponsibilityAmount: 0 } });
+    await expect(withTenant(() => paid.service.pay('inv-1', { paymentMethod: 'CASH' }))).rejects.toThrow(/status PAID/);
+    const cancelled = createService('FINANCE_STAFF', { invoice: { status: InvoiceStatus.CANCELLED, patientResponsibilityAmount: 0 } });
+    await expect(withTenant(() => cancelled.service.pay('inv-1', { paymentMethod: 'CASH' }))).rejects.toThrow(/status CANCELLED/);
+  });
+});
+
+// =============================================================================
+// 42. LEGACY invoices are never silently backfilled.
+// =============================================================================
+describe('legacy handling', () => {
+  it('42. the recalculator refuses to touch a PAID legacy invoice', async () => {
+    const ctx = createService('FINANCE_STAFF', {
+      invoice: { status: InvoiceStatus.PAID, patientResponsibilityAmount: null },
+    });
+    await withTenant(async () => {
+      const rawPrisma = (ctx.service as unknown as { rawPrisma: PrismaService }).rawPrisma;
+      await rawPrisma.$transaction(async (tx) => ctx.service.recalculateInvoice(tx as never, 'inv-1'));
+    });
+    // No totals written, no responsibility invented: PAID history is frozen.
+    expect(ctx.invoiceState.patientResponsibilityAmount).toBeNull();
+    expect(ctx.tx.invoiceLine.update).not.toHaveBeenCalled();
+  });
+
+  it('recalculateVisitInvoices touches only UNPAID invoices', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    await withTenant(() => ctx.service.recalculateVisitInvoices('visit-1'));
+    const where = ctx.tx.invoice.findMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({ visitId: 'visit-1', status: InvoiceStatus.UNPAID });
   });
 });

@@ -6,6 +6,7 @@ import { VisitController } from './visit.controller';
 import { VisitService } from './visit.service';
 import { DoctorCompletionService } from './doctor-completion.service';
 import { PanelBenefitService } from './panel-benefit.service';
+import { BillingWorklistService } from './billing-worklist.service';
 import { VisitCompletionService } from './visit-completion.service';
 import { VisitHistoryController } from './visit-history.controller';
 import { VisitHistoryService } from './visit-history.service';
@@ -83,6 +84,7 @@ import { ChatChannelService } from './chat-channel.service';
     VisitService,
     DoctorCompletionService,
     PanelBenefitService,
+    BillingWorklistService,
     VisitCompletionService,
     VisitHistoryService,
     QueueTicketService,
@@ -110,6 +112,7 @@ import { ChatChannelService } from './chat-channel.service';
     VisitService,
     DoctorCompletionService,
     PanelBenefitService,
+    BillingWorklistService,
     VisitCompletionService,
     QueueTicketService,
     ClinicalNoteService,

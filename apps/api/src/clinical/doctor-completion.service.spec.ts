@@ -70,17 +70,26 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
     },
     clinicalNote: { count: jest.fn().mockResolvedValue(signedNotes) },
     orderService: {
-      count: jest.fn(async ({ where }: any) =>
-        // The blocker query filters on PENDING/IN_PROGRESS; the billable query
-        // filters on "not CANCELLED".
-        where?.status?.in ? openProcedures : services,
+      count: jest.fn(async ({ where }: any) => (where?.status?.in ? openProcedures : services)),
+      // D-093 — the billing worklist reads orders itemised. STANDARD_SERVICE
+      // rows stand in for the old `services` count.
+      findMany: jest.fn(async () =>
+        Array.from({ length: services }, (_, i) => ({
+          id: `svc-${i}`,
+          procedureName: `Service ${i}`,
+          orderType: 'STANDARD_SERVICE',
+          status: 'PENDING',
+        })),
       ),
     },
     prescription: {
-      findMany: jest.fn().mockResolvedValue(prescriptions),
+      // Serves both the supply evaluation and the worklist; the worklist
+      // ignores rows without an id, so give each one.
+      findMany: jest.fn(async () => prescriptions.map((p, i) => ({ id: `rx-${i}`, quantity: 1, item: null, ...p }))),
       count: jest.fn().mockResolvedValue(prescriptions.length),
     },
     invoice: { findMany: jest.fn().mockResolvedValue(invoices) },
+    invoiceLine: { findMany: jest.fn().mockResolvedValue([]) },
     visitWorkflowEvent: { create: jest.fn() },
   };
 
@@ -199,14 +208,21 @@ describe('prescription destination', () => {
     expect(r.destination).not.toBe('DISPENSARY');
   });
 
-  // Written after the three cases above came out as PAYMENT rather than NONE.
-  // That is the SERVICE being right and the first draft of those tests being
-  // careless: a prescription is a chargeable item, so a visit carrying one
-  // with no invoice raised has unbilled work on it. The owner's rule is
-  // explicit — do not silently close a visit containing unbilled chargeable
-  // items — so it goes to billing review, not out of the door.
-  it('a non-dispensary prescription with NO invoice still goes to billing review', async () => {
+  // G4.5d3c-3b1 (D-093, owner decision 4) — REVERSED from the D-086 draft:
+  // an external prescription is NOT a clinic medication charge, so a visit
+  // whose only work is an external script has nothing unbilled and routes
+  // NONE. A clinic-dispensed medication with no invoice still goes to
+  // billing review (the test below).
+  it('an EXTERNAL prescription alone with NO invoice is not unbilled work', async () => {
     const ctx = build(DR_A, { prescriptions: [RX('EXTERNAL_PRESCRIPTION')], invoices: [] });
+    await expect(run(ctx)).resolves.toMatchObject({ destination: 'NONE', reason: 'NO_DOWNSTREAM_WORK' });
+  });
+
+  it('a clinic-dispensed medication with NO invoice still goes to billing review', async () => {
+    const ctx = build(DR_A, {
+      prescriptions: [RX('ONSITE_DISPENSE', 'DISPENSED')],
+      invoices: [],
+    });
     await expect(run(ctx)).resolves.toMatchObject({
       destination: 'PAYMENT',
       reason: 'BILLING_REVIEW_REQUIRED',

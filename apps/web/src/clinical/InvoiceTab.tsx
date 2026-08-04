@@ -141,8 +141,11 @@ function QuickAddSuggestions({ invoice, visit }: QuickAddProps) {
   const { data: exclusions } = usePanelExclusions(visit.panelClinicId ?? undefined);
   const addLine = useAddInvoiceLine(visit.id);
 
-  const linkedOrderServiceIds = new Set(invoice.lines.map((l) => l.sourceOrderServiceId).filter(Boolean));
-  const linkedPrescriptionIds = new Set(invoice.lines.map((l) => l.sourcePrescriptionId).filter(Boolean));
+  // D-093 — a CANCELLED line is history, not a standing charge: it neither
+  // hides a Quick-Add suggestion nor counts in any total.
+  const activeInvoiceLines = invoice.lines.filter((l) => !l.cancelledAt);
+  const linkedOrderServiceIds = new Set(activeInvoiceLines.map((l) => l.sourceOrderServiceId).filter(Boolean));
+  const linkedPrescriptionIds = new Set(activeInvoiceLines.map((l) => l.sourcePrescriptionId).filter(Boolean));
 
   const dispensedPrescriptions = (prescriptions ?? []).filter((p) => p.status === 'DISPENSED');
   // Still filtered here so an already-charged item does not appear as a
@@ -271,15 +274,23 @@ function InvoiceCard({ invoice, visit }: InvoiceCardProps) {
   const payInvoice = usePayInvoice(visit.id);
   const { data: panels } = usePanelClinics();
   const isUnpaid = invoice.status === 'UNPAID';
-  const hasLines = invoice.lines.length > 0;
+  const activeLines = invoice.lines.filter((l) => !l.cancelledAt);
+  const hasLines = activeLines.length > 0;
   const isPanelVisit = Boolean(visit.panelClinicId);
   const panel = panels?.find((p) => p.id === visit.panelClinicId);
 
-  const excludedTotal = round2(invoice.lines.filter((l) => l.excludedFromPanel).reduce((sum, l) => sum + Number(l.amount), 0));
+  // D-093 — the PERSISTED split is the truth wherever the engine has written
+  // it; the live-config preview survives only as a legacy fallback for
+  // invoices that predate the responsibility writer.
+  const persistedPatient =
+    invoice.patientResponsibilityAmount != null ? Number(invoice.patientResponsibilityAmount) : null;
+  const persistedPanel =
+    invoice.panelResponsibilityAmount != null ? Number(invoice.panelResponsibilityAmount) : null;
+  const excludedTotal = round2(activeLines.filter((l) => l.excludedFromPanel).reduce((sum, l) => sum + Number(l.amount), 0));
   const coveredTotal = round2(Number(invoice.totalAmount) - excludedTotal);
   const limit = panel?.limitAmount != null ? Number(panel.limitAmount) : undefined;
-  const panelCovers = round2(limit != null ? Math.min(coveredTotal, limit) : coveredTotal);
-  const patientCopay = round2(coveredTotal - panelCovers + excludedTotal);
+  const panelCovers = persistedPanel ?? round2(limit != null ? Math.min(coveredTotal, limit) : coveredTotal);
+  const patientCopay = persistedPatient ?? round2(coveredTotal - panelCovers + excludedTotal);
   const fullyCovered = isPanelVisit && patientCopay <= 0 && hasLines;
 
   const handlePay = () =>
@@ -357,7 +368,7 @@ function InvoiceCard({ invoice, visit }: InvoiceCardProps) {
         size="small"
         rowKey="id"
         pagination={false}
-        dataSource={invoice.lines}
+        dataSource={activeLines}
         locale={{ emptyText: 'No line items yet' }}
         columns={[
           {

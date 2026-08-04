@@ -190,7 +190,7 @@ export function assertCanAuthoriseDocument(staff: Staff, requiresClinical: boole
 // may do it. Taking payment is counter work. Cancelling an issued invoice is a
 // financial correction, and is the narrowest of the four.
 // ---------------------------------------------------------------------------
-export type BillingAction = 'CREATE_INVOICE' | 'EDIT_LINES' | 'MARK_PAID' | 'CANCEL_INVOICE';
+export type BillingAction = 'CREATE_INVOICE' | 'EDIT_LINES' | 'MARK_PAID' | 'CANCEL_INVOICE' | 'APPLY_DISCOUNT';
 
 const BILLING_MATRIX: Record<BillingAction, Role[]> = {
   // Raising the bill and itemising it: counter staff, finance, the owner, and
@@ -204,6 +204,10 @@ const BILLING_MATRIX: Record<BillingAction, Role[]> = {
   // Voiding a bill that has already been issued is a financial correction and
   // stays with finance and the owner.
   CANCEL_INVOICE: ['OWNER_ADMIN', 'FINANCE_STAFF'],
+  // G4.5d3c-3b1 (D-093, owner decision 5) — discounts move money the clinic
+  // has earned, so they sit at the financial-correction tier. Front desk and
+  // doctors are refused.
+  APPLY_DISCOUNT: ['OWNER_ADMIN', 'FINANCE_STAFF'],
 };
 
 // Anyone who may perform ANY billing action — the gate for reaching the
@@ -225,6 +229,7 @@ const BILLING_ACTION_WORDS: Record<BillingAction, string> = {
   EDIT_LINES: 'change the items on an invoice',
   MARK_PAID: 'record a payment',
   CANCEL_INVOICE: 'cancel an invoice',
+  APPLY_DISCOUNT: 'apply a billing discount',
 };
 
 export function assertCanPerformBilling(staff: Staff, action: BillingAction): void {

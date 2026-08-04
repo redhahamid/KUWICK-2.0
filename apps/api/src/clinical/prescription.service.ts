@@ -1,9 +1,9 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { DosageCalcMethod, PrescriptionStatus, StockMovementType } from '@prisma/client';
+import { DosageCalcMethod, PrescriptionStatus, PrescriptionSupplyMode, StockMovementType } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { assertMayTouchVisit, requireClinicalAuthor, withTenantTx } from './clinical-actor';
+import { assertMayTouchVisit, requireActor, requireClinicalAuthor, withTenantTx } from './clinical-actor';
 import { VisitService } from './visit.service';
 import { CreatePrescriptionDto } from './dto/create-prescription.dto';
 import { CancelPrescriptionDto } from './dto/cancel-prescription.dto';
@@ -204,44 +204,97 @@ export class PrescriptionService {
     );
   }
 
-  // ORDERED -> DISPENSED. Only now does stock move (D-028): a StockMovement
-  // ledger row plus the cached StockLevel decrement, mirroring
-  // GoodsReceivingService's write pattern in the negative direction.
-  // Allowed to go negative, same as every other stock movement (D-020).
+  /**
+   * ORDERED -> DISPENSED. Only now does stock move (D-028): a StockMovement
+   * ledger row plus the cached StockLevel decrement.
+   *
+   * G4.5d3c-3b1 (D-093) — hardened three ways:
+   *
+   * ATOMIC CLAIM. The old shape read the status and then wrote — under READ
+   * COMMITTED two concurrent calls could both read ORDERED and both insert a
+   * movement, deducting stock twice for one hand-over. The precondition now
+   * lives in the WHERE clause (the D-087 pattern): exactly one request can
+   * ever see count 1, and only that request moves stock.
+   *
+   * SUPPLY MODE AT THE SERVER. Only ONSITE_DISPENSE may dispense. The UI has
+   * gated this since D-091; now the API refuses too, so a direct caller
+   * cannot move clinic stock for medicine the clinic is not supplying.
+   *
+   * THE DISPENSER IS RECORDED — on the prescription and on the movement.
+   * Who handed the medication over is a fact the Dispensary Workspace will
+   * need and an audit already wants.
+   */
   async dispense(id: string) {
-    const prescription = await this.findById(id);
-    assertStatus(prescription.status, PrescriptionStatus.ORDERED, 'dispense');
-    const visit = await this.visits.findById(prescription.visitId);
-    const tenantId = currentTenantId();
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      const prescription = await tx.prescription.findUnique({ where: { id } });
+      if (!prescription || prescription.deletedAt) {
+        throw new NotFoundException('Prescription not found');
+      }
+      const visit = await tx.visit.findUnique({
+        where: { id: prescription.visitId },
+        select: { clinicId: true },
+      });
+      if (!visit) {
+        throw new NotFoundException('Visit not found');
+      }
 
-    await this.prisma.stockMovement.create({
-      data: {
-        tenantId,
-        clinicId: visit.clinicId,
-        itemId: prescription.itemId,
-        movementType: StockMovementType.DISPENSED,
-        quantityDelta: -prescription.quantity,
-        referenceType: 'Prescription',
-        referenceId: prescription.id,
-      },
-    });
+      const dispensedAt = new Date();
+      const claim = await tx.prescription.updateMany({
+        where: {
+          id,
+          status: PrescriptionStatus.ORDERED,
+          supplyMode: PrescriptionSupplyMode.ONSITE_DISPENSE,
+        },
+        data: {
+          status: PrescriptionStatus.DISPENSED,
+          dispensedAt,
+          dispensedByStaffId: actor.id,
+        },
+      });
 
-    await this.prisma.stockLevel.upsert({
-      where: {
-        tenantId_clinicId_itemId: { tenantId, clinicId: visit.clinicId, itemId: prescription.itemId },
-      },
-      create: {
-        tenantId,
-        clinicId: visit.clinicId,
-        itemId: prescription.itemId,
-        quantityOnHand: -prescription.quantity,
-      },
-      update: { quantityOnHand: { decrement: prescription.quantity } },
-    });
+      if (claim.count === 0) {
+        // Say WHY, from the row as it stands — without pretending the claim
+        // could be retried into success.
+        if (prescription.status === PrescriptionStatus.DISPENSED) {
+          throw new BadRequestException('This medication has already been dispensed.');
+        }
+        if (prescription.status !== PrescriptionStatus.ORDERED) {
+          throw new BadRequestException(`Cannot dispense a prescription in status ${prescription.status}`);
+        }
+        throw new BadRequestException(
+          'Only medication marked for clinic dispensing can be dispensed. Set the supply mode first.',
+        );
+      }
 
-    return this.prisma.prescription.update({
-      where: { id },
-      data: { status: PrescriptionStatus.DISPENSED, dispensedAt: new Date() },
+      const tenantId = currentTenantId();
+      await tx.stockMovement.create({
+        data: {
+          tenantId,
+          clinicId: visit.clinicId,
+          itemId: prescription.itemId,
+          movementType: StockMovementType.DISPENSED,
+          quantityDelta: -prescription.quantity,
+          referenceType: 'Prescription',
+          referenceId: prescription.id,
+          // The ACTOR, not a blank: the ledger says who moved the stock.
+          createdByUserId: actor.userId,
+        },
+      });
+      await tx.stockLevel.upsert({
+        where: {
+          tenantId_clinicId_itemId: { tenantId, clinicId: visit.clinicId, itemId: prescription.itemId },
+        },
+        create: {
+          tenantId,
+          clinicId: visit.clinicId,
+          itemId: prescription.itemId,
+          quantityOnHand: -prescription.quantity,
+        },
+        update: { quantityOnHand: { decrement: prescription.quantity } },
+      });
+
+      return tx.prescription.findUnique({ where: { id }, include: { item: true, prescribedBy: true } });
     });
   }
 

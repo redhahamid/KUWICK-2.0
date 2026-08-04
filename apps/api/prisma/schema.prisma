@@ -1178,24 +1178,30 @@ model GoodsReceivedNoteLine {
 // Claims" menu), since that's an external workflow on the panel's own
 // website today.
 model PanelClinic {
-  id              String             @id @default(uuid())
-  tenantId        String             @map("tenant_id")
-  name            String
-  code            String?
-  limitAmount     Decimal?           @map("limit_amount") @db.Decimal(10, 2)
+  id                    String             @id @default(uuid())
+  tenantId              String             @map("tenant_id")
+  name                  String
+  code                  String?
+  limitAmount           Decimal?           @map("limit_amount") @db.Decimal(10, 2)
   // Panel workbook upgrade (D-041) — the panel's own payment term; a
   // claim is overdue when days since submission exceed this, so aging is
   // judged per panel rather than against fixed buckets.
-  paymentTermDays Int?               @map("payment_term_days")
+  paymentTermDays       Int?               @map("payment_term_days")
   // D-041 (owner refinement) — per-panel claim fee: some panels carry an
   // admin fee per claim, as a % of the claimed amount or a flat RM value;
   // most (e.g. AIA) have none. Applied automatically at batch creation
   // from this configuration — never a manual per-batch entry.
-  claimFeeType    PanelClaimFeeType? @map("claim_fee_type")
-  claimFeeValue   Decimal?           @map("claim_fee_value") @db.Decimal(10, 2)
-  active          Boolean            @default(true)
-  createdAt       DateTime           @default(now()) @map("created_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
+  claimFeeType          PanelClaimFeeType? @map("claim_fee_type")
+  claimFeeValue         Decimal?           @map("claim_fee_value") @db.Decimal(10, 2)
+  // G4.5d3c-3b1 (D-093) — panel-wide FIXED MARKUPS in RM, added to the clinic
+  // cash price (owner rule). NOT absolute prices, and never stacked with a
+  // specific PanelPriceOverride: a specific price REPLACES the markup-derived
+  // one. NULL or 0 means no markup — the cash price stands.
+  inventoryMarkupAmount Decimal?           @map("inventory_markup_amount") @db.Decimal(10, 2)
+  serviceMarkupAmount   Decimal?           @map("service_markup_amount") @db.Decimal(10, 2)
+  active                Boolean            @default(true)
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
 
   tenant         Tenant               @relation(fields: [tenantId], references: [id])
   visits         Visit[]
@@ -1405,6 +1411,20 @@ model Visit {
 // G4.5d3c-3b1a (D-092) — how far this visit's panel eligibility has been
 // taken. PENDING_VERIFICATION is the automatic state the moment a panel is
 // selected; everything after it is an explicit, attributed staff action.
+// G4.5d3c-3b1 (D-093) — which rule produced a line's unit price. An enum,
+// not free text: an unvalidated rule string is how audit evidence rots.
+enum InvoiceLinePriceRule {
+  SPECIFIC_PANEL_PRICE
+  CASH_PLUS_MARKUP
+  CASH
+  MANUAL
+}
+
+enum InvoiceDiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
 enum PanelVerificationStatus {
   PENDING_VERIFICATION
   VERIFIED
@@ -2418,8 +2438,25 @@ model Invoice {
    * the sole test for whether the patient owes anything.
    */
   patientResponsibilityAmount Decimal?      @map("patient_responsibility_amount") @db.Decimal(10, 2)
-  createdAt                   DateTime      @default(now()) @map("created_at")
-  updatedAt                   DateTime      @updatedAt @map("updated_at")
+
+  // G4.5d3c-3b1 (D-093) — the panel-side twin, written by the same engine in
+  // the same transaction. Invariant once computed:
+  //   panelResponsibilityAmount + patientResponsibilityAmount = totalAmount
+  panelResponsibilityAmount Decimal?             @map("panel_responsibility_amount") @db.Decimal(10, 2)
+  // Sum of active line amounts BEFORE any discount. totalAmount remains the
+  // grand total after line and overall discounts.
+  subtotalAmount            Decimal?             @map("subtotal_amount") @db.Decimal(10, 2)
+  // Overall invoice discount (owner policy v1: AFTER_PANEL_SPLIT_PATIENT_ONLY
+  // — reduces only the patient-responsible portion; the panel's contractual
+  // receivable is never silently discounted).
+  invoiceDiscountType       InvoiceDiscountType? @map("invoice_discount_type")
+  invoiceDiscountValue      Decimal?             @map("invoice_discount_value") @db.Decimal(10, 2)
+  invoiceDiscountAmount     Decimal?             @map("invoice_discount_amount") @db.Decimal(10, 2)
+  invoiceDiscountReason     String?              @map("invoice_discount_reason")
+  invoiceDiscountByStaffId  String?              @map("invoice_discount_by_staff_id")
+  invoiceDiscountAt         DateTime?            @map("invoice_discount_at")
+  createdAt                 DateTime             @default(now()) @map("created_at")
+  updatedAt                 DateTime             @updatedAt @map("updated_at")
 
   tenant          Tenant           @relation(fields: [tenantId], references: [id])
   visit           Visit            @relation(fields: [visitId], references: [id])
@@ -2561,7 +2598,32 @@ model InvoiceLine {
   // Why the line was excluded, snapshotted at exclusion time — the panel's
   // exclusion list can change later without rewriting this line's history.
   panelExclusionReason        String?  @map("panel_exclusion_reason")
-  createdAt                   DateTime @default(now()) @map("created_at")
+
+  // G4.5d3c-3b1 (D-093) — internal pricing provenance. How unitPrice was
+  // produced, for audit/management surfaces ONLY: never rendered on the
+  // standard patient- or panel-facing invoice.
+  unit              String?
+  priceRule         InvoiceLinePriceRule? @map("price_rule")
+  baseUnitPrice     Decimal?              @map("base_unit_price") @db.Decimal(10, 2)
+  panelMarkupAmount Decimal?              @map("panel_markup_amount") @db.Decimal(10, 2)
+
+  // Line-level discount, retained in full: type, value, computed amount,
+  // mandatory reason, actor, timestamp. `amount` stays the PRE-discount
+  // quantity × unitPrice; the discounted line total is amount − discount.
+  lineDiscountType      InvoiceDiscountType? @map("line_discount_type")
+  lineDiscountValue     Decimal?             @map("line_discount_value") @db.Decimal(10, 2)
+  lineDiscountAmount    Decimal?             @map("line_discount_amount") @db.Decimal(10, 2)
+  lineDiscountReason    String?              @map("line_discount_reason")
+  lineDiscountByStaffId String?              @map("line_discount_by_staff_id")
+  lineDiscountAt        DateTime?            @map("line_discount_at")
+
+  // Auditable cancellation — a removed charge is a historical fact, not a
+  // deleted row. Cancelled lines leave every total and worklist; the record
+  // of who removed what, when and why survives.
+  cancelledAt        DateTime? @map("cancelled_at")
+  cancelledByStaffId String?   @map("cancelled_by_staff_id")
+  cancelReason       String?   @map("cancel_reason")
+  createdAt          DateTime  @default(now()) @map("created_at")
 
   tenant             Tenant        @relation(fields: [tenantId], references: [id])
   invoice            Invoice       @relation(fields: [invoiceId], references: [id])
@@ -2655,6 +2717,9 @@ model Prescription {
   calcTargetDoseMg Decimal?          @map("calc_target_dose_mg") @db.Decimal(10, 2)
 
   status              PrescriptionStatus      @default(ORDERED)
+  // G4.5d3c-3b1 (D-093) — who actually handed the medication over. Distinct
+  // from the prescriber; stamped by the atomic dispense claim.
+  dispensedByStaffId  String?                 @map("dispensed_by_staff_id")
   /**
    * G4.5d3c-1b (D-084) — nullable, with NO database default, deliberately.
    * A default would make every row written during the compatibility period

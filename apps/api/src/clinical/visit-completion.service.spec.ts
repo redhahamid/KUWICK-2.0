@@ -60,12 +60,23 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
       findUnique: jest.fn().mockResolvedValue(ticketStatus === null ? null : { id: 't1', status: ticketStatus }),
       update: jest.fn(),
     },
-    orderService: { count: jest.fn(async ({ where }: any) => (where?.status?.in ? openProcedures : services)) },
+    orderService: {
+      count: jest.fn(async ({ where }: any) => (where?.status?.in ? openProcedures : services)),
+      findMany: jest.fn(async () =>
+        Array.from({ length: services }, (_, i) => ({
+          id: `svc-${i}`,
+          procedureName: `Service ${i}`,
+          orderType: 'STANDARD_SERVICE',
+          status: 'PENDING',
+        })),
+      ),
+    },
     prescription: {
-      findMany: jest.fn().mockResolvedValue(prescriptions),
+      findMany: jest.fn(async () => prescriptions.map((p, i) => ({ id: `rx-${i}`, quantity: 1, item: null, ...p }))),
       count: jest.fn().mockResolvedValue(prescriptions.length),
     },
     invoice: { findMany: jest.fn().mockResolvedValue(invoices) },
+    invoiceLine: { findMany: jest.fn().mockResolvedValue([]) },
     visitWorkflowEvent: { create: jest.fn() },
   };
 
@@ -136,9 +147,30 @@ describe('preconditions', () => {
     expect(await codes(ctx)).toContain('DISPENSING_PENDING');
   });
 
-  it('23. a DISPENSED onsite item does not block', async () => {
+  it('23. a DISPENSED onsite item does not block — once it is billed', async () => {
+    // D-093: the dispensed medication must also be ON the invoice. An
+    // invoice that misses it now blocks as unbilled work (owner test 26),
+    // so this world bills it explicitly.
     const ctx = build(FRONT_DESK, { prescriptions: [RX('ONSITE_DISPENSE', 'DISPENSED')] });
+    ctx.tx.invoiceLine.findMany.mockResolvedValue([
+      { id: 'l1', sourcePrescriptionId: 'rx-0', sourceOrderServiceId: null },
+    ]);
     await expect(run(ctx)).resolves.toMatchObject({ alreadyCompleted: false });
+  });
+
+  it('26. an existing invoice does NOT hide an unbilled dispensed medication', async () => {
+    const ctx = build(FRONT_DESK, { prescriptions: [RX('ONSITE_DISPENSE', 'DISPENSED')] });
+    // Default world: a resolved invoice exists, but no line bills rx-0.
+    await expect(run(ctx)).rejects.toMatchObject({
+      response: { blockers: expect.arrayContaining([expect.objectContaining({ code: 'UNBILLED_CHARGEABLE_ITEMS' })]) },
+    });
+  });
+
+  it('27/28/29. external, own-supply and no-supply medications are never unbilled work', async () => {
+    for (const mode of ['EXTERNAL_PRESCRIPTION', 'PATIENT_OWN_SUPPLY', 'NO_SUPPLY_REQUIRED']) {
+      const ctx = build(FRONT_DESK, { prescriptions: [RX(mode, 'ORDERED')] });
+      await expect(run(ctx)).resolves.toMatchObject({ alreadyCompleted: false });
+    }
   });
 
   it('25. DEFERRED blocks', async () => {
@@ -222,6 +254,9 @@ describe('destination-specific completion', () => {
       prescriptions: [RX('ONSITE_DISPENSE', 'DISPENSED')],
       invoices: [{ patientResponsibilityAmount: 0, patientPaidAmount: 0 }],
     });
+    ctx.tx.invoiceLine.findMany.mockResolvedValue([
+      { id: 'l1', sourcePrescriptionId: 'rx-0', sourceOrderServiceId: null },
+    ]);
     await expect(run(ctx)).resolves.toMatchObject({ queueStatus: 'COMPLETED' });
   });
 
