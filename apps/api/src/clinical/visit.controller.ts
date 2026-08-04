@@ -5,6 +5,9 @@ import { DoctorCompletionService } from './doctor-completion.service';
 import { CompleteDoctorPhaseDto } from './dto/complete-doctor-phase.dto';
 import { VisitCompletionService } from './visit-completion.service';
 import { CompleteVisitDto } from './dto/complete-visit.dto';
+import { PanelBenefitService } from './panel-benefit.service';
+import { RecordPanelVerificationDto } from './dto/record-panel-verification.dto';
+import { OverridePanelBenefitDto } from './dto/override-panel-benefit.dto';
 
 @Controller('visits')
 export class VisitController {
@@ -12,6 +15,7 @@ export class VisitController {
     private readonly visits: VisitService,
     private readonly doctorCompletion: DoctorCompletionService,
     private readonly visitCompletion: VisitCompletionService,
+    private readonly panelBenefit: PanelBenefitService,
   ) {}
 
   // Patient Dashboard's "New Visit" — creates a Visit with no queue ticket,
@@ -49,6 +53,19 @@ export class VisitController {
   @Patch(':id/complete')
   completeVisit(@Param('id') id: string, @Body() dto: CompleteVisitDto) {
     return this.visitCompletion.completeVisit(id, dto);
+  }
+
+  // G4.5d3c-3b1a (D-092) - what the panel's portal said about THIS visit.
+  // Verification is counter work; override is a financial correction with a
+  // mandatory reason. Neither computes money - the 3b1b engine reads these.
+  @Patch(':id/panel-verification')
+  recordPanelVerification(@Param('id') id: string, @Body() dto: RecordPanelVerificationDto) {
+    return this.panelBenefit.recordVerification(id, dto);
+  }
+
+  @Patch(':id/panel-benefit-override')
+  overridePanelBenefit(@Param('id') id: string, @Body() dto: OverridePanelBenefitDto) {
+    return this.panelBenefit.overrideBenefit(id, dto);
   }
 
   // What is still outstanding, so a screen can say so before offering the button.

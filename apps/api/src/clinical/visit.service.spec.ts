@@ -183,6 +183,22 @@ describe('VisitService.create — billing type', () => {
     });
   });
 
+  // G4.5d3c-3b1a (D-092) — selecting a panel is NOT verifying it.
+  it('a panel visit starts PENDING_VERIFICATION', async () => {
+    const { service, tx } = createService();
+    tx.panelClinic.findUnique.mockResolvedValue({ id: 'panel-1', name: 'AIA' });
+    await withTenant(() => service.create({ ...BASE, panelClinicId: 'panel-1' }));
+    expect(tx.visit.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ panelVerificationStatus: 'PENDING_VERIFICATION' }),
+    });
+  });
+
+  it('a cash visit carries no verification state at all', async () => {
+    const { service, tx } = createService();
+    await withTenant(() => service.create(BASE));
+    expect(tx.visit.create.mock.calls[0][0].data.panelVerificationStatus).toBeUndefined();
+  });
+
   it('throws NotFoundException for an unknown panelClinicId', async () => {
     const { service, tx } = createService();
     tx.panelClinic.findUnique.mockResolvedValue(null);

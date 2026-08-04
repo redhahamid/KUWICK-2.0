@@ -5,6 +5,7 @@ import { ServiceCatalogService } from './service-catalog.service';
 import { VisitController } from './visit.controller';
 import { VisitService } from './visit.service';
 import { DoctorCompletionService } from './doctor-completion.service';
+import { PanelBenefitService } from './panel-benefit.service';
 import { VisitCompletionService } from './visit-completion.service';
 import { VisitHistoryController } from './visit-history.controller';
 import { VisitHistoryService } from './visit-history.service';
@@ -81,6 +82,7 @@ import { ChatChannelService } from './chat-channel.service';
     ServiceCatalogService,
     VisitService,
     DoctorCompletionService,
+    PanelBenefitService,
     VisitCompletionService,
     VisitHistoryService,
     QueueTicketService,
@@ -107,6 +109,7 @@ import { ChatChannelService } from './chat-channel.service';
     ServiceCatalogService,
     VisitService,
     DoctorCompletionService,
+    PanelBenefitService,
     VisitCompletionService,
     QueueTicketService,
     ClinicalNoteService,

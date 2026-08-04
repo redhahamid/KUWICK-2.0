@@ -106,7 +106,24 @@ export interface Visit {
   // G3c (D-065) — the panel lives on the VISIT, not the invoice, so the
   // Invoice Summary reads the panel's name from here when resolved.
   panelClinic?: PanelClinic | null;
+  // G4.5d3c-3b1a (D-092) — the visit-specific panel benefit snapshot.
+  // Server-derived; NULL means not captured, never unlimited coverage.
+  panelMemberReference?: string | null;
+  panelVerificationStatus?: PanelVerificationStatus | null;
+  panelVerifiedAt?: string | null;
+  panelVerifiedByStaffId?: string | null;
+  panelVerificationReference?: string | null;
+  panelCoverageType?: PanelCoverageType | null;
+  panelVisitLimitAmount?: string | null;
+  panelCopaymentType?: PanelCopaymentType | null;
+  panelCopaymentValue?: string | null;
+  panelBenefitOverrideReason?: string | null;
+  panelBenefitOverriddenAt?: string | null;
 }
+
+export type PanelVerificationStatus = 'PENDING_VERIFICATION' | 'VERIFIED' | 'FAILED' | 'OVERRIDDEN';
+export type PanelCoverageType = 'UNLIMITED' | 'VISIT_LIMIT';
+export type PanelCopaymentType = 'NONE' | 'FIXED_AMOUNT' | 'PERCENTAGE';
 
 // D-044 — standalone Visit creation (Patient Dashboard's "New Visit"),
 // independent of the Queue flow.

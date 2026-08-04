@@ -215,6 +215,10 @@ export class VisitService {
               registeredByStaffId: actor.id,
               billingType,
               panelClinicId: input.panelClinicId,
+              // G4.5d3c-3b1a (D-092) — selecting a panel is not verifying it.
+              // A panel visit starts PENDING_VERIFICATION; only an explicit,
+              // attributed staff action moves it on. No panel, no state.
+              panelVerificationStatus: input.panelClinicId ? 'PENDING_VERIFICATION' : undefined,
               presentingComplaint: input.presentingComplaint,
               visitNumber,
             },

@@ -1900,6 +1900,40 @@ Every prescription mutation invalidates exactly two queries: the visit's prescri
 
 ---
 
+## D-092 — G4.5d3c-3b1a: the benefit terms a visit was actually seen under
+
+First of the four 3b1 sub-checkpoints from the 3b0 audit. Schema + capture endpoints only — **no money is computed here**; the 3b1b engine will read what this stores. No UI, no queue changes, no discounts, no markups.
+
+### The snapshot lives on the Visit
+
+Fourteen nullable columns on `Visit`: member reference, verification status/actor/timestamp/portal-reference, coverage type (`UNLIMITED | VISIT_LIMIT`) with `panelVisitLimitAmount`, copayment type (`NONE | FIXED_AMOUNT | PERCENTAGE`) with `panelCopaymentValue` — plus five `panelOriginal*` columns and the three override-audit fields. Captured for THIS visit and never re-read from the panel's live configuration: the audit's staleness finding (pay-time pricing from live `limitAmount`) is what this schema exists to end. **NULL means "not captured"** and the engine must treat it as unresolved — never as unlimited coverage, never as zero copay.
+
+### Selecting a panel is not verifying it
+
+`VisitService.create` stores `PENDING_VERIFICATION` the moment a `panelClinicId` is chosen (both direct visits and the queue path, which delegates). Only an explicit, attributed staff action moves it on — `VERIFIED` and `FAILED` via `PATCH /visits/:id/panel-verification`, `OVERRIDDEN` via `PATCH /visits/:id/panel-benefit-override`. A FAILED verification deliberately stores **no terms**: recording benefit figures the portal refused to confirm would launder a guess into a snapshot.
+
+### Verification is counter work; override is a financial correction
+
+Verify: OWNER_ADMIN / FRONT_DESK_CLINICAL_STAFF / FINANCE_STAFF. Override: OWNER_ADMIN / FINANCE_STAFF only, with a **mandatory reason**, actor and timestamp — held to the same tier as cancelling an invoice (D-066's reasoning). Doctors are refused both: eligibility terms are not a clinical judgement. Branch access enforced; a foreign tenant's visit is the same 404 as a missing one; a completed visit's snapshot is locked (correcting a settled visit's terms is credit-note territory, not a quiet edit).
+
+### The originals are append-only
+
+`panelOriginal*` is written exactly once — at first capture — and never again. A re-verification updates the working terms; an override replaces the working terms and stamps `OVERRIDDEN`; neither touches the record of what verification first said. An override on a never-verified visit records `PENDING_VERIFICATION` as the original truth rather than inventing a verification that never happened.
+
+### Term validation fails closed
+
+VISIT_LIMIT requires a positive limit; UNLIMITED refuses one. FIXED/PERCENTAGE copay requires a positive value; NONE refuses one; percentage is bounded (0, 100]. An omitted copay type is stored as an explicit NONE. Every invalid combination is refused rather than stored for the engine to reinterpret.
+
+### Line-level responsibility columns
+
+`InvoiceLine` gains `panelResponsibilityAmount`, `patientResponsibilityAmount` (nullable — NULL = not computed, never zero; invariant once computed: their sum equals the line amount) and `panelExclusionReason` (snapshotted at exclusion time, so a later exclusion-list change cannot rewrite a line's history). **No writer yet** — that is 3b1b's whole job, stated here so the gap is a plan rather than a surprise.
+
+**Verification**: 26 tests in the new service, 2 new creation-state tests; 673 backend, 328 frontend, both typechecks clean; migration `20260804035856_panel_benefit_snapshot_and_line_responsibility` applied. Live smoke against the running API: panel visit created PENDING_VERIFICATION; doctor 403 on both routes; front desk verified (terms + originals written once); front desk 403 on override; UNLIMITED-with-limit refused 400.
+
+**Known limitations**: no UI captures the verification yet (3b2's Billing Review / registration surface); `BILLING_REVIEW_REQUIRED` still cannot be cleared until 3b1b writes responsibility; the completed-visit lock has no adjustment workflow behind it yet (deliberate — credit notes are a later, owner-gated design).
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.
