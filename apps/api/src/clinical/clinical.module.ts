@@ -9,6 +9,10 @@ import { PanelBenefitService } from './panel-benefit.service';
 import { BillingWorklistService } from './billing-worklist.service';
 import { ConsultationTariffService } from './consultation-tariff.service';
 import { QueueBoardService } from './queue-board.service';
+import { DispensaryService } from './dispensary.service';
+import { DispensaryBoardService } from './dispensary-board.service';
+import { DispensaryController } from './dispensary.controller';
+import { LabelPrintService } from './label-print.service';
 import { ConsultationTariffController } from './consultation-tariff.controller';
 import { VisitCompletionService } from './visit-completion.service';
 import { VisitHistoryController } from './visit-history.controller';
@@ -59,6 +63,7 @@ import { ChatChannelService } from './chat-channel.service';
 @Module({
   imports: [CoreModule],
   controllers: [
+    DispensaryController,
     ServiceCatalogController,
     VisitController,
     VisitHistoryController,
@@ -91,6 +96,9 @@ import { ChatChannelService } from './chat-channel.service';
     BillingWorklistService,
     ConsultationTariffService,
     QueueBoardService,
+    DispensaryService,
+    DispensaryBoardService,
+    LabelPrintService,
     VisitCompletionService,
     VisitHistoryService,
     QueueTicketService,
@@ -121,6 +129,9 @@ import { ChatChannelService } from './chat-channel.service';
     BillingWorklistService,
     ConsultationTariffService,
     QueueBoardService,
+    DispensaryService,
+    DispensaryBoardService,
+    LabelPrintService,
     VisitCompletionService,
     QueueTicketService,
     ClinicalNoteService,

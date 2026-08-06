@@ -163,6 +163,7 @@ model Tenant {
   visitNumberCounter          VisitNumberCounter?
   consultationTariffRules     ConsultationTariffRule[]
 
+  labelPrints LabelPrint[]
   @@map("tenants")
 }
 
@@ -228,6 +229,7 @@ model Clinic {
   consultationTariffRules ConsultationTariffRule[]
 
   @@index([tenantId])
+  labelPrints LabelPrint[]
   @@map("clinics")
 }
 
@@ -550,6 +552,7 @@ model Staff {
   @@index([tenantId, role])
   @@index([tenantId, clinicId])
   @@index([tenantId, medicalRegistrationNoNormalised])
+  labelPrints LabelPrint[]
   @@map("staff")
 }
 
@@ -1096,6 +1099,15 @@ model StockMovement {
   referenceId     String?           @map("reference_id")
   createdByUserId String?           @map("created_by_user_id")
   createdAt       DateTime          @default(now()) @map("created_at")
+
+  /// G4.5d5b-2 — why this movement happened, when it needs saying.
+  ///
+  /// Added for one specific fact the approved dispensing policy produces: a
+  /// hand-over made under an ACKNOWLEDGED stock shortage. The policy permits
+  /// it, so the ledger has to be able to say the shortage was seen and
+  /// accepted rather than leaving an unexplained negative balance for someone
+  /// to find later. Nullable and free text; nothing branches on it.
+  notes String? @map("notes")
 
   tenant Tenant      @relation(fields: [tenantId], references: [id])
   clinic Clinic      @relation(fields: [clinicId], references: [id])
@@ -2815,7 +2827,59 @@ model Prescription {
   item         Item          @relation(fields: [itemId], references: [id])
   prescribedBy Staff         @relation(fields: [prescribedByStaffId], references: [id])
   invoiceLines InvoiceLine[]
+  labelPrints  LabelPrint[]
 
   @@index([tenantId, visitId])
   @@map("prescriptions")
+}
+
+/// G4.5d5b-2 — the audit trail for a printed medication label.
+///
+/// Printing a drug label was entirely client-side: `printTextDocument.ts`
+/// assembled it in the browser from whatever the page happened to be holding,
+/// and no record survived. Two consequences the clinic actually cares about —
+/// nobody could answer "was this label ever printed, and by whom", and a label
+/// could be generated from values the browser supplied rather than from the
+/// prescription.
+///
+/// Deliberately SMALL. It records the act of printing, not a second copy of
+/// the patient's medication: the label content is re-assembled from the live
+/// Prescription/Visit/Patient/Clinic records every time, so this table can
+/// never drift from the clinical record or become an uncontrolled duplicate of
+/// it. What is stored is who, when, how many copies and which format.
+///
+/// Printing is NOT dispensing. Nothing here moves stock, changes prescription
+/// status, touches the queue or touches an invoice.
+model LabelPrint {
+  id             String @id @default(uuid())
+  tenantId       String @map("tenant_id")
+  clinicId       String @map("clinic_id")
+  prescriptionId String @map("prescription_id")
+
+  printedByStaffId   String   @map("printed_by_staff_id")
+  /// Snapshotted for the same reason clinical authorship is: a staff record
+  /// can be renamed or deactivated, and the audit must still say who printed.
+  printerNameSnapshot String  @map("printer_name_snapshot")
+  printedAt          DateTime @default(now()) @map("printed_at")
+
+  /// 1–3, enforced by the service. A label sheet is a physical thing.
+  copies Int @default(1)
+
+  /// Sequence within this prescription: 1 is the first print, anything above
+  /// it is a reprint. A boolean would lose how many times.
+  printSequence Int  @map("print_sequence")
+  isReprint     Boolean @default(false) @map("is_reprint")
+
+  /// Which physical preset was used, so a label printed at one size can be
+  /// told from one printed at another after the preset changes.
+  labelFormat String @default("KUWICK_STD_70x40") @map("label_format")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  clinic       Clinic       @relation(fields: [clinicId], references: [id])
+  prescription Prescription @relation(fields: [prescriptionId], references: [id])
+  printedBy    Staff        @relation(fields: [printedByStaffId], references: [id])
+
+  @@index([tenantId, prescriptionId])
+  @@index([tenantId, clinicId, printedAt])
+  @@map("label_prints")
 }

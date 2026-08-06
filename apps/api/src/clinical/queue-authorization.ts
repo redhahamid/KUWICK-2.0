@@ -119,7 +119,24 @@ const LEGAL_TRANSITIONS: Record<QueueTicketStatus, QueueTicketStatus[]> = {
   // to IN_CONSULTATION, never straight to dispensary or payment); it gets
   // filled in when the endpoints that use it are built.
   AT_PROCEDURE: [],
-  READY_FOR_DISPENSARY: [],
+
+  // G4.5d5b-2 — READY_FOR_DISPENSARY finally gets its outgoing edge.
+  //
+  // It had none, which meant a patient the doctor had sent to the counter
+  // could not legally leave that stage: the dispensary had no operational
+  // exit at all. The edge added here is exactly the one the approved flow
+  // needs and no more — once the last clinic-supplied medication is handed
+  // over, the visit moves to payment. CANCELLED stays available because a
+  // visit can be abandoned at any stage.
+  //
+  // Deliberately NOT added: a direct edge to COMPLETED. Closing a visit is
+  // VisitCompletionService's job under its own blockers (D-087), and giving
+  // the dispensary a shortcut to it would let a hand-over close a bill.
+  READY_FOR_DISPENSARY: [QueueTicketStatus.READY_FOR_PAYMENT, QueueTicketStatus.CANCELLED],
+
+  // Left empty on purpose. Payment's exit is completion, and completion does
+  // not move the ticket through this transition table — it is the one
+  // operation that sets checkOutAt, and it owns its own rules.
   READY_FOR_PAYMENT: [],
 
   COMPLETED: [],
