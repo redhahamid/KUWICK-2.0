@@ -1249,3 +1249,325 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
     padding-left: 18px;
   }
 }
+
+/* ===========================================================================
+   G4.5d5b-1 — the shared premium clinical UX foundation.
+
+   Everything below styles the components in design-system/kuwick. It is
+   deliberately additive: no existing workspace rule is changed, so no module
+   is repainted by this checkpoint. What changes is that a NEW surface no
+   longer has to invent its own spacing, its own modal width and its own idea
+   of what a status chip looks like.
+   =========================================================================== */
+
+/* --- Modal ---------------------------------------------------------------- */
+
+/* Translucent rather than opaque: the page behind a clinical modal is context
+   — which patient, which visit — and blacking it out removes the one thing
+   that tells the user the modal is about the record they were just reading.
+   The blur is what keeps it legible as context without competing for
+   attention. `saturate` stops the blurred backdrop going flat and grey. */
+.kw-modal .ant-modal-mask {
+  background: rgba(15, 28, 40, 0.45);
+  backdrop-filter: blur(3px) saturate(120%);
+  -webkit-backdrop-filter: blur(3px) saturate(120%);
+}
+
+.kw-modal .ant-modal-content {
+  padding: 0;
+  overflow: hidden;
+}
+
+.kw-modal .ant-modal-header {
+  padding: 16px 20px 12px;
+  margin: 0;
+  border-bottom: 1px solid var(--kw-border);
+}
+
+.kw-modal .ant-modal-body {
+  padding: 16px 20px;
+  /* The body scrolls, not the page behind it, and not the whole dialog —
+     otherwise the title and the action bar scroll away from a long form. */
+  max-height: min(66vh, 620px);
+  overflow-y: auto;
+}
+
+.kw-modal .ant-modal-footer {
+  margin: 0;
+  padding: 12px 20px;
+  border-top: 1px solid var(--kw-border);
+  background: var(--kw-card);
+}
+
+.kw-modal-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kw-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--kw-text);
+}
+
+.kw-modal-subtitle {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.kw-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.kw-confirm-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Cancel left, primary right. Always. */
+.kw-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.kw-action-bar-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.kw-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* --- Form sections -------------------------------------------------------- */
+.kw-form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kw-form-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.kw-form-section-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--kw-text-secondary);
+}
+
+.kw-form-section-hint {
+  font-size: 12px;
+}
+
+/* --- Status chips --------------------------------------------------------- */
+.kw-status-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.kw-status-tag-detail {
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+/* --- Search --------------------------------------------------------------- */
+.kw-search-select {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+}
+
+.kw-search-refine {
+  padding-left: 2px;
+}
+
+/* --- Result card ---------------------------------------------------------- */
+
+/* The number a clinician acts on. Large, with its unit attached rather than
+   implied, and its interpretation in words underneath — a bare "26.8" is a
+   figure somebody has to remember the meaning of. */
+.kw-result-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--kw-border);
+  border-radius: 10px;
+  background: var(--kw-rail-bg);
+}
+
+.kw-result-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kw-result-value {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.kw-result-number {
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--kw-navy);
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-result-unit {
+  font-size: 14px;
+  color: var(--kw-text-secondary);
+}
+
+.kw-result-empty {
+  padding: 6px 0;
+}
+
+.kw-result-interpretation {
+  font-size: 13px;
+  color: var(--kw-text);
+}
+
+.kw-result-caption {
+  font-size: 11px;
+}
+
+/* --- Calculator ----------------------------------------------------------- */
+.kw-calculator {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.kw-calculator-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kw-calculator-name {
+  font-size: 15px;
+}
+
+.kw-calculator-purpose,
+.kw-calculator-formula-text {
+  font-size: 12px;
+}
+
+.kw-calculator-source {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.kw-calculator-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.kw-calculator-note .ant-alert-description {
+  font-size: 12px;
+}
+
+/* --- Tablet --------------------------------------------------------------- */
+@media (max-width: 991px) {
+  .kw-modal .ant-modal {
+    max-width: 90vw;
+    margin: 16px auto;
+  }
+}
+
+/* --- Mobile: a sheet, not a shrunken dialog ------------------------------- */
+@media (max-width: 575px) {
+  /* Full screen, with the header and the action bar pinned. The confirm
+     button ending up behind the on-screen keyboard is the single most common
+     way a phone user gets stuck in a clinical form, and a sticky footer is
+     what prevents it. */
+  .kw-modal .ant-modal {
+    max-width: 100vw;
+    width: 100vw !important;
+    margin: 0;
+    top: 0;
+    padding-bottom: 0;
+  }
+
+  .kw-modal .ant-modal-content {
+    min-height: 100vh;
+    min-height: 100dvh;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .kw-modal .ant-modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--kw-card);
+  }
+
+  .kw-modal .ant-modal-body {
+    flex: 1 1 auto;
+    max-height: none;
+  }
+
+  .kw-modal .ant-modal-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    /* Clears the home indicator on a notched device. */
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Stacked, full width, primary last — a 44px target each. */
+  .kw-action-bar,
+  .kw-modal-footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .kw-action-bar-end {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    margin-left: 0;
+  }
+
+  .kw-action-bar .ant-btn,
+  .kw-modal-footer .ant-btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .kw-result-number {
+    font-size: 28px;
+  }
+}

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button, Popconfirm, Select, Space, Tag, Typography, message } from 'antd';
-import { MoreOutlined, PaperClipOutlined } from '@ant-design/icons';
+import { MoreOutlined, PaperClipOutlined, PlusOutlined } from '@ant-design/icons';
 import { useServices } from '../hooks/useServices';
 import {
   useCancelOrderService,
@@ -13,6 +13,7 @@ import { CompleteOrderModal } from '../CompleteOrderModal';
 import { OrderService, OrderServiceStatus } from '../types';
 import { ApiError } from '../../core/api-client';
 import { RailPanel } from './RailPanel';
+import { AddProcedureModal } from '../orders/AddProcedureModal';
 
 const { Text } = Typography;
 
@@ -62,6 +63,8 @@ export function OrdersRail({ visitId }: OrdersRailProps) {
   const [serviceCatalogId, setServiceCatalogId] = useState<string>();
   const [activeOrder, setActiveOrder] = useState<OrderService | null>(null);
 
+  const [ordering, setOrdering] = useState(false);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
   const { data: services } = useServices();
   const { data: orders, isLoading, error } = useOrderServices(visitId, { orderType: 'TASK_ORDER' });
   const createOrder = useCreateOrderService(visitId);
@@ -100,24 +103,18 @@ export function OrdersRail({ visitId }: OrdersRailProps) {
         emptyText="No orders or procedures for this visit"
         previewLimit={4}
         addControl={
-          <Space.Compact style={{ width: '100%' }}>
-            <Select
-              showSearch
-              allowClear
-              style={{ width: '100%' }}
-              placeholder="Search investigations or procedures…"
-              value={serviceCatalogId}
-              onChange={setServiceCatalogId}
-              filterOption={(input, option) => (option?.label as string).toLowerCase().includes(input.toLowerCase())}
-              options={orderable.map((service) => ({
-                value: service.id,
-                label: service.code ? `${service.code} — ${service.name}` : service.name,
-              }))}
-            />
-            <Button type="primary" loading={createOrder.isPending} disabled={!serviceCatalogId} onClick={add}>
-              Add Order
-            </Button>
-          </Space.Compact>
+          /* G4.5d5b-1 — the whole service catalogue used to live in this
+             Select, filtered for TASK_ORDER in the browser, and the order's
+             `instruction` field had nowhere to be typed. Both are the modal's
+             job now; the rail keeps the list, which is what a rail is for. */
+          <Button
+            ref={addButtonRef}
+            type="primary"
+            icon={<PlusOutlined aria-hidden />}
+            onClick={() => setOrdering(true)}
+          >
+            Add Order
+          </Button>
         }
         items={list.map((order) => (
           <div key={order.id} className="kw-rail-row">
@@ -186,6 +183,13 @@ export function OrdersRail({ visitId }: OrdersRailProps) {
       />
 
       {/* Unchanged: form templates, attachments and per-order chat. */}
+      <AddProcedureModal
+        open={ordering}
+        visitId={visitId}
+        onClose={() => setOrdering(false)}
+        restoreFocusTo={() => addButtonRef.current}
+      />
+
       <CompleteOrderModal
         order={activeOrder}
         onClose={() => setActiveOrder(null)}

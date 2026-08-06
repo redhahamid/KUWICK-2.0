@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ServiceCatalogService } from './service-catalog.service';
 import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
 
@@ -12,8 +12,13 @@ export class ServiceCatalogController {
   }
 
   @Get()
-  findAll() {
-    return this.serviceCatalog.findAll();
+  findAll(
+    @Query('search') search?: string,
+    @Query('take') take?: string,
+    @Query('orderType') orderType?: string,
+  ) {
+    const parsed = take ? Number(take) : undefined;
+    return this.serviceCatalog.findAll(search, Number.isFinite(parsed) ? parsed : undefined, orderType);
   }
 
   @Get(':id')

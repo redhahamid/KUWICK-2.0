@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Button, Drawer, Dropdown, Space, Tag, Tooltip, Typography, message } from 'antd';
 import { ExperimentOutlined, MoreOutlined } from '@ant-design/icons';
 import {
@@ -17,6 +17,7 @@ import {
   unresolvedText,
 } from '../medicationSupplyPresentation';
 import { MedicationsTab } from '../MedicationsTab';
+import { AddMedicationModal } from '../medications/AddMedicationModal';
 import { Prescription } from '../types';
 import { ApiError } from '../../core/api-client';
 import { RailPanel } from './RailPanel';
@@ -55,7 +56,14 @@ const STATUS_CHIP: Record<string, { className: string; label: string }> = {
  * note's height is declared in CSS and nothing here touches it.
  */
 export function MedicationsRail({ visitId }: MedicationsRailProps) {
+  // G4.5d5b-1 — two distinct surfaces now, where there was one drawer holding
+  // everything. Adding a medication is a focused modal; Copy Previous still
+  // needs the full prescribing workspace (calculators, source selection), so
+  // it keeps the drawer rather than being crammed into a modal that is the
+  // wrong shape for it.
+  const [addingMedication, setAddingMedication] = useState(false);
   const [prescribing, setPrescribing] = useState(false);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
   const { data: prescriptions, isLoading, error } = usePrescriptions(visitId);
   const dispense = useDispensePrescription(visitId);
   const cancel = useCancelPrescription(visitId);
@@ -111,7 +119,12 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
         previewLimit={5}
         addControl={
           <Space size={6} wrap>
-            <Button type="primary" icon={<ExperimentOutlined />} onClick={() => setPrescribing(true)}>
+            <Button
+              ref={addButtonRef}
+              type="primary"
+              icon={<ExperimentOutlined />}
+              onClick={() => setAddingMedication(true)}
+            >
               Add Medication
             </Button>
             {/* Copy Previous stays deliberate and re-runs the current
@@ -247,8 +260,19 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
         })}
       />
 
-      {/* The unchanged prescribing workspace: calculators, copy-previous,
-          dispensing, labels and every existing validation. */}
+      {/* G4.5d5b-1 — one medication, centred, with the visit's list still
+          visible behind it. Opening or closing this touches no clinical-note
+          query, so an unsaved draft in the editor is untouched. */}
+      <AddMedicationModal
+        open={addingMedication}
+        visitId={visitId}
+        onClose={() => setAddingMedication(false)}
+        restoreFocusTo={() => addButtonRef.current}
+      />
+
+      {/* Copy Previous keeps the full prescribing workspace: it needs the
+          source-visit selector and the dosage calculators, which do not
+          belong in a single-medication modal. */}
       <Drawer
         title="Prescribe medication"
         placement="right"
