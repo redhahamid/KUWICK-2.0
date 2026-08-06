@@ -2056,6 +2056,70 @@ The floating chat launcher sat on top of "Add to invoice" on a phone. Billing Re
 
 ---
 
+## D-096 — G4.5d3c-3c: the Canvas stops costing the doctor time, and documentation stops holding the patient
+
+Seven things the owner reported from using the Canvas at clinic pace. None of them is a feature; all of them are friction that multiplies by 100–200 patients a day. No schema change, no migration.
+
+### The note editor is bounded
+
+D-090 removed the editor's fixed height so a short SOAP note stopped reserving hundreds of blank pixels. The consequence, unnoticed until a long consultation, was that it then grew **without limit**: the diagnoses, medications, orders and the Consultation Footer were pushed steadily down the page, and finishing a consultation meant scrolling past everything just written to reach the button. A floor *and* a ceiling now — `min(52vh, 520px)` on desktop, lower on tablet and lower again on a phone — with the doctor's own text scrolling **inside** the editor past that point. The surrounding Canvas stops moving. The signed-note surface is bounded too: a long sealed note buries the footer exactly as a long draft does.
+
+**Focus Mode** widens the note by standing the rail down, and does so entirely through a class on `<body>`. That mechanism is the decision. Rendering a different, wider layout would unmount `RichTextEditor`, destroying the TipTap instance along with the cursor position and the undo history — and C1 (D-052) and D-078 both exist because unsaved clinical text has been lost to remounts before. A class toggle cannot cost a keystroke, and the tests assert mounts, not renders. Escape exits, because a mode with no keyboard exit is a trap.
+
+### BMI is calculated while it is being typed
+
+There were two implementations of the clinic's BMI rule on the client and none in the entry form: the doctor had to save a set of vitals and wait for a round trip to learn the BMI of the patient in front of them. One function per process now — `vitalsBmi.ts` on the web, `vitals-bmi.ts` on the API — over `weightKg / (heightCm/100)²`, one decimal, and a **shared fixture table asserted identically on both sides** so they cannot drift. (`apps/api` does not depend on `@kuwick/shared` — no dependency, no tsconfig path, no jest mapper — so a genuinely shared module would have meant wiring that package into the Nest build for one formula. The duplicated table is the guard instead, and it is load-bearing.)
+
+Everything else in that module exists to make the formula safe to render on every keystroke against half-typed fields: zero height would be Infinity, a partially typed field is *not knowable* rather than zero, and a non-numeric string is NaN. The contract is a finite positive number or null — never NaN, never Infinity, never a string the caller has to re-check. No network request: typing a weight must not cost a request.
+
+### Vitals: the fields are simply there, and the duplicate is prevented rather than hidden
+
+Recording began with an Add action that revealed the form — one click before any typing could start, on the commonest act on the panel, on every visit. The entry fields are the panel's resting state now, with saved readings above them as a compact **editable** summary. No field, no attribution and no correction rule was removed: Correct still opens the same form with the same mandatory reason and the same immutable revision behind it.
+
+The duplicate the owner reported had **two** root causes, and neither was rendering:
+
+1. **The form submits on Enter.** The Save button carries `loading`, which stops a second *click* — Enter submits the form directly and never consults the button. A nurse types the last figure, hits Enter, sees nothing on a slow network, hits Enter again. Two POSTs, two rows, one reading.
+2. **`record()` had no server-side protection of any kind.** It inserted unconditionally on every call; nothing in the controller, the service or the database asked whether that reading was already there. Any retry produced a second row.
+
+Both are fixed, independently, because a guard living in a browser protects one form. The server compares the incoming reading against the most recent one **by the same recorder, on the same visit, inside sixty seconds**, using the same canonical content hash the revision trail already uses — so 36.5 and 36.50 are one reading and the decision cannot drift from how the record hashes itself. A match returns the existing row rather than an error, which makes a retry safe. The check-then-insert is made atomic by a transaction-scoped **advisory lock keyed on the visit**: there is no existing row to claim atomically (D-087's pattern needs one), and without the lock two concurrent requests would both read the state before either insert. Proven live: four concurrent identical submissions produce one observation and one audit revision, with all four callers getting a success.
+
+Each of the three conditions excludes a legitimate case. A repeat BP after treatment is a real clinical act — any changed value is a new row, an identical reading later is a new row, and a second nurse confirming a reading is a separate, separately attributed act.
+
+### Attachments: several at once, and a PDF that says it is a PDF
+
+The file input had no `multiple` and the handler took `files[0]`. A doctor selecting four scanned pages uploaded one and the browser discarded three, silently. Every chosen file is uploaded now, **sequentially and each in its own request**, with its own progress and its own result: one rejection marks that file failed and the loop continues, and the files that landed are stated as uploaded so nobody re-uploads a wound photo and creates a duplicate. Not `Promise.all` (which cannot say *which* file failed) and not a bulk endpoint (which would lose the good files with the bad).
+
+A PDF is never rendered as a picture — an `<img>` pointed at PDF bytes shows the browser's broken-image glyph, which inside a clinical record reads as *the file is missing* rather than *this is a document*. It gets a file card with its icon, its type in words and a download action. On the Canvas strip a non-image used to be the bare text "1 non-image", with no name and no way to open it; it is a card there too. Classification falls back to the file extension when the MIME type is `application/octet-stream`, which is what several scanner and phone-share paths send.
+
+### Medication supply mode
+
+The control was already visible and already pre-selected (D-091). What was missing is that a pre-selected value reads as a choice somebody made, so doctors stopped reading it: it labels itself as the default now, and says when to change it. The schema still has **no** column default, deliberately — a column default would make a row nobody looked at indistinguishable from one a prescriber deliberately set (D-084). A pre-selected control cannot do that.
+
+**Copy Previous** wrote no supply mode at all, so every copied line arrived NULL and each one became a blocker to clear by hand; five repeat medications produced five blockers. The explicit rule now: **carry over what the source recorded; where the source recorded nothing, or recorded DEFERRED, take the clinic's default.** Carrying over matters — silently converting an external prescription to clinic dispensing would assert the clinic is supplying medicine it is not. Defaulting matters too: a copy is a new prescribing decision made today (the service already re-authors it for that reason), so it gets the same visible default a freshly typed line gets. DEFERRED is treated as unrecorded because it was a decision about a visit that has ended, and carrying it forward would manufacture a new blocker out of an old hesitation. **The source row is never rewritten** — a legacy NULL stays NULL and stays unresolved. The clinic is told which happened, because the rows alone cannot say.
+
+### Documentation Pending: the note stops holding the patient, and still holds the visit
+
+An unsigned clinical note refused the whole doctor-phase routing decision. A patient with a prescription in hand sat in the consultation room until the prose was finished — which inverts the queue in a clinic seeing 200 patients a day, because the note is written between patients or at the end of a block, and none of that is a reason for someone to wait.
+
+`SIGNED_NOTE_REQUIRED` is gone from the doctor-phase blockers. The requirement itself is not: it moved to `VisitCompletionService` as `CLINICAL_DOCUMENTATION_PENDING`, where it holds the **paperwork** instead of a person. A visit could never close without a signed note before and it still cannot — for every role, owner included, with no override. Nothing auto-saves and nothing auto-signs; the draft in the editor is untouched by completion, and the live proof asserts that completing with the note unsigned writes zero clinical notes.
+
+The state is **derived**, not stored: it is the same signed-narrative count the blocker was built from, so it can never disagree with the notes themselves, and no migration was needed. What *is* recorded is the answer **at the moment of completion**, on the append-only `DOCTOR_PHASE_COMPLETED` event, which already carries the actor, the actor's name and the time. That one has to be stored: re-deriving it later would silently rewrite itself the instant the doctor went back and signed, erasing the fact that the patient was sent on without a record. A phase completed before this was recorded reads NULL — *not recorded*, which is not the same as *documentation was complete*.
+
+The footer distinguishes four cases, and **amber and red mean different things**: amber is a state that permits the action, red is one that forbids it. Red had come to mean both, and a doctor who sees the same alarm for "you cannot proceed" and "you have not finished writing" learns to read neither.
+
+- **A** — eligible, documentation complete: neutral, green chip, ordinary confirmation.
+- **B** — eligible, documentation pending: **amber** panel, "Clinical note not signed" chip, the action unchanged and never withheld, and the confirmation asks *"Send Patient with documentation pending?"* — naming the consequence rather than implying the software will handle it.
+- **C** — blocked: **red**, the action withheld. The documentation state is not shown beside it; a doctor facing a real blocker does not need a softer problem competing for the same glance.
+- **D** — completed with the note still unsigned: amber, naming who sent the patient on and when, from the recorded event.
+
+**Verification**: 927 backend tests (42 suites) and 608 frontend tests (27 files), both typechecks clean; **36/36 live checks** against the running API and real database (`prisma/g45d3c3c-canvas-speed-check.ts`). 20 screenshots in `docs/g45d3c3c-screenshots/`.
+
+**A latent flake fixed on the way**: `visit-completion.service.spec.ts` supplied no consultation start time, so D-094's tariff matching formatted the current wall clock instead — the assertions passed by day and failed between 23:00 and 08:00 clinic time. The fixture now pins a fixed instant.
+
+**Known limitations**: the sixty-second duplicate window is a judgement, not a measured threshold — it is short enough that no genuine repeat measurement can fall inside it, and any changed value bypasses it entirely; the advisory lock serialises concurrent vitals writes per visit, which is correct but is a serialisation point if a clinic ever records vitals from several devices at once; multi-file upload is sequential by design (a shared clinic connection makes six concurrent multi-megabyte photos slower and likelier to time out), so a large batch is as slow as the sum of its files; the attachment endpoint enforces a 15 MB size limit but **no file-type allow-list** — the browser's `accept` attribute is a picker hint and stops nothing on the wire, so a direct caller can post any type into a clinical record. That is pre-existing and is reported rather than closed here, because deciding which document types a clinic may attach is a policy call and not something to settle inside an upload-ergonomics fix.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

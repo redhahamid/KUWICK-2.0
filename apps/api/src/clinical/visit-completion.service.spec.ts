@@ -21,6 +21,13 @@ const STOCK = { id: 'st-1', fullName: 'Sam', role: 'STOCK_STAFF', active: true, 
 
 const DONE = new Date('2026-08-04T08:00:00Z');
 
+/**
+ * A fixed consultation start: 10:00 on a Tuesday, Asia/Kuala_Lumpur.
+ * Every tariff assertion in this file is relative to this instant, so none of
+ * them depends on when the suite happens to run.
+ */
+const CONSULTATION_AT = new Date('2026-08-04T02:00:00Z');
+
 interface World {
   visit?: Record<string, unknown> | null;
   ticketStatus?: QueueTicketStatus | null;
@@ -32,6 +39,13 @@ interface World {
   claimCount?: number;
   /** D-094 — active consultation tariff rules ([] = the feature is off). */
   tariffRules?: Array<Record<string, unknown>>;
+  /**
+   * G4.5d3c-3c — how many SIGNED doctor narratives the visit has. The default
+   * is 1, i.e. documentation complete: the note-signature requirement moved
+   * here from doctor-phase routing, so every pre-existing test in this file
+   * is about a visit whose record is already written.
+   */
+  signedNotes?: number;
 }
 
 function build(actor: Record<string, unknown> | null, world: World = {}) {
@@ -46,6 +60,7 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
     branchCount = 1,
     claimCount = 1,
     tariffRules = [],
+    signedNotes = 1,
   } = world;
 
   const tx = {
@@ -54,9 +69,23 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
     clinic: { count: jest.fn().mockResolvedValue(branchCount) },
     userClinicAccess: { findMany: jest.fn().mockResolvedValue([]) },
     visit: {
-      findUnique: jest.fn(async ({ select }: any) =>
-        select?.clinicId && !select?.checkOutAt ? { clinicId: 'clinic-1' } : visit,
-      ),
+      findUnique: jest.fn(async ({ select }: any) => {
+        // D-094's tariff resolution asks for the consultation's start time.
+        // It must be a FIXED instant: the fallback chain ends at the visit's
+        // check-in, and a fixture that supplies none silently formats the
+        // current wall clock instead — which made these assertions pass by
+        // day and fail between 23:00 and 08:00 clinic time. Found while
+        // adding the 3c documentation blocker; the fixture was always wrong.
+        if (select?.checkInAt) {
+          return {
+            clinicId: 'clinic-1',
+            checkInAt: CONSULTATION_AT,
+            clinic: { timezone: 'Asia/Kuala_Lumpur' },
+            queueTicket: { status: ticketStatus, calledAt: CONSULTATION_AT },
+          };
+        }
+        return select?.clinicId && !select?.checkOutAt ? { clinicId: 'clinic-1' } : visit;
+      }),
       updateMany: jest.fn().mockResolvedValue({ count: claimCount }),
     },
     queueTicket: {
@@ -83,6 +112,8 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
     // D-094 — the worklist resolves the consultation charge too. No tariff
     // configured (the default) = consultation auto-billing off for the clinic.
     consultationTariffRule: { findMany: jest.fn(async () => tariffRules) },
+    // G4.5d3c-3c — the clinical documentation check.
+    clinicalNote: { count: jest.fn().mockResolvedValue(signedNotes) },
     visitWorkflowEvent: { create: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) },
   };
 
@@ -135,6 +166,59 @@ describe('authorisation', () => {
 });
 
 describe('preconditions', () => {
+  // G4.5d3c-3c — the note-signature requirement, in its new home.
+  //
+  // It used to refuse DOCTOR-PHASE completion, which held a patient in the
+  // consultation room until the prose was finished. It refuses VISIT
+  // completion now: same rule, applied where enforcing it costs nobody's time
+  // in a waiting room. A visit could never close without a signed note
+  // before, and it still cannot.
+  it('3c-1. an unsigned clinical note blocks visit completion', async () => {
+    const ctx = build(FRONT_DESK, { signedNotes: 0 });
+    expect(await codes(ctx)).toContain('CLINICAL_DOCUMENTATION_PENDING');
+  });
+
+  it('3c-2. a signed clinical note does not block', async () => {
+    const ctx = build(FRONT_DESK, { signedNotes: 1 });
+    expect(await codes(ctx)).not.toContain('CLINICAL_DOCUMENTATION_PENDING');
+  });
+
+  it('3c-3. the refusal is enforced on the WRITE, not only in the preview', async () => {
+    const ctx = build(FRONT_DESK, { signedNotes: 0 });
+    await expect(run(ctx)).rejects.toThrow();
+    expect(ctx.tx.visit.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('3c-4. no role can complete a visit whose note is unsigned', async () => {
+    // No override exists, and none is invented here. Clinical authorship is
+    // the author's and cannot be waived by a counter permission.
+    for (const actor of [FRONT_DESK, FINANCE, OWNER]) {
+      const ctx = build(actor, { signedNotes: 0 });
+      await expect(run(ctx)).rejects.toThrow();
+      expect(ctx.tx.visit.updateMany).not.toHaveBeenCalled();
+    }
+  });
+
+  it('3c-5. only a SIGNED doctor narrative counts', async () => {
+    // The query must not accept a staff remark or an unsigned draft as the
+    // clinical record.
+    const ctx = build(FRONT_DESK, { signedNotes: 0 });
+    await codes(ctx);
+    const where = ctx.tx.clinicalNote.count.mock.calls[0][0].where;
+    expect(where).toMatchObject({
+      noteType: 'DOCTOR_NARRATIVE',
+      status: 'SIGNED',
+      signedAt: { not: null },
+    });
+  });
+
+  it('3c-6. completing a visit never signs a note on anyone\'s behalf', async () => {
+    const ctx = build(FRONT_DESK, { signedNotes: 1 });
+    await run(ctx);
+    expect((ctx.tx.clinicalNote as Record<string, unknown>).update).toBeUndefined();
+    expect((ctx.tx.clinicalNote as Record<string, unknown>).create).toBeUndefined();
+  });
+
   it('19. an incomplete doctor phase blocks', async () => {
     const ctx = build(FRONT_DESK, { visit: { id: 'visit-1', clinicId: 'clinic-1', checkOutAt: null, doctorCompletedAt: null } });
     expect(await codes(ctx)).toContain('DOCTOR_PHASE_NOT_COMPLETED');

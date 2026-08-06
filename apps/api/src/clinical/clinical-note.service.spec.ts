@@ -142,6 +142,18 @@ function createHarness(staffRows: Staff[]): Harness {
     visitObservation: {
       findUnique: ({ where }: { where: { id: string } }) => Promise.resolve(db.observations.get(where.id) ?? null),
       findMany: () => Promise.resolve([...db.observations.values()]),
+      // G4.5d3c-3c — the duplicate-vitals guard asks for the most recent
+      // observation on this visit by this recorder inside the window. The
+      // fake honours visitId and recordedByStaffId; `recordedAt` is not
+      // stored by this harness, so the time predicate is exercised by the
+      // dedicated spec rather than here.
+      findFirst: ({ where }: { where: Record<string, unknown> }) => {
+        const matches = [...db.observations.values()].filter(
+          (row: Record<string, unknown>) =>
+            row.visitId === where.visitId && row.recordedByStaffId === where.recordedByStaffId,
+        );
+        return Promise.resolve(matches[matches.length - 1] ?? null);
+      },
       create: ({ data }: { data: Record<string, unknown> }) => {
         const row = { id: id('obs'), ...data };
         db.observations.set(row.id as string, row);

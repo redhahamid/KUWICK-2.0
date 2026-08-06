@@ -96,6 +96,11 @@ function build(world: World = {}) {
     visit: { findUnique: jest.fn().mockResolvedValue(null) },
     consultationTariffRule: { findMany: jest.fn().mockResolvedValue([]) },
     visitWorkflowEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+    // G4.5d3c-3c — the board evaluates the same blockers the completion
+    // endpoint does, which now includes the clinical-documentation check. The
+    // default is a signed note: these tests are about queue stages, dispensing
+    // and money, and an unsigned note would add a blocker to every row.
+    clinicalNote: { count: jest.fn().mockResolvedValue(1) },
   };
   const rawPrisma = { $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) } as unknown as PrismaService;
   return { service: new QueueBoardService(rawPrisma), tx };

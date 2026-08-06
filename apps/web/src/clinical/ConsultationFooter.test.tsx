@@ -48,6 +48,12 @@ const STATUS = (over: Partial<DoctorPhaseStatus> = {}): DoctorPhaseStatus => ({
   doctorCompletedByStaffId: null,
   queueStatus: 'IN_CONSULTATION',
   blockers: [],
+  // G4.5d3c-3c — the default fixture has a SIGNED note. Documentation
+  // pending is the exception, stated explicitly by the tests that mean it.
+  documentationPending: false,
+  documentationPendingAtCompletion: null,
+  documentationPendingActorName: null,
+  documentationPendingAt: null,
   destination: 'DISPENSARY',
   routingReason: 'DISPENSARY_REQUIRED',
   ...over,
@@ -143,7 +149,7 @@ describe('3/7/8/9. blocked', () => {
 
   it('shows every blocker together, in the approved order, with no completion action', async () => {
     get.mockResolvedValue(
-      blockers('MEDICATION_SUPPLY_DEFERRED', 'SIGNED_NOTE_REQUIRED', 'PROCEDURE_PENDING'),
+      blockers('MEDICATION_SUPPLY_DEFERRED', 'QUEUE_STATE_INELIGIBLE', 'PROCEDURE_PENDING'),
     );
     renderFooter();
 
@@ -152,7 +158,7 @@ describe('3/7/8/9. blocked', () => {
       .getAllByRole('listitem')
       .map((li) => li.textContent);
     expect(lines).toEqual([
-      'Clinical note must be signed before completing consultation.',
+      'This visit is not currently at a stage that can be completed.',
       'A procedure is still pending or in progress.',
       'Deferred medication supply must be resolved.',
     ]);
@@ -160,14 +166,14 @@ describe('3/7/8/9. blocked', () => {
   });
 
   it('38. blockers carry alert semantics so a screen reader is told', async () => {
-    get.mockResolvedValue(blockers('SIGNED_NOTE_REQUIRED'));
+    get.mockResolvedValue(blockers('PROCEDURE_PENDING'));
     renderFooter();
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveAttribute('aria-live', 'assertive');
   });
 
   it('the disabled completion is explained by visible text, not by an absent button alone', async () => {
-    get.mockResolvedValue(blockers('SIGNED_NOTE_REQUIRED'));
+    get.mockResolvedValue(blockers('PROCEDURE_PENDING'));
     renderFooter();
     expect(await screen.findByText(/Consultation cannot be completed yet/)).toBeInTheDocument();
   });
@@ -182,7 +188,6 @@ describe('10–13. review actions', () => {
     });
 
   it.each([
-    ['10. Review and Sign Clinical Note', 'SIGNED_NOTE_REQUIRED', 'note'],
     ['11. Review Orders', 'PROCEDURE_PENDING', 'orders'],
     ['12. Review Medications', 'MEDICATION_SUPPLY_UNCONFIRMED', 'medications'],
   ])('%s hands off to the existing section', async (label, code, anchor) => {
@@ -200,7 +205,7 @@ describe('10–13. review actions', () => {
   });
 
   it('the footer grows no second signing control', async () => {
-    get.mockResolvedValue(blockers('SIGNED_NOTE_REQUIRED'));
+    get.mockResolvedValue(STATUS({ documentationPending: true }));
     renderFooter();
     const footer = await screen.findByRole('region', { name: 'Consultation completion' });
     // "Review and Sign" navigates; it must not itself be a sign action.
@@ -208,10 +213,10 @@ describe('10–13. review actions', () => {
   });
 
   it('reviewing does not disturb unsaved note text', async () => {
-    get.mockResolvedValue(blockers('SIGNED_NOTE_REQUIRED'));
+    get.mockResolvedValue(blockers('PROCEDURE_PENDING'));
     renderFooter();
     await userEvent.type(note(), 'Draft in progress');
-    await userEvent.click(await screen.findByRole('button', { name: 'Review and Sign Clinical Note' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Review Orders' }));
     expect(note().value).toBe('Draft in progress');
     expect(mounts).toBe(1);
   });
@@ -419,9 +424,9 @@ describe('stale preview, fresh refusal', () => {
   it('the write’s blockers replace the stale button, and no text is lost', async () => {
     get.mockResolvedValue(STATUS());
     patch.mockRejectedValue(
-      new ApiError('Sign the clinical note before completing the consultation.', 400, {
+      new ApiError('A procedure or investigation is still open.', 400, {
         blockers: [
-          { code: 'SIGNED_NOTE_REQUIRED', message: 'server text' },
+          { code: 'QUEUE_STATE_INELIGIBLE', message: 'server text' },
           { code: 'PROCEDURE_PENDING', message: 'server text' },
         ],
       }),
@@ -435,7 +440,7 @@ describe('stale preview, fresh refusal', () => {
 
     const alert = await screen.findByRole('alert');
     expect(within(alert).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
-      'Clinical note must be signed before completing consultation.',
+      'This visit is not currently at a stage that can be completed.',
       'A procedure is still pending or in progress.',
     ]);
     expect(screen.queryByRole('button', { name: /^Complete/ })).not.toBeInTheDocument();
@@ -455,5 +460,190 @@ describe('stale preview, fresh refusal', () => {
     const alert = await screen.findByRole('alert');
     expect(within(alert).getByText(/Consultation not completed/)).toBeInTheDocument();
     expect(alert.textContent).not.toMatch(/prisma|constraint|visits_pkey/i);
+  });
+});
+
+// ===========================================================================
+// G4.5d3c-3c — DOCUMENTATION PENDING IN THE FOOTER (Cases A–D)
+//
+// The behaviour these tests defend is a promise to a doctor: an unwritten
+// note never traps a patient in the consultation room, and never silently
+// writes itself either.
+// ===========================================================================
+describe('Case B — eligible with documentation pending', () => {
+  const pending = (over = {}) => STATUS({ documentationPending: true, ...over });
+
+  it('47. the completion action is offered, not withheld', async () => {
+    get.mockResolvedValue(pending());
+    renderFooter();
+    expect(
+      await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }),
+    ).toBeEnabled();
+  });
+
+  it('48. it is a status notice, not an alert — amber, not red', async () => {
+    get.mockResolvedValue(pending());
+    renderFooter();
+    const notice = await screen.findByText('Documentation pending');
+    expect(notice).toBeInTheDocument();
+    // No blocker alert anywhere: a real blocker uses role="alert".
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('49. the footer marks the state for the rest of the page', async () => {
+    get.mockResolvedValue(pending());
+    renderFooter();
+    await screen.findByText('Documentation pending');
+    const footer = screen.getByRole('region', { name: 'Consultation completion' });
+    expect(footer).toHaveAttribute('data-documentation-pending', 'true');
+  });
+
+  it('50. the chip says the note is not signed rather than claiming it is', async () => {
+    get.mockResolvedValue(pending());
+    renderFooter();
+    expect(await screen.findByText('Clinical note not signed')).toBeInTheDocument();
+    expect(screen.queryByText('Clinical note signed')).not.toBeInTheDocument();
+  });
+
+  it('51. the confirmation asks the owner-approved question', async () => {
+    get.mockResolvedValue(pending());
+    renderFooter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Send Patient with documentation pending?')).toBeInTheDocument();
+  });
+
+  it('52. the confirmation promises the draft is untouched', async () => {
+    get.mockResolvedValue(pending());
+    renderFooter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toMatch(/nothing is saved or signed on your behalf/i);
+  });
+
+  it('53. sending on with documentation pending does not touch the editor', async () => {
+    get.mockResolvedValue(pending());
+    patch.mockResolvedValue({ alreadyCompleted: false });
+    renderFooter();
+    await userEvent.type(note(), 'SOAP in progress, not yet finished');
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Complete & Send to Dispensary' }));
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    expect(note().value).toBe('SOAP in progress, not yet finished');
+    expect(mounts).toBe(1);
+  });
+
+  it('54. the completion request carries no note content and no signature', async () => {
+    get.mockResolvedValue(pending());
+    patch.mockResolvedValue({ alreadyCompleted: false });
+    renderFooter();
+    await userEvent.type(note(), 'Draft text');
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Complete & Send to Dispensary' }));
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    const body = JSON.stringify(patch.mock.calls[0]?.[1] ?? {});
+    expect(body).not.toMatch(/Draft text/);
+    expect(body).not.toMatch(/sign/i);
+  });
+
+  it('55. cancelling the confirmation writes nothing', async () => {
+    get.mockResolvedValue(pending());
+    renderFooter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it('56. the pending panel offers the note section without replacing the action', async () => {
+    get.mockResolvedValue(pending());
+    const { onReview } = renderFooter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Write and Sign Clinical Note' }));
+    expect(onReview).toHaveBeenCalledWith('note');
+    expect(screen.getByRole('button', { name: 'Complete & Send to Dispensary' })).toBeEnabled();
+  });
+
+  it('57. routing to Payment and to Billing Review is equally unaffected', async () => {
+    for (const [reason, label] of [
+      ['PATIENT_PAYMENT_REQUIRED', 'Complete & Send to Payment'],
+      ['BILLING_REVIEW_REQUIRED', 'Complete & Send for Billing Review'],
+    ] as const) {
+      get.mockResolvedValue(pending({ routingReason: reason, destination: 'PAYMENT' }));
+      const { unmount } = renderFooter();
+      expect(await screen.findByRole('button', { name: label })).toBeEnabled();
+      unmount();
+    }
+  });
+});
+
+describe('Case A — eligible with documentation complete', () => {
+  it('58. no amber panel, and the signed chip is shown', async () => {
+    get.mockResolvedValue(STATUS({ documentationPending: false }));
+    renderFooter();
+    expect(await screen.findByText('Clinical note signed')).toBeInTheDocument();
+    expect(screen.queryByText('Documentation pending')).not.toBeInTheDocument();
+  });
+
+  it('59. the ordinary confirmation is asked, not the pending one', async () => {
+    get.mockResolvedValue(STATUS({ documentationPending: false }));
+    renderFooter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByText('Send Patient with documentation pending?')).not.toBeInTheDocument();
+  });
+});
+
+describe('Case D — completed, documentation still pending', () => {
+  const done = (over = {}) =>
+    STATUS({
+      completed: true,
+      doctorCompletedAt: '2026-08-06T02:00:00.000Z',
+      doctorCompletedByStaffId: 'dr-a',
+      queueStatus: 'READY_FOR_DISPENSARY',
+      destination: 'DISPENSARY',
+      routingReason: 'DISPENSARY_REQUIRED',
+      ...over,
+    });
+
+  it('60. the completed bar carries the amber outstanding-note panel', async () => {
+    get.mockResolvedValue(
+      done({ documentationPending: true, documentationPendingAtCompletion: true }),
+    );
+    renderFooter();
+    expect(await screen.findByText('Documentation pending')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('61. it names who sent the patient on, and when', async () => {
+    get.mockResolvedValue(
+      done({
+        documentationPending: true,
+        documentationPendingAtCompletion: true,
+        documentationPendingActorName: 'Dr Amira Rahman',
+        documentationPendingAt: '2026-08-06T02:00:00.000Z',
+      }),
+    );
+    renderFooter();
+    expect(await screen.findByText(/Sent on by Dr Amira Rahman/)).toBeInTheDocument();
+  });
+
+  it('62. signing afterwards removes the outstanding-note panel', async () => {
+    get.mockResolvedValue(
+      done({ documentationPending: false, documentationPendingAtCompletion: true }),
+    );
+    renderFooter();
+    await screen.findByText('Doctor phase completed');
+    expect(screen.queryByText('Documentation pending')).not.toBeInTheDocument();
+  });
+
+  it('63. a completed phase still offers no completion action', async () => {
+    get.mockResolvedValue(
+      done({ documentationPending: true, documentationPendingAtCompletion: true }),
+    );
+    renderFooter();
+    await screen.findByText('Doctor phase completed');
+    expect(screen.queryByRole('button', { name: /^Complete/ })).not.toBeInTheDocument();
   });
 });

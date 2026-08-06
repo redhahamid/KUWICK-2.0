@@ -1092,9 +1092,13 @@ export type DoctorRoutingReason =
   | 'BILLING_REVIEW_REQUIRED'
   | 'NO_DOWNSTREAM_WORK';
 
+// G4.5d3c-3c — SIGNED_NOTE_REQUIRED is gone from this list, deliberately.
+// An unsigned clinical note no longer blocks doctor-phase routing; it is
+// reported as `documentationPending` instead, and the requirement to sign is
+// enforced at visit completion (CLINICAL_DOCUMENTATION_PENDING) where it holds
+// paperwork rather than a patient.
 export type DoctorPhaseBlockerCode =
   | 'QUEUE_STATE_INELIGIBLE'
-  | 'SIGNED_NOTE_REQUIRED'
   | 'PROCEDURE_PENDING'
   | 'MEDICATION_SUPPLY_UNCONFIRMED'
   | 'MEDICATION_SUPPLY_DEFERRED';
@@ -1115,6 +1119,17 @@ export interface DoctorPhaseStatus {
   /** NULL while a procedure is open — "not yet knowable", never NONE. */
   destination: DoctorCompletionDestination | null;
   routingReason: DoctorRoutingReason | null;
+  /** G4.5d3c-3c — no signed doctor narrative exists for this visit yet. */
+  documentationPending: boolean;
+  /**
+   * Whether documentation was pending AT COMPLETION, as recorded on the
+   * workflow event. NULL for an incomplete phase, and for one completed
+   * before this was recorded.
+   */
+  documentationPendingAtCompletion: boolean | null;
+  /** Who sent the patient on with documentation pending, and when. */
+  documentationPendingActorName: string | null;
+  documentationPendingAt: string | null;
 }
 
 /** `PATCH /visits/:id/complete-doctor-phase` — authoritative. */

@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   BLOCKER_ORDER,
   BLOCKER_TEXT,
+  DOCUMENTATION_PENDING_ACTION,
+  DOCUMENTATION_PENDING_BODY,
   completedStation,
+  documentationPendingConfirm,
   footerView,
   orderBlockers,
   primaryActionFor,
@@ -27,6 +30,12 @@ const STATUS = (over: Partial<DoctorPhaseStatus> = {}): DoctorPhaseStatus => ({
   doctorCompletedByStaffId: null,
   queueStatus: 'IN_CONSULTATION',
   blockers: [],
+  // G4.5d3c-3c — the default fixture has a SIGNED note. Documentation
+  // pending is the exception, stated explicitly by the tests that mean it.
+  documentationPending: false,
+  documentationPendingAtCompletion: null,
+  documentationPendingActorName: null,
+  documentationPendingAt: null,
   destination: 'NONE',
   routingReason: 'NO_DOWNSTREAM_WORK',
   ...over,
@@ -63,7 +72,9 @@ describe('status loading', () => {
 
 describe('blocked state', () => {
   it.each([
-    ['3. unsigned note', 'SIGNED_NOTE_REQUIRED', 'Clinical note must be signed before completing consultation.'],
+    // G4.5d3c-3c — 'unsigned note' is deliberately ABSENT from this table.
+    // It is no longer a doctor-phase blocker; see the documentation-pending
+    // suite below, which asserts what it is instead.
     ['4. pending procedure', 'PROCEDURE_PENDING', 'A procedure is still pending or in progress.'],
     ['5. NULL supply mode', 'MEDICATION_SUPPLY_UNCONFIRMED', 'Medication supply mode must be confirmed.'],
     ['6. DEFERRED supply', 'MEDICATION_SUPPLY_DEFERRED', 'Deferred medication supply must be resolved.'],
@@ -75,7 +86,9 @@ describe('blocked state', () => {
   });
 
   it('7. multiple blockers are shown together, not one at a time', () => {
-    const v = view(blocked('SIGNED_NOTE_REQUIRED', 'PROCEDURE_PENDING', 'MEDICATION_SUPPLY_DEFERRED'));
+    const v = view(
+      blocked('QUEUE_STATE_INELIGIBLE', 'PROCEDURE_PENDING', 'MEDICATION_SUPPLY_DEFERRED'),
+    );
     expect(v.blockers).toHaveLength(3);
   });
 
@@ -93,12 +106,12 @@ describe('blocked state', () => {
   });
 
   it('9b. a derived destination arriving WITH a blocker does not produce a button', () => {
-    // The preview can carry a destination for a blocked visit — an unsigned
-    // note says nothing about where the patient goes once it is signed. That
-    // is a preview, never permission to send them.
+    // The preview can carry a destination for a blocked visit — an open
+    // procedure says nothing about where the patient goes once it closes.
+    // That is a preview, never permission to send them.
     const v = view(
       STATUS({
-        blockers: [{ code: 'SIGNED_NOTE_REQUIRED', message: 'x' }] as never,
+        blockers: [{ code: 'PROCEDURE_PENDING', message: 'x' }] as never,
         destination: 'DISPENSARY',
         routingReason: 'DISPENSARY_REQUIRED',
       }),
@@ -126,10 +139,14 @@ describe('blocked state', () => {
 describe('review actions', () => {
   const actionsFor = (...codes: string[]) => reviewActions(orderBlockers(codes.map((code) => ({ code }))));
 
-  it('10. an unsigned note offers the Clinical Note section', () => {
-    expect(actionsFor('SIGNED_NOTE_REQUIRED')).toEqual([
-      { label: 'Review and Sign Clinical Note', anchor: 'note' },
-    ]);
+  it('10. an unsigned note is not a blocker and contributes no blocker action', () => {
+    // G4.5d3c-3c — the note action moved to the documentation-pending panel,
+    // which offers it WITHOUT withholding the completion button.
+    expect(actionsFor('SIGNED_NOTE_REQUIRED')).toEqual([]);
+    expect(DOCUMENTATION_PENDING_ACTION).toEqual({
+      label: 'Write and Sign Clinical Note',
+      anchor: 'note',
+    });
   });
 
   it('11. a pending procedure offers Orders', () => {
@@ -161,8 +178,8 @@ describe('review actions', () => {
   });
 
   it('actions follow the blocker order, not the order they were discovered', () => {
-    expect(actionsFor('MEDICATION_SUPPLY_DEFERRED', 'SIGNED_NOTE_REQUIRED', 'PROCEDURE_PENDING').map((a) => a.anchor))
-      .toEqual(['note', 'orders', 'medications']);
+    expect(actionsFor('MEDICATION_SUPPLY_DEFERRED', 'PROCEDURE_PENDING').map((a) => a.anchor))
+      .toEqual(['orders', 'medications']);
   });
 });
 
@@ -323,5 +340,133 @@ describe('completed state', () => {
     const second = completedStation(stored as never);
     expect(first).toBe(second);
     expect(Object.keys(stored)).toEqual(['destination', 'routingReason']);
+  });
+});
+
+// ===========================================================================
+// G4.5d3c-3c — DOCUMENTATION PENDING
+//
+// The owner's rule in one sentence: an empty, unsaved or unsigned clinical
+// note must not stop a patient being sent to the Dispensary or to Billing.
+// Every test below is a way of asking whether that is still true.
+// ===========================================================================
+describe('documentation pending — the state, not a blocker', () => {
+  it('31. an unsigned note does not withhold the completion action', () => {
+    const v = view(STATUS({ documentationPending: true }));
+    expect(v.mode).toBe('ELIGIBLE');
+    expect(v.primary).not.toBeNull();
+    expect(v.blockers).toEqual([]);
+  });
+
+  it('32. it is reported as documentation pending rather than as a blocker', () => {
+    const v = view(STATUS({ documentationPending: true }));
+    expect(v.documentationPending).toBe(true);
+    expect(v.blockers.map((b) => b.code)).not.toContain('SIGNED_NOTE_REQUIRED');
+  });
+
+  it('33. it is AMBER, and a real blocker is RED', () => {
+    expect(view(STATUS({ documentationPending: true })).tone).toBe('PENDING');
+    expect(view(blocked('PROCEDURE_PENDING')).tone).toBe('BLOCKED');
+  });
+
+  it('34. a signed note is neutral, not amber', () => {
+    const v = view(STATUS({ documentationPending: false }));
+    expect(v.tone).toBe('NEUTRAL');
+    expect(v.documentationPending).toBe(false);
+  });
+
+  it('35. documentation pending routes to every destination unchanged', () => {
+    for (const reason of ['DISPENSARY_REQUIRED', 'PATIENT_PAYMENT_REQUIRED', 'BILLING_REVIEW_REQUIRED'] as const) {
+      const v = view(STATUS({ documentationPending: true, routingReason: reason, destination: 'PAYMENT' }));
+      expect(v.mode).toBe('ELIGIBLE');
+      expect(v.primary?.reason).toBe(reason);
+    }
+  });
+
+  it('36. a genuine blocker still wins — amber never overrides red', () => {
+    const v = view(
+      STATUS({
+        documentationPending: true,
+        blockers: [{ code: 'PROCEDURE_PENDING', message: 'x' }] as never,
+        destination: null,
+        routingReason: null,
+      }),
+    );
+    expect(v.mode).toBe('BLOCKED');
+    expect(v.tone).toBe('BLOCKED');
+    expect(v.primary).toBeNull();
+  });
+
+  it('37. the confirmation asks the owner-approved question', () => {
+    const primary = primaryActionFor('DISPENSARY_REQUIRED')!;
+    expect(documentationPendingConfirm(primary).title).toBe('Send Patient with documentation pending?');
+  });
+
+  it('38. the confirmation promises no auto-save and no auto-sign', () => {
+    const { summary } = documentationPendingConfirm(primaryActionFor('DISPENSARY_REQUIRED')!);
+    expect(summary).toMatch(/nothing is saved or signed on your behalf/i);
+    expect(summary).toMatch(/cannot be closed until the note is signed/i);
+    expect(summary).toMatch(/recorded against you/i);
+  });
+
+  it('39. the pending wording says the patient may go now', () => {
+    expect(DOCUMENTATION_PENDING_BODY).toMatch(/can be sent on now/i);
+    expect(DOCUMENTATION_PENDING_BODY).toMatch(/visit stays open until the note is signed/i);
+  });
+
+  it('40. the pending panel offers the note section without withholding the action', () => {
+    expect(DOCUMENTATION_PENDING_ACTION.anchor).toBe('note');
+    expect(view(STATUS({ documentationPending: true })).primary).not.toBeNull();
+  });
+
+  it('41. no user-facing documentation wording leaks an enum or a column name', () => {
+    for (const text of [DOCUMENTATION_PENDING_BODY, DOCUMENTATION_PENDING_ACTION.label]) {
+      expect(text).not.toMatch(/[A-Z]{2,}_[A-Z_]+/);
+      expect(text).not.toMatch(/clinical_note|signed_at|prisma|postgres/i);
+    }
+  });
+});
+
+describe('documentation pending — after completion', () => {
+  const completed = (over: Partial<DoctorPhaseStatus> = {}) =>
+    view(
+      STATUS({
+        completed: true,
+        doctorCompletedAt: '2026-08-06T02:00:00.000Z',
+        doctorCompletedByStaffId: 'dr-a',
+        ...over,
+      }),
+    );
+
+  it('42. a visit sent on with documentation pending, still unsigned, stays amber', () => {
+    const v = completed({ documentationPendingAtCompletion: true, documentationPending: true });
+    expect(v.mode).toBe('COMPLETED');
+    expect(v.documentationPending).toBe(true);
+    expect(v.tone).toBe('PENDING');
+  });
+
+  it('43. signing afterwards clears the amber note', () => {
+    // The RECORD of what happened is kept on the workflow event and is not
+    // rewritten; what the footer stops showing is the outstanding-work notice,
+    // because there is no longer any outstanding work.
+    const v = completed({ documentationPendingAtCompletion: true, documentationPending: false });
+    expect(v.documentationPending).toBe(false);
+    expect(v.tone).toBe('NEUTRAL');
+  });
+
+  it('44. a visit completed with the note already signed is never amber', () => {
+    const v = completed({ documentationPendingAtCompletion: false, documentationPending: false });
+    expect(v.tone).toBe('NEUTRAL');
+  });
+
+  it('45. a pre-3c visit with nothing recorded falls back to the live answer', () => {
+    // NULL means "not recorded", which is not "documentation was complete".
+    expect(completed({ documentationPendingAtCompletion: null, documentationPending: true }).documentationPending).toBe(true);
+    expect(completed({ documentationPendingAtCompletion: null, documentationPending: false }).documentationPending).toBe(false);
+  });
+
+  it('46. a completed phase never offers a completion action, pending or not', () => {
+    expect(completed({ documentationPending: true }).primary).toBeNull();
+    expect(completed({ documentationPending: false }).primary).toBeNull();
   });
 });

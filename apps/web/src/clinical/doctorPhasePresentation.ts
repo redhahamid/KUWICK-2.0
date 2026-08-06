@@ -23,7 +23,6 @@ import { DoctorPhaseBlockerCode, DoctorPhaseStatus, DoctorRoutingReason } from '
 // ---------------------------------------------------------------------------
 export const BLOCKER_ORDER: DoctorPhaseBlockerCode[] = [
   'QUEUE_STATE_INELIGIBLE',
-  'SIGNED_NOTE_REQUIRED',
   'PROCEDURE_PENDING',
   'MEDICATION_SUPPLY_UNCONFIRMED',
   'MEDICATION_SUPPLY_DEFERRED',
@@ -37,11 +36,25 @@ export const BLOCKER_ORDER: DoctorPhaseBlockerCode[] = [
  */
 export const BLOCKER_TEXT: Record<DoctorPhaseBlockerCode, string> = {
   QUEUE_STATE_INELIGIBLE: 'This visit is not currently at a stage that can be completed.',
-  SIGNED_NOTE_REQUIRED: 'Clinical note must be signed before completing consultation.',
   PROCEDURE_PENDING: 'A procedure is still pending or in progress.',
   MEDICATION_SUPPLY_UNCONFIRMED: 'Medication supply mode must be confirmed.',
   MEDICATION_SUPPLY_DEFERRED: 'Deferred medication supply must be resolved.',
 };
+
+/**
+ * G4.5d3c-3c — the DOCUMENTATION PENDING wording, kept apart from the blocker
+ * texts on purpose.
+ *
+ * A blocker says "you cannot do this". Documentation pending says "you can do
+ * this, and here is what will still be outstanding afterwards". Putting the
+ * two in one map is how the second quietly acquires the tone of the first —
+ * and it is exactly the conflation that had a doctor holding a patient in the
+ * room until the prose was finished.
+ */
+export const DOCUMENTATION_PENDING_TITLE = 'Documentation pending';
+export const DOCUMENTATION_PENDING_BODY =
+  'The clinical note for this visit has not been signed. The patient can be sent on now; the visit stays open until the note is signed.';
+export const DOCUMENTATION_PENDING_ACTION = { label: 'Write and Sign Clinical Note', anchor: 'note' as const };
 
 /** Canvas sections a blocker can send the doctor to. */
 export type CanvasAnchor = 'note' | 'orders' | 'medications';
@@ -60,10 +73,6 @@ export interface BlockerView {
 
 const REVIEW_ACTION: Record<DoctorPhaseBlockerCode, { label: string; anchor: CanvasAnchor } | null> = {
   QUEUE_STATE_INELIGIBLE: null,
-  // Focuses the EXISTING Clinical Note section. The footer never grows a
-  // second signing control: two ways to sign is two things to keep correct,
-  // and C0's signing rules live in one component.
-  SIGNED_NOTE_REQUIRED: { label: 'Review and Sign Clinical Note', anchor: 'note' },
   // Deliberately NOT "Send to Procedure". No procedure-transition service
   // exists yet, and a button that looks like it moves a patient but does not
   // is worse than no button.
@@ -169,11 +178,36 @@ export function primaryActionFor(reason: DoctorRoutingReason | null | undefined)
 // ---------------------------------------------------------------------------
 export type FooterMode = 'LOADING' | 'ELIGIBLE' | 'BLOCKED' | 'COMPLETED' | 'UNAVAILABLE';
 
+/**
+ * G4.5d3c-3c — the four cases the footer must tell apart, and the ONE thing
+ * that distinguishes them visually.
+ *
+ *   A. ELIGIBLE, documentation complete   — neutral. Send the patient on.
+ *   B. ELIGIBLE, documentation pending    — AMBER. Send the patient on, and
+ *                                           say plainly what will still be
+ *                                           outstanding.
+ *   C. BLOCKED                            — RED. The patient does not move.
+ *   D. COMPLETED                          — the recorded outcome, carrying an
+ *                                           amber note where the patient was
+ *                                           sent on with documentation
+ *                                           pending.
+ *
+ * Amber and red are not decoration. Red had come to mean two different things
+ * on this bar — "you cannot proceed" and "you have not finished writing" —
+ * and a doctor who sees the same alarm for both learns to read neither. Amber
+ * is reserved for a state that permits the action; red is reserved for one
+ * that forbids it. Nothing else is allowed to use red here.
+ */
+export type FooterTone = 'NEUTRAL' | 'PENDING' | 'BLOCKED';
+
 export interface FooterView {
   mode: FooterMode;
+  tone: FooterTone;
   blockers: BlockerView[];
   actions: Array<{ label: string; anchor: CanvasAnchor }>;
   primary: PrimaryAction | null;
+  /** True when the consultation may finish but the note is not signed. */
+  documentationPending: boolean;
 }
 
 /**
@@ -184,13 +218,23 @@ export interface FooterView {
  * — `PROCEDURE_PENDING` returns a null reason (D-088), and a future blocker
  * that also withholds routing must fall through to BLOCKED rather than
  * rendering a button with no destination behind it.
+ *
+ * G4.5d3c-3c — `documentationPending` never affects the MODE. It is reported
+ * beside whatever the mode is, so an unsigned note cannot withhold the
+ * primary action and cannot dress itself as a blocker.
  */
 export function footerView(params: {
   status: DoctorPhaseStatus | undefined;
   loading: boolean;
   failed: boolean;
 }): FooterView {
-  const empty = { blockers: [] as BlockerView[], actions: [], primary: null };
+  const empty = {
+    blockers: [] as BlockerView[],
+    actions: [],
+    primary: null,
+    documentationPending: false,
+    tone: 'NEUTRAL' as FooterTone,
+  };
 
   if (params.loading || (!params.status && !params.failed)) {
     // Nothing is offered until eligibility is known. A button that appears
@@ -203,16 +247,71 @@ export function footerView(params: {
     // owns none of them.
     return { mode: 'UNAVAILABLE', ...empty };
   }
+
+  // A phase completed before 3c recorded the state reports NULL, and NULL is
+  // not "documentation was complete". The live value is used for the amber
+  // note in that case, because it is the only true thing available.
+  const pendingNow = params.status.documentationPending === true;
+
   if (params.status.completed) {
-    return { mode: 'COMPLETED', ...empty };
+    const pendingThen = params.status.documentationPendingAtCompletion;
+    const stillPending = pendingThen === null ? pendingNow : pendingThen && pendingNow;
+    return {
+      ...empty,
+      mode: 'COMPLETED',
+      documentationPending: stillPending,
+      tone: stillPending ? 'PENDING' : 'NEUTRAL',
+    };
   }
 
   const blockers = orderBlockers(params.status.blockers);
   const primary = blockers.length === 0 ? primaryActionFor(params.status.routingReason) : null;
   if (!primary) {
-    return { mode: 'BLOCKED', blockers, actions: reviewActions(blockers), primary: null };
+    // Case C. Red, and the documentation state is not shown alongside it: a
+    // doctor facing a genuine blocker does not need a second, softer problem
+    // competing for the same glance.
+    return {
+      mode: 'BLOCKED',
+      tone: 'BLOCKED',
+      blockers,
+      actions: reviewActions(blockers),
+      primary: null,
+      documentationPending: pendingNow,
+    };
   }
-  return { mode: 'ELIGIBLE', blockers: [], actions: [], primary };
+  // Cases A and B — identical except for the tone and the amber note.
+  return {
+    mode: 'ELIGIBLE',
+    tone: pendingNow ? 'PENDING' : 'NEUTRAL',
+    blockers: [],
+    actions: [],
+    primary,
+    documentationPending: pendingNow,
+  };
+}
+
+/**
+ * The confirmation a doctor sees when sending a patient on before the note is
+ * written.
+ *
+ * The owner's wording. It is a distinct question from the ordinary
+ * confirmation because it asserts something extra, and it names the
+ * consequence rather than implying that the software will handle it: nothing
+ * auto-saves, nothing auto-signs, and the visit will not close until a human
+ * signs the note.
+ */
+export function documentationPendingConfirm(primary: PrimaryAction): {
+  title: string;
+  summary: string;
+} {
+  return {
+    title: 'Send Patient with documentation pending?',
+    summary: [
+      `${primary.supporting} The clinical note has not been signed.`,
+      'Your draft is kept exactly as you left it — nothing is saved or signed on your behalf.',
+      'This visit cannot be closed until the note is signed, and this action is recorded against you with the time.',
+    ].join(' '),
+  };
 }
 
 // ---------------------------------------------------------------------------

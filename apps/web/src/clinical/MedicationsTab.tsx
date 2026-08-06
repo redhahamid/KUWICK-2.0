@@ -35,7 +35,7 @@ import {
   useRemovePrescription,
 } from './hooks/usePrescriptions';
 import { CreatePrescriptionDto, DosageCalcMethod, PrescriptionSupplyMode } from './types';
-import { SUPPLY_MODE_OPTIONS } from './medicationSupplyPresentation';
+import { DEFAULT_SUPPLY_MODE, SUPPLY_MODE_OPTIONS } from './medicationSupplyPresentation';
 import { PrescribedMedicationList } from './sections/PrescribedMedicationList';
 import { ApiError } from '../core/api-client';
 
@@ -77,7 +77,7 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
   // D-091 — supply intent, VISIBLY defaulted to clinic dispensing and always
   // submitted explicitly. There is no hidden database default to fall back
   // on: what the doctor sees selected is exactly what is stored.
-  const [supplyMode, setSupplyMode] = useState<PrescriptionSupplyMode>('ONSITE_DISPENSE');
+  const [supplyMode, setSupplyMode] = useState<PrescriptionSupplyMode>(DEFAULT_SUPPLY_MODE);
   const [calcWeightKg, setCalcWeightKg] = useState<number>();
   const [calcDoseRateMgKg, setCalcDoseRateMgKg] = useState<number>();
   const [calculatorOpen, setCalculatorOpen] = useState(false);
@@ -130,7 +130,7 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
     setCalcMethod(undefined);
     setCalcWeightKg(undefined);
     setCalcDoseRateMgKg(undefined);
-    setSupplyMode('ONSITE_DISPENSE');
+    setSupplyMode(DEFAULT_SUPPLY_MODE);
   };
 
   const reportFailure = (error: unknown, fallback: string) => {
@@ -168,8 +168,15 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
   const handleCopy = async () => {
     if (!copySourceVisitId) return;
     try {
-      await copyPrescriptions.mutateAsync({ sourceVisitId: copySourceVisitId, targetVisitId: visitId });
-      message.success('Previous prescription copied');
+      const result = await copyPrescriptions.mutateAsync({
+        sourceVisitId: copySourceVisitId,
+        targetVisitId: visitId,
+      });
+      // G4.5d3c-3c — the server's sentence, not a generic "copied". The
+      // doctor is told what supply mode the copied lines were given and where
+      // it came from, so a rule that ran on their behalf is visible rather
+      // than something they discover later in the medication list.
+      message.success(result.supplySummary);
     } catch (error) {
       reportFailure(error, 'Failed to copy previous prescription');
     }
@@ -393,6 +400,15 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
               onChange={(value) => setSupplyMode(value)}
               options={SUPPLY_MODE_OPTIONS}
             />
+            {/* G4.5d3c-3c — the default says that it IS one. A pre-selected
+                value that looks like a deliberate choice is how a doctor stops
+                reading the field; saying "change it if" keeps the decision in
+                front of them at the cost of one line. */}
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {supplyMode === DEFAULT_SUPPLY_MODE
+                ? 'Default — change this if the patient is not collecting from the clinic.'
+                : 'Changed from the clinic default.'}
+            </Text>
           </Col>
         </Row>
         <Input.TextArea

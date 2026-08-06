@@ -170,10 +170,43 @@ describe('authorisation', () => {
 });
 
 describe('preconditions', () => {
-  it('6. an unsigned clinical note blocks completion', async () => {
+  // G4.5d3c-3c — this test asserted the OPPOSITE until 3c, and the reversal
+  // is the owner-approved change at the heart of this checkpoint: an unsigned
+  // clinical note used to refuse the whole routing decision, which held a
+  // patient in the consultation room until the prose was finished. The
+  // requirement to sign has not gone; it moved to visit completion, where
+  // `visit-completion.service.spec.ts` asserts it as
+  // CLINICAL_DOCUMENTATION_PENDING.
+  it('6. an unsigned clinical note does NOT block completion — it is recorded as pending', async () => {
     const ctx = build(DR_A, { signedNotes: 0 });
-    await expect(run(ctx)).rejects.toThrow(/Sign the clinical note/i);
-    expect(ctx.tx.visit.updateMany).not.toHaveBeenCalled();
+    await expect(run(ctx)).resolves.toMatchObject({ alreadyCompleted: false });
+    expect(ctx.tx.visit.updateMany).toHaveBeenCalled();
+  });
+
+  it('6b. sending a patient on with documentation pending is recorded on the event', async () => {
+    // The actor and the timestamp come from the append-only workflow event
+    // itself; the metadata says what was true of the record at that moment.
+    const ctx = build(DR_A, { signedNotes: 0 });
+    await run(ctx);
+    const event = ctx.tx.visitWorkflowEvent.create.mock.calls[0][0].data;
+    expect(event.metadata).toMatchObject({ documentationPending: true });
+    expect(event.actorStaffId).toBe(DR_A.id);
+    expect(event.actorNameSnapshot).toBe(DR_A.fullName);
+  });
+
+  it('6c. a signed note records documentation as NOT pending', async () => {
+    const ctx = build(DR_A, { signedNotes: 1 });
+    await run(ctx);
+    const event = ctx.tx.visitWorkflowEvent.create.mock.calls[0][0].data;
+    expect(event.metadata).toMatchObject({ documentationPending: false });
+  });
+
+  it('6d. completion writes no clinical note and signs nothing', async () => {
+    // No auto-save, no auto-sign. The draft in the editor is the doctor's.
+    const ctx = build(DR_A, { signedNotes: 0 });
+    await run(ctx);
+    expect((ctx.tx.clinicalNote as Record<string, unknown>).create).toBeUndefined();
+    expect((ctx.tx.clinicalNote as Record<string, unknown>).update).toBeUndefined();
   });
 
   it('7. an open procedure blocks completion', async () => {
@@ -554,11 +587,13 @@ describe('doctor-phase status: structured blockers', () => {
     const status = await read(ctx);
     expect(codes(status)).toEqual([
       'QUEUE_STATE_INELIGIBLE',
-      'SIGNED_NOTE_REQUIRED',
       'PROCEDURE_PENDING',
       'MEDICATION_SUPPLY_UNCONFIRMED',
       'MEDICATION_SUPPLY_DEFERRED',
     ]);
+    // The unsigned note in ALL_BLOCKED is reported ALONGSIDE the blockers,
+    // not among them (3c).
+    expect(status.documentationPending).toBe(true);
   });
 
   it('the order does not depend on which query resolved first', async () => {
@@ -577,9 +612,22 @@ describe('doctor-phase status: structured blockers', () => {
     expect(codes(status)).toContain('QUEUE_STATE_INELIGIBLE');
   });
 
-  it('an unsigned note reports SIGNED_NOTE_REQUIRED', async () => {
+  it('an unsigned note reports documentationPending and NO blocker', async () => {
     const status = await read(build(DR_A, { signedNotes: 0 }));
-    expect(codes(status)).toEqual(['SIGNED_NOTE_REQUIRED']);
+    expect(codes(status)).toEqual([]);
+    expect(status.documentationPending).toBe(true);
+  });
+
+  it('a signed note reports documentationPending false', async () => {
+    const status = await read(build(DR_A, { signedNotes: 1 }));
+    expect(status.documentationPending).toBe(false);
+  });
+
+  it('documentation pending never suppresses the routing destination', async () => {
+    const status = await read(build(DR_A, { signedNotes: 0, prescriptions: [RX('ONSITE_DISPENSE')] }));
+    expect(status.destination).toBe('DISPENSARY');
+    expect(status.routingReason).toBe('DISPENSARY_REQUIRED');
+    expect(status.blockers).toEqual([]);
   });
 
   it('NULL and DEFERRED supply modes are separate blockers, not one', async () => {
@@ -631,11 +679,11 @@ describe('doctor-phase status: billing is routing, never a blocker', () => {
   });
 
   it('a clinical blocker does not suppress the routing preview', async () => {
-    // The note being unsigned says nothing about where the patient goes once
-    // it is signed, so the preview still answers.
-    const status = await read(build(DR_A, { signedNotes: 0, invoices: [inv(85)] }));
+    // A supply mode nobody has set says nothing about where the patient goes
+    // once it is set, so the preview still answers.
+    const status = await read(build(DR_A, { prescriptions: [RX(null)], invoices: [inv(85)] }));
     expect(status).toMatchObject({
-      blockers: [{ code: 'SIGNED_NOTE_REQUIRED' }],
+      blockers: [{ code: 'MEDICATION_SUPPLY_UNCONFIRMED' }],
       destination: 'PAYMENT',
       routingReason: 'PATIENT_PAYMENT_REQUIRED',
     });
@@ -703,8 +751,11 @@ describe('doctor-phase status: a completed phase is read back, never re-derived'
     await read(ctx);
     expect(ctx.tx.prescription.findMany).not.toHaveBeenCalled();
     expect(ctx.tx.invoice.findMany).not.toHaveBeenCalled();
-    expect(ctx.tx.clinicalNote.count).not.toHaveBeenCalled();
     expect(ctx.tx.orderService.count).not.toHaveBeenCalled();
+    // clinicalNote.count IS issued for a completed phase (3c): the LIVE
+    // documentation state is what a counter needs when deciding whether the
+    // visit can be closed, and it is reported alongside — never instead of —
+    // the recorded answer. Nothing else is re-derived.
   });
 
   it('a completed phase reports no blockers even from an ineligible queue state', async () => {
@@ -730,7 +781,6 @@ describe('the write refuses with the same structured blockers', () => {
       response: {
         blockers: [
           { code: 'QUEUE_STATE_INELIGIBLE' },
-          { code: 'SIGNED_NOTE_REQUIRED' },
           { code: 'PROCEDURE_PENDING' },
           { code: 'MEDICATION_SUPPLY_UNCONFIRMED' },
           { code: 'MEDICATION_SUPPLY_DEFERRED' },

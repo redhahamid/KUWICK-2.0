@@ -10,6 +10,7 @@ import {
   snapshotOf,
 } from './clinical-authorization';
 import { hashObservationContent, observationContentSnapshot } from './canonical-content-hash';
+import { computeBmi } from './vitals-bmi';
 
 type Tx = Prisma.TransactionClient;
 
@@ -27,16 +28,23 @@ const VITAL_FIELDS = [
   'glucose',
 ] as const;
 
-function computeBmi(weight: unknown, height: unknown): number | null {
-  if (weight === null || weight === undefined || height === null || height === undefined) {
-    return null;
-  }
-  const heightM = Number(height) / 100;
-  if (!heightM) {
-    return null;
-  }
-  return Math.round((Number(weight) / (heightM * heightM)) * 10) / 10;
-}
+/**
+ * G4.5d3c-3c — how recently an IDENTICAL reading by the SAME person counts as
+ * the same submission rather than a repeat measurement.
+ *
+ * A repeat BP after treatment is a real and common clinical act, and this
+ * service exists partly to make it possible — so the window has to be short
+ * enough that it never swallows one. Sixty seconds is chosen because taking a
+ * second full set of observations, and getting every one of eleven values
+ * identical to the last decimal place, inside a minute, is not something that
+ * happens at a clinic; a stuck Enter key and a slow network is.
+ *
+ * Longer would risk discarding a genuine reading. Shorter would let an
+ * ordinary retry through. If a repeat within the window is genuinely wanted,
+ * changing any single value records it — nothing is refused, only exact
+ * re-submission is.
+ */
+const DUPLICATE_WINDOW_MS = 60_000;
 
 // C0 (D-051) — vitals/anthropometry/point-of-care, attributed to whoever
 // actually recorded them.
@@ -125,6 +133,12 @@ export class VisitObservationService {
 
   // A NEW reading. Never overwrites an earlier set — repeated observations
   // during one visit are separate, independently attributed rows.
+  //
+  // G4.5d3c-3c — with server-side duplicate protection. See
+  // `findRecentIdenticalObservation` below for what is refused and why; the
+  // short version is that this endpoint used to create a row every single time
+  // it was called, with nothing anywhere in the stack stopping the same
+  // reading being stored twice.
   async record(visitId: string, dto: RecordObservationDto) {
     return this.withTenantTx(async (tx) => {
       const actor = await this.requireActor(tx);
@@ -137,6 +151,34 @@ export class VisitObservationService {
       const vitals = this.vitalsFrom(dto);
       if (VITAL_FIELDS.every((f) => vitals[f] === null)) {
         throw new BadRequestException('Record at least one observation value');
+      }
+
+      // --- Duplicate protection, part 1: serialise writes for this visit ----
+      //
+      // The check below reads the most recent observation and then decides
+      // whether to insert. Under READ COMMITTED two concurrent requests would
+      // BOTH read the state before either insert, both find nothing to match,
+      // and both write — which is precisely the double-submit this is meant to
+      // stop. There is no row to claim atomically here (D-087's pattern needs
+      // an existing row), so the transaction takes an advisory lock keyed on
+      // the visit instead: the second request waits, then re-reads after the
+      // first has committed and sees its row.
+      //
+      // Scoped to ONE visit, so concurrent vitals for different patients never
+      // contend, and released automatically at commit or rollback.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`visit-observation:${visitId}`}))`;
+
+      // --- Duplicate protection, part 2: is this the same reading again? ----
+      const duplicate = await findRecentIdenticalObservation(tx, visitId, actor.id, {
+        ...vitals,
+        source: dto.source ?? 'MANUAL',
+      });
+      if (duplicate) {
+        // Deliberately NOT an error. The caller asked for this reading to be
+        // on the record, and it is — theirs, attributed to them, at the time
+        // they took it. Returning the existing row makes a retry safe, which
+        // is the behaviour a nurse on a slow connection actually needs.
+        return { ...this.decorate(duplicate), deduplicated: true as const };
       }
 
       const snap = snapshotOf(actor);
@@ -174,7 +216,9 @@ export class VisitObservationService {
           editorDesignationSnapshot: snap.designationSnapshot,
         },
       });
-      return this.decorate(observation);
+      // `deduplicated` is present on BOTH branches so a caller never has to
+      // tell "false" apart from "this build does not report it".
+      return { ...this.decorate(observation), deduplicated: false as const };
     });
   }
 
@@ -239,4 +283,58 @@ export class VisitObservationService {
       return this.decorate(observation);
     });
   }
+}
+
+/**
+ * G4.5d3c-3c — THE root-cause fix for duplicate vitals.
+ *
+ * The owner reported the same set of observations appearing twice on a visit.
+ * The cause was not rendering and not query invalidation: `record()` inserted
+ * unconditionally, on every call, and NOTHING in the request path — not the
+ * controller, not the service, not a database constraint — asked whether that
+ * reading was already there. Any repeated submission produced a second row,
+ * and the two everyday ways to produce one both went unguarded:
+ *
+ *   1. the entry form submits on Enter, which bypasses the Save button's
+ *      `loading` state entirely (fixed separately, in the browser);
+ *   2. an ordinary network retry — the client resends, the first request had
+ *      already committed.
+ *
+ * A fix that only hid the second row would have left the record itself
+ * carrying two readings, which is worse than showing them: an export, a
+ * document merge field or an audit would still find both, and the clinical
+ * record would say the patient's BP was taken twice when it was taken once.
+ * So the duplicate is prevented, not concealed.
+ *
+ * "Identical" is judged by the SAME canonical content hash the revision trail
+ * already uses (C0/D-051), so 36.5 and 36.50 are one reading and the decision
+ * cannot drift from how the record hashes itself. Three conditions must all
+ * hold, and each excludes a legitimate case:
+ *
+ *   - same visit          — different visits are different patients or days
+ *   - same recorder       — a second nurse independently confirming a reading
+ *                           is a real, separate, separately attributed act
+ *   - within the window   — a genuine repeat measurement later in the visit
+ *                           stays a new row, however identical
+ *
+ * Only the most recent observation is compared, not the whole visit: readings
+ * further back are the ones a repeat is legitimately being compared against.
+ */
+async function findRecentIdenticalObservation(
+  tx: Tx,
+  visitId: string,
+  recordedByStaffId: string,
+  incoming: Record<string, unknown>,
+) {
+  const since = new Date(Date.now() - DUPLICATE_WINDOW_MS);
+  const latest = await tx.visitObservation.findFirst({
+    where: { visitId, recordedByStaffId, recordedAt: { gte: since } },
+    orderBy: { recordedAt: 'desc' },
+  });
+  if (!latest) {
+    return null;
+  }
+  const incomingHash = hashObservationContent(incoming);
+  const latestHash = hashObservationContent(latest as unknown as Record<string, unknown>);
+  return incomingHash.contentHash === latestHash.contentHash ? latest : null;
 }

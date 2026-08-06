@@ -1,6 +1,8 @@
+import { useCallback, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiClient, downloadFile } from '../../core/api-client';
+import { ApiError, apiClient, downloadFile } from '../../core/api-client';
 import { VisitAttachment, VoidClinicalRecordDto } from '../types';
+import { UploadEntry, buildUploadQueue } from '../attachmentPresentation';
 
 // D-044 — free-standing visit-level uploads (photos, scanned results,
 // PDFs) shown alongside Clinical Notes/Vitals.
@@ -36,6 +38,80 @@ export function useUploadVisitAttachment(visitId?: string) {
       apiClient.postFile<VisitAttachment>(`/visits/${visitId}/attachments`, buildAttachmentFormData(file)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['visit-attachments', visitId] }),
   });
+}
+
+/**
+ * G4.5d3c-3c — uploading a SET of files.
+ *
+ * The panel previously took `e.target.files?.[0]` from an input with no
+ * `multiple` attribute: selecting four scanned pages uploaded one and dropped
+ * three, silently. This hook uploads every file that was chosen, and reports
+ * each one's outcome separately.
+ *
+ * Two properties the owner asked for specifically, and both are structural
+ * rather than incidental:
+ *
+ *   ONE FAILURE DOES NOT CANCEL THE SUCCESSES. Each file is its own request
+ *   with its own try/catch. A rejected file — too large, wrong type, a
+ *   momentary network fault — marks itself FAILED and the loop continues. It
+ *   is not `Promise.all`, which would leave the caller unable to say WHICH
+ *   file failed, and it is not a bulk endpoint, which would make the whole
+ *   batch one transaction and lose the good files with the bad.
+ *
+ *   FILES ALREADY UPLOADED STAY UPLOADED. The query is invalidated once per
+ *   successful file, so the list fills in as the batch progresses; a failure
+ *   afterwards cannot roll any of them back.
+ *
+ * Sequential rather than parallel, deliberately: uploads are multi-megabyte
+ * photos from a clinic's shared connection, and six at once makes all six
+ * slow and any of them likelier to time out.
+ */
+export function useUploadVisitAttachments(visitId?: string) {
+  const queryClient = useQueryClient();
+  const [entries, setEntries] = useState<UploadEntry[]>([]);
+  const [uploading, setUploading] = useState(false);
+
+  const update = useCallback((key: string, patch: Partial<UploadEntry>) => {
+    setEntries((current) => current.map((entry) => (entry.key === key ? { ...entry, ...patch } : entry)));
+  }, []);
+
+  const upload = useCallback(
+    async (files: File[]): Promise<UploadEntry[]> => {
+      if (!visitId || files.length === 0) return [];
+      const queue = buildUploadQueue(files);
+      setEntries(queue);
+      setUploading(true);
+
+      const results: UploadEntry[] = [];
+      for (let index = 0; index < files.length; index += 1) {
+        const entry = queue[index];
+        update(entry.key, { state: 'UPLOADING' });
+        try {
+          await apiClient.postFile<VisitAttachment>(
+            `/visits/${visitId}/attachments`,
+            buildAttachmentFormData(files[index]),
+          );
+          // Invalidated per file: what has landed is visible immediately, and
+          // a later failure cannot un-land it.
+          await queryClient.invalidateQueries({ queryKey: ['visit-attachments', visitId] });
+          update(entry.key, { state: 'DONE' });
+          results.push({ ...entry, state: 'DONE' });
+        } catch (error) {
+          const reason = error instanceof ApiError ? error.message : 'Upload failed';
+          update(entry.key, { state: 'FAILED', error: reason });
+          results.push({ ...entry, state: 'FAILED', error: reason });
+        }
+      }
+
+      setUploading(false);
+      return results;
+    },
+    [visitId, queryClient, update],
+  );
+
+  const clear = useCallback(() => setEntries([]), []);
+
+  return { upload, entries, uploading, clear };
 }
 
 // G3a (D-062) — replaces useDeleteVisitAttachment. A wound photo or scanned

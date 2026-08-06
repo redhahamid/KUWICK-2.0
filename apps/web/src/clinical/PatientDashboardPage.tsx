@@ -536,7 +536,11 @@ export function PatientDashboardPage() {
                     expanded={vitalsExpanded}
                     onToggleExpand={() => setVitalsExpanded((prev) => !prev)}
                   />
-                  {vitalsExpanded && <VisitObservationsPanel visitId={selectedVisit.id} compact={canvasCompact} />}
+                  {vitalsExpanded && (
+                    // Mounted only because the doctor pressed "Record / Edit",
+                    // so it opens with the fields rather than asking again.
+                    <VisitObservationsPanel visitId={selectedVisit.id} compact={canvasCompact} defaultExpanded />
+                  )}
                   <ClinicalImageStrip
                     visitId={selectedVisit.id}
                     expanded={attachmentsExpanded}

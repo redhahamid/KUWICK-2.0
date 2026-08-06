@@ -25,6 +25,7 @@ import {
 import { isEligibleAttendingDoctor } from './queue-authorization';
 import { CompleteDoctorPhaseDto } from './dto/complete-doctor-phase.dto';
 import { collectBillingWorklist, pendingBillingWork, tariffReviewItems } from './billing-worklist';
+import { isDocumentationPending, readDocumentationPending } from './clinical-documentation';
 
 /**
  * Why the patient is going where they are going. Returned so the caller can
@@ -50,7 +51,6 @@ export type DestinationReason =
  */
 export type DoctorPhaseBlockerCode =
   | 'QUEUE_STATE_INELIGIBLE'
-  | 'SIGNED_NOTE_REQUIRED'
   | 'PROCEDURE_PENDING'
   | 'MEDICATION_SUPPLY_UNCONFIRMED'
   | 'MEDICATION_SUPPLY_DEFERRED';
@@ -69,7 +69,6 @@ export interface DoctorPhaseBlocker {
  */
 const BLOCKER_MESSAGES: Record<DoctorPhaseBlockerCode, string> = {
   QUEUE_STATE_INELIGIBLE: 'The consultation can only be completed while the patient is in consultation.',
-  SIGNED_NOTE_REQUIRED: 'Sign the clinical note before completing the consultation.',
   PROCEDURE_PENDING:
     'A procedure or investigation is still open. Complete or cancel it before completing the consultation.',
   MEDICATION_SUPPLY_UNCONFIRMED:
@@ -84,6 +83,22 @@ export interface DoctorPhaseEvaluation {
   /** NULL when the visit is not in a state where routing can be answered. */
   destination: DoctorCompletionDestination | null;
   routingReason: DestinationReason | null;
+  /**
+   * G4.5d3c-3c — the DOCUMENTATION PENDING state.
+   *
+   * True when no signed doctor narrative exists for this visit. It is a
+   * FACT about the record, reported alongside the blockers and deliberately
+   * not among them: see `evaluateDoctorPhase` for why an unsigned note no
+   * longer holds a patient in the consultation room.
+   *
+   * Derived, not stored. There is no column for it and there does not need to
+   * be — it is the same count the blocker used to be built from, and deriving
+   * it means it can never disagree with the notes themselves. What IS stored
+   * is the answer AT THE MOMENT OF COMPLETION, on the workflow event, because
+   * that one is a historical fact and re-deriving it later would silently
+   * rewrite itself the instant the doctor went back and signed.
+   */
+  documentationPending: boolean;
 }
 
 export interface DoctorPhaseStatus extends DoctorPhaseEvaluation {
@@ -92,6 +107,16 @@ export interface DoctorPhaseStatus extends DoctorPhaseEvaluation {
   doctorCompletedAt: Date | null;
   doctorCompletedByStaffId: string | null;
   queueStatus: QueueTicketStatus | null;
+  /**
+   * Whether documentation was pending when the phase was completed, read from
+   * the recorded workflow event. NULL for a phase that is not complete, and
+   * for one completed before this was recorded — which is reported honestly
+   * rather than guessed at from today's notes.
+   */
+  documentationPendingAtCompletion: boolean | null;
+  /** Who sent the patient on with documentation pending, and when. */
+  documentationPendingActorName: string | null;
+  documentationPendingAt: Date | null;
 }
 
 export interface DoctorCompletionResult {
@@ -189,6 +214,16 @@ export class DoctorCompletionService {
       // patient who has already moved on. A visit completed before that column
       // existed reads NULL — not captured, never NO_DOWNSTREAM_WORK.
       if (visit.doctorCompletedAt) {
+        // G4.5d3c-3c — what was recorded at completion, from the append-only
+        // workflow event. Not re-derived: a doctor who wrote the note an hour
+        // later would otherwise erase the fact that the patient was sent on
+        // without one, and that is exactly the fact this state exists to keep.
+        const completionEvent = await tx.visitWorkflowEvent.findFirst({
+          where: { visitId, eventType: VisitWorkflowEventType.DOCTOR_PHASE_COMPLETED },
+          orderBy: { createdAt: 'asc' },
+          select: { metadata: true, actorNameSnapshot: true, createdAt: true },
+        });
+        const recorded = readDocumentationPending(completionEvent?.metadata);
         return {
           visitId: visit.id,
           completed: true,
@@ -198,6 +233,13 @@ export class DoctorCompletionService {
           routingReason: (visit.doctorCompletedRoutingReason as DestinationReason | null) ?? null,
           queueStatus,
           blockers: [],
+          // The LIVE answer stays available too: a counter deciding whether
+          // the visit can be closed needs to know whether the note has been
+          // signed SINCE, not only whether it was signed then.
+          documentationPending: await isDocumentationPending(tx, visitId),
+          documentationPendingAtCompletion: recorded,
+          documentationPendingActorName: recorded ? (completionEvent?.actorNameSnapshot ?? null) : null,
+          documentationPendingAt: recorded ? (completionEvent?.createdAt ?? null) : null,
         };
       }
 
@@ -208,6 +250,9 @@ export class DoctorCompletionService {
         doctorCompletedAt: null,
         doctorCompletedByStaffId: null,
         queueStatus,
+        documentationPendingAtCompletion: null,
+        documentationPendingActorName: null,
+        documentationPendingAt: null,
         ...evaluation,
       };
     });
@@ -370,11 +415,20 @@ export class DoctorCompletionService {
           previousStatus: ticket.status,
           newStatus: nextQueueStatus ?? ticket.status,
           destination,
+          // G4.5d3c-3c — the actor and the timestamp for a patient sent on
+          // with documentation pending are THESE. The append-only event
+          // already carries who and when; the metadata says what was true of
+          // the record at that moment.
           actorStaffId: actor.id,
           actorNameSnapshot: actor.fullName,
           actorRoleSnapshot: actor.role,
           reason: dto.note?.trim() || null,
-          metadata: { destinationReason: reason },
+          metadata: {
+            destinationReason: reason,
+            // Recorded, never re-derived. Signing the note afterwards must not
+            // retroactively make it look as though it was signed at the time.
+            documentationPending: evaluation.documentationPending,
+          },
           correlationId: dto.correlationId ?? null,
         },
       });
@@ -444,17 +498,27 @@ async function evaluateDoctorPhase(
     add('QUEUE_STATE_INELIGIBLE');
   }
 
-  const signedNotes = await tx.clinicalNote.count({
-    where: {
-      visitId,
-      noteType: ClinicalNoteType.DOCTOR_NARRATIVE,
-      status: ClinicalNoteStatus.SIGNED,
-      signedAt: { not: null },
-    },
-  });
-  if (signedNotes === 0) {
-    add('SIGNED_NOTE_REQUIRED');
-  }
+  // G4.5d3c-3c — DOCUMENTATION PENDING, and why this is no longer a blocker.
+  //
+  // An unsigned clinical note used to refuse the whole routing decision: the
+  // patient could not be sent to the dispensary or the counter until the
+  // doctor had finished writing. In a clinic seeing 100–200 patients a day
+  // that inverted the queue. The note is written while the patient is still
+  // in the room, or between patients, or at the end of a block — and none of
+  // those are reasons for a patient with a prescription in hand to sit in the
+  // consultation room waiting for prose.
+  //
+  // What is NOT relaxed: the requirement itself. The note must still be
+  // written and signed, and the VISIT cannot be closed until it is — the
+  // requirement moved to `VisitCompletionService`, where it holds paperwork
+  // rather than a person. Nothing here auto-saves, auto-signs, or writes a
+  // word of clinical narrative on anyone's behalf; the draft in the editor is
+  // untouched by completion.
+  //
+  // The state is reported so the doctor can be asked to confirm it and so it
+  // can be recorded against them, with a time. Sending a patient on before
+  // documenting is a real clinical decision, not an accident to be hidden.
+  const documentationPending = await isDocumentationPending(tx, visitId);
 
   // A procedure still running is the strongest blocker there is: the doctor is
   // meant to review its result before finishing (owner decision 4), so
@@ -490,7 +554,7 @@ async function evaluateDoctorPhase(
     // charge, so any routing computed now is a guess about a visit that has
     // not stopped changing. Reporting NULL says "not yet knowable", which is
     // true; reporting NONE would say "nothing further", which is not.
-    return { blockers, destination: null, routingReason: null };
+    return { blockers, destination: null, routingReason: null, documentationPending };
   }
 
   // Only ONSITE_DISPENSE counts, and only while still ORDERED. Everything else
@@ -511,6 +575,7 @@ async function evaluateDoctorPhase(
       blockers,
       destination: DoctorCompletionDestination.DISPENSARY,
       routingReason: 'DISPENSARY_REQUIRED',
+      documentationPending,
     };
   }
   if (billing === 'UNDETERMINED') {
@@ -521,6 +586,7 @@ async function evaluateDoctorPhase(
       blockers,
       destination: DoctorCompletionDestination.PAYMENT,
       routingReason: 'BILLING_REVIEW_REQUIRED',
+      documentationPending,
     };
   }
   if (billing > 0) {
@@ -528,12 +594,14 @@ async function evaluateDoctorPhase(
       blockers,
       destination: DoctorCompletionDestination.PAYMENT,
       routingReason: 'PATIENT_PAYMENT_REQUIRED',
+      documentationPending,
     };
   }
   return {
     blockers,
     destination: DoctorCompletionDestination.NONE,
     routingReason: 'NO_DOWNSTREAM_WORK',
+    documentationPending,
   };
 }
 

@@ -10,6 +10,7 @@ import { CancelPrescriptionDto } from './dto/cancel-prescription.dto';
 import { CopyPrescriptionsDto } from './dto/copy-prescriptions.dto';
 import { UpdateSupplyModeDto } from './dto/update-supply-mode.dto';
 import { calculateWeightBasedDose, findAgeBracket } from './dosage-calculator';
+import { CopiedSupplyDecision, describeCopyOutcome, supplyModeForCopy } from './medication-supply-rules';
 
 @Injectable()
 export class PrescriptionService {
@@ -172,17 +173,38 @@ export class PrescriptionService {
     return prescription;
   }
 
+  /**
+   * G4.5d3c-3c — Copy Previous now records a supply mode.
+   *
+   * It previously wrote none, so every copied line arrived NULL and each one
+   * became a doctor-phase blocker the doctor had to clear by hand. The rule
+   * that decides what to write lives in `medication-supply-rules.ts`, which
+   * documents why: carry over what the source recorded, and where the source
+   * recorded nothing (or deferred) take the clinic's visible default for a
+   * new prescription. The SOURCE rows are never modified.
+   *
+   * CANCELLED source rows are excluded. Copying a prescription somebody
+   * deliberately cancelled, and reviving it as an active order, is not what
+   * "copy previous" means to a clinician.
+   */
   async copyFromVisit(dto: CopyPrescriptionsDto) {
     const author = await requireClinicalAuthor(this.prisma, 'prescribe medication');
     const targetVisit = await this.visits.findById(dto.targetVisitId);
     const sourcePrescriptions = await this.prisma.prescription.findMany({
-      where: { visitId: dto.sourceVisitId, deletedAt: null },
+      where: {
+        visitId: dto.sourceVisitId,
+        deletedAt: null,
+        status: { not: PrescriptionStatus.CANCELLED },
+      },
     });
 
     const tenantId = currentTenantId();
-    return Promise.all(
-      sourcePrescriptions.map((source) =>
-        this.prisma.prescription.create({
+    const decisions: CopiedSupplyDecision[] = [];
+    const created = await Promise.all(
+      sourcePrescriptions.map((source) => {
+        const decision = supplyModeForCopy(source.supplyMode);
+        decisions.push(decision);
+        return this.prisma.prescription.create({
           data: {
             tenantId,
             visitId: dto.targetVisitId,
@@ -194,14 +216,21 @@ export class PrescriptionService {
             durationDays: source.durationDays,
             indication: source.indication,
             remark: source.remark,
+            supplyMode: decision.supplyMode,
             // Copying a previous visit's medication is a NEW prescribing
             // decision, so it is authored by whoever made it — not inherited
             // from the source prescription and not from the target visit.
             prescribedByStaffId: author.id,
           },
-        }),
-      ),
+        });
+      }),
     );
+
+    // The summary travels WITH the rows rather than being inferred from them:
+    // "carried over from the previous visit" and "defaulted because the
+    // previous visit recorded nothing" both produce a row reading "Dispense
+    // from clinic", and only the server knows which happened.
+    return { prescriptions: created, supplySummary: describeCopyOutcome(decisions) };
   }
 
   /**

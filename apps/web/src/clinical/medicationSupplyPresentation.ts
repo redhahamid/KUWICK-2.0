@@ -18,6 +18,27 @@ export const SUPPLY_MODE_LABEL: Record<PrescriptionSupplyMode, string> = {
 
 export const SUPPLY_MODE_UNRESOLVED_LABEL = 'Supply mode not confirmed';
 
+/**
+ * G4.5d3c-3c — the clinic's default supply intent for a NEW prescription.
+ *
+ * The overwhelming majority of what a Malaysian GP prescribes is handed over
+ * at the clinic's own counter, so requiring the doctor to state that on every
+ * line was a decision they were making hundreds of times a day and almost
+ * never changing. It is the pre-selected value now — VISIBLY pre-selected,
+ * in a control that is on screen and readable before saving, never a hidden
+ * database default.
+ *
+ * The distinction matters and is the reason `supplyMode` still has no default
+ * in the schema (D-084): a column default would make a row nobody looked at
+ * indistinguishable from a row a prescriber deliberately set to clinic
+ * dispensing. A pre-selected control cannot do that — the doctor sees the
+ * answer, and what they see is what is sent.
+ *
+ * Existing NULLs are NOT touched by this. A legacy row stays unresolved and
+ * keeps saying so, because nobody ever answered the question for it.
+ */
+export const DEFAULT_SUPPLY_MODE: PrescriptionSupplyMode = 'ONSITE_DISPENSE';
+
 /** Select options in the order a GP reads them: commonest first. */
 export const SUPPLY_MODE_OPTIONS: Array<{ value: PrescriptionSupplyMode; label: string }> = [
   { value: 'ONSITE_DISPENSE', label: SUPPLY_MODE_LABEL.ONSITE_DISPENSE },

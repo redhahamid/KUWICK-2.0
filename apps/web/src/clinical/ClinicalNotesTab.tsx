@@ -15,8 +15,10 @@ import {
 } from 'antd';
 import {
   AudioOutlined,
+  CompressOutlined,
   EditOutlined,
   ExclamationCircleOutlined,
+  ExpandOutlined,
   PlusOutlined,
   SafetyCertificateOutlined,
   ThunderboltOutlined,
@@ -115,6 +117,41 @@ function isReadOnlyNote(note: ClinicalNote | undefined): boolean {
   return Boolean(note && (note.status === 'SIGNED' || note.legacyAuthorUnknown));
 }
 
+/** The body class Focus Mode drives. Exported so a test can assert on it. */
+export const FOCUS_MODE_CLASS = 'kw-note-focus';
+
+/**
+ * G4.5d3c-3c — Focus Mode, implemented as a class on <body> and nothing else.
+ *
+ * The obvious implementation — render a different, wider layout when focus is
+ * on — is the wrong one, and dangerously so. Swapping the tree around the
+ * editor unmounts `RichTextEditor`, which destroys the TipTap instance: the
+ * doctor's cursor position and undo history go with it, and any draft state
+ * held below this component in the tree goes too. C1 (D-052) and D-078 both
+ * exist because unsaved clinical text has been lost to remounts before.
+ *
+ * A class on <body> changes only what CSS does with the boxes that are
+ * already there. React re-renders nothing structural, TipTap is never told
+ * anything happened, and entering or leaving Focus Mode mid-sentence cannot
+ * cost a character.
+ *
+ * The cleanup removes the class on unmount as well as on toggle — leaving
+ * Canvas while focused must not leave the rest of the application with its
+ * rail hidden.
+ */
+function useFocusMode(active: boolean): void {
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const { body } = document;
+    if (active) {
+      body.classList.add(FOCUS_MODE_CLASS);
+    } else {
+      body.classList.remove(FOCUS_MODE_CLASS);
+    }
+    return () => body.classList.remove(FOCUS_MODE_CLASS);
+  }, [active]);
+}
+
 interface ClinicalNotesTabProps {
   visitId: string;
   patientId: string;
@@ -149,6 +186,11 @@ export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: Clin
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: 'idle' });
   const [conflictOpen, setConflictOpen] = useState(false);
   const initialisedFor = useRef<string | undefined>(undefined);
+  // G4.5d3c-3c — Focus Mode. Local state driving a BODY CLASS, deliberately:
+  // see the note beside `useFocusMode` for why this must never become a
+  // conditional render.
+  const [focusMode, setFocusMode] = useState(false);
+  useFocusMode(focusMode);
 
   // Subscribed to the whole store: this component reads drafts, loadedNoteId
   // and every action, and the store only changes while this editor is in use.
@@ -282,6 +324,19 @@ export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: Clin
   }, [dirty]);
 
   useBeforeUnloadGuard(dirty);
+
+  // Escape leaves Focus Mode. A mode with no keyboard exit is a trap for
+  // anyone not using a mouse, and the toggle button is the only other way
+  // out. Bound only WHILE focused, so Escape keeps its normal meaning
+  // (closing a modal, clearing a select) the rest of the time.
+  useEffect(() => {
+    if (!focusMode) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setFocusMode(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [focusMode]);
 
   const content = draft?.content ?? '';
   const language: NoteLanguage = draft?.language ?? 'EN';
@@ -641,6 +696,23 @@ export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: Clin
                 Smart Abbreviation
               </Button>
             </Dropdown>
+            {/* G4.5d3c-3c — Focus Mode. Available on a signed note too:
+                reading a long note benefits from the width exactly as much as
+                writing one does, and this control changes no clinical state.
+                `aria-pressed` because it is a toggle, not a navigation. */}
+            <Button
+              size="small"
+              className="kw-focus-exit"
+              // antd icons carry their own aria-label ("expand"/"compress"),
+              // which would otherwise prefix the button's accessible name and
+              // have a screen reader announce "expand Focus Mode".
+              icon={focusMode ? <CompressOutlined aria-hidden /> : <ExpandOutlined aria-hidden />}
+              aria-label={focusMode ? 'Exit Focus Mode' : 'Focus Mode'}
+              aria-pressed={focusMode}
+              onClick={() => setFocusMode((previous) => !previous)}
+            >
+              {focusMode ? 'Exit Focus Mode' : 'Focus Mode'}
+            </Button>
           </Space>
         }
       >

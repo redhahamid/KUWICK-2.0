@@ -1,6 +1,7 @@
 import { Button, Space, Typography } from 'antd';
 import { formatClinicTime } from './clinicTime';
 import { useLatestObservation } from './hooks/useVisitObservations';
+import { displayBmi } from './vitalsBmi';
 
 const { Text } = Typography;
 
@@ -25,16 +26,11 @@ interface ClinicalVitalsStripProps {
   onRecord?: () => void;
 }
 
-function bmiFrom(weight: string | null, height: string | null): string | null {
-  const kg = weight ? Number(weight) : NaN;
-  const cm = height ? Number(height) : NaN;
-  if (!Number.isFinite(kg) || !Number.isFinite(cm) || kg <= 0 || cm <= 0) {
-    return null;
-  }
-  const metres = cm / 100;
-  return (kg / (metres * metres)).toFixed(1);
-}
-
+// G4.5d3c-3c — the local `bmiFrom` that used to live here is gone. It was a
+// second implementation of the clinic's BMI rule, and a second implementation
+// of a clinical number is one that can disagree with the first. Every surface
+// now reads `displayBmi`: the server's stored value where there is one, the
+// shared calculation where there is not.
 export function ClinicalVitalsStrip({ visitId, onRecord, expanded, onToggleExpand }: ClinicalVitalsStripProps) {
   const { data: latest, isLoading } = useLatestObservation(visitId);
 
@@ -56,7 +52,7 @@ export function ClinicalVitalsStrip({ visitId, onRecord, expanded, onToggleExpan
     );
   }
 
-  const bmi = latest.bmi != null ? String(latest.bmi) : bmiFrom(latest.weight, latest.height);
+  const bmi = displayBmi({ serverBmi: latest.bmi, weight: latest.weight, height: latest.height });
   const entries: [string, string | null][] = [
     ['BP', latest.bpSystolic && latest.bpDiastolic ? `${latest.bpSystolic}/${latest.bpDiastolic}` : null],
     ['PR', latest.pulse ? `${latest.pulse}` : null],

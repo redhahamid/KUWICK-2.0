@@ -51,10 +51,24 @@ export function useCreatePrescription(visitId?: string) {
   });
 }
 
+/**
+ * G4.5d3c-3c — the copy result carries the supply-mode outcome.
+ *
+ * The server decides what supply mode each copied line gets (carry over what
+ * the previous visit recorded; default where it recorded nothing), and says
+ * which happened. The rows alone cannot tell those apart, so the sentence
+ * comes from the server rather than being reconstructed here.
+ */
+export interface CopyPrescriptionsResult {
+  prescriptions: Prescription[];
+  supplySummary: string;
+}
+
 export function useCopyPrescriptions(visitId?: string) {
   const invalidate = useInvalidatePrescriptionWork(visitId);
   return useMutation({
-    mutationFn: (dto: CopyPrescriptionsDto) => apiClient.post<Prescription[]>('/prescriptions/copy', dto),
+    mutationFn: (dto: CopyPrescriptionsDto) =>
+      apiClient.post<CopyPrescriptionsResult>('/prescriptions/copy', dto),
     onSuccess: invalidate,
   });
 }

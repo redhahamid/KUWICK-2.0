@@ -1,6 +1,8 @@
-import { Button, Image, Space, Typography } from 'antd';
-import { useVisitAttachments } from './hooks/useVisitAttachments';
+import { Button, Image, Space, Tooltip, Typography } from 'antd';
+import { FileOutlined, FilePdfOutlined } from '@ant-design/icons';
+import { downloadVisitAttachment, useVisitAttachments } from './hooks/useVisitAttachments';
 import { useAttachmentBlobUrls } from './hooks/useAttachmentBlobUrls';
+import { attachmentKind, canRenderAsImage } from './attachmentPresentation';
 
 const { Text } = Typography;
 
@@ -31,8 +33,13 @@ export function ClinicalImageStrip({ visitId, expanded, onToggleExpand }: Clinic
   const { data: attachments } = useVisitAttachments(visitId);
   const active = (attachments ?? []).filter((file) => file.recordStatus === 'ACTIVE');
   const blobUrls = useAttachmentBlobUrls(visitId, active);
-  const images = active.filter((file) => file.mimeType?.startsWith('image/') && blobUrls[file.id]);
-  const otherFiles = active.length - images.length;
+  const images = active.filter((file) => canRenderAsImage(file, blobUrls[file.id]));
+  // G4.5d3c-3c — non-image files used to be a NUMBER and nothing else: a
+  // scanned referral letter or a lab PDF appeared on the Canvas as the words
+  // "1 non-image", with no name, no icon and no way to open it without
+  // expanding the panel to look for it. They are file cards now, beside the
+  // thumbnails, and one click downloads them exactly as the panel does.
+  const documents = active.filter((file) => !images.includes(file));
 
   // D-077 — ONE compact row when nothing is attached. The full panel rendered
   // a large empty placeholder that ate most of a tablet screen on a visit with
@@ -70,9 +77,34 @@ export function ClinicalImageStrip({ visitId, expanded, onToggleExpand }: Clinic
           </Space>
         </Image.PreviewGroup>
       )}
+      {documents.length > 0 && (
+        <Space size={6} wrap>
+          {documents.map((file) => (
+            <Tooltip key={file.id} title={`${file.fileName} — open`}>
+              <Button
+                size="small"
+                data-attachment-kind={attachmentKind(file)}
+                icon={attachmentKind(file) === 'PDF' ? <FilePdfOutlined /> : <FileOutlined />}
+                onClick={() => downloadVisitAttachment(visitId, file)}
+              >
+                <span
+                  style={{
+                    maxWidth: 120,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: 'inline-block',
+                    verticalAlign: 'bottom',
+                  }}
+                >
+                  {file.fileName}
+                </span>
+              </Button>
+            </Tooltip>
+          ))}
+        </Space>
+      )}
       <Text type="secondary" style={{ fontSize: 12 }}>
         Attachments {active.length}
-        {otherFiles > 0 && ` · ${otherFiles} non-image`}
       </Text>
       {onToggleExpand && (
         <Button size="small" style={{ marginLeft: 'auto' }} onClick={onToggleExpand}>

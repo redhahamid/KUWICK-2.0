@@ -1,6 +1,8 @@
-import { useRef, useState } from 'react';
-import { Button, Card, Image, List, Space, Tag, Tooltip, Typography, message } from 'antd';
+import { useRef } from 'react';
+import { Alert, Button, Card, Image, List, Progress, Space, Tag, Tooltip, Typography, message } from 'antd';
 import {
+  CheckCircleOutlined,
+  CloseCircleOutlined,
   DeleteOutlined,
   DownloadOutlined,
   FileOutlined,
@@ -8,29 +10,27 @@ import {
   PaperClipOutlined,
   UploadOutlined,
 } from '@ant-design/icons';
+import { useState } from 'react';
 import dayjs from 'dayjs';
 import {
   downloadVisitAttachment,
   useRemoveVisitAttachment,
-  useUploadVisitAttachment,
+  useUploadVisitAttachments,
   useVisitAttachments,
 } from './hooks/useVisitAttachments';
 import { useAttachmentBlobUrls } from './hooks/useAttachmentBlobUrls';
 import { RemoveClinicalRecordModal } from './sections/RemoveClinicalRecordModal';
-import { ApiError } from '../core/api-client';
+import {
+  ATTACHMENT_ACCEPT,
+  UploadEntry,
+  attachmentKind,
+  canRenderAsImage,
+  formatFileSize,
+  summariseUploads,
+} from './attachmentPresentation';
 import { VisitAttachment } from './types';
 
 const { Text } = Typography;
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function isImage(attachment: VisitAttachment): boolean {
-  return Boolean(attachment.mimeType?.startsWith('image/'));
-}
 
 // G0 closure — two deliberate sizes. The compact strip sits beside the note
 // and must not push it around, so it stays small and recognisable. The
@@ -59,21 +59,22 @@ interface VisitAttachmentsPanelProps {
 // gallery instead of having to be downloaded and opened outside the record.
 export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPanelProps) {
   const { data: attachments, isLoading } = useVisitAttachments(visitId);
-  const uploadAttachment = useUploadVisitAttachment(visitId);
+  const { upload, entries, uploading, clear } = useUploadVisitAttachments(visitId);
   const removeAttachment = useRemoveVisitAttachment(visitId);
   const [removing, setRemoving] = useState<VisitAttachment | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const blobUrls = useAttachmentBlobUrls(visitId, attachments);
 
-  const handleFileChosen = async (file: File | undefined) => {
-    if (!file) return;
-    try {
-      // No uploader id is sent — the server derives it from the session (C0).
-      await uploadAttachment.mutateAsync({ file });
-      message.success('File uploaded');
-    } catch (error) {
-      message.error(error instanceof ApiError ? error.message : 'Failed to upload file');
-    }
+  // G4.5d3c-3c — every chosen file, not just the first. No uploader id is
+  // sent for any of them: the server derives it from the session (C0).
+  const handleFilesChosen = async (files: FileList | null) => {
+    const chosen = Array.from(files ?? []);
+    if (chosen.length === 0) return;
+    const results = await upload(chosen);
+    const summary = summariseUploads(results);
+    if (summary.tone === 'success') message.success(summary.message);
+    else if (summary.tone === 'warning') message.warning(summary.message);
+    else message.error(summary.message);
   };
 
   // G3a (D-062) — removal is audited and reason-bearing, so it opens the
@@ -108,21 +109,83 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
     <input
       ref={fileInputRef}
       type="file"
-      accept="image/*,application/pdf"
+      // G4.5d3c-3c — `multiple`. Images and PDFs may be selected together in
+      // one pass; the accept list has always allowed both, but without this
+      // attribute the browser handed over exactly one file and discarded the
+      // rest with no error to notice.
+      multiple
+      accept={ATTACHMENT_ACCEPT}
+      aria-label="Choose files to attach to this visit"
       style={{ display: 'none' }}
       onChange={(e) => {
-        void handleFileChosen(e.target.files?.[0]);
+        void handleFilesChosen(e.target.files);
         e.target.value = '';
       }}
     />
   );
 
+  // Per-file progress and result. Rendered wherever the panel is, so a batch
+  // is never a spinner that ends in one word: each file says what happened to
+  // it, and the ones that failed say why.
+  const progressPanel = entries.length > 0 && (
+    <div className="kw-upload-progress" role="status" aria-live="polite" style={{ width: '100%' }}>
+      {entries.map((entry: UploadEntry) => (
+        <div key={entry.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+          <Text
+            style={{ fontSize: 12, flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}
+            title={entry.fileName}
+          >
+            {entry.fileName}
+          </Text>
+          <Text type="secondary" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+            {formatFileSize(entry.size)}
+          </Text>
+          {entry.state === 'QUEUED' && (
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              Waiting
+            </Text>
+          )}
+          {entry.state === 'UPLOADING' && (
+            <Progress percent={100} status="active" showInfo={false} size="small" style={{ width: 70 }} />
+          )}
+          {entry.state === 'DONE' && (
+            <Text type="success" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+              <CheckCircleOutlined aria-hidden /> Uploaded
+            </Text>
+          )}
+          {entry.state === 'FAILED' && (
+            <Tooltip title={entry.error}>
+              <Text type="danger" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+                <CloseCircleOutlined aria-hidden /> Failed
+              </Text>
+            </Tooltip>
+          )}
+        </div>
+      ))}
+      {!uploading && entries.some((entry) => entry.state === 'FAILED') && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginTop: 6 }}
+          message="Some files were not uploaded"
+          description="The files marked Uploaded are on the record and do not need to be sent again. Retry only the failed ones."
+          action={
+            <Button size="small" onClick={clear}>
+              Dismiss
+            </Button>
+          }
+        />
+      )}
+    </div>
+  );
+
   const all = attachments ?? [];
   const count = all.length;
-  // An image whose bytes could not be fetched is shown as a file row rather
-  // than a broken thumbnail — a blank square in a clinical record invites the
-  // reader to assume there is nothing there.
-  const images = all.filter((a) => isImage(a) && blobUrls[a.id]);
+  // A PDF is NEVER rendered as a picture, and neither is an image whose bytes
+  // could not be fetched: pointing an <img> at either produces a broken-image
+  // icon, which in a clinical record reads as "the file is missing" rather
+  // than "this is a document". Both fall through to a file card.
+  const images = all.filter((a) => canRenderAsImage(a, blobUrls[a.id]));
   const others = all.filter((a) => !images.includes(a));
 
   // C2 — nothing attached: a single row, not a card wrapped around an
@@ -148,11 +211,12 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
           size="small"
           type="text"
           icon={<UploadOutlined />}
-          loading={uploadAttachment.isPending}
+          loading={uploading}
           onClick={() => fileInputRef.current?.click()}
         >
           Upload
         </Button>
+        {progressPanel}
       </div>
     );
   }
@@ -200,12 +264,15 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
           </Space>
         </Image.PreviewGroup>
 
+        {/* A PDF gets a CARD: its icon, its name and one click to open it.
+            Everything non-image lands here rather than in the image row. */}
         {others.map((attachment) => (
           <Tooltip key={attachment.id} title={`${attachment.fileName} — ${attribution(attachment)}`}>
             <Button
               size="small"
               type="text"
-              icon={attachment.mimeType === 'application/pdf' ? <FilePdfOutlined /> : <FileOutlined />}
+              data-attachment-kind={attachmentKind(attachment)}
+              icon={attachmentKind(attachment) === 'PDF' ? <FilePdfOutlined /> : <FileOutlined />}
               onClick={() => downloadVisitAttachment(visitId, attachment)}
             >
               <span style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', verticalAlign: 'bottom' }}>
@@ -220,12 +287,13 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
           size="small"
           type="text"
           icon={<UploadOutlined />}
-          loading={uploadAttachment.isPending}
+          loading={uploading}
           onClick={() => fileInputRef.current?.click()}
           style={{ marginLeft: 'auto' }}
         >
           Upload
         </Button>
+        {progressPanel}
       </div>
     );
   }
@@ -247,7 +315,7 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
           <Button
             size="small"
             icon={<UploadOutlined />}
-            loading={uploadAttachment.isPending}
+            loading={uploading}
             onClick={() => fileInputRef.current?.click()}
           >
             Upload
@@ -263,8 +331,14 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
           locale={{ emptyText: 'No files attached yet' }}
           renderItem={(attachment: VisitAttachment) => {
             const url = blobUrls[attachment.id];
+            const kind = attachmentKind(attachment);
+            // A PDF must never take the <Image> branch, even when a blob URL
+            // happens to exist for it: an <img> pointed at PDF bytes renders
+            // the browser's broken-image glyph.
+            const asImage = canRenderAsImage(attachment, url);
             return (
               <List.Item
+                data-attachment-kind={kind}
                 actions={[
                   <Button
                     key="download"
@@ -286,7 +360,7 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
               >
                 <List.Item.Meta
                   avatar={
-                    url ? (
+                    asImage ? (
                       <Image
                         src={url}
                         alt={attachment.fileName}
@@ -296,27 +370,38 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
                         style={{ objectFit: 'cover', borderRadius: 4, cursor: 'zoom-in' }}
                       />
                     ) : (
+                      // The file card. A PDF is a document, and it says so —
+                      // an icon, its type in words, and a download action
+                      // beside it. Never a grey square that reads as a
+                      // picture that failed to load.
                       <span
+                        aria-label={kind === 'PDF' ? 'PDF document' : 'File'}
                         style={{
                           display: 'inline-flex',
+                          flexDirection: 'column',
                           alignItems: 'center',
                           justifyContent: 'center',
+                          gap: 2,
                           width: EXPANDED_THUMB,
                           height: EXPANDED_THUMB,
                           borderRadius: 4,
+                          border: '1px solid #f0f0f0',
                           background: '#fafafa',
                           fontSize: 20,
-                          opacity: 0.6,
+                          color: kind === 'PDF' ? '#cf1322' : undefined,
                         }}
                       >
-                        {attachment.mimeType === 'application/pdf' ? <FilePdfOutlined /> : <FileOutlined />}
+                        {kind === 'PDF' ? <FilePdfOutlined /> : <FileOutlined />}
+                        <Text type="secondary" style={{ fontSize: 10 }}>
+                          {kind === 'PDF' ? 'PDF' : 'File'}
+                        </Text>
                       </span>
                     )
                   }
                   title={<Text style={{ fontSize: 13 }}>{attachment.fileName}</Text>}
                   description={
                     <Text type="secondary" style={{ fontSize: 11 }}>
-                      {formatSize(attachment.fileSize)} · {attribution(attachment)}
+                      {formatFileSize(attachment.fileSize)} · {attribution(attachment)}
                     </Text>
                   }
                 />
@@ -325,6 +410,7 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
           }}
         />
       </Image.PreviewGroup>
+      {progressPanel}
       {removalModal}
     </Card>
   );

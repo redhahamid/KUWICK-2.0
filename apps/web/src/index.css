@@ -150,26 +150,93 @@
    (`height: min(58vh, 520px); overflow-y: auto`) reserved ~520px whatever
    the note held, so a four-line SOAP note carried hundreds of blank pixels
    and pushed the Consultation Footer most of a viewport further down. The
-   floor keeps comfortable typing room on a 768px laptop; past it the editor
-   grows with the doctor's own text on the page's one natural scroll — no
-   inner scrollbar unless the content itself creates one elsewhere. */
+   floor keeps comfortable typing room on a 768px laptop.
+
+   G4.5d3c-3c — the editor is now BOUNDED as well as floored.
+
+   D-090 removed the fixed height and left the editor free to grow with its
+   content. On a long consultation that turned out to mean it grows without
+   limit: a doctor writing a full SOAP note pushed the diagnoses, medications,
+   orders and the Consultation Footer steadily down the page, and finishing a
+   consultation meant scrolling past everything they had just written to reach
+   the button. The note is the dominant surface, not an infinite one.
+
+   So: a floor AND a ceiling, with the doctor's own text scrolling INSIDE the
+   editor once it outgrows the box. The surrounding Canvas stops moving; the
+   rail, the footer and every clinical section keep their position on screen
+   however much is typed.
+
+   The ceiling is a viewport fraction with an absolute cap, so it adapts to a
+   short laptop screen without ever exceeding the approved desktop band. */
 .kw-editor-fill .ProseMirror {
-  min-height: 400px;
+  min-height: 420px;
+  max-height: min(52vh, 520px);
+  overflow-y: auto;
 }
 
 /* A signed or otherwise read-only note (D-090). Nobody types here, so it is
    sized by its CONTENT with a floor that keeps the signed-note banner and
    amendment actions from crowding a one-line note. Blank reservation below a
-   short note bought nothing except scroll distance to the footer. */
+   short note bought nothing except scroll distance to the footer.
+
+   Bounded too (3c): a long signed note is exactly as capable of burying the
+   footer as a long draft, and nobody needs to scroll a sealed record through
+   the page to reach an action below it. */
 .kw-editor-signed .ProseMirror {
   min-height: 260px;
+  max-height: min(52vh, 520px);
+  overflow-y: auto;
 }
 
 /* Tablet, mobile and Flow. Without this the contenteditable collapses to one
    line (22px measured) and the doctor has to aim at a sliver of text to
-   start writing. */
+   start writing.
+
+   Bounded lower than desktop (3c): on a tablet or a phone the viewport is the
+   scarce resource, so the editor keeps a workable typing area and gives the
+   rest of the record back. */
 .kw-editor-min .ProseMirror {
   min-height: 300px;
+  max-height: min(46vh, 380px);
+  overflow-y: auto;
+}
+
+/* --- Focus Mode (G4.5d3c-3c) -------------------------------------------
+
+   A doctor writing a long note wants the note, not the two-zone workspace
+   around it. Focus Mode gives the editor the full width of the Canvas and a
+   taller ceiling by standing the rail down — and it does so ENTIRELY in CSS,
+   driven by a class on <body>.
+
+   That is the whole point of the mechanism. Focus Mode changes no React tree:
+   the ClinicalNotesTab, the RichTextEditor and the TipTap instance inside it
+   are the same mounted objects before, during and after. Rebuilding the
+   layout by conditionally rendering a different component would remount the
+   editor, and remounting the editor is exactly what C1 (D-052) and D-078
+   exist to prevent — the doctor's unsaved draft lives in a store keyed to the
+   note, and the editor's own selection and undo history do not survive a
+   remount at all. A class toggle cannot lose a keystroke. */
+body.kw-note-focus .kw-canvas-rail {
+  display: none;
+}
+
+/* The shell is a flex row; with the rail gone the main column simply takes
+   the whole width. Nothing is re-parented and no element is unmounted. */
+body.kw-note-focus .kw-canvas-main {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+body.kw-note-focus .kw-editor-fill .ProseMirror,
+body.kw-note-focus .kw-editor-signed .ProseMirror,
+body.kw-note-focus .kw-editor-min .ProseMirror {
+  max-height: min(72vh, 760px);
+}
+
+/* The exit control has to be reachable without leaving Focus Mode to find
+   it, so it rides with the note's toolbar rather than the page chrome. */
+.kw-focus-exit {
+  margin-left: auto;
 }
 
 /* G1 (D-058) — the clinical section stack.
@@ -567,6 +634,17 @@
   .kw-clinical-rail {
     gap: 10px;
   }
+
+  /* G4.5d3c-3c — a lower editor ceiling on a tablet. The desktop band assumes
+     a two-column workspace where the rail is beside the note; here everything
+     is one column, so an editor sized for desktop would push the diagnoses and
+     medications an entire screen down. */
+  .kw-editor-fill .ProseMirror,
+  .kw-editor-signed .ProseMirror,
+  .kw-editor-min .ProseMirror {
+    min-height: 300px;
+    max-height: min(46vh, 400px);
+  }
 }
 
 /* D-077 — the chat launcher.
@@ -686,6 +764,17 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   .kw-rail-add .ant-select .ant-select-selection-placeholder,
   .kw-rail-add .ant-select .ant-select-selection-item {
     font-size: 16px;
+  }
+
+  /* G4.5d3c-3c — the phone ceiling. Smallest of the three: on a 375px screen
+     an editor that keeps growing is the whole record, and the doctor loses
+     every other section to it. The floor still guarantees a usable typing
+     area, and the note scrolls inside itself past that. */
+  .kw-editor-fill .ProseMirror,
+  .kw-editor-signed .ProseMirror,
+  .kw-editor-min .ProseMirror {
+    min-height: 240px;
+    max-height: min(44vh, 320px);
   }
 
   /* The attribution control is small on purpose at desktop — it must stay

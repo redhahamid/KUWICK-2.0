@@ -14,6 +14,7 @@ import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { ClinicalTx, assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
 import { collectBillingWorklist, tariffReviewItems, unbilledReadyItems } from './billing-worklist';
+import { isDocumentationPending } from './clinical-documentation';
 import { CompleteVisitDto } from './dto/complete-visit.dto';
 
 /**
@@ -24,6 +25,7 @@ import { CompleteVisitDto } from './dto/complete-visit.dto';
  */
 export type VisitCompletionBlockerCode =
   | 'DOCTOR_PHASE_NOT_COMPLETED'
+  | 'CLINICAL_DOCUMENTATION_PENDING'
   | 'PROCEDURE_PENDING'
   | 'MEDICATION_SUPPLY_UNCONFIRMED'
   | 'MEDICATION_SUPPLY_DEFERRED'
@@ -49,6 +51,8 @@ export interface VisitCompletionResult {
 
 const MESSAGES: Record<VisitCompletionBlockerCode, string> = {
   DOCTOR_PHASE_NOT_COMPLETED: 'The doctor consultation phase has not been completed.',
+  // G4.5d3c-3c — the note-signature requirement, in its new home.
+  CLINICAL_DOCUMENTATION_PENDING: 'The clinical note has not been signed yet.',
   PROCEDURE_PENDING: 'A procedure is still pending or in progress.',
   MEDICATION_SUPPLY_UNCONFIRMED: 'Medication supply mode must be confirmed.',
   MEDICATION_SUPPLY_DEFERRED: 'Deferred medication supply must be resolved.',
@@ -255,6 +259,27 @@ export async function collectBlockers(
   if (queueStatus !== null && !COMPLETABLE_FROM.includes(queueStatus)) {
     // WAITING, AT_PROCEDURE, CANCELLED and COMPLETED all land here.
     add('QUEUE_STATE_INELIGIBLE');
+  }
+
+  // G4.5d3c-3c — the clinical note must still be signed. It just stopped
+  // holding the PATIENT.
+  //
+  // Until now an unsigned note refused doctor-phase completion, which meant a
+  // patient with a prescription in hand waited in the consultation room until
+  // the prose was finished. That requirement now lives here, where it holds
+  // the PAPERWORK instead: the patient goes to the dispensary and the counter
+  // as soon as their clinical work is done, and the visit stays operationally
+  // open until the record is complete.
+  //
+  // This is not a relaxation. A visit could never close without a signed note
+  // before, and it still cannot — the same rule, applied at the point where
+  // enforcing it costs nobody's time in a waiting room. Clinical authorship
+  // (C0/D-051) is untouched: nothing auto-signs, and only the author can sign.
+  //
+  // Uses the doctor-completion service's definition rather than a second
+  // count, so "documentation pending" means one thing across the system.
+  if (await isDocumentationPending(tx, visitId)) {
+    add('CLINICAL_DOCUMENTATION_PENDING');
   }
 
   const openProcedures = await tx.orderService.count({

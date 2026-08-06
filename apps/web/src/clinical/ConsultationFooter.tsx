@@ -13,7 +13,11 @@ import { formatClinicDateTime } from './clinicTime';
 import { useCompleteDoctorPhase, useDoctorPhaseStatus } from './hooks/useDoctorPhase';
 import {
   CanvasAnchor,
+  DOCUMENTATION_PENDING_ACTION,
+  DOCUMENTATION_PENDING_BODY,
+  DOCUMENTATION_PENDING_TITLE,
   completedStation,
+  documentationPendingConfirm,
   footerView,
   orderBlockers,
   queueStatusText,
@@ -205,6 +209,36 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
               <dd>{visitStandingText(visit.checkOutAt)}</dd>
             </div>
           </dl>
+
+          {/* Case D — the patient was sent on with documentation pending and
+              the note is STILL unsigned. Amber, not red: nothing went wrong,
+              and something is outstanding. It names the doctor and the time
+              from the recorded workflow event rather than re-deriving them. */}
+          {view.documentationPending && (
+            <Alert
+              type="warning"
+              showIcon
+              role="status"
+              style={{ marginTop: 'var(--kw-s2)' }}
+              message={DOCUMENTATION_PENDING_TITLE}
+              description={
+                <>
+                  <div>{DOCUMENTATION_PENDING_BODY}</div>
+                  {stored.documentationPendingActorName && stored.documentationPendingAt && (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      Sent on by {stored.documentationPendingActorName} ·{' '}
+                      {formatClinicDateTime(stored.documentationPendingAt)}
+                    </Text>
+                  )}
+                </>
+              }
+              action={
+                <Button size="small" onClick={() => onReview(DOCUMENTATION_PENDING_ACTION.anchor)}>
+                  {DOCUMENTATION_PENDING_ACTION.label}
+                </Button>
+              }
+            />
+          )}
         </div>
       </section>
     );
@@ -251,14 +285,25 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
     );
   }
 
-  // ---- 2. ACTIVE AND ELIGIBLE / 4. SUBMITTING ----------------------------
+  // ---- 2. ACTIVE AND ELIGIBLE (Cases A and B) / 4. SUBMITTING -------------
   const primary = view.primary;
   if (!primary) return null;
 
-  const noteSigned = !shownBlockers.some((b) => b.code === 'SIGNED_NOTE_REQUIRED');
+  // Case B differs from Case A in exactly three places: an amber panel, an
+  // amber chip in place of the green one, and a different confirmation
+  // question. The ACTION is identical and is never withheld — that is the
+  // whole point of the state.
+  const pending = view.documentationPending;
+  const confirm = pending
+    ? documentationPendingConfirm(primary)
+    : { title: primary.confirmTitle, summary: primary.confirmSummary };
 
   return (
-    <section className="kw-consult-footer" aria-label="Consultation completion">
+    <section
+      className="kw-consult-footer"
+      aria-label="Consultation completion"
+      data-documentation-pending={pending ? 'true' : 'false'}
+    >
       {failure && (
         <Alert
           type="error"
@@ -271,12 +316,34 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
           onClose={() => setFailure(null)}
         />
       )}
+
+      {/* Case B — AMBER, and worded as a consequence rather than a refusal.
+          It sits above the bar so it is read before the button, and it offers
+          the way to resolve it without taking the way past it away. */}
+      {pending && (
+        <Alert
+          type="warning"
+          showIcon
+          role="status"
+          style={{ marginBottom: 'var(--kw-s2)' }}
+          message={DOCUMENTATION_PENDING_TITLE}
+          description={DOCUMENTATION_PENDING_BODY}
+          action={
+            <Button size="small" onClick={() => onReview(DOCUMENTATION_PENDING_ACTION.anchor)}>
+              {DOCUMENTATION_PENDING_ACTION.label}
+            </Button>
+          }
+        />
+      )}
+
       <div className="kw-consult-bar">
         <div className="kw-consult-summary">
           <Space size={6} wrap>
-            {noteSigned && (
-              // Status only. Signing happens in the Clinical Note section and
-              // nowhere else — the footer never grows a second signing path.
+            {/* Status only. Signing happens in the Clinical Note section and
+                nowhere else — the footer never grows a second signing path. */}
+            {pending ? (
+              <Tag className="kw-chip-pending">Clinical note not signed</Tag>
+            ) : (
               <Tag className="kw-chip-success">Clinical note signed</Tag>
             )}
             <Tag className="kw-chip-neutral" icon={iconFor(primary.reason)}>
@@ -304,14 +371,16 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
       </div>
 
       {/* One compact confirmation. The doctor confirms the ACT, never chooses
-          the destination — that is derived and is not offered as a choice. */}
+          the destination — that is derived and is not offered as a choice.
+          With documentation pending it asks a different question, because it
+          is asking them to assert something more. */}
       <Modal
         open={confirming}
         // The modal portals outside .kw-canvas-shell, so the navy primary is
         // scoped to it by this class — the confirm button must not fall back
         // to antd's default blue in a workspace that uses navy everywhere.
         rootClassName="kw-consult-confirm"
-        title={primary.confirmTitle}
+        title={confirm.title}
         okText={primary.label}
         cancelText="Cancel"
         confirmLoading={complete.isPending}
@@ -321,7 +390,7 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
         afterClose={() => triggerRef.current?.focus()}
         destroyOnHidden
       >
-        <Text>{primary.confirmSummary}</Text>
+        <Text>{confirm.summary}</Text>
       </Modal>
     </section>
   );

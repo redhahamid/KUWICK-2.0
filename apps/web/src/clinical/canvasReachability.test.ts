@@ -76,24 +76,51 @@ describe('clinical note height rules', () => {
     expect(min).toBeLessThanOrEqual(440);
   });
 
-  it('9. the editable note grows with content — no fixed height, no forced inner scrollbar', () => {
+  // G4.5d3c-3c — this rule is the REVERSE of D-090's, deliberately and with
+  // owner approval. D-090 removed the ceiling so a short note stopped
+  // reserving blank space; the consequence was that a LONG note grew without
+  // limit and pushed the diagnoses, medications and the Consultation Footer
+  // steadily off the screen. Both floor and ceiling now, with the doctor's
+  // own text scrolling inside the editor rather than moving the page.
+  it('9. the editable note is BOUNDED and scrolls internally past its ceiling', () => {
     const fill = block('.kw-editor-fill .ProseMirror');
-    expect(fill).not.toMatch(/[^-]height:/); // min-height only
-    expect(fill).not.toContain('overflow-y');
-    expect(fill).not.toContain('max-height');
+    expect(fill).not.toMatch(/[^-]height:/); // still no FIXED height
+    expect(fill).toContain('max-height');
+    expect(fill).toContain('overflow-y: auto');
   });
 
-  it('8. a signed note is sized by content with a modest floor', () => {
+  it("9b. the desktop ceiling sits inside the approved 420–520px band", () => {
+    const fill = block('.kw-editor-fill .ProseMirror');
+    const cap = Number(/max-height:\s*min\([^,]+,\s*(\d+)px\)/.exec(fill)?.[1]);
+    expect(cap).toBeGreaterThanOrEqual(420);
+    expect(cap).toBeLessThanOrEqual(520);
+  });
+
+  it('8. a signed note is sized by content with a modest floor, and is bounded too', () => {
     const signed = block('.kw-editor-signed .ProseMirror');
     const min = Number(/min-height:\s*(\d+)px/.exec(signed)?.[1]);
     expect(min).toBeGreaterThanOrEqual(240);
     expect(min).toBeLessThanOrEqual(300);
     expect(signed).not.toMatch(/[^-]height:/);
+    // A long SIGNED note buries the footer exactly as a long draft does.
+    expect(signed).toContain('max-height');
+    expect(signed).toContain('overflow-y: auto');
   });
 
   it('17. tablet/mobile/Flow keeps its usable floor', () => {
     const minBlock = block('.kw-editor-min .ProseMirror');
     expect(minBlock).toContain('min-height: 300px');
+  });
+
+  it('9c. tablet and phone get SMALLER ceilings than desktop', () => {
+    // On one column the editor competes with every other section for the
+    // whole viewport, so the desktop band would swallow the record.
+    const desktopCap = Number(
+      /max-height:\s*min\([^,]+,\s*(\d+)px\)/.exec(block('.kw-editor-fill .ProseMirror'))?.[1],
+    );
+    const caps = [...css.matchAll(/max-height:\s*min\([^,]+,\s*(\d+)px\)/g)].map((m) => Number(m[1]));
+    const responsive = caps.filter((cap) => cap < desktopCap);
+    expect(responsive.length).toBeGreaterThanOrEqual(2);
   });
 
   it('mobile font-size covers the signed surface too', () => {

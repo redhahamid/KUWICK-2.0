@@ -115,6 +115,16 @@ const BLOCKER_GUIDANCE: Record<string, QueueBlockerGuidance> = {
     action: 'Open the clinical visit so the doctor can finish their phase.',
     destination: 'CLINICAL_VISIT',
   },
+  // G4.5d3c-3c — the patient has already been sent on; what is outstanding is
+  // the doctor's note. Counter staff are told WHO has to act, because there is
+  // nothing they can do about it themselves and no wording here should suggest
+  // otherwise. Signing is the author's act and nobody else's (C0/D-051).
+  CLINICAL_DOCUMENTATION_PENDING: {
+    title: 'The clinical note has not been signed yet.',
+    who: 'Attending doctor',
+    action: 'The patient does not need to wait. The doctor signs the note to release this visit.',
+    destination: 'CLINICAL_VISIT',
+  },
   PROCEDURE_PENDING: {
     title: 'A procedure is still pending or in progress.',
     who: 'Clinical staff',
