@@ -2120,6 +2120,57 @@ The footer distinguishes four cases, and **amber and red mean different things**
 
 ---
 
+## D-097 — G4.5d3c-3c1: the vitals panel goes quiet again, and an attachment has to prove what it is
+
+Two closure corrections on D-096. Narrow by intent: no routing change, no BMI change, no change to the duplicate-vitals protection.
+
+### The resting state after a save is compact
+
+3c made the entry fields the panel's resting state, which was right for a visit with nothing recorded and wrong for one with a saved reading: the compact summary AND an empty form were both on screen. That is not a state anybody asked for, and it cost most of the Canvas to display it.
+
+The panel now has an explicit mode instead of two booleans that could both be true:
+
+- **FIRST_ENTRY** — no observations exist. The fields *are* the panel: no Add step in front of them, and no Cancel, because there is nothing to go back to.
+- **SUMMARY** — the resting state once anything is saved. Every value, the BMI, the recorder and the time, with **Edit** and **Record New Reading**. No form underneath.
+- **EDIT** — correcting one specific reading. Populated from it, carrying its `expectedVersion`, still requiring a reason and still writing an immutable revision (C0/D-051 untouched). Cancel returns to SUMMARY having written nothing.
+- **NEW_READING** — a deliberate later measurement. Blank, no reason field, creates a row.
+
+The mode is `null` by default and *follows the data*; only a deliberate Edit or Record New Reading pins it, and finishing either releases it. That is what makes a successful save land in the summary rather than back on an empty form — the defect being corrected is structurally impossible now rather than fixed by an extra `setState`.
+
+**Edit and Record New Reading are deliberately different actions with different words**, because they are different clinical claims: one says the recorded reading was wrong, the other says the patient was measured again. An always-open blank form conflated them by default, which is exactly the ambiguity the owner's correction removes.
+
+One implementation note worth keeping: the form is only *mounted* in a form mode, so its fields cannot be populated from the click handler that opened it — antd warns the instance is not connected to any Form, and the values would be written into a form that does not exist yet. Population happens in an effect keyed on the mode.
+
+### An attachment has to prove what it is
+
+The endpoint enforced a 15 MB limit and nothing else. The browser's `accept` attribute is a picker hint: a direct caller never opens a file picker, so **anything at all** could be written into a patient's record and served back with whatever Content-Type it claimed.
+
+Four types for v1 — JPEG, PNG, WebP, PDF — and three checks that must **all** pass:
+
+1. the **declared MIME type** is on the allow-list;
+2. the **extension** is on the allow-list *and* agrees with the declared type;
+3. the **file's own leading bytes** identify it as that type.
+
+The third is the only one a caller cannot talk their way around, and it was available for nothing: the upload interceptor already uses `memoryStorage`, so the whole buffer exists before anything reaches disk. No new dependency, no format parsing, no execution of the content — a comparison of the first few bytes against a fixed table. `payload.exe` renamed to `report.pdf` and declared as `application/pdf` satisfies checks 1 and 2 and is refused by 3.
+
+What this deliberately does **not** do is decode, re-encode or sanitise image content. That needs an image library — a large dependency with its own history of parser vulnerabilities, on a path that handles hostile input by definition. A strict allow-list plus signature inspection is the strongest thing available without importing that risk, and the spec asked for the strongest *practical* validation, not the heaviest.
+
+Applied to **both** clinical upload endpoints. An order result is a clinical attachment by any other name, and a policy covering one and not the other would simply move where the unvalidated file goes.
+
+Three further things the same change closes: the stored filename is **sanitised** before it is persisted (it is rendered in the record, used as the download name and echoed into a `Content-Disposition` header — a newline there is a response-splitting primitive); the stored MIME type is now the **validator's**, not the request's, so what is served back is a type the clinic actually accepted; and the picker's `accept` list was narrowed from `image/*` to the four real types, so the dialog stops offering formats that could only fail on arrival. That last one is a convenience, not a control, and is documented as such.
+
+The refusal message is uniform — *"Unsupported file type. Upload JPG, PNG, WebP or PDF."* — whichever check failed. Telling a caller *which* one they tripped is a free oracle for the next attempt, and it tells a clinic nothing they can act on. It is rendered as **visible text against the file that failed**, not a tooltip: a tooltip is unreachable on a touch screen and invisible to anyone scanning the list.
+
+Everything the correction required to survive, survives: the 15 MB limit, multi-file selection, per-file results, one rejected file not cancelling the permitted ones in the same selection, tenant and branch checks, authenticated retrieval, image thumbnails and PDF cards.
+
+**Verification**: 966 backend tests (43 suites) and 628 frontend tests (27 files), both typechecks clean; **24/24 live checks** over real HTTP (`prisma/g45d3c3c1-attachment-security-check.ts`) including seven hostile uploads sent without a browser anywhere in the path, and **36/36** on the re-run 3c suite. 6 screenshots in `docs/g45d3c3c1-screenshots/`.
+
+**Three test fixtures were strengthened, not weakened**, and it is worth saying why they changed: `visit-attachment.service.spec.ts`, `order-service.service.spec.ts` and the 3c live script all uploaded buffers that were not the type they claimed (`Buffer.from('x')` as a PNG, zero-filled arrays as PDFs). The old endpoint accepted them because nothing looked at the bytes. They now carry real signatures — a fixture claiming to be a PNG has to be one, exactly as a hostile upload would have to be.
+
+**Known limitations**: content is validated but not sanitised, so a *genuine* JPEG carrying a malicious payload in its metadata is stored as-is (mitigated by `Content-Disposition: attachment` on retrieval, and by the fact that closing it needs an image-processing dependency this phase deliberately avoids); a PDF is accepted on its header alone and its interior — JavaScript actions, embedded files — is not inspected, which would need a PDF parser with the same objection; HEIC and TIFF remain unsupported, so a doctor whose phone shoots HEIC must convert before uploading, and admitting them is deliberately deferred until preview support exists; and the picker's narrowed `accept` list will hide a legitimate file from the dialog if a clinic's scanner emits an unusual MIME type for a PDF, in which case the file can still be chosen via "All files" and will pass validation on its bytes.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

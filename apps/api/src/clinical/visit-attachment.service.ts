@@ -6,6 +6,7 @@ import { currentStaffId, currentTenantId } from '../core/tenant-context';
 import { saveUploadedFile } from '../core/file-storage';
 import { assertCanVoidClinicalRecord, snapshotOf } from './clinical-authorization';
 import { assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
+import { validateClinicalAttachment } from './attachment-validation';
 import { VoidClinicalRecordDto } from './dto/void-clinical-record.dto';
 
 // D-044 — free-standing visit-level uploads (photos, scanned results,
@@ -34,17 +35,25 @@ export class VisitAttachmentService {
   // C0 (D-051) — uploader identity comes from the authenticated session, not
   // from the caller. The browser used to post uploadedByStaffId in the body,
   // which made attribution client-controlled; that parameter is gone.
+  //
+  // G4.5d3c-3c1 — validated BEFORE anything is written. The allow-list, the
+  // extension agreement and the leading-byte signature are all checked while
+  // the file is still only a buffer, so a refused upload leaves nothing on
+  // disk and no row behind. The stored mimeType and fileName come from the
+  // validator, not from the request: what is served back later must be a type
+  // this clinic actually accepted, under a name that is safe in a header.
   async create(visitId: string, file: Express.Multer.File) {
+    const { mimeType, fileName } = validateClinicalAttachment(file);
     const tenantId = currentTenantId();
     const uploadedByStaffId = currentStaffId() ?? null;
-    const stored = await saveUploadedFile(tenantId, visitId, file.buffer, file.originalname);
+    const stored = await saveUploadedFile(tenantId, visitId, file.buffer, fileName);
     return this.prisma.visitAttachment.create({
       data: {
         tenantId,
         visitId,
-        fileName: file.originalname,
+        fileName,
         filePath: stored.relativePath,
-        mimeType: file.mimetype,
+        mimeType,
         fileSize: file.size,
         uploadedByStaffId,
       },

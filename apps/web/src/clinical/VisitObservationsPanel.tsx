@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Card, Col, Form, Input, InputNumber, Row, Select, Space, Tag, Typography, message } from 'antd';
-import { HeartOutlined } from '@ant-design/icons';
+import { EditOutlined, HeartOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
   useCorrectObservation,
@@ -103,13 +103,22 @@ function LiveBmi({ values }: { values: VitalsFormValues }) {
   );
 }
 
-/** The saved reading as one compact line, with Correct beside it. */
+/**
+ * One saved reading, compact.
+ *
+ * This IS the resting state after a save (3c1), so it has to carry everything
+ * a doctor needs without opening anything: every recorded value, the BMI, who
+ * took it and when, and the way to correct it. It wraps rather than scrolls,
+ * so the same markup is readable on a phone.
+ */
 function ObservationLine({
   observation,
   onCorrect,
+  highlighted,
 }: {
   observation: VisitObservation;
   onCorrect: () => void;
+  highlighted?: boolean;
 }) {
   const bmi = displayBmi({
     serverBmi: observation.bmi,
@@ -117,7 +126,15 @@ function ObservationLine({
     height: observation.height,
   });
   return (
-    <div style={{ borderBottom: '1px solid #f5f5f5', paddingBottom: 4 }}>
+    <div
+      className="kw-vitals-line"
+      style={{
+        borderBottom: '1px solid #f5f5f5',
+        paddingBottom: 4,
+        // While it is being corrected, the row says which one is on the form.
+        background: highlighted ? '#fffbe6' : undefined,
+      }}
+    >
       <Space wrap size={10} style={{ fontSize: 12 }}>
         <span>BP <strong>{observation.bpSystolic ?? '—'}/{observation.bpDiastolic ?? '—'}</strong></span>
         <span>Pulse <strong>{observation.pulse ?? '—'}</strong></span>
@@ -130,8 +147,14 @@ function ObservationLine({
         <span>HC <strong>{observation.headCircumference ?? '—'}</strong></span>
         <span>BMI <strong>{bmi ?? '—'}</strong></span>
         <span>Glucose <strong>{observation.glucose ?? '—'}</strong></span>
-        <Button size="small" type="link" style={{ padding: 0 }} onClick={onCorrect}>
-          Correct
+        <Button
+          size="small"
+          type="link"
+          style={{ padding: 0 }}
+          onClick={onCorrect}
+          aria-label={`Edit the reading recorded at ${dayjs(observation.recordedAt).format('D MMM YYYY, HH:mm')}`}
+        >
+          Edit
         </Button>
       </Space>
       <div>
@@ -144,98 +167,113 @@ function ObservationLine({
 interface VisitObservationsPanelProps {
   visitId: string;
   compact?: boolean;
-  /**
-   * G4.5d3c-3c — open with the fields showing.
-   *
-   * The Canvas mounts this panel ONLY when the doctor has already clicked
-   * "Record / Edit" on the vitals strip, so opening collapsed made them click
-   * a second time to reach the same fields — the exact friction this
-   * checkpoint removes, reintroduced one level down. Caught by the screenshot
-   * pass, not by the component tests, which rendered the panel directly.
-   *
-   * Flow renders the panel unconditionally alongside the note and leaves this
-   * false, so it still opens as a compact summary there.
-   */
-  defaultExpanded?: boolean;
 }
+
+/**
+ * G4.5d3c-3c1 — what the panel is doing right now.
+ *
+ * An explicit mode, because "which of these three things is on screen" was
+ * previously spread across two booleans and read wrong: after a save, the
+ * saved summary AND an empty entry form were both shown, which is neither
+ * state anybody asked for and cost most of the Canvas to say so.
+ *
+ *   FIRST_ENTRY   the visit has no observations at all. The fields ARE the
+ *                 panel — no Add step in front of them, and no Cancel,
+ *                 because there is nothing to go back to.
+ *   SUMMARY       the resting state once anything is saved. Compact, every
+ *                 value, attribution and time, with Edit and Record New
+ *                 Reading. NO form underneath.
+ *   EDIT          correcting a specific reading. Populated, requires a
+ *                 reason (C0/D-051, unchanged), Cancel returns to SUMMARY
+ *                 and writes nothing.
+ *   NEW_READING   a deliberate second reading later in the visit. Blank,
+ *                 Cancel returns to SUMMARY.
+ *
+ * EDIT and NEW_READING are deliberately different actions with different
+ * words, because they are different clinical claims: one says the recorded
+ * reading was wrong, the other says the patient was measured again. An
+ * always-open blank form conflated them by default.
+ */
+type PanelMode =
+  | { kind: 'FIRST_ENTRY' }
+  | { kind: 'SUMMARY' }
+  | { kind: 'EDIT'; target: VisitObservation }
+  | { kind: 'NEW_READING' };
 
 // C0 (D-051) — vitals/anthropometry/point-of-care, attributed to whoever
 // actually recorded them, separate from the doctor's narrative.
 //
-// Two distinct actions, deliberately not the same button:
-//   RECORD  — a NEW reading (repeat BP after treatment)
-//   Correct — fixing a mistyped value; requires a reason and keeps the
-//             previous value in an immutable revision.
-//
-// G4.5d3c-3c — the fields are simply THERE.
-//
-// Recording used to begin with an "Add"/"Record vitals" action that revealed
-// the form: the commonest single act on this panel cost a click before any
-// typing could start, on every visit, for a clinic seeing 200 patients a day.
-// The entry fields are now the panel's resting state and the saved readings
-// sit above them as a compact, editable summary. No field, no attribution and
-// no correction rule was removed to do it — Correct still opens the same form
-// with the same mandatory reason and the same immutable revision behind it.
-export function VisitObservationsPanel({ visitId, compact, defaultExpanded }: VisitObservationsPanelProps) {
+// G4.5d3c-3c — the fields are simply THERE for a first entry: the commonest
+// act on this panel cost a click before any typing could start.
+// G4.5d3c-3c1 — and the RESTING state after a save is compact again.
+export function VisitObservationsPanel({ visitId, compact }: VisitObservationsPanelProps) {
   const { data: observations, isLoading } = useVisitObservations(visitId);
   const record = useRecordObservation(visitId);
   const correct = useCorrectObservation(visitId);
   const [form] = Form.useForm<RecordObservationDto & { correctionReason?: string }>();
-  const [correcting, setCorrecting] = useState<VisitObservation | null>(null);
 
-  // Collapsed by default only where the panel is always on screen. Where the
-  // parent mounted it because the doctor asked for it, it opens ready to type.
-  const [expanded, setExpanded] = useState(Boolean(defaultExpanded));
-  const latest = observations?.[0];
+  // NULL means "follow the data": first entry while nothing is saved, the
+  // compact summary once something is. Only a deliberate Edit or Record New
+  // Reading pins a mode, and finishing either releases it — so a save can
+  // never leave the form open, which is the defect this corrects.
+  const [pinned, setPinned] = useState<PanelMode | null>(null);
 
-  // Live values for the BMI readout. Form.useWatch would need one hook per
-  // field; a single onValuesChange keeps both numbers in one place and makes
-  // the pure `liveBmi`/`isVitalsFormEmpty` calls trivial to test.
   const [values, setValues] = useState<VitalsFormValues>({});
-
   // G4.5d3c-3c — the client half of the duplicate-vitals fix. A ref, not
   // state: it must be correct DURING the submit handler, and a state update
-  // scheduled by the first Enter has not landed by the time the second one
-  // runs. See vitalsEntry.decideSubmit for the reasoning.
+  // scheduled by the first Enter has not landed by the time the second runs.
   const guard = useRef<SubmitGuardState>({ inFlight: null, lastAccepted: null });
 
-  const startCorrect = (target: VisitObservation) => {
-    const next: VitalsFormValues = {
-      bpSystolic: num(target.bpSystolic),
-      bpDiastolic: num(target.bpDiastolic),
-      pulse: num(target.pulse),
-      temperature: num(target.temperature),
-      spo2: num(target.spo2),
-      respRate: num(target.respRate),
-      painScore: target.painScore ?? undefined,
-      weight: num(target.weight),
-      height: num(target.height),
-      headCircumference: num(target.headCircumference),
-      glucose: num(target.glucose),
-    };
-    form.setFieldsValue({ ...next, correctionReason: undefined } as never);
-    setValues(next);
-    setCorrecting(target);
-    setExpanded(true);
+  const saved = observations ?? [];
+  const latest = saved[0];
+  const mode: PanelMode = pinned ?? (saved.length === 0 ? { kind: 'FIRST_ENTRY' } : { kind: 'SUMMARY' });
+  const showingForm = mode.kind !== 'SUMMARY';
+
+  const valuesOf = (target: VisitObservation): VitalsFormValues => ({
+    bpSystolic: num(target.bpSystolic),
+    bpDiastolic: num(target.bpDiastolic),
+    pulse: num(target.pulse),
+    temperature: num(target.temperature),
+    spo2: num(target.spo2),
+    respRate: num(target.respRate),
+    painScore: target.painScore ?? undefined,
+    weight: num(target.weight),
+    height: num(target.height),
+    headCircumference: num(target.headCircumference),
+    glucose: num(target.glucose),
+  });
+
+  const startEdit = (target: VisitObservation) => {
+    setValues(valuesOf(target));
+    setPinned({ kind: 'EDIT', target });
   };
 
-  const cancelCorrection = () => {
+  const startNewReading = () => {
+    setValues({});
+    setPinned({ kind: 'NEW_READING' });
+  };
+
+  /** Back to the compact summary, having written nothing. */
+  const backToSummary = () => {
     form.resetFields();
     setValues({});
-    setCorrecting(null);
+    setPinned({ kind: 'SUMMARY' });
   };
 
   const handleSubmit = async (submitted: RecordObservationDto & { correctionReason?: string }) => {
     const { correctionReason, ...vitals } = submitted;
 
-    if (correcting) {
+    // EDIT is a CORRECTION, not a new row. It targets the reading the doctor
+    // opened, carries its expectedVersion, requires a reason and preserves
+    // the previous values in an immutable revision — none of that changed.
+    if (mode.kind === 'EDIT') {
       try {
         await correct.mutateAsync({
-          id: correcting.id,
-          dto: { ...vitals, expectedVersion: correcting.version, correctionReason: correctionReason ?? '' },
+          id: mode.target.id,
+          dto: { ...vitals, expectedVersion: mode.target.version, correctionReason: correctionReason ?? '' },
         });
         message.success('Observation corrected — previous value kept in the audit trail');
-        cancelCorrection();
+        backToSummary();
       } catch (error) {
         message.error(error instanceof ApiError ? error.message : 'Failed to save observations');
       }
@@ -261,211 +299,214 @@ export function VisitObservationsPanel({ visitId, compact, defaultExpanded }: Vi
       await record.mutateAsync(vitals);
       guard.current = { inFlight: null, lastAccepted: signature };
       message.success('Observations recorded');
-      form.resetFields();
-      setValues({});
+      // The correction this checkpoint exists for: a successful save lands in
+      // the compact summary, never back on an empty form.
+      backToSummary();
     } catch (error) {
       // The guard is released, NOT marked accepted: a failed save must be
-      // retryable with exactly the same values.
+      // retryable with exactly the same values, and the form must stay open
+      // holding what was typed.
       guard.current = { ...guard.current, inFlight: null };
       message.error(error instanceof ApiError ? error.message : 'Failed to save observations');
     }
   };
 
-  // A visit switch resets the guard: the same reading on a different patient
+  // The form is only MOUNTED in a form mode, so its fields cannot be set from
+  // the click handler that opened it — antd warns that the instance is not
+  // connected to any Form, and the values would be written into a form that
+  // does not exist yet. Populating here runs after the Form has rendered.
+  useEffect(() => {
+    if (mode.kind === 'EDIT') {
+      form.setFieldsValue({ ...valuesOf(mode.target), correctionReason: undefined } as never);
+    } else if (mode.kind === 'NEW_READING' || mode.kind === 'FIRST_ENTRY') {
+      form.resetFields();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode.kind, mode.kind === 'EDIT' ? mode.target.id : null]);
+
+  // A visit switch resets everything: the same reading on a different patient
   // is a different reading.
   useEffect(() => {
     guard.current = { inFlight: null, lastAccepted: null };
     form.resetFields();
     setValues({});
-    setCorrecting(null);
+    setPinned(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visitId]);
 
-  // C2 (D-053) — collapsed by default in Canvas: one line with the latest
-  // reading and who recorded it, so vitals stay visible and attributed
-  // without consuming height the note editor needs. Everything expands
-  // unchanged; no observation field or attribution was removed.
-  if (compact && !expanded) {
-    const compactBmi = latest
-      ? displayBmi({ serverBmi: latest.bmi, weight: latest.weight, height: latest.height })
-      : null;
-    return (
-      <div
-        style={{
-          padding: '4px 10px',
-          border: '1px solid #f0f0f0',
-          borderRadius: 6,
-          marginBottom: 4,
-          flex: '0 0 auto',
-        }}
-      >
-        <Space wrap size={10} style={{ fontSize: 12, width: '100%' }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            <HeartOutlined /> Vitals
-          </Text>
-          {latest ? (
-            <>
-              <span>BP <strong>{latest.bpSystolic ?? '—'}/{latest.bpDiastolic ?? '—'}</strong></span>
-              <span>Pulse <strong>{latest.pulse ?? '—'}</strong></span>
-              <span>Temp <strong>{latest.temperature ?? '—'}</strong></span>
-              <span>SpO₂ <strong>{latest.spo2 ?? '—'}</strong></span>
-              <span>Wt <strong>{latest.weight ?? '—'}</strong></span>
-              <span>BMI <strong>{compactBmi ?? '—'}</strong></span>
-              {observations && observations.length > 1 && <Tag>{observations.length} sets</Tag>}
-            </>
-          ) : (
-            <Text type="secondary" italic style={{ fontSize: 12 }}>
-              No vitals recorded yet
-            </Text>
-          )}
-          <Button size="small" type="link" style={{ padding: 0 }} onClick={() => setExpanded(true)}>
-            {latest ? 'Record / Edit' : 'Record'}
-          </Button>
-        </Space>
-        {latest && (
-          <div style={{ lineHeight: 1.2 }}>
-            <Attribution observation={latest} />
-          </div>
-        )}
-      </div>
-    );
-  }
+  const cardPadding = compact
+    ? { header: { padding: '2px 10px', minHeight: 24 }, body: { padding: '6px 10px' } }
+    : { header: { padding: '4px 12px', minHeight: 32 }, body: { padding: '8px 12px' } };
 
   return (
     <Card
       size="small"
+      data-vitals-mode={mode.kind}
       title={
-        <Space>
-          <HeartOutlined /> Vitals &amp; Observations
-          {observations && observations.length > 1 && <Tag>{observations.length} sets</Tag>}
-          {compact && (
-            <Button size="small" type="link" style={{ padding: 0 }} onClick={() => setExpanded(false)}>
-              Collapse
-            </Button>
-          )}
+        <Space size={6} wrap>
+          <HeartOutlined aria-hidden /> Vitals &amp; Observations
+          {saved.length > 1 && <Tag>{saved.length} sets</Tag>}
         </Space>
       }
       style={{ marginBottom: compact ? 6 : 8 }}
-      styles={
-        compact
-          ? { header: { padding: '2px 10px', minHeight: 24 }, body: { padding: '6px 10px' } }
-          : { header: { padding: '4px 12px', minHeight: 32 }, body: { padding: '8px 12px' } }
+      styles={cardPadding}
+      // The two actions live in the header, where they are reachable without
+      // scrolling past the readings, and only in the resting state — a form
+      // is already open in every other mode.
+      extra={
+        mode.kind === 'SUMMARY' && (
+          <Space size={6} wrap>
+            {latest && (
+              <Button size="small" icon={<EditOutlined aria-hidden />} onClick={() => startEdit(latest)}>
+                Edit
+              </Button>
+            )}
+            {/* A LATER reading, not a correction. Separate words because it is
+                a separate clinical claim: the patient was measured again. */}
+            <Button size="small" icon={<PlusOutlined aria-hidden />} onClick={startNewReading}>
+              Record New Reading
+            </Button>
+          </Space>
+        )
       }
       loading={isLoading}
     >
-      {/* The saved readings, above the fields. A compact editable summary:
-          every value, every attribution, and Correct on each row. */}
-      {latest && !correcting && (
-        <Space direction="vertical" size={4} style={{ width: '100%', marginBottom: 8 }}>
-          {observations!.map((observation) => (
+      {/* The saved readings. In SUMMARY they are the whole panel; while a form
+          is open they stay visible above it so the doctor can see what they
+          are correcting or adding to. */}
+      {saved.length > 0 && (
+        <Space
+          direction="vertical"
+          size={4}
+          className="kw-vitals-summary"
+          style={{ width: '100%', marginBottom: showingForm ? 8 : 0 }}
+        >
+          {saved.map((observation) => (
             <ObservationLine
               key={observation.id}
               observation={observation}
-              onCorrect={() => startCorrect(observation)}
+              onCorrect={() => startEdit(observation)}
+              highlighted={mode.kind === 'EDIT' && mode.target.id === observation.id}
             />
           ))}
         </Space>
       )}
 
-      <Form
-        form={form}
-        layout="vertical"
-        size="small"
-        onFinish={handleSubmit}
-        onValuesChange={(_, all) => setValues(all as VitalsFormValues)}
-      >
-        {correcting && (
-          <Alert
-            type="warning"
-            showIcon
-            style={{ marginBottom: 8 }}
-            message="Correcting an existing reading"
-            description="The previous values are preserved in the audit trail. To record a repeat reading instead, cancel and enter a new set."
-          />
-        )}
-        <Row gutter={[8, 0]}>
-          <Col span={6}>
-            <Form.Item label="BP (Sys/Dia)" style={{ marginBottom: 4 }}>
-              <Space.Compact>
-                <Form.Item name="bpSystolic" noStyle>
-                  <InputNumber style={{ width: '50%' }} />
-                </Form.Item>
-                <Form.Item name="bpDiastolic" noStyle>
-                  <InputNumber style={{ width: '50%' }} />
-                </Form.Item>
-              </Space.Compact>
-            </Form.Item>
-          </Col>
-          <Col span={4}>
-            <Form.Item name="pulse" label="Pulse" style={{ marginBottom: 4 }}>
-              <InputNumber style={{ width: '100%' }} />
-            </Form.Item>
-          </Col>
-          <Col span={4}>
-            <Form.Item name="temperature" label="Temp (°C)" style={{ marginBottom: 4 }}>
-              <InputNumber style={{ width: '100%' }} step={0.1} />
-            </Form.Item>
-          </Col>
-          <Col span={4}>
-            <Form.Item name="spo2" label="SpO₂ (%)" style={{ marginBottom: 4 }}>
-              <InputNumber style={{ width: '100%' }} min={0} max={100} />
-            </Form.Item>
-          </Col>
-          <Col span={6}>
-            <Form.Item name="respRate" label="Resp. Rate" style={{ marginBottom: 4 }}>
-              <InputNumber style={{ width: '100%' }} />
-            </Form.Item>
-          </Col>
-          <Col span={8}>
-            <Form.Item name="painScore" label="Pain Score (0-10)" style={{ marginBottom: 4 }}>
-              <Select allowClear options={PAIN_SCORE_OPTIONS} />
-            </Form.Item>
-          </Col>
-          <Col span={4}>
-            <Form.Item name="weight" label="Weight (kg)" style={{ marginBottom: 4 }}>
-              <InputNumber style={{ width: '100%' }} step={0.1} />
-            </Form.Item>
-          </Col>
-          <Col span={4}>
-            <Form.Item name="height" label="Height (cm)" style={{ marginBottom: 4 }}>
-              <InputNumber style={{ width: '100%' }} step={0.1} />
-            </Form.Item>
-          </Col>
-          {/* Present in the schema since Phase 3a but with no input field
-              until C0 — recordable at last. */}
-          <Col span={4}>
-            <Form.Item name="headCircumference" label="Head Circ. (cm)" style={{ marginBottom: 4 }}>
-              <InputNumber style={{ width: '100%' }} step={0.1} />
-            </Form.Item>
-          </Col>
-          <Col span={4}>
-            <Form.Item name="glucose" label="Glucose (mmol/L)" style={{ marginBottom: 4 }}>
-              <InputNumber style={{ width: '100%' }} step={0.1} />
-            </Form.Item>
-          </Col>
-        </Row>
+      {/* No form at all in the resting state. This is the correction. */}
+      {showingForm && (
+        <Form
+          form={form}
+          layout="vertical"
+          size="small"
+          onFinish={handleSubmit}
+          onValuesChange={(_, all) => setValues(all as VitalsFormValues)}
+        >
+          {mode.kind === 'EDIT' && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 8 }}
+              message="Correcting an existing reading"
+              description="The previous values are preserved in the audit trail. To record a repeat measurement instead, cancel and use Record New Reading."
+            />
+          )}
+          {mode.kind === 'NEW_READING' && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 8 }}
+              message="Recording a new reading"
+              description="This is kept as a separate, separately attributed set — the earlier reading is not changed."
+            />
+          )}
 
-        {/* Live, from the fields above. No Save, no Calculate, no request. */}
-        <LiveBmi values={values} />
+          <Row gutter={[8, 0]}>
+            <Col xs={12} sm={12} md={6}>
+              <Form.Item label="BP (Sys/Dia)" style={{ marginBottom: 4 }}>
+                <Space.Compact>
+                  <Form.Item name="bpSystolic" noStyle>
+                    <InputNumber style={{ width: '50%' }} />
+                  </Form.Item>
+                  <Form.Item name="bpDiastolic" noStyle>
+                    <InputNumber style={{ width: '50%' }} />
+                  </Form.Item>
+                </Space.Compact>
+              </Form.Item>
+            </Col>
+            <Col xs={12} sm={12} md={4}>
+              <Form.Item name="pulse" label="Pulse" style={{ marginBottom: 4 }}>
+                <InputNumber style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={12} sm={12} md={4}>
+              <Form.Item name="temperature" label="Temp (°C)" style={{ marginBottom: 4 }}>
+                <InputNumber style={{ width: '100%' }} step={0.1} />
+              </Form.Item>
+            </Col>
+            <Col xs={12} sm={12} md={4}>
+              <Form.Item name="spo2" label="SpO₂ (%)" style={{ marginBottom: 4 }}>
+                <InputNumber style={{ width: '100%' }} min={0} max={100} />
+              </Form.Item>
+            </Col>
+            <Col xs={12} sm={12} md={6}>
+              <Form.Item name="respRate" label="Resp. Rate" style={{ marginBottom: 4 }}>
+                <InputNumber style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <Form.Item name="painScore" label="Pain Score (0-10)" style={{ marginBottom: 4 }}>
+                <Select allowClear options={PAIN_SCORE_OPTIONS} />
+              </Form.Item>
+            </Col>
+            <Col xs={12} sm={12} md={4}>
+              <Form.Item name="weight" label="Weight (kg)" style={{ marginBottom: 4 }}>
+                <InputNumber style={{ width: '100%' }} step={0.1} />
+              </Form.Item>
+            </Col>
+            <Col xs={12} sm={12} md={4}>
+              <Form.Item name="height" label="Height (cm)" style={{ marginBottom: 4 }}>
+                <InputNumber style={{ width: '100%' }} step={0.1} />
+              </Form.Item>
+            </Col>
+            {/* Present in the schema since Phase 3a but with no input field
+                until C0 — recordable at last. */}
+            <Col xs={12} sm={12} md={4}>
+              <Form.Item name="headCircumference" label="Head Circ. (cm)" style={{ marginBottom: 4 }}>
+                <InputNumber style={{ width: '100%' }} step={0.1} />
+              </Form.Item>
+            </Col>
+            <Col xs={12} sm={12} md={4}>
+              <Form.Item name="glucose" label="Glucose (mmol/L)" style={{ marginBottom: 4 }}>
+                <InputNumber style={{ width: '100%' }} step={0.1} />
+              </Form.Item>
+            </Col>
+          </Row>
 
-        {correcting && (
-          <Form.Item
-            name="correctionReason"
-            label="Reason for correction"
-            rules={[{ required: true, message: 'A correction requires a reason' }]}
-            style={{ marginBottom: 8, marginTop: 8 }}
-          >
-            <Input placeholder="e.g. BP transcribed incorrectly" />
-          </Form.Item>
-        )}
+          {/* Live, from the fields above. No Save, no Calculate, no request —
+              and it recalculates in EDIT exactly as it does in a new entry. */}
+          <LiveBmi values={values} />
 
-        <Space style={{ marginTop: 8 }}>
-          <Button type="primary" htmlType="submit" loading={record.isPending || correct.isPending}>
-            {correcting ? 'Save Correction' : 'Save Observations'}
-          </Button>
-          {correcting && <Button onClick={cancelCorrection}>Cancel</Button>}
-        </Space>
-      </Form>
+          {mode.kind === 'EDIT' && (
+            <Form.Item
+              name="correctionReason"
+              label="Reason for correction"
+              rules={[{ required: true, message: 'A correction requires a reason' }]}
+              style={{ marginBottom: 8, marginTop: 8 }}
+            >
+              <Input placeholder="e.g. BP transcribed incorrectly" />
+            </Form.Item>
+          )}
+
+          <Space style={{ marginTop: 8 }} wrap>
+            <Button type="primary" htmlType="submit" loading={record.isPending || correct.isPending}>
+              {mode.kind === 'EDIT' ? 'Save Correction' : 'Save Vitals'}
+            </Button>
+            {/* No Cancel on a first entry: there is no saved state to return
+                to, and a control that appears to undo nothing is noise. */}
+            {mode.kind !== 'FIRST_ENTRY' && <Button onClick={backToSummary}>Cancel</Button>}
+          </Space>
+        </Form>
+      )}
     </Card>
   );
 }

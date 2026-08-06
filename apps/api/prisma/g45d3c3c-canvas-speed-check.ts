@@ -73,9 +73,29 @@ async function api(path: string, token: string, method = 'GET', body?: unknown) 
   return r.body;
 }
 
+// G4.5d3c-3c1 — real leading bytes. These uploads used to be zero-filled
+// buffers, which the endpoint accepted because nothing looked at the content;
+// the allow-list looks, so a fixture claiming to be a PNG has to be one.
+const SIGNATURES: Record<string, Buffer> = {
+  'image/png': Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  'image/jpeg': Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+  'image/webp': Buffer.concat([
+    Buffer.from('RIFF', 'ascii'),
+    Buffer.from([0x40, 0x00, 0x00, 0x00]),
+    Buffer.from('WEBPVP8 ', 'ascii'),
+  ]),
+  'application/pdf': Buffer.from('%PDF-1.7\n', 'ascii'),
+};
+
+function bodyFor(type: string, bytes: number): Buffer {
+  const signature = SIGNATURES[type] ?? Buffer.alloc(0);
+  const padding = Math.max(0, bytes - signature.length);
+  return Buffer.concat([signature, Buffer.alloc(padding)]);
+}
+
 async function upload(visitId: string, token: string, name: string, type: string, bytes: number) {
   const form = new FormData();
-  form.append('file', new Blob([new Uint8Array(bytes)], { type }), name);
+  form.append('file', new Blob([new Uint8Array(bodyFor(type, bytes))], { type }), name);
   const res = await fetch(`${API}/visits/${visitId}/attachments`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },

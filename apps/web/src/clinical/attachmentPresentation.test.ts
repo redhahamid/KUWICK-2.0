@@ -75,8 +75,12 @@ describe('a PDF is never rendered as a picture', () => {
 });
 
 describe('choosing files', () => {
-  it('13. images and PDFs may be chosen together', () => {
-    expect(ATTACHMENT_ACCEPT).toContain('image/*');
+  it('13. the picker offers exactly the four approved types', () => {
+    // G4.5d3c-3c1 — narrowed from the `image/*` wildcard, which offered
+    // formats (SVG, TIFF, HEIC, BMP) the server does not accept, so the
+    // dialog invited uploads that could only fail on arrival.
+    expect(ATTACHMENT_ACCEPT).toBe('image/jpeg,image/png,image/webp,application/pdf');
+    expect(ATTACHMENT_ACCEPT).not.toContain('image/*');
     expect(ATTACHMENT_ACCEPT).toContain('application/pdf');
   });
 

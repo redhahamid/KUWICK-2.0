@@ -537,9 +537,11 @@ export function PatientDashboardPage() {
                     onToggleExpand={() => setVitalsExpanded((prev) => !prev)}
                   />
                   {vitalsExpanded && (
-                    // Mounted only because the doctor pressed "Record / Edit",
-                    // so it opens with the fields rather than asking again.
-                    <VisitObservationsPanel visitId={selectedVisit.id} compact={canvasCompact} defaultExpanded />
+                    // G4.5d3c-3c1 — the panel picks its own resting state:
+                    // the entry fields on a visit with no observations, the
+                    // compact saved summary once anything is recorded. There
+                    // is nothing left for this parent to force open.
+                    <VisitObservationsPanel visitId={selectedVisit.id} compact={canvasCompact} />
                   )}
                   <ClinicalImageStrip
                     visitId={selectedVisit.id}

@@ -9,6 +9,7 @@ import { AttachmentRecordStatus, OrderServiceStatus, ServiceOrderType } from '@p
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { currentTenantId } from '../core/tenant-context';
 import { saveUploadedFile } from '../core/file-storage';
+import { validateClinicalAttachment } from './attachment-validation';
 import { PrismaService } from '../core/prisma.service';
 import { assertCanVoidClinicalRecord, snapshotOf } from './clinical-authorization';
 import {
@@ -279,17 +280,22 @@ export class OrderServiceService {
   // uploadedByStaffId defaults to the order's own requestedByStaffId — no
   // separate doctor/staff picker this phase (D-017, same convention as
   // OrderService.requestedByStaffId itself).
+  // G4.5d3c-3c1 — the SAME allow-list, extension agreement and leading-byte
+  // signature check the visit attachments use. An order result is a clinical
+  // attachment by any other name, and a policy that covered one endpoint and
+  // not the other would simply move where the unvalidated file goes.
   async addAttachment(orderServiceId: string, file: Express.Multer.File) {
+    const { mimeType, fileName } = validateClinicalAttachment(file);
     const order = await this.findById(orderServiceId);
     const tenantId = currentTenantId();
-    const stored = await saveUploadedFile(tenantId, order.id, file.buffer, file.originalname);
+    const stored = await saveUploadedFile(tenantId, order.id, file.buffer, fileName);
     return this.prisma.attachment.create({
       data: {
         tenantId,
         orderServiceId: order.id,
-        fileName: file.originalname,
+        fileName,
         filePath: stored.relativePath,
-        mimeType: file.mimetype,
+        mimeType,
         fileSize: file.size,
         uploadedByStaffId: order.requestedByStaffId,
       },

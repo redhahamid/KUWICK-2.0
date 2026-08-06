@@ -127,11 +127,20 @@ export function summariseUploads(entries: UploadEntry[]): UploadSummary {
 }
 
 /**
- * What the file picker accepts.
+ * What the file picker offers.
  *
  * Images and PDFs together, in one selection. The previous input carried the
  * same `accept` string but no `multiple`, so a doctor who selected four
  * scanned pages got one — and the other three were silently discarded by the
  * browser, with no error anywhere to notice.
+ *
+ * G4.5d3c-3c1 — narrowed from `image/*` to the four types the SERVER accepts,
+ * so the picker stops offering files that will be refused on arrival. This is
+ * a convenience, not a control: `accept` is a filter on a dialog and a direct
+ * caller never opens one. The enforcement is `attachment-validation.ts`, which
+ * checks the declared type, the extension AND the file's leading bytes.
  */
-export const ATTACHMENT_ACCEPT = 'image/*,application/pdf';
+export const ATTACHMENT_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
+
+/** The wording the server returns for a refused type, mirrored for clarity. */
+export const UNSUPPORTED_FILE_MESSAGE = 'Unsupported file type. Upload JPG, PNG, WebP or PDF.';

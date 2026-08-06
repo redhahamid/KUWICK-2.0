@@ -154,11 +154,17 @@ export function VisitAttachmentsPanel({ visitId, compact }: VisitAttachmentsPane
             </Text>
           )}
           {entry.state === 'FAILED' && (
-            <Tooltip title={entry.error}>
-              <Text type="danger" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
-                <CloseCircleOutlined aria-hidden /> Failed
+            // G4.5d3c-3c1 — the REASON is visible text, not a tooltip. A
+            // rejected clinical file needs an answer the doctor can act on
+            // ("Upload JPG, PNG, WebP or PDF"), and a tooltip is unreachable
+            // on a touch screen and invisible to anyone scanning the list.
+            // The attribute rides on a plain span: antd's Typography.Text
+            // does not forward unknown props to the DOM node.
+            <span data-upload-error={entry.fileName}>
+              <Text type="danger" style={{ fontSize: 11 }}>
+                <CloseCircleOutlined aria-hidden /> {entry.error ?? 'Failed'}
               </Text>
-            </Tooltip>
+            </span>
           )}
         </div>
       ))}

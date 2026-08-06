@@ -61,104 +61,196 @@ const renderVitals = (observations: unknown[] = [], props: Record<string, unknow
   );
 };
 
-describe('vitals entry needs no Add click', () => {
-  it('1. the fields are present on an empty visit', async () => {
-    renderVitals();
+const OBSERVATION = {
+  id: 'obs-1',
+  bpSystolic: 120,
+  bpDiastolic: 80,
+  pulse: 72,
+  temperature: '36.8',
+  weight: '70',
+  height: '170',
+  bmi: 24.2,
+  version: 1,
+  recordedAt: '2026-08-06T02:00:00.000Z',
+  recorderNameSnapshot: 'Siti Aminah',
+  recorderRoleSnapshot: 'FRONT_DESK_CLINICAL_STAFF',
+  legacyRecorderUnknown: false,
+};
+
+// ===========================================================================
+// G4.5d3c-3c1 — THE VITALS RESTING STATE
+//
+// 3c made the fields the panel's resting state, which was right for a visit
+// with nothing recorded and wrong for one with a saved reading: the summary
+// and an empty form were both on screen, consuming Canvas space to show a
+// state nobody asked for. The resting state after a save is compact.
+// ===========================================================================
+describe('A. a visit with no saved vitals', () => {
+  it('1. shows the fields immediately, with no Add step in front of them', async () => {
+    renderVitals([]);
     expect(await screen.findByLabelText('Pulse')).toBeInTheDocument();
     expect(screen.getByLabelText('Weight (kg)')).toBeInTheDocument();
     expect(screen.getByLabelText('Height (cm)')).toBeInTheDocument();
-  });
-
-  it('2. there is no Record vitals / Add step in front of them', async () => {
-    renderVitals();
-    await screen.findByLabelText('Pulse');
     expect(screen.queryByRole('button', { name: /^record vitals$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^add/i })).not.toBeInTheDocument();
   });
 
-  it('3. Save is available immediately', async () => {
-    renderVitals();
-    expect(await screen.findByRole('button', { name: 'Save Observations' })).toBeInTheDocument();
+  it('2. offers Save Vitals straight away', async () => {
+    renderVitals([]);
+    expect(await screen.findByRole('button', { name: 'Save Vitals' })).toBeInTheDocument();
   });
 
-  it('4. a saved reading appears as a compact summary ABOVE the fields', async () => {
-    renderVitals([
-      {
-        id: 'obs-1',
-        bpSystolic: 120,
-        bpDiastolic: 80,
-        pulse: 72,
-        temperature: '36.8',
-        weight: '70',
-        height: '170',
-        bmi: 24.2,
-        version: 1,
-        recordedAt: '2026-08-06T02:00:00.000Z',
-        recorderNameSnapshot: 'Siti Aminah',
-        recorderRoleSnapshot: 'FRONT_DESK_CLINICAL_STAFF',
-        legacyRecorderUnknown: false,
-      },
-    ]);
+  it('3. offers no Cancel — there is no saved state to return to', async () => {
+    renderVitals([]);
+    await screen.findByLabelText('Pulse');
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
+  });
+});
+
+describe('B. once vitals are saved the resting state is compact', () => {
+  it('4. only the saved summary is shown — the input form is collapsed', async () => {
+    const { container } = renderVitals([OBSERVATION]);
     expect(await screen.findByText('120/80')).toBeInTheDocument();
-    // Still editable: the fields have not been replaced by a read-only view.
-    expect(screen.getByLabelText('Pulse')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Correct' })).toBeInTheDocument();
+    expect(container.querySelector('[data-vitals-mode="SUMMARY"]')).not.toBeNull();
   });
 
-  it('4b. on the Canvas the panel opens WITH the fields, not collapsed again', async () => {
-    // Caught by the screenshot pass, not by these tests: the Canvas mounts
-    // this panel only after the doctor pressed "Record / Edit" on the vitals
-    // strip, and it was opening as a collapsed summary — so the fields were
-    // still a second click away, which is the friction 3c removes.
-    renderVitals(
-      [
-        {
-          id: 'obs-1',
-          pulse: 72,
-          version: 1,
-          recordedAt: '2026-08-06T02:00:00.000Z',
-          recorderNameSnapshot: 'Siti Aminah',
-          recorderRoleSnapshot: 'FRONT_DESK_CLINICAL_STAFF',
-          legacyRecorderUnknown: false,
-        },
-      ],
-      { compact: true, defaultExpanded: true },
-    );
-    expect(await screen.findByLabelText('Pulse')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save Observations' })).toBeInTheDocument();
+  it('5. the empty input form is NOT still visible underneath', async () => {
+    // This is the defect being corrected.
+    renderVitals([OBSERVATION]);
+    await screen.findByText('120/80');
+    expect(screen.queryByLabelText('Pulse')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Weight (kg)')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save Vitals' })).not.toBeInTheDocument();
   });
 
-  it('4c. in Flow, where the panel is always on screen, it still opens compact', async () => {
-    renderVitals(
-      [
-        {
-          id: 'obs-1',
-          pulse: 72,
-          version: 1,
-          recordedAt: '2026-08-06T02:00:00.000Z',
-          recorderNameSnapshot: 'Siti Aminah',
-          recorderRoleSnapshot: 'FRONT_DESK_CLINICAL_STAFF',
-          legacyRecorderUnknown: false,
-        },
-      ],
-      { compact: true },
+  it('6. attribution and timestamp travel with the summary', async () => {
+    renderVitals([OBSERVATION]);
+    expect(await screen.findByText('Siti Aminah')).toBeInTheDocument();
+    expect(screen.getByText(/6 Aug 2026/)).toBeInTheDocument();
+  });
+
+  it('7. a clear Edit action is offered', async () => {
+    renderVitals([OBSERVATION]);
+    expect(await screen.findByRole('button', { name: 'Edit' })).toBeInTheDocument();
+  });
+
+  it('8. Record New Reading is a SEPARATE action from Edit', async () => {
+    renderVitals([OBSERVATION]);
+    expect(await screen.findByRole('button', { name: 'Record New Reading' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+  });
+
+  it('9. the BMI in the summary comes from the saved reading', async () => {
+    renderVitals([OBSERVATION]);
+    await screen.findByText('120/80');
+    expect(screen.getByText('24.2')).toBeInTheDocument();
+  });
+});
+
+describe('C. Edit', () => {
+  it('10. reopens the form populated with the saved values', async () => {
+    renderVitals([OBSERVATION]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    // InputNumber renders a step-formatted value, so 70 may read as "70.0".
+    expect(Number((screen.getByLabelText('Pulse') as HTMLInputElement).value)).toBe(72);
+    expect(Number((screen.getByLabelText('Weight (kg)') as HTMLInputElement).value)).toBe(70);
+    expect(Number((screen.getByLabelText('Height (cm)') as HTMLInputElement).value)).toBe(170);
+  });
+
+  it('11. BMI recalculates live when height or weight changes', async () => {
+    renderVitals([OBSERVATION]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    const weight = screen.getByLabelText('Weight (kg)');
+    await userEvent.clear(weight);
+    await userEvent.type(weight, '82');
+    const height = screen.getByLabelText('Height (cm)');
+    await userEvent.clear(height);
+    await userEvent.type(height, '175');
+    await waitFor(() => expect(screen.getByTestId('live-bmi').textContent).toMatch(/26\.8/));
+  });
+
+  it('12. saving an edit CORRECTS the same reading — it does not create one', async () => {
+    patch.mockResolvedValue({ ...OBSERVATION, version: 2 });
+    renderVitals([OBSERVATION]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    await userEvent.type(screen.getByLabelText('Reason for correction'), 'BP transcribed incorrectly');
+    await userEvent.click(screen.getByRole('button', { name: 'Save Correction' }));
+
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    // The CORRECTION endpoint, carrying the target id and its version.
+    expect(patch.mock.calls[0][0]).toBe('/visits/visit-1/observations/obs-1');
+    expect(patch.mock.calls[0][1]).toMatchObject({ expectedVersion: 1 });
+    // And emphatically NOT a new observation.
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('13. an edit still requires a reason — the correction rule is unchanged', async () => {
+    renderVitals([OBSERVATION]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save Correction' }));
+    expect(await screen.findByText('A correction requires a reason')).toBeInTheDocument();
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it('14. Cancel returns to the compact summary and changes nothing', async () => {
+    const { container } = renderVitals([OBSERVATION]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    await userEvent.clear(screen.getByLabelText('Pulse'));
+    await userEvent.type(screen.getByLabelText('Pulse'), '99');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(container.querySelector('[data-vitals-mode="SUMMARY"]')).not.toBeNull();
+    expect(screen.queryByLabelText('Pulse')).not.toBeInTheDocument();
+    expect(patch).not.toHaveBeenCalled();
+    expect(post).not.toHaveBeenCalled();
+  });
+});
+
+describe('D. Record New Reading', () => {
+  it('15. opens a BLANK form, not the saved values', async () => {
+    renderVitals([OBSERVATION]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Record New Reading' }));
+    expect((screen.getByLabelText('Pulse') as HTMLInputElement).value).toBe('');
+  });
+
+  it('16. asks for no correction reason — it is not a correction', async () => {
+    renderVitals([OBSERVATION]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Record New Reading' }));
+    expect(screen.queryByLabelText('Reason for correction')).not.toBeInTheDocument();
+  });
+
+  it('17. saving it CREATES a reading rather than correcting one', async () => {
+    post.mockResolvedValue({ id: 'obs-2' });
+    renderVitals([OBSERVATION]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Record New Reading' }));
+    await userEvent.type(screen.getByLabelText('Pulse'), '88');
+    await userEvent.click(screen.getByRole('button', { name: 'Save Vitals' }));
+
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(post.mock.calls[0][0]).toBe('/visits/visit-1/observations');
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it('18. after saving, the panel returns to the compact resting state', async () => {
+    post.mockResolvedValue({ id: 'obs-2' });
+    const { container } = renderVitals([OBSERVATION]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Record New Reading' }));
+    await userEvent.type(screen.getByLabelText('Pulse'), '88');
+    await userEvent.click(screen.getByRole('button', { name: 'Save Vitals' }));
+
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(container.querySelector('[data-vitals-mode="SUMMARY"]')).not.toBeNull(),
     );
-    await screen.findByText(/Siti Aminah/);
     expect(screen.queryByLabelText('Pulse')).not.toBeInTheDocument();
   });
 
-  it('5. the summary keeps the recorder attribution', async () => {
-    renderVitals([
-      {
-        id: 'obs-1',
-        pulse: 72,
-        version: 1,
-        recordedAt: '2026-08-06T02:00:00.000Z',
-        recorderNameSnapshot: 'Siti Aminah',
-        recorderRoleSnapshot: 'FRONT_DESK_CLINICAL_STAFF',
-        legacyRecorderUnknown: false,
-      },
-    ]);
-    expect(await screen.findByText('Siti Aminah')).toBeInTheDocument();
+  it('19. Cancel returns to the summary without writing', async () => {
+    const { container } = renderVitals([OBSERVATION]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Record New Reading' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(container.querySelector('[data-vitals-mode="SUMMARY"]')).not.toBeNull();
+    expect(post).not.toHaveBeenCalled();
   });
 });
 
@@ -222,7 +314,7 @@ describe('vitals cannot be saved twice by pressing Enter twice', () => {
     renderVitals();
     await userEvent.type(await screen.findByLabelText('Pulse'), '72');
 
-    const save = screen.getByRole('button', { name: 'Save Observations' });
+    const save = screen.getByRole('button', { name: 'Save Vitals' });
     await userEvent.click(save);
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     // Submit again while the first is still in flight.
@@ -234,7 +326,7 @@ describe('vitals cannot be saved twice by pressing Enter twice', () => {
 
   it('13. an empty form is not sent to the server at all', async () => {
     renderVitals();
-    await userEvent.click(await screen.findByRole('button', { name: 'Save Observations' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Save Vitals' }));
     expect(post).not.toHaveBeenCalled();
   });
 });
@@ -267,13 +359,16 @@ describe('several files can be attached at once', () => {
     expect(input.multiple).toBe(true);
   });
 
-  it('15. images and PDFs may be chosen together', async () => {
+  it('15. the picker offers exactly the four types the SERVER accepts', async () => {
+    // G4.5d3c-3c1 — narrowed from `image/*`. This is a convenience so the
+    // dialog stops offering files that will be refused on arrival; it is NOT
+    // the control. Enforcement is server-side, and its own spec proves it.
     renderAttachments();
     const input = (await screen.findByLabelText(
       'Choose files to attach to this visit',
     )) as HTMLInputElement;
-    expect(input.accept).toContain('image/*');
-    expect(input.accept).toContain('application/pdf');
+    expect(input.accept).toBe('image/jpeg,image/png,image/webp,application/pdf');
+    expect(input.accept).not.toContain('image/*');
   });
 
   it('16. EVERY chosen file is uploaded, not just the first', async () => {
@@ -313,7 +408,48 @@ describe('several files can be attached at once', () => {
 
     await waitFor(() => expect(postFile).toHaveBeenCalledTimes(3));
     await waitFor(() => expect(screen.getAllByText('Uploaded')).toHaveLength(2));
-    expect(screen.getByText('Failed')).toBeInTheDocument();
+    // The failure names its reason, so "Failed" alone is no longer the text.
+    expect(screen.getByText(/File too large/)).toBeInTheDocument();
+  });
+
+  it('18b. the refused file shows the SERVER\'s reason as visible text', async () => {
+    // Not a tooltip: unreachable on a touch screen, invisible to anyone
+    // scanning the list, and the doctor needs an answer they can act on.
+    // The refused file is one the PICKER allows — a .pdf whose bytes are not
+    // a PDF. That is the only refusal a browser can actually produce: the
+    // accept attribute filters by declared type, and only the server reads
+    // the leading bytes. (A genuinely mistyped file never reaches the handler
+    // at all, which `userEvent.upload` faithfully reproduces.)
+    postFile
+      .mockResolvedValueOnce({ id: 'a' })
+      .mockRejectedValueOnce(new MockApiError('Unsupported file type. Upload JPG, PNG, WebP or PDF.'));
+    renderAttachments();
+    await screen.findByLabelText('Choose files to attach to this visit');
+    await chooseFiles([file('a.png', 'image/png'), file('payload.pdf', 'application/pdf')]);
+
+    // The icon splits the text node, so the assertion reads the rendered
+    // element rather than a single text node.
+    const failure = await screen.findByText(
+      (_content, element) =>
+        element?.getAttribute('data-upload-error') === 'payload.pdf',
+    );
+    expect(failure.textContent).toContain('Unsupported file type. Upload JPG, PNG, WebP or PDF.');
+    // And the permitted file in the same selection still landed.
+    expect(screen.getByText('Uploaded')).toBeInTheDocument();
+  });
+
+  it('18c. the per-file error is attached to the file it belongs to', async () => {
+    postFile
+      .mockResolvedValueOnce({ id: 'a' })
+      .mockRejectedValueOnce(new MockApiError('Unsupported file type. Upload JPG, PNG, WebP or PDF.'));
+    const { container } = renderAttachments();
+    await screen.findByLabelText('Choose files to attach to this visit');
+    await chooseFiles([file('good.png', 'image/png'), file('bad.pdf', 'application/pdf')]);
+
+    await waitFor(() =>
+      expect(container.querySelector('[data-upload-error="bad.pdf"]')).not.toBeNull(),
+    );
+    expect(container.querySelector('[data-upload-error="good.png"]')).toBeNull();
   });
 
   it('19. the successes are stated as successes, so nobody re-uploads them', async () => {
@@ -357,5 +493,85 @@ describe('a PDF presents as a document', () => {
     renderAttachments([pdf]);
     expect(await screen.findByText(/2 KB/)).toBeInTheDocument();
     expect(screen.getByText(/Siti Aminah/)).toBeInTheDocument();
+  });
+});
+
+// ===========================================================================
+// G4.5d3c-3c1 — WHAT SAVING VITALS MUST NOT TOUCH
+// ===========================================================================
+describe('vitals never disturb the clinical note', () => {
+  const OBS = {
+    id: 'obs-1',
+    pulse: 72,
+    version: 1,
+    recordedAt: '2026-08-06T02:00:00.000Z',
+    recorderNameSnapshot: 'Siti Aminah',
+    recorderRoleSnapshot: 'FRONT_DESK_CLINICAL_STAFF',
+    legacyRecorderUnknown: false,
+  };
+
+  const renderWithSpy = (observations: unknown[]) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    get.mockResolvedValue(observations);
+    const result = render(
+      <QueryClientProvider client={client}>
+        <VisitObservationsPanel visitId="visit-1" />
+      </QueryClientProvider>,
+    );
+    return { ...result, invalidate };
+  };
+
+  const invalidatedKeys = (invalidate: ReturnType<typeof vi.spyOn>) =>
+    invalidate.mock.calls.flatMap((call: unknown[]) => {
+      const key = (call[0] as { queryKey?: unknown[] } | undefined)?.queryKey;
+      return Array.isArray(key) ? [String(key[0])] : [];
+    });
+
+  it('20. saving a reading does not refetch clinical notes', async () => {
+    post.mockResolvedValue({ id: 'obs-2' });
+    const { invalidate } = renderWithSpy([]);
+    await userEvent.type(await screen.findByLabelText('Pulse'), '72');
+    await userEvent.click(screen.getByRole('button', { name: 'Save Vitals' }));
+
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    const keys = invalidatedKeys(invalidate);
+    expect(keys).toContain('visit-observations');
+    expect(keys).not.toContain('clinical-notes');
+    expect(keys).not.toContain('visits');
+  });
+
+  it('21. correcting a reading does not refetch clinical notes either', async () => {
+    patch.mockResolvedValue({ ...OBS, version: 2 });
+    const { invalidate } = renderWithSpy([OBS]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    await userEvent.type(screen.getByLabelText('Reason for correction'), 'Mistyped');
+    await userEvent.click(screen.getByRole('button', { name: 'Save Correction' }));
+
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    expect(invalidatedKeys(invalidate)).not.toContain('clinical-notes');
+  });
+
+  it('22. a double-click on Save still produces ONE logical result', async () => {
+    let resolve: (value: unknown) => void = () => {};
+    post.mockReturnValue(new Promise((r) => (resolve = r)));
+    renderVitals([]);
+    await userEvent.type(await screen.findByLabelText('Pulse'), '72');
+
+    const save = screen.getByRole('button', { name: 'Save Vitals' });
+    await userEvent.click(save);
+    await userEvent.click(save);
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    resolve({ id: 'obs-1' });
+  });
+
+  it('23. the compact summary wraps rather than overflowing on a phone', async () => {
+    // A horizontally scrolling row of clinical values is a row whose
+    // right-hand half nobody reads.
+    const { container } = renderVitals([OBS]);
+    await screen.findByText('Siti Aminah');
+    const line = container.querySelector('.kw-vitals-line');
+    expect(line).not.toBeNull();
+    expect(container.querySelector('.kw-vitals-summary')).not.toBeNull();
   });
 });

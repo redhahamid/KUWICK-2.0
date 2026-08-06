@@ -57,11 +57,17 @@ function withTenant<T>(fn: () => Promise<T>, staffId = 'staff-1'): Promise<T> {
   return tenantContextStorage.run({ tenantId: 'test-tenant', staffId }, fn);
 }
 
+// G4.5d3c-3c1 — the buffer is a REAL PNG signature now. It used to be the
+// single byte 'x', which the upload path accepted because nothing looked at
+// the bytes; the allow-list looks, so a fixture that is not the type it
+// claims is refused exactly as a hostile upload would be.
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+
 const testFile = {
   originalname: 'scan.png',
   mimetype: 'image/png',
   size: 1234,
-  buffer: Buffer.from('x'),
+  buffer: PNG_SIGNATURE,
 } as Express.Multer.File;
 
 describe('VisitAttachmentService', () => {
@@ -72,7 +78,7 @@ describe('VisitAttachmentService', () => {
 
     await withTenant(() => service.create('visit-1', testFile));
 
-    expect(fileStorage.saveUploadedFile).toHaveBeenCalledWith('test-tenant', 'visit-1', testFile.buffer, 'scan.png');
+    expect(fileStorage.saveUploadedFile).toHaveBeenCalledWith('test-tenant', 'visit-1', PNG_SIGNATURE, 'scan.png');
     expect(prisma.visitAttachment.create).toHaveBeenCalledWith({
       data: {
         tenantId: 'test-tenant',

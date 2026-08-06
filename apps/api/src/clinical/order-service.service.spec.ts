@@ -208,7 +208,14 @@ describe('OrderServiceService', () => {
     });
     (fileStorage.saveUploadedFile as jest.Mock).mockResolvedValue({ relativePath: 'tenant-a/o1/uuid-scan.png' });
     (prisma.attachment.create as jest.Mock).mockResolvedValue({ id: 'att-1' });
-    const file = { originalname: 'scan.png', mimetype: 'image/png', size: 1234, buffer: Buffer.from('x') } as Express.Multer.File;
+    // G4.5d3c-3c1 — a real PNG signature. The allow-list reads the leading
+    // bytes, so a fixture claiming to be a PNG has to be one.
+    const file = {
+      originalname: 'scan.png',
+      mimetype: 'image/png',
+      size: 1234,
+      buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]),
+    } as Express.Multer.File;
 
     await withTenant(() => service.addAttachment('o1', file));
 

@@ -605,6 +605,20 @@ body.kw-note-focus .kw-editor-min .ProseMirror {
   border-radius: 6px;
 }
 
+/* G4.5d3c-3c1 — the saved vitals summary is the RESTING state, so it has to
+   stay readable where the screen is smallest. It wraps rather than scrolls:
+   a horizontally scrolling row of clinical values on a phone is a row whose
+   right-hand half nobody reads. */
+.kw-vitals-line {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 575px) {
+  .kw-vitals-summary .ant-space-item {
+    width: 100%;
+  }
+}
+
 .kw-image-strip {
   display: flex;
   align-items: center;
