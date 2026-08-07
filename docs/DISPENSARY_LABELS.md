@@ -111,11 +111,21 @@ FORCE row-level security, no UPDATE policy, no DELETE policy, and UPDATE,
 DELETE and TRUNCATE revoked from the owning role. The application cannot
 rewrite a print history through any route — ORM, raw SQL or mistake.
 
-One consequence worth knowing: a prescription that has been labelled **cannot
-be deleted**, because the audit row references it `ON DELETE RESTRICT` and the
-referential-integrity check needs privileges the role does not hold. That is
-the guarantee working. Fixture scripts soft-close such records rather than
-removing them.
+One consequence worth knowing, and it is broader than it first looks: **no
+prescription can be hard-deleted by the application role** — not only labelled
+ones. `label_prints` references `prescriptions` `ON DELETE RESTRICT`, and
+PostgreSQL's referential-integrity check locks the referencing rows, which
+needs one of exactly the privileges the migration revokes. Measured, not
+assumed: a prescription with **zero** label prints fails the same way, because
+the check runs regardless of whether it matches anything. Visits inherit the
+same constraint through their own prescriptions.
+
+This costs nothing in production — prescriptions have always been soft-deleted
+there (`deletedAt`), and no application route hard-deletes a visit. It does
+mean the fixture helpers (`prisma/fixture-support.ts`) soft-close prescriptions
+and visits rather than erasing them, including `retireFixturePatients`: it
+still deletes clinical detail and uploaded files, but closes and tags the visit
+and its prescriptions instead of removing them.
 
 Each row records who printed, under which name, how many copies, the print
 sequence and whether it was a reprint. The sequence is allocated inside the

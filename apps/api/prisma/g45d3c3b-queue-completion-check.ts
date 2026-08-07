@@ -139,6 +139,36 @@ async function makeVisit(
         doctorCompletedByStaffId: opts.doctorCompleted === false ? null : i.doctorId,
       },
     });
+    // G4.5d3c-3c (D-096) — a visit whose doctor phase is finished carries a
+    // SIGNED narrative. This fixture predates that rule and created none, so
+    // every completion it asserted began failing on
+    // CLINICAL_DOCUMENTATION_PENDING once D-096 landed. The fixture is
+    // corrected to match the product, not the other way round: the visits
+    // that are MEANT to be completable now document themselves properly, and
+    // the 3c suite still proves the unsigned case blocks.
+    if (opts.doctorCompleted !== false) {
+      await tx.clinicalNote.create({
+        data: {
+          tenantId: TENANT_ID,
+          visitId: visit.id,
+          notes: '<p>Reviewed. Impression: URTI. Plan: symptomatic treatment.</p>',
+          noteLanguage: 'EN',
+          noteType: 'DOCTOR_NARRATIVE',
+          status: 'SIGNED',
+          signedAt: new Date(),
+          signedByStaffId: i.doctorId,
+          signerNameSnapshot: 'Dr Amira Rahman',
+          // `clinical_notes_signature_state_check` is all-or-nothing: a SIGNED
+          // row must carry every signer column.
+          signerRoleSnapshot: 'DOCTOR_RESIDENT',
+          authorStaffId: i.doctorId,
+          authorNameSnapshot: 'Dr Amira Rahman',
+          authorRoleSnapshot: 'DOCTOR_RESIDENT',
+          legacyAuthorUnknown: false,
+        },
+      });
+    }
+
     const ticket = await tx.queueTicket.create({
       data: {
         tenantId: TENANT_ID,
@@ -399,7 +429,10 @@ async function main() {
         await tx.$executeRawUnsafe(`DELETE FROM invoice_lines WHERE invoice_id IN (SELECT id FROM invoices WHERE visit_id IN (${list}))`);
         await tx.$executeRawUnsafe(`DELETE FROM invoices WHERE visit_id IN (${list})`);
         await tx.$executeRawUnsafe(`DELETE FROM stock_movements WHERE reference_id IN (SELECT id FROM prescriptions WHERE visit_id IN (${list}))`);
-        await tx.$executeRawUnsafe(`DELETE FROM prescriptions WHERE visit_id IN (${list})`);
+        // G4.5d5b-3 — soft-closed, not deleted. `label_prints` is append-only
+        // and references prescriptions ON DELETE RESTRICT, so the RI check
+        // needs a privilege the application role no longer holds.
+        await tx.$executeRawUnsafe(`UPDATE prescriptions SET deleted_at = now(), status = 'CANCELLED' WHERE visit_id IN (${list})`);
         await tx.$executeRawUnsafe(`DELETE FROM order_services WHERE visit_id IN (${list})`);
         // Append-only workflow events keep their tickets alive; the synthetic
         // rows are closed and their patients soft-deleted instead.

@@ -771,7 +771,10 @@ async function main() {
         await tx.$executeRawUnsafe(`DELETE FROM invoice_lines WHERE invoice_id IN (SELECT id FROM invoices WHERE visit_id IN (${list}))`);
         await tx.$executeRawUnsafe(`DELETE FROM invoices WHERE visit_id IN (${list})`);
         await tx.$executeRawUnsafe(`DELETE FROM stock_movements WHERE reference_id IN (SELECT id FROM prescriptions WHERE visit_id IN (${list}))`);
-        await tx.$executeRawUnsafe(`DELETE FROM prescriptions WHERE visit_id IN (${list})`);
+        // G4.5d5b-3 — soft-closed, not deleted. `label_prints` is append-only
+        // and references prescriptions ON DELETE RESTRICT, so the RI check
+        // needs a privilege the application role no longer holds.
+        await tx.$executeRawUnsafe(`UPDATE prescriptions SET deleted_at = now(), status = 'CANCELLED' WHERE visit_id IN (${list})`);
         await tx.$executeRawUnsafe(`DELETE FROM order_services WHERE visit_id IN (${list})`);
         // visit_workflow_events is append-only by design (no DELETE grant,
         // deliberately), so a queue ticket it references cannot be erased

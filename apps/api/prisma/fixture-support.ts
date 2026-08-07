@@ -73,6 +73,26 @@ export function assertFixturesAllowed(): void {
 // Every table that hangs off a visit, children before parents. Shared by the
 // per-run ledger and the orphan sweep so the two can never drift apart and
 // leave one of them deleting a parent while its children remain.
+//
+// G4.5d5b-3 — PRESCRIPTIONS AND VISITS ARE SOFT-CLOSED, NOT DELETED.
+//
+// `label_prints` is append-only: no UPDATE, DELETE or TRUNCATE policy under
+// FORCE row-level security, and those privileges revoked from the owning role
+// as well. It references `prescriptions` ON DELETE RESTRICT, and PostgreSQL's
+// referential-integrity check locks the referencing rows — which needs one of
+// exactly the privileges that were revoked.
+//
+// The consequence is broader than it first looks, and was measured rather than
+// assumed: a prescription with ZERO label prints still cannot be deleted,
+// because the check runs regardless of whether it matches anything. Visits
+// inherit that through their own prescriptions.
+//
+// That is the audit guarantee working, and it costs nothing in production —
+// prescriptions have always been soft-deleted there (`deletedAt`), and no
+// application route hard-deletes a visit. It costs this helper the ability to
+// erase them, so it stops pretending otherwise: the rows are closed and
+// tagged, which is what `sweepOrphanedFixtures` and the FIXTURE_TAG prefixes
+// exist to make identifiable.
 function visitDeleteStatements(idList: string): string[] {
   return [
     `DELETE FROM clinical_note_revisions WHERE note_id IN (SELECT id FROM clinical_notes WHERE visit_id IN (${idList}))`,
@@ -81,15 +101,17 @@ function visitDeleteStatements(idList: string): string[] {
     `DELETE FROM invoices WHERE visit_id IN (${idList})`,
     `DELETE FROM attachments WHERE order_service_id IN (SELECT id FROM order_services WHERE visit_id IN (${idList}))`,
     `DELETE FROM chat_messages WHERE order_service_id IN (SELECT id FROM order_services WHERE visit_id IN (${idList}))`,
-    `DELETE FROM prescriptions WHERE visit_id IN (${idList})`,
+    `UPDATE prescriptions SET deleted_at = now(), status = 'CANCELLED' WHERE visit_id IN (${idList})`,
     `DELETE FROM order_services WHERE visit_id IN (${idList})`,
     `DELETE FROM diagnoses WHERE visit_id IN (${idList})`,
     `DELETE FROM documents WHERE visit_id IN (${idList})`,
     `DELETE FROM clinical_notes WHERE visit_id IN (${idList})`,
     `DELETE FROM visit_observations WHERE visit_id IN (${idList})`,
     `DELETE FROM visit_attachments WHERE visit_id IN (${idList})`,
-    `DELETE FROM queue_tickets WHERE visit_id IN (${idList})`,
-    `DELETE FROM visits WHERE id IN (${idList})`,
+    `UPDATE queue_tickets SET status = 'COMPLETED' WHERE visit_id IN (${idList})`,
+    `UPDATE visits SET check_out_at = COALESCE(check_out_at, now()) WHERE id IN (${idList})`,
+    `UPDATE patients SET deleted_at = now()
+      WHERE id IN (SELECT patient_id FROM visits WHERE id IN (${idList}))`,
   ];
 }
 
@@ -99,7 +121,7 @@ function visitDeleteStatements(idList: string): string[] {
 const FIXTURE_COMPLAINT_PREFIXES = [FIXTURE_TAG, 'G0a ', 'G0b ', 'G0 '];
 
 /**
- * Remove fixture visits left behind by an interrupted or pre-cleanup run.
+ * Retire fixture visits left behind by an interrupted or pre-cleanup run.
  *
  * Matches only on the fixture complaint prefixes above, so it can never touch
  * a visit a human created. Files for any attachments on those visits cannot be
@@ -199,6 +221,14 @@ export async function findFixturePatients(
  * Uses the SAME `visitDeleteStatements` ordering as the per-run ledger and the
  * orphan sweep, so a third deletion path cannot drift from the other two and
  * leave a parent deleted with its children behind.
+ *
+ * G4.5d5b-3 — "retire" is now literal rather than loose. Clinical detail
+ * (notes, observations, diagnoses, documents, invoices, attachments and their
+ * files) is deleted as before; the visit, its prescriptions, its queue ticket
+ * and the patient are CLOSED and tagged, because `label_prints` is append-only
+ * and holds the prescriptions in place. See `visitDeleteStatements`. The
+ * patient delete below therefore no-ops while any visit survives, which is
+ * correct — it was always guarded on exactly that condition.
  *
  * Visit numbers are NOT reclaimed. `visit_number_counters` is monotonic by
  * design (D-068) — that is precisely what makes deletion safe — so retiring
