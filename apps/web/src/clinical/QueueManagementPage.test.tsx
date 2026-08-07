@@ -216,6 +216,38 @@ describe('the dispensary stage', () => {
     expect(screen.queryByRole('button', { name: /mark all dispensed/i })).not.toBeInTheDocument();
   });
 
+  it('G4.5d5b-3. the row hands the visit to the Dispensary by deep link', async () => {
+    // The dispenser must land on the right patient rather than searching a
+    // board for a name they were just told across a counter.
+    world.rows = [
+      row({
+        ticketId: 't1', visitId: 'visit-9', status: 'READY_FOR_DISPENSARY', stage: 'DISPENSARY',
+        dispensing: { onsiteTotal: 2, dispensed: 0, remaining: 2 },
+        canComplete: false,
+      }),
+    ];
+    world.counts = { ...world.counts, dispensary: 1, totalToday: 1 };
+    renderPage();
+    await userEvent.click(await screen.findByRole('tab', { name: /Dispensary \(1\)/ }));
+    const link = await screen.findByRole('link', { name: 'Open in Dispensary' });
+    expect(link).toHaveAttribute('href', '/dispensary?visitId=visit-9');
+    // And the stale "a later checkpoint" caption is gone.
+    expect(screen.queryByText(/later checkpoint/i)).not.toBeInTheDocument();
+  });
+
+  it('G4.5d5b-3. the payment stage is not offered a dispensary link', async () => {
+    // The hand-over has already happened; a link back to the counter there
+    // would invite a second one.
+    world.rows = [
+      row({ ticketId: 't1', status: 'READY_FOR_PAYMENT', stage: 'PAYMENT', canComplete: true }),
+    ];
+    world.counts = { ...world.counts, payment: 1, totalToday: 1 };
+    renderPage();
+    await userEvent.click(await screen.findByRole('tab', { name: /Payment \(1\)/ }));
+    await screen.findByRole('link', { name: 'Billing Review' });
+    expect(screen.queryByRole('link', { name: 'Open in Dispensary' })).not.toBeInTheDocument();
+  });
+
   it('27/48. a dispensing blocker disables Complete Visit and states why', async () => {
     world.rows = [
       row({

@@ -3,6 +3,7 @@ import { Avatar, Dropdown, Layout, Menu, Space, Typography } from 'antd';
 import { ArrowLeftOutlined, BarChartOutlined, LogoutOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../core/auth-store';
+import { canViewDispensary } from '../../clinical/dispensary/dispensaryAccess';
 import { NotificationBell } from './NotificationBell';
 import { ClinicChatWidget } from '../../clinical/ClinicChatWidget';
 
@@ -24,6 +25,13 @@ const PRIMARY_NAV_ITEMS = [
   navItem('/procedure-queue', 'Tasks'),
 ];
 
+// G4.5d5b-3 — Dispensary sits beside Queue for the roles that can open it,
+// and is absent for the rest. A link that always refuses is its own defect:
+// staff learn to ignore refusals, and "not you" stops being distinguishable
+// from "something is broken". The SERVER still authorises every request —
+// this only decides what is offered.
+const DISPENSARY_NAV_ITEM = navItem('/dispensary', 'Dispensary');
+
 // Management — HR, Stock, Panel, Finance, Operation: director/admin-staff
 // screens, not daily clinical/front-desk operation. Reached via the user
 // menu's "Management" entry, matching Klinik Hijraa CMS's own admin-panel
@@ -42,6 +50,14 @@ export function AppLayout() {
   const clearAuth = useAuthStore((state) => state.clearAuth);
   const [chatOpen, setChatOpen] = useState(false);
   const [unreadChat, setUnreadChat] = useState(0);
+
+  const navItems = useMemo(
+    () =>
+      canViewDispensary(staff?.role)
+        ? [...PRIMARY_NAV_ITEMS, DISPENSARY_NAV_ITEM]
+        : PRIMARY_NAV_ITEMS,
+    [staff?.role],
+  );
 
   const inManagement = location.pathname.startsWith('/management');
   const inSettings = location.pathname.startsWith('/settings');
@@ -112,7 +128,7 @@ export function AppLayout() {
           <Menu
             mode="horizontal"
             theme="light"
-            items={PRIMARY_NAV_ITEMS}
+            items={navItems}
             selectedKeys={[location.pathname]}
             style={{ flex: 1, minWidth: 0, borderBottom: 'none' }}
           />

@@ -1571,3 +1571,650 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
     font-size: 28px;
   }
 }
+
+/* ==========================================================================
+   G4.5d5b-3 — THE DISPENSARY WORKSPACE
+
+   A split, not a table with a drawer. The dispenser's attention moves between
+   "who is next" and "what do they need" continuously, and a drawer that
+   covers the list every time loses the queue. The two panes scroll
+   independently for the same reason: on a busy afternoon they hold very
+   different amounts of content, and one page scroll means finding your place
+   again after every hand-over.
+   ========================================================================== */
+
+.kw-dispensary {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: var(--kw-s3, 12px);
+}
+
+.kw-dispensary-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kw-s3, 12px);
+  row-gap: var(--kw-s3, 12px);
+}
+
+.kw-dispensary-header-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s4, 16px);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kw-dispensary-body {
+  display: grid;
+  /* 340px is the width at which a Malaysian full name, a queue number and a
+     progress line all fit on one row without truncation. */
+  grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+  gap: var(--kw-s4, 16px);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.kw-dispensary-pane-list,
+.kw-dispensary-pane-detail {
+  background: var(--kw-card);
+  border: 1px solid var(--kw-border);
+  border-radius: 10px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* --- The waiting list ---------------------------------------------------- */
+
+.kw-dispensary-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.kw-dispensary-list-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s2, 8px);
+  padding: var(--kw-s3, 12px);
+  border-bottom: 1px solid var(--kw-border);
+  background: var(--kw-rail-bg);
+}
+
+.kw-dispensary-list-scroll {
+  list-style: none;
+  margin: 0;
+  padding: var(--kw-s2, 8px);
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s2, 8px);
+}
+
+.kw-dispensary-list-empty {
+  padding: var(--kw-s5, 24px) var(--kw-s3, 12px);
+}
+
+.kw-dispensary-list-item {
+  width: 100%;
+  text-align: left;
+  background: var(--kw-card);
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* A counter row is pressed all day, often in a hurry. */
+  min-height: 64px;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.kw-dispensary-list-item:hover {
+  border-color: var(--kw-teal);
+}
+
+.kw-dispensary-list-item:focus-visible {
+  outline: 2px solid var(--kw-navy);
+  outline-offset: 2px;
+}
+
+/* Selected is a left rail plus a tint, not colour alone: the pane beside it
+   has changed wholesale and that has to be obvious at a glance. */
+.kw-dispensary-list-item[data-selected] {
+  border-color: var(--kw-teal);
+  background: var(--kw-band-bg);
+  box-shadow: inset 3px 0 0 0 var(--kw-teal);
+}
+
+.kw-dispensary-list-item-top {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s2, 8px);
+  min-width: 0;
+}
+
+.kw-dispensary-list-number {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--kw-navy);
+  flex-shrink: 0;
+}
+
+.kw-dispensary-list-name {
+  font-weight: 600;
+  color: var(--kw-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.kw-dispensary-list-item-meta {
+  display: flex;
+  gap: 4px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.kw-dispensary-list-item-flags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* --- The patient pane ---------------------------------------------------- */
+
+.kw-dispensary-pane-detail {
+  position: relative;
+}
+
+.kw-dispensary-detail-loading,
+.kw-dispensary-detail-empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--kw-s6, 32px);
+}
+
+/* Sticky: the dispenser scrolls a long medication list and must never lose
+   track of whose it is. */
+.kw-dispensary-patient-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s4, 16px);
+  flex-wrap: wrap;
+  padding: var(--kw-s3, 12px) var(--kw-s4, 16px);
+  border-bottom: 1px solid var(--kw-border);
+  background: var(--kw-card);
+}
+
+.kw-dispensary-patient-identity {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.kw-dispensary-patient-identity h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--kw-text);
+}
+
+.kw-dispensary-patient-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 13px;
+}
+
+.kw-dispensary-unresolved {
+  margin: var(--kw-s3, 12px) var(--kw-s4, 16px) 0;
+}
+
+.kw-dispensary-cards {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--kw-s4, 16px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s3, 12px);
+}
+
+/* --- One medication ------------------------------------------------------ */
+
+.kw-dispensary-med-card {
+  border: 1px solid var(--kw-border);
+  border-radius: 10px;
+  padding: var(--kw-s3, 12px) var(--kw-s4, 16px);
+  background: var(--kw-card);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kw-dispensary-med-card[data-selected] {
+  border-color: var(--kw-teal);
+  box-shadow: 0 0 0 1px var(--kw-teal);
+}
+
+/* Already handed over: quieter, and unmistakably a record rather than work. */
+.kw-dispensary-med-card[data-status='DISPENSED'] {
+  background: var(--kw-rail-bg);
+}
+
+/* A shortage is marked on the CARD, not only on a chip inside it. */
+.kw-dispensary-med-card[data-stock-state='OUT_OF_STOCK'],
+.kw-dispensary-med-card[data-stock-state='INSUFFICIENT'] {
+  border-left: 3px solid var(--kw-danger-fg);
+}
+
+.kw-dispensary-med-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--kw-s3, 12px);
+}
+
+.kw-dispensary-med-identity {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The medicine name is the largest thing on the card. A dispenser looks up
+   the medicine first and the shelf second. */
+.kw-dispensary-med-name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--kw-text);
+  line-height: 1.3;
+}
+
+.kw-dispensary-med-strength {
+  font-weight: 500;
+  color: var(--kw-text-secondary);
+}
+
+.kw-dispensary-med-directions {
+  font-size: 13px;
+}
+
+.kw-dispensary-med-facts {
+  display: flex;
+  gap: var(--kw-s6, 32px);
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  background: var(--kw-rail-bg);
+  border-radius: 8px;
+}
+
+.kw-dispensary-med-fact-label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kw-dispensary-med-quantity-value {
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--kw-text);
+  line-height: 1.2;
+}
+
+.kw-dispensary-med-unit {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--kw-text-secondary);
+}
+
+.kw-dispensary-med-stock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.kw-dispensary-med-handover,
+.kw-dispensary-med-prints {
+  font-size: 12px;
+}
+
+.kw-dispensary-med-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kw-s3, 12px);
+  flex-wrap: wrap;
+}
+
+/* Sticky footer: the batch action stays reachable however long the list is. */
+.kw-dispensary-action-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kw-s3, 12px);
+  flex-wrap: wrap;
+  padding: var(--kw-s3, 12px) var(--kw-s4, 16px);
+  border-top: 1px solid var(--kw-border);
+  background: var(--kw-card);
+  box-shadow: 0 -2px 8px rgba(15, 28, 40, 0.06);
+}
+
+/* --- The dispense confirmation ------------------------------------------- */
+
+.kw-dispense-list {
+  list-style: none;
+  margin: 0 0 var(--kw-s4, 16px);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s2, 8px);
+}
+
+.kw-dispense-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kw-s4, 16px);
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+}
+
+.kw-dispense-list-identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.kw-dispense-list-stock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.kw-dispense-after {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-dispense-acknowledge {
+  display: block;
+  margin-top: var(--kw-s3, 12px);
+  padding: 10px 12px;
+  border: 1px solid var(--kw-danger-fg);
+  border-radius: 8px;
+  background: var(--kw-danger-bg);
+}
+
+/* ==========================================================================
+   G4.5d5b-3 — MEDICATION LABELS
+
+   The preview is the label at its real proportions, because the thing being
+   checked is whether the medicine name and the directions fit and are legible
+   at 70 × 40 mm. A preview that looks nothing like the output cannot answer
+   that.
+
+   THE PRESET IS A STARTING POINT, NOT A HARDWARE CLAIM. 70 × 40 mm is common
+   Malaysian dispensing-label stock and has been checked against the browser's
+   own print preview only. No thermal printer has been tested and no printer
+   SDK is integrated — printing goes through the standard browser dialog. A
+   clinic with different stock changes the two numbers here and the matching
+   pair in labelPrint.ts.
+   ========================================================================== */
+
+.kw-label-copies {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s3, 12px);
+  flex-wrap: wrap;
+  margin-bottom: var(--kw-s3, 12px);
+}
+
+.kw-label-preset-note {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-label-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s2, 8px);
+  padding: var(--kw-s6, 32px);
+  justify-content: center;
+}
+
+.kw-label-sheet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kw-s3, 12px);
+  padding: var(--kw-s3, 12px);
+  background: var(--kw-rail-bg);
+  border-radius: 8px;
+}
+
+.kw-label {
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 1px dashed var(--kw-border);
+  border-radius: 2px;
+  padding: 3mm;
+  /* Black on white only. A label is read under fluorescent light, sometimes
+     photocopied, and colour carries no meaning here. */
+  color: #000000;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 7.5pt;
+  line-height: 1.25;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6mm;
+}
+
+.kw-label-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 2mm;
+  font-size: 6.5pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-bottom: 0.4mm solid #000000;
+  padding-bottom: 0.6mm;
+}
+
+.kw-label-reprint {
+  font-weight: 700;
+}
+
+.kw-label-patient {
+  font-size: 7.5pt;
+  font-weight: 600;
+  /* One line. A wrapped patient name pushes the directions off a 40mm
+     label, and the directions are the part that must never be cut. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kw-label-nric {
+  font-size: 6pt;
+  font-weight: 400;
+}
+
+/* The medicine, largest on the label. */
+.kw-label-medication {
+  font-size: 10pt;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.kw-label-directions {
+  font-size: 8.5pt;
+  font-weight: 600;
+}
+
+.kw-label-quantity,
+.kw-label-extra {
+  font-size: 7pt;
+}
+
+.kw-label-extra-label {
+  font-weight: 600;
+}
+
+.kw-label-footer {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2mm;
+  font-size: 5.5pt;
+  border-top: 0.2mm solid #000000;
+  padding-top: 0.5mm;
+}
+
+.kw-label-print-note {
+  margin: var(--kw-s3, 12px) 0;
+}
+
+.kw-label-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s2, 8px);
+}
+
+.kw-label-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kw-label-history-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--kw-s3, 12px);
+  flex-wrap: wrap;
+  font-size: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--kw-border);
+}
+
+/* --- Printing ------------------------------------------------------------
+   Hidden by visibility rather than by moving the sheet into a print-only
+   container: the modal renders through a portal, so what is on screen and
+   what is printed are literally the same nodes. What was checked is what
+   comes out.
+   ------------------------------------------------------------------------- */
+@media print {
+  body.kw-printing-labels * {
+    visibility: hidden !important;
+  }
+
+  body.kw-printing-labels .kw-label-sheet,
+  body.kw-printing-labels .kw-label-sheet * {
+    visibility: visible !important;
+  }
+
+  body.kw-printing-labels .kw-label-sheet {
+    position: absolute;
+    inset: 0 auto auto 0;
+    display: block;
+    padding: 0;
+    gap: 0;
+    background: none;
+  }
+
+  body.kw-printing-labels .kw-label {
+    border: none;
+    /* One label per physical piece of stock. */
+    page-break-after: always;
+    break-after: page;
+  }
+
+  body.kw-printing-labels .kw-label:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  @page {
+    size: 70mm 40mm;
+    margin: 0;
+  }
+}
+
+/* --- Tablet: the list narrows before it disappears ------------------------ */
+@media (max-width: 1200px) {
+  .kw-dispensary-body {
+    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  }
+
+  .kw-dispensary-med-facts {
+    gap: var(--kw-s4, 16px);
+  }
+}
+
+/* --- Phone: one pane at a time ------------------------------------------- */
+@media (max-width: 991px) {
+  .kw-dispensary-body {
+    display: block;
+  }
+
+  .kw-dispensary-pane-list,
+  .kw-dispensary-pane-detail {
+    height: auto;
+    max-height: none;
+  }
+
+  .kw-dispensary-list-scroll {
+    overflow-y: visible;
+  }
+
+  .kw-dispensary-cards {
+    overflow-y: visible;
+  }
+
+  .kw-dispensary-patient-progress {
+    align-items: flex-start;
+  }
+
+  /* Full-width targets, primary last, clear of the home indicator. */
+  .kw-dispensary-action-footer {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .kw-dispensary-action-footer .ant-btn {
+    min-height: 44px;
+  }
+
+  .kw-dispensary-med-actions .ant-btn {
+    min-height: 40px;
+  }
+
+  .kw-label-sheet {
+    overflow-x: auto;
+  }
+}

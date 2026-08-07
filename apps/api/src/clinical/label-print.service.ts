@@ -1,9 +1,15 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { PrescriptionStatus, PrescriptionSupplyMode } from '@prisma/client';
+import { PrescriptionStatus, PrescriptionSupplyMode, Staff } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { assertMayTouchVisit, requireActor, withReadOnlyTenantTx, withTenantTx } from './clinical-actor';
+import {
+  ClinicalTx,
+  assertMayTouchVisit,
+  requireActor,
+  withReadOnlyTenantTx,
+  withTenantTx,
+} from './clinical-actor';
 import { assertCanPerformDispensary } from './dispensary-authorization';
 
 /**
@@ -78,6 +84,41 @@ export class LabelPrintService {
   ) {}
 
   /**
+   * G4.5d5b-3 — assemble a label WITHOUT recording a print.
+   *
+   * The workspace shows the dispenser the label before it goes to the
+   * printer, and that preview has to come from the record rather than from
+   * anything the browser is holding — so it needs the same assembly. What it
+   * must NOT do is write an audit row: a label somebody looked at and closed
+   * was not printed, and a print history that counts previews cannot answer
+   * the one question it exists to answer.
+   *
+   * Read-only, and authorised exactly as printing is. `printSequence` and
+   * `isReprint` are what the NEXT print would be, so the preview can say
+   * "Reprint #2" truthfully; the real values are allocated inside the print
+   * transaction, against the unique constraint, and are not taken from here.
+   */
+  async preview(prescriptionId: string, copies = 1): Promise<LabelPayload> {
+    assertCopies(copies);
+    return withReadOnlyTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      assertCanPerformDispensary(actor, 'PRINT_LABEL');
+      const { prescription, dispenser } = await loadLabelSource(tx, prescriptionId, actor);
+      const previous = await tx.labelPrint.count({ where: { prescriptionId } });
+      return composeLabelPayload({
+        prescription,
+        dispenser,
+        actorName: actor.fullName,
+        copies,
+        printedAt: new Date(),
+        printSequence: previous + 1,
+        isReprint: previous > 0,
+        labelFormat: DEFAULT_LABEL_FORMAT,
+      });
+    });
+  }
+
+  /**
    * Authorise, validate, assemble, audit, return.
    *
    * The audit row and the payload are produced in ONE transaction, so a
@@ -86,44 +127,13 @@ export class LabelPrintService {
    * unique constraint, so two simultaneous prints cannot both be "the first".
    */
   async print(prescriptionId: string, copies = 1): Promise<LabelPayload> {
-    if (!Number.isInteger(copies) || copies < 1 || copies > MAX_LABEL_COPIES) {
-      throw new BadRequestException(`Choose between 1 and ${MAX_LABEL_COPIES} copies.`);
-    }
+    assertCopies(copies);
 
     return withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
       assertCanPerformDispensary(actor, 'PRINT_LABEL');
 
-      const prescription = await tx.prescription.findUnique({
-        where: { id: prescriptionId },
-        include: {
-          item: true,
-          prescribedBy: { select: { fullName: true } },
-          visit: {
-            select: {
-              id: true,
-              clinicId: true,
-              visitNumber: true,
-              patient: { select: { name: true, identifierValue: true } },
-              clinic: { select: { name: true } },
-            },
-          },
-        },
-      });
-      if (!prescription || prescription.deletedAt) {
-        throw new NotFoundException('Prescription not found');
-      }
-      // Tenant AND branch, through the same helper every clinical write uses.
-      await assertMayTouchVisit(tx, prescription.visitId, actor);
-
-      assertLabelEligible(prescription.status, prescription.supplyMode);
-
-      const dispenser = prescription.dispensedByStaffId
-        ? await tx.staff.findUnique({
-            where: { id: prescription.dispensedByStaffId },
-            select: { fullName: true },
-          })
-        : null;
+      const { prescription, dispenser } = await loadLabelSource(tx, prescriptionId, actor);
 
       // Sequence allocated here, inside the transaction, protected by the
       // unique index on (prescription_id, print_sequence).
@@ -145,44 +155,18 @@ export class LabelPrintService {
         },
       });
 
-      return {
-        prescriptionId,
-        clinic: {
-          name: prescription.visit.clinic.name,
-          // `Clinic` carries a name and no separate branch label, so the
-          // branch line is omitted rather than invented. Documented as a
-          // future optional field.
-          branch: null,
-        },
-        patient: {
-          name: prescription.visit.patient.name,
-          identifier: prescription.visit.patient.identifierValue ?? null,
-        },
-        medication: {
-          name: prescription.item.name,
-          // Only where the item genuinely stores it. A generic name, a dosage
-          // form and a route are NOT fabricated: the schema does not reliably
-          // carry them, and a route printed wrongly on a medication label is
-          // a patient-safety defect, not a cosmetic gap.
-          strength: prescription.item.strengthMg ? `${prescription.item.strengthMg}mg` : null,
-          doseAmount: String(prescription.amount),
-          doseUnit: prescription.unit ?? null,
-          frequency: prescription.frequency,
-          durationDays: prescription.durationDays,
-          quantity: prescription.quantity,
-          indication: prescription.indication ?? null,
-          remark: prescription.remark ?? null,
-        },
-        prescriber: prescription.prescribedBy.fullName,
-        processedBy: actor.fullName,
-        dispensedBy: dispenser?.fullName ?? null,
-        visitReference: prescription.visit.visitNumber,
-        printedAt: audit.printedAt.toISOString(),
+      return composeLabelPayload({
+        prescription,
+        dispenser,
+        actorName: actor.fullName,
         copies,
-        labelFormat: audit.labelFormat,
+        // The audit row's own timestamp, so the label and the record agree
+        // about when this print happened.
+        printedAt: audit.printedAt,
         printSequence,
         isReprint,
-      };
+        labelFormat: audit.labelFormat,
+      });
     });
   }
 
@@ -212,6 +196,114 @@ export class LabelPrintService {
       }));
     });
   }
+}
+
+function assertCopies(copies: number): void {
+  if (!Number.isInteger(copies) || copies < 1 || copies > MAX_LABEL_COPIES) {
+    throw new BadRequestException(`Choose between 1 and ${MAX_LABEL_COPIES} copies.`);
+  }
+}
+
+/**
+ * Read the prescription a label is made from, and refuse early.
+ *
+ * Shared by `preview` and `print` so the two can never diverge on WHAT gets a
+ * label. A preview that shows a label the print route would refuse — or worse,
+ * one assembled from a slightly different read — is a preview that stops being
+ * evidence of anything.
+ */
+async function loadLabelSource(tx: ClinicalTx, prescriptionId: string, actor: Staff) {
+  const prescription = await tx.prescription.findUnique({
+    where: { id: prescriptionId },
+    include: {
+      item: true,
+      prescribedBy: { select: { fullName: true } },
+      visit: {
+        select: {
+          id: true,
+          clinicId: true,
+          visitNumber: true,
+          patient: { select: { name: true, identifierValue: true } },
+          clinic: { select: { name: true } },
+        },
+      },
+    },
+  });
+  if (!prescription || prescription.deletedAt) {
+    throw new NotFoundException('Prescription not found');
+  }
+  // Tenant AND branch, through the same helper every clinical write uses.
+  await assertMayTouchVisit(tx, prescription.visitId, actor);
+  assertLabelEligible(prescription.status, prescription.supplyMode);
+
+  const dispenser = prescription.dispensedByStaffId
+    ? await tx.staff.findUnique({
+        where: { id: prescription.dispensedByStaffId },
+        select: { fullName: true },
+      })
+    : null;
+
+  return { prescription, dispenser };
+}
+
+type LabelSource = Awaited<ReturnType<typeof loadLabelSource>>;
+
+/**
+ * The label's content, from the record and nothing else.
+ *
+ * Pure: no reads, no writes, no clock. Everything variable is a parameter, so
+ * the one thing this function decides is which stored value goes on which
+ * line — and a test can read the whole answer in one place.
+ */
+function composeLabelPayload(params: {
+  prescription: LabelSource['prescription'];
+  dispenser: LabelSource['dispenser'];
+  actorName: string;
+  copies: number;
+  printedAt: Date;
+  printSequence: number;
+  isReprint: boolean;
+  labelFormat: string;
+}): LabelPayload {
+  const { prescription, dispenser } = params;
+  return {
+    prescriptionId: prescription.id,
+    clinic: {
+      name: prescription.visit.clinic.name,
+      // `Clinic` carries a name and no separate branch label, so the branch
+      // line is omitted rather than invented. Documented as a future optional
+      // field.
+      branch: null,
+    },
+    patient: {
+      name: prescription.visit.patient.name,
+      identifier: prescription.visit.patient.identifierValue ?? null,
+    },
+    medication: {
+      name: prescription.item.name,
+      // Only where the item genuinely stores it. A generic name, a dosage
+      // form and a route are NOT fabricated: the schema does not reliably
+      // carry them, and a route printed wrongly on a medication label is a
+      // patient-safety defect, not a cosmetic gap.
+      strength: prescription.item.strengthMg ? `${prescription.item.strengthMg}mg` : null,
+      doseAmount: String(prescription.amount),
+      doseUnit: prescription.unit ?? null,
+      frequency: prescription.frequency,
+      durationDays: prescription.durationDays,
+      quantity: prescription.quantity,
+      indication: prescription.indication ?? null,
+      remark: prescription.remark ?? null,
+    },
+    prescriber: prescription.prescribedBy.fullName,
+    processedBy: params.actorName,
+    dispensedBy: dispenser?.fullName ?? null,
+    visitReference: prescription.visit.visitNumber,
+    printedAt: params.printedAt.toISOString(),
+    copies: params.copies,
+    labelFormat: params.labelFormat,
+    printSequence: params.printSequence,
+    isReprint: params.isReprint,
+  };
 }
 
 /**

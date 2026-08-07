@@ -43,6 +43,22 @@ export class DispensaryController {
   }
 
   /**
+   * G4.5d5b-3 — the label as it WOULD print, without recording a print.
+   *
+   * A GET, because it writes nothing. The workspace shows the dispenser the
+   * assembled label before it goes to the printer, and a preview that landed
+   * in the print history would make that history useless: "was this printed"
+   * has to mean printed, not looked at.
+   */
+  @Get('prescriptions/:prescriptionId/label-preview')
+  previewLabel(
+    @Param('prescriptionId') prescriptionId: string,
+    @Query('copies') copies?: string,
+  ) {
+    return this.labels.preview(prescriptionId, copies ? Number(copies) : 1);
+  }
+
+  /**
    * Assemble a label from the RECORD and audit the print.
    *
    * A POST, not a GET, because it writes: the audit row is part of printing,

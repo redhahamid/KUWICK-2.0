@@ -28,6 +28,7 @@ import { PanelClaimsPage } from './clinical/PanelClaimsPage';
 import { DiagnosesDirectoryPage } from './clinical/DiagnosesDirectoryPage';
 import { PatientDashboardPage } from './clinical/PatientDashboardPage';
 import { QueueManagementPage } from './clinical/QueueManagementPage';
+import { DispensaryPage } from './clinical/dispensary/DispensaryPage';
 import { QueueMonitorPage } from './clinical/QueueMonitorPage';
 import { RoomsPage } from './clinical/RoomsPage';
 import { QueueDisplaySettingsPage } from './clinical/QueueDisplaySettingsPage';
@@ -90,6 +91,10 @@ export function App() {
           <Route path="/patients" element={<PatientsPage />} />
           <Route path="/patients/:id" element={<PatientDashboardPage />} />
           <Route path="/queue" element={<QueueManagementPage />} />
+          {/* G4.5d5b-3 — the dispensary counter's own workspace. `?visitId=`
+              opens it on one patient, so the Queue can hand a specific visit
+              across and a colleague can be sent a link. */}
+          <Route path="/dispensary" element={<DispensaryPage />} />
           <Route path="/procedure-queue" element={<ProcedureQueuePage />} />
           {/* G3c (D-065) — the billing workflow's own route. The Clinical
               Workspace shows a read-only summary and links here. */}

@@ -2171,6 +2171,42 @@ Everything the correction required to survive, survives: the 15 MB limit, multi-
 
 ---
 
+## D-098 — G4.5d5b: the dispensary gets its own counter, and a drug label stops being written by the browser
+
+Dispensing lived inside the Doctor's Medications tab. The person handing medicine to a patient was working in a clinical editor built for somebody else's job, on a screen that also offered to change the prescription — and two things had gone unnoticed underneath that.
+
+**`dispense()` called `requireActor` and nothing else.** Any authenticated staff member of any role, from any branch, could move clinic stock. Authentication is not permission. There is now a written action matrix (`dispensary-authorization.ts`) covering view, print, dispense and resolve-stock, enforced on every route and re-enforced inside each transaction alongside the existing branch check. The owner's v1 decision holds: **no new DISPENSARY_STAFF role** — a small Malaysian clinic has no dedicated dispenser, so existing roles carry the actions. `STOCK_STAFF` may look at the board and fix stock; they may not hand medicine over, because that is a clinical hand-over with a named dispenser on the record. `FINANCE_STAFF` cannot see the dispensary at all.
+
+**The drug label was assembled in the browser and left no record.** A medication name and a set of directions that reach a printer from page state are a name and directions nobody has verified against the prescription, and a clinic could not answer "was this label printed, and by whom" — the question that only ever gets asked when something has gone wrong. Labels are now composed **server-side from the record** inside one tenant-scoped transaction, and printing writes an append-only `label_prints` row with a sequence allocated against a unique constraint, so two simultaneous prints cannot both be "the first".
+
+**Nothing on a label is fabricated.** No generic name, no dosage form, no route, no structured warning, no translation and no barcode: the schema carries none of them reliably, and a route printed wrongly on a medication label is a patient-safety defect rather than a cosmetic gap. Where a field is absent it is omitted — never filled with a plausible default, and never left as a labelled blank, which reads as a decision somebody made. The clinic branch line is omitted for the same reason: `Clinic` stores a name and no separate branch label.
+
+**PRINT LABEL != DISPENSE**, and it is proved rather than asserted. Printing moves no stock, changes no prescription status, moves no queue ticket, creates no invoice line, takes no payment and completes no visit. Live check 13–15 reads the stock level, the prescription, the ticket, the movement count and the invoice count either side of a real print over HTTP and asserts every one is unchanged.
+
+`READY_FOR_DISPENSARY` had **no outgoing edge at all** in `queue-authorization.ts` — the map said a patient could arrive at the dispensary and never leave. It now moves to `READY_FOR_PAYMENT` or `CANCELLED`, and dispensing the last clinic-supplied medication moves the ticket atomically and records one `DISPENSING_COMPLETED` event.
+
+**The quantity is never accepted from the caller.** There is no partial dispensing in this product, so the server reads the prescribed quantity from the record and the workspace shows it as text rather than a field. Live check 20 sends `quantity: 1` and `quantityDispensed: 1` deliberately alongside the request and asserts the full prescribed 15 moved.
+
+**Where stock and prescription units cannot be compared, the answer is that they cannot be compared.** There is no unit-conversion model: dose × frequency × duration cannot be turned into bottles or millilitres without one. `UNIT_UNKNOWN` renders as "Unit needs review" with no number attached, because a confident wrong figure in front of a dispenser is worse than an honest absence. A shortage does not block dispensing — that was the approved policy — but it is never silent: the confirmation disables itself until the dispenser ticks an explicit acknowledgement, and the stock movement records that they did.
+
+Multi-dispense runs **one transaction per prescription**, not one for the batch. A failure on the fourth item must not roll back the three already handed across the counter, and the result is reported per item rather than summarised by its worst outcome — "failed" on a mixed batch is how a dispenser is sent to hand over medicine that has already left the shelf.
+
+The workspace itself is a **split, not a table with a drawer**: the dispenser's attention moves between "who is next" and "what do they need" continuously, and both panes scroll independently. Nothing is auto-selected, because on a busy board the first row changes as people are served. Invalidation after dispensing touches the board, that visit's prescriptions and the queue — and nothing clinical, preserving C1/D-052 and D-091.
+
+**Two defects were found by the verification itself, and both are fixed rather than noted.**
+
+The first: `label_prints` was created with a single permissive `tenant_isolation` policy and a `GRANT SELECT, INSERT`, and its comment claimed append-only. Both halves were true and the conclusion was wrong — a policy with no `FOR` clause covers every command, and the application connects as the table's owner, who holds every privilege regardless of grants. A plain `DELETE FROM label_prints` succeeded against the running database. Closed the way S3d (D-083) closed it for `visit_workflow_events`: separate SELECT and INSERT policies with no UPDATE and no DELETE policy at all, under FORCE RLS, plus a `REVOKE` of UPDATE, DELETE **and TRUNCATE** — TRUNCATE being a separate privilege that RLS does not filter, and which would otherwise empty the whole history in one statement.
+
+The second: `colorWarning` and `colorSuccess` were handed antd the *chip foreground* values from the token file. antd derives a whole ramp from its base colour, so deriving a background from a near-brown `#92400e` is what made every warning Alert in the application render as muddy tan. antd now gets the hue at its natural mid saturation; `KuwickStatusTag` keeps the explicit fg/bg pair, where the contrast was chosen rather than calculated.
+
+**Preview is not print.** The workspace shows the dispenser the label before it goes to the printer, and that preview must come from the record — but it must not land in the print history, or "was this printed" stops meaning printed. `GET …/label-preview` shares the assembly and the eligibility refusals with `POST …/label` through one loader and one composer, writes nothing, and reports what the *next* print would be so a reprint says "Reprint #2" honestly.
+
+**Verification**: 1079 backend tests (46 suites), 788 frontend tests (33 files), both typechecks clean, 57 migrations applied; **27/27 live checks** over real HTTP (`prisma/g45d5b-dispensary-check.ts`) including seven refusals sent with no browser in the path; 28 populated screenshots in `docs/g45d5b-screenshots/`.
+
+**Known limitations, stated plainly**: the 70 × 40 mm print preset has been checked against the browser's own print preview and **no thermal printer has been tested** — there is no printer SDK, no silent printing, and printing goes through the standard browser dialog, so a clinic must verify their own label stock before relying on the alignment (`docs/DISPENSARY_LABELS.md`); the label carries no barcode or QR code; there is no partial dispensing, no medication return and no dispense reversal after hand-over, all excluded by decision; a dispensed row cannot be corrected through the application at all, so a mis-dispense is an inventory adjustment; the board's stock comparison is only made where the prescription's quantity is genuinely a stock-unit quantity, and says so otherwise; and `STOCK_STAFF` can be granted `RESOLVE_STOCK_ISSUE` by the matrix but the dispensary offers no control for it — the work is done in Inventory, and the permission exists so the server has an answer if a route is added later.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

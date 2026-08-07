@@ -113,6 +113,7 @@ function build(
     tx,
     prints,
     print: (copies?: number) => run(() => service.print('rx-1', copies)),
+    preview: (copies?: number) => run(() => service.preview('rx-1', copies)),
     history: () => run(() => service.history('rx-1')),
   };
 }
@@ -330,5 +331,75 @@ describe('permission and tenancy', () => {
     const ctx = build(staff({ role: 'FINANCE_STAFF' as Role }));
     await expect(ctx.print()).rejects.toThrow();
     expect(ctx.tx.labelPrint.create).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// G4.5d5b-3 — THE PREVIEW
+//
+// The workspace shows a dispenser the label before it goes to the printer.
+// That preview has to come from the record — but it must not land in the
+// print history, or "was this printed" stops meaning printed.
+// ===========================================================================
+
+describe('previewing a label', () => {
+  it('29. records NOTHING', async () => {
+    const ctx = build();
+    await ctx.preview();
+    expect(ctx.tx.labelPrint.create).not.toHaveBeenCalled();
+    expect(ctx.prints).toHaveLength(0);
+  });
+
+  it('30. assembles exactly what printing would, field for field', async () => {
+    // Two assemblies that could drift is how a preview stops being evidence
+    // of anything.
+    const previewed = await build().preview();
+    const printed = await build().print();
+    const ignore = ['printedAt'];
+    for (const key of Object.keys(printed) as Array<keyof typeof printed>) {
+      if (ignore.includes(key as string)) continue;
+      expect(previewed[key]).toEqual(printed[key]);
+    }
+  });
+
+  it('31. shows what the NEXT print would be, so a reprint says so honestly', async () => {
+    const first = await build().preview();
+    expect(first).toMatchObject({ printSequence: 1, isReprint: false });
+    const again = await build(staff(), { existingPrints: 2 }).preview();
+    expect(again).toMatchObject({ printSequence: 3, isReprint: true });
+  });
+
+  it('32. is authorised exactly as printing is', async () => {
+    await expect(build(staff({ role: 'STOCK_STAFF' as Role })).preview()).rejects.toThrow(
+      ForbiddenException,
+    );
+    await expect(build(staff({ role: 'FINANCE_STAFF' as Role })).preview()).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('33. refuses the same prescriptions printing refuses', async () => {
+    // A preview of a label the print route would reject invites a dispenser
+    // to prepare a package the clinic must not hand over.
+    await expect(
+      build(staff(), { supplyMode: PrescriptionSupplyMode.EXTERNAL_PRESCRIPTION }).preview(),
+    ).rejects.toThrow(BadRequestException);
+    await expect(build(staff(), { status: PrescriptionStatus.CANCELLED }).preview()).rejects.toThrow(
+      BadRequestException,
+    );
+    await expect(build(staff(), { supplyMode: null }).preview()).rejects.toThrow(BadRequestException);
+  });
+
+  it('34. bounds the copy count the same way', async () => {
+    await expect(build().preview(0)).rejects.toThrow(BadRequestException);
+    await expect(build().preview(MAX_LABEL_COPIES + 1)).rejects.toThrow(BadRequestException);
+  });
+
+  it('35. moves no stock, no queue ticket and no invoice', async () => {
+    // The harness carries no stockMovement, stockLevel, queueTicket or
+    // invoice delegate at all: touching one throws rather than passing.
+    const ctx = build();
+    await expect(ctx.preview()).resolves.toBeDefined();
+    expect(Object.keys(ctx.tx)).not.toContain('stockMovement');
   });
 });

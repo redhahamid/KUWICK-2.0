@@ -13,9 +13,12 @@ import { colors } from './tokens';
 export const kuwickTheme: ThemeConfig = {
   token: {
     colorPrimary: colors.primary,
-    colorSuccess: colors.success,
-    colorWarning: colors.warning,
-    colorError: colors.error,
+    // G4.5d5b-3 — the BASE hue, not the chip foreground. antd derives its
+    // border and background ramp from these, and deriving a background from
+    // the dark text colour is what made every warning Alert render tan.
+    colorSuccess: colors.successBase,
+    colorWarning: colors.warningBase,
+    colorError: colors.errorBase,
     colorInfo: colors.active,
     colorText: colors.text,
     colorTextSecondary: colors.textSecondary,

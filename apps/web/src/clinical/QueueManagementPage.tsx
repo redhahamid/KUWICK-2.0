@@ -548,7 +548,7 @@ export function QueueManagementPage() {
                         <Text>{dispensingLabel(r.dispensing)}</Text>
                         {r.dispensing.remaining > 0 && (
                           <Text type="secondary" style={{ fontSize: 12 }}>
-                            Dispense from the clinical visit — the dispensary workspace is a later checkpoint.
+                            Hand over at the counter — open this visit in the Dispensary.
                           </Text>
                         )}
                       </Space>
@@ -563,8 +563,17 @@ export function QueueManagementPage() {
                   },
                   {
                     title: 'Actions',
-                    width: 190,
-                    render: (_: unknown, r: QueueBoardRow) => <RowActions row={r} onComplete={openComplete} />,
+                    width: 230,
+                    // G4.5d5b-3 — the hand-off. Deep-linked to this visit so
+                    // the dispenser lands on the right patient rather than
+                    // searching a board for a name they were just told.
+                    render: (_: unknown, r: QueueBoardRow) => (
+                      <RowActions
+                        row={r}
+                        onComplete={openComplete}
+                        dispensaryLink={`/dispensary?visitId=${r.visitId}`}
+                      />
+                    ),
                   },
                 ]}
                 expandable={{
@@ -725,14 +734,18 @@ export function QueueManagementPage() {
 function RowActions({
   row,
   onComplete,
+  dispensaryLink,
 }: {
   row: QueueBoardRow;
   onComplete: (row: QueueBoardRow, event: { currentTarget: HTMLElement }) => void;
+  /** G4.5d5b-3 — present only on the dispensary stage. */
+  dispensaryLink?: string;
 }) {
   const reason = completionDisabledReason(row);
   const permissionWithheld = reason === 'Your role is not permitted to complete a visit.';
   return (
     <Space size={4} wrap>
+      {dispensaryLink && <Link to={dispensaryLink}>Open in Dispensary</Link>}
       <Link to={`/billing/visits/${row.visitId}`}>Billing Review</Link>
       {!permissionWithheld && (
         <Tooltip title={reason ?? undefined}>

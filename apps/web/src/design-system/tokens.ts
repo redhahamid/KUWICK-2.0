@@ -58,6 +58,27 @@ export const colors = {
   errorBg: '#fee4e2',
   neutralBg: '#f2f4f7',
 
+  // --- Semantic (base hue, for antd's own derivation) ----------------------
+  /**
+   * G4.5d5b-3 — the mid-tone each semantic colour is BUILT from.
+   *
+   * The foreground values above are deliberately dark, because they are read
+   * as text on a pale chip. Handing those same values to antd as its base
+   * `colorWarning` / `colorSuccess` was a mistake: antd derives a whole ramp
+   * from the base — border, background, hover — and deriving a background
+   * from a near-brown #92400e produced the muddy tan every warning Alert in
+   * the application was rendering as.
+   *
+   * So antd gets the hue at its natural mid saturation and derives a sensible
+   * pale background from it; KuwickStatusTag keeps using the explicit fg/bg
+   * pair above, where the contrast has actually been chosen rather than
+   * calculated.
+   */
+  successBase: '#16a34a',
+  warningBase: '#d97706',
+  attentionBase: '#d97706',
+  errorBase: '#dc2626',
+
   // --- Surfaces ------------------------------------------------------------
   pageBg: '#f4f7fa',
   card: '#ffffff',
