@@ -1,19 +1,30 @@
-import { Button, Checkbox, Space, Tooltip, Typography } from 'antd';
+import { Button, Space, Tooltip, Typography } from 'antd';
 import { PrinterOutlined } from '@ant-design/icons';
 import { KuwickStatusTag } from '../../design-system/kuwick';
 import type { DispensaryMedication } from '../hooks/useDispensary';
-import { dispenseStatusPresentation, isDispensable, stockPresentation } from './dispensaryPresentation';
+import { dispenseStatusPresentation, stockPresentation } from './dispensaryPresentation';
 
 const { Text } = Typography;
 
 /**
- * G4.5d5b-3 — one medication, as the counter reads it.
+ * G4.5d5c — one medication, as the counter PREPARES it.
  *
  * The card is ordered the way the work is done: WHAT the medicine is, then
  * HOW MUCH to hand over, then WHETHER the branch has it, then the actions.
  * Stock is deliberately not the headline — a dispenser looks up the medicine
  * first and the shelf second, and a card led by a red stock chip is a card
  * where the medicine name is the smallest thing on it.
+ *
+ * NO PER-ROW DISPENSE BUTTON. Preparing three medicines used to mean three
+ * buttons and three confirmations, which is three times the clicking for the
+ * ordinary case and nothing gained: the counter hands a bag to the patient
+ * once, not once per box. Hand-over is confirmed once for the whole visit by
+ * the workspace's single primary action.
+ *
+ * PRINT LABEL IS THE ROW'S ACTION, and it is the first thing on the row that
+ * can be pressed. UAT found a dispenser who could not locate label printing at
+ * all — it is the normal counter activity, not a secondary feature, and it is
+ * available BEFORE anything is dispensed.
  *
  * The quantity is READ ONLY, here and everywhere. It is what the doctor
  * prescribed, and there is no partial dispensing in this product: a field
@@ -23,25 +34,15 @@ const { Text } = Typography;
 
 export interface DispensaryMedicationCardProps {
   medication: DispensaryMedication;
-  /** Absent when the row cannot be selected (already dispensed, no permission). */
-  selected?: boolean;
-  onToggleSelect?: (prescriptionId: string, next: boolean) => void;
-  onDispense?: (medication: DispensaryMedication) => void;
   onPrintLabel?: (medication: DispensaryMedication) => void;
-  canDispense: boolean;
   canPrint: boolean;
 }
 
 export function DispensaryMedicationCard({
   medication,
-  selected = false,
-  onToggleSelect,
-  onDispense,
   onPrintLabel,
-  canDispense,
   canPrint,
 }: DispensaryMedicationCardProps) {
-  const dispensable = isDispensable(medication);
   const status = dispenseStatusPresentation(medication.status);
   const stock = stockPresentation({
     state: medication.stock.state,
@@ -58,16 +59,8 @@ export function DispensaryMedicationCard({
       data-prescription-id={medication.prescriptionId}
       data-status={medication.status}
       data-stock-state={medication.stock.state}
-      data-selected={selected || undefined}
     >
       <div className="kw-dispensary-med-head">
-        {dispensable && canDispense && onToggleSelect && (
-          <Checkbox
-            checked={selected}
-            aria-label={`Select ${medication.name} for dispensing`}
-            onChange={(event) => onToggleSelect(medication.prescriptionId, event.target.checked)}
-          />
-        )}
         <div className="kw-dispensary-med-identity">
           <h4 className="kw-dispensary-med-name">
             {medication.name}
@@ -127,22 +120,12 @@ export function DispensaryMedicationCard({
               {medication.labelPrintCount > 0 ? 'Reprint label' : 'Print label'}
             </Button>
           )}
-          {dispensable && canDispense && onDispense && (
-            <Button
-              size="small"
-              type="primary"
-              onClick={() => onDispense(medication)}
-              aria-label={`Dispense ${medication.name}`}
-            >
-              Dispense
-            </Button>
-          )}
-          {dispensable && !canDispense && (
-            // Shown disabled with the reason, not removed: staff who cannot
-            // dispense should understand why rather than hunt for a button.
-            <Tooltip title="This account may not dispense medication.">
-              <Button size="small" disabled>
-                Dispense
+          {!canPrint && (
+            // Shown, disabled, with the reason — rather than removed, which
+            // reads as "this build has no label printing".
+            <Tooltip title="This account may not print a medication label.">
+              <Button size="small" disabled icon={<PrinterOutlined />}>
+                Print label
               </Button>
             </Tooltip>
           )}

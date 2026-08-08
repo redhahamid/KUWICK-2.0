@@ -216,9 +216,10 @@ describe('the dispensary stage', () => {
     expect(screen.queryByRole('button', { name: /mark all dispensed/i })).not.toBeInTheDocument();
   });
 
-  it('G4.5d5b-3. the row hands the visit to the Dispensary by deep link', async () => {
+  it('G4.5d5c. the row offers ONE way in — Open Counter, deep-linked', async () => {
     // The dispenser must land on the right patient rather than searching a
-    // board for a name they were just told across a counter.
+    // board for a name they were just told across a counter. And exactly one
+    // action: the operational workflow lives in the counter, not here.
     world.rows = [
       row({
         ticketId: 't1', visitId: 'visit-9', status: 'READY_FOR_DISPENSARY', stage: 'DISPENSARY',
@@ -229,9 +230,11 @@ describe('the dispensary stage', () => {
     world.counts = { ...world.counts, dispensary: 1, totalToday: 1 };
     renderPage();
     await userEvent.click(await screen.findByRole('tab', { name: /Dispensary \(1\)/ }));
-    const link = await screen.findByRole('link', { name: 'Open in Dispensary' });
+    const link = await screen.findByRole('link', { name: 'Open Counter' });
     expect(link).toHaveAttribute('href', '/dispensary?visitId=visit-9');
-    // And the stale "a later checkpoint" caption is gone.
+    // No competing actions in the same row.
+    expect(screen.queryByRole('link', { name: 'Billing Review' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Complete visit for/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/later checkpoint/i)).not.toBeInTheDocument();
   });
 
@@ -248,7 +251,7 @@ describe('the dispensary stage', () => {
     expect(screen.queryByRole('link', { name: 'Open in Dispensary' })).not.toBeInTheDocument();
   });
 
-  it('27/48. a dispensing blocker disables Complete Visit and states why', async () => {
+  it('27/48. a dispensing blocker is stated on the row, and completion is not offered here', async () => {
     world.rows = [
       row({
         ticketId: 't1', status: 'READY_FOR_DISPENSARY', stage: 'DISPENSARY',
@@ -260,9 +263,12 @@ describe('the dispensary stage', () => {
     world.counts = { ...world.counts, dispensary: 1 };
     renderPage();
     await userEvent.click(await screen.findByRole('tab', { name: /Dispensary/ }));
-    const button = await screen.findByRole('button', { name: /Complete visit for/i });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAttribute('aria-description', 'Medication dispensing is not complete.');
+    // G4.5d5c — Complete Visit belongs to the counter workspace, where the
+    // staff member can actually resolve what is blocking it. The Queue states
+    // the outstanding work and hands over.
+    expect(await screen.findByText('0 of 2 dispensed · 2 remaining')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Complete visit for/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open Counter' })).toBeInTheDocument();
   });
 });
 

@@ -2,30 +2,27 @@ import { useEffect, useState } from 'react';
 import { Alert, Button, Checkbox, Typography } from 'antd';
 import { KuwickModal, KuwickModalActionBar, KuwickStatusTag } from '../../design-system/kuwick';
 import type { DispensaryMedication } from '../hooks/useDispensary';
-import { needsStockAcknowledgement, stockPresentation } from './dispensaryPresentation';
+import { stockPresentation } from './dispensaryPresentation';
+import { DispenseException, dispenseExceptions } from './counterPresentation';
 
 const { Text } = Typography;
 
 /**
- * G4.5d5b-3 — the last screen before medicine leaves the clinic.
+ * G4.5d5c — ONE confirmation for the whole hand-over.
  *
- * Dispensing cannot be reversed in this product — there is no un-dispense,
- * and returns are out of scope by decision — so this modal exists to make the
- * hand-over deliberate rather than one click away from a list. It states what
- * is about to move, in what quantity, and what the shelf will hold afterwards.
+ * Replaces per-row confirmations. The counter hands a bag to the patient once,
+ * so it confirms once: this lists every clinic-supplied medicine still to go
+ * out and, on confirm, runs the SAME server-authoritative dispense the
+ * per-row action ran — atomic claim per prescription, stock movement, named
+ * dispenser, audit, routing. Nothing is marked in the UI alone.
  *
- * The quantity is not editable. It is the prescribed quantity, shown so the
- * dispenser can count against it; the request carries only prescription ids
- * and the server reads the quantity from the record.
- *
- * A shortage is not a blocker but it is not silent either. Where the branch
- * cannot cover the prescription, the confirm button stays disabled until the
- * dispenser ticks an acknowledgement — because dispensing anyway is sometimes
- * the right call (a partly-counted shelf, a stock record behind reality) and
- * the record should say that somebody knew.
+ * NORMAL CASES ARE NOT INTERRUPTED. Where every medicine is in stock this is a
+ * plain "yes, handed over" — no acknowledgement, no ticking, no warning to
+ * read past. An acknowledgement appears only where an exception genuinely
+ * exists, which is what keeps it meaningful when it does.
  */
 
-export interface DispenseConfirmModalProps {
+export interface ConfirmDispenseModalProps {
   open: boolean;
   patientName: string;
   medications: DispensaryMedication[];
@@ -35,7 +32,7 @@ export interface DispenseConfirmModalProps {
   onConfirm: (acknowledgeStockWarning: boolean) => void;
 }
 
-export function DispenseConfirmModal({
+export function ConfirmDispenseModal({
   open,
   patientName,
   medications,
@@ -43,30 +40,37 @@ export function DispenseConfirmModal({
   error = null,
   onCancel,
   onConfirm,
-}: DispenseConfirmModalProps) {
+}: ConfirmDispenseModalProps) {
   const [acknowledged, setAcknowledged] = useState(false);
 
-  // Every open starts unacknowledged. A tick that survived from the previous
+  // Every open starts unacknowledged; a tick carried over from the previous
   // patient would be an acknowledgement nobody made.
   useEffect(() => {
     if (open) setAcknowledged(false);
   }, [open]);
 
-  const shortages = medications.filter((medication) =>
-    needsStockAcknowledgement(medication.stock.state),
+  const exceptions: DispenseException[] = dispenseExceptions(
+    medications.map((m) => ({
+      prescriptionId: m.prescriptionId,
+      name: m.name,
+      status: m.status,
+      quantity: m.quantity,
+      stock: { state: m.stock.state, onHand: m.stock.onHand },
+    })),
   );
-  const blocked = shortages.length > 0 && !acknowledged;
+  const blocked = exceptions.length > 0 && !acknowledged;
+  const count = medications.length;
 
   return (
     <KuwickModal
       open={open}
       size="medium"
-      title={medications.length === 1 ? 'Dispense this medication' : `Dispense ${medications.length} medications`}
+      title={count === 1 ? 'Confirm medication handed over' : `Confirm ${count} medications handed over`}
       subtitle={`${patientName} · this cannot be undone`}
       loading={loading}
       error={error}
       onClose={onCancel}
-      dataTestId="dispense-confirm-modal"
+      dataTestId="confirm-dispense-modal"
       footer={
         <KuwickModalActionBar
           cancel={
@@ -78,10 +82,10 @@ export function DispenseConfirmModal({
             <Button
               type="primary"
               loading={loading}
-              disabled={blocked || medications.length === 0}
-              onClick={() => onConfirm(shortages.length > 0)}
+              disabled={blocked || count === 0}
+              onClick={() => onConfirm(exceptions.length > 0)}
             >
-              {medications.length === 1 ? 'Dispense' : `Dispense ${medications.length} medications`}
+              Confirm Medications Dispensed
             </Button>
           }
         />
@@ -94,8 +98,6 @@ export function DispenseConfirmModal({
             onHand: medication.stock.onHand,
             required: medication.quantity,
           });
-          // Only shown where the numbers are genuinely comparable — see
-          // stockPresentation for why UNIT_UNKNOWN exists.
           const after =
             medication.stock.onHand !== null && medication.stock.state !== 'UNIT_UNKNOWN'
               ? medication.stock.onHand - medication.quantity
@@ -125,25 +127,33 @@ export function DispenseConfirmModal({
         })}
       </ul>
 
-      {shortages.length > 0 && (
+      {exceptions.length > 0 && (
         <>
           <Alert
             type="error"
             showIcon
             className="kw-dispense-shortage"
             message={
-              shortages.length === 1
-                ? 'The branch does not hold enough of one medication'
-                : `The branch does not hold enough of ${shortages.length} medications`
+              exceptions.length === 1
+                ? 'Stock discrepancy on 1 medication'
+                : `Stock discrepancy on ${exceptions.length} medications`
             }
-            description="Dispensing will still record the full prescribed quantity and will take the branch stock negative. Correct the stock record in Inventory if the shelf disagrees."
+            description={
+              <ul className="kw-dispense-exceptions">
+                {exceptions.map((e) => (
+                  <li key={e.prescriptionId}>
+                    <Text strong>{e.name}</Text> — {e.detail}
+                  </li>
+                ))}
+              </ul>
+            }
           />
           <Checkbox
             checked={acknowledged}
             onChange={(event) => setAcknowledged(event.target.checked)}
             className="kw-dispense-acknowledge"
           >
-            I have checked the shelf and am dispensing despite the shortage
+            I have checked the shelf and am handing these over despite the discrepancy
           </Checkbox>
         </>
       )}

@@ -18,7 +18,12 @@ import {
 } from '../hooks/useDispensary';
 import { DispensaryMedicationCard } from './DispensaryMedicationCard';
 import { DispensaryPatientList, ListFilter } from './DispensaryPatientList';
-import { DispenseConfirmModal } from './DispenseConfirmModal';
+import { ConfirmDispenseModal } from './ConfirmDispenseModal';
+import { CounterCheck, CounterDocuments, CounterPayment } from './CounterSections';
+import { DocumentPreviewDrawer } from '../documents/DocumentPreviewDrawer';
+import { documentLabel } from '../documents/documentPresentation';
+import { printTextDocument } from '../printTextDocument';
+import { ClinicalDocument, PaymentMethod } from '../types';
 import { LabelPreviewModal } from './LabelPreviewModal';
 import {
   EMPTY_BOARD_TEXT,
@@ -27,27 +32,48 @@ import {
   progressText,
   waitingText,
 } from './dispensaryPresentation';
+import {
+  BillingSummary,
+  medicationLine,
+  medicationState,
+  money,
+  paymentLine,
+  paymentState,
+  primaryAction,
+} from './counterPresentation';
+import { useCompletionBlockers, useInvoices, usePayInvoice } from '../hooks/useInvoices';
+import { useDocuments } from '../hooks/useDocuments';
+import { useCompleteVisit } from '../hooks/useQueueTickets';
 import { printLabelSheet } from './labelPrint';
 
 const { Text, Title } = Typography;
 
 /**
- * G4.5d5b-3 — the dispensary counter.
+ * G4.5d5c — THE COUNTER. One patient, one screen, start to finish.
  *
- * Dispensing used to happen inside the Doctor's Medications tab, which meant
- * the person handing medicine to a patient was working in a clinical editor
- * built for someone else's job, on a screen that also offered to change the
- * prescription. This is that work given its own place.
+ * UAT found the workflow fragmented across five surfaces: a Queue tab, this
+ * workspace, a per-row Dispense, a Dispense Selected, and then a hand-off to
+ * Billing Review. Serving one patient meant understanding Kuwick's module
+ * boundaries. It now reads the way the counter actually works —
  *
- * The layout is a split, not a table with a drawer: the dispenser's attention
- * moves between "who is next" and "what do they need" continuously, and a
- * drawer that covers the list every time loses the queue. The two panes
- * scroll independently for the same reason.
+ *   open patient → prepare and label → take money → hand over → finish
  *
- * Every action here is offered only where the SERVER said the actor may
- * perform it — the board returns its own permission object — and refused
- * again by the server when it is taken. The browser hides what would be
- * refused; it does not decide anything.
+ * — with everything for that patient on this screen: medicines, documents,
+ * payment and completion.
+ *
+ * TWO INDEPENDENT OBLIGATIONS, NOT A SEQUENCE. Some clinics take the money
+ * before the bag leaves the counter and some after. Medication state and
+ * payment state are tracked separately and either may be satisfied first; the
+ * primary action simply becomes whichever is still open.
+ *
+ * NO SECOND ENGINE. Payment renders what the invoice API returned and calls
+ * the invoice API to settle it. Dispensing calls the same atomic, audited
+ * server transaction as before. Completion eligibility is the server's answer,
+ * quoted verbatim. This screen composes; it does not decide.
+ *
+ * The list pane stays ONE query for the whole board. Only the SELECTED
+ * patient's invoice, documents and blockers are fetched, so a busy board is
+ * still three requests and not three per row.
  */
 export function DispensaryPage() {
   const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
@@ -59,8 +85,11 @@ export function DispensaryPage() {
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<ListFilter>('ALL');
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [pendingDispense, setPendingDispense] = useState<DispensaryMedication[] | null>(null);
+  const [confirmingDispense, setConfirmingDispense] = useState(false);
+  // Typed against the invoice API's own union, so an unsupported method
+  // cannot reach the payment call.
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
+  const [previewingDocument, setPreviewingDocument] = useState<ClinicalDocument | null>(null);
   const [labelTarget, setLabelTarget] = useState<DispensaryMedication | null>(null);
   const [labelCopies, setLabelCopies] = useState(1);
   /** Set only once a print has been RECORDED; replaces the preview on screen. */
@@ -87,11 +116,35 @@ export function DispensaryPage() {
     [searchParams, setSearchParams],
   );
 
-  // A selection that survived the patient changing would be a selection
-  // pointing at another visit's prescriptions.
+  // Per-patient counter state resets with the patient. A payment method or a
+  // half-open confirmation carried across patients is a mis-post waiting to
+  // happen.
   useEffect(() => {
-    setSelectedIds([]);
+    setConfirmingDispense(false);
+    setPaymentMethod('CASH');
   }, [selectedVisitId]);
+
+  // --- The SELECTED patient's counter data -------------------------------
+  //
+  // Three requests for one visit, never three per row: the board pane stays a
+  // single query however many patients are waiting.
+  const invoices = useInvoices(selectedVisitId ?? undefined);
+  const documents = useDocuments(selectedVisitId ?? undefined);
+  const blockers = useCompletionBlockers(selectedVisitId ?? undefined);
+  const payInvoice = usePayInvoice(selectedVisitId ?? undefined);
+  const completeVisit = useCompleteVisit();
+
+  const invoice = (invoices.data ?? [])[0] ?? null;
+  const billing: BillingSummary | null = invoice
+    ? {
+        grandTotal: (invoice as Record<string, any>).grandTotal ?? null,
+        panelResponsibility: (invoice as Record<string, any>).panelResponsibilityAmount ?? null,
+        patientResponsibility: (invoice as Record<string, any>).patientResponsibilityAmount ?? null,
+        remainingBalance: (invoice as Record<string, any>).remainingBalance ?? null,
+        invoiceId: (invoice as Record<string, any>).id ?? null,
+        status: (invoice as Record<string, any>).status ?? null,
+      }
+    : null;
 
   // Nothing is auto-selected. On a busy board the first row changes as people
   // are served, and a workspace that quietly re-points at somebody else while
@@ -100,27 +153,38 @@ export function DispensaryPage() {
   const labelPreview = useLabelPreview(labelTarget?.prescriptionId);
   const labelHistory = useLabelHistory(labelTarget?.prescriptionId, Boolean(labelTarget));
 
-  const selectedMedications = useMemo(
-    () => (selectedRow?.medications ?? []).filter((m) => selectedIds.includes(m.prescriptionId)),
-    [selectedRow, selectedIds],
+  /** Everything still to hand over for this visit — the whole bag, at once. */
+  const outstandingMedications = useMemo(
+    () => (selectedRow?.medications ?? []).filter((m) => m.status === 'ORDERED'),
+    [selectedRow],
   );
 
-  const toggleSelect = (prescriptionId: string, next: boolean) => {
-    setSelectedIds((current) =>
-      next ? [...current, prescriptionId] : current.filter((id) => id !== prescriptionId),
-    );
-  };
+  const medState = medicationState(selectedRow?.medications ?? []);
+  const payState = paymentState(billing);
+  const serverBlockers = blockers.data ?? [];
+  const action = primaryAction({
+    medication: medState,
+    payment: payState,
+    serverBlockers,
+    completed: Boolean(selectedRow?.queueStatus === 'COMPLETED'),
+  });
+  const checkLines = [
+    medicationLine(medState, selectedRow?.counts ?? { total: 0, remaining: 0 }),
+    paymentLine(payState, billing),
+  ];
 
   const runDispense = async (acknowledgeStockWarning: boolean) => {
-    if (!selectedRow || !pendingDispense) return;
+    if (!selectedRow) return;
     try {
       const result = await dispense.mutateAsync({
         visitId: selectedRow.visitId,
-        prescriptionIds: pendingDispense.map((m) => m.prescriptionId),
+        prescriptionIds: outstandingMedications.map((m) => m.prescriptionId),
         acknowledgeStockWarning,
       });
-      setPendingDispense(null);
-      setSelectedIds([]);
+      setConfirmingDispense(false);
+      // The counter's other obligations may now have changed.
+      void invoices.refetch();
+      void blockers.refetch();
 
       // Per item, not per batch. A batch where one row failed and three
       // succeeded, summarised as "failed", sends a dispenser to hand over
@@ -339,63 +403,136 @@ export function DispensaryPage() {
                   />
                 )}
 
-                <div className="kw-dispensary-cards">
-                  {selectedRow.medications.length === 0 && (
-                    <Empty
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="This visit has no clinic-supplied medication."
-                    />
-                  )}
-                  {selectedRow.medications.map((medication) => (
-                    <DispensaryMedicationCard
-                      key={medication.prescriptionId}
-                      medication={medication}
-                      selected={selectedIds.includes(medication.prescriptionId)}
-                      onToggleSelect={toggleSelect}
-                      onDispense={(target) => setPendingDispense([target])}
-                      onPrintLabel={openLabel}
-                      canDispense={canDispense}
-                      canPrint={canPrint}
-                    />
-                  ))}
+                <div className="kw-counter-scroll">
+                  {/* A — MEDICATIONS. Prepare and label; hand-over is
+                      confirmed once, below, for the whole visit. */}
+                  <section className="kw-counter-section" aria-label="Medications">
+                    <header className="kw-counter-section-head">
+                      <h4>Medications</h4>
+                      <Text type="secondary">{progressText(selectedRow.counts)}</Text>
+                    </header>
+                    {selectedRow.medications.length === 0 && (
+                      <Text type="secondary" className="kw-counter-empty-line">
+                        This visit has no clinic-supplied medication.
+                      </Text>
+                    )}
+                    <div className="kw-dispensary-cards">
+                      {selectedRow.medications.map((medication) => (
+                        <DispensaryMedicationCard
+                          key={medication.prescriptionId}
+                          medication={medication}
+                          onPrintLabel={openLabel}
+                          canPrint={canPrint}
+                        />
+                      ))}
+                    </div>
+                  </section>
+
+                  {/* B — DOCUMENTS. An MC is printed at the counter; making
+                      staff return to the Doctor Canvas for it is why this
+                      section is here. */}
+                  <CounterDocuments
+                    documents={documents.data ?? []}
+                    loading={documents.isLoading}
+                    onView={setPreviewingDocument}
+                    onPrint={(doc) => printTextDocument(documentLabel(doc), doc.content)}
+                  />
+
+                  {/* C — PAYMENT, inline. Renders the invoice API's own
+                      responsibility split and settles through the same API. */}
+                  <CounterPayment
+                    billing={billing}
+                    state={payState}
+                    method={paymentMethod}
+                    onMethod={(next) => setPaymentMethod(next as PaymentMethod)}
+                    collecting={payInvoice.isPending}
+                    canCollect={Boolean(billing?.invoiceId)}
+                    error={payInvoice.error instanceof ApiError ? payInvoice.error.message : null}
+                    onCollect={async () => {
+                      if (!billing?.invoiceId) return;
+                      try {
+                        await payInvoice.mutateAsync({
+                          invoiceId: billing.invoiceId,
+                          dto: { paymentMethod },
+                        });
+                        message.success('Payment settled');
+                        void blockers.refetch();
+                        void board.refetch();
+                      } catch (error) {
+                        if (!(error instanceof ApiError)) throw error;
+                      }
+                    }}
+                  />
+
+                  {/* D — FINAL VISIT ACTION. */}
+                  <CounterCheck lines={checkLines} reasons={action.reasons} />
                 </div>
 
-                {/* Sticky footer: the batch action stays reachable however
-                    long the list is, on a phone as much as a desktop. */}
-                {canDispense && selectedRow.counts.remaining > 0 && (
-                  <div className="kw-dispensary-action-footer">
-                    <Text type="secondary">
-                      {selectedIds.length === 0
-                        ? 'Select medications to dispense together'
-                        : `${selectedIds.length} selected`}
-                    </Text>
-                    <Space size={8}>
-                      <Link to={`/billing/visits/${selectedRow.visitId}`}>
-                        <Button>Go to Billing Review</Button>
-                      </Link>
+                {/* One primary action, and it is whichever obligation is still
+                    open. Never a fixed dispense-then-pay sequence. */}
+                <div className="kw-dispensary-action-footer">
+                  <Text type="secondary" className="kw-counter-next">
+                    {action.stage === 'BLOCKED'
+                      ? action.reasons[0]
+                      : action.stage === 'DONE'
+                        ? 'Counter work complete'
+                        : 'Next step'}
+                  </Text>
+                  <Space size={8}>
+                    {action.stage === 'CONFIRM_MEDICATIONS' && (
                       <Button
                         type="primary"
-                        disabled={selectedIds.length === 0}
-                        onClick={() => setPendingDispense(selectedMedications)}
+                        size="large"
+                        disabled={!canDispense}
+                        onClick={() => setConfirmingDispense(true)}
                       >
-                        Dispense Selected ({selectedIds.length})
+                        Confirm Medications Dispensed
                       </Button>
-                    </Space>
-                  </div>
-                )}
+                    )}
+                    {(action.stage === 'COMPLETE_VISIT' || action.stage === 'BLOCKED') && (
+                      <Button
+                        type="primary"
+                        size="large"
+                        loading={completeVisit.isPending}
+                        disabled={action.stage === 'BLOCKED'}
+                        onClick={async () => {
+                          try {
+                            await completeVisit.mutateAsync({ visitId: selectedRow.visitId });
+                            message.success('Visit completed');
+                            void board.refetch();
+                            selectVisit(null);
+                          } catch (error) {
+                            if (error instanceof ApiError) message.error(error.message);
+                            void blockers.refetch();
+                          }
+                        }}
+                      >
+                        Complete Visit
+                      </Button>
+                    )}
+                  </Space>
+                </div>
               </>
             )}
           </section>
         )}
       </div>
 
-      <DispenseConfirmModal
-        open={pendingDispense !== null}
+      {/* The SAME preview the Documents workspace uses — one implementation,
+          so a control that exists there cannot go missing here. */}
+      <DocumentPreviewDrawer
+        document={previewingDocument}
         patientName={selectedRow?.patientName ?? ''}
-        medications={pendingDispense ?? []}
+        onClose={() => setPreviewingDocument(null)}
+      />
+
+      <ConfirmDispenseModal
+        open={confirmingDispense}
+        patientName={selectedRow?.patientName ?? ''}
+        medications={outstandingMedications}
         loading={dispense.isPending}
         error={dispense.error instanceof ApiError ? dispense.error.message : null}
-        onCancel={() => setPendingDispense(null)}
+        onCancel={() => setConfirmingDispense(false)}
         onConfirm={runDispense}
       />
 

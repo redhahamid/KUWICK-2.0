@@ -548,7 +548,7 @@ export function QueueManagementPage() {
                         <Text>{dispensingLabel(r.dispensing)}</Text>
                         {r.dispensing.remaining > 0 && (
                           <Text type="secondary" style={{ fontSize: 12 }}>
-                            Hand over at the counter — open this visit in the Dispensary.
+                            Prepare, label, take payment and finish at the counter.
                           </Text>
                         )}
                       </Space>
@@ -562,17 +562,20 @@ export function QueueManagementPage() {
                     ),
                   },
                   {
+                    // G4.5d5c — ONE action. The Dispensary tab is a status
+                    // view: who is waiting, what they need, how long they have
+                    // been there. The operational workflow belongs in the
+                    // counter workspace, so this row offers exactly one way in
+                    // rather than competing with it — no Billing Review, no
+                    // Complete Visit, no second dispensing surface.
                     title: 'Actions',
-                    width: 230,
-                    // G4.5d5b-3 — the hand-off. Deep-linked to this visit so
-                    // the dispenser lands on the right patient rather than
-                    // searching a board for a name they were just told.
+                    width: 170,
                     render: (_: unknown, r: QueueBoardRow) => (
-                      <RowActions
-                        row={r}
-                        onComplete={openComplete}
-                        dispensaryLink={`/dispensary?visitId=${r.visitId}`}
-                      />
+                      <Link to={`/dispensary?visitId=${r.visitId}`}>
+                        <Button type="primary" size="small" style={{ minHeight: 36 }}>
+                          Open Counter
+                        </Button>
+                      </Link>
                     ),
                   },
                 ]}
@@ -734,18 +737,14 @@ export function QueueManagementPage() {
 function RowActions({
   row,
   onComplete,
-  dispensaryLink,
 }: {
   row: QueueBoardRow;
   onComplete: (row: QueueBoardRow, event: { currentTarget: HTMLElement }) => void;
-  /** G4.5d5b-3 — present only on the dispensary stage. */
-  dispensaryLink?: string;
 }) {
   const reason = completionDisabledReason(row);
   const permissionWithheld = reason === 'Your role is not permitted to complete a visit.';
   return (
     <Space size={4} wrap>
-      {dispensaryLink && <Link to={dispensaryLink}>Open in Dispensary</Link>}
       <Link to={`/billing/visits/${row.visitId}`}>Billing Review</Link>
       {!permissionWithheld && (
         <Tooltip title={reason ?? undefined}>

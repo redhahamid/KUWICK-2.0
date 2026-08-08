@@ -2218,3 +2218,236 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
     overflow-x: auto;
   }
 }
+
+/* ==========================================================================
+   G4.5d5c — THE COUNTER WORKSPACE
+
+   UAT: one medication left an enormous empty canvas below it, because the
+   pane stretched to the viewport whether or not it had content. The counter
+   now stacks four sections — medications, documents, payment, counter check —
+   in one scrolling column that compacts to its content, with the primary
+   action pinned beneath it.
+   ========================================================================== */
+
+.kw-counter-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--kw-s4, 16px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s4, 16px);
+  /* Compacts to content: four short sections do not stretch into a blank
+     half-screen, and a long medication list still scrolls. */
+  align-content: start;
+}
+
+.kw-counter-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s2, 8px);
+}
+
+.kw-counter-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--kw-s3, 12px);
+  border-bottom: 1px solid var(--kw-border);
+  padding-bottom: 6px;
+}
+
+.kw-counter-section-head h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--kw-text-secondary);
+}
+
+.kw-counter-empty-line {
+  font-size: 13px;
+}
+
+/* --- Documents ---------------------------------------------------------- */
+
+.kw-counter-doc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kw-counter-doc-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kw-s3, 12px);
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+  background: var(--kw-card);
+}
+
+.kw-counter-doc-identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* --- Payment ------------------------------------------------------------ */
+
+.kw-counter-money {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--kw-rail-bg);
+  border-radius: 8px;
+}
+
+.kw-counter-money > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--kw-s4, 16px);
+}
+
+.kw-counter-money dt {
+  margin: 0;
+  color: var(--kw-text-secondary);
+  font-size: 13px;
+}
+
+.kw-counter-money dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+}
+
+/* The number the counter actually asks for. */
+.kw-counter-money-payable dt {
+  color: var(--kw-text);
+  font-weight: 600;
+}
+
+.kw-counter-money-payable dd {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--kw-text);
+}
+
+.kw-counter-methods {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.kw-counter-methods .ant-btn {
+  min-height: 40px;
+  flex: 1 1 auto;
+}
+
+.kw-counter-collect {
+  min-height: 48px;
+  font-weight: 600;
+}
+
+.kw-counter-settled {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--kw-success-bg);
+  color: var(--kw-success-fg);
+}
+
+.kw-counter-receivable {
+  font-size: 12px;
+}
+
+/* --- Counter check ------------------------------------------------------ */
+
+.kw-counter-check ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kw-counter-check li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--kw-text);
+}
+
+.kw-counter-tick {
+  color: var(--kw-success-fg);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.kw-counter-cross {
+  color: var(--kw-pending-fg);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.kw-counter-next {
+  font-size: 13px;
+}
+
+.kw-counter-strip {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* The medication cards sit inside a section now, so they lose the pane's own
+   padding and scrolling — the counter column owns both. */
+.kw-counter-scroll .kw-dispensary-cards {
+  padding: 0;
+  overflow: visible;
+  gap: var(--kw-s2, 8px);
+}
+
+/* Denser medication card: at 1440x900 four sections must fit without the
+   card alone claiming a third of the pane. */
+.kw-counter-scroll .kw-dispensary-med-card {
+  padding: 10px 12px;
+  gap: 8px;
+}
+
+.kw-counter-scroll .kw-dispensary-med-facts {
+  padding: 8px 10px;
+  gap: var(--kw-s5, 24px);
+}
+
+.kw-counter-scroll .kw-dispensary-med-quantity-value {
+  font-size: 18px;
+}
+
+@media (max-width: 991px) {
+  .kw-counter-scroll {
+    overflow-y: visible;
+    padding: var(--kw-s3, 12px);
+  }
+
+  .kw-counter-methods .ant-btn {
+    min-height: 44px;
+  }
+
+  .kw-counter-collect {
+    min-height: 52px;
+  }
+}
