@@ -28,6 +28,32 @@ type Tx = Prisma.TransactionClient;
 // two requests race to make different diagnoses primary on the same visit.
 const UNIQUE_VIOLATION = 'P2002';
 
+/**
+ * G4.5d6 — what a doctor types when they mean an ICD-10 code.
+ *
+ * The catalog stores codes dotted ("J06.9"), but the code is read off a panel
+ * form, a referral letter or memory, and it gets typed "J069" about as often.
+ * A stored `contains` cannot strip the dot from the column side, so the
+ * canonical dotted form is derived here instead and searched alongside the
+ * literal text. ICD-10 puts the dot in exactly one place: after the letter
+ * and two digits.
+ *
+ * Only the shape is inferred — never the meaning. "J06" stays "J06" (a valid
+ * category code in its own right) and anything that is not code-shaped is
+ * searched verbatim, so no non-existent code is ever invented for a doctor.
+ */
+export function icd10SearchTerms(query: string): string[] {
+  const terms = [query];
+  const compact = query.replace(/[\s.]/g, '');
+  if (/^[A-Za-z]\d{3,}$/.test(compact)) {
+    terms.push(`${compact.slice(0, 3)}.${compact.slice(3)}`);
+  }
+  // The bare "J069" form is worth trying too, for a catalog holding
+  // undotted codes.
+  if (compact !== query) terms.push(compact);
+  return [...new Set(terms)];
+}
+
 @Injectable()
 export class DiagnosisService {
   constructor(
@@ -83,6 +109,7 @@ export class DiagnosisService {
   // Custom/Summarize/Full filters which catalog category is searched, not
   // how the added-diagnosis list displays.
   searchCatalog(query?: string, category?: DiagnosisCategory) {
+    const trimmed = query?.trim();
     return this.prisma.diagnosisCatalog.findMany({
       where: {
         active: true,
@@ -90,11 +117,13 @@ export class DiagnosisService {
         // G2b — match the ICD-10 code as well as the name. A GP who knows the
         // code ("J06.9") could previously only find it by typing the wording,
         // which is slower than the thing they already had in mind.
-        ...(query
+        ...(trimmed
           ? {
               OR: [
-                { name: { contains: query, mode: 'insensitive' as const } },
-                { icd10Code: { contains: query, mode: 'insensitive' as const } },
+                { name: { contains: trimmed, mode: 'insensitive' as const } },
+                ...icd10SearchTerms(trimmed).map((term) => ({
+                  icd10Code: { contains: term, mode: 'insensitive' as const },
+                })),
               ],
             }
           : {}),

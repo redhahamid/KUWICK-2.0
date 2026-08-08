@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DiagnosisCategory, DiagnosisPriority, Prisma } from '@prisma/client';
-import { DiagnosisService } from './diagnosis.service';
+import { DiagnosisService, icd10SearchTerms } from './diagnosis.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { tenantContextStorage } from '../core/tenant-context';
@@ -108,10 +108,30 @@ describe('DiagnosisService', () => {
       await service.searchCatalog('J06.9');
 
       const where = (prisma.diagnosisCatalog.findMany as jest.Mock).mock.calls[0][0].where;
-      expect(where.OR).toEqual([
-        { name: { contains: 'J06.9', mode: 'insensitive' } },
-        { icd10Code: { contains: 'J06.9', mode: 'insensitive' } },
-      ]);
+      expect(where.OR).toContainEqual({ name: { contains: 'J06.9', mode: 'insensitive' } });
+      expect(where.OR).toContainEqual({ icd10Code: { contains: 'J06.9', mode: 'insensitive' } });
+    });
+
+    // G4.5d6 — the code is read off a panel form or a referral letter, and it
+    // gets typed without the dot about as often as with it.
+    it('searchCatalog finds a dotted code from an undotted one', async () => {
+      const { service, prisma } = createService();
+      (prisma.diagnosisCatalog.findMany as jest.Mock).mockResolvedValue([]);
+
+      await service.searchCatalog('J069');
+
+      const where = (prisma.diagnosisCatalog.findMany as jest.Mock).mock.calls[0][0].where;
+      expect(where.OR).toContainEqual({ icd10Code: { contains: 'J06.9', mode: 'insensitive' } });
+      expect(where.OR).toContainEqual({ icd10Code: { contains: 'J069', mode: 'insensitive' } });
+    });
+
+    it('searchCatalog invents no code for text that is not code-shaped', () => {
+      // Only the SHAPE is inferred. A diagnosis name must never be turned
+      // into a code that does not exist.
+      expect(icd10SearchTerms('asthma')).toEqual(['asthma']);
+      expect(icd10SearchTerms('J06')).toEqual(['J06']);
+      expect(icd10SearchTerms('J06.9')).toEqual(['J06.9', 'J069']);
+      expect(icd10SearchTerms('M545')).toEqual(['M545', 'M54.5']);
     });
 
     it('searchCatalog applies no text filter when no query is given', async () => {

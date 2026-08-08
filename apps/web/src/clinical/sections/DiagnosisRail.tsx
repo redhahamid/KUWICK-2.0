@@ -1,15 +1,15 @@
 import { useState } from 'react';
-import { AutoComplete, Button, Dropdown, Space, Tag, Typography, message } from 'antd';
+import { Button, Dropdown, Space, Tag, Typography, message } from 'antd';
 import { MoreOutlined } from '@ant-design/icons';
 import {
   useAddDiagnosis,
   useDiagnoses,
-  useDiagnosisCatalogSearch,
 } from '../hooks/useDiagnoses';
 import { useSetDiagnosisPriority } from '../hooks/useDiagnoses';
 import { Diagnosis } from '../types';
 import { ApiError } from '../../core/api-client';
 import { RemoveDiagnosisModal } from './RemoveDiagnosisModal';
+import { DiagnosisSearchField } from './DiagnosisSearchField';
 import { RailPanel } from './RailPanel';
 import { AttributionInfo } from './AttributionInfo';
 
@@ -34,10 +34,8 @@ interface DiagnosisRailProps {
  * it Secondary would be inventing a clinical judgement nobody made.
  */
 export function DiagnosisRail({ visitId }: DiagnosisRailProps) {
-  const [search, setSearch] = useState('');
   const [removing, setRemoving] = useState<Diagnosis | null>(null);
   const { data: diagnoses, isLoading, error } = useDiagnoses(visitId);
-  const { data: catalogResults } = useDiagnosisCatalogSearch(search, 'SUMMARIZE');
   const addDiagnosis = useAddDiagnosis(visitId);
   const setPriority = useSetDiagnosisPriority(visitId);
 
@@ -49,14 +47,11 @@ export function DiagnosisRail({ visitId }: DiagnosisRailProps) {
   const report = (err: unknown, fallback: string) =>
     message.error(err instanceof ApiError ? err.message : fallback);
 
-  const add = async (value: string, option?: { entryId?: string }) => {
-    const typed = value.trim();
-    if (!typed) return;
-    const matched =
-      option?.entryId ?? catalogResults?.find((e) => e.name.toLowerCase() === typed.toLowerCase())?.id;
+  const add = async (value: string, entryId?: string) => {
     try {
-      await addDiagnosis.mutateAsync(matched ? { visitId, diagnosisCatalogId: matched } : { visitId, name: typed });
-      setSearch('');
+      await addDiagnosis.mutateAsync(
+        entryId ? { visitId, diagnosisCatalogId: entryId } : { visitId, name: value },
+      );
     } catch (err) {
       report(err, 'Failed to add diagnosis');
     }
@@ -94,26 +89,13 @@ export function DiagnosisRail({ visitId }: DiagnosisRailProps) {
         emptyText="No diagnosis recorded for this visit"
         previewLimit={4}
         addControl={
-          <Space.Compact style={{ width: '100%' }}>
-            <AutoComplete
-              style={{ width: '100%' }}
-              value={search}
-              onChange={setSearch}
-              onSelect={(value: string, option) => add(value, { entryId: (option as { entryId: string }).entryId })}
-              options={catalogResults?.map((entry) => ({
-                value: entry.name,
-                entryId: entry.id,
-                label: entry.icd10Code ? `${entry.icd10Code} — ${entry.name}` : entry.name,
-              }))}
-              placeholder="Search diagnosis or ICD-10…"
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && search.trim()) void add(search);
-              }}
-            />
-            <Button type="primary" loading={addDiagnosis.isPending} onClick={() => add(search)}>
-              Add
-            </Button>
-          </Space.Compact>
+          <DiagnosisSearchField
+            category="SUMMARIZE"
+            onAdd={add}
+            adding={addDiagnosis.isPending}
+            placeholder="Search diagnosis or ICD-10…"
+            compact
+          />
         }
         items={ordered.map((diagnosis) => (
           <div key={diagnosis.id} className="kw-rail-row">

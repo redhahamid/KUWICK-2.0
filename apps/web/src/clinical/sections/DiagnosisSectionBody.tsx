@@ -1,15 +1,15 @@
 import { useState } from 'react';
-import { AutoComplete, Button, Radio, Space, Tag, Tooltip, Typography, message } from 'antd';
+import { Button, Radio, Space, Tag, Tooltip, Typography, message } from 'antd';
 import { HistoryOutlined, StarFilled, StarOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
   useAddDiagnosis,
   useDiagnoses,
-  useDiagnosisCatalogSearch,
   useDiagnosisHistory,
   useSetDiagnosisPriority,
 } from '../hooks/useDiagnoses';
 import { Diagnosis, DiagnosisCategory } from '../types';
+import { DiagnosisSearchField } from './DiagnosisSearchField';
 import { RemoveDiagnosisModal } from './RemoveDiagnosisModal';
 import { ApiError } from '../../core/api-client';
 
@@ -60,10 +60,8 @@ interface DiagnosisSectionBodyProps {
 // set/clear priority and remove. There is no edit, because the API has no
 // update for a diagnosis's name or code.
 export function DiagnosisSectionBody({ visitId }: DiagnosisSectionBodyProps) {
-  const [search, setSearch] = useState('');
   const [category, setCategory] = useState<DiagnosisCategory>('SUMMARIZE');
   const { data: diagnoses, isLoading } = useDiagnoses(visitId);
-  const { data: catalogResults } = useDiagnosisCatalogSearch(search, category);
   const addDiagnosis = useAddDiagnosis(visitId);
   const setPriority = useSetDiagnosisPriority(visitId);
   const [removing, setRemoving] = useState<Diagnosis | null>(null);
@@ -76,17 +74,11 @@ export function DiagnosisSectionBody({ visitId }: DiagnosisSectionBodyProps) {
   const report = (error: unknown, fallback: string) =>
     message.error(error instanceof ApiError ? error.message : fallback);
 
-  const add = async (value: string, option?: { entryId?: string }) => {
-    const typed = value.trim();
-    if (!typed) return;
-    const matched =
-      option?.entryId ??
-      catalogResults?.find((entry) => entry.name.toLowerCase() === typed.toLowerCase())?.id;
+  const add = async (value: string, entryId?: string) => {
     try {
       await addDiagnosis.mutateAsync(
-        matched ? { visitId, diagnosisCatalogId: matched } : { visitId, name: typed },
+        entryId ? { visitId, diagnosisCatalogId: entryId } : { visitId, name: value },
       );
-      setSearch('');
     } catch (error) {
       report(error, 'Failed to add diagnosis');
     }
@@ -108,28 +100,12 @@ export function DiagnosisSectionBody({ visitId }: DiagnosisSectionBodyProps) {
           375px forces the whole page to scroll sideways (caught by the G2b
           check, which flags any horizontal scroller). */}
       <Space wrap style={{ width: '100%', marginBottom: 12 }} size={8}>
-        <AutoComplete
-          style={{ width: '100%', maxWidth: 420 }}
-          value={search}
-          onChange={setSearch}
-          onSelect={(value: string, option) => add(value, { entryId: (option as { entryId: string }).entryId })}
-          options={catalogResults?.map((entry) => ({
-            value: entry.name,
-            entryId: entry.id,
-            label: entry.icd10Code ? `${entry.icd10Code} — ${entry.name}` : entry.name,
-          }))}
-          placeholder="Search by diagnosis name or ICD-10 code..."
-          // Enter adds whatever is typed, so the whole flow is keyboard-only:
-          // type, arrow to a suggestion, Enter.
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && search.trim()) {
-              void add(search);
-            }
-          }}
+        <DiagnosisSearchField
+          category={category}
+          onAdd={add}
+          adding={addDiagnosis.isPending}
+          width="100%"
         />
-        <Button type="primary" loading={addDiagnosis.isPending} onClick={() => add(search)}>
-          Add
-        </Button>
         <Radio.Group
           size="small"
           value={category}
