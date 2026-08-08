@@ -105,20 +105,26 @@ export function AppLayout() {
           display: 'flex',
           alignItems: 'center',
           gap: 16,
-          padding: '0 24px',
           borderBottom: '1px solid #f0f0f0',
           height: 56,
           lineHeight: '56px',
         }}
+        className="kw-app-header"
       >
         <img src="/kuwick-logo.png" alt="Kuwick" style={{ height: 22, flexShrink: 0 }} />
 
         {inHub && (
           <>
-            <Link to="/appointments" style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-              <ArrowLeftOutlined /> Back
+            <Link
+              to="/appointments"
+              className="kw-app-header-back"
+              style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
+            >
+              <ArrowLeftOutlined /> <span className="kw-app-header-back-label">Back</span>
             </Link>
-            <Text strong style={{ flex: 1 }}>
+            {/* minWidth 0 so this truncates instead of pushing the user menu
+                off the right edge of a phone, where it was unreachable. */}
+            <Text strong style={{ flex: 1, minWidth: 0 }} ellipsis>
               {inSettings ? 'Clinic Settings' : 'Management'}
             </Text>
           </>
@@ -136,7 +142,10 @@ export function AppLayout() {
 
         <Space size={12} style={{ flexShrink: 0 }}>
           <NotificationBell unreadChatCount={unreadChat} onOpenChat={() => setChatOpen(true)} />
-          <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
+          {/* Hidden on a phone by CSS, not removed: the same name and clinic
+              are in the avatar's dropdown, and this block is what pushed the
+              avatar itself past the right edge where nobody could tap it. */}
+          <div className="kw-app-header-identity" style={{ textAlign: 'right', lineHeight: 1.2 }}>
             <div style={{ fontSize: 13, fontWeight: 500 }}>{staff?.fullName}</div>
             <Text type="secondary" style={{ fontSize: 12 }}>
               {tenant?.name}

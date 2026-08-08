@@ -91,15 +91,23 @@ async function overflowing(page: Page, viewportWidth: number): Promise<{ escapin
       if (r.width === 0 || r.height === 0) continue;
       if (r.right <= vw + 1 && r.left >= -1) continue;
 
-      // A wide element INSIDE something that scrolls sideways on purpose (an
-      // antd Table body, a Tabs nav strip) is not a page-level fault — the
-      // user can reach it and the page itself does not move. Only report an
-      // element that escapes every scroller between it and the page.
+      // A wide element inside something that SCROLLS sideways on purpose (an
+      // antd Table body) is reachable, so it is not a page-level fault.
+      //
+      // `overflow-x: hidden` is NOT that. It clips: the content is not merely
+      // awkward, it cannot be seen or tapped at all. Counting it as
+      // containment is how a header whose user menu sat 31px off the screen
+      // was first reported as passing. antd's own Tabs strip is the one
+      // exception — it is `hidden` plus arrow controls that scroll it.
       let contained = false;
       let node: Element | null = el;
       while (node && node !== document.body) {
         const st = getComputedStyle(node);
-        if (st.overflowX === 'auto' || st.overflowX === 'scroll' || st.overflowX === 'hidden') {
+        const reachable =
+          st.overflowX === 'auto' ||
+          st.overflowX === 'scroll' ||
+          (st.overflowX === 'hidden' && node.classList.contains('ant-tabs-nav-wrap'));
+        if (reachable) {
           const box = node.getBoundingClientRect();
           if (box.right <= vw + 1) {
             contained = true;

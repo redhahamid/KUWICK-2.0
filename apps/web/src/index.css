@@ -2562,3 +2562,35 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
     overflow-x: hidden;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   G4.5d6 — the app header on a phone.
+
+   Measured at 390px: the header demanded ~403px of a 342px content box, and
+   because the user block is `flex-shrink: 0` the overflow pushed it to
+   right=421 — 31px past the screen. The surrounding layout is
+   `overflow-x: hidden`, so it was not merely awkward, it was CLIPPED: the
+   avatar, the notification bell and the entire user menu could not be seen or
+   tapped at all. Nothing about that is cosmetic.
+   ------------------------------------------------------------------------ */
+.kw-app-header {
+  padding: 0 24px;
+}
+
+@media (max-width: 767px) {
+  .kw-app-header {
+    padding: 0 12px;
+    gap: 8px !important;
+  }
+
+  /* The name and the clinic are already in the avatar's dropdown. Showing
+     them twice cost the avatar its place on the screen. */
+  .kw-app-header-identity {
+    display: none;
+  }
+
+  /* The arrow alone reads as "back" and saves ~40px for the title. */
+  .kw-app-header-back-label {
+    display: none;
+  }
+}
