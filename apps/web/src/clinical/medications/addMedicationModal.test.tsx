@@ -27,11 +27,29 @@ vi.mock('../../core/api-client', () => ({
 }));
 
 const ITEMS = [
-  { id: 'item-1', name: 'Amoxicillin 500mg', code: 'AMX500', doseUnitDefault: 'capsule' },
+  {
+    id: 'item-1',
+    name: 'Amoxicillin 500mg',
+    code: 'AMX500',
+    doseUnitDefault: 'capsule',
+    // G4.5d6 — the master's own defaults, which the form now reads.
+    doseDefault: '1',
+    frequencyDefault: 'TDS',
+    durationDefault: '5 days',
+    defaultDispenseQuantity: 15,
+    indication: 'Bacterial infection',
+    instruction: 'Take after food',
+  },
   { id: 'item-2', name: 'Paracetamol 500mg', code: 'PCM500', doseUnitDefault: 'tablet' },
 ];
 
 const SERVICES = [{ id: 'svc-1', name: 'Wound dressing', orderType: 'TASK_ORDER' }];
+
+// Enough of item-1 for an ordinary prescription; the tests that need a
+// shortage override this.
+let STOCK: { itemId: string; quantityOnHand: number; minThreshold: number }[] = [
+  { itemId: 'item-1', quantityOnHand: 100, minThreshold: 0 },
+];
 
 function Harness({ children }: { children: ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -42,8 +60,11 @@ beforeEach(() => {
   get.mockReset();
   post.mockReset();
   message.destroy();
+  STOCK = [{ itemId: 'item-1', quantityOnHand: 100, minThreshold: 0 }];
   get.mockImplementation(async (url: string) => {
     if (url.startsWith('/items?')) return ITEMS;
+    if (url.startsWith('/stock/levels')) return STOCK;
+    if (url.includes('/age-dosages')) return [];
     if (url.startsWith('/items/')) return ITEMS.find((i) => url.endsWith(i.id));
     if (url.startsWith('/services')) return SERVICES;
     return [];
@@ -73,10 +94,16 @@ async function fillMinimum() {
 }
 
 describe('Add Medication modal', () => {
-  it('1. supply mode is pre-selected to clinic dispensing, visibly', async () => {
+  it('1. G4.5d6 — the doctor is NOT asked for a supply mode', async () => {
+    // Whether the patient collects here or buys elsewhere is a counter
+    // decision, settled at the dispensary where somebody can see the stock
+    // and take the money. Asked mid-consultation it became a field that was
+    // left on its default and stopped being read.
     openModal();
-    expect(await screen.findByText('Dispense from clinic')).toBeInTheDocument();
-    expect(screen.getByText(/Default — change this if/)).toBeInTheDocument();
+    await screen.findByLabelText('Search medicine');
+    expect(screen.queryByText('Dispense from clinic')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Default — change this if/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/supply mode/i)).not.toBeInTheDocument();
   });
 
   it('2. the submitted prescription carries ONSITE_DISPENSE explicitly', async () => {
@@ -140,6 +167,12 @@ describe('Add Medication modal', () => {
     await waitFor(() => expect(post).toHaveBeenCalled());
 
     // Nothing requested the note...
+    //
+    // G4.5d6 — this caught a real regression. Seeding the dosage calculator's
+    // weight from `useLatestVitals` looked harmless, but that hook falls back
+    // to a legacy note's frozen vitals columns, so the modal began fetching
+    // clinical notes. The calculator reads the observation record directly
+    // instead; on a pre-split visit the weight is simply typed.
     expect(get.mock.calls.every(([url]: any[]) => !String(url).includes('clinical-note'))).toBe(true);
     // ...and nothing invalidated it either.
     const keys = invalidate.mock.calls.flatMap((call: unknown[]) => {
@@ -278,5 +311,76 @@ describe('Diagnosis stays inline', () => {
     );
     await waitFor(() => expect(container.querySelector('.ant-select')).not.toBeNull());
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+describe('G4.5d6 — prescribing from the medication master', () => {
+  it('17. choosing a medicine fills the dose it is normally given at', async () => {
+    // Retyping dose, frequency, duration, pack size, indication and
+    // instruction for every amoxicillin is where prescribing time went.
+    openModal();
+    await chooseMedicine();
+    await waitFor(() => expect(screen.getByLabelText('Frequency')).toHaveValue('TDS'));
+    expect(screen.getByLabelText('Dose amount')).toHaveValue('1.0');
+    expect(screen.getByLabelText('Unit')).toHaveValue('capsule');
+    expect(screen.getByLabelText('Duration (days)')).toHaveValue('5');
+    expect(screen.getByLabelText('Quantity')).toHaveValue('15');
+  });
+
+  it('18. it SAYS it prefilled, so the doctor knows to check', async () => {
+    // A prefill nobody can see is a prefill nobody checks.
+    openModal();
+    await chooseMedicine();
+    expect(await screen.findByText(/filled from the medicine list/)).toBeInTheDocument();
+  });
+
+  it('19. a prefilled value is still the doctor’s to overrule', async () => {
+    openModal();
+    await chooseMedicine();
+    await waitFor(() => expect(screen.getByLabelText('Frequency')).toHaveValue('TDS'));
+    const frequency = screen.getByLabelText('Frequency');
+    await userEvent.clear(frequency);
+    await userEvent.type(frequency, 'BD');
+    expect(frequency).toHaveValue('BD');
+  });
+
+  it('20. stock on hand is shown while prescribing, not after', async () => {
+    openModal();
+    await chooseMedicine();
+    expect(await screen.findByText('100 in stock.')).toBeInTheDocument();
+  });
+
+  it('21. a shortage is named in numbers and does NOT block prescribing', async () => {
+    // A doctor may legitimately prescribe what the clinic is out of, for the
+    // patient to buy elsewhere. A system that refuses gets worked around.
+    STOCK = [{ itemId: 'item-1', quantityOnHand: 4, minThreshold: 0 }];
+    post.mockResolvedValue({ id: 'rx-1' });
+    openModal();
+    await chooseMedicine();
+    expect(await screen.findByText('Only 4 in stock — 15 prescribed.')).toBeInTheDocument();
+
+    const add = screen.getByRole('button', { name: 'Add Medication' });
+    expect(add).toBeEnabled();
+    await userEvent.click(add);
+    await waitFor(() => expect(post).toHaveBeenCalled());
+  });
+
+  it('22. the prescription still carries ONSITE_DISPENSE, though nobody was asked', async () => {
+    // Removing the question must not reintroduce a hidden database default.
+    post.mockResolvedValue({ id: 'rx-1' });
+    openModal();
+    await fillMinimum();
+    await userEvent.click(screen.getByRole('button', { name: 'Add Medication' }));
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    expect(post.mock.calls[0][1]).toMatchObject({ supplyMode: 'ONSITE_DISPENSE' });
+  });
+
+  it('23. how the dose was arrived at is recorded', async () => {
+    post.mockResolvedValue({ id: 'rx-1' });
+    openModal();
+    await fillMinimum();
+    await userEvent.click(screen.getByRole('button', { name: 'Add Medication' }));
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    expect(post.mock.calls[0][1]).toMatchObject({ calcMethod: 'MANUAL' });
   });
 });

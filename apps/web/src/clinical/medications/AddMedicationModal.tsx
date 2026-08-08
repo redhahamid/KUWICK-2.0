@@ -9,9 +9,15 @@ import {
 } from '../../design-system/kuwick';
 import { apiClient, ApiError } from '../../core/api-client';
 import { useCreatePrescription } from '../hooks/usePrescriptions';
-import { DEFAULT_SUPPLY_MODE, SUPPLY_MODE_OPTIONS } from '../medicationSupplyPresentation';
-import { CreatePrescriptionDto, PrescriptionSupplyMode } from '../types';
+import { useItemAgeDosages } from '../../inventory/hooks/useItemAgeDosages';
+import { useStockLevels } from '../../inventory/hooks/useStock';
+import { useLatestObservation } from '../hooks/useVisitObservations';
+import { useVisit } from '../hooks/useVisits';
+import { DEFAULT_SUPPLY_MODE } from '../medicationSupplyPresentation';
+import { CreatePrescriptionDto, DosageCalcMethod, PrescriptionSupplyMode } from '../types';
 import { Item } from '../../inventory/types';
+import { DosageCalculator } from './DosageCalculator';
+import { defaultsFromItem, stockAdvice } from './prescribing';
 
 const { Text } = Typography;
 
@@ -89,6 +95,33 @@ export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: A
   // it after Add & Add Another without remounting anything else.
   const [searchKey, setSearchKey] = useState(0);
   const searchWrapRef = useRef<HTMLDivElement>(null);
+  // The full item record, for the dosage calculator's concentration figures.
+  const [selectedItem, setSelectedItem] = useState<Item | undefined>();
+  const [prefilled, setPrefilled] = useState(false);
+  const [calcMethod, setCalcMethod] = useState<DosageCalcMethod>();
+  const { data: stockLevels } = useStockLevels();
+  const { data: ageBrackets } = useItemAgeDosages(form.itemId);
+  const { data: visit } = useVisit(visitId);
+  // C0 (D-051) — the calculator seeds from the ATTRIBUTED observation record.
+  //
+  // `useLatestObservation`, deliberately NOT `useLatestVitals`: the latter
+  // falls back to a legacy note's frozen vitals columns, which would make
+  // this modal fetch a clinical note. That is the one thing it must never do
+  // (C1/D-091), and a convenience fallback is not worth breaking it for. On a
+  // pre-split visit the weight is simply typed.
+  const { data: vitals } = useLatestObservation(visitId);
+  const patientAgeMonths = useMemo(() => {
+    const dob = visit?.patient?.dob;
+    if (!dob) return null;
+    const birth = new Date(dob);
+    const now = new Date();
+    return (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
+  }, [visit?.patient?.dob]);
+
+  const stock = useMemo(
+    () => stockAdvice(form.itemId, form.quantity, stockLevels),
+    [form.itemId, form.quantity, stockLevels],
+  );
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -98,6 +131,9 @@ export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: A
       setForm(EMPTY);
       setError(null);
       setLastAdded(null);
+      setSelectedItem(undefined);
+      setPrefilled(false);
+      setCalcMethod(undefined);
     }
   }, [open]);
 
@@ -125,14 +161,27 @@ export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: A
    */
   const applyItemDefaults = useCallback(async (itemId: string, label: string) => {
     setForm((current) => ({ ...current, itemId, itemLabel: label }));
+    setSelectedItem(undefined);
     try {
       const item = await apiClient.get<Item>(`/items/${itemId}`);
+      setSelectedItem(item);
+      // G4.5d6 — the master already knows the usual dose, frequency, duration,
+      // pack size, indication and patient instruction. Retyping all six for
+      // every amoxicillin is where prescribing time actually goes.
+      const defaults = defaultsFromItem(item);
       setForm((current) => ({
         ...current,
         itemId,
         itemLabel: label,
-        unit: item.doseUnitDefault ?? current.unit,
+        amount: defaults.amount ?? current.amount,
+        unit: defaults.unit ?? current.unit,
+        frequency: defaults.frequency ?? current.frequency,
+        durationDays: defaults.durationDays ?? current.durationDays,
+        quantity: defaults.quantity ?? current.quantity,
+        indication: defaults.indication ?? current.indication,
+        remark: defaults.remark ?? current.remark,
       }));
+      setPrefilled(Object.keys(defaults).length > 0);
     } catch {
       // A failed default lookup must not block prescribing — the doctor types
       // the dose either way.
@@ -173,7 +222,12 @@ export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: A
       durationDays: form.durationDays,
       indication: form.indication.trim() || undefined,
       remark: form.remark.trim() || undefined,
+      // Still submitted explicitly even though the doctor is no longer asked:
+      // there is no hidden database default to fall back on, and the
+      // dispensary changes it when the patient is not collecting here.
       supplyMode: form.supplyMode,
+      // Recorded so a dose can later be traced to how it was arrived at.
+      calcMethod: calcMethod ?? 'MANUAL',
     };
     try {
       await createPrescription.mutateAsync(dto);
@@ -265,6 +319,14 @@ export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: A
             emptyHint="Type at least one character to search the medicine list."
           />
         </div>
+        {/* A prefill the doctor cannot see is a prefill they cannot check.
+            Said plainly, once, rather than marking six fields individually. */}
+        {prefilled && (
+          <Text type="secondary" style={{ fontSize: 12 }} role="status" data-prefilled="true">
+            Dose, frequency and supply below were filled from the medicine list — check and change them for this
+            patient.
+          </Text>
+        )}
       </KuwickFormSection>
 
       <KuwickFormSection title="Dose">
@@ -307,6 +369,27 @@ export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: A
         </Row>
       </KuwickFormSection>
 
+      <KuwickFormSection
+        title="Dosage calculator"
+        hint="Optional — it fills the dose above, it never prescribes"
+      >
+        <DosageCalculator
+          item={selectedItem}
+          ageBrackets={ageBrackets}
+          patientAgeMonths={patientAgeMonths}
+          recordedWeightKg={vitals?.weight ? Number(vitals.weight) : null}
+          onApply={(dose) => {
+            setForm((current) => ({
+              ...current,
+              amount: dose.amount,
+              unit: dose.unit,
+              frequency: dose.frequency ?? current.frequency,
+            }));
+            setCalcMethod(dose.method);
+          }}
+        />
+      </KuwickFormSection>
+
       <KuwickFormSection title="Supply">
         <Row gutter={[12, 8]}>
           <Col xs={12} md={6}>
@@ -333,24 +416,37 @@ export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: A
               onChange={(value) => set('quantity', value ?? 1)}
             />
           </Col>
+          {/* G4.5d6 — SUPPLY MODE IS GONE FROM THE DOCTOR'S FORM.
+              It is a counter decision, not a clinical one: whether the patient
+              collects here or buys elsewhere is settled at the dispensary,
+              where somebody can actually see the stock and take the money.
+              Asking a doctor mid-consultation produced a field that was left
+              on its default and stopped being read. It still submits
+              ONSITE_DISPENSE explicitly — the dispensary changes it — so
+              nothing is left to a hidden database default. */}
           <Col xs={24} md={12}>
-            <label htmlFor="kw-med-supply">
-              <Text type="secondary" style={{ fontSize: 12 }}>Supply mode</Text>
-            </label>
-            <Select
-              id="kw-med-supply"
-              style={{ width: '100%' }}
-              value={form.supplyMode}
-              onChange={(value) => set('supplyMode', value)}
-              options={SUPPLY_MODE_OPTIONS}
-            />
-            {/* The default says that it IS one. A pre-selected value that reads
-                as a deliberate choice is a field people stop checking. */}
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {form.supplyMode === DEFAULT_SUPPLY_MODE
-                ? 'Default — change this if the patient is not collecting from the clinic.'
-                : 'Changed from the clinic default.'}
-            </Text>
+            {stock.message && (
+              <Alert
+                type={
+                  stock.position === 'NONE' || stock.position === 'INSUFFICIENT'
+                    ? 'warning'
+                    : stock.position === 'UNKNOWN'
+                      ? 'info'
+                      : 'success'
+                }
+                showIcon
+                style={{ marginTop: 18 }}
+                message={stock.message}
+                // Advisory, never blocking. A doctor may legitimately
+                // prescribe something the clinic is out of, and a system that
+                // refuses is a system that gets worked around.
+                description={
+                  stock.position === 'NONE' || stock.position === 'INSUFFICIENT'
+                    ? 'You can still prescribe this — the dispensary will resolve supply.'
+                    : undefined
+                }
+              />
+            )}
           </Col>
         </Row>
       </KuwickFormSection>

@@ -173,7 +173,32 @@ async function main() {
   }
 
   // --- 3. Catalogue: medicines with deliberate stock positions ------------
+  //
+  // G4.5d6 — PCM125S is the syrup the dosage calculator needs.
+  //
+  // Without a medicine carrying concVolMl and strengthMg there is nothing on
+  // staging to test the weight-based calculation against, and the paediatric
+  // path — the one the calculator exists for — could only be reviewed by
+  // reading the code. 125mg per 5ml is the standard paediatric paracetamol
+  // suspension.
   const MEDICINES = [
+    {
+      code: 'PCM125S',
+      name: 'Paracetamol 125mg/5ml Suspension',
+      unit: 'ml',
+      price: 8.5,
+      strength: 125,
+      concVolMl: 5,
+      onHand: 30,
+      min: 6,
+      reference: '10-15MG/KG PER DOSE',
+      // Age brackets, so the age-based path is testable too.
+      brackets: [
+        { ageFromMonths: 0, ageToMonths: 11, amount: '2.5', unit: 'ml', frequency: 'QID PRN' },
+        { ageFromMonths: 12, ageToMonths: 35, amount: '5', unit: 'ml', frequency: 'QID PRN' },
+        { ageFromMonths: 36, ageToMonths: 71, amount: '7.5', unit: 'ml', frequency: 'QID PRN' },
+      ],
+    },
     { code: 'PCM500', name: 'Paracetamol 500mg', unit: 'tablet', price: 0.3, strength: 500, onHand: 480, min: 50 },
     { code: 'AMX500', name: 'Amoxicillin 500mg', unit: 'capsule', price: 0.8, strength: 500, onHand: 240, min: 40 },
     // LOW: on hand is above zero but at/below the reorder threshold.
@@ -202,10 +227,23 @@ async function main() {
             frequencyDefault: 'TDS',
             durationDefault: '5',
             strengthMg: med.strength ?? undefined,
+            concVolMl: med.concVolMl ?? undefined,
+            prescriptionReference: med.reference ?? undefined,
             sellPrice: med.price,
             active: true,
           },
         }));
+      // Age brackets are part of the medicine's definition, not stock.
+      for (const bracket of med.brackets ?? []) {
+        const already = await tx.itemAgeDosage.findFirst({
+          where: { itemId: item.id, ageFromMonths: bracket.ageFromMonths },
+        });
+        if (!already) {
+          await tx.itemAgeDosage.create({
+            data: { tenantId: TENANT_ID, itemId: item.id, ...bracket },
+          });
+        }
+      }
       await tx.stockLevel.upsert({
         where: { tenantId_clinicId_itemId: { tenantId: TENANT_ID, clinicId, itemId: item.id } },
         create: { tenantId: TENANT_ID, clinicId, itemId: item.id, quantityOnHand: med.onHand, minThreshold: med.min },
