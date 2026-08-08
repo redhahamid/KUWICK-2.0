@@ -4,8 +4,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useCreateSupplier, useSuppliers } from './hooks/useSuppliers';
 import { CreateSupplierDto } from './types';
 import { ApiError } from '../core/api-client';
-
-const { Title } = Typography;
+import { PageHeader } from '../design-system/components/PageHeader';
 
 export function SuppliersPage() {
   const { data: suppliers, isLoading } = useSuppliers();
@@ -26,14 +25,16 @@ export function SuppliersPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Suppliers
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+      <PageHeader
+        title="Suppliers"
+        extra={
+          <>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
           Add Supplier
         </Button>
-      </Space>
+          </>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading}

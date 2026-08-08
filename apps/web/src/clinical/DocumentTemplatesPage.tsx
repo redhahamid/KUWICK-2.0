@@ -10,8 +10,9 @@ import {
 import { CustomDocumentTemplate } from './types';
 import { TemplateContentEditor } from './TemplateContentEditor';
 import { ApiError } from '../core/api-client';
+import { PageHeader } from '../design-system/components/PageHeader';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 // Document builder (D-040) — Management > Operation > Document Templates:
 // the clinic's own template catalog (platform defaults deployed at tenant
@@ -56,19 +57,15 @@ export function DocumentTemplatesPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <div>
-          <Title level={4} style={{ margin: 0 }}>
-            Document Templates
-          </Title>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            Active templates appear as document types in the patient dashboard&apos;s Documents tab.
-          </Text>
-        </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor(null)}>
-          Add Template
-        </Button>
-      </Space>
+      <PageHeader
+        title="Document Templates"
+        subtitle="Active templates appear as document types in the patient dashboard's Documents tab."
+        extra={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor(null)}>
+            Add Template
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading}

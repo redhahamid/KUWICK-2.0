@@ -8,8 +8,7 @@ import { useStaff } from '../hr/hooks/useStaff';
 import { useServices } from '../clinical/hooks/useServices';
 import { CreateSlotCapacityConfigDto } from './types';
 import { ApiError } from '../core/api-client';
-
-const { Title } = Typography;
+import { PageHeader } from '../design-system/components/PageHeader';
 
 export function SlotCapacityConfigsPage() {
   const { data: configs, isLoading } = useSlotCapacityConfigs();
@@ -38,14 +37,16 @@ export function SlotCapacityConfigsPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Slot Capacity Configs
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+      <PageHeader
+        title="Slot Capacity Configs"
+        extra={
+          <>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
           Add Config
         </Button>
-      </Space>
+          </>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading}

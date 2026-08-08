@@ -2451,3 +2451,114 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
     min-height: 52px;
   }
 }
+
+/* ===========================================================================
+   G4.5d6 — THE PAGE HEADER, AND WHY IT IS ITS OWN LAYOUT
+   ---------------------------------------------------------------------------
+   UAT on an iPhone: "page titles wrap vertically". They did — one letter per
+   line. Every list page opened with an antd `Space` in `space-between`, which
+   is `inline-flex` with `flex-wrap: nowrap` and items that do not shrink
+   evenly. The buttons held their intrinsic width, the heading absorbed the
+   entire deficit, and "Appointments" was laid out in a 22px column.
+
+   The rule below is that the TITLE wins and the ACTIONS move: the heading
+   asks for a real minimum, so once the actions cannot fit beside it they wrap
+   onto their own row. On a desktop there is room for both and nothing about
+   the composition changes.
+   ========================================================================= */
+.kw-page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.kw-page-header-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* 200px, not 0: this is what forces the actions onto a second row rather
+     than letting them squeeze the heading into a column of letters. */
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.kw-page-title {
+  /* Break long words at the boundary rather than pushing the page sideways,
+     but only ever as a last resort — the flex-basis above means it rarely
+     comes to this. */
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+.kw-page-header-subtitle {
+  flex: 1 1 100%;
+  order: 3;
+  font-size: 12px;
+  color: var(--kw-text-secondary, #6b7280);
+}
+
+.kw-page-header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+@media (max-width: 575px) {
+  /* On a phone the actions get the full row and lay themselves out left to
+     right, instead of hugging a right edge that is only a few pixels away. */
+  .kw-page-header-actions {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+
+  .kw-page-header-actions .ant-btn,
+  .kw-page-header-actions .ant-select,
+  .kw-page-header-actions .ant-picker {
+    /* 44px is the touch target the rest of the mobile work already uses. */
+    min-height: 44px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Wide tables on a narrow screen.
+
+   A desktop table is not made usable by squashing it — the columns become
+   unreadable and the numbers wrap. It is made usable by letting it scroll
+   INSIDE ITS OWN BOX, so the page never moves sideways and the header, the
+   filters and the navigation all stay where the thumb expects them.
+   ------------------------------------------------------------------------ */
+@media (max-width: 991px) {
+  .ant-table-wrapper {
+    max-width: 100%;
+  }
+
+  .ant-table-wrapper .ant-table-content,
+  .ant-table-wrapper .ant-table-body {
+    overflow-x: auto;
+    /* Momentum scrolling, and a scrollbar the user can actually see. */
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Without this the table shrink-wraps to the container and reintroduces the
+     squashing this rule exists to prevent. */
+  .ant-table-wrapper .ant-table-content > table,
+  .ant-table-wrapper .ant-table-body > table {
+    min-width: max-content;
+  }
+}
+
+/* The page itself must never scroll sideways. If something still overflows,
+   it is a bug to fix — this stops it dragging the whole layout with it. */
+@media (max-width: 991px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+}

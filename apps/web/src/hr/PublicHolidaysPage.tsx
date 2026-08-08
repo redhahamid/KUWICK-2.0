@@ -5,8 +5,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import { useCreatePublicHoliday, useDeletePublicHoliday, usePublicHolidays } from './hooks/usePublicHolidays';
 import { CreatePublicHolidayDto, PublicHoliday } from './types';
 import { ApiError } from '../core/api-client';
-
-const { Title } = Typography;
+import { PageHeader } from '../design-system/components/PageHeader';
 
 interface HolidayFormValues {
   date: Dayjs;
@@ -36,14 +35,16 @@ export function PublicHolidaysPage() {
 
   return (
     <div style={{ paddingTop: 24, paddingBottom: 24 }}>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Public Holidays
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+      <PageHeader
+        title="Public Holidays"
+        extra={
+          <>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
           Add Holiday
         </Button>
-      </Space>
+          </>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading}

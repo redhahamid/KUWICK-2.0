@@ -4,8 +4,9 @@ import { SoundOutlined } from '@ant-design/icons';
 import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { useQueueDisplayConfig, useUpdateQueueDisplayConfig } from './hooks/useQueueTickets';
 import { ApiError } from '../core/api-client';
+import { PageHeader } from '../design-system/components/PageHeader';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface DisplaySettingsFormValues {
   youtubeUrl?: string;
@@ -77,11 +78,11 @@ export function QueueDisplaySettingsPage() {
 
   return (
     <div style={{ maxWidth: 680 }}>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Queue Screen Settings
-        </Title>
-        {showSelector && (
+      <PageHeader
+        title="Queue Screen Settings"
+        extra={
+          <>
+            {showSelector && (
           <Select
             placeholder="Select clinic"
             style={{ width: 220 }}
@@ -90,7 +91,9 @@ export function QueueDisplaySettingsPage() {
             options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
           />
         )}
-      </Space>
+          </>
+        }
+      />
       {!clinicId ? (
         <Text type="secondary">Select a clinic to configure its waiting-room screen.</Text>
       ) : (

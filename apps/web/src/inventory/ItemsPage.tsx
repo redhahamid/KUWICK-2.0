@@ -18,8 +18,9 @@ import { useCreateItem, useItems, useUpdateItem } from './hooks/useItems';
 import { useCreateItemAgeDosage, useItemAgeDosages, useRemoveItemAgeDosage } from './hooks/useItemAgeDosages';
 import { CreateItemAgeDosageDto, CreateItemDto, Item } from './types';
 import { ApiError } from '../core/api-client';
+import { PageHeader } from '../design-system/components/PageHeader';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 // Field layout mirrors the audited kuwick.com Edit Inventory screen
 // exactly (docs/DECISIONS.md D-027/D-028): Code/Ref, Product Name,
@@ -86,14 +87,16 @@ export function ItemsPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Items
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+      <PageHeader
+        title="Items"
+        extra={
+          <>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
           Add Item
         </Button>
-      </Space>
+          </>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading}

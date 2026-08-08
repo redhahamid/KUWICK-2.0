@@ -7,8 +7,7 @@ import { useClinics } from '../core/hooks/useClinics';
 import { useDefaultClinicId } from '../core/hooks/useClinicFilter';
 import { CreateStaffDto, Staff, UpdateStaffDto } from './types';
 import { ApiError } from '../core/api-client';
-
-const { Title } = Typography;
+import { PageHeader } from '../design-system/components/PageHeader';
 
 const ROLE_OPTIONS = Object.values(Role).map((role) => ({ value: role, label: role }));
 
@@ -61,14 +60,16 @@ export function StaffPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Staff
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+      <PageHeader
+        title="Staff"
+        extra={
+          <>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
           Add Staff
         </Button>
-      </Space>
+          </>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading}

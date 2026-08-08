@@ -8,8 +8,7 @@ import { CreatePatientDto, Patient } from './types';
 import { ApiError } from './api-client';
 import { parseNric } from './nric';
 import { AddToQueueDrawer } from '../clinical/AddToQueueDrawer';
-
-const { Title } = Typography;
+import { PageHeader } from '../design-system/components/PageHeader';
 
 interface PatientFormValues extends Omit<CreatePatientDto, 'dob'> {
   dob?: dayjs.Dayjs;
@@ -77,23 +76,25 @@ export function PatientsPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }} wrap>
-        <Title level={4} style={{ margin: 0 }}>
-          Patients
-        </Title>
-        <Space>
-          <Input.Search
-            allowClear
-            placeholder="Search by name, NRIC, or phone"
-            style={{ width: 280 }}
-            loading={isSearching}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-            Add Patient
-          </Button>
-        </Space>
-      </Space>
+      <PageHeader
+        title="Patients"
+        extra={
+          <>
+            {/* maxWidth, not width: a fixed 280px box beside a button
+                overflowed a 390px phone before the row could wrap. */}
+            <Input.Search
+              allowClear
+              placeholder="Search by name, NRIC, or phone"
+              style={{ width: '100%', maxWidth: 280 }}
+              loading={isSearching}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+              Add Patient
+            </Button>
+          </>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading || isSearching}

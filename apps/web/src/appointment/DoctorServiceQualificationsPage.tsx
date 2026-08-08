@@ -6,8 +6,7 @@ import { useStaff } from '../hr/hooks/useStaff';
 import { useServices } from '../clinical/hooks/useServices';
 import { CreateDoctorServiceQualificationDto } from './types';
 import { ApiError } from '../core/api-client';
-
-const { Title } = Typography;
+import { PageHeader } from '../design-system/components/PageHeader';
 
 export function DoctorServiceQualificationsPage() {
   const { data: qualifications, isLoading } = useDoctorServiceQualifications();
@@ -33,14 +32,16 @@ export function DoctorServiceQualificationsPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Doctor-Service Mapping
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+      <PageHeader
+        title="Doctor-Service Mapping"
+        extra={
+          <>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
           Add Qualification
         </Button>
-      </Space>
+          </>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading}

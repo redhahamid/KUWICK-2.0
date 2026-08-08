@@ -10,8 +10,9 @@ import {
 } from './hooks/useDiagnoses';
 import { CreateCustomDiagnosisDto, DiagnosisCatalogEntry, DiagnosisCategory } from './types';
 import { ApiError } from '../core/api-client';
+import { PageHeader } from '../design-system/components/PageHeader';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const CATEGORY_COLOR: Record<DiagnosisCategory, string> = {
   CUSTOM: 'purple',
@@ -54,17 +55,15 @@ export function DiagnosesDirectoryPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <div>
-          <Title level={4} style={{ margin: 0 }}>
-            Diagnoses Directory
-          </Title>
-          <Text type="secondary">Manage your clinic's diagnoses. You can create custom ones or activate global standard catalogs.</Text>
-        </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-          Add Custom Diagnosis
-        </Button>
-      </Space>
+      <PageHeader
+        title="Diagnoses Directory"
+        subtitle="Manage your clinic's diagnoses. You can create custom ones or activate global standard catalogs."
+        extra={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+            Add Custom Diagnosis
+          </Button>
+        }
+      />
 
       <Text strong>Bulk Activate Global Categories</Text>
       <Row gutter={16} style={{ marginTop: 8, marginBottom: 16 }}>

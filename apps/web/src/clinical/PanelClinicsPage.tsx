@@ -5,8 +5,7 @@ import { useCreatePanelClinic, usePanelClinics, useUpdatePanelClinic } from './h
 import { PanelPricingDrawer } from './PanelPricingDrawer';
 import { CreatePanelClinicDto, PanelClinic } from './types';
 import { ApiError } from '../core/api-client';
-
-const { Title } = Typography;
+import { PageHeader } from '../design-system/components/PageHeader';
 
 // D-041 — per-panel claim fee display ("8%" / "RM 5.00" / "—").
 export function formatClaimFee(panel: PanelClinic): string {
@@ -75,14 +74,16 @@ export function PanelClinicsPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Panel Companies
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+      <PageHeader
+        title="Panel Companies"
+        extra={
+          <>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
           Add Panel
         </Button>
-      </Space>
+          </>
+        }
+      />
 
       <Table
         rowKey="id"
