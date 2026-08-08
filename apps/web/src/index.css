@@ -476,14 +476,18 @@ body.kw-note-focus .kw-editor-min .ProseMirror {
   margin-top: 12px;
 }
 
-/* One context band. Wraps rather than growing a second toolbar. */
+/* One context band. Wraps rather than growing a second toolbar.
+
+   G4.5d6 — the vertical padding is 4px, not 8. Every pixel above the note on
+   a 900px screen is a pixel the doctor does not get to write in, and this
+   band holds chips whose own line-height already gives them room. */
 .kw-context-band {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--kw-s2) var(--kw-s4);
-  padding: var(--kw-s2) var(--kw-s4);
-  margin-bottom: var(--kw-s2);
+  gap: 4px var(--kw-s4);
+  padding: 4px var(--kw-s4);
+  margin-bottom: 4px;
   background: var(--kw-card);
   border: 1px solid var(--kw-border);
   border-radius: 8px;
@@ -528,8 +532,15 @@ body.kw-note-focus .kw-editor-min .ProseMirror {
 /* D-077 — on a wide desktop the snapshot and the completion bar share ONE
    strip, the way the approved mockup composes them. Two stacked bands cost
    ~50px of the first screen for information that reads perfectly well side by
-   side. Below 1500px they stack again rather than squeezing. */
-@media (min-width: 1500px) {
+   side.
+
+   G4.5d6 — the threshold was 1500px, which is the one width a clinic desktop
+   is least likely to be. Measured on the actual Canvas at 1440x900 and 100%
+   zoom: 532px was spent before the doctor could type, and 50px of that was
+   these two bands stacking for want of 60px of width. 1360px is the real
+   floor — below it the snapshot's own content starts to wrap, and stacking
+   is then the honest answer rather than squeezing. */
+@media (min-width: 1360px) {
   .kw-visit-band {
     display: flex;
     align-items: stretch;
