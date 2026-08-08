@@ -437,6 +437,146 @@ describe('Legacy notes are permanently read-only (C0 closure)', () => {
   });
 });
 
+// ===========================================================================
+// G4.5d6 — AUTOMATIC FINALIZATION KEEPS THE MEDICOLEGAL GUARANTEES
+//
+// The doctor no longer presses Sign; completing the visit finalizes the open
+// draft instead. The record is only as trustworthy as what that leaves
+// behind, so these tests hold the finalized note to exactly the standard the
+// manually signed one was held to: immutable content, correction only by
+// amendment, and no correction at all by someone who may not sign.
+// ===========================================================================
+describe('Auto-finalized notes (G4.5d6)', () => {
+  const FINALIZED_AT = new Date('2026-08-08T04:30:00Z');
+
+  /** A note as `finalizeVisitDocumentation` leaves it at Complete Visit. */
+  function seedAutoFinalized(h: Harness, notes = '<p>URTI, symptomatic treatment.</p>') {
+    const id = 'auto-final-1';
+    h.db.notes.set(id, {
+      id,
+      tenantId: TENANT,
+      clinicId: CLINIC,
+      visitId: 'visit-1',
+      notes,
+      noteLanguage: 'EN',
+      noteType: 'DOCTOR_NARRATIVE',
+      status: 'SIGNED',
+      entryType: 'STANDARD',
+      version: 2,
+      authorStaffId: 'staff-doctor',
+      authorNameSnapshot: 'Dr Faizal Hakim',
+      authorRoleSnapshot: 'DOCTOR_RESIDENT',
+      legacyAuthorUnknown: false,
+      // The signature is the AUTHOR's — completion does not transfer
+      // authorship to whoever happened to close the visit.
+      signedAt: FINALIZED_AT,
+      signedByStaffId: 'staff-doctor',
+      signerNameSnapshot: 'Dr Faizal Hakim',
+      signerRoleSnapshot: 'DOCTOR_RESIDENT',
+      finalizedAt: FINALIZED_AT,
+      finalizedByStaffId: 'staff-assistant',
+      finalizationMode: 'AUTO_ON_VISIT_COMPLETION',
+      createdAt: new Date('2026-08-08T03:55:00Z'),
+    });
+    return id;
+  }
+
+  it('is immutable — a direct edit is refused and the content stays byte-for-byte', async () => {
+    const doctor = staff();
+    const h = createHarness([doctor]);
+    const original = '<p>URTI, symptomatic treatment.</p>';
+    const id = seedAutoFinalized(h, original);
+
+    await expect(
+      as(doctor, () => h.notes.update(id, { notes: 'Tampered', expectedVersion: 2 })),
+    ).rejects.toThrow(ConflictException);
+
+    const after = h.db.notes.get(id)!;
+    expect(after.notes).toBe(original);
+    expect(after.version).toBe(2);
+  });
+
+  it('can only be corrected by amendment, which records reason, actor and time', async () => {
+    const doctor = staff();
+    const h = createHarness([doctor]);
+    const original = '<p>URTI, symptomatic treatment.</p>';
+    const id = seedAutoFinalized(h, original);
+
+    const amendment = await as(doctor, () =>
+      h.notes.amend(id, {
+        amendmentReason: 'Allergy history omitted at the time of consultation',
+        notes: '<p>URTI. Penicillin allergy noted.</p>',
+      }),
+    );
+
+    expect(amendment.entryType).toBe('AMENDMENT');
+    expect(amendment.supersedesNoteId).toBe(id);
+    expect(amendment.amendmentReason).toBe('Allergy history omitted at the time of consultation');
+    expect(amendment.authorStaffId).toBe('staff-doctor');
+    // The finalized original is untouched, including how it was finalized.
+    const after = h.db.notes.get(id)!;
+    expect(after.notes).toBe(original);
+    expect(after.status).toBe('SIGNED');
+    expect(after.finalizationMode).toBe('AUTO_ON_VISIT_COMPLETION');
+    expect(after.finalizedAt).toBe(FINALIZED_AT);
+    expect(after.signedByStaffId).toBe('staff-doctor');
+    // The correction is attributable in the append-only revision trail.
+    const revision = h.db.noteRevisions.at(-1)!;
+    expect(revision.editedByStaffId).toBe('staff-doctor');
+    expect(revision.reason).toBe('Allergy history omitted at the time of consultation');
+  });
+
+  it('refuses an amendment by someone who may not sign a clinical note', async () => {
+    // Removing the Sign button removed a ceremony, not an authorisation.
+    const h = createHarness([FRONT_DESK, UNVERIFIED_DOCTOR]);
+    const id = seedAutoFinalized(h);
+
+    await expect(
+      as(FRONT_DESK, () => h.notes.amend(id, { amendmentReason: 'Correcting the record' })),
+    ).rejects.toThrow(ForbiddenException);
+    await expect(
+      as(UNVERIFIED_DOCTOR, () => h.notes.amend(id, { amendmentReason: 'Correcting the record' })),
+    ).rejects.toThrow(ForbiddenException);
+
+    // Neither attempt left anything behind.
+    expect(h.db.notes.size).toBe(1);
+    expect(h.db.noteRevisions).toHaveLength(0);
+  });
+
+  it('refuses an amendment with no stated reason', async () => {
+    const doctor = staff();
+    const h = createHarness([doctor]);
+    const id = seedAutoFinalized(h);
+
+    await expect(as(doctor, () => h.notes.amend(id, { amendmentReason: '   ' }))).rejects.toThrow();
+    expect(h.db.notes.size).toBe(1);
+  });
+
+  it('leaves a historic MANUALLY signed note exactly as it was', async () => {
+    // Notes signed before G4.5d6 carry no finalization columns. They must
+    // stay that way — the migration backfills nothing, and the new code path
+    // never rewrites them.
+    const doctor = staff();
+    const h = createHarness([doctor]);
+    const note = await as(doctor, () => h.notes.create('visit-1', { notes: 'Signed by hand in July' }));
+    await as(doctor, () => h.notes.sign(note.id, { expectedVersion: 1 }));
+
+    const signed = h.db.notes.get(note.id)!;
+    expect(signed.status).toBe('SIGNED');
+    expect(signed.finalizationMode).toBeUndefined();
+    expect(signed.finalizedAt).toBeUndefined();
+
+    // It remains amendable on the same terms as before.
+    const amendment = await as(doctor, () =>
+      h.notes.amend(note.id, { amendmentReason: 'Typo in the dose', notes: 'Corrected' }),
+    );
+    expect(amendment.supersedesNoteId).toBe(note.id);
+    const after = h.db.notes.get(note.id)!;
+    expect(after.notes).toBe('Signed by hand in July');
+    expect(after.finalizationMode).toBeUndefined();
+  });
+});
+
 describe('Branch access — fail closed (C0/D-051)', () => {
   it('denies a doctor with no home branch in a multi-branch tenant', async () => {
     const roaming = staff({ id: 'staff-roaming', clinicId: null });

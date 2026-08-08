@@ -508,16 +508,17 @@ async function evaluateDoctorPhase(
   // those are reasons for a patient with a prescription in hand to sit in the
   // consultation room waiting for prose.
   //
-  // What is NOT relaxed: the requirement itself. The note must still be
-  // written and signed, and the VISIT cannot be closed until it is — the
-  // requirement moved to `VisitCompletionService`, where it holds paperwork
-  // rather than a person. Nothing here auto-saves, auto-signs, or writes a
-  // word of clinical narrative on anyone's behalf; the draft in the editor is
-  // untouched by completion.
+  // What is NOT relaxed: the requirement itself. G4.5d6 moved the moment the
+  // note becomes immutable to Complete Visit, where `VisitCompletionService`
+  // finalizes the open draft under its author's identity. So documentation is
+  // never a gate on a person here OR there — but it is still written, still
+  // attributed, and still locked. Nothing in this file auto-saves or signs
+  // anything; the draft in the editor is untouched by doctor completion.
   //
-  // The state is reported so the doctor can be asked to confirm it and so it
-  // can be recorded against them, with a time. Sending a patient on before
-  // documenting is a real clinical decision, not an accident to be hidden.
+  // The state is still reported so the doctor can be asked to confirm it and
+  // so it can be recorded against them, with a time. Sending a patient on
+  // with the note unfinished is a real clinical decision, not an accident to
+  // be hidden.
   const documentationPending = await isDocumentationPending(tx, visitId);
 
   // A procedure still running is the strongest blocker there is: the doctor is

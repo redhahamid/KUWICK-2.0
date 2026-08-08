@@ -1094,9 +1094,12 @@ export type DoctorRoutingReason =
 
 // G4.5d3c-3c — SIGNED_NOTE_REQUIRED is gone from this list, deliberately.
 // An unsigned clinical note no longer blocks doctor-phase routing; it is
-// reported as `documentationPending` instead, and the requirement to sign is
-// enforced at visit completion (CLINICAL_DOCUMENTATION_PENDING) where it holds
-// paperwork rather than a patient.
+// reported as `documentationPending` instead.
+//
+// G4.5d6 — and it no longer blocks visit completion either. The note is
+// finalized automatically, under its author's identity, at the moment the
+// visit closes; `documentationPending` is now a statement of fact for the
+// counter, not an outstanding task for anybody.
 export type DoctorPhaseBlockerCode =
   | 'QUEUE_STATE_INELIGIBLE'
   | 'PROCEDURE_PENDING'

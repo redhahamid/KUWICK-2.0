@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  ClinicalNoteStatus,
   InvoiceStatus,
   OrderServiceStatus,
   PrescriptionStatus,
@@ -14,7 +15,6 @@ import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { ClinicalTx, assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
 import { collectBillingWorklist, tariffReviewItems, unbilledReadyItems } from './billing-worklist';
-import { isDocumentationPending } from './clinical-documentation';
 import { CompleteVisitDto } from './dto/complete-visit.dto';
 
 /**
@@ -25,7 +25,9 @@ import { CompleteVisitDto } from './dto/complete-visit.dto';
  */
 export type VisitCompletionBlockerCode =
   | 'DOCTOR_PHASE_NOT_COMPLETED'
-  | 'CLINICAL_DOCUMENTATION_PENDING'
+  // G4.5d6 — CLINICAL_DOCUMENTATION_PENDING is gone. Completion finalizes the
+  // open note rather than waiting for it, so there is no state in which the
+  // system asks anyone to go and sign before a visit can close.
   | 'PROCEDURE_PENDING'
   | 'MEDICATION_SUPPLY_UNCONFIRMED'
   | 'MEDICATION_SUPPLY_DEFERRED'
@@ -51,8 +53,6 @@ export interface VisitCompletionResult {
 
 const MESSAGES: Record<VisitCompletionBlockerCode, string> = {
   DOCTOR_PHASE_NOT_COMPLETED: 'The doctor consultation phase has not been completed.',
-  // G4.5d3c-3c — the note-signature requirement, in its new home.
-  CLINICAL_DOCUMENTATION_PENDING: 'The clinical note has not been signed yet.',
   PROCEDURE_PENDING: 'A procedure is still pending or in progress.',
   MEDICATION_SUPPLY_UNCONFIRMED: 'Medication supply mode must be confirmed.',
   MEDICATION_SUPPLY_DEFERRED: 'Deferred medication supply must be resolved.',
@@ -197,6 +197,12 @@ export class VisitCompletionService {
         });
       }
 
+      // G4.5d6 — the documentation is finalized HERE, inside the same
+      // transaction that closed the visit. Either both happened or neither
+      // did; a completed visit with a still-editable note is exactly the gap
+      // that would make this change a weakening rather than a relocation.
+      const finalized = await finalizeVisitDocumentation(tx, visitId, actor, checkOutAt);
+
       await tx.visitWorkflowEvent.create({
         data: {
           tenantId: currentTenantId(),
@@ -211,6 +217,7 @@ export class VisitCompletionService {
           actorRoleSnapshot: actor.role,
           reason: dto.note?.trim() || null,
           correlationId: dto.correlationId ?? null,
+          metadata: finalized.length > 0 ? { finalizedNoteIds: finalized } : undefined,
         },
       });
 
@@ -244,6 +251,69 @@ function assertMayCompleteVisit(actor: Staff): void {
  * whether a visit may close is exactly how a screen ends up offering a button
  * the server will refuse.
  */
+/**
+ * G4.5d6 — lock this visit's open clinical documentation, immutably.
+ *
+ * Runs inside the completion transaction. Every DRAFT clinical note on the
+ * visit becomes SIGNED and gains a finalization stamp, after which the note
+ * service refuses to edit it and the only route to a change is an Amendment
+ * carrying a reason and an actor.
+ *
+ * WHOSE NOTE IT REMAINS. The signer snapshots are the AUTHOR's, not the
+ * completer's: the words are the clinician's and attributing them to whoever
+ * happened to close the visit at the counter would be a falsification. Who
+ * finalized it is recorded separately, in `finalizedByStaffId`, alongside the
+ * mode — so the record can always say "the doctor wrote this, the system
+ * locked it when the front desk closed the visit", which is the truth.
+ *
+ * A note with no author cannot be finalized this way and is left as a DRAFT:
+ * the signature-state constraint requires a full signer identity, and
+ * inventing one to satisfy it would be the same falsification by another
+ * route. Those are surfaced as unattributed drafts rather than silently
+ * closed.
+ */
+async function finalizeVisitDocumentation(
+  tx: ClinicalTx,
+  visitId: string,
+  actor: Staff,
+  finalizedAt: Date,
+): Promise<string[]> {
+  const drafts = await tx.clinicalNote.findMany({
+    where: { visitId, status: ClinicalNoteStatus.DRAFT },
+    select: {
+      id: true,
+      authorStaffId: true,
+      authorNameSnapshot: true,
+      authorRoleSnapshot: true,
+    },
+  });
+
+  const finalizedIds: string[] = [];
+  for (const draft of drafts) {
+    if (!draft.authorStaffId || !draft.authorNameSnapshot || !draft.authorRoleSnapshot) {
+      // Cannot be finalized honestly — see the note above.
+      continue;
+    }
+    // Atomic claim on the note too: a concurrent amendment or a second
+    // completion cannot finalize the same draft twice.
+    const claim = await tx.clinicalNote.updateMany({
+      where: { id: draft.id, status: ClinicalNoteStatus.DRAFT },
+      data: {
+        status: ClinicalNoteStatus.SIGNED,
+        signedAt: finalizedAt,
+        signedByStaffId: draft.authorStaffId,
+        signerNameSnapshot: draft.authorNameSnapshot,
+        signerRoleSnapshot: draft.authorRoleSnapshot,
+        finalizedAt,
+        finalizedByStaffId: actor.id,
+        finalizationMode: 'AUTO_ON_VISIT_COMPLETION',
+      },
+    });
+    if (claim.count === 1) finalizedIds.push(draft.id);
+  }
+  return finalizedIds;
+}
+
 export async function collectBlockers(
   tx: ClinicalTx,
   visitId: string,
@@ -271,16 +341,19 @@ export async function collectBlockers(
   // as soon as their clinical work is done, and the visit stays operationally
   // open until the record is complete.
   //
-  // This is not a relaxation. A visit could never close without a signed note
-  // before, and it still cannot — the same rule, applied at the point where
-  // enforcing it costs nobody's time in a waiting room. Clinical authorship
-  // (C0/D-051) is untouched: nothing auto-signs, and only the author can sign.
+  // G4.5d6 — DOCUMENTATION NO LONGER BLOCKS COMPLETION.
   //
-  // Uses the doctor-completion service's definition rather than a second
-  // count, so "documentation pending" means one thing across the system.
-  if (await isDocumentationPending(tx, visitId)) {
-    add('CLINICAL_DOCUMENTATION_PENDING');
-  }
+  // It used to. The effect in a clinic running 100-200 patients a day was that
+  // a paid-up patient stood at the counter while somebody went to find a
+  // doctor to press "Sign" — a queue defect dressed as a clinical control,
+  // and one that encouraged end-of-session batch signing from memory, which
+  // is worse documentation than what it was protecting.
+  //
+  // The record is protected better, not less: the note is finalized
+  // automatically and immutably by `finalizeVisitDocumentation` below at the
+  // moment the visit closes, carrying its author, its created timestamp and
+  // its finalized timestamp, after which it can only change through an
+  // Amendment with a reason and an actor. Nothing is lost except the waiting.
 
   const openProcedures = await tx.orderService.count({
     where: { visitId, status: { in: [OrderServiceStatus.PENDING, OrderServiceStatus.IN_PROGRESS] } },

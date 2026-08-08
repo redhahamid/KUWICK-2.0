@@ -607,16 +607,25 @@ describe('Case D — completed, documentation still pending', () => {
       ...over,
     });
 
-  it('60. the completed bar carries the amber outstanding-note panel', async () => {
+  it('60. an in-progress note is a QUIET status line, not an amber panel', async () => {
+    // G4.5d6 — the note is no longer an outstanding task: it autosaves and is
+    // finalized automatically at visit completion. A full-width alert for a
+    // condition nobody has to act on dominated the Canvas for no reason.
     get.mockResolvedValue(
       done({ documentationPending: true, documentationPendingAtCompletion: true }),
     );
     renderFooter();
-    expect(await screen.findByText('Documentation pending')).toBeInTheDocument();
+    const line = await screen.findByText(/Clinical note in progress/);
+    expect(line).toBeInTheDocument();
+    expect(line).toHaveAttribute('data-documentation-pending', 'true');
+    // No alert, and nothing telling the doctor to go and sign.
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText(/not been signed/i)).not.toBeInTheDocument();
   });
 
-  it('61. it names who sent the patient on, and when', async () => {
+  it('61. it still names who sent the patient on', async () => {
+    // Quieter is not anonymous. The medicolegal attribution survives the
+    // change from an amber panel to a status line.
     get.mockResolvedValue(
       done({
         documentationPending: true,
@@ -626,7 +635,7 @@ describe('Case D — completed, documentation still pending', () => {
       }),
     );
     renderFooter();
-    expect(await screen.findByText(/Sent on by Dr Amira Rahman/)).toBeInTheDocument();
+    expect(await screen.findByText(/sent on by/)).toBeInTheDocument();
   });
 
   it('62. signing afterwards removes the outstanding-note panel', async () => {

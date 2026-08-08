@@ -214,30 +214,25 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
               the note is STILL unsigned. Amber, not red: nothing went wrong,
               and something is outstanding. It names the doctor and the time
               from the recorded workflow event rather than re-deriving them. */}
+          {/* G4.5d6 — a QUIET line, not a banner.
+              The note is no longer something the doctor must go back and
+              sign: it autosaves while the visit is open and is finalized
+              automatically when the visit is completed. So this stopped being
+              an outstanding task and became a status, and it is sized like
+              one. The full-width amber Alert that used to sit here dominated
+              the Canvas for a condition nobody had to act on. */}
           {view.documentationPending && (
-            <Alert
-              type="warning"
-              showIcon
+            <Text
+              type="secondary"
               role="status"
-              style={{ marginTop: 'var(--kw-s2)' }}
-              message={DOCUMENTATION_PENDING_TITLE}
-              description={
-                <>
-                  <div>{DOCUMENTATION_PENDING_BODY}</div>
-                  {stored.documentationPendingActorName && stored.documentationPendingAt && (
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      Sent on by {stored.documentationPendingActorName} ·{' '}
-                      {formatClinicDateTime(stored.documentationPendingAt)}
-                    </Text>
-                  )}
-                </>
-              }
-              action={
-                <Button size="small" onClick={() => onReview(DOCUMENTATION_PENDING_ACTION.anchor)}>
-                  {DOCUMENTATION_PENDING_ACTION.label}
-                </Button>
-              }
-            />
+              style={{ fontSize: 12, marginTop: 'var(--kw-s2)', display: 'block' }}
+              data-documentation-pending="true"
+            >
+              Clinical note in progress — saved automatically, finalized when the visit is completed
+              {stored.documentationPendingActorName && stored.documentationPendingAt
+                ? ` · sent on by ${stored.documentationPendingActorName}`
+                : ''}
+            </Text>
           )}
         </div>
       </section>

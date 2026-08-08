@@ -39,6 +39,8 @@ interface World {
   claimCount?: number;
   /** D-094 — active consultation tariff rules ([] = the feature is off). */
   tariffRules?: Array<Record<string, unknown>>;
+  /** G4.5d6 — DRAFT notes on the visit, which completion finalizes. */
+  draftNotes?: Array<Record<string, unknown>>;
   /**
    * G4.5d3c-3c — how many SIGNED doctor narratives the visit has. The default
    * is 1, i.e. documentation complete: the note-signature requirement moved
@@ -61,8 +63,20 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
     claimCount = 1,
     tariffRules = [],
     signedNotes = 1,
+    // G4.5d6 — open drafts the completion transaction should finalize. The
+    // default is one properly attributed draft, because that is the ordinary
+    // visit now: the doctor wrote the note and never pressed anything.
+    draftNotes = [
+      {
+        id: 'note-1',
+        authorStaffId: 'staff-doc',
+        authorNameSnapshot: 'Dr Amira Rahman',
+        authorRoleSnapshot: 'DOCTOR_RESIDENT',
+      },
+    ],
   } = world;
 
+  const finalizedNotes: Array<Record<string, any>> = [];
   const tx = {
     $executeRaw: jest.fn(),
     staff: { findUnique: jest.fn(async ({ where }: any) => (actor && where.id === actor.id ? actor : null)) },
@@ -113,7 +127,19 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
     // configured (the default) = consultation auto-billing off for the clinic.
     consultationTariffRule: { findMany: jest.fn(async () => tariffRules) },
     // G4.5d3c-3c — the clinical documentation check.
-    clinicalNote: { count: jest.fn().mockResolvedValue(signedNotes) },
+    // G4.5d6 — completion now FINALIZES the visit's open drafts inside the
+    // same transaction, so the harness has to model them. `finalizedNotes`
+    // records what the service locked, which is what the new tests assert on.
+    clinicalNote: {
+      count: jest.fn().mockResolvedValue(signedNotes),
+      findMany: jest.fn(async () => draftNotes),
+      updateMany: jest.fn(async ({ where, data }: any) => {
+        const draft = draftNotes.find((n: any) => n.id === where.id);
+        if (!draft) return { count: 0 };
+        finalizedNotes.push({ id: where.id, ...data });
+        return { count: 1 };
+      }),
+    },
     visitWorkflowEvent: { create: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) },
   };
 
@@ -121,6 +147,8 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
   return {
     service: new VisitCompletionService({} as unknown as TenantScopedPrismaClient, rawPrisma),
     tx,
+    /** What completion actually locked, for the finalization assertions. */
+    finalizedNotes,
     actorId: (actor?.id as string) ?? undefined,
   };
 }
@@ -166,57 +194,73 @@ describe('authorisation', () => {
 });
 
 describe('preconditions', () => {
-  // G4.5d3c-3c — the note-signature requirement, in its new home.
+  // G4.5d6 — DOCUMENTATION NO LONGER BLOCKS. It is finalized instead.
   //
-  // It used to refuse DOCTOR-PHASE completion, which held a patient in the
-  // consultation room until the prose was finished. It refuses VISIT
-  // completion now: same rule, applied where enforcing it costs nobody's time
-  // in a waiting room. A visit could never close without a signed note
-  // before, and it still cannot.
-  it('3c-1. an unsigned clinical note blocks visit completion', async () => {
+  // The five tests these replace pinned the opposite rule, and they were
+  // right for the workflow that existed: a visit could not close without a
+  // signed note. What changed is not the standard of the record but where it
+  // is enforced — the note is now locked automatically, immutably and with
+  // full attribution at the moment the visit closes, so nothing is unwritten
+  // and nobody waits at a counter for a doctor to press a button.
+
+  it('3c-1. an unsigned clinical note does NOT block visit completion', async () => {
     const ctx = build(FRONT_DESK, { signedNotes: 0 });
-    expect(await codes(ctx)).toContain('CLINICAL_DOCUMENTATION_PENDING');
+    await expect(run(ctx)).resolves.toMatchObject({ alreadyCompleted: false });
+    expect(await codes(build(FRONT_DESK, { signedNotes: 0 }))).not.toContain(
+      'CLINICAL_DOCUMENTATION_PENDING',
+    );
   });
 
-  it('3c-2. a signed clinical note does not block', async () => {
-    const ctx = build(FRONT_DESK, { signedNotes: 1 });
-    expect(await codes(ctx)).not.toContain('CLINICAL_DOCUMENTATION_PENDING');
-  });
-
-  it('3c-3. the refusal is enforced on the WRITE, not only in the preview', async () => {
+  it('3c-2. completion FINALIZES the open draft, in the same transaction', async () => {
     const ctx = build(FRONT_DESK, { signedNotes: 0 });
-    await expect(run(ctx)).rejects.toThrow();
-    expect(ctx.tx.visit.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('3c-4. no role can complete a visit whose note is unsigned', async () => {
-    // No override exists, and none is invented here. Clinical authorship is
-    // the author's and cannot be waived by a counter permission.
-    for (const actor of [FRONT_DESK, FINANCE, OWNER]) {
-      const ctx = build(actor, { signedNotes: 0 });
-      await expect(run(ctx)).rejects.toThrow();
-      expect(ctx.tx.visit.updateMany).not.toHaveBeenCalled();
-    }
-  });
-
-  it('3c-5. only a SIGNED doctor narrative counts', async () => {
-    // The query must not accept a staff remark or an unsigned draft as the
-    // clinical record.
-    const ctx = build(FRONT_DESK, { signedNotes: 0 });
-    await codes(ctx);
-    const where = ctx.tx.clinicalNote.count.mock.calls[0][0].where;
-    expect(where).toMatchObject({
-      noteType: 'DOCTOR_NARRATIVE',
+    await run(ctx);
+    expect(ctx.finalizedNotes).toHaveLength(1);
+    expect(ctx.finalizedNotes[0]).toMatchObject({
+      id: 'note-1',
       status: 'SIGNED',
-      signedAt: { not: null },
+      finalizationMode: 'AUTO_ON_VISIT_COMPLETION',
+    });
+    expect(ctx.finalizedNotes[0].finalizedAt).toBeInstanceOf(Date);
+  });
+
+  it('3c-3. the finalized note keeps its AUTHOR, and records who closed the visit', async () => {
+    // The words are the clinician's. Attributing them to whoever happened to
+    // close the visit at the counter would be a falsification; who finalized
+    // it is recorded separately.
+    const ctx = build(FRONT_DESK, { signedNotes: 0 });
+    await run(ctx);
+    expect(ctx.finalizedNotes[0]).toMatchObject({
+      signedByStaffId: 'staff-doc',
+      signerNameSnapshot: 'Dr Amira Rahman',
+      signerRoleSnapshot: 'DOCTOR_RESIDENT',
+      finalizedByStaffId: FRONT_DESK.id,
     });
   });
 
-  it('3c-6. completing a visit never signs a note on anyone\'s behalf', async () => {
-    const ctx = build(FRONT_DESK, { signedNotes: 1 });
+  it('3c-4. an unattributed draft is left alone rather than signed by nobody', async () => {
+    // The signature-state constraint needs a full identity. Inventing one to
+    // satisfy it would be the same falsification by another route.
+    const ctx = build(FRONT_DESK, {
+      signedNotes: 0,
+      draftNotes: [{ id: 'note-orphan', authorStaffId: null, authorNameSnapshot: null, authorRoleSnapshot: null }],
+    });
+    await expect(run(ctx)).resolves.toMatchObject({ alreadyCompleted: false });
+    expect(ctx.finalizedNotes).toHaveLength(0);
+  });
+
+  it('3c-5. finalization is an atomic claim — a draft cannot be finalized twice', async () => {
+    const ctx = build(FRONT_DESK, { signedNotes: 0 });
     await run(ctx);
-    expect((ctx.tx.clinicalNote as Record<string, unknown>).update).toBeUndefined();
-    expect((ctx.tx.clinicalNote as Record<string, unknown>).create).toBeUndefined();
+    const claim = ctx.tx.clinicalNote.updateMany.mock.calls[0][0];
+    // The precondition is in the WHERE clause, exactly like every other
+    // claim in this service.
+    expect(claim.where).toMatchObject({ id: 'note-1', status: 'DRAFT' });
+  });
+
+  it('3c-6. a visit with no open draft completes and finalizes nothing', async () => {
+    const ctx = build(FRONT_DESK, { draftNotes: [] });
+    await expect(run(ctx)).resolves.toMatchObject({ alreadyCompleted: false });
+    expect(ctx.finalizedNotes).toHaveLength(0);
   });
 
   it('19. an incomplete doctor phase blocks', async () => {

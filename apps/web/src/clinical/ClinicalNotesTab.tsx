@@ -31,6 +31,7 @@ import {
   useSignClinicalNote,
   useUpdateClinicalNote,
 } from './hooks/useClinicalNote';
+import { autosaveLabel, useAutosave } from './hooks/useAutosave';
 import { useBeforeUnloadGuard } from './hooks/useUnsavedGuard';
 import { RichTextEditor } from './RichTextEditor';
 import { VisitAttachmentsPanel } from './VisitAttachmentsPanel';
@@ -347,6 +348,18 @@ export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: Clin
   const isLocked = isSigned || isLegacy;
   const readOnly = isLocked || (!canWriteNarrative && draftType === 'DOCTOR_NARRATIVE' && !isNewDraft);
 
+  // G4.5d6 — the note writes itself after the doctor stops typing. `handleSave`
+  // is reused rather than duplicated so autosave and the manual button cannot
+  // drift into two different save semantics.
+  const autosave = useAutosave({
+    value: content,
+    dirty,
+    enabled: !readOnly,
+    onSave: async () => {
+      await handleSaveRef.current();
+    },
+  });
+
   // One shared confirmation path for every action that would replace what is
   // in the editor, so two dialogs can never stack on one click.
   const confirmDiscard = useCallback(
@@ -400,6 +413,10 @@ export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: Clin
     });
   };
 
+  // Held in a ref so the autosave timer always calls the CURRENT closure and
+  // never a stale one holding last minute's note text.
+  const handleSaveRef = useRef<() => Promise<void>>(async () => {});
+
   const handleSave = async () => {
     setSaveStatus({ kind: 'saving' });
     const attempted = content;
@@ -443,17 +460,29 @@ export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: Clin
     }
   };
 
-  const handleSign = async () => {
+  handleSaveRef.current = handleSave;
+
+  /**
+   * G4.5d6 — the ONE place a signature is still pressed by hand.
+   *
+   * A consultation note is finalized by completing the visit. An amendment is
+   * usually written after that has already happened, so nothing downstream
+   * will ever lock it — and an amendment that stays an editable draft forever
+   * is exactly the mutable clinical record the original signing rules exist
+   * to prevent. Correcting a closed record is a deliberate act, not routine
+   * documentation, so it keeps a deliberate confirmation.
+   */
+  const handleFinalizeAmendment = async () => {
     if (!activeNote) return;
     if (dirty) {
-      message.warning('Save your changes before signing.');
+      message.warning('Save your correction before finalizing it.');
       return;
     }
     try {
       await signNote.mutateAsync({ id: activeNote.id, dto: { expectedVersion: activeNote.version } });
-      message.success('Note signed');
+      message.success('Amendment finalized — it can no longer be edited');
     } catch (error) {
-      message.error(error instanceof ApiError ? error.message : 'Failed to sign note');
+      message.error(error instanceof ApiError ? error.message : 'Failed to finalize amendment');
     }
   };
 
@@ -740,9 +769,37 @@ export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: Clin
         >
           Save Clinical Note
         </Button>
-        {activeNote && !isLocked && activeNote.noteType === 'DOCTOR_NARRATIVE' && (
-          <Button icon={<SafetyCertificateOutlined />} loading={signNote.isPending} onClick={handleSign}>
-            Sign
+        {/* Subtle by design: the doctor needs reassurance, not a banner. */}
+        {autosaveLabel(autosave.status) && (
+          <Text
+            type={autosave.status.state === 'FAILED' ? 'danger' : 'secondary'}
+            style={{ fontSize: 12 }}
+            role="status"
+            data-autosave-state={autosave.status.state}
+          >
+            {autosaveLabel(autosave.status)}
+            {autosave.status.state === 'FAILED' && (
+              <Button type="link" size="small" onClick={() => void autosave.retry()}>
+                Retry
+              </Button>
+            )}
+          </Text>
+        )}
+        {/* G4.5d6 — no manual Sign on a consultation note. It autosaves while
+            the visit is open and is finalized automatically, immutably and
+            with full attribution when the visit is completed. The button this
+            replaced was pressed in end-of-session batches from memory, or
+            held a paid-up patient at the counter while somebody fetched a
+            doctor. An AMENDMENT is the exception: it is normally written
+            after the visit has already closed, so nothing downstream would
+            ever lock it. */}
+        {activeNote && !isLocked && activeNote.entryType === 'AMENDMENT' && (
+          <Button
+            icon={<SafetyCertificateOutlined />}
+            loading={signNote.isPending}
+            onClick={handleFinalizeAmendment}
+          >
+            Finalize Amendment
           </Button>
         )}
         {isLocked && (

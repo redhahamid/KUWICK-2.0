@@ -538,6 +538,7 @@ model Staff {
   leaveRequestsApproved        LeaveRequest[]               @relation("LeaveRequestApprovedBy")
   clinicalNotesAuthored        ClinicalNote[]               @relation("ClinicalNoteAuthor")
   clinicalNotesSigned          ClinicalNote[]               @relation("ClinicalNoteSigner")
+  clinicalNotesFinalized       ClinicalNote[]               @relation("ClinicalNoteFinalizer")
   observationsRecorded         VisitObservation[]           @relation("ObservationRecorder")
   observationsUpdated          VisitObservation[]           @relation("ObservationUpdater")
   diagnosesRecorded            Diagnosis[]                  @relation("DiagnosisRecorder")
@@ -1812,6 +1813,13 @@ model ClinicalNote {
   authorRoleSnapshot        String? @map("author_role_snapshot")
   authorDesignationSnapshot String? @map("author_designation_snapshot")
 
+  // G4.5d6 — finalization is a distinct act from a hand signature. Historic
+  // manually-signed notes leave these null, which is exactly what identifies
+  // them as manually signed.
+  finalizedAt        DateTime? @map("finalized_at")
+  finalizedByStaffId String?   @map("finalized_by_staff_id")
+  finalizationMode   String?   @map("finalization_mode")
+
   signedByStaffId           String?   @map("signed_by_staff_id")
   signerNameSnapshot        String?   @map("signer_name_snapshot")
   signerRoleSnapshot        String?   @map("signer_role_snapshot")
@@ -1838,6 +1846,7 @@ model ClinicalNote {
   visit      Visit                  @relation(fields: [visitId], references: [id])
   author     Staff?                 @relation("ClinicalNoteAuthor", fields: [authorStaffId], references: [id])
   signedBy   Staff?                 @relation("ClinicalNoteSigner", fields: [signedByStaffId], references: [id])
+  finalizedBy Staff?                @relation("ClinicalNoteFinalizer", fields: [finalizedByStaffId], references: [id])
   supersedes ClinicalNote?          @relation("ClinicalNoteAmendment", fields: [supersedesNoteId], references: [id])
   amendments ClinicalNote[]         @relation("ClinicalNoteAmendment")
   revisions  ClinicalNoteRevision[]
