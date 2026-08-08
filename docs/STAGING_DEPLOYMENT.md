@@ -17,6 +17,32 @@ commit is CORS becoming configurable, and it is a no-op when unconfigured.
 | Postgres | Railway plugin | — | — |
 | Volume | mounted on `kuwick-api` | — | — |
 
+### The build command must never install (G4.5-STAGING-1)
+
+Railpack runs its own **install phase** and mounts a build cache at
+`/app/node_modules/.cache`. `npm ci` deletes `node_modules` wholesale before
+reinstalling, so a `npm ci` inside `buildCommand` tries to `rmdir` an active
+mount point and the build dies with:
+
+```
+npm ERR! code EBUSY
+npm ERR! syscall rmdir
+npm ERR! path /app/node_modules/.cache
+```
+
+Both `buildCommand`s therefore **build only** — they never install. Railpack's
+install phase is the single install. If you ever need to pin that install
+explicitly, do it as a service variable rather than in the build command:
+
+```
+RAILPACK_INSTALL_CMD=npm ci --cache /tmp/npm-cache --prefer-offline
+```
+
+Keeping the npm cache at `/tmp/npm-cache` keeps it clear of `node_modules`
+entirely. This is deliberately **not** committed as a repo-level `.npmrc`: that
+would force the same absolute path on every developer machine, and `/tmp` does
+not exist on Windows.
+
 ### Why not serve the SPA from the API
 
 It was evaluated and rejected on evidence, not preference. Three API controller
@@ -73,6 +99,11 @@ reference each other, so the second deploy of each is the one that sticks.
 ### 4. Migrate and seed
 
 Migrations run automatically: `start:prod` is `prisma migrate deploy && node dist/main`.
+
+`prisma` is a **runtime** dependency of `apps/api` for exactly this reason — it
+is executed at container start, not only at build time, so it must survive any
+production dependency pruning. Likewise `tsx` is a root devDependency because
+`seed:staging` invokes it by name.
 
 Seed once, from your machine, never from the service environment:
 
