@@ -61,17 +61,40 @@
 }
 
 /* Navy is the product's primary action colour. antd's default blue is left
-   for nothing in this workspace. */
-.kw-canvas-shell .ant-btn-primary,
-.kw-completion-bar .ant-btn-primary,
-.kw-last-visit .ant-btn-primary {
+   for nothing in this workspace.
+
+   `:not(.ant-btn-background-ghost)` matters: a GHOST primary keeps its text in
+   the primary colour and expects a transparent background. Filling it navy
+   anyway put navy text on a navy fill, and the "Create MC" button rendered as
+   a solid unlabelled rectangle at every width — found in the Canvas Phase 1
+   screenshots, invisible in review until something was drawn next to it. */
+.kw-canvas-shell .ant-btn-primary:not(.ant-btn-background-ghost),
+.kw-completion-bar .ant-btn-primary:not(.ant-btn-background-ghost),
+.kw-last-visit .ant-btn-primary:not(.ant-btn-background-ghost) {
   background: var(--kw-navy);
   border-color: var(--kw-navy);
 }
 
-.kw-canvas-shell .ant-btn-primary:not(:disabled):hover,
-.kw-completion-bar .ant-btn-primary:not(:disabled):hover,
-.kw-last-visit .ant-btn-primary:not(:disabled):hover {
+/* A ghost primary is an OUTLINE: navy text, navy border, no fill. */
+.kw-canvas-shell .ant-btn-primary.ant-btn-background-ghost,
+.kw-completion-bar .ant-btn-primary.ant-btn-background-ghost,
+.kw-last-visit .ant-btn-primary.ant-btn-background-ghost {
+  background: transparent;
+  border-color: var(--kw-navy);
+  color: var(--kw-navy);
+}
+
+.kw-canvas-shell .ant-btn-primary.ant-btn-background-ghost:not(:disabled):hover,
+.kw-completion-bar .ant-btn-primary.ant-btn-background-ghost:not(:disabled):hover,
+.kw-last-visit .ant-btn-primary.ant-btn-background-ghost:not(:disabled):hover {
+  background: var(--kw-navy) !important;
+  border-color: var(--kw-navy) !important;
+  color: #fff !important;
+}
+
+.kw-canvas-shell .ant-btn-primary:not(.ant-btn-background-ghost):not(:disabled):hover,
+.kw-completion-bar .ant-btn-primary:not(.ant-btn-background-ghost):not(:disabled):hover,
+.kw-last-visit .ant-btn-primary:not(.ant-btn-background-ghost):not(:disabled):hover {
   background: var(--kw-navy-hover) !important;
   border-color: var(--kw-navy-hover) !important;
 }

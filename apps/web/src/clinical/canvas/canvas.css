@@ -1,0 +1,260 @@
+/* ===========================================================================
+   KUWICK 2.0 CANVAS — "Compact Pro" tokens
+   ---------------------------------------------------------------------------
+   Scoped to `.kw-canvas2`, deliberately, and NOT merged into the global
+   palette.
+
+   The approved spec gives a different palette from the one this product
+   ships: navy #171E4E and accent #2557E8 against the shipped #184a6b navy and
+   #0f766e clinical teal. Applying those globally would repaint Flow, the
+   Queue, Billing, Management and Settings in one commit — every surface the
+   brief says not to break — and none of that was reviewed. So the new palette
+   lives here, on the Canvas only, and adopting it product-wide stays a
+   separate decision with its own review.
+
+   TYPE SIZES ARE THE ONE DELIBERATE DEVIATION. The spec asks for 9.5–11px
+   body and 7.5–8px micro-labels. An approved earlier decision (D-072) put a
+   12px floor under clinical text, and 8px is below what a GP reads reliably
+   at the end of a session. The compact feel here comes from spacing and
+   density instead: micro-labels sit at 10px uppercase with letter-spacing,
+   which reads as a caption without pretending to be body text, and anything
+   carrying a clinical VALUE stays at 12px or above. Both floors are single
+   tokens — raise or lower them in one place.
+   ========================================================================= */
+.kw-canvas2 {
+  /* --- Brand ------------------------------------------------------------ */
+  --kw2-navy: #171e4e;
+  --kw2-navy-d: #101632;
+  --kw2-blue: #2557e8;
+  --kw2-blue-l: #4d7cff;
+
+  /* --- Surfaces --------------------------------------------------------- */
+  --kw2-bg: #f2f3f6;
+  --kw2-surface: #ffffff;
+  --kw2-border: #e2e4ec;
+  --kw2-input: #f5f6f9;
+  --kw2-soft: #e7ebf8;
+
+  /* --- Text ------------------------------------------------------------- */
+  --kw2-text: #12142a;
+  --kw2-muted: #6e7288;
+
+  /* --- Status (pair: background / foreground) --------------------------- */
+  --kw2-ok-bg: #e8f6ee;
+  --kw2-ok-fg: #1e7a4b;
+  --kw2-warn-bg: #fff6e6;
+  --kw2-warn-border: #f0dcac;
+  --kw2-warn-fg: #8a6510;
+
+  /* --- Geometry --------------------------------------------------------- */
+  --kw2-radius-card: 10px;
+  --kw2-radius-row: 7px;
+  --kw2-gap: 14px;
+  --kw2-pad: 12px;
+  --kw2-shadow: 0 3px 7px rgba(11, 27, 42, 0.05);
+
+  /* --- Type ------------------------------------------------------------- */
+  --kw2-font: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+  --kw2-title: 13.5px;
+  /* The two floors described above. */
+  --kw2-body: 12px;
+  --kw2-micro: 10px;
+
+  font-family: var(--kw2-font);
+  color: var(--kw2-text);
+  font-size: var(--kw2-body);
+}
+
+/* ---------------------------------------------------------------------------
+   The three columns.
+
+   Widths are set inline from `canvasWidths()` so the geometry is computed in
+   one tested place rather than being spread across media queries that drift
+   from it. This file owns flow, spacing and scroll behaviour only.
+   ------------------------------------------------------------------------ */
+.kw-canvas2-shell {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--kw2-gap);
+  width: 100%;
+}
+
+.kw-canvas2-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw2-gap);
+}
+
+/* The visits rail is reference material and runs full height beside the work;
+   it scrolls on its own so a long history never pushes the note down. */
+.kw-canvas2-visits {
+  flex: 0 0 auto;
+  align-self: stretch;
+}
+
+.kw-canvas2-middle {
+  flex: 1 1 auto;
+}
+
+.kw-canvas2-right {
+  flex: 0 0 auto;
+}
+
+/* Two-column: the visits rail folds away first — history is reference, the
+   note is work. */
+.kw-canvas2-shell[data-mode='two-column'] .kw-canvas2-visits {
+  display: none;
+}
+
+/* Stacked (tablet/phone): clinical reading order, one column, nothing
+   collapsed. Every panel stays open at every width — the rule the existing
+   Canvas already follows. */
+.kw-canvas2-shell[data-mode='stacked'] {
+  flex-direction: column;
+}
+
+.kw-canvas2-shell[data-mode='stacked'] .kw-canvas2-col {
+  width: 100% !important;
+  flex: 1 1 auto;
+}
+
+/* History moves BELOW the work when stacked: on a phone the first thing on
+   screen should be this consultation, not the last one. */
+.kw-canvas2-shell[data-mode='stacked'] .kw-canvas2-visits {
+  order: 3;
+}
+
+.kw-canvas2-shell[data-mode='stacked'] .kw-canvas2-middle {
+  order: 1;
+}
+
+.kw-canvas2-shell[data-mode='stacked'] .kw-canvas2-right {
+  order: 2;
+}
+
+/* ---------------------------------------------------------------------------
+   Card and label primitives.
+   ------------------------------------------------------------------------ */
+.kw-canvas2 .kw2-card {
+  background: var(--kw2-surface);
+  border: 1px solid var(--kw2-border);
+  border-radius: var(--kw2-radius-card);
+  box-shadow: var(--kw2-shadow);
+  padding: var(--kw2-pad);
+}
+
+.kw-canvas2 .kw2-card-title {
+  font-size: var(--kw2-title);
+  font-weight: 600;
+  color: var(--kw2-text);
+  margin: 0;
+}
+
+/* Section captions — "VITALS", "DOSE", "ORDERED THIS VISIT". Uppercase and
+   letter-spaced so they read as labels at 10px rather than as small text. */
+.kw-canvas2 .kw2-micro {
+  font-size: var(--kw2-micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--kw2-muted);
+}
+
+.kw-canvas2 .kw2-muted {
+  color: var(--kw2-muted);
+}
+
+/* An empty column must say what belongs there. A blank panel reads as a
+   broken screen; a sentence reads as a state. */
+.kw-canvas2 .kw2-empty {
+  border: 1px dashed var(--kw2-border);
+  border-radius: var(--kw2-radius-card);
+  padding: 16px 12px;
+  text-align: center;
+  color: var(--kw2-muted);
+  font-size: var(--kw2-body);
+  background: var(--kw2-input);
+}
+
+/* ---------------------------------------------------------------------------
+   Visits rail (spec p.2). Today's visit is navy and inert — the doctor is
+   already in it. Past visits are quiet cards that read at a glance.
+   ------------------------------------------------------------------------ */
+.kw-canvas2 .kw2-visits {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kw-canvas2 .kw2-visits-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.kw-canvas2 .kw2-visit-today {
+  background: var(--kw2-navy);
+  color: #fff;
+  border-radius: var(--kw2-radius-card);
+  padding: 10px var(--kw2-pad);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kw-canvas2 .kw2-visit-today .kw2-micro {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.kw-canvas2 .kw2-visit-state {
+  align-self: flex-start;
+  background: var(--kw2-blue);
+  color: #fff;
+  border: none;
+  font-size: var(--kw2-micro);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+
+.kw-canvas2 .kw2-visit-past {
+  background: var(--kw2-surface);
+  border: 1px solid var(--kw2-border);
+  border-radius: var(--kw2-radius-row);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.kw-canvas2 .kw2-visit-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--kw2-body);
+  font-weight: 600;
+}
+
+.kw-canvas2 .kw2-visit-no {
+  font-size: var(--kw2-micro);
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+  font-weight: 500;
+}
+
+/* Long diagnosis and medicine names truncate rather than widening the rail
+   and stealing width from the note. */
+.kw-canvas2 .kw2-visit-line {
+  font-size: var(--kw2-body);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kw-canvas2 .kw2-visit-today .kw2-visit-line {
+  white-space: normal;
+  opacity: 0.9;
+}

@@ -41,9 +41,15 @@ import { DocumentsTab } from './DocumentsTab';
 import { InvoiceSummary } from './invoice/InvoiceSummary';
 import { useOrderServices } from './hooks/useOrderServices';
 import { useIsDesktop } from '../core/hooks/useMediaQuery';
-import { useRecordViewLayoutStore } from './record-view-layout-store';
+import { useRecordViewLayout } from './hooks/useRecordViewLayout';
 import { CanvasPatientHeader } from './CanvasPatientHeader';
 import { CanvasQuickNav } from './CanvasQuickNav';
+import { CanvasWorkspace } from './canvas/CanvasWorkspace';
+import { CanvasVisitsRail } from './canvas/CanvasVisitsRail';
+import { DiagnosisRail } from './sections/DiagnosisRail';
+import { MedicationsRail } from './sections/MedicationsRail';
+import { OrdersRail } from './sections/OrdersRail';
+import { ServicesRail } from './sections/ServicesRail';
 import { VisitCompletionBar } from './VisitCompletionBar';
 import { ConsultationFooter } from './ConsultationFooter';
 import { LastVisitSnapshot } from './LastVisitSnapshot';
@@ -53,7 +59,6 @@ import { VisitHistoryPanel } from './history/VisitHistoryPanel';
 // tree but no longer rendered anywhere. They stay until G1 is accepted and
 // functional parity is confirmed, then go in a cleanup commit. Only one
 // version is ever public.
-import { ClinicalRail } from './sections/ClinicalRail';
 import { ClinicalVitalsStrip } from './ClinicalVitalsStrip';
 import { ClinicalImageStrip } from './ClinicalImageStrip';
 import { VisitObservationsPanel } from './VisitObservationsPanel';
@@ -94,8 +99,10 @@ export function PatientDashboardPage() {
   const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
   const [selectedVisitId, setSelectedVisitId] = useState<string>();
   const [activeRecordTab, setActiveRecordTab] = useState('notes');
-  const layout = useRecordViewLayoutStore((state) => state.layout);
-  const setLayout = useRecordViewLayoutStore((state) => state.setLayout);
+  // Per staff member, not per browser — a shared consultation-room desktop
+  // is the normal case, and one shared value meant each user changed the
+  // layout for everybody else.
+  const [layout, setLayout] = useRecordViewLayout();
   const isDesktop = useIsDesktop();
 
   // D-044 — arriving from Queue's "open visit record" link/icon jumps
@@ -513,68 +520,85 @@ export function PatientDashboardPage() {
           // read-only history drawer, and the rail took the freed width.
           <Col span={24}>
             {/* Phone only (CSS-gated): the one column becomes a long scroll,
-                so this moves the viewport between the five surfaces. It never
+                so this moves the viewport between the surfaces. It never
                 collapses anything — every panel stays open at every width. */}
             {!isDesktop && <CanvasQuickNav />}
-            <div className="kw-canvas-shell">
-              <div className="kw-canvas-main">
-                <Card
-                  size="small"
-                  id="kw-anchor-note"
-                  className="kw-notes-card"
-                  title={<Space>Clinical Notes <Tag>{selectedVisit.visitNumber}</Tag></Space>}
-                  styles={
-                    canvasCompact ? { header: { padding: '4px 12px', minHeight: 30 }, body: { padding: 8 } } : undefined
-                  }
-                >
-                  {/* D-077 — ONE compact component per fact. The strips carry
-                      the values and the actions; the full panels appear below
-                      only when asked for, so no vital is printed twice and an
-                      empty attachments box is one row rather than a slab. */}
-                  <ClinicalVitalsStrip
-                    visitId={selectedVisit.id}
-                    expanded={vitalsExpanded}
-                    onToggleExpand={() => setVitalsExpanded((prev) => !prev)}
-                  />
-                  {vitalsExpanded && (
-                    // G4.5d3c-3c1 — the panel picks its own resting state:
-                    // the entry fields on a visit with no observations, the
-                    // compact saved summary once anything is recorded. There
-                    // is nothing left for this parent to force open.
-                    <VisitObservationsPanel visitId={selectedVisit.id} compact={canvasCompact} />
-                  )}
-                  <ClinicalImageStrip
-                    visitId={selectedVisit.id}
-                    expanded={attachmentsExpanded}
-                    onToggleExpand={() => setAttachmentsExpanded((prev) => !prev)}
-                  />
-                  {attachmentsExpanded && (
-                    <VisitAttachmentsPanel visitId={selectedVisit.id} compact={canvasCompact} />
-                  )}
-                  <ClinicalNotesTab visitId={selectedVisit.id} patientId={patient.id} compact={canvasCompact} embedded />
-                </Card>
-              </div>
 
-              {/* 420–480px at 1920 so the rail is readable without taking the
-                  note's width; the note keeps everything that remains and
-                  never shrinks to accommodate rail content — long lists
-                  truncate to "View all N" instead (G4.5b/c). */}
-              <aside className="kw-canvas-rail">
-                <ClinicalRail visit={selectedVisit} />
-              </aside>
-            </div>
+            {/* Kuwick 2.0 Canvas (spec p.2) — three columns.
+                LEFT   history, always on screen rather than behind a drawer
+                MIDDLE what the doctor WRITES: note, diagnosis, documents
+                RIGHT  what the doctor ORDERS: services, medication, invoice
 
-            {/* G4.5d3c-3a0v (D-090) — the bottom Documents/Invoice sections
-                are gone from the active Canvas. They duplicated the top Visit
-                Actions surface for the same current visit and pushed the
-                footer below them; the full workspaces now open as drawers
-                from that surface instead (see revealSection above). */}
-
-            {/* G4.5d3c-3a (D-089) — how the DOCTOR's part of the consultation
-                ends. Last on the page, after everything it summarises, and
-                carrying no "Complete Visit": closing the visit is counter
-                work under a different permission (D-087). */}
-            <ConsultationFooter visit={selectedVisit} onReview={revealCanvasSection} />
+                Diagnosis moves from the right rail into the middle, where the
+                spec puts it. The earlier instruction it appears to contradict
+                was about INTERACTION, not position — it must stay inline and
+                never become a popup — and it still is. */}
+            <CanvasWorkspace
+              visits={
+                <CanvasVisitsRail
+                  patientId={patient.id}
+                  currentVisit={selectedVisit}
+                  onOpenHistory={() => setHistoryOpen(true)}
+                />
+              }
+              middle={
+                <>
+                  <Card
+                    size="small"
+                    id="kw-anchor-note"
+                    className="kw-notes-card"
+                    title={<Space>Clinical Notes <Tag>{selectedVisit.visitNumber}</Tag></Space>}
+                    styles={
+                      canvasCompact
+                        ? { header: { padding: '4px 12px', minHeight: 30 }, body: { padding: 8 } }
+                        : undefined
+                    }
+                  >
+                    {/* D-077 — ONE compact component per fact. The strips carry
+                        the values and the actions; the full panels appear below
+                        only when asked for, so no vital is printed twice and an
+                        empty attachments box is one row rather than a slab. */}
+                    <ClinicalVitalsStrip
+                      visitId={selectedVisit.id}
+                      expanded={vitalsExpanded}
+                      onToggleExpand={() => setVitalsExpanded((prev) => !prev)}
+                    />
+                    {vitalsExpanded && (
+                      <VisitObservationsPanel visitId={selectedVisit.id} compact={canvasCompact} />
+                    )}
+                    <ClinicalImageStrip
+                      visitId={selectedVisit.id}
+                      expanded={attachmentsExpanded}
+                      onToggleExpand={() => setAttachmentsExpanded((prev) => !prev)}
+                    />
+                    {attachmentsExpanded && (
+                      <VisitAttachmentsPanel visitId={selectedVisit.id} compact={canvasCompact} />
+                    )}
+                    <ClinicalNotesTab
+                      visitId={selectedVisit.id}
+                      patientId={patient.id}
+                      compact={canvasCompact}
+                      embedded
+                    />
+                  </Card>
+                  <DiagnosisRail visitId={selectedVisit.id} />
+                </>
+              }
+              right={
+                <>
+                  <ServicesRail visitId={selectedVisit.id} />
+                  <OrdersRail visitId={selectedVisit.id} />
+                  <MedicationsRail visitId={selectedVisit.id} />
+                </>
+              }
+              footer={
+                /* G4.5d3c-3a (D-089) — how the DOCTOR's part of the
+                   consultation ends. Last on the page, after everything it
+                   summarises, and carrying no "Complete Visit": closing the
+                   visit is counter work under a different permission (D-087). */
+                <ConsultationFooter visit={selectedVisit} onReview={revealCanvasSection} />
+              }
+            />
           </Col>
         )}
       </Row>
