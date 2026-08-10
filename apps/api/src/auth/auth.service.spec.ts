@@ -134,11 +134,14 @@ describe('AuthService', () => {
         // mapping, which is the DOCTOR role.
         permissions: [
           'allergy.write',
+          'clinical.void',
           'consultation.complete',
           'consultation.hold',
           'consultation.resume',
           'diagnosis.write',
           'dispense.perform',
+          'document.authoriseClinical',
+          'document.issueAdministrative',
           'document.print',
           // NOT note.sign: this fixture has no verified medical registration.
           // The role opens the door to the clinical record; the credential is

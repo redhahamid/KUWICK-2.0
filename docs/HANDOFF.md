@@ -140,18 +140,28 @@ only to staff with NO explicit assignment. An explicit assignment always wins.
 
 Migrated so far (they delegate to the policy module and hold no role list of
 their own): `canAuthorNarrative`, `canAuthorStaffRemark`,
-`canRecordObservations`. The actor now carries its capability roles
+`canRecordObservations`, `canModifyDiagnosis`, `canVoidClinicalRecord`,
+`canClinicallyAuthoriseDocument`, `canIssueAdministrativeDocument`. The actor now carries its capability roles
 (`ActingStaff.assignedRoles`, loaded by `requireActor` /
 `requireClinicalAuthor`), so predicates read them without every call site
 changing.
 
 Still holding local role lists, migrate next, one at a time, suites green
 after each:
-- `clinical-authorization.ts`: `canModifyDiagnosis`, `canVoidClinicalRecord`,
-  `canClinicallyAuthoriseDocument`, `canIssueAdministrativeDocument`,
-  `canAccessBilling`, `canPerformBilling`, `canEditDraft`. `DOCTOR_ROLES` and
-  `CLINICAL_ROLES` at the top of the file are the remaining local tables —
-  delete each as its last reader migrates.
+- `clinical-authorization.ts`: `canAccessBilling`, `canPerformBilling`,
+  `canEditDraft`, `canSignClinicalNotes`. `DOCTOR_ROLES` and `CLINICAL_ROLES`
+  at the top of the file are the remaining local tables — delete each as its
+  last reader migrates.
+
+**Two deliberate behaviour changes so far, both flagged:**
+- A non-clinician OWNER_ADMIN loses `document.issueAdministrative` (it used to
+  come from `CLINICAL_ROLES`). Consistent with "owner alone = zero clinical
+  ability"; an owner who IS a doctor keeps it via DOCTOR.
+- `hasDoctorIdentity` (professionalType + professionalActive) is kept DISTINCT
+  from `isCredentialedClinician` (six fields). Signing needs the full
+  verification; altering a diagnosis or authorising a certificate has only
+  ever needed the person to BE a doctor. Collapsing them would silently remove
+  access somebody has today.
 - `queue-authorization.ts`: `QUEUE_MATRIX` (7 actions) and
   `assertMayChangeAttendingClinician`.
 - `dispensary-authorization.ts`, and anything else `grep -rn "staff.role ===" apps/api/src` finds.

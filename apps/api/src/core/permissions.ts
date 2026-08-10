@@ -57,6 +57,9 @@ export type Permission =
   | 'billing.manage'
   | 'document.print'
   // Ownership
+  | 'clinical.void'
+  | 'document.issueAdministrative'
+  | 'document.authoriseClinical'
   | 'settings.manage'
   | 'discount.approve'
   | 'users.manage';
@@ -81,6 +84,12 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     'consultation.hold',
     'consultation.resume',
     'consultation.complete',
+    // Un-doing a saved clinical record, and putting a doctor's authority on a
+    // certificate or referral. Both carry medicolegal weight and neither is
+    // available to an administrator on the strength of ownership.
+    'clinical.void',
+    'document.authoriseClinical',
+    'document.issueAdministrative',
     // A doctor authorises dispensing of what they prescribed.
     'dispense.perform',
     // Printing what they issued — an MC, a referral — is part of the act.
@@ -98,6 +107,10 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     // Running task orders and putting the results in.
     'order.fulfil',
     'dispense.perform',
+    // Front desk issuing a time slip is an existing, legitimate workflow.
+    // What such a document can no longer do is describe itself as clinically
+    // authorised — that needs a doctor.
+    'document.issueAdministrative',
     // They can take a held patient back; they cannot put one on hold, which
     // is a clinical judgement made in a room they cannot see into.
     'consultation.resume',
@@ -166,6 +179,20 @@ export const LEGACY_ROLE_FALLBACK: Record<Role, SystemRole[]> = {
 // ---------------------------------------------------------------------------
 
 /** What this staff member's credential lets them assert, regardless of role. */
+/**
+ * A practising doctor by PROFESSIONAL identity, which is a weaker statement
+ * than being cleared to sign.
+ *
+ * Kept distinct on purpose. Signing a note asserts authorship of a
+ * medicolegal document and needs the full six-field verification; altering a
+ * diagnosis or authorising a certificate has always required only that the
+ * person IS a doctor. Collapsing the two would quietly remove access somebody
+ * has today, which a migration must not do.
+ */
+export function hasDoctorIdentity(staff: Staff): boolean {
+  return staff.active && staff.professionalType === 'MEDICAL_DOCTOR' && staff.professionalActive;
+}
+
 export function isCredentialedClinician(staff: Staff): boolean {
   return Boolean(
     staff.medicalRegistrationNo?.trim() &&
@@ -194,7 +221,11 @@ export function rolesOf(staff: Staff, assigned: SystemRole[] | undefined): Syste
   // also a verified practitioner has been authoring notes all along; the
   // migration must not take that away on the day roles ship. An owner who is
   // NOT a clinician gains nothing here, which is the whole point of the rule.
-  if (staff.role === 'OWNER_ADMIN' && isCredentialedClinician(staff) && !fallback.includes('DOCTOR')) {
+  if (
+    staff.role === 'OWNER_ADMIN' &&
+    (isCredentialedClinician(staff) || hasDoctorIdentity(staff)) &&
+    !fallback.includes('DOCTOR')
+  ) {
     fallback.push('DOCTOR');
   }
 
@@ -240,6 +271,9 @@ const REFUSAL: Partial<Record<Permission, string>> = {
   'note.sign':
     'Signing a clinical note requires a verified medical registration on your staff record.',
   'diagnosis.write': 'Only a doctor may record or change a diagnosis.',
+  'clinical.void': 'Only a doctor may void a clinical record.',
+  'document.authoriseClinical':
+    'Only a doctor may clinically authorise this document. It can still be prepared and previewed.',
   'prescription.write': 'Only a doctor may prescribe.',
   'consultation.hold':
     'Only the attending clinician may put a consultation on hold.',

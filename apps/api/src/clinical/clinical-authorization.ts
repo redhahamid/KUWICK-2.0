@@ -111,13 +111,10 @@ export function canRecordObservations(staff: Staff): boolean {
 // medicolegal record. An owner who IS a doctor qualifies through their
 // professional identity, not their job title.
 export function canModifyDiagnosis(staff: Staff): boolean {
-  if (!staff.active) {
-    return false;
-  }
-  if (DOCTOR_ROLES.includes(staff.role)) {
-    return true;
-  }
-  return staff.professionalType === 'MEDICAL_DOCTOR' && staff.professionalActive;
+  // TASK 1 — delegated. The professional-identity path this used to spell out
+  // lives in the policy module's fallback, so an owner who IS a doctor still
+  // qualifies through their identity rather than their job title.
+  return can(staff, 'diagnosis.write', rolesOn(staff));
 }
 
 // G3a (D-062) — voiding a clinical document, or removing a clinical image or
@@ -132,13 +129,10 @@ export function canModifyDiagnosis(staff: Staff): boolean {
 // it does establish is that un-doing a saved clinical record needs clinical
 // authority.
 export function canVoidClinicalRecord(staff: Staff): boolean {
-  if (!staff.active) {
-    return false;
-  }
-  if (DOCTOR_ROLES.includes(staff.role)) {
-    return true;
-  }
-  return staff.professionalType === 'MEDICAL_DOCTOR' && staff.professionalActive;
+  // TASK 1 — delegated. The professional-identity path this used to spell out
+  // lives in the policy module's fallback, so an owner who IS a doctor still
+  // qualifies through their identity rather than their job title.
+  return can(staff, 'clinical.void', rolesOn(staff));
 }
 
 /**
@@ -156,13 +150,10 @@ export function canVoidClinicalRecord(staff: Staff): boolean {
  * not put a doctor's authority on it.
  */
 export function canClinicallyAuthoriseDocument(staff: Staff): boolean {
-  if (!staff.active) {
-    return false;
-  }
-  if (DOCTOR_ROLES.includes(staff.role)) {
-    return true;
-  }
-  return staff.professionalType === 'MEDICAL_DOCTOR' && staff.professionalActive;
+  // TASK 1 — delegated. The professional-identity path this used to spell out
+  // lives in the policy module's fallback, so an owner who IS a doctor still
+  // qualifies through their identity rather than their job title.
+  return can(staff, 'document.authoriseClinical', rolesOn(staff));
 }
 
 /**
@@ -174,7 +165,11 @@ export function canClinicallyAuthoriseDocument(staff: Staff): boolean {
  * document can no longer describe itself as clinically authorised.
  */
 export function canIssueAdministrativeDocument(staff: Staff): boolean {
-  return staff.active && CLINICAL_ROLES.includes(staff.role);
+  // Its OWN permission, not borrowed from document.print. Borrowing that one
+  // would have handed a finance account the ability to issue patient
+  // documents — a widening the old CLINICAL_ROLES list specifically excluded,
+  // and one a test caught before it shipped.
+  return can(staff, 'document.issueAdministrative', rolesOn(staff));
 }
 
 export function assertCanAuthoriseDocument(staff: Staff, requiresClinical: boolean): void {
