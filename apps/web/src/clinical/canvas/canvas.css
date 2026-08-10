@@ -553,6 +553,15 @@
   color: #6e7288;
 }
 
+/* KW2-C2 — paused. Amber, the token this system already uses for "true and
+   outstanding": nothing has gone wrong, and the patient is not in the room.
+   Green here would say the consultation is running, which is the one thing
+   this state is not. */
+.kw2-state-held {
+  background: #fff6e6;
+  color: #8a6510;
+}
+
 .kw2-identity-meta {
   font-size: 12px;
   color: #6e7288;

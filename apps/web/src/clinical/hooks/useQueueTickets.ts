@@ -64,6 +64,37 @@ export const useMoveToDispensary = () => useQueueTicketAction('move-to-dispensar
 export const useCompleteTicket = () => useQueueTicketAction('complete');
 export const useCancelTicket = () => useQueueTicketAction('cancel');
 
+/**
+ * KW2-C2 — pause the consultation, and take the patient back.
+ *
+ * Both refresh the QUEUE and the VISIT, and nothing else. A hold moves the
+ * patient's place in the queue; it does not change a diagnosis, a
+ * prescription or a word of the clinical note, so nothing that owns those is
+ * invalidated. In particular the note query is never named here: refetching
+ * it would remount the editor and take an unsaved draft with it (C1/D-091),
+ * which is the opposite of "resuming returns them with state intact".
+ *
+ * There is no request body. The acting user comes from the session, so there
+ * is nothing for a client to assert about who paused the consultation.
+ */
+function useHoldAction(action: 'hold' | 'resume') {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ticketId }: { ticketId: string; visitId?: string }) =>
+      apiClient.patch<QueueTicket>(`/queue-tickets/${ticketId}/${action}`),
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['queue-tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['queue-board'] });
+      if (variables.visitId) {
+        queryClient.invalidateQueries({ queryKey: ['visit', variables.visitId] });
+      }
+    },
+  });
+}
+
+export const useHoldConsultation = () => useHoldAction('hold');
+export const useResumeConsultation = () => useHoldAction('resume');
+
 // D-038 — rooms/stations a patient can be called to.
 export function useRooms(clinicId?: string, activeOnly = false) {
   return useQuery({

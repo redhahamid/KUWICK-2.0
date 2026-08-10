@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { CanvasPatientHeader, headerAllergyState } from '../CanvasPatientHeader';
 import { Patient } from '../../core/types';
@@ -66,11 +67,74 @@ describe('one function, one home', () => {
     expect(screen.getByRole('button', { name: /complete consultation/i })).toBeInTheDocument();
   });
 
-  it('4. Hold is disabled, because parking a consult is not built yet', () => {
-    // A button that silently does nothing is worse than one that says it is
-    // not ready.
+  it('4. Hold is disabled where the page cannot offer it', () => {
+    // KW2-C2 — the reason changed, the rendering did not. It used to be "not
+    // built yet"; it is now "this visit has no queue ticket, or your role may
+    // not pause a consultation". A button that silently does nothing is still
+    // worse than one that says it is unavailable.
     renderHeader();
     expect(screen.getByRole('button', { name: /hold/i })).toBeDisabled();
+  });
+});
+
+// ===========================================================================
+// KW2-C2 — HOLD and RESUME in the header.
+//
+// The owner's rule is that nothing changes silently. The header's share of
+// that is: say plainly that the patient is paused, name who paused them, and
+// never offer both directions at once.
+// ===========================================================================
+describe('hold and resume', () => {
+  it('an offered Hold is live and calls back', async () => {
+    const onHold = vi.fn();
+    renderHeader({ onHold });
+    const button = screen.getByRole('button', { name: /hold/i });
+    expect(button).toBeEnabled();
+    await userEvent.click(button);
+    expect(onHold).toHaveBeenCalledTimes(1);
+  });
+
+  it('a held patient is not described as being in consultation', () => {
+    // The pill is the one place a doctor glances to know where the visit
+    // stands. Leaving it claiming "In Consult" for a patient who is back in
+    // the waiting room is the deviation, not fixing it.
+    renderHeader({ heldByName: 'Dr Amira Rahman', onResume: vi.fn() });
+    expect(screen.queryByText('In Consult')).not.toBeInTheDocument();
+    expect(screen.getByText('On hold · Dr Amira Rahman')).toBeInTheDocument();
+  });
+
+  it('the pause is amber, never green', () => {
+    const { container } = renderHeader({ heldByName: 'Dr Amira Rahman', onResume: vi.fn() });
+    expect(container.querySelector('.kw2-state-held')).not.toBeNull();
+  });
+
+  it('Hold gives way to Resume — never both at once', () => {
+    // A live "Hold" beside a held patient invites a second pause on a
+    // consultation that is already paused.
+    renderHeader({ heldByName: 'Dr Amira Rahman', onResume: vi.fn(), onHold: vi.fn() });
+    expect(screen.getByRole('button', { name: /resume/i })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /^Hold$/ })).not.toBeInTheDocument();
+  });
+
+  it('Resume calls back', async () => {
+    const onResume = vi.fn();
+    renderHeader({ heldByName: 'Dr Amira Rahman', onResume });
+    await userEvent.click(screen.getByRole('button', { name: /resume/i }));
+    expect(onResume).toHaveBeenCalledTimes(1);
+  });
+
+  it('neither direction can be pressed while one is in flight', async () => {
+    const onHold = vi.fn();
+    renderHeader({ onHold, holdPending: true });
+    const button = screen.getByRole('button', { name: /hold/i });
+    expect(button).toBeDisabled();
+    await userEvent.click(button);
+    expect(onHold).not.toHaveBeenCalled();
+  });
+
+  it('a completed visit still reads as completed, not as held', () => {
+    renderHeader({ visit: visit({ checkOutAt: '2026-08-09T11:00:00.000Z' }), heldByName: 'Dr A' });
+    expect(screen.getByText('Completed')).toBeInTheDocument();
   });
 });
 

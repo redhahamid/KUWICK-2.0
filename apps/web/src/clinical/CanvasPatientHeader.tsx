@@ -5,6 +5,7 @@ import {
   CalendarOutlined,
   CheckOutlined,
   PauseCircleOutlined,
+  PlayCircleOutlined,
   UserOutlined,
   WarningFilled,
 } from '@ant-design/icons';
@@ -24,6 +25,14 @@ export interface CanvasPatientHeaderProps {
   onBack?: () => void;
   onBookAppointment?: () => void;
   onCompleteConsultation?: () => void;
+  /** KW2-C2 — pause the consultation and send the patient back to wait. */
+  onHold?: () => void;
+  /** Take a held patient back. Rendered in place of Hold while held. */
+  onResume?: () => void;
+  /** The doctor currently holding this patient, or null when not on hold. */
+  heldByName?: string | null;
+  /** True while either transition is in flight. */
+  holdPending?: boolean;
 }
 
 /**
@@ -50,7 +59,12 @@ export function CanvasPatientHeader({
   onBack,
   onBookAppointment,
   onCompleteConsultation,
+  onHold,
+  onResume,
+  heldByName,
+  holdPending,
 }: CanvasPatientHeaderProps) {
+  const onHoldNow = Boolean(heldByName);
   const age = patient.dob ? dayjs().diff(dayjs(patient.dob), 'year') : null;
   const allergies = patient.allergies ?? [];
   const hasAllergies = allergies.length > 0;
@@ -78,8 +92,16 @@ export function CanvasPatientHeader({
       <div className="kw2-identity">
         <div className="kw2-identity-name">
           <span className="kw2-name">{patient.name}</span>
-          <span className={`kw2-state-pill${visit.checkOutAt ? ' kw2-state-done' : ''}`}>
-            {visit.checkOutAt ? 'Completed' : 'In Consult'}
+          {/* KW2-C2 — a held patient is not "In Consult", and the pill is the
+              one place a doctor glances to know where this visit stands. The
+              mockup had no hold state to draw; leaving the pill claiming a
+              consultation is in progress would be the deviation. */}
+          <span
+            className={`kw2-state-pill${
+              visit.checkOutAt ? ' kw2-state-done' : onHoldNow ? ' kw2-state-held' : ''
+            }`}
+          >
+            {visit.checkOutAt ? 'Completed' : onHoldNow ? `On hold · ${heldByName}` : 'In Consult'}
           </span>
         </div>
         <div className="kw2-identity-meta">
@@ -121,23 +143,48 @@ export function CanvasPatientHeader({
         </Button>
 
         {/*
-          HOLD IS DISABLED, AND SAYS SO.
+          KW2-C2 — HOLD, and the way back from it.
 
-          The approved header parks a consult: the patient returns to the
-          queue and the visit's state is kept. Nothing behind this exists yet
-          — there is no transition back from IN_CONSULTATION to WAITING, and
-          no workflow event for it, so honouring the button would mean
-          inventing a queue state change with no audit trail behind it.
+          One button in two states, never both at once. A "Hold" that stays
+          live beside a held patient invites a second pause on a consultation
+          that is already paused, and the way back is the thing a doctor
+          actually needs from this position.
 
-          Rendered disabled with the reason rather than omitted: the clinic
-          has been shown this control, and a button that silently does nothing
-          is worse than one that says it is not ready.
+          Disabled with a reason where the page cannot offer it — a role that
+          may not hold, or a visit with no queue ticket. A control the clinic
+          has been shown says why it is unavailable rather than vanishing.
         */}
-        <Tooltip title="Parking a consult needs the queue transition that is not built yet.">
-          <Button icon={<PauseCircleOutlined />} disabled className="kw2-hold">
-            Hold
-          </Button>
-        </Tooltip>
+        {onHoldNow ? (
+          <Tooltip title={`Paused by ${heldByName}. The record is exactly as it was left.`}>
+            <Button
+              icon={<PlayCircleOutlined />}
+              onClick={onResume}
+              disabled={!onResume || holdPending}
+              loading={holdPending}
+              className="kw2-hold kw2-resume"
+            >
+              Resume
+            </Button>
+          </Tooltip>
+        ) : (
+          <Tooltip
+            title={
+              onHold
+                ? 'Sends the patient back to the waiting queue. Nothing on this record changes.'
+                : 'This visit is not in the queue, so there is nothing to send back.'
+            }
+          >
+            <Button
+              icon={<PauseCircleOutlined />}
+              onClick={onHold}
+              disabled={!onHold || holdPending}
+              loading={holdPending}
+              className="kw2-hold"
+            >
+              Hold
+            </Button>
+          </Tooltip>
+        )}
 
         <Button
           type="primary"

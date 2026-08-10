@@ -97,7 +97,14 @@ export class QueueTicketService {
       // the same 404 a nonexistent id gets.
       const ticket = await tx.queueTicket.findUnique({
         where: { id: ticketId },
-        select: { id: true, visitId: true, status: true, clinicId: true },
+        select: {
+          id: true,
+          visitId: true,
+          status: true,
+          clinicId: true,
+          heldAt: true,
+          heldByStaffId: true,
+        },
       });
       if (!ticket) {
         throw new NotFoundException('Queue ticket not found');
@@ -139,7 +146,7 @@ export class QueueTicketService {
           queueType,
           displayNumber: formatDisplayNumber(queueType, ticketNumber),
         },
-        include: { visit: { include: { patient: true, staff: true } }, room: true },
+        include: { visit: { include: { patient: true, staff: true } }, room: true, heldBy: true },
       });
     } catch (error) {
       // `visitId` is unique: one ticket represents the visit's CURRENT
@@ -155,7 +162,7 @@ export class QueueTicketService {
   findAll(filter: FindQueueTicketsFilter) {
     return this.prisma.queueTicket.findMany({
       where: { clinicId: filter.clinicId, status: filter.status, queueType: filter.queueType },
-      include: { visit: { include: { patient: true, staff: true } }, room: true },
+      include: { visit: { include: { patient: true, staff: true } }, room: true, heldBy: true },
       orderBy: { createdAt: 'asc' },
     });
   }
@@ -163,7 +170,7 @@ export class QueueTicketService {
   async findById(id: string) {
     const ticket = await this.prisma.queueTicket.findUnique({
       where: { id },
-      include: { visit: { include: { patient: true, staff: true } }, room: true },
+      include: { visit: { include: { patient: true, staff: true } }, room: true, heldBy: true },
     });
     if (!ticket) {
       throw new NotFoundException('Queue ticket not found');
@@ -311,6 +318,14 @@ export class QueueTicketService {
     if (ticket.status === QueueTicketStatus.IN_CONSULTATION) {
       return this.findById(id);
     }
+    // KW2-C2 — a HELD patient taken back through the ordinary "Arrived"
+    // action is a RESUMPTION, not a new consultation. Front desk reaches for
+    // this button because it is the one they always use, and letting it write
+    // a second CONSULTATION_STARTED would claim in the audit that the
+    // consultation began twice. One path, one truth.
+    if (ticket.heldAt) {
+      return this.resume(id);
+    }
     assertTransition(ticket.status, QueueTicketStatus.IN_CONSULTATION, 'mark as arrived');
     await withTenantTx(this.rawPrisma, async (tx) => {
       // Re-read inside the transaction so two racing requests cannot both
@@ -345,6 +360,144 @@ export class QueueTicketService {
         },
       });
     });
+    return this.findById(id);
+  }
+
+  // =========================================================================
+  // KW2-C2 — HOLD and RESUME.
+  //
+  // A consultation that has to pause is ordinary GP work: a result is not
+  // back, the patient must eat before a fasting test, an emergency walks in.
+  // Until now Kuwick offered nothing for it, so staff reached for the two
+  // things that were available — cancel and re-register, which loses the
+  // visit, or leave the room "occupied" and remember, which loses the
+  // patient. Both are worse than a recorded pause.
+  //
+  // The rule the owner set, and the reason this is a service method rather
+  // than a status write: NO SILENT STATE CHANGES. A queue that reorders
+  // itself with no attributable cause is the defect. Every crossing in either
+  // direction writes an attributed workflow event, and the ticket carries who
+  // holds the patient so the board can say it out loud.
+  //
+  // NOTHING CLINICAL MOVES. The note, the diagnoses, the prescriptions, the
+  // orders and the invoice are untouched by both operations — the patient
+  // changes place in the queue, not state in the record. That is what makes
+  // "resuming returns them with state intact" true rather than aspirational.
+  // =========================================================================
+
+  /** IN_CONSULTATION -> WAITING, attributed. */
+  async hold(id: string) {
+    const { actor } = await this.authoriseTicket(id, 'HOLD_CONSULTATION');
+
+    await withTenantTx(this.rawPrisma, async (tx) => {
+      const fresh = await tx.queueTicket.findUnique({
+        where: { id },
+        select: { id: true, status: true, visitId: true, clinicId: true, heldAt: true },
+      });
+      if (!fresh) {
+        throw new NotFoundException('Queue ticket not found');
+      }
+      // Already held: a double-click, not an error, and it records no second
+      // hold — the first one's actor and time are the ones that are true.
+      if (fresh.heldAt) {
+        return;
+      }
+      assertTransition(fresh.status, QueueTicketStatus.WAITING, 'put a consultation on hold');
+
+      // The D-087 atomic claim: the precondition is IN the WHERE clause, so
+      // two doctors pressing Hold at once produce exactly one transition and
+      // exactly one event. The loser sees count 0 and writes nothing.
+      const held = await tx.queueTicket.updateMany({
+        where: { id, status: QueueTicketStatus.IN_CONSULTATION, heldAt: null },
+        data: {
+          status: QueueTicketStatus.WAITING,
+          heldAt: new Date(),
+          heldByStaffId: actor.id,
+        },
+      });
+      if (held.count === 0) {
+        return;
+      }
+
+      await tx.visitWorkflowEvent.create({
+        data: {
+          tenantId: currentTenantId(),
+          clinicId: fresh.clinicId,
+          visitId: fresh.visitId,
+          queueTicketId: fresh.id,
+          eventType: VisitWorkflowEventType.CONSULTATION_HELD,
+          previousStatus: QueueTicketStatus.IN_CONSULTATION,
+          newStatus: QueueTicketStatus.WAITING,
+          // The snapshot, not a join: a later promotion or rename must not
+          // rewrite who paused this consultation, or in what role.
+          actorStaffId: actor.id,
+          actorNameSnapshot: actor.fullName,
+          actorRoleSnapshot: actor.role,
+        },
+      });
+    });
+
+    return this.findById(id);
+  }
+
+  /**
+   * WAITING -> IN_CONSULTATION for a HELD ticket, attributed.
+   *
+   * Records CONSULTATION_RESUMED and deliberately NOT a second
+   * CONSULTATION_STARTED: that event's instant is the consultation's start,
+   * and the consultation tariff reads it. A patient held at 22:40 and taken
+   * back at 23:05 must not acquire a late-night fee for a consultation that
+   * began before the band.
+   */
+  async resume(id: string) {
+    const { actor } = await this.authoriseTicket(id, 'START_CONSULTATION');
+
+    await withTenantTx(this.rawPrisma, async (tx) => {
+      const fresh = await tx.queueTicket.findUnique({
+        where: { id },
+        select: { id: true, status: true, visitId: true, clinicId: true, heldAt: true },
+      });
+      if (!fresh) {
+        throw new NotFoundException('Queue ticket not found');
+      }
+      if (!fresh.heldAt) {
+        // Not on hold. Two ways to arrive here and neither is an error: the
+        // ticket is already back in consultation, or it was never held. Both
+        // want the same answer — nothing to resume, nothing written.
+        return;
+      }
+      assertTransition(fresh.status, QueueTicketStatus.IN_CONSULTATION, 'resume a consultation');
+
+      const resumed = await tx.queueTicket.updateMany({
+        where: { id, status: QueueTicketStatus.WAITING, heldAt: { not: null } },
+        data: {
+          status: QueueTicketStatus.IN_CONSULTATION,
+          // Cleared: these two describe the CURRENT hold, and there no longer
+          // is one. The pause survives in the events, where history lives.
+          heldAt: null,
+          heldByStaffId: null,
+        },
+      });
+      if (resumed.count === 0) {
+        return;
+      }
+
+      await tx.visitWorkflowEvent.create({
+        data: {
+          tenantId: currentTenantId(),
+          clinicId: fresh.clinicId,
+          visitId: fresh.visitId,
+          queueTicketId: fresh.id,
+          eventType: VisitWorkflowEventType.CONSULTATION_RESUMED,
+          previousStatus: QueueTicketStatus.WAITING,
+          newStatus: QueueTicketStatus.IN_CONSULTATION,
+          actorStaffId: actor.id,
+          actorNameSnapshot: actor.fullName,
+          actorRoleSnapshot: actor.role,
+        },
+      });
+    });
+
     return this.findById(id);
   }
 

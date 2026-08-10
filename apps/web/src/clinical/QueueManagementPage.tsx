@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { useStaff } from '../hr/hooks/useStaff';
+import { holdLabel } from './holdPresentation';
 import { useAuthStore } from '../core/auth-store';
 import {
   useArrivedTicket,
@@ -86,7 +87,15 @@ function detailColumns(showActions: {
   onArrived: (id: string) => void;
   onCancel: (id: string) => void;
   onMoveToDispensary: (id: string) => void;
-}) {
+},
+/**
+ * KW2-C2 — puts a NAME on the staff id a held ticket carries.
+ *
+ * Resolution only. Whether a row is held is the ticket's own fact; this
+ * cannot make one look held or hide one that is.
+ */
+staffName: (id: string | null | undefined) => string | null = () => null,
+) {
   return [
     {
       title: 'No.',
@@ -134,7 +143,22 @@ function detailColumns(showActions: {
       // than acquiring a tab of their own.
       title: 'Stage',
       render: (_: unknown, record: QueueTicket) => (
-        <Tag color={queueStatusColor(record.status)}>{queueStatusLabel(record.status) ?? '—'}</Tag>
+        <Space direction="vertical" size={2}>
+          <Tag color={queueStatusColor(record.status)}>{queueStatusLabel(record.status) ?? '—'}</Tag>
+          {/* KW2-C2 — a held patient sits in WAITING next to patients who
+              have simply not been seen yet, and the status column cannot tell
+              them apart. One is waiting to be called; the other is waiting for
+              a doctor who already has them and is expecting them back.
+
+              Named, always. "On hold" alone would be the unattributed state
+              change this whole feature exists to prevent, and the counter's
+              next question is always who to ask. */}
+          {holdLabel({ heldAt: record.heldAt, heldByName: staffName(record.heldByStaffId) }) && (
+            <Tag color="gold" data-on-hold="true">
+              {holdLabel({ heldAt: record.heldAt, heldByName: staffName(record.heldByStaffId) })}
+            </Tag>
+          )}
+        </Space>
       ),
     },
     {
@@ -147,8 +171,11 @@ function detailColumns(showActions: {
             </Button>
           )}
           {showActions.arrived && (
+            // KW2-C2 — the same endpoint, honestly labelled. Marking a HELD
+            // patient "Arrived" would tell the counter they were registering
+            // an arrival when the server is recording a resumption.
             <Button size="small" onClick={() => handlers.onArrived(record.id)}>
-              Arrived
+              {record.heldAt ? 'Resume' : 'Arrived'}
             </Button>
           )}
           {showActions.moveToDispensary && (
@@ -172,6 +199,10 @@ function detailColumns(showActions: {
 export function QueueManagementPage() {
   const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
   const { data: staff } = useStaff();
+  // KW2-C2 — id to name, for the held-ticket tag. Nothing decides anything
+  // from this; a staff list that fails to load costs the tag its name.
+  const staffName = (id: string | null | undefined) =>
+    (id ? (staff?.find((member) => member.id === id)?.fullName ?? null) : null);
   const currentStaff = useAuthStore((state) => state.staff);
   const { data: allTickets, isLoading } = useQueueTickets({ clinicId });
   // D-095 — one server read for stages, counts, dispensing progress, billing
@@ -500,7 +531,7 @@ export function QueueManagementPage() {
                 rowKey="id"
                 loading={isLoading}
                 dataSource={waiting}
-                columns={detailColumns({ call: true, arrived: true, cancel: true }, handlers)}
+                columns={detailColumns({ call: true, arrived: true, cancel: true }, handlers, staffName)}
               />
             ),
           },
@@ -512,7 +543,7 @@ export function QueueManagementPage() {
                 rowKey="id"
                 loading={isLoading}
                 dataSource={consultation}
-                columns={detailColumns({ moveToDispensary: true }, handlers)}
+                columns={detailColumns({ moveToDispensary: true }, handlers, staffName)}
               />
             ),
           },

@@ -525,6 +525,7 @@ model Staff {
   workflowEvents               VisitWorkflowEvent[]         @relation("WorkflowEventActor")
   workflowEventsHandedOver     VisitWorkflowEvent[]         @relation("WorkflowEventPreviousStaff")
   workflowEventsReceived       VisitWorkflowEvent[]         @relation("WorkflowEventNewStaff")
+  queueTicketsHeld             QueueTicket[]                @relation("QueueTicketHeldBy")
   orderServices                OrderService[]
   prescriptions                Prescription[]
   attachments                  Attachment[]
@@ -1594,6 +1595,17 @@ enum VisitWorkflowEventType {
   // S3b (D-081) — a visit changed hands between clinicians. Prospective only:
   // it never rewrites the authorship of anything already recorded.
   ATTENDING_CLINICIAN_CHANGED
+
+  // KW2-C2 — the doctor paused the consultation and returned the patient to
+  // the waiting queue, then took them back.
+  //
+  // RESUMED is a distinct type and NOT a second CONSULTATION_STARTED, on
+  // purpose. That event is the consultation's start instant and the
+  // consultation tariff reads it: a patient held at 22:40 and resumed at
+  // 23:05 must not acquire a late-night fee for a consultation that began
+  // before the band. One start per visit, however many pauses.
+  CONSULTATION_HELD
+  CONSULTATION_RESUMED
 }
 
 model VisitWorkflowEvent {
@@ -1739,13 +1751,27 @@ model QueueTicket {
   roomId        String?           @map("room_id")
   calledAt      DateTime?         @map("called_at")
   cancelReason  String?           @map("cancel_reason")
-  createdAt     DateTime          @default(now()) @map("created_at")
-  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  // KW2-C2 — the CURRENT hold, and only the current one.
+  //
+  // The history of every pause and resumption lives in visit_workflow_events,
+  // which is where history belongs. These two exist so the queue board can
+  // tell a held patient apart from an ordinary waiting one in the same
+  // indexed read it already does — deriving it from the last event would put
+  // a per-row event lookup in the middle of the busiest list in the clinic.
+  //
+  // Both are cleared on resume. A ticket that is not on hold carries no trace
+  // of having been, in this model; the events carry that.
+  heldAt        DateTime? @map("held_at")
+  heldByStaffId String?   @map("held_by_staff_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   tenant         Tenant               @relation(fields: [tenantId], references: [id])
   clinic         Clinic               @relation(fields: [clinicId], references: [id])
   visit          Visit                @relation(fields: [visitId], references: [id])
   room           Room?                @relation(fields: [roomId], references: [id])
+  heldBy         Staff?               @relation("QueueTicketHeldBy", fields: [heldByStaffId], references: [id])
   // The ticket holds the CURRENT location; these hold where it has been.
   workflowEvents VisitWorkflowEvent[]
 

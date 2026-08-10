@@ -17,6 +17,7 @@ import {
   Statistic,
   Tag,
   Typography,
+  message,
 } from 'antd';
 import {
   AppstoreOutlined,
@@ -64,6 +65,10 @@ import { ClinicalImageStrip } from './ClinicalImageStrip';
 import { VisitObservationsPanel } from './VisitObservationsPanel';
 import { VisitAttachmentsPanel } from './VisitAttachmentsPanel';
 import { Visit } from './types';
+import { ApiError } from '../core/api-client';
+import { useHoldConsultation, useResumeConsultation } from './hooks/useQueueTickets';
+import { mayHoldConsultation } from './holdPresentation';
+import { useStaff } from '../hr/hooks/useStaff';
 import { isDraftDirty, useClinicalDraftStore, visitPrefix } from './clinical-draft-store';
 
 const { Title, Text } = Typography;
@@ -128,6 +133,15 @@ export function PatientDashboardPage() {
   const clearVisitDrafts = useClinicalDraftStore((state) => state.clearVisitDrafts);
   const staff = useAuthStore((state) => state.staff);
   const tenant = useAuthStore((state) => state.tenant);
+
+  // KW2-C2 — pause and take back. The mutations refresh the queue and the
+  // visit; nothing that owns clinical content is touched, which is what makes
+  // "resuming returns them with state intact" true (C1/D-091).
+  const holdConsultation = useHoldConsultation();
+  const resumeConsultation = useResumeConsultation();
+  // Only to put a name on the id the ticket carries. The server is what
+  // enforces who may hold; this list decides nothing.
+  const { data: staffDirectory } = useStaff();
 
   const requestVisitChange = (visitId: string) => {
     const leavingVisitId = selectedVisit?.id;
@@ -250,6 +264,23 @@ export function PatientDashboardPage() {
     }
   };
 
+  // KW2-C2 — the hold state of the visit on screen, read from its ticket.
+  //
+  // Nothing is derived from the queue board here: the ticket carries the
+  // CURRENT hold, and asking a second source would give a second answer.
+  const heldTicket = selectedVisit?.queueTicket ?? null;
+  const heldByName = heldTicket?.heldAt
+    ? (staffDirectory?.find((member) => member.id === heldTicket.heldByStaffId)?.fullName ??
+      'another clinician')
+    : null;
+  const holdPending = holdConsultation.isPending || resumeConsultation.isPending;
+  const runHold = (mutation: typeof holdConsultation, failure: string) => () => {
+    if (!heldTicket || !selectedVisit) return;
+    mutation
+      .mutateAsync({ ticketId: heldTicket.id, visitId: selectedVisit.id })
+      .catch((error) => message.error(error instanceof ApiError ? error.message : failure));
+  };
+
   const layoutSwitch = (
     <Segmented
       size="small"
@@ -277,6 +308,21 @@ export function PatientDashboardPage() {
             // duplicating that logic here would give two answers to one
             // question.
             onCompleteConsultation={() => revealCanvasSection('note')}
+            // Withheld where it cannot be honoured: no ticket to move, the
+            // visit already closed, or a role the server would refuse. The
+            // header renders the reason rather than a button that fails.
+            onHold={
+              heldTicket && !selectedVisit.checkOutAt && !heldByName && mayHoldConsultation(staff?.role)
+                ? runHold(holdConsultation, 'The consultation could not be put on hold.')
+                : undefined
+            }
+            onResume={
+              heldTicket && heldByName
+                ? runHold(resumeConsultation, 'The consultation could not be resumed.')
+                : undefined
+            }
+            heldByName={heldByName}
+            holdPending={holdPending}
           />
           {/* KW2-C1a — the LAST VISIT band is RETIRED in Canvas.
               D-076 put it here to answer "what happened last time?" without

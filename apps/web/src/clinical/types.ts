@@ -262,6 +262,16 @@ export interface QueueTicket {
   room?: Room | null;
   calledAt: string | null;
   cancelReason: string | null;
+  /**
+   * KW2-C2 — the CURRENT hold, or null.
+   *
+   * Both fields or neither: a database check constraint enforces it, because
+   * an unattributed "on hold" is exactly the silent state change the feature
+   * exists to prevent. The history of every pause lives in the visit's
+   * workflow events, not here.
+   */
+  heldAt?: string | null;
+  heldByStaffId?: string | null;
   createdAt: string;
   visit: Visit;
 }
@@ -1296,6 +1306,13 @@ export interface QueueBoardRow {
   stage: QueueStageName | null;
   atProcedure: boolean;
   legacyStatus: boolean;
+  /**
+   * KW2-C2 — waiting because a doctor PAUSED the consultation, not because
+   * the patient has yet to be seen. The two look identical in the status
+   * column and mean completely different things to whoever works the queue.
+   */
+  heldAt?: string | null;
+  heldByName?: string | null;
   patientName: string;
   patientId: string;
   doctorName: string | null;

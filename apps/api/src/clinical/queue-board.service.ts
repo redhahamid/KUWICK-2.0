@@ -66,6 +66,16 @@ export interface QueueBoardRow {
   atProcedure: boolean;
   /** A row from before dispensing and payment were separate states. */
   legacyStatus: boolean;
+  /**
+   * KW2-C2 — the patient is back in the WAITING queue because a doctor
+   * paused their consultation, not because they have yet to be seen.
+   *
+   * Both fields or neither, enforced by a database check constraint: an
+   * unattributed "on hold" is the silent state change this feature exists to
+   * prevent, so a held row can always name the doctor who is holding it.
+   */
+  heldAt: Date | null;
+  heldByName: string | null;
   patientName: string;
   patientId: string;
   doctorName: string | null;
@@ -134,6 +144,8 @@ export class QueueBoardService {
           queueType: true,
           status: true,
           calledAt: true,
+          heldAt: true,
+          heldBy: { select: { fullName: true } },
           room: { select: { name: true } },
           visit: {
             select: {
@@ -177,6 +189,8 @@ export class QueueBoardService {
           stage,
           atProcedure: isAtProcedure(ticket.status),
           legacyStatus: isLegacyStatus(ticket.status),
+          heldAt: ticket.heldAt,
+          heldByName: ticket.heldBy?.fullName ?? null,
           patientName: ticket.visit.patient?.name ?? 'Patient',
           patientId: ticket.visit.patient?.id ?? '',
           doctorName: ticket.visit.staff?.fullName ?? null,

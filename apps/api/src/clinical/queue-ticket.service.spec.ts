@@ -52,7 +52,14 @@ function createService(actor: Record<string, unknown> | null = FRONT_DESK) {
       findUnique: jest.fn().mockResolvedValue({ id: 'visit-1', clinicId: 'clinic-1', staffId: 'staff-1' }),
       update: jest.fn(),
     },
-    queueTicket: { findUnique: jest.fn(), update: jest.fn() },
+    queueTicket: {
+      findUnique: jest.fn(),
+      update: jest.fn(),
+      // KW2-C2 — hold and resume claim atomically (the D-087 pattern), so the
+      // precondition lives in the WHERE clause and the mock reports how many
+      // rows it would have moved. Default 1: the claim succeeded.
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
     visitWorkflowEvent: { create: jest.fn() },
   };
   const visitCompletion = { completeVisit: jest.fn().mockResolvedValue({ visitId: 'visit-1' }) } as unknown as VisitCompletionService;
@@ -320,5 +327,211 @@ describe('QueueTicketService', () => {
     expect(tx.queueTicket.update).not.toHaveBeenCalled();
     expect(visits.checkOut).not.toHaveBeenCalled();
     expect(prisma.queueTicket.update).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// KW2-C2 — HOLD and RESUME
+//
+// The owner's rule: no silent state changes. A patient who reappears in the
+// waiting queue must carry who put them there and when, and taking them back
+// must not claim the consultation started twice.
+// ===========================================================================
+describe('hold and resume', () => {
+  // Same id as the default actor: `withTenant` puts staffId 'staff-1' on the
+  // session and `requireActor` resolves the actor from THERE, never from the
+  // request. Only the role and the name differ.
+  const DOCTOR = staffOf({ fullName: 'Dr Amira Rahman', role: 'DOCTOR_RESIDENT' });
+
+  const inConsultation = {
+    id: 'ticket-1',
+    visitId: 'visit-1',
+    clinicId: 'clinic-1',
+    status: QueueTicketStatus.IN_CONSULTATION,
+    heldAt: null,
+    heldByStaffId: null,
+  };
+
+  const onHold = {
+    ...inConsultation,
+    status: QueueTicketStatus.WAITING,
+    heldAt: new Date('2026-08-10T02:00:00.000Z'),
+    heldByStaffId: 'staff-1',
+  };
+
+  const doctorService = () => {
+    const ctx = createService(DOCTOR);
+    return ctx;
+  };
+
+  const eventOf = (ctx: ReturnType<typeof createService>) =>
+    ctx.tx.visitWorkflowEvent.create.mock.calls[0]?.[0]?.data;
+
+  it('hold moves IN_CONSULTATION to WAITING and records who paused it', async () => {
+    const ctx = doctorService();
+    makeSetTicket(ctx)(inConsultation);
+
+    await withTenant(() => ctx.service.hold('ticket-1'));
+
+    const [claim] = ctx.tx.queueTicket.updateMany.mock.calls[0];
+    expect(claim.data.status).toBe(QueueTicketStatus.WAITING);
+    expect(claim.data.heldByStaffId).toBe('staff-1');
+    expect(claim.data.heldAt).toBeInstanceOf(Date);
+
+    const event = eventOf(ctx);
+    expect(event.eventType).toBe('CONSULTATION_HELD');
+    expect(event.previousStatus).toBe(QueueTicketStatus.IN_CONSULTATION);
+    expect(event.newStatus).toBe(QueueTicketStatus.WAITING);
+    // The snapshot, not a join: a later promotion must not rewrite who paused
+    // this consultation, or in what role.
+    expect(event.actorStaffId).toBe('staff-1');
+    expect(event.actorNameSnapshot).toBe('Dr Amira Rahman');
+    expect(event.actorRoleSnapshot).toBe('DOCTOR_RESIDENT');
+  });
+
+  it('the hold is claimed atomically — the precondition is in the WHERE', async () => {
+    // Two doctors pressing Hold at once must produce ONE transition and ONE
+    // event. A read-then-write would let both through.
+    const ctx = doctorService();
+    makeSetTicket(ctx)(inConsultation);
+
+    await withTenant(() => ctx.service.hold('ticket-1'));
+
+    const [claim] = ctx.tx.queueTicket.updateMany.mock.calls[0];
+    expect(claim.where).toMatchObject({
+      id: 'ticket-1',
+      status: QueueTicketStatus.IN_CONSULTATION,
+      heldAt: null,
+    });
+  });
+
+  it('the loser of that race writes no event', async () => {
+    const ctx = doctorService();
+    makeSetTicket(ctx)(inConsultation);
+    ctx.tx.queueTicket.updateMany.mockResolvedValue({ count: 0 });
+
+    await withTenant(() => ctx.service.hold('ticket-1'));
+
+    expect(ctx.tx.visitWorkflowEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('holding an already-held ticket records no second hold', async () => {
+    // A double-click is not an error, and the FIRST actor and time are the
+    // ones that are true.
+    const ctx = doctorService();
+    makeSetTicket(ctx)(onHold);
+
+    await withTenant(() => ctx.service.hold('ticket-1'));
+
+    expect(ctx.tx.queueTicket.updateMany).not.toHaveBeenCalled();
+    expect(ctx.tx.visitWorkflowEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('a patient who is merely waiting cannot be held', async () => {
+    const ctx = doctorService();
+    makeSetTicket(ctx)({ ...inConsultation, status: QueueTicketStatus.WAITING });
+
+    await expect(withTenant(() => ctx.service.hold('ticket-1'))).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(ctx.tx.visitWorkflowEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('front desk cannot push a patient out of a consulting room', async () => {
+    // The narrow reading: holding is a clinical judgement made in a room the
+    // counter cannot see into. Resuming is the part front desk DOES hold.
+    const ctx = createService(FRONT_DESK);
+    makeSetTicket(ctx)(inConsultation);
+
+    await expect(withTenant(() => ctx.service.hold('ticket-1'))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('an anonymous session cannot hold anything', async () => {
+    const ctx = createService(null);
+    makeSetTicket(ctx)(inConsultation);
+
+    await expect(anonymously(() => ctx.service.hold('ticket-1'))).rejects.toBeTruthy();
+    expect(ctx.tx.visitWorkflowEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('resume takes the patient back and CLEARS the hold', async () => {
+    const ctx = doctorService();
+    makeSetTicket(ctx)(onHold);
+
+    await withTenant(() => ctx.service.resume('ticket-1'));
+
+    const [claim] = ctx.tx.queueTicket.updateMany.mock.calls[0];
+    expect(claim.where).toMatchObject({ id: 'ticket-1', status: QueueTicketStatus.WAITING });
+    expect(claim.data).toMatchObject({
+      status: QueueTicketStatus.IN_CONSULTATION,
+      heldAt: null,
+      heldByStaffId: null,
+    });
+  });
+
+  it('resume records RESUMED, never a second CONSULTATION_STARTED', async () => {
+    // CONSULTATION_STARTED is the consultation's start instant and the
+    // consultation tariff reads it. A patient held at 22:40 and taken back at
+    // 23:05 must not acquire a late-night fee for a consultation that began
+    // before the band.
+    const ctx = doctorService();
+    makeSetTicket(ctx)(onHold);
+
+    await withTenant(() => ctx.service.resume('ticket-1'));
+
+    const event = eventOf(ctx);
+    expect(event.eventType).toBe('CONSULTATION_RESUMED');
+    expect(event.eventType).not.toBe('CONSULTATION_STARTED');
+    expect(event.previousStatus).toBe(QueueTicketStatus.WAITING);
+    expect(event.newStatus).toBe(QueueTicketStatus.IN_CONSULTATION);
+    expect(event.actorNameSnapshot).toBe('Dr Amira Rahman');
+  });
+
+  it('the ordinary Arrived action on a HELD ticket resumes it', async () => {
+    // Front desk reaches for the button they always use. Letting it write a
+    // second CONSULTATION_STARTED would claim the consultation began twice.
+    const ctx = createService(FRONT_DESK);
+    makeSetTicket(ctx)(onHold);
+
+    await withTenant(() => ctx.service.arrived('ticket-1'));
+
+    expect(eventOf(ctx).eventType).toBe('CONSULTATION_RESUMED');
+  });
+
+  it('Arrived on a never-held ticket still records the START', async () => {
+    const ctx = createService(FRONT_DESK);
+    makeSetTicket(ctx)({
+      ...inConsultation,
+      status: QueueTicketStatus.WAITING,
+    });
+
+    await withTenant(() => ctx.service.arrived('ticket-1'));
+
+    expect(eventOf(ctx).eventType).toBe('CONSULTATION_STARTED');
+  });
+
+  it('resuming something that is not on hold writes nothing', async () => {
+    const ctx = doctorService();
+    makeSetTicket(ctx)(inConsultation);
+
+    await withTenant(() => ctx.service.resume('ticket-1'));
+
+    expect(ctx.tx.queueTicket.updateMany).not.toHaveBeenCalled();
+    expect(ctx.tx.visitWorkflowEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('neither operation touches anything clinical', async () => {
+    // "Resuming returns them with state intact" has to be true rather than
+    // aspirational: the patient changes place in the queue, not state in the
+    // record. Only the ticket and the event table are written.
+    const ctx = doctorService();
+    makeSetTicket(ctx)(inConsultation);
+
+    await withTenant(() => ctx.service.hold('ticket-1'));
+
+    expect(ctx.tx.visit.update).not.toHaveBeenCalled();
+    expect(ctx.prisma.visit.update).not.toHaveBeenCalled();
   });
 });

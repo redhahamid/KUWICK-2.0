@@ -74,6 +74,19 @@ export class QueueTicketController {
     return this.queueTickets.arrived(id);
   }
 
+  // KW2-C2 — pause and take back. Both take the acting user from the session;
+  // neither accepts a body, so there is nothing for a client to assert about
+  // who paused the consultation or when.
+  @Patch(':id/hold')
+  hold(@Param('id') id: string) {
+    return this.queueTickets.hold(id);
+  }
+
+  @Patch(':id/resume')
+  resume(@Param('id') id: string) {
+    return this.queueTickets.resume(id);
+  }
+
   @Patch(':id/move-to-dispensary')
   moveToDispensary(@Param('id') id: string) {
     return this.queueTickets.moveToDispensary(id);

@@ -28,6 +28,7 @@ export type QueueAction =
   | 'CALL_PATIENT'
   | 'ASSIGN_CLINICIAN'
   | 'START_CONSULTATION'
+  | 'HOLD_CONSULTATION'
   | 'MOVE_TO_DISPENSARY'
   | 'COMPLETE_TICKET'
   | 'CANCEL_TICKET';
@@ -55,6 +56,20 @@ const QUEUE_MATRIX: Record<QueueAction, Role[]> = {
   // Starting the consultation is the clinician's own act.
   START_CONSULTATION: ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF', 'DOCTOR_RESIDENT', 'DOCTOR_LOCUM'],
 
+  // KW2-C2 — pausing a consultation and sending the patient back to wait.
+  //
+  // The NARROW reading, per this file's own rule. Front desk is deliberately
+  // EXCLUDED: holding is a clinical judgement — the doctor needs a result, or
+  // the patient needs to eat before a fasting test — and it is the doctor who
+  // then has to remember to take them back. A counter that can push a patient
+  // out of a consulting room is a queue-management tool aimed at a room the
+  // counter cannot see into.
+  //
+  // Resuming runs through START_CONSULTATION, which front desk DOES hold: a
+  // doctor asking the counter to call a held patient back in is ordinary
+  // clinic work, and it is the pause that needed the narrower gate.
+  HOLD_CONSULTATION: ['OWNER_ADMIN', 'DOCTOR_RESIDENT', 'DOCTOR_LOCUM'],
+
   // Moving a finished consultation onward is the doctor closing their part.
   MOVE_TO_DISPENSARY: ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF', 'DOCTOR_RESIDENT', 'DOCTOR_LOCUM'],
 
@@ -75,6 +90,7 @@ const ACTION_WORDS: Record<QueueAction, string> = {
   CALL_PATIENT: 'call a patient',
   ASSIGN_CLINICIAN: 'change the attending clinician',
   START_CONSULTATION: 'start a consultation',
+  HOLD_CONSULTATION: 'put a consultation on hold',
   MOVE_TO_DISPENSARY: 'move a patient to dispensary and payment',
   COMPLETE_TICKET: 'complete a visit',
   CANCEL_TICKET: 'cancel a queue ticket',
@@ -102,7 +118,22 @@ export function assertCanPerformQueueAction(staff: Staff, action: QueueAction): 
  */
 const LEGAL_TRANSITIONS: Record<QueueTicketStatus, QueueTicketStatus[]> = {
   WAITING: [QueueTicketStatus.IN_CONSULTATION, QueueTicketStatus.CANCELLED],
-  IN_CONSULTATION: [QueueTicketStatus.DISPENSARY_PAYMENT, QueueTicketStatus.CANCELLED],
+
+  // KW2-C2 — WAITING is now a legal destination from IN_CONSULTATION, for
+  // HOLD. It is the one BACKWARD edge in this table and it is deliberate: a
+  // consultation that has to pause is a real event in a GP clinic, and the
+  // alternatives staff reach for otherwise — cancel and re-register, or leave
+  // the room occupied and forget — both lose the record.
+  //
+  // The edge alone does not make holding possible for everyone: it is gated
+  // by HOLD_CONSULTATION above, and every crossing writes an attributed
+  // workflow event. A transition table says what CAN happen; it has never
+  // said who may make it happen.
+  IN_CONSULTATION: [
+    QueueTicketStatus.WAITING,
+    QueueTicketStatus.DISPENSARY_PAYMENT,
+    QueueTicketStatus.CANCELLED,
+  ],
   DISPENSARY_PAYMENT: [QueueTicketStatus.COMPLETED, QueueTicketStatus.CANCELLED],
 
   // G4.5d3c-1 added these three statuses to the enum, which made this
