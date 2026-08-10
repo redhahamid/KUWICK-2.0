@@ -317,24 +317,12 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
         />
       )}
 
-      {/* Case B — AMBER, and worded as a consequence rather than a refusal.
-          It sits above the bar so it is read before the button, and it offers
-          the way to resolve it without taking the way past it away. */}
-      {pending && (
-        <Alert
-          type="warning"
-          showIcon
-          role="status"
-          style={{ marginBottom: 'var(--kw-s2)' }}
-          message={DOCUMENTATION_PENDING_TITLE}
-          description={DOCUMENTATION_PENDING_BODY}
-          action={
-            <Button size="small" onClick={() => onReview(DOCUMENTATION_PENDING_ACTION.anchor)}>
-              {DOCUMENTATION_PENDING_ACTION.label}
-            </Button>
-          }
-        />
-      )}
+      {/* KW2-C3 — the permanent DOCUMENTATION PENDING banner is GONE.
+          It was present on most visits for most of the consultation, which
+          makes it furniture: by the moment it mattered it had been part of
+          the wallpaper for ten minutes. The same fact is now a section of the
+          completion checkpoint, read once, at the point it changes what
+          somebody would do. */}
 
       <div className="kw-consult-bar">
         <div className="kw-consult-summary">
@@ -443,6 +431,36 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {confirm.allergy.limitation}
                 </Text>
+              </div>
+            }
+          />
+        )}
+
+        {/* The unsigned note. Stated, never a gate — the note is finalized
+            automatically when the visit is completed, so this says what
+            remains true after the doctor proceeds rather than asking them to
+            go back and do something. */}
+        {confirm.documentation && (
+          <Alert
+            type="info"
+            showIcon
+            role="status"
+            style={{ marginBottom: 'var(--kw-s2)' }}
+            data-documentation-checkpoint="true"
+            message={confirm.documentation.heading}
+            description={
+              <div>
+                <div>{confirm.documentation.body}</div>
+                <Button
+                  size="small"
+                  style={{ marginTop: 6 }}
+                  onClick={() => {
+                    setConfirming(false);
+                    onReview(DOCUMENTATION_PENDING_ACTION.anchor);
+                  }}
+                >
+                  {DOCUMENTATION_PENDING_ACTION.label}
+                </Button>
               </div>
             }
           />

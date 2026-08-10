@@ -24,7 +24,7 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 
 | | |
 |---|---|
-| Last green | **1096 frontend / 1109 backend**, both typechecks clean |
+| Last green | **1097 frontend / 1109 backend**, both typechecks clean |
 | Migrations | 61, no drift |
 | Last commit | see `git log` |
 
@@ -43,6 +43,7 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 | C8 Dictate honestly disabled | **done** |
 | C8 `.shortcut` expansion from Settings | not started — today it is a dropdown of hardcoded entries |
 | C9 attachments inside the notes card | not started — today a separate strip + panel |
+| Q2 retire documentation-pending banner | **done** — now a checkpoint section |
 | D10 diagnosis | not started |
 | E11–E14 orders | not started |
 | F15–F18 medications | not started |

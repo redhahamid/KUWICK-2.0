@@ -56,6 +56,20 @@ export const DOCUMENTATION_PENDING_BODY =
   'The clinical note for this visit has not been signed. The patient can be sent on now; the visit stays open until the note is signed.';
 export const DOCUMENTATION_PENDING_ACTION = { label: 'Write and Sign Clinical Note', anchor: 'note' as const };
 
+/**
+ * KW2-C3 — the same fact, moved to where a decision is actually being made.
+ *
+ * It used to be a permanent amber panel above the completion bar. A banner
+ * that is present on most visits for most of the consultation is furniture:
+ * it occupies the Canvas continuously, and by the time it matters — the
+ * moment the doctor commits — it has been part of the wallpaper for ten
+ * minutes. As a checkpoint section it is read once, at the point it changes
+ * what somebody would do.
+ */
+export const DOCUMENTATION_CHECKPOINT_HEADING = 'Clinical note not signed';
+export const DOCUMENTATION_CHECKPOINT_BODY =
+  'The visit stays open until it is signed. The patient can still be sent on now.';
+
 /** Canvas sections a blocker can send the doctor to. */
 export type CanvasAnchor = 'note' | 'orders' | 'medications';
 
@@ -389,6 +403,8 @@ export interface CompletionConfirm {
   cancelText: string;
   /** The amber block, or null. Present ONLY for unreviewed copies. */
   warning: { line: string; explanation: string } | null;
+  /** The unsigned-note section, or null when the note is signed. */
+  documentation: { heading: string; body: string } | null;
   /** The allergy section, or null when there is nothing to compare. */
   allergy: {
     heading: string;
@@ -425,6 +441,14 @@ export function completionConfirm(params: {
     ? documentationPendingConfirm(params.primary)
     : { title: params.primary.confirmTitle, summary: params.primary.confirmSummary };
 
+  // KW2-C3 — the third section. Reported, never a gate: G4.5d6 finalizes the
+  // note automatically at Complete Visit, so an unsigned note has not been an
+  // outstanding task for a person since. It is stated so the doctor knows
+  // what remains true after they proceed.
+  const documentation = params.documentationPending
+    ? { heading: DOCUMENTATION_CHECKPOINT_HEADING, body: DOCUMENTATION_CHECKPOINT_BODY }
+    : null;
+
   const allergy = params.allergyCheckpoint?.allergies.length
     ? {
         heading: ALLERGY_CHECKPOINT_HEADING,
@@ -450,14 +474,15 @@ export function completionConfirm(params: {
       }
     : null;
 
-  // Neither → the ordinary confirmation, unchanged.
-  if (!allergy && !warning) {
+  // Nothing outstanding → the ordinary confirmation, unchanged.
+  if (!allergy && !warning && !documentation) {
     return {
       ...base,
       okText: params.primary.label,
       cancelText: 'Cancel',
       warning: null,
       allergy: null,
+      documentation: null,
       checkpoint: false,
     };
   }
@@ -465,13 +490,19 @@ export function completionConfirm(params: {
   // Either or both → ONE dialog. The title is the checkpoint's, not the
   // individual sections': two sections under two competing headings is the
   // stack this exists to avoid, drawn in one window.
+  // ONE wording, whatever the mix. Titling the dialog after whichever section
+  // happens to be present would name the smallest of three, and a dialog whose
+  // buttons change label depending on which combination came up is one nobody
+  // builds a habit around. "Back to review" and "Proceed & complete" mean the
+  // same thing every time it appears.
   return {
-    title: allergy ? CHECKPOINT_TITLE : UNREVIEWED_COPIES_TITLE,
+    title: CHECKPOINT_TITLE,
     summary: base.summary,
-    okText: allergy ? CHECKPOINT_PROCEED : UNREVIEWED_COPIES_OK,
-    cancelText: allergy ? CHECKPOINT_BACK : 'Cancel',
+    okText: CHECKPOINT_PROCEED,
+    cancelText: CHECKPOINT_BACK,
     warning,
     allergy,
+    documentation,
     checkpoint: true,
   };
 }

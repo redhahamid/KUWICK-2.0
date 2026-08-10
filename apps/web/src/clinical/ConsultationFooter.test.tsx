@@ -481,19 +481,34 @@ describe('Case B — eligible with documentation pending', () => {
     ).toBeEnabled();
   });
 
-  it('48. it is a status notice, not an alert — amber, not red', async () => {
+  it('48. there is NO permanent banner — it is a checkpoint section now', async () => {
+    // KW2-C3 — the amber panel was present on most visits for most of the
+    // consultation, which makes it furniture rather than a warning. The fact
+    // survives; the wallpaper does not.
     get.mockResolvedValue(pending());
     renderFooter();
-    const notice = await screen.findByText('Documentation pending');
-    expect(notice).toBeInTheDocument();
-    // No blocker alert anywhere: a real blocker uses role="alert".
+    await screen.findByRole('button', { name: 'Complete & Send to Dispensary' });
+    expect(screen.queryByText('Documentation pending')).not.toBeInTheDocument();
+    // And it is still not a blocker: a real blocker uses role="alert".
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('48b. it is a status notice inside the dialog, never an alarm', async () => {
+    get.mockResolvedValue(pending());
+    renderFooter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+    const block = (await screen.findByRole('dialog')).querySelector(
+      '[data-documentation-checkpoint="true"]',
+    );
+    expect(block).not.toBeNull();
+    expect(block).toHaveAttribute('role', 'status');
+    expect(block?.className).not.toMatch(/ant-alert-error/);
   });
 
   it('49. the footer marks the state for the rest of the page', async () => {
     get.mockResolvedValue(pending());
     renderFooter();
-    await screen.findByText('Documentation pending');
+    await screen.findByRole('button', { name: 'Complete & Send to Dispensary' });
     const footer = screen.getByRole('region', { name: 'Consultation completion' });
     expect(footer).toHaveAttribute('data-documentation-pending', 'true');
   });
@@ -505,12 +520,13 @@ describe('Case B — eligible with documentation pending', () => {
     expect(screen.queryByText('Clinical note signed')).not.toBeInTheDocument();
   });
 
-  it('51. the confirmation asks the owner-approved question', async () => {
+  it('51. the confirmation states the unsigned note and what stays true after', async () => {
     get.mockResolvedValue(pending());
     renderFooter();
     await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText('Send Patient with documentation pending?')).toBeInTheDocument();
+    expect(within(dialog).getByText('Clinical note not signed')).toBeInTheDocument();
+    expect(dialog.textContent).toMatch(/visit stays open until it is signed/i);
   });
 
   it('52. the confirmation promises the draft is untouched', async () => {
@@ -528,7 +544,7 @@ describe('Case B — eligible with documentation pending', () => {
     await userEvent.type(note(), 'SOAP in progress, not yet finished');
     await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
     const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Complete & Send to Dispensary' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Proceed & complete' }));
     await waitFor(() => expect(patch).toHaveBeenCalled());
     expect(note().value).toBe('SOAP in progress, not yet finished');
     expect(mounts).toBe(1);
@@ -541,7 +557,7 @@ describe('Case B — eligible with documentation pending', () => {
     await userEvent.type(note(), 'Draft text');
     await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
     const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Complete & Send to Dispensary' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Proceed & complete' }));
     await waitFor(() => expect(patch).toHaveBeenCalled());
     const body = JSON.stringify(patch.mock.calls[0]?.[1] ?? {});
     expect(body).not.toMatch(/Draft text/);
@@ -553,14 +569,16 @@ describe('Case B — eligible with documentation pending', () => {
     renderFooter();
     await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
     const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Back to review' }));
     expect(patch).not.toHaveBeenCalled();
   });
 
-  it('56. the pending panel offers the note section without replacing the action', async () => {
+  it('56. the checkpoint offers the note section without replacing the action', async () => {
     get.mockResolvedValue(pending());
     const { onReview } = renderFooter();
-    await userEvent.click(await screen.findByRole('button', { name: 'Write and Sign Clinical Note' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Write and Sign Clinical Note' }));
     expect(onReview).toHaveBeenCalledWith('note');
     expect(screen.getByRole('button', { name: 'Complete & Send to Dispensary' })).toBeEnabled();
   });
@@ -705,7 +723,8 @@ describe('KW2-C2 — unreviewed copied medications', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
 
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText('Copied medications not reviewed')).toBeInTheDocument();
+    // ONE wording for the checkpoint, whatever the mix of sections.
+    expect(within(dialog).getByText('Before completing this consultation')).toBeInTheDocument();
     // A count alone is not actionable. The names are the whole point.
     expect(
       within(dialog).getByText(
@@ -737,7 +756,7 @@ describe('KW2-C2 — unreviewed copied medications', () => {
     expect(
       within(dialog).queryByRole('button', { name: 'Complete & Send to Dispensary' }),
     ).not.toBeInTheDocument();
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Complete anyway' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Proceed & complete' }));
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
   });
 
@@ -745,7 +764,9 @@ describe('KW2-C2 — unreviewed copied medications', () => {
     get.mockResolvedValue(unreviewed(['Bromhexine']));
     renderFooter();
     await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
-    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Back to review' }),
+    );
     expect(patch).not.toHaveBeenCalled();
   });
 
@@ -786,7 +807,7 @@ describe('KW2-C2 — unreviewed copied medications', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
     await userEvent.click(
-      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Complete anyway' }),
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Proceed & complete' }),
     );
     await waitFor(() => expect(patch).toHaveBeenCalled());
     expect(note().value).toBe('URTI, symptomatic treatment.');
