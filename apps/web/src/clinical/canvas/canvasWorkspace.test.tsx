@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import dayjs from 'dayjs';
@@ -345,5 +345,190 @@ describe('history compresses, it never disappears', () => {
     expect(screen.queryByTestId('canvas-history-tab')).not.toBeInTheDocument();
     expect(screen.getByText('the visits rail')).toBeInTheDocument();
     spy.mockRestore();
+  });
+});
+
+// ===========================================================================
+// KW2-C2 — "hover any visit = note preview" (spec p.2)
+//
+// The rule the delay exists for: a pointer travelling to the note crosses
+// every card in the rail, and a preview that opens on contact would fire a
+// request and flash a panel for each one.
+// ===========================================================================
+describe('the past-visit hover preview', () => {
+  const DETAIL = {
+    notes: [
+      {
+        id: 'note-1',
+        noteType: 'DOCTOR_NARRATIVE',
+        entryType: 'STANDARD',
+        status: 'SIGNED',
+        notes: '<p>Fever ×3 days, productive cough. Chest clear.</p>',
+        authorNameSnapshot: 'Dr Amira Rahman',
+        clinicalEntryAt: '2026-08-04T02:20:00.000Z',
+        updatedAt: '2026-08-04T02:25:00.000Z',
+      },
+    ],
+  };
+
+  const withDetail = (items: VisitHistorySummary[]) =>
+    get.mockImplementation(async (url: string) => {
+      const path = String(url);
+      if (path.match(/\/history\/[^?]+$/)) return DETAIL;
+      if (path.includes('history')) return { items, total: items.length };
+      return [];
+    });
+
+  const renderRail = () =>
+    render(
+      <Harness>
+        <CanvasVisitsRail patientId="patient-1" currentVisit={VISIT} onOpenHistory={vi.fn()} />
+      </Harness>,
+    );
+
+  const detailCalls = () =>
+    get.mock.calls.filter(([url]) => String(url).match(/\/history\/[^?]+$/));
+
+  it('nothing opens on contact — the pause is the point', async () => {
+    withDetail([pastVisit()]);
+    renderRail();
+    const card = await screen.findByTestId('canvas-visit-past');
+
+    fireEvent.mouseEnter(card);
+    // Immediately after entering: no panel, and no request issued for it.
+    expect(screen.queryByTestId('canvas-visit-preview')).not.toBeInTheDocument();
+    expect(detailCalls()).toHaveLength(0);
+  });
+
+  it('a deliberate hover opens it, from the visit detail endpoint', async () => {
+    withDetail([pastVisit()]);
+    renderRail();
+    fireEvent.mouseEnter(await screen.findByTestId('canvas-visit-past'));
+
+    const panel = await screen.findByTestId('canvas-visit-preview');
+    expect(await within(panel).findByText(/Fever ×3 days/)).toBeInTheDocument();
+    expect(within(panel).getByText(/Dr Amira Rahman/)).toBeInTheDocument();
+    expect(detailCalls()).toHaveLength(1);
+    expect(String(detailCalls()[0][0])).toBe('/patients/patient-1/history/visit-3');
+  });
+
+  it('a pointer passing across the rail opens ONE preview, not four', async () => {
+    withDetail([
+      pastVisit({ id: 'visit-3' }),
+      pastVisit({ id: 'visit-2', visitNumber: 'V-000002' }),
+      pastVisit({ id: 'visit-1', visitNumber: 'V-000001' }),
+    ]);
+    renderRail();
+    const cards = await screen.findAllByTestId('canvas-visit-past');
+
+    // Crossing the first two on the way to the third.
+    fireEvent.mouseEnter(cards[0]);
+    fireEvent.mouseLeave(cards[0]);
+    fireEvent.mouseEnter(cards[1]);
+    fireEvent.mouseLeave(cards[1]);
+    fireEvent.mouseEnter(cards[2]);
+
+    await screen.findByTestId('canvas-visit-preview');
+    expect(screen.getAllByTestId('canvas-visit-preview')).toHaveLength(1);
+    await waitFor(() => expect(detailCalls()).toHaveLength(1));
+    // The one the pointer STOPPED on, not the ones it crossed.
+    expect(String(detailCalls()[0][0])).toBe('/patients/patient-1/history/visit-1');
+  });
+
+  it('leaving closes it at once — a panel must not follow the pointer', async () => {
+    withDetail([pastVisit()]);
+    renderRail();
+    const card = await screen.findByTestId('canvas-visit-past');
+    fireEvent.mouseEnter(card);
+    await screen.findByTestId('canvas-visit-preview');
+
+    fireEvent.mouseLeave(card);
+    expect(screen.queryByTestId('canvas-visit-preview')).not.toBeInTheDocument();
+  });
+
+  it('a second look costs no second request — the visit is cached', async () => {
+    withDetail([pastVisit()]);
+    renderRail();
+    const card = await screen.findByTestId('canvas-visit-past');
+
+    fireEvent.mouseEnter(card);
+    // Wait for the FIRST read to have actually happened, so a second one
+    // would be visible rather than the assertion passing on an empty list.
+    await within(await screen.findByTestId('canvas-visit-preview')).findByText(/Fever ×3 days/);
+    expect(detailCalls()).toHaveLength(1);
+
+    fireEvent.mouseLeave(card);
+    fireEvent.mouseEnter(card);
+    await within(await screen.findByTestId('canvas-visit-preview')).findByText(/Fever ×3 days/);
+    expect(detailCalls()).toHaveLength(1);
+  });
+
+  it('the keyboard reaches it too', async () => {
+    withDetail([pastVisit()]);
+    renderRail();
+    fireEvent.focus(await screen.findByTestId('canvas-visit-past'));
+    expect(await screen.findByTestId('canvas-visit-preview')).toBeInTheDocument();
+  });
+
+  it('a DRAFT note is named, never quoted', async () => {
+    // A preview has no room for the caveats the full history surface carries,
+    // and an unsigned note is somebody mid-sentence.
+    get.mockImplementation(async (url: string) => {
+      const path = String(url);
+      if (path.match(/\/history\/[^?]+$/)) {
+        return { notes: [{ ...DETAIL.notes[0], status: 'DRAFT', notes: '<p>?viral, will review</p>' }] };
+      }
+      if (path.includes('history')) return { items: [pastVisit()], total: 1 };
+      return [];
+    });
+    renderRail();
+    fireEvent.mouseEnter(await screen.findByTestId('canvas-visit-past'));
+
+    const panel = await screen.findByTestId('canvas-visit-preview');
+    expect(await within(panel).findByText('Note not finalized for this visit.')).toBeInTheDocument();
+    expect(panel.textContent).not.toMatch(/will review/);
+  });
+
+  it('a failed preview says so, and leaves the card’s own facts standing', async () => {
+    get.mockImplementation(async (url: string) => {
+      const path = String(url);
+      if (path.match(/\/history\/[^?]+$/)) throw new Error('offline');
+      if (path.includes('history')) return { items: [pastVisit()], total: 1 };
+      return [];
+    });
+    renderRail();
+    const card = await screen.findByTestId('canvas-visit-past');
+    fireEvent.mouseEnter(card);
+
+    const panel = await screen.findByTestId('canvas-visit-preview');
+    await waitFor(() => expect(panel.textContent).toMatch(/Preview unavailable/));
+    // Never "no note recorded" — the read failed, which is a different fact.
+    expect(panel.textContent).not.toMatch(/No clinical note recorded/);
+    expect(within(card).getByText(/URTI/)).toBeInTheDocument();
+  });
+
+  it('it reads and only reads — hovering issues no write of any kind', async () => {
+    withDetail([pastVisit()]);
+    renderRail();
+    fireEvent.mouseEnter(await screen.findByTestId('canvas-visit-past'));
+    await screen.findByTestId('canvas-visit-preview');
+
+    expect(post).not.toHaveBeenCalled();
+    expect(patch).not.toHaveBeenCalled();
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it('it never touches the live consultation’s caches (C1/D-091)', async () => {
+    // The preview reuses the read-only history query, whose keys live under
+    // 'visit-history'. If a hover reached 'clinical-notes', the editor would
+    // remount and an unsaved draft would go with it.
+    withDetail([pastVisit()]);
+    renderRail();
+    fireEvent.mouseEnter(await screen.findByTestId('canvas-visit-past'));
+    await screen.findByTestId('canvas-visit-preview');
+
+    expect(get.mock.calls.map(([url]) => String(url)).filter((u) => u.includes('clinical-notes'))).toEqual(
+      [],
+    );
   });
 });

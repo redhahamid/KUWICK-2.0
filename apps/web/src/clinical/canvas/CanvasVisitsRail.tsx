@@ -6,6 +6,8 @@ import { useDiagnoses } from '../hooks/useDiagnoses';
 import { usePrescriptions } from '../hooks/usePrescriptions';
 import { useOrderServices } from '../hooks/useOrderServices';
 import { Visit, VisitHistorySummary } from '../types';
+import { CanvasVisitPreview } from './CanvasVisitPreview';
+import { useHoverIntent } from './useHoverIntent';
 
 /**
  * Kuwick 2.0 Canvas — the visits rail (spec p.2, "history is always on
@@ -150,6 +152,8 @@ export function CanvasVisitsRail({
   const { data: diagnoses } = useDiagnoses(currentVisit.id);
   const { data: prescriptions } = usePrescriptions(currentVisit.id);
   const { data: orders } = useOrderServices(currentVisit.id);
+  // Spec p.2 — "hover any visit = note preview", after a deliberate pause.
+  const hover = useHoverIntent();
 
   const past = (data?.pages ?? [])
     .flatMap((page) => page.items)
@@ -213,7 +217,26 @@ export function CanvasVisitsRail({
       )}
 
       {past.slice(0, VISIBLE_PAST_VISITS).map((visit) => (
-        <article className="kw2-visit-past" key={visit.id} data-testid="canvas-visit-past">
+        <article
+          className="kw2-visit-past"
+          key={visit.id}
+          data-testid="canvas-visit-past"
+          // Mouse and keyboard reach the same preview. `onFocus`/`onBlur`
+          // bubble from the card's own buttons, so tabbing to "Open ▸" keeps
+          // the panel that the card opened rather than closing it underneath
+          // the doctor's hand.
+          onMouseEnter={() => hover.open(visit.id)}
+          onMouseLeave={hover.close}
+          onFocus={() => hover.open(visit.id)}
+          onBlur={hover.close}
+        >
+          {hover.activeId === visit.id && (
+            <CanvasVisitPreview
+              patientId={patientId}
+              visitId={visit.id}
+              label={visitStamp(visit.checkInAt)}
+            />
+          )}
           <div className="kw2-visit-row">
             <span className="kw2-visit-when">{visitStamp(visit.checkInAt)}</span>
             <span className="kw2-visit-no">{visit.visitNumber}</span>
