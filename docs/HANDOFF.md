@@ -90,6 +90,24 @@ and the custom-diagnosis upsert depends on that, so the later row keeps the
 code it already carries in its name — "Sebaceous cyst (L72.3)". The run
 prints every row it does this to.
 
+## Next session starts here
+
+Queue order from the standing prompt: **Q4 (patient profile editing)** is next.
+Q1 is partially done — what remains inside it:
+
+- **C6 anthropometry** — paeds centiles from DOB + Wt/Ht. A basic chart view.
+- **C8 `.shortcut` expansion** — today it is a Dropdown of hardcoded entries in
+  `ClinicalNotesTab` (`SMART_ABBREVIATIONS`). Needs: typed ".urti" expansion in
+  the editor, Tab hopping blanks, and a Settings-backed table seeded with the
+  common ones.
+- **C9 attachments in the notes card** — today `ClinicalImageStrip` +
+  `VisitAttachmentsPanel` sit outside it. Needs drag-drop, type tags
+  (photo|lab|letter) and a real viewer, reusing the existing attachment infra.
+
+Also outstanding and worth doing early in Q6/Q7, since the catalogues are now
+real: the canvas diagnosis search and medication search still read the OLD
+placeholder surfaces. The data is seeded; the UI is not yet pointed at it.
+
 ## Standing rules
 
 - Nothing red, blocking, or "interaction detected" anywhere in allergy UI.
