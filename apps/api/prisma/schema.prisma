@@ -550,6 +550,7 @@ model Staff {
   professionalAudits           StaffProfessionalAudit[]     @relation("ProfessionalAuditSubject")
   professionalAuditsMade       StaffProfessionalAudit[]     @relation("ProfessionalAuditActor")
   labelPrints                  LabelPrint[]
+  prescriptionsReviewed        Prescription[]               @relation("PrescriptionReviewer")
 
   @@index([tenantId])
   @@index([tenantId, role])
@@ -2819,6 +2820,11 @@ model Prescription {
   // it makes Complete Consultation ask.
   sourceVisitId       String?                 @map("source_visit_id")
   reviewFlag          Boolean                 @default(false) @map("review_flag")
+  // Who said it had been re-read, and when. Populated by the explicit
+  // "reviewed" act AND by any edit of the row — editing a carried-over
+  // medication IS reviewing it, and the editor is the reviewer.
+  reviewedByStaffId   String?                 @map("reviewed_by_staff_id")
+  reviewedAt          DateTime?               @map("reviewed_at")
   status              PrescriptionStatus      @default(ORDERED)
   // G4.5d3c-3b1 (D-093) — who actually handed the medication over. Distinct
   // from the prescriber; stamped by the atomic dispense claim.
@@ -2844,6 +2850,7 @@ model Prescription {
   sourceVisit  Visit?        @relation("PrescriptionCopySource", fields: [sourceVisitId], references: [id], onDelete: SetNull)
   item         Item          @relation(fields: [itemId], references: [id])
   prescribedBy Staff         @relation(fields: [prescribedByStaffId], references: [id])
+  reviewedBy   Staff?        @relation("PrescriptionReviewer", fields: [reviewedByStaffId], references: [id])
   invoiceLines InvoiceLine[]
   labelPrints  LabelPrint[]
 

@@ -409,10 +409,25 @@ describe('PrescriptionService', () => {
     });
 
     it('authorship is never rewritten by a supply-mode change', async () => {
+      // The point is the PRESCRIBER, not the key count: an edit must never
+      // quietly re-author the prescription to whoever touched it last.
       const ctx = buildSupply(DOCTOR);
       await runSupply(ctx);
       const data = (ctx.tx.prescription.update as jest.Mock).mock.calls[0][0].data;
-      expect(Object.keys(data)).toEqual(['supplyMode']);
+      expect(data).not.toHaveProperty('prescribedByStaffId');
+      expect(data).not.toHaveProperty('prescribedAt');
+      expect(data.supplyMode).toBeDefined();
+    });
+
+    it('KW2-C2 — editing a carried-over row clears its review flag, attributed', async () => {
+      // Editing a copied medication IS reviewing it, so the edit clears the
+      // flag rather than leaving a warning the doctor has already answered.
+      const ctx = buildSupply(DOCTOR);
+      await runSupply(ctx);
+      const data = (ctx.tx.prescription.update as jest.Mock).mock.calls[0][0].data;
+      expect(data.reviewFlag).toBe(false);
+      expect(data.reviewedByStaffId).toBe(DOCTOR.id);
+      expect(data.reviewedAt).toBeInstanceOf(Date);
     });
   });
 });
@@ -520,7 +535,9 @@ describe('markReviewed (KW2-C2)', () => {
     await withTenant(() => ctx.service.markReviewed('rx-1'));
     const call = (ctx.prisma.prescription.updateMany as jest.Mock).mock.calls[0][0];
     expect(call.where).toMatchObject({ id: 'rx-1', reviewFlag: true });
-    expect(call.data).toEqual({ reviewFlag: false });
+    // Attribution comes from the SESSION, never from the client.
+    expect(call.data).toMatchObject({ reviewFlag: false, reviewedByStaffId: 'dr-1' });
+    expect(call.data.reviewedAt).toBeInstanceOf(Date);
   });
 
   it('7. clearing an already-clear flag is a no-op, not an error', async () => {

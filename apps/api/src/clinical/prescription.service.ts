@@ -116,6 +116,17 @@ export class PrescriptionService {
    * about medicine already handed over, and a CANCELLED row is terminal —
    * both refuse rather than quietly rewriting the record.
    */
+  /**
+   * KW2-C2 — editing a carried-over medication IS reviewing it.
+   *
+   * Merged into whatever `data` an edit already writes, so the flag and its
+   * attribution can never drift apart from the edit that cleared them. Any
+   * future field editor calls this rather than re-deriving the rule.
+   */
+  private clearReviewOnEdit(actor: { id: string }) {
+    return { reviewFlag: false, reviewedByStaffId: actor.id, reviewedAt: new Date() };
+  }
+
   async setSupplyMode(id: string, dto: UpdateSupplyModeDto) {
     return withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireClinicalAuthor(tx, 'set how a medication is supplied');
@@ -136,7 +147,9 @@ export class PrescriptionService {
       }
       return tx.prescription.update({
         where: { id },
-        data: { supplyMode: dto.supplyMode },
+        // Editing a carried-over row clears its review flag and records who
+        // did it — the editor is the reviewer.
+        data: { supplyMode: dto.supplyMode, ...this.clearReviewOnEdit(actor) },
         include: { item: true, prescribedBy: true },
       });
     });
@@ -265,10 +278,13 @@ export class PrescriptionService {
    * intent is satisfied either way.
    */
   async markReviewed(id: string) {
-    await requireClinicalAuthor(this.prisma, 'review medication');
+    // The actor comes from the SESSION. A client-supplied reviewer id would
+    // let the browser sign a clinical acknowledgement in someone else's name,
+    // which is the same class of failure C0/D-051 closed for note signatures.
+    const actor = await requireClinicalAuthor(this.prisma, 'review medication');
     const claimed = await this.prisma.prescription.updateMany({
       where: { id, deletedAt: null, reviewFlag: true },
-      data: { reviewFlag: false },
+      data: { reviewFlag: false, reviewedByStaffId: actor.id, reviewedAt: new Date() },
     });
     if (claimed.count === 0) {
       const existing = await this.prisma.prescription.findFirst({ where: { id, deletedAt: null } });
