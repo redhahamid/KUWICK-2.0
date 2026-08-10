@@ -195,8 +195,21 @@ export class PrescriptionService {
         visitId: dto.sourceVisitId,
         deletedAt: null,
         status: { not: PrescriptionStatus.CANCELLED },
+        // KW2-C2 — a selection narrows the copy; its absence keeps the
+        // whole-visit behaviour 1.0 has always had.
+        ...(dto.prescriptionIds ? { id: { in: dto.prescriptionIds } } : {}),
       },
     });
+
+    // An id that matched nothing is a request the caller cannot have meant:
+    // a cancelled row, a deleted one, or a prescription from another visit.
+    // Copying the remainder silently would hand back fewer medications than
+    // were ticked, with nothing said.
+    if (dto.prescriptionIds && sourcePrescriptions.length !== dto.prescriptionIds.length) {
+      throw new NotFoundException(
+        'Some selected medications are no longer available on that visit. Reopen the list and try again.',
+      );
+    }
 
     const tenantId = currentTenantId();
     const decisions: CopiedSupplyDecision[] = [];
@@ -221,6 +234,10 @@ export class PrescriptionService {
             // decision, so it is authored by whoever made it — not inherited
             // from the source prescription and not from the target visit.
             prescribedByStaffId: author.id,
+            // KW2-C2 — where it came from, and that it has not been re-read
+            // against today's weight, allergies and stock.
+            sourceVisitId: dto.sourceVisitId,
+            reviewFlag: true,
           },
         });
       }),
@@ -231,6 +248,33 @@ export class PrescriptionService {
     // previous visit recorded nothing" both produce a row reading "Dispense
     // from clinic", and only the server knows which happened.
     return { prescriptions: created, supplySummary: describeCopyOutcome(decisions) };
+  }
+
+  /**
+   * KW2-C2 — "I have re-read this."
+   *
+   * Clears the carried-over flag on one prescription. Deliberately a separate,
+   * explicit act rather than something inferred: a doctor scrolling past a
+   * copied row has not reviewed it, and treating a render as an
+   * acknowledgement would make the completion warning meaningless within a
+   * day of shipping.
+   *
+   * ATOMIC, and idempotent. The precondition lives in the WHERE clause (the
+   * D-087 pattern), so a double-click cannot produce two writes, and clearing
+   * an already-clear flag is a no-op rather than an error — the caller's
+   * intent is satisfied either way.
+   */
+  async markReviewed(id: string) {
+    await requireClinicalAuthor(this.prisma, 'review medication');
+    const claimed = await this.prisma.prescription.updateMany({
+      where: { id, deletedAt: null, reviewFlag: true },
+      data: { reviewFlag: false },
+    });
+    if (claimed.count === 0) {
+      const existing = await this.prisma.prescription.findFirst({ where: { id, deletedAt: null } });
+      if (!existing) throw new NotFoundException('Prescription not found');
+    }
+    return this.prisma.prescription.findFirst({ where: { id }, include: { item: true } });
   }
 
   /**

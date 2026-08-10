@@ -746,16 +746,26 @@ describe('doctor-phase status: a completed phase is read back, never re-derived'
     });
   });
 
-  it('nothing is re-derived: the derivation queries are never issued', async () => {
+  it('the ROUTING is never re-derived for a completed phase', async () => {
     const ctx = build(DR_A, completedWorld('DISPENSARY', 'DISPENSARY_REQUIRED') as never);
     await read(ctx);
-    expect(ctx.tx.prescription.findMany).not.toHaveBeenCalled();
+    // Destination and blockers come from what was recorded, not from
+    // re-running the rules against a visit that has since moved on.
     expect(ctx.tx.invoice.findMany).not.toHaveBeenCalled();
     expect(ctx.tx.orderService.count).not.toHaveBeenCalled();
-    // clinicalNote.count IS issued for a completed phase (3c): the LIVE
-    // documentation state is what a counter needs when deciding whether the
-    // visit can be closed, and it is reported alongside — never instead of —
-    // the recorded answer. Nothing else is re-derived.
+  });
+
+  it('two LIVE facts are still read alongside the recorded answer', async () => {
+    // clinicalNote.count (3c) and the unreviewed-copies check (KW2-C2) are
+    // deliberately current rather than historical: both answer "what is true
+    // now", which is what a counter deciding whether to close the visit
+    // needs. They are reported ALONGSIDE the recorded routing, never instead
+    // of it — the test above is what holds that line.
+    const ctx = build(DR_A, completedWorld('DISPENSARY', 'DISPENSARY_REQUIRED') as never);
+    await read(ctx);
+    expect(ctx.tx.prescription.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ reviewFlag: true }) }),
+    );
   });
 
   it('a completed phase reports no blockers even from an ineligible queue state', async () => {

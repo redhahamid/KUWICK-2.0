@@ -36,6 +36,12 @@ export class PrescriptionController {
     return this.prescriptions.setSupplyMode(id, dto);
   }
 
+  // KW2-C2 — the doctor says a carried-over medication has been re-read.
+  @Patch(':id/reviewed')
+  markReviewed(@Param('id') id: string) {
+    return this.prescriptions.markReviewed(id);
+  }
+
   @Patch(':id/dispense')
   dispense(@Param('id') id: string) {
     return this.prescriptions.dispense(id);

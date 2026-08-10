@@ -99,6 +99,40 @@ export interface DoctorPhaseEvaluation {
    * rewrite itself the instant the doctor went back and signed.
    */
   documentationPending: boolean;
+
+  /**
+   * KW2-C2 — medications carried over from a previous visit that nobody has
+   * re-read yet.
+   *
+   * Reported, never a blocker. Copying is a new prescribing decision made
+   * from old information — the weight, the allergies and the stock have all
+   * had time to change — so completing with one unreviewed is a real clinical
+   * choice, and the UI asks before it happens. Refusing outright would only
+   * teach people to tick "reviewed" without reading.
+   *
+   * Names travel with the count because "2 unreviewed" is not something a
+   * doctor can act on; "Syr PCM, Bromhexine" is.
+   */
+  unreviewedCopiedMedications: string[];
+}
+
+/**
+ * Carried-over medications on a visit that nobody has re-read yet, by name.
+ *
+ * Shared by the live evaluation and the already-completed branch so the two
+ * can never disagree about what is outstanding.
+ */
+async function unreviewedCopiedNames(tx: ClinicalTx, visitId: string): Promise<string[]> {
+  const rows = await tx.prescription.findMany({
+    where: {
+      visitId,
+      deletedAt: null,
+      reviewFlag: true,
+      status: { not: PrescriptionStatus.CANCELLED },
+    },
+    select: { item: { select: { name: true } } },
+  });
+  return rows.map((row) => row.item?.name).filter((name): name is string => Boolean(name));
 }
 
 export interface DoctorPhaseStatus extends DoctorPhaseEvaluation {
@@ -237,6 +271,7 @@ export class DoctorCompletionService {
           // the visit can be closed needs to know whether the note has been
           // signed SINCE, not only whether it was signed then.
           documentationPending: await isDocumentationPending(tx, visitId),
+          unreviewedCopiedMedications: await unreviewedCopiedNames(tx, visitId),
           documentationPendingAtCompletion: recorded,
           documentationPendingActorName: recorded ? (completionEvent?.actorNameSnapshot ?? null) : null,
           documentationPendingAt: recorded ? (completionEvent?.createdAt ?? null) : null,
@@ -521,6 +556,9 @@ async function evaluateDoctorPhase(
   // be hidden.
   const documentationPending = await isDocumentationPending(tx, visitId);
 
+  // KW2-C2 — carried-over medications still marked "not re-read".
+  const unreviewedCopiedMedications = await unreviewedCopiedNames(tx, visitId);
+
   // A procedure still running is the strongest blocker there is: the doctor is
   // meant to review its result before finishing (owner decision 4), so
   // completing now would close a phase whose findings do not exist yet.
@@ -555,7 +593,7 @@ async function evaluateDoctorPhase(
     // charge, so any routing computed now is a guess about a visit that has
     // not stopped changing. Reporting NULL says "not yet knowable", which is
     // true; reporting NONE would say "nothing further", which is not.
-    return { blockers, destination: null, routingReason: null, documentationPending };
+    return { blockers, destination: null, routingReason: null, documentationPending, unreviewedCopiedMedications };
   }
 
   // Only ONSITE_DISPENSE counts, and only while still ORDERED. Everything else
@@ -577,6 +615,7 @@ async function evaluateDoctorPhase(
       destination: DoctorCompletionDestination.DISPENSARY,
       routingReason: 'DISPENSARY_REQUIRED',
       documentationPending,
+      unreviewedCopiedMedications,
     };
   }
   if (billing === 'UNDETERMINED') {
@@ -588,6 +627,7 @@ async function evaluateDoctorPhase(
       destination: DoctorCompletionDestination.PAYMENT,
       routingReason: 'BILLING_REVIEW_REQUIRED',
       documentationPending,
+      unreviewedCopiedMedications,
     };
   }
   if (billing > 0) {
@@ -596,6 +636,7 @@ async function evaluateDoctorPhase(
       destination: DoctorCompletionDestination.PAYMENT,
       routingReason: 'PATIENT_PAYMENT_REQUIRED',
       documentationPending,
+      unreviewedCopiedMedications,
     };
   }
   return {
@@ -603,6 +644,7 @@ async function evaluateDoctorPhase(
     destination: DoctorCompletionDestination.NONE,
     routingReason: 'NO_DOWNSTREAM_WORK',
     documentationPending,
+    unreviewedCopiedMedications,
   };
 }
 

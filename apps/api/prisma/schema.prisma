@@ -164,6 +164,7 @@ model Tenant {
   consultationTariffRules     ConsultationTariffRule[]
 
   labelPrints LabelPrint[]
+
   @@map("tenants")
 }
 
@@ -227,9 +228,9 @@ model Clinic {
   clinicalNotes           ClinicalNote[]
   visitObservations       VisitObservation[]
   consultationTariffRules ConsultationTariffRule[]
+  labelPrints             LabelPrint[]
 
   @@index([tenantId])
-  labelPrints LabelPrint[]
   @@map("clinics")
 }
 
@@ -548,12 +549,12 @@ model Staff {
   orderAttachmentsRemoved      Attachment[]                 @relation("OrderAttachmentRemovedBy")
   professionalAudits           StaffProfessionalAudit[]     @relation("ProfessionalAuditSubject")
   professionalAuditsMade       StaffProfessionalAudit[]     @relation("ProfessionalAuditActor")
+  labelPrints                  LabelPrint[]
 
   @@index([tenantId])
   @@index([tenantId, role])
   @@index([tenantId, clinicId])
   @@index([tenantId, medicalRegistrationNoNormalised])
-  labelPrints LabelPrint[]
   @@map("staff")
 }
 
@@ -1465,6 +1466,7 @@ model Visit {
   attachments                   VisitAttachment[]
   workflowEvents                VisitWorkflowEvent[]
   consultationChargeLines       InvoiceLine[]        @relation("VisitConsultationChargeLines")
+  copiedPrescriptions           Prescription[]       @relation("PrescriptionCopySource")
 
   @@unique([tenantId, visitNumber])
   @@index([tenantId, clinicId])
@@ -1841,15 +1843,15 @@ model ClinicalNote {
   // genuine legacy record from a bug that produced a NULL author later.
   legacyAuthorUnknown Boolean @default(false) @map("legacy_author_unknown")
 
-  tenant     Tenant                 @relation(fields: [tenantId], references: [id])
-  clinic     Clinic?                @relation(fields: [clinicId], references: [id])
-  visit      Visit                  @relation(fields: [visitId], references: [id])
-  author     Staff?                 @relation("ClinicalNoteAuthor", fields: [authorStaffId], references: [id])
-  signedBy   Staff?                 @relation("ClinicalNoteSigner", fields: [signedByStaffId], references: [id])
-  finalizedBy Staff?                @relation("ClinicalNoteFinalizer", fields: [finalizedByStaffId], references: [id])
-  supersedes ClinicalNote?          @relation("ClinicalNoteAmendment", fields: [supersedesNoteId], references: [id])
-  amendments ClinicalNote[]         @relation("ClinicalNoteAmendment")
-  revisions  ClinicalNoteRevision[]
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id])
+  clinic      Clinic?                @relation(fields: [clinicId], references: [id])
+  visit       Visit                  @relation(fields: [visitId], references: [id])
+  author      Staff?                 @relation("ClinicalNoteAuthor", fields: [authorStaffId], references: [id])
+  signedBy    Staff?                 @relation("ClinicalNoteSigner", fields: [signedByStaffId], references: [id])
+  finalizedBy Staff?                 @relation("ClinicalNoteFinalizer", fields: [finalizedByStaffId], references: [id])
+  supersedes  ClinicalNote?          @relation("ClinicalNoteAmendment", fields: [supersedesNoteId], references: [id])
+  amendments  ClinicalNote[]         @relation("ClinicalNoteAmendment")
+  revisions   ClinicalNoteRevision[]
 
   @@index([tenantId])
   @@index([tenantId, visitId])
@@ -2811,6 +2813,12 @@ model Prescription {
   calcDoseRateMgKg Decimal?          @map("calc_dose_rate_mg_kg") @db.Decimal(6, 2)
   calcTargetDoseMg Decimal?          @map("calc_target_dose_mg") @db.Decimal(10, 2)
 
+  // KW2-C2 — Copy Rx provenance. `sourceVisitId` is the visit this row was
+  // carried over from; `reviewFlag` says it has not been re-read against
+  // today's weight, allergies and stock. The flag never blocks dispensing —
+  // it makes Complete Consultation ask.
+  sourceVisitId       String?                 @map("source_visit_id")
+  reviewFlag          Boolean                 @default(false) @map("review_flag")
   status              PrescriptionStatus      @default(ORDERED)
   // G4.5d3c-3b1 (D-093) — who actually handed the medication over. Distinct
   // from the prescriber; stamped by the atomic dispense claim.
@@ -2833,6 +2841,7 @@ model Prescription {
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
   visit        Visit         @relation(fields: [visitId], references: [id])
+  sourceVisit  Visit?        @relation("PrescriptionCopySource", fields: [sourceVisitId], references: [id], onDelete: SetNull)
   item         Item          @relation(fields: [itemId], references: [id])
   prescribedBy Staff         @relation(fields: [prescribedByStaffId], references: [id])
   invoiceLines InvoiceLine[]
@@ -2865,18 +2874,18 @@ model LabelPrint {
   clinicId       String @map("clinic_id")
   prescriptionId String @map("prescription_id")
 
-  printedByStaffId   String   @map("printed_by_staff_id")
+  printedByStaffId    String   @map("printed_by_staff_id")
   /// Snapshotted for the same reason clinical authorship is: a staff record
   /// can be renamed or deactivated, and the audit must still say who printed.
-  printerNameSnapshot String  @map("printer_name_snapshot")
-  printedAt          DateTime @default(now()) @map("printed_at")
+  printerNameSnapshot String   @map("printer_name_snapshot")
+  printedAt           DateTime @default(now()) @map("printed_at")
 
   /// 1–3, enforced by the service. A label sheet is a physical thing.
   copies Int @default(1)
 
   /// Sequence within this prescription: 1 is the first print, anything above
   /// it is a reprint. A boolean would lose how many times.
-  printSequence Int  @map("print_sequence")
+  printSequence Int     @map("print_sequence")
   isReprint     Boolean @default(false) @map("is_reprint")
 
   /// Which physical preset was used, so a label printed at one size can be

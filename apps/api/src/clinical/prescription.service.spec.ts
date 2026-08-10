@@ -8,7 +8,14 @@ import { tenantContextStorage } from '../core/tenant-context';
 function createService() {
   const prisma = {
     item: { findUnique: jest.fn() },
-    prescription: { findMany: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
+    prescription: {
+      findMany: jest.fn(),
+      findFirst: jest.fn(),
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
     visit: { findMany: jest.fn() },
     stockMovement: { create: jest.fn() },
     stockLevel: { upsert: jest.fn() },
@@ -407,5 +414,128 @@ describe('PrescriptionService', () => {
       const data = (ctx.tx.prescription.update as jest.Mock).mock.calls[0][0].data;
       expect(Object.keys(data)).toEqual(['supplyMode']);
     });
+  });
+});
+
+// ===========================================================================
+// KW2-C2 — COPY RX
+//
+// Copying a previous visit's medication is a NEW prescribing decision made
+// from OLD information: the weight, the allergies and the stock have all had
+// time to change. These tests hold the two properties that make that safe —
+// only what was chosen is copied, and what was copied is marked as not yet
+// re-read.
+// ===========================================================================
+describe('copyFromVisit (KW2-C2)', () => {
+  const source = (id: string, itemId = 'item-1') => ({
+    id,
+    itemId,
+    quantity: 1,
+    amount: 5,
+    unit: 'ml',
+    frequency: 'TDS',
+    durationDays: 5,
+    indication: null,
+    remark: null,
+    supplyMode: 'ONSITE_DISPENSE',
+  });
+
+  const setup = (rows: ReturnType<typeof source>[]) => {
+    const ctx = createService();
+    (ctx.visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-today', clinicId: 'clinic-1' });
+    (ctx.prisma.prescription.findMany as jest.Mock).mockResolvedValue(rows);
+    (ctx.prisma.prescription.create as jest.Mock).mockImplementation(({ data }: never) =>
+      Promise.resolve({ id: 'new', ...(data as object) }),
+    );
+    return ctx;
+  };
+
+  it('1. copies ONLY the medications that were selected', async () => {
+    const ctx = setup([source('rx-1'), source('rx-2')]);
+    await withTenant(() =>
+      ctx.service.copyFromVisit({
+        sourceVisitId: 'visit-old',
+        targetVisitId: 'visit-today',
+        prescriptionIds: ['rx-1', 'rx-2'],
+      }),
+    );
+    const where = (ctx.prisma.prescription.findMany as jest.Mock).mock.calls[0][0].where;
+    expect(where.id).toEqual({ in: ['rx-1', 'rx-2'] });
+  });
+
+  it('2. no selection still copies the whole visit — 1.0 depends on it', async () => {
+    const ctx = setup([source('rx-1')]);
+    await withTenant(() =>
+      ctx.service.copyFromVisit({ sourceVisitId: 'visit-old', targetVisitId: 'visit-today' }),
+    );
+    const where = (ctx.prisma.prescription.findMany as jest.Mock).mock.calls[0][0].where;
+    expect(where.id).toBeUndefined();
+  });
+
+  it('3. every copied row records WHERE it came from and that it needs re-reading', async () => {
+    const ctx = setup([source('rx-1')]);
+    await withTenant(() =>
+      ctx.service.copyFromVisit({
+        sourceVisitId: 'visit-old',
+        targetVisitId: 'visit-today',
+        prescriptionIds: ['rx-1'],
+      }),
+    );
+    const data = (ctx.prisma.prescription.create as jest.Mock).mock.calls[0][0].data;
+    expect(data.sourceVisitId).toBe('visit-old');
+    expect(data.reviewFlag).toBe(true);
+  });
+
+  it('4. a selection that no longer matches is REFUSED, not silently trimmed', async () => {
+    // Handing back fewer medications than were ticked, with nothing said, is
+    // the failure mode this guards: the doctor believes three were carried
+    // over and two were.
+    const ctx = setup([source('rx-1')]);
+    await expect(
+      withTenant(() =>
+        ctx.service.copyFromVisit({
+          sourceVisitId: 'visit-old',
+          targetVisitId: 'visit-today',
+          prescriptionIds: ['rx-1', 'rx-cancelled'],
+        }),
+      ),
+    ).rejects.toThrow(NotFoundException);
+    expect(ctx.prisma.prescription.create).not.toHaveBeenCalled();
+  });
+
+  it('5. the copy is authored by whoever made it, not by the original prescriber', async () => {
+    const ctx = setup([source('rx-1')]);
+    await withTenant(() =>
+      ctx.service.copyFromVisit({ sourceVisitId: 'visit-old', targetVisitId: 'visit-today' }),
+    );
+    expect((ctx.prisma.prescription.create as jest.Mock).mock.calls[0][0].data.prescribedByStaffId).toBe('dr-1');
+  });
+});
+
+describe('markReviewed (KW2-C2)', () => {
+  it('6. clears the flag as an ATOMIC claim, so a double-click writes once', async () => {
+    const ctx = createService();
+    (ctx.prisma.prescription.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
+    (ctx.prisma.prescription.findFirst as jest.Mock).mockResolvedValue({ id: 'rx-1', reviewFlag: false });
+    await withTenant(() => ctx.service.markReviewed('rx-1'));
+    const call = (ctx.prisma.prescription.updateMany as jest.Mock).mock.calls[0][0];
+    expect(call.where).toMatchObject({ id: 'rx-1', reviewFlag: true });
+    expect(call.data).toEqual({ reviewFlag: false });
+  });
+
+  it('7. clearing an already-clear flag is a no-op, not an error', async () => {
+    // The caller's intent — "this row no longer needs reviewing" — is
+    // satisfied either way.
+    const ctx = createService();
+    (ctx.prisma.prescription.updateMany as jest.Mock).mockResolvedValue({ count: 0 });
+    (ctx.prisma.prescription.findFirst as jest.Mock).mockResolvedValue({ id: 'rx-1', reviewFlag: false });
+    await expect(withTenant(() => ctx.service.markReviewed('rx-1'))).resolves.toBeTruthy();
+  });
+
+  it('8. a prescription that does not exist is a 404', async () => {
+    const ctx = createService();
+    (ctx.prisma.prescription.updateMany as jest.Mock).mockResolvedValue({ count: 0 });
+    (ctx.prisma.prescription.findFirst as jest.Mock).mockResolvedValue(null);
+    await expect(withTenant(() => ctx.service.markReviewed('nope'))).rejects.toThrow(NotFoundException);
   });
 });
