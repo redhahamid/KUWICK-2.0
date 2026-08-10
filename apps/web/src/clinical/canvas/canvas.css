@@ -393,3 +393,189 @@
 .kw2-history-tab .anticon {
   writing-mode: horizontal-tb;
 }
+
+/* ---------------------------------------------------------------------------
+   Patient header (spec p.2, p.4). One wrapping row, never two toolbars.
+   ------------------------------------------------------------------------ */
+.kw2-patient-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 10px var(--kw2-pad, 12px);
+  margin-bottom: 14px;
+  background: #fff;
+  border: 1px solid #e2e4ec;
+  border-radius: 10px;
+  box-shadow: 0 3px 7px rgba(11, 27, 42, 0.05);
+  /* The accent stripe the mockup puts down the left edge. */
+  border-left: 3px solid #171e4e;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+  color: #12142a;
+}
+
+.kw2-back {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #6e7288;
+  padding: 4px;
+  font-size: 15px;
+}
+
+.kw2-back:hover {
+  color: #171e4e;
+}
+
+.kw2-avatar {
+  background: #e7ebf8 !important;
+  color: #171e4e !important;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.kw2-identity {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.kw2-identity-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kw2-name {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* "● In Consult" — green while the consult is live. */
+.kw2-state-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 2px 10px;
+  background: #e8f6ee;
+  color: #1e7a4b;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.kw2-state-pill::before {
+  content: '●';
+  font-size: 9px;
+}
+
+.kw2-state-done {
+  background: #f2f3f6;
+  color: #6e7288;
+}
+
+.kw2-identity-meta {
+  font-size: 12px;
+  color: #6e7288;
+}
+
+/* The complaint is clinical content, so it is ink and not a muted caption. */
+.kw2-complaint {
+  font-size: 12px;
+  font-weight: 700;
+  color: #171e4e;
+}
+
+.kw2-header-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kw2-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 3px 11px;
+  background: #f5f6f9;
+  border: 1px solid #e2e4ec;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.kw2-chip-danger {
+  background: #fdecec;
+  border-color: #f5c2c2;
+  color: #b42318;
+}
+
+/* "Allergy not asked" — amber, because an unasked question is not a
+   negative answer. */
+.kw2-chip-warn {
+  background: #fff6e6;
+  border-color: #f0dcac;
+  color: #8a6510;
+}
+
+.kw2-chip-payer {
+  background: #fff6e6;
+  border-color: #f0dcac;
+  color: #8a6510;
+  letter-spacing: 0.03em;
+}
+
+.kw2-autosave {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e7a4b;
+  white-space: nowrap;
+}
+
+.kw2-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.kw2-header-actions .ant-btn {
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+/* Hold carries the mockup's amber outline even while disabled — the shape
+   the clinic was shown, in the state the product is actually in. */
+.kw2-hold:disabled {
+  border-color: #f0dcac !important;
+  color: #b99a4e !important;
+}
+
+.kw2-complete {
+  background: #171e4e !important;
+  border-color: #171e4e !important;
+}
+
+.kw2-complete:not(:disabled):hover {
+  background: #101632 !important;
+  border-color: #101632 !important;
+}
+
+@media (max-width: 767px) {
+  .kw2-header-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .kw2-header-actions .ant-btn {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+}

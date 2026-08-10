@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Avatar,
@@ -86,6 +86,7 @@ export function PatientDashboardPage() {
   const [expandProfile, setExpandProfile] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [newVisitOpen, setNewVisitOpen] = useState(false);
+  const navigate = useNavigate();
   const [summaryOpen, setSummaryOpen] = useState(false);
   // G4 (D-067) — reviewing previous visits is its own surface, and opening it
   // changes nothing about the consultation in progress.
@@ -262,12 +263,18 @@ export function PatientDashboardPage() {
   return (
     <div>
       {layout === 'canvas' && selectedVisit ? (
-        <>
+        <div className="kw-canvas2">
           <CanvasPatientHeader
             patient={patient}
             visit={selectedVisit}
-            onPatientSummary={() => setSummaryOpen(true)}
             layoutControl={layoutSwitch}
+            onBack={() => navigate('/queue')}
+            onBookAppointment={() => setNewVisitOpen(true)}
+            // The one exit action. It scrolls to the completion footer, which
+            // owns the eligibility rules, the blockers and the confirmation —
+            // duplicating that logic here would give two answers to one
+            // question.
+            onCompleteConsultation={() => revealCanvasSection('note')}
           />
           {/* KW2-C1a — the LAST VISIT band is RETIRED in Canvas.
               D-076 put it here to answer "what happened last time?" without
@@ -296,7 +303,7 @@ export function PatientDashboardPage() {
             onOpenInvoice={() => revealSection('invoice')}
           />
           </div>
-        </>
+        </div>
       ) : (
       <Card style={{ marginBottom: 16 }}>
         <Row gutter={[24, 16]}>

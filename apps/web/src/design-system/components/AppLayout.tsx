@@ -19,11 +19,32 @@ function navItem(path: string, label: string) {
 // ...). No general "Dashboard" route exists yet, so it's omitted rather
 // than invented.
 const PRIMARY_NAV_ITEMS = [
+  // KW2-C2 — the nav band from the approved canvas (spec p.2). Two items are
+  // NEW here and both point at screens that already exist: "Dashboard" is the
+  // Executive Dashboard under Management, "Schedules" is Doctor Schedules.
+  // This is a reskin plus items, not a routing change — every 1.0 route is
+  // still reachable at the same URL.
+  navItem('/management/reports', 'Dashboard'),
   navItem('/appointments', 'Appointments'),
   navItem('/patients', 'Patients'),
   navItem('/queue', 'Queue'),
   navItem('/procedure-queue', 'Tasks'),
+  navItem('/management/operation/doctor-schedules', 'Schedules'),
 ];
+
+/**
+ * e-Invoice LHDN is in the approved nav and has no screen behind it yet.
+ *
+ * Rendered disabled with the reason rather than omitted or linked to nothing:
+ * omitting it hides a commitment the clinic has been shown, and a live link
+ * to a 404 teaches staff that nav items lie. It becomes a route when the
+ * LHDN submission work lands.
+ */
+const EINVOICE_NAV_ITEM = {
+  key: 'einvoice',
+  disabled: true,
+  label: <span title="LHDN e-Invoice submission is not built yet">e-Invoice LHDN</span>,
+};
 
 // G4.5d5b-3 — Dispensary sits beside Queue for the roles that can open it,
 // and is absent for the rest. A link that always refuses is its own defect:
@@ -54,8 +75,8 @@ export function AppLayout() {
   const navItems = useMemo(
     () =>
       canViewDispensary(staff?.role)
-        ? [...PRIMARY_NAV_ITEMS, DISPENSARY_NAV_ITEM]
-        : PRIMARY_NAV_ITEMS,
+        ? [...PRIMARY_NAV_ITEMS, DISPENSARY_NAV_ITEM, EINVOICE_NAV_ITEM]
+        : [...PRIMARY_NAV_ITEMS, EINVOICE_NAV_ITEM],
     [staff?.role],
   );
 
@@ -100,16 +121,8 @@ export function AppLayout() {
   return (
     <Layout style={{ height: '100vh', overflow: 'hidden' }}>
       <Header
-        style={{
-          background: '#fff',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          borderBottom: '1px solid #f0f0f0',
-          height: 56,
-          lineHeight: '56px',
-        }}
-        className="kw-app-header"
+        style={{ display: 'flex', alignItems: 'center', gap: 16, height: 54, lineHeight: '54px' }}
+        className="kw-app-header kw-app-header-navy"
       >
         <img src="/kuwick-logo.png" alt="Kuwick" style={{ height: 22, flexShrink: 0 }} />
 
@@ -133,14 +146,18 @@ export function AppLayout() {
         {!inHub && (
           <Menu
             mode="horizontal"
-            theme="light"
+            theme="dark"
             items={navItems}
             selectedKeys={[location.pathname]}
-            style={{ flex: 1, minWidth: 0, borderBottom: 'none' }}
+            style={{ flex: 1, minWidth: 0, borderBottom: 'none', background: 'transparent' }}
           />
         )}
 
         <Space size={12} style={{ flexShrink: 0 }}>
+          {/* The clinic switcher, as a pill (spec p.2). One clinic today shows
+              its name and nothing to press — a switcher offering one option
+              is a control that teaches people it does nothing. */}
+          {tenant?.name && <span className="kw-app-clinic-pill">{tenant.name}</span>}
           <NotificationBell unreadChatCount={unreadChat} onOpenChat={() => setChatOpen(true)} />
           {/* Hidden on a phone by CSS, not removed: the same name and clinic
               are in the avatar's dropdown, and this block is what pushed the

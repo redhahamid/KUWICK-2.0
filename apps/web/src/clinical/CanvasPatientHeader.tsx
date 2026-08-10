@@ -1,123 +1,162 @@
-import { Avatar, Button, Space, Tag, Typography } from 'antd';
-import { UserOutlined, WarningFilled } from '@ant-design/icons';
+import { ReactNode } from 'react';
+import { Avatar, Button, Tooltip, Typography } from 'antd';
+import {
+  ArrowLeftOutlined,
+  CalendarOutlined,
+  CheckOutlined,
+  PauseCircleOutlined,
+  UserOutlined,
+  WarningFilled,
+} from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Patient } from '../core/types';
 import { Visit } from './types';
-import { attendingClinician } from './attendingClinician';
-import { formatClinicDateTime } from './clinicTime';
 
 const { Text } = Typography;
 
-interface CanvasPatientHeaderProps {
+export interface CanvasPatientHeaderProps {
   patient: Patient;
   visit: Visit;
-  onPatientSummary?: () => void;
   /** The Canvas/Flow switch, folded into the band rather than given its own row. */
-  layoutControl?: React.ReactNode;
+  layoutControl?: ReactNode;
+  /** "Saved 16:41", or nothing before the first save. */
+  autosaveLabel?: string;
+  onBack?: () => void;
+  onBookAppointment?: () => void;
+  onCompleteConsultation?: () => void;
 }
 
 /**
- * G4.5a (D-071) — ONE context band, not a second header.
+ * Kuwick 2.0 — the patient header (spec p.2 and p.4).
  *
- * The band carries what the doctor needs to know about *who* and *which
- * visit* before touching anything: identity, allergies, complaint, attending
- * doctor, branch, visit state, and — only for panel patients — the panel.
- * A "Cash" chip on every self-pay visit would be noise on the majority of
- * records, so it is not shown; the absence of a panel chip is the signal.
+ * ONE FUNCTION, ONE HOME. The approved header drops "Documents" and
+ * "Investigations" and the spec says why: both were duplicates. Documents
+ * lives in the canvas card; task orders in Orders & Services ARE the
+ * investigations. What is left is three buttons that exist nowhere else —
+ * book a follow-up, park the consult, close the visit.
  *
- * Deliberately a single row that wraps, never two stacked toolbars: the
- * reference CMS used two bars and it cost the note ~90px of height at the
- * viewport where height is scarcest.
+ * "Patient Summary" went with them. It opened a drawer of the same identity
+ * and history this band and the visits rail now carry between them.
+ *
+ * The band stays a single wrapping row. Two stacked toolbars is what the
+ * reference CMS did, and it cost the note ~90px of height at the viewport
+ * where height is scarcest.
  */
-export function CanvasPatientHeader({ patient, visit, onPatientSummary, layoutControl }: CanvasPatientHeaderProps) {
-  // S3c (D-082) — passing staffId lets the band distinguish "no doctor has
-  // taken this visit yet" (actionable) from "the record does not say" (a data
-  // gap). It never falls back to the registrar.
-  const attending = attendingClinician(visit.staff?.fullName, visit.staff?.role, visit.staffId);
+export function CanvasPatientHeader({
+  patient,
+  visit,
+  layoutControl,
+  autosaveLabel,
+  onBack,
+  onBookAppointment,
+  onCompleteConsultation,
+}: CanvasPatientHeaderProps) {
   const age = patient.dob ? dayjs().diff(dayjs(patient.dob), 'year') : null;
   const allergies = patient.allergies ?? [];
   const hasAllergies = allergies.length > 0;
-  // The panel lives on the VISIT (D-065). Shown only when there is one.
-  const panelName = visit.panelClinic?.name ?? (visit.panelClinicId ? visit.billingType : null);
+  const allergyRecorded = patient.allergies !== null && patient.allergies !== undefined;
+  const panelName = visit.panelClinic?.name ?? null;
+  const initials = patient.name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
 
   return (
-    <div className="kw-context-band">
-      <Space align="center" size={10} className="kw-context-identity">
-        <Avatar size={36} icon={<UserOutlined />} />
-        <div style={{ minWidth: 0 }}>
-          <Text strong style={{ fontSize: 14 }}>
-            {patient.name}
-          </Text>
-          <div>
-            <Text type="secondary" style={{ fontSize: 11 }}>
-              {age !== null ? `${age}y` : '—'} · {patient.gender ?? '—'} · {patient.identifierType}{' '}
-              {patient.identifierValue}
-            </Text>
-          </div>
+    <div className="kw2-patient-header">
+      {onBack && (
+        <button type="button" className="kw2-back" onClick={onBack} aria-label="Back">
+          <ArrowLeftOutlined />
+        </button>
+      )}
+
+      <Avatar size={38} className="kw2-avatar">
+        {initials || <UserOutlined />}
+      </Avatar>
+
+      <div className="kw2-identity">
+        <div className="kw2-identity-name">
+          <span className="kw2-name">{patient.name}</span>
+          <span className={`kw2-state-pill${visit.checkOutAt ? ' kw2-state-done' : ''}`}>
+            {visit.checkOutAt ? 'Completed' : 'In Consult'}
+          </span>
         </div>
-      </Space>
-
-      {/* Allergies lead the chips: it is the one item that changes what the
-          doctor may safely prescribe, so it is never a quiet grey label. */}
-      {hasAllergies ? (
-        <Tag color="red" icon={<WarningFilled />} className="kw-context-allergy">
-          {allergies.join(', ')}
-        </Tag>
-      ) : (
-        <Tag className="kw-context-allergy">No known allergy</Tag>
-      )}
-
-      {visit.presentingComplaint && (
-        <span className="kw-context-item">
-          <Text type="secondary" style={{ fontSize: 11 }}>
-            COMPLAINT{' '}
-          </Text>
-          <Text strong style={{ fontSize: 12 }}>
-            {visit.presentingComplaint}
-          </Text>
-        </span>
-      )}
-
-      {/* D-077 — the visit's STORED attending relationship, labelled by the
-          stored role. "DR Dr. Amira Rahman" doubled a title the clinic had
-          already typed, and worse, it printed "DR" over a nurse. */}
-      <span className="kw-context-item">
-        {attending.prefix && (
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {attending.prefix}{' '}
-          </Text>
+        <div className="kw2-identity-meta">
+          {age !== null ? `${age}y` : '—'} · {patient.gender ?? '—'} · {patient.identifierValue}
+        </div>
+        {visit.presentingComplaint && (
+          <div className="kw2-complaint">{visit.presentingComplaint}</div>
         )}
-        <Text strong={Boolean(attending.name)} italic={!attending.name} style={{ fontSize: 13 }}>
-          {attending.name ?? 'Attending clinician not recorded'}
-        </Text>
-      </span>
+      </div>
 
-      {visit.clinic?.name && (
-        <Text className="kw-context-item" type="secondary" style={{ fontSize: 12 }}>
-          {visit.clinic.name}
-        </Text>
-      )}
+      <div className="kw2-header-chips">
+        {/* Allergies lead: the one item that changes what may safely be
+            prescribed. "Not asked" is its own state and is amber, because an
+            unasked question is not the same as a negative answer. */}
+        {hasAllergies ? (
+          <span className="kw2-chip kw2-chip-danger">
+            <WarningFilled /> {allergies.join(', ')}
+          </span>
+        ) : allergyRecorded ? (
+          <span className="kw2-chip">+ No known allergy</span>
+        ) : (
+          <span className="kw2-chip kw2-chip-warn">! Allergy not asked</span>
+        )}
 
-      {panelName && <Tag color="purple">Panel · {panelName}</Tag>}
+        <span className="kw2-chip kw2-chip-payer">{panelName ? `Panel · ${panelName}` : 'CASH'}</span>
 
-      <Tag color={visit.checkOutAt ? 'default' : 'gold'}>{visit.checkOutAt ? 'Completed' : 'In Progress'}</Tag>
+        {autosaveLabel && (
+          <span className="kw2-autosave" role="status">
+            Autosave ✓ {autosaveLabel}
+          </span>
+        )}
+      </div>
 
-      <Text className="kw-context-item" type="secondary" style={{ fontSize: 11 }}>
-        {visit.visitNumber} · {formatClinicDateTime(visit.checkInAt)}
-      </Text>
-
-      {/* D-077 — Previous Visits is GONE from here. The Last Visit Snapshot
-          immediately below carries "View History", and two controls opening
-          the same drawer is two places to look for one thing. The freed space
-          goes to Patient Summary, which nothing else offered on desktop. */}
-      <Space size={6} className="kw-context-action">
+      <div className="kw2-header-actions">
         {layoutControl}
-        {onPatientSummary && (
-          <Button size="small" icon={<UserOutlined />} onClick={onPatientSummary}>
-            Patient Summary
+
+        <Button icon={<CalendarOutlined />} onClick={onBookAppointment} disabled={!onBookAppointment}>
+          Appointment
+        </Button>
+
+        {/*
+          HOLD IS DISABLED, AND SAYS SO.
+
+          The approved header parks a consult: the patient returns to the
+          queue and the visit's state is kept. Nothing behind this exists yet
+          — there is no transition back from IN_CONSULTATION to WAITING, and
+          no workflow event for it, so honouring the button would mean
+          inventing a queue state change with no audit trail behind it.
+
+          Rendered disabled with the reason rather than omitted: the clinic
+          has been shown this control, and a button that silently does nothing
+          is worse than one that says it is not ready.
+        */}
+        <Tooltip title="Parking a consult needs the queue transition that is not built yet.">
+          <Button icon={<PauseCircleOutlined />} disabled className="kw2-hold">
+            Hold
           </Button>
-        )}
-      </Space>
+        </Tooltip>
+
+        <Button
+          type="primary"
+          icon={<CheckOutlined />}
+          onClick={onCompleteConsultation}
+          disabled={!onCompleteConsultation}
+          className="kw2-complete"
+        >
+          Complete Consultation
+        </Button>
+      </div>
     </div>
   );
 }
+
+/** Exported for the header's own tests. */
+export function headerAllergyState(patient: Pick<Patient, 'allergies'>): 'NONE_RECORDED' | 'NONE_KNOWN' | 'PRESENT' {
+  if (patient.allergies === null || patient.allergies === undefined) return 'NONE_RECORDED';
+  return patient.allergies.length > 0 ? 'PRESENT' : 'NONE_KNOWN';
+}
+
+export { Text };

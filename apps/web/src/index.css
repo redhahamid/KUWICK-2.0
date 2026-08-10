@@ -2628,3 +2628,95 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
     display: none;
   }
 }
+
+/* ===========================================================================
+   KW2-C2 — the top navigation band, per the approved canvas (spec p.2).
+   ---------------------------------------------------------------------------
+   The one GLOBAL repaint in the Kuwick 2.0 work, and it is deliberate: the
+   nav is a single band shared by Flow and Canvas alike, so skinning it per
+   layout would make it flicker between two identities as a doctor toggles.
+   Owner-assigned to this phase for exactly that reason.
+
+   Routes are untouched. This is colour, spacing and two extra items.
+   ========================================================================= */
+.kw-app-header-navy {
+  background: #101632;
+  border-bottom: none;
+}
+
+.kw-app-header-navy .ant-menu {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 14px;
+}
+
+.kw-app-header-navy .ant-menu-item {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.kw-app-header-navy .ant-menu-item a {
+  color: inherit;
+}
+
+.kw-app-header-navy .ant-menu-item:hover,
+.kw-app-header-navy .ant-menu-item:hover a {
+  color: #fff !important;
+}
+
+/* Active item: white, with the accent underline the mockup draws. */
+.kw-app-header-navy .ant-menu-item-selected,
+.kw-app-header-navy .ant-menu-item-selected a {
+  color: #fff !important;
+  font-weight: 600;
+}
+
+.kw-app-header-navy .ant-menu-item-selected::after {
+  border-bottom: 2px solid #2557e8 !important;
+  opacity: 1 !important;
+}
+
+/* A disabled item still has to be readable — it is stating a fact about the
+   product, not decoration. */
+.kw-app-header-navy .ant-menu-item-disabled,
+.kw-app-header-navy .ant-menu-item-disabled span {
+  color: rgba(255, 255, 255, 0.38) !important;
+  cursor: not-allowed;
+}
+
+.kw-app-header-navy .kw-app-header-identity div,
+.kw-app-header-navy .kw-app-header-identity .ant-typography {
+  color: #fff !important;
+}
+
+.kw-app-header-navy .kw-app-header-identity .ant-typography-secondary {
+  color: rgba(255, 255, 255, 0.66) !important;
+}
+
+.kw-app-header-navy .anticon {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* The clinic pill. */
+.kw-app-clinic-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 991px) {
+  /* The pill is the first thing to go on a narrow screen: the clinic is also
+     named in the avatar's dropdown. */
+  .kw-app-clinic-pill {
+    display: none;
+  }
+}
