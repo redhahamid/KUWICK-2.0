@@ -326,21 +326,16 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
 
       <div className="kw-consult-bar">
         <div className="kw-consult-summary">
-          <Space size={6} wrap>
-            {/* Status only. Signing happens in the Clinical Note section and
-                nowhere else — the footer never grows a second signing path. */}
-            {pending ? (
-              <Tag className="kw-chip-pending">Clinical note not signed</Tag>
-            ) : (
-              <Tag className="kw-chip-success">Clinical note signed</Tag>
-            )}
-            <Tag className="kw-chip-neutral" icon={iconFor(primary.reason)}>
-              {primary.station}
-            </Tag>
-          </Space>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {primary.supporting}
-          </Text>
+          {/* U2 — the chips are GONE.
+              They were the retired banner's other half: a signed/not-signed
+              chip and a destination chip repeating, permanently, what the
+              completion checkpoint now says once and the bottom action bar
+              (Section I) will carry. Three surfaces asserting the same two
+              facts is how a doctor stops reading any of them.
+
+              The button itself still names the destination — "Complete &
+              Send to Dispensary" — so nothing was lost by removing the chip
+              that said "Dispensary" beside it. */}
         </div>
         <div className="kw-consult-primary">
           <Button

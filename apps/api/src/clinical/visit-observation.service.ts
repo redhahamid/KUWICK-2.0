@@ -242,9 +242,22 @@ export class VisitObservationService {
           `These observations were changed by someone else (your version ${dto.expectedVersion}, current ${existing.version}). Reload before saving.`,
         );
       }
-      if (!dto.correctionReason?.trim()) {
-        throw new BadRequestException('A correction requires a reason');
-      }
+      // U1 — the reason is OPTIONAL on a vital.
+      //
+      // Owner decision: vitals change routinely mid-consultation. A repeat BP
+      // after the patient has sat down, a re-weigh on a better scale, a typo
+      // in a pulse — none of those are events anybody wants to write a
+      // sentence about, and a mandatory field in front of them teaches staff
+      // to type "correction" and move on, which is a worse record than no
+      // sentence at all.
+      //
+      // WHAT DOES NOT CHANGE: the immutable revision below still snapshots
+      // the previous values, the editor, their role and the time. The audit
+      // trail is unbroken; only the prose is now the editor's choice.
+      //
+      // This applies to OBSERVATIONS ONLY. A signed clinical note still
+      // requires a reason to amend — that one is a medicolegal record of what
+      // a clinician asserted, not a measurement that was taken again.
 
       // Snapshot the PREVIOUS values before overwriting, so the audit trail
       // preserves what the reading used to say.
@@ -266,7 +279,7 @@ export class VisitObservationService {
           editorNameSnapshot: snap.nameSnapshot,
           editorRoleSnapshot: snap.roleSnapshot,
           editorDesignationSnapshot: snap.designationSnapshot,
-          correctionReason: dto.correctionReason.trim(),
+          correctionReason: dto.correctionReason?.trim() || null,
         },
       });
 

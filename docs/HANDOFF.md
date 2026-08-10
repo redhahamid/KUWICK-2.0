@@ -24,7 +24,7 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 
 | | |
 |---|---|
-| Last green | **1097 frontend / 1138 backend**, both typechecks clean |
+| Last green | **1105 frontend / 1138 backend**, both typechecks clean |
 | Migrations | 63, no drift |
 | Last commit | see `git log` |
 
@@ -107,6 +107,24 @@ Q1 is partially done — what remains inside it:
 Also outstanding and worth doing early in Q6/Q7, since the catalogues are now
 real: the canvas diagnosis search and medication search still read the OLD
 placeholder surfaces. The data is seeded; the UI is not yet pointed at it.
+
+## D1 — the note editor was not typeable (fixed)
+
+Root cause: the Canvas decided who may author a doctor's narrative from the
+ROLE alone; the server decides it from the role **or** a verified medical
+registration with signing enabled (`canAuthorNarrative`). A credentialed
+OWNER_ADMIN was allowed by the server and refused by the browser. On a visit
+with no notes that refusal meant no implicit draft opened, which made the
+editor read-only, which swallowed keystrokes silently.
+
+Fix: the server publishes `canAuthorNarrative` on the session and the Canvas
+renders it. One source of truth. Absent on an old session = fall back to the
+role, never "no".
+
+Dev logins: `amira.rahman@` (DOCTOR_RESIDENT, credentialed — can author),
+`owner.admin@` (OWNER_ADMIN, **no** medical registration — correctly cannot).
+If a real clinic's owner is also the GP, set their registration and signing
+flags; that is data, not code.
 
 ## Standing rules
 

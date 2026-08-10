@@ -513,10 +513,14 @@ describe('Case B — eligible with documentation pending', () => {
     expect(footer).toHaveAttribute('data-documentation-pending', 'true');
   });
 
-  it('50. the chip says the note is not signed rather than claiming it is', async () => {
+  it('50. there is NO signed/not-signed chip on the bar at all', async () => {
+    // U2 — the chip was the retired banner's other half. Three surfaces
+    // asserting the same fact is how a doctor stops reading any of them; the
+    // checkpoint says it once, at the moment it matters.
     get.mockResolvedValue(pending());
     renderFooter();
-    expect(await screen.findByText('Clinical note not signed')).toBeInTheDocument();
+    await screen.findByRole('button', { name: 'Complete & Send to Dispensary' });
+    expect(screen.queryByText('Clinical note not signed')).not.toBeInTheDocument();
     expect(screen.queryByText('Clinical note signed')).not.toBeInTheDocument();
   });
 
@@ -597,11 +601,14 @@ describe('Case B — eligible with documentation pending', () => {
 });
 
 describe('Case A — eligible with documentation complete', () => {
-  it('58. no amber panel, and the signed chip is shown', async () => {
+  it('58. a signed note produces no panel and no chip — just the action', async () => {
     get.mockResolvedValue(STATUS({ documentationPending: false }));
     renderFooter();
-    expect(await screen.findByText('Clinical note signed')).toBeInTheDocument();
+    // The button names the destination, which is the only thing the bar
+    // needs to say when nothing is outstanding.
+    expect(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' })).toBeEnabled();
     expect(screen.queryByText('Documentation pending')).not.toBeInTheDocument();
+    expect(screen.queryByText('Clinical note signed')).not.toBeInTheDocument();
   });
 
   it('59. the ordinary confirmation is asked, not the pending one', async () => {

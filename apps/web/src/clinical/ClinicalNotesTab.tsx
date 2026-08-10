@@ -196,7 +196,18 @@ export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: Clin
   // Subscribed to the whole store: this component reads drafts, loadedNoteId
   // and every action, and the store only changes while this editor is in use.
   const draftStore = useClinicalDraftStore((state) => state);
-  const canWriteNarrative = Boolean(staff && DOCTOR_ROLES.includes(staff.role));
+  /**
+   * D1 — the SERVER'S answer, where the session carries one.
+   *
+   * The role check below is the fallback for a session minted before the
+   * capability was published; it stays only for that, because it is the
+   * narrower and therefore wrong-in-one-direction answer. It refused a
+   * credentialed owner-doctor, and refused them by rendering an editor that
+   * silently swallowed every keystroke.
+   */
+  const canWriteNarrative = Boolean(
+    staff && (staff.canAuthorNarrative ?? DOCTOR_ROLES.includes(staff.role)),
+  );
 
   const scope = useMemo(
     () => ({
@@ -346,7 +357,21 @@ export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: Clin
   const isSigned = activeNote?.status === 'SIGNED';
   const isLegacy = Boolean(activeNote?.legacyAuthorUnknown);
   const isLocked = isSigned || isLegacy;
-  const readOnly = isLocked || (!canWriteNarrative && draftType === 'DOCTOR_NARRATIVE' && !isNewDraft);
+  // D1 — WHY it is read-only, not merely THAT it is.
+  //
+  // A read-only editor that looks identical to a writable one and drops every
+  // keystroke is the worst version of this: the doctor types a paragraph and
+  // discovers afterwards that none of it existed. Whatever the reason, the
+  // reason is now on screen.
+  const notPermitted = !canWriteNarrative && draftType === 'DOCTOR_NARRATIVE' && !isNewDraft;
+  const readOnly = isLocked || notPermitted;
+  const readOnlyReason = isSigned
+    ? 'This note is signed. Changes are recorded as an amendment.'
+    : isLegacy
+      ? 'This note predates attributed authorship and is kept exactly as recorded.'
+      : notPermitted
+        ? 'Your account is not permitted to write a doctor’s clinical note. Use “Add Staff Remark” to record what you observed.'
+        : null;
 
   // G4.5d6 — the note writes itself after the doctor stops typing. `handleSave`
   // is reused rather than duplicated so autosave and the manual button cannot
@@ -763,6 +788,19 @@ export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: Clin
           </Space>
         }
       >
+        {/* D1 — never a silently dead editor. If it cannot be typed into, the
+            reason is above it, before the first keystroke rather than after
+            a paragraph has vanished. */}
+        {readOnlyReason && (
+          <Alert
+            type="info"
+            showIcon
+            role="status"
+            style={{ marginBottom: 8 }}
+            data-readonly-reason="true"
+            message={readOnlyReason}
+          />
+        )}
         <RichTextEditor
           content={content}
           onChange={(html) => {

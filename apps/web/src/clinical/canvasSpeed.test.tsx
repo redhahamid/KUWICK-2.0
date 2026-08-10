@@ -184,12 +184,20 @@ describe('C. Edit', () => {
     expect(post).not.toHaveBeenCalled();
   });
 
-  it('13. an edit still requires a reason — the correction rule is unchanged', async () => {
+  it('13. an edit does NOT demand a reason — but is still attributed', async () => {
+    // U1, owner decision: vitals change routinely mid-consultation. A repeat
+    // BP, a re-weigh, a typo'd pulse — none of those are events anybody wants
+    // to write a sentence about, and a mandatory field teaches staff to type
+    // "correction" and move on, which is a worse record than no sentence.
+    //
+    // What is unchanged: the server still writes an immutable revision
+    // snapshotting the previous values, the editor, their role and the time.
+    // Only the prose became optional.
     renderVitals([OBSERVATION]);
     await userEvent.click(await screen.findByRole('button', { name: 'Edit' }));
     await userEvent.click(screen.getByRole('button', { name: 'Save Correction' }));
-    expect(await screen.findByText('A correction requires a reason')).toBeInTheDocument();
-    expect(patch).not.toHaveBeenCalled();
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    expect(screen.queryByText('A correction requires a reason')).not.toBeInTheDocument();
   });
 
   it('14. Cancel returns to the compact summary and changes nothing', async () => {

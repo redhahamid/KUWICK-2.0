@@ -5,6 +5,8 @@ import { PrismaService } from '../core/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { PlatformLoginDto } from './dto/platform-login.dto';
+import { Staff } from '@prisma/client';
+import { canAuthorNarrative } from '../clinical/clinical-authorization';
 
 const ACCESS_TOKEN_TTL = '15m';
 const REFRESH_TOKEN_TTL = '7d';
@@ -152,7 +154,10 @@ export class AuthService {
     user: {
       id: string;
       email: string;
-      staff: { id: string; fullName: string; role: string; clinicId: string | null; clinic: { name: string } | null } | null;
+      // The FULL staff row, not a hand-narrowed shape. Both callers already
+      // fetch it whole; the narrow declaration was hiding the credential
+      // fields that decide whether this person may author a clinical note.
+      staff: (Staff & { clinic: { name: string } | null }) | null;
     },
     tenant: { id: string; name: string; slug: string | null },
   ) {
@@ -178,6 +183,14 @@ export class AuthService {
         role: staff.role,
         clinicId: staff.clinicId,
         clinicName: staff.clinic?.name ?? null,
+        // D1 — the CAPABILITY, decided by the same function the write path
+        // uses. The Canvas used to re-derive this from the role alone and got
+        // a different answer: a credentialed OWNER_ADMIN — the owner who is
+        // also the GP, which is most single-doctor clinics in Malaysia — could
+        // author a note on the server and was handed a read-only editor by the
+        // browser. Two implementations of one clinical permission is one that
+        // can disagree, and this one disagreed silently.
+        canAuthorNarrative: canAuthorNarrative(staff),
       },
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
     };
@@ -262,6 +275,14 @@ export class AuthService {
         role: staff.role,
         clinicId: staff.clinicId,
         clinicName: staff.clinic?.name ?? null,
+        // D1 — the CAPABILITY, decided by the same function the write path
+        // uses. The Canvas used to re-derive this from the role alone and got
+        // a different answer: a credentialed OWNER_ADMIN — the owner who is
+        // also the GP, which is most single-doctor clinics in Malaysia — could
+        // author a note on the server and was handed a read-only editor by the
+        // browser. Two implementations of one clinical permission is one that
+        // can disagree, and this one disagreed silently.
+        canAuthorNarrative: canAuthorNarrative(staff),
       },
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
     };

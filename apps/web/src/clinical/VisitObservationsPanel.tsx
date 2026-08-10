@@ -490,7 +490,10 @@ export function VisitObservationsPanel({ visitId, compact }: VisitObservationsPa
             <Form.Item
               name="correctionReason"
               label="Reason for correction"
-              rules={[{ required: true, message: 'A correction requires a reason' }]}
+              // U1 — optional. See visit-observation.service.ts: the revision
+              // still records who, when and what changed; only the sentence
+              // is now the editor's choice.
+              rules={[]}
               style={{ marginBottom: 8, marginTop: 8 }}
             >
               <Input placeholder="e.g. BP transcribed incorrectly" />

@@ -117,6 +117,12 @@ describe('AuthService', () => {
         role: 'DOCTOR_RESIDENT',
         clinicId: 'clinic-1',
         clinicName: 'Main Branch',
+        // D1 — the session now publishes the AUTHORING CAPABILITY, decided by
+        // the same function the write path uses. The Canvas renders this
+        // instead of re-deriving it from the role, which is how a
+        // credentialed owner-doctor came to be refused by the browser and
+        // allowed by the server.
+        canAuthorNarrative: true,
       });
     });
   });
