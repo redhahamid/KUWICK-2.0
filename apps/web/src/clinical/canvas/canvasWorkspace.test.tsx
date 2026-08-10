@@ -70,8 +70,18 @@ beforeEach(() => {
   post.mockReset();
   patch.mockReset();
   del.mockReset();
-  get.mockResolvedValue({ items: [], total: 0 });
+  // URL-aware: the rail reads history AND today's diagnoses/prescriptions/
+  // orders, and those return arrays rather than a page.
+  get.mockImplementation(async (url: string) =>
+    String(url).includes('history') ? { items: [], total: 0 } : [],
+  );
 });
+
+/** History page + empty live-visit reads. */
+const historyReturning = (items: VisitHistorySummary[]) =>
+  get.mockImplementation(async (url: string) =>
+    String(url).includes('history') ? { items, total: items.length } : [],
+  );
 
 describe('the three-column shell', () => {
   it('1. renders all three slots', () => {
@@ -163,7 +173,7 @@ describe('the visits rail', () => {
   });
 
   it('8. past visits show their diagnosis and prescription at a glance', async () => {
-    get.mockResolvedValue({ items: [pastVisit()], total: 1 });
+    historyReturning([pastVisit()]);
     renderRail();
     const past = await screen.findByTestId('canvas-visit-past');
     expect(within(past).getByText(/URTI \(J06.9\)/)).toBeInTheDocument();
@@ -171,10 +181,7 @@ describe('the visits rail', () => {
   });
 
   it('9. the visit being documented is NEVER listed as a past visit', async () => {
-    get.mockResolvedValue({
-      items: [pastVisit(), pastVisit({ id: 'visit-today', visitNumber: 'V-000004' })],
-      total: 2,
-    });
+    historyReturning([pastVisit(), pastVisit({ id: 'visit-today', visitNumber: 'V-000004' })]);
     renderRail();
     await screen.findByTestId('canvas-visit-past');
     expect(screen.getAllByTestId('canvas-visit-past')).toHaveLength(1);
@@ -182,7 +189,7 @@ describe('the visits rail', () => {
 
   it('10. it can only READ — no mutation reaches the API', async () => {
     // The consultation in progress must be untouchable from this column.
-    get.mockResolvedValue({ items: [pastVisit()], total: 1 });
+    historyReturning([pastVisit()]);
     renderRail();
     await screen.findByTestId('canvas-visit-past');
     expect(post).not.toHaveBeenCalled();
@@ -190,15 +197,17 @@ describe('the visits rail', () => {
     expect(del).not.toHaveBeenCalled();
   });
 
-  it('11. it reads history caches only, never the live visit’s', async () => {
-    get.mockResolvedValue({ items: [pastVisit()], total: 1 });
+  it('11. it NEVER reads a clinical note', async () => {
+    // Today's card carries the same Dx/Rx/Or facts the past cards do, so the
+    // rail does read the live visit's diagnoses, prescriptions and orders —
+    // caches the middle and right columns already populate, so no extra
+    // request. The note is the one thing it must never touch: fetching it
+    // here is what remounts the editor and loses a draft (C1/D-091).
+    historyReturning([pastVisit()]);
     renderRail();
     await waitFor(() => expect(get).toHaveBeenCalled());
     for (const [url] of get.mock.calls) {
-      // History endpoints only. A read of /visits, /clinical-notes or
-      // /prescriptions from this column could refresh the doctor's open
-      // consultation out from under them (D-067).
-      expect(String(url)).toContain('history');
+      expect(String(url)).not.toContain('clinical-note');
     }
   });
 });

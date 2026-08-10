@@ -545,6 +545,8 @@ export function PatientDashboardPage() {
                   patientId={patient.id}
                   currentVisit={selectedVisit}
                   onOpenHistory={() => setHistoryOpen(true)}
+                  onOpenVisit={() => setHistoryOpen(true)}
+                  onNewVisit={() => setNewVisitOpen(true)}
                 />
               }
               middle={

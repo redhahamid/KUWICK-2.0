@@ -83,24 +83,26 @@ export function canvasWidths(containerWidth: number): CanvasWidths {
     return { mode, visits: 0, middle, right };
   }
 
-  const visits = clamp(
-    Math.round(containerWidth * (CANVAS_COLUMNS.visits / CANVAS_REFERENCE_WIDTH)),
-    228,
-    288,
-  );
-  let right = clamp(
-    Math.round(containerWidth * (CANVAS_COLUMNS.right / CANVAS_REFERENCE_WIDTH)),
-    440,
-    600,
-  );
-  const gutters = CANVAS_GUTTER * 2;
-  let middle = containerWidth - visits - right - gutters;
+  // PROPORTIONAL to the spec's own ratios, not its raw pixels.
+  //
+  // 258 + 706 + 540 = 1504, which is 68px short of the 1600 reference once
+  // the two gutters are counted. Handing that remainder to one column would
+  // change the composition the mockup was approved on, so all three are
+  // scaled by the same factor and the proportions survive at any width.
+  const usable = containerWidth - CANVAS_GUTTER * 2;
+  const specTotal = CANVAS_COLUMNS.visits + CANVAS_COLUMNS.middle + CANVAS_COLUMNS.right;
+  const scale = usable / specTotal;
+
+  // The rails are still bounded: below their minimum they stop being readable,
+  // and above their maximum a glanceable summary becomes a second document.
+  const visits = clamp(Math.round(CANVAS_COLUMNS.visits * scale), 228, 300);
+  let right = clamp(Math.round(CANVAS_COLUMNS.right * scale), 440, 620);
+  let middle = usable - visits - right;
 
   // The note never pays for the rails. Trim the right rail to its minimum
   // before letting the note drop below what a sentence needs.
   if (middle < CANVAS_NOTE_MIN_WIDTH) {
-    const deficit = CANVAS_NOTE_MIN_WIDTH - middle;
-    const trim = Math.min(deficit, right - 440);
+    const trim = Math.min(CANVAS_NOTE_MIN_WIDTH - middle, right - 440);
     right -= trim;
     middle += trim;
   }

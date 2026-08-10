@@ -1,21 +1,23 @@
-import { Button, Skeleton, Tag, Typography } from 'antd';
+import { Skeleton } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useVisitHistory } from '../history/useVisitHistory';
+import { useDiagnoses } from '../hooks/useDiagnoses';
+import { usePrescriptions } from '../hooks/usePrescriptions';
+import { useOrderServices } from '../hooks/useOrderServices';
 import { Visit, VisitHistorySummary } from '../types';
 
-const { Text } = Typography;
-
 /**
- * Kuwick 2.0 Canvas — the visits rail (spec p.2, principle "history is always
- * on screen").
+ * Kuwick 2.0 Canvas — the visits rail (spec p.2, "history is always on
+ * screen").
  *
- * Previous visits used to live behind a drawer, which meant the answer to
- * "what did we do last time?" cost a click, a read and a dismissal — during a
- * consultation, with the patient waiting. Here they sit beside the note for
- * the whole visit.
+ * Previous visits used to live behind a drawer, so the answer to "what did we
+ * do last time?" cost a click, a read and a dismissal — mid-consultation,
+ * with the patient waiting. Here they sit beside the note for the whole
+ * visit.
  *
  * IT READS AND ONLY READS. It reuses `useVisitHistory`, the query layer built
- * for the read-only history (D-067), which has no mutation hook in it and
+ * for the read-only history (D-067), which contains no mutation hook and
  * whose cache keys are namespaced away from the live visit's. Nothing in this
  * column can alter the consultation in progress, switch the record under an
  * open editor, or refresh the doctor's draft out from under them.
@@ -25,9 +27,13 @@ export interface CanvasVisitsRailProps {
   currentVisit: Visit;
   /** Opens the full read-only history surface. */
   onOpenHistory: () => void;
+  /** Opens one past visit, read-only. */
+  onOpenVisit?: (visitId: string) => void;
+  /** Starts a new visit for this patient. */
+  onNewVisit?: () => void;
 }
 
-/** Past visits shown before the rail starts scrolling (spec: 4 visible). */
+/** Past visits shown before the rail scrolls (spec: 4 visible). */
 export const VISIBLE_PAST_VISITS = 4;
 
 /** "4 Aug · 02:18" — enough to place a visit without a full date. */
@@ -37,7 +43,7 @@ export function visitStamp(iso: string, today = dayjs()): string {
   return `${day} · ${at.format('HH:mm')}`;
 }
 
-/** The one-line Rx summary the spec puts on each past card. */
+/** The one-line Rx summary the spec puts on each card. */
 export function medicationSummary(visit: VisitHistorySummary, max = 2): string {
   const names = visit.medications.map((m) => m.name).filter(Boolean);
   if (names.length === 0) return '—';
@@ -54,8 +60,93 @@ export function diagnosisSummary(visit: VisitHistorySummary): string {
   return `${primary.name}${code}${more}`;
 }
 
-export function CanvasVisitsRail({ patientId, currentVisit, onOpenHistory }: CanvasVisitsRailProps) {
+/**
+ * "Dr UAT · Cash · W-012" — who, how they pay, which queue number.
+ *
+ * Every part is omitted rather than guessed when the visit does not carry it:
+ * an unattended visit is a real state (D-082) and must not be filled in with
+ * the registrar's name.
+ */
+export function attributionLine(parts: {
+  clinician?: string | null;
+  billingType?: string | null;
+  queueType?: string | null;
+  queueNumber?: string | number | null;
+}): string {
+  const out: string[] = [];
+  if (parts.clinician) out.push(parts.clinician);
+  if (parts.billingType) out.push(parts.billingType === 'SELF_PAY' ? 'Cash' : 'Panel');
+  const letter = queueLetter(parts.queueType);
+  if (letter && parts.queueNumber != null && parts.queueNumber !== '') {
+    out.push(`${letter}-${parts.queueNumber}`);
+  }
+  return out.join(' · ');
+}
+
+/** "FBC ✓ completed", or nothing when the visit ordered none. */
+export function orderSummary(orders: { procedureName?: string | null; status?: string | null }[] | undefined): string {
+  if (!orders?.length) return '';
+  const names = orders.map((o) => o.procedureName).filter(Boolean) as string[];
+  if (names.length === 0) return '';
+  const done = orders.every((o) => o.status === 'COMPLETED');
+  const shown = names.slice(0, 2).join(' · ');
+  const more = names.length > 2 ? ` +${names.length - 2}` : '';
+  return `${shown}${more}${done ? ' ✓ completed' : ''}`;
+}
+
+/** Today's prescriptions as one line, same shape as a past visit's Rx. */
+export function liveMedicationSummary(
+  prescriptions: { item?: { name: string } | null }[] | undefined,
+  max = 2,
+): string {
+  const names = (prescriptions ?? []).map((p) => p.item?.name).filter(Boolean) as string[];
+  if (names.length === 0) return '—';
+  const shown = names.slice(0, max).join(' · ');
+  return names.length > max ? `${shown} +${names.length - max}` : shown;
+}
+
+/** Today's diagnoses as one line. */
+export function liveDiagnosisSummary(
+  diagnoses: { name: string; icd10Code: string | null; priority?: string | null }[] | undefined,
+): string {
+  if (!diagnoses?.length) return '— not set';
+  const primary = diagnoses.find((d) => d.priority === 'PRIMARY') ?? diagnoses[0];
+  const code = primary.icd10Code ? ` (${primary.icd10Code})` : '';
+  const more = diagnoses.length > 1 ? ` +${diagnoses.length - 1}` : '';
+  return `${primary.name}${code}${more}`;
+}
+
+/** The clinic's four-number system: OTC C, Emergency E, Walk-in W, Appt A. */
+export function queueLetter(queueType: string | null | undefined): string | null {
+  switch (queueType) {
+    case 'OTC':
+      return 'C';
+    case 'EMERGENCY':
+      return 'E';
+    case 'WALK_IN':
+      return 'W';
+    case 'APPOINTMENT':
+      return 'A';
+    default:
+      return null;
+  }
+}
+
+export function CanvasVisitsRail({
+  patientId,
+  currentVisit,
+  onOpenHistory,
+  onOpenVisit,
+  onNewVisit,
+}: CanvasVisitsRailProps) {
   const { data, isLoading } = useVisitHistory(patientId);
+  // Today's card carries the same three facts the past cards do. These are the
+  // LIVE visit's caches — already populated by the middle and right columns,
+  // so no extra request — and every one of them is a read. Clinical notes are
+  // deliberately not among them (C1/D-091).
+  const { data: diagnoses } = useDiagnoses(currentVisit.id);
+  const { data: prescriptions } = usePrescriptions(currentVisit.id);
+  const { data: orders } = useOrderServices(currentVisit.id);
 
   const past = (data?.pages ?? [])
     .flatMap((page) => page.items)
@@ -63,26 +154,49 @@ export function CanvasVisitsRail({ patientId, currentVisit, onOpenHistory }: Can
   const total = past.length + 1;
 
   return (
-    <div className="kw2-visits">
-      <div className="kw2-visits-head">
-        <span className="kw2-micro">Visits</span>
-        <Text className="kw2-muted" style={{ fontSize: 12 }}>
-          {isLoading ? '' : `${total} total`}
-        </Text>
-      </div>
+    <section className="kw2-card kw2-visits" aria-label="Visits">
+      <header className="kw2-visits-head">
+        <h2 className="kw2-card-title">Visits</h2>
+        {!isLoading && <span className="kw2-count-chip">{total} total</span>}
+        <button
+          type="button"
+          className="kw2-icon-btn"
+          onClick={onNewVisit}
+          disabled={!onNewVisit}
+          aria-label="New visit"
+        >
+          <PlusOutlined />
+        </button>
+      </header>
 
       {/* TODAY — the visit being documented. Navy, and not a link: this is
           where the doctor already is. */}
-      <div className="kw2-visit-today" data-testid="canvas-visit-today">
+      <article className="kw2-visit-today" data-testid="canvas-visit-today">
         <div className="kw2-visit-row">
-          <span>{visitStamp(currentVisit.checkInAt)}</span>
+          <span className="kw2-visit-when">{visitStamp(currentVisit.checkInAt)}</span>
           <span className="kw2-visit-no">{currentVisit.visitNumber}</span>
         </div>
-        <Tag className="kw2-visit-state">{currentVisit.checkOutAt ? 'COMPLETED' : 'IN CONSULT'}</Tag>
-        {currentVisit.presentingComplaint && (
-          <div className="kw2-visit-line">{currentVisit.presentingComplaint}</div>
+        <div className="kw2-visit-state">{currentVisit.checkOutAt ? 'COMPLETED' : 'IN CONSULT'}</div>
+        <div className="kw2-visit-line">
+          <span className="kw2-visit-key">Dx</span> {liveDiagnosisSummary(diagnoses)}
+        </div>
+        <div className="kw2-visit-line">
+          <span className="kw2-visit-key">Rx</span> {liveMedicationSummary(prescriptions)}
+        </div>
+        {orderSummary(orders) && (
+          <div className="kw2-visit-line">
+            <span className="kw2-visit-key">Or</span> {orderSummary(orders)}
+          </div>
         )}
-      </div>
+        <div className="kw2-visit-attrib">
+          {attributionLine({
+            clinician: currentVisit.staff?.fullName ?? null,
+            billingType: currentVisit.billingType,
+            queueType: currentVisit.queueTicket?.queueType,
+            queueNumber: currentVisit.queueTicket?.displayNumber,
+          })}
+        </div>
+      </article>
 
       {isLoading && <Skeleton active paragraph={{ rows: 4 }} title={false} />}
 
@@ -90,33 +204,41 @@ export function CanvasVisitsRail({ patientId, currentVisit, onOpenHistory }: Can
         // Spec p.3 — a first visit is a state, not an error, and it says what
         // happens next rather than leaving a blank column.
         <div className="kw2-empty" data-testid="canvas-visits-empty">
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>First visit</div>
-          No previous records. History builds automatically after this consultation.
+          <strong>First visit</strong>
+          <div>No previous records. History builds automatically after this consultation.</div>
         </div>
       )}
 
       {past.slice(0, VISIBLE_PAST_VISITS).map((visit) => (
-        <div className="kw2-visit-past" key={visit.id} data-testid="canvas-visit-past">
+        <article className="kw2-visit-past" key={visit.id} data-testid="canvas-visit-past">
           <div className="kw2-visit-row">
-            <span>{visitStamp(visit.checkInAt)}</span>
+            <span className="kw2-visit-when">{visitStamp(visit.checkInAt)}</span>
             <span className="kw2-visit-no">{visit.visitNumber}</span>
           </div>
           <div className="kw2-visit-line">
-            <span className="kw2-micro">Dx</span> {diagnosisSummary(visit)}
+            <span className="kw2-visit-key">Dx</span> {diagnosisSummary(visit)}
           </div>
           <div className="kw2-visit-line">
-            <span className="kw2-micro">Rx</span> {medicationSummary(visit)}
+            <span className="kw2-visit-key">Rx</span> {medicationSummary(visit)}
           </div>
-        </div>
+          <div className="kw2-visit-actions">
+            <button type="button" className="kw2-link-btn" onClick={() => onOpenVisit?.(visit.id)}>
+              Open ▸
+            </button>
+            {/* Copy Rx is Phase 2 and lands WITH its review modal. The spec is
+                explicit that a prescription is never blind-copied, so the
+                control does not ship before the review that makes it safe. */}
+          </div>
+        </article>
       ))}
 
-      {past.length > 0 && (
-        <Button size="small" type="link" onClick={onOpenHistory} style={{ padding: 0 }}>
-          {past.length > VISIBLE_PAST_VISITS
-            ? `View all ${past.length} previous visits`
-            : 'Open full history'}
-        </Button>
+      {past.length > VISIBLE_PAST_VISITS && (
+        <button type="button" className="kw2-link-btn" onClick={onOpenHistory}>
+          View all {past.length} previous visits
+        </button>
       )}
-    </div>
+
+      <p className="kw2-visits-hint">hover any visit = note preview</p>
+    </section>
   );
 }

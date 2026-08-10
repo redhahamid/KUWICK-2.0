@@ -80,8 +80,8 @@ describe('the columns fit the space they are given', () => {
     // A rail that grows without limit on a 2560px monitor turns a glanceable
     // summary into a second document.
     const wide = canvasWidths(2560);
-    expect(wide.visits).toBeLessThanOrEqual(288);
-    expect(wide.right).toBeLessThanOrEqual(600);
+    expect(wide.visits).toBeLessThanOrEqual(300);
+    expect(wide.right).toBeLessThanOrEqual(620);
   });
 
   it('10. stacked gives every column the full width', () => {
@@ -89,11 +89,45 @@ describe('the columns fit the space they are given', () => {
     expect(stacked).toMatchObject({ mode: 'stacked', visits: 390, middle: 390, right: 390 });
   });
 
-  it('11. the proportions are close to the spec at its own reference width', () => {
-    // Spec p.2: 258 / 706 / 540 at 1600.
+  it('11. the spec PROPORTIONS hold at the 1600 reference width', () => {
+    // Spec p.2 draws 258 / 706 / 540, which sums to 1504 — 68px short of the
+    // 1600 reference once the gutters are counted. All three scale by the
+    // same factor so the approved composition survives, rather than one
+    // column absorbing the remainder and changing the balance.
     const { visits, middle, right } = canvasWidths(1600);
-    expect(visits).toBeCloseTo(258, -1);
-    expect(right).toBeCloseTo(540, -1);
-    expect(middle).toBeGreaterThan(700);
+    const total = visits + middle + right;
+    expect(visits / total).toBeCloseTo(258 / 1504, 2);
+    expect(middle / total).toBeCloseTo(706 / 1504, 2);
+    expect(right / total).toBeCloseTo(540 / 1504, 2);
+  });
+
+  it('12. the proportions survive across the widths clinics actually use', () => {
+    // 1366-1777 is the band where no clamp bites. Outside it the rails hold
+    // a readable minimum (below) or stop growing (above), both deliberate and
+    // asserted separately in 13 and 14.
+    for (const width of [1366, 1440, 1536, 1600, 1680, 1760]) {
+      const { visits, middle, right } = canvasWidths(width);
+      const total = visits + middle + right;
+      expect(visits / total).toBeCloseTo(258 / 1504, 2);
+      expect(right / total).toBeCloseTo(540 / 1504, 2);
+    }
+  });
+
+  it('13. a narrow desktop keeps the rail readable rather than proportional', () => {
+    // At 1280 the proportional share would be 215px, which is too narrow to
+    // read a diagnosis line. It holds 228 and the note gives up the
+    // difference — the one case where that trade is right, because a rail
+    // nobody can read is worse than a slightly narrower note.
+    expect(canvasWidths(1280).visits).toBe(228);
+  });
+
+  it('14. on a very wide monitor the EXTRA width goes to the note', () => {
+    // Above ~1780 the rail clamps deliberately: past that the proportions
+    // would give a glanceable summary the width of a document. The note takes
+    // what the rails decline, which is the same rule stated the other way up.
+    const wide = canvasWidths(2560);
+    expect(wide.visits).toBe(300);
+    expect(wide.right).toBe(620);
+    expect(wide.middle).toBeGreaterThan(canvasWidths(1600).middle);
   });
 });
