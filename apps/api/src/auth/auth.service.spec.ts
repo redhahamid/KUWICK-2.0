@@ -10,6 +10,10 @@ function createService() {
     tenant: { findUnique: jest.fn() },
     user: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
     platformAdmin: { findUnique: jest.fn(), update: jest.fn() },
+    // TASK 1 — capability roles. Empty by default: the policy module falls
+    // back to the legacy role's mapping, which is exactly the state every
+    // existing account is in until somebody assigns roles explicitly.
+    staffRoleAssignment: { findMany: jest.fn().mockResolvedValue([]) },
     $executeRaw: jest.fn(),
   } as unknown as PrismaService;
   // login/refresh wrap their tenant/user lookups in $transaction to set the
@@ -123,6 +127,29 @@ describe('AuthService', () => {
         // credentialed owner-doctor came to be refused by the browser and
         // allowed by the server.
         canAuthorNarrative: true,
+        // TASK 1 — the session publishes the whole permission set from the
+        // central policy module, so the browser renders the server's answer
+        // instead of deriving a second one from the role. With no explicit
+        // assignments this staff member falls back to DOCTOR_RESIDENT's
+        // mapping, which is the DOCTOR role.
+        permissions: [
+          'allergy.write',
+          'consultation.complete',
+          'consultation.hold',
+          'consultation.resume',
+          'diagnosis.write',
+          'dispense.perform',
+          'document.print',
+          // NOT note.sign: this fixture has no verified medical registration.
+          // The role opens the door to the clinical record; the credential is
+          // what puts a name on it.
+          'note.staffRemark',
+          'note.write',
+          'observation.write',
+          'order.write',
+          'prescription.write',
+        ],
+        roles: [],
       });
     });
   });

@@ -24,7 +24,7 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 
 | | |
 |---|---|
-| Last green | **1105 frontend / 1138 backend**, both typechecks clean |
+| Last green | **1105 frontend / 1175 backend**, both typechecks clean |
 | Migrations | 63, no drift |
 | Last commit | see `git log` |
 
@@ -125,6 +125,27 @@ Dev logins: `amira.rahman@` (DOCTOR_RESIDENT, credentialed — can author),
 `owner.admin@` (OWNER_ADMIN, **no** medical registration — correctly cannot).
 If a real clinic's owner is also the GP, set their registration and signing
 flags; that is data, not code.
+
+## Task 1 — roles & permissions (in progress)
+
+Done: `SystemRole` enum + `staff_role_assignments` (RLS, attributed grants),
+the central policy module `apps/api/src/core/permissions.ts` (37 tests), and
+the session now publishes `permissions[]` + `roles[]`.
+
+**Additive, not destructive.** `staff.role` is untouched. `LEGACY_ROLE_FALLBACK`
+in the policy module maps each legacy role to capability roles and applies
+only to staff with NO explicit assignment. An explicit assignment always wins.
+
+Still to build for Task 1:
+- `assertCan` wired into every mutation (services still use their own role
+  checks — `queue-authorization.ts`, `clinical-authorization.ts`). Those remain
+  correct; they are now the second implementation the policy module exists to
+  replace. Migrate them one service at a time, keeping tests green.
+- Settings › Users & roles CRUD (list, multi-role assign, link doctor profile,
+  deactivate, last-owner guard — `wouldRemoveLastOwner` is written and tested).
+- Fixtures Dr A (doctor+owner), Dr B (doctor), Ms X (clinical staff),
+  Ms Y (administrator).
+- Frontend: read `permissions[]` from the session instead of role checks.
 
 ## Standing rules
 

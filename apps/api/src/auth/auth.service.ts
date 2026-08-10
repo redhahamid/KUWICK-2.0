@@ -7,6 +7,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { PlatformLoginDto } from './dto/platform-login.dto';
 import { Staff } from '@prisma/client';
 import { canAuthorNarrative } from '../clinical/clinical-authorization';
+import { permissionPayload } from '../core/permissions';
 
 const ACCESS_TOKEN_TTL = '15m';
 const REFRESH_TOKEN_TTL = '7d';
@@ -162,9 +163,17 @@ export class AuthService {
     tenant: { id: string; name: string; slug: string | null },
   ) {
     const staff = user.staff!;
-    await this.prisma.$transaction(async (tx) => {
+    // TASK 1 — the capability roles this person actually holds. Empty means
+    // "none assigned yet", and the policy module falls back to the legacy
+    // role's mapping rather than locking anybody out mid-migration.
+    const assignedRoles = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenant.id}, true)`;
-      return tx.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+      await tx.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+      const rows = await tx.staffRoleAssignment.findMany({
+        where: { staffId: staff.id },
+        select: { role: true },
+      });
+      return rows.map((row) => row.role);
     });
 
     const tokens = this.issueTenantTokens({
@@ -191,6 +200,15 @@ export class AuthService {
         // browser. Two implementations of one clinical permission is one that
         // can disagree, and this one disagreed silently.
         canAuthorNarrative: canAuthorNarrative(staff),
+        // TASK 1 — the whole permission set, from the central policy module.
+        //
+        // The browser renders this rather than deriving a second answer from
+        // the role. That is D1's lesson made structural: a permission
+        // implemented twice is one that will eventually be implemented
+        // differently, and the disagreement is silent until a doctor cannot
+        // type.
+        permissions: permissionPayload(staff, assignedRoles),
+        roles: assignedRoles,
       },
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
     };
@@ -260,6 +278,15 @@ export class AuthService {
       throw new UnauthorizedException('This clinic has no active staff login to impersonate');
     }
 
+    const assignedRoles = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+      const rows = await tx.staffRoleAssignment.findMany({
+        where: { staffId: staff.id },
+        select: { role: true },
+      });
+      return rows.map((row) => row.role);
+    });
+
     const tokens = this.issueTenantTokens({
       sub: staff.user.id,
       tenantId: tenant.id,
@@ -283,6 +310,15 @@ export class AuthService {
         // browser. Two implementations of one clinical permission is one that
         // can disagree, and this one disagreed silently.
         canAuthorNarrative: canAuthorNarrative(staff),
+        // TASK 1 — the whole permission set, from the central policy module.
+        //
+        // The browser renders this rather than deriving a second answer from
+        // the role. That is D1's lesson made structural: a permission
+        // implemented twice is one that will eventually be implemented
+        // differently, and the disagreement is silent until a doctor cannot
+        // type.
+        permissions: permissionPayload(staff, assignedRoles),
+        roles: assignedRoles,
       },
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
     };

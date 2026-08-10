@@ -22,6 +22,59 @@ enum Role {
   PATIENT_PORTAL
 }
 
+/**
+ * TASK 1 — the CAPABILITY roles.
+ * Deliberately separate from `Role` above, which is the legacy administrative
+ * job title and stays exactly as it is. A staff member holds one or MORE of
+ * these and their effective permissions are the union — which is the whole
+ * point: the doctor who owns the clinic holds DOCTOR and OWNER, and neither
+ * role has to be widened to accommodate the other.
+ */
+enum SystemRole {
+  /**
+   * Write and sign notes, diagnose, prescribe, order, hold, complete.
+   */
+  DOCTOR
+  /**
+   * Vitals, allergies, task-order results, dispensing, staff remarks.
+   */
+  CLINICAL_STAFF
+  /**
+   * Demographics, LHDN, queue, billing, documents. No clinical writes.
+   */
+  ADMINISTRATOR
+  /**
+   * Settings, discount approval. Alone, this carries NO clinical ability.
+   */
+  OWNER
+
+  @@map("system_role")
+}
+
+/**
+ * One capability role held by one staff member.
+ * Attributed on purpose: who granted a clinical capability, and when, is a
+ * question an audit will ask. Removal is a delete — the grant's history lives
+ * in the audit log, not in a tombstone here.
+ */
+model StaffRoleAssignment {
+  id       String     @id @default(uuid())
+  tenantId String     @map("tenant_id")
+  staffId  String     @map("staff_id")
+  role     SystemRole
+
+  assignedByStaffId String   @map("assigned_by_staff_id")
+  assignedAt        DateTime @default(now()) @map("assigned_at")
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id])
+  staff      Staff  @relation("StaffRoleHolder", fields: [staffId], references: [id], onDelete: Cascade)
+  assignedBy Staff  @relation("StaffRoleGrantedBy", fields: [assignedByStaffId], references: [id])
+
+  @@unique([staffId, role])
+  @@index([tenantId, role])
+  @@map("staff_role_assignments")
+}
+
 enum PatientIdentifierType {
   NRIC
   PASSPORT
@@ -163,7 +216,8 @@ model Tenant {
   visitNumberCounter          VisitNumberCounter?
   consultationTariffRules     ConsultationTariffRule[]
 
-  labelPrints LabelPrint[]
+  labelPrints          LabelPrint[]
+  staffRoleAssignments StaffRoleAssignment[]
 
   @@map("tenants")
 }
@@ -525,6 +579,8 @@ model Staff {
   workflowEvents               VisitWorkflowEvent[]         @relation("WorkflowEventActor")
   workflowEventsHandedOver     VisitWorkflowEvent[]         @relation("WorkflowEventPreviousStaff")
   workflowEventsReceived       VisitWorkflowEvent[]         @relation("WorkflowEventNewStaff")
+  roleAssignments              StaffRoleAssignment[]        @relation("StaffRoleHolder")
+  roleAssignmentsGranted       StaffRoleAssignment[]        @relation("StaffRoleGrantedBy")
   queueTicketsHeld             QueueTicket[]                @relation("QueueTicketHeldBy")
   orderServices                OrderService[]
   prescriptions                Prescription[]
