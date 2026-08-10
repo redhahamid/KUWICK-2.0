@@ -31,6 +31,8 @@ const VIEWS = [
   { name: '03-two-column-1180', width: 1180, height: 900, layout: 'canvas' },
   { name: '04-stacked-iphone-390', width: 390, height: 844, layout: 'canvas' },
   { name: '05-flow-untouched-1440', width: 1440, height: 900, layout: 'flow' },
+  // KW2-C1a/b — the retired LAST VISIT band, and the folded-history tab.
+  { name: '06-history-tab-1180', width: 1180, height: 900, layout: 'canvas', openHistory: true },
 ];
 
 async function main() {
@@ -83,6 +85,12 @@ async function main() {
     const visitRow = page.locator('.ant-list-item, .ant-table-row, [data-visit-id]').first();
     if (await visitRow.count()) await visitRow.click().catch(() => {});
     await page.waitForTimeout(2500);
+
+    if ((view as { openHistory?: boolean }).openHistory) {
+      const tab = page.locator('[data-testid="canvas-history-tab"]');
+      if (await tab.count()) await tab.click().catch(() => {});
+      await page.waitForTimeout(900);
+    }
 
     await page.screenshot({ path: join(OUT, `${view.name}.png`), fullPage: view.width < 500 });
 

@@ -258,3 +258,47 @@
   white-space: normal;
   opacity: 0.9;
 }
+
+/* ---------------------------------------------------------------------------
+   The folded-history edge tab.
+
+   Below 1280 the visits column folds so the note keeps a readable width. A
+   doctor still reaches for history mid-consultation, so the column becomes
+   this: a slim tab pinned to the left edge that opens the same content as an
+   overlay. History compresses; it never disappears.
+   ------------------------------------------------------------------------ */
+.kw2-history-tab {
+  position: fixed;
+  left: 0;
+  top: 45%;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border: 1px solid var(--kw2-border);
+  border-left: none;
+  border-radius: 0 var(--kw2-radius-row) var(--kw2-radius-row) 0;
+  background: var(--kw2-surface);
+  color: var(--kw2-navy);
+  box-shadow: var(--kw2-shadow);
+  cursor: pointer;
+  font-family: var(--kw2-font);
+  font-size: var(--kw2-micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  /* Reads down the edge, so the tab costs ~32px of width rather than ~120. */
+  writing-mode: vertical-rl;
+}
+
+.kw2-history-tab:hover,
+.kw2-history-tab:focus-visible {
+  background: var(--kw2-soft);
+  outline: 2px solid var(--kw2-blue);
+  outline-offset: -2px;
+}
+
+.kw2-history-tab .anticon {
+  writing-mode: horizontal-tb;
+}

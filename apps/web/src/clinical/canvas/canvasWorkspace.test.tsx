@@ -2,6 +2,7 @@
 import { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import dayjs from 'dayjs';
 import { CanvasWorkspace } from './CanvasWorkspace';
@@ -253,5 +254,87 @@ describe('the Flow|Canvas preference belongs to a PERSON', () => {
     const state = useRecordViewLayoutStore.getState();
     expect(state.byStaffId).toEqual({});
     expect(selectLayout(state, undefined)).toBe('canvas');
+  });
+});
+
+describe('history compresses, it never disappears', () => {
+  /**
+   * jsdom reports every element as 0px wide, so the shell would always
+   * measure as "stacked". Pinning clientWidth is what lets these tests stand
+   * at a real breakpoint.
+   */
+  const atWidth = (width: number) =>
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(width);
+
+  const renderAt = (width: number) => {
+    const spy = atWidth(width);
+    const result = render(
+      <CanvasWorkspace
+        visits={<div>the visits rail</div>}
+        middle={<div>M</div>}
+        right={<div>R</div>}
+      />,
+    );
+    return { ...result, spy };
+  };
+
+  it('19. at 1180 the rail folds and an edge tab takes its place', async () => {
+    const { spy } = renderAt(1180);
+    await waitFor(() =>
+      expect(screen.getByTestId('canvas-shell')).toHaveAttribute('data-mode', 'two-column'),
+    );
+    expect(screen.getByTestId('canvas-history-tab')).toBeInTheDocument();
+    spy.mockRestore();
+  });
+
+  it('20. the tab opens the SAME history content as an overlay', async () => {
+    const { spy } = renderAt(1180);
+    await screen.findByTestId('canvas-history-tab');
+    await userEvent.click(screen.getByTestId('canvas-history-tab'));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    expect(within(screen.getByRole('dialog')).getByText('the visits rail')).toBeInTheDocument();
+    spy.mockRestore();
+  });
+
+  it('21. Escape closes it — a doctor mid-consult should not have to aim', async () => {
+    const { spy } = renderAt(1180);
+    await screen.findByTestId('canvas-history-tab');
+    await userEvent.click(screen.getByTestId('canvas-history-tab'));
+    await screen.findByRole('dialog');
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    spy.mockRestore();
+  });
+
+  it('22. the close control dismisses it too', async () => {
+    const { spy } = renderAt(1180);
+    await screen.findByTestId('canvas-history-tab');
+    await userEvent.click(screen.getByTestId('canvas-history-tab'));
+    await screen.findByRole('dialog');
+    await userEvent.click(screen.getByRole('button', { name: /close/i }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    spy.mockRestore();
+  });
+
+  it('23. at 1440 the rail is on screen, so there is no tab to duplicate it', async () => {
+    const { spy } = renderAt(1440);
+    await waitFor(() =>
+      expect(screen.getByTestId('canvas-shell')).toHaveAttribute('data-mode', 'three-column'),
+    );
+    expect(screen.queryByTestId('canvas-history-tab')).not.toBeInTheDocument();
+    expect(screen.getByText('the visits rail')).toBeInTheDocument();
+    spy.mockRestore();
+  });
+
+  it('24. stacked keeps the rail on the page, so no tab there either', async () => {
+    // Ordered below the work rather than removed — a second way in would be a
+    // duplicate control, not a rescue.
+    const { spy } = renderAt(390);
+    await waitFor(() =>
+      expect(screen.getByTestId('canvas-shell')).toHaveAttribute('data-mode', 'stacked'),
+    );
+    expect(screen.queryByTestId('canvas-history-tab')).not.toBeInTheDocument();
+    expect(screen.getByText('the visits rail')).toBeInTheDocument();
+    spy.mockRestore();
   });
 });

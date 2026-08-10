@@ -1,4 +1,6 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
+import { Drawer } from 'antd';
+import { HistoryOutlined } from '@ant-design/icons';
 import { canvasWidths, CanvasWidths } from './canvasLayout';
 import './canvas.css';
 
@@ -30,6 +32,7 @@ export interface CanvasWorkspaceProps {
 export function CanvasWorkspace({ visits, middle, right, footer }: CanvasWorkspaceProps) {
   const shell = useRef<HTMLDivElement>(null);
   const [widths, setWidths] = useState<CanvasWidths | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     const node = shell.current;
@@ -57,8 +60,51 @@ export function CanvasWorkspace({ visits, middle, right, footer }: CanvasWorkspa
   const sized = (width: number | undefined) =>
     width && mode !== 'stacked' ? { width, flexBasis: width } : undefined;
 
+  /**
+   * HISTORY COMPRESSES, IT NEVER DISAPPEARS.
+   *
+   * Below 1280 the visits column folds so the note keeps a readable width —
+   * but a doctor reaches for history mid-consultation, and a rail that is
+   * simply gone at 1180 is a rail they have to leave the consultation to
+   * reach. So the column becomes an edge tab that opens the same content as
+   * an overlay, dismissible with Esc or a click outside.
+   *
+   * Only in two-column mode. When stacked, the rail is still on the page —
+   * ordered below the work rather than removed — so a second way in would be
+   * a duplicate control, not a rescue.
+   */
+  const railFolded = mode === 'two-column';
+
   return (
     <div className="kw-canvas2">
+      {railFolded && (
+        <button
+          type="button"
+          className="kw2-history-tab"
+          onClick={() => setHistoryOpen(true)}
+          data-testid="canvas-history-tab"
+        >
+          <HistoryOutlined />
+          <span>Visit history</span>
+        </button>
+      )}
+
+      <Drawer
+        open={railFolded && historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        placement="left"
+        width={320}
+        title="Visit history"
+        // antd closes on Esc and on a mask click by default; both are stated
+        // here so a later prop change cannot remove them silently.
+        keyboard
+        maskClosable
+        rootClassName="kw-canvas2"
+        data-testid="canvas-history-drawer"
+      >
+        {visits}
+      </Drawer>
+
       <div className="kw-canvas2-shell" data-mode={mode} ref={shell} data-testid="canvas-shell">
         <aside
           className="kw-canvas2-col kw-canvas2-visits"

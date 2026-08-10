@@ -52,7 +52,6 @@ import { OrdersRail } from './sections/OrdersRail';
 import { ServicesRail } from './sections/ServicesRail';
 import { VisitCompletionBar } from './VisitCompletionBar';
 import { ConsultationFooter } from './ConsultationFooter';
-import { LastVisitSnapshot } from './LastVisitSnapshot';
 import { PatientSummarySidebar } from './PatientSummarySidebar';
 import { VisitHistoryPanel } from './history/VisitHistoryPanel';
 // G1 (D-058) — the four *SummaryCard components are deliberately still in the
@@ -270,15 +269,22 @@ export function PatientDashboardPage() {
             onPatientSummary={() => setSummaryOpen(true)}
             layoutControl={layoutSwitch}
           />
-          {/* G4.5d2 (D-076) — "what happened last time?", answered without
-              opening anything. Read-only, and it never touches the current
-              visit, the URL or the C1 draft. */}
+          {/* KW2-C1a — the LAST VISIT band is RETIRED in Canvas.
+              D-076 put it here to answer "what happened last time?" without
+              opening anything. The Kuwick 2.0 visits rail now answers that
+              question permanently and in the same glance, so the band had
+              become the same fact printed twice. Not deleted yet: Phase 2
+              removes `LastVisitSnapshot` and its tests together, once the
+              rail owns hover-preview and Copy Rx.
+
+              THE DOCUMENTS/INVOICE BAND BELOW IS NOT RETIRED WITH IT, and
+              that is deliberate. It is not yet a duplicate: it carries the
+              only Create MC, Create Referral and Open Invoice controls that
+              exist in Canvas, and the cards meant to replace them are Phase 7
+              and Phase 8. Hiding it now would not remove a duplication, it
+              would remove a doctor's only way to issue an MC in production.
+              It goes the day the Documents card lands. */}
           <div className="kw-visit-band">
-          <LastVisitSnapshot
-            patientId={patient.id}
-            currentVisitId={selectedVisit.id}
-            onViewHistory={() => setHistoryOpen(true)}
-          />
           {/* G4.5d (D-075) — how the consultation ENDS, immediately below the
               context band instead of at the bottom of the page. A summary and
               entry points only; the full workspaces stay below the Canvas. */}
