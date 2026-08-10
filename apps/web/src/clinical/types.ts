@@ -1162,6 +1162,12 @@ export interface DoctorPhaseStatus {
    * render as "there are none".
    */
   unreviewedCopiedMedications?: string[];
+  /**
+   * KW2-C2 — present only when the patient has allergies on record AND this
+   * visit prescribes at least one medication. Null means there is nothing to
+   * ask, which is different from an empty checkpoint.
+   */
+  allergyCheckpoint?: { allergies: string[]; prescribedMedications: string[] } | null;
 }
 
 /** `PATCH /visits/:id/complete-doctor-phase` — authoritative. */

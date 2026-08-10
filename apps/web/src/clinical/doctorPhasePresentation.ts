@@ -208,6 +208,8 @@ export interface FooterView {
   primary: PrimaryAction | null;
   /** True when the consultation may finish but the note is not signed. */
   documentationPending: boolean;
+  /** KW2-C2 — the allergy checkpoint's two lists, or null. */
+  allergyCheckpoint: { allergies: string[]; prescribedMedications: string[] } | null;
   /**
    * KW2-C2 — carried-over medications nobody has re-read yet, by name.
    *
@@ -245,6 +247,7 @@ export function footerView(params: {
     primary: null,
     documentationPending: false,
     unreviewedCopies: [] as string[],
+    allergyCheckpoint: null,
     tone: 'NEUTRAL' as FooterTone,
   };
 
@@ -268,6 +271,7 @@ export function footerView(params: {
   // — which is right ONLY because the list is used to ADD a warning, never to
   // withhold one: an older server simply asks the ordinary question.
   const unreviewedCopies = params.status.unreviewedCopiedMedications ?? [];
+  const allergyCheckpoint = params.status.allergyCheckpoint ?? null;
 
   if (params.status.completed) {
     const pendingThen = params.status.documentationPendingAtCompletion;
@@ -277,6 +281,7 @@ export function footerView(params: {
       mode: 'COMPLETED',
       documentationPending: stillPending,
       unreviewedCopies,
+      allergyCheckpoint,
       tone: stillPending ? 'PENDING' : 'NEUTRAL',
     };
   }
@@ -295,6 +300,7 @@ export function footerView(params: {
       primary: null,
       documentationPending: pendingNow,
       unreviewedCopies,
+      allergyCheckpoint,
     };
   }
   // Cases A and B — identical except for the tone and the amber note.
@@ -306,6 +312,7 @@ export function footerView(params: {
     primary,
     documentationPending: pendingNow,
     unreviewedCopies,
+    allergyCheckpoint,
   };
 }
 
@@ -348,6 +355,26 @@ export function documentationPendingConfirm(primary: PrimaryAction): {
 export const UNREVIEWED_COPIES_TITLE = 'Copied medications not reviewed';
 export const UNREVIEWED_COPIES_OK = 'Complete anyway';
 
+/**
+ * KW2-C2 — ONE consolidated checkpoint, never a stack of dialogs.
+ *
+ * Two things can be outstanding at completion, and they used to want a dialog
+ * each. Stacking them is how the second gets clicked through without being
+ * read: by the time it appears the doctor has already decided to proceed, and
+ * the second box is an obstacle rather than a question.
+ *
+ * So there is one dialog with up to two sections, and the wording of the whole
+ * thing changes to match what is actually in it.
+ */
+export const CHECKPOINT_TITLE = 'Before completing this consultation';
+export const CHECKPOINT_BACK = 'Back to review';
+export const CHECKPOINT_PROCEED = 'Proceed & complete';
+export const ALLERGY_CHECKPOINT_HEADING = 'This patient has recorded allergies';
+export const ALLERGY_CHECKPOINT_CONFIRM =
+  'Confirm you have checked the prescribed medications against these.';
+export const ALLERGY_CHECKPOINT_LIMIT =
+  'Kuwick does not cross-check medicines against allergies. Only you can.';
+
 /** "2 copied medications not reviewed: Syr PCM, Bromhexine". */
 export function unreviewedCopiesLine(names: string[]): string {
   const noun = names.length === 1 ? 'copied medication' : 'copied medications';
@@ -359,8 +386,24 @@ export interface CompletionConfirm {
   title: string;
   summary: string;
   okText: string;
+  cancelText: string;
   /** The amber block, or null. Present ONLY for unreviewed copies. */
   warning: { line: string; explanation: string } | null;
+  /** The allergy section, or null when there is nothing to compare. */
+  allergy: {
+    heading: string;
+    allergies: string[];
+    prescribedMedications: string[];
+    confirm: string;
+    limitation: string;
+  } | null;
+  /**
+   * True when the dialog is a SAFETY CHECKPOINT rather than an ordinary
+   * confirmation. The Canvas uses it to put default focus on "Back to
+   * review" — the button that does nothing — so a reflex Enter cannot
+   * complete a visit past an unread warning.
+   */
+  checkpoint: boolean;
 }
 
 /**
@@ -376,27 +419,60 @@ export function completionConfirm(params: {
   primary: PrimaryAction;
   documentationPending: boolean;
   unreviewedCopies: string[];
+  allergyCheckpoint?: { allergies: string[]; prescribedMedications: string[] } | null;
 }): CompletionConfirm {
   const base = params.documentationPending
     ? documentationPendingConfirm(params.primary)
     : { title: params.primary.confirmTitle, summary: params.primary.confirmSummary };
 
-  if (params.unreviewedCopies.length === 0) {
-    return { ...base, okText: params.primary.label, warning: null };
+  const allergy = params.allergyCheckpoint?.allergies.length
+    ? {
+        heading: ALLERGY_CHECKPOINT_HEADING,
+        // Verbatim, both lists. The doctor is being asked to confirm a
+        // comparison, and a dialog that names neither side is a box to tick.
+        allergies: params.allergyCheckpoint.allergies,
+        prescribedMedications: params.allergyCheckpoint.prescribedMedications,
+        confirm: ALLERGY_CHECKPOINT_CONFIRM,
+        // Says plainly what the software did NOT do. Silence here would let
+        // the dialog imply a check ran and passed.
+        limitation: ALLERGY_CHECKPOINT_LIMIT,
+      }
+    : null;
+
+  const warning = params.unreviewedCopies.length
+    ? {
+        line: unreviewedCopiesLine(params.unreviewedCopies),
+        // States what the flag MEANS and nothing more. It is not a safety
+        // check, it does not know whether the medicine is still right, and it
+        // must not be written as though it does.
+        explanation:
+          'These were carried over from an earlier visit and nobody has re-read them on this one. Proceed only if they are still right for this patient today.',
+      }
+    : null;
+
+  // Neither → the ordinary confirmation, unchanged.
+  if (!allergy && !warning) {
+    return {
+      ...base,
+      okText: params.primary.label,
+      cancelText: 'Cancel',
+      warning: null,
+      allergy: null,
+      checkpoint: false,
+    };
   }
 
+  // Either or both → ONE dialog. The title is the checkpoint's, not the
+  // individual sections': two sections under two competing headings is the
+  // stack this exists to avoid, drawn in one window.
   return {
-    title: UNREVIEWED_COPIES_TITLE,
+    title: allergy ? CHECKPOINT_TITLE : UNREVIEWED_COPIES_TITLE,
     summary: base.summary,
-    okText: UNREVIEWED_COPIES_OK,
-    warning: {
-      line: unreviewedCopiesLine(params.unreviewedCopies),
-      // States what the flag MEANS and nothing more. It is not a safety
-      // check, it does not know whether the medicine is still right, and it
-      // must not be written as though it does.
-      explanation:
-        'These were carried over from an earlier visit and nobody has re-read them on this one. Proceed only if they are still right for this patient today.',
-    },
+    okText: allergy ? CHECKPOINT_PROCEED : UNREVIEWED_COPIES_OK,
+    cancelText: allergy ? CHECKPOINT_BACK : 'Cancel',
+    warning,
+    allergy,
+    checkpoint: true,
   };
 }
 

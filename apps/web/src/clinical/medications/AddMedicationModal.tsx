@@ -16,6 +16,7 @@ import { useVisit } from '../hooks/useVisits';
 import { DEFAULT_SUPPLY_MODE } from '../medicationSupplyPresentation';
 import { CreatePrescriptionDto, DosageCalcMethod, PrescriptionSupplyMode } from '../types';
 import { Item } from '../../inventory/types';
+import { AllergyStrip } from './AllergyStrip';
 import { DosageCalculator } from './DosageCalculator';
 import { defaultsFromItem, stockAdvice } from './prescribing';
 
@@ -294,6 +295,13 @@ export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: A
         />
       }
     >
+      {/* KW2-C2 — the SAME persistent strip as the medications card and the
+          Copy Rx modal, and deliberately not a popup. A dialog on every add
+          is dismissed by muscle memory within a week, after which everyone
+          believes it is still being read. Here it is simply present, above
+          the search, for as long as the form is open. */}
+      <AllergyStrip allergies={visit?.patient ? (visit.patient.allergies ?? null) : undefined} compact />
+
       {lastAdded && (
         <Alert
           type="success"

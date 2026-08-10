@@ -114,6 +114,70 @@ export interface DoctorPhaseEvaluation {
    * doctor can act on; "Syr PCM, Bromhexine" is.
    */
   unreviewedCopiedMedications: string[];
+
+  /**
+   * KW2-C2 — the ALLERGY CHECKPOINT, or null where there is nothing to ask.
+   *
+   * Present only when BOTH are true: the patient has allergies on record, and
+   * this visit prescribes at least one medication. Either alone is not a
+   * question — allergies with no prescription is just a fact about the
+   * patient, and a prescription for a patient with none recorded has nothing
+   * to check against.
+   *
+   * It carries the patient's own words and the medicine names, because the
+   * doctor is being asked to confirm a comparison, and a dialog that says
+   * "you have prescribed medications and the patient has allergies" without
+   * naming either is a box to tick rather than a thing to read.
+   *
+   * THIS IS NOT A CHECK. Nothing here compares the two — there is no drug
+   * dictionary behind `Patient.allergies`, and the server does not pretend to
+   * one. It puts both lists in front of the person who can actually compare
+   * them, and records that they said they had.
+   */
+  allergyCheckpoint: AllergyCheckpoint | null;
+}
+
+export interface AllergyCheckpoint {
+  /** Verbatim, as recorded. Never summarised or truncated. */
+  allergies: string[];
+  /** What this visit is prescribing, by name. */
+  prescribedMedications: string[];
+}
+
+/**
+ * The allergy checkpoint's two lists, or null where there is nothing to ask.
+ *
+ * CANCELLED prescriptions are excluded: they are not going to the patient, so
+ * naming them in a safety question is noise that dilutes the ones that are.
+ */
+async function allergyCheckpointFor(
+  tx: ClinicalTx,
+  visitId: string,
+): Promise<AllergyCheckpoint | null> {
+  const visit = await tx.visit.findUnique({
+    where: { id: visitId },
+    select: { patient: { select: { allergies: true } } },
+  });
+  // `Patient.allergies` is a Json column holding a list of free-text entries.
+  // Anything else in there — a string, an object, a null left by an old
+  // import — is not something this can honestly read, so it reads as none
+  // rather than as a warning built from a guess.
+  const raw = visit?.patient?.allergies;
+  const allergies = (Array.isArray(raw) ? raw : [])
+    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+    .filter((entry): entry is string => entry.length > 0);
+  if (allergies.length === 0) return null;
+
+  const rows = await tx.prescription.findMany({
+    where: { visitId, deletedAt: null, status: { not: PrescriptionStatus.CANCELLED } },
+    select: { item: { select: { name: true } } },
+  });
+  const prescribedMedications = rows
+    .map((row) => row.item?.name)
+    .filter((name): name is string => Boolean(name));
+  if (prescribedMedications.length === 0) return null;
+
+  return { allergies, prescribedMedications };
 }
 
 /**
@@ -272,6 +336,7 @@ export class DoctorCompletionService {
           // signed SINCE, not only whether it was signed then.
           documentationPending: await isDocumentationPending(tx, visitId),
           unreviewedCopiedMedications: await unreviewedCopiedNames(tx, visitId),
+          allergyCheckpoint: await allergyCheckpointFor(tx, visitId),
           documentationPendingAtCompletion: recorded,
           documentationPendingActorName: recorded ? (completionEvent?.actorNameSnapshot ?? null) : null,
           documentationPendingAt: recorded ? (completionEvent?.createdAt ?? null) : null,
@@ -463,6 +528,26 @@ export class DoctorCompletionService {
             // Recorded, never re-derived. Signing the note afterwards must not
             // retroactively make it look as though it was signed at the time.
             documentationPending: evaluation.documentationPending,
+            // KW2-C2 — WHAT THE DOCTOR WAS SHOWN, and therefore proceeded past.
+            //
+            // Taken from the SERVER's own evaluation inside this transaction,
+            // never from the request. The dialog is derived from exactly these
+            // values, so recording them records what was on screen — and there
+            // is no field a client could use to claim it saw a different set,
+            // or none at all.
+            //
+            // Null where there was no dialog, which is a different fact from
+            // an empty one: "nothing to warn about" is not "warned about
+            // nothing".
+            completionWarnings:
+              evaluation.allergyCheckpoint || evaluation.unreviewedCopiedMedications.length > 0
+                ? {
+                    allergies: evaluation.allergyCheckpoint?.allergies ?? null,
+                    prescribedMedications:
+                      evaluation.allergyCheckpoint?.prescribedMedications ?? null,
+                    unreviewedCopiedMedications: evaluation.unreviewedCopiedMedications,
+                  }
+                : null,
           },
           correlationId: dto.correlationId ?? null,
         },
@@ -559,6 +644,10 @@ async function evaluateDoctorPhase(
   // KW2-C2 — carried-over medications still marked "not re-read".
   const unreviewedCopiedMedications = await unreviewedCopiedNames(tx, visitId);
 
+  // KW2-C2 — the allergy checkpoint's two lists, or null where there is
+  // nothing to ask. Computed here so every return path below carries it.
+  const allergyCheckpoint = await allergyCheckpointFor(tx, visitId);
+
   // A procedure still running is the strongest blocker there is: the doctor is
   // meant to review its result before finishing (owner decision 4), so
   // completing now would close a phase whose findings do not exist yet.
@@ -593,7 +682,14 @@ async function evaluateDoctorPhase(
     // charge, so any routing computed now is a guess about a visit that has
     // not stopped changing. Reporting NULL says "not yet knowable", which is
     // true; reporting NONE would say "nothing further", which is not.
-    return { blockers, destination: null, routingReason: null, documentationPending, unreviewedCopiedMedications };
+    return {
+      blockers,
+      destination: null,
+      routingReason: null,
+      documentationPending,
+      unreviewedCopiedMedications,
+      allergyCheckpoint,
+    };
   }
 
   // Only ONSITE_DISPENSE counts, and only while still ORDERED. Everything else
@@ -616,6 +712,7 @@ async function evaluateDoctorPhase(
       routingReason: 'DISPENSARY_REQUIRED',
       documentationPending,
       unreviewedCopiedMedications,
+      allergyCheckpoint,
     };
   }
   if (billing === 'UNDETERMINED') {
@@ -628,6 +725,7 @@ async function evaluateDoctorPhase(
       routingReason: 'BILLING_REVIEW_REQUIRED',
       documentationPending,
       unreviewedCopiedMedications,
+      allergyCheckpoint,
     };
   }
   if (billing > 0) {
@@ -637,6 +735,7 @@ async function evaluateDoctorPhase(
       routingReason: 'PATIENT_PAYMENT_REQUIRED',
       documentationPending,
       unreviewedCopiedMedications,
+      allergyCheckpoint,
     };
   }
   return {
@@ -645,6 +744,7 @@ async function evaluateDoctorPhase(
     routingReason: 'NO_DOWNSTREAM_WORK',
     documentationPending,
     unreviewedCopiedMedications,
+    allergyCheckpoint,
   };
 }
 

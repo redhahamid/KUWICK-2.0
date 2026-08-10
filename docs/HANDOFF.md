@@ -24,7 +24,7 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 
 | | |
 |---|---|
-| Last green | **1036 frontend / 1109 backend**, both typechecks clean |
+| Last green | **1066 frontend / 1109 backend**, both typechecks clean |
 | Migrations | 61, no drift |
 | Last commit | `63a0d84` |
 
@@ -33,8 +33,8 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 | Item | Status |
 |---|---|
 | A1 reviewed ✓ control | **done** (`a0fab26`) |
-| A2 persistent allergy strip | in progress |
-| A3 completion checkpoint | partial — unreviewed-copies section done (`a0fab26`); allergy section + visit_event not built |
+| A2 persistent allergy strip | **done** |
+| A3 completion checkpoint | **done** — one dialog, both sections, warnings recorded on the completion event |
 | B4 hover preview | **done** (`532df16`) |
 | B5 Hold / Resume | **done** (`5c9af27`) |
 | C6–C9 notes card | not started |

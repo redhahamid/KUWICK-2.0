@@ -68,6 +68,8 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
   // only while that trigger is still mounted, and this one disappears the
   // moment completion succeeds.
   const triggerRef = useRef<HTMLElement | null>(null);
+  // The checkpoint's "Back to review" button, so focus can be put on it.
+  const backRef = useRef<HTMLButtonElement | null>(null);
 
   const view = footerView({
     status: status.data,
@@ -293,6 +295,7 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
     primary,
     documentationPending: pending,
     unreviewedCopies: view.unreviewedCopies,
+    allergyCheckpoint: view.allergyCheckpoint,
   });
 
   return (
@@ -382,7 +385,28 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
         // The same button, relabelled to say what is being accepted: the
         // owner's requirement is a conscious click, not a withheld action.
         okText={confirm.okText}
-        cancelText="Cancel"
+        cancelText={confirm.cancelText}
+        // KW2-C2 — on a SAFETY CHECKPOINT the default focus goes to the
+        // button that does NOTHING. antd focuses the dialog and then the
+        // primary; a reflex Enter on a dialog the doctor has not read yet
+        // would complete the visit past the warning it exists to show.
+        //
+        // `autoFocus` on the button is not enough — the Modal's own focus
+        // management runs after mount and takes it back. This runs after
+        // that, which is the whole point of afterOpenChange.
+        afterOpenChange={(isOpen) => {
+          if (isOpen && confirm.checkpoint) backRef.current?.focus();
+        }}
+        footer={
+          <Space>
+            <Button ref={backRef} onClick={() => setConfirming(false)}>
+              {confirm.cancelText}
+            </Button>
+            <Button type="primary" loading={complete.isPending} onClick={submit}>
+              {confirm.okText}
+            </Button>
+          </Space>
+        }
         confirmLoading={complete.isPending}
         // Cancelling performs no write of any kind.
         onCancel={() => setConfirming(false)}
@@ -390,6 +414,40 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
         afterClose={() => triggerRef.current?.focus()}
         destroyOnHidden
       >
+        {/* KW2-C2 — the ALLERGY section, first because it is the one that
+            can hurt somebody. Amber, and it names BOTH lists: the doctor is
+            being asked to confirm a comparison, and a dialog that names
+            neither side is a box to tick rather than a thing to read.
+
+            It states plainly what Kuwick did NOT do. Silence there would let
+            the dialog imply a check ran and passed. */}
+        {confirm.allergy && (
+          <Alert
+            type="warning"
+            showIcon
+            role="status"
+            style={{ marginBottom: 'var(--kw-s2)' }}
+            data-allergy-checkpoint="true"
+            message={confirm.allergy.heading}
+            description={
+              <div>
+                <div className="kw-checkpoint-line">
+                  <span className="kw-checkpoint-label">Allergies</span>
+                  <strong>{confirm.allergy.allergies.join(', ')}</strong>
+                </div>
+                <div className="kw-checkpoint-line">
+                  <span className="kw-checkpoint-label">Prescribed</span>
+                  <strong>{confirm.allergy.prescribedMedications.join(', ')}</strong>
+                </div>
+                <div style={{ marginTop: 6 }}>{confirm.allergy.confirm}</div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {confirm.allergy.limitation}
+                </Text>
+              </div>
+            }
+          />
+        )}
+
         {/* Amber, and above the summary so it is read first. Never red and
             never blocking: this is not an interaction check and nothing here
             knows whether the medicine is wrong — only that nobody looked. */}

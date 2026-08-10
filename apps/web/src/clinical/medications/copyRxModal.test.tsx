@@ -120,21 +120,51 @@ describe('the review itself', () => {
 });
 
 describe('what the modal may claim about allergies', () => {
+  // The modal now renders the SAME persistent strip as the medications card
+  // and the add flow. One wording in all three places, so it reads as a
+  // standing fact about the patient rather than three components' opinions.
   it('5. NO RECORD is itself a warning', async () => {
     renderModal(null);
-    expect(await screen.findByText(/No allergy record for this patient/)).toBeInTheDocument();
+    expect(await screen.findByText(/Allergy not asked/)).toBeInTheDocument();
   });
 
-  it('6. recorded allergies are shown VERBATIM, under a heading that says who checks', async () => {
+  it('6. recorded allergies are shown VERBATIM, and put the checking on the reader', async () => {
     renderModal(['Penicillin', 'Sulfa drugs']);
-    expect(await screen.findByText('Recorded allergies — check yourself:')).toBeInTheDocument();
-    expect(screen.getByText('Penicillin, Sulfa drugs')).toBeInTheDocument();
+    const strip = await screen.findByText(/ALLERGIES:/);
+    // The patient's own words, unparaphrased and untruncated.
+    expect(strip).toHaveTextContent('Penicillin, Sulfa drugs');
+    expect(strip).toHaveTextContent('check before prescribing');
   });
 
-  it('7. asked-and-none-known is neither a warning nor silence', async () => {
+  it('7. asked-and-none-known renders NO strip at all', async () => {
+    // Changed deliberately: it used to show an informational panel saying
+    // "no known allergy recorded". Papering a confirmed negative answer with
+    // a banner is how the other two states stop being read — which is the
+    // same alert-fatigue argument that rejected a popup on every add.
     renderModal([]);
-    expect(await screen.findByText('Recorded allergies — check yourself:')).toBeInTheDocument();
-    expect(screen.getByText('No known allergy recorded.')).toBeInTheDocument();
+    await screen.findByText('Tab Penicillin V 250mg');
+    expect(screen.queryByText(/ALLERGIES:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Allergy not asked/)).not.toBeInTheDocument();
+  });
+
+  it('the strip is amber and advisory — never red, never an alarm', async () => {
+    renderModal(['Penicillin']);
+    await screen.findByText(/ALLERGIES:/);
+    // The modal portals to document.body, so this is where it lives.
+    const strip = document.querySelector('.kw-allergy-strip');
+    expect(strip).not.toBeNull();
+    expect(strip).toHaveAttribute('role', 'status');
+    expect(strip?.className).not.toMatch(/danger|error/);
+  });
+
+  it('the strip has no way to dismiss it', async () => {
+    // It is not an event. It is a standing fact about the patient, and there
+    // is nothing to acknowledge.
+    renderModal(['Penicillin']);
+    await screen.findByText(/ALLERGIES:/);
+    const strip = document.querySelector('.kw-allergy-strip');
+    expect(strip?.querySelector('button')).toBeNull();
+    expect(strip?.querySelector('[aria-label="Close"]')).toBeNull();
   });
 
   it('8. a matching row is flagged as POSSIBLE, and names the term', async () => {

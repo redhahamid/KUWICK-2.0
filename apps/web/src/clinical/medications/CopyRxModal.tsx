@@ -4,14 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { apiClient, ApiError } from '../../core/api-client';
 import { useCopyPrescriptions } from '../hooks/usePrescriptions';
 import { Prescription, VisitHistoryDetail } from '../types';
-import {
-  ALLERGY_HEADING,
-  NO_ALLERGY_RECORD_WARNING,
-  POSSIBLE_MATCH_LABEL,
-  allergyRecordState,
-  copyButtonLabel,
-  decorateCandidates,
-} from './copyRx';
+import { POSSIBLE_MATCH_LABEL, copyButtonLabel, decorateCandidates } from './copyRx';
+import { AllergyStrip } from './AllergyStrip';
 
 const { Text } = Typography;
 
@@ -86,7 +80,6 @@ export function CopyRxModal({
   );
 
   const rows = useMemo(() => decorateCandidates(candidates, allergies), [candidates, allergies]);
-  const recordState = allergyRecordState(allergies);
 
   // Everything starts ticked: the common case is carrying the whole
   // prescription forward, and the doctor is confirming either way. Unticking
@@ -133,26 +126,15 @@ export function CopyRxModal({
         Select which medications to prescribe today. Every field stays editable after copying.
       </Text>
 
-      {/* The patient's own words, verbatim, under a heading that puts the
-          checking on the reader. Never paraphrased into a claim. */}
+      {/* The patient's own words, verbatim. The SAME strip that sits at the
+          top of the medications card and inside the add flow — one wording in
+          all three places, so it reads as a standing fact about the patient
+          rather than three different components' opinions.
+
+          A confirmed "none known" renders nothing at all. Papering a negative
+          answer with a warning is how the other two states stop being read. */}
       <div style={{ marginTop: 12 }} data-testid="copy-rx-allergies">
-        {recordState === 'NONE_RECORDED' ? (
-          <Alert type="warning" showIcon={false} message={NO_ALLERGY_RECORD_WARNING} />
-        ) : recordState === 'NONE_KNOWN' ? (
-          <Alert
-            type="info"
-            showIcon={false}
-            message={ALLERGY_HEADING}
-            description="No known allergy recorded."
-          />
-        ) : (
-          <Alert
-            type="warning"
-            showIcon={false}
-            message={ALLERGY_HEADING}
-            description={<strong>{(allergies ?? []).join(', ')}</strong>}
-          />
-        )}
+        <AllergyStrip allergies={allergies} compact />
       </div>
 
       {isLoading && <Skeleton active paragraph={{ rows: 3 }} style={{ marginTop: 12 }} />}

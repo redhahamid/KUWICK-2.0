@@ -165,3 +165,57 @@ describe('once it has been re-read', () => {
     expect(screen.queryByRole('button', { name: /Reviewed/ })).not.toBeInTheDocument();
   });
 });
+
+// ===========================================================================
+// KW2-C2 — the allergy strip is PINNED to the top of the medications card.
+//
+// It replaced a red alert and a separate blue "no allergies recorded" banner.
+// Red said stop where nothing had decided anything was wrong; the blue one
+// reported "none recorded" for a patient nobody had asked in exactly the same
+// words as for one who had answered no.
+// ===========================================================================
+describe('the allergy strip on the medications card', () => {
+  const patientWith = (allergies: string[] | null) =>
+    ({ id: 'p1', name: 'Aisyah Ujian', allergies }) as never;
+
+  const renderWithPatient = (allergies: string[] | null) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={client}>
+        <PrescribedMedicationList
+          visitId="visit-1"
+          prescriptions={[RX()]}
+          patient={patientWith(allergies)}
+        />
+      </QueryClientProvider>,
+    );
+  };
+
+  it('is pinned above the medications, with the words verbatim', () => {
+    renderWithPatient(['NSAIDs']);
+    expect(screen.getByText(/⚠ ALLERGIES: NSAIDs — check before prescribing/)).toBeInTheDocument();
+  });
+
+  it('is amber and advisory — the old RED alert is gone', () => {
+    const { container } = renderWithPatient(['NSAIDs']);
+    expect(container.querySelector('.kw-allergy-strip')).toHaveAttribute('role', 'status');
+    expect(container.querySelector('.ant-alert-error')).toBeNull();
+  });
+
+  it('never-asked gets its own warning', () => {
+    renderWithPatient(null);
+    expect(screen.getByText('⚠ Allergy not asked')).toBeInTheDocument();
+  });
+
+  it('asked-and-none-known is silent — no banner competing with the real ones', () => {
+    const { container } = renderWithPatient([]);
+    expect(container.querySelector('.kw-allergy-strip')).toBeNull();
+    // And no leftover informational panel in its place.
+    expect(screen.queryByText(/No allergies recorded/i)).not.toBeInTheDocument();
+  });
+
+  it('blocks nothing — the row actions stay live behind it', () => {
+    renderWithPatient(['NSAIDs']);
+    expect(screen.getByRole('button', { name: 'Dispense' })).toBeEnabled();
+  });
+});

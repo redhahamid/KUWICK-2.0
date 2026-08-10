@@ -793,3 +793,138 @@ describe('KW2-C2 — unreviewed copied medications', () => {
     expect(mounts).toBe(1);
   });
 });
+
+// ===========================================================================
+// KW2-C2 — the ALLERGY CHECKPOINT, and the rule that there is only ever ONE
+// dialog.
+//
+// Stacking a second confirmation behind the first is how the second gets
+// clicked through: by the time it appears the doctor has already decided to
+// proceed, and it reads as an obstacle rather than a question.
+// ===========================================================================
+describe('KW2-C2 — the completion checkpoint', () => {
+  const CHECKPOINT = {
+    allergies: ['NSAIDs'],
+    prescribedMedications: ['Ibuprofen 400mg', 'Paracetamol 500mg'],
+  };
+
+  const openConfirm = async (over: Partial<DoctorPhaseStatus>) => {
+    get.mockResolvedValue(STATUS(over));
+    renderFooter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+    return screen.findByRole('dialog');
+  };
+
+  it('no allergies and no unreviewed copies → no checkpoint at all', async () => {
+    const dialog = await openConfirm({ allergyCheckpoint: null, unreviewedCopiedMedications: [] });
+    expect(within(dialog).getByText('Complete consultation and send to Dispensary?')).toBeInTheDocument();
+    expect(dialog.querySelector('[data-allergy-checkpoint="true"]')).toBeNull();
+    expect(dialog.querySelector('[data-unreviewed-copies="true"]')).toBeNull();
+  });
+
+  it('allergies with NO prescription is not a question', async () => {
+    // The server sends null in that case — allergies alone are a fact about
+    // the patient, not something to confirm at the end of a consultation.
+    const dialog = await openConfirm({ allergyCheckpoint: null });
+    expect(dialog.querySelector('[data-allergy-checkpoint="true"]')).toBeNull();
+  });
+
+  it('names BOTH lists — the allergies and what was prescribed', async () => {
+    const dialog = await openConfirm({ allergyCheckpoint: CHECKPOINT });
+    const block = dialog.querySelector('[data-allergy-checkpoint="true"]');
+    expect(block).not.toBeNull();
+    expect(block?.textContent).toContain('NSAIDs');
+    expect(block?.textContent).toContain('Ibuprofen 400mg');
+    expect(block?.textContent).toContain('Paracetamol 500mg');
+    expect(block?.textContent).toMatch(/confirm you have checked/i);
+  });
+
+  it('says plainly that Kuwick does not cross-check', async () => {
+    // Silence here would let the dialog imply a check ran and passed.
+    const dialog = await openConfirm({ allergyCheckpoint: CHECKPOINT });
+    expect(dialog.textContent).toMatch(/does not cross-check medicines against allergies/i);
+  });
+
+  it('is amber and advisory — never red, never role=alert', async () => {
+    const dialog = await openConfirm({ allergyCheckpoint: CHECKPOINT });
+    const block = dialog.querySelector('[data-allergy-checkpoint="true"]');
+    expect(block).toHaveAttribute('role', 'status');
+    expect(block).toHaveClass('ant-alert-warning');
+    expect(block?.className).not.toMatch(/ant-alert-error/);
+  });
+
+  it('claims no interaction check anywhere in the dialog', async () => {
+    const dialog = await openConfirm({
+      allergyCheckpoint: CHECKPOINT,
+      unreviewedCopiedMedications: ['Ibuprofen 400mg'],
+    });
+    for (const forbidden of [/interaction/i, /contraindicat/i, /unsafe/i, /do not prescribe/i]) {
+      expect(dialog.textContent ?? '').not.toMatch(forbidden);
+    }
+  });
+
+  it('BOTH outstanding → ONE dialog with both sections, never two dialogs', async () => {
+    const dialog = await openConfirm({
+      allergyCheckpoint: CHECKPOINT,
+      unreviewedCopiedMedications: ['Paracetamol 500mg'],
+    });
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(dialog.querySelector('[data-allergy-checkpoint="true"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-unreviewed-copies="true"]')).not.toBeNull();
+  });
+
+  it('the buttons are "Back to review" and "Proceed & complete"', async () => {
+    const dialog = await openConfirm({ allergyCheckpoint: CHECKPOINT });
+    expect(within(dialog).getByRole('button', { name: 'Back to review' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Proceed & complete' })).toBeInTheDocument();
+  });
+
+  it('default focus is the button that does NOTHING', async () => {
+    // A reflex Enter on a dialog the doctor has not read must not complete
+    // the visit past the warning the dialog exists to show.
+    const dialog = await openConfirm({ allergyCheckpoint: CHECKPOINT });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(dialog).getByRole('button', { name: 'Back to review' }),
+      ),
+    );
+  });
+
+  it('Back to review writes nothing', async () => {
+    const dialog = await openConfirm({ allergyCheckpoint: CHECKPOINT });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Back to review' }));
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it('proceeding is ALLOWED — the checkpoint asks, it never blocks', async () => {
+    patch.mockResolvedValue({ alreadyCompleted: false });
+    const dialog = await openConfirm({ allergyCheckpoint: CHECKPOINT });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Proceed & complete' }));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    // And it sends no claim about what was shown — the server records that
+    // from its own evaluation, so there is nothing here to forge.
+    expect(patch.mock.calls[0][1]).toEqual({});
+  });
+
+  it('the primary action is never withheld while the checkpoint is outstanding', async () => {
+    get.mockResolvedValue(STATUS({ allergyCheckpoint: CHECKPOINT }));
+    renderFooter();
+    expect(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' })).toBeEnabled();
+    expect(screen.queryByText(/cannot be completed/i)).not.toBeInTheDocument();
+  });
+
+  it('it does not touch the note draft on its way past', async () => {
+    patch.mockResolvedValue({ alreadyCompleted: false });
+    get.mockResolvedValue(STATUS({ allergyCheckpoint: CHECKPOINT }));
+    renderFooter();
+    await userEvent.type(note(), 'Knee sprain, RICE advised.');
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Proceed & complete' }),
+    );
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    expect(note().value).toBe('Knee sprain, RICE advised.');
+    expect(mounts).toBe(1);
+  });
+});

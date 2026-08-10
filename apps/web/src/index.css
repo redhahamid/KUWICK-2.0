@@ -2720,3 +2720,54 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
     display: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   KW2-C2 — the persistent allergy strip.
+
+   Amber, never red. Red is reserved for a state that FORBIDS the action, and
+   nothing here has decided that anything is wrong — the strip says only that
+   this patient has allergies on record and that reading them is the
+   prescriber's job.
+
+   No close affordance and no hover state: it is not a control, and it is not
+   an event. It is a standing fact, so it looks like one.
+   ------------------------------------------------------------------------ */
+.kw-allergy-strip {
+  background: #fff6e6;
+  border: 1px solid #f0dcac;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  /* The 12px clinical floor. These are the patient's own words about what
+     could harm them; they are never small print. */
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #8a6510;
+  /* Long allergy lists wrap rather than truncate — a cut-off allergy is a
+     changed allergy. */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.kw-allergy-strip-compact {
+  padding: 6px 10px;
+  margin-bottom: 10px;
+}
+
+/* The completion checkpoint's two labelled lists. A label column keeps
+   "Allergies" and "Prescribed" aligned so the comparison the doctor is being
+   asked to make is one glance rather than two sentences. */
+.kw-checkpoint-line {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.kw-checkpoint-label {
+  flex: 0 0 78px;
+  color: var(--kw-muted, #6e7288);
+  font-size: 12px;
+}

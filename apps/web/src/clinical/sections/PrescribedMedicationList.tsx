@@ -1,5 +1,5 @@
-import { Alert, Button, Popconfirm, Select, Space, Tag, Tooltip, Typography, message } from 'antd';
-import { ExclamationCircleFilled, PrinterOutlined, WarningFilled } from '@ant-design/icons';
+import { Button, Popconfirm, Select, Space, Tag, Tooltip, Typography, message } from 'antd';
+import { PrinterOutlined, WarningFilled } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { printDrugLabel } from '../printTextDocument';
 import {
@@ -19,6 +19,7 @@ import {
   reviewedLine,
 } from '../medications/reviewState';
 import { useStaff } from '../../hr/hooks/useStaff';
+import { AllergyStrip } from '../medications/AllergyStrip';
 import {
   SUPPLY_MODE_OPTIONS,
   SUPPLY_MODE_UNRESOLVED_LABEL,
@@ -92,7 +93,6 @@ export function PrescribedMedicationList({
   const report = (error: unknown, fallback: string) =>
     message.error(error instanceof ApiError ? error.message : fallback);
 
-  const allergies = patient?.allergies ?? [];
   const list = prescriptions ?? [];
 
   const stockFor = (itemId: string): number | undefined =>
@@ -102,26 +102,13 @@ export function PrescribedMedicationList({
 
   return (
     <div>
-      {/* Allergy context beside prescribing. Icon + words, never colour alone.
-          Kuwick does NOT cross-check a drug against these — saying so plainly
-          is safer than a banner that implies a check nobody implemented. */}
-      {allergies.length > 0 ? (
-        <Alert
-          type="error"
-          showIcon
-          icon={<ExclamationCircleFilled />}
-          style={{ marginBottom: 12 }}
-          message={`Recorded allergies: ${allergies.join(', ')}`}
-          description="Kuwick does not automatically check prescriptions against these. Please review before prescribing."
-        />
-      ) : (
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 12 }}
-          message="No allergies recorded for this patient"
-        />
-      )}
+      {/* KW2-C2 — the persistent strip, pinned to the top of the list.
+          It replaces a RED alert and a separate blue "no allergies recorded"
+          banner. Both were wrong: red said stop where nothing had decided
+          anything was wrong, and the blue one reported "none recorded" for a
+          patient nobody had asked in exactly the same words as for one who
+          had answered no. Three states, one of which is deliberately silent. */}
+      <AllergyStrip allergies={patient ? (patient.allergies ?? null) : undefined} />
 
       {latestWeightKg && (
         <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
