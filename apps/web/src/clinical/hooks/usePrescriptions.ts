@@ -96,6 +96,27 @@ export function useSetSupplyMode(visitId?: string) {
   });
 }
 
+/**
+ * KW2-C2 — "reviewed ✓" on a carried-over medication.
+ *
+ * The acting user is taken from the SESSION by the server and is never sent
+ * from here (owner decision 4): a clinical acknowledgement whose author the
+ * client chose is not an acknowledgement. There is deliberately no body at
+ * all, so there is nothing to forge.
+ *
+ * No un-review. Saying "I have re-read this" is a statement about something
+ * that happened; a toggle that takes it back would let the record claim it
+ * never did. If the medicine turns out to be wrong, the answer is to change or
+ * cancel the prescription, both of which are already recorded acts.
+ */
+export function useMarkPrescriptionReviewed(visitId?: string) {
+  const invalidate = useInvalidatePrescriptionWork(visitId);
+  return useMutation({
+    mutationFn: (id: string) => apiClient.patch<Prescription>(`/prescriptions/${id}/reviewed`),
+    onSuccess: invalidate,
+  });
+}
+
 export function useRemovePrescription(visitId?: string) {
   const invalidate = useInvalidatePrescriptionWork(visitId);
   return useMutation({

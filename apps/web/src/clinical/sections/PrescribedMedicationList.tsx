@@ -5,9 +5,20 @@ import { printDrugLabel } from '../printTextDocument';
 import {
   useCancelPrescription,
   useDispensePrescription,
+  useMarkPrescriptionReviewed,
   useRemovePrescription,
   useSetSupplyMode,
 } from '../hooks/usePrescriptions';
+import {
+  CARRIED_OVER_LABEL,
+  NEEDS_REVIEW_LABEL,
+  REVIEW_ACTION_HINT,
+  REVIEW_ACTION_LABEL,
+  isCarriedOver,
+  needsReview,
+  reviewedLine,
+} from '../medications/reviewState';
+import { useStaff } from '../../hr/hooks/useStaff';
 import {
   SUPPLY_MODE_OPTIONS,
   SUPPLY_MODE_UNRESOLVED_LABEL,
@@ -71,7 +82,12 @@ export function PrescribedMedicationList({
   const cancel = useCancelPrescription(visitId);
   const remove = useRemovePrescription(visitId);
   const setSupply = useSetSupplyMode(visitId);
+  const markReviewed = useMarkPrescriptionReviewed(visitId);
   const { data: stockLevels } = useStockLevels();
+  // Only to put a NAME on an id the row already carries. No clinical fact is
+  // read from here, and a staff list that fails to load costs the attribution
+  // its name, never the row its state.
+  const { data: staff } = useStaff();
 
   const report = (error: unknown, fallback: string) =>
     message.error(error instanceof ApiError ? error.message : fallback);
@@ -123,6 +139,17 @@ export function PrescribedMedicationList({
             const item = prescription.item;
             const stock = item ? stockFor(item.id) : undefined;
             const lowStock = stock !== undefined && stock <= 0;
+            const carriedOver = isCarriedOver(prescription);
+            const awaitingReview = needsReview(prescription);
+            const reviewer = prescription.reviewedByStaffId
+              ? (staff?.find((s) => s.id === prescription.reviewedByStaffId)?.fullName ?? null)
+              : null;
+            const reviewed = reviewedLine({
+              name: reviewer,
+              at: prescription.reviewedAt
+                ? dayjs(prescription.reviewedAt).format('D MMM YYYY, HH:mm')
+                : null,
+            });
 
             return (
               <div key={prescription.id} className="kw-dx-row">
@@ -149,6 +176,17 @@ export function PrescribedMedicationList({
                       <Tag color="red" icon={<WarningFilled />}>
                         No stock on hand
                       </Tag>
+                    )}
+                    {/* KW2-C2 — provenance, then state. Two tags rather than
+                        one because they answer different questions and the
+                        first one never goes away: "carried over" stays true
+                        after the review, "not reviewed" does not. */}
+                    {carriedOver && <Tag>{CARRIED_OVER_LABEL}</Tag>}
+                    {awaitingReview && (
+                      // Amber. Not red — nobody has said this is wrong, only
+                      // that nobody has looked, and red here would be the
+                      // interaction warning Kuwick does not perform.
+                      <Tag color="gold">{NEEDS_REVIEW_LABEL}</Tag>
                     )}
                   </Space>
 
@@ -224,9 +262,41 @@ export function PrescribedMedicationList({
                       {stock !== undefined && ` · Stock on hand: ${stock}`}
                     </Text>
                   </div>
+
+                  {/* Who re-read it. A clinical acknowledgement without a name
+                      and a time is not an acknowledgement — it is a tick box
+                      that nobody owns (owner decision 4). */}
+                  {reviewed && (
+                    <div>
+                      <Text type="secondary" style={{ fontSize: 12 }} data-reviewed-line="true">
+                        {reviewed}
+                      </Text>
+                    </div>
+                  )}
                 </div>
 
                 <Space size={4} className="kw-dx-actions">
+                  {/* KW2-C2 — the explicit re-read. Offered ONLY while the
+                      flag is up, so it disappears once it has been used and
+                      cannot be pressed twice; editing any field of the row
+                      clears the same flag on the server, which is why this is
+                      an affordance and not the only way out of the state. */}
+                  {awaitingReview && (
+                    <Tooltip title={REVIEW_ACTION_HINT}>
+                      <Button
+                        size="small"
+                        loading={markReviewed.isPending}
+                        onClick={() =>
+                          markReviewed
+                            .mutateAsync(prescription.id)
+                            .catch((e) => report(e, 'Failed to record the review'))
+                        }
+                      >
+                        {REVIEW_ACTION_LABEL}
+                      </Button>
+                    </Tooltip>
+                  )}
+
                   <Tooltip title="Print drug label">
                     <Button
                       size="small"

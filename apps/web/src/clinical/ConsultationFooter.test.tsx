@@ -656,3 +656,140 @@ describe('Case D — completed, documentation still pending', () => {
     expect(screen.queryByRole('button', { name: /^Complete/ })).not.toBeInTheDocument();
   });
 });
+
+// ===========================================================================
+// KW2-C2 — completing with carried-over medications nobody re-read
+//
+// The owner's rule has four parts and each is a separate test: the action is
+// never withheld, the question changes, the medicines are NAMED, and the
+// wording never pretends a pharmacological check happened.
+// ===========================================================================
+describe('KW2-C2 — unreviewed copied medications', () => {
+  const unreviewed = (names: string[]) => STATUS({ unreviewedCopiedMedications: names });
+
+  it('the ordinary confirmation is unchanged when there are none', async () => {
+    get.mockResolvedValue(unreviewed([]));
+    renderFooter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Complete consultation and send to Dispensary?')).toBeInTheDocument();
+    expect(within(dialog).queryByText(/not been reviewed/i)).not.toBeInTheDocument();
+    // The OK still reads as the action, not as an override.
+    expect(within(dialog).getByRole('button', { name: 'Complete & Send to Dispensary' })).toBeInTheDocument();
+  });
+
+  it('a status from an API that predates the field asks the ordinary question', async () => {
+    // Absent is not empty — but it must not invent a warning either. An older
+    // server simply cannot answer, and the footer behaves as it always did.
+    const { unreviewedCopiedMedications: _omitted, ...older } = unreviewed([]);
+    get.mockResolvedValue(older);
+    renderFooter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+    expect(
+      within(await screen.findByRole('dialog')).getByText('Complete consultation and send to Dispensary?'),
+    ).toBeInTheDocument();
+  });
+
+  it('the button is NEVER withheld — the state is a question, not a blocker', async () => {
+    get.mockResolvedValue(unreviewed(['Syr Paracetamol 120mg/5ml', 'Bromhexine']));
+    renderFooter();
+    // Still eligible, still one click from finishing.
+    expect(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' })).toBeEnabled();
+    expect(screen.queryByText(/cannot be completed/i)).not.toBeInTheDocument();
+  });
+
+  it('the confirmation changes its question and NAMES the medicines', async () => {
+    get.mockResolvedValue(unreviewed(['Syr Paracetamol 120mg/5ml', 'Bromhexine']));
+    renderFooter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Copied medications not reviewed')).toBeInTheDocument();
+    // A count alone is not actionable. The names are the whole point.
+    expect(
+      within(dialog).getByText(
+        '2 copied medications have not been reviewed: Syr Paracetamol 120mg/5ml, Bromhexine',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('one unreviewed medicine reads as one, not as "1 medications"', async () => {
+    get.mockResolvedValue(unreviewed(['Bromhexine']));
+    renderFooter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+    expect(
+      within(await screen.findByRole('dialog')).getByText(
+        '1 copied medication has not been reviewed: Bromhexine',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('proceeding is allowed, and takes a differently-worded click', async () => {
+    get.mockResolvedValue(unreviewed(['Bromhexine']));
+    patch.mockResolvedValue({ alreadyCompleted: false });
+    renderFooter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+
+    const dialog = await screen.findByRole('dialog');
+    // The ordinary OK label is GONE inside the dialog: accepting this is a
+    // different act from completing an ordinary consultation, and it says so.
+    expect(
+      within(dialog).queryByRole('button', { name: 'Complete & Send to Dispensary' }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Complete anyway' }));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+  });
+
+  it('cancelling out of it writes nothing', async () => {
+    get.mockResolvedValue(unreviewed(['Bromhexine']));
+    renderFooter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it('says nobody looked — never that anything was checked', async () => {
+    get.mockResolvedValue(unreviewed(['Augmentin 625mg']));
+    renderFooter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+
+    const dialog = await screen.findByRole('dialog');
+    const words = dialog.textContent ?? '';
+    // Kuwick performs no interaction, allergy or contraindication check, and
+    // no wording on this dialog may suggest one ran and passed — or failed.
+    for (const forbidden of [/interaction/i, /contraindicat/i, /unsafe/i, /do not prescribe/i, /allerg/i]) {
+      expect(words).not.toMatch(forbidden);
+    }
+    expect(words).toMatch(/nobody has re-read them/i);
+  });
+
+  it('is amber and advisory, not an assertive alarm', async () => {
+    get.mockResolvedValue(unreviewed(['Bromhexine']));
+    renderFooter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+
+    const dialog = await screen.findByRole('dialog');
+    const block = dialog.querySelector('[data-unreviewed-copies="true"]');
+    expect(block).not.toBeNull();
+    // role=status, not role=alert: red and assertive are reserved for a state
+    // that FORBIDS the action, and this one permits it.
+    expect(block).toHaveAttribute('role', 'status');
+    expect(block).toHaveClass('ant-alert-warning');
+  });
+
+  it('does not touch the note draft on its way past', async () => {
+    get.mockResolvedValue(unreviewed(['Bromhexine']));
+    patch.mockResolvedValue({ alreadyCompleted: false });
+    renderFooter();
+    await userEvent.type(note(), 'URTI, symptomatic treatment.');
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Complete & Send to Dispensary' }));
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Complete anyway' }),
+    );
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    expect(note().value).toBe('URTI, symptomatic treatment.');
+    expect(mounts).toBe(1);
+  });
+});

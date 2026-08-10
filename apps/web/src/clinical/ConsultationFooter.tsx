@@ -17,7 +17,7 @@ import {
   DOCUMENTATION_PENDING_BODY,
   DOCUMENTATION_PENDING_TITLE,
   completedStation,
-  documentationPendingConfirm,
+  completionConfirm,
   footerView,
   orderBlockers,
   queueStatusText,
@@ -289,9 +289,11 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
   // question. The ACTION is identical and is never withheld — that is the
   // whole point of the state.
   const pending = view.documentationPending;
-  const confirm = pending
-    ? documentationPendingConfirm(primary)
-    : { title: primary.confirmTitle, summary: primary.confirmSummary };
+  const confirm = completionConfirm({
+    primary,
+    documentationPending: pending,
+    unreviewedCopies: view.unreviewedCopies,
+  });
 
   return (
     <section
@@ -376,7 +378,10 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
         // to antd's default blue in a workspace that uses navy everywhere.
         rootClassName="kw-consult-confirm"
         title={confirm.title}
-        okText={primary.label}
+        // KW2-C2 — "Complete anyway" where copied medications are unreviewed.
+        // The same button, relabelled to say what is being accepted: the
+        // owner's requirement is a conscious click, not a withheld action.
+        okText={confirm.okText}
         cancelText="Cancel"
         confirmLoading={complete.isPending}
         // Cancelling performs no write of any kind.
@@ -385,6 +390,20 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
         afterClose={() => triggerRef.current?.focus()}
         destroyOnHidden
       >
+        {/* Amber, and above the summary so it is read first. Never red and
+            never blocking: this is not an interaction check and nothing here
+            knows whether the medicine is wrong — only that nobody looked. */}
+        {confirm.warning && (
+          <Alert
+            type="warning"
+            showIcon
+            role="status"
+            style={{ marginBottom: 'var(--kw-s2)' }}
+            data-unreviewed-copies="true"
+            message={confirm.warning.line}
+            description={confirm.warning.explanation}
+          />
+        )}
         <Text>{confirm.summary}</Text>
       </Modal>
     </section>

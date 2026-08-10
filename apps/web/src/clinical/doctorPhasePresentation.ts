@@ -208,6 +208,17 @@ export interface FooterView {
   primary: PrimaryAction | null;
   /** True when the consultation may finish but the note is not signed. */
   documentationPending: boolean;
+  /**
+   * KW2-C2 — carried-over medications nobody has re-read yet, by name.
+   *
+   * Reported, NEVER a blocker. Copying a prescription forward is a fresh
+   * prescribing decision taken from old information; the weight, the allergies
+   * and the stock have all had time to change since. So finishing with one
+   * unreviewed is a real clinical choice and the confirmation says so — but it
+   * is still allowed, because a refusal would only teach people to tick
+   * "reviewed" without reading, which is worse than the state it prevents.
+   */
+  unreviewedCopies: string[];
 }
 
 /**
@@ -233,6 +244,7 @@ export function footerView(params: {
     actions: [],
     primary: null,
     documentationPending: false,
+    unreviewedCopies: [] as string[],
     tone: 'NEUTRAL' as FooterTone,
   };
 
@@ -252,6 +264,10 @@ export function footerView(params: {
   // not "documentation was complete". The live value is used for the amber
   // note in that case, because it is the only true thing available.
   const pendingNow = params.status.documentationPending === true;
+  // Absent, not empty, on an API that predates this. `?? []` collapses the two
+  // — which is right ONLY because the list is used to ADD a warning, never to
+  // withhold one: an older server simply asks the ordinary question.
+  const unreviewedCopies = params.status.unreviewedCopiedMedications ?? [];
 
   if (params.status.completed) {
     const pendingThen = params.status.documentationPendingAtCompletion;
@@ -260,6 +276,7 @@ export function footerView(params: {
       ...empty,
       mode: 'COMPLETED',
       documentationPending: stillPending,
+      unreviewedCopies,
       tone: stillPending ? 'PENDING' : 'NEUTRAL',
     };
   }
@@ -277,6 +294,7 @@ export function footerView(params: {
       actions: reviewActions(blockers),
       primary: null,
       documentationPending: pendingNow,
+      unreviewedCopies,
     };
   }
   // Cases A and B — identical except for the tone and the amber note.
@@ -287,6 +305,7 @@ export function footerView(params: {
     actions: [],
     primary,
     documentationPending: pendingNow,
+    unreviewedCopies,
   };
 }
 
@@ -311,6 +330,73 @@ export function documentationPendingConfirm(primary: PrimaryAction): {
       'Your draft is kept exactly as you left it — nothing is saved or signed on your behalf.',
       'This visit cannot be closed until the note is signed, and this action is recorded against you with the time.',
     ].join(' '),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// KW2-C2 — completing with carried-over medications nobody re-read
+//
+// The owner's rule, in full: dispensing is NOT blocked by the flag, and
+// completion is not refused — but it must be a conscious click. So the
+// confirmation changes shape rather than the button disappearing: a different
+// question, the medicines NAMED, and an OK that says what is being accepted.
+//
+// Named, never counted. "2 copied medications not reviewed" is not something a
+// doctor can act on from the dialog; "Syr Paracetamol, Bromhexine" is — they
+// either recognise those as still right for this patient or they cancel.
+// ---------------------------------------------------------------------------
+export const UNREVIEWED_COPIES_TITLE = 'Copied medications not reviewed';
+export const UNREVIEWED_COPIES_OK = 'Complete anyway';
+
+/** "2 copied medications not reviewed: Syr PCM, Bromhexine". */
+export function unreviewedCopiesLine(names: string[]): string {
+  const noun = names.length === 1 ? 'copied medication' : 'copied medications';
+  const verb = names.length === 1 ? 'has' : 'have';
+  return `${names.length} ${noun} ${verb} not been reviewed: ${names.join(', ')}`;
+}
+
+export interface CompletionConfirm {
+  title: string;
+  summary: string;
+  okText: string;
+  /** The amber block, or null. Present ONLY for unreviewed copies. */
+  warning: { line: string; explanation: string } | null;
+}
+
+/**
+ * The one confirmation the footer shows, across every combination of state.
+ *
+ * Precedence when both apply: the unreviewed-copies question wins the TITLE
+ * and the OK label, because it is the one asking the doctor to accept a
+ * clinical risk. Documentation pending is still stated in the summary — it is
+ * no longer a task since G4.5d6 auto-finalizes the note, so it does not need
+ * to own the question, only to be true and visible.
+ */
+export function completionConfirm(params: {
+  primary: PrimaryAction;
+  documentationPending: boolean;
+  unreviewedCopies: string[];
+}): CompletionConfirm {
+  const base = params.documentationPending
+    ? documentationPendingConfirm(params.primary)
+    : { title: params.primary.confirmTitle, summary: params.primary.confirmSummary };
+
+  if (params.unreviewedCopies.length === 0) {
+    return { ...base, okText: params.primary.label, warning: null };
+  }
+
+  return {
+    title: UNREVIEWED_COPIES_TITLE,
+    summary: base.summary,
+    okText: UNREVIEWED_COPIES_OK,
+    warning: {
+      line: unreviewedCopiesLine(params.unreviewedCopies),
+      // States what the flag MEANS and nothing more. It is not a safety
+      // check, it does not know whether the medicine is still right, and it
+      // must not be written as though it does.
+      explanation:
+        'These were carried over from an earlier visit and nobody has re-read them on this one. Proceed only if they are still right for this patient today.',
+    },
   };
 }
 

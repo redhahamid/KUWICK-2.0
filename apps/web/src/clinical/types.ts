@@ -1144,6 +1144,14 @@ export interface DoctorPhaseStatus {
   /** Who sent the patient on with documentation pending, and when. */
   documentationPendingActorName: string | null;
   documentationPendingAt: string | null;
+  /**
+   * KW2-C2 — carried-over medications nobody has re-read, BY NAME.
+   *
+   * Optional on the wire: a status read served by an API that predates this
+   * reports nothing rather than an empty list, and "we do not know" must not
+   * render as "there are none".
+   */
+  unreviewedCopiedMedications?: string[];
 }
 
 /** `PATCH /visits/:id/complete-doctor-phase` — authoritative. */
