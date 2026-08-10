@@ -1,4 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
+import { SystemRole } from '@prisma/client';
+import { can } from '../core/permissions';
 import { ClinicalNoteType, Role, Staff } from '@prisma/client';
 
 // C0 (D-051) — narrowly-scoped, server-side authorisation for clinical
@@ -63,22 +65,37 @@ export function canSignClinicalNotes(staff: Staff): boolean {
   );
 }
 
+// TASK 1 — these three now DELEGATE to the central policy module.
+//
+// They used to hold their own role lists, which is how a permission comes to
+// be implemented twice and then differently: D1 was precisely that, and cost
+// a doctor the ability to type. The functions keep their names and signatures
+// so no call site changes; what they no longer keep is an opinion.
+//
+// `rolesOn` reads the capability roles the actor loader attached. Absent —
+// a plain Staff row from a test or an older code path — falls through to the
+// legacy mapping, which is what these lists used to say.
+function rolesOn(staff: Staff): SystemRole[] | undefined {
+  const attached = (staff as { assignedRoles?: SystemRole[] }).assignedRoles;
+  return attached && attached.length > 0 ? attached : undefined;
+}
+
 // Authoring a DOCTOR_NARRATIVE is restricted to doctors. Front-desk staff
 // record observations and STAFF_REMARKs instead; a scribe/countersign
 // workflow for dictated narrative is a separately approved future feature.
 export function canAuthorNarrative(staff: Staff): boolean {
-  return staff.active && (DOCTOR_ROLES.includes(staff.role) || canSignClinicalNotes(staff));
+  return can(staff, 'note.write', rolesOn(staff));
 }
 
 // Staff remarks ("patient refused medication", "called 3x, no answer") are
 // how non-doctors document. They can never be signed (enforced by a DB CHECK
 // as well as here) and never render as a doctor's clinical note.
 export function canAuthorStaffRemark(staff: Staff): boolean {
-  return staff.active && CLINICAL_ROLES.includes(staff.role);
+  return can(staff, 'note.staffRemark', rolesOn(staff));
 }
 
 export function canRecordObservations(staff: Staff): boolean {
-  return staff.active && (DOCTOR_ROLES.includes(staff.role) || staff.role === 'FRONT_DESK_CLINICAL_STAFF');
+  return can(staff, 'observation.write', rolesOn(staff));
 }
 
 // G2 closure (D-061) — who may change a visit's diagnoses.

@@ -1,10 +1,43 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { Prisma, Staff } from '@prisma/client';
+import { Prisma, Staff, SystemRole } from '@prisma/client';
 import { PrismaService } from '../core/prisma.service';
 import { currentStaffId, currentTenantId } from '../core/tenant-context';
 import { assertBranchAccess, canAuthorNarrative, type BranchAccessContext } from './clinical-authorization';
 
 export type ClinicalTx = Prisma.TransactionClient;
+
+/**
+ * TASK 1 — the acting staff member, WITH the capability roles they hold.
+ *
+ * The roles travel attached to the staff row rather than as a second argument
+ * threaded through twenty call sites. Every authorisation predicate reads
+ * them from here, so there is exactly one place that decides what somebody
+ * may do and exactly one place that loads the input to that decision.
+ *
+ * `assignedRoles` empty means "none assigned yet", which the policy module
+ * answers with the legacy role's mapping — so an account that predates the
+ * roles table behaves precisely as it did before.
+ */
+export type ActingStaff = Staff & { assignedRoles: SystemRole[] };
+
+/** Reads a staff member's capability roles. */
+export async function loadAssignedRoles(
+  db: { staffRoleAssignment?: { findMany(args: unknown): Promise<{ role: SystemRole }[]> } },
+  staffId: string,
+): Promise<SystemRole[]> {
+  // Optional on purpose. A caller whose client cannot read the table — an
+  // older code path, a narrow test double — gets an empty list, and empty
+  // means "fall back to the legacy role's mapping", which is precisely the
+  // behaviour that existed before capability roles. Failing open to the
+  // PREVIOUS rules is safe; throwing here would take down every clinical
+  // write for a lookup that is only ever an enrichment.
+  if (!db.staffRoleAssignment) return [];
+  const rows = await db.staffRoleAssignment.findMany({
+    where: { staffId },
+    select: { role: true },
+  });
+  return rows.map((row) => row.role);
+}
 
 // G3a (D-062) — the actor/branch plumbing that C0's note service and G2a's
 // diagnosis service each grew independently. Extracted here rather than
@@ -56,7 +89,7 @@ export function withReadOnlyTenantTx<T>(
  * The acting staff member, from the verified JWT claim only — never from a
  * request body. Who performed a clinical correction must not be spoofable.
  */
-export async function requireActor(tx: ClinicalTx): Promise<Staff> {
+export async function requireActor(tx: ClinicalTx): Promise<ActingStaff> {
   const staffId = currentStaffId();
   if (!staffId) {
     throw new ForbiddenException('No authenticated staff member on this session');
@@ -65,11 +98,14 @@ export async function requireActor(tx: ClinicalTx): Promise<Staff> {
   if (!staff || !staff.active) {
     throw new ForbiddenException('Your staff account is inactive');
   }
-  return staff;
+  return { ...staff, assignedRoles: await loadAssignedRoles(tx as never, staff.id) };
 }
 
 /** Anything with a tenant-scoped `staff.findUnique` — a tx or the scoped client. */
-type StaffReader = { staff: { findUnique(args: { where: { id: string } }): Promise<Staff | null> } };
+type StaffReader = {
+  staff: { findUnique(args: { where: { id: string } }): Promise<Staff | null> };
+  staffRoleAssignment: { findMany(args: unknown): Promise<{ role: SystemRole }[]> };
+};
 
 /**
  * G4.5d3c-1c (D-085) — the CLINICAL AUTHOR of an action.
@@ -89,15 +125,16 @@ type StaffReader = { staff: { findUnique(args: { where: { id: string } }): Promi
  * permission, visible identity and its own audit. It is deliberately NOT
  * built here — a silent version of it is exactly the defect being removed.
  */
-export async function requireClinicalAuthor(db: StaffReader, action: string): Promise<Staff> {
+export async function requireClinicalAuthor(db: StaffReader, action: string): Promise<ActingStaff> {
   const staffId = currentStaffId();
   if (!staffId) {
     throw new ForbiddenException('No authenticated staff member on this session');
   }
-  const staff = await db.staff.findUnique({ where: { id: staffId } });
-  if (!staff || !staff.active) {
+  const found = await db.staff.findUnique({ where: { id: staffId } });
+  if (!found || !found.active) {
     throw new ForbiddenException('Your staff account is inactive');
   }
+  const staff: ActingStaff = { ...found, assignedRoles: await loadAssignedRoles(db, found.id) };
   if (!canAuthorNarrative(staff)) {
     // Says what was refused, never who else could do it, and never suggests
     // that recording it under the attending doctor is an option.

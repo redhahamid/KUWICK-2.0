@@ -213,9 +213,37 @@ describe('migrating what already exists', () => {
     expect(permissions.has('note.write')).toBe(false);
   });
 
-  it('a legacy OWNER_ADMIN is owner + administrator, and NOT a doctor', () => {
+  it('a legacy OWNER_ADMIN with no registration is owner + administrator, NOT a doctor', () => {
     expect(rolesOf(admin(), undefined)).toEqual(['OWNER', 'ADMINISTRATOR']);
     expect(can(admin(), 'note.write')).toBe(false);
+  });
+
+  it('a CREDENTIALED legacy OWNER_ADMIN keeps the clinical ability they had', () => {
+    // The owner-doctor has been authoring notes all along. The migration must
+    // not take that away on the day roles ship — and an owner who is NOT a
+    // clinician gains nothing from this clause, which is its whole point.
+    const ownerDoctor = staffOf({ role: 'OWNER_ADMIN' as Role });
+    expect(rolesOf(ownerDoctor, undefined)).toContain('DOCTOR');
+    expect(can(ownerDoctor, 'note.write')).toBe(true);
+    expect(can(ownerDoctor, 'note.sign')).toBe(true);
+    expect(can(ownerDoctor, 'settings.manage')).toBe(true);
+  });
+
+  it('STOCK_STAFF gets NO patient-record write — not even vitals', () => {
+    // Owner decision. Mapping inventory staff to CLINICAL_STAFF would have
+    // handed stock control the ability to record a blood pressure.
+    expect(LEGACY_ROLE_FALLBACK.STOCK_STAFF).toEqual(['ADMINISTRATOR']);
+    const stock = admin({ role: 'STOCK_STAFF' as Role });
+    expect(can(stock, 'observation.write')).toBe(false);
+    expect(can(stock, 'allergy.write')).toBe(false);
+    expect(can(stock, 'note.staffRemark')).toBe(false);
+  });
+
+  it('and no dispensing yet either — that is the noted follow-up', () => {
+    // `dispense.perform` exists as its own permission, but granting it
+    // without a role needs per-staff grants, which is a second axis nobody
+    // needs until a real STOCK_STAFF account exists.
+    expect(can(admin({ role: 'STOCK_STAFF' as Role }), 'dispense.perform')).toBe(false);
   });
 
   it('PATIENT_PORTAL is not staff and holds nothing', () => {

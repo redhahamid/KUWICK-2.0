@@ -24,7 +24,7 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 
 | | |
 |---|---|
-| Last green | **1105 frontend / 1175 backend**, both typechecks clean |
+| Last green | **1105 frontend / 1178 backend**, both typechecks clean |
 | Migrations | 63, no drift |
 | Last commit | see `git log` |
 
@@ -136,11 +136,30 @@ the session now publishes `permissions[]` + `roles[]`.
 in the policy module maps each legacy role to capability roles and applies
 only to staff with NO explicit assignment. An explicit assignment always wins.
 
-Still to build for Task 1:
-- `assertCan` wired into every mutation (services still use their own role
-  checks — `queue-authorization.ts`, `clinical-authorization.ts`). Those remain
-  correct; they are now the second implementation the policy module exists to
-  replace. Migrate them one service at a time, keeping tests green.
+**Enforcement wiring — IN PROGRESS. Task 1 is NOT done until this finishes.**
+
+Migrated so far (they delegate to the policy module and hold no role list of
+their own): `canAuthorNarrative`, `canAuthorStaffRemark`,
+`canRecordObservations`. The actor now carries its capability roles
+(`ActingStaff.assignedRoles`, loaded by `requireActor` /
+`requireClinicalAuthor`), so predicates read them without every call site
+changing.
+
+Still holding local role lists, migrate next, one at a time, suites green
+after each:
+- `clinical-authorization.ts`: `canModifyDiagnosis`, `canVoidClinicalRecord`,
+  `canClinicallyAuthoriseDocument`, `canIssueAdministrativeDocument`,
+  `canAccessBilling`, `canPerformBilling`, `canEditDraft`. `DOCTOR_ROLES` and
+  `CLINICAL_ROLES` at the top of the file are the remaining local tables —
+  delete each as its last reader migrates.
+- `queue-authorization.ts`: `QUEUE_MATRIX` (7 actions) and
+  `assertMayChangeAttendingClinician`.
+- `dispensary-authorization.ts`, and anything else `grep -rn "staff.role ===" apps/api/src` finds.
+
+`loadAssignedRoles` is deliberately tolerant of a client that cannot read the
+table: empty → legacy fallback → previous behaviour. Failing open to the
+PREVIOUS rules is safe; throwing would take down every clinical write for what
+is only an enrichment.
 - Settings › Users & roles CRUD (list, multi-role assign, link doctor profile,
   deactivate, last-owner guard — `wouldRemoveLastOwner` is written and tested).
 - ~~Fixtures~~ **done**: `KUWICK_ALLOW_FIXTURES=yes npx tsx prisma/seed-role-fixtures.ts`

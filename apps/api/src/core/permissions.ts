@@ -143,7 +143,19 @@ export const LEGACY_ROLE_FALLBACK: Record<Role, SystemRole[]> = {
   FRONT_DESK_CLINICAL_STAFF: ['CLINICAL_STAFF', 'ADMINISTRATOR'],
   FINANCE_STAFF: ['ADMINISTRATOR'],
   HR_STAFF: ['ADMINISTRATOR'],
-  STOCK_STAFF: ['CLINICAL_STAFF'],
+  // Owner decision: NOT clinical staff. That role carries observation.write
+  // and allergy.write, and an inventory clerk has no business recording a
+  // blood pressure — the mapping would have granted patient-record writes to
+  // stock control, which is exactly the quiet widening this table exists to
+  // make visible.
+  //
+  // FOLLOW-UP, deliberately not built now: dispensing is already its own
+  // permission (`dispense.perform`), but granting it to one person WITHOUT a
+  // role would need per-staff permission grants — a second axis in the model,
+  // a second thing for the Users screen to edit, and a second source of truth
+  // for "what can this person do". Zero accounts hold STOCK_STAFF today, so
+  // nothing is lost by waiting until there is a real one to design against.
+  STOCK_STAFF: ['ADMINISTRATOR'],
   PANEL_STAFF: ['ADMINISTRATOR'],
   // Not staff. No capability of any kind.
   PATIENT_PORTAL: [],
@@ -174,7 +186,19 @@ export function isCredentialedClinician(staff: Staff): boolean {
  */
 export function rolesOf(staff: Staff, assigned: SystemRole[] | undefined): SystemRole[] {
   if (assigned && assigned.length > 0) return [...new Set(assigned)];
-  return LEGACY_ROLE_FALLBACK[staff.role] ?? [];
+
+  const fallback = [...(LEGACY_ROLE_FALLBACK[staff.role] ?? [])];
+
+  // "+ DOCTOR only when credentialed" — the one clause a static table cannot
+  // express, and the one the clinic depends on. A legacy OWNER_ADMIN who is
+  // also a verified practitioner has been authoring notes all along; the
+  // migration must not take that away on the day roles ship. An owner who is
+  // NOT a clinician gains nothing here, which is the whole point of the rule.
+  if (staff.role === 'OWNER_ADMIN' && isCredentialedClinician(staff) && !fallback.includes('DOCTOR')) {
+    fallback.push('DOCTOR');
+  }
+
+  return fallback;
 }
 
 export function effectivePermissions(
