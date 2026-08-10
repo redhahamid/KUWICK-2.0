@@ -20,7 +20,7 @@ const API = 'http://localhost:3000';
 const WEB = 'http://localhost:5173';
 
 const PATIENT_ID = process.argv[2];
-const PHASE_DIR = process.argv[3] ?? 'kuwick2-canvas-phase1';
+const PHASE_DIR = process.argv[3] ?? 'kuwick2-canvas-phase2';
 const OUT = join(__dirname, '..', '..', '..', 'docs', PHASE_DIR);
 
 if (!PATIENT_ID) {
@@ -113,9 +113,9 @@ async function main() {
   {
     const { page, context } = await open(1600 + CHROME_PADDING, 1100);
     const m = await measure(page);
-    await page.screenshot({ path: join(OUT, 'p1-01-full-canvas-1600.png') });
+    await page.screenshot({ path: join(OUT, 'p2-01-full-canvas-1600.png') });
     console.log(
-      `  p1-01-full-canvas-1600.png  container=${m.container} mode=${m.mode} ` +
+      `  p2-01-full-canvas-1600.png  container=${m.container} mode=${m.mode} ` +
         `cols=${m.visits}/${m.middle}/${m.right}  doc=${m.docWidth}`,
     );
 
@@ -123,30 +123,31 @@ async function main() {
     const shell = await boxOf(page, '.kw-canvas2-shell');
     if (shell) {
       await page.screenshot({
-        path: join(OUT, 'p1-02-built-three-columns.png'),
+        path: join(OUT, 'p2-02-built-three-columns.png'),
         clip: { ...shell, height: Math.min(shell.height, 760) },
       });
-      console.log(`  p1-02-built-three-columns.png  clip=${JSON.stringify(shell)}`);
+      console.log(`  p2-02-built-three-columns.png  clip=${JSON.stringify(shell)}`);
     }
 
     // The visits rail on its own — Phase 1's only new content column.
     const rail = await boxOf(page, '.kw-canvas2-visits');
     if (rail) {
       await page.screenshot({
-        path: join(OUT, 'p1-03-built-visits-rail.png'),
+        path: join(OUT, 'p2-03-built-visits-rail.png'),
         clip: { ...rail, height: Math.min(rail.height, 560) },
       });
-      console.log(`  p1-03-built-visits-rail.png  clip=${JSON.stringify(rail)}`);
+      console.log(`  p2-03-built-visits-rail.png  clip=${JSON.stringify(rail)}`);
     }
 
     // The header band area — where LAST VISIT used to sit (parity fix A).
-    const band = await boxOf(page, '.kw-visit-band');
-    if (band) {
+    // The nav band + patient header, which is what this phase rebuilt.
+    const header = await boxOf(page, '.kw2-patient-header');
+    if (header) {
       await page.screenshot({
-        path: join(OUT, 'p1-04-header-band-after-retiring-last-visit.png'),
-        clip: { x: 0, y: Math.max(0, band.y - 120), width: 1600 + CHROME_PADDING, height: band.height + 150 },
+        path: join(OUT, 'p2-04-built-nav-and-patient-header.png'),
+        clip: { x: 0, y: 0, width: 1600 + CHROME_PADDING, height: header.y + header.height + 12 },
       });
-      console.log(`  p1-04-header-band-after-retiring-last-visit.png`);
+      console.log(`  p2-04-built-nav-and-patient-header.png`);
     }
     await context.close();
   }
@@ -158,22 +159,22 @@ async function main() {
     if (await tab.count()) await tab.click().catch(() => {});
     await page.waitForTimeout(900);
     const m = await measure(page);
-    await page.screenshot({ path: join(OUT, 'p1-05-thumb-1180-history-drawer.png') });
-    console.log(`  p1-05-thumb-1180-history-drawer.png  mode=${m.mode} doc=${m.docWidth}`);
+    await page.screenshot({ path: join(OUT, 'p2-05-thumb-1180-history-drawer.png') });
+    console.log(`  p2-05-thumb-1180-history-drawer.png  mode=${m.mode} doc=${m.docWidth}`);
     await context.close();
   }
   {
     const { page, context } = await open(390, 844);
     const m = await measure(page);
-    await page.screenshot({ path: join(OUT, 'p1-06-thumb-390-stacked.png'), fullPage: true });
-    console.log(`  p1-06-thumb-390-stacked.png  mode=${m.mode} doc=${m.docWidth}`);
+    await page.screenshot({ path: join(OUT, 'p2-06-thumb-390-stacked.png'), fullPage: true });
+    console.log(`  p2-06-thumb-390-stacked.png  mode=${m.mode} doc=${m.docWidth}`);
     await context.close();
   }
   {
     const { page, context } = await open(1600 + CHROME_PADDING, 1100, 'flow');
     const m = await measure(page);
-    await page.screenshot({ path: join(OUT, 'p1-07-thumb-flow-untouched.png') });
-    console.log(`  p1-07-thumb-flow-untouched.png  mode=${m.mode} doc=${m.docWidth}`);
+    await page.screenshot({ path: join(OUT, 'p2-07-thumb-flow-untouched.png') });
+    console.log(`  p2-07-thumb-flow-untouched.png  mode=${m.mode} doc=${m.docWidth}`);
     await context.close();
   }
 
