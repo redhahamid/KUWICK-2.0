@@ -179,8 +179,23 @@ stays as-is: it is the credential rule itself, not a role check, and
   verification; altering a diagnosis or authorising a certificate has only
   ever needed the person to BE a doctor. Collapsing them would silently remove
   access somebody has today.
-- `queue-authorization.ts`: `QUEUE_MATRIX` (7 actions) and
-  `assertMayChangeAttendingClinician`.
+- `queue-authorization.ts`: `QUEUE_MATRIX` (8 actions) and
+  `assertMayChangeAttendingClinician`. **Analysis done, migration not applied
+  — it needs one new permission, not a naive mapping.** Today's matrix:
+
+  | action | today | faithful new grant |
+  |---|---|---|
+  | CREATE_TICKET, CALL_PATIENT, START_CONSULTATION, MOVE_TO_DISPENSARY, ASSIGN_CLINICIAN | owner + front desk + **doctors** | ADMINISTRATOR **and DOCTOR** |
+  | HOLD_CONSULTATION | owner + doctors | DOCTOR (already `consultation.hold`) |
+  | COMPLETE_TICKET | owner + front desk + finance | ADMINISTRATOR (already `queue.manage`) |
+  | CANCEL_TICKET | owner + front desk | ADMINISTRATOR (already `queue.manage`) |
+
+  The trap: mapping the first row onto `queue.manage` alone would stop a
+  DOCTOR calling their own next patient or starting a consultation, because
+  DOCTOR does not hold `queue.manage`. Add a second permission — e.g.
+  `queue.consultationFlow`, granted to DOCTOR **and** ADMINISTRATOR — and
+  `canPerformQueueAction` becomes a union check over the two. Capability is
+  then preserved exactly; no design decision required, unlike billing.
 - `dispensary-authorization.ts`, and anything else `grep -rn "staff.role ===" apps/api/src` finds.
 
 `loadAssignedRoles` is deliberately tolerant of a client that cannot read the
