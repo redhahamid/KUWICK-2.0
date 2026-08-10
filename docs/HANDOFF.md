@@ -178,6 +178,38 @@ is only an enrichment.
   password `DevLocal!2026`. Verified live via the login payload.
 - Frontend: read `permissions[]` from the session instead of role checks.
 
+## Task 2.5 — PARKED FEEDBACK (do after Task 2, alongside/before Section P)
+
+Owner-reviewed on staging. Not started; do not interrupt Task 1 for it.
+
+**1. Top nav polish** — refine, do not redesign. Within the existing kw2
+language: active item gets a subtle raised pill (soft white/10% fill + the
+blue underline already there), hover states with a gentle transition, tighter
+letter-spacing per the mockup, consistent 8px-grid padding, clinic-switcher
+pill and avatar cluster on one baseline, small band shadow from the existing
+shadow token. Keep navy `#101632` and the item order. Before/after screenshot.
+
+**2. Patients module reskin** — still 1.0-styled; apply kw2.
+- Table → kw2 card container, 10px radii, kw2 borders/tokens, compact rows,
+  hover highlight, sticky header. Search styled like the canvas inputs.
+  "+ Add Patient" as a kw2 primary.
+- Row actions: "Add to Daily Queue" text button → icon button + tooltip; add
+  an ✎ opening **the same slide-over built in Section P2**. One component,
+  two entry points — do NOT fork a second edit form.
+- **Delete is wrong today.** Rules: a patient with ANY visit history can never
+  be hard-deleted — the action becomes **Archive** (soft-delete, hidden from
+  lists/search, restorable, audited). A patient with ZERO visits (a
+  mis-registration) may be deleted by OWNER or ADMINISTRATOR only, with a
+  confirm. Enforced server-side through the policy module via new
+  `patient.archive` / `patient.delete` permissions. Archived patients reachable
+  behind a filter; OWNER-restorable.
+- Columns: keep Name / Identifier / Phone / Gender, add **Age** (derived) and
+  **Last visit** — the two things front desk actually scans for.
+
+**3. Canvas demographic/allergy editing** — no change to the plan; this is
+Task 3 (P1 chip popover + P2 slide-over). Flow's expand/edit is verified
+working; Canvas reaches parity through P2 using the same form component.
+
 ## Standing rules
 
 - Nothing red, blocking, or "interaction detected" anywhere in allergy UI.
