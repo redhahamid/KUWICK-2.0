@@ -24,8 +24,8 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 
 | | |
 |---|---|
-| Last green | **1097 frontend / 1109 backend**, both typechecks clean |
-| Migrations | 61, no drift |
+| Last green | **1097 frontend / 1138 backend**, both typechecks clean |
+| Migrations | 63, no drift |
 | Last commit | see `git log` |
 
 ## Checklist state
@@ -44,7 +44,8 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 | C8 `.shortcut` expansion from Settings | not started — today it is a dropdown of hardcoded entries |
 | C9 attachments inside the notes card | not started — today a separate strip + panel |
 | Q2 retire documentation-pending banner | **done** — now a checkpoint section |
-| D10 diagnosis | not started |
+| Q3 seed data | **done** — 162 diagnoses, 229 medications, idempotent |
+| D10 diagnosis | not started — catalogue is real now, the canvas UI is not |
 | E11–E14 orders | not started |
 | F15–F18 medications | not started |
 | G19 documents | not started |
@@ -68,6 +69,26 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
   disagreeing with the queue.
 - `useCompleteVisit` still invalidates `['visit', visitId]`, which matches
   nothing. Pre-existing, unrelated to C2 — worth fixing when H21 is built.
+
+## Seeding
+
+```bash
+cd apps/api
+npx tsx prisma/seed-clinic-catalogues.ts --tenant aaaaaaaa-0000-4000-8000-000000000001
+```
+
+Idempotent — a second run inserts 0 and updates everything. Never deletes:
+a medicine dropped from a later export stays, because prescriptions reference
+it. Stock is SET, not added, so re-running does not multiply the shelf.
+
+Source files: `apps/api/prisma/seed-data/*.csv`. Parsing rules and their
+reasoning live in `apps/api/src/inventory/seed-import.ts` (29 tests).
+
+Known real-data quirk: the diagnosis list carries two ICD-10 codes under the
+name "Sebaceous cyst" (L72.9 and L72.3). `diagnosis_catalog` uniques on NAME
+and the custom-diagnosis upsert depends on that, so the later row keeps the
+code it already carries in its name — "Sebaceous cyst (L72.3)". The run
+prints every row it does this to.
 
 ## Standing rules
 

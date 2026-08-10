@@ -931,6 +931,29 @@ enum PurchaseOrderStatus {
 
 // Selfpay price only — panel-tier pricing lives on PanelPriceOverride
 // (Phase A8), not duplicated here.
+/**
+ * KW2-Q3 — what the Add-medication form does when an item is selected.
+ * Behaviour, not a button. The doctor should not have to know that a syrup
+ * for a 3-year-old wants the weight calculator; choosing the medicine is what
+ * says so.
+ */
+enum ItemDosingType {
+  /**
+   * Dose from mg/kg × the latest recorded weight. The calculator opens.
+   */
+  WEIGHT_BASED
+  /**
+   * Dose from an age bracket, matched from the patient's DOB.
+   */
+  AGE_BAND
+  /**
+   * A fixed adult default, filled silently where one is configured.
+   */
+  ADULT_DEFAULT
+
+  @@map("item_dosing_type")
+}
+
 model Item {
   id                      String   @id @default(uuid())
   tenantId                String   @map("tenant_id")
@@ -963,8 +986,54 @@ model Item {
   sellPrice               Decimal  @map("sell_price") @db.Decimal(10, 2)
   cost                    Decimal? @db.Decimal(10, 2)
   active                  Boolean  @default(true)
-  createdAt               DateTime @default(now()) @map("created_at")
-  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  // ---- KW2-Q3: imported from the clinic's own inventory export ----------
+  //
+  // The source is a real spreadsheet with real conventions, and the import
+  // preserves rather than tidies. Anything cleaned for display keeps the
+  // original beside it, because a name nobody recognises is worse than an
+  // untidy one.
+
+  /**
+   * The source row's id. Makes the import idempotent and traceable.
+   */
+  externalRef     String?   @map("external_ref")
+  /**
+   * The name exactly as exported, "##***" and all.
+   */
+  sourceName      String?   @map("source_name")
+  /**
+   * The clinic's Malay grouping: BATUK, DEMAM, ANTIBIOTIK… Searchable.
+   */
+  groupTag        String?   @map("group_tag")
+  /**
+   * Flagged "(CASH ONLY)" in the source. Kept visible, never silently applied.
+   */
+  cashOnly        Boolean   @default(false) @map("cash_only")
+  /**
+   * The raw packaging string: "10 BIJI / STRIP", "PLASTIC/6 SACHET".
+   */
+  packDescription String?   @map("pack_description")
+  /**
+   * The leading number parsed out of packDescription where there IS one.
+   * NULL where the string does not start with a count — "Box", "BOTTLE",
+   * "-". Guessing 1 would be a quantity the clinic never stated.
+   */
+  unitsPerPack    Int?      @map("units_per_pack")
+  /**
+   * Summary-level only; batch expiry lives on StockBatch.
+   */
+  earliestExpiry  DateTime? @map("earliest_expiry") @db.Date
+
+  /**
+   * How the Add-medication form behaves when this item is chosen.
+   * Every imported row is ADULT_DEFAULT with empty defaults: the source
+   * carries no dosing data at all, and inventing doses for real drugs is the
+   * one thing an import must never do.
+   */
+  dosingType ItemDosingType @default(ADULT_DEFAULT) @map("dosing_type")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
 
   tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
   stockLevels            StockLevel[]
@@ -2093,6 +2162,10 @@ model DiagnosisCatalog {
   tenantId  String            @map("tenant_id")
   icd10Code String?           @map("icd10_code")
   name      String
+  // KW2-Q3 — how the clinic actually says it. "URTI", "HTN", "AGE".
+  // Searched alongside the code and the full name, because nobody types
+  // "Acute upper respiratory infection" mid-consultation.
+  shortform String?
   category  DiagnosisCategory @default(CUSTOM)
   active    Boolean           @default(true)
   createdAt DateTime          @default(now()) @map("created_at")
@@ -2102,6 +2175,7 @@ model DiagnosisCatalog {
   diagnoses Diagnosis[]
 
   @@unique([tenantId, name])
+  @@unique([tenantId, icd10Code])
   @@index([tenantId])
   @@index([tenantId, category])
   @@map("diagnosis_catalog")

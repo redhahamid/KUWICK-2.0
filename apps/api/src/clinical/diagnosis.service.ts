@@ -121,6 +121,11 @@ export class DiagnosisService {
           ? {
               OR: [
                 { name: { contains: trimmed, mode: 'insensitive' as const } },
+                // KW2-Q3 — the SHORTFORM, which is what the clinic actually
+                // types. Nobody writes "Acute upper respiratory infection"
+                // between patients; they write "urti". Without this the real
+                // catalogue is searchable only by wording nobody uses.
+                { shortform: { contains: trimmed, mode: 'insensitive' as const } },
                 ...icd10SearchTerms(trimmed).map((term) => ({
                   icd10Code: { contains: term, mode: 'insensitive' as const },
                 })),
