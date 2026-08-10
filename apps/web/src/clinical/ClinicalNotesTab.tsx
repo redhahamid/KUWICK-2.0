@@ -511,12 +511,20 @@ export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: Clin
     setSaveStatus({ kind: 'idle' });
   };
 
+  // KW2-C3 — whether dictation is available AT ALL, decided before the button
+  // is drawn rather than after it is pressed.
+  //
+  // It used to render enabled everywhere and warn on click. That is the dead
+  // button the standing rule forbids: the doctor learns the feature does not
+  // exist by trying to use it mid-consultation, which is the worst possible
+  // moment to find out.
+  const speechAvailable =
+    typeof window !== 'undefined' &&
+    Boolean(window.SpeechRecognition ?? window.webkitSpeechRecognition);
+
   const toggleDictation = () => {
     const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
-    if (!Recognition) {
-      message.warning('Dictation is not supported in this browser');
-      return;
-    }
+    if (!Recognition) return;
     if (listening) {
       setListening(false);
       return;
@@ -702,15 +710,25 @@ export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: Clin
                 { label: 'BAHASA MELAYU', value: 'MS' },
               ]}
             />
-            <Button
-              size="small"
-              icon={<AudioOutlined />}
-              type={listening ? 'primary' : 'default'}
-              disabled={readOnly}
-              onClick={toggleDictation}
+            <Tooltip
+              title={
+                speechAvailable
+                  ? undefined
+                  : 'Dictation needs browser speech recognition, which this browser does not provide. Chrome and Edge do.'
+              }
             >
-              {listening ? 'Stop' : 'Dictate'}
-            </Button>
+              <Button
+                size="small"
+                icon={<AudioOutlined />}
+                type={listening ? 'primary' : 'default'}
+                // Disabled with a reason, never enabled-and-then-sorry.
+                disabled={readOnly || !speechAvailable}
+                onClick={toggleDictation}
+                data-speech-available={speechAvailable ? 'true' : 'false'}
+              >
+                {listening ? 'Stop' : 'Dictate'}
+              </Button>
+            </Tooltip>
             <Dropdown
               disabled={readOnly}
               menu={{

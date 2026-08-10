@@ -2771,3 +2771,94 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   color: var(--kw-muted, #6e7288);
   font-size: 12px;
 }
+
+/* ---------------------------------------------------------------------------
+   KW2-C3 — vitals entered where they are read (spec p.2).
+
+   One wrapping row of small labelled inputs, sized so the six of them plus the
+   BMI badge fit the 738px middle column without a second line at 1600.
+   Below that they wrap rather than scroll: a vital pushed off-screen is a
+   vital nobody enters.
+   ------------------------------------------------------------------------ */
+.kw-inline-vitals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 8px 10px;
+  background: var(--kw-input, #f5f6f9);
+  border: 1px solid var(--kw-border, #e2e4ec);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.kw-iv-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The 12px clinical floor applies to the values; the labels are the one thing
+   allowed to be smaller, because they are furniture and the numbers are not. */
+.kw-iv-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--kw-muted, #6e7288);
+  text-transform: uppercase;
+}
+
+.kw-iv-inputs {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.kw-inline-vitals .kw-iv-input {
+  width: 58px;
+}
+
+.kw-inline-vitals .kw-iv-input .ant-input-number-input {
+  font-size: 12px;
+  font-weight: 600;
+  padding-inline: 6px;
+  text-align: center;
+}
+
+.kw-iv-sep,
+.kw-iv-unit {
+  font-size: 12px;
+  color: var(--kw-muted, #6e7288);
+}
+
+/* Derived, so it has no input and does not look like one. */
+.kw-iv-bmi-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--kw-muted, #6e7288);
+}
+
+.kw-iv-bmi-on .kw-iv-bmi-value {
+  color: var(--kw-text, #12142a);
+}
+
+.kw-iv-tail {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.kw-iv-more {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--kw-blue, #2557e8);
+}
+
+.kw-iv-more:hover {
+  text-decoration: underline;
+}

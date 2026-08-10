@@ -24,9 +24,9 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 
 | | |
 |---|---|
-| Last green | **1066 frontend / 1109 backend**, both typechecks clean |
+| Last green | **1096 frontend / 1109 backend**, both typechecks clean |
 | Migrations | 61, no drift |
-| Last commit | `63a0d84` |
+| Last commit | see `git log` |
 
 ## Checklist state
 
@@ -37,7 +37,12 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 | A3 completion checkpoint | **done** — one dialog, both sections, warnings recorded on the completion event |
 | B4 hover preview | **done** (`532df16`) |
 | B5 Hold / Resume | **done** (`5c9af27`) |
-| C6–C9 notes card | not started |
+| C6 inline vitals + live BMI | **done** |
+| C6 anthropometry / paeds centiles | not started |
+| C7 autosave pill, Save & sign, language | **already existed** — verified |
+| C8 Dictate honestly disabled | **done** |
+| C8 `.shortcut` expansion from Settings | not started — today it is a dropdown of hardcoded entries |
+| C9 attachments inside the notes card | not started — today a separate strip + panel |
 | D10 diagnosis | not started |
 | E11–E14 orders | not started |
 | F15–F18 medications | not started |

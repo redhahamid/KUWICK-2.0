@@ -60,7 +60,7 @@ import { VisitHistoryPanel } from './history/VisitHistoryPanel';
 // tree but no longer rendered anywhere. They stay until G1 is accepted and
 // functional parity is confirmed, then go in a cleanup commit. Only one
 // version is ever public.
-import { ClinicalVitalsStrip } from './ClinicalVitalsStrip';
+import { InlineVitalsRow } from './InlineVitalsRow';
 import { ClinicalImageStrip } from './ClinicalImageStrip';
 import { VisitObservationsPanel } from './VisitObservationsPanel';
 import { VisitAttachmentsPanel } from './VisitAttachmentsPanel';
@@ -622,10 +622,17 @@ export function PatientDashboardPage() {
                         the values and the actions; the full panels appear below
                         only when asked for, so no vital is printed twice and an
                         empty attachments box is one row rather than a slab. */}
-                    <ClinicalVitalsStrip
+                    {/* KW2-C3 — vitals are ENTERED here now, not read here and
+                        entered somewhere else. The read-only strip plus its
+                        "Record vitals" link cost a screen change, a form, a
+                        save and a dismissal to type a blood pressure. The
+                        full panel is still one click away for the four
+                        observations the strip does not own, and for the
+                        corrections that need a reason. */}
+                    <InlineVitalsRow
                       visitId={selectedVisit.id}
-                      expanded={vitalsExpanded}
-                      onToggleExpand={() => setVitalsExpanded((prev) => !prev)}
+                      readOnly={Boolean(selectedVisit.checkOutAt)}
+                      onOpenFull={() => setVitalsExpanded((prev) => !prev)}
                     />
                     {vitalsExpanded && (
                       <VisitObservationsPanel visitId={selectedVisit.id} compact={canvasCompact} />
