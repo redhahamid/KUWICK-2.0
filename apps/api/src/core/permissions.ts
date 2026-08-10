@@ -195,7 +195,16 @@ export function hasDoctorIdentity(staff: Staff): boolean {
 
 export function isCredentialedClinician(staff: Staff): boolean {
   return Boolean(
-    staff.medicalRegistrationNo?.trim() &&
+    staff.active &&
+      // These two were MISSING in the first draft of this function, which made
+      // it weaker than `canSignClinicalNotes` — the rule C0 has enforced all
+      // along. A staff member with the six signing fields but no active
+      // MEDICAL_DOCTOR identity would have been granted note.sign here and
+      // refused it there: the same two-implementations divergence this module
+      // exists to end, reintroduced inside the module itself.
+      staff.professionalType === 'MEDICAL_DOCTOR' &&
+      staff.professionalActive &&
+      staff.medicalRegistrationNo?.trim() &&
       staff.professionalVerifiedAt &&
       staff.professionalVerifiedByStaffId &&
       staff.canSignClinicalNotes &&

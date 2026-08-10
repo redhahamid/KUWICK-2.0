@@ -148,10 +148,27 @@ changing.
 
 Still holding local role lists, migrate next, one at a time, suites green
 after each:
-- `clinical-authorization.ts`: `canAccessBilling`, `canPerformBilling`,
-  `canEditDraft`, `canSignClinicalNotes`. `DOCTOR_ROLES` and `CLINICAL_ROLES`
-  at the top of the file are the remaining local tables — delete each as its
-  last reader migrates.
+- `clinical-authorization.ts`: `canEditDraft`. `DOCTOR_ROLES` and
+  `CLINICAL_ROLES` at the top of the file are the remaining local tables —
+  delete each as its last reader migrates.
+
+**BILLING IS DELIBERATELY NOT MIGRATED YET — read this before touching it.**
+`BILLING_MATRIX` is finer-grained than the four roles can express. It draws a
+real two-tier line the roles do not:
+
+| action | who today |
+|---|---|
+| `APPLY_DISCOUNT`, `CANCEL_INVOICE` | OWNER_ADMIN + FINANCE_STAFF only |
+| `CANCEL_LINE`, `CLASSIFY_VISIT` | those two **plus** FRONT_DESK |
+
+Collapsing all of it onto the single `billing.manage` permission would hand
+front desk the ability to apply discounts, which the matrix specifically
+refuses — a widening that moves money. Migrating it properly means adding
+per-action billing permissions (a financial-correction tier and a counter
+tier) and deciding whether ADMINISTRATOR splits in two. That is a design
+decision for the owner, not a mechanical migration. `canSignClinicalNotes`
+stays as-is: it is the credential rule itself, not a role check, and
+`isCredentialedClinician` now matches it exactly.
 
 **Two deliberate behaviour changes so far, both flagged:**
 - A non-clinician OWNER_ADMIN loses `document.issueAdministrative` (it used to

@@ -26,6 +26,8 @@ const staffOf = (over: Partial<Staff> = {}): Staff =>
     id: 'staff-1',
     active: true,
     role: 'DOCTOR_RESIDENT' as Role,
+    professionalType: 'MEDICAL_DOCTOR',
+    professionalActive: true,
     fullName: 'Dr A',
     medicalRegistrationNo: 'MMC 48213',
     professionalVerifiedAt: new Date(),
@@ -40,6 +42,9 @@ const staffOf = (over: Partial<Staff> = {}): Staff =>
 const admin = (over: Partial<Staff> = {}): Staff =>
   staffOf({
     role: 'OWNER_ADMIN' as Role,
+    // A non-clinician: no professional identity AND no signing paperwork.
+    professionalType: undefined,
+    professionalActive: false,
     medicalRegistrationNo: null,
     professionalVerifiedAt: null,
     professionalVerifiedByStaffId: null,
@@ -169,6 +174,9 @@ describe('signing needs a credential, not just the role', () => {
 
   it('every credential field is load-bearing', () => {
     const fields: (keyof Staff)[] = [
+      // The professional identity, not just the signing paperwork. Missing
+      // these was the first draft's bug: weaker than canSignClinicalNotes.
+      'professionalActive',
       'medicalRegistrationNo',
       'professionalVerifiedAt',
       'professionalVerifiedByStaffId',
