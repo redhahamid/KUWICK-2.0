@@ -143,8 +143,10 @@ Still to build for Task 1:
   replace. Migrate them one service at a time, keeping tests green.
 - Settings › Users & roles CRUD (list, multi-role assign, link doctor profile,
   deactivate, last-owner guard — `wouldRemoveLastOwner` is written and tested).
-- Fixtures Dr A (doctor+owner), Dr B (doctor), Ms X (clinical staff),
-  Ms Y (administrator).
+- ~~Fixtures~~ **done**: `KUWICK_ALLOW_FIXTURES=yes npx tsx prisma/seed-role-fixtures.ts`
+  seeds Dr A (DOCTOR+OWNER), Dr B (DOCTOR), Ms X (CLINICAL_STAFF),
+  Ms Y (ADMINISTRATOR) — all `dr.a@`/`dr.b@`/`ms.x@`/`ms.y@smoke-test-clinic.test`,
+  password `DevLocal!2026`. Verified live via the login payload.
 - Frontend: read `permissions[]` from the session instead of role checks.
 
 ## Standing rules
