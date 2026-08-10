@@ -579,3 +579,55 @@
     min-height: 44px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Copy Rx review rows (spec p.8).
+
+   A flagged row is AMBER and stays selectable. Red would read as "stop", and
+   there is no drug dictionary behind this to justify stopping anyone — only a
+   string comparison, which is worth showing and not worth obeying.
+   ------------------------------------------------------------------------ */
+.kw2-copy-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #e2e4ec;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  background: #fff;
+}
+
+.kw2-copy-row:hover {
+  border-color: #4d7cff;
+}
+
+.kw2-copy-row-flagged {
+  background: #fff6e6;
+  border-color: #f0dcac;
+}
+
+.kw2-copy-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.kw2-copy-row-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #12142a;
+}
+
+.kw2-copy-row-detail {
+  font-size: 12px;
+  color: #6e7288;
+}
+
+.kw2-copy-row-warn {
+  font-size: 12px;
+  font-weight: 600;
+  color: #8a6510;
+}

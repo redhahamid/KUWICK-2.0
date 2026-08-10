@@ -31,6 +31,8 @@ export interface CanvasVisitsRailProps {
   onOpenVisit?: (visitId: string) => void;
   /** Starts a new visit for this patient. */
   onNewVisit?: () => void;
+  /** Opens the Copy Rx review modal for one past visit. */
+  onCopyRx?: (visit: { id: string; label: string }) => void;
 }
 
 /** Past visits shown before the rail scrolls (spec: 4 visible). */
@@ -138,6 +140,7 @@ export function CanvasVisitsRail({
   onOpenHistory,
   onOpenVisit,
   onNewVisit,
+  onCopyRx,
 }: CanvasVisitsRailProps) {
   const { data, isLoading } = useVisitHistory(patientId);
   // Today's card carries the same three facts the past cards do. These are the
@@ -225,9 +228,18 @@ export function CanvasVisitsRail({
             <button type="button" className="kw2-link-btn" onClick={() => onOpenVisit?.(visit.id)}>
               Open ▸
             </button>
-            {/* Copy Rx is Phase 2 and lands WITH its review modal. The spec is
-                explicit that a prescription is never blind-copied, so the
-                control does not ship before the review that makes it safe. */}
+            {/* Copy Rx opens a REVIEW, never a copy. The spec is explicit
+                that a prescription is never blind-copied, so this control and
+                the modal that curates it shipped together. */}
+            {onCopyRx && visit.medicationCount > 0 && (
+              <button
+                type="button"
+                className="kw2-link-btn"
+                onClick={() => onCopyRx({ id: visit.id, label: visitStamp(visit.checkInAt) })}
+              >
+                ⎘ Copy Rx
+              </button>
+            )}
           </div>
         </article>
       ))}

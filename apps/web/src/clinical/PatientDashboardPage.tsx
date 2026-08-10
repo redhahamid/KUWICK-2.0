@@ -46,6 +46,7 @@ import { CanvasPatientHeader } from './CanvasPatientHeader';
 import { CanvasQuickNav } from './CanvasQuickNav';
 import { CanvasWorkspace } from './canvas/CanvasWorkspace';
 import { CanvasVisitsRail } from './canvas/CanvasVisitsRail';
+import { CopyRxModal } from './medications/CopyRxModal';
 import { DiagnosisRail } from './sections/DiagnosisRail';
 import { MedicationsRail } from './sections/MedicationsRail';
 import { OrdersRail } from './sections/OrdersRail';
@@ -87,6 +88,7 @@ export function PatientDashboardPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [newVisitOpen, setNewVisitOpen] = useState(false);
   const navigate = useNavigate();
+  const [copyRxFrom, setCopyRxFrom] = useState<{ id: string; label: string } | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
   // G4 (D-067) — reviewing previous visits is its own surface, and opening it
   // changes nothing about the consultation in progress.
@@ -554,6 +556,7 @@ export function PatientDashboardPage() {
                   onOpenHistory={() => setHistoryOpen(true)}
                   onOpenVisit={() => setHistoryOpen(true)}
                   onNewVisit={() => setNewVisitOpen(true)}
+                  onCopyRx={setCopyRxFrom}
                 />
               }
               middle={
@@ -614,6 +617,18 @@ export function PatientDashboardPage() {
                 <ConsultationFooter visit={selectedVisit} onReview={revealCanvasSection} />
               }
             />
+
+            {copyRxFrom && (
+              <CopyRxModal
+                open
+                sourceVisitId={copyRxFrom.id}
+                sourceLabel={copyRxFrom.label}
+                patientId={patient.id}
+                targetVisitId={selectedVisit.id}
+                allergies={patient.allergies}
+                onClose={() => setCopyRxFrom(null)}
+              />
+            )}
           </Col>
         )}
       </Row>

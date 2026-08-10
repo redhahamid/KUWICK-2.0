@@ -917,6 +917,12 @@ export type PrescriptionStatus = 'ORDERED' | 'DISPENSED' | 'CANCELLED';
 export type DosageCalcMethod = 'WEIGHT_BASED' | 'AGE_BASED' | 'MANUAL';
 
 export interface Prescription {
+  /** KW2-C2 — set when this row was carried over from an earlier visit. */
+  sourceVisitId?: string | null;
+  /** True until somebody re-reads it. Never blocks dispensing. */
+  reviewFlag?: boolean;
+  reviewedByStaffId?: string | null;
+  reviewedAt?: string | null;
   id: string;
   tenantId: string;
   visitId: string;
@@ -986,6 +992,11 @@ export interface CancelPrescriptionDto {
 export interface CopyPrescriptionsDto {
   sourceVisitId: string;
   targetVisitId: string;
+  /**
+   * KW2-C2 — WHICH medications to carry over. Omitted means the whole visit,
+   * which is what the 1.0 Medications tab has always meant by "Copy previous".
+   */
+  prescriptionIds?: string[];
 }
 
 // D-046 — one thread model backs channel chat (channelId set) and
