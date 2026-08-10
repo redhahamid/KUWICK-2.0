@@ -277,7 +277,7 @@ export function PatientDashboardPage() {
   const runHold = (mutation: typeof holdConsultation, failure: string) => () => {
     if (!heldTicket || !selectedVisit) return;
     mutation
-      .mutateAsync({ ticketId: heldTicket.id, visitId: selectedVisit.id })
+      .mutateAsync({ ticketId: heldTicket.id, visitId: selectedVisit.id, patientId: patient?.id })
       .catch((error) => message.error(error instanceof ApiError ? error.message : failure));
   };
 

@@ -80,13 +80,21 @@ export const useCancelTicket = () => useQueueTicketAction('cancel');
 function useHoldAction(action: 'hold' | 'resume') {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ ticketId }: { ticketId: string; visitId?: string }) =>
+    mutationFn: ({ ticketId }: { ticketId: string; visitId?: string; patientId?: string }) =>
       apiClient.patch<QueueTicket>(`/queue-tickets/${ticketId}/${action}`),
     onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['queue-tickets'] });
       queryClient.invalidateQueries({ queryKey: ['queue-board'] });
+      // The visit AND the patient's visit list. The Canvas header reads the
+      // selected visit out of the LIST, so invalidating only the single-visit
+      // key left the band claiming "In Consult" for a patient who had just
+      // been sent back to the waiting room — the exact silent disagreement
+      // this feature exists to prevent.
       if (variables.visitId) {
-        queryClient.invalidateQueries({ queryKey: ['visit', variables.visitId] });
+        queryClient.invalidateQueries({ queryKey: ['visits', variables.visitId] });
+      }
+      if (variables.patientId) {
+        queryClient.invalidateQueries({ queryKey: ['visits', 'patient', variables.patientId] });
       }
     },
   });

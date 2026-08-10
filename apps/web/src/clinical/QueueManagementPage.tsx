@@ -469,7 +469,7 @@ export function QueueManagementPage() {
                               Call
                             </Button>,
                             <Button key="arrived" size="small" onClick={() => handlers.onArrived(ticket.id)}>
-                              Arrived
+                              {ticket.heldAt ? 'Resume' : 'Arrived'}
                             </Button>,
                             <Button
                               key="print"
@@ -498,6 +498,21 @@ export function QueueManagementPage() {
                               <Tag color={QUEUE_TYPE_TAG[ticket.queueType].color}>
                                 {QUEUE_TYPE_TAG[ticket.queueType].label}
                               </Tag>
+                              {/* KW2-C2 — the Overview is the first surface the
+                                  counter sees, and this list is where a held
+                                  patient is most likely to be misread as one
+                                  who has simply not been called yet. */}
+                              {holdLabel({
+                                heldAt: ticket.heldAt,
+                                heldByName: staffName(ticket.heldByStaffId),
+                              }) && (
+                                <Tag color="gold" data-on-hold="true">
+                                  {holdLabel({
+                                    heldAt: ticket.heldAt,
+                                    heldByName: staffName(ticket.heldByStaffId),
+                                  })}
+                                </Tag>
+                              )}
                             </Space>
                             <Text type="secondary">{ticket.visit.billingType}</Text>
                           </Space>
