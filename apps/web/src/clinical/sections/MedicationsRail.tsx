@@ -17,6 +17,8 @@ import {
   unresolvedText,
 } from '../medicationSupplyPresentation';
 import { MedicationsTab } from '../MedicationsTab';
+import { AllergyStrip } from '../medications/AllergyStrip';
+import { useVisit } from '../hooks/useVisits';
 import { AddMedicationModal } from '../medications/AddMedicationModal';
 import { Prescription } from '../types';
 import { ApiError } from '../../core/api-client';
@@ -65,6 +67,9 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
   const [prescribing, setPrescribing] = useState(false);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const { data: prescriptions, isLoading, error } = usePrescriptions(visitId);
+  // C1/D-091 — the visit query only. The allergy strip needs the patient, and
+  // nothing here may reach the clinical note query that feeds the editor.
+  const { data: visit } = useVisit(visitId);
   const dispense = useDispensePrescription(visitId);
   const cancel = useCancelPrescription(visitId);
   const setSupply = useSetSupplyMode(visitId);
@@ -115,6 +120,11 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
         }
         isLoading={isLoading}
         error={error ?? undefined}
+        // KW2-C2 — pinned above the Add button, so it is read before the form
+        // opens rather than beside the list of what is already prescribed.
+        // Undefined (not null) where the visit has not loaded: "we do not
+        // know yet" must not render as "nobody asked".
+        banner={<AllergyStrip allergies={visit ? (visit.patient?.allergies ?? null) : undefined} />}
         emptyText="No medications prescribed for this visit"
         previewLimit={5}
         addControl={

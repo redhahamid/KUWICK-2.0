@@ -10,6 +10,15 @@ export interface RailPanelProps {
   status?: ReactNode;
   /** The inline add control. Always rendered; never a reveal. */
   addControl?: ReactNode;
+  /**
+   * KW2-C2 — a standing condition pinned above everything else in the card.
+   *
+   * Above `addControl` on purpose: the allergy strip has to be read BEFORE
+   * the button that opens the prescribing form, not beside the list of what
+   * was already prescribed. It also survives the empty state, which the body
+   * below does not.
+   */
+  banner?: ReactNode;
   isLoading?: boolean;
   error?: unknown;
   emptyText?: string;
@@ -48,6 +57,7 @@ export function RailPanel({
   count,
   status,
   addControl,
+  banner,
   isLoading,
   error,
   emptyText,
@@ -71,6 +81,8 @@ export function RailPanel({
           {status}
         </Space>
       </div>
+
+      {banner}
 
       {addControl && <div className="kw-rail-add">{addControl}</div>}
 
