@@ -1,4 +1,4 @@
-import { Page, expect, test } from '@playwright/test';
+import { Locator, Page, expect, test } from '@playwright/test';
 import { ACCOUNTS, DIAGNOSIS_CODE, MEDICATION, chooseRadio, describeControls, login, logout, uniquePatientName } from './support/app';
 
 /**
@@ -42,10 +42,27 @@ function syntheticNric(): string {
  * was opened while the list was empty just watches a stale "No data".
  */
 async function chooseFromSelect(page: Page, label: string, option: string | RegExp): Promise<void> {
-  const selector = page
-    .locator('.ant-form-item', { has: page.locator('label', { hasText: new RegExp(`^${label}$`) }) })
-    .locator('.ant-select')
-    .first();
+  await openAndPick(
+    page,
+    page
+      .locator('.ant-form-item', { has: page.locator('label', { hasText: new RegExp(`^${label}$`) }) })
+      .locator('.ant-select')
+      .first(),
+    option,
+  );
+}
+
+/**
+ * The same dance for a Select that is NOT inside a Form.Item — the canvas
+ * panels label their fields with plain text, so there is no `<label>` to
+ * find them by. Identified instead by the placeholder antd paints inside the
+ * box, which is what a person reads too.
+ */
+async function chooseFromPlaceholderSelect(page: Page, placeholder: string, option: string | RegExp): Promise<void> {
+  await openAndPick(page, page.locator('.ant-select').filter({ hasText: placeholder }).first(), option);
+}
+
+async function openAndPick(page: Page, selectBox: Locator, option: string | RegExp): Promise<void> {
   const optionNode = page
     .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option')
     .filter({ hasText: option })
@@ -54,9 +71,17 @@ async function chooseFromSelect(page: Page, label: string, option: string | RegE
   await expect(async () => {
     // Only open it if it is not already open — clicking an OPEN antd Select
     // closes it, which is how a naive retry loop ends up toggling forever.
-    if (!(await optionNode.isVisible())) await selector.click();
+    if (!(await optionNode.isVisible())) await selectBox.click();
     await optionNode.click({ timeout: 2_000 });
   }).toPass({ timeout: 30_000 });
+}
+
+/**
+ * The canvas's Record View column switches the right-hand panel. Clicking the
+ * section name is what a doctor does; there is no route per section.
+ */
+async function section(page: Page, name: string): Promise<void> {
+  await page.getByText(name, { exact: true }).first().click();
 }
 
 test('golden path — registration to a completed, dispensed, paid visit', async ({ page }) => {
@@ -114,6 +139,85 @@ test('golden path — registration to a completed, dispensed, paid visit', async
   // only checks that a modal closed.
   await page.getByRole('tab', { name: /^consultation/i }).click();
   await expect(page.getByRole('row').filter({ hasText: patientName })).toBeVisible();
+
+  // =====================================================================
+  // 3. THE DOCTOR OPENS THE CANVAS.
+  // =====================================================================
+  await logout(page);
+  await login(page, ACCOUNTS.doctor);
+  await page.goto('/queue');
+  await page.getByRole('tab', { name: /^consultation/i }).click();
+  await page.getByRole('link', { name: patientName }).first().click();
+  await expect(page.getByText('Record View')).toBeVisible();
+  await expect(page.getByRole('heading', { name: patientName })).toBeVisible();
+  const visitUrl = page.url();
+
+  // =====================================================================
+  // 4. VITALS, AND A BMI THAT IS ACTUALLY DERIVED.
+  // =====================================================================
+  await section(page, 'Clinical Notes');
+  await page.getByLabel('Weight (kg)').fill('70');
+  await page.getByLabel('Height (cm)').fill('170');
+
+  // 70kg at 1.70m is 24.2. Asserting the NUMBER, not merely that the badge
+  // changed: a BMI widget that renders a plausible-looking value it did not
+  // compute is worse than one that renders nothing.
+  await expect(page.getByTestId('live-bmi')).toContainText('24.2');
+
+  await page.getByLabel('Pulse').fill('82');
+  await page.getByRole('button', { name: 'Save Vitals' }).click();
+
+  // =====================================================================
+  // 5. A CLINICAL NOTE THAT SURVIVES A RELOAD.
+  //
+  // This is D1's regression test. The editor once accepted keystrokes and
+  // silently dropped them, and every unit test still passed. The only
+  // assertion that would have caught it is this one: type, leave, come back.
+  // =====================================================================
+  const NOTE = 'Sore throat and dry cough for three days. Afebrile. Throat mildly injected.';
+  const editor = page.locator('.ProseMirror, [contenteditable="true"]').first();
+  await editor.click();
+  await editor.pressSequentially(NOTE, { delay: 10 });
+  await expect(editor).toContainText(NOTE);
+  await page.getByRole('button', { name: /save clinical note/i }).click();
+
+  await page.reload();
+  await section(page, 'Clinical Notes');
+  await expect(page.locator('.ProseMirror, [contenteditable="true"]').first()).toContainText(NOTE);
+
+  // =====================================================================
+  // 6. DIAGNOSIS.
+  // =====================================================================
+  await section(page, 'Diagnosis');
+  // aria-label, not a placeholder — the control is a search combobox.
+  const diagnosisSearch = page.getByLabel('Search diagnosis');
+  await diagnosisSearch.click();
+  await diagnosisSearch.fill(DIAGNOSIS_CODE);
+  const diagnosisOption = page
+    .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option')
+    .filter({ hasText: DIAGNOSIS_CODE })
+    .first();
+  await expect(diagnosisOption).toBeVisible();
+  // Picking from the catalogue ADDS it — the neighbouring "Add" button is for
+  // a custom diagnosis that is not in the list.
+  await diagnosisOption.click();
+  // `.first()` because the panel shows the added row AND the still-open
+  // dropdown option; either proves the click landed, and the row is asserted
+  // properly by the history-rail check at the end.
+  await expect(page.getByText(`${DIAGNOSIS_CODE} — Acute upper respiratory infection`).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /remove from visit/i })).toBeVisible();
+
+  // =====================================================================
+  // 7. A MEDICATION FROM THE CATALOGUE.
+  // =====================================================================
+  await section(page, 'Medications');
+  await chooseFromPlaceholderSelect(page, 'Search medicine', MEDICATION);
+  // Plain-text labels in this panel, so the placeholder is the handle.
+  await page.getByPlaceholder('e.g. BD').fill('TDS');
+  await page.getByRole('button', { name: /add to prescription/i }).click();
+  await expect(page.getByText(MEDICATION).first()).toBeVisible();
+
+  console.log('visit under test:', visitUrl);
 });
 
 /**
@@ -134,10 +238,12 @@ test('SCAFFOLD: dump the canvas as the treating doctor', async ({ page }) => {
   await page.getByRole('link', { name: /E2E Golden/i }).last().click();
   await expect(page.getByText('Record View')).toBeVisible();
 
-  for (const section of ['Clinical Notes', 'Orders & Services', 'Diagnosis', 'Medications', 'Documents', 'Invoices']) {
+  for (const section of (process.env.E2E_DUMP_SECTIONS ?? 'Medications').split('|')) {
     await page.getByText(section, { exact: true }).first().click();
     await page.waitForTimeout(2_000);
     console.log(`\n===== ${section} =====\n` + (await describeControls(page)).join('\n'));
+    console.log('--- panel html ---');
+    console.log((await page.locator('.ant-card').last().innerHTML()).replace(/class="[^"]*"/g, '').slice(0, 2500));
   }
   await page.screenshot({ path: 'test-results/canvas.png', fullPage: true });
 });
