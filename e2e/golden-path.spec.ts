@@ -77,6 +77,29 @@ async function openAndPick(page: Page, selectBox: Locator, option: string | RegE
 }
 
 /**
+ * How much of a medicine has left the shelf, read through the API with the
+ * session the browser is already holding.
+ *
+ * Deliberately not a database query: the guardrail asserts what the
+ * application says about itself, and a test that reaches past the API can
+ * confirm a row the app would never have shown anybody.
+ */
+async function stockMovementsFor(page: Page, medication: string): Promise<number> {
+  return page.evaluate(async (name: string) => {
+    const auth = JSON.parse(window.localStorage.getItem('kuwick-auth') ?? '{}');
+    const response = await fetch('http://localhost:3000/reports/drug-movement', {
+      headers: { authorization: `Bearer ${auth?.state?.accessToken}` },
+    });
+    if (!response.ok) return 0;
+    const rows = (await response.json()) as Array<Record<string, unknown>>;
+    const list = Array.isArray(rows) ? rows : ((rows as { rows?: unknown[] }).rows ?? []);
+    return (list as Array<Record<string, unknown>>).filter((row) =>
+      String(row.itemName ?? row.name ?? '').includes(name),
+    ).length;
+  }, medication);
+}
+
+/**
  * Put this browser in a chosen record layout.
  *
  * Written straight into the persisted preference rather than clicked, because
@@ -319,6 +342,32 @@ test('golden path — registration through the doctor phase (completion onward: 
   await expect(checkpoint).toBeHidden();
 
   await expect(footer).toContainText(/completed/i);
+
+  // =====================================================================
+  // 9. THE DISPENSARY HANDS THE MEDICINE OVER.
+  //
+  // Front desk, not the doctor. The stock movement is the assertion that
+  // matters: a "dispensed" flag that moves no stock is a clinic that thinks
+  // it has medicine it has already given away.
+  // =====================================================================
+  await logout(page);
+  await login(page, ACCOUNTS.frontDesk);
+  await page.goto('/dispensary');
+  await page.getByRole('button', { name: new RegExp(patientName, 'i') }).click();
+
+  await page.getByRole('button', { name: 'Confirm Medications Dispensed' }).click();
+  const dispenseModal = page.getByRole('dialog').filter({ hasText: /dispens/i });
+  await expect(dispenseModal).toBeVisible();
+  await dispenseModal.getByRole('button', { name: 'Confirm Medications Dispensed' }).click();
+  await expect(dispenseModal).toBeHidden();
+
+  // The assertion that matters, made against the LEDGER rather than a label.
+  // A "dispensed" flag that moved no stock is a clinic that believes it still
+  // has medicine it has already handed over.
+  await expect(async () => {
+    const movements = await stockMovementsFor(page, MEDICATION);
+    expect(movements).toBeGreaterThan(0);
+  }).toPass({ timeout: 20_000 });
 });
 
 /**
