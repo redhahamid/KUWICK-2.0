@@ -21,6 +21,16 @@ interface Props {
 
 const PAD = { top: 12, right: 12, bottom: 24, left: 44 };
 
+/**
+ * Which x positions get a date label: first, middle, last — deduplicated and
+ * bounded. The naive `[0, mid, last]` collapses to `[0, 0, -1]` on a 0-1 day
+ * range, which rendered duplicate React keys (dropped/duplicated children on
+ * a finance surface) and put dayjs(undefined) — today — under an empty chart.
+ */
+export function axisLabelIndices(length: number): number[] {
+  return [...new Set([0, Math.floor(length / 2), length - 1])].filter((i) => i >= 0 && i < length);
+}
+
 // Multi-series line/area chart with a crosshair + shared tooltip, following
 // the dataviz skill's mark spec (2px lines, 8px end-marker with surface
 // ring, ~10% opacity area fill, hairline recessive gridlines) and
@@ -120,7 +130,7 @@ export function TrendChart({ dates, series, height = 260, valueFormatter = (v) =
           <path key={s.key} d={linePath(s.values)} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
         ))}
 
-        {[0, Math.floor(dates.length / 2), dates.length - 1].map((i) => (
+        {axisLabelIndices(dates.length).map((i) => (
           <text key={i} x={xFor(i)} y={height - 6} textAnchor="middle" fontSize={11} fill={INK.muted}>
             {dayjs(dates[i]).format('D MMM')}
           </text>

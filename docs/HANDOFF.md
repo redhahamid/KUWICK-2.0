@@ -387,7 +387,19 @@ selected class would have passed throughout the confusion.
 The **A1 fix-sweep** (in progress), then **A2**. The guardrail is done; keep
 it green — red = fix before the next unit, never disable a step.
 
-### A1 so far — zero console errors, enforced
+### A1 so far — the route sweep
+
+`E2E_SWEEP=1 npx playwright test route-sweep` drives all twelve main routes
+as the owner and prints per-route console errors (gated tool, not a
+guardrail). First run: eleven routes clean; `/management/reports` emitted
+eight duplicate-React-key warnings — `TrendChart`'s x-axis labels used
+`[0, mid, last]`, which collapses to duplicate index 0 on a 0-1 day range
+and fed `dayjs(undefined)` (today) under an empty chart. Fixed via the pure
+`axisLabelIndices()` + 4 tests; sweep now fully clean. The sweep only reads
+each route's landing state — interacting within pages is the remaining A1
+work, alongside the billing-modal form hygiene listed below.
+
+### A1 — zero console errors, enforced
 
 Both golden-path tests now END by asserting `collectConsoleErrors(page)` is
 empty (`e2e/support/app.ts`). What the first run of that assertion found, and
