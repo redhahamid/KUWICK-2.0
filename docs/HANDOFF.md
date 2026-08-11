@@ -289,14 +289,16 @@ regression this project has shipped was invisible to the unit suites.
   closing.
 - **`e2e/support/app.ts`** — accounts, login, `chooseRadio`, `describeControls`.
 
-### Green so far (phases 1–8, completion included)
+### Green so far (phases 1–9)
 
 register at the front counter → queue as Walk-in (W) → **Call** → **Arrived**
 → canvas → vitals with a derived BMI (asserts the NUMBER: 70kg/1.70m = 24.2) →
 clinical note typed, saved, **page reloaded, text still there** (this is D1's
 regression test) → diagnosis J06.9 → Paracetamol 500mg prescribed (verified in
 the database: ORDERED, ONSITE_DISPENSE, TDS) → switch to Canvas → **complete
-through the checkpoint**.
+through the checkpoint** → front desk **dispenses**, asserted against the drug
+movement ledger (a DISPENSED −1 referencing the prescription), ticket now
+READY_FOR_PAYMENT.
 
 ### WHICH LAYOUT OWNS WHAT (read this before touching the canvas)
 
@@ -317,10 +319,19 @@ selected class would have passed throughout the confusion.
 
 ### Next unit — resume exactly here
 
-1. In order: dispense (assert a
-   `stock_movements` row) · invoice carries a consult line AND a med line ·
-   payment · COMPLETED · history rail shows Dx/Rx.
-2. Then the **OTC (C) variant** asserting NO consultation line.
+**Billing is where it stops.** `/billing/visits/:visitId` renders, "Create
+invoice" works, and the worklist offers one `Add <item> to invoice` button per
+outstanding line. After creating the invoice, ONE of the two lines adds and the
+other keeps offering itself — its Add button neither disappears nor stops
+re-appearing when clicked (a retry loop clicked it for 45s). Find out WHICH
+line and why; creating an invoice auto-adds the consultation (D-093), so the
+likely candidates are a double-add of the consultation or a medication line
+whose add silently fails. The spec currently asserts as far as the page and the
+medication's Add button being present, and is green there.
+
+Then, in order: invoice carries a consult line AND a med line · payment ·
+COMPLETED · history rail shows Dx/Rx · then the **OTC (C) variant** asserting
+NO consultation line.
 
 ### Three things this has already caught
 

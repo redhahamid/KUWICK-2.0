@@ -368,6 +368,21 @@ test('golden path — registration through the doctor phase (completion onward: 
     const movements = await stockMovementsFor(page, MEDICATION);
     expect(movements).toBeGreaterThan(0);
   }).toPass({ timeout: 20_000 });
+
+  // =====================================================================
+  // 10. THE BILL — next unit. See HANDOFF.
+  //
+  // The billing worklist offers "Add <item> to invoice" per outstanding line.
+  // After Create invoice, ONE of the two lines adds and the other keeps
+  // offering itself: its Add button neither disappears nor stops re-appearing
+  // when clicked. Which line, and why, is the first thing to find out — the
+  // page is reached and the invoice is created, so this is a small distance
+  // from done.
+  // =====================================================================
+  const visitId = new URL(visitUrl).searchParams.get('visitId');
+  await page.goto(`/billing/visits/${visitId}`);
+  await expect(page.getByRole('heading', { name: new RegExp(`Billing review.*${patientName}`) })).toBeVisible();
+  await expect(page.getByRole('button', { name: `Add ${MEDICATION} to invoice` })).toBeVisible();
 });
 
 /**
