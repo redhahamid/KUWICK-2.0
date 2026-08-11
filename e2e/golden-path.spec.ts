@@ -77,30 +77,34 @@ async function openAndPick(page: Page, selectBox: Locator, option: string | RegE
 }
 
 /**
- * Put this browser in the FLOW layout.
+ * Put this browser in a chosen record layout.
  *
  * Written straight into the persisted preference rather than clicked, because
  * the layout is a per-staff SETTING and not the thing under test — the same
- * reasoning as clearing the session in `logout`. (It is also the only reliable
- * way: the antd Segmented takes the selected class on click and the layout
- * does not follow, which is itself worth a look during A2.)
+ * reasoning as clearing the session in `logout`. The toggle ITSELF is tested,
+ * separately and properly, at the bottom of this file.
+ *
+ * WHICH LAYOUT OWNS WHAT (this cost an afternoon by being assumed backwards):
+ *   FLOW   — the default. Visits History · Record View · one panel at a time.
+ *   CANVAS — the single consult screen, and the ONLY layout that renders the
+ *            doctor-phase completion footer.
  */
-async function useFlowLayout(page: Page): Promise<void> {
-  await page.evaluate(() => {
+async function useLayout(page: Page, layout: 'canvas' | 'flow'): Promise<void> {
+  await page.evaluate((chosen: string) => {
     // The preference is keyed by STAFF ID; `anonymous` is only consulted when
     // nobody is signed in, so setting that alone changes nothing for a
     // logged-in doctor. Read the id out of the session the app itself stored.
     const session = JSON.parse(window.localStorage.getItem('kuwick-auth') ?? '{}');
     const staffId = session?.state?.staff?.id;
     const raw = window.localStorage.getItem('kuwick-record-view-layout-v2');
-    const parsed = raw ? JSON.parse(raw) : { state: { byStaffId: {}, anonymous: 'canvas' }, version: 0 };
+    const parsed = raw ? JSON.parse(raw) : { state: { byStaffId: {}, anonymous: chosen }, version: 0 };
     parsed.state = {
       ...parsed.state,
-      anonymous: 'flow',
-      byStaffId: { ...(parsed.state?.byStaffId ?? {}), ...(staffId ? { [staffId]: 'flow' } : {}) },
+      anonymous: chosen,
+      byStaffId: { ...(parsed.state?.byStaffId ?? {}), ...(staffId ? { [staffId]: chosen } : {}) },
     };
     window.localStorage.setItem('kuwick-record-view-layout-v2', JSON.stringify(parsed));
-  });
+  }, layout);
 }
 
 /**
@@ -295,30 +299,64 @@ test('golden path — registration through the doctor phase (completion onward: 
 
   console.log('visit under test:', visitUrl);
   // =====================================================================
-  // 8. THE DOCTOR ENDS THEIR PART — BLOCKED, see HANDOFF.
+  // 8. THE DOCTOR ENDS THEIR PART, THROUGH THE CHECKPOINT.
   //
-  // The doctor-phase completion control (`ConsultationFooter`) is only
-  // rendered by the FLOW layout, and this canvas cannot be switched to Flow:
-  // neither clicking the Layout segmented control nor writing the persisted
-  // per-staff preference changes what renders. The server side is ready — the
-  // doctor-phase status for this visit returns routingReason
-  // DISPENSARY_REQUIRED with no blockers — so the missing piece is the
-  // layout switch, which is an A1 fix-sweep item.
-  //
-  // Asserted here so the day it starts working, this stops being a lie: the
-  // consultation is genuinely completable, and nothing but the UI is in the
-  // way.
-  const status = await page.evaluate(async (id) => {
-    const auth = JSON.parse(window.localStorage.getItem('kuwick-auth') ?? '{}');
-    const response = await fetch(`http://localhost:3000/visits/${id}/doctor-phase-status`, {
-      headers: { authorization: `Bearer ${auth?.state?.accessToken}` },
-    });
-    return response.json();
-  }, new URL(visitUrl).searchParams.get('visitId'));
+  // In the CANVAS layout, which is the only one that renders the completion
+  // footer. Everything above happens in Flow, the default.
+  // =====================================================================
+  await useLayout(page, 'canvas');
+  await page.goto(visitUrl);
 
-  expect(status.blockers).toEqual([]);
-  expect(status.routingReason).toBe('DISPENSARY_REQUIRED');
-  expect(status.destination).toBe('DISPENSARY');
+  const footer = page.locator('section[aria-label="Consultation completion"]');
+  await expect(footer).toBeVisible();
+  await footer.getByRole('button', { name: /complete & send/i }).click();
+
+  // The checkpoint. It is a real gate, not a formality: it names what is still
+  // outstanding and makes the doctor pass it deliberately.
+  const checkpoint = page.getByRole('dialog').filter({ hasText: /before completing this consultation/i });
+  await expect(checkpoint).toBeVisible();
+  await checkpoint.getByRole('button', { name: /proceed & complete/i }).click();
+  await expect(checkpoint).toBeHidden();
+
+  await expect(footer).toContainText(/completed/i);
+});
+
+/**
+ * The layout toggle changes what RENDERS — not just what looks selected.
+ *
+ * This test exists because of a mistake it would have prevented. Building the
+ * golden path, I read the three-column "Visits History · Record View" screen
+ * as Canvas when it is in fact FLOW, went looking for the completion footer in
+ * the wrong layout, and concluded from two failed attempts to "switch to Flow"
+ * — a layout the browser was already in — that the toggle was broken. It was
+ * not. The class said selected, and the class was telling the truth.
+ *
+ * So this asserts on rendered CONTENT, in both directions: the Flow layout has
+ * the Record View column and no completion footer; the Canvas layout is the
+ * other way round. A toggle test that asserted the selected class would have
+ * passed throughout the confusion and taught me nothing.
+ */
+test('the layout toggle changes the rendered layout, in both directions', async ({ page }) => {
+  await login(page, ACCOUNTS.doctor);
+  await page.goto('/queue');
+  await expectRowInStage(page, 'consultation', 'Ujian');
+  await page.getByRole('link', { name: /Ujian/i }).first().click();
+
+  const recordView = page.getByText('Record View', { exact: true });
+  const footer = page.locator('section[aria-label="Consultation completion"]');
+  const toggle = (name: 'Canvas' | 'Flow') => page.locator('.ant-segmented-item').filter({ hasText: name });
+
+  // Flow is the default, and it is the one WITHOUT the completion footer.
+  await expect(recordView).toBeVisible();
+  await expect(footer).toBeHidden();
+
+  await toggle('Canvas').click();
+  await expect(footer).toBeVisible();
+  await expect(recordView).toBeHidden();
+
+  await toggle('Flow').click();
+  await expect(recordView).toBeVisible();
+  await expect(footer).toBeHidden();
 });
 
 /**
