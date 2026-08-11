@@ -70,6 +70,18 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 - `useCompleteVisit` still invalidates `['visit', visitId]`, which matches
   nothing. Pre-existing, unrelated to C2 — worth fixing when H21 is built.
 
+## Credentialing — never hand-write these fields
+
+`src/core/credentialing.ts` is the ONE definition of "credentialed clinician".
+`credentialedClinicianFields()` writes all eight fields the rule needs;
+`nonClinicalFields()` clears all eight. Every seed and fixture uses them.
+
+The doctor-cannot-sign defect shipped TWICE (seed-role-fixtures, then
+seed-staging-uat) because each seed re-derived the field list from memory and
+each was missing two. `credentialing.spec.ts` now pins the helper to the
+predicate in both directions — what it writes is sufficient, and every field
+it writes is load-bearing. Do not add a ninth field, or a second definition.
+
 ## Seeding
 
 ```bash
@@ -277,37 +289,54 @@ regression this project has shipped was invisible to the unit suites.
   closing.
 - **`e2e/support/app.ts`** — accounts, login, `chooseRadio`, `describeControls`.
 
-### Green so far (phases 1–7)
+### Green so far (phases 1–8)
 
 register at the front counter → queue as Walk-in (W) → **Call** → **Arrived**
 → canvas → vitals with a derived BMI (asserts the NUMBER: 70kg/1.70m = 24.2) →
 clinical note typed, saved, **page reloaded, text still there** (this is D1's
 regression test) → diagnosis J06.9 → Paracetamol 500mg prescribed (verified in
-the database: ORDERED, ONSITE_DISPENSE, TDS).
+the database: ORDERED, ONSITE_DISPENSE, TDS) → the visit is asserted
+completable server-side.
+
+### BLOCKER — the Flow layout cannot be reached (A1 fix-sweep item)
+
+The doctor-phase completion control (`ConsultationFooter`) is rendered ONLY by
+the **Flow** layout. The Canvas layout has no bottom action bar yet (that is
+A2). So completion has to drive through Flow — and **the canvas cannot be
+switched to Flow by any route I could find**:
+
+- clicking the `Layout:` Segmented control takes the `-selected` class but the
+  page keeps rendering Canvas;
+- writing the persisted per-staff preference directly
+  (`kuwick-record-view-layout-v2` → `byStaffId[<staffId>] = 'flow'`, verified
+  read back) also leaves Canvas rendering — even though
+  `DEFAULT_RECORD_VIEW_LAYOUT` is already `'flow'`, which means a fresh
+  browser should land in Flow anyway.
+
+A layout toggle that does not toggle is a defect in its own right. **Treat it
+as the first item of the A1 fix-sweep**, then the golden path continues from
+completion. `ConsultationFooter` bails at `if (!primary) return null`, so if
+the layout turns out to be fine the next thing to check is why `view.primary`
+is null in the browser — though the server is ready (below).
+
+**The server side is NOT the problem, and the spec now proves it.** The visit
+the golden path builds returns, from `GET /visits/:id/doctor-phase-status`:
+`blockers: []`, `routingReason: DISPENSARY_REQUIRED`, `destination:
+DISPENSARY`. The consultation is genuinely completable; only the UI is in the
+way. That assertion is in the spec so the day the layout is fixed, the test
+does not quietly become a lie.
 
 ### Next unit — resume exactly here
 
-**FIRST, a blocker to resolve.** The doctor-phase completion control
-(`ConsultationFooter`) renders only in the **FLOW** layout — it is passed to
-the `footer` slot of the rails layout in `PatientDashboardPage.tsx:670`. The
-**Canvas layout has no completion control at all**, which lines up with the
-master prompt's own A2 list, where "bottom action bar" is still outstanding.
-So either:
+1. Fix the Flow/Canvas layout switch (above).
+2. Then, in order: complete through the checkpoint · dispense (assert a
+   `stock_movements` row) · invoice carries a consult line AND a med line ·
+   payment · COMPLETED · history rail shows Dx/Rx.
+3. Then the **OTC (C) variant** asserting NO consultation line.
+4. Repoint completion from Flow to the Canvas bottom action bar when A2 builds
+   it — the spec carries a REPOINT comment at that step.
 
-- drive completion through the Flow layout (switch with the `Layout:`
-  Segmented control — `getByText('Flow')` matched something else, target the
-  `.ant-segmented` control specifically), **or**
-- build the Canvas bottom action bar first (A2) and drive it there.
-
-Recommend the first for now — the guardrail should test what exists, and
-switch to the action bar when A2 builds it.
-
-Then, in order: complete through the checkpoint · dispense (assert a
-`stock_movements` row) · invoice carries a consult line AND a med line ·
-payment · COMPLETED · history rail shows Dx/Rx. Then the **OTC (C) variant**
-asserting NO consultation line.
-
-### Two things this has already caught
+### Three things this has already caught
 
 1. **A false pass in the spec itself.** The medication assertion matched the
    select box echoing its own value, and passed while nothing was prescribed.
@@ -315,6 +344,7 @@ asserting NO consultation line.
    card that owns the data.
 2. **`Call` does not start the consultation** — it announces. `Arrived` is the
    transition to IN_CONSULTATION.
+3. **The Flow/Canvas layout switch does not switch** (above).
 
 ### Selector knowledge (expensive to rediscover — read this first)
 

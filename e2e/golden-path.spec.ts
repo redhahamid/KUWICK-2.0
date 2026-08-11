@@ -77,6 +77,33 @@ async function openAndPick(page: Page, selectBox: Locator, option: string | RegE
 }
 
 /**
+ * Put this browser in the FLOW layout.
+ *
+ * Written straight into the persisted preference rather than clicked, because
+ * the layout is a per-staff SETTING and not the thing under test — the same
+ * reasoning as clearing the session in `logout`. (It is also the only reliable
+ * way: the antd Segmented takes the selected class on click and the layout
+ * does not follow, which is itself worth a look during A2.)
+ */
+async function useFlowLayout(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    // The preference is keyed by STAFF ID; `anonymous` is only consulted when
+    // nobody is signed in, so setting that alone changes nothing for a
+    // logged-in doctor. Read the id out of the session the app itself stored.
+    const session = JSON.parse(window.localStorage.getItem('kuwick-auth') ?? '{}');
+    const staffId = session?.state?.staff?.id;
+    const raw = window.localStorage.getItem('kuwick-record-view-layout-v2');
+    const parsed = raw ? JSON.parse(raw) : { state: { byStaffId: {}, anonymous: 'canvas' }, version: 0 };
+    parsed.state = {
+      ...parsed.state,
+      anonymous: 'flow',
+      byStaffId: { ...(parsed.state?.byStaffId ?? {}), ...(staffId ? { [staffId]: 'flow' } : {}) },
+    };
+    window.localStorage.setItem('kuwick-record-view-layout-v2', JSON.stringify(parsed));
+  });
+}
+
+/**
  * The input that sits under a plain-text caption.
  *
  * The canvas panels caption their fields with ordinary text rather than a
@@ -267,9 +294,31 @@ test('golden path — registration through the doctor phase (completion onward: 
   await expect(prescribed.getByText(MEDICATION)).toBeVisible();
 
   console.log('visit under test:', visitUrl);
-  // NEXT UNIT resumes here: the doctor-phase completion control lives in the
-  // FLOW layout, not this one. See HANDOFF.
-  console.log('stopped after prescribing; visit still open:', visitUrl);
+  // =====================================================================
+  // 8. THE DOCTOR ENDS THEIR PART — BLOCKED, see HANDOFF.
+  //
+  // The doctor-phase completion control (`ConsultationFooter`) is only
+  // rendered by the FLOW layout, and this canvas cannot be switched to Flow:
+  // neither clicking the Layout segmented control nor writing the persisted
+  // per-staff preference changes what renders. The server side is ready — the
+  // doctor-phase status for this visit returns routingReason
+  // DISPENSARY_REQUIRED with no blockers — so the missing piece is the
+  // layout switch, which is an A1 fix-sweep item.
+  //
+  // Asserted here so the day it starts working, this stops being a lie: the
+  // consultation is genuinely completable, and nothing but the UI is in the
+  // way.
+  const status = await page.evaluate(async (id) => {
+    const auth = JSON.parse(window.localStorage.getItem('kuwick-auth') ?? '{}');
+    const response = await fetch(`http://localhost:3000/visits/${id}/doctor-phase-status`, {
+      headers: { authorization: `Bearer ${auth?.state?.accessToken}` },
+    });
+    return response.json();
+  }, new URL(visitUrl).searchParams.get('visitId'));
+
+  expect(status.blockers).toEqual([]);
+  expect(status.routingReason).toBe('DISPENSARY_REQUIRED');
+  expect(status.destination).toBe('DISPENSARY');
 });
 
 /**
