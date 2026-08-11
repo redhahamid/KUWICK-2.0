@@ -1,11 +1,20 @@
 # Kuwick 2.0 Canvas — session handoff
 
-Branch: `clinical-workspace-c2-canvas-ux`. Never merge C2 or touch `origin/master`.
+## Branches (owner decision, 2026-08-11 — supersedes "never touch master")
+
+**`master` is canonical and is what deployment (Railway) tracks.** PR #1
+(`clinical-workspace-c2-canvas-ux`) was merged once the golden path and CI
+were genuinely green; that branch is retired — do not push to it again.
+
+**ONE working branch off current master**, currently
+`claude/kuwick-2-0-scope-c8h2op`. Per-unit pushes go there and only there
+(no dual-pushing); work reaches master by PR merge when the owner accepts.
 
 ## How to resume
 
 ```bash
-git fetch origin clinical-workspace-c2-canvas-ux && git merge --ff-only origin/clinical-workspace-c2-canvas-ux
+git fetch origin master claude/kuwick-2-0-scope-c8h2op
+git checkout claude/kuwick-2-0-scope-c8h2op && git merge --ff-only origin/claude/kuwick-2-0-scope-c8h2op
 pg_ctlcluster 16 main start          # container resets stop it
 cd apps/api && npx prisma generate   # stale client after a reset
 npx prisma migrate status            # must say "up to date"
@@ -586,6 +595,12 @@ Task 3 (P1 chip popover + P2 slide-over). Flow's expand/edit is verified
 working; Canvas reaches parity through P2 using the same form component.
 
 ## Standing rules
+
+**"Done" means green in the Actions tab, citing the CI run — never a local
+run alone** (owner rule, 2026-08-11). Every pre-that-date "local green" claim
+is unverified until Actions agrees. The e2e job now smoke-asserts a real
+login + authenticated GET before any spec runs (`scripts/smoke-login.mjs`),
+because /health alone let a total login outage read as spec timeouts.
 
 **E2E assertions target rendered CONSEQUENCES, or ledger/API truths — never
 indicator classes, and never "a dialog closed".** Earned three times over in
