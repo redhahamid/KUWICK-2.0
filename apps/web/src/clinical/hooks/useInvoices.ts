@@ -25,55 +25,56 @@ export function useInvoices(visitId?: string) {
 }
 
 export function useCreateInvoice(visitId?: string) {
-  const queryClient = useQueryClient();
+  const refresh = useBillingRefresh(visitId);
   return useMutation({
     mutationFn: (dto: CreateInvoiceDto) => apiClient.post<Invoice>('/invoices', dto),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoices', visitId] }),
+    onSuccess: refresh,
   });
 }
 
 export function useAddInvoiceLine(visitId?: string) {
-  const queryClient = useQueryClient();
+  const refresh = useBillingRefresh(visitId);
   return useMutation({
     mutationFn: ({ invoiceId, dto }: { invoiceId: string; dto: AddInvoiceLineDto }) =>
       apiClient.post<Invoice>(`/invoices/${invoiceId}/lines`, dto),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoices', visitId] }),
+    onSuccess: refresh,
   });
 }
 
 export function useRemoveInvoiceLine(visitId?: string) {
-  const queryClient = useQueryClient();
+  const refresh = useBillingRefresh(visitId);
   return useMutation({
     mutationFn: ({ invoiceId, lineId }: { invoiceId: string; lineId: string }) =>
       apiClient.delete<Invoice>(`/invoices/${invoiceId}/lines/${lineId}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoices', visitId] }),
+    onSuccess: refresh,
   });
 }
 
 export function useCancelInvoice(visitId?: string) {
-  const queryClient = useQueryClient();
+  const refresh = useBillingRefresh(visitId);
   return useMutation({
     mutationFn: ({ invoiceId, dto }: { invoiceId: string; dto: CancelInvoiceDto }) =>
       apiClient.patch<Invoice>(`/invoices/${invoiceId}/cancel`, dto),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoices', visitId] }),
+    onSuccess: refresh,
   });
 }
 
 // Dispensary payment step (Phase A6) — the last billing action before a
 // visit can be completed.
 export function usePayInvoice(visitId?: string) {
-  const queryClient = useQueryClient();
+  const refresh = useBillingRefresh(visitId);
   return useMutation({
     mutationFn: ({ invoiceId, dto }: { invoiceId: string; dto: PayInvoiceDto }) =>
       apiClient.patch<Invoice>(`/invoices/${invoiceId}/pay`, dto),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoices', visitId] }),
+    onSuccess: refresh,
   });
 }
 
 // ---------------------------------------------------------------------------
 // G4.5d3c-3b2 (D-094) — Counter Billing Review.
 //
-// Every mutation below invalidates the whole billing view together: the
+// Every billing mutation in this file invalidates the whole billing view
+// together: the
 // invoice, the worklist and the completion blockers are three readings of one
 // state, and a screen showing two of them refreshed and one stale would be
 // telling the counter something untrue.
@@ -84,7 +85,9 @@ function useBillingRefresh(visitId?: string) {
     queryClient.invalidateQueries({ queryKey: ['invoices', visitId] });
     queryClient.invalidateQueries({ queryKey: ['billing-worklist', visitId] });
     queryClient.invalidateQueries({ queryKey: ['completion-blockers', visitId] });
-    queryClient.invalidateQueries({ queryKey: ['visit', visitId] });
+    // The visit query's real key is ['visits', id] (see useVisits) — the
+    // singular form matched nothing and left the header stale.
+    queryClient.invalidateQueries({ queryKey: ['visits', visitId] });
   };
 }
 

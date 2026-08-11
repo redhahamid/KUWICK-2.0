@@ -191,7 +191,7 @@ export function useCompleteVisit() {
     onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['queue-board'] });
       queryClient.invalidateQueries({ queryKey: ['queue-tickets'] });
-      queryClient.invalidateQueries({ queryKey: ['visit', variables.visitId] });
+      queryClient.invalidateQueries({ queryKey: ['visits', variables.visitId] });
       queryClient.invalidateQueries({ queryKey: ['completion-blockers', variables.visitId] });
     },
   });
