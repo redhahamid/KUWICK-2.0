@@ -26,8 +26,17 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 |---|---|
 | Last green | **1107 frontend / 1207 backend**, both typechecks clean |
 | Golden path | **GREEN, both variants, front door to COMPLETED** |
+| CI | **GREEN — including the e2e job, for the first time ever** (see below) |
 | Migrations | 63, no drift |
 | Last commit | see `git log` |
+
+**CI's e2e job had NEVER passed.** Every run since the workflow was authored
+failed at login: the workflow set `JWT_SECRET` while the API reads
+`JWT_ACCESS_SECRET`/`JWT_REFRESH_SECRET`, so tokens signed with an undefined
+secret threw, login 500'd, and every spec timed out at `/login` — while
+`/health` (no auth) kept the wait step green. Local runs never showed it
+because `.env` carries the real names. Fixed in ci.yml; local green is NOT
+CI green — check the Actions tab after pushing, every time.
 
 Known flake, pre-existing: one full `vitest run` failed rc=1 on an UNHANDLED
 teardown error ("window is not defined", attributed to
