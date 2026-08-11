@@ -152,63 +152,42 @@ after each:
   `CLINICAL_ROLES` at the top of the file are the remaining local tables —
   delete each as its last reader migrates.
 
-**BILLING IS DELIBERATELY NOT MIGRATED YET — read this before touching it.**
-`BILLING_MATRIX` is finer-grained than the four roles can express. It draws a
-real two-tier line the roles do not:
+**BILLING + QUEUE: the permissions are BUILT, the wiring is BLOCKED on one
+mapping question.** Owner approved per-action billing (`billing.counter` /
+`billing.corrections`, the latter individually grantable) and the queue split
+(`queue.consultationFlow` on DOCTOR + ADMINISTRATOR). Both permissions exist,
+are granted, and are tested (59 tests in `permissions.spec.ts`). Individual
+grants exist end to end: `staff_permission_grants`, additive-only, closed list
+(`billing.corrections`, `dispense.perform`), `reason` mandatory.
 
-| action | who today |
+Wiring `canPerformQueueAction` and `canPerformBilling` onto them was attempted
+and REVERTED, because the suite proved it changes real behaviour:
+
+| broke | why |
 |---|---|
-| `APPLY_DISCOUNT`, `CANCEL_INVOICE` | OWNER_ADMIN + FINANCE_STAFF only |
-| `CANCEL_LINE`, `CLASSIFY_VISIT` | those two **plus** FRONT_DESK |
+| `FINANCE_STAFF cannot addToQueue / call / arrived / moveToDispensary / cancel` | FINANCE → ADMINISTRATOR, and ADMINISTRATOR carries `queue.consultationFlow` |
+| `HR_STAFF cannot call`, `STOCK_STAFF cannot addToQueue / complete` | same |
+| `DOCTOR_LOCUM may create / addLine` (invoices) | DOCTOR has no `billing.counter`, but doctors can raise invoices today |
 
-Collapsing all of it onto the single `billing.manage` permission would hand
-front desk the ability to apply discounts, which the matrix specifically
-refuses — a widening that moves money. Migrating it properly means adding
-per-action billing permissions (a financial-correction tier and a counter
-tier) and deciding whether ADMINISTRATOR splits in two. That is a design
-decision for the owner, not a mechanical migration. `canSignClinicalNotes`
-stays as-is: it is the credential rule itself, not a role check, and
-`isCredentialedClinician` now matches it exactly.
+Root cause: **ADMINISTRATOR spans four legacy roles with materially different
+queue and billing rights** — OWNER_ADMIN, FRONT_DESK, FINANCE, HR/STOCK/PANEL.
+Front desk and owner-admin run the queue; finance, HR and stock do not. No
+grant can fix it because grants are additive and this needs a subtraction.
 
-**Two deliberate behaviour changes so far, both flagged:**
-- A non-clinician OWNER_ADMIN loses `document.issueAdministrative` (it used to
-  come from `CLINICAL_ROLES`). Consistent with "owner alone = zero clinical
-  ability"; an owner who IS a doctor keeps it via DOCTOR.
-- `hasDoctorIdentity` (professionalType + professionalActive) is kept DISTINCT
-  from `isCredentialedClinician` (six fields). Signing needs the full
-  verification; altering a diagnosis or authorising a certificate has only
-  ever needed the person to BE a doctor. Collapsing them would silently remove
-  access somebody has today.
-- `queue-authorization.ts`: `QUEUE_MATRIX` (8 actions) and
-  `assertMayChangeAttendingClinician`. **Analysis done, migration not applied
-  — it needs one new permission, not a naive mapping.** Today's matrix:
+Two ways forward, both the owner's call:
+1. **Narrow the fallback.** Map FINANCE/HR/STOCK/PANEL to a narrower set than
+   full ADMINISTRATOR — i.e. accept that ADMINISTRATOR means "front counter"
+   and give the back-office roles only what they had. Cheapest, no new role.
+2. **A fifth role** (e.g. BACK_OFFICE) for finance/HR/stock/panel, leaving
+   ADMINISTRATOR as the counter role. Cleaner conceptually, more to build.
 
-  | action | today | faithful new grant |
-  |---|---|---|
-  | CREATE_TICKET, CALL_PATIENT, START_CONSULTATION, MOVE_TO_DISPENSARY, ASSIGN_CLINICIAN | owner + front desk + **doctors** | ADMINISTRATOR **and DOCTOR** |
-  | HOLD_CONSULTATION | owner + doctors | DOCTOR (already `consultation.hold`) |
-  | COMPLETE_TICKET | owner + front desk + finance | ADMINISTRATOR (already `queue.manage`) |
-  | CANCEL_TICKET | owner + front desk | ADMINISTRATOR (already `queue.manage`) |
+Until one is chosen, `queue-authorization.ts` and the billing half of
+`clinical-authorization.ts` keep their own matrices and are correct.
+`DOCTOR_ROLES` / `CLINICAL_ROLES` stay until then.
 
-  The trap: mapping the first row onto `queue.manage` alone would stop a
-  DOCTOR calling their own next patient or starting a consultation, because
-  DOCTOR does not hold `queue.manage`. Add a second permission — e.g.
-  `queue.consultationFlow`, granted to DOCTOR **and** ADMINISTRATOR — and
-  `canPerformQueueAction` becomes a union check over the two. Capability is
-  then preserved exactly; no design decision required, unlike billing.
-- `dispensary-authorization.ts`, and anything else `grep -rn "staff.role ===" apps/api/src` finds.
-
-`loadAssignedRoles` is deliberately tolerant of a client that cannot read the
-table: empty → legacy fallback → previous behaviour. Failing open to the
-PREVIOUS rules is safe; throwing would take down every clinical write for what
-is only an enrichment.
-- Settings › Users & roles CRUD (list, multi-role assign, link doctor profile,
-  deactivate, last-owner guard — `wouldRemoveLastOwner` is written and tested).
-- ~~Fixtures~~ **done**: `KUWICK_ALLOW_FIXTURES=yes npx tsx prisma/seed-role-fixtures.ts`
-  seeds Dr A (DOCTOR+OWNER), Dr B (DOCTOR), Ms X (CLINICAL_STAFF),
-  Ms Y (ADMINISTRATOR) — all `dr.a@`/`dr.b@`/`ms.x@`/`ms.y@smoke-test-clinic.test`,
-  password `DevLocal!2026`. Verified live via the login payload.
-- Frontend: read `permissions[]` from the session instead of role checks.
+**TASK 1 IS NOT DONE.** Everything else in it is: schema, policy module,
+session payload, seven clinical predicates delegating, fixtures, individual
+grants.
 
 ## Task 2.5 — PARKED FEEDBACK (do after Task 2, alongside/before Section P)
 

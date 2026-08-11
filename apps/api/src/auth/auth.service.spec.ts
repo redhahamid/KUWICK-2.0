@@ -151,6 +151,7 @@ describe('AuthService', () => {
           'observation.write',
           'order.write',
           'prescription.write',
+          'queue.consultationFlow',
         ],
         roles: [],
       });

@@ -54,7 +54,16 @@ export type Permission =
   | 'patient.demographics.write'
   | 'patient.lhdn.write'
   | 'queue.manage'
-  | 'billing.manage'
+  // Owner decision: queue actions split in two. The consultation FLOW —
+  // calling the next patient, starting, sending on — is shared with doctors,
+  // who do it for their own patients all day. Completing and cancelling a
+  // ticket are counter administration.
+  | 'queue.consultationFlow'
+  // Owner decision: "financial corrections" is a power, not a job, so billing
+  // splits by ACTION rather than by role. Counter work belongs to the counter;
+  // moving money the clinic has already earned does not.
+  | 'billing.counter'
+  | 'billing.corrections'
   | 'document.print'
   // Ownership
   | 'clinical.void'
@@ -84,6 +93,7 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     'consultation.hold',
     'consultation.resume',
     'consultation.complete',
+    'queue.consultationFlow',
     // Un-doing a saved clinical record, and putting a doctor's authority on a
     // certificate or referral. Both carry medicolegal weight and neither is
     // available to an administrator on the strength of ownership.
@@ -121,7 +131,11 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     'patient.demographics.write',
     'patient.lhdn.write',
     'queue.manage',
-    'billing.manage',
+    'queue.consultationFlow',
+    // Invoices, payments, receipts, visit classification, cancelling a line.
+    // NOT discounts or invoice cancellation — those are `billing.corrections`,
+    // which OWNER holds and which can be granted to an individual.
+    'billing.counter',
     'document.print',
     // Front desk calls patients through, so resuming a held one is theirs.
     'consultation.resume',
@@ -130,7 +144,7 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
   // OWNER ALONE IS NOT CLINICAL. Not one permission here touches a patient's
   // record. A doctor-owner gets clinical ability from the DOCTOR role they
   // also hold — never from this one.
-  OWNER: ['settings.manage', 'discount.approve', 'users.manage'],
+  OWNER: ['settings.manage', 'discount.approve', 'users.manage', 'billing.corrections'],
 };
 
 // ---------------------------------------------------------------------------
@@ -154,6 +168,9 @@ export const LEGACY_ROLE_FALLBACK: Record<Role, SystemRole[]> = {
   DOCTOR_LOCUM: ['DOCTOR'],
   // Records vitals AND registers patients. Both, or half their job vanishes.
   FRONT_DESK_CLINICAL_STAFF: ['CLINICAL_STAFF', 'ADMINISTRATOR'],
+  // Finance keeps `billing.corrections` through the migration — see
+  // LEGACY_DIRECT_GRANTS below. The role does not carry it; the grant does,
+  // which is the same shape a trusted counter staffer will have.
   FINANCE_STAFF: ['ADMINISTRATOR'],
   HR_STAFF: ['ADMINISTRATOR'],
   // Owner decision: NOT clinical staff. That role carries observation.write
@@ -172,6 +189,19 @@ export const LEGACY_ROLE_FALLBACK: Record<Role, SystemRole[]> = {
   PANEL_STAFF: ['ADMINISTRATOR'],
   // Not staff. No capability of any kind.
   PATIENT_PORTAL: [],
+};
+
+/**
+ * Individual grants the migration must preserve.
+ *
+ * FINANCE_STAFF holds APPLY_DISCOUNT and CANCEL_INVOICE today. Their role maps
+ * to ADMINISTRATOR, which deliberately does NOT carry corrections — so the
+ * capability arrives as a direct grant instead, which is exactly the shape a
+ * trusted senior counter staffer will have. Nobody loses anything, and the
+ * power is visible as a power rather than buried in a job title.
+ */
+export const LEGACY_DIRECT_GRANTS: Partial<Record<Role, Permission[]>> = {
+  FINANCE_STAFF: ['billing.corrections'],
 };
 
 // ---------------------------------------------------------------------------
@@ -244,6 +274,14 @@ export function rolesOf(staff: Staff, assigned: SystemRole[] | undefined): Syste
 export function effectivePermissions(
   staff: Staff,
   assigned?: SystemRole[],
+  /**
+   * Permissions granted to THIS PERSON, outside any role.
+   *
+   * Additive only. There is deliberately no per-person revoke: a grant that
+   * could subtract from a role would make "what can this person do"
+   * answerable only by replaying two tables in the right order.
+   */
+  directGrants?: Permission[],
 ): Set<Permission> {
   // An inactive account holds nothing. Checked here rather than at each call
   // site, because "deactivated" that only removes the menu item is not
@@ -253,6 +291,14 @@ export function effectivePermissions(
   const granted = new Set<Permission>();
   for (const role of rolesOf(staff, assigned)) {
     for (const permission of ROLE_PERMISSIONS[role]) granted.add(permission);
+  }
+  for (const permission of directGrants ?? []) granted.add(permission);
+
+  // The legacy grant, for anybody with no explicit role assignment yet. Same
+  // rule as the role fallback: a migration must not remove what somebody can
+  // do today.
+  if (!assigned || assigned.length === 0) {
+    for (const permission of LEGACY_DIRECT_GRANTS[staff.role] ?? []) granted.add(permission);
   }
 
   // The credential gate. Holding DOCTOR opens the door to the clinical
@@ -265,8 +311,27 @@ export function effectivePermissions(
   return granted;
 }
 
-export function can(staff: Staff, permission: Permission, assigned?: SystemRole[]): boolean {
-  return effectivePermissions(staff, assigned).has(permission);
+export function can(
+  staff: Staff,
+  permission: Permission,
+  assigned?: SystemRole[],
+  directGrants?: Permission[],
+): boolean {
+  return effectivePermissions(staff, assigned, directGrants).has(permission);
+}
+
+/**
+ * The permissions that may be handed to ONE person without a role.
+ *
+ * A closed list on purpose. "Grant anything to anyone" is how a role model
+ * becomes decorative — and note.sign is absent because a signing capability
+ * without the medical registration behind it is not a permission anybody can
+ * give.
+ */
+export const INDIVIDUALLY_GRANTABLE: Permission[] = ['billing.corrections', 'dispense.perform'];
+
+export function isIndividuallyGrantable(permission: string): permission is Permission {
+  return (INDIVIDUALLY_GRANTABLE as string[]).includes(permission);
 }
 
 /**
@@ -288,6 +353,8 @@ const REFUSAL: Partial<Record<Permission, string>> = {
     'Only the attending clinician may put a consultation on hold.',
   'consultation.complete': 'Only a doctor may complete a consultation.',
   'patient.demographics.write': 'Your account is not permitted to change patient details.',
+  'billing.corrections':
+    'Applying a discount or cancelling an invoice needs the billing-corrections permission.',
   'settings.manage': 'Only an owner may change clinic settings.',
   'users.manage': 'Only an owner may manage users and roles.',
 };
@@ -296,8 +363,9 @@ export function assertCan(
   staff: Staff,
   permission: Permission,
   assigned?: SystemRole[],
+  directGrants?: Permission[],
 ): void {
-  if (!can(staff, permission, assigned)) {
+  if (!can(staff, permission, assigned, directGrants)) {
     throw new ForbiddenException(REFUSAL[permission] ?? 'Your account is not permitted to do this.');
   }
 }
@@ -309,8 +377,12 @@ export function assertCan(
  * This is D1's lesson made structural: there is exactly one implementation,
  * and the client is a reader of it.
  */
-export function permissionPayload(staff: Staff, assigned?: SystemRole[]): Permission[] {
-  return [...effectivePermissions(staff, assigned)].sort();
+export function permissionPayload(
+  staff: Staff,
+  assigned?: SystemRole[],
+  directGrants?: Permission[],
+): Permission[] {
+  return [...effectivePermissions(staff, assigned, directGrants)].sort();
 }
 
 /**

@@ -75,6 +75,42 @@ model StaffRoleAssignment {
   @@map("staff_role_assignments")
 }
 
+/**
+ * TASK 1 — a permission granted to ONE person, outside any role.
+ * Owner decision: "financial corrections" is a power, not a job. Applying a
+ * discount belongs to OWNER by default, but a trusted senior counter staffer
+ * should be able to hold it without inventing a fifth role for one capability.
+ * The same applies to dispensing for a stock account.
+ * Deliberately ADDITIVE ONLY. There is no per-person REVOKE, and there will
+ * not be one: a grant that could subtract from a role would make "what can
+ * this person do" answerable only by replaying two tables in the right order.
+ * To take a capability away, remove the role.
+ */
+model StaffPermissionGrant {
+  id         String @id @default(uuid())
+  tenantId   String @map("tenant_id")
+  staffId    String @map("staff_id")
+  /**
+   * A `Permission` string from core/permissions.ts.
+   */
+  permission String
+
+  grantedByStaffId String   @map("granted_by_staff_id")
+  grantedAt        DateTime @default(now()) @map("granted_at")
+  /**
+   * Why this person specifically. Read in the audit, never optional.
+   */
+  reason           String
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  staff     Staff  @relation("StaffPermissionHolder", fields: [staffId], references: [id], onDelete: Cascade)
+  grantedBy Staff  @relation("StaffPermissionGrantedBy", fields: [grantedByStaffId], references: [id])
+
+  @@unique([staffId, permission])
+  @@index([tenantId, permission])
+  @@map("staff_permission_grants")
+}
+
 enum PatientIdentifierType {
   NRIC
   PASSPORT
@@ -216,8 +252,9 @@ model Tenant {
   visitNumberCounter          VisitNumberCounter?
   consultationTariffRules     ConsultationTariffRule[]
 
-  labelPrints          LabelPrint[]
-  staffRoleAssignments StaffRoleAssignment[]
+  labelPrints           LabelPrint[]
+  staffRoleAssignments  StaffRoleAssignment[]
+  staffPermissionGrants StaffPermissionGrant[]
 
   @@map("tenants")
 }
@@ -580,6 +617,8 @@ model Staff {
   workflowEventsHandedOver     VisitWorkflowEvent[]         @relation("WorkflowEventPreviousStaff")
   workflowEventsReceived       VisitWorkflowEvent[]         @relation("WorkflowEventNewStaff")
   roleAssignments              StaffRoleAssignment[]        @relation("StaffRoleHolder")
+  permissionGrants             StaffPermissionGrant[]       @relation("StaffPermissionHolder")
+  permissionGrantsMade         StaffPermissionGrant[]       @relation("StaffPermissionGrantedBy")
   roleAssignmentsGranted       StaffRoleAssignment[]        @relation("StaffRoleGrantedBy")
   queueTicketsHeld             QueueTicket[]                @relation("QueueTicketHeldBy")
   orderServices                OrderService[]

@@ -1,6 +1,8 @@
 import { ForbiddenException } from '@nestjs/common';
 import { Role, Staff, SystemRole } from '@prisma/client';
 import {
+  INDIVIDUALLY_GRANTABLE,
+  LEGACY_DIRECT_GRANTS,
   LEGACY_ROLE_FALLBACK,
   ROLE_PERMISSIONS,
   assertCan,
@@ -8,6 +10,7 @@ import {
   canHoldDoctorRole,
   effectivePermissions,
   isCredentialedClinician,
+  isIndividuallyGrantable,
   permissionPayload,
   rolesOf,
   wouldRemoveLastOwner,
@@ -141,9 +144,20 @@ describe('ADMINISTRATOR', () => {
   const msY = () => admin({ role: 'FINANCE_STAFF' as Role });
 
   it('edits demographics and LHDN, runs the queue and billing', () => {
-    for (const p of ['patient.demographics.write', 'patient.lhdn.write', 'queue.manage', 'billing.manage'] as const) {
+    for (const p of ['patient.demographics.write', 'patient.lhdn.write', 'queue.manage', 'billing.counter'] as const) {
       expect(can(msY(), p, ['ADMINISTRATOR'])).toBe(true);
     }
+  });
+
+  it('does NOT hold billing corrections by role', () => {
+    // Owner decision: "financial corrections" is a power, not a job.
+    // Discounts and invoice cancellation move money the clinic has earned.
+    expect(can(msY(), 'billing.corrections', ['ADMINISTRATOR'])).toBe(false);
+  });
+
+  it('but CAN be given corrections individually, without a new role', () => {
+    // The trusted senior counter staffer. One capability, not a fifth role.
+    expect(can(msY(), 'billing.corrections', ['ADMINISTRATOR'], ['billing.corrections'])).toBe(true);
   });
 
   it('records NO clinical fact — not even vitals', () => {
@@ -331,5 +345,97 @@ describe('the last owner', () => {
   it('every SystemRole appears in the grant table', () => {
     const roles: SystemRole[] = ['DOCTOR', 'CLINICAL_STAFF', 'ADMINISTRATOR', 'OWNER'];
     for (const role of roles) expect(ROLE_PERMISSIONS[role].length).toBeGreaterThan(0);
+  });
+});
+
+describe('individual permission grants', () => {
+  const counterStaff = () =>
+    staffOf({
+      role: 'FINANCE_STAFF' as Role,
+      professionalType: undefined,
+      professionalActive: false,
+      medicalRegistrationNo: null,
+      canSignClinicalNotes: false,
+    });
+
+  it('are ADDITIVE only — they never subtract from a role', () => {
+    // A grant that could take something away would make "what can this person
+    // do" answerable only by replaying two tables in the right order.
+    const withGrant = effectivePermissions(staffOf(), ['DOCTOR'], ['billing.corrections']);
+    for (const permission of ROLE_PERMISSIONS.DOCTOR) {
+      expect(withGrant.has(permission)).toBe(true);
+    }
+    expect(withGrant.has('billing.corrections')).toBe(true);
+  });
+
+  it('only a closed list may be handed out', () => {
+    // "Grant anything to anyone" is how a role model becomes decorative.
+    expect(INDIVIDUALLY_GRANTABLE).toEqual(['billing.corrections', 'dispense.perform']);
+    expect(isIndividuallyGrantable('note.write')).toBe(false);
+    expect(isIndividuallyGrantable('settings.manage')).toBe(false);
+  });
+
+  it('note.sign is NOT grantable — no permission substitutes for a registration', () => {
+    expect(isIndividuallyGrantable('note.sign')).toBe(false);
+  });
+
+  it('a deactivated account holds nothing, grant or no grant', () => {
+    const gone = staffOf({ active: false });
+    expect([...effectivePermissions(gone, ['ADMINISTRATOR'], ['billing.corrections'])]).toEqual([]);
+  });
+
+  it('FINANCE keeps corrections through the migration, as a GRANT not a role', () => {
+    // Their role maps to ADMINISTRATOR, which deliberately does not carry
+    // corrections. Nobody loses anything, and the power reads as a power
+    // rather than being buried in a job title.
+    expect(LEGACY_DIRECT_GRANTS.FINANCE_STAFF).toEqual(['billing.corrections']);
+    expect(can(counterStaff(), 'billing.corrections')).toBe(true);
+    expect(can(counterStaff(), 'billing.counter')).toBe(true);
+  });
+
+  it('an EXPLICIT role assignment drops the legacy grant — it must be re-granted', () => {
+    // Same rule as the role fallback: assigning roles states the whole truth
+    // about somebody, and a legacy power silently surviving that would be the
+    // widening this model exists to make visible.
+    expect(can(counterStaff(), 'billing.corrections', ['ADMINISTRATOR'])).toBe(false);
+  });
+
+  it('FRONT DESK keeps counter actions and never gains corrections', () => {
+    const frontDesk = staffOf({
+      role: 'FRONT_DESK_CLINICAL_STAFF' as Role,
+      professionalType: undefined,
+      professionalActive: false,
+      canSignClinicalNotes: false,
+    });
+    expect(can(frontDesk, 'billing.counter')).toBe(true);
+    expect(can(frontDesk, 'billing.corrections')).toBe(false);
+  });
+});
+
+describe('the queue split', () => {
+  it('a DOCTOR may run the consultation flow for their own patients', () => {
+    // Calling the next patient and starting a consultation is what a doctor
+    // does all day. Mapping it onto queue.manage alone would have stopped it.
+    expect(can(staffOf(), 'queue.consultationFlow', ['DOCTOR'])).toBe(true);
+  });
+
+  it('but does NOT manage the queue — completing and cancelling are counter work', () => {
+    expect(can(staffOf(), 'queue.manage', ['DOCTOR'])).toBe(false);
+  });
+
+  it('an ADMINISTRATOR holds both', () => {
+    const msY = staffOf({ role: 'FINANCE_STAFF' as Role, professionalActive: false, professionalType: undefined });
+    expect(can(msY, 'queue.consultationFlow', ['ADMINISTRATOR'])).toBe(true);
+    expect(can(msY, 'queue.manage', ['ADMINISTRATOR'])).toBe(true);
+  });
+
+  it('CLINICAL STAFF runs neither — they resume, they do not call or complete', () => {
+    const msX = staffOf({
+      role: 'FRONT_DESK_CLINICAL_STAFF' as Role,
+      professionalType: undefined,
+      professionalActive: false,
+    });
+    expect(can(msX, 'queue.manage', ['CLINICAL_STAFF'])).toBe(false);
+    expect(can(msX, 'consultation.resume', ['CLINICAL_STAFF'])).toBe(true);
   });
 });
