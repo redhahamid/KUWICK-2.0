@@ -77,6 +77,44 @@ async function openAndPick(page: Page, selectBox: Locator, option: string | RegE
 }
 
 /**
+ * The input that sits under a plain-text caption.
+ *
+ * The canvas panels caption their fields with ordinary text rather than a
+ * `<label for=...>`, so `getByLabel` finds nothing there — a real
+ * accessibility gap, noted for A2 rather than worked around silently. Until it
+ * is fixed, the honest handle is "the first input after this caption", which
+ * is also how a person reads the form.
+ */
+function fieldUnder(page: Page, caption: string): Locator {
+  return page.getByText(caption, { exact: true }).first().locator('xpath=following::input[1]');
+}
+
+/**
+ * Find a patient's row under a queue stage tab, wherever it is.
+ *
+ * Two real properties of that screen have to be handled together. The board
+ * POLLS, so a stage change can land a beat after the click; and the stage
+ * tables PAGINATE at ten rows, so on a busy afternoon the patient who just
+ * moved is not on page one. A spec that checks only the first page of the
+ * first render reports "the patient never moved" for a clinic that is merely
+ * busy — which is a false alarm, and false alarms are how a guardrail gets
+ * switched off.
+ */
+async function expectRowInStage(page: Page, stage: string, patientName: string): Promise<void> {
+  const row = page.getByRole('row').filter({ hasText: patientName });
+  await expect(async () => {
+    await page.getByRole('tab', { name: new RegExp(`^${stage}`, 'i') }).click();
+    if (await row.isVisible()) return;
+    const pages = page.locator('.ant-pagination-item');
+    for (let index = await pages.count(); index > 0; index -= 1) {
+      await pages.nth(index - 1).click();
+      if (await row.isVisible()) return;
+    }
+    await expect(row).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 60_000 });
+}
+
+/**
  * The canvas's Record View column switches the right-hand panel. Clicking the
  * section name is what a doctor does; there is no route per section.
  */
@@ -137,8 +175,7 @@ test('golden path — registration to a completed, dispensed, paid visit', async
   // A stage transition that quietly does nothing is exactly the class of
   // defect this suite exists to catch, and it is invisible to a spec that
   // only checks that a modal closed.
-  await page.getByRole('tab', { name: /^consultation/i }).click();
-  await expect(page.getByRole('row').filter({ hasText: patientName })).toBeVisible();
+  await expectRowInStage(page, 'consultation', patientName);
 
   // =====================================================================
   // 3. THE DOCTOR OPENS THE CANVAS.
@@ -146,7 +183,7 @@ test('golden path — registration to a completed, dispensed, paid visit', async
   await logout(page);
   await login(page, ACCOUNTS.doctor);
   await page.goto('/queue');
-  await page.getByRole('tab', { name: /^consultation/i }).click();
+  await expectRowInStage(page, 'consultation', patientName);
   await page.getByRole('link', { name: patientName }).first().click();
   await expect(page.getByText('Record View')).toBeVisible();
   await expect(page.getByRole('heading', { name: patientName })).toBeVisible();
@@ -213,11 +250,27 @@ test('golden path — registration to a completed, dispensed, paid visit', async
   await section(page, 'Medications');
   await chooseFromPlaceholderSelect(page, 'Search medicine', MEDICATION);
   // Plain-text labels in this panel, so the placeholder is the handle.
+  await fieldUnder(page, 'Dose Amount').fill('1');
+  await page.getByPlaceholder('e.g. ml, tablet').fill('tablet');
   await page.getByPlaceholder('e.g. BD').fill('TDS');
   await page.getByRole('button', { name: /add to prescription/i }).click();
-  await expect(page.getByText(MEDICATION).first()).toBeVisible();
+
+  // Scoped to the PRESCRIBED list, not the page.
+  //
+  // The first version of this assertion looked for the medicine's name
+  // anywhere on the page and passed while nothing had been prescribed at all:
+  // the name it found was the select box echoing its own chosen value, and
+  // the app was showing "Select a medicine and fill in dose, frequency, and
+  // duration". A guardrail that can pass without the thing happening is worse
+  // than no guardrail, because it is trusted.
+  const prescribed = page.locator('.ant-card').filter({ hasText: 'Prescribed Medications' });
+  await expect(prescribed.getByText(MEDICATION)).toBeVisible();
 
   console.log('visit under test:', visitUrl);
+  if (process.env.E2E_DUMP) {
+    console.log('\n===== footer =====\n' + (await describeControls(page)).join('\n'));
+    await page.screenshot({ path: 'test-results/footer.png', fullPage: true });
+  }
 });
 
 /**
