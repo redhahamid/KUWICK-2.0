@@ -134,6 +134,10 @@ describe('AuthService', () => {
         // mapping, which is the DOCTOR role.
         permissions: [
           'allergy.write',
+          // Owner decision: the night-shift doctor raises the invoice and
+          // takes payment. NOT billing.corrections — no doctor discounts or
+          // voids a bill.
+          'billing.counter',
           'clinical.void',
           'consultation.complete',
           'consultation.hold',

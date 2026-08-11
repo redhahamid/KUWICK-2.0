@@ -62,14 +62,14 @@ export function BillingVisitPage() {
   const [searchParams] = useSearchParams();
   const requestedInvoiceId = searchParams.get('invoiceId');
   const staff = useAuthStore((state) => state.staff);
-  const allowed = canAccessBilling(staff?.role);
+  const allowed = canAccessBilling(staff);
 
-  const canEdit = canPerformBilling(staff?.role, 'EDIT_LINES');
-  const canCreate = canPerformBilling(staff?.role, 'CREATE_INVOICE');
-  const canDiscount = canPerformBilling(staff?.role, 'APPLY_DISCOUNT');
-  const canCancelLine = canPerformBilling(staff?.role, 'CANCEL_LINE');
-  const canPay = canPerformBilling(staff?.role, 'MARK_PAID');
-  const canClassify = canPerformBilling(staff?.role, 'CLASSIFY_VISIT');
+  const canEdit = canPerformBilling(staff, 'EDIT_LINES');
+  const canCreate = canPerformBilling(staff, 'CREATE_INVOICE');
+  const canDiscount = canPerformBilling(staff, 'APPLY_DISCOUNT');
+  const canCancelLine = canPerformBilling(staff, 'CANCEL_LINE');
+  const canPay = canPerformBilling(staff, 'MARK_PAID');
+  const canClassify = canPerformBilling(staff, 'CLASSIFY_VISIT');
   // Ordinary verification is counter work; an override is a financial
   // correction — the same tier as a discount.
   const canVerify = canCancelLine;

@@ -173,6 +173,10 @@ describe('authorisation', () => {
   it.each([
     ['13. a doctor', DOCTOR],
     ['stock staff', STOCK],
+    // TASK 1, owner decision 1 — the INTENTIONAL narrowing. Closing a visit
+    // asserts that dispensing and payment are done, which is a counter fact,
+    // not a finance one. Finance keeps every billing action it had.
+    ['15. finance, which held this before', FINANCE],
   ])('%s cannot complete a visit', async (_n, actor) => {
     const ctx = build(actor);
     await expect(run(ctx)).rejects.toThrow(ForbiddenException);
@@ -181,7 +185,6 @@ describe('authorisation', () => {
 
   it.each([
     ['14. front desk', FRONT_DESK],
-    ['15. finance', FINANCE],
     ['16. owner', OWNER],
   ])('%s may complete an eligible visit', async (_n, actor) => {
     await expect(run(build(actor))).resolves.toMatchObject({ alreadyCompleted: false });

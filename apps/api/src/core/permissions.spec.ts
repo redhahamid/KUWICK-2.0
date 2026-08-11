@@ -2,8 +2,8 @@ import { ForbiddenException } from '@nestjs/common';
 import { Role, Staff, SystemRole } from '@prisma/client';
 import {
   INDIVIDUALLY_GRANTABLE,
-  LEGACY_DIRECT_GRANTS,
   LEGACY_ROLE_FALLBACK,
+  LEGACY_ROLE_PERMISSIONS,
   ROLE_PERMISSIONS,
   assertCan,
   can,
@@ -254,18 +254,46 @@ describe('migrating what already exists', () => {
   it('STOCK_STAFF gets NO patient-record write — not even vitals', () => {
     // Owner decision. Mapping inventory staff to CLINICAL_STAFF would have
     // handed stock control the ability to record a blood pressure.
-    expect(LEGACY_ROLE_FALLBACK.STOCK_STAFF).toEqual(['ADMINISTRATOR']);
     const stock = admin({ role: 'STOCK_STAFF' as Role });
     expect(can(stock, 'observation.write')).toBe(false);
     expect(can(stock, 'allergy.write')).toBe(false);
     expect(can(stock, 'note.staffRemark')).toBe(false);
   });
 
-  it('and no dispensing yet either — that is the noted follow-up', () => {
-    // `dispense.perform` exists as its own permission, but granting it
-    // without a role needs per-staff grants, which is a second axis nobody
-    // needs until a real STOCK_STAFF account exists.
-    expect(can(admin({ role: 'STOCK_STAFF' as Role }), 'dispense.perform')).toBe(false);
+  it('STOCK_STAFF holds dispensing and NOTHING else', () => {
+    // Owner decision (option 1). The back-office roles no longer map to a
+    // system role at all: an inventory clerk who arrived at ADMINISTRATOR
+    // would have acquired the queue and the counter's till on the way.
+    expect(LEGACY_ROLE_FALLBACK.STOCK_STAFF).toEqual([]);
+    expect(LEGACY_ROLE_PERMISSIONS.STOCK_STAFF).toEqual(['dispense.perform']);
+    const stock = admin({ role: 'STOCK_STAFF' as Role });
+    expect([...effectivePermissions(stock)]).toEqual(['dispense.perform']);
+  });
+
+  it('HR_STAFF holds nothing — it held nothing before', () => {
+    // Checked against 1.0 rather than assumed: HR_STAFF appears in neither
+    // the queue nor the billing matrix, and patient demographics were never
+    // role-gated at all, so there is no right to preserve.
+    expect(LEGACY_ROLE_PERMISSIONS.HR_STAFF).toEqual([]);
+    expect([...effectivePermissions(admin({ role: 'HR_STAFF' as Role }))]).toEqual([]);
+  });
+
+  it('PANEL_STAFF gets the counter till and no queue', () => {
+    const panel = admin({ role: 'PANEL_STAFF' as Role });
+    expect([...effectivePermissions(panel)]).toEqual(['billing.counter']);
+    expect(can(panel, 'queue.consultationFlow')).toBe(false);
+    expect(can(panel, 'queue.manage')).toBe(false);
+  });
+
+  it('the back-office roles LOSE the queue — the intentional narrowing', () => {
+    // Recorded as a loss on purpose. Finance completing a visit asserts that
+    // dispensing and payment are done, which is a counter fact.
+    for (const role of ['FINANCE_STAFF', 'HR_STAFF', 'STOCK_STAFF', 'PANEL_STAFF'] as Role[]) {
+      const staff = admin({ role });
+      expect(can(staff, 'queue.manage')).toBe(false);
+      expect(can(staff, 'queue.consultationFlow')).toBe(false);
+      expect(can(staff, 'patient.demographics.write')).toBe(false);
+    }
   });
 
   it('PATIENT_PORTAL is not staff and holds nothing', () => {
@@ -384,13 +412,13 @@ describe('individual permission grants', () => {
     expect([...effectivePermissions(gone, ['ADMINISTRATOR'], ['billing.corrections'])]).toEqual([]);
   });
 
-  it('FINANCE keeps corrections through the migration, as a GRANT not a role', () => {
-    // Their role maps to ADMINISTRATOR, which deliberately does not carry
-    // corrections. Nobody loses anything, and the power reads as a power
-    // rather than being buried in a job title.
-    expect(LEGACY_DIRECT_GRANTS.FINANCE_STAFF).toEqual(['billing.corrections']);
+  it('FINANCE keeps every billing action it holds today, and gains no queue', () => {
+    // Option 1: the fallback is a permission SUBSET, not a role. Finance keeps
+    // all seven billing actions and does not arrive at the queue on the way.
+    expect(LEGACY_ROLE_PERMISSIONS.FINANCE_STAFF).toEqual(['billing.counter', 'billing.corrections']);
     expect(can(counterStaff(), 'billing.corrections')).toBe(true);
     expect(can(counterStaff(), 'billing.counter')).toBe(true);
+    expect(can(counterStaff(), 'queue.manage')).toBe(false);
   });
 
   it('an EXPLICIT role assignment drops the legacy grant — it must be re-granted', () => {

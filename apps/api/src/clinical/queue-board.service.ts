@@ -4,13 +4,12 @@ import {
   PrescriptionStatus,
   PrescriptionSupplyMode,
   QueueTicketStatus,
-  Role,
 } from '@prisma/client';
 import { PrismaService } from '../core/prisma.service';
 import { ClinicalTx, branchContext, requireActor, withReadOnlyTenantTx } from './clinical-actor';
 import { hasBranchAccess } from './clinical-authorization';
 import { QueueStage, isAtProcedure, isLegacyStatus, stageOf } from './queue-stage';
-import { VisitCompletionBlocker, collectBlockers } from './visit-completion.service';
+import { VisitCompletionBlocker, collectBlockers, mayCompleteVisit } from './visit-completion.service';
 
 /**
  * G4.5d3c-3b (D-095) — THE QUEUE BOARD.
@@ -31,7 +30,8 @@ import { VisitCompletionBlocker, collectBlockers } from './visit-completion.serv
  * several queries; batching it behind one loader is recorded as a limitation
  * rather than solved by duplicating the rules.
  */
-const MAY_COMPLETE_VISIT: Role[] = ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF', 'FINANCE_STAFF'];
+// TASK 1 — imported, never reimplemented. A board that computed its own
+// answer would eventually offer a Complete button the server refuses.
 
 /** Stages whose rows carry a completion decision. */
 const EVALUATED_STAGES: QueueStage[] = ['CONSULTATION', 'DISPENSARY', 'PAYMENT'];
@@ -121,7 +121,7 @@ export class QueueBoardService {
       if (!hasBranchAccess(actor, clinicId, await branchContext(tx, actor))) {
         return { rows: [], counts: emptyCounts(), mayCompleteVisits: false };
       }
-      const mayCompleteVisits = actor.active && MAY_COMPLETE_VISIT.includes(actor.role);
+      const mayCompleteVisits = mayCompleteVisit(actor);
 
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);

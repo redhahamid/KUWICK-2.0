@@ -1,6 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { SystemRole } from '@prisma/client';
-import { can } from '../core/permissions';
+import { Permission, attachedRoles, can } from '../core/permissions';
 import { ClinicalNoteType, Role, Staff } from '@prisma/client';
 
 // C0 (D-051) — narrowly-scoped, server-side authorisation for clinical
@@ -76,8 +76,7 @@ export function canSignClinicalNotes(staff: Staff): boolean {
 // a plain Staff row from a test or an older code path — falls through to the
 // legacy mapping, which is what these lists used to say.
 function rolesOn(staff: Staff): SystemRole[] | undefined {
-  const attached = (staff as { assignedRoles?: SystemRole[] }).assignedRoles;
-  return attached && attached.length > 0 ? attached : undefined;
+  return attachedRoles(staff);
 }
 
 // Authoring a DOCTOR_NARRATIVE is restricted to doctors. Front-desk staff
@@ -211,44 +210,50 @@ export type BillingAction =
   | 'CANCEL_LINE'
   | 'CLASSIFY_VISIT';
 
-const BILLING_MATRIX: Record<BillingAction, Role[]> = {
-  // Raising the bill and itemising it: counter staff, finance, the owner, and
-  // the doctor who ordered the work.
-  CREATE_INVOICE: ['OWNER_ADMIN', 'FINANCE_STAFF', 'FRONT_DESK_CLINICAL_STAFF', 'DOCTOR_RESIDENT', 'DOCTOR_LOCUM'],
-  EDIT_LINES: ['OWNER_ADMIN', 'FINANCE_STAFF', 'FRONT_DESK_CLINICAL_STAFF', 'DOCTOR_RESIDENT', 'DOCTOR_LOCUM'],
-  // Collecting money is counter work. A doctor gets no cash-handling right
-  // just by being a doctor — "should not automatically receive unrestricted
-  // finance powers".
-  MARK_PAID: ['OWNER_ADMIN', 'FINANCE_STAFF', 'FRONT_DESK_CLINICAL_STAFF'],
-  // Voiding a bill that has already been issued is a financial correction and
-  // stays with finance and the owner.
-  CANCEL_INVOICE: ['OWNER_ADMIN', 'FINANCE_STAFF'],
+/**
+ * TASK 1, owner decision 1 — billing splits by ACTION, not by role.
+ *
+ * The role lists that used to sit here are gone. Two permissions carry the
+ * whole table: `billing.counter` is running the counter, and
+ * `billing.corrections` is moving money the clinic has already earned. The
+ * second is deliberately harder to get — OWNER holds it, and it can be
+ * granted to one trusted person without making them an owner.
+ */
+const BILLING_PERMISSION: Record<BillingAction, Permission> = {
+  // Raising the bill and itemising it: counter work, and the doctor who
+  // ordered the work does it too.
+  CREATE_INVOICE: 'billing.counter',
+  EDIT_LINES: 'billing.counter',
+  // Collecting money is counter work. Doctors now hold `billing.counter` by
+  // owner decision — the night shift raises the bill and takes payment when
+  // there is no counter to hand — so this is no longer the line that keeps
+  // finance powers away from clinicians. The line is CANCEL_INVOICE and
+  // APPLY_DISCOUNT below, which no doctor holds.
+  MARK_PAID: 'billing.counter',
+  // Voiding a bill that has already been issued is a financial correction.
+  CANCEL_INVOICE: 'billing.corrections',
   // G4.5d3c-3b1 (D-093, owner decision 5) — discounts move money the clinic
   // has earned, so they sit at the financial-correction tier. Front desk and
   // doctors are refused.
-  APPLY_DISCOUNT: ['OWNER_ADMIN', 'FINANCE_STAFF'],
+  APPLY_DISCOUNT: 'billing.corrections',
   // G4.5d3c-3b2 (D-094, owner decision 8/11) — cancelling a line (including
   // waiving an auto-added consultation) is COUNTER work with a mandatory
-  // reason: front desk may do it, doctors do not manage billing corrections
-  // from the clinical surface.
-  CANCEL_LINE: ['OWNER_ADMIN', 'FINANCE_STAFF', 'FRONT_DESK_CLINICAL_STAFF'],
+  // reason.
+  CANCEL_LINE: 'billing.counter',
   // Recording what KIND of visit this was for consultation billing (OTC-only,
   // dressing-only, ...) is operational counter work, never a clinical entry.
-  CLASSIFY_VISIT: ['OWNER_ADMIN', 'FINANCE_STAFF', 'FRONT_DESK_CLINICAL_STAFF'],
+  CLASSIFY_VISIT: 'billing.counter',
 };
 
 // Anyone who may perform ANY billing action — the gate for reaching the
 // billing page at all. Read access to the clinical Invoice Summary is a
 // SEPARATE permission and is not affected by this.
 export function canAccessBilling(staff: Staff): boolean {
-  return (
-    staff.active &&
-    (Object.keys(BILLING_MATRIX) as BillingAction[]).some((action) => BILLING_MATRIX[action].includes(staff.role))
-  );
+  return (Object.keys(BILLING_PERMISSION) as BillingAction[]).some((action) => canPerformBilling(staff, action));
 }
 
 export function canPerformBilling(staff: Staff, action: BillingAction): boolean {
-  return staff.active && BILLING_MATRIX[action].includes(staff.role);
+  return can(staff, BILLING_PERMISSION[action], rolesOn(staff));
 }
 
 const BILLING_ACTION_WORDS: Record<BillingAction, string> = {

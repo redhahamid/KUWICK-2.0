@@ -217,13 +217,20 @@ describe('billing authorisation', () => {
     // 5. Front desk bills, collects and corrects lines (incl. waiving a
     // consultation, D-094) but NEVER discounts (owner decision 5).
     ['FRONT_DESK_CLINICAL_STAFF', ['create', 'addLine', 'pay', 'cancelLine']],
-    // 4/11. Doctors raise bills during consultation but hold NO counter
-    // corrections: no payment, no line cancellation, no waiver.
-    ['DOCTOR_RESIDENT', ['create', 'addLine']],
-    ['DOCTOR_LOCUM', ['create', 'addLine']],
+    // TASK 1, owner decision 2 — doctors now hold `billing.counter`. A
+    // 24-hour clinic runs night shifts with a skeleton counter and the doctor
+    // on duty raises the bill and takes the money; refusing that did not make
+    // the clinic safer, it made the doctor use somebody else's login. What no
+    // doctor holds is `billing.corrections`: discount and invoice
+    // cancellation stay out of clinical hands.
+    ['DOCTOR_RESIDENT', ['create', 'addLine', 'pay', 'cancelLine']],
+    ['DOCTOR_LOCUM', ['create', 'addLine', 'pay', 'cancelLine']],
     ['HR_STAFF', []],
     ['STOCK_STAFF', []],
-    ['PANEL_STAFF', []],
+    // TASK 1, owner decision 1 — panel claims are billing work, so the legacy
+    // fallback grants PANEL_STAFF `billing.counter`. A widening, on record:
+    // the role held no billing action before. Zero accounts hold it.
+    ['PANEL_STAFF', ['create', 'addLine', 'pay', 'cancelLine']],
     ['PATIENT_PORTAL', []],
   ];
 

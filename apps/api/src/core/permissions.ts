@@ -104,6 +104,12 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     'dispense.perform',
     // Printing what they issued — an MC, a referral — is part of the act.
     'document.print',
+    // Owner decision: a 24-hour clinic runs night shifts with a skeleton
+    // counter, and the doctor on duty raises the invoice and takes the money.
+    // Refusing that does not make the clinic safer; it makes the doctor use
+    // somebody else's login, which is worse. Corrections stay out of reach —
+    // a doctor may bill for what they did, not discount or void it.
+    'billing.counter',
   ],
 
   CLINICAL_STAFF: [
@@ -159,6 +165,15 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
 // separates duties one legacy role held together — front desk records vitals
 // AND edits demographics — the fallback grants both new roles rather than
 // silently removing half of somebody's job.
+//
+// OWNER DECISION (option 1): the four BACK-OFFICE legacy roles do NOT map to
+// a system role at all. Mapping them to ADMINISTRATOR was the convenient
+// answer and the wrong one: ADMINISTRATOR now officially means FRONT COUNTER
+// — queue, counter billing, demographics — and a finance clerk, an HR clerk
+// and a stock clerk would each have silently acquired the ability to move
+// patients through the queue. They map to permission SUBSETS instead, below.
+// No fifth role was invented, because the people it would describe do not
+// exist: zero accounts hold HR_STAFF, STOCK_STAFF or PANEL_STAFF today.
 // ---------------------------------------------------------------------------
 export const LEGACY_ROLE_FALLBACK: Record<Role, SystemRole[]> = {
   // Owner + administrator, and NOT doctor: clinical ability comes from a
@@ -168,40 +183,44 @@ export const LEGACY_ROLE_FALLBACK: Record<Role, SystemRole[]> = {
   DOCTOR_LOCUM: ['DOCTOR'],
   // Records vitals AND registers patients. Both, or half their job vanishes.
   FRONT_DESK_CLINICAL_STAFF: ['CLINICAL_STAFF', 'ADMINISTRATOR'],
-  // Finance keeps `billing.corrections` through the migration — see
-  // LEGACY_DIRECT_GRANTS below. The role does not carry it; the grant does,
-  // which is the same shape a trusted counter staffer will have.
-  FINANCE_STAFF: ['ADMINISTRATOR'],
-  HR_STAFF: ['ADMINISTRATOR'],
-  // Owner decision: NOT clinical staff. That role carries observation.write
-  // and allergy.write, and an inventory clerk has no business recording a
-  // blood pressure — the mapping would have granted patient-record writes to
-  // stock control, which is exactly the quiet widening this table exists to
-  // make visible.
-  //
-  // FOLLOW-UP, deliberately not built now: dispensing is already its own
-  // permission (`dispense.perform`), but granting it to one person WITHOUT a
-  // role would need per-staff permission grants — a second axis in the model,
-  // a second thing for the Users screen to edit, and a second source of truth
-  // for "what can this person do". Zero accounts hold STOCK_STAFF today, so
-  // nothing is lost by waiting until there is a real one to design against.
-  STOCK_STAFF: ['ADMINISTRATOR'],
-  PANEL_STAFF: ['ADMINISTRATOR'],
+  // The four back-office roles hold no system role — see LEGACY_ROLE_PERMISSIONS.
+  FINANCE_STAFF: [],
+  HR_STAFF: [],
+  STOCK_STAFF: [],
+  PANEL_STAFF: [],
   // Not staff. No capability of any kind.
   PATIENT_PORTAL: [],
 };
 
 /**
- * Individual grants the migration must preserve.
+ * The back-office fallback: legacy roles that resolve to PERMISSIONS directly.
  *
- * FINANCE_STAFF holds APPLY_DISCOUNT and CANCEL_INVOICE today. Their role maps
- * to ADMINISTRATOR, which deliberately does NOT carry corrections — so the
- * capability arrives as a direct grant instead, which is exactly the shape a
- * trusted senior counter staffer will have. Nobody loses anything, and the
- * power is visible as a power rather than buried in a job title.
+ * This table is code, not role assignment — nothing here is selectable in
+ * Settings, and a real back-office hire is composed explicitly out of roles
+ * and individual grants instead. It exists only so accounts created before
+ * roles shipped keep working.
+ *
+ * WHAT EACH ONE GETS, AND WHAT IT LOSES:
+ *
+ *  FINANCE_STAFF  billing.counter + billing.corrections. Keeps all seven
+ *                 billing actions it holds today. LOSES completing a queue
+ *                 ticket / a visit, which it held under D-079 and D-087 —
+ *                 an intentional narrowing: closing a visit asserts that
+ *                 dispensing and payment are done, which is a counter fact,
+ *                 not a finance one.
+ *  HR_STAFF       nothing. It holds nothing in the queue or billing matrices
+ *                 today. Patient demographics were never role-gated at all in
+ *                 1.0, so there is no HR right to preserve there either.
+ *  STOCK_STAFF    dispense.perform only. A widening (it is refused dispensing
+ *                 today) and the reason the permission was carved out.
+ *  PANEL_STAFF    billing.counter — panel claims are billing work. Also a
+ *                 widening; it holds no billing action today.
  */
-export const LEGACY_DIRECT_GRANTS: Partial<Record<Role, Permission[]>> = {
-  FINANCE_STAFF: ['billing.corrections'],
+export const LEGACY_ROLE_PERMISSIONS: Partial<Record<Role, Permission[]>> = {
+  FINANCE_STAFF: ['billing.counter', 'billing.corrections'],
+  HR_STAFF: [],
+  STOCK_STAFF: ['dispense.perform'],
+  PANEL_STAFF: ['billing.counter'],
 };
 
 // ---------------------------------------------------------------------------
@@ -271,6 +290,20 @@ export function rolesOf(staff: Staff, assigned: SystemRole[] | undefined): Syste
   return fallback;
 }
 
+/**
+ * The capability roles the actor loader attached to this Staff row, if any.
+ *
+ * `requireActor` widens Staff to ActingStaff and hangs the explicit
+ * assignments off it. A plain Staff row — from a test, or a code path that
+ * predates the loader — has none, and falls through to the legacy mapping,
+ * which is what the old scattered role lists used to say. One reader, so the
+ * two call sites that need it cannot drift apart.
+ */
+export function attachedRoles(staff: Staff): SystemRole[] | undefined {
+  const attached = (staff as { assignedRoles?: SystemRole[] }).assignedRoles;
+  return attached && attached.length > 0 ? attached : undefined;
+}
+
 export function effectivePermissions(
   staff: Staff,
   assigned?: SystemRole[],
@@ -294,11 +327,12 @@ export function effectivePermissions(
   }
   for (const permission of directGrants ?? []) granted.add(permission);
 
-  // The legacy grant, for anybody with no explicit role assignment yet. Same
-  // rule as the role fallback: a migration must not remove what somebody can
-  // do today.
+  // The back-office fallback, for anybody with no explicit role assignment
+  // yet. Same rule as the role fallback, and the same reason: an explicit
+  // assignment always wins outright, so a staff member deliberately composed
+  // in Settings never has their old job title added back underneath.
   if (!assigned || assigned.length === 0) {
-    for (const permission of LEGACY_DIRECT_GRANTS[staff.role] ?? []) granted.add(permission);
+    for (const permission of LEGACY_ROLE_PERMISSIONS[staff.role] ?? []) granted.add(permission);
   }
 
   // The credential gate. Holding DOCTOR opens the door to the clinical

@@ -1,24 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BillingAction, canAccessBilling, canPerformBilling } from './billing-access';
 
-// G3c closure (D-066) — this table must stay identical to the server's
-// BILLING_MATRIX in clinical-authorization.ts. It decides only what renders;
-// the server refuses independently. Written out in full so a drift between
-// the two sides is a failing test rather than a silent divergence.
-const EXPECTED: Record<string, BillingAction[]> = {
-  OWNER_ADMIN: ['CREATE_INVOICE', 'EDIT_LINES', 'MARK_PAID', 'CANCEL_INVOICE', 'APPLY_DISCOUNT', 'CANCEL_LINE', 'CLASSIFY_VISIT'],
-  FINANCE_STAFF: ['CREATE_INVOICE', 'EDIT_LINES', 'MARK_PAID', 'CANCEL_INVOICE', 'APPLY_DISCOUNT', 'CANCEL_LINE', 'CLASSIFY_VISIT'],
-  // D-093/D-094 — front desk bills, collects, corrects lines and records the
-  // visit type, but never discounts and never cancels an issued invoice.
-  FRONT_DESK_CLINICAL_STAFF: ['CREATE_INVOICE', 'EDIT_LINES', 'MARK_PAID', 'CANCEL_LINE', 'CLASSIFY_VISIT'],
-  DOCTOR_RESIDENT: ['CREATE_INVOICE', 'EDIT_LINES'],
-  DOCTOR_LOCUM: ['CREATE_INVOICE', 'EDIT_LINES'],
-  HR_STAFF: [],
-  STOCK_STAFF: [],
-  PANEL_STAFF: [],
-  PATIENT_PORTAL: [],
-};
-
 const ALL_ACTIONS: BillingAction[] = [
   'CREATE_INVOICE',
   'EDIT_LINES',
@@ -29,64 +11,85 @@ const ALL_ACTIONS: BillingAction[] = [
   'CLASSIFY_VISIT',
 ];
 
-describe('billing access matrix', () => {
-  for (const [role, allowed] of Object.entries(EXPECTED)) {
+const COUNTER_ACTIONS: BillingAction[] = [
+  'CREATE_INVOICE',
+  'EDIT_LINES',
+  'MARK_PAID',
+  'CANCEL_LINE',
+  'CLASSIFY_VISIT',
+];
+const CORRECTION_ACTIONS: BillingAction[] = ['CANCEL_INVOICE', 'APPLY_DISCOUNT'];
+
+// TASK 1 — the browser reads the server's permission list. These tests state
+// what each permission unlocks, which is the whole contract; WHO holds the
+// permission is the server's question and is tested there.
+describe('billing access reads the session permissions', () => {
+  it('billing.counter unlocks the counter actions and nothing more', () => {
+    const staff = { role: 'DOCTOR_RESIDENT', permissions: ['billing.counter'] };
+    for (const action of COUNTER_ACTIONS) expect(canPerformBilling(staff, action)).toBe(true);
+    for (const action of CORRECTION_ACTIONS) expect(canPerformBilling(staff, action)).toBe(false);
+  });
+
+  it('billing.corrections unlocks discount and invoice cancellation', () => {
+    const owner = { role: 'OWNER_ADMIN', permissions: ['billing.corrections'] };
+    for (const action of CORRECTION_ACTIONS) expect(canPerformBilling(owner, action)).toBe(true);
+    for (const action of COUNTER_ACTIONS) expect(canPerformBilling(owner, action)).toBe(false);
+  });
+
+  it('an empty permission list renders nothing — it is an answer, not an absence', () => {
+    // The distinction that matters: `permissions: []` is the server saying
+    // "none", and must NOT fall through to the role table.
+    const hr = { role: 'HR_STAFF', permissions: [] };
+    for (const action of ALL_ACTIONS) expect(canPerformBilling(hr, action)).toBe(false);
+    expect(canAccessBilling(hr)).toBe(false);
+  });
+
+  it('no session at all gets nothing', () => {
+    expect(canPerformBilling(undefined, 'CREATE_INVOICE')).toBe(false);
+    expect(canPerformBilling(null, 'CREATE_INVOICE')).toBe(false);
+    expect(canAccessBilling(undefined)).toBe(false);
+  });
+
+  it('page access follows from holding either billing permission', () => {
+    expect(canAccessBilling({ permissions: ['billing.counter'] })).toBe(true);
+    expect(canAccessBilling({ permissions: ['billing.corrections'] })).toBe(true);
+    expect(canAccessBilling({ permissions: ['note.write', 'queue.manage'] })).toBe(false);
+  });
+});
+
+// A session minted before Task 1 carries no permission list. It falls back to
+// the OLD role table, deliberately left at its old narrower values: a stale
+// session is never shown a control the server would refuse.
+describe('legacy sessions fall back to the role, and only downwards', () => {
+  const LEGACY: Record<string, BillingAction[]> = {
+    OWNER_ADMIN: ALL_ACTIONS,
+    FINANCE_STAFF: ALL_ACTIONS,
+    FRONT_DESK_CLINICAL_STAFF: ['CREATE_INVOICE', 'EDIT_LINES', 'MARK_PAID', 'CANCEL_LINE', 'CLASSIFY_VISIT'],
+    DOCTOR_RESIDENT: ['CREATE_INVOICE', 'EDIT_LINES'],
+    DOCTOR_LOCUM: ['CREATE_INVOICE', 'EDIT_LINES'],
+    HR_STAFF: [],
+    STOCK_STAFF: [],
+    PANEL_STAFF: [],
+    PATIENT_PORTAL: [],
+  };
+
+  for (const [role, allowed] of Object.entries(LEGACY)) {
     for (const action of ALL_ACTIONS) {
       const permitted = allowed.includes(action);
       it(`${role} ${permitted ? 'may' : 'may NOT'} ${action}`, () => {
-        expect(canPerformBilling(role, action)).toBe(permitted);
+        expect(canPerformBilling({ role }, action)).toBe(permitted);
       });
     }
   }
 
-  it('a doctor cannot take payment or cancel a bill', () => {
-    expect(canPerformBilling('DOCTOR_RESIDENT', 'MARK_PAID')).toBe(false);
-    expect(canPerformBilling('DOCTOR_RESIDENT', 'CANCEL_INVOICE')).toBe(false);
+  it('an unknown role gets nothing', () => {
+    expect(canPerformBilling({ role: 'NOT_A_ROLE' }, 'CREATE_INVOICE')).toBe(false);
   });
 
-  it('front desk can take payment but not cancel an issued invoice', () => {
-    expect(canPerformBilling('FRONT_DESK_CLINICAL_STAFF', 'MARK_PAID')).toBe(true);
-    expect(canPerformBilling('FRONT_DESK_CLINICAL_STAFF', 'CANCEL_INVOICE')).toBe(false);
-  });
-
-  it('an unknown or absent role gets nothing', () => {
-    expect(canPerformBilling(undefined, 'CREATE_INVOICE')).toBe(false);
-    expect(canPerformBilling('NOT_A_ROLE', 'CREATE_INVOICE')).toBe(false);
-    expect(canAccessBilling(undefined)).toBe(false);
-  });
-
-  it('page access is granted to anyone with any billing action', () => {
-    for (const [role, allowed] of Object.entries(EXPECTED)) {
-      expect(canAccessBilling(role)).toBe(allowed.length > 0);
-    }
-  });
-});
-
-// G4.5d3c-3b2 (D-094) — the counter tiers the Billing Review workspace renders.
-describe('counter tiers', () => {
-  it('5/80/82. front desk may correct a line but may NOT discount', () => {
-    expect(canPerformBilling('FRONT_DESK_CLINICAL_STAFF', 'CANCEL_LINE')).toBe(true);
-    expect(canPerformBilling('FRONT_DESK_CLINICAL_STAFF', 'APPLY_DISCOUNT')).toBe(false);
-  });
-
-  it('6/7. finance and the owner may discount', () => {
-    expect(canPerformBilling('FINANCE_STAFF', 'APPLY_DISCOUNT')).toBe(true);
-    expect(canPerformBilling('OWNER_ADMIN', 'APPLY_DISCOUNT')).toBe(true);
-  });
-
-  it('11. a doctor may not waive a consultation or set the visit billing type', () => {
-    for (const role of ['DOCTOR_RESIDENT', 'DOCTOR_LOCUM']) {
-      expect(canPerformBilling(role, 'CANCEL_LINE')).toBe(false);
-      expect(canPerformBilling(role, 'CLASSIFY_VISIT')).toBe(false);
-    }
-  });
-
-  it('1/2/3/4. owner, front desk and finance reach billing; other roles do not', () => {
-    for (const role of ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF', 'FINANCE_STAFF']) {
-      expect(canAccessBilling(role)).toBe(true);
-    }
-    for (const role of ['HR_STAFF', 'STOCK_STAFF', 'PANEL_STAFF', 'PATIENT_PORTAL']) {
-      expect(canAccessBilling(role)).toBe(false);
-    }
+  it('the permission list WINS over the role when both are present', () => {
+    // The point of the change. A doctor whose session says billing.counter
+    // takes payment, whatever the old role table used to say about doctors.
+    expect(canPerformBilling({ role: 'DOCTOR_RESIDENT', permissions: ['billing.counter'] }, 'MARK_PAID')).toBe(true);
+    expect(canPerformBilling({ role: 'OWNER_ADMIN', permissions: ['billing.counter'] }, 'APPLY_DISCOUNT')).toBe(false);
   });
 });

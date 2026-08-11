@@ -1,5 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { QueueTicketStatus, Role, Staff } from '@prisma/client';
+import { Permission, attachedRoles, can } from '../core/permissions';
 
 /**
  * S3 (D-079) — who may move a patient through the queue.
@@ -33,34 +34,41 @@ export type QueueAction =
   | 'COMPLETE_TICKET'
   | 'CANCEL_TICKET';
 
-const QUEUE_MATRIX: Record<QueueAction, Role[]> = {
-  // Registering an arrival is front-desk work. Doctors are included because
+/**
+ * TASK 1 — the matrix now says which PERMISSION each action needs, and the
+ * policy module says who holds it. The role lists that used to live here are
+ * gone: they were a second implementation of the same question, which is the
+ * shape of defect this migration exists to remove.
+ *
+ * The split the owner approved runs straight down this table.
+ * `queue.consultationFlow` is the moving-patients-through-the-clinic half —
+ * doctors do it for their own patients all day — and `queue.manage` is the
+ * counter's administration of the day's list.
+ */
+const QUEUE_PERMISSION: Record<QueueAction, Permission> = {
+  // Registering an arrival is front-desk work. Doctors hold it too, because
   // walk-in and emergency arrivals are sometimes entered by whoever is free.
-  CREATE_TICKET: ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF', 'DOCTOR_RESIDENT', 'DOCTOR_LOCUM'],
+  CREATE_TICKET: 'queue.consultationFlow',
 
   // Calling the next patient to a room: front desk announces, and a doctor
   // calls their own next patient.
-  CALL_PATIENT: ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF', 'DOCTOR_RESIDENT', 'DOCTOR_LOCUM'],
+  CALL_PATIENT: 'queue.consultationFlow',
 
-  // S3b — the ROLES that may change the attending clinician at all. Which
-  // change each may make is a further question the matrix cannot express,
-  // because it depends on who currently holds the visit — see
+  // S3b — WHO may change the attending clinician at all. Which change each
+  // may make is a further question no permission can express, because it
+  // depends on who currently holds the visit — see
   // assertMayChangeAttendingClinician below.
-  ASSIGN_CLINICIAN: [
-    'OWNER_ADMIN',
-    'FRONT_DESK_CLINICAL_STAFF',
-    'DOCTOR_RESIDENT',
-    'DOCTOR_LOCUM',
-  ],
+  ASSIGN_CLINICIAN: 'queue.consultationFlow',
 
   // Starting the consultation is the clinician's own act.
-  START_CONSULTATION: ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF', 'DOCTOR_RESIDENT', 'DOCTOR_LOCUM'],
+  START_CONSULTATION: 'queue.consultationFlow',
 
   // KW2-C2 — pausing a consultation and sending the patient back to wait.
   //
-  // The NARROW reading, per this file's own rule. Front desk is deliberately
-  // EXCLUDED: holding is a clinical judgement — the doctor needs a result, or
-  // the patient needs to eat before a fasting test — and it is the doctor who
+  // The NARROW reading, per this file's own rule, and now its own clinical
+  // permission rather than a role list. Front desk is deliberately EXCLUDED:
+  // holding is a clinical judgement — the doctor needs a result, or the
+  // patient needs to eat before a fasting test — and it is the doctor who
   // then has to remember to take them back. A counter that can push a patient
   // out of a consulting room is a queue-management tool aimed at a room the
   // counter cannot see into.
@@ -68,21 +76,25 @@ const QUEUE_MATRIX: Record<QueueAction, Role[]> = {
   // Resuming runs through START_CONSULTATION, which front desk DOES hold: a
   // doctor asking the counter to call a held patient back in is ordinary
   // clinic work, and it is the pause that needed the narrower gate.
-  HOLD_CONSULTATION: ['OWNER_ADMIN', 'DOCTOR_RESIDENT', 'DOCTOR_LOCUM'],
+  //
+  // MIGRATION NOTE: a legacy OWNER_ADMIN who is NOT a clinician loses this.
+  // That is the approved rule — owner alone carries zero clinical ability —
+  // and an owner who is also the GP keeps it through their DOCTOR role.
+  HOLD_CONSULTATION: 'consultation.hold',
 
   // Moving a finished consultation onward is the doctor closing their part.
-  MOVE_TO_DISPENSARY: ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF', 'DOCTOR_RESIDENT', 'DOCTOR_LOCUM'],
+  MOVE_TO_DISPENSARY: 'queue.consultationFlow',
 
   // JUDGEMENT CALL 2 — completing the ticket also sets Visit.checkOutAt, so
   // it closes the visit. That is counter work, and it follows MARK_PAID's
   // reasoning exactly: a doctor does not acquire closing rights merely by
   // being a doctor. Doctors are deliberately EXCLUDED.
-  COMPLETE_TICKET: ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF', 'FINANCE_STAFF'],
+  COMPLETE_TICKET: 'queue.manage',
 
   // JUDGEMENT CALL 3 — cancelling removes a patient from the day's work.
-  // Front desk and the owner only; a doctor who wants a patient removed asks
-  // the counter, which is also how the paper process works.
-  CANCEL_TICKET: ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF'],
+  // The counter only; a doctor who wants a patient removed asks the front
+  // desk, which is also how the paper process works.
+  CANCEL_TICKET: 'queue.manage',
 };
 
 const ACTION_WORDS: Record<QueueAction, string> = {
@@ -97,7 +109,7 @@ const ACTION_WORDS: Record<QueueAction, string> = {
 };
 
 export function canPerformQueueAction(staff: Staff, action: QueueAction): boolean {
-  return staff.active && QUEUE_MATRIX[action].includes(staff.role);
+  return can(staff, QUEUE_PERMISSION[action], attachedRoles(staff));
 }
 
 export function assertCanPerformQueueAction(staff: Staff, action: QueueAction): void {

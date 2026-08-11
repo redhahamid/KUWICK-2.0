@@ -245,7 +245,7 @@ describe('queue board — completion eligibility is the SERVER’S', () => {
 
   // 28 in particular: there is deliberately NO owner override for incomplete
   // dispensing. Medication that has not been supplied cannot be closed over.
-  it.each(['FRONT_DESK_CLINICAL_STAFF', 'OWNER_ADMIN', 'FINANCE_STAFF'])(
+  it.each(['FRONT_DESK_CLINICAL_STAFF', 'OWNER_ADMIN'])(
     '27/28. a dispensing blocker refuses completion for %s',
     async (role) => {
       const { service } = build({
@@ -299,7 +299,10 @@ describe('queue board — completion eligibility is the SERVER’S', () => {
   it.each([
     ['17. OWNER_ADMIN', 'OWNER_ADMIN', true],
     ['18. FRONT_DESK_CLINICAL_STAFF', 'FRONT_DESK_CLINICAL_STAFF', true],
-    ['19. FINANCE_STAFF', 'FINANCE_STAFF', true],
+    // TASK 1 — finance loses visit completion, and the board says so with the
+    // same function the server refuses with. No button is offered that the
+    // server would then reject.
+    ['19. FINANCE_STAFF', 'FINANCE_STAFF', false],
     ['20. DOCTOR_RESIDENT', 'DOCTOR_RESIDENT', false],
     ['20. DOCTOR_LOCUM', 'DOCTOR_LOCUM', false],
     ['STOCK_STAFF', 'STOCK_STAFF', false],

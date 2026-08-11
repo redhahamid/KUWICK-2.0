@@ -6,12 +6,12 @@ import {
   PrescriptionStatus,
   PrescriptionSupplyMode,
   QueueTicketStatus,
-  Role,
   Staff,
   VisitWorkflowEventType,
 } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
+import { attachedRoles, can } from '../core/permissions';
 import { currentTenantId } from '../core/tenant-context';
 import { ClinicalTx, assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
 import { collectBillingWorklist, tariffReviewItems, unbilledReadyItems } from './billing-worklist';
@@ -72,8 +72,16 @@ const MESSAGES: Record<VisitCompletionBlockerCode, string> = {
  * COMPLETE_TICKET and MARK_PAID with the counter in D-066 and D-079. A doctor
  * does not acquire it by being a doctor; they finish the CONSULTATION, which
  * is a different operation with a different permission.
+ *
+ * TASK 1 — the role list is gone; `queue.manage` is the counter's
+ * administration of the day's list and closing a visit is exactly that. A
+ * legacy FINANCE_STAFF account loses this, which is the intentional narrowing
+ * recorded with the migration: finance corrects money, the counter closes
+ * visits.
  */
-const MAY_COMPLETE_VISIT: Role[] = ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF', 'FINANCE_STAFF'];
+export function mayCompleteVisit(actor: Staff): boolean {
+  return can(actor, 'queue.manage', attachedRoles(actor));
+}
 
 /** Queue states from which a visit may legitimately be closed. */
 const COMPLETABLE_FROM: QueueTicketStatus[] = [
@@ -233,7 +241,7 @@ export class VisitCompletionService {
 }
 
 function assertMayCompleteVisit(actor: Staff): void {
-  if (!actor.active || !MAY_COMPLETE_VISIT.includes(actor.role)) {
+  if (!mayCompleteVisit(actor)) {
     throw new ForbiddenException('Your role is not permitted to complete a visit.');
   }
 }
