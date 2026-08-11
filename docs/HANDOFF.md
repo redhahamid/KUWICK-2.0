@@ -323,11 +323,33 @@ selected class would have passed throughout the confusion.
 invoice" works, and the worklist offers one `Add <item> to invoice` button per
 outstanding line. After creating the invoice, ONE of the two lines adds and the
 other keeps offering itself — its Add button neither disappears nor stops
-re-appearing when clicked (a retry loop clicked it for 45s). Find out WHICH
-line and why; creating an invoice auto-adds the consultation (D-093), so the
-likely candidates are a double-add of the consultation or a medication line
-whose add silently fails. The spec currently asserts as far as the page and the
-medication's Add button being present, and is green there.
+re-appearing when clicked (a retry loop clicked it for 45s). The spec asserts
+as far as the page and the medication's Add button being present, and is green
+there.
+
+**Diagnose in THIS order — hand-reproduction first.** Two of the three things
+chased in the last session turned out to be misreadings rather than app
+defects, so reproduce before theorising.
+
+1. **By hand, in the browser.** Create the invoice, watch which line's Add
+   persists. In the network tab: does clicking it fire a request at all? Does
+   that request succeed, fail, or succeed-while-the-UI-does-not-refresh? Those
+   are three different defects and the answer decides everything below.
+2. **Check the D-093 hypothesis FIRST.** Creating an invoice auto-adds the
+   consultation. If the worklist computes "outstanding" against PRE-invoice
+   state, it will forever offer a consultation it cannot add again — the
+   server rejects the double-add and the button never clears. If so, the fix
+   is the worklist's outstanding-lines derivation (subtract what is already on
+   the invoice), **not** the button.
+3. **If it is the MEDICATION line instead**, a silent add failure is itself
+   the defect: surface the error honestly AND fix the cause. A control that
+   fails without saying so is the same family as the false pass fixed earlier.
+4. Then extend the golden path: assert BOTH the consultation and medication
+   lines exist on the invoice **via the API** → payment → COMPLETED → history
+   rail shows Dx/Rx → then the **OTC (C) variant** asserting NO consultation
+   line. That variant re-tests this same worklist logic from the other
+   direction, which is why it is worth doing straight afterwards.
+5. Then the **A1 fix-sweep** proper, then **A2**.
 
 Then, in order: invoice carries a consult line AND a med line · payment ·
 COMPLETED · history rail shows Dx/Rx · then the **OTC (C) variant** asserting
@@ -505,6 +527,17 @@ Task 3 (P1 chip popover + P2 slide-over). Flow's expand/edit is verified
 working; Canvas reaches parity through P2 using the same form component.
 
 ## Standing rules
+
+**E2E assertions target rendered CONSEQUENCES, or ledger/API truths — never
+indicator classes, and never "a dialog closed".** Earned three times over in
+one session: a medication step that passed because a select box echoed its own
+value; a `Call` step that passed while the queue had not moved; and a layout
+toggle wrongly reported as broken because the selected class was believed over
+what actually rendered. Assert the thing that would be wrong for a user.
+
+**Anything blocking the golden path is priority zero**, whichever workstream
+nominally owns it. A defect that stops the guardrail reaching COMPLETED is
+guardrail work by definition.
 
 - Nothing red, blocking, or "interaction detected" anywhere in allergy UI.
 - No per-add allergy popups — the strip is persistent and non-dismissable.
