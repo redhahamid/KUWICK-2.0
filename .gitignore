@@ -11,3 +11,8 @@ coverage/
 .vite/
 *.tsbuildinfo
 apps/api/uploads/
+
+# Playwright E2E output — regenerated on every run.
+/test-results/
+/playwright-report/
+/blob-report/
