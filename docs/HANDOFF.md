@@ -92,9 +92,10 @@ prints every row it does this to.
 
 ## Next session starts here
 
-**Waiting on the new master prompt** (three workstreams — see SCOPE CHANGE
-below). Task 1 is done. Until it lands, the still-open items from the retired
-queue, kept because the work is real whatever it gets renumbered to:
+**Finish the GUARDRAIL** (see its section below — phase 1 of the golden path
+is green, the rest of the flow is the next unit), then A1.
+
+Still-open canvas items from the retired queue, now A2 content:
 
 - **C6 anthropometry** — paeds centiles from DOB + Wt/Ht. A basic chart view.
 - **C8 `.shortcut` expansion** — today it is a Dropdown of hardcoded entries in
@@ -230,17 +231,100 @@ number. Corrected; Dr B now signs live (case 11).
 
 ## SCOPE CHANGE — the work order is superseded
 
-The consolidated work order (Tasks 1–7) is **retired**. A redefined-scope
-master prompt replaces it, with three workstreams:
+The consolidated work order (Tasks 1–7) is **retired**. The master prompt
+replaces it with three workstreams, built in this order:
 
-- **A — medical record: premium + error-free**
-- **B — reporting / analysis**
-- **C — appointments**
+**GUARDRAIL** (first, once) → **A1** fix-sweep → **A2** finish the canvas →
+**A3** premium polish + platform → **B-shell + B1** → **C1** → **B2** →
+**C2** → **C3** → **B3** → parked items last or never.
 
-Task 1's completion flows into **Workstream A**. The old task numbering is
-retired; Task 2.5's parked feedback below survives as content, not as a
-numbered slot, and should be re-placed inside whichever workstream claims it
-when the master prompt lands.
+- **A — medical record dashboard** (premium, error-free)
+- **B — reporting & analysis** (reads 1.0's data, in data-availability order)
+- **C — appointments** (clinic-side, patient PWA, reminders)
+
+Task 1 (roles & permissions) is done and flows into Workstream A. The old task
+numbering is retired; Task 2.5's parked feedback below survives as content and
+lands inside A3.
+
+**Decision points — the only stops:** applying the legacy role mapping to
+production accounts · SST / e-Invoice / messaging-gateway credentials ·
+anything requiring a 1.0 behaviour change.
+
+## GUARDRAIL — Playwright golden path in CI
+
+**Why it exists:** to end the recurring medical-record breakage. Every
+regression this project has shipped was invisible to the unit suites.
+**Rule: red = fix before the next unit. Never disable a step to get green.**
+
+### Done
+
+- **`.github/workflows/ci.yml`** — there was NO CI in this repo before this.
+  Two jobs: `unit` (postgres, migrate, both typechecks, both unit suites,
+  ~2 min) and `e2e` (build both apps, seed, start real servers, drive the real
+  UI). Migrations run in both — a migration that will not apply to an empty
+  database is a defect, and `unit` is the cheapest place to find out.
+- **`playwright.config.ts`** — `@playwright/test` 1.62.1, serial, one worker,
+  1680×1000. Starts NO servers itself (a failed start belongs in a build log,
+  not a test timeout). Locally set `CHROME_PATH=/opt/pw-browsers/chromium`;
+  this container must never run `playwright install`.
+- **`apps/api/prisma/seed-e2e.ts`** — runs AFTER `seed-staging-uat.ts` (the
+  only script that boots an EMPTY database). Guarantees a doctor who can
+  actually sign, J06.9, an all-day consultation tariff, and one medication in
+  stock. Proven from empty against a scratch database.
+- **`e2e/golden-path.spec.ts`** — **phase 1 GREEN**: register at the front
+  counter → queue as Walk-in (W) → Call → Arrived → the patient is in the
+  Consultation tab. Asserted against the queue itself, not against a modal
+  closing.
+- **`e2e/support/app.ts`** — accounts, login, `chooseRadio`, `describeControls`.
+
+### Next unit — the rest of the golden path
+
+Remaining steps to add to the single test, in order: vitals + live BMI · type
+a note and prove the autosave persisted · diagnosis J06.9 · add the seeded
+medication · complete through the checkpoint · dispense (assert a
+`stock_movements` row) · invoice carries a consult line AND a med line ·
+payment · COMPLETED · history rail shows Dx/Rx. Then the **OTC (C) variant**
+asserting NO consultation line.
+
+### Selector knowledge (expensive to rediscover — read this first)
+
+- **This antd version renders `.ant-select-content`, NOT `.ant-select-selector`.**
+  Click the `.ant-select` wrapper to open a dropdown; options are
+  `.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option`,
+  rendered in a PORTAL at the end of `<body>` (never inside the drawer).
+- Options usually arrive from a query AFTER the drawer opens, so open-and-choose
+  must be retried as a unit (`expect(...).toPass()`), and only click to open
+  when the dropdown is not already open — clicking an OPEN antd Select closes it.
+- antd button-style radios hide the real `<input type=radio>`; click the label
+  text (`chooseRadio`).
+- **Queue tabs are TABLES** (`getByRole('row')`); only the Overview tab uses
+  `.ant-list-item` cards.
+- **`Call` only announces — `Arrived` is what starts the consultation.** Call
+  stamps `calledAt` and leaves the ticket WAITING. A spec that asserts only on
+  Call passes while nothing moved.
+- Canvas = `/patients/:patientId?visitId=:visitId`. The **Record View** column
+  switches the right panel: Clinical Notes · Orders & Services · Diagnosis ·
+  Medications · Documents · Invoices. Click the section name to switch.
+  Diagnosis: `input[placeholder="Search diagnosis"]` + `Add`. Medications:
+  unit `e.g. ml, tablet`, frequency `e.g. BD`, `+ Add to Prescription`.
+  Live BMI carries `data-testid="live-bmi"`.
+- Register + queue in one flow: `/queue` → **Add to Queue** → drawer
+  "Add Patient to Queue" → radio **New Patient** → Name / ID Number →
+  **Register & Continue** → drawer "Add <name> to Daily Queue" → Doctor select,
+  Queue Type radio, **Add to Queue**.
+
+### Running it locally
+
+```
+pg_ctlcluster 16 main start
+cd apps/api && npx prisma migrate deploy
+KUWICK_STAGING_SEED=yes STAGING_SEED_PASSWORD='DevLocal!2026' npx tsx prisma/seed-staging-uat.ts
+npx tsx prisma/seed-e2e.ts
+# API against the E2E world, web as usual:
+DATABASE_URL="postgresql://kuwick_dev:devpass@127.0.0.1:5432/kuwick_e2e?schema=public" npm run start:dev
+cd ../web && npm run dev
+CHROME_PATH=/opt/pw-browsers/chromium E2E_PASSWORD='DevLocal!2026' npx playwright test
+```
 
 ## Task 2.5 — PARKED FEEDBACK (do after Task 2, alongside/before Section P)
 
