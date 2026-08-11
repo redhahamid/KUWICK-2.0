@@ -24,9 +24,17 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 
 | | |
 |---|---|
-| Last green | **1104 frontend / 1193 backend**, both typechecks clean |
+| Last green | **1107 frontend / 1207 backend**, both typechecks clean |
+| Golden path | **GREEN, both variants, front door to COMPLETED** |
 | Migrations | 63, no drift |
 | Last commit | see `git log` |
+
+Known flake, pre-existing: one full `vitest run` failed rc=1 on an UNHANDLED
+teardown error ("window is not defined", attributed to
+`diagnosisSearchField.test.tsx`) while every test passed; the next identical
+run was clean and the file passes in isolation on repeat. It is a cross-file
+scheduler-tick-after-jsdom-teardown race, not a test failure — re-run before
+believing a red that shows 0 failed tests, and fix the race if it recurs.
 
 ## Checklist state
 
@@ -66,9 +74,9 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
   text first, assert every anchor, then write.
 - Visit query keys are `['visits','patient',patientId]` and `['visits',id]` —
   **not** `['visit',id]`. Invalidating the wrong one leaves the Canvas header
-  disagreeing with the queue.
-- `useCompleteVisit` still invalidates `['visit', visitId]`, which matches
-  nothing. Pre-existing, unrelated to C2 — worth fixing when H21 is built.
+  disagreeing with the queue. This defect family shipped THREE times
+  (hold/resume, `useCompleteVisit`, `useBillingRefresh`) — the last two are
+  fixed now, but grep for `'visit',` before trusting any new invalidation.
 
 ## Credentialing — never hand-write these fields
 
@@ -104,8 +112,10 @@ prints every row it does this to.
 
 ## Next session starts here
 
-**Finish the GUARDRAIL** (see its section below — phase 1 of the golden path
-is green, the rest of the flow is the next unit), then A1.
+**The GUARDRAIL is finished** — both golden-path variants run front door to
+COMPLETED (see its section below). **Start the A1 fix-sweep**: reproduce every
+known consult-flow error against the running app, fix, and cover each at the
+layer that broke. Then A2.
 
 Still-open canvas items from the retired queue, now A2 content:
 
@@ -289,7 +299,7 @@ regression this project has shipped was invisible to the unit suites.
   closing.
 - **`e2e/support/app.ts`** — accounts, login, `chooseRadio`, `describeControls`.
 
-### Green so far (phases 1–9)
+### GREEN — the complete path, both variants
 
 register at the front counter → queue as Walk-in (W) → **Call** → **Arrived**
 → canvas → vitals with a derived BMI (asserts the NUMBER: 70kg/1.70m = 24.2) →
@@ -297,8 +307,45 @@ clinical note typed, saved, **page reloaded, text still there** (this is D1's
 regression test) → diagnosis J06.9 → Paracetamol 500mg prescribed (verified in
 the database: ORDERED, ONSITE_DISPENSE, TDS) → switch to Canvas → **complete
 through the checkpoint** → front desk **dispenses**, asserted against the drug
-movement ledger (a DISPENSED −1 referencing the prescription), ticket now
-READY_FOR_PAYMENT.
+movement ledger (a DISPENSED −1 referencing the prescription) → **Create
+invoice** (consultation auto-adds) → **Add the medication from the worklist**
+→ BOTH lines asserted **via the API** (`sourceConsultationVisitId` /
+`sourcePrescriptionId`, cancelled lines excluded) → **Collect RM** payment
+(Settled, `paidAt` via API) → **Complete Visit** from Queue Management
+(Completed tab + `checkOutAt` via API) → doctor reopens the record and the
+**history rail's today-card** reads COMPLETED with the Dx (J06.9) and the Rx.
+
+**OTC (C) variant, also green:** the same path queued as OTC (C) with ONLY a
+medication — no vitals, note or diagnosis; the checkpoint names those gaps and
+is passed deliberately. The billing page states "This kind of visit carries no
+consultation charge." (assert it inside `getByRole('alert')` — the sentence
+also appears on the worklist row's state tag), ensure-consultation adds
+nothing, and the API assertion is inverted: the medication line exists, **no
+line carries `sourceConsultationVisitId`**. Payment and completion are shared
+with the main path via `payAndComplete()`.
+
+### The billing worklist stall — DIAGNOSED AND FIXED
+
+The recorded five-step order worked exactly as written; hand-reproduction
+settled it in one pass. It was **defect 3 — succeed-while-the-UI-does-not-
+refresh**, not the D-093 derivation hypothesis: clicking the medication's Add
+fired a POST the server accepted (line on the invoice, verified in the
+database seconds after the click) while the worklist never refetched, so the
+button kept offering itself. Root cause: the five pre-D-094 hooks at the top
+of `useInvoices.ts` (`useCreateInvoice`, `useAddInvoiceLine`,
+`useRemoveInvoiceLine`, `useCancelInvoice`, `usePayInvoice`) invalidated only
+`['invoices', visitId]` and never `['billing-worklist', ...]` /
+`['completion-blockers', ...]`. The consultation's Add SEEMED to clear on
+create only because `useEnsureConsultation` fired straight after and its
+`useBillingRefresh` invalidated the worklist — masking the same gap in
+`useCreateInvoice`.
+
+Fix: all five now route through `useBillingRefresh`, and its `['visit', id]`
+became `['visits', id]` (the singular key matched nothing); same one-word fix
+in `useCompleteVisit`. Pinned by `billingRefresh.test.tsx` in the
+holdConsultation style — counts real refetches, asserts the rendered
+consequence. Proven the hard way: an accidental run of the OLD code against
+the NEW tests (untracked files don't stash) failed exactly those three.
 
 ### WHICH LAYOUT OWNS WHAT (read this before touching the canvas)
 
@@ -317,43 +364,10 @@ Canvas only to complete it. `e2e/golden-path.spec.ts` has a toggle test that
 asserts the RENDERED content changes in both directions — a test asserting the
 selected class would have passed throughout the confusion.
 
-### Next unit — resume exactly here
+### Next unit
 
-**Billing is where it stops.** `/billing/visits/:visitId` renders, "Create
-invoice" works, and the worklist offers one `Add <item> to invoice` button per
-outstanding line. After creating the invoice, ONE of the two lines adds and the
-other keeps offering itself — its Add button neither disappears nor stops
-re-appearing when clicked (a retry loop clicked it for 45s). The spec asserts
-as far as the page and the medication's Add button being present, and is green
-there.
-
-**Diagnose in THIS order — hand-reproduction first.** Two of the three things
-chased in the last session turned out to be misreadings rather than app
-defects, so reproduce before theorising.
-
-1. **By hand, in the browser.** Create the invoice, watch which line's Add
-   persists. In the network tab: does clicking it fire a request at all? Does
-   that request succeed, fail, or succeed-while-the-UI-does-not-refresh? Those
-   are three different defects and the answer decides everything below.
-2. **Check the D-093 hypothesis FIRST.** Creating an invoice auto-adds the
-   consultation. If the worklist computes "outstanding" against PRE-invoice
-   state, it will forever offer a consultation it cannot add again — the
-   server rejects the double-add and the button never clears. If so, the fix
-   is the worklist's outstanding-lines derivation (subtract what is already on
-   the invoice), **not** the button.
-3. **If it is the MEDICATION line instead**, a silent add failure is itself
-   the defect: surface the error honestly AND fix the cause. A control that
-   fails without saying so is the same family as the false pass fixed earlier.
-4. Then extend the golden path: assert BOTH the consultation and medication
-   lines exist on the invoice **via the API** → payment → COMPLETED → history
-   rail shows Dx/Rx → then the **OTC (C) variant** asserting NO consultation
-   line. That variant re-tests this same worklist logic from the other
-   direction, which is why it is worth doing straight afterwards.
-5. Then the **A1 fix-sweep** proper, then **A2**.
-
-Then, in order: invoice carries a consult line AND a med line · payment ·
-COMPLETED · history rail shows Dx/Rx · then the **OTC (C) variant** asserting
-NO consultation line.
+The **A1 fix-sweep**, then **A2**. The guardrail is done; keep it green —
+red = fix before the next unit, never disable a step.
 
 ### Three things this has already caught
 
@@ -396,6 +410,11 @@ NO consultation line.
   Diagnosis: `input[placeholder="Search diagnosis"]` + `Add`. Medications:
   unit `e.g. ml, tablet`, frequency `e.g. BD`, `+ Add to Prescription`.
   Live BMI carries `data-testid="live-bmi"`.
+- Billing → completion vocabulary: payment is the `/^Collect RM/` button
+  (CASH pre-selected), settlement renders a `Settled` tag; completion lives in
+  Queue Management's **Payment** tab — button aria-label
+  `Complete visit for <name>`, modal ok-button text `Complete Visit`; the
+  canvas rail's today-card is `data-testid="canvas-visit-today"`.
 - Register + queue in one flow: `/queue` → **Add to Queue** → drawer
   "Add Patient to Queue" → radio **New Patient** → Name / ID Number →
   **Register & Continue** → drawer "Add <name> to Daily Queue" → Doctor select,

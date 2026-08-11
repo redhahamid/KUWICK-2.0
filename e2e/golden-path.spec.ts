@@ -176,7 +176,80 @@ async function section(page: Page, name: string): Promise<void> {
   await page.getByText(name, { exact: true }).first().click();
 }
 
-test('golden path — registration through the doctor phase (completion onward: next unit)', async ({ page }) => {
+/**
+ * An authenticated GET through the session the browser already holds — same
+ * reasoning as `stockMovementsFor`: the guardrail asserts what the app says
+ * about itself, never a database row the app would not have shown anybody.
+ * (Arrow functions only inside `evaluate` — esbuild's `keepNames` injects a
+ * `__name` helper that does not exist in the page for declarations.)
+ */
+async function apiGet<T>(page: Page, path: string): Promise<T | null> {
+  return page.evaluate(async (p: string) => {
+    const auth = JSON.parse(window.localStorage.getItem('kuwick-auth') ?? '{}');
+    const response = await fetch(`http://localhost:3000${p}`, {
+      headers: { authorization: `Bearer ${auth?.state?.accessToken}` },
+    });
+    return response.ok ? response.json() : null;
+  }, path) as Promise<T | null>;
+}
+
+/** The visit's invoices, with their lines — the ledger the bill asserts on. */
+interface ApiInvoiceLine {
+  description: string;
+  amount: string;
+  sourcePrescriptionId: string | null;
+  sourceConsultationVisitId?: string | null;
+  cancelledAt?: string | null;
+}
+interface ApiInvoice {
+  id: string;
+  status: string;
+  paidAt: string | null;
+  paymentMethod: string | null;
+  totalAmount: string;
+  lines: ApiInvoiceLine[];
+}
+
+/**
+ * Settle the bill and close the visit, from the counter. Shared by the golden
+ * path and the OTC variant — deliberately AFTER each has made its own
+ * assertions about what the invoice contains, because the two variants exist
+ * to disagree about exactly that.
+ */
+async function payAndComplete(page: Page, patientName: string, visitId: string): Promise<void> {
+  // Payment. CASH is the pre-selected method; the button quotes the balance.
+  const collect = page.getByRole('button', { name: /^Collect RM/ });
+  await expect(collect).toBeEnabled();
+  await collect.click();
+
+  // Rendered consequence first (the summary says Settled), API truth second.
+  await expect(page.getByText('Settled')).toBeVisible();
+  await expect(async () => {
+    const invoices = await apiGet<ApiInvoice[]>(page, `/invoices?visitId=${visitId}`);
+    const paid = invoices?.find((invoice) => invoice.status === 'PAID');
+    expect(paid?.paidAt).toBeTruthy();
+  }).toPass({ timeout: 15_000 });
+
+  // Completion happens in Queue Management, never here (D-095).
+  await page.goto('/queue');
+  await expectRowInStage(page, 'payment', patientName);
+  const row = page.getByRole('row').filter({ hasText: patientName });
+  await row.getByRole('button', { name: `Complete visit for ${patientName}` }).click();
+
+  const completeModal = page.getByRole('dialog').filter({ hasText: /complete this visit/i });
+  await expect(completeModal).toBeVisible();
+  await completeModal.getByRole('button', { name: 'Complete Visit' }).click();
+  await expect(completeModal).toBeHidden();
+
+  // The queue agrees the visit is over, and so does the visit itself.
+  await expectRowInStage(page, 'completed', patientName);
+  await expect(async () => {
+    const visit = await apiGet<{ checkOutAt: string | null }>(page, `/visits/${visitId}`);
+    expect(visit?.checkOutAt).toBeTruthy();
+  }).toPass({ timeout: 15_000 });
+}
+
+test('golden path — registration through payment, completion and the history rail', async ({ page }) => {
   const patientName = uniquePatientName('E2E Golden');
   const nric = syntheticNric();
 
@@ -370,19 +443,166 @@ test('golden path — registration through the doctor phase (completion onward: 
   }).toPass({ timeout: 20_000 });
 
   // =====================================================================
-  // 10. THE BILL — next unit. See HANDOFF.
+  // 10. THE BILL.
   //
-  // The billing worklist offers "Add <item> to invoice" per outstanding line.
-  // After Create invoice, ONE of the two lines adds and the other keeps
-  // offering itself: its Add button neither disappears nor stops re-appearing
-  // when clicked. Which line, and why, is the first thing to find out — the
-  // page is reached and the invoice is created, so this is a small distance
-  // from done.
+  // Create invoice auto-adds the consultation (an idempotent server
+  // operation); the medication is added from the worklist. The assertion is
+  // made against the API — BOTH lines on the invoice — because the worklist
+  // once kept offering a line the server had already accepted: the add
+  // succeeded, the screen never refreshed, and a retry loop clicked the same
+  // button for 45 seconds. billingRefresh.test.tsx pins the refresh at the
+  // hook layer; this asserts the ledger.
   // =====================================================================
-  const visitId = new URL(visitUrl).searchParams.get('visitId');
+  const visitId = new URL(visitUrl).searchParams.get('visitId')!;
   await page.goto(`/billing/visits/${visitId}`);
   await expect(page.getByRole('heading', { name: new RegExp(`Billing review.*${patientName}`) })).toBeVisible();
   await expect(page.getByRole('button', { name: `Add ${MEDICATION} to invoice` })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Create invoice' }).click();
+  // The consultation line arrives with the invoice; its worklist entry stops
+  // offering itself, and only the medication is left to add.
+  await expect(page.getByRole('button', { name: `Add ${MEDICATION} to invoice` })).toBeVisible();
+  await page.getByRole('button', { name: `Add ${MEDICATION} to invoice` }).click();
+
+  // The rendered consequence of a refresh that tells the truth: nothing on
+  // the worklist is offered twice.
+  await expect(page.getByRole('button', { name: /add .* to invoice/i })).toHaveCount(0);
+
+  // The ledger: one invoice, carrying a consultation line AND the medication
+  // line, both alive.
+  const invoices = await apiGet<ApiInvoice[]>(page, `/invoices?visitId=${visitId}`);
+  expect(invoices?.length).toBe(1);
+  const liveLines = invoices![0].lines.filter((line) => !line.cancelledAt);
+  expect(liveLines.some((line) => Boolean(line.sourceConsultationVisitId))).toBe(true);
+  expect(liveLines.some((line) => Boolean(line.sourcePrescriptionId) && line.description.includes(MEDICATION))).toBe(true);
+
+  // =====================================================================
+  // 11. PAYMENT, THEN COMPLETION — and the history rail remembers.
+  // =====================================================================
+  await payAndComplete(page, patientName, visitId);
+
+  // The history rail: the doctor reopens the record and the visit card says
+  // what happened — completed, with the diagnosis and the prescription. This
+  // is the whole consultation, readable at a glance, which is what the rail
+  // is for.
+  await logout(page);
+  await login(page, ACCOUNTS.doctor);
+  await useLayout(page, 'canvas');
+  await page.goto(visitUrl);
+  const todayCard = page.getByTestId('canvas-visit-today');
+  await expect(todayCard).toContainText('COMPLETED');
+  await expect(todayCard).toContainText(DIAGNOSIS_CODE);
+  await expect(todayCard).toContainText('Paracetamol');
+});
+
+/**
+ * THE OTC (C) VARIANT — a counter sale, and the bill it must NOT carry.
+ *
+ * The same front door and the same worklist, entered from the other
+ * direction: an OTC-queued visit classifies as OTC_ONLY, so the consultation
+ * is NOT chargeable — ensure-consultation adds nothing, the page says so in
+ * words, and the settled invoice carries the medication line alone. This
+ * re-tests the worklist's outstanding-lines logic from the side where the
+ * right answer is "nothing to add but the medicine".
+ */
+test('OTC (C) variant — the invoice carries the medication and NO consultation line', async ({ page }) => {
+  const patientName = uniquePatientName('E2E OTC');
+  const nric = syntheticNric();
+
+  // Register and queue as OTC (C) — the only step that differs.
+  await login(page, ACCOUNTS.frontDesk);
+  await page.goto('/queue');
+  await page.getByRole('button', { name: 'Add to Queue' }).click();
+  const registerDrawer = page.getByRole('dialog', { name: /add patient to queue/i });
+  await expect(registerDrawer).toBeVisible();
+  await chooseRadio(registerDrawer, 'New Patient');
+  await registerDrawer.getByLabel('Name').fill(patientName);
+  await registerDrawer.getByLabel('ID Number').fill(nric);
+  await registerDrawer.getByRole('button', { name: /register & continue/i }).click();
+
+  const queueDrawer = page.getByRole('dialog', { name: new RegExp(`add ${patientName}`, 'i') });
+  await expect(queueDrawer).toBeVisible();
+  await chooseFromSelect(page, 'Doctor', /doctor/i);
+  await chooseRadio(queueDrawer, 'OTC (C)');
+  await queueDrawer.getByLabel('Presenting Complaint').fill('OTC purchase — paracetamol');
+  await queueDrawer.getByRole('button', { name: 'Add to Queue' }).click();
+  await expect(queueDrawer).toBeHidden();
+
+  // Called in, arrived — the ticket lifecycle is the same lifecycle.
+  await page.getByRole('tab', { name: /^waiting/i }).click();
+  const waitingRow = page.getByRole('row').filter({ hasText: patientName });
+  await expect(waitingRow).toBeVisible();
+  await waitingRow.getByRole('button', { name: 'Call' }).click();
+  const callModal = page.getByRole('dialog').filter({ hasText: /attending doctor/i });
+  await expect(callModal).toBeVisible();
+  await callModal.getByRole('button', { name: 'Call' }).click();
+  await expect(callModal).toBeHidden();
+  await waitingRow.getByRole('button', { name: 'Arrived' }).click();
+  await expectRowInStage(page, 'consultation', patientName);
+
+  // The medication — and nothing else. No vitals, no note, no diagnosis:
+  // the checkpoint will name those gaps and the doctor passes it knowingly.
+  await logout(page);
+  await login(page, ACCOUNTS.doctor);
+  await page.goto('/queue');
+  await expectRowInStage(page, 'consultation', patientName);
+  await page.getByRole('link', { name: patientName }).first().click();
+  await expect(page.getByText('Record View')).toBeVisible();
+  const visitUrl = page.url();
+  const visitId = new URL(visitUrl).searchParams.get('visitId')!;
+
+  await section(page, 'Medications');
+  await chooseFromPlaceholderSelect(page, 'Search medicine', MEDICATION);
+  await fieldUnder(page, 'Dose Amount').fill('1');
+  await page.getByPlaceholder('e.g. ml, tablet').fill('tablet');
+  await page.getByPlaceholder('e.g. BD').fill('PRN');
+  await page.getByRole('button', { name: /add to prescription/i }).click();
+  const prescribed = page.locator('.ant-card').filter({ hasText: 'Prescribed Medications' });
+  await expect(prescribed.getByText(MEDICATION)).toBeVisible();
+
+  await useLayout(page, 'canvas');
+  await page.goto(visitUrl);
+  const footer = page.locator('section[aria-label="Consultation completion"]');
+  await expect(footer).toBeVisible();
+  await footer.getByRole('button', { name: /complete & send/i }).click();
+  const checkpoint = page.getByRole('dialog').filter({ hasText: /before completing this consultation/i });
+  await expect(checkpoint).toBeVisible();
+  await checkpoint.getByRole('button', { name: /proceed & complete/i }).click();
+  await expect(checkpoint).toBeHidden();
+  await expect(footer).toContainText(/completed/i);
+
+  // Dispense at the counter.
+  await logout(page);
+  await login(page, ACCOUNTS.frontDesk);
+  await page.goto('/dispensary');
+  await page.getByRole('button', { name: new RegExp(patientName, 'i') }).click();
+  await page.getByRole('button', { name: 'Confirm Medications Dispensed' }).click();
+  const dispenseModal = page.getByRole('dialog').filter({ hasText: /dispens/i });
+  await expect(dispenseModal).toBeVisible();
+  await dispenseModal.getByRole('button', { name: 'Confirm Medications Dispensed' }).click();
+  await expect(dispenseModal).toBeHidden();
+
+  // The bill. The page SAYS the consultation is not chargeable, the worklist
+  // never offers it, and after the one add there is nothing left to offer.
+  await page.goto(`/billing/visits/${visitId}`);
+  await expect(page.getByRole('heading', { name: new RegExp(`Billing review.*${patientName}`) })).toBeVisible();
+  await page.getByRole('button', { name: 'Create invoice' }).click();
+  // The same sentence appears on the worklist row's state tag too, so the
+  // assertion is scoped to the page-level alert.
+  await expect(page.getByRole('alert').getByText('This kind of visit carries no consultation charge.')).toBeVisible();
+
+  await page.getByRole('button', { name: `Add ${MEDICATION} to invoice` }).click();
+  await expect(page.getByRole('button', { name: /add .* to invoice/i })).toHaveCount(0);
+
+  // The ledger — the assertion this variant exists for: the medication line,
+  // and NO consultation line.
+  const invoices = await apiGet<ApiInvoice[]>(page, `/invoices?visitId=${visitId}`);
+  expect(invoices?.length).toBe(1);
+  const liveLines = invoices![0].lines.filter((line) => !line.cancelledAt);
+  expect(liveLines.some((line) => Boolean(line.sourcePrescriptionId) && line.description.includes(MEDICATION))).toBe(true);
+  expect(liveLines.some((line) => Boolean(line.sourceConsultationVisitId))).toBe(false);
+
+  await payAndComplete(page, patientName, visitId);
 });
 
 /**
