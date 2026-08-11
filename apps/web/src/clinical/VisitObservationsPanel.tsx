@@ -325,10 +325,15 @@ export function VisitObservationsPanel({ visitId, compact }: VisitObservationsPa
   }, [mode.kind, mode.kind === 'EDIT' ? mode.target.id : null]);
 
   // A visit switch resets everything: the same reading on a different patient
-  // is a different reading.
+  // is a different reading. The fields are cleared only while the form is
+  // actually mounted — that is the one case the mode effect above cannot
+  // cover (the mode key does not change, so it will not re-run). In SUMMARY
+  // there is no form to clear, calling into the disconnected instance is a
+  // console error (A1), and every later entry into a form mode sets or
+  // resets all fields anyway.
   useEffect(() => {
     guard.current = { inFlight: null, lastAccepted: null };
-    form.resetFields();
+    if (showingForm) form.resetFields();
     setValues({});
     setPinned(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps

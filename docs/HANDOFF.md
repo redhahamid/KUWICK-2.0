@@ -366,8 +366,39 @@ selected class would have passed throughout the confusion.
 
 ### Next unit
 
-The **A1 fix-sweep**, then **A2**. The guardrail is done; keep it green —
-red = fix before the next unit, never disable a step.
+The **A1 fix-sweep** (in progress), then **A2**. The guardrail is done; keep
+it green — red = fix before the next unit, never disable a step.
+
+### A1 so far — zero console errors, enforced
+
+Both golden-path tests now END by asserting `collectConsoleErrors(page)` is
+empty (`e2e/support/app.ts`). What the first run of that assertion found, and
+what was done with each:
+
+- **34 raw errors.** 30 were antd v6 dev-build DEPRECATION chatter emitted
+  through console.error (`[antd: Drawer] width…`) — filtered by prefix as
+  upgrade chores, not consult-flow defects.
+- **Genuinely disconnected `Form.useForm` instances** — an instance held in a
+  component whose `<Form>` renders conditionally (mode switch or
+  destroyOnHidden) is connected to nothing. FIXED by structure, in the
+  "child owns its form" pattern: `AddQueuePatientDrawer` (NewPatientForm
+  child), `AddToQueueDrawer` (QueueDetailsForm child), `EditPatientDrawer`
+  (child + initialValues replacing the setFieldsValue effect),
+  `NewVisitDrawer` (NewVisitForm child), and `VisitObservationsPanel`
+  (the visit-switch effect no longer calls resetFields when the form is not
+  showing). The same latent shape still exists in the billing modals
+  (BillingVisitPage manualForm, BillingSummaryPanel, BillingInvoicePanel,
+  PanelBenefitPanel — Form in destroyOnHidden Modal); apply the same pattern
+  when touching those files.
+- **One library false positive, filtered with evidence**: antd 6.5.2 + React
+  19 StrictMode fires "useForm is not connected" once per page load even for
+  the LOGIN page's textbook inline `<Form>` — proven by hooking
+  `window.setTimeout` in an init script and printing the stack whenever
+  `warningUnhooked` schedules (the warning itself fires from a timeout, so a
+  console.error hook shows nothing useful; `warningOnce` also dedupes per
+  page load, so counts mislead). Field.render, onChange AND submit all warn
+  against the login form's own store while the form demonstrably works.
+  Dev-build-only; production bundles (what CI tests) strip it.
 
 ### Three things this has already caught
 

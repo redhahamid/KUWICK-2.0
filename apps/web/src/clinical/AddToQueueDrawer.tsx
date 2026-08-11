@@ -35,6 +35,25 @@ type VisitKind = 'cash' | 'panel';
 // PanelClinic catalog; billingType itself is still derived server-side
 // from the panel's name (VisitService#create), this is just the UI.
 export function AddToQueueDrawer({ patient, onClose }: AddToQueueDrawerProps) {
+  return (
+    <Drawer
+      title={patient ? `Add ${patient.name} to Daily Queue` : 'Add to Daily Queue'}
+      open={Boolean(patient)}
+      onClose={onClose}
+      destroyOnHidden
+    >
+      {patient && <QueueDetailsForm patient={patient} onClose={onClose} />}
+    </Drawer>
+  );
+}
+
+/**
+ * The drawer body — a child on purpose (A1): `Form.useForm` and its `<Form>`
+ * mount and unmount together with the drawer's content (destroyOnHidden), so
+ * the instance is never left connected to nothing, and each open starts from
+ * clean fields.
+ */
+function QueueDetailsForm({ patient, onClose }: { patient: Patient; onClose: () => void }) {
   const { data: clinics } = useClinics();
   const { data: staff } = useStaff();
   const { data: allPanels } = usePanelClinics();
@@ -71,7 +90,6 @@ export function AddToQueueDrawer({ patient, onClose }: AddToQueueDrawerProps) {
   };
 
   const handleSubmit = async (values: Omit<AddToQueueDto, 'patientId' | 'billingType'>) => {
-    if (!patient) return;
     try {
       const ticket = await addToQueue.mutateAsync({
         ...values,
@@ -95,87 +113,85 @@ export function AddToQueueDrawer({ patient, onClose }: AddToQueueDrawerProps) {
   };
 
   return (
-    <Drawer title={patient ? `Add ${patient.name} to Daily Queue` : 'Add to Daily Queue'} open={Boolean(patient)} onClose={onClose} destroyOnHidden>
-      <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ clinicId: defaultClinicId }}>
-        <Form.Item name="clinicId" label="Clinic" rules={[{ required: true }]}>
-          <Select options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))} />
-        </Form.Item>
-        <Form.Item name="staffId" label="Doctor" rules={[{ required: true }]}>
-          <Select options={staff?.map((member) => ({ value: member.id, label: member.fullName }))} />
-        </Form.Item>
-        <Form.Item name="queueType" label="Queue Type" initialValue="WALK_IN">
-          <Radio.Group optionType="button" buttonStyle="solid" options={QUEUE_TYPE_OPTIONS} />
-        </Form.Item>
-        <Form.Item label="Billing Type" required>
-          <Radio.Group
-            value={visitKind}
-            onChange={(e) => setVisitKind(e.target.value)}
-            optionType="button"
-            buttonStyle="solid"
-            options={[
-              { label: 'Cash', value: 'cash' },
-              { label: 'Panel', value: 'panel' },
-            ]}
+    <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ clinicId: defaultClinicId }}>
+      <Form.Item name="clinicId" label="Clinic" rules={[{ required: true }]}>
+        <Select options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))} />
+      </Form.Item>
+      <Form.Item name="staffId" label="Doctor" rules={[{ required: true }]}>
+        <Select options={staff?.map((member) => ({ value: member.id, label: member.fullName }))} />
+      </Form.Item>
+      <Form.Item name="queueType" label="Queue Type" initialValue="WALK_IN">
+        <Radio.Group optionType="button" buttonStyle="solid" options={QUEUE_TYPE_OPTIONS} />
+      </Form.Item>
+      <Form.Item label="Billing Type" required>
+        <Radio.Group
+          value={visitKind}
+          onChange={(e) => setVisitKind(e.target.value)}
+          optionType="button"
+          buttonStyle="solid"
+          options={[
+            { label: 'Cash', value: 'cash' },
+            { label: 'Panel', value: 'panel' },
+          ]}
+        />
+      </Form.Item>
+      {visitKind === 'panel' && (
+        <Form.Item label="Panel" required>
+          <Select
+            placeholder="Select panel..."
+            value={selectedPanelId}
+            onChange={setSelectedPanelId}
+            options={panels?.map((panel) => ({ value: panel.id, label: panel.name }))}
           />
-        </Form.Item>
-        {visitKind === 'panel' && (
-          <Form.Item label="Panel" required>
-            <Select
-              placeholder="Select panel..."
-              value={selectedPanelId}
-              onChange={setSelectedPanelId}
-              options={panels?.map((panel) => ({ value: panel.id, label: panel.name }))}
+          {selectedPanel && !editingLimit && (
+            <Alert
+              style={{ marginTop: 8 }}
+              type="info"
+              showIcon
+              message={
+                <Space>
+                  {selectedPanel.limitAmount
+                    ? `Panel limit: RM ${selectedPanel.limitAmount} per visit`
+                    : 'No limit configured for this panel'}
+                  <Button type="link" size="small" icon={<EditOutlined />} onClick={startEditLimit}>
+                    Edit
+                  </Button>
+                </Space>
+              }
             />
-            {selectedPanel && !editingLimit && (
-              <Alert
-                style={{ marginTop: 8 }}
-                type="info"
-                showIcon
-                message={
-                  <Space>
-                    {selectedPanel.limitAmount
-                      ? `Panel limit: RM ${selectedPanel.limitAmount} per visit`
-                      : 'No limit configured for this panel'}
-                    <Button type="link" size="small" icon={<EditOutlined />} onClick={startEditLimit}>
-                      Edit
-                    </Button>
-                  </Space>
-                }
+          )}
+          {selectedPanel && editingLimit && (
+            <Space style={{ marginTop: 8 }}>
+              <InputNumber
+                autoFocus
+                min={0}
+                prefix="RM"
+                placeholder="No limit"
+                value={limitDraft}
+                onChange={setLimitDraft}
               />
-            )}
-            {selectedPanel && editingLimit && (
-              <Space style={{ marginTop: 8 }}>
-                <InputNumber
-                  autoFocus
-                  min={0}
-                  prefix="RM"
-                  placeholder="No limit"
-                  value={limitDraft}
-                  onChange={setLimitDraft}
-                />
-                <Button type="primary" size="small" loading={updatePanelClinic.isPending} onClick={saveLimit}>
-                  Save
-                </Button>
-                <Button size="small" onClick={() => setEditingLimit(false)}>
-                  Cancel
-                </Button>
-              </Space>
-            )}
-          </Form.Item>
-        )}
-        <Form.Item name="presentingComplaint" label="Presenting Complaint">
-          <Input.TextArea rows={2} />
+              <Button type="primary" size="small" loading={updatePanelClinic.isPending} onClick={saveLimit}>
+                Save
+              </Button>
+              <Button size="small" onClick={() => setEditingLimit(false)}>
+                Cancel
+              </Button>
+            </Space>
+          )}
         </Form.Item>
-        <Button
-          type="primary"
-          htmlType="submit"
-          loading={addToQueue.isPending}
-          disabled={visitKind === 'panel' && !selectedPanelId}
-          block
-        >
-          Add to Queue
-        </Button>
-      </Form>
-    </Drawer>
+      )}
+      <Form.Item name="presentingComplaint" label="Presenting Complaint">
+        <Input.TextArea rows={2} />
+      </Form.Item>
+      <Button
+        type="primary"
+        htmlType="submit"
+        loading={addToQueue.isPending}
+        disabled={visitKind === 'panel' && !selectedPanelId}
+        block
+      >
+        Add to Queue
+      </Button>
+    </Form>
   );
 }

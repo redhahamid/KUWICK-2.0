@@ -1,5 +1,5 @@
 import { Locator, Page, expect, test } from '@playwright/test';
-import { ACCOUNTS, DIAGNOSIS_CODE, MEDICATION, chooseRadio, describeControls, login, logout, uniquePatientName } from './support/app';
+import { ACCOUNTS, DIAGNOSIS_CODE, MEDICATION, chooseRadio, collectConsoleErrors, describeControls, login, logout, uniquePatientName } from './support/app';
 
 /**
  * THE GUARDRAIL — one patient, front door to front door.
@@ -252,6 +252,10 @@ async function payAndComplete(page: Page, patientName: string, visitId: string):
 test('golden path — registration through payment, completion and the history rail', async ({ page }) => {
   const patientName = uniquePatientName('E2E Golden');
   const nric = syntheticNric();
+  // A1 done-criterion: ZERO console errors through a complete consult.
+  // Asserted at the very end, so a noisy-but-working step still runs the
+  // whole path first and the failure message lists every error at once.
+  const consoleErrors = collectConsoleErrors(page);
 
   // =====================================================================
   // 1. REGISTER, at the front counter, and put the patient in the queue.
@@ -493,6 +497,16 @@ test('golden path — registration through payment, completion and the history r
   await expect(todayCard).toContainText('COMPLETED');
   await expect(todayCard).toContainText(DIAGNOSIS_CODE);
   await expect(todayCard).toContainText('Paracetamol');
+
+  // =====================================================================
+  // 12. AND NOT ONE CONSOLE ERROR ALONG THE WAY.
+  //
+  // A1's done-criterion for the whole workstream. Asserted last so a red
+  // here arrives with the complete list, after the path itself has proven
+  // the app works — an error console on a working screen is still a defect,
+  // just a quieter one.
+  // =====================================================================
+  expect(consoleErrors).toEqual([]);
 });
 
 /**
@@ -508,6 +522,7 @@ test('golden path — registration through payment, completion and the history r
 test('OTC (C) variant — the invoice carries the medication and NO consultation line', async ({ page }) => {
   const patientName = uniquePatientName('E2E OTC');
   const nric = syntheticNric();
+  const consoleErrors = collectConsoleErrors(page);
 
   // Register and queue as OTC (C) — the only step that differs.
   await login(page, ACCOUNTS.frontDesk);
@@ -603,6 +618,9 @@ test('OTC (C) variant — the invoice carries the medication and NO consultation
   expect(liveLines.some((line) => Boolean(line.sourceConsultationVisitId))).toBe(false);
 
   await payAndComplete(page, patientName, visitId);
+
+  // A1 done-criterion, same as the main path: not one console error.
+  expect(consoleErrors).toEqual([]);
 });
 
 /**
