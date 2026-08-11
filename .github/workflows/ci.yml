@@ -89,7 +89,12 @@ jobs:
           --health-retries 20
     env:
       KUWICK_ALLOW_FIXTURES: 'yes'
-      JWT_SECRET: ci-only-not-a-real-secret
+      # The names the API actually reads (auth.service.ts) — a `JWT_SECRET`
+      # here once satisfied nobody: tokens signed with an undefined secret
+      # throw, login 500s, and every spec times out at /login while /health
+      # stays green.
+      JWT_ACCESS_SECRET: ci-only-not-a-real-secret
+      JWT_REFRESH_SECRET: ci-only-not-a-real-refresh-secret
       PORT: '3000'
       VITE_API_BASE_URL: http://localhost:3000
     steps:
