@@ -268,7 +268,9 @@ const BILLING_ACTION_WORDS: Record<BillingAction, string> = {
 
 export function assertCanPerformBilling(staff: Staff, action: BillingAction): void {
   if (!canPerformBilling(staff, action)) {
-    throw new ForbiddenException(`Your role is not permitted to ${BILLING_ACTION_WORDS[action]}.`);
+    // "Your account", not "your role" — see queue-authorization.ts. Billing
+    // corrections in particular can be granted to one person.
+    throw new ForbiddenException(`Your account is not permitted to ${BILLING_ACTION_WORDS[action]}.`);
   }
 }
 

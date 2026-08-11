@@ -29,6 +29,8 @@ interface Fixture {
   legacyRole: 'DOCTOR_RESIDENT' | 'FRONT_DESK_CLINICAL_STAFF' | 'OWNER_ADMIN' | 'FINANCE_STAFF';
   roles: SystemRole[];
   credentialed: boolean;
+  /** Distinct per doctor. A fixture for testing identity cannot share one. */
+  registrationNo?: string;
 }
 
 const FIXTURES: Fixture[] = [
@@ -38,6 +40,7 @@ const FIXTURES: Fixture[] = [
     legacyRole: 'OWNER_ADMIN',
     roles: ['DOCTOR', 'OWNER'],
     credentialed: true,
+    registrationNo: 'MMC 90001',
   },
   {
     email: 'dr.b@smoke-test-clinic.test',
@@ -45,6 +48,7 @@ const FIXTURES: Fixture[] = [
     legacyRole: 'DOCTOR_RESIDENT',
     roles: ['DOCTOR'],
     credentialed: true,
+    registrationNo: 'MMC 90002',
   },
   {
     email: 'ms.x@smoke-test-clinic.test',
@@ -104,9 +108,21 @@ async function main() {
         select: { id: true },
       });
 
+      // ALL EIGHT FIELDS, or the fixture is lying about itself.
+      //
+      // This block used to write six of them and print "credentialed", leaving
+      // professionalType at its NON_CLINICAL default — so the two doctors it
+      // advertised as able to sign could not sign, and a boundary check run
+      // against them would have proved the credential gate held for the wrong
+      // reason. `isCredentialedClinician` requires an active MEDICAL_DOCTOR
+      // identity on top of the six signing fields, and so does
+      // `canSignClinicalNotes`; a fixture that satisfies neither cannot
+      // exercise either.
       const credentials = fixture.credentialed
         ? {
-            medicalRegistrationNo: `MMC ${fixture.fullName.replace(/\D/g, '') || '90001'}`,
+            professionalType: 'MEDICAL_DOCTOR' as const,
+            professionalActive: true,
+            medicalRegistrationNo: fixture.registrationNo ?? null,
             professionalVerifiedAt: new Date(),
             professionalVerifiedByStaffId: granter.id,
             canSignClinicalNotes: true,
@@ -114,6 +130,8 @@ async function main() {
             clinicalSigningEnabledByStaffId: granter.id,
           }
         : {
+            professionalType: 'NON_CLINICAL' as const,
+            professionalActive: false,
             medicalRegistrationNo: null,
             professionalVerifiedAt: null,
             professionalVerifiedByStaffId: null,

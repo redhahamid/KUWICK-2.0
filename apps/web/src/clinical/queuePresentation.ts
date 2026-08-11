@@ -202,7 +202,7 @@ export function completionDisabledReason(row: {
   if (row.blockers === null) return 'This visit is not yet at a stage that can be completed.';
   if (row.blockers.length === 1) return queueBlockerGuidance(row.blockers[0].code, row.blockers[0].message).title;
   if (row.blockers.length > 1) return `${row.blockers.length} items are outstanding.`;
-  return 'Your role is not permitted to complete a visit.';
+  return 'Your account is not permitted to complete a visit.';
 }
 
 export function money(value: string | number | null | undefined): string | null {

@@ -242,7 +242,7 @@ export class VisitCompletionService {
 
 function assertMayCompleteVisit(actor: Staff): void {
   if (!mayCompleteVisit(actor)) {
-    throw new ForbiddenException('Your role is not permitted to complete a visit.');
+    throw new ForbiddenException('Your account is not permitted to complete a visit.');
   }
 }
 

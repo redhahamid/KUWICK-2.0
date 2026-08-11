@@ -115,8 +115,11 @@ export function canPerformQueueAction(staff: Staff, action: QueueAction): boolea
 export function assertCanPerformQueueAction(staff: Staff, action: QueueAction): void {
   if (!canPerformQueueAction(staff, action)) {
     // Says what was refused, never who else may do it — an error message is
-    // not a place to enumerate the tenant's permission model.
-    throw new ForbiddenException(`Your role is not permitted to ${ACTION_WORDS[action]}.`);
+    // not a place to enumerate the tenant's permission model. "Your account",
+    // not "your role": since Task 1 a capability can be granted to a person
+    // without changing their role, so naming the role as the cause would be
+    // telling staff something that is no longer true.
+    throw new ForbiddenException(`Your account is not permitted to ${ACTION_WORDS[action]}.`);
   }
 }
 

@@ -788,7 +788,7 @@ function RowActions({
   onComplete: (row: QueueBoardRow, event: { currentTarget: HTMLElement }) => void;
 }) {
   const reason = completionDisabledReason(row);
-  const permissionWithheld = reason === 'Your role is not permitted to complete a visit.';
+  const permissionWithheld = reason === 'Your account is not permitted to complete a visit.';
   return (
     <Space size={4} wrap>
       <Link to={`/billing/visits/${row.visitId}`}>Billing Review</Link>

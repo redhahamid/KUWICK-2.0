@@ -24,7 +24,7 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 
 | | |
 |---|---|
-| Last green | **1105 frontend / 1178 backend**, both typechecks clean |
+| Last green | **1104 frontend / 1193 backend**, both typechecks clean |
 | Migrations | 63, no drift |
 | Last commit | see `git log` |
 
@@ -92,8 +92,9 @@ prints every row it does this to.
 
 ## Next session starts here
 
-Queue order from the standing prompt: **Q4 (patient profile editing)** is next.
-Q1 is partially done — what remains inside it:
+**Waiting on the new master prompt** (three workstreams — see SCOPE CHANGE
+below). Task 1 is done. Until it lands, the still-open items from the retired
+queue, kept because the work is real whatever it gets renumbered to:
 
 - **C6 anthropometry** — paeds centiles from DOB + Wt/Ht. A basic chart view.
 - **C8 `.shortcut` expansion** — today it is a Dropdown of hardcoded entries in
@@ -104,9 +105,13 @@ Q1 is partially done — what remains inside it:
   `VisitAttachmentsPanel` sit outside it. Needs drag-drop, type tags
   (photo|lab|letter) and a real viewer, reusing the existing attachment infra.
 
-Also outstanding and worth doing early in Q6/Q7, since the catalogues are now
-real: the canvas diagnosis search and medication search still read the OLD
-placeholder surfaces. The data is seeded; the UI is not yet pointed at it.
+Also outstanding, and worth doing early since the catalogues are now real: the
+canvas diagnosis search and medication search still read the OLD placeholder
+surfaces. The data is seeded; the UI is not yet pointed at it.
+
+Boundary table (re-run it after ANY permission change):
+`cd apps/api && KUWICK_ALLOW_FIXTURES=yes npx tsx prisma/task1-boundary-check.ts`
+(needs the API running and the role fixtures seeded).
 
 ## D1 — the note editor was not typeable (fixed)
 
@@ -126,72 +131,121 @@ Dev logins: `amira.rahman@` (DOCTOR_RESIDENT, credentialed — can author),
 If a real clinic's owner is also the GP, set their registration and signing
 flags; that is data, not code.
 
-## Task 1 — roles & permissions (in progress)
+## Task 1 — roles & permissions — **DONE**
 
-Done: `SystemRole` enum + `staff_role_assignments` (RLS, attributed grants),
-the central policy module `apps/api/src/core/permissions.ts` (37 tests), and
-the session now publishes `permissions[]` + `roles[]`.
+Owner-approved and closed. Proven by 1193 backend tests, 1104 frontend tests,
+and an 11-case boundary table run as REAL MUTATIONS against a live server
+(`apps/api/prisma/task1-boundary-check.ts`, 11/11 as specified).
 
-**Additive, not destructive.** `staff.role` is untouched. `LEGACY_ROLE_FALLBACK`
-in the policy module maps each legacy role to capability roles and applies
-only to staff with NO explicit assignment. An explicit assignment always wins.
+**Additive, not destructive.** `staff.role` is untouched. The fallbacks in the
+policy module apply only to staff with NO explicit assignment; an explicit
+assignment always wins outright.
 
-**Enforcement wiring — IN PROGRESS. Task 1 is NOT done until this finishes.**
+### The model
 
-Migrated so far (they delegate to the policy module and hold no role list of
-their own): `canAuthorNarrative`, `canAuthorStaffRemark`,
-`canRecordObservations`, `canModifyDiagnosis`, `canVoidClinicalRecord`,
-`canClinicallyAuthoriseDocument`, `canIssueAdministrativeDocument`. The actor now carries its capability roles
-(`ActingStaff.assignedRoles`, loaded by `requireActor` /
-`requireClinicalAuthor`), so predicates read them without every call site
-changing.
+`apps/api/src/core/permissions.ts` is the single answer. Four system roles —
+DOCTOR, CLINICAL_STAFF, ADMINISTRATOR (= **front counter**), OWNER — held in
+any combination, effective permissions are the union. OWNER alone carries zero
+clinical ability. `note.sign` additionally requires all eight credential
+fields (`isCredentialedClinician`), which is a superset of the six signing
+fields plus an active MEDICAL_DOCTOR identity.
 
-Still holding local role lists, migrate next, one at a time, suites green
-after each:
-- `clinical-authorization.ts`: `canEditDraft`. `DOCTOR_ROLES` and
-  `CLINICAL_ROLES` at the top of the file are the remaining local tables —
-  delete each as its last reader migrates.
+Individual grants: `staff_permission_grants`, additive-only, closed list
+(`billing.corrections`, `dispense.perform`), `reason` mandatory. `note.sign` is
+deliberately not grantable — a signing capability without a medical
+registration behind it is not a permission anybody can give.
 
-**BILLING + QUEUE: the permissions are BUILT, the wiring is BLOCKED on one
-mapping question.** Owner approved per-action billing (`billing.counter` /
-`billing.corrections`, the latter individually grantable) and the queue split
-(`queue.consultationFlow` on DOCTOR + ADMINISTRATOR). Both permissions exist,
-are granted, and are tested (59 tests in `permissions.spec.ts`). Individual
-grants exist end to end: `staff_permission_grants`, additive-only, closed list
-(`billing.corrections`, `dispense.perform`), `reason` mandatory.
+### Migration mapping (owner decision: option 1, no fifth role)
 
-Wiring `canPerformQueueAction` and `canPerformBilling` onto them was attempted
-and REVERTED, because the suite proved it changes real behaviour:
-
-| broke | why |
+| legacy role | resolves to |
 |---|---|
-| `FINANCE_STAFF cannot addToQueue / call / arrived / moveToDispensary / cancel` | FINANCE → ADMINISTRATOR, and ADMINISTRATOR carries `queue.consultationFlow` |
-| `HR_STAFF cannot call`, `STOCK_STAFF cannot addToQueue / complete` | same |
-| `DOCTOR_LOCUM may create / addLine` (invoices) | DOCTOR has no `billing.counter`, but doctors can raise invoices today |
+| `OWNER_ADMIN` | OWNER + ADMINISTRATOR, **+ DOCTOR when credentialed** |
+| `DOCTOR_RESIDENT` / `DOCTOR_LOCUM` | DOCTOR |
+| `FRONT_DESK_CLINICAL_STAFF` | CLINICAL_STAFF + ADMINISTRATOR |
+| `FINANCE_STAFF` | permissions `billing.counter`, `billing.corrections` |
+| `HR_STAFF` | nothing |
+| `STOCK_STAFF` | permission `dispense.perform` |
+| `PANEL_STAFF` | permission `billing.counter` |
+| `PATIENT_PORTAL` | nothing |
 
-Root cause: **ADMINISTRATOR spans four legacy roles with materially different
-queue and billing rights** — OWNER_ADMIN, FRONT_DESK, FINANCE, HR/STOCK/PANEL.
-Front desk and owner-admin run the queue; finance, HR and stock do not. No
-grant can fix it because grants are additive and this needs a subtraction.
+The four back-office roles map to permission SUBSETS in code
+(`LEGACY_ROLE_PERMISSIONS`), never to a system role: routing them through
+ADMINISTRATOR would have handed a finance, HR or stock clerk the queue. No
+fifth role was invented because the people it would describe do not exist —
+zero accounts hold HR_STAFF, STOCK_STAFF or PANEL_STAFF.
 
-Two ways forward, both the owner's call:
-1. **Narrow the fallback.** Map FINANCE/HR/STOCK/PANEL to a narrower set than
-   full ADMINISTRATOR — i.e. accept that ADMINISTRATOR means "front counter"
-   and give the back-office roles only what they had. Cheapest, no new role.
-2. **A fifth role** (e.g. BACK_OFFICE) for finance/HR/stock/panel, leaving
-   ADMINISTRATOR as the counter role. Cleaner conceptually, more to build.
+**Intentional losses, on record:**
+- FINANCE loses `COMPLETE_TICKET` and visit completion (D-079/D-087). Closing
+  a visit asserts dispensing and payment are done — a counter fact.
+- A **non-clinical** legacy OWNER_ADMIN loses `HOLD_CONSULTATION`. Owner alone
+  is not clinical; an owner who is also the GP keeps it via DOCTOR.
 
-Until one is chosen, `queue-authorization.ts` and the billing half of
-`clinical-authorization.ts` keep their own matrices and are correct.
-`DOCTOR_ROLES` / `CLINICAL_ROLES` stay until then.
+**Intentional widenings, on record:** STOCK_STAFF gains dispensing (refused
+today); PANEL_STAFF gains the counter till (no billing action today). Zero
+accounts hold either.
 
-**TASK 1 IS NOT DONE.** Everything else in it is: schema, policy module,
-session payload, seven clinical predicates delegating, fixtures, individual
-grants.
+**Checked, not assumed:** HR_STAFF appears in neither the queue nor the
+billing matrix in 1.0, and patient demographics were **never role-gated at
+all** — so `patient.demographics.write` is a NEW gate for every role, not a
+narrowing of HR's. It is not yet enforced on any endpoint (Section P work).
+
+**DOCTOR holds `billing.counter`** (owner decision): the night-shift doctor
+raises the invoice and takes payment when the counter is minimal. No doctor
+holds `billing.corrections`.
+
+### Enforcement — fully wired
+
+Every matrix now names a permission and asks the policy module:
+`queue-authorization.ts` (`QUEUE_PERMISSION`), the billing half of
+`clinical-authorization.ts` (`BILLING_PERMISSION`), and the visit-completion
+gate (one exported `mayCompleteVisit`, imported by the queue board so the
+board cannot offer a button the server refuses). The seven clinical predicates
+delegate. The browser reads `permissions[]` from the session instead of
+computing its own billing answer.
+
+Refusal wording is "Your **account** is not permitted to …" — since a
+capability can be granted to a person without changing their role, blaming the
+role would tell staff something no longer true.
+
+### Fixtures
+
+`KUWICK_ALLOW_FIXTURES=yes npx tsx prisma/seed-role-fixtures.ts` — Dr A
+(DOCTOR+OWNER, credentialed, MMC 90001), Dr B (DOCTOR, credentialed, MMC
+90002), Ms X (CLINICAL_STAFF), Ms Y (ADMINISTRATOR). Password `DevLocal!2026`.
+
+A defect was found and fixed here while running the boundary table: the
+seeder wrote six of the eight credential fields and printed "credentialed",
+leaving `professionalType` at its NON_CLINICAL default — so the two doctors it
+advertised as able to sign could not sign, and both shared one registration
+number. Corrected; Dr B now signs live (case 11).
+
+### Task 1 leftovers (small, not blocking)
+
+- Settings › Users & roles CRUD UI, with the individual-grant UI for
+  `billing.corrections` / `dispense.perform` and `wouldRemoveLastOwner` wired
+  in. **This is Task 2 work** and is where it will land.
+- `canEditDraft` still holds its own logic; `DOCTOR_ROLES` / `CLINICAL_ROLES`
+  in `clinical-authorization.ts` are the last local tables — delete each as
+  its final reader migrates.
+
+## SCOPE CHANGE — the work order is superseded
+
+The consolidated work order (Tasks 1–7) is **retired**. A redefined-scope
+master prompt replaces it, with three workstreams:
+
+- **A — medical record: premium + error-free**
+- **B — reporting / analysis**
+- **C — appointments**
+
+Task 1's completion flows into **Workstream A**. The old task numbering is
+retired; Task 2.5's parked feedback below survives as content, not as a
+numbered slot, and should be re-placed inside whichever workstream claims it
+when the master prompt lands.
 
 ## Task 2.5 — PARKED FEEDBACK (do after Task 2, alongside/before Section P)
 
-Owner-reviewed on staging. Not started; do not interrupt Task 1 for it.
+Owner-reviewed on staging. Not started. Task 1 is now done; re-place these
+inside the new workstreams when the master prompt lands.
 
 **1. Top nav polish** — refine, do not redesign. Within the existing kw2
 language: active item gets a subtle raised pill (soft white/10% fill + the
