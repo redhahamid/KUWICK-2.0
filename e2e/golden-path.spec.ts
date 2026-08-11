@@ -122,7 +122,7 @@ async function section(page: Page, name: string): Promise<void> {
   await page.getByText(name, { exact: true }).first().click();
 }
 
-test('golden path — registration to a completed, dispensed, paid visit', async ({ page }) => {
+test('golden path — registration through the doctor phase (completion onward: next unit)', async ({ page }) => {
   const patientName = uniquePatientName('E2E Golden');
   const nric = syntheticNric();
 
@@ -267,10 +267,9 @@ test('golden path — registration to a completed, dispensed, paid visit', async
   await expect(prescribed.getByText(MEDICATION)).toBeVisible();
 
   console.log('visit under test:', visitUrl);
-  if (process.env.E2E_DUMP) {
-    console.log('\n===== footer =====\n' + (await describeControls(page)).join('\n'));
-    await page.screenshot({ path: 'test-results/footer.png', fullPage: true });
-  }
+  // NEXT UNIT resumes here: the doctor-phase completion control lives in the
+  // FLOW layout, not this one. See HANDOFF.
+  console.log('stopped after prescribing; visit still open:', visitUrl);
 });
 
 /**

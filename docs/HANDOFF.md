@@ -277,14 +277,44 @@ regression this project has shipped was invisible to the unit suites.
   closing.
 - **`e2e/support/app.ts`** — accounts, login, `chooseRadio`, `describeControls`.
 
-### Next unit — the rest of the golden path
+### Green so far (phases 1–7)
 
-Remaining steps to add to the single test, in order: vitals + live BMI · type
-a note and prove the autosave persisted · diagnosis J06.9 · add the seeded
-medication · complete through the checkpoint · dispense (assert a
+register at the front counter → queue as Walk-in (W) → **Call** → **Arrived**
+→ canvas → vitals with a derived BMI (asserts the NUMBER: 70kg/1.70m = 24.2) →
+clinical note typed, saved, **page reloaded, text still there** (this is D1's
+regression test) → diagnosis J06.9 → Paracetamol 500mg prescribed (verified in
+the database: ORDERED, ONSITE_DISPENSE, TDS).
+
+### Next unit — resume exactly here
+
+**FIRST, a blocker to resolve.** The doctor-phase completion control
+(`ConsultationFooter`) renders only in the **FLOW** layout — it is passed to
+the `footer` slot of the rails layout in `PatientDashboardPage.tsx:670`. The
+**Canvas layout has no completion control at all**, which lines up with the
+master prompt's own A2 list, where "bottom action bar" is still outstanding.
+So either:
+
+- drive completion through the Flow layout (switch with the `Layout:`
+  Segmented control — `getByText('Flow')` matched something else, target the
+  `.ant-segmented` control specifically), **or**
+- build the Canvas bottom action bar first (A2) and drive it there.
+
+Recommend the first for now — the guardrail should test what exists, and
+switch to the action bar when A2 builds it.
+
+Then, in order: complete through the checkpoint · dispense (assert a
 `stock_movements` row) · invoice carries a consult line AND a med line ·
 payment · COMPLETED · history rail shows Dx/Rx. Then the **OTC (C) variant**
 asserting NO consultation line.
+
+### Two things this has already caught
+
+1. **A false pass in the spec itself.** The medication assertion matched the
+   select box echoing its own value, and passed while nothing was prescribed.
+   Found by screenshotting a PASSING run. Assertions are now scoped to the
+   card that owns the data.
+2. **`Call` does not start the consultation** — it announces. `Arrived` is the
+   transition to IN_CONSULTATION.
 
 ### Selector knowledge (expensive to rediscover — read this first)
 
@@ -302,6 +332,14 @@ asserting NO consultation line.
 - **`Call` only announces — `Arrived` is what starts the consultation.** Call
   stamps `calledAt` and leaves the ticket WAITING. A spec that asserts only on
   Call passes while nothing moved.
+- **Queue stage tables paginate at ten rows** and the board polls — use
+  `expectRowInStage`, which re-selects the tab and walks the pages. A spec that
+  reads only page one of the first render calls a busy clinic a regression.
+- **The canvas panels have no real `<label>`s** — they caption fields with
+  plain text, so `getByLabel` finds nothing there, while the vitals block
+  (which does it properly) works. That is an accessibility gap in the app:
+  **fix it in A2.** Until then `fieldUnder(page, caption)` reads "the first
+  input after this caption".
 - Canvas = `/patients/:patientId?visitId=:visitId`. The **Record View** column
   switches the right panel: Clinical Notes · Orders & Services · Diagnosis ·
   Medications · Documents · Invoices. Click the section name to switch.
