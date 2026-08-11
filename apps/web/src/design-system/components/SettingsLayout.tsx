@@ -32,6 +32,7 @@ const SETTINGS_CATEGORIES: HubCategory[] = [
     label: 'Clinical',
     items: [
       { path: '/settings/clinical/services', label: 'Services & Procedures' },
+      { path: '/settings/clinical/consultation-tariffs', label: 'Consultation Tariffs' },
       { path: '/settings/clinical/diagnoses', label: 'Diagnoses' },
     ],
   },

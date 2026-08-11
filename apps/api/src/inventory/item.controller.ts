@@ -13,8 +13,17 @@ export class ItemController {
   }
 
   @Get()
-  findAll(@Query('activeOnly') activeOnly?: string) {
-    return this.itemService.findAll(activeOnly === 'true');
+  findAll(
+    @Query('activeOnly') activeOnly?: string,
+    @Query('search') search?: string,
+    @Query('take') take?: string,
+  ) {
+    const parsed = take ? Number(take) : undefined;
+    return this.itemService.findAll(
+      activeOnly === 'true',
+      search,
+      Number.isFinite(parsed) ? parsed : undefined,
+    );
   }
 
   @Get(':id')

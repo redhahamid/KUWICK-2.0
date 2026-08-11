@@ -119,7 +119,21 @@ interface QuickAddProps {
 // add-time (InvoiceService.addLine), so a stale suggestion here can never
 // under-flag a copay.
 function QuickAddSuggestions({ invoice, visit }: QuickAddProps) {
-  const { data: orderServices } = useOrderServices(visit.id, { status: 'COMPLETED' });
+  // G4.5s (D-073) — what is billable is not "status = COMPLETED".
+  //
+  // That filter was written when every OrderService was a task. It quietly
+  // made direct services unbillable: a STANDARD_SERVICE was created PENDING,
+  // the Canvas correctly refuses to Start/Complete it, so it never reached
+  // this list. The audit confirmed it — 0 of 5 direct services in the
+  // database had ever been charged, against 108 of 114 completed task orders.
+  //
+  // Billable now means: a task order that is finished, or a direct service
+  // that has not been cancelled. Legacy direct services still sitting at
+  // PENDING are therefore chargeable without rewriting their rows.
+  const { data: allOrders } = useOrderServices(visit.id);
+  const orderServices = (allOrders ?? []).filter((os) =>
+    os.orderType === 'STANDARD_SERVICE' ? os.status !== 'CANCELLED' : os.status === 'COMPLETED',
+  );
   const { data: prescriptions } = usePrescriptions(visit.id);
   const { data: services } = useServices();
   const { data: items } = useItems();
@@ -127,11 +141,17 @@ function QuickAddSuggestions({ invoice, visit }: QuickAddProps) {
   const { data: exclusions } = usePanelExclusions(visit.panelClinicId ?? undefined);
   const addLine = useAddInvoiceLine(visit.id);
 
-  const linkedOrderServiceIds = new Set(invoice.lines.map((l) => l.sourceOrderServiceId).filter(Boolean));
-  const linkedPrescriptionIds = new Set(invoice.lines.map((l) => l.sourcePrescriptionId).filter(Boolean));
+  // D-093 — a CANCELLED line is history, not a standing charge: it neither
+  // hides a Quick-Add suggestion nor counts in any total.
+  const activeInvoiceLines = invoice.lines.filter((l) => !l.cancelledAt);
+  const linkedOrderServiceIds = new Set(activeInvoiceLines.map((l) => l.sourceOrderServiceId).filter(Boolean));
+  const linkedPrescriptionIds = new Set(activeInvoiceLines.map((l) => l.sourcePrescriptionId).filter(Boolean));
 
   const dispensedPrescriptions = (prescriptions ?? []).filter((p) => p.status === 'DISPENSED');
-  const pendingServices = (orderServices ?? []).filter((os) => !linkedOrderServiceIds.has(os.id));
+  // Still filtered here so an already-charged item does not appear as a
+  // suggestion, but this is presentation only — the server refuses a second
+  // line for the same source regardless of what this list says (D-073).
+  const pendingServices = orderServices.filter((os) => !linkedOrderServiceIds.has(os.id));
   const pendingPrescriptions = dispensedPrescriptions.filter((p) => !linkedPrescriptionIds.has(p.id));
 
   if (pendingServices.length === 0 && pendingPrescriptions.length === 0) {
@@ -254,15 +274,23 @@ function InvoiceCard({ invoice, visit }: InvoiceCardProps) {
   const payInvoice = usePayInvoice(visit.id);
   const { data: panels } = usePanelClinics();
   const isUnpaid = invoice.status === 'UNPAID';
-  const hasLines = invoice.lines.length > 0;
+  const activeLines = invoice.lines.filter((l) => !l.cancelledAt);
+  const hasLines = activeLines.length > 0;
   const isPanelVisit = Boolean(visit.panelClinicId);
   const panel = panels?.find((p) => p.id === visit.panelClinicId);
 
-  const excludedTotal = round2(invoice.lines.filter((l) => l.excludedFromPanel).reduce((sum, l) => sum + Number(l.amount), 0));
+  // D-093 — the PERSISTED split is the truth wherever the engine has written
+  // it; the live-config preview survives only as a legacy fallback for
+  // invoices that predate the responsibility writer.
+  const persistedPatient =
+    invoice.patientResponsibilityAmount != null ? Number(invoice.patientResponsibilityAmount) : null;
+  const persistedPanel =
+    invoice.panelResponsibilityAmount != null ? Number(invoice.panelResponsibilityAmount) : null;
+  const excludedTotal = round2(activeLines.filter((l) => l.excludedFromPanel).reduce((sum, l) => sum + Number(l.amount), 0));
   const coveredTotal = round2(Number(invoice.totalAmount) - excludedTotal);
   const limit = panel?.limitAmount != null ? Number(panel.limitAmount) : undefined;
-  const panelCovers = round2(limit != null ? Math.min(coveredTotal, limit) : coveredTotal);
-  const patientCopay = round2(coveredTotal - panelCovers + excludedTotal);
+  const panelCovers = persistedPanel ?? round2(limit != null ? Math.min(coveredTotal, limit) : coveredTotal);
+  const patientCopay = persistedPatient ?? round2(coveredTotal - panelCovers + excludedTotal);
   const fullyCovered = isPanelVisit && patientCopay <= 0 && hasLines;
 
   const handlePay = () =>
@@ -340,7 +368,7 @@ function InvoiceCard({ invoice, visit }: InvoiceCardProps) {
         size="small"
         rowKey="id"
         pagination={false}
-        dataSource={invoice.lines}
+        dataSource={activeLines}
         locale={{ emptyText: 'No line items yet' }}
         columns={[
           {
@@ -419,7 +447,9 @@ function InvoiceCard({ invoice, visit }: InvoiceCardProps) {
 // automatically enforced across visits" status as PanelClinic.limitAmount
 // itself.
 export function InvoiceTab({ visit }: InvoiceTabProps) {
-  const [createdByStaffId, setCreatedByStaffId] = useState<string | undefined>(visit.staffId);
+  // S3c (D-082) — an unassigned visit preselects nobody. The registrar is not
+  // a sensible default: they did not do the clinical work being billed.
+  const [createdByStaffId, setCreatedByStaffId] = useState<string | undefined>(visit.staffId ?? undefined);
   const { data: staff } = useStaff();
   const { data: invoices, isLoading } = useInvoices(visit.id);
   const createInvoice = useCreateInvoice(visit.id);

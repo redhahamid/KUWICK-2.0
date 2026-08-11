@@ -3,8 +3,8 @@ import { DatePicker, Space, Table, Typography } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { useAttendance } from './hooks/useAttendance';
 import { AttendanceRecord } from './types';
+import { PageHeader } from '../design-system/components/PageHeader';
 
-const { Title } = Typography;
 const { RangePicker } = DatePicker;
 
 // HR, Phase 1c. Read-only — derived from Visit.checkInAt/checkOutAt
@@ -19,12 +19,14 @@ export function AttendancePage() {
 
   return (
     <div style={{ paddingTop: 24, paddingBottom: 24 }}>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Attendance
-        </Title>
-        <RangePicker value={range} onChange={(dates) => setRange(dates as [Dayjs, Dayjs] | null)} />
-      </Space>
+      <PageHeader
+        title="Attendance"
+        extra={
+          <>
+            <RangePicker value={range} onChange={(dates) => setRange(dates as [Dayjs, Dayjs] | null)} />
+          </>
+        }
+      />
       <Table
         rowKey={(r: AttendanceRecord) => `${r.staffId}-${r.date}`}
         loading={isLoading}

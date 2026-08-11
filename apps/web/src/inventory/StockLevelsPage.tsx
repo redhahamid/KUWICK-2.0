@@ -9,8 +9,7 @@ import { useSuppliers } from './hooks/useSuppliers';
 import { useQuickAddStock, useSetStockMinThreshold, useStockLevels } from './hooks/useStock';
 import { QuickAddStockDto, SetStockMinThresholdDto } from './types';
 import { ApiError } from '../core/api-client';
-
-const { Title } = Typography;
+import { PageHeader } from '../design-system/components/PageHeader';
 
 interface QuickAddStockFormValues {
   clinicId: string;
@@ -71,11 +70,11 @@ export function StockLevelsPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Stock Levels
-        </Title>
-        <Space>
+      <PageHeader
+        title="Stock Levels"
+        extra={
+          <>
+            <Space>
           <Button type="primary" icon={<ImportOutlined />} onClick={() => setStockInOpen(true)}>
             Stock In
           </Button>
@@ -83,7 +82,9 @@ export function StockLevelsPage() {
             Set Min Threshold
           </Button>
         </Space>
-      </Space>
+          </>
+        }
+      />
       {showSelector && (
         <Space style={{ marginBottom: 16 }} wrap>
           <Select

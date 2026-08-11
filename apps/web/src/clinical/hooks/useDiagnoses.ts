@@ -7,6 +7,7 @@ import {
   DiagnosisCatalogCounts,
   DiagnosisCatalogEntry,
   DiagnosisCategory,
+  DiagnosisPriority,
 } from '../types';
 
 export function useDiagnosisCatalogSearch(search: string, category?: DiagnosisCategory) {
@@ -36,11 +37,40 @@ export function useAddDiagnosis(visitId?: string) {
   });
 }
 
+// G2a (D-059) — mark a diagnosis Primary, or clear its priority back to
+// "not recorded". The server demotes any existing primary in the same
+// transaction and a partial unique index settles concurrent requests, so the
+// client never has to reason about who won.
+export function useSetDiagnosisPriority(visitId?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, priority }: { id: string; priority: DiagnosisPriority | null }) =>
+      apiClient.patch<Diagnosis>(`/diagnoses/${id}/priority`, { priority }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['diagnoses', visitId] }),
+  });
+}
+
+// G2 closure (D-061) — removal is an audited correction with a mandatory
+// reason, not a delete. There is no DELETE endpoint left to call.
 export function useRemoveDiagnosis(visitId?: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/diagnoses/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['diagnoses', visitId] }),
+    mutationFn: ({ id, removalReason, expectedVersion }: { id: string; removalReason: string; expectedVersion?: number }) =>
+      apiClient.patch<Diagnosis>(`/diagnoses/${id}/removal`, { removalReason, expectedVersion }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['diagnoses', visitId] });
+      queryClient.invalidateQueries({ queryKey: ['diagnosis-history', visitId] });
+    },
+  });
+}
+
+// The audit view: every diagnosis ever recorded for the visit, including the
+// removed ones with their actor, time and reason.
+export function useDiagnosisHistory(visitId?: string, enabled = false) {
+  return useQuery({
+    queryKey: ['diagnosis-history', visitId],
+    queryFn: () => apiClient.get<Diagnosis[]>(`/diagnoses/history?visitId=${visitId}`),
+    enabled: Boolean(visitId) && enabled,
   });
 }
 

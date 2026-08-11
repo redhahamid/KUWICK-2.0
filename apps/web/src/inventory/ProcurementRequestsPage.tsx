@@ -13,8 +13,7 @@ import {
 } from './hooks/useProcurementRequests';
 import { CreateProcurementRequestDto } from './types';
 import { ApiError } from '../core/api-client';
-
-const { Title } = Typography;
+import { PageHeader } from '../design-system/components/PageHeader';
 
 export function ProcurementRequestsPage() {
   const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
@@ -64,14 +63,16 @@ export function ProcurementRequestsPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Procurement Requests
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+      <PageHeader
+        title="Procurement Requests"
+        extra={
+          <>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
           New Request
         </Button>
-      </Space>
+          </>
+        }
+      />
       <Space style={{ marginBottom: 16 }} wrap>
         {showSelector && (
           <Select

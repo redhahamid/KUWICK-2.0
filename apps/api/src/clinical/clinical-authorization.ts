@@ -1,4 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
+import { SystemRole } from '@prisma/client';
+import { Permission, attachedRoles, can } from '../core/permissions';
 import { ClinicalNoteType, Role, Staff } from '@prisma/client';
 
 // C0 (D-051) — narrowly-scoped, server-side authorisation for clinical
@@ -49,7 +51,12 @@ const CLINICAL_ROLES: Role[] = [...DOCTOR_ROLES, 'FRONT_DESK_CLINICAL_STAFF', 'O
 // signers until a Clinic Group explicitly records verification and enables
 // signing.
 export function canSignClinicalNotes(staff: Staff): boolean {
-  return (
+  // Boolean(): the chain below ends in `&&`, so without it this returns the
+  // last falsy VALUE — `null` for a missing timestamp — while declaring
+  // `boolean`. Harmless at every call site today, all of which only branch on
+  // it, but a security predicate whose declared type is a lie is a bad thing
+  // to leave for the next caller who compares it with `=== false`.
+  return Boolean(
     staff.active &&
     staff.professionalType === 'MEDICAL_DOCTOR' &&
     staff.professionalActive &&
@@ -59,26 +66,234 @@ export function canSignClinicalNotes(staff: Staff): boolean {
     staff.professionalVerifiedByStaffId != null &&
     staff.canSignClinicalNotes &&
     staff.clinicalSigningEnabledAt != null &&
-    staff.clinicalSigningEnabledByStaffId != null
+      staff.clinicalSigningEnabledByStaffId != null,
   );
+}
+
+// TASK 1 — these three now DELEGATE to the central policy module.
+//
+// They used to hold their own role lists, which is how a permission comes to
+// be implemented twice and then differently: D1 was precisely that, and cost
+// a doctor the ability to type. The functions keep their names and signatures
+// so no call site changes; what they no longer keep is an opinion.
+//
+// `rolesOn` reads the capability roles the actor loader attached. Absent —
+// a plain Staff row from a test or an older code path — falls through to the
+// legacy mapping, which is what these lists used to say.
+function rolesOn(staff: Staff): SystemRole[] | undefined {
+  return attachedRoles(staff);
 }
 
 // Authoring a DOCTOR_NARRATIVE is restricted to doctors. Front-desk staff
 // record observations and STAFF_REMARKs instead; a scribe/countersign
 // workflow for dictated narrative is a separately approved future feature.
 export function canAuthorNarrative(staff: Staff): boolean {
-  return staff.active && (DOCTOR_ROLES.includes(staff.role) || canSignClinicalNotes(staff));
+  return can(staff, 'note.write', rolesOn(staff));
 }
 
 // Staff remarks ("patient refused medication", "called 3x, no answer") are
 // how non-doctors document. They can never be signed (enforced by a DB CHECK
 // as well as here) and never render as a doctor's clinical note.
 export function canAuthorStaffRemark(staff: Staff): boolean {
-  return staff.active && CLINICAL_ROLES.includes(staff.role);
+  return can(staff, 'note.staffRemark', rolesOn(staff));
 }
 
 export function canRecordObservations(staff: Staff): boolean {
-  return staff.active && (DOCTOR_ROLES.includes(staff.role) || staff.role === 'FRONT_DESK_CLINICAL_STAFF');
+  return can(staff, 'observation.write', rolesOn(staff));
+}
+
+// G2 closure (D-061) — who may change a visit's diagnoses.
+//
+// A diagnosis is a clinical judgement, so recording, re-prioritising and
+// removing one are doctor actions. FRONT_DESK_CLINICAL_STAFF may record
+// observations and staff remarks but must not alter a diagnosis.
+//
+// OWNER_ADMIN does NOT qualify on the strength of the administrative role
+// alone — the same rule C0 applies to signing. A practice owner who is not a
+// clinician has every administrative right and no clinical one; conflating
+// the two is how a non-clinical account ends up silently altering a
+// medicolegal record. An owner who IS a doctor qualifies through their
+// professional identity, not their job title.
+export function canModifyDiagnosis(staff: Staff): boolean {
+  // TASK 1 — delegated. The professional-identity path this used to spell out
+  // lives in the policy module's fallback, so an owner who IS a doctor still
+  // qualifies through their identity rather than their job title.
+  return can(staff, 'diagnosis.write', rolesOn(staff));
+}
+
+// G3a (D-062) — voiding a clinical document, or removing a clinical image or
+// investigation result, is a clinical act with medicolegal weight. Same rule
+// as diagnosis modification: doctors, or a staff member whose PROFESSIONAL
+// identity is an active medical doctor. Administrative ownership alone does
+// not qualify.
+//
+// Deliberately NOT widened to whoever may CREATE these records: front-desk
+// staff legitimately upload a scanned report or issue a time slip under the
+// existing workflow, and G3 does not broaden or narrow who may create. What
+// it does establish is that un-doing a saved clinical record needs clinical
+// authority.
+export function canVoidClinicalRecord(staff: Staff): boolean {
+  // TASK 1 — delegated. The professional-identity path this used to spell out
+  // lives in the policy module's fallback, so an owner who IS a doctor still
+  // qualifies through their identity rather than their job title.
+  return can(staff, 'clinical.void', rolesOn(staff));
+}
+
+/**
+ * G3b closure (D-064) — who may CLINICALLY AUTHORISE a document.
+ *
+ * A medical certificate, referral or clinical memo carries a doctor's opinion
+ * and their professional responsibility for it. Only a doctor may accept
+ * that. Same rule as diagnosis modification and clinical-record voiding: a
+ * doctor role, or a staff member whose PROFESSIONAL identity is an active
+ * medical doctor.
+ *
+ * OWNER_ADMIN does not qualify on ownership alone, and FRONT_DESK_CLINICAL_
+ * STAFF does not qualify at all — which is precisely the defect this closure
+ * fixes. Front desk may still prepare and preview such a document; they may
+ * not put a doctor's authority on it.
+ */
+export function canClinicallyAuthoriseDocument(staff: Staff): boolean {
+  // TASK 1 — delegated. The professional-identity path this used to spell out
+  // lives in the policy module's fallback, so an owner who IS a doctor still
+  // qualifies through their identity rather than their job title.
+  return can(staff, 'document.authoriseClinical', rolesOn(staff));
+}
+
+/**
+ * Who may ISSUE an administrative document (a time slip and the like).
+ *
+ * Deliberately unchanged from the pre-closure rule: front desk issuing a time
+ * slip is an existing, legitimate workflow, and the closure says to preserve
+ * explicitly approved existing staff permissions. What changed is that such a
+ * document can no longer describe itself as clinically authorised.
+ */
+export function canIssueAdministrativeDocument(staff: Staff): boolean {
+  // Its OWN permission, not borrowed from document.print. Borrowing that one
+  // would have handed a finance account the ability to issue patient
+  // documents — a widening the old CLINICAL_ROLES list specifically excluded,
+  // and one a test caught before it shipped.
+  return can(staff, 'document.issueAdministrative', rolesOn(staff));
+}
+
+export function assertCanAuthoriseDocument(staff: Staff, requiresClinical: boolean): void {
+  if (requiresClinical) {
+    if (!canClinicallyAuthoriseDocument(staff)) {
+      throw new ForbiddenException(
+        'Only a doctor may clinically authorise this document. ' +
+          'You can prepare and preview it, but a doctor must authorise it before it can be issued.',
+      );
+    }
+    return;
+  }
+  if (!canIssueAdministrativeDocument(staff)) {
+    throw new ForbiddenException('This account may not issue clinic documents.');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// G3c closure (D-066) — BILLING authorisation.
+//
+// Deliberately decided on the administrative ROLE alone, and deliberately NOT
+// on professional identity. That is the mirror image of clinical signing: a
+// non-clinical owner may legitimately run the clinic's finances, whereas
+// ownership alone never confers clinical authority; and being a doctor is a
+// clinical fact, not a licence to move money. `professionalType` is not
+// consulted anywhere below.
+//
+// Actions are separated because they are different jobs. Raising a bill and
+// adding what was done to it is part of running the consultation, so a doctor
+// may do it. Taking payment is counter work. Cancelling an issued invoice is a
+// financial correction, and is the narrowest of the four.
+// ---------------------------------------------------------------------------
+export type BillingAction =
+  | 'CREATE_INVOICE'
+  | 'EDIT_LINES'
+  | 'MARK_PAID'
+  | 'CANCEL_INVOICE'
+  | 'APPLY_DISCOUNT'
+  | 'CANCEL_LINE'
+  | 'CLASSIFY_VISIT';
+
+/**
+ * TASK 1, owner decision 1 — billing splits by ACTION, not by role.
+ *
+ * The role lists that used to sit here are gone. Two permissions carry the
+ * whole table: `billing.counter` is running the counter, and
+ * `billing.corrections` is moving money the clinic has already earned. The
+ * second is deliberately harder to get — OWNER holds it, and it can be
+ * granted to one trusted person without making them an owner.
+ */
+const BILLING_PERMISSION: Record<BillingAction, Permission> = {
+  // Raising the bill and itemising it: counter work, and the doctor who
+  // ordered the work does it too.
+  CREATE_INVOICE: 'billing.counter',
+  EDIT_LINES: 'billing.counter',
+  // Collecting money is counter work. Doctors now hold `billing.counter` by
+  // owner decision — the night shift raises the bill and takes payment when
+  // there is no counter to hand — so this is no longer the line that keeps
+  // finance powers away from clinicians. The line is CANCEL_INVOICE and
+  // APPLY_DISCOUNT below, which no doctor holds.
+  MARK_PAID: 'billing.counter',
+  // Voiding a bill that has already been issued is a financial correction.
+  CANCEL_INVOICE: 'billing.corrections',
+  // G4.5d3c-3b1 (D-093, owner decision 5) — discounts move money the clinic
+  // has earned, so they sit at the financial-correction tier. Front desk and
+  // doctors are refused.
+  APPLY_DISCOUNT: 'billing.corrections',
+  // G4.5d3c-3b2 (D-094, owner decision 8/11) — cancelling a line (including
+  // waiving an auto-added consultation) is COUNTER work with a mandatory
+  // reason.
+  CANCEL_LINE: 'billing.counter',
+  // Recording what KIND of visit this was for consultation billing (OTC-only,
+  // dressing-only, ...) is operational counter work, never a clinical entry.
+  CLASSIFY_VISIT: 'billing.counter',
+};
+
+// Anyone who may perform ANY billing action — the gate for reaching the
+// billing page at all. Read access to the clinical Invoice Summary is a
+// SEPARATE permission and is not affected by this.
+export function canAccessBilling(staff: Staff): boolean {
+  return (Object.keys(BILLING_PERMISSION) as BillingAction[]).some((action) => canPerformBilling(staff, action));
+}
+
+export function canPerformBilling(staff: Staff, action: BillingAction): boolean {
+  return can(staff, BILLING_PERMISSION[action], rolesOn(staff));
+}
+
+const BILLING_ACTION_WORDS: Record<BillingAction, string> = {
+  CREATE_INVOICE: 'raise an invoice',
+  EDIT_LINES: 'change the items on an invoice',
+  MARK_PAID: 'record a payment',
+  CANCEL_INVOICE: 'cancel an invoice',
+  APPLY_DISCOUNT: 'apply a billing discount',
+  CANCEL_LINE: 'cancel an invoice line',
+  CLASSIFY_VISIT: 'change the visit billing classification',
+};
+
+export function assertCanPerformBilling(staff: Staff, action: BillingAction): void {
+  if (!canPerformBilling(staff, action)) {
+    // "Your account", not "your role" — see queue-authorization.ts. Billing
+    // corrections in particular can be granted to one person.
+    throw new ForbiddenException(`Your account is not permitted to ${BILLING_ACTION_WORDS[action]}.`);
+  }
+}
+
+export function assertCanVoidClinicalRecord(staff: Staff, what: string): void {
+  if (!canVoidClinicalRecord(staff)) {
+    throw new ForbiddenException(
+      `Only a doctor may ${what}. An administrative account does not carry clinical modification rights.`,
+    );
+  }
+}
+
+export function assertCanModifyDiagnosis(staff: Staff): void {
+  if (!canModifyDiagnosis(staff)) {
+    throw new ForbiddenException(
+      'Only a doctor may add, re-prioritise or remove a diagnosis. ' +
+        'An administrative account does not carry clinical modification rights.',
+    );
+  }
 }
 
 export function assertCanAuthor(staff: Staff, noteType: ClinicalNoteType): void {

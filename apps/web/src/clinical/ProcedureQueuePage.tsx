@@ -7,8 +7,7 @@ import { useAcceptProcedure, useCancelProcedure, useCompleteProcedure, useProced
 import { CompleteOrderModal } from './CompleteOrderModal';
 import { OrderService, OrderServiceStatus } from './types';
 import { ApiError } from '../core/api-client';
-
-const { Title } = Typography;
+import { PageHeader } from '../design-system/components/PageHeader';
 
 const STATUS_COLOR: Record<OrderServiceStatus, string> = {
   PENDING: 'gold',
@@ -77,11 +76,11 @@ export function ProcedureQueuePage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Procedure Task Queue
-        </Title>
-        {showSelector && (
+      <PageHeader
+        title="Procedure Task Queue"
+        extra={
+          <>
+            {showSelector && (
           <Select
             allowClear
             placeholder="Select clinic"
@@ -91,7 +90,9 @@ export function ProcedureQueuePage() {
             options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
           />
         )}
-      </Space>
+          </>
+        }
+      />
 
       <Row gutter={16} style={{ marginBottom: 16 }}>
         {SUMMARY_CARDS.map((card) => (

@@ -1,24 +1,137 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { DiagnosisCategory } from '@prisma/client';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { DiagnosisCategory, DiagnosisPriority, DiagnosisRecordStatus, Prisma, Staff } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
-import { currentTenantId } from '../core/tenant-context';
+import { PrismaService } from '../core/prisma.service';
+import { currentStaffId, currentTenantId } from '../core/tenant-context';
+import {
+  assertBranchAccess,
+  assertCanModifyDiagnosis,
+  snapshotOf,
+  type BranchAccessContext,
+} from './clinical-authorization';
 import { AddDiagnosisDto } from './dto/add-diagnosis.dto';
 import { CreateCustomDiagnosisDto } from './dto/create-custom-diagnosis.dto';
 import { BulkActivateCatalogDto } from './dto/bulk-activate-catalog.dto';
+import { SetDiagnosisPriorityDto } from './dto/set-diagnosis-priority.dto';
+import { RemoveDiagnosisDto } from './dto/remove-diagnosis.dto';
+
+type Tx = Prisma.TransactionClient;
+
+// Postgres unique-violation. Raised by diagnoses_one_primary_per_visit when
+// two requests race to make different diagnoses primary on the same visit.
+const UNIQUE_VIOLATION = 'P2002';
+
+/**
+ * G4.5d6 — what a doctor types when they mean an ICD-10 code.
+ *
+ * The catalog stores codes dotted ("J06.9"), but the code is read off a panel
+ * form, a referral letter or memory, and it gets typed "J069" about as often.
+ * A stored `contains` cannot strip the dot from the column side, so the
+ * canonical dotted form is derived here instead and searched alongside the
+ * literal text. ICD-10 puts the dot in exactly one place: after the letter
+ * and two digits.
+ *
+ * Only the shape is inferred — never the meaning. "J06" stays "J06" (a valid
+ * category code in its own right) and anything that is not code-shaped is
+ * searched verbatim, so no non-existent code is ever invented for a doctor.
+ */
+export function icd10SearchTerms(query: string): string[] {
+  const terms = [query];
+  const compact = query.replace(/[\s.]/g, '');
+  if (/^[A-Za-z]\d{3,}$/.test(compact)) {
+    terms.push(`${compact.slice(0, 3)}.${compact.slice(3)}`);
+  }
+  // The bare "J069" form is worth trying too, for a catalog holding
+  // undotted codes.
+  if (compact !== query) terms.push(compact);
+  return [...new Set(terms)];
+}
 
 @Injectable()
 export class DiagnosisService {
-  constructor(@Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient) {}
+  constructor(
+    @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
+    // G2a — the raw client, for operations that must be ATOMIC across several
+    // writes (demote the old primary + promote the new one). Same pattern as
+    // ClinicalNoteService: the tenant GUC is set inside the transaction.
+    private readonly rawPrisma: PrismaService,
+  ) {}
+
+  private async withTenantTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+    const tenantId = currentTenantId();
+    return this.rawPrisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+      return fn(tx);
+    });
+  }
+
+  // The acting staff member, from the verified JWT claim only. A diagnosis is
+  // an attributed clinical entry; who made it must not be spoofable.
+  private async requireActor(tx: Tx): Promise<Staff> {
+    const staffId = currentStaffId();
+    if (!staffId) {
+      throw new ForbiddenException('No authenticated staff member on this session');
+    }
+    const staff = await tx.staff.findUnique({ where: { id: staffId } });
+    if (!staff || !staff.active) {
+      throw new ForbiddenException('Your staff account is inactive');
+    }
+    return staff;
+  }
+
+  // Fail-closed branch context, identical to C0's rule: a null home branch
+  // grants nothing unless the tenant genuinely has one branch or explicit
+  // access exists.
+  private async branchContext(tx: Tx, staff: Staff): Promise<BranchAccessContext> {
+    const tenantBranchCount = await tx.clinic.count({ where: { tenantId: currentTenantId() } });
+    const access = staff.userId
+      ? await tx.userClinicAccess.findMany({ where: { userId: staff.userId }, select: { clinicId: true } })
+      : [];
+    return { tenantBranchCount, authorisedClinicIds: access.map((a) => a.clinicId) };
+  }
+
+  private async assertMayTouchVisit(tx: Tx, visitId: string, staff: Staff) {
+    const visit = await tx.visit.findUnique({ where: { id: visitId }, select: { clinicId: true } });
+    if (!visit) {
+      throw new NotFoundException('Visit not found');
+    }
+    assertBranchAccess(staff, visit.clinicId, await this.branchContext(tx, staff));
+  }
 
   // Backs the visit's diagnosis picker's search box. D-027 (docs/DECISIONS.md):
   // Custom/Summarize/Full filters which catalog category is searched, not
   // how the added-diagnosis list displays.
   searchCatalog(query?: string, category?: DiagnosisCategory) {
+    const trimmed = query?.trim();
     return this.prisma.diagnosisCatalog.findMany({
       where: {
         active: true,
         category,
-        name: query ? { contains: query, mode: 'insensitive' } : undefined,
+        // G2b — match the ICD-10 code as well as the name. A GP who knows the
+        // code ("J06.9") could previously only find it by typing the wording,
+        // which is slower than the thing they already had in mind.
+        ...(trimmed
+          ? {
+              OR: [
+                { name: { contains: trimmed, mode: 'insensitive' as const } },
+                // KW2-Q3 — the SHORTFORM, which is what the clinic actually
+                // types. Nobody writes "Acute upper respiratory infection"
+                // between patients; they write "urti". Without this the real
+                // catalogue is searchable only by wording nobody uses.
+                { shortform: { contains: trimmed, mode: 'insensitive' as const } },
+                ...icd10SearchTerms(trimmed).map((term) => ({
+                  icd10Code: { contains: term, mode: 'insensitive' as const },
+                })),
+              ],
+            }
+          : {}),
       },
       orderBy: { name: 'asc' },
       take: 20,
@@ -68,10 +181,25 @@ export class DiagnosisService {
     });
   }
 
-  findByVisitId(visitId: string) {
-    return this.prisma.diagnosis.findMany({
-      where: { visitId },
+  // G2a — PRIMARY first, then everything else oldest-first. The clinical
+  // reading order, not the insertion order.
+  //
+  // G2 closure (D-061) — ACTIVE only by default. A removed diagnosis must
+  // never appear in the normal clinical view or count; `includeRemoved` is
+  // for the audit/history view.
+  async findByVisitId(visitId: string, includeRemoved = false) {
+    const rows = await this.prisma.diagnosis.findMany({
+      where: {
+        visitId,
+        ...(includeRemoved ? {} : { recordStatus: DiagnosisRecordStatus.ACTIVE }),
+      },
       orderBy: { createdAt: 'asc' },
+    });
+    return [...rows].sort((a, b) => {
+      if (a.priority === b.priority) return 0;
+      if (a.priority === DiagnosisPriority.PRIMARY) return -1;
+      if (b.priority === DiagnosisPriority.PRIMARY) return 1;
+      return 0;
     });
   }
 
@@ -82,38 +210,176 @@ export class DiagnosisService {
   async addToVisit(dto: AddDiagnosisDto) {
     const tenantId = currentTenantId();
 
-    let catalogEntry;
-    if (dto.diagnosisCatalogId) {
-      catalogEntry = await this.prisma.diagnosisCatalog.findUnique({ where: { id: dto.diagnosisCatalogId } });
-      if (!catalogEntry) {
-        throw new NotFoundException('Diagnosis catalog entry not found');
-      }
-    } else if (dto.name) {
-      catalogEntry = await this.prisma.diagnosisCatalog.upsert({
-        where: { tenantId_name: { tenantId, name: dto.name } },
-        create: { tenantId, name: dto.name, icd10Code: dto.icd10Code, category: DiagnosisCategory.CUSTOM },
-        update: {},
-      });
-    } else {
-      throw new BadRequestException('Either diagnosisCatalogId or name is required');
-    }
+    return this.withTenantTx(async (tx) => {
+      const actor = await this.requireActor(tx);
+      assertCanModifyDiagnosis(actor);
+      await this.assertMayTouchVisit(tx, dto.visitId, actor);
 
-    return this.prisma.diagnosis.create({
-      data: {
-        tenantId,
-        visitId: dto.visitId,
-        diagnosisCatalogId: catalogEntry.id,
-        icd10Code: catalogEntry.icd10Code,
-        name: catalogEntry.name,
-      },
+      let catalogEntry;
+      if (dto.diagnosisCatalogId) {
+        catalogEntry = await tx.diagnosisCatalog.findUnique({ where: { id: dto.diagnosisCatalogId } });
+        if (!catalogEntry) {
+          throw new NotFoundException('Diagnosis catalog entry not found');
+        }
+      } else if (dto.name) {
+        catalogEntry = await tx.diagnosisCatalog.upsert({
+          where: { tenantId_name: { tenantId, name: dto.name } },
+          create: { tenantId, name: dto.name, icd10Code: dto.icd10Code, category: DiagnosisCategory.CUSTOM },
+          update: {},
+        });
+      } else {
+        throw new BadRequestException('Either diagnosisCatalogId or name is required');
+      }
+
+      // Adding straight in as PRIMARY has to demote the incumbent in the SAME
+      // transaction, or the partial unique index rejects the insert.
+      if (dto.priority === DiagnosisPriority.PRIMARY) {
+        await this.demoteCurrentPrimary(tx, dto.visitId, null);
+      }
+
+      const snap = snapshotOf(actor);
+      return tx.diagnosis
+        .create({
+          data: {
+            tenantId,
+            visitId: dto.visitId,
+            diagnosisCatalogId: catalogEntry.id,
+            icd10Code: catalogEntry.icd10Code,
+            name: catalogEntry.name,
+            priority: dto.priority ?? null,
+            // Never from the request body — see AddDiagnosisDto.
+            addedByStaffId: snap.staffId,
+            addedByNameSnapshot: snap.nameSnapshot,
+            addedByRoleSnapshot: snap.roleSnapshot,
+            legacyAttributionUnknown: false,
+          },
+        })
+        .catch((error) => {
+          throw this.translatePrimaryRace(error);
+        });
     });
   }
 
-  async remove(id: string) {
-    const diagnosis = await this.prisma.diagnosis.findUnique({ where: { id } });
-    if (!diagnosis) {
-      throw new NotFoundException('Diagnosis not found');
+  /**
+   * G2a — set (or clear) a diagnosis's priority.
+   *
+   * The demote-then-promote pair runs in ONE transaction, and the database
+   * still has the final say: `diagnoses_one_primary_per_visit` means two
+   * concurrent requests cannot both leave a PRIMARY behind. The loser gets a
+   * 409 rather than a silently duplicated primary diagnosis.
+   */
+  async setPriority(id: string, dto: SetDiagnosisPriorityDto) {
+    const next = dto.priority ?? null;
+
+    return this.withTenantTx(async (tx) => {
+      const actor = await this.requireActor(tx);
+      assertCanModifyDiagnosis(actor);
+      const diagnosis = await tx.diagnosis.findUnique({ where: { id } });
+      if (!diagnosis) {
+        throw new NotFoundException('Diagnosis not found');
+      }
+      await this.assertMayTouchVisit(tx, diagnosis.visitId, actor);
+      if (diagnosis.recordStatus === DiagnosisRecordStatus.REMOVED_IN_ERROR) {
+        throw new ConflictException('This diagnosis has been removed from the visit and cannot be re-prioritised.');
+      }
+
+      if (next === DiagnosisPriority.PRIMARY) {
+        await this.demoteCurrentPrimary(tx, diagnosis.visitId, id);
+      }
+
+      return tx.diagnosis
+        .update({ where: { id }, data: { priority: next } })
+        .catch((error) => {
+          throw this.translatePrimaryRace(error);
+        });
+    });
+  }
+
+  // The previous primary becomes SECONDARY rather than "not recorded": it was
+  // a deliberately prioritised diagnosis, and demoting it to an unrecorded
+  // state would lose information the doctor did enter.
+  private async demoteCurrentPrimary(tx: Tx, visitId: string, exceptId: string | null) {
+    await tx.diagnosis.updateMany({
+      where: {
+        visitId,
+        priority: DiagnosisPriority.PRIMARY,
+        // Removed rows keep their historical priority for audit and must not
+        // be rewritten by a later demotion.
+        recordStatus: DiagnosisRecordStatus.ACTIVE,
+        ...(exceptId ? { id: { not: exceptId } } : {}),
+      },
+      data: { priority: DiagnosisPriority.SECONDARY },
+    });
+  }
+
+  private translatePrimaryRace(error: unknown): unknown {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === UNIQUE_VIOLATION &&
+      String(error.meta?.target ?? '').includes('primary_per_visit')
+    ) {
+      return new ConflictException(
+        'Another primary diagnosis was set for this visit at the same time. Reload the visit and try again.',
+      );
     }
-    await this.prisma.diagnosis.delete({ where: { id } });
+    return error;
+  }
+
+  /**
+   * G2 closure (D-061) — remove a diagnosis from the ACTIVE visit record.
+   *
+   * This replaces the hard delete entirely. There is no longer any
+   * application path that deletes a saved diagnosis: the row stays, with its
+   * content, ICD-10 code, priority and ORIGINAL attribution untouched. Only
+   * `recordStatus` changes, plus who removed it, when and why.
+   *
+   * The removed row keeps its historical `priority` for audit, but the
+   * one-primary index is scoped to ACTIVE rows, so removing the primary frees
+   * the slot without any diagnosis being silently promoted in its place. A
+   * visit may legitimately have no primary until a doctor chooses one.
+   */
+  async removeFromVisit(id: string, dto: RemoveDiagnosisDto) {
+    const reason = dto.removalReason?.trim();
+    if (!reason) {
+      throw new BadRequestException('A removal reason is required.');
+    }
+
+    return this.withTenantTx(async (tx) => {
+      const actor = await this.requireActor(tx);
+      // Clinical judgement: doctors only. An administrative role does not
+      // qualify on its own (D-061).
+      assertCanModifyDiagnosis(actor);
+
+      const diagnosis = await tx.diagnosis.findUnique({ where: { id } });
+      if (!diagnosis) {
+        throw new NotFoundException('Diagnosis not found');
+      }
+      await this.assertMayTouchVisit(tx, diagnosis.visitId, actor);
+
+      if (diagnosis.recordStatus === DiagnosisRecordStatus.REMOVED_IN_ERROR) {
+        throw new ConflictException('This diagnosis has already been removed from the visit.');
+      }
+      if (dto.expectedVersion !== undefined && dto.expectedVersion !== diagnosis.version) {
+        throw new ConflictException(
+          'This diagnosis changed since you loaded it. Reload the visit and try again.',
+        );
+      }
+
+      const snap = snapshotOf(actor);
+      return tx.diagnosis.update({
+        where: { id },
+        data: {
+          recordStatus: DiagnosisRecordStatus.REMOVED_IN_ERROR,
+          removedAt: new Date(),
+          removedByStaffId: snap.staffId,
+          removedByNameSnapshot: snap.nameSnapshot,
+          removedByRoleSnapshot: snap.roleSnapshot,
+          removalReason: reason,
+          version: { increment: 1 },
+          // priority, name, icd10Code, addedBy* and addedAt are deliberately
+          // NOT touched. The original entry has to survive intact.
+        },
+      });
+    });
   }
 }

@@ -39,12 +39,47 @@ interface RichTextEditorProps {
   // (user feedback) — compact gives the editor a short, internally-
   // scrollable content area instead of a tall fixed minHeight.
   compact?: boolean;
+  // C2 — the editor should claim all remaining height in the Canvas
+  // workspace rather than being a fixed short box.
+  fill?: boolean;
+  // G0a (D-054) — false for a signed, legacy or permission-locked note.
+  // Until now the caller only swallowed onChange, which left .ProseMirror
+  // contenteditable: a doctor could type into a SIGNED note and the text
+  // stayed on screen unsaved, looking like an accepted edit to a sealed
+  // medicolegal record. Found by prisma/g0a-editor-check.ts.
+  editable?: boolean;
 }
 
 const FONT_FAMILIES = ['Sans Serif', 'Serif', 'Monospace'];
 
-export function RichTextEditor({ content, onChange, placeholder, compact }: RichTextEditorProps) {
+/**
+ * G4.5d3c-3a0v (D-090) — which height rule the editor surface gets.
+ *
+ * An EDITABLE Canvas note reserves comfortable typing room and grows with
+ * content (.kw-editor-fill). A SIGNED or otherwise read-only note reserves
+ * far less (.kw-editor-signed): nobody types into it, so hundreds of blank
+ * pixels below a short SOAP note bought nothing except scroll distance
+ * between the doctor and the Consultation Footer.
+ *
+ * A CLASS decides this, not a remount: the TipTap instance and the DOM node
+ * are untouched when a note flips between the two (e.g. on signing), which is
+ * what C1's draft protection relies on.
+ */
+export function editorSurfaceClass(fill: boolean | undefined, editable: boolean): string {
+  if (!fill) return 'kw-editor-min';
+  return editable ? 'kw-editor-fill' : 'kw-editor-signed';
+}
+
+export function RichTextEditor({
+  content,
+  onChange,
+  placeholder,
+  compact,
+  fill,
+  editable = true,
+}: RichTextEditorProps) {
   const editor = useEditor({
+    editable,
     extensions: [
       StarterKit,
       Underline,
@@ -69,6 +104,14 @@ export function RichTextEditor({ content, onChange, placeholder, compact }: Rich
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content]);
 
+  // Selecting a signed note after editing a draft must lock the editor, not
+  // leave the previous note's editable state behind.
+  useEffect(() => {
+    if (editor && editor.isEditable !== editable) {
+      editor.setEditable(editable);
+    }
+  }, [editor, editable]);
+
   if (!editor) {
     return null;
   }
@@ -88,6 +131,10 @@ export function RichTextEditor({ content, onChange, placeholder, compact }: Rich
   };
 
   return (
+    // G0a (D-054) — `fill` no longer means "absorb the leftover height of a
+    // viewport-sized shell". It selects the desktop editor height, which is
+    // declared in CSS (.kw-editor-fill), so lower clinical sections can grow
+    // without ever shrinking the doctor's typing area.
     <div style={compact ? undefined : { border: '1px solid #d9d9d9', borderRadius: 6 }}>
       <div style={{ padding: compact ? 4 : 8, borderBottom: '1px solid #f0f0f0' }}>
         <Space wrap size={4}>
@@ -201,8 +248,21 @@ export function RichTextEditor({ content, onChange, placeholder, compact }: Rich
       )}
       <EditorContent
         editor={editor}
-        className={compact ? 'kw-notes-borderless' : undefined}
-        style={compact ? { padding: 6, minHeight: 100 } : { padding: 12, minHeight: 240 }}
+        className={
+          [compact ? 'kw-notes-borderless' : '', editorSurfaceClass(fill, editable)]
+            .filter(Boolean)
+            .join(' ') || undefined
+        }
+        style={
+          fill
+            ? // The .ProseMirror inside scrolls only once the doctor's own
+              // text outgrows the declared height — a scrollbar they caused,
+              // not one the layout imposed.
+              { padding: 8 }
+            : compact
+              ? { padding: 6, minHeight: 100 }
+              : { padding: 12, minHeight: 240 }
+        }
       />
     </div>
   );

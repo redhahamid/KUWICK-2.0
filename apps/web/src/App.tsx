@@ -22,11 +22,13 @@ import { AttendancePage } from './hr/AttendancePage';
 import { LeaveRequestsPage } from './hr/LeaveRequestsPage';
 import { PublicHolidaysPage } from './hr/PublicHolidaysPage';
 import { ServicesPage } from './clinical/ServicesPage';
+import { ConsultationTariffsPage } from './clinical/ConsultationTariffsPage';
 import { PanelClinicsPage } from './clinical/PanelClinicsPage';
 import { PanelClaimsPage } from './clinical/PanelClaimsPage';
 import { DiagnosesDirectoryPage } from './clinical/DiagnosesDirectoryPage';
 import { PatientDashboardPage } from './clinical/PatientDashboardPage';
 import { QueueManagementPage } from './clinical/QueueManagementPage';
+import { DispensaryPage } from './clinical/dispensary/DispensaryPage';
 import { QueueMonitorPage } from './clinical/QueueMonitorPage';
 import { RoomsPage } from './clinical/RoomsPage';
 import { QueueDisplaySettingsPage } from './clinical/QueueDisplaySettingsPage';
@@ -34,6 +36,8 @@ import { DocumentTemplatesPage } from './clinical/DocumentTemplatesPage';
 import { PlatformDocumentTemplatesPage } from './platform/PlatformDocumentTemplatesPage';
 import { PrintOrderResultPage } from './clinical/PrintOrderResultPage';
 import { ProcedureQueuePage } from './clinical/ProcedureQueuePage';
+import { BillingVisitPage } from './clinical/BillingVisitPage';
+import { HistoricalVisitPage } from './clinical/history/HistoricalVisitPage';
 import { DoctorSchedulesPage } from './appointment/DoctorSchedulesPage';
 import { DoctorServiceQualificationsPage } from './appointment/DoctorServiceQualificationsPage';
 import { SlotCapacityConfigsPage } from './appointment/SlotCapacityConfigsPage';
@@ -87,7 +91,16 @@ export function App() {
           <Route path="/patients" element={<PatientsPage />} />
           <Route path="/patients/:id" element={<PatientDashboardPage />} />
           <Route path="/queue" element={<QueueManagementPage />} />
+          {/* G4.5d5b-3 — the dispensary counter's own workspace. `?visitId=`
+              opens it on one patient, so the Queue can hand a specific visit
+              across and a colleague can be sent a link. */}
+          <Route path="/dispensary" element={<DispensaryPage />} />
           <Route path="/procedure-queue" element={<ProcedureQueuePage />} />
+          {/* G3c (D-065) — the billing workflow's own route. The Clinical
+              Workspace shows a read-only summary and links here. */}
+          <Route path="/billing/visits/:visitId" element={<BillingVisitPage />} />
+          {/* G4 (D-067) — read-only historical visit, opened in its own tab. */}
+          <Route path="/history/patients/:patientId/visits/:visitId" element={<HistoricalVisitPage />} />
 
           {/* Management (M1, owner-approved horizontal layout) — review/
               approve/report work only; set-once config lives under
@@ -131,6 +144,7 @@ export function App() {
             <Route path="/settings/queue/rooms" element={<RoomsPage />} />
             <Route path="/settings/queue/display" element={<QueueDisplaySettingsPage />} />
             <Route path="/settings/clinical/services" element={<ServicesPage />} />
+            <Route path="/settings/clinical/consultation-tariffs" element={<ConsultationTariffsPage />} />
             <Route path="/settings/clinical/diagnoses" element={<DiagnosesDirectoryPage />} />
             <Route path="/settings/documents/templates" element={<DocumentTemplatesPage />} />
             <Route path="/settings/hr/public-holidays" element={<PublicHolidaysPage />} />

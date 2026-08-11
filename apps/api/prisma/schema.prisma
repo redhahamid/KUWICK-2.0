@@ -22,6 +22,95 @@ enum Role {
   PATIENT_PORTAL
 }
 
+/**
+ * TASK 1 — the CAPABILITY roles.
+ * Deliberately separate from `Role` above, which is the legacy administrative
+ * job title and stays exactly as it is. A staff member holds one or MORE of
+ * these and their effective permissions are the union — which is the whole
+ * point: the doctor who owns the clinic holds DOCTOR and OWNER, and neither
+ * role has to be widened to accommodate the other.
+ */
+enum SystemRole {
+  /**
+   * Write and sign notes, diagnose, prescribe, order, hold, complete.
+   */
+  DOCTOR
+  /**
+   * Vitals, allergies, task-order results, dispensing, staff remarks.
+   */
+  CLINICAL_STAFF
+  /**
+   * Demographics, LHDN, queue, billing, documents. No clinical writes.
+   */
+  ADMINISTRATOR
+  /**
+   * Settings, discount approval. Alone, this carries NO clinical ability.
+   */
+  OWNER
+
+  @@map("system_role")
+}
+
+/**
+ * One capability role held by one staff member.
+ * Attributed on purpose: who granted a clinical capability, and when, is a
+ * question an audit will ask. Removal is a delete — the grant's history lives
+ * in the audit log, not in a tombstone here.
+ */
+model StaffRoleAssignment {
+  id       String     @id @default(uuid())
+  tenantId String     @map("tenant_id")
+  staffId  String     @map("staff_id")
+  role     SystemRole
+
+  assignedByStaffId String   @map("assigned_by_staff_id")
+  assignedAt        DateTime @default(now()) @map("assigned_at")
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id])
+  staff      Staff  @relation("StaffRoleHolder", fields: [staffId], references: [id], onDelete: Cascade)
+  assignedBy Staff  @relation("StaffRoleGrantedBy", fields: [assignedByStaffId], references: [id])
+
+  @@unique([staffId, role])
+  @@index([tenantId, role])
+  @@map("staff_role_assignments")
+}
+
+/**
+ * TASK 1 — a permission granted to ONE person, outside any role.
+ * Owner decision: "financial corrections" is a power, not a job. Applying a
+ * discount belongs to OWNER by default, but a trusted senior counter staffer
+ * should be able to hold it without inventing a fifth role for one capability.
+ * The same applies to dispensing for a stock account.
+ * Deliberately ADDITIVE ONLY. There is no per-person REVOKE, and there will
+ * not be one: a grant that could subtract from a role would make "what can
+ * this person do" answerable only by replaying two tables in the right order.
+ * To take a capability away, remove the role.
+ */
+model StaffPermissionGrant {
+  id         String @id @default(uuid())
+  tenantId   String @map("tenant_id")
+  staffId    String @map("staff_id")
+  /**
+   * A `Permission` string from core/permissions.ts.
+   */
+  permission String
+
+  grantedByStaffId String   @map("granted_by_staff_id")
+  grantedAt        DateTime @default(now()) @map("granted_at")
+  /**
+   * Why this person specifically. Read in the audit, never optional.
+   */
+  reason           String
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  staff     Staff  @relation("StaffPermissionHolder", fields: [staffId], references: [id], onDelete: Cascade)
+  grantedBy Staff  @relation("StaffPermissionGrantedBy", fields: [grantedByStaffId], references: [id])
+
+  @@unique([staffId, permission])
+  @@index([tenantId, permission])
+  @@map("staff_permission_grants")
+}
+
 enum PatientIdentifierType {
   NRIC
   PASSPORT
@@ -112,6 +201,7 @@ model Tenant {
   globalSettings              GlobalSetting[]
   notificationLogs            NotificationLog[]
   auditLogs                   AuditLog[]
+  visitWorkflowEvents         VisitWorkflowEvent[]
   staff                       Staff[]
   services                    ServiceCatalog[]
   doctorSchedules             DoctorSchedule[]
@@ -159,8 +249,37 @@ model Tenant {
   visitObservations           VisitObservation[]
   visitObservationRevisions   VisitObservationRevision[]
   staffProfessionalAudits     StaffProfessionalAudit[]
+  visitNumberCounter          VisitNumberCounter?
+  consultationTariffRules     ConsultationTariffRule[]
+
+  labelPrints           LabelPrint[]
+  staffRoleAssignments  StaffRoleAssignment[]
+  staffPermissionGrants StaffPermissionGrant[]
 
   @@map("tenants")
+}
+
+/// G4c1 (D-068) — the allocator behind Visit.visitNumber.
+///
+/// Replaces `count(*) + 1`, which derived the next number from HOW MANY rows
+/// exist rather than WHICH numbers have been used. Delete one visit and the
+/// count falls behind the highest number in use, so the next create collided
+/// with a live row on `visits_tenant_id_visit_number_key` and surfaced as a
+/// raw 500; two concurrent registrations also read the same count and produced
+/// the same number.
+///
+/// One row per tenant, because the uniqueness constraint that actually exists
+/// is `@@unique([tenantId, visitNumber])` — the scope is the tenant, not the
+/// clinic and not the whole database. `nextValue` is the last number ISSUED;
+/// allocation increments and returns in a single atomic statement.
+model VisitNumberCounter {
+  tenantId  String   @id @map("tenant_id")
+  nextValue Int      @default(0) @map("next_value")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("visit_number_counters")
 }
 
 model Clinic {
@@ -176,28 +295,31 @@ model Clinic {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant              Tenant               @relation(fields: [tenantId], references: [id])
-  access              UserClinicAccess[]
-  doctorSchedules     DoctorSchedule[]
-  scheduleExceptions  ScheduleException[]
-  slotCapacityConfigs SlotCapacityConfig[]
-  appointments        Appointment[]
-  stockLevels         StockLevel[]
-  stockBatches        StockBatch[]
-  stockMovements      StockMovement[]
-  procurementRequests ProcurementRequest[]
-  purchaseOrders      PurchaseOrder[]
-  goodsReceivedNotes  GoodsReceivedNote[]
-  visits              Visit[]
-  queueTickets        QueueTicket[]
-  orderServices       OrderService[]
-  rooms               Room[]
-  queueDisplayConfig  QueueDisplayConfig?
-  staff               Staff[]
-  chatMessages        ChatMessage[]
-  chatChannels        ChatChannel[]
-  clinicalNotes       ClinicalNote[]
-  visitObservations   VisitObservation[]
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id])
+  access                  UserClinicAccess[]
+  doctorSchedules         DoctorSchedule[]
+  scheduleExceptions      ScheduleException[]
+  slotCapacityConfigs     SlotCapacityConfig[]
+  appointments            Appointment[]
+  stockLevels             StockLevel[]
+  stockBatches            StockBatch[]
+  stockMovements          StockMovement[]
+  procurementRequests     ProcurementRequest[]
+  purchaseOrders          PurchaseOrder[]
+  goodsReceivedNotes      GoodsReceivedNote[]
+  visits                  Visit[]
+  queueTickets            QueueTicket[]
+  visitWorkflowEvents     VisitWorkflowEvent[]
+  orderServices           OrderService[]
+  rooms                   Room[]
+  queueDisplayConfig      QueueDisplayConfig?
+  staff                   Staff[]
+  chatMessages            ChatMessage[]
+  chatChannels            ChatChannel[]
+  clinicalNotes           ClinicalNote[]
+  visitObservations       VisitObservation[]
+  consultationTariffRules ConsultationTariffRule[]
+  labelPrints             LabelPrint[]
 
   @@index([tenantId])
   @@map("clinics")
@@ -474,33 +596,57 @@ model Staff {
   clinicalSigningEnabledAt        DateTime?        @map("clinical_signing_enabled_at")
   clinicalSigningEnabledByStaffId String?          @map("clinical_signing_enabled_by_staff_id")
 
-  tenant                      Tenant                       @relation(fields: [tenantId], references: [id])
-  user                        User?                        @relation(fields: [userId], references: [id])
-  clinic                      Clinic?                      @relation(fields: [clinicId], references: [id])
-  doctorSchedules             DoctorSchedule[]
-  scheduleExceptions          ScheduleException[]
-  slotCapacityConfigs         SlotCapacityConfig[]
-  doctorServiceQualifications DoctorServiceQualification[]
-  appointments                Appointment[]
-  visits                      Visit[]
-  orderServices               OrderService[]
-  prescriptions               Prescription[]
-  attachments                 Attachment[]
-  visitAttachments            VisitAttachment[]
-  chatMessages                ChatMessage[]
-  documentsIssued             Document[]                   @relation("DocumentIssuedBy")
-  documentsSigned             Document[]                   @relation("DocumentSignedBy")
-  invoices                    Invoice[]
-  stockBatchesAdded           StockBatch[]
-  claimBatchesCreated         ClaimBatch[]
-  leaveRequests               LeaveRequest[]               @relation("LeaveRequestStaff")
-  leaveRequestsApproved       LeaveRequest[]               @relation("LeaveRequestApprovedBy")
-  clinicalNotesAuthored       ClinicalNote[]               @relation("ClinicalNoteAuthor")
-  clinicalNotesSigned         ClinicalNote[]               @relation("ClinicalNoteSigner")
-  observationsRecorded        VisitObservation[]           @relation("ObservationRecorder")
-  observationsUpdated         VisitObservation[]           @relation("ObservationUpdater")
-  professionalAudits          StaffProfessionalAudit[]     @relation("ProfessionalAuditSubject")
-  professionalAuditsMade      StaffProfessionalAudit[]     @relation("ProfessionalAuditActor")
+  tenant                       Tenant                       @relation(fields: [tenantId], references: [id])
+  user                         User?                        @relation(fields: [userId], references: [id])
+  clinic                       Clinic?                      @relation(fields: [clinicId], references: [id])
+  doctorSchedules              DoctorSchedule[]
+  scheduleExceptions           ScheduleException[]
+  slotCapacityConfigs          SlotCapacityConfig[]
+  doctorServiceQualifications  DoctorServiceQualification[]
+  appointments                 Appointment[]
+  // Two different roles on a visit: the attending clinician, and whoever
+  // completed the doctor phase. Usually the same person, but not necessarily
+  // — a locum can finish a colleague's consultation — so they are recorded
+  // separately rather than one being assumed from the other.
+  visits                       Visit[]                      @relation("VisitAttendingStaff")
+  visitsRegistered             Visit[]                      @relation("VisitRegisteredBy")
+  visitsDoctorCompleted        Visit[]                      @relation("VisitDoctorCompletedBy")
+  visitsPanelVerified          Visit[]                      @relation("VisitPanelVerifiedBy")
+  visitsPanelBenefitOverridden Visit[]                      @relation("VisitPanelBenefitOverriddenBy")
+  workflowEvents               VisitWorkflowEvent[]         @relation("WorkflowEventActor")
+  workflowEventsHandedOver     VisitWorkflowEvent[]         @relation("WorkflowEventPreviousStaff")
+  workflowEventsReceived       VisitWorkflowEvent[]         @relation("WorkflowEventNewStaff")
+  roleAssignments              StaffRoleAssignment[]        @relation("StaffRoleHolder")
+  permissionGrants             StaffPermissionGrant[]       @relation("StaffPermissionHolder")
+  permissionGrantsMade         StaffPermissionGrant[]       @relation("StaffPermissionGrantedBy")
+  roleAssignmentsGranted       StaffRoleAssignment[]        @relation("StaffRoleGrantedBy")
+  queueTicketsHeld             QueueTicket[]                @relation("QueueTicketHeldBy")
+  orderServices                OrderService[]
+  prescriptions                Prescription[]
+  attachments                  Attachment[]
+  visitAttachments             VisitAttachment[]
+  chatMessages                 ChatMessage[]
+  documentsIssued              Document[]                   @relation("DocumentIssuedBy")
+  documentsSigned              Document[]                   @relation("DocumentSignedBy")
+  invoices                     Invoice[]
+  stockBatchesAdded            StockBatch[]
+  claimBatchesCreated          ClaimBatch[]
+  leaveRequests                LeaveRequest[]               @relation("LeaveRequestStaff")
+  leaveRequestsApproved        LeaveRequest[]               @relation("LeaveRequestApprovedBy")
+  clinicalNotesAuthored        ClinicalNote[]               @relation("ClinicalNoteAuthor")
+  clinicalNotesSigned          ClinicalNote[]               @relation("ClinicalNoteSigner")
+  clinicalNotesFinalized       ClinicalNote[]               @relation("ClinicalNoteFinalizer")
+  observationsRecorded         VisitObservation[]           @relation("ObservationRecorder")
+  observationsUpdated          VisitObservation[]           @relation("ObservationUpdater")
+  diagnosesRecorded            Diagnosis[]                  @relation("DiagnosisRecorder")
+  diagnosesRemoved             Diagnosis[]                  @relation("DiagnosisRemover")
+  documentsVoided              Document[]                   @relation("DocumentVoidedBy")
+  visitAttachmentsRemoved      VisitAttachment[]            @relation("VisitAttachmentRemovedBy")
+  orderAttachmentsRemoved      Attachment[]                 @relation("OrderAttachmentRemovedBy")
+  professionalAudits           StaffProfessionalAudit[]     @relation("ProfessionalAuditSubject")
+  professionalAuditsMade       StaffProfessionalAudit[]     @relation("ProfessionalAuditActor")
+  labelPrints                  LabelPrint[]
+  prescriptionsReviewed        Prescription[]               @relation("PrescriptionReviewer")
 
   @@index([tenantId])
   @@index([tenantId, role])
@@ -635,9 +781,66 @@ model ServiceCatalog {
   formTemplates               FormTemplate[]
   panelPriceOverrides         PanelPriceOverride[]
   panelExclusions             PanelExclusion[]
+  consultationTariffRules     ConsultationTariffRule[]
 
   @@index([tenantId])
   @@map("service_catalog")
+}
+
+/**
+ * G4.5d3c-3b2 (D-094) — the operational kind of visit, as far as
+ * CONSULTATION BILLING is concerned. The owner's exemption cases: an OTC
+ * purchase, a dressing change, a procedure-only attendance and a no-charge
+ * follow-up must never auto-attract a consultation fee. Deliberately NOT a
+ * broad appointment/workflow taxonomy — it exists to answer exactly one
+ * question: which consultation tariff rules (if any) apply to this visit.
+ */
+enum VisitClassification {
+  CONSULTATION
+  OTC_ONLY
+  DRESSING_ONLY
+  PROCEDURE_ONLY
+  FOLLOW_UP_NO_CONSULTATION
+}
+
+/**
+ * G4.5d3c-3b2 (D-094) — a clinic's consultation tariff: WHICH consultation
+ * service applies at WHAT time of day for WHICH kind of visit.
+ * The rule selects the ServiceCatalog record; the PRICE always comes from the
+ * approved pricing resolver (specific panel price -> cash + panel service
+ * markup -> cash). Panel-specific consultation prices therefore live in
+ * PanelPriceOverride against the selected service, never inside this rule —
+ * one pricing truth, not two.
+ * Times are clinic-local wall-clock "HH:MM", INCLUSIVE at both ends
+ * ("08:00"–"22:59"). startTime > endTime means the band crosses midnight
+ * ("23:00"–"07:59"). Matching converts the consultation-start instant to the
+ * clinic's stored IANA timezone.
+ * A clinic with NO active rules has consultation auto-billing OFF — existing
+ * tenants behave exactly as before until they configure a tariff.
+ */
+model ConsultationTariffRule {
+  id               String              @id @default(uuid())
+  tenantId         String              @map("tenant_id")
+  clinicId         String              @map("clinic_id")
+  name             String
+  active           Boolean             @default(true)
+  classification   VisitClassification @default(CONSULTATION)
+  startTime        String              @map("start_time")
+  endTime          String              @map("end_time")
+  serviceCatalogId String              @map("service_catalog_id")
+  // Optional validity window (clinic-local calendar dates, inclusive).
+  effectiveFrom    DateTime?           @map("effective_from")
+  effectiveTo      DateTime?           @map("effective_to")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+  clinic         Clinic         @relation(fields: [clinicId], references: [id])
+  serviceCatalog ServiceCatalog @relation(fields: [serviceCatalogId], references: [id])
+  invoiceLines   InvoiceLine[]
+
+  @@index([tenantId, clinicId, active])
+  @@map("consultation_tariff_rules")
 }
 
 // Clinical Operations, Phase A7. Admin-defined result forms ("Google
@@ -823,6 +1026,29 @@ enum PurchaseOrderStatus {
 
 // Selfpay price only — panel-tier pricing lives on PanelPriceOverride
 // (Phase A8), not duplicated here.
+/**
+ * KW2-Q3 — what the Add-medication form does when an item is selected.
+ * Behaviour, not a button. The doctor should not have to know that a syrup
+ * for a 3-year-old wants the weight calculator; choosing the medicine is what
+ * says so.
+ */
+enum ItemDosingType {
+  /**
+   * Dose from mg/kg × the latest recorded weight. The calculator opens.
+   */
+  WEIGHT_BASED
+  /**
+   * Dose from an age bracket, matched from the patient's DOB.
+   */
+  AGE_BAND
+  /**
+   * A fixed adult default, filled silently where one is configured.
+   */
+  ADULT_DEFAULT
+
+  @@map("item_dosing_type")
+}
+
 model Item {
   id                      String   @id @default(uuid())
   tenantId                String   @map("tenant_id")
@@ -855,8 +1081,54 @@ model Item {
   sellPrice               Decimal  @map("sell_price") @db.Decimal(10, 2)
   cost                    Decimal? @db.Decimal(10, 2)
   active                  Boolean  @default(true)
-  createdAt               DateTime @default(now()) @map("created_at")
-  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  // ---- KW2-Q3: imported from the clinic's own inventory export ----------
+  //
+  // The source is a real spreadsheet with real conventions, and the import
+  // preserves rather than tidies. Anything cleaned for display keeps the
+  // original beside it, because a name nobody recognises is worse than an
+  // untidy one.
+
+  /**
+   * The source row's id. Makes the import idempotent and traceable.
+   */
+  externalRef     String?   @map("external_ref")
+  /**
+   * The name exactly as exported, "##***" and all.
+   */
+  sourceName      String?   @map("source_name")
+  /**
+   * The clinic's Malay grouping: BATUK, DEMAM, ANTIBIOTIK… Searchable.
+   */
+  groupTag        String?   @map("group_tag")
+  /**
+   * Flagged "(CASH ONLY)" in the source. Kept visible, never silently applied.
+   */
+  cashOnly        Boolean   @default(false) @map("cash_only")
+  /**
+   * The raw packaging string: "10 BIJI / STRIP", "PLASTIC/6 SACHET".
+   */
+  packDescription String?   @map("pack_description")
+  /**
+   * The leading number parsed out of packDescription where there IS one.
+   * NULL where the string does not start with a count — "Box", "BOTTLE",
+   * "-". Guessing 1 would be a quantity the clinic never stated.
+   */
+  unitsPerPack    Int?      @map("units_per_pack")
+  /**
+   * Summary-level only; batch expiry lives on StockBatch.
+   */
+  earliestExpiry  DateTime? @map("earliest_expiry") @db.Date
+
+  /**
+   * How the Add-medication form behaves when this item is chosen.
+   * Every imported row is ADULT_DEFAULT with empty defaults: the source
+   * carries no dosing data at all, and inventing doses for real drugs is the
+   * one thing an import must never do.
+   */
+  dosingType ItemDosingType @default(ADULT_DEFAULT) @map("dosing_type")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
 
   tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
   stockLevels            StockLevel[]
@@ -995,6 +1267,15 @@ model StockMovement {
   referenceId     String?           @map("reference_id")
   createdByUserId String?           @map("created_by_user_id")
   createdAt       DateTime          @default(now()) @map("created_at")
+
+  /// G4.5d5b-2 — why this movement happened, when it needs saying.
+  ///
+  /// Added for one specific fact the approved dispensing policy produces: a
+  /// hand-over made under an ACKNOWLEDGED stock shortage. The policy permits
+  /// it, so the ledger has to be able to say the shortage was seen and
+  /// accepted rather than leaving an unexplained negative balance for someone
+  /// to find later. Nullable and free text; nothing branches on it.
+  notes String? @map("notes")
 
   tenant Tenant      @relation(fields: [tenantId], references: [id])
   clinic Clinic      @relation(fields: [clinicId], references: [id])
@@ -1136,24 +1417,30 @@ model GoodsReceivedNoteLine {
 // Claims" menu), since that's an external workflow on the panel's own
 // website today.
 model PanelClinic {
-  id              String             @id @default(uuid())
-  tenantId        String             @map("tenant_id")
-  name            String
-  code            String?
-  limitAmount     Decimal?           @map("limit_amount") @db.Decimal(10, 2)
+  id                    String             @id @default(uuid())
+  tenantId              String             @map("tenant_id")
+  name                  String
+  code                  String?
+  limitAmount           Decimal?           @map("limit_amount") @db.Decimal(10, 2)
   // Panel workbook upgrade (D-041) — the panel's own payment term; a
   // claim is overdue when days since submission exceed this, so aging is
   // judged per panel rather than against fixed buckets.
-  paymentTermDays Int?               @map("payment_term_days")
+  paymentTermDays       Int?               @map("payment_term_days")
   // D-041 (owner refinement) — per-panel claim fee: some panels carry an
   // admin fee per claim, as a % of the claimed amount or a flat RM value;
   // most (e.g. AIA) have none. Applied automatically at batch creation
   // from this configuration — never a manual per-batch entry.
-  claimFeeType    PanelClaimFeeType? @map("claim_fee_type")
-  claimFeeValue   Decimal?           @map("claim_fee_value") @db.Decimal(10, 2)
-  active          Boolean            @default(true)
-  createdAt       DateTime           @default(now()) @map("created_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
+  claimFeeType          PanelClaimFeeType? @map("claim_fee_type")
+  claimFeeValue         Decimal?           @map("claim_fee_value") @db.Decimal(10, 2)
+  // G4.5d3c-3b1 (D-093) — panel-wide FIXED MARKUPS in RM, added to the clinic
+  // cash price (owner rule). NOT absolute prices, and never stacked with a
+  // specific PanelPriceOverride: a specific price REPLACES the markup-derived
+  // one. NULL or 0 means no markup — the cash price stands.
+  inventoryMarkupAmount Decimal?           @map("inventory_markup_amount") @db.Decimal(10, 2)
+  serviceMarkupAmount   Decimal?           @map("service_markup_amount") @db.Decimal(10, 2)
+  active                Boolean            @default(true)
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
 
   tenant         Tenant               @relation(fields: [tenantId], references: [id])
   visits         Visit[]
@@ -1222,41 +1509,130 @@ model PanelExclusion {
 }
 
 model Visit {
-  id                  String    @id @default(uuid())
-  tenantId            String    @map("tenant_id")
-  clinicId            String    @map("clinic_id")
-  patientId           String    @map("patient_id")
-  staffId             String    @map("staff_id")
+  id                  String               @id @default(uuid())
+  tenantId            String               @map("tenant_id")
+  clinicId            String               @map("clinic_id")
+  patientId           String               @map("patient_id")
+  // S3c (D-082) — the CURRENT ATTENDING CLINICIAN, and only that.
+  //
+  // Nullable since S3c. It was required, which forced front desk to store
+  // THEMSELVES as the attending clinician when registering a walk-in nobody
+  // had been assigned to yet — so the field could not tell "Dr Amira is
+  // seeing this patient" apart from "Amy at the counter typed this in".
+  // NULL now means exactly what it says: no clinician has taken this visit.
+  //
+  // The name is kept rather than corrected to attendingStaffId: it is read
+  // across the queue, canvas, documents, orders, prescriptions and reports,
+  // and a rename would be churn without changing behaviour. Recorded as
+  // technical debt in D-082.
+  staffId             String?              @map("staff_id")
+  // Who created the visit. Administrative provenance, NEVER clinical
+  // attribution — a registrar is not an author and must never be rendered as
+  // the attending doctor. Nullable because it cannot be recovered for rows
+  // written before this phase; NULL means it was not captured.
+  registeredByStaffId String?              @map("registered_by_staff_id")
   // Count-based sequence ("V-000002"), not a DB sequence — same accepted
   // non-atomic-race gap as Inventory's document numbers (docs/DECISIONS.md).
-  visitNumber         String    @map("visit_number")
+  visitNumber         String               @map("visit_number")
   // Display label ("Self-pay" or the panel's name) — kept as the single
   // source of truth for existing UI that already reads this field.
   // panelClinicId is the structured relation added alongside it; when set,
   // VisitService derives billingType from the panel's name server-side
   // rather than trusting client-supplied text for a panel visit.
-  billingType         String    @map("billing_type")
-  panelClinicId       String?   @map("panel_clinic_id")
-  presentingComplaint String?   @map("presenting_complaint")
-  checkInAt           DateTime  @default(now()) @map("check_in_at")
-  checkOutAt          DateTime? @map("check_out_at")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
+  billingType         String               @map("billing_type")
+  panelClinicId       String?              @map("panel_clinic_id")
+  // G4.5d3c-3b2 (D-094) — the OPERATIONAL kind of visit, for consultation
+  // billing only. NULL means "derive": an OTC-queue visit is OTC_ONLY,
+  // everything else is CONSULTATION. An explicit value set by counter staff
+  // wins over the derivation. Never inferred from diagnosis or note text.
+  classification      VisitClassification? @map("classification")
+  presentingComplaint String?              @map("presenting_complaint")
+  checkInAt           DateTime             @default(now()) @map("check_in_at")
+  // The overall OPERATIONAL closure of the visit, and nothing else (D-080).
+  // Not set by signing a note, completing the doctor phase, sending the
+  // patient onward, printing a label, or paying an invoice.
+  checkOutAt          DateTime?            @map("check_out_at")
 
-  tenant        Tenant            @relation(fields: [tenantId], references: [id])
-  clinic        Clinic            @relation(fields: [clinicId], references: [id])
-  patient       Patient           @relation(fields: [patientId], references: [id])
-  staff         Staff             @relation(fields: [staffId], references: [id])
-  panelClinic   PanelClinic?      @relation(fields: [panelClinicId], references: [id])
-  queueTicket   QueueTicket?
-  clinicalNotes ClinicalNote[]
-  observations  VisitObservation[]
-  diagnoses     Diagnosis[]
-  orderServices OrderService[]
-  prescriptions Prescription[]
-  documents     Document[]
-  invoices      Invoice[]
-  attachments   VisitAttachment[]
+  // G4.5d3c-1 (D-080) — the doctor's CLINICAL PHASE, which is a different
+  // event from both signing a note and closing the visit. All three are
+  // nullable and are never backfilled: NULL means "doctor-phase completion
+  // was not captured", never "it did not happen". Inferring a historical
+  // actor or timestamp would be fabricating an audit trail.
+  doctorCompletedAt            DateTime?                    @map("doctor_completed_at")
+  doctorCompletedByStaffId     String?                      @map("doctor_completed_by_staff_id")
+  doctorCompletedDestination   DoctorCompletionDestination? @map("doctor_completed_destination")
+  // G4.5d3c-2b (D-087) — WHY that destination. READY_FOR_PAYMENT has two
+  // meanings (a real balance, or billing nobody has worked out yet) and the
+  // queue status cannot tell them apart. Stored rather than re-derived: the
+  // reason must survive a refresh and must NOT change when prescriptions or
+  // invoices move on afterwards.
+  doctorCompletedRoutingReason VisitRoutingReason?          @map("doctor_completed_routing_reason")
+
+  // ---------------------------------------------------------------------
+  // G4.5d3c-3b1a (D-092) — the VISIT-SPECIFIC panel benefit snapshot.
+  //
+  // Benefit terms are captured for THIS visit at registration/verification
+  // time and never re-read from the panel's live configuration: a panel
+  // whose limit changes next month must not reprice an old visit. Every
+  // field is nullable — NULL means "not captured", which the billing
+  // engine (3b1b) must treat as unresolved, never as unlimited coverage.
+  //
+  // Selecting a panel does NOT verify it: visit creation with a
+  // panelClinicId stores PENDING_VERIFICATION, and only an explicit staff
+  // action moves it to VERIFIED / FAILED / OVERRIDDEN.
+  // ---------------------------------------------------------------------
+  panelMemberReference       String?                  @map("panel_member_reference")
+  panelVerificationStatus    PanelVerificationStatus? @map("panel_verification_status")
+  panelVerifiedAt            DateTime?                @map("panel_verified_at")
+  panelVerifiedByStaffId     String?                  @map("panel_verified_by_staff_id")
+  // What the verifier saw: a portal reference, approval code or GL number.
+  panelVerificationReference String?                  @map("panel_verification_reference")
+  panelCoverageType          PanelCoverageType?       @map("panel_coverage_type")
+  panelVisitLimitAmount      Decimal?                 @map("panel_visit_limit_amount") @db.Decimal(10, 2)
+  panelCopaymentType         PanelCopaymentType?      @map("panel_copayment_type")
+  // RM for FIXED_AMOUNT, percent (0-100] for PERCENTAGE, never both meanings
+  // at once — the type column says which this number is.
+  panelCopaymentValue        Decimal?                 @map("panel_copayment_value") @db.Decimal(10, 2)
+
+  // The ORIGINAL verified terms, written once at first capture and never
+  // updated: an override replaces the working terms above, not the record
+  // of what verification actually said (owner rule, audit section O).
+  panelOriginalVerificationStatus PanelVerificationStatus? @map("panel_original_verification_status")
+  panelOriginalCoverageType       PanelCoverageType?       @map("panel_original_coverage_type")
+  panelOriginalVisitLimitAmount   Decimal?                 @map("panel_original_visit_limit_amount") @db.Decimal(10, 2)
+  panelOriginalCopaymentType      PanelCopaymentType?      @map("panel_original_copayment_type")
+  panelOriginalCopaymentValue     Decimal?                 @map("panel_original_copayment_value") @db.Decimal(10, 2)
+
+  // Override audit — who changed the working terms away from what was
+  // verified, when, and the mandatory reason.
+  panelBenefitOverrideReason      String?   @map("panel_benefit_override_reason")
+  panelBenefitOverriddenAt        DateTime? @map("panel_benefit_overridden_at")
+  panelBenefitOverriddenByStaffId String?   @map("panel_benefit_overridden_by_staff_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant                        Tenant               @relation(fields: [tenantId], references: [id])
+  clinic                        Clinic               @relation(fields: [clinicId], references: [id])
+  patient                       Patient              @relation(fields: [patientId], references: [id])
+  staff                         Staff?               @relation("VisitAttendingStaff", fields: [staffId], references: [id])
+  registeredByStaff             Staff?               @relation("VisitRegisteredBy", fields: [registeredByStaffId], references: [id])
+  doctorCompletedByStaff        Staff?               @relation("VisitDoctorCompletedBy", fields: [doctorCompletedByStaffId], references: [id])
+  panelVerifiedByStaff          Staff?               @relation("VisitPanelVerifiedBy", fields: [panelVerifiedByStaffId], references: [id])
+  panelBenefitOverriddenByStaff Staff?               @relation("VisitPanelBenefitOverriddenBy", fields: [panelBenefitOverriddenByStaffId], references: [id])
+  panelClinic                   PanelClinic?         @relation(fields: [panelClinicId], references: [id])
+  queueTicket                   QueueTicket?
+  clinicalNotes                 ClinicalNote[]
+  observations                  VisitObservation[]
+  diagnoses                     Diagnosis[]
+  orderServices                 OrderService[]
+  prescriptions                 Prescription[]
+  documents                     Document[]
+  invoices                      Invoice[]
+  attachments                   VisitAttachment[]
+  workflowEvents                VisitWorkflowEvent[]
+  consultationChargeLines       InvoiceLine[]        @relation("VisitConsultationChargeLines")
+  copiedPrescriptions           Prescription[]       @relation("PrescriptionCopySource")
 
   @@unique([tenantId, visitNumber])
   @@index([tenantId, clinicId])
@@ -1264,12 +1640,197 @@ model Visit {
   @@map("visits")
 }
 
+/**
+ * G4.5d3c-1 (D-080) — where the patient goes after the doctor finishes.
+ * Recorded at the moment the doctor completes their phase, so the decision is
+ * preserved even if the invoice or the prescription changes afterwards. The
+ * server derives it; it is never accepted from the browser.
+ * NONE means the doctor determined no dispensing and no patient-facing
+ * payment work remained — it does NOT mean the visit is closed.
+ */
+/**
+ * G4.5d3c-2b (D-087) — the recorded reason a visit was routed where it was.
+ * NO_DOWNSTREAM_WORK is not the same as "the visit is finished": it means the
+ * doctor left nothing outstanding, and closing the visit is still a separate
+ * explicit act.
+ */
+// G4.5d3c-3b1a (D-092) — how far this visit's panel eligibility has been
+// taken. PENDING_VERIFICATION is the automatic state the moment a panel is
+// selected; everything after it is an explicit, attributed staff action.
+// G4.5d3c-3b1 (D-093) — which rule produced a line's unit price. An enum,
+// not free text: an unvalidated rule string is how audit evidence rots.
+enum InvoiceLinePriceRule {
+  SPECIFIC_PANEL_PRICE
+  CASH_PLUS_MARKUP
+  CASH
+  MANUAL
+}
+
+enum InvoiceDiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+enum PanelVerificationStatus {
+  PENDING_VERIFICATION
+  VERIFIED
+  FAILED
+  OVERRIDDEN
+}
+
+enum PanelCoverageType {
+  UNLIMITED
+  VISIT_LIMIT
+}
+
+enum PanelCopaymentType {
+  NONE
+  FIXED_AMOUNT
+  PERCENTAGE
+}
+
+enum VisitRoutingReason {
+  DISPENSARY_REQUIRED
+  PATIENT_PAYMENT_REQUIRED
+  BILLING_REVIEW_REQUIRED
+  NO_DOWNSTREAM_WORK
+}
+
+enum DoctorCompletionDestination {
+  DISPENSARY
+  PAYMENT
+  NONE
+}
+
 enum QueueTicketStatus {
   WAITING
   IN_CONSULTATION
+
+  // G4.5d3c-1 (D-080) — the operational stations the current enum could not
+  // express. Added, not substituted: no existing value changes meaning, and
+  // no existing row is rewritten.
+  //
+  // AT_PROCEDURE returns to IN_CONSULTATION by owner decision: the doctor
+  // reviews the completed procedure before finishing their phase. There is
+  // deliberately no direct AT_PROCEDURE -> dispensary/payment edge.
+  AT_PROCEDURE
+  READY_FOR_DISPENSARY
+  READY_FOR_PAYMENT
+
+  // LEGACY, still valid. Dispensing and payment are separate states, but
+  // rows written before this phase conflated them and are not rewritten —
+  // a historical record is what happened, not what the model now prefers.
+  // New workflow code should not create this status.
   DISPENSARY_PAYMENT
+
   COMPLETED
   CANCELLED
+}
+
+/**
+ * G4.5d3c-1 (D-080) — the append-only operational history of a visit.
+ * One QueueTicket represents the patient's CURRENT location (visitId stays
+ * @unique, by owner decision), so the ticket's own row cannot carry where the
+ * patient has been. This does: the ticket moves, and each move leaves an
+ * immutable event behind. That is what makes a round trip through a procedure
+ * — IN_CONSULTATION -> AT_PROCEDURE -> IN_CONSULTATION — reconstructable.
+ * WHY NOT AuditLog. It was inspected first, as required, and is unsuitable on
+ * four counts: it has no visitId, clinicId or queueTicketId, so branch-scoped
+ * and per-visit history could only be reached by JSON extraction over an
+ * unindexed column; its actor is `actorUserId`, a User, while every clinical
+ * attribution in Kuwick is Staff-based; it holds no typed previous/new status;
+ * and it has no relations, so nothing enforces that a row's tenant matches
+ * the visit it claims to describe. It also has zero call sites anywhere in the
+ * codebase — reusing an unused generic log would be forcing workflow history
+ * into a shape that cannot answer the questions asked of it.
+ */
+enum VisitWorkflowEventType {
+  PATIENT_CALLED
+  CONSULTATION_STARTED
+  SENT_TO_PROCEDURE
+  RETURNED_TO_DOCTOR
+  DOCTOR_PHASE_COMPLETED
+  SENT_TO_DISPENSARY
+  DISPENSING_COMPLETED
+  SENT_TO_PAYMENT
+  PAYMENT_WORK_COMPLETED
+  VISIT_COMPLETED
+  VISIT_CANCELLED
+  // S3b (D-081) — a visit changed hands between clinicians. Prospective only:
+  // it never rewrites the authorship of anything already recorded.
+  ATTENDING_CLINICIAN_CHANGED
+
+  // KW2-C2 — the doctor paused the consultation and returned the patient to
+  // the waiting queue, then took them back.
+  //
+  // RESUMED is a distinct type and NOT a second CONSULTATION_STARTED, on
+  // purpose. That event is the consultation's start instant and the
+  // consultation tariff reads it: a patient held at 22:40 and resumed at
+  // 23:05 must not acquire a late-night fee for a consultation that began
+  // before the band. One start per visit, however many pauses.
+  CONSULTATION_HELD
+  CONSULTATION_RESUMED
+}
+
+model VisitWorkflowEvent {
+  id            String  @id @default(uuid())
+  tenantId      String  @map("tenant_id")
+  // Denormalised from the visit so branch-scoped reporting does not need a
+  // join, and so a row cannot silently describe another branch's work.
+  clinicId      String  @map("clinic_id")
+  visitId       String  @map("visit_id")
+  // Nullable: a visit event can outlive its ticket, and some events (a
+  // doctor-phase completion recorded without a queue) have no ticket at all.
+  queueTicketId String? @map("queue_ticket_id")
+
+  eventType VisitWorkflowEventType @map("event_type")
+
+  // Typed, not JSON — "which visits went from AT_PROCEDURE back to the
+  // doctor" is an ordinary indexed query, not a JSON scan. Both are nullable
+  // because not every event is a queue transition.
+  previousStatus QueueTicketStatus? @map("previous_status")
+  newStatus      QueueTicketStatus? @map("new_status")
+
+  // Only meaningful on DOCTOR_PHASE_COMPLETED.
+  destination DoctorCompletionDestination?
+
+  // S3b — who held the visit before and after. Typed, not a corner of
+  // `metadata`: "every visit Dr A handed over last month" should be an
+  // ordinary indexed query. Both null unless the event is a handover.
+  previousStaffId String? @map("previous_staff_id")
+  newStaffId      String? @map("new_staff_id")
+
+  // Identity snapshot, same principle as C0's clinical events: the role is
+  // stored as plain text at the moment it happened, so a later promotion or
+  // enum rename cannot rewrite who did what.
+  actorStaffId      String @map("actor_staff_id")
+  actorNameSnapshot String @map("actor_name_snapshot")
+  actorRoleSnapshot String @map("actor_role_snapshot")
+
+  reason   String?
+  metadata Json?
+
+  // Idempotency: a retried request carrying the same key writes one event,
+  // not two. Unique per tenant so one clinic's key cannot collide with
+  // another's.
+  correlationId String? @map("correlation_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant        Tenant       @relation(fields: [tenantId], references: [id])
+  clinic        Clinic       @relation(fields: [clinicId], references: [id])
+  visit         Visit        @relation(fields: [visitId], references: [id])
+  queueTicket   QueueTicket? @relation(fields: [queueTicketId], references: [id])
+  actor         Staff        @relation("WorkflowEventActor", fields: [actorStaffId], references: [id])
+  previousStaff Staff?       @relation("WorkflowEventPreviousStaff", fields: [previousStaffId], references: [id])
+  newStaff      Staff?       @relation("WorkflowEventNewStaff", fields: [newStaffId], references: [id])
+
+  @@unique([tenantId, correlationId])
+  @@index([tenantId, visitId, createdAt])
+  @@index([tenantId, clinicId, createdAt])
+  @@index([tenantId, eventType, createdAt])
+  @@index([tenantId, actorStaffId, createdAt])
+  @@map("visit_workflow_events")
 }
 
 // Queue overhaul (D-038) — kuwick.com's real 4-stream numbering: A for
@@ -1354,13 +1915,29 @@ model QueueTicket {
   roomId        String?           @map("room_id")
   calledAt      DateTime?         @map("called_at")
   cancelReason  String?           @map("cancel_reason")
-  createdAt     DateTime          @default(now()) @map("created_at")
-  updatedAt     DateTime          @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  clinic Clinic @relation(fields: [clinicId], references: [id])
-  visit  Visit  @relation(fields: [visitId], references: [id])
-  room   Room?  @relation(fields: [roomId], references: [id])
+  // KW2-C2 — the CURRENT hold, and only the current one.
+  //
+  // The history of every pause and resumption lives in visit_workflow_events,
+  // which is where history belongs. These two exist so the queue board can
+  // tell a held patient apart from an ordinary waiting one in the same
+  // indexed read it already does — deriving it from the last event would put
+  // a per-row event lookup in the middle of the busiest list in the clinic.
+  //
+  // Both are cleared on resume. A ticket that is not on hold carries no trace
+  // of having been, in this model; the events carry that.
+  heldAt        DateTime? @map("held_at")
+  heldByStaffId String?   @map("held_by_staff_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  tenant         Tenant               @relation(fields: [tenantId], references: [id])
+  clinic         Clinic               @relation(fields: [clinicId], references: [id])
+  visit          Visit                @relation(fields: [visitId], references: [id])
+  room           Room?                @relation(fields: [roomId], references: [id])
+  heldBy         Staff?               @relation("QueueTicketHeldBy", fields: [heldByStaffId], references: [id])
+  // The ticket holds the CURRENT location; these hold where it has been.
+  workflowEvents VisitWorkflowEvent[]
 
   @@index([tenantId, clinicId, status])
   @@index([tenantId, clinicId, createdAt])
@@ -1429,6 +2006,13 @@ model ClinicalNote {
   authorRoleSnapshot        String? @map("author_role_snapshot")
   authorDesignationSnapshot String? @map("author_designation_snapshot")
 
+  // G4.5d6 — finalization is a distinct act from a hand signature. Historic
+  // manually-signed notes leave these null, which is exactly what identifies
+  // them as manually signed.
+  finalizedAt        DateTime? @map("finalized_at")
+  finalizedByStaffId String?   @map("finalized_by_staff_id")
+  finalizationMode   String?   @map("finalization_mode")
+
   signedByStaffId           String?   @map("signed_by_staff_id")
   signerNameSnapshot        String?   @map("signer_name_snapshot")
   signerRoleSnapshot        String?   @map("signer_role_snapshot")
@@ -1450,14 +2034,15 @@ model ClinicalNote {
   // genuine legacy record from a bug that produced a NULL author later.
   legacyAuthorUnknown Boolean @default(false) @map("legacy_author_unknown")
 
-  tenant     Tenant                 @relation(fields: [tenantId], references: [id])
-  clinic     Clinic?                @relation(fields: [clinicId], references: [id])
-  visit      Visit                  @relation(fields: [visitId], references: [id])
-  author     Staff?                 @relation("ClinicalNoteAuthor", fields: [authorStaffId], references: [id])
-  signedBy   Staff?                 @relation("ClinicalNoteSigner", fields: [signedByStaffId], references: [id])
-  supersedes ClinicalNote?          @relation("ClinicalNoteAmendment", fields: [supersedesNoteId], references: [id])
-  amendments ClinicalNote[]         @relation("ClinicalNoteAmendment")
-  revisions  ClinicalNoteRevision[]
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id])
+  clinic      Clinic?                @relation(fields: [clinicId], references: [id])
+  visit       Visit                  @relation(fields: [visitId], references: [id])
+  author      Staff?                 @relation("ClinicalNoteAuthor", fields: [authorStaffId], references: [id])
+  signedBy    Staff?                 @relation("ClinicalNoteSigner", fields: [signedByStaffId], references: [id])
+  finalizedBy Staff?                 @relation("ClinicalNoteFinalizer", fields: [finalizedByStaffId], references: [id])
+  supersedes  ClinicalNote?          @relation("ClinicalNoteAmendment", fields: [supersedesNoteId], references: [id])
+  amendments  ClinicalNote[]         @relation("ClinicalNoteAmendment")
+  revisions   ClinicalNoteRevision[]
 
   @@index([tenantId])
   @@index([tenantId, visitId])
@@ -1469,22 +2054,22 @@ model ClinicalNote {
 // is ever exposed for these rows; `updatedAt` on the note alone cannot
 // answer "what changed", so every mutation writes a full content snapshot.
 model ClinicalNoteRevision {
-  id       String @id @default(uuid())
-  tenantId String @map("tenant_id")
-  noteId   String @map("note_id")
+  id        String @id @default(uuid())
+  tenantId  String @map("tenant_id")
+  noteId    String @map("note_id")
   // Matches ClinicalNote.version AFTER the change this row records.
-  versionNo Int   @map("version_no")
+  versionNo Int    @map("version_no")
 
-  contentSnapshot Json                   @map("content_snapshot")
+  contentSnapshot   Json                   @map("content_snapshot")
   // sha256 over a canonical serialisation (see canonical-content-hash.ts).
   // Set on SIGNED revisions so the exact signed content can be verified
   // later; hashSchemaVersion records which canonicalisation produced it, so
   // the rules can evolve without invalidating historical hashes.
-  contentHash       String?              @map("content_hash")
-  hashSchemaVersion Int?                 @map("hash_schema_version")
+  contentHash       String?                @map("content_hash")
+  hashSchemaVersion Int?                   @map("hash_schema_version")
   changeType        ClinicalNoteChangeType @map("change_type")
-  previousStatus    ClinicalNoteStatus?  @map("previous_status")
-  newStatus         ClinicalNoteStatus   @map("new_status")
+  previousStatus    ClinicalNoteStatus?    @map("previous_status")
+  newStatus         ClinicalNoteStatus     @map("new_status")
 
   editedByStaffId           String?  @map("edited_by_staff_id")
   editorNameSnapshot        String?  @map("editor_name_snapshot")
@@ -1539,10 +2124,10 @@ model VisitObservation {
   headCircumference Decimal? @map("head_circumference") @db.Decimal(5, 2)
   glucose           Decimal? @db.Decimal(5, 2)
 
-  source ObservationSource @default(MANUAL)
+  source                ObservationSource @default(MANUAL)
   // True for rows backfilled from legacy ClinicalNote vitals, whose recorder
   // is genuinely unknown. Never inferred from the note or attending doctor.
-  legacyRecorderUnknown Boolean @default(false) @map("legacy_recorder_unknown")
+  legacyRecorderUnknown Boolean           @default(false) @map("legacy_recorder_unknown")
 
   tenant     Tenant                     @relation(fields: [tenantId], references: [id])
   clinic     Clinic                     @relation(fields: [clinicId], references: [id])
@@ -1561,23 +2146,23 @@ model VisitObservation {
 // which is the question that matters medicolegally. One row per changed
 // field, so a value's whole history is queryable.
 model StaffProfessionalAudit {
-  id       String @id @default(uuid())
-  tenantId String @map("tenant_id")
+  id       String  @id @default(uuid())
+  tenantId String  @map("tenant_id")
   // Branch context at the time of the change (the affected staff member's
   // home branch, if any) — recorded, not resolved later, since it can move.
   clinicId String? @map("clinic_id")
   // The staff member whose professional identity changed.
-  staffId  String @map("staff_id")
+  staffId  String  @map("staff_id")
 
   field         ProfessionalAuditField
-  previousValue String? @map("previous_value")
-  newValue      String? @map("new_value")
+  previousValue String?                @map("previous_value")
+  newValue      String?                @map("new_value")
 
-  changedByStaffId    String?  @map("changed_by_staff_id")
-  changedByNameSnapshot String? @map("changed_by_name_snapshot")
-  changedByRoleSnapshot String? @map("changed_by_role_snapshot")
-  changedAt           DateTime @default(now()) @map("changed_at")
-  reason              String?
+  changedByStaffId      String?  @map("changed_by_staff_id")
+  changedByNameSnapshot String?  @map("changed_by_name_snapshot")
+  changedByRoleSnapshot String?  @map("changed_by_role_snapshot")
+  changedAt             DateTime @default(now()) @map("changed_at")
+  reason                String?
 
   tenant    Tenant @relation(fields: [tenantId], references: [id])
   staff     Staff  @relation("ProfessionalAuditSubject", fields: [staffId], references: [id])
@@ -1630,11 +2215,23 @@ model VisitAttachment {
   uploadedByStaffId String?  @map("uploaded_by_staff_id")
   createdAt         DateTime @default(now()) @map("created_at")
 
+  // G3a (D-062) — audited removal. filePath is deliberately untouched: the
+  // clinical image stays on disk so authorised history can still retrieve it.
+  recordStatus          AttachmentRecordStatus @default(ACTIVE) @map("record_status")
+  removedAt             DateTime?              @map("removed_at")
+  removedByStaffId      String?                @map("removed_by_staff_id")
+  removedByNameSnapshot String?                @map("removed_by_name_snapshot")
+  removedByRoleSnapshot String?                @map("removed_by_role_snapshot")
+  removalReason         String?                @map("removal_reason")
+  version               Int                    @default(1)
+
   tenant     Tenant @relation(fields: [tenantId], references: [id])
   visit      Visit  @relation(fields: [visitId], references: [id])
   uploadedBy Staff? @relation(fields: [uploadedByStaffId], references: [id])
+  removedBy  Staff? @relation("VisitAttachmentRemovedBy", fields: [removedByStaffId], references: [id])
 
   @@index([tenantId, visitId])
+  @@index([tenantId, visitId, recordStatus])
   @@map("visit_attachments")
 }
 
@@ -1660,6 +2257,10 @@ model DiagnosisCatalog {
   tenantId  String            @map("tenant_id")
   icd10Code String?           @map("icd10_code")
   name      String
+  // KW2-Q3 — how the clinic actually says it. "URTI", "HTN", "AGE".
+  // Searched alongside the code and the full name, because nobody types
+  // "Acute upper respiratory infection" mid-consultation.
+  shortform String?
   category  DiagnosisCategory @default(CUSTOM)
   active    Boolean           @default(true)
   createdAt DateTime          @default(now()) @map("created_at")
@@ -1669,6 +2270,7 @@ model DiagnosisCatalog {
   diagnoses Diagnosis[]
 
   @@unique([tenantId, name])
+  @@unique([tenantId, icd10Code])
   @@index([tenantId])
   @@index([tenantId, category])
   @@map("diagnosis_catalog")
@@ -1678,6 +2280,21 @@ model DiagnosisCatalog {
 // the catalog at add-time (same historical-stability convention as
 // PanelInvoice's price snapshot, docs/DATABASE_ARCHITECTURE.md §7), so a
 // later catalog rename never silently rewrites an existing visit's record.
+// G2a (D-059) — a visit's diagnosis is an attributed clinical record in its
+// own right, deliberately NOT part of the ClinicalNote authorship model.
+enum DiagnosisPriority {
+  PRIMARY
+  SECONDARY
+}
+
+// G2 closure (D-061) — a saved diagnosis is never deleted. Removing one is a
+// clinical correction that leaves the original row, its content and its
+// original attribution intact, and records who removed it, when and why.
+enum DiagnosisRecordStatus {
+  ACTIVE
+  REMOVED_IN_ERROR
+}
+
 model Diagnosis {
   id                 String   @id @default(uuid())
   tenantId           String   @map("tenant_id")
@@ -1687,11 +2304,49 @@ model Diagnosis {
   name               String
   createdAt          DateTime @default(now()) @map("created_at")
 
+  // NULL means "priority not recorded" — the honest state for every row that
+  // existed before G2a. Historical priority is never inferred, so nothing is
+  // backfilled to PRIMARY or SECONDARY. At most one PRIMARY per visit is
+  // enforced by a partial unique index (see the migration), so two concurrent
+  // requests cannot both win.
+  priority DiagnosisPriority?
+
+  // Attribution, always from the authenticated server session — never from
+  // the browser. Snapshots are frozen at write time so a later rename or role
+  // change cannot rewrite who recorded this diagnosis.
+  addedByStaffId      String?  @map("added_by_staff_id")
+  addedByNameSnapshot String?  @map("added_by_name_snapshot")
+  addedByRoleSnapshot String?  @map("added_by_role_snapshot")
+  addedAt             DateTime @default(now()) @map("added_at")
+
+  // Explicit, like ClinicalNote.legacyAuthorUnknown (C0): distinguishes "we
+  // know nobody recorded this" from a null that might just be a bug. Set only
+  // by the migration, for rows that predate attribution.
+  legacyAttributionUnknown Boolean @default(false) @map("legacy_attribution_unknown")
+
+  // G2 closure (D-061) — removal is a correction, not a delete. The row, its
+  // content, its priority and its ORIGINAL attribution all survive; only
+  // recordStatus changes, plus who removed it, when and why. There is no
+  // application path that deletes a saved diagnosis.
+  recordStatus          DiagnosisRecordStatus @default(ACTIVE) @map("record_status")
+  removedAt             DateTime?             @map("removed_at")
+  removedByStaffId      String?               @map("removed_by_staff_id")
+  removedByNameSnapshot String?               @map("removed_by_name_snapshot")
+  removedByRoleSnapshot String?               @map("removed_by_role_snapshot")
+  removalReason         String?               @map("removal_reason")
+
+  // Optimistic concurrency, so a stale client cannot remove a diagnosis that
+  // has changed since it was read.
+  version Int @default(1)
+
   tenant           Tenant            @relation(fields: [tenantId], references: [id])
   visit            Visit             @relation(fields: [visitId], references: [id])
   diagnosisCatalog DiagnosisCatalog? @relation(fields: [diagnosisCatalogId], references: [id])
+  addedBy          Staff?            @relation("DiagnosisRecorder", fields: [addedByStaffId], references: [id])
+  removedBy        Staff?            @relation("DiagnosisRemover", fields: [removedByStaffId], references: [id])
 
   @@index([tenantId, visitId])
+  @@index([tenantId, visitId, recordStatus])
   @@map("diagnoses")
 }
 
@@ -1823,11 +2478,23 @@ model Attachment {
   uploadedByStaffId String   @map("uploaded_by_staff_id")
   createdAt         DateTime @default(now()) @map("created_at")
 
+  // G3a (D-062) — audited removal for investigation/procedure results. The
+  // order relationship and the file itself are both preserved.
+  recordStatus          AttachmentRecordStatus @default(ACTIVE) @map("record_status")
+  removedAt             DateTime?              @map("removed_at")
+  removedByStaffId      String?                @map("removed_by_staff_id")
+  removedByNameSnapshot String?                @map("removed_by_name_snapshot")
+  removedByRoleSnapshot String?                @map("removed_by_role_snapshot")
+  removalReason         String?                @map("removal_reason")
+  version               Int                    @default(1)
+
   tenant       Tenant       @relation(fields: [tenantId], references: [id])
   orderService OrderService @relation(fields: [orderServiceId], references: [id])
   uploadedBy   Staff        @relation(fields: [uploadedByStaffId], references: [id])
+  removedBy    Staff?       @relation("OrderAttachmentRemovedBy", fields: [removedByStaffId], references: [id])
 
   @@index([tenantId, orderServiceId])
+  @@index([tenantId, orderServiceId, recordStatus])
   @@map("attachments")
 }
 
@@ -1848,17 +2515,26 @@ enum DocumentType {
 // (same client-side convention as the Phase A4 hardcoded builders these
 // replace).
 model CustomDocumentTemplate {
-  id              String   @id @default(uuid())
-  tenantId        String   @map("tenant_id")
-  name            String
-  content         String
-  active          Boolean  @default(true)
+  id                            String   @id @default(uuid())
+  tenantId                      String   @map("tenant_id")
+  name                          String
+  content                       String
+  active                        Boolean  @default(true)
+  // G3b closure (D-064) — does a document made from this template carry a
+  // doctor's clinical opinion?
+  //
+  // Defaults to TRUE, deliberately: an unclassified template is treated as
+  // clinical until a clinic says otherwise. The alternative — inferring from
+  // the template's name or text — is exactly what the closure forbids, and
+  // getting it wrong the other way lets front desk authorise a referral.
+  // Marking a template administrative is an explicit administrative act.
+  requiresClinicalAuthorisation Boolean  @default(true) @map("requires_clinical_authorisation")
   // The DefaultDocumentTemplate this was copied from at tenant creation —
   // informational only; edits never sync back or forward (D-037's
   // no-retro-sync rule).
-  sourceDefaultId String?  @map("source_default_id")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  sourceDefaultId               String?  @map("source_default_id")
+  createdAt                     DateTime @default(now()) @map("created_at")
+  updatedAt                     DateTime @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
@@ -1891,6 +2567,40 @@ model DefaultDocumentTemplate {
 // staff-creatable for locum coverage, so the issuing doctor is whoever
 // the form says, defaulting to the visit's attending physician only as a
 // convenience starting value.
+// G3a (D-062) — a saved clinical document is never deleted. Voiding is a
+// correction that leaves the original content, issuer and signature intact.
+enum DocumentRecordStatus {
+  ACTIVE
+  VOIDED
+}
+
+/// G3b closure (D-064) — WHAT KIND of sign-off a document actually carries.
+///
+/// `signedAt` alone cannot answer this. It was written by a route that let
+/// any reachable user sign, so a historical row proves only that *somebody*
+/// signed something off — not that a doctor accepted clinical responsibility.
+/// Presenting all of those as "Signed" is the defect this closure fixes.
+enum DocumentAuthorisationKind {
+  /// A doctor (or an active MEDICAL_DOCTOR professional identity) accepted
+  /// clinical responsibility. Only ever written by the authorise route.
+  CLINICAL
+  /// An administrative document issued by permitted staff. Carries no
+  /// clinical opinion and never claims a doctor's authority.
+  ADMINISTRATIVE
+  /// Pre-closure rows: an operational sign-off whose authority was never
+  /// recorded. Shown as "Legacy sign-off — authorisation type not recorded",
+  /// never as a doctor's authorisation. Never written by new code.
+  LEGACY_SIGN_OFF
+}
+
+// G3a (D-062) — shared by visit attachments and order/procedure attachments.
+// The underlying FILE is never unlinked by an audited removal; only its
+// status changes, so an authorised history request can still retrieve it.
+enum AttachmentRecordStatus {
+  ACTIVE
+  REMOVED_IN_ERROR
+}
+
 model Document {
   id              String       @id @default(uuid())
   tenantId        String       @map("tenant_id")
@@ -1906,19 +2616,48 @@ model Document {
   endDate         DateTime?    @map("end_date") @db.Date
   diagnosisText   String?      @map("diagnosis_text")
   referredTo      String?      @map("referred_to")
-  // Dispensary "prep, sign MC" step (Phase A6) — a lightweight sign-off
-  // checkbox, not a cryptographic signature. Nullable/re-settable rather
-  // than a one-way status: correcting who signed is more common in
-  // practice than needing an immutable audit lock this phase.
+  // The moment a document was signed off. G3b made this one-way (re-signing
+  // is a 409); the G3b CLOSURE gave it meaning, because on its own it never
+  // said WHO was entitled to sign or what the signature claimed.
+  //
+  // Kept rather than renamed: the column is referenced across the dispensary
+  // workflow, and renaming it would be churn without changing behaviour. The
+  // authorisation fields below carry the semantics. Recorded as technical
+  // debt in D-064.
   signedAt        DateTime?    @map("signed_at")
   signedByStaffId String?      @map("signed_by_staff_id")
-  createdAt       DateTime     @default(now()) @map("created_at")
-  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  // G3b closure (D-064) — is this a document that carries a doctor's clinical
+  // opinion? Snapshotted AT CREATION from the type (or the template's own
+  // setting for CUSTOM), so that editing a template later can never change
+  // what an already-issued document required.
+  requiresClinicalAuthorisation Boolean @default(true) @map("requires_clinical_authorisation")
+
+  // What the sign-off actually was, plus frozen identity of whoever gave it.
+  // Snapshots, not joins: a doctor who leaves the clinic must not turn a
+  // year-old authorisation into a blank.
+  authorisationKind               DocumentAuthorisationKind? @map("authorisation_kind")
+  authorisedByNameSnapshot        String?                    @map("authorised_by_name_snapshot")
+  authorisedByRoleSnapshot        String?                    @map("authorised_by_role_snapshot")
+  authorisedByDesignationSnapshot String?                    @map("authorised_by_designation_snapshot")
+  createdAt                       DateTime                   @default(now()) @map("created_at")
+  updatedAt                       DateTime                   @updatedAt @map("updated_at")
+
+  // G3a (D-062) — voiding is a correction, not a delete. content, issuedBy,
+  // signedAt/signedBy and every other field survive untouched.
+  recordStatus         DocumentRecordStatus @default(ACTIVE) @map("record_status")
+  voidedAt             DateTime?            @map("voided_at")
+  voidedByStaffId      String?              @map("voided_by_staff_id")
+  voidedByNameSnapshot String?              @map("voided_by_name_snapshot")
+  voidedByRoleSnapshot String?              @map("voided_by_role_snapshot")
+  voidReason           String?              @map("void_reason")
+  version              Int                  @default(1)
 
   tenant   Tenant @relation(fields: [tenantId], references: [id])
   visit    Visit  @relation(fields: [visitId], references: [id])
   issuedBy Staff  @relation("DocumentIssuedBy", fields: [issuedByStaffId], references: [id])
   signedBy Staff? @relation("DocumentSignedBy", fields: [signedByStaffId], references: [id])
+  voidedBy Staff? @relation("DocumentVoidedBy", fields: [voidedByStaffId], references: [id])
 
   @@index([tenantId, visitId])
   @@map("documents")
@@ -1938,21 +2677,21 @@ enum InvoiceStatus {
 // invoice PAID is Phase A6's job (dispensary/payment step); this phase
 // only creates the bill and its line items.
 model Invoice {
-  id                 String        @id @default(uuid())
-  tenantId           String        @map("tenant_id")
-  visitId            String        @map("visit_id")
+  id                          String        @id @default(uuid())
+  tenantId                    String        @map("tenant_id")
+  visitId                     String        @map("visit_id")
   // Count-based sequence ("INV-000002"), same accepted non-atomic-race gap
   // as Visit.visitNumber.
-  invoiceNumber      String        @map("invoice_number")
-  status             InvoiceStatus @default(UNPAID)
-  totalAmount        Decimal       @default(0) @map("total_amount") @db.Decimal(10, 2)
-  createdByStaffId   String        @map("created_by_staff_id")
-  cancelReason       String?       @map("cancel_reason")
+  invoiceNumber               String        @map("invoice_number")
+  status                      InvoiceStatus @default(UNPAID)
+  totalAmount                 Decimal       @default(0) @map("total_amount") @db.Decimal(10, 2)
+  createdByStaffId            String        @map("created_by_staff_id")
+  cancelReason                String?       @map("cancel_reason")
   // Dispensary payment step (Phase A6) — paymentMethod is free text (same
   // convention as Visit.billingType) rather than a DB enum, since the
   // frontend's fixed option list can grow without a migration.
-  paidAt             DateTime?     @map("paid_at")
-  paymentMethod      String?       @map("payment_method")
+  paidAt                      DateTime?     @map("paid_at")
+  paymentMethod               String?       @map("payment_method")
   // Phase 1e — computed and snapshotted server-side by InvoiceService#pay
   // (never trusted from the client, never live-recomputed after payment):
   // panelCoveredAmount is what the panel company owes the clinic for this
@@ -1963,10 +2702,45 @@ model Invoice {
   // instead of a live UI computation — ClaimBatchLine.claimedAmount reads
   // panelCoveredAmount, so a later change to the panel's limit/exclusions
   // can never retroactively alter what's already been claimed.
-  panelCoveredAmount Decimal       @default(0) @map("panel_covered_amount") @db.Decimal(10, 2)
-  patientPaidAmount  Decimal       @default(0) @map("patient_paid_amount") @db.Decimal(10, 2)
-  createdAt          DateTime      @default(now()) @map("created_at")
-  updatedAt          DateTime      @updatedAt @map("updated_at")
+  panelCoveredAmount          Decimal       @default(0) @map("panel_covered_amount") @db.Decimal(10, 2)
+  patientPaidAmount           Decimal       @default(0) @map("patient_paid_amount") @db.Decimal(10, 2)
+  /**
+   * G4.5d3c-1b (D-084) — what the patient (or their responsible party) OWES,
+   * as distinct from what has been RECEIVED.
+   * `patientPaidAmount` is money already collected, and it is only computed
+   * at pay time. That left no way to ask "does this patient still need to go
+   * to the payment counter" before payment: a fully panel-covered invoice sits
+   * at UNPAID with patientPaidAmount 0, exactly like a cash invoice nobody has
+   * paid yet. This field is the difference between those two.
+   * Invariant for newly calculated invoices:
+   * panelCoveredAmount + patientResponsibilityAmount = totalAmount
+   * Remaining patient-facing work:
+   * max(patientResponsibilityAmount - patientPaidAmount, 0)
+   * Nullable with no default and no backfill. NULL means payment
+   * responsibility was not captured, and a destination rule must report it as
+   * UNDETERMINED rather than guess. `Invoice.status = UNPAID` must never be
+   * the sole test for whether the patient owes anything.
+   */
+  patientResponsibilityAmount Decimal?      @map("patient_responsibility_amount") @db.Decimal(10, 2)
+
+  // G4.5d3c-3b1 (D-093) — the panel-side twin, written by the same engine in
+  // the same transaction. Invariant once computed:
+  //   panelResponsibilityAmount + patientResponsibilityAmount = totalAmount
+  panelResponsibilityAmount Decimal?             @map("panel_responsibility_amount") @db.Decimal(10, 2)
+  // Sum of active line amounts BEFORE any discount. totalAmount remains the
+  // grand total after line and overall discounts.
+  subtotalAmount            Decimal?             @map("subtotal_amount") @db.Decimal(10, 2)
+  // Overall invoice discount (owner policy v1: AFTER_PANEL_SPLIT_PATIENT_ONLY
+  // — reduces only the patient-responsible portion; the panel's contractual
+  // receivable is never silently discounted).
+  invoiceDiscountType       InvoiceDiscountType? @map("invoice_discount_type")
+  invoiceDiscountValue      Decimal?             @map("invoice_discount_value") @db.Decimal(10, 2)
+  invoiceDiscountAmount     Decimal?             @map("invoice_discount_amount") @db.Decimal(10, 2)
+  invoiceDiscountReason     String?              @map("invoice_discount_reason")
+  invoiceDiscountByStaffId  String?              @map("invoice_discount_by_staff_id")
+  invoiceDiscountAt         DateTime?            @map("invoice_discount_at")
+  createdAt                 DateTime             @default(now()) @map("created_at")
+  updatedAt                 DateTime             @updatedAt @map("updated_at")
 
   tenant          Tenant           @relation(fields: [tenantId], references: [id])
   visit           Visit            @relation(fields: [visitId], references: [id])
@@ -2088,22 +2862,66 @@ model ClaimBatchLine {
 // patient-payable, on top of the panel's per-visit limit rather than
 // netted against it.
 model InvoiceLine {
-  id                   String   @id @default(uuid())
-  tenantId             String   @map("tenant_id")
-  invoiceId            String   @map("invoice_id")
-  description          String
-  quantity             Int      @default(1)
-  unitPrice            Decimal  @map("unit_price") @db.Decimal(10, 2)
-  amount               Decimal  @db.Decimal(10, 2)
-  sourceOrderServiceId String?  @map("source_order_service_id")
-  sourcePrescriptionId String?  @map("source_prescription_id")
-  excludedFromPanel    Boolean  @default(false) @map("excluded_from_panel")
-  createdAt            DateTime @default(now()) @map("created_at")
+  id                          String   @id @default(uuid())
+  tenantId                    String   @map("tenant_id")
+  invoiceId                   String   @map("invoice_id")
+  description                 String
+  quantity                    Int      @default(1)
+  unitPrice                   Decimal  @map("unit_price") @db.Decimal(10, 2)
+  amount                      Decimal  @db.Decimal(10, 2)
+  sourceOrderServiceId        String?  @map("source_order_service_id")
+  sourcePrescriptionId        String?  @map("source_prescription_id")
+  // G4.5d3c-3b2 (D-094) — the consultation charge's source link. The source
+  // IS the visit's consultation (no order row exists for consulting), so the
+  // visit id doubles as the duplicate-protection key: one ACTIVE consultation
+  // line per visit. The rule that selected the service is kept so the charge
+  // can always answer "which tariff produced this".
+  sourceConsultationVisitId   String?  @map("source_consultation_visit_id")
+  consultationTariffRuleId    String?  @map("consultation_tariff_rule_id")
+  excludedFromPanel           Boolean  @default(false) @map("excluded_from_panel")
+  // G4.5d3c-3b1a (D-092) — this LINE's share of the split, so patient
+  // responsibility is explainable item by item instead of only as a visit
+  // total. Nullable: NULL means the engine (3b1b) has not computed it, which
+  // is reported as unresolved, never as zero. Invariant once computed:
+  //   panelResponsibilityAmount + patientResponsibilityAmount = amount
+  panelResponsibilityAmount   Decimal? @map("panel_responsibility_amount") @db.Decimal(10, 2)
+  patientResponsibilityAmount Decimal? @map("patient_responsibility_amount") @db.Decimal(10, 2)
+  // Why the line was excluded, snapshotted at exclusion time — the panel's
+  // exclusion list can change later without rewriting this line's history.
+  panelExclusionReason        String?  @map("panel_exclusion_reason")
 
-  tenant             Tenant        @relation(fields: [tenantId], references: [id])
-  invoice            Invoice       @relation(fields: [invoiceId], references: [id])
-  sourceOrderService OrderService? @relation(fields: [sourceOrderServiceId], references: [id])
-  sourcePrescription Prescription? @relation(fields: [sourcePrescriptionId], references: [id])
+  // G4.5d3c-3b1 (D-093) — internal pricing provenance. How unitPrice was
+  // produced, for audit/management surfaces ONLY: never rendered on the
+  // standard patient- or panel-facing invoice.
+  unit              String?
+  priceRule         InvoiceLinePriceRule? @map("price_rule")
+  baseUnitPrice     Decimal?              @map("base_unit_price") @db.Decimal(10, 2)
+  panelMarkupAmount Decimal?              @map("panel_markup_amount") @db.Decimal(10, 2)
+
+  // Line-level discount, retained in full: type, value, computed amount,
+  // mandatory reason, actor, timestamp. `amount` stays the PRE-discount
+  // quantity × unitPrice; the discounted line total is amount − discount.
+  lineDiscountType      InvoiceDiscountType? @map("line_discount_type")
+  lineDiscountValue     Decimal?             @map("line_discount_value") @db.Decimal(10, 2)
+  lineDiscountAmount    Decimal?             @map("line_discount_amount") @db.Decimal(10, 2)
+  lineDiscountReason    String?              @map("line_discount_reason")
+  lineDiscountByStaffId String?              @map("line_discount_by_staff_id")
+  lineDiscountAt        DateTime?            @map("line_discount_at")
+
+  // Auditable cancellation — a removed charge is a historical fact, not a
+  // deleted row. Cancelled lines leave every total and worklist; the record
+  // of who removed what, when and why survives.
+  cancelledAt        DateTime? @map("cancelled_at")
+  cancelledByStaffId String?   @map("cancelled_by_staff_id")
+  cancelReason       String?   @map("cancel_reason")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
+  invoice                Invoice                 @relation(fields: [invoiceId], references: [id])
+  sourceOrderService     OrderService?           @relation(fields: [sourceOrderServiceId], references: [id])
+  sourcePrescription     Prescription?           @relation(fields: [sourcePrescriptionId], references: [id])
+  consultationVisit      Visit?                  @relation("VisitConsultationChargeLines", fields: [sourceConsultationVisitId], references: [id])
+  consultationTariffRule ConsultationTariffRule? @relation(fields: [consultationTariffRuleId], references: [id])
 
   @@index([tenantId, invoiceId])
   @@map("invoice_lines")
@@ -2113,6 +2931,41 @@ enum PrescriptionStatus {
   ORDERED
   DISPENSED
   CANCELLED
+}
+
+/**
+ * G4.5d3c-1b (D-084) — where the medicine actually comes from.
+ * Nothing in the model previously distinguished a script the clinic fills
+ * from one the patient takes elsewhere, so the only available rule for "does
+ * this patient need to go to the dispensary" was "a Prescription row exists"
+ * — which is wrong for an external script, for medicine the patient already
+ * has, and for advice with no supply at all. This is the missing input.
+ * It describes INTENT at prescribing time. It is not a dispensing status:
+ * `PrescriptionStatus` still records what happened.
+ */
+enum PrescriptionSupplyMode {
+  /**
+   * The clinic supplies and dispenses it. May require READY_FOR_DISPENSARY.
+   */
+  ONSITE_DISPENSE
+  /**
+   * Supplied outside the clinic. No clinic dispensary step.
+   */
+  EXTERNAL_PRESCRIPTION
+  /**
+   * The patient already has it. No dispensing.
+   */
+  PATIENT_OWN_SUPPLY
+  /**
+   * Supply deliberately left open. NOT dispensed, and NOT resolved — a future
+   * completion workflow must treat it as unresolved rather than assuming
+   * either way.
+   */
+  DEFERRED
+  /**
+   * A medication/advice record needing no supply at all.
+   */
+  NO_SUPPLY_REQUIRED
 }
 
 // Weight-based vs. age-based dosage calculator method used, if any —
@@ -2156,21 +3009,97 @@ model Prescription {
   calcDoseRateMgKg Decimal?          @map("calc_dose_rate_mg_kg") @db.Decimal(6, 2)
   calcTargetDoseMg Decimal?          @map("calc_target_dose_mg") @db.Decimal(10, 2)
 
-  status              PrescriptionStatus @default(ORDERED)
-  prescribedByStaffId String             @map("prescribed_by_staff_id")
-  prescribedAt        DateTime           @default(now()) @map("prescribed_at")
-  dispensedAt         DateTime?          @map("dispensed_at")
-  cancelReason        String?            @map("cancel_reason")
-  deletedAt           DateTime?          @map("deleted_at")
-  createdAt           DateTime           @default(now()) @map("created_at")
-  updatedAt           DateTime           @updatedAt @map("updated_at")
+  // KW2-C2 — Copy Rx provenance. `sourceVisitId` is the visit this row was
+  // carried over from; `reviewFlag` says it has not been re-read against
+  // today's weight, allergies and stock. The flag never blocks dispensing —
+  // it makes Complete Consultation ask.
+  sourceVisitId       String?                 @map("source_visit_id")
+  reviewFlag          Boolean                 @default(false) @map("review_flag")
+  // Who said it had been re-read, and when. Populated by the explicit
+  // "reviewed" act AND by any edit of the row — editing a carried-over
+  // medication IS reviewing it, and the editor is the reviewer.
+  reviewedByStaffId   String?                 @map("reviewed_by_staff_id")
+  reviewedAt          DateTime?               @map("reviewed_at")
+  status              PrescriptionStatus      @default(ORDERED)
+  // G4.5d3c-3b1 (D-093) — who actually handed the medication over. Distinct
+  // from the prescriber; stamped by the atomic dispense claim.
+  dispensedByStaffId  String?                 @map("dispensed_by_staff_id")
+  /**
+   * G4.5d3c-1b (D-084) — nullable, with NO database default, deliberately.
+   * A default would make every row written during the compatibility period
+   * indistinguishable from one where a prescriber actually chose. NULL means
+   * supply mode was not captured, and a destination rule must treat it as
+   * undetermined rather than assume ONSITE.
+   */
+  supplyMode          PrescriptionSupplyMode? @map("supply_mode")
+  prescribedByStaffId String                  @map("prescribed_by_staff_id")
+  prescribedAt        DateTime                @default(now()) @map("prescribed_at")
+  dispensedAt         DateTime?               @map("dispensed_at")
+  cancelReason        String?                 @map("cancel_reason")
+  deletedAt           DateTime?               @map("deleted_at")
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
   visit        Visit         @relation(fields: [visitId], references: [id])
+  sourceVisit  Visit?        @relation("PrescriptionCopySource", fields: [sourceVisitId], references: [id], onDelete: SetNull)
   item         Item          @relation(fields: [itemId], references: [id])
   prescribedBy Staff         @relation(fields: [prescribedByStaffId], references: [id])
+  reviewedBy   Staff?        @relation("PrescriptionReviewer", fields: [reviewedByStaffId], references: [id])
   invoiceLines InvoiceLine[]
+  labelPrints  LabelPrint[]
 
   @@index([tenantId, visitId])
   @@map("prescriptions")
+}
+
+/// G4.5d5b-2 — the audit trail for a printed medication label.
+///
+/// Printing a drug label was entirely client-side: `printTextDocument.ts`
+/// assembled it in the browser from whatever the page happened to be holding,
+/// and no record survived. Two consequences the clinic actually cares about —
+/// nobody could answer "was this label ever printed, and by whom", and a label
+/// could be generated from values the browser supplied rather than from the
+/// prescription.
+///
+/// Deliberately SMALL. It records the act of printing, not a second copy of
+/// the patient's medication: the label content is re-assembled from the live
+/// Prescription/Visit/Patient/Clinic records every time, so this table can
+/// never drift from the clinical record or become an uncontrolled duplicate of
+/// it. What is stored is who, when, how many copies and which format.
+///
+/// Printing is NOT dispensing. Nothing here moves stock, changes prescription
+/// status, touches the queue or touches an invoice.
+model LabelPrint {
+  id             String @id @default(uuid())
+  tenantId       String @map("tenant_id")
+  clinicId       String @map("clinic_id")
+  prescriptionId String @map("prescription_id")
+
+  printedByStaffId    String   @map("printed_by_staff_id")
+  /// Snapshotted for the same reason clinical authorship is: a staff record
+  /// can be renamed or deactivated, and the audit must still say who printed.
+  printerNameSnapshot String   @map("printer_name_snapshot")
+  printedAt           DateTime @default(now()) @map("printed_at")
+
+  /// 1–3, enforced by the service. A label sheet is a physical thing.
+  copies Int @default(1)
+
+  /// Sequence within this prescription: 1 is the first print, anything above
+  /// it is a reprint. A boolean would lose how many times.
+  printSequence Int     @map("print_sequence")
+  isReprint     Boolean @default(false) @map("is_reprint")
+
+  /// Which physical preset was used, so a label printed at one size can be
+  /// told from one printed at another after the preset changes.
+  labelFormat String @default("KUWICK_STD_70x40") @map("label_format")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  clinic       Clinic       @relation(fields: [clinicId], references: [id])
+  prescription Prescription @relation(fields: [prescriptionId], references: [id])
+  printedBy    Staff        @relation(fields: [printedByStaffId], references: [id])
+
+  @@index([tenantId, prescriptionId])
+  @@index([tenantId, clinicId, printedAt])
+  @@map("label_prints")
 }

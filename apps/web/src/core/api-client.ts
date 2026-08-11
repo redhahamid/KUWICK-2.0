@@ -157,5 +157,9 @@ export const apiClient = {
     request<T>(path, { method: 'PATCH', body: body === undefined ? undefined : JSON.stringify(body) }),
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PUT', body: body === undefined ? undefined : JSON.stringify(body) }),
-  delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  // A body on DELETE: G4.5d3c-3b2's line cancellation carries a MANDATORY
+  // reason, and the route stayed DELETE because its semantics (remove this
+  // charge from the bill) did not change — only its permanence did.
+  delete: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: 'DELETE', body: body === undefined ? undefined : JSON.stringify(body) }),
 };

@@ -20,8 +20,7 @@ import { RescheduleAppointmentDrawer } from './RescheduleAppointmentDrawer';
 import { ARRIVABLE_FROM_STATUSES, NON_CANCELLABLE_STATUSES } from './appointment-status.constants';
 import { AppointmentCalendarView } from './calendar/AppointmentCalendarView';
 import { ApiError } from '../core/api-client';
-
-const { Title } = Typography;
+import { PageHeader } from '../design-system/components/PageHeader';
 
 export function AppointmentsPage() {
   const [pageView, setPageView] = useState<'list' | 'calendar'>('list');
@@ -82,11 +81,11 @@ export function AppointmentsPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Appointments
-        </Title>
-        <Space>
+      <PageHeader
+        title="Appointments"
+        extra={
+          <>
+            <Space>
           <Button onClick={() => setPageView(pageView === 'list' ? 'calendar' : 'list')}>
             {pageView === 'list' ? 'Calendar view' : 'List view'}
           </Button>
@@ -94,7 +93,9 @@ export function AppointmentsPage() {
             Book Appointment
           </Button>
         </Space>
-      </Space>
+          </>
+        }
+      />
       {pageView === 'calendar' ? (
         <AppointmentCalendarView clinicId={clinicId} onSwitchToList={() => setPageView('list')} />
       ) : (

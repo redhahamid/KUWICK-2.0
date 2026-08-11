@@ -6,8 +6,9 @@ import { useCreateFormTemplate, useFormTemplateForService, useUpdateFormTemplate
 import { FormFieldBuilder } from './FormFieldBuilder';
 import { CreateServiceDto, FormField, Service, ServiceOrderType } from './types';
 import { ApiError } from '../core/api-client';
+import { PageHeader } from '../design-system/components/PageHeader';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 type TypeFilter = 'ALL' | ServiceOrderType;
 
@@ -124,14 +125,16 @@ export function ServicesPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Services &amp; Procedures
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+      <PageHeader
+        title="Services &amp; Procedures"
+        extra={
+          <>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
           Add Service
         </Button>
-      </Space>
+          </>
+        }
+      />
 
       <Space style={{ marginBottom: 16, width: '100%' }} wrap>
         <Input

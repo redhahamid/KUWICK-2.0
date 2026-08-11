@@ -4,6 +4,19 @@ import { ServiceCatalogController } from './service-catalog.controller';
 import { ServiceCatalogService } from './service-catalog.service';
 import { VisitController } from './visit.controller';
 import { VisitService } from './visit.service';
+import { DoctorCompletionService } from './doctor-completion.service';
+import { PanelBenefitService } from './panel-benefit.service';
+import { BillingWorklistService } from './billing-worklist.service';
+import { ConsultationTariffService } from './consultation-tariff.service';
+import { QueueBoardService } from './queue-board.service';
+import { DispensaryService } from './dispensary.service';
+import { DispensaryBoardService } from './dispensary-board.service';
+import { DispensaryController } from './dispensary.controller';
+import { LabelPrintService } from './label-print.service';
+import { ConsultationTariffController } from './consultation-tariff.controller';
+import { VisitCompletionService } from './visit-completion.service';
+import { VisitHistoryController } from './visit-history.controller';
+import { VisitHistoryService } from './visit-history.service';
 import { QueueTicketController } from './queue-ticket.controller';
 import { QueueTicketService } from './queue-ticket.service';
 import { ClinicalNoteController } from './clinical-note.controller';
@@ -50,8 +63,10 @@ import { ChatChannelService } from './chat-channel.service';
 @Module({
   imports: [CoreModule],
   controllers: [
+    DispensaryController,
     ServiceCatalogController,
     VisitController,
+    VisitHistoryController,
     QueueTicketController,
     ClinicalNoteController,
     DiagnosisController,
@@ -62,6 +77,7 @@ import { ChatChannelService } from './chat-channel.service';
     PanelClinicController,
     DocumentController,
     InvoiceController,
+    ConsultationTariffController,
     FormTemplateController,
     PanelPricingController,
     ClaimBatchController,
@@ -75,6 +91,16 @@ import { ChatChannelService } from './chat-channel.service';
   providers: [
     ServiceCatalogService,
     VisitService,
+    DoctorCompletionService,
+    PanelBenefitService,
+    BillingWorklistService,
+    ConsultationTariffService,
+    QueueBoardService,
+    DispensaryService,
+    DispensaryBoardService,
+    LabelPrintService,
+    VisitCompletionService,
+    VisitHistoryService,
     QueueTicketService,
     ClinicalNoteService,
     DiagnosisService,
@@ -98,6 +124,15 @@ import { ChatChannelService } from './chat-channel.service';
   exports: [
     ServiceCatalogService,
     VisitService,
+    DoctorCompletionService,
+    PanelBenefitService,
+    BillingWorklistService,
+    ConsultationTariffService,
+    QueueBoardService,
+    DispensaryService,
+    DispensaryBoardService,
+    LabelPrintService,
+    VisitCompletionService,
     QueueTicketService,
     ClinicalNoteService,
     DiagnosisService,

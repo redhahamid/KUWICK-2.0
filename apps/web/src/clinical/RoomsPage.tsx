@@ -5,8 +5,9 @@ import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { useCreateRoom, useRooms, useUpdateRoom } from './hooks/useQueueTickets';
 import { Room } from './types';
 import { ApiError } from '../core/api-client';
+import { PageHeader } from '../design-system/components/PageHeader';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 // D-038 — rooms/stations patients get called to (Consultation 1/2,
 // Treatment Room 1/2, Dispensary Counter). Management > Operation.
@@ -32,11 +33,11 @@ export function RoomsPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Rooms & Stations
-        </Title>
-        <Space>
+      <PageHeader
+        title="Rooms & Stations"
+        extra={
+          <>
+            <Space>
           {showSelector && (
             <Select
               placeholder="Select clinic"
@@ -50,7 +51,9 @@ export function RoomsPage() {
             Add Room
           </Button>
         </Space>
-      </Space>
+          </>
+        }
+      />
       {!clinicId ? (
         <Text type="secondary">Select a clinic to manage its rooms.</Text>
       ) : (

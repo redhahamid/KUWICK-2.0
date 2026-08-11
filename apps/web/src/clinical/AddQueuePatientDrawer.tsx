@@ -29,41 +29,21 @@ export function AddQueuePatientDrawer({ open, onClose }: AddQueuePatientDrawerPr
   const [selectedExisting, setSelectedExisting] = useState<Patient>();
   const [queuingPatient, setQueuingPatient] = useState<Patient | null>(null);
   const { data: searchResults, isFetching } = usePatientSearch(search);
-  const createPatient = useCreatePatient();
-  const [form] = Form.useForm<NewPatientFormValues>();
 
+  // The registration form lives in NewPatientForm below, which mounts only in
+  // 'new' mode — so no reset here: leaving the mode (or closing the drawer,
+  // via destroyOnHidden) unmounts the form and its state with it. A1: holding
+  // a Form.useForm instance here while the <Form> was conditional left the
+  // instance disconnected, which is a console error on every consult.
   const reset = () => {
     setMode('existing');
     setSearch('');
     setSelectedExisting(undefined);
-    form.resetFields();
   };
 
   const handleClose = () => {
     reset();
     onClose();
-  };
-
-  const handleValuesChange = (changed: Partial<NewPatientFormValues>) => {
-    if (!('identifierValue' in changed) && !('identifierType' in changed)) return;
-    const values = form.getFieldsValue();
-    if (values.identifierType !== 'NRIC' || !values.identifierValue) return;
-    const parsed = parseNric(values.identifierValue);
-    if (!parsed) return;
-    const patch: Partial<NewPatientFormValues> = {};
-    if (!values.dob) patch.dob = parsed.dob;
-    if (!values.gender) patch.gender = parsed.gender;
-    if (Object.keys(patch).length > 0) form.setFieldsValue(patch);
-  };
-
-  const handleRegisterAndContinue = async (values: NewPatientFormValues) => {
-    try {
-      const patient = await createPatient.mutateAsync({ ...values, dob: values.dob?.format('YYYY-MM-DD') });
-      message.success('Patient registered');
-      setQueuingPatient(patient);
-    } catch (error) {
-      message.error(error instanceof ApiError ? error.message : 'Failed to register patient');
-    }
   };
 
   return (
@@ -108,45 +88,7 @@ export function AddQueuePatientDrawer({ open, onClose }: AddQueuePatientDrawerPr
             </Button>
           </Space>
         ) : (
-          <Form
-            form={form}
-            layout="vertical"
-            onFinish={handleRegisterAndContinue}
-            onValuesChange={handleValuesChange}
-            initialValues={{ identifierType: 'NRIC' }}
-          >
-            <Form.Item name="name" label="Name" rules={[{ required: true }]}>
-              <Input />
-            </Form.Item>
-            <Form.Item name="identifierType" label="ID Type" rules={[{ required: true }]}>
-              <Select
-                options={[
-                  { value: 'NRIC', label: 'NRIC' },
-                  { value: 'PASSPORT', label: 'Passport' },
-                ]}
-              />
-            </Form.Item>
-            <Form.Item
-              name="identifierValue"
-              label="ID Number"
-              rules={[{ required: true }]}
-              tooltip="For NRIC, Date of Birth and Gender below fill in automatically."
-            >
-              <Input placeholder="e.g. 900101015001" />
-            </Form.Item>
-            <Form.Item name="phone" label="Phone">
-              <Input />
-            </Form.Item>
-            <Form.Item name="dob" label="Date of Birth">
-              <DatePicker style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="gender" label="Gender">
-              <Input />
-            </Form.Item>
-            <Button type="primary" htmlType="submit" loading={createPatient.isPending} block>
-              Register &amp; Continue
-            </Button>
-          </Form>
+          <NewPatientForm onRegistered={setQueuingPatient} />
         )}
       </Drawer>
       <AddToQueueDrawer
@@ -157,5 +99,79 @@ export function AddQueuePatientDrawer({ open, onClose }: AddQueuePatientDrawerPr
         }}
       />
     </>
+  );
+}
+
+/**
+ * Quick registration — a child on purpose: `Form.useForm` and its `<Form>`
+ * mount and unmount together, so the instance is never left connected to
+ * nothing, and every open starts from clean fields without a manual reset.
+ */
+function NewPatientForm({ onRegistered }: { onRegistered: (patient: Patient) => void }) {
+  const createPatient = useCreatePatient();
+  const [form] = Form.useForm<NewPatientFormValues>();
+
+  const handleValuesChange = (changed: Partial<NewPatientFormValues>) => {
+    if (!('identifierValue' in changed) && !('identifierType' in changed)) return;
+    const values = form.getFieldsValue();
+    if (values.identifierType !== 'NRIC' || !values.identifierValue) return;
+    const parsed = parseNric(values.identifierValue);
+    if (!parsed) return;
+    const patch: Partial<NewPatientFormValues> = {};
+    if (!values.dob) patch.dob = parsed.dob;
+    if (!values.gender) patch.gender = parsed.gender;
+    if (Object.keys(patch).length > 0) form.setFieldsValue(patch);
+  };
+
+  const handleRegisterAndContinue = async (values: NewPatientFormValues) => {
+    try {
+      const patient = await createPatient.mutateAsync({ ...values, dob: values.dob?.format('YYYY-MM-DD') });
+      message.success('Patient registered');
+      onRegistered(patient);
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Failed to register patient');
+    }
+  };
+
+  return (
+    <Form
+      form={form}
+      layout="vertical"
+      onFinish={handleRegisterAndContinue}
+      onValuesChange={handleValuesChange}
+      initialValues={{ identifierType: 'NRIC' }}
+    >
+      <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+        <Input />
+      </Form.Item>
+      <Form.Item name="identifierType" label="ID Type" rules={[{ required: true }]}>
+        <Select
+          options={[
+            { value: 'NRIC', label: 'NRIC' },
+            { value: 'PASSPORT', label: 'Passport' },
+          ]}
+        />
+      </Form.Item>
+      <Form.Item
+        name="identifierValue"
+        label="ID Number"
+        rules={[{ required: true }]}
+        tooltip="For NRIC, Date of Birth and Gender below fill in automatically."
+      >
+        <Input placeholder="e.g. 900101015001" />
+      </Form.Item>
+      <Form.Item name="phone" label="Phone">
+        <Input />
+      </Form.Item>
+      <Form.Item name="dob" label="Date of Birth">
+        <DatePicker style={{ width: '100%' }} />
+      </Form.Item>
+      <Form.Item name="gender" label="Gender">
+        <Input />
+      </Form.Item>
+      <Button type="primary" htmlType="submit" loading={createPatient.isPending} block>
+        Register &amp; Continue
+      </Button>
+    </Form>
   );
 }

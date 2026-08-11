@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { AutoComplete, Button, Empty, List, Radio, Space, Typography, message } from 'antd';
+import { Button, Empty, List, Radio, Space, Typography, message } from 'antd';
 import { CloseOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
-import { useAddDiagnosis, useDiagnoses, useDiagnosisCatalogSearch, useRemoveDiagnosis } from './hooks/useDiagnoses';
-import { DiagnosisCategory } from './types';
+import { useAddDiagnosis, useDiagnoses } from './hooks/useDiagnoses';
+import { DiagnosisSearchField } from './sections/DiagnosisSearchField';
+import { RemoveDiagnosisModal } from './sections/RemoveDiagnosisModal';
+import { Diagnosis, DiagnosisCategory } from './types';
 import { ApiError } from '../core/api-client';
 
 const { Text } = Typography;
@@ -17,31 +19,18 @@ interface DiagnosisTabProps {
 }
 
 export function DiagnosisTab({ visitId }: DiagnosisTabProps) {
-  const [search, setSearch] = useState('');
   const [category, setCategory] = useState<DiagnosisCategory>('SUMMARIZE');
   const { data: diagnoses, isLoading } = useDiagnoses(visitId);
-  const { data: catalogResults } = useDiagnosisCatalogSearch(search, category);
   const addDiagnosis = useAddDiagnosis(visitId);
-  const removeDiagnosis = useRemoveDiagnosis(visitId);
+  const [removing, setRemoving] = useState<Diagnosis | null>(null);
 
-  const handleAdd = async (value: string) => {
-    if (!value.trim()) return;
-    const matched = catalogResults?.find((entry) => entry.name.toLowerCase() === value.trim().toLowerCase());
+  const handleAdd = async (value: string, entryId?: string) => {
     try {
       await addDiagnosis.mutateAsync(
-        matched ? { visitId, diagnosisCatalogId: matched.id } : { visitId, name: value.trim() },
+        entryId ? { visitId, diagnosisCatalogId: entryId } : { visitId, name: value },
       );
-      setSearch('');
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : 'Failed to add diagnosis');
-    }
-  };
-
-  const handleRemove = async (id: string) => {
-    try {
-      await removeDiagnosis.mutateAsync(id);
-    } catch (error) {
-      message.error(error instanceof ApiError ? error.message : 'Failed to remove diagnosis');
     }
   };
 
@@ -63,22 +52,14 @@ export function DiagnosisTab({ visitId }: DiagnosisTabProps) {
         />
       </Space>
 
-      <Space style={{ marginBottom: 16, width: '100%' }}>
-        <AutoComplete
-          style={{ width: 360 }}
-          value={search}
-          onChange={setSearch}
-          onSelect={(value) => handleAdd(value)}
-          options={catalogResults?.map((entry) => ({
-            value: entry.name,
-            label: entry.icd10Code ? `${entry.icd10Code} — ${entry.name}` : entry.name,
-          }))}
-          placeholder="Type to search diagnoses..."
+      <div style={{ marginBottom: 16 }}>
+        <DiagnosisSearchField
+          category={category}
+          onAdd={handleAdd}
+          adding={addDiagnosis.isPending}
+          width={360}
         />
-        <Button type="primary" loading={addDiagnosis.isPending} onClick={() => handleAdd(search)}>
-          Add
-        </Button>
-      </Space>
+      </div>
 
       {!isLoading && (!diagnoses || diagnoses.length === 0) ? (
         <Empty
@@ -97,13 +78,9 @@ export function DiagnosisTab({ visitId }: DiagnosisTabProps) {
           renderItem={(diagnosis) => (
             <List.Item
               actions={[
-                <Button
-                  key="remove"
-                  type="text"
-                  size="small"
-                  icon={<CloseOutlined />}
-                  onClick={() => handleRemove(diagnosis.id)}
-                />,
+                <Button key="remove" size="small" danger onClick={() => setRemoving(diagnosis)}>
+                  Remove from visit
+                </Button>,
               ]}
             >
               <List.Item.Meta
@@ -113,6 +90,7 @@ export function DiagnosisTab({ visitId }: DiagnosisTabProps) {
           )}
         />
       )}
+      <RemoveDiagnosisModal visitId={visitId} diagnosis={removing} onClose={() => setRemoving(null)} />
     </div>
   );
 }

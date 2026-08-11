@@ -1,21 +1,76 @@
+export interface PrintDocumentOptions {
+  /**
+   * G3b (§8) — set for a VOIDED document. A voided MC must never come off
+   * the printer looking like a valid one: the page gets a diagonal VOID
+   * watermark plus a banner naming who voided it and why. Printed, not
+   * screen-only — `print-color-adjust: exact` keeps it on paper.
+   */
+  voided?: { at?: string | null; by?: string | null; reason?: string | null };
+  /**
+   * G3b closure (D-064) — the responsible party, printed under the document.
+   * "Clinically authorised by Dr X (Medical Doctor) on ...", or the
+   * administrative equivalent. Never invented: the caller passes only what
+   * the record stores.
+   */
+  authorisation?: string | null;
+}
+
 // D-040 — prints a plain-text clinical document (MC/Referral/Memo/custom)
 // through the browser's print dialog. Monospace pre-wrap keeps the
 // template's own line layout exactly as composed.
-export function printTextDocument(title: string, content: string) {
+export function printTextDocument(title: string, content: string, options: PrintDocumentOptions = {}) {
   const printWindow = window.open('', '_blank', 'width=800,height=900');
   if (!printWindow) return;
   const escapeHtml = (text: string) =>
     text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const voided = options.voided;
+  const banner = voided
+    ? `<div class="void-banner">
+         <strong>VOIDED — this document is no longer valid.</strong>
+         <div>${escapeHtml(
+           [voided.at ? `Voided ${voided.at}` : '', voided.by ? `by ${voided.by}` : '']
+             .filter(Boolean)
+             .join(' '),
+         )}</div>
+         ${voided.reason ? `<div>Reason: ${escapeHtml(voided.reason)}</div>` : ''}
+       </div>`
+    : '';
+  const watermark = voided ? `<div class="void-watermark">VOID</div>` : '';
+  const authorisation = options.authorisation
+    ? `<div class="authorisation">${escapeHtml(options.authorisation)}</div>`
+    : '';
+
   printWindow.document.write(`<!doctype html>
 <html>
 <head>
-<title>${escapeHtml(title)}</title>
+<title>${escapeHtml(title)}${voided ? ' (VOIDED)' : ''}</title>
 <style>
-  body { font-family: 'Courier New', monospace; font-size: 13px; margin: 40px; }
+  @page { margin: 18mm; }
+  body { font-family: 'Courier New', monospace; font-size: 13px; margin: 40px; position: relative; }
   pre { white-space: pre-wrap; word-wrap: break-word; margin: 0; font: inherit; }
+  .void-banner {
+    border: 2px solid #a8071a; color: #a8071a; padding: 8px 12px; margin-bottom: 20px;
+    font-family: Arial, Helvetica, sans-serif; font-size: 12px; line-height: 1.5;
+  }
+  .authorisation {
+    margin-top: 26px; padding-top: 8px; border-top: 1px solid #999;
+    font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #333;
+  }
+  .void-watermark {
+    position: fixed; top: 38%; left: 50%;
+    transform: translate(-50%, -50%) rotate(-30deg);
+    font-family: Arial, Helvetica, sans-serif; font-size: 150px; font-weight: 800;
+    letter-spacing: 12px; color: rgba(168, 7, 26, 0.16);
+    pointer-events: none; z-index: 1000;
+  }
+  @media print {
+    body { margin: 0; }
+    .void-watermark, .void-banner { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
 </style>
 </head>
-<body><pre>${escapeHtml(content)}</pre></body>
+<body>${watermark}${banner}<pre>${escapeHtml(content)}</pre>${authorisation}</body>
 </html>`);
   printWindow.document.close();
   printWindow.focus();

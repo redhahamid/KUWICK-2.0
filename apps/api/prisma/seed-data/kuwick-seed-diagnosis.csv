@@ -1,0 +1,163 @@
+icd10_code,name,shortform
+J06.9,Acute upper respiratory infection,URTI
+J02.9,Acute pharyngitis,Pharyngitis
+J03.9,Acute tonsillitis,Tonsillitis
+J01.9,Acute sinusitis,Sinusitis
+J30.9,Allergic rhinitis,AR
+J20.9,Acute bronchitis,Bronchitis
+J45.9,Asthma,Asthma/AEBA
+J04.0,Acute laryngitis,Laryngitis
+R05,Cough,Cough
+R50.9,Fever,Fever
+I10,Essential hypertension,HTN
+E11.9,Type 2 diabetes mellitus,DM
+E78.5,Hyperlipidemia/Dyslipidemia,Hyperlipidemia/Dyslipidemia
+I25.9,Chronic ischemic heart disease,IHD
+E03.9,Hypothyroidism,Hypothyroid
+E05,Thyrotoxicosis,hyperthyroidism
+E07.9,Thyroid disorder unspecified,Thyroid
+K29.7,Gastritis,Gastritis
+K30,Dyspepsia,Dyspepsia
+A09,Infective gastroenteritis,AGE
+K52.9,Noninfective gastroenteritis,AGE
+K21.9,Gastro-esophageal reflux disease,GERD
+K59.0,Constipation,Constipation
+R10.9,Abdominal pain,Abdominal pain
+N39.0,Urinary tract infection,UTI
+N30.9,Cystitis,Cystitis
+N76.0,Acute vaginitis,Vaginitis
+N41.9,Prostatitis,Prostatitis
+N45.9,Epididymo-orchitis,Epididymo-orchitis
+M54.5,Low back pain,LBP
+M54.9,Back pain unspecified,Back Pain
+M25.5,Joint pain,Joint Pain
+M10.9,Gout,Gout
+M79.1,Myalgia,Myalgia
+M19.9,Osteoarthritis,OA
+S93.4,Ankle sprain,Ankle sprain
+S33.5,Lumbar sprain,Lumbar sprain
+L20.9,Dermatitis,Dermatitis
+L30.9,Eczema,Eczema
+L03.9,Cellulitis,Cellulitis
+L02.9,Abscess,Abscess
+B35.9,Tinea infection,Tinea
+B37.9,Candidiasis,Candida
+L50.9,Urticaria,Urticaria
+B86,Scabies,Scabies
+B07,Viral wart,Wart
+R51,Headache,Headache
+G43.9,Migraine,Migraine
+R42,Dizziness / Vertigo,Vertigo
+R07.9,Chest pain,Chest pain
+R00.2,Palpitations,Palpitations
+R53.1,Weakness,Weakness
+T14.1,Open wound unspecified,Wound
+S00.9,Superficial head injury,Minor Head Injury
+S80.0,Contusion knee,Knee Contusion
+W19,Fall unspecified,Fall
+T30.0,Burn unspecified,Burn
+Z00.00,General medical examination,GME
+Z00.01,General exam with abnormal findings,GME Abnormal
+Z23,Immunisation,Immunisation
+Z71.9,Counselling,Counselling
+D64.9,Anaemia,Anaemia
+F41.9,Anxiety disorder,Anxiety
+F32.9,Depression,Depression
+H10.9,Conjunctivitis,Conjunctivitis
+H61.2,Impacted ear wax/Cerumen,Impacted ear wax/Cerumen
+H66.9,Otitis media,OM
+B36.9,Otomycosis,Fungal Ear
+H72.9,Perforated tympanic membrane,TM Perforation
+S09.2,Ear trauma,Ear Trauma
+H60.9,Otitis externa,OE
+H65.9,Otitis media with effusion,OME
+H92.0,Otalgia,Ear Pain
+H93.1,Tinnitus,Tinnitus
+R04.0,Epistaxis,Nose Bleed
+J34.2,Deviated nasal septum,DNS
+J31.0,Chronic rhinitis,Chronic Rhinitis
+J32.9,Chronic sinusitis,Chronic Sinusitis
+R09.81,Nasal congestion,Blocked Nose
+R49.0,Hoarseness,Hoarse Voice
+K13.7,Oral lesion unspecified,Oral Lesion
+K12.0,Aphthous ulcer,Mouth Ulcer
+L73.9,Folliculitis,Folliculitis
+L21.9,Seborrheic dermatitis,Seborrheic dermatitis
+L29.9,Pruritus,Itchy Skin
+L72.9,Sebaceous cyst,Sebaceous Cyst
+L60.0,Ingrown toenail,Ingrown Nail
+M77.1,Tennis elbow,Tennis Elbow
+M65.3,Trigger finger,Trigger Finger
+M75.1,Rotator cuff syndrome,Shoulder Pain
+M25.6,Joint stiffness,Joint Stiffness
+R11.2,Nausea and vomiting,Vomiting
+R19.7,Diarrhoea,Diarrhoea
+R06.0,Shortness of breath,SOB
+R73.9,Hyperglycemia,Hyperglycemia
+E16.2,Hypoglycemia,Hypoglycemia
+N40,Benign prostatic hyperplasia,BPH
+N94.6,Dysmenorrhea,Dysmenorrhea
+N92.0,Menorrhagia,Menorrhagia
+N93.9,Abnormal uterine bleeding,AUB
+Z34.9,Antenatal check up,ANC
+Z01.1,Blood pressure check,BP Check
+Z13.89,General screening,Screening
+Z71.3,Dietary counselling,Diet Advice
+S52.9,Forearm fracture,Forearm fracture
+S82.9,Lower limb fracture,Lower limb fracture
+S62.9,Hand fracture,Hand fracture
+S42.9,Shoulder fracture,Shoulder fracture
+S02.9,Skull fracture,Skull fracture
+S22.9,Rib fracture,Rib fracture
+V89.9,Road traffic accident,RTA/MVA/ACCIDENT
+T14.0,Superficial injury,Abrasion
+S01.9,Laceration,Laceration
+O21.9,Nausea and vomiting in pregnancy,NVP
+Z33.1,Pregnancy confirmed,Pregnancy
+D17.9,Lipoma,Lipoma
+L72.3,Sebaceous cyst,Seb Cyst
+H00.1,Chalazion,Chalazion
+S61.0,Nail avulsion,Nail Avulsion
+M77.0,Golfer elbow,Golfer Elbow
+M75.0,Frozen shoulder,Frozen Shoulder
+T14.9,Soft tissue injury,STI / MSK Pain
+J21.9,Acute bronchiolitis,Bronchiolitis
+J11.1,Influenza infection,Influenza
+U07.1,COVID-19 infection,COVID
+B34.0,Adenovirus infection,Adenovirus
+B97.4,RSV infection,RSV
+A90,Dengue infection,Dengue
+B34.9,Viral infection unspecified,Viral Infection
+A49.9,Bacterial infection unspecified,Bacterial Infection
+J18.9,Pneumonia,Pneumonia
+J18.0,Bronchopneumonia,Bronchopneumonia
+J98.01,Viral induced wheeze,VIW
+B01.9,Chicken pox,Chickenpox
+W57,Bed bug bite,Bed Bug
+J33.9,Nasal polyp,Nasal Polyp
+J34.3,Turbinate hypertrophy,Turbinate
+J35.2,Adenoid hypertrophy,Adenoid
+K05.2,Gum swelling,Gingivitis
+B08.5,Herpangina,Herpangina
+B08.4,Hand foot mouth disease,HFMD
+S05.9,Eye trauma,Eye Trauma
+T15.9,Eye foreign body,FB Eye
+T16,Ear foreign body,FB Ear
+T17.1,Nasal foreign body,FB Nose
+T18.0,Fish bone throat,Fishbone
+A56.9,Chlamydia infection,Chlamydia
+A54.9,Gonorrhea,Gonorrhea
+A60.9,Genital herpes,Genital Herpes
+Z00.0,Health screening,Health Screening
+K08.8,Toothache,Toothache
+I21.9,Myocardial infarction,MI
+I48.9,Atrial fibrillation,AF
+I47.1,Supraventricular tachycardia,SVT
+J81.0,Acute pulmonary edema,APO
+T78.2,Anaphylactic shock,Anaphylactic Shock
+T78.4,Anaphylactic reaction,Anaphylaxis
+R57.9,Shock unspecified,Shock
+I95.9,Hypotension,Hypotension
+D56,Thalassaemia,Thalassaemia
+H11.3,Subconjunctival hemorrhage,Subconjunctival hemorrhage
+L01.0,Impetigo,Impetigo

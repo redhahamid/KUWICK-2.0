@@ -9,8 +9,7 @@ import { usePurchaseOrders } from './hooks/usePurchaseOrders';
 import { CreatePurchaseOrderDrawer } from './CreatePurchaseOrderDrawer';
 import { ReceivePurchaseOrderDrawer } from './ReceivePurchaseOrderDrawer';
 import { PurchaseOrder } from './types';
-
-const { Title } = Typography;
+import { PageHeader } from '../design-system/components/PageHeader';
 
 const RECEIVABLE_STATUSES: PurchaseOrderStatus[] = [
   PurchaseOrderStatus.ORDERED,
@@ -29,14 +28,16 @@ export function PurchaseOrdersPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Purchase Orders
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+      <PageHeader
+        title="Purchase Orders"
+        extra={
+          <>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
           New Purchase Order
         </Button>
-      </Space>
+          </>
+        }
+      />
       <Space style={{ marginBottom: 16 }} wrap>
         {showSelector && (
           <Select

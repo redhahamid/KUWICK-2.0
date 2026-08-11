@@ -10,8 +10,9 @@ import {
 import { CustomDocumentTemplate } from './types';
 import { TemplateContentEditor } from './TemplateContentEditor';
 import { ApiError } from '../core/api-client';
+import { PageHeader } from '../design-system/components/PageHeader';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 // Document builder (D-040) — Management > Operation > Document Templates:
 // the clinic's own template catalog (platform defaults deployed at tenant
@@ -56,19 +57,15 @@ export function DocumentTemplatesPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <div>
-          <Title level={4} style={{ margin: 0 }}>
-            Document Templates
-          </Title>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            Active templates appear as document types in the patient dashboard&apos;s Documents tab.
-          </Text>
-        </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor(null)}>
-          Add Template
-        </Button>
-      </Space>
+      <PageHeader
+        title="Document Templates"
+        subtitle="Active templates appear as document types in the patient dashboard's Documents tab."
+        extra={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor(null)}>
+            Add Template
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading}
@@ -88,6 +85,33 @@ export function DocumentTemplatesPage() {
             width: 110,
             render: (_: unknown, template: CustomDocumentTemplate) =>
               template.sourceDefaultId ? <Tag>System Default</Tag> : <Tag color="blue">Clinic&apos;s Own</Tag>,
+          },
+          {
+            // G3b closure (D-064) — the only place a template is classified.
+            // Defaults to clinical, and stays clinical until someone here
+            // says otherwise; nothing infers this from the template's name.
+            title: 'Authorisation',
+            width: 210,
+            render: (_: unknown, template: CustomDocumentTemplate) => (
+              <Space direction="vertical" size={0}>
+                <Switch
+                  size="small"
+                  checked={template.requiresClinicalAuthorisation}
+                  checkedChildren="Doctor"
+                  unCheckedChildren="Admin"
+                  onChange={(checked) =>
+                    updateTemplate
+                      .mutateAsync({ id: template.id, dto: { requiresClinicalAuthorisation: checked } })
+                      .catch((e) => reportFailure(e, 'Failed to update template'))
+                  }
+                />
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  {template.requiresClinicalAuthorisation
+                    ? 'A doctor must authorise'
+                    : 'Administrative — staff may issue'}
+                </Text>
+              </Space>
+            ),
           },
           {
             title: 'Status',

@@ -11,8 +11,8 @@ import {
 } from './hooks/useLeaveRequests';
 import { CreateLeaveRequestDto, LeaveRequest, LeaveStatus, LeaveType } from './types';
 import { ApiError } from '../core/api-client';
+import { PageHeader } from '../design-system/components/PageHeader';
 
-const { Title } = Typography;
 const { RangePicker } = DatePicker;
 
 const LEAVE_TYPE_OPTIONS: { value: LeaveType; label: string }[] = [
@@ -96,14 +96,16 @@ export function LeaveRequestsPage() {
 
   return (
     <div style={{ paddingTop: 24, paddingBottom: 24 }}>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Leave Requests
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+      <PageHeader
+        title="Leave Requests"
+        extra={
+          <>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
           Request Leave
         </Button>
-      </Space>
+          </>
+        }
+      />
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space>
           <span>Approving/Rejecting as:</span>

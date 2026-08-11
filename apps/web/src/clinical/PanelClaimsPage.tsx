@@ -41,8 +41,9 @@ import {
 } from './types';
 import { exportCsv } from '../reports/exportCsv';
 import { ApiError } from '../core/api-client';
+import { PageHeader } from '../design-system/components/PageHeader';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const BATCH_STATUS_COLOR: Record<string, string> = {
   BATCHED: 'default',
@@ -547,11 +548,11 @@ export function PanelClaimsPage() {
 
   return (
     <div style={{ paddingTop: 24, paddingBottom: 24 }}>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Panel Claims
-        </Title>
-        <Select
+      <PageHeader
+        title="Panel Claims"
+        extra={
+          <>
+            <Select
           showSearch
           style={{ width: 240 }}
           placeholder="Select panel"
@@ -560,7 +561,9 @@ export function PanelClaimsPage() {
           filterOption={(input, option) => (option?.label as string).toLowerCase().includes(input.toLowerCase())}
           options={panels?.map((p) => ({ value: p.id, label: p.name }))}
         />
-      </Space>
+          </>
+        }
+      />
       <Tabs
         items={[
           { key: 'batches', label: 'Claim Batches', children: <ClaimBatchesTab panelClinicId={panelClinicId} /> },

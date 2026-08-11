@@ -4,8 +4,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useClinics, useCreateClinic, useUpdateClinic } from './hooks/useClinics';
 import { Clinic, CreateClinicDto } from './types';
 import { ApiError } from './api-client';
-
-const { Title } = Typography;
+import { PageHeader } from '../design-system/components/PageHeader';
 
 export function ClinicsPage() {
   const { data: clinics, isLoading } = useClinics();
@@ -52,14 +51,16 @@ export function ClinicsPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Branches
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+      <PageHeader
+        title="Branches"
+        extra={
+          <>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
           Add Clinic
         </Button>
-      </Space>
+          </>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading}

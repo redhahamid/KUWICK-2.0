@@ -1,27 +1,73 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { VisitAttachmentService } from './visit-attachment.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
+import { PrismaService } from '../core/prisma.service';
 import { tenantContextStorage } from '../core/tenant-context';
 import * as fileStorage from '../core/file-storage';
 
 jest.mock('../core/file-storage');
 
-function createService() {
+const DOCTOR: Record<string, unknown> = {
+  id: 'staff-1',
+  fullName: 'Dr. Amira Rahman',
+  role: 'DOCTOR_RESIDENT',
+  active: true,
+  clinicId: 'clinic-1',
+  userId: 'user-1',
+  professionalType: null,
+  professionalActive: false,
+};
+
+const FRONT_DESK = { ...DOCTOR, role: 'FRONT_DESK_CLINICAL_STAFF' };
+
+function createService(actor: Record<string, unknown> = DOCTOR) {
   const prisma = {
     visitAttachment: { findMany: jest.fn(), findUnique: jest.fn(), create: jest.fn(), delete: jest.fn() },
   } as unknown as TenantScopedPrismaClient;
-  return { service: new VisitAttachmentService(prisma), prisma };
+
+  const tx = {
+    $executeRaw: jest.fn(),
+    staff: { findUnique: jest.fn().mockResolvedValue(actor) },
+    clinic: { count: jest.fn().mockResolvedValue(1) },
+    userClinicAccess: { findMany: jest.fn().mockResolvedValue([]) },
+    visit: { findUnique: jest.fn().mockResolvedValue({ clinicId: 'clinic-1' }) },
+    visitAttachment: {
+      findUnique: jest.fn(),
+      update: jest.fn().mockResolvedValue({ id: 'att-1' }),
+      delete: jest.fn(),
+    },
+  };
+  const rawPrisma = { $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) } as unknown as PrismaService;
+
+  return { service: new VisitAttachmentService(prisma, rawPrisma), prisma, tx };
 }
+
+const SAVED_ATTACHMENT = {
+  id: 'att-1',
+  visitId: 'visit-1',
+  fileName: 'otoscope-right.png',
+  filePath: 'tenant-a/visit-1/uuid-scan.png',
+  mimeType: 'image/png',
+  uploadedByStaffId: 'staff-9',
+  recordStatus: 'ACTIVE',
+  version: 1,
+};
 
 function withTenant<T>(fn: () => Promise<T>, staffId = 'staff-1'): Promise<T> {
   return tenantContextStorage.run({ tenantId: 'test-tenant', staffId }, fn);
 }
 
+// G4.5d3c-3c1 — the buffer is a REAL PNG signature now. It used to be the
+// single byte 'x', which the upload path accepted because nothing looked at
+// the bytes; the allow-list looks, so a fixture that is not the type it
+// claims is refused exactly as a hostile upload would be.
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+
 const testFile = {
   originalname: 'scan.png',
   mimetype: 'image/png',
   size: 1234,
-  buffer: Buffer.from('x'),
+  buffer: PNG_SIGNATURE,
 } as Express.Multer.File;
 
 describe('VisitAttachmentService', () => {
@@ -32,7 +78,7 @@ describe('VisitAttachmentService', () => {
 
     await withTenant(() => service.create('visit-1', testFile));
 
-    expect(fileStorage.saveUploadedFile).toHaveBeenCalledWith('test-tenant', 'visit-1', testFile.buffer, 'scan.png');
+    expect(fileStorage.saveUploadedFile).toHaveBeenCalledWith('test-tenant', 'visit-1', PNG_SIGNATURE, 'scan.png');
     expect(prisma.visitAttachment.create).toHaveBeenCalledWith({
       data: {
         tenantId: 'test-tenant',
@@ -74,17 +120,111 @@ describe('VisitAttachmentService', () => {
     await expect(service.findOne('visit-1', 'att-1')).rejects.toThrow(NotFoundException);
   });
 
-  it('remove deletes the DB row and the file on disk', async () => {
+  it('removal marks the row REMOVED_IN_ERROR instead of deleting it', async () => {
+    const { service, tx } = createService();
+    tx.visitAttachment.findUnique.mockResolvedValue(SAVED_ATTACHMENT);
+
+    await withTenant(() => service.removeFromVisit('visit-1', 'att-1', { reason: 'Uploaded to the wrong visit' }));
+
+    expect(tx.visitAttachment.update).toHaveBeenCalled();
+  });
+
+  // G3a (D-062) — the file must survive an audited removal.
+  it('does NOT delete the underlying clinical file', async () => {
+    const { service, tx } = createService();
+    tx.visitAttachment.findUnique.mockResolvedValue(SAVED_ATTACHMENT);
+
+    await withTenant(() => service.removeFromVisit('visit-1', 'att-1', { reason: 'Wrong visit' }));
+
+    expect(fileStorage.deleteUploadedFile).not.toHaveBeenCalled();
+    expect(tx.visitAttachment.delete).not.toHaveBeenCalled();
+  });
+
+  it('preserves filename, MIME type and uploader on removal', async () => {
+    const { service, tx } = createService();
+    tx.visitAttachment.findUnique.mockResolvedValue(SAVED_ATTACHMENT);
+
+    await withTenant(() => service.removeFromVisit('visit-1', 'att-1', { reason: 'Wrong visit' }));
+
+    const data = tx.visitAttachment.update.mock.calls[0][0].data;
+    expect(data.fileName).toBeUndefined();
+    expect(data.filePath).toBeUndefined();
+    expect(data.mimeType).toBeUndefined();
+    expect(data.uploadedByStaffId).toBeUndefined();
+    expect(data.recordStatus).toBe('REMOVED_IN_ERROR');
+  });
+
+  it('requires a removal reason', async () => {
+    const { service, tx } = createService();
+    tx.visitAttachment.findUnique.mockResolvedValue(SAVED_ATTACHMENT);
+
+    await expect(
+      withTenant(() => service.removeFromVisit('visit-1', 'att-1', { reason: ' ' })),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('records the remover from the session, not the request', async () => {
+    const { service, tx } = createService();
+    tx.visitAttachment.findUnique.mockResolvedValue(SAVED_ATTACHMENT);
+
+    await withTenant(() =>
+      service.removeFromVisit('visit-1', 'att-1', {
+        reason: 'Wrong visit',
+        removedByStaffId: 'attacker',
+      } as never),
+    );
+
+    const data = tx.visitAttachment.update.mock.calls[0][0].data;
+    expect(data.removedByStaffId).toBe('staff-1');
+    expect(data.removedByNameSnapshot).toBe('Dr. Amira Rahman');
+  });
+
+  it('re-removing an already removed attachment is a conflict', async () => {
+    const { service, tx } = createService();
+    tx.visitAttachment.findUnique.mockResolvedValue({ ...SAVED_ATTACHMENT, recordStatus: 'REMOVED_IN_ERROR' });
+
+    await expect(
+      withTenant(() => service.removeFromVisit('visit-1', 'att-1', { reason: 'again' })),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('rejects a stale expectedVersion', async () => {
+    const { service, tx } = createService();
+    tx.visitAttachment.findUnique.mockResolvedValue(SAVED_ATTACHMENT);
+
+    await expect(
+      withTenant(() => service.removeFromVisit('visit-1', 'att-1', { reason: 'stale', expectedVersion: 99 })),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('front-desk staff may not remove a clinical attachment', async () => {
+    const { service, tx } = createService(FRONT_DESK);
+    tx.visitAttachment.findUnique.mockResolvedValue(SAVED_ATTACHMENT);
+
+    await expect(
+      withTenant(() => service.removeFromVisit('visit-1', 'att-1', { reason: 'nope' })),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('the active gallery excludes removed attachments by default', async () => {
     const { service, prisma } = createService();
-    (prisma.visitAttachment.findUnique as jest.Mock).mockResolvedValue({
-      id: 'att-1',
-      visitId: 'visit-1',
-      filePath: 'tenant-a/visit-1/uuid-scan.png',
-    });
+    (prisma.visitAttachment.findMany as jest.Mock).mockResolvedValue([]);
 
-    await service.remove('visit-1', 'att-1');
+    await service.listByVisitId('visit-1');
 
-    expect(prisma.visitAttachment.delete).toHaveBeenCalledWith({ where: { id: 'att-1' } });
-    expect(fileStorage.deleteUploadedFile).toHaveBeenCalledWith('tenant-a/visit-1/uuid-scan.png');
+    expect(prisma.visitAttachment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { visitId: 'visit-1', recordStatus: 'ACTIVE' } }),
+    );
+  });
+
+  it('history includes removed attachments', async () => {
+    const { service, prisma } = createService();
+    (prisma.visitAttachment.findMany as jest.Mock).mockResolvedValue([]);
+
+    await service.listByVisitId('visit-1', true);
+
+    expect(prisma.visitAttachment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { visitId: 'visit-1' } }),
+    );
   });
 });

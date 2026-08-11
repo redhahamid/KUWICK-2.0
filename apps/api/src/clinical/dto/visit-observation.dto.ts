@@ -41,7 +41,11 @@ export class CorrectObservationDto extends RecordObservationDto {
   @Min(1)
   expectedVersion!: number;
 
+  // U1 — optional on a vital. A repeat BP or a re-weigh is not an event
+  // anybody wants to write a sentence about, and a mandatory field teaches
+  // staff to type "correction" and move on. The revision still records who,
+  // when and what changed.
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'A correction requires a reason' })
-  correctionReason!: string;
+  correctionReason?: string;
 }

@@ -1,0 +1,718 @@
+/* ===========================================================================
+   KUWICK 2.0 CANVAS — "Compact Pro" tokens
+   ---------------------------------------------------------------------------
+   Scoped to `.kw-canvas2`, deliberately, and NOT merged into the global
+   palette.
+
+   The approved spec gives a different palette from the one this product
+   ships: navy #171E4E and accent #2557E8 against the shipped #184a6b navy and
+   #0f766e clinical teal. Applying those globally would repaint Flow, the
+   Queue, Billing, Management and Settings in one commit — every surface the
+   brief says not to break — and none of that was reviewed. So the new palette
+   lives here, on the Canvas only, and adopting it product-wide stays a
+   separate decision with its own review.
+
+   TYPE SIZES ARE THE ONE DELIBERATE DEVIATION. The spec asks for 9.5–11px
+   body and 7.5–8px micro-labels. An approved earlier decision (D-072) put a
+   12px floor under clinical text, and 8px is below what a GP reads reliably
+   at the end of a session. The compact feel here comes from spacing and
+   density instead: micro-labels sit at 10px uppercase with letter-spacing,
+   which reads as a caption without pretending to be body text, and anything
+   carrying a clinical VALUE stays at 12px or above. Both floors are single
+   tokens — raise or lower them in one place.
+   ========================================================================= */
+.kw-canvas2 {
+  /* --- Brand ------------------------------------------------------------ */
+  --kw2-navy: #171e4e;
+  --kw2-navy-d: #101632;
+  --kw2-blue: #2557e8;
+  --kw2-blue-l: #4d7cff;
+
+  /* --- Surfaces --------------------------------------------------------- */
+  --kw2-bg: #f2f3f6;
+  --kw2-surface: #ffffff;
+  --kw2-border: #e2e4ec;
+  --kw2-input: #f5f6f9;
+  --kw2-soft: #e7ebf8;
+
+  /* --- Text ------------------------------------------------------------- */
+  --kw2-text: #12142a;
+  --kw2-muted: #6e7288;
+
+  /* --- Status (pair: background / foreground) --------------------------- */
+  --kw2-ok-bg: #e8f6ee;
+  --kw2-ok-fg: #1e7a4b;
+  --kw2-warn-bg: #fff6e6;
+  --kw2-warn-border: #f0dcac;
+  --kw2-warn-fg: #8a6510;
+
+  /* --- Geometry --------------------------------------------------------- */
+  --kw2-radius-card: 10px;
+  --kw2-radius-row: 7px;
+  --kw2-gap: 14px;
+  --kw2-pad: 12px;
+  --kw2-shadow: 0 3px 7px rgba(11, 27, 42, 0.05);
+
+  /* --- Type ------------------------------------------------------------- */
+  --kw2-font: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+  --kw2-title: 13.5px;
+  /* The two floors described above. */
+  --kw2-body: 12px;
+  --kw2-micro: 10px;
+
+  font-family: var(--kw2-font);
+  color: var(--kw2-text);
+  font-size: var(--kw2-body);
+}
+
+/* ---------------------------------------------------------------------------
+   The three columns.
+
+   Widths are set inline from `canvasWidths()` so the geometry is computed in
+   one tested place rather than being spread across media queries that drift
+   from it. This file owns flow, spacing and scroll behaviour only.
+   ------------------------------------------------------------------------ */
+.kw-canvas2-shell {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--kw2-gap);
+  width: 100%;
+}
+
+.kw-canvas2-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw2-gap);
+}
+
+/* The visits rail is reference material and runs full height beside the work;
+   it scrolls on its own so a long history never pushes the note down. */
+.kw-canvas2-visits {
+  flex: 0 0 auto;
+  align-self: stretch;
+}
+
+.kw-canvas2-middle {
+  flex: 1 1 auto;
+}
+
+.kw-canvas2-right {
+  flex: 0 0 auto;
+}
+
+/* Two-column: the visits rail folds away first — history is reference, the
+   note is work. */
+.kw-canvas2-shell[data-mode='two-column'] .kw-canvas2-visits {
+  display: none;
+}
+
+/* Stacked (tablet/phone): clinical reading order, one column, nothing
+   collapsed. Every panel stays open at every width — the rule the existing
+   Canvas already follows. */
+.kw-canvas2-shell[data-mode='stacked'] {
+  flex-direction: column;
+}
+
+.kw-canvas2-shell[data-mode='stacked'] .kw-canvas2-col {
+  width: 100% !important;
+  flex: 1 1 auto;
+}
+
+/* History moves BELOW the work when stacked: on a phone the first thing on
+   screen should be this consultation, not the last one. */
+.kw-canvas2-shell[data-mode='stacked'] .kw-canvas2-visits {
+  order: 3;
+}
+
+.kw-canvas2-shell[data-mode='stacked'] .kw-canvas2-middle {
+  order: 1;
+}
+
+.kw-canvas2-shell[data-mode='stacked'] .kw-canvas2-right {
+  order: 2;
+}
+
+/* ---------------------------------------------------------------------------
+   Card and label primitives.
+   ------------------------------------------------------------------------ */
+.kw-canvas2 .kw2-card {
+  background: var(--kw2-surface);
+  border: 1px solid var(--kw2-border);
+  border-radius: var(--kw2-radius-card);
+  box-shadow: var(--kw2-shadow);
+  padding: var(--kw2-pad);
+}
+
+.kw-canvas2 .kw2-card-title {
+  font-size: var(--kw2-title);
+  font-weight: 600;
+  color: var(--kw2-text);
+  margin: 0;
+}
+
+/* Section captions — "VITALS", "DOSE", "ORDERED THIS VISIT". Uppercase and
+   letter-spaced so they read as labels at 10px rather than as small text. */
+.kw-canvas2 .kw2-micro {
+  font-size: var(--kw2-micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--kw2-muted);
+}
+
+.kw-canvas2 .kw2-muted {
+  color: var(--kw2-muted);
+}
+
+/* An empty column must say what belongs there. A blank panel reads as a
+   broken screen; a sentence reads as a state. */
+.kw-canvas2 .kw2-empty {
+  border: 1px dashed var(--kw2-border);
+  border-radius: var(--kw2-radius-card);
+  padding: 16px 12px;
+  text-align: center;
+  color: var(--kw2-muted);
+  font-size: var(--kw2-body);
+  background: var(--kw2-input);
+}
+
+/* ---------------------------------------------------------------------------
+   Visits rail — matched to the approved mockup (spec p.2).
+
+   ONE white card holding the visit cards, not a bare column: the header,
+   every visit and the hint below them share a single surface, which is what
+   makes the rail read as a section rather than as loose tiles.
+   ------------------------------------------------------------------------ */
+.kw-canvas2 .kw2-visits {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-self: stretch;
+}
+
+.kw-canvas2 .kw2-visits-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* "4 total" — a soft chip, not body text, so the count reads as metadata. */
+.kw-canvas2 .kw2-count-chip {
+  background: var(--kw2-soft);
+  color: var(--kw2-navy);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: var(--kw2-body);
+  font-weight: 600;
+}
+
+/* The "+" new-visit button: navy square, pushed to the right edge. */
+.kw-canvas2 .kw2-icon-btn {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: var(--kw2-navy);
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.kw-canvas2 .kw2-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.kw-canvas2 .kw2-icon-btn:not(:disabled):hover {
+  background: var(--kw2-navy-d);
+}
+
+.kw-canvas2 .kw2-visit-today {
+  background: var(--kw2-navy);
+  color: #fff;
+  border-radius: var(--kw2-radius-row);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.kw-canvas2 .kw2-visit-past {
+  background: var(--kw2-surface);
+  border: 1px solid var(--kw2-border);
+  border-radius: var(--kw2-radius-row);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  /* The anchor for the hover preview. */
+  position: relative;
+}
+
+/* ---------------------------------------------------------------------------
+   The hover note preview (spec p.2, "hover any visit = note preview").
+
+   It opens to the RIGHT of the rail rather than inside it. A 270px column
+   cannot hold a paragraph of clinical prose without turning it into a
+   ten-line ribbon, and widening the rail would take the width from the note
+   the doctor is writing.
+
+   Prose gets the 12px clinical floor. This is a doctor reading somebody's
+   sentences under time pressure, which is exactly the case the floor exists
+   for; the mockup's micro-scale belongs to labels, not to narrative.
+   ------------------------------------------------------------------------ */
+.kw-canvas2 .kw2-visit-preview {
+  position: absolute;
+  top: -1px;
+  left: calc(100% + 10px);
+  z-index: 20;
+  width: 320px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--kw2-surface);
+  border: 1px solid var(--kw2-border);
+  border-radius: var(--kw2-radius-card);
+  box-shadow: 0 8px 24px rgba(11, 27, 42, 0.14);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Read-only and inert: it must never intercept the click heading for the
+     card's own "Open ▸" or "⎘ Copy Rx". */
+  pointer-events: none;
+}
+
+.kw-canvas2 .kw2-preview-head {
+  font-size: var(--kw2-body);
+  font-weight: 700;
+  color: var(--kw2-text);
+}
+
+.kw-canvas2 .kw2-preview-attrib {
+  font-size: var(--kw2-body);
+  color: var(--kw2-muted);
+}
+
+.kw-canvas2 .kw2-preview-body {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--kw2-text);
+  white-space: pre-wrap;
+}
+
+.kw-canvas2 .kw2-preview-more,
+.kw-canvas2 .kw2-preview-muted {
+  font-size: var(--kw2-body);
+  color: var(--kw2-muted);
+}
+
+.kw-canvas2 .kw2-preview-muted {
+  margin: 0;
+}
+
+/* Below the three-column breakpoint the rail is a 320px drawer, and there is
+   no room to its right for a 320px panel. It stacks under the card instead —
+   the same content, in the only place it fits. */
+@media (max-width: 1279px) {
+  .kw-canvas2 .kw2-visit-preview {
+    position: static;
+    width: auto;
+    margin-top: 8px;
+    box-shadow: none;
+  }
+}
+
+.kw-canvas2 .kw2-visit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kw-canvas2 .kw2-visit-when {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* The visit number is a pill in both cards — white on the navy today card,
+   soft blue on the past ones. */
+.kw-canvas2 .kw2-visit-no {
+  flex: 0 0 auto;
+  background: var(--kw2-soft);
+  color: var(--kw2-navy);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: var(--kw2-body);
+  font-weight: 600;
+}
+
+.kw-canvas2 .kw2-visit-today .kw2-visit-no {
+  background: #fff;
+}
+
+/* "IN CONSULT" — the accent blue, small caps, on the navy card. */
+.kw-canvas2 .kw2-visit-state {
+  color: var(--kw2-blue-l);
+  font-size: var(--kw2-micro);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+/* Long diagnosis and medicine names truncate rather than widening the rail
+   and stealing width from the note. */
+.kw-canvas2 .kw2-visit-line {
+  font-size: var(--kw2-body);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--kw2-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kw-canvas2 .kw2-visit-today .kw2-visit-line {
+  color: #fff;
+  white-space: normal;
+}
+
+.kw-canvas2 .kw2-visit-key {
+  color: var(--kw2-text);
+  font-weight: 700;
+}
+
+.kw-canvas2 .kw2-visit-today .kw2-visit-key {
+  color: #fff;
+}
+
+.kw-canvas2 .kw2-visit-attrib {
+  font-size: var(--kw2-body);
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.kw-canvas2 .kw2-visit-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 2px;
+}
+
+.kw-canvas2 .kw2-link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--kw2-text);
+  font-family: var(--kw2-font);
+  font-size: var(--kw2-body);
+  font-weight: 700;
+}
+
+.kw-canvas2 .kw2-link-btn:hover {
+  color: var(--kw2-blue);
+  text-decoration: underline;
+}
+
+/* Sits at the bottom of the rail card, below every visit. */
+.kw-canvas2 .kw2-visits-hint {
+  margin: auto 0 0;
+  padding-top: 8px;
+  font-size: var(--kw2-micro);
+  color: var(--kw2-muted);
+}
+
+/* ---------------------------------------------------------------------------
+   The folded-history edge tab.
+
+   Below 1280 the visits column folds so the note keeps a readable width. A
+   doctor still reaches for history mid-consultation, so the column becomes
+   this: a slim tab pinned to the left edge that opens the same content as an
+   overlay. History compresses; it never disappears.
+   ------------------------------------------------------------------------ */
+.kw2-history-tab {
+  position: fixed;
+  left: 0;
+  top: 45%;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border: 1px solid var(--kw2-border);
+  border-left: none;
+  border-radius: 0 var(--kw2-radius-row) var(--kw2-radius-row) 0;
+  background: var(--kw2-surface);
+  color: var(--kw2-navy);
+  box-shadow: var(--kw2-shadow);
+  cursor: pointer;
+  font-family: var(--kw2-font);
+  font-size: var(--kw2-micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  /* Reads down the edge, so the tab costs ~32px of width rather than ~120. */
+  writing-mode: vertical-rl;
+}
+
+.kw2-history-tab:hover,
+.kw2-history-tab:focus-visible {
+  background: var(--kw2-soft);
+  outline: 2px solid var(--kw2-blue);
+  outline-offset: -2px;
+}
+
+.kw2-history-tab .anticon {
+  writing-mode: horizontal-tb;
+}
+
+/* ---------------------------------------------------------------------------
+   Patient header (spec p.2, p.4). One wrapping row, never two toolbars.
+   ------------------------------------------------------------------------ */
+.kw2-patient-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 10px var(--kw2-pad, 12px);
+  margin-bottom: 14px;
+  background: #fff;
+  border: 1px solid #e2e4ec;
+  border-radius: 10px;
+  box-shadow: 0 3px 7px rgba(11, 27, 42, 0.05);
+  /* The accent stripe the mockup puts down the left edge. */
+  border-left: 3px solid #171e4e;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+  color: #12142a;
+}
+
+.kw2-back {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #6e7288;
+  padding: 4px;
+  font-size: 15px;
+}
+
+.kw2-back:hover {
+  color: #171e4e;
+}
+
+.kw2-avatar {
+  background: #e7ebf8 !important;
+  color: #171e4e !important;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.kw2-identity {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.kw2-identity-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kw2-name {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* "● In Consult" — green while the consult is live. */
+.kw2-state-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 2px 10px;
+  background: #e8f6ee;
+  color: #1e7a4b;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.kw2-state-pill::before {
+  content: '●';
+  font-size: 9px;
+}
+
+.kw2-state-done {
+  background: #f2f3f6;
+  color: #6e7288;
+}
+
+/* KW2-C2 — paused. Amber, the token this system already uses for "true and
+   outstanding": nothing has gone wrong, and the patient is not in the room.
+   Green here would say the consultation is running, which is the one thing
+   this state is not. */
+.kw2-state-held {
+  background: #fff6e6;
+  color: #8a6510;
+}
+
+.kw2-identity-meta {
+  font-size: 12px;
+  color: #6e7288;
+}
+
+/* The complaint is clinical content, so it is ink and not a muted caption. */
+.kw2-complaint {
+  font-size: 12px;
+  font-weight: 700;
+  color: #171e4e;
+}
+
+.kw2-header-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kw2-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 3px 11px;
+  background: #f5f6f9;
+  border: 1px solid #e2e4ec;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.kw2-chip-danger {
+  background: #fdecec;
+  border-color: #f5c2c2;
+  color: #b42318;
+}
+
+/* "Allergy not asked" — amber, because an unasked question is not a
+   negative answer. */
+.kw2-chip-warn {
+  background: #fff6e6;
+  border-color: #f0dcac;
+  color: #8a6510;
+}
+
+.kw2-chip-payer {
+  background: #fff6e6;
+  border-color: #f0dcac;
+  color: #8a6510;
+  letter-spacing: 0.03em;
+}
+
+.kw2-autosave {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e7a4b;
+  white-space: nowrap;
+}
+
+.kw2-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.kw2-header-actions .ant-btn {
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+/* Hold carries the mockup's amber outline even while disabled — the shape
+   the clinic was shown, in the state the product is actually in. */
+.kw2-hold:disabled {
+  border-color: #f0dcac !important;
+  color: #b99a4e !important;
+}
+
+.kw2-complete {
+  background: #171e4e !important;
+  border-color: #171e4e !important;
+}
+
+.kw2-complete:not(:disabled):hover {
+  background: #101632 !important;
+  border-color: #101632 !important;
+}
+
+@media (max-width: 767px) {
+  .kw2-header-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .kw2-header-actions .ant-btn {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Copy Rx review rows (spec p.8).
+
+   A flagged row is AMBER and stays selectable. Red would read as "stop", and
+   there is no drug dictionary behind this to justify stopping anyone — only a
+   string comparison, which is worth showing and not worth obeying.
+   ------------------------------------------------------------------------ */
+.kw2-copy-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #e2e4ec;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  background: #fff;
+}
+
+.kw2-copy-row:hover {
+  border-color: #4d7cff;
+}
+
+.kw2-copy-row-flagged {
+  background: #fff6e6;
+  border-color: #f0dcac;
+}
+
+.kw2-copy-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.kw2-copy-row-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #12142a;
+}
+
+.kw2-copy-row-detail {
+  font-size: 12px;
+  color: #6e7288;
+}
+
+.kw2-copy-row-warn {
+  font-size: 12px;
+  font-weight: 600;
+  color: #8a6510;
+}

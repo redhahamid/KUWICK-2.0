@@ -2,13 +2,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../core/api-client';
 import {
   AddToQueueDto,
+  CompleteVisitDto,
   CreateRoomDto,
+  QueueBoard,
   PublicQueueMonitorData,
   QueueDisplayConfig,
   QueueTicket,
   QueueTicketStatus,
   Room,
   UpdateQueueDisplayConfigDto,
+  VisitCompletionResult,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
@@ -60,6 +63,45 @@ export const useArrivedTicket = () => useQueueTicketAction('arrived');
 export const useMoveToDispensary = () => useQueueTicketAction('move-to-dispensary');
 export const useCompleteTicket = () => useQueueTicketAction('complete');
 export const useCancelTicket = () => useQueueTicketAction('cancel');
+
+/**
+ * KW2-C2 — pause the consultation, and take the patient back.
+ *
+ * Both refresh the QUEUE and the VISIT, and nothing else. A hold moves the
+ * patient's place in the queue; it does not change a diagnosis, a
+ * prescription or a word of the clinical note, so nothing that owns those is
+ * invalidated. In particular the note query is never named here: refetching
+ * it would remount the editor and take an unsaved draft with it (C1/D-091),
+ * which is the opposite of "resuming returns them with state intact".
+ *
+ * There is no request body. The acting user comes from the session, so there
+ * is nothing for a client to assert about who paused the consultation.
+ */
+function useHoldAction(action: 'hold' | 'resume') {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ticketId }: { ticketId: string; visitId?: string; patientId?: string }) =>
+      apiClient.patch<QueueTicket>(`/queue-tickets/${ticketId}/${action}`),
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['queue-tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['queue-board'] });
+      // The visit AND the patient's visit list. The Canvas header reads the
+      // selected visit out of the LIST, so invalidating only the single-visit
+      // key left the band claiming "In Consult" for a patient who had just
+      // been sent back to the waiting room — the exact silent disagreement
+      // this feature exists to prevent.
+      if (variables.visitId) {
+        queryClient.invalidateQueries({ queryKey: ['visits', variables.visitId] });
+      }
+      if (variables.patientId) {
+        queryClient.invalidateQueries({ queryKey: ['visits', 'patient', variables.patientId] });
+      }
+    },
+  });
+}
+
+export const useHoldConsultation = () => useHoldAction('hold');
+export const useResumeConsultation = () => useHoldAction('resume');
 
 // D-038 — rooms/stations a patient can be called to.
 export function useRooms(clinicId?: string, activeOnly = false) {
@@ -121,5 +163,36 @@ export function usePublicQueueMonitor(clinicId?: string) {
     },
     enabled: !!clinicId,
     refetchInterval: 5_000,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// G4.5d3c-3b (D-095) — the six-stage queue board and Complete Visit.
+// ---------------------------------------------------------------------------
+export function useQueueBoard(clinicId?: string) {
+  return useQuery({
+    queryKey: ['queue-board', clinicId],
+    queryFn: () => apiClient.get<QueueBoard>(`/queue-tickets/board?clinicId=${clinicId}`),
+    enabled: Boolean(clinicId),
+    refetchInterval: 15_000,
+  });
+}
+
+/**
+ * Closes the visit through the AUTHORITATIVE completion service — the same
+ * `PATCH /visits/:id/complete` the doctor-side status read describes, never a
+ * queue-only shortcut. Refreshes the board, the ticket list and the visit.
+ */
+export function useCompleteVisit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ visitId, dto }: { visitId: string; dto?: CompleteVisitDto }) =>
+      apiClient.patch<VisitCompletionResult>(`/visits/${visitId}/complete`, dto ?? {}),
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['queue-board'] });
+      queryClient.invalidateQueries({ queryKey: ['queue-tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['visits', variables.visitId] });
+      queryClient.invalidateQueries({ queryKey: ['completion-blockers', variables.visitId] });
+    },
   });
 }

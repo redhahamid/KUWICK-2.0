@@ -9,13 +9,12 @@ import { useDefaultClinicId } from '../core/hooks/useClinicFilter';
 import { useStaff } from '../hr/hooks/useStaff';
 import { CreateDoctorScheduleDto } from './types';
 import { ApiError } from '../core/api-client';
+import { PageHeader } from '../design-system/components/PageHeader';
 
 // DoctorSchedule.startTime/endTime store the wall-clock time-of-day in the
 // UTC hour/minute fields (apps/api/src/appointment/time.util.ts) — reading
 // them without .utc() shifts by the browser's local offset.
 dayjs.extend(utc);
-
-const { Title } = Typography;
 
 const DAY_OPTIONS = [
   { value: 0, label: 'Sunday' },
@@ -70,14 +69,16 @@ export function DoctorSchedulesPage() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          Doctor Schedules
-        </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+      <PageHeader
+        title="Doctor Schedules"
+        extra={
+          <>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
           Add Schedule
         </Button>
-      </Space>
+          </>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading}

@@ -107,21 +107,20 @@ export function ClinicChatWidget({ open, onOpenChange, onUnreadChange }: ClinicC
 
   return (
     <>
-      <Badge count={unreadChannelIds.size} size="small" offset={[-6, 6]}>
+      {/* D-077 — the floating button sat over the Open Invoice / completion
+          actions at the bottom of a phone screen, so a tap meant to bill a
+          visit could open chat instead. `.kw-chat-launcher` docks it clear of
+          those controls on a phone and hides it entirely inside the Clinical
+          Workspace, where chat is reachable from the header. Nothing about the
+          chat itself changes — only where its launcher sits. */}
+      <Badge count={unreadChannelIds.size} size="small" offset={[-6, 6]} className="kw-chat-launcher">
         <Button
           shape="circle"
           type="primary"
+          aria-label="Open clinic chat"
           icon={<MessageOutlined style={{ fontSize: 20 }} />}
           onClick={handleOpen}
-          style={{
-            position: 'fixed',
-            bottom: 24,
-            right: 24,
-            width: 52,
-            height: 52,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-            zIndex: 1000,
-          }}
+          style={{ width: 52, height: 52, boxShadow: '0 4px 12px rgba(0,0,0,0.18)' }}
         />
       </Badge>
       <Drawer

@@ -1,3 +1,144 @@
+/* ===========================================================================
+   G4.5d3 (D-077) — the Kuwick design tokens.
+
+   Declared once, here, as custom properties rather than as colours typed into
+   one page's rules. The brief asked for a professional product identity, not
+   a differently-painted Clinical Workspace: anything that hard-codes navy
+   inside a single component becomes the next inconsistency the moment a
+   second screen is styled. Every rule below and every component in the
+   workspace reads these, so the same tokens can carry the rest of the app.
+
+   Navy leads (identity, primary actions). Teal is the CLINICAL accent —
+   selected state and positive clinical status, never decoration. Red is
+   reserved: allergy, warning, destructive confirmation. Nothing else.
+   =========================================================================== */
+:root {
+  /* Primary */
+  --kw-navy: #184a6b;
+  --kw-navy-hover: #123a55;
+  --kw-teal: #0f766e;
+  --kw-teal-hover: #0b5f59;
+
+  /* Surfaces */
+  --kw-page-bg: #f4f7fa;
+  --kw-card: #ffffff;
+  --kw-rail-bg: #f8fafc;
+  --kw-band-bg: #edf6fb;
+  --kw-band-border: #cfe3ef;
+  --kw-border: #dce4ea;
+
+  /* Text */
+  --kw-text: #17212b;
+  --kw-text-secondary: #667085;
+  --kw-text-muted: #98a2b3;
+
+  /* Status — each is a PAIR, because colour alone never carries meaning
+     (WCAG, and a colour-blind GP reading a result at 7pm). Every use below
+     is accompanied by a word. */
+  --kw-success-fg: #166534;
+  --kw-success-bg: #dcfce7;
+  --kw-progress-fg: #1d4ed8;
+  --kw-progress-bg: #dbeafe;
+  --kw-pending-fg: #92400e;
+  --kw-pending-bg: #fef3c7;
+  --kw-danger-fg: #b42318;
+  --kw-danger-bg: #fee4e2;
+  --kw-neutral-fg: #475467;
+  --kw-neutral-bg: #f2f4f7;
+
+  /* Spacing scale — 4 / 8 / 12 / 16 / 24, nothing between. */
+  --kw-s1: 4px;
+  --kw-s2: 8px;
+  --kw-s3: 12px;
+  --kw-s4: 16px;
+  --kw-s6: 24px;
+}
+
+/* The clinical workspace sits on the page background, so white cards read as
+   surfaces rather than as the page itself. */
+.ant-layout-content {
+  background: var(--kw-page-bg);
+}
+
+/* Navy is the product's primary action colour. antd's default blue is left
+   for nothing in this workspace.
+
+   `:not(.ant-btn-background-ghost)` matters: a GHOST primary keeps its text in
+   the primary colour and expects a transparent background. Filling it navy
+   anyway put navy text on a navy fill, and the "Create MC" button rendered as
+   a solid unlabelled rectangle at every width — found in the Canvas Phase 1
+   screenshots, invisible in review until something was drawn next to it. */
+.kw-canvas-shell .ant-btn-primary:not(.ant-btn-background-ghost),
+.kw-completion-bar .ant-btn-primary:not(.ant-btn-background-ghost),
+.kw-last-visit .ant-btn-primary:not(.ant-btn-background-ghost) {
+  background: var(--kw-navy);
+  border-color: var(--kw-navy);
+}
+
+/* A ghost primary is an OUTLINE: navy text, navy border, no fill. */
+.kw-canvas-shell .ant-btn-primary.ant-btn-background-ghost,
+.kw-completion-bar .ant-btn-primary.ant-btn-background-ghost,
+.kw-last-visit .ant-btn-primary.ant-btn-background-ghost {
+  background: transparent;
+  border-color: var(--kw-navy);
+  color: var(--kw-navy);
+}
+
+.kw-canvas-shell .ant-btn-primary.ant-btn-background-ghost:not(:disabled):hover,
+.kw-completion-bar .ant-btn-primary.ant-btn-background-ghost:not(:disabled):hover,
+.kw-last-visit .ant-btn-primary.ant-btn-background-ghost:not(:disabled):hover {
+  background: var(--kw-navy) !important;
+  border-color: var(--kw-navy) !important;
+  color: #fff !important;
+}
+
+.kw-canvas-shell .ant-btn-primary:not(.ant-btn-background-ghost):not(:disabled):hover,
+.kw-completion-bar .ant-btn-primary:not(.ant-btn-background-ghost):not(:disabled):hover,
+.kw-last-visit .ant-btn-primary:not(.ant-btn-background-ghost):not(:disabled):hover {
+  background: var(--kw-navy-hover) !important;
+  border-color: var(--kw-navy-hover) !important;
+}
+
+/* Status chips. Each one is rendered WITH its word — the class only supplies
+   the colour pair, it never replaces the label. */
+.kw-chip-success {
+  color: var(--kw-success-fg) !important;
+  background: var(--kw-success-bg) !important;
+  border-color: var(--kw-success-bg) !important;
+}
+
+.kw-chip-progress {
+  color: var(--kw-progress-fg) !important;
+  background: var(--kw-progress-bg) !important;
+  border-color: var(--kw-progress-bg) !important;
+}
+
+.kw-chip-pending {
+  color: var(--kw-pending-fg) !important;
+  background: var(--kw-pending-bg) !important;
+  border-color: var(--kw-pending-bg) !important;
+}
+
+.kw-chip-danger {
+  color: var(--kw-danger-fg) !important;
+  background: var(--kw-danger-bg) !important;
+  border-color: var(--kw-danger-bg) !important;
+}
+
+.kw-chip-neutral {
+  color: var(--kw-neutral-fg) !important;
+  background: var(--kw-neutral-bg) !important;
+  border-color: var(--kw-neutral-bg) !important;
+}
+
+/* Teal marks CLINICAL emphasis — a recorded primary diagnosis, a delivered
+   service. Not a second brand colour to sprinkle. */
+.kw-chip-clinical {
+  color: var(--kw-teal) !important;
+  background: #e6f4f2 !important;
+  border-color: #cce9e5 !important;
+}
+
 /* Canvas layout's compact Notes editor (RichTextEditor.tsx) — no visible
    box around the text, even while focused/typing (user feedback: "don't
    want border while typing the notes"). Browsers put a default focus
@@ -14,4 +155,2710 @@
   outline: none;
   border: none;
   box-shadow: none;
+}
+
+/* C2 (D-053) — style the CONTENTEDITABLE itself, not EditorContent's
+   wrapper. Tiptap renders the actual .ProseMirror div inside that wrapper,
+   and it stays content-sized, which is why the typing area measured 22px
+   however tall the card grew.
+
+   G0a (D-054) — the height is now DECLARED, not inherited from leftover
+   space. Under C2 the editor was `flex: 1 1 auto` inside a viewport-height
+   shell, so it received whatever the lower sections did not use: every
+   diagnosis, order or medication added shrank the doctor's typing area, and
+   past the old 220px floor the shell overflowed instead. C2 measured 324px
+   only because it was measured on a completely empty record.
+
+   G4.5d3c-3a0v (D-090) — a MINIMUM, not a fixed height. The previous rule
+   (`height: min(58vh, 520px); overflow-y: auto`) reserved ~520px whatever
+   the note held, so a four-line SOAP note carried hundreds of blank pixels
+   and pushed the Consultation Footer most of a viewport further down. The
+   floor keeps comfortable typing room on a 768px laptop.
+
+   G4.5d3c-3c — the editor is now BOUNDED as well as floored.
+
+   D-090 removed the fixed height and left the editor free to grow with its
+   content. On a long consultation that turned out to mean it grows without
+   limit: a doctor writing a full SOAP note pushed the diagnoses, medications,
+   orders and the Consultation Footer steadily down the page, and finishing a
+   consultation meant scrolling past everything they had just written to reach
+   the button. The note is the dominant surface, not an infinite one.
+
+   So: a floor AND a ceiling, with the doctor's own text scrolling INSIDE the
+   editor once it outgrows the box. The surrounding Canvas stops moving; the
+   rail, the footer and every clinical section keep their position on screen
+   however much is typed.
+
+   The ceiling is a viewport fraction with an absolute cap, so it adapts to a
+   short laptop screen without ever exceeding the approved desktop band. */
+.kw-editor-fill .ProseMirror {
+  min-height: 420px;
+  max-height: min(52vh, 520px);
+  overflow-y: auto;
+}
+
+/* A signed or otherwise read-only note (D-090). Nobody types here, so it is
+   sized by its CONTENT with a floor that keeps the signed-note banner and
+   amendment actions from crowding a one-line note. Blank reservation below a
+   short note bought nothing except scroll distance to the footer.
+
+   Bounded too (3c): a long signed note is exactly as capable of burying the
+   footer as a long draft, and nobody needs to scroll a sealed record through
+   the page to reach an action below it. */
+.kw-editor-signed .ProseMirror {
+  min-height: 260px;
+  max-height: min(52vh, 520px);
+  overflow-y: auto;
+}
+
+/* Tablet, mobile and Flow. Without this the contenteditable collapses to one
+   line (22px measured) and the doctor has to aim at a sliver of text to
+   start writing.
+
+   Bounded lower than desktop (3c): on a tablet or a phone the viewport is the
+   scarce resource, so the editor keeps a workable typing area and gives the
+   rest of the record back. */
+.kw-editor-min .ProseMirror {
+  min-height: 300px;
+  max-height: min(46vh, 380px);
+  overflow-y: auto;
+}
+
+/* --- Focus Mode (G4.5d3c-3c) -------------------------------------------
+
+   A doctor writing a long note wants the note, not the two-zone workspace
+   around it. Focus Mode gives the editor the full width of the Canvas and a
+   taller ceiling by standing the rail down — and it does so ENTIRELY in CSS,
+   driven by a class on <body>.
+
+   That is the whole point of the mechanism. Focus Mode changes no React tree:
+   the ClinicalNotesTab, the RichTextEditor and the TipTap instance inside it
+   are the same mounted objects before, during and after. Rebuilding the
+   layout by conditionally rendering a different component would remount the
+   editor, and remounting the editor is exactly what C1 (D-052) and D-078
+   exist to prevent — the doctor's unsaved draft lives in a store keyed to the
+   note, and the editor's own selection and undo history do not survive a
+   remount at all. A class toggle cannot lose a keystroke. */
+body.kw-note-focus .kw-canvas-rail {
+  display: none;
+}
+
+/* The shell is a flex row; with the rail gone the main column simply takes
+   the whole width. Nothing is re-parented and no element is unmounted. */
+body.kw-note-focus .kw-canvas-main {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+body.kw-note-focus .kw-editor-fill .ProseMirror,
+body.kw-note-focus .kw-editor-signed .ProseMirror,
+body.kw-note-focus .kw-editor-min .ProseMirror {
+  max-height: min(72vh, 760px);
+}
+
+/* The exit control has to be reachable without leaving Focus Mode to find
+   it, so it rides with the note's toolbar rather than the page chrome. */
+.kw-focus-exit {
+  margin-left: auto;
+}
+
+/* G1 (D-058) — the clinical section stack.
+   Full width, content height, no fixed heights and no internal scrollers:
+   a section grows with what it holds and the page scrolls once. */
+.kw-section-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.kw-clinical-section {
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.kw-section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.kw-section-header:hover {
+  background: #fafafa;
+}
+
+.kw-section-header:focus-visible {
+  outline: 2px solid #4338ca;
+  outline-offset: -2px;
+}
+
+.kw-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-width: 220px;
+}
+
+/* The summary takes the slack and truncates rather than wrapping the header
+   onto a second line — until mobile, where it gets its own row. */
+.kw-section-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kw-section-actions {
+  flex: 0 0 auto;
+}
+
+.kw-section-body {
+  padding: 12px 14px 14px;
+  border-top: 1px solid #f5f5f5;
+}
+
+/* G2b (D-060) — clinical rows inside an expanded section.
+   Used by Diagnosis, Orders and Medications so the three read as one system.
+   Rows wrap rather than scroll sideways: a table that needs a horizontal
+   scrollbar hides clinical detail on the device a GP is most likely holding. */
+.kw-dx-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.kw-dx-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.kw-dx-row:last-child {
+  border-bottom: none;
+}
+
+.kw-dx-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kw-dx-actions {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 767px) {
+  /* antd's Card `extra` slot does not shrink on its own, so a toolbar wider
+     than the phone's content area (the note's language + Dictate + Smart
+     Abbreviation row measured 384px against 329px available) forces the whole
+     page to scroll sideways. Let it wrap instead. */
+  .kw-canvas-main .ant-card-extra {
+    max-width: 100%;
+    float: none;
+  }
+
+  /* One column: details first, then the actions as a full-width row of
+     comfortable targets — not a huddle of tiny buttons beside the text. */
+  .kw-dx-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .kw-dx-actions {
+    width: 100%;
+  }
+
+  .kw-dx-actions .ant-btn {
+    min-height: 44px;
+  }
+
+  /* Stack the header so nothing is squeezed into a strip of a row, and give
+     every control a 44px touch target. */
+  .kw-section-header {
+    flex-wrap: wrap;
+    padding: 12px;
+    row-gap: 8px;
+  }
+
+  .kw-section-heading {
+    min-width: 0;
+    flex: 1 1 100%;
+    min-height: 44px;
+  }
+
+  .kw-section-summary {
+    flex: 1 1 100%;
+    white-space: normal;
+  }
+
+  .kw-section-actions {
+    flex: 1 1 100%;
+  }
+
+  /* One full-width primary action, not several tiny buttons side by side.
+     antd wraps each child in .ant-space-item, so width:100% on the button
+     alone does nothing — the Space itself has to stretch and the first item
+     has to take the slack. */
+  .kw-section-actions .ant-space {
+    display: flex;
+    width: 100%;
+  }
+
+  .kw-section-actions .ant-space-item:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .kw-section-actions .kw-section-action {
+    min-height: 44px;
+    width: 100%;
+  }
+
+  /* The overflow menu stays a square 44px target beside it. */
+  .kw-section-actions .ant-space-item:not(:first-child) .kw-section-action {
+    width: 44px;
+    min-width: 44px;
+  }
+}
+
+/* G4 (D-067) — read-only clinical history.
+   antd's built-in clear "x" inside the history search box renders at 12px,
+   which is a real problem on a phone: measured at 375px it was the only
+   control in the panel under the 44px touch target. The padding/negative
+   margin pair grows the hit area without moving anything on the page. */
+.kw-history-panel .ant-input-clear-icon,
+.kw-history-panel .ant-picker-clear {
+  padding: 15px;
+  margin: -15px;
+  font-size: 14px;
+}
+
+/* Historical note content is rendered exactly as it was written, so it needs
+   the same typography as the editor without any of its affordances. */
+.kw-history-note-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.kw-history-note-body p {
+  margin: 0 0 6px;
+}
+
+/* ===========================================================================
+   G4.5a (D-071) — the two-zone Clinical Canvas.
+
+   Left writes, right acts. The rule that decides every number below: the note
+   never shrinks to make room for the rail. The benchmarked reference CMS did
+   the opposite — it refused to scroll, so at 1366 the note collapsed to seven
+   lines while a free-text sidebar kept twice that height. Here the rail
+   truncates its previews instead, and the page scrolls once.
+   =========================================================================== */
+.kw-canvas-shell {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.kw-canvas-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 420–480px: wide enough to read a medication line without wrapping every
+   field, narrow enough that the note keeps the majority of a 1366 screen. */
+.kw-canvas-rail {
+  background: var(--kw-rail-bg);
+  border-radius: 8px;
+  flex: 0 0 clamp(420px, 26vw, 480px);
+  width: clamp(420px, 26vw, 480px);
+  align-self: flex-start;
+}
+
+.kw-clinical-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kw-secondary-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* One context band. Wraps rather than growing a second toolbar.
+
+   G4.5d6 — the vertical padding is 4px, not 8. Every pixel above the note on
+   a 900px screen is a pixel the doctor does not get to write in, and this
+   band holds chips whose own line-height already gives them room. */
+.kw-context-band {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px var(--kw-s4);
+  padding: 4px var(--kw-s4);
+  margin-bottom: 4px;
+  background: var(--kw-card);
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+}
+
+.kw-context-action {
+  margin-left: auto;
+}
+
+/* G4.5d (D-075) — the Visit Completion Bar.
+   One compact strip under the context band: what the consultation still owes
+   (documents, the bill) and the way into each. It wraps into two rows on a
+   narrow desktop rather than shrinking its text, and it takes no height from
+   the note — the note's height is declared separately and untouched. */
+.kw-completion-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--kw-s2) var(--kw-s6);
+  padding: var(--kw-s2) var(--kw-s4);
+  margin-bottom: var(--kw-s2);
+  background: var(--kw-band-bg);
+  border: 1px solid var(--kw-band-border);
+  border-radius: 8px;
+}
+
+.kw-completion-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+/* 12px, not 11 — the D-072 floor applies to these band labels too. They sit
+   beside clinical text and are read in the same glance. */
+.kw-completion-label {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+/* D-077 — on a wide desktop the snapshot and the completion bar share ONE
+   strip, the way the approved mockup composes them. Two stacked bands cost
+   ~50px of the first screen for information that reads perfectly well side by
+   side.
+
+   G4.5d6 — the threshold was 1500px, which is the one width a clinic desktop
+   is least likely to be. Measured on the actual Canvas at 1440x900 and 100%
+   zoom: 532px was spent before the doctor could type, and 50px of that was
+   these two bands stacking for want of 60px of width. 1360px is the real
+   floor — below it the snapshot's own content starts to wrap, and stacking
+   is then the honest answer rather than squeezing. */
+@media (min-width: 1360px) {
+  .kw-visit-band {
+    display: flex;
+    align-items: stretch;
+    gap: var(--kw-s2);
+  }
+
+  .kw-visit-band > .kw-last-visit {
+    flex: 1 1 60%;
+    margin-bottom: var(--kw-s2);
+  }
+
+  .kw-visit-band > .kw-completion-bar {
+    flex: 1 1 40%;
+    align-content: center;
+  }
+}
+
+/* G4.5d2 (D-076) — the Last Visit Snapshot.
+   A band, not a card: one identity line, one clinical line, meds, outcome.
+   Deliberately kept near 120–150px so it answers "what happened last time?"
+   without becoming a second dashboard, and it takes no height from the note. */
+.kw-last-visit {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  padding: 8px 14px;
+  margin-bottom: 8px;
+  background: var(--kw-band-bg);
+  border: 1px solid var(--kw-band-border);
+  border-radius: 8px;
+}
+
+.kw-last-visit-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  grid-column: 1 / -1;
+}
+
+.kw-last-visit-label {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.kw-last-visit-body {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  min-width: 0;
+}
+
+.kw-last-visit-clinical,
+.kw-last-visit-meds,
+.kw-last-visit-outcome {
+  min-width: 0;
+}
+
+.kw-last-visit-action {
+  align-self: start;
+}
+
+/* Recorded observations only — see ClinicalVitalsStrip. */
+.kw-vitals-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  background: #fafafa;
+  border-radius: 6px;
+}
+
+/* G4.5d3c-3c1 — the saved vitals summary is the RESTING state, so it has to
+   stay readable where the screen is smallest. It wraps rather than scrolls:
+   a horizontally scrolling row of clinical values on a phone is a row whose
+   right-hand half nobody reads. */
+.kw-vitals-line {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 575px) {
+  .kw-vitals-summary .ant-space-item {
+    width: 100%;
+  }
+}
+
+.kw-image-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+/* --- Tablet and below: one column, in clinical reading order. ------------ */
+@media (max-width: 1100px) {
+  /* `align-items: flex-start` is right in ROW direction — it stops the rail
+     stretching to the note's height. Once the shell turns into a column it
+     means shrink-to-content WIDTH instead, which left the note 125px
+     narrower than the rail below it on a 900px tablet. */
+  .kw-canvas-shell {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .kw-canvas-main,
+  .kw-canvas-rail {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  /* No narrow two-up cards on a tablet: a clinical row needs its width. */
+  .kw-clinical-rail {
+    gap: 10px;
+  }
+
+  /* G4.5d3c-3c — a lower editor ceiling on a tablet. The desktop band assumes
+     a two-column workspace where the rail is beside the note; here everything
+     is one column, so an editor sized for desktop would push the diagnoses and
+     medications an entire screen down. */
+  .kw-editor-fill .ProseMirror,
+  .kw-editor-signed .ProseMirror,
+  .kw-editor-min .ProseMirror {
+    min-height: 300px;
+    max-height: min(46vh, 400px);
+  }
+}
+
+/* D-077 — the chat launcher.
+   Fixed, but never over a clinical control. On a phone it docks above the
+   safe area with room for the sticky completion actions, and inside the
+   Clinical Workspace it is hidden entirely: the workspace has its own sticky
+   controls at the bottom edge and chat remains reachable from the header. */
+.kw-chat-launcher {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 900;
+}
+
+/* Inside a patient record the bottom-right corner belongs to the clinical
+   rail: at 1920 the launcher sat directly on top of an order row's "View
+   Result" button. Chat stays reachable from the global header. */
+body:has(.kw-canvas-shell) .kw-chat-launcher {
+  display: none;
+}
+
+/* G4.5d3c-3b (D-095) — operational surfaces (Billing Review, Queue
+   Management) own their bottom-right corner too. The 3b2 review found the
+   launcher sitting on top of "Add to invoice" on a phone; the same corner on
+   the queue carries Complete Visit. Below the desktop breakpoint the launcher
+   is removed on these surfaces rather than nudged, because every nudge just
+   lands it on a different control. Chat stays reachable from the header. */
+@media (max-width: 991px) {
+  body:has(.kw-operational-surface) .kw-chat-launcher {
+    display: none;
+  }
+}
+
+/* On a wide screen the launcher stays, but the surface keeps a corner clear
+   so a bottom-anchored action can never end up underneath it. */
+@media (min-width: 992px) {
+  .kw-operational-surface {
+    padding-bottom: 88px;
+  }
+}
+
+@media (max-width: 640px) {
+  .kw-chat-launcher {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 88px);
+    right: 12px;
+  }
+
+  /* Inside a patient record on a phone, the launcher is removed rather than
+     moved — every corner already belongs to a clinical action. */
+  body:has(.kw-canvas-shell) .kw-chat-launcher {
+    display: none;
+  }
+}
+
+/* The quick-nav is a phone affordance only — above 640px the four panels are
+   either beside the note or a short scroll away, and a jump bar there is
+   chrome competing with the record. Declared BEFORE the mobile block on
+   purpose: same specificity, so source order decides, and the phone rule must
+   be the one that wins. */
+.kw-quick-nav {
+  display: none;
+}
+
+/* The attribution control (D-072). Reachable by mouse, keyboard focus and
+   touch — and carrying the whole attribution in its accessible name, so a
+   screen reader never has to open it. Small on purpose so it stays secondary
+   to the diagnosis it belongs to.
+
+   Declared BEFORE the mobile block for the same reason as the quick-nav above:
+   equal specificity means source order decides, and the phone's 44px target
+   must be the rule that wins. Putting this after the media query silently
+   pinned the control at 24px wide on a phone. */
+.kw-attribution-btn {
+  width: 24px;
+  height: 20px;
+  min-width: 24px;
+  padding: 0;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.kw-attribution-btn:hover,
+.kw-attribution-btn:focus-visible {
+  color: #1677ff;
+}
+
+/* Never let the focus ring be the thing that is invisible. */
+.kw-attribution-btn:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 1px;
+}
+
+/* --- Mobile ------------------------------------------------------------- */
+@media (max-width: 640px) {
+  .kw-context-band {
+    gap: 6px 10px;
+    padding: 8px 10px;
+  }
+
+  .kw-context-action {
+    margin-left: 0;
+    width: 100%;
+    min-height: 44px;
+  }
+
+  /* 16px keeps iOS from zooming the whole page when a field is focused. The
+     editor is not the only editable surface — the diagnosis search is one
+     too, and a zoom triggered there lands the doctor on a shifted layout
+     mid-search. */
+  .kw-editor-min .ProseMirror,
+  .kw-editor-fill .ProseMirror,
+  .kw-editor-signed .ProseMirror,
+  .kw-rail-add input,
+  .kw-rail-add textarea,
+  /* antd v6 sets 14px on `.ant-select .ant-select-input`, which out-specifies
+     a bare `.kw-rail-add input`. Matched at the same depth so ours wins. */
+  .kw-rail-add .ant-select .ant-select-input,
+  .kw-rail-add .ant-select .ant-select-selection-placeholder,
+  .kw-rail-add .ant-select .ant-select-selection-item {
+    font-size: 16px;
+  }
+
+  /* G4.5d3c-3c — the phone ceiling. Smallest of the three: on a 375px screen
+     an editor that keeps growing is the whole record, and the doctor loses
+     every other section to it. The floor still guarantees a usable typing
+     area, and the note scrolls inside itself past that. */
+  .kw-editor-fill .ProseMirror,
+  .kw-editor-signed .ProseMirror,
+  .kw-editor-min .ProseMirror {
+    min-height: 240px;
+    max-height: min(44vh, 320px);
+  }
+
+  /* The attribution control is small on purpose at desktop — it must stay
+     secondary to the diagnosis. On a phone "secondary" cannot mean "too small
+     to hit", so it takes the same 44px target as every other control here. */
+  .kw-attribution-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* The snapshot stacks and its View History target reaches 44px. It sits
+     above both the completion bar and the sticky quick-nav in the document,
+     so none of the three can overlap. */
+  .kw-last-visit {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .kw-last-visit-body {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .kw-last-visit-action {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  /* The completion bar stacks into two labelled rows and takes full-width
+     44px targets. It sits ABOVE the sticky quick-nav in the document, so it
+     scrolls away rather than covering it — the two never overlap. */
+  .kw-completion-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 8px 10px;
+  }
+
+  .kw-completion-group {
+    align-items: flex-start;
+  }
+
+  .kw-completion-actions {
+    width: 100%;
+  }
+
+  /* Named, never an unexplained icon: MC, Referral, Documents, Invoice. */
+  .kw-completion-actions .ant-btn {
+    min-height: 44px;
+    flex: 1 1 auto;
+  }
+
+  .kw-quick-nav {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 6px 12px 6px 4px;
+    margin: 0 -4px 8px;
+    border-bottom: 1px solid #f0f0f0;
+    /* D-091 — CSS scroll shadows. The last two layers are soft edge shades
+       that say "more tabs this way"; the first two are white covers pinned to
+       the CONTENT (attachment: local), so each shade disappears exactly when
+       its end of the row is reached. No JS, and nothing looks clipped-broken:
+       an overflowing row visibly fades instead of amputating its last label. */
+    background:
+      linear-gradient(90deg, #fff 40%, rgba(255, 255, 255, 0)) left / 28px 100% no-repeat local,
+      linear-gradient(270deg, #fff 40%, rgba(255, 255, 255, 0)) right / 28px 100% no-repeat local,
+      linear-gradient(90deg, rgba(23, 33, 43, 0.14), transparent) left / 14px 100% no-repeat scroll,
+      linear-gradient(270deg, rgba(23, 33, 43, 0.14), transparent) right / 14px 100% no-repeat scroll,
+      #fff;
+  }
+
+  /* Snap each tab whole into view — a half-tab at the edge is the "broken"
+     look this closure removes; momentum scrolling still works. */
+  .kw-quick-nav .ant-btn {
+    scroll-snap-align: nearest;
+    flex: 0 0 auto;
+  }
+
+  /* D-072 — the sticky bar overlaps whatever it scrolls to unless the target
+     reserves room for it. Without this the doctor taps "Medications" and the
+     first prescription is the top thing visible: the heading and the Add
+     control are both behind the strip.
+
+     The reserve is 148px, not the bar's own 56px. The app header is sticky
+     too, so by the time the jump settles the quick-nav's bottom edge sits at
+     ~129px, not 56px — measured, not assumed. Overshooting leaves a little
+     whitespace above the heading; undershooting hides the heading, which is
+     the failure this exists to prevent. */
+  .kw-rail-panel,
+  .kw-notes-card {
+    scroll-margin-top: 148px;
+  }
+
+  .kw-quick-nav button {
+    min-height: 44px;
+    flex: 0 0 auto;
+  }
+}
+
+/* D-091 — quick-nav label pairs. The full name renders by default; below
+   480px the short form takes over so five tabs fit more of the row. The
+   button's aria-label carries the full name at every width. */
+.kw-qn-short {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .kw-qn-full {
+    display: none;
+  }
+
+  .kw-qn-short {
+    display: inline;
+  }
+}
+
+/* D-091 — the supply-mode edit line on the prescribing surface. */
+.kw-supply-edit {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 2px 0;
+}
+
+/* D-091 — where "Review Medications" landed. Outline plus focus, never colour
+   alone, and the class removes itself after a moment. */
+.kw-rail-row.kw-row-attention {
+  outline: 2px solid var(--kw-navy);
+  outline-offset: 2px;
+  border-radius: 6px;
+  background: var(--kw-band-bg);
+  transition: background 0.4s ease;
+}
+
+/* G4.5b (D-071) — always-open rail panels.
+   No collapsed state, no toggle, and no internal scrollbar: a long list
+   truncates to "View all N" and the page grows. */
+.kw-rail-panel {
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px 10px;
+}
+
+.kw-rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.kw-rail-add {
+  margin-bottom: 6px;
+}
+
+.kw-rail-body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Row height is the budget that decides whether all four panels fit the
+   first screen at 1920x1080. Measured: 4 diagnoses + 5 medications + 3 orders
+   + 2 services must share roughly 590px of rail below the headers and add
+   controls, so a row averages about 42px. */
+.kw-rail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.kw-rail-row:last-of-type {
+  border-bottom: none;
+}
+
+.kw-rail-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Rail rows are read, not composed in. Antd's default 1.57 line-height is
+   sized for body copy; at four panels it spends ~80px of the first screen on
+   leading alone, which is what pushed Direct Services below the fold. The
+   text sizes themselves are NOT reduced — 13px name and 12px detail stay
+   legible; only the space between the lines is tightened. */
+.kw-rail-row-main,
+.kw-rail-row-main .ant-typography {
+  line-height: 1.32;
+}
+
+/* D-072 — one source of truth for tag size in the rail. ICD-10 codes, priority,
+   dispensing status, order status, the attachment count and the billing state
+   are all clinically meaningful, so none of them drops below 12px. Only the
+   leading is tightened. */
+.kw-rail-row .ant-tag,
+.kw-rail-head .ant-tag {
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.kw-rail-row .ant-tag {
+  margin-inline-end: 0;
+}
+
+.kw-rail-row-actions {
+  flex: 0 0 auto;
+}
+
+.kw-rail-more {
+  align-self: flex-start;
+  padding-inline: 0;
+}
+
+@media (max-width: 767px) {
+  /* One column, full-width targets — never a desktop row squeezed onto a
+     phone. Same rule the clinical rows below the Canvas already follow. */
+  .kw-rail-row {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .kw-rail-row-actions {
+    width: 100%;
+  }
+
+  .kw-rail-row-actions .ant-btn,
+  .kw-rail-add .ant-btn {
+    min-height: 44px;
+  }
+
+  /* D-091 — Add Order / Add Service. The compact [select | button] pair
+     overflowed the card's right edge at phone widths; stacked, the field
+     takes the full row and the named action sits full-width beneath it,
+     inside the card at 375px and 390px alike. Desktop/tablet keep the
+     side-by-side compact pair. */
+  .kw-rail-add .ant-space-compact {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 6px;
+  }
+
+  .kw-rail-add .ant-space-compact > .ant-select {
+    width: 100%;
+  }
+
+  .kw-rail-add .ant-space-compact > .ant-btn {
+    width: 100%;
+    /* Stacked, these are no longer visually fused controls — restore each
+       corner so neither reads as a clipped fragment of the other. */
+    border-radius: 6px;
+  }
+
+  .kw-rail-add .ant-space-compact > .ant-select .ant-select-selector {
+    border-radius: 6px;
+  }
+}
+
+/* ===========================================================================
+   G4.5d3c-3a (D-089) — the Consultation Footer.
+
+   The doctor's end of the consultation: what is outstanding, or where the
+   patient goes next, and one action. Deliberately NOT sticky. A sticky bar on
+   this page would sit over the note editor's lower lines on a laptop, over the
+   rail's More menus, and over the mobile quick-nav that is already sticky at
+   the top — three overlaps to solve for a bar the doctor reaches once, at the
+   end, by scrolling to it. It is the last thing on the record instead, which
+   is where a doctor looks for it and costs nothing above.
+   =========================================================================== */
+.kw-consult-footer {
+  margin-top: var(--kw-s3);
+  padding: var(--kw-s3) var(--kw-s4);
+  background: var(--kw-card);
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+  /* Navy edge: this is where the consultation concludes, and the band reads as
+     one deliberate surface rather than a sixth card. */
+  border-top: 3px solid var(--kw-navy);
+}
+
+/* Summary left, one dominant action right — the desktop consultation bar. */
+.kw-consult-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--kw-s3) var(--kw-s6);
+}
+
+.kw-consult-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s1);
+  min-width: 0;
+}
+
+.kw-consult-primary .ant-btn {
+  min-height: 44px;
+}
+
+.kw-consult-footer .ant-btn-primary {
+  background: var(--kw-navy);
+  border-color: var(--kw-navy);
+}
+
+.kw-consult-footer .ant-btn-primary:not(:disabled):hover {
+  background: var(--kw-navy-hover) !important;
+  border-color: var(--kw-navy-hover) !important;
+}
+
+.kw-consult-status {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s3);
+  min-height: 44px;
+}
+
+/* Blocked. Amber, not red: nothing has gone wrong and nothing is destructive
+   — the consultation simply is not finished. Red here would read as an error
+   the doctor caused. */
+.kw-consult-blocked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s2);
+}
+
+.kw-consult-blocked-head {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s2);
+  color: var(--kw-pending-fg);
+}
+
+/* A plain list, one line each, all of them at once. Never a card per blocker:
+   five nested cards inside a footer is the "cards inside cards" the Canvas
+   was rebuilt to remove. */
+.kw-consult-blocker-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--kw-text);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.kw-consult-reviews .ant-btn {
+  min-height: 32px;
+}
+
+/* Completed — a read-only record of what the server stored. */
+.kw-consult-done {
+  background: var(--kw-rail-bg);
+}
+
+.kw-consult-done-head {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s2);
+  margin-bottom: var(--kw-s2);
+}
+
+/* Label above value, wrapping across the available width. A definition list
+   because that is what it is — five stored facts, each with its name. */
+.kw-consult-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kw-s2) var(--kw-s6);
+  margin: 0;
+}
+
+.kw-consult-facts > div {
+  min-width: 0;
+}
+
+.kw-consult-facts dt {
+  font-size: 12px;
+  color: var(--kw-text-secondary);
+}
+
+.kw-consult-facts dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--kw-text);
+}
+
+/* The confirmation modal portals outside the Canvas scopes above, so the
+   navy primary is re-scoped to it here. */
+.kw-consult-confirm .ant-btn-primary {
+  background: var(--kw-navy);
+  border-color: var(--kw-navy);
+}
+
+.kw-consult-confirm .ant-btn-primary:not(:disabled):hover {
+  background: var(--kw-navy-hover) !important;
+  border-color: var(--kw-navy-hover) !important;
+}
+
+/* Focus must be visible on every control here — a doctor completing a
+   consultation from the keyboard has to see where they are. */
+.kw-consult-footer .ant-btn:focus-visible {
+  outline: 2px solid var(--kw-navy);
+  outline-offset: 2px;
+}
+
+/* Tablet and phone: the action goes full width and nothing is allowed to
+   overflow sideways. */
+@media (max-width: 1024px) {
+  .kw-consult-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--kw-s3);
+  }
+
+  .kw-consult-primary,
+  .kw-consult-primary .ant-btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 767px) {
+  .kw-consult-footer {
+    padding: var(--kw-s3);
+    /* Clear of the phone browser's own bottom controls, which overlay the
+       viewport rather than reserving space in it. */
+    margin-bottom: calc(var(--kw-s6) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* One fact per row rather than a squeezed grid, and the review buttons at a
+     44px target. */
+  .kw-consult-facts {
+    flex-direction: column;
+    gap: var(--kw-s2);
+  }
+
+  .kw-consult-reviews {
+    width: 100%;
+  }
+
+  .kw-consult-reviews .ant-btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .kw-consult-blocker-list {
+    padding-left: 18px;
+  }
+}
+
+/* ===========================================================================
+   G4.5d5b-1 — the shared premium clinical UX foundation.
+
+   Everything below styles the components in design-system/kuwick. It is
+   deliberately additive: no existing workspace rule is changed, so no module
+   is repainted by this checkpoint. What changes is that a NEW surface no
+   longer has to invent its own spacing, its own modal width and its own idea
+   of what a status chip looks like.
+   =========================================================================== */
+
+/* --- Modal ---------------------------------------------------------------- */
+
+/* Translucent rather than opaque: the page behind a clinical modal is context
+   — which patient, which visit — and blacking it out removes the one thing
+   that tells the user the modal is about the record they were just reading.
+   The blur is what keeps it legible as context without competing for
+   attention. `saturate` stops the blurred backdrop going flat and grey. */
+.kw-modal .ant-modal-mask {
+  background: rgba(15, 28, 40, 0.45);
+  backdrop-filter: blur(3px) saturate(120%);
+  -webkit-backdrop-filter: blur(3px) saturate(120%);
+}
+
+.kw-modal .ant-modal-content {
+  padding: 0;
+  overflow: hidden;
+}
+
+.kw-modal .ant-modal-header {
+  padding: 16px 20px 12px;
+  margin: 0;
+  border-bottom: 1px solid var(--kw-border);
+}
+
+.kw-modal .ant-modal-body {
+  padding: 16px 20px;
+  /* The body scrolls, not the page behind it, and not the whole dialog —
+     otherwise the title and the action bar scroll away from a long form. */
+  max-height: min(66vh, 620px);
+  overflow-y: auto;
+}
+
+.kw-modal .ant-modal-footer {
+  margin: 0;
+  padding: 12px 20px;
+  border-top: 1px solid var(--kw-border);
+  background: var(--kw-card);
+}
+
+.kw-modal-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kw-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--kw-text);
+}
+
+.kw-modal-subtitle {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.kw-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.kw-confirm-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Cancel left, primary right. Always. */
+.kw-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.kw-action-bar-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.kw-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* --- Form sections -------------------------------------------------------- */
+.kw-form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kw-form-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.kw-form-section-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--kw-text-secondary);
+}
+
+.kw-form-section-hint {
+  font-size: 12px;
+}
+
+/* --- Status chips --------------------------------------------------------- */
+.kw-status-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.kw-status-tag-detail {
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+/* --- Search --------------------------------------------------------------- */
+.kw-search-select {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+}
+
+.kw-search-refine {
+  padding-left: 2px;
+}
+
+/* --- Result card ---------------------------------------------------------- */
+
+/* The number a clinician acts on. Large, with its unit attached rather than
+   implied, and its interpretation in words underneath — a bare "26.8" is a
+   figure somebody has to remember the meaning of. */
+.kw-result-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--kw-border);
+  border-radius: 10px;
+  background: var(--kw-rail-bg);
+}
+
+.kw-result-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kw-result-value {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.kw-result-number {
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--kw-navy);
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-result-unit {
+  font-size: 14px;
+  color: var(--kw-text-secondary);
+}
+
+.kw-result-empty {
+  padding: 6px 0;
+}
+
+.kw-result-interpretation {
+  font-size: 13px;
+  color: var(--kw-text);
+}
+
+.kw-result-caption {
+  font-size: 11px;
+}
+
+/* --- Calculator ----------------------------------------------------------- */
+.kw-calculator {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.kw-calculator-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kw-calculator-name {
+  font-size: 15px;
+}
+
+.kw-calculator-purpose,
+.kw-calculator-formula-text {
+  font-size: 12px;
+}
+
+.kw-calculator-source {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.kw-calculator-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.kw-calculator-note .ant-alert-description {
+  font-size: 12px;
+}
+
+/* --- Tablet --------------------------------------------------------------- */
+@media (max-width: 991px) {
+  .kw-modal .ant-modal {
+    max-width: 90vw;
+    margin: 16px auto;
+  }
+}
+
+/* --- Mobile: a sheet, not a shrunken dialog ------------------------------- */
+@media (max-width: 575px) {
+  /* Full screen, with the header and the action bar pinned. The confirm
+     button ending up behind the on-screen keyboard is the single most common
+     way a phone user gets stuck in a clinical form, and a sticky footer is
+     what prevents it. */
+  .kw-modal .ant-modal {
+    max-width: 100vw;
+    width: 100vw !important;
+    margin: 0;
+    top: 0;
+    padding-bottom: 0;
+  }
+
+  .kw-modal .ant-modal-content {
+    min-height: 100vh;
+    min-height: 100dvh;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .kw-modal .ant-modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--kw-card);
+  }
+
+  .kw-modal .ant-modal-body {
+    flex: 1 1 auto;
+    max-height: none;
+  }
+
+  .kw-modal .ant-modal-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    /* Clears the home indicator on a notched device. */
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Stacked, full width, primary last — a 44px target each. */
+  .kw-action-bar,
+  .kw-modal-footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .kw-action-bar-end {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    margin-left: 0;
+  }
+
+  .kw-action-bar .ant-btn,
+  .kw-modal-footer .ant-btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .kw-result-number {
+    font-size: 28px;
+  }
+}
+
+/* ==========================================================================
+   G4.5d5b-3 — THE DISPENSARY WORKSPACE
+
+   A split, not a table with a drawer. The dispenser's attention moves between
+   "who is next" and "what do they need" continuously, and a drawer that
+   covers the list every time loses the queue. The two panes scroll
+   independently for the same reason: on a busy afternoon they hold very
+   different amounts of content, and one page scroll means finding your place
+   again after every hand-over.
+   ========================================================================== */
+
+.kw-dispensary {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: var(--kw-s3, 12px);
+}
+
+.kw-dispensary-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kw-s3, 12px);
+  row-gap: var(--kw-s3, 12px);
+}
+
+.kw-dispensary-header-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s4, 16px);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kw-dispensary-body {
+  display: grid;
+  /* 340px is the width at which a Malaysian full name, a queue number and a
+     progress line all fit on one row without truncation. */
+  grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+  gap: var(--kw-s4, 16px);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.kw-dispensary-pane-list,
+.kw-dispensary-pane-detail {
+  background: var(--kw-card);
+  border: 1px solid var(--kw-border);
+  border-radius: 10px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* --- The waiting list ---------------------------------------------------- */
+
+.kw-dispensary-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.kw-dispensary-list-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s2, 8px);
+  padding: var(--kw-s3, 12px);
+  border-bottom: 1px solid var(--kw-border);
+  background: var(--kw-rail-bg);
+}
+
+.kw-dispensary-list-scroll {
+  list-style: none;
+  margin: 0;
+  padding: var(--kw-s2, 8px);
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s2, 8px);
+}
+
+.kw-dispensary-list-empty {
+  padding: var(--kw-s5, 24px) var(--kw-s3, 12px);
+}
+
+.kw-dispensary-list-item {
+  width: 100%;
+  text-align: left;
+  background: var(--kw-card);
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* A counter row is pressed all day, often in a hurry. */
+  min-height: 64px;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.kw-dispensary-list-item:hover {
+  border-color: var(--kw-teal);
+}
+
+.kw-dispensary-list-item:focus-visible {
+  outline: 2px solid var(--kw-navy);
+  outline-offset: 2px;
+}
+
+/* Selected is a left rail plus a tint, not colour alone: the pane beside it
+   has changed wholesale and that has to be obvious at a glance. */
+.kw-dispensary-list-item[data-selected] {
+  border-color: var(--kw-teal);
+  background: var(--kw-band-bg);
+  box-shadow: inset 3px 0 0 0 var(--kw-teal);
+}
+
+.kw-dispensary-list-item-top {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s2, 8px);
+  min-width: 0;
+}
+
+.kw-dispensary-list-number {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--kw-navy);
+  flex-shrink: 0;
+}
+
+.kw-dispensary-list-name {
+  font-weight: 600;
+  color: var(--kw-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.kw-dispensary-list-item-meta {
+  display: flex;
+  gap: 4px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.kw-dispensary-list-item-flags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* --- The patient pane ---------------------------------------------------- */
+
+.kw-dispensary-pane-detail {
+  position: relative;
+}
+
+.kw-dispensary-detail-loading,
+.kw-dispensary-detail-empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--kw-s6, 32px);
+}
+
+/* Sticky: the dispenser scrolls a long medication list and must never lose
+   track of whose it is. */
+.kw-dispensary-patient-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s4, 16px);
+  flex-wrap: wrap;
+  padding: var(--kw-s3, 12px) var(--kw-s4, 16px);
+  border-bottom: 1px solid var(--kw-border);
+  background: var(--kw-card);
+}
+
+.kw-dispensary-patient-identity {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.kw-dispensary-patient-identity h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--kw-text);
+}
+
+.kw-dispensary-patient-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 13px;
+}
+
+.kw-dispensary-unresolved {
+  margin: var(--kw-s3, 12px) var(--kw-s4, 16px) 0;
+}
+
+.kw-dispensary-cards {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--kw-s4, 16px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s3, 12px);
+}
+
+/* --- One medication ------------------------------------------------------ */
+
+.kw-dispensary-med-card {
+  border: 1px solid var(--kw-border);
+  border-radius: 10px;
+  padding: var(--kw-s3, 12px) var(--kw-s4, 16px);
+  background: var(--kw-card);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kw-dispensary-med-card[data-selected] {
+  border-color: var(--kw-teal);
+  box-shadow: 0 0 0 1px var(--kw-teal);
+}
+
+/* Already handed over: quieter, and unmistakably a record rather than work. */
+.kw-dispensary-med-card[data-status='DISPENSED'] {
+  background: var(--kw-rail-bg);
+}
+
+/* A shortage is marked on the CARD, not only on a chip inside it. */
+.kw-dispensary-med-card[data-stock-state='OUT_OF_STOCK'],
+.kw-dispensary-med-card[data-stock-state='INSUFFICIENT'] {
+  border-left: 3px solid var(--kw-danger-fg);
+}
+
+.kw-dispensary-med-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--kw-s3, 12px);
+}
+
+.kw-dispensary-med-identity {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The medicine name is the largest thing on the card. A dispenser looks up
+   the medicine first and the shelf second. */
+.kw-dispensary-med-name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--kw-text);
+  line-height: 1.3;
+}
+
+.kw-dispensary-med-strength {
+  font-weight: 500;
+  color: var(--kw-text-secondary);
+}
+
+.kw-dispensary-med-directions {
+  font-size: 13px;
+}
+
+.kw-dispensary-med-facts {
+  display: flex;
+  gap: var(--kw-s6, 32px);
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  background: var(--kw-rail-bg);
+  border-radius: 8px;
+}
+
+.kw-dispensary-med-fact-label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kw-dispensary-med-quantity-value {
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--kw-text);
+  line-height: 1.2;
+}
+
+.kw-dispensary-med-unit {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--kw-text-secondary);
+}
+
+.kw-dispensary-med-stock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.kw-dispensary-med-handover,
+.kw-dispensary-med-prints {
+  font-size: 12px;
+}
+
+.kw-dispensary-med-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kw-s3, 12px);
+  flex-wrap: wrap;
+}
+
+/* Sticky footer: the batch action stays reachable however long the list is. */
+.kw-dispensary-action-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kw-s3, 12px);
+  flex-wrap: wrap;
+  padding: var(--kw-s3, 12px) var(--kw-s4, 16px);
+  border-top: 1px solid var(--kw-border);
+  background: var(--kw-card);
+  box-shadow: 0 -2px 8px rgba(15, 28, 40, 0.06);
+}
+
+/* --- The dispense confirmation ------------------------------------------- */
+
+.kw-dispense-list {
+  list-style: none;
+  margin: 0 0 var(--kw-s4, 16px);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s2, 8px);
+}
+
+.kw-dispense-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kw-s4, 16px);
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+}
+
+.kw-dispense-list-identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.kw-dispense-list-stock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.kw-dispense-after {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-dispense-acknowledge {
+  display: block;
+  margin-top: var(--kw-s3, 12px);
+  padding: 10px 12px;
+  border: 1px solid var(--kw-danger-fg);
+  border-radius: 8px;
+  background: var(--kw-danger-bg);
+}
+
+/* ==========================================================================
+   G4.5d5b-3 — MEDICATION LABELS
+
+   The preview is the label at its real proportions, because the thing being
+   checked is whether the medicine name and the directions fit and are legible
+   at 70 × 40 mm. A preview that looks nothing like the output cannot answer
+   that.
+
+   THE PRESET IS A STARTING POINT, NOT A HARDWARE CLAIM. 70 × 40 mm is common
+   Malaysian dispensing-label stock and has been checked against the browser's
+   own print preview only. No thermal printer has been tested and no printer
+   SDK is integrated — printing goes through the standard browser dialog. A
+   clinic with different stock changes the two numbers here and the matching
+   pair in labelPrint.ts.
+   ========================================================================== */
+
+.kw-label-copies {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s3, 12px);
+  flex-wrap: wrap;
+  margin-bottom: var(--kw-s3, 12px);
+}
+
+.kw-label-preset-note {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-label-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s2, 8px);
+  padding: var(--kw-s6, 32px);
+  justify-content: center;
+}
+
+.kw-label-sheet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kw-s3, 12px);
+  padding: var(--kw-s3, 12px);
+  background: var(--kw-rail-bg);
+  border-radius: 8px;
+}
+
+.kw-label {
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 1px dashed var(--kw-border);
+  border-radius: 2px;
+  padding: 3mm;
+  /* Black on white only. A label is read under fluorescent light, sometimes
+     photocopied, and colour carries no meaning here. */
+  color: #000000;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 7.5pt;
+  line-height: 1.25;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6mm;
+}
+
+.kw-label-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 2mm;
+  font-size: 6.5pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-bottom: 0.4mm solid #000000;
+  padding-bottom: 0.6mm;
+}
+
+.kw-label-reprint {
+  font-weight: 700;
+}
+
+.kw-label-patient {
+  font-size: 7.5pt;
+  font-weight: 600;
+  /* One line. A wrapped patient name pushes the directions off a 40mm
+     label, and the directions are the part that must never be cut. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kw-label-nric {
+  font-size: 6pt;
+  font-weight: 400;
+}
+
+/* The medicine, largest on the label. */
+.kw-label-medication {
+  font-size: 10pt;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.kw-label-directions {
+  font-size: 8.5pt;
+  font-weight: 600;
+}
+
+.kw-label-quantity,
+.kw-label-extra {
+  font-size: 7pt;
+}
+
+.kw-label-extra-label {
+  font-weight: 600;
+}
+
+.kw-label-footer {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 2mm;
+  font-size: 5.5pt;
+  border-top: 0.2mm solid #000000;
+  padding-top: 0.5mm;
+}
+
+.kw-label-print-note {
+  margin: var(--kw-s3, 12px) 0;
+}
+
+.kw-label-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s2, 8px);
+}
+
+.kw-label-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kw-label-history-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--kw-s3, 12px);
+  flex-wrap: wrap;
+  font-size: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--kw-border);
+}
+
+/* --- Printing ------------------------------------------------------------
+   Hidden by visibility rather than by moving the sheet into a print-only
+   container: the modal renders through a portal, so what is on screen and
+   what is printed are literally the same nodes. What was checked is what
+   comes out.
+   ------------------------------------------------------------------------- */
+@media print {
+  body.kw-printing-labels * {
+    visibility: hidden !important;
+  }
+
+  body.kw-printing-labels .kw-label-sheet,
+  body.kw-printing-labels .kw-label-sheet * {
+    visibility: visible !important;
+  }
+
+  body.kw-printing-labels .kw-label-sheet {
+    position: absolute;
+    inset: 0 auto auto 0;
+    display: block;
+    padding: 0;
+    gap: 0;
+    background: none;
+  }
+
+  body.kw-printing-labels .kw-label {
+    border: none;
+    /* One label per physical piece of stock. */
+    page-break-after: always;
+    break-after: page;
+  }
+
+  body.kw-printing-labels .kw-label:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  @page {
+    size: 70mm 40mm;
+    margin: 0;
+  }
+}
+
+/* --- Tablet: the list narrows before it disappears ------------------------ */
+@media (max-width: 1200px) {
+  .kw-dispensary-body {
+    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  }
+
+  .kw-dispensary-med-facts {
+    gap: var(--kw-s4, 16px);
+  }
+}
+
+/* --- Phone: one pane at a time ------------------------------------------- */
+@media (max-width: 991px) {
+  .kw-dispensary-body {
+    display: block;
+  }
+
+  .kw-dispensary-pane-list,
+  .kw-dispensary-pane-detail {
+    height: auto;
+    max-height: none;
+  }
+
+  .kw-dispensary-list-scroll {
+    overflow-y: visible;
+  }
+
+  .kw-dispensary-cards {
+    overflow-y: visible;
+  }
+
+  .kw-dispensary-patient-progress {
+    align-items: flex-start;
+  }
+
+  /* Full-width targets, primary last, clear of the home indicator. */
+  .kw-dispensary-action-footer {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .kw-dispensary-action-footer .ant-btn {
+    min-height: 44px;
+  }
+
+  .kw-dispensary-med-actions .ant-btn {
+    min-height: 40px;
+  }
+
+  .kw-label-sheet {
+    overflow-x: auto;
+  }
+}
+
+/* ==========================================================================
+   G4.5d5c — THE COUNTER WORKSPACE
+
+   UAT: one medication left an enormous empty canvas below it, because the
+   pane stretched to the viewport whether or not it had content. The counter
+   now stacks four sections — medications, documents, payment, counter check —
+   in one scrolling column that compacts to its content, with the primary
+   action pinned beneath it.
+   ========================================================================== */
+
+.kw-counter-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--kw-s4, 16px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s4, 16px);
+  /* Compacts to content: four short sections do not stretch into a blank
+     half-screen, and a long medication list still scrolls. */
+  align-content: start;
+}
+
+.kw-counter-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s2, 8px);
+}
+
+.kw-counter-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--kw-s3, 12px);
+  border-bottom: 1px solid var(--kw-border);
+  padding-bottom: 6px;
+}
+
+.kw-counter-section-head h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--kw-text-secondary);
+}
+
+.kw-counter-empty-line {
+  font-size: 13px;
+}
+
+/* --- Documents ---------------------------------------------------------- */
+
+.kw-counter-doc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kw-counter-doc-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kw-s3, 12px);
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+  background: var(--kw-card);
+}
+
+.kw-counter-doc-identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* --- Payment ------------------------------------------------------------ */
+
+.kw-counter-money {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--kw-rail-bg);
+  border-radius: 8px;
+}
+
+.kw-counter-money > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--kw-s4, 16px);
+}
+
+.kw-counter-money dt {
+  margin: 0;
+  color: var(--kw-text-secondary);
+  font-size: 13px;
+}
+
+.kw-counter-money dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+}
+
+/* The number the counter actually asks for. */
+.kw-counter-money-payable dt {
+  color: var(--kw-text);
+  font-weight: 600;
+}
+
+.kw-counter-money-payable dd {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--kw-text);
+}
+
+.kw-counter-methods {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.kw-counter-methods .ant-btn {
+  min-height: 40px;
+  flex: 1 1 auto;
+}
+
+.kw-counter-collect {
+  min-height: 48px;
+  font-weight: 600;
+}
+
+.kw-counter-settled {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--kw-success-bg);
+  color: var(--kw-success-fg);
+}
+
+.kw-counter-receivable {
+  font-size: 12px;
+}
+
+/* --- Counter check ------------------------------------------------------ */
+
+.kw-counter-check ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kw-counter-check li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--kw-text);
+}
+
+.kw-counter-tick {
+  color: var(--kw-success-fg);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.kw-counter-cross {
+  color: var(--kw-pending-fg);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.kw-counter-next {
+  font-size: 13px;
+}
+
+.kw-counter-strip {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* The medication cards sit inside a section now, so they lose the pane's own
+   padding and scrolling — the counter column owns both. */
+.kw-counter-scroll .kw-dispensary-cards {
+  padding: 0;
+  overflow: visible;
+  gap: var(--kw-s2, 8px);
+}
+
+/* Denser medication card: at 1440x900 four sections must fit without the
+   card alone claiming a third of the pane. */
+.kw-counter-scroll .kw-dispensary-med-card {
+  padding: 10px 12px;
+  gap: 8px;
+}
+
+.kw-counter-scroll .kw-dispensary-med-facts {
+  padding: 8px 10px;
+  gap: var(--kw-s5, 24px);
+}
+
+.kw-counter-scroll .kw-dispensary-med-quantity-value {
+  font-size: 18px;
+}
+
+@media (max-width: 991px) {
+  .kw-counter-scroll {
+    overflow-y: visible;
+    padding: var(--kw-s3, 12px);
+  }
+
+  .kw-counter-methods .ant-btn {
+    min-height: 44px;
+  }
+
+  .kw-counter-collect {
+    min-height: 52px;
+  }
+}
+
+/* ===========================================================================
+   G4.5d6 — THE PAGE HEADER, AND WHY IT IS ITS OWN LAYOUT
+   ---------------------------------------------------------------------------
+   UAT on an iPhone: "page titles wrap vertically". They did — one letter per
+   line. Every list page opened with an antd `Space` in `space-between`, which
+   is `inline-flex` with `flex-wrap: nowrap` and items that do not shrink
+   evenly. The buttons held their intrinsic width, the heading absorbed the
+   entire deficit, and "Appointments" was laid out in a 22px column.
+
+   The rule below is that the TITLE wins and the ACTIONS move: the heading
+   asks for a real minimum, so once the actions cannot fit beside it they wrap
+   onto their own row. On a desktop there is room for both and nothing about
+   the composition changes.
+   ========================================================================= */
+.kw-page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.kw-page-header-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* 200px, not 0: this is what forces the actions onto a second row rather
+     than letting them squeeze the heading into a column of letters. */
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.kw-page-title {
+  /* Break long words at the boundary rather than pushing the page sideways,
+     but only ever as a last resort — the flex-basis above means it rarely
+     comes to this. */
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+.kw-page-header-subtitle {
+  flex: 1 1 100%;
+  order: 3;
+  font-size: 12px;
+  color: var(--kw-text-secondary, #6b7280);
+}
+
+.kw-page-header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+@media (max-width: 575px) {
+  /* On a phone the actions get the full row and lay themselves out left to
+     right, instead of hugging a right edge that is only a few pixels away. */
+  .kw-page-header-actions {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+
+  .kw-page-header-actions .ant-btn,
+  .kw-page-header-actions .ant-select,
+  .kw-page-header-actions .ant-picker {
+    /* 44px is the touch target the rest of the mobile work already uses. */
+    min-height: 44px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Wide tables on a narrow screen.
+
+   A desktop table is not made usable by squashing it — the columns become
+   unreadable and the numbers wrap. It is made usable by letting it scroll
+   INSIDE ITS OWN BOX, so the page never moves sideways and the header, the
+   filters and the navigation all stay where the thumb expects them.
+   ------------------------------------------------------------------------ */
+@media (max-width: 991px) {
+  .ant-table-wrapper {
+    max-width: 100%;
+  }
+
+  .ant-table-wrapper .ant-table-content,
+  .ant-table-wrapper .ant-table-body {
+    overflow-x: auto;
+    /* Momentum scrolling, and a scrollbar the user can actually see. */
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Without this the table shrink-wraps to the container and reintroduces the
+     squashing this rule exists to prevent. */
+  .ant-table-wrapper .ant-table-content > table,
+  .ant-table-wrapper .ant-table-body > table {
+    min-width: max-content;
+  }
+}
+
+/* The page itself must never scroll sideways. If something still overflows,
+   it is a bug to fix — this stops it dragging the whole layout with it. */
+@media (max-width: 991px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   G4.5d6 — the app header on a phone.
+
+   Measured at 390px: the header demanded ~403px of a 342px content box, and
+   because the user block is `flex-shrink: 0` the overflow pushed it to
+   right=421 — 31px past the screen. The surrounding layout is
+   `overflow-x: hidden`, so it was not merely awkward, it was CLIPPED: the
+   avatar, the notification bell and the entire user menu could not be seen or
+   tapped at all. Nothing about that is cosmetic.
+   ------------------------------------------------------------------------ */
+.kw-app-header {
+  padding: 0 24px;
+}
+
+@media (max-width: 767px) {
+  .kw-app-header {
+    padding: 0 12px;
+    gap: 8px !important;
+  }
+
+  /* The name and the clinic are already in the avatar's dropdown. Showing
+     them twice cost the avatar its place on the screen. */
+  .kw-app-header-identity {
+    display: none;
+  }
+
+  /* The arrow alone reads as "back" and saves ~40px for the title. */
+  .kw-app-header-back-label {
+    display: none;
+  }
+}
+
+/* ===========================================================================
+   KW2-C2 — the top navigation band, per the approved canvas (spec p.2).
+   ---------------------------------------------------------------------------
+   The one GLOBAL repaint in the Kuwick 2.0 work, and it is deliberate: the
+   nav is a single band shared by Flow and Canvas alike, so skinning it per
+   layout would make it flicker between two identities as a doctor toggles.
+   Owner-assigned to this phase for exactly that reason.
+
+   Routes are untouched. This is colour, spacing and two extra items.
+   ========================================================================= */
+.kw-app-header-navy {
+  background: #101632;
+  border-bottom: none;
+}
+
+.kw-app-header-navy .ant-menu {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 14px;
+}
+
+.kw-app-header-navy .ant-menu-item {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.kw-app-header-navy .ant-menu-item a {
+  color: inherit;
+}
+
+.kw-app-header-navy .ant-menu-item:hover,
+.kw-app-header-navy .ant-menu-item:hover a {
+  color: #fff !important;
+}
+
+/* Active item: white, with the accent underline the mockup draws. */
+.kw-app-header-navy .ant-menu-item-selected,
+.kw-app-header-navy .ant-menu-item-selected a {
+  color: #fff !important;
+  font-weight: 600;
+}
+
+.kw-app-header-navy .ant-menu-item-selected::after {
+  border-bottom: 2px solid #2557e8 !important;
+  opacity: 1 !important;
+}
+
+/* A disabled item still has to be readable — it is stating a fact about the
+   product, not decoration. */
+.kw-app-header-navy .ant-menu-item-disabled,
+.kw-app-header-navy .ant-menu-item-disabled span {
+  color: rgba(255, 255, 255, 0.38) !important;
+  cursor: not-allowed;
+}
+
+.kw-app-header-navy .kw-app-header-identity div,
+.kw-app-header-navy .kw-app-header-identity .ant-typography {
+  color: #fff !important;
+}
+
+.kw-app-header-navy .kw-app-header-identity .ant-typography-secondary {
+  color: rgba(255, 255, 255, 0.66) !important;
+}
+
+.kw-app-header-navy .anticon {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* The clinic pill. */
+.kw-app-clinic-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 991px) {
+  /* The pill is the first thing to go on a narrow screen: the clinic is also
+     named in the avatar's dropdown. */
+  .kw-app-clinic-pill {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   KW2-C2 — the persistent allergy strip.
+
+   Amber, never red. Red is reserved for a state that FORBIDS the action, and
+   nothing here has decided that anything is wrong — the strip says only that
+   this patient has allergies on record and that reading them is the
+   prescriber's job.
+
+   No close affordance and no hover state: it is not a control, and it is not
+   an event. It is a standing fact, so it looks like one.
+   ------------------------------------------------------------------------ */
+.kw-allergy-strip {
+  background: #fff6e6;
+  border: 1px solid #f0dcac;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  /* The 12px clinical floor. These are the patient's own words about what
+     could harm them; they are never small print. */
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #8a6510;
+  /* Long allergy lists wrap rather than truncate — a cut-off allergy is a
+     changed allergy. */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.kw-allergy-strip-compact {
+  padding: 6px 10px;
+  margin-bottom: 10px;
+}
+
+/* The completion checkpoint's two labelled lists. A label column keeps
+   "Allergies" and "Prescribed" aligned so the comparison the doctor is being
+   asked to make is one glance rather than two sentences. */
+.kw-checkpoint-line {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.kw-checkpoint-label {
+  flex: 0 0 78px;
+  color: var(--kw-muted, #6e7288);
+  font-size: 12px;
+}
+
+/* ---------------------------------------------------------------------------
+   KW2-C3 — vitals entered where they are read (spec p.2).
+
+   One wrapping row of small labelled inputs, sized so the six of them plus the
+   BMI badge fit the 738px middle column without a second line at 1600.
+   Below that they wrap rather than scroll: a vital pushed off-screen is a
+   vital nobody enters.
+   ------------------------------------------------------------------------ */
+.kw-inline-vitals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 8px 10px;
+  background: var(--kw-input, #f5f6f9);
+  border: 1px solid var(--kw-border, #e2e4ec);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.kw-iv-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The 12px clinical floor applies to the values; the labels are the one thing
+   allowed to be smaller, because they are furniture and the numbers are not. */
+.kw-iv-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--kw-muted, #6e7288);
+  text-transform: uppercase;
+}
+
+.kw-iv-inputs {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.kw-inline-vitals .kw-iv-input {
+  width: 58px;
+}
+
+.kw-inline-vitals .kw-iv-input .ant-input-number-input {
+  font-size: 12px;
+  font-weight: 600;
+  padding-inline: 6px;
+  text-align: center;
+}
+
+.kw-iv-sep,
+.kw-iv-unit {
+  font-size: 12px;
+  color: var(--kw-muted, #6e7288);
+}
+
+/* Derived, so it has no input and does not look like one. */
+.kw-iv-bmi-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--kw-muted, #6e7288);
+}
+
+.kw-iv-bmi-on .kw-iv-bmi-value {
+  color: var(--kw-text, #12142a);
+}
+
+.kw-iv-tail {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.kw-iv-more {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--kw-blue, #2557e8);
+}
+
+.kw-iv-more:hover {
+  text-decoration: underline;
 }

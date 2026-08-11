@@ -34,16 +34,12 @@ import {
   usePrescriptions,
   useRemovePrescription,
 } from './hooks/usePrescriptions';
-import { CreatePrescriptionDto, DosageCalcMethod, Prescription, PrescriptionStatus } from './types';
+import { CreatePrescriptionDto, DosageCalcMethod, PrescriptionSupplyMode } from './types';
+import { DEFAULT_SUPPLY_MODE, SUPPLY_MODE_OPTIONS } from './medicationSupplyPresentation';
+import { PrescribedMedicationList } from './sections/PrescribedMedicationList';
 import { ApiError } from '../core/api-client';
 
 const { Text } = Typography;
-
-const STATUS_COLOR: Record<PrescriptionStatus, string> = {
-  ORDERED: 'gold',
-  DISPENSED: 'green',
-  CANCELLED: 'default',
-};
 
 interface MedicationsTabProps {
   visitId: string;
@@ -78,6 +74,10 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
   const [indication, setIndication] = useState('');
   const [remark, setRemark] = useState('');
   const [calcMethod, setCalcMethod] = useState<DosageCalcMethod>();
+  // D-091 — supply intent, VISIBLY defaulted to clinic dispensing and always
+  // submitted explicitly. There is no hidden database default to fall back
+  // on: what the doctor sees selected is exactly what is stored.
+  const [supplyMode, setSupplyMode] = useState<PrescriptionSupplyMode>(DEFAULT_SUPPLY_MODE);
   const [calcWeightKg, setCalcWeightKg] = useState<number>();
   const [calcDoseRateMgKg, setCalcDoseRateMgKg] = useState<number>();
   const [calculatorOpen, setCalculatorOpen] = useState(false);
@@ -130,6 +130,7 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
     setCalcMethod(undefined);
     setCalcWeightKg(undefined);
     setCalcDoseRateMgKg(undefined);
+    setSupplyMode(DEFAULT_SUPPLY_MODE);
   };
 
   const reportFailure = (error: unknown, fallback: string) => {
@@ -154,6 +155,7 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
       calcMethod,
       calcWeightKg: calcMethod === 'WEIGHT_BASED' ? calcWeightKg : undefined,
       calcDoseRateMgKg: calcMethod === 'WEIGHT_BASED' ? calcDoseRateMgKg : undefined,
+      supplyMode,
     };
     try {
       await createPrescription.mutateAsync(dto);
@@ -166,8 +168,15 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
   const handleCopy = async () => {
     if (!copySourceVisitId) return;
     try {
-      await copyPrescriptions.mutateAsync({ sourceVisitId: copySourceVisitId, targetVisitId: visitId });
-      message.success('Previous prescription copied');
+      const result = await copyPrescriptions.mutateAsync({
+        sourceVisitId: copySourceVisitId,
+        targetVisitId: visitId,
+      });
+      // G4.5d3c-3c — the server's sentence, not a generic "copied". The
+      // doctor is told what supply mode the copied lines were given and where
+      // it came from, so a rule that ran on their behalf is visible rather
+      // than something they discover later in the medication list.
+      message.success(result.supplySummary);
     } catch (error) {
       reportFailure(error, 'Failed to copy previous prescription');
     }
@@ -233,19 +242,19 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
         )}
 
         <Row gutter={12} style={{ marginBottom: 12 }}>
-          <Col span={6}>
+          <Col xs={12} sm={12} md={6}>
             <Text type="secondary">Quantity</Text>
             <InputNumber min={1} style={{ width: '100%' }} value={quantity} onChange={(v) => setQuantity(v ?? 1)} />
           </Col>
-          <Col span={6}>
+          <Col xs={12} sm={12} md={6}>
             <Text type="secondary">Dose Amount</Text>
             <InputNumber min={0} style={{ width: '100%' }} value={amount} onChange={(v) => setAmount(v ?? undefined)} />
           </Col>
-          <Col span={6}>
+          <Col xs={12} sm={12} md={6}>
             <Text type="secondary">Unit</Text>
             <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="e.g. ml, tablet" />
           </Col>
-          <Col span={6}>
+          <Col xs={12} sm={12} md={6}>
             <Text type="secondary"> </Text>
             <Button
               block
@@ -359,11 +368,11 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
         )}
 
         <Row gutter={12} style={{ marginBottom: 12 }}>
-          <Col span={8}>
+          <Col xs={24} sm={12} md={8}>
             <Text type="secondary">Frequency</Text>
             <Input value={frequency} onChange={(e) => setFrequency(e.target.value)} placeholder="e.g. BD" />
           </Col>
-          <Col span={8}>
+          <Col xs={24} sm={12} md={8}>
             <Text type="secondary">Duration (days)</Text>
             <InputNumber
               min={1}
@@ -372,9 +381,34 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
               onChange={(v) => setDurationDays(v ?? 1)}
             />
           </Col>
-          <Col span={8}>
+          <Col xs={24} sm={12} md={8}>
             <Text type="secondary">Indication</Text>
             <Input value={indication} onChange={(e) => setIndication(e.target.value)} />
+          </Col>
+        </Row>
+        <Row gutter={12} style={{ marginBottom: 12 }}>
+          <Col xs={24} sm={12} md={8}>
+            {/* A visible label and a visible selection. The doctor reads the
+                supply intent before saving; the DTO carries it explicitly. */}
+            <Text type="secondary">
+              <label htmlFor="kw-supply-mode">Supply Mode</label>
+            </Text>
+            <Select
+              id="kw-supply-mode"
+              style={{ width: '100%' }}
+              value={supplyMode}
+              onChange={(value) => setSupplyMode(value)}
+              options={SUPPLY_MODE_OPTIONS}
+            />
+            {/* G4.5d3c-3c — the default says that it IS one. A pre-selected
+                value that looks like a deliberate choice is how a doctor stops
+                reading the field; saying "change it if" keeps the decision in
+                front of them at the cost of one line. */}
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {supplyMode === DEFAULT_SUPPLY_MODE
+                ? 'Default — change this if the patient is not collecting from the clinic.'
+                : 'Changed from the clinic default.'}
+            </Text>
           </Col>
         </Row>
         <Input.TextArea
@@ -392,105 +426,21 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
         </div>
       </Card>
 
+      {/* G2b (D-060) — the 6-column table that lived here needed horizontal
+          scrolling below laptop width and buried indication, remark and
+          prescriber in a cramped cell. PrescribedMedicationList shows the same
+          records as wrapping rows, and adds the allergy banner, prescriber and
+          stock-on-hand the owner asked for. The prescribing form, dosage
+          calculator and every mutation above are untouched. */}
       <Card size="small" title="Prescribed Medications">
-        {!isLoading && (!prescriptions || prescriptions.length === 0) ? (
-          <Empty description="No medications prescribed yet" />
-        ) : (
-          <Table
-            rowKey="id"
-            loading={isLoading}
-            dataSource={prescriptions}
-            columns={[
-              { title: 'Medicine', render: (_: unknown, r: Prescription) => r.item?.name ?? '—' },
-              {
-                title: 'Instructions & Details',
-                render: (_: unknown, r: Prescription) => (
-                  <>
-                    <div>
-                      {r.amount}
-                      {r.unit ?? ''} {r.frequency} for {r.durationDays} Days
-                    </div>
-                    {r.indication && (
-                      <div style={{ fontSize: 12, opacity: 0.65 }}>Indication: {r.indication}</div>
-                    )}
-                    {r.remark && <div style={{ fontSize: 12, opacity: 0.65 }}>{r.remark}</div>}
-                  </>
-                ),
-              },
-              { title: 'Qty', dataIndex: 'quantity' },
-              {
-                title: 'Status',
-                render: (_: unknown, r: Prescription) => <Tag color={STATUS_COLOR[r.status]}>{r.status}</Tag>,
-              },
-              {
-                title: 'Prescribed At',
-                render: (_: unknown, r: Prescription) => dayjs(r.prescribedAt).format('YYYY-MM-DD HH:mm'),
-              },
-              {
-                title: 'Action',
-                render: (_: unknown, r: Prescription) => (
-                  <Space>
-                    {/* D-040 (owner #10) — drug label with clinic letterhead,
-                        patient, drug, dose/frequency/duration/indication. */}
-                    <Button
-                      size="small"
-                      icon={<PrinterOutlined />}
-                      title="Print drug label"
-                      onClick={() => {
-                        const clinic = clinics?.find((c) => c.id === visit?.clinicId);
-                        printDrugLabel({
-                          clinicName: clinic?.name ?? '',
-                          clinicAddress: clinic?.address,
-                          clinicPhone: clinic?.phone,
-                          clinicEmail: clinic?.email,
-                          patientName: visit?.patient?.name ?? '',
-                          drugName: r.item?.name ?? '',
-                          dose: `${r.amount}${r.unit ?? ''}`,
-                          frequency: r.frequency,
-                          durationDays: r.durationDays,
-                          indication: r.indication,
-                          quantity: r.quantity,
-                        });
-                      }}
-                    />
-                    {r.status === 'ORDERED' && (
-                      <>
-                      <Button
-                        size="small"
-                        onClick={() =>
-                          dispensePrescription
-                            .mutateAsync({ id: r.id })
-                            .catch((e) => reportFailure(e, 'Failed to dispense'))
-                        }
-                      >
-                        Dispense
-                      </Button>
-                      <Popconfirm
-                        title="Cancel this prescription?"
-                        onConfirm={() =>
-                          cancelPrescription.mutateAsync({ id: r.id }).catch((e) => reportFailure(e, 'Failed to cancel'))
-                        }
-                      >
-                        <Button size="small" danger>
-                          Cancel
-                        </Button>
-                      </Popconfirm>
-                      <Popconfirm
-                        title="Delete this prescription?"
-                        onConfirm={() => removePrescription.mutateAsync(r.id).catch((e) => reportFailure(e, 'Failed to delete'))}
-                      >
-                        <Button size="small" danger type="text">
-                          Delete
-                        </Button>
-                      </Popconfirm>
-                      </>
-                    )}
-                  </Space>
-                ),
-              },
-            ]}
-          />
-        )}
+        <PrescribedMedicationList
+          visitId={visitId}
+          prescriptions={prescriptions}
+          isLoading={isLoading}
+          patient={visit?.patient}
+          clinic={clinics?.find((c) => c.id === visit?.clinicId)}
+          latestWeightKg={vitals?.weight ?? null}
+        />
       </Card>
     </div>
   );

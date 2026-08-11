@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, downloadFile } from '../../core/api-client';
-import { Attachment } from '../types';
+import { Attachment, VoidClinicalRecordDto } from '../types';
 
 export function useAttachments(orderServiceId?: string) {
   return useQuery({
@@ -22,12 +22,26 @@ export function useUploadAttachment(orderServiceId: string) {
   });
 }
 
-export function useDeleteAttachment(orderServiceId: string) {
+// G3a (D-062) — replaces useDeleteAttachment. A lab report or ECG trace is
+// the evidence behind a completed procedure; removal is audited and the file
+// stays retrievable from the order's history.
+export function useRemoveAttachment(orderServiceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (attachmentId: string) =>
-      apiClient.delete(`/order-services/${orderServiceId}/attachments/${attachmentId}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attachments', orderServiceId] }),
+    mutationFn: ({ attachmentId, ...dto }: VoidClinicalRecordDto & { attachmentId: string }) =>
+      apiClient.patch<Attachment>(`/order-services/${orderServiceId}/attachments/${attachmentId}/removal`, dto),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['attachments', orderServiceId] });
+      queryClient.invalidateQueries({ queryKey: ['attachment-history', orderServiceId] });
+    },
+  });
+}
+
+export function useAttachmentHistory(orderServiceId: string, enabled = false) {
+  return useQuery({
+    queryKey: ['attachment-history', orderServiceId],
+    queryFn: () => apiClient.get<Attachment[]>(`/order-services/${orderServiceId}/attachments/history`),
+    enabled: Boolean(orderServiceId) && enabled,
   });
 }
 

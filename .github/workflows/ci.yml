@@ -1,0 +1,178 @@
+# THE GUARDRAIL. This is what stands between the medical record and the
+# recurring consult-flow breakage. If a job here is red, fix it before starting
+# the next unit — never disable a step to get green.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: postgresql://kuwick_dev:devpass@127.0.0.1:5432/kuwick_dev?schema=public
+  NODE_OPTIONS: --max-old-space-size=4096
+  # Not a secret. It unlocks a throwaway container holding nothing but
+  # synthetic `.invalid` accounts, and it is deliberately in plain sight so
+  # nobody is tempted to point CI at a database that has real patients in it.
+  E2E_PASSWORD: CiOnly!2026
+
+jobs:
+  # Fast feedback: types and unit suites. Nothing here needs a browser, so it
+  # fails in ~2 minutes rather than waiting on the E2E job's build.
+  unit:
+    name: types + unit suites
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: kuwick_dev
+          POSTGRES_PASSWORD: devpass
+          POSTGRES_DB: kuwick_dev
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: apps/api
+      # Migrations run here as well as in the E2E job: a migration that does
+      # not apply cleanly to an empty database is a defect, and this is the
+      # cheapest place to find out.
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+        working-directory: apps/api
+      - name: API typecheck
+        run: npx tsc --noEmit -p tsconfig.json
+        working-directory: apps/api
+      - name: Web typecheck
+        run: npx tsc --noEmit -p tsconfig.json
+        working-directory: apps/web
+      - name: API unit suite
+        run: npx jest --ci
+        working-directory: apps/api
+      - name: Web unit suite
+        run: npx vitest run
+        working-directory: apps/web
+
+  # The golden path, driven through the real UI against a real server and a
+  # real database. It exists because unit tests kept passing while the consult
+  # flow was broken end to end.
+  e2e:
+    name: golden path (E2E)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: kuwick_dev
+          POSTGRES_PASSWORD: devpass
+          POSTGRES_DB: kuwick_dev
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      KUWICK_ALLOW_FIXTURES: 'yes'
+      # The names the API actually reads (auth.service.ts) — a `JWT_SECRET`
+      # here once satisfied nobody: tokens signed with an undefined secret
+      # throw, login 500s, and every spec times out at /login while /health
+      # stays green.
+      JWT_ACCESS_SECRET: ci-only-not-a-real-secret
+      JWT_REFRESH_SECRET: ci-only-not-a-real-refresh-secret
+      PORT: '3000'
+      VITE_API_BASE_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: apps/api
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+        working-directory: apps/api
+      # Two steps on purpose. The staging seed is the only script in the repo
+      # that brings an EMPTY database up to a working clinic, and it is
+      # maintained for UAT; seed-e2e adds only what the golden path asserts on
+      # and nothing else, so neither script has to know about the other's job.
+      - name: Bootstrap the clinic
+        run: npx tsx prisma/seed-staging-uat.ts
+        working-directory: apps/api
+        env:
+          KUWICK_STAGING_SEED: 'yes'
+          STAGING_SEED_PASSWORD: ${{ env.E2E_PASSWORD }}
+      - name: Seed the E2E world
+        run: npx tsx prisma/seed-e2e.ts
+        working-directory: apps/api
+
+      - name: Build API
+        run: npm run build
+        working-directory: apps/api
+      - name: Build web
+        run: npm run build
+        working-directory: apps/web
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Both servers run in the background; the Playwright config's
+      # `webServer` block is deliberately not used, because the API has to be
+      # up and migrated before the web build is served, and a failed start
+      # should surface here rather than inside a test timeout.
+      - name: Start API
+        run: |
+          node dist/main > "$RUNNER_TEMP/api.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/api.pid"
+        working-directory: apps/api
+      - name: Start web
+        run: |
+          npx vite preview --port 5173 --strictPort > "$RUNNER_TEMP/web.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/web.pid"
+        working-directory: apps/web
+      - name: Wait for both
+        run: node scripts/wait-for.mjs http://localhost:3000/health http://localhost:5173
+
+      # /health needs no auth, so it once said "up" for a server whose JWT
+      # env vars were misnamed and whose every login 500'd — the outage
+      # surfaced as spec timeouts instead of one honest line. This performs a
+      # real login and spends the token before any browser starts.
+      - name: Smoke — the specs' account can actually sign in
+        run: node scripts/smoke-login.mjs http://localhost:3000
+
+      - name: Golden path
+        run: npx playwright test
+
+      # The logs are the first thing anybody wants when this job is red, and
+      # they are gone the moment the runner is reclaimed.
+      - name: Upload artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artefacts
+          path: |
+            playwright-report/
+            test-results/
+            ${{ runner.temp }}/api.log
+            ${{ runner.temp }}/web.log
+          retention-days: 7
+          if-no-files-found: ignore

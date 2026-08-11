@@ -67,14 +67,32 @@ export interface UpdateFormTemplateDto {
   active?: boolean;
 }
 
-export type QueueTicketStatus = 'WAITING' | 'IN_CONSULTATION' | 'DISPENSARY_PAYMENT' | 'COMPLETED' | 'CANCELLED';
+// G4.5d3c-1 (D-080) added the operational stations the original five could
+// not express. DISPENSARY_PAYMENT is kept: legacy tickets still carry it and
+// dropping it here would make real rows unrenderable.
+export type QueueTicketStatus =
+  | 'WAITING'
+  | 'IN_CONSULTATION'
+  | 'AT_PROCEDURE'
+  | 'READY_FOR_DISPENSARY'
+  | 'READY_FOR_PAYMENT'
+  | 'DISPENSARY_PAYMENT'
+  | 'COMPLETED'
+  | 'CANCELLED';
 
 export interface Visit {
   id: string;
   tenantId: string;
   clinicId: string;
   patientId: string;
-  staffId: string;
+  // S3c (D-082) — the ATTENDING CLINICIAN, nullable. `null` means no doctor
+  // has taken this visit yet, which is a real state now rather than something
+  // front desk had to fake by storing themselves here.
+  staffId: string | null;
+  // Who registered the visit. Administrative provenance only — never render
+  // this as the attending clinician.
+  registeredByStaffId?: string | null;
+  registeredByStaff?: Staff | null;
   visitNumber: string;
   billingType: string;
   panelClinicId: string | null;
@@ -85,7 +103,38 @@ export interface Visit {
   patient?: Patient;
   clinic?: Clinic;
   queueTicket?: QueueTicket | null;
+  // G3c (D-065) — the panel lives on the VISIT, not the invoice, so the
+  // Invoice Summary reads the panel's name from here when resolved.
+  panelClinic?: PanelClinic | null;
+  // G4.5d3c-3b1a (D-092) — the visit-specific panel benefit snapshot.
+  // Server-derived; NULL means not captured, never unlimited coverage.
+  panelMemberReference?: string | null;
+  classification?: VisitClassification | null;
+  panelVerificationStatus?: PanelVerificationStatus | null;
+  panelVerifiedAt?: string | null;
+  panelVerifiedByStaffId?: string | null;
+  panelVerificationReference?: string | null;
+  panelCoverageType?: PanelCoverageType | null;
+  panelVisitLimitAmount?: string | null;
+  panelCopaymentType?: PanelCopaymentType | null;
+  panelCopaymentValue?: string | null;
+  panelBenefitOverrideReason?: string | null;
+  panelBenefitOverriddenAt?: string | null;
 }
+
+export type PanelVerificationStatus = 'PENDING_VERIFICATION' | 'VERIFIED' | 'FAILED' | 'OVERRIDDEN';
+// G4.5d3c-3b2 (D-094) — the operational kind of visit, for consultation
+// billing only. NULL means "derive" (an OTC-queue visit is OTC_ONLY,
+// everything else is a consultation).
+export type VisitClassification =
+  | 'CONSULTATION'
+  | 'OTC_ONLY'
+  | 'DRESSING_ONLY'
+  | 'PROCEDURE_ONLY'
+  | 'FOLLOW_UP_NO_CONSULTATION';
+
+export type PanelCoverageType = 'UNLIMITED' | 'VISIT_LIMIT';
+export type PanelCopaymentType = 'NONE' | 'FIXED_AMOUNT' | 'PERCENTAGE';
 
 // D-044 — standalone Visit creation (Patient Dashboard's "New Visit"),
 // independent of the Queue flow.
@@ -213,6 +262,16 @@ export interface QueueTicket {
   room?: Room | null;
   calledAt: string | null;
   cancelReason: string | null;
+  /**
+   * KW2-C2 — the CURRENT hold, or null.
+   *
+   * Both fields or neither: a database check constraint enforces it, because
+   * an unattributed "on hold" is exactly the silent state change the feature
+   * exists to prevent. The history of every pause lives in the visit's
+   * workflow events, not here.
+   */
+  heldAt?: string | null;
+  heldByStaffId?: string | null;
   createdAt: string;
   visit: Visit;
 }
@@ -235,11 +294,16 @@ export interface CustomDocumentTemplate {
   content: string;
   active: boolean;
   sourceDefaultId: string | null;
+  // G3b closure (D-064) — does a document from this template carry a doctor's
+  // clinical opinion? Defaults true; only an administrator changes it, and
+  // nothing infers it from the template's name.
+  requiresClinicalAuthorisation: boolean;
 }
 
 export interface CreateDocumentTemplateDto {
   name: string;
   content: string;
+  requiresClinicalAuthorisation?: boolean;
 }
 
 export type UpdateDocumentTemplateDto = Partial<CreateDocumentTemplateDto> & { active?: boolean };
@@ -429,6 +493,14 @@ export interface DiagnosisCatalogEntry {
   active: boolean;
 }
 
+// G2a (D-059) — null means "priority not recorded", which is the honest state
+// for every diagnosis recorded before G2a. It is never treated as SECONDARY.
+export type DiagnosisPriority = 'PRIMARY' | 'SECONDARY';
+
+// G2 closure (D-061) — a saved diagnosis is never deleted; it is removed from
+// the active record with an audited reason and stays queryable for history.
+export type DiagnosisRecordStatus = 'ACTIVE' | 'REMOVED_IN_ERROR';
+
 export interface Diagnosis {
   id: string;
   tenantId: string;
@@ -437,6 +509,21 @@ export interface Diagnosis {
   icd10Code: string | null;
   name: string;
   createdAt: string;
+  priority: DiagnosisPriority | null;
+  // Attribution is server-derived; the client only ever reads these.
+  addedByStaffId: string | null;
+  addedByNameSnapshot: string | null;
+  addedByRoleSnapshot: string | null;
+  addedAt: string;
+  legacyAttributionUnknown: boolean;
+  // G2 closure (D-061) — removal audit. All server-written; the client reads.
+  recordStatus: DiagnosisRecordStatus;
+  removedAt: string | null;
+  removedByStaffId: string | null;
+  removedByNameSnapshot: string | null;
+  removedByRoleSnapshot: string | null;
+  removalReason: string | null;
+  version: number;
 }
 
 export interface AddDiagnosisDto {
@@ -444,6 +531,7 @@ export interface AddDiagnosisDto {
   diagnosisCatalogId?: string;
   name?: string;
   icd10Code?: string;
+  priority?: DiagnosisPriority;
 }
 
 export interface DiagnosisCatalogCounts {
@@ -478,6 +566,10 @@ export interface OrderService {
   formData: Record<string, unknown> | null;
   visit?: Visit;
   requestedBy?: Staff;
+  // G2b — read-only counts from the list endpoint, so the section can show an
+  // attachments indicator and whether the order has reached an invoice
+  // without inventing either.
+  _count?: { attachments: number; invoiceLines: number };
 }
 
 export interface CreateOrderServiceDto {
@@ -496,7 +588,23 @@ export interface CancelOrderServiceDto {
   cancelReason?: string;
 }
 
-export interface Attachment {
+// G3a (D-062) — clinical files are never deleted. An attachment recorded
+// against the wrong visit/order is marked REMOVED_IN_ERROR: it leaves the
+// active record, the row and the stored file both survive, and the removal
+// carries its own attribution. Every field below is server-written.
+export type AttachmentRecordStatus = 'ACTIVE' | 'REMOVED_IN_ERROR';
+
+export interface ClinicalRemovalAudit {
+  recordStatus: AttachmentRecordStatus;
+  removedAt: string | null;
+  removedByStaffId: string | null;
+  removedByNameSnapshot: string | null;
+  removedByRoleSnapshot: string | null;
+  removalReason: string | null;
+  version: number;
+}
+
+export interface Attachment extends ClinicalRemovalAudit {
   id: string;
   orderServiceId: string;
   fileName: string;
@@ -508,7 +616,7 @@ export interface Attachment {
 
 // D-044 — free-standing visit-level uploads (photos, scanned results,
 // PDFs), distinct from Attachment (scoped to a single order/procedure).
-export interface VisitAttachment {
+export interface VisitAttachment extends ClinicalRemovalAudit {
   id: string;
   visitId: string;
   fileName: string;
@@ -519,7 +627,24 @@ export interface VisitAttachment {
   createdAt: string;
 }
 
+// G3a (D-062) — the request body for an audited removal/void. `reason` is
+// mandatory server-side; identity is NEVER sent, it comes from the session.
+export interface VoidClinicalRecordDto {
+  reason: string;
+  expectedVersion?: number;
+}
+
 export type DocumentType = 'MC' | 'REFERRAL' | 'MEMO' | 'QUARANTINE' | 'CUSTOM';
+
+// G3a (D-062) — an MC or referral that has left the clinic cannot be
+// un-issued by deleting the row; it is VOIDED, and the voided document stays
+// readable so the clinic can answer "what did we give this patient?".
+export type DocumentRecordStatus = 'ACTIVE' | 'VOIDED';
+
+// G3b closure (D-064) — what a document's sign-off actually claims.
+// LEGACY_SIGN_OFF is a pre-closure row whose authority was never recorded;
+// it is never presented as a doctor's authorisation.
+export type DocumentAuthorisationKind = 'CLINICAL' | 'ADMINISTRATIVE' | 'LEGACY_SIGN_OFF';
 
 export interface ClinicalDocument {
   id: string;
@@ -538,6 +663,26 @@ export interface ClinicalDocument {
   signedByStaffId: string | null;
   createdAt: string;
   updatedAt: string;
+  // G3b — resolved server-side so the workspace can name who did what.
+  issuedBy?: Staff | null;
+  signedBy?: Staff | null;
+  voidedBy?: Staff | null;
+  // G3b closure (D-064) — authorisation. All server-written; the client reads.
+  // `requiresClinicalAuthorisation` is frozen at creation, so a template
+  // edited later cannot change what an already-issued document needed.
+  requiresClinicalAuthorisation: boolean;
+  authorisationKind: DocumentAuthorisationKind | null;
+  authorisedByNameSnapshot: string | null;
+  authorisedByRoleSnapshot: string | null;
+  authorisedByDesignationSnapshot: string | null;
+  // G3a (D-062) — void audit. All server-written; the client only reads.
+  recordStatus: DocumentRecordStatus;
+  voidedAt: string | null;
+  voidedByStaffId: string | null;
+  voidedByNameSnapshot: string | null;
+  voidedByRoleSnapshot: string | null;
+  voidReason: string | null;
+  version: number;
 }
 
 export interface CreateDocumentDto {
@@ -564,9 +709,43 @@ export interface InvoiceLine {
   amount: string;
   sourceOrderServiceId: string | null;
   sourcePrescriptionId: string | null;
+  // D-094 — the consultation charge's source is the visit itself (no order
+  // row exists for consulting), plus the tariff rule that selected it.
+  sourceConsultationVisitId?: string | null;
+  consultationTariffRuleId?: string | null;
   excludedFromPanel: boolean;
   createdAt: string;
+  // G3c (D-065) — resolved server-side so a line's SOURCE is a real
+  // relationship, never inferred from the description text.
+  sourceOrderService?: {
+    id: string;
+    procedureName: string;
+    orderType: ServiceOrderType;
+    status: OrderServiceStatus;
+  } | null;
+  sourcePrescription?: {
+    id: string;
+    itemId: string;
+    status: PrescriptionStatus;
+    item?: { name: string } | null;
+  } | null;
+  // D-093 — discounts, responsibility split and auditable cancellation.
+  unit?: string | null;
+  lineDiscountType?: InvoiceDiscountType | null;
+  lineDiscountValue?: string | null;
+  lineDiscountAmount?: string | null;
+  lineDiscountReason?: string | null;
+  panelResponsibilityAmount?: string | null;
+  patientResponsibilityAmount?: string | null;
+  panelExclusionReason?: string | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
 }
+
+// G4.5d3c-3b1 (D-093) — server-computed billing facts. Everything here is
+// read-only on the frontend; the engine writes it.
+export type InvoiceDiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT';
+export type InvoiceLinePriceRule = 'SPECIFIC_PANEL_PRICE' | 'CASH_PLUS_MARKUP' | 'CASH' | 'MANUAL';
 
 export interface Invoice {
   id: string;
@@ -582,10 +761,30 @@ export interface Invoice {
   // never live-recomputed afterward. 0/0 for an UNPAID invoice.
   panelCoveredAmount: string;
   patientPaidAmount: string;
+  // G4.5d3c-1b/3b1 (D-084/D-093) — what the patient OWES, as distinct from
+  // what has been received. NULL = unresolved, never zero.
+  patientResponsibilityAmount?: string | null;
   createdAt: string;
   updatedAt: string;
   lines: InvoiceLine[];
   visit?: Visit;
+  // G3c (D-065) — resolved for the read-only Clinical Invoice Summary.
+  createdBy?: StaffRef | null;
+  // The panel-claim lifecycle is SEPARATE from the payment lifecycle and is
+  // never folded into one badge.
+  claimBatchLines?: {
+    id: string;
+    status: ClaimLineStatus;
+    claimedAmount: string;
+    paidAmount: string | null;
+  }[];
+  // D-093 — persisted by the responsibility engine. NULL = unresolved.
+  panelResponsibilityAmount?: string | null;
+  subtotalAmount?: string | null;
+  invoiceDiscountType?: InvoiceDiscountType | null;
+  invoiceDiscountValue?: string | null;
+  invoiceDiscountAmount?: string | null;
+  invoiceDiscountReason?: string | null;
 }
 
 // Phase 1e (Panel Claims Core). One status lifecycle for every panel
@@ -700,8 +899,12 @@ export interface CreateInvoiceDto {
 
 export interface AddInvoiceLineDto {
   description: string;
+  // G4.5d3c-3b2 (D-094) — both OPTIONAL, because for a source-linked line the
+  // server owns them: quantity comes from the source record and the price from
+  // the pricing resolver. They are supplied only for a manual line.
   quantity?: number;
-  unitPrice: number;
+  unitPrice?: number;
+  unit?: string;
   sourceOrderServiceId?: string;
   sourcePrescriptionId?: string;
 }
@@ -724,6 +927,12 @@ export type PrescriptionStatus = 'ORDERED' | 'DISPENSED' | 'CANCELLED';
 export type DosageCalcMethod = 'WEIGHT_BASED' | 'AGE_BASED' | 'MANUAL';
 
 export interface Prescription {
+  /** KW2-C2 — set when this row was carried over from an earlier visit. */
+  sourceVisitId?: string | null;
+  /** True until somebody re-reads it. Never blocks dispensing. */
+  reviewFlag?: boolean;
+  reviewedByStaffId?: string | null;
+  reviewedAt?: string | null;
   id: string;
   tenantId: string;
   visitId: string;
@@ -740,11 +949,31 @@ export interface Prescription {
   calcDoseRateMgKg: string | null;
   calcTargetDoseMg: string | null;
   status: PrescriptionStatus;
+  // G4.5d3c-1b (D-084) — the supply INTENT. NULL is a real state: nobody has
+  // said how this medication reaches the patient, which blocks doctor-phase
+  // completion and is never displayed as "dispense from clinic".
+  supplyMode: PrescriptionSupplyMode | null;
   prescribedByStaffId: string;
   prescribedAt: string;
   dispensedAt: string | null;
+  dispensedByStaffId?: string | null;
   cancelReason: string | null;
   item?: Item;
+  // G2b — read-only, from the list endpoint's include.
+  prescribedBy?: Staff;
+}
+
+export type PrescriptionSupplyMode =
+  | 'ONSITE_DISPENSE'
+  | 'EXTERNAL_PRESCRIPTION'
+  | 'PATIENT_OWN_SUPPLY'
+  | 'DEFERRED'
+  | 'NO_SUPPLY_REQUIRED';
+
+// G4.5d3c-3a1 (D-091) — the one field PATCH /prescriptions/:id/supply-mode
+// accepts.
+export interface UpdateSupplyModeDto {
+  supplyMode: PrescriptionSupplyMode;
 }
 
 export interface CreatePrescriptionDto {
@@ -760,6 +989,10 @@ export interface CreatePrescriptionDto {
   calcMethod?: DosageCalcMethod;
   calcWeightKg?: number;
   calcDoseRateMgKg?: number;
+  // D-091 — submitted EXPLICITLY by the form (which visibly defaults to
+  // ONSITE_DISPENSE). Optional in the type because the server accepts its
+  // absence as NULL; the Add Medication form always sends a value.
+  supplyMode?: PrescriptionSupplyMode;
 }
 
 export interface CancelPrescriptionDto {
@@ -769,6 +1002,11 @@ export interface CancelPrescriptionDto {
 export interface CopyPrescriptionsDto {
   sourceVisitId: string;
   targetVisitId: string;
+  /**
+   * KW2-C2 — WHICH medications to carry over. Omitted means the whole visit,
+   * which is what the 1.0 Medications tab has always meant by "Copy previous".
+   */
+  prescriptionIds?: string[];
 }
 
 // D-046 — one thread model backs channel chat (channelId set) and
@@ -796,4 +1034,330 @@ export interface ChatChannel {
   createdAt: string;
   latestMessageAt?: string | null;
   latestMessageStaffId?: string | null;
+}
+
+// =============================================================================
+// G4 (D-067) — read-only clinical history.
+//
+// These types describe a SEPARATE read-only API (`/patients/:id/history`),
+// not the current-visit endpoints. The collapsed card is built from the
+// summary; the detail is fetched only when a visit is expanded.
+// =============================================================================
+
+export interface VisitHistoryMedication {
+  name: string;
+  strength: string | null;
+  status: PrescriptionStatus;
+}
+
+export interface VisitHistorySummary {
+  id: string;
+  visitNumber: string;
+  checkInAt: string;
+  checkOutAt: string | null;
+  clinicId: string;
+  clinicName: string | null;
+  doctorName: string | null;
+  doctorRole: string | null;
+  billingType: string;
+  presentingComplaint: string | null;
+  queueNumber: number | null;
+  queueType: QueueType | null;
+  // `isPrimary` is false when priority was never recorded — G2a's honest
+  // state. The card must not imply a primary diagnosis that nobody set.
+  primaryDiagnosis: { name: string; icd10Code: string | null; isPrimary: boolean } | null;
+  diagnosisCount: number;
+  medications: VisitHistoryMedication[];
+  medicationCount: number;
+  mc: { startDate: string | null; endDate: string | null } | null;
+  referral: { referredTo: string | null; title: string | null } | null;
+  memo: boolean;
+  documentCount: number;
+  voidedDocumentCount: number;
+  // G4.5d2 (D-076) — read-only money for the Last Visit Snapshot. A LIST, not
+  // a total: no visit-level total is stored, so combining several invoices
+  // would be inventing a figure. The snapshot says "2 invoices" instead.
+  invoices: { id: string; invoiceNumber: string; totalAmount: string; status: InvoiceStatus }[];
+  panelName: string | null;
+}
+
+export interface VisitHistoryPage {
+  items: VisitHistorySummary[];
+  nextCursor: string | null;
+  total: number;
+}
+
+export interface VisitHistoryDetail {
+  visit: Visit;
+  notes: ClinicalNote[];
+  observations: VisitObservation[];
+  diagnoses: Diagnosis[];
+  orders: (OrderService & { attachments: Attachment[] })[];
+  prescriptions: Prescription[];
+  documents: ClinicalDocument[];
+  attachments: VisitAttachment[];
+  invoices: Invoice[];
+}
+
+// ---------------------------------------------------------------------------
+// G4.5d3c-2/2b/2c (D-086/D-087/D-088) — the doctor phase.
+//
+// Every field here is SERVER-DERIVED. The frontend mirrors these shapes and
+// never computes a destination, a routing reason or an eligibility of its own.
+// ---------------------------------------------------------------------------
+export type DoctorCompletionDestination = 'DISPENSARY' | 'PAYMENT' | 'NONE';
+
+export type DoctorRoutingReason =
+  | 'DISPENSARY_REQUIRED'
+  | 'PATIENT_PAYMENT_REQUIRED'
+  | 'BILLING_REVIEW_REQUIRED'
+  | 'NO_DOWNSTREAM_WORK';
+
+// G4.5d3c-3c — SIGNED_NOTE_REQUIRED is gone from this list, deliberately.
+// An unsigned clinical note no longer blocks doctor-phase routing; it is
+// reported as `documentationPending` instead.
+//
+// G4.5d6 — and it no longer blocks visit completion either. The note is
+// finalized automatically, under its author's identity, at the moment the
+// visit closes; `documentationPending` is now a statement of fact for the
+// counter, not an outstanding task for anybody.
+export type DoctorPhaseBlockerCode =
+  | 'QUEUE_STATE_INELIGIBLE'
+  | 'PROCEDURE_PENDING'
+  | 'MEDICATION_SUPPLY_UNCONFIRMED'
+  | 'MEDICATION_SUPPLY_DEFERRED';
+
+export interface DoctorPhaseBlocker {
+  code: DoctorPhaseBlockerCode;
+  message: string;
+}
+
+/** `GET /visits/:id/doctor-phase-status` — advisory, side-effect free. */
+export interface DoctorPhaseStatus {
+  visitId: string;
+  completed: boolean;
+  doctorCompletedAt: string | null;
+  doctorCompletedByStaffId: string | null;
+  queueStatus: QueueTicketStatus | null;
+  blockers: DoctorPhaseBlocker[];
+  /** NULL while a procedure is open — "not yet knowable", never NONE. */
+  destination: DoctorCompletionDestination | null;
+  routingReason: DoctorRoutingReason | null;
+  /** G4.5d3c-3c — no signed doctor narrative exists for this visit yet. */
+  documentationPending: boolean;
+  /**
+   * Whether documentation was pending AT COMPLETION, as recorded on the
+   * workflow event. NULL for an incomplete phase, and for one completed
+   * before this was recorded.
+   */
+  documentationPendingAtCompletion: boolean | null;
+  /** Who sent the patient on with documentation pending, and when. */
+  documentationPendingActorName: string | null;
+  documentationPendingAt: string | null;
+  /**
+   * KW2-C2 — carried-over medications nobody has re-read, BY NAME.
+   *
+   * Optional on the wire: a status read served by an API that predates this
+   * reports nothing rather than an empty list, and "we do not know" must not
+   * render as "there are none".
+   */
+  unreviewedCopiedMedications?: string[];
+  /**
+   * KW2-C2 — present only when the patient has allergies on record AND this
+   * visit prescribes at least one medication. Null means there is nothing to
+   * ask, which is different from an empty checkpoint.
+   */
+  allergyCheckpoint?: { allergies: string[]; prescribedMedications: string[] } | null;
+}
+
+/** `PATCH /visits/:id/complete-doctor-phase` — authoritative. */
+export interface DoctorCompletionResult {
+  visitId: string;
+  destination: DoctorCompletionDestination;
+  reason: DoctorRoutingReason | null;
+  queueStatus: QueueTicketStatus;
+  doctorCompletedAt: string;
+  doctorCompletedByStaffId: string;
+  alreadyCompleted: boolean;
+}
+
+// There is deliberately no `destination` field: the server derives it, and a
+// DTO that could carry one would be a route round the derivation.
+export interface CompleteDoctorPhaseDto {
+  note?: string;
+  correlationId?: string;
+}
+
+// ---------------------------------------------------------------------------
+// G4.5d3c-3b2 (D-094) — Counter Billing Review.
+//
+// Every state below is the SERVER'S answer (GET /visits/:id/billing-worklist).
+// The browser renders it and never re-derives chargeability, quantity or price.
+// ---------------------------------------------------------------------------
+export type BillingWorklistSourceType = 'PRESCRIPTION' | 'ORDER_SERVICE' | 'CONSULTATION';
+
+export type BillingWorklistState =
+  | 'READY'
+  | 'AWAITING_DISPENSE'
+  | 'UNRESOLVED_SUPPLY'
+  | 'NOT_READY'
+  | 'NOT_CHARGEABLE'
+  | 'TARIFF_REVIEW'
+  | 'WAIVED';
+
+export interface BillingWorklistItem {
+  sourceType: BillingWorklistSourceType;
+  sourceId: string;
+  description: string;
+  state: BillingWorklistState;
+  stateReason: string | null;
+  sourceStatus: string | null;
+  supplyMode: PrescriptionSupplyMode | null;
+  billed: boolean;
+  invoiceLineId: string | null;
+  quantity: number | null;
+}
+
+export interface VisitCompletionBlocker {
+  code: string;
+  message: string;
+}
+
+export interface ConsultationTariffRule {
+  id: string;
+  clinicId: string;
+  name: string;
+  active: boolean;
+  classification: VisitClassification;
+  startTime: string;
+  endTime: string;
+  serviceCatalogId: string;
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+  serviceCatalog?: { id: string; name: string; price: string; active: boolean };
+  clinic?: { id: string; name: string };
+}
+
+export interface UpsertConsultationTariffRuleDto {
+  clinicId: string;
+  name: string;
+  active?: boolean;
+  classification: VisitClassification;
+  startTime: string;
+  endTime: string;
+  serviceCatalogId: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+}
+
+export interface ApplyDiscountDto {
+  type: InvoiceDiscountType;
+  value: number;
+  reason: string;
+}
+
+export interface CancelInvoiceLineDto {
+  cancelReason: string;
+}
+
+export interface RecordPanelVerificationDto {
+  status: 'VERIFIED' | 'FAILED';
+  memberReference?: string;
+  verificationReference?: string;
+  coverageType?: PanelCoverageType;
+  visitLimitAmount?: number;
+  copaymentType?: PanelCopaymentType;
+  copaymentValue?: number;
+}
+
+export interface OverridePanelBenefitDto {
+  coverageType: PanelCoverageType;
+  visitLimitAmount?: number;
+  copaymentType?: PanelCopaymentType;
+  copaymentValue?: number;
+  reason: string;
+}
+
+// ---------------------------------------------------------------------------
+// G4.5d3c-3b (D-095) — the queue board.
+//
+// One server read answers the whole six-stage queue. `canComplete` is the
+// SERVER'S decision, from the same evaluator the completion endpoint runs —
+// the browser never derives eligibility.
+// ---------------------------------------------------------------------------
+export type QueueStageName = 'WAITING' | 'CONSULTATION' | 'DISPENSARY' | 'PAYMENT' | 'COMPLETED';
+
+export interface QueueBoardDispensing {
+  onsiteTotal: number;
+  dispensed: number;
+  remaining: number;
+}
+
+export interface QueueBoardBilling {
+  grandTotal: string | null;
+  panelResponsibility: string | null;
+  patientResponsibility: string | null;
+  remainingBalance: string | null;
+  state: 'NO_INVOICE' | 'UNRESOLVED' | 'BALANCE_DUE' | 'SETTLED';
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+}
+
+export interface QueueBoardRow {
+  ticketId: string;
+  visitId: string;
+  displayNumber: string | null;
+  queueType: QueueType;
+  status: QueueTicketStatus;
+  stage: QueueStageName | null;
+  atProcedure: boolean;
+  legacyStatus: boolean;
+  /**
+   * KW2-C2 — waiting because a doctor PAUSED the consultation, not because
+   * the patient has yet to be seen. The two look identical in the status
+   * column and mean completely different things to whoever works the queue.
+   */
+  heldAt?: string | null;
+  heldByName?: string | null;
+  patientName: string;
+  patientId: string;
+  doctorName: string | null;
+  roomName: string | null;
+  billingType: string;
+  panelName: string | null;
+  checkInAt: string;
+  calledAt: string | null;
+  checkOutAt: string | null;
+  doctorCompletedAt: string | null;
+  dispensing: QueueBoardDispensing;
+  billing: QueueBoardBilling;
+  blockers: VisitCompletionBlocker[] | null;
+  canComplete: boolean;
+}
+
+export interface QueueBoard {
+  rows: QueueBoardRow[];
+  counts: {
+    totalToday: number;
+    waiting: number;
+    consultation: number;
+    dispensary: number;
+    payment: number;
+    completed: number;
+    cancelled: number;
+  };
+  mayCompleteVisits: boolean;
+}
+
+export interface VisitCompletionResult {
+  visitId: string;
+  checkOutAt: string;
+  queueStatus: QueueTicketStatus;
+  completedByStaffId: string;
+  alreadyCompleted: boolean;
+}
+
+export interface CompleteVisitDto {
+  note?: string;
+  correlationId?: string;
 }

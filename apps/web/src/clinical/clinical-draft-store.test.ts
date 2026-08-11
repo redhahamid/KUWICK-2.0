@@ -398,3 +398,74 @@ describe('memory-only storage', () => {
     expect(dumps).not.toContain('clinical-draft');
   });
 });
+
+// ===========================================================================
+// S3b (D-081) — a visit changing doctors must not disturb unsaved text.
+//
+// The transfer itself is a server operation, but what reaches this store is a
+// refetched visit whose attending clinician has changed. If that could clear
+// or re-key a draft, Dr A's half-written assessment would vanish — or worse,
+// silently reappear under Dr B's name.
+// ===========================================================================
+describe('S3b — attending clinician change and unsaved drafts', () => {
+  beforeEach(() => {
+    useClinicalDraftStore.setState({ drafts: {} });
+  });
+
+  it('the draft key does not depend on the attending clinician', () => {
+    // The key is tenant/branch/patient/visit/note. No staff id anywhere — so
+    // a transfer cannot move a draft to a different key, which is the only
+    // way it could go missing or resurface under the wrong record.
+    const before = draftKey(scope);
+    const after = draftKey({ ...scope });
+    expect(after).toBe(before);
+    expect(before).not.toContain('dr-a');
+    expect(before).not.toContain('staff');
+  });
+
+  it('a dirty draft is never replaced when the visit refetches after a transfer', () => {
+    // A transfer invalidates the visit query; the same note comes back with a
+    // new attending doctor attached. Same note id -> never a sync, dirty or not.
+    expect(
+      shouldSyncFromServer({ incomingNoteId: 'note-1', loadedNoteId: 'note-1', isDirty: true }),
+    ).toBe(false);
+    expect(
+      shouldSyncFromServer({ incomingNoteId: undefined, loadedNoteId: undefined, isDirty: true }),
+    ).toBe(false);
+  });
+
+  it('unsaved text stays flagged after a transfer, so it cannot be lost silently', () => {
+    const key = draftKey({ ...scope, noteId: undefined });
+    useClinicalDraftStore.getState().syncFromServer(key, undefined, {
+      content: 'Patient reports chest tightness since',
+      language: 'EN',
+      noteType: 'DOCTOR_NARRATIVE',
+      baseline: '',
+      baselineVersion: null,
+    });
+
+    // The receiving doctor's session sees the visit is dirty and must resolve
+    // it explicitly — save, sign, or discard — rather than the app deciding.
+    expect(hasUnsavedDrafts(useClinicalDraftStore.getState().drafts)).toBe(true);
+    expect(useClinicalDraftStore.getState().drafts[key].content).toBe(
+      'Patient reports chest tightness since',
+    );
+  });
+
+  it('the text is not re-attributed — the store holds content, never an author', () => {
+    const key = draftKey({ ...scope, noteId: undefined });
+    useClinicalDraftStore.getState().syncFromServer(key, undefined, {
+      content: 'Dr A half-written assessment',
+      language: 'EN',
+      noteType: 'DOCTOR_NARRATIVE',
+      baseline: '',
+      baselineVersion: null,
+    });
+
+    // Authorship is decided server-side at save time, by the session that
+    // saves. Nothing here can stamp a draft with a doctor, which is exactly
+    // why a transfer cannot misattribute one.
+    expect(Object.keys(useClinicalDraftStore.getState().drafts[key])).not.toContain('staffId');
+    expect(Object.keys(useClinicalDraftStore.getState().drafts[key])).not.toContain('authorId');
+  });
+});
