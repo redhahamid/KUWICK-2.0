@@ -326,6 +326,85 @@ cd ../web && npm run dev
 CHROME_PATH=/opt/pw-browsers/chromium E2E_PASSWORD='DevLocal!2026' npx playwright test
 ```
 
+## A2 FEATURE — PATIENT ALERTS (owner spec, not started)
+
+Slotted into **Workstream A2**, alongside the allergy quick-record work: they
+share the header area and the same interaction pattern.
+
+**Persistent per-patient flags visible to the whole team. Structured, not
+free-text-only.** They are STANDING FACTS about a person, which is what makes
+them different from everything else on the canvas.
+
+### Model
+
+`patient_alerts(patient_id, type, label, note?, active, created_by, created_at,
+deactivated_by, deactivated_at)`, `type ∈ MEDICAL | ACCESSIBILITY |
+COMMUNICATION | ADMINISTRATIVE`. **Deactivate, never delete — audited.**
+
+### Predefined library
+
+Seeded, and the clinic can add/edit it in **Settings › CLINICAL › Patient
+alerts**:
+
+| type | seeded entries |
+|---|---|
+| MEDICAL | DM · HPT · On Warfarin/Anticoagulant · Pregnant · Asthma · G6PD |
+| ACCESSIBILITY | OKU · Wheelchair · Fall risk · Needs assistance |
+| COMMUNICATION | Hearing impairment · Language: Mandarin/Tamil/Other · Deaf/Mute |
+| ADMINISTRATIVE | VIP/Special handling · Payment note |
+
+Custom = pick a type + free-text label (+ optional note). A predefined pick may
+also carry a note.
+
+### Who
+
+| | MEDICAL | ACCESSIBILITY | COMMUNICATION | ADMINISTRATIVE |
+|---|---|---|---|---|
+| DOCTOR | ✓ | ✓ | ✓ | ✓ |
+| CLINICAL_STAFF | ✓ | ✓ | ✓ | ✓ |
+| ADMINISTRATOR | — | ✓ | ✓ | ✓ |
+
+Add and deactivate both follow this table. Server-side, through the policy
+module — this needs a **new permission split**, since one permission cannot
+express "all types except MEDICAL". Expected shape: `patient.alert.write` (the
+three non-clinical types) and `patient.alert.medical.write`, with DOCTOR and
+CLINICAL_STAFF holding both. To be confirmed when built.
+
+### Where they show — type-aware placement, not one noisy pile
+
+- **Canvas patient header** — compact chips beside the allergy chip (icon +
+  label: ♿ OKU · DM · Pregnant), overflow as a `+N` popover. Clicking any chip
+  opens the manage popover, which is also where **[+ Add Alert]** lives — the
+  same pattern as allergy quick-record.
+- **Medications card** — only the MEDICAL alerts that bear on prescribing
+  (Pregnant, On Warfarin, G6PD) join the allergy strip: ONE amber strip,
+  allergy text first, then these labels.
+- **Queue views (board + monitor call)** — ACCESSIBILITY + COMMUNICATION chips
+  on the row. Front desk needs to know about a wheelchair or a language
+  *before* calling the patient, which is the whole point of putting them there
+  and nowhere else.
+- **Patient profile slide-over** — the full list with notes; manage here too.
+- **Completion checkpoint** — NO change. Alerts are standing facts, not
+  per-visit warnings.
+- **Flow view header** — the same compact chips, shared component.
+
+### Two constraints to hold while building this
+
+1. **Alerts never replace or merge into the allergy system.** The allergy
+   chip, strip and checkpoint behaviour stay exactly as built.
+2. The merged medications strip must not start implying a cross-check.
+   Standing rule is unchanged: nothing red, nothing blocking, no per-add
+   popups, and "Kuwick does not cross-check medicines against allergies. Only
+   you can." stays. Adding "Pregnant · On Warfarin" beside the allergy text
+   makes the strip say more, and it must not make it sound like the system is
+   checking anything.
+
+### Tests
+
+Role boundaries on add and deactivate · type-aware placement (Pregnant appears
+in the meds strip, OKU appears on the queue row, VIP appears in neither) ·
+audit rows on deactivate · header overflow.
+
 ## Task 2.5 — PARKED FEEDBACK (do after Task 2, alongside/before Section P)
 
 Owner-reviewed on staging. Not started. Task 1 is now done; re-place these
