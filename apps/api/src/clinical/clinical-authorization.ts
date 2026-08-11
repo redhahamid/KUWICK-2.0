@@ -51,7 +51,12 @@ const CLINICAL_ROLES: Role[] = [...DOCTOR_ROLES, 'FRONT_DESK_CLINICAL_STAFF', 'O
 // signers until a Clinic Group explicitly records verification and enables
 // signing.
 export function canSignClinicalNotes(staff: Staff): boolean {
-  return (
+  // Boolean(): the chain below ends in `&&`, so without it this returns the
+  // last falsy VALUE — `null` for a missing timestamp — while declaring
+  // `boolean`. Harmless at every call site today, all of which only branch on
+  // it, but a security predicate whose declared type is a lie is a bad thing
+  // to leave for the next caller who compares it with `=== false`.
+  return Boolean(
     staff.active &&
     staff.professionalType === 'MEDICAL_DOCTOR' &&
     staff.professionalActive &&
@@ -61,7 +66,7 @@ export function canSignClinicalNotes(staff: Staff): boolean {
     staff.professionalVerifiedByStaffId != null &&
     staff.canSignClinicalNotes &&
     staff.clinicalSigningEnabledAt != null &&
-    staff.clinicalSigningEnabledByStaffId != null
+      staff.clinicalSigningEnabledByStaffId != null,
   );
 }
 

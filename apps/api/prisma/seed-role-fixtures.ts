@@ -3,6 +3,7 @@ import { config } from 'dotenv';
 import { PrismaClient, SystemRole } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcryptjs';
+import { credentialedClinicianFields, nonClinicalFields } from '../src/core/credentialing';
 
 config({ path: join(__dirname, '..', '.env') });
 
@@ -108,37 +109,20 @@ async function main() {
         select: { id: true },
       });
 
-      // ALL EIGHT FIELDS, or the fixture is lying about itself.
+      // ONE definition of "credentialed", shared with every other seed.
       //
-      // This block used to write six of them and print "credentialed", leaving
-      // professionalType at its NON_CLINICAL default — so the two doctors it
-      // advertised as able to sign could not sign, and a boundary check run
-      // against them would have proved the credential gate held for the wrong
-      // reason. `isCredentialedClinician` requires an active MEDICAL_DOCTOR
-      // identity on top of the six signing fields, and so does
-      // `canSignClinicalNotes`; a fixture that satisfies neither cannot
-      // exercise either.
+      // This block used to write six of the eight fields and print the word
+      // "credentialed", so the doctors it advertised as able to sign could
+      // not sign. The same defect then shipped a second time in
+      // seed-staging-uat. Hand-writing these fields is now banned outright:
+      // `credentialedClinicianFields` is the only definition, and
+      // credentialing.spec.ts holds it to the predicate in both directions.
       const credentials = fixture.credentialed
-        ? {
-            professionalType: 'MEDICAL_DOCTOR' as const,
-            professionalActive: true,
-            medicalRegistrationNo: fixture.registrationNo ?? null,
-            professionalVerifiedAt: new Date(),
-            professionalVerifiedByStaffId: granter.id,
-            canSignClinicalNotes: true,
-            clinicalSigningEnabledAt: new Date(),
-            clinicalSigningEnabledByStaffId: granter.id,
-          }
-        : {
-            professionalType: 'NON_CLINICAL' as const,
-            professionalActive: false,
-            medicalRegistrationNo: null,
-            professionalVerifiedAt: null,
-            professionalVerifiedByStaffId: null,
-            canSignClinicalNotes: false,
-            clinicalSigningEnabledAt: null,
-            clinicalSigningEnabledByStaffId: null,
-          };
+        ? credentialedClinicianFields({
+            registrationNo: fixture.registrationNo ?? `MMC E2E-${fixture.email}`,
+            grantedByStaffId: granter.id,
+          })
+        : nonClinicalFields();
 
       const existing = await tx.staff.findFirst({ where: { userId: user.id }, select: { id: true } });
       const staff = existing

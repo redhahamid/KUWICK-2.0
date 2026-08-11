@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { config } from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { credentialedClinicianFields } from '../src/core/credentialing';
 
 config({ path: join(__dirname, '..', '.env') });
 
@@ -13,12 +14,11 @@ config({ path: join(__dirname, '..', '.env') });
  * guarantees the four things the golden path asserts on, each of which the
  * staging seed either does not create or creates incompletely:
  *
- *   1. A doctor who can actually SIGN. The staging seed sets six of the eight
- *      credential fields and comments that "a doctor must be able to sign a
- *      note" — but `isCredentialedClinician` also wants a medical registration
- *      number and a named verifier, so the doctor it creates cannot sign. The
- *      same defect existed in seed-role-fixtures and was fixed there; this
- *      closes it here rather than leaving CI to discover it as a mystery.
+ *   1. A doctor who can actually SIGN. Every seed now credentials through the
+ *      ONE shared helper (`src/core/credentialing.ts`) rather than listing the
+ *      fields from memory, which is how the same "six of eight fields" defect
+ *      shipped twice. This step remains because the staging seed's doctor may
+ *      predate that fix in an existing database.
  *   2. J06.9 in the diagnosis catalogue — the code the golden path types.
  *   3. A consultation tariff rule covering the whole day, so a CONSULTATION
  *      visit gets its consultation line. Without one the golden path's
@@ -92,18 +92,12 @@ async function main() {
     for (const [index, doctor] of doctors.entries()) {
       await tx.staff.update({
         where: { id: doctor.id },
-        data: {
-          professionalType: 'MEDICAL_DOCTOR',
-          professionalActive: true,
+        data: credentialedClinicianFields({
           // Distinct per doctor — a registration number two people share is
           // not an identity.
-          medicalRegistrationNo: doctor.medicalRegistrationNo?.trim() || `MMC E2E-${9000 + index}`,
-          professionalVerifiedAt: new Date(),
-          professionalVerifiedByStaffId: owner.id,
-          canSignClinicalNotes: true,
-          clinicalSigningEnabledAt: new Date(),
-          clinicalSigningEnabledByStaffId: owner.id,
-        },
+          registrationNo: doctor.medicalRegistrationNo?.trim() || `MMC E2E-${9000 + index}`,
+          grantedByStaffId: owner.id,
+        }),
       });
       lines.push(`doctor credentialed: ${doctor.fullName}`);
     }

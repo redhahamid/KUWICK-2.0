@@ -4,6 +4,7 @@ import { config } from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcryptjs';
+import { credentialedClinicianFields } from '../src/core/credentialing';
 
 config({ path: join(__dirname, '..', '.env') });
 
@@ -148,6 +149,13 @@ async function main() {
       }
       const existingStaff = await tx.staff.findFirst({ where: { userId: user.id } });
       const isDoctor = account.role === 'DOCTOR_RESIDENT';
+      // The owner is first in ROLES, so it exists by the time a doctor is
+      // reached. Asserted rather than assumed — reordering ROLES would
+      // otherwise silently mint an unattributed credential.
+      const granterStaffId = staffIds.owner;
+      if (isDoctor && !granterStaffId) {
+        throw new Error('The owner must be seeded before a doctor: signing authority is granted BY somebody.');
+      }
       const data = {
         role: account.role,
         fullName: account.fullName,
@@ -155,14 +163,21 @@ async function main() {
         clinicId,
         // A doctor must be able to sign a note, or the Documentation Pending
         // scenario below can never be cleared during UAT.
+        //
+        // This used to write five of the eight fields it needed and the UAT
+        // doctor could not, in fact, sign anything — the second time that
+        // defect shipped. There is now exactly ONE definition of
+        // "credentialed" (src/core/credentialing.ts), tested against the
+        // predicate itself, and no seed may hand-write these fields again.
+        //
+        // Attributed to the OWNER, who is created first in the same loop:
+        // signing authority is granted BY somebody, and a credential with no
+        // named granter is an assertion rather than a credential.
         ...(isDoctor
-          ? {
-              professionalType: 'MEDICAL_DOCTOR' as const,
-              professionalActive: true,
-              canSignClinicalNotes: true,
-              professionalVerifiedAt: new Date(),
-              clinicalSigningEnabledAt: new Date(),
-            }
+          ? credentialedClinicianFields({
+              registrationNo: `MMC UAT-${account.key.toUpperCase()}`,
+              grantedByStaffId: granterStaffId,
+            })
           : {}),
       };
       const staff = existingStaff
