@@ -44,6 +44,7 @@ import { useOrderServices } from './hooks/useOrderServices';
 import { useIsDesktop } from '../core/hooks/useMediaQuery';
 import { useRecordViewLayout } from './hooks/useRecordViewLayout';
 import { CanvasPatientHeader } from './CanvasPatientHeader';
+import { AllergyQuickRecord } from './canvas/AllergyQuickRecord';
 import { CanvasQuickNav } from './CanvasQuickNav';
 import { CanvasWorkspace } from './canvas/CanvasWorkspace';
 import { CanvasVisitsRail } from './canvas/CanvasVisitsRail';
@@ -379,11 +380,15 @@ export function PatientDashboardPage() {
                   <Text>DOB: {patient.dob ? dayjs(patient.dob).format('YYYY-MM-DD') : '—'}</Text>
                   <Text>Age: {age ?? '—'}</Text>
                 </Space>
-                <div style={{ marginTop: 4 }}>
-                  <Text type={patient.allergies && patient.allergies.length > 0 ? 'danger' : 'secondary'}>
-                    Known Allergies:{' '}
-                    {patient.allergies && patient.allergies.length > 0 ? patient.allergies.join(', ') : 'None recorded'}
-                  </Text>
+                <div style={{ marginTop: 6 }}>
+                  {/* A2 — the SAME quick-record chip as the Canvas header.
+                      Flow is the default layout, so an allergy control that
+                      lives only in Canvas is invisible to most of the clinic
+                      — the deployed-app review proved it. The old text line
+                      also said "None recorded" for both a confirmed negative
+                      and a question nobody asked, which the chip's three
+                      states keep apart. */}
+                  <AllergyQuickRecord patient={patient} />
                 </div>
               </div>
             </Space>

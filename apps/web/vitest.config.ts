@@ -14,6 +14,11 @@ import react from '@vitejs/plugin-react';
 // per-file with a `@vitest-environment jsdom` docblock.
 export default defineConfig({
   plugins: [react()],
+  define: {
+    // Mirrors vite.config.ts — the tests render the avatar menu that shows
+    // the deployed commit, and a define missing here is a ReferenceError.
+    __BUILD_SHA__: JSON.stringify('test-build'),
+  },
   test: {
     environment: 'node',
     setupFiles: ['./src/test-setup.ts'],

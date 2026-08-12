@@ -83,6 +83,17 @@ believing a red that shows 0 failed tests, and fix the race if it recurs.
 
 ## Gotchas that have cost real time
 
+- **The deployed app is TWO Railway services** (kuwick-api + kuwick-web,
+  docs/STAGING_DEPLOYMENT.md), originally created from the retired
+  `clinical-workspace-c2-canvas-ux` branch. When "the owner can't see the
+  work", check BOTH services' tracked branch — realigning one and not the
+  other reproduces the symptom exactly. `/health` now answers with the
+  deployed commit (`build` field), and the avatar menu shows "build <sha>".
+- **A false pass hid a 403 for two phases**: the footer assertion
+  `/completed/i` matched the refusal toast "The consultation could not be
+  completed." Assert the success state's own words, never a substring the
+  failure message also contains.
+
 - **The container resets.** Push after every unit; a pushed commit is the only safe state.
 - `tsx`/esbuild `keepNames` injects a `__name` helper that does not exist inside
   `page.evaluate` — **no inner function declarations** in Playwright evaluate bodies.

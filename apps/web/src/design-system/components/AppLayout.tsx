@@ -97,6 +97,13 @@ export function AppLayout() {
             inManagement
               ? { key: 'settings', icon: <SettingOutlined />, label: 'Clinic Settings', onClick: () => navigate('/settings') }
               : { key: 'management', icon: <BarChartOutlined />, label: 'Management', onClick: () => navigate('/management/reports') },
+            {
+              key: 'build',
+              disabled: true,
+              // The deployed commit — so "which build am I looking at?" is a
+              // glance, not an investigation across Railway and the repo.
+              label: <span style={{ fontSize: 11, color: '#9aa4b2' }}>build {__BUILD_SHA__}</span>,
+            },
             { key: 'logout', icon: <LogoutOutlined />, label: 'Logout', onClick: handleLogout },
           ]
         : [
@@ -111,6 +118,13 @@ export function AppLayout() {
               icon: <SettingOutlined />,
               label: 'Clinic Settings',
               onClick: () => navigate('/settings'),
+            },
+            {
+              key: 'build',
+              disabled: true,
+              // The deployed commit — so "which build am I looking at?" is a
+              // glance, not an investigation across Railway and the repo.
+              label: <span style={{ fontSize: 11, color: '#9aa4b2' }}>build {__BUILD_SHA__}</span>,
             },
             { key: 'logout', icon: <LogoutOutlined />, label: 'Logout', onClick: handleLogout },
           ],

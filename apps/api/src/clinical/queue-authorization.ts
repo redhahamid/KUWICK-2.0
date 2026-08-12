@@ -1,6 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { QueueTicketStatus, Role, Staff } from '@prisma/client';
-import { Permission, attachedRoles, can } from '../core/permissions';
+import { Permission, attachedRoles, can, hasDoctorIdentity } from '../core/permissions';
 
 /**
  * S3 (D-079) — who may move a patient through the queue.
@@ -220,11 +220,21 @@ const ELIGIBLE_ATTENDING_ROLES: Role[] = ['DOCTOR_RESIDENT', 'DOCTOR_LOCUM'];
 /**
  * May this staff member be recorded as a visit's attending clinician?
  *
- * Role only — tenant, active and branch are checked separately, against the
- * database, because those are facts about the row rather than about the role.
+ * Two ways in, both facts about the row itself (tenant, active and branch
+ * are checked separately, against the database):
+ *
+ *   - the legacy doctor ROLES, unchanged — a resident or locum is an
+ *     attending doctor whether or not their professional fields are filled
+ *     in yet, and narrowing that would break clinics mid-migration;
+ *   - a professional DOCTOR IDENTITY (`hasDoctorIdentity`) — the Task 1 rule
+ *     "OWNER_ADMIN + DOCTOR when credentialed" applied here. Before this, a
+ *     doctor-owner could author and sign notes but could not be the visit's
+ *     attending clinician: front desk could not queue a patient to the one
+ *     doctor most small clinics actually have. The golden path caught it the
+ *     first time a credentialed owner-doctor appeared in the staff list.
  */
 export function isEligibleAttendingDoctor(staff: Staff): boolean {
-  return staff.active && ELIGIBLE_ATTENDING_ROLES.includes(staff.role);
+  return staff.active && (ELIGIBLE_ATTENDING_ROLES.includes(staff.role) || hasDoctorIdentity(staff));
 }
 
 export type AttendingChangeKind = 'CLAIM' | 'TRANSFER' | 'REASSIGN';

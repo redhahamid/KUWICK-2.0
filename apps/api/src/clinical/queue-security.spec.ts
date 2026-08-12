@@ -400,6 +400,40 @@ describe('S3F — call and attending-clinician assignment', () => {
     });
   });
 
+  // Task 1's rule applied to the attending seat: "OWNER_ADMIN + DOCTOR when
+  // credentialed". Before the fix this predicate read only the LEGACY role
+  // list, so the doctor-owner — the one doctor most small clinics have —
+  // could author and sign notes but could not be queued a patient. The golden
+  // path caught it the first time a credentialed owner appeared in the staff
+  // list, as a drawer that would not close.
+  it('a doctor-owner (professional identity, legacy OWNER_ADMIN) IS recorded as attending', async () => {
+    const ctx = callCtx();
+    ctx.staffDirectory['s-new'] = staffOf({
+      id: 's-new',
+      role: 'OWNER_ADMIN',
+      professionalType: 'MEDICAL_DOCTOR',
+      professionalActive: true,
+    });
+    ctx.staffDirectory['s-original'] = staffOf({ id: 's-original', userId: 'u-orig' });
+    ctx.tx.visit.findUnique.mockResolvedValue({ id: 'visit-1', clinicId: 'clinic-1', staffId: 's-original' });
+
+    await withTenant(() => ctx.service.call('t1', undefined, 's-new'));
+
+    expect(ctx.tx.visit.update).toHaveBeenCalledWith({
+      where: { id: 'visit-1' },
+      data: { staffId: 's-new' },
+    });
+  });
+
+  it('an owner with NO professional identity still cannot be the attending clinician', async () => {
+    const ctx = callCtx();
+    ctx.staffDirectory['s-new'] = staffOf({ id: 's-new', role: 'OWNER_ADMIN' });
+    await expect(withTenant(() => ctx.service.call('t1', undefined, 's-new'))).rejects.toThrow(
+      /only an active doctor/i,
+    );
+    expect(ctx.prisma.visit.update).not.toHaveBeenCalled();
+  });
+
   it('a room from another branch is refused', async () => {
     const ctx = callCtx();
     (ctx.prisma.room.findUnique as jest.Mock).mockResolvedValue({

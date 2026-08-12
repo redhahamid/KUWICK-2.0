@@ -275,7 +275,7 @@ test('golden path — registration through payment, completion and the history r
   // golden path; the OTC variant differs here and nowhere else.
   const queueDrawer = page.getByRole('dialog', { name: new RegExp(`add ${patientName}`, 'i') });
   await expect(queueDrawer).toBeVisible();
-  await chooseFromSelect(page, 'Doctor', /doctor/i);
+  await chooseFromSelect(page, 'Doctor', /Dr UAT Doctor/i);
   await chooseRadio(queueDrawer, 'Walk-in (W)');
   await queueDrawer.getByLabel('Presenting Complaint').fill('Sore throat and cough, 3 days');
   await queueDrawer.getByRole('button', { name: 'Add to Queue' }).click();
@@ -418,7 +418,10 @@ test('golden path — registration through payment, completion and the history r
   await checkpoint.getByRole('button', { name: /proceed & complete/i }).click();
   await expect(checkpoint).toBeHidden();
 
-  await expect(footer).toContainText(/completed/i);
+  // Not /completed/i: the refusal message "The consultation could not be
+  // completed." matches that regex, and did — a 403 passed this assertion
+  // for two whole phases. The success state's own heading is asserted.
+  await expect(footer).toContainText('Doctor phase completed');
 
   // =====================================================================
   // 9. THE DISPENSARY HANDS THE MEDICINE OVER.
@@ -537,7 +540,7 @@ test('OTC (C) variant — the invoice carries the medication and NO consultation
 
   const queueDrawer = page.getByRole('dialog', { name: new RegExp(`add ${patientName}`, 'i') });
   await expect(queueDrawer).toBeVisible();
-  await chooseFromSelect(page, 'Doctor', /doctor/i);
+  await chooseFromSelect(page, 'Doctor', /Dr UAT Doctor/i);
   await chooseRadio(queueDrawer, 'OTC (C)');
   await queueDrawer.getByLabel('Presenting Complaint').fill('OTC purchase — paracetamol');
   await queueDrawer.getByRole('button', { name: 'Add to Queue' }).click();
@@ -584,7 +587,10 @@ test('OTC (C) variant — the invoice carries the medication and NO consultation
   await expect(checkpoint).toBeVisible();
   await checkpoint.getByRole('button', { name: /proceed & complete/i }).click();
   await expect(checkpoint).toBeHidden();
-  await expect(footer).toContainText(/completed/i);
+  // Not /completed/i: the refusal message "The consultation could not be
+  // completed." matches that regex, and did — a 403 passed this assertion
+  // for two whole phases. The success state's own heading is asserted.
+  await expect(footer).toContainText('Doctor phase completed');
 
   // Dispense at the counter.
   await logout(page);
