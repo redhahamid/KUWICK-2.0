@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -38,15 +39,19 @@ const visit = (over: Partial<Visit> = {}): Visit =>
     ...over,
   }) as Visit;
 
+// A2: the allergy chip inside the band is a live control (quick-record)
+// and holds a mutation, so the band now needs a QueryClient like any screen.
 const renderHeader = (over: Partial<Parameters<typeof CanvasPatientHeader>[0]> = {}) =>
   render(
-    <CanvasPatientHeader
-      patient={patient()}
-      visit={visit()}
-      onBookAppointment={vi.fn()}
-      onCompleteConsultation={vi.fn()}
-      {...over}
-    />,
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <CanvasPatientHeader
+        patient={patient()}
+        visit={visit()}
+        onBookAppointment={vi.fn()}
+        onCompleteConsultation={vi.fn()}
+        {...over}
+      />
+    </QueryClientProvider>,
   );
 
 describe('one function, one home', () => {

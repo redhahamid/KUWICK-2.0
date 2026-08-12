@@ -35,6 +35,14 @@ export function useUpdatePatient() {
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
       queryClient.invalidateQueries({ queryKey: ['patients', id] });
+      // Visit queries EMBED a copy of the patient, and surfaces read it from
+      // there (the canvas allergy strip reads visit.patient.allergies). A
+      // demographics change that leaves those copies stale is the same
+      // defect family as the billing worklist: the screen keeps saying
+      // something the server no longer does. Demographics edits are rare, so
+      // the whole namespace is refetched rather than guessing which visits
+      // carry this patient.
+      queryClient.invalidateQueries({ queryKey: ['visits'] });
     },
   });
 }

@@ -135,6 +135,16 @@ COMPLETED (see its section below). **Start the A1 fix-sweep**: reproduce every
 known consult-flow error against the running app, fix, and cover each at the
 layer that broke. Then A2.
 
+**A2 allergy quick-record: DONE.** The header chip (all three states) opens
+a popover that records allergies or a confirmed negative; "Save" states what
+it records ("Record: no known allergies" when the box is empty — a negative
+answer is never recordable by accident). Live-update proven against the
+running app: chip, medications-card strip and checkpoint all read fresh
+after one save, because `useUpdatePatient` now also invalidates `['visits']`
+— the strip reads the VISIT's embedded patient copy, and the first live run
+caught it stale (same family as the billing worklist). Pinned in
+`allergyQuickRecord.test.tsx`, which renders BOTH read paths.
+
 Still-open canvas items from the retired queue, now A2 content:
 
 - **C6 anthropometry** — paeds centiles from DOB + Wt/Ht. A basic chart view.

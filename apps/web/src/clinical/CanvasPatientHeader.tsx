@@ -7,11 +7,11 @@ import {
   PauseCircleOutlined,
   PlayCircleOutlined,
   UserOutlined,
-  WarningFilled,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Patient } from '../core/types';
 import { Visit } from './types';
+import { AllergyQuickRecord } from './canvas/AllergyQuickRecord';
 
 const { Text } = Typography;
 
@@ -66,9 +66,6 @@ export function CanvasPatientHeader({
 }: CanvasPatientHeaderProps) {
   const onHoldNow = Boolean(heldByName);
   const age = patient.dob ? dayjs().diff(dayjs(patient.dob), 'year') : null;
-  const allergies = patient.allergies ?? [];
-  const hasAllergies = allergies.length > 0;
-  const allergyRecorded = patient.allergies !== null && patient.allergies !== undefined;
   const panelName = visit.panelClinic?.name ?? null;
   const initials = patient.name
     .split(/\s+/)
@@ -115,16 +112,10 @@ export function CanvasPatientHeader({
       <div className="kw2-header-chips">
         {/* Allergies lead: the one item that changes what may safely be
             prescribed. "Not asked" is its own state and is amber, because an
-            unasked question is not the same as a negative answer. */}
-        {hasAllergies ? (
-          <span className="kw2-chip kw2-chip-danger">
-            <WarningFilled /> {allergies.join(', ')}
-          </span>
-        ) : allergyRecorded ? (
-          <span className="kw2-chip">+ No known allergy</span>
-        ) : (
-          <span className="kw2-chip kw2-chip-warn">! Allergy not asked</span>
-        )}
+            unasked question is not the same as a negative answer. A2: the
+            chip is also where the answer gets RECORDED — see
+            AllergyQuickRecord for the rules it keeps. */}
+        <AllergyQuickRecord patient={patient} />
 
         <span className="kw2-chip kw2-chip-payer">{panelName ? `Panel · ${panelName}` : 'CASH'}</span>
 

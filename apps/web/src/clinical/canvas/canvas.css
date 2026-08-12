@@ -595,6 +595,21 @@
   white-space: nowrap;
 }
 
+/* A2 — the allergy chip is a real button now (quick-record). Same face as
+   a chip; the affordances are the cursor, focus ring and a slight darken. */
+.kw2-chip-button {
+  font-family: inherit;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+.kw2-chip-button:hover {
+  filter: brightness(0.96);
+}
+.kw2-chip-button:focus-visible {
+  outline: 2px solid #4338ca;
+  outline-offset: 1px;
+}
+
 .kw2-chip-danger {
   background: #fdecec;
   border-color: #f5c2c2;
