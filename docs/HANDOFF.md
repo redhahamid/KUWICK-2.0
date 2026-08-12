@@ -130,10 +130,22 @@ prints every row it does this to.
 
 ## Next session starts here
 
-**The GUARDRAIL is finished** — both golden-path variants run front door to
-COMPLETED (see its section below). **Start the A1 fix-sweep**: reproduce every
-known consult-flow error against the running app, fix, and cover each at the
-layer that broke. Then A2.
+**Start PATIENT ALERTS** (spec below, owner-approved). Suggested unit split,
+each pushed and CI-verified before the next:
+1. Schema + migration (`patient_alerts`, type enum, audited deactivate) +
+   the permission split (`patient.alert.write` / `patient.alert.medical.write`
+   in `permissions.ts`, per the role table below) + API CRUD with boundary
+   tests. Re-run the boundary table after the permission change.
+2. Seeded library + Settings › CLINICAL › Patient alerts CRUD.
+3. Type-aware placement: header chips + manage popover (reuse the
+   AllergyQuickRecord pattern), MEDICAL alerts joining the allergy strip
+   (approved wording guard — the verb attaches ONLY to the allergy clause),
+   ACCESSIBILITY+COMMUNICATION on queue rows, full list in profile
+   slide-over. Hold both constraints in the spec section below.
+
+A1 is done as scoped: golden path enforces zero console errors, the route
+sweep is clean (interaction-level sweeps fold into A2 work as each surface
+is touched), and the disconnected-form shape is fixed everywhere it existed.
 
 **A2 allergy quick-record: DONE.** The header chip (all three states) opens
 a popover that records allergies or a confirmed negative; "Save" states what
