@@ -48,10 +48,6 @@ interface Props {
 export function PanelBenefitPanel({ visit, canVerify, canOverride }: Props) {
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [overrideOpen, setOverrideOpen] = useState(false);
-  const [verifyForm] = Form.useForm<RecordPanelVerificationDto & { visitLimitAmount?: number }>();
-  const [overrideForm] = Form.useForm<OverridePanelBenefitDto>();
-  const verify = useRecordPanelVerification(visit.id);
-  const override = useOverridePanelBenefit(visit.id);
 
   if (!visit.panelClinicId) {
     return (
@@ -64,38 +60,6 @@ export function PanelBenefitPanel({ visit, canVerify, canOverride }: Props) {
   const status = visit.panelVerificationStatus ?? 'PENDING_VERIFICATION';
   const resolved = status === 'VERIFIED' || status === 'OVERRIDDEN';
   const coverage = visit.panelCoverageType;
-
-  const submitVerify = async (values: RecordPanelVerificationDto) => {
-    try {
-      await verify.mutateAsync({
-        ...values,
-        // An UNLIMITED plan must not carry a limit, and NONE must not carry a
-        // value — the server refuses both; the form does not send them.
-        visitLimitAmount: values.coverageType === 'VISIT_LIMIT' ? values.visitLimitAmount : undefined,
-        copaymentValue: values.copaymentType && values.copaymentType !== 'NONE' ? values.copaymentValue : undefined,
-      });
-      message.success('Panel benefit recorded. Responsibility has been recalculated.');
-      setVerifyOpen(false);
-      verifyForm.resetFields();
-    } catch (error) {
-      message.error(error instanceof ApiError ? error.message : 'Failed to record the panel verification');
-    }
-  };
-
-  const submitOverride = async (values: OverridePanelBenefitDto) => {
-    try {
-      await override.mutateAsync({
-        ...values,
-        visitLimitAmount: values.coverageType === 'VISIT_LIMIT' ? values.visitLimitAmount : undefined,
-        copaymentValue: values.copaymentType && values.copaymentType !== 'NONE' ? values.copaymentValue : undefined,
-      });
-      message.success('Benefit terms overridden. The original verification is retained.');
-      setOverrideOpen(false);
-      overrideForm.resetFields();
-    } catch (error) {
-      message.error(error instanceof ApiError ? error.message : 'Failed to override the panel benefit');
-    }
-  };
 
   return (
     <Card
@@ -170,10 +134,43 @@ export function PanelBenefitPanel({ visit, canVerify, canOverride }: Props) {
         />
       )}
 
+      {verifyOpen && <VerifyBenefitModal visitId={visit.id} onClose={() => setVerifyOpen(false)} />}
+      {overrideOpen && <OverrideBenefitModal visitId={visit.id} onClose={() => setOverrideOpen(false)} />}
+    </Card>
+  );
+}
+
+/**
+ * Children on purpose (A1): `Form.useForm` and its `<Form>` mount and unmount
+ * together with each modal, so no instance is ever left connected to nothing
+ * — the panel used to create both instances even on a SELF-PAY visit, where
+ * neither form could ever render.
+ */
+function VerifyBenefitModal({ visitId, onClose }: { visitId: string; onClose: () => void }) {
+  const [verifyForm] = Form.useForm<RecordPanelVerificationDto & { visitLimitAmount?: number }>();
+  const verify = useRecordPanelVerification(visitId);
+
+  const submitVerify = async (values: RecordPanelVerificationDto) => {
+    try {
+      await verify.mutateAsync({
+        ...values,
+        // An UNLIMITED plan must not carry a limit, and NONE must not carry a
+        // value — the server refuses both; the form does not send them.
+        visitLimitAmount: values.coverageType === 'VISIT_LIMIT' ? values.visitLimitAmount : undefined,
+        copaymentValue: values.copaymentType && values.copaymentType !== 'NONE' ? values.copaymentValue : undefined,
+      });
+      message.success('Panel benefit recorded. Responsibility has been recalculated.');
+      onClose();
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Failed to record the panel verification');
+    }
+  };
+
+  return (
       <Modal
         title="Record panel verification"
-        open={verifyOpen}
-        onCancel={() => setVerifyOpen(false)}
+        open
+        onCancel={onClose}
         onOk={() => verifyForm.submit()}
         okText="Save verification"
         confirmLoading={verify.isPending}
@@ -251,11 +248,32 @@ export function PanelBenefitPanel({ visit, canVerify, canOverride }: Props) {
           </Form.Item>
         </Form>
       </Modal>
+  );
+}
 
+function OverrideBenefitModal({ visitId, onClose }: { visitId: string; onClose: () => void }) {
+  const [overrideForm] = Form.useForm<OverridePanelBenefitDto>();
+  const override = useOverridePanelBenefit(visitId);
+
+  const submitOverride = async (values: OverridePanelBenefitDto) => {
+    try {
+      await override.mutateAsync({
+        ...values,
+        visitLimitAmount: values.coverageType === 'VISIT_LIMIT' ? values.visitLimitAmount : undefined,
+        copaymentValue: values.copaymentType && values.copaymentType !== 'NONE' ? values.copaymentValue : undefined,
+      });
+      message.success('Benefit terms overridden. The original verification is retained.');
+      onClose();
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Failed to override the panel benefit');
+    }
+  };
+
+  return (
       <Modal
         title="Override panel benefit terms"
-        open={overrideOpen}
-        onCancel={() => setOverrideOpen(false)}
+        open
+        onCancel={onClose}
         onOk={() => overrideForm.submit()}
         okText="Override terms"
         confirmLoading={override.isPending}
@@ -318,6 +336,5 @@ export function PanelBenefitPanel({ visit, canVerify, canOverride }: Props) {
           </Form.Item>
         </Form>
       </Modal>
-    </Card>
   );
 }

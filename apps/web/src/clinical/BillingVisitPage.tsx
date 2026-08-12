@@ -88,7 +88,6 @@ export function BillingVisitPage() {
   const [addingSourceId, setAddingSourceId] = useState<string | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [classifyOpen, setClassifyOpen] = useState(false);
-  const [manualForm] = Form.useForm<{ description: string; quantity: number; unit?: string; unitPrice: number }>();
 
   const activeInvoice: Invoice | undefined =
     invoices?.find((invoice) => invoice.id === requestedInvoiceId && invoice.status !== 'CANCELLED') ??
@@ -200,11 +199,11 @@ export function BillingVisitPage() {
 
   const submitManual = async (values: { description: string; quantity: number; unit?: string; unitPrice: number }) => {
     if (!activeInvoice) return;
+    // Closing unmounts ManualLineModal and its form with it — no reset needed.
     try {
       await addLine.mutateAsync({ invoiceId: activeInvoice.id, dto: values });
       message.success('Manual line added.');
       setManualOpen(false);
-      manualForm.resetFields();
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : 'Failed to add the line');
     }
@@ -397,30 +396,9 @@ export function BillingVisitPage() {
         </Col>
       </Row>
 
-      <Modal
-        title="Add a manual line"
-        open={manualOpen}
-        onCancel={() => setManualOpen(false)}
-        onOk={() => manualForm.submit()}
-        okText="Add line"
-        confirmLoading={addLine.isPending}
-        destroyOnHidden
-      >
-        <Form form={manualForm} layout="vertical" onFinish={submitManual} initialValues={{ quantity: 1 }}>
-          <Form.Item name="description" label="Description" rules={[{ required: true }]}>
-            <Input maxLength={200} placeholder="e.g. Dressing set" />
-          </Form.Item>
-          <Form.Item name="quantity" label="Quantity" rules={[{ required: true }]}>
-            <InputNumber min={1} precision={0} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="unit" label="Unit">
-            <Input maxLength={20} placeholder="e.g. set" />
-          </Form.Item>
-          <Form.Item name="unitPrice" label="Unit price (RM)" rules={[{ required: true }]}>
-            <InputNumber min={0.01} precision={2} style={{ width: '100%' }} />
-          </Form.Item>
-        </Form>
-      </Modal>
+      {manualOpen && (
+        <ManualLineModal onCancel={() => setManualOpen(false)} onSubmit={submitManual} pending={addLine.isPending} />
+      )}
 
       <Modal
         title="Visit type for billing"
@@ -445,5 +423,48 @@ export function BillingVisitPage() {
         />
       </Modal>
     </div>
+  );
+}
+
+/**
+ * A child on purpose (A1): `Form.useForm` and its `<Form>` mount and unmount
+ * together with the modal, so the instance is never left connected to
+ * nothing, and every open starts from clean fields without a manual reset.
+ */
+function ManualLineModal({
+  onCancel,
+  onSubmit,
+  pending,
+}: {
+  onCancel: () => void;
+  onSubmit: (values: { description: string; quantity: number; unit?: string; unitPrice: number }) => void;
+  pending: boolean;
+}) {
+  const [manualForm] = Form.useForm<{ description: string; quantity: number; unit?: string; unitPrice: number }>();
+  return (
+    <Modal
+      title="Add a manual line"
+      open
+      onCancel={onCancel}
+      onOk={() => manualForm.submit()}
+      okText="Add line"
+      confirmLoading={pending}
+      destroyOnHidden
+    >
+      <Form form={manualForm} layout="vertical" onFinish={onSubmit} initialValues={{ quantity: 1 }}>
+        <Form.Item name="description" label="Description" rules={[{ required: true }]}>
+          <Input maxLength={200} placeholder="e.g. Dressing set" />
+        </Form.Item>
+        <Form.Item name="quantity" label="Quantity" rules={[{ required: true }]}>
+          <InputNumber min={1} precision={0} style={{ width: '100%' }} />
+        </Form.Item>
+        <Form.Item name="unit" label="Unit">
+          <Input maxLength={20} placeholder="e.g. set" />
+        </Form.Item>
+        <Form.Item name="unitPrice" label="Unit price (RM)" rules={[{ required: true }]}>
+          <InputNumber min={0.01} precision={2} style={{ width: '100%' }} />
+        </Form.Item>
+      </Form>
+    </Modal>
   );
 }

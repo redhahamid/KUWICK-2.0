@@ -38,8 +38,6 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
 export function BillingSummaryPanel({ invoice, visit, canDiscount, canPay, settlementBlockedReason }: Props) {
   const [discountOpen, setDiscountOpen] = useState(false);
   const [method, setMethod] = useState<PaymentMethod>('CASH');
-  const [discountForm] = Form.useForm<{ type: 'PERCENTAGE' | 'FIXED_AMOUNT'; value: number; reason: string }>();
-  const invoiceDiscount = useApplyInvoiceDiscount(invoice.visitId);
   const settle = useSettleInvoice(invoice.visitId);
 
   const patient = invoice.patientResponsibilityAmount;
@@ -75,17 +73,6 @@ export function BillingSummaryPanel({ invoice, visit, canDiscount, canPay, settl
           : remaining && remaining > 0
             ? null
             : 'There is no patient balance to collect.';
-
-  const submitDiscount = async (values: { type: 'PERCENTAGE' | 'FIXED_AMOUNT'; value: number; reason: string }) => {
-    try {
-      await invoiceDiscount.mutateAsync({ invoiceId: invoice.id, dto: values });
-      message.success('Overall discount applied to the patient portion.');
-      setDiscountOpen(false);
-      discountForm.resetFields();
-    } catch (error) {
-      message.error(error instanceof ApiError ? error.message : 'Failed to apply the discount');
-    }
-  };
 
   const pay = async () => {
     try {
@@ -190,10 +177,40 @@ export function BillingSummaryPanel({ invoice, visit, canDiscount, canPay, settl
         </>
       )}
 
+      {discountOpen && <OverallDiscountModal invoice={invoice} visit={visit} onClose={() => setDiscountOpen(false)} />}
+
+      <Title level={5} style={{ display: 'none' }} aria-hidden>
+        {invoice.invoiceNumber}
+      </Title>
+    </Card>
+  );
+}
+
+/**
+ * A child on purpose (A1): `Form.useForm` and its `<Form>` mount and unmount
+ * together with the modal, so the instance is never left connected to
+ * nothing, and every open starts from clean fields without a manual reset.
+ */
+function OverallDiscountModal({ invoice, visit, onClose }: { invoice: Invoice; visit: Visit; onClose: () => void }) {
+  const [discountForm] = Form.useForm<{ type: 'PERCENTAGE' | 'FIXED_AMOUNT'; value: number; reason: string }>();
+  const invoiceDiscount = useApplyInvoiceDiscount(invoice.visitId);
+  const patientPortion = Number(invoice.patientResponsibilityAmount ?? 0);
+
+  const submitDiscount = async (values: { type: 'PERCENTAGE' | 'FIXED_AMOUNT'; value: number; reason: string }) => {
+    try {
+      await invoiceDiscount.mutateAsync({ invoiceId: invoice.id, dto: values });
+      message.success('Overall discount applied to the patient portion.');
+      onClose();
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Failed to apply the discount');
+    }
+  };
+
+  return (
       <Modal
         title="Overall invoice discount"
-        open={discountOpen}
-        onCancel={() => setDiscountOpen(false)}
+        open
+        onCancel={onClose}
         onOk={() => discountForm.submit()}
         okText="Apply discount"
         confirmLoading={invoiceDiscount.isPending}
@@ -233,7 +250,6 @@ export function BillingSummaryPanel({ invoice, visit, canDiscount, canPay, settl
               const value = Number(getFieldValue('value') ?? 0);
               const subtotal = Number(invoice.subtotalAmount ?? invoice.totalAmount ?? 0);
               const computed = type === 'PERCENTAGE' ? (subtotal * value) / 100 : value;
-              const patientPortion = Number(patient ?? 0);
               return value > 0 ? (
                 <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
                   Discount {money(computed)} · patient pays {money(Math.max(patientPortion - computed, 0))}
@@ -250,10 +266,5 @@ export function BillingSummaryPanel({ invoice, visit, canDiscount, canPay, settl
           </Form.Item>
         </Form>
       </Modal>
-
-      <Title level={5} style={{ display: 'none' }} aria-hidden>
-        {invoice.invoiceNumber}
-      </Title>
-    </Card>
   );
 }

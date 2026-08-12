@@ -397,7 +397,7 @@ eight duplicate-React-key warnings — `TrendChart`'s x-axis labels used
 and fed `dayjs(undefined)` (today) under an empty chart. Fixed via the pure
 `axisLabelIndices()` + 4 tests; sweep now fully clean. The sweep only reads
 each route's landing state — interacting within pages is the remaining A1
-work, alongside the billing-modal form hygiene listed below.
+work; the billing-modal form hygiene below is done.
 
 ### A1 — zero console errors, enforced
 
@@ -416,10 +416,12 @@ what was done with each:
   (child + initialValues replacing the setFieldsValue effect),
   `NewVisitDrawer` (NewVisitForm child), and `VisitObservationsPanel`
   (the visit-switch effect no longer calls resetFields when the form is not
-  showing). The same latent shape still exists in the billing modals
+  showing). The billing modals
   (BillingVisitPage manualForm, BillingSummaryPanel, BillingInvoicePanel,
-  PanelBenefitPanel — Form in destroyOnHidden Modal); apply the same pattern
-  when touching those files.
+  PanelBenefitPanel) now follow the same pattern — each modal+form+mutation
+  is a child mounted only while open. PanelBenefitPanel was the worst case:
+  it created BOTH form instances even on a self-pay visit, where neither
+  form could ever render.
 - **One library false positive, filtered with evidence**: antd 6.5.2 + React
   19 StrictMode fires "useForm is not connected" once per page load even for
   the LOGIN page's textbook inline `<Form>` — proven by hooking

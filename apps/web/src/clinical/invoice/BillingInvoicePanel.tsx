@@ -33,48 +33,10 @@ function isConsultationLine(line: InvoiceLine): boolean {
 export function BillingInvoicePanel({ invoice, canEdit, canCancelLine, canDiscount, isPanelVisit }: Props) {
   const [cancelling, setCancelling] = useState<InvoiceLine | null>(null);
   const [discounting, setDiscounting] = useState<InvoiceLine | null>(null);
-  const [cancelForm] = Form.useForm<{ reason: string; freeText?: string }>();
-  const [discountForm] = Form.useForm<{ type: 'PERCENTAGE' | 'FIXED_AMOUNT'; value: number; reason: string }>();
-  const cancelLine = useCancelInvoiceLine(invoice.visitId);
-  const lineDiscount = useApplyLineDiscount(invoice.visitId);
 
   const activeLines = invoice.lines.filter((line) => !line.cancelledAt);
   const cancelledLines = invoice.lines.filter((line) => line.cancelledAt);
   const settled = invoice.status !== 'UNPAID';
-  const waiving = cancelling ? isConsultationLine(cancelling) : false;
-
-  const submitCancel = async (values: { reason: string; freeText?: string }) => {
-    if (!cancelling) return;
-    const reason = values.reason === OTHER_REASON ? (values.freeText ?? '').trim() : values.reason;
-    try {
-      await cancelLine.mutateAsync({
-        invoiceId: invoice.id,
-        lineId: cancelling.id,
-        dto: { cancelReason: reason },
-      });
-      message.success(
-        waiving
-          ? 'Consultation charge waived. It stays in the invoice history.'
-          : 'Line cancelled. It stays in the invoice history.',
-      );
-      setCancelling(null);
-      cancelForm.resetFields();
-    } catch (error) {
-      message.error(error instanceof ApiError ? error.message : 'Failed to cancel the line');
-    }
-  };
-
-  const submitDiscount = async (values: { type: 'PERCENTAGE' | 'FIXED_AMOUNT'; value: number; reason: string }) => {
-    if (!discounting) return;
-    try {
-      await lineDiscount.mutateAsync({ invoiceId: invoice.id, lineId: discounting.id, dto: values });
-      message.success('Line discount applied.');
-      setDiscounting(null);
-      discountForm.resetFields();
-    } catch (error) {
-      message.error(error instanceof ApiError ? error.message : 'Failed to apply the discount');
-    }
-  };
 
   // Columns that would carry no information are not rendered: an all-dashes
   // Discount column and an all-zero Panel column on a self-pay bill are noise
@@ -241,10 +203,46 @@ export function BillingInvoicePanel({ invoice, canEdit, canCancelLine, canDiscou
         </div>
       )}
 
+      {cancelling && (
+        <CancelLineModal invoice={invoice} line={cancelling} onClose={() => setCancelling(null)} />
+      )}
+      {discounting && (
+        <LineDiscountModal invoice={invoice} line={discounting} onClose={() => setDiscounting(null)} />
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Children on purpose (A1): `Form.useForm` and its `<Form>` mount and unmount
+ * together with each modal, so no instance is ever left connected to nothing,
+ * and every open starts from clean fields without a manual reset.
+ */
+function CancelLineModal({ invoice, line, onClose }: { invoice: Invoice; line: InvoiceLine; onClose: () => void }) {
+  const [cancelForm] = Form.useForm<{ reason: string; freeText?: string }>();
+  const cancelLine = useCancelInvoiceLine(invoice.visitId);
+  const waiving = isConsultationLine(line);
+
+  const submitCancel = async (values: { reason: string; freeText?: string }) => {
+    const reason = values.reason === OTHER_REASON ? (values.freeText ?? '').trim() : values.reason;
+    try {
+      await cancelLine.mutateAsync({ invoiceId: invoice.id, lineId: line.id, dto: { cancelReason: reason } });
+      message.success(
+        waiving
+          ? 'Consultation charge waived. It stays in the invoice history.'
+          : 'Line cancelled. It stays in the invoice history.',
+      );
+      onClose();
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Failed to cancel the line');
+    }
+  };
+
+  return (
       <Modal
         title={waiving ? 'Waive consultation charge' : 'Cancel this line'}
-        open={Boolean(cancelling)}
-        onCancel={() => setCancelling(null)}
+        open
+        onCancel={onClose}
         onOk={() => cancelForm.submit()}
         okText={waiving ? 'Waive charge' : 'Cancel line'}
         okButtonProps={{ danger: true }}
@@ -252,7 +250,7 @@ export function BillingInvoicePanel({ invoice, canEdit, canCancelLine, canDiscou
         destroyOnHidden
       >
         <Text>
-          {cancelling?.description} · {money(cancelling?.amount)}
+          {line.description} · {money(line.amount)}
         </Text>
         <Text type="secondary" style={{ display: 'block', margin: '8px 0 12px' }}>
           The charge leaves the totals but stays in this invoice&rsquo;s history, with your name, the time and your
@@ -277,18 +275,35 @@ export function BillingInvoicePanel({ invoice, canEdit, canCancelLine, canDiscou
           </Form.Item>
         </Form>
       </Modal>
+  );
+}
 
+function LineDiscountModal({ invoice, line, onClose }: { invoice: Invoice; line: InvoiceLine; onClose: () => void }) {
+  const [discountForm] = Form.useForm<{ type: 'PERCENTAGE' | 'FIXED_AMOUNT'; value: number; reason: string }>();
+  const lineDiscount = useApplyLineDiscount(invoice.visitId);
+
+  const submitDiscount = async (values: { type: 'PERCENTAGE' | 'FIXED_AMOUNT'; value: number; reason: string }) => {
+    try {
+      await lineDiscount.mutateAsync({ invoiceId: invoice.id, lineId: line.id, dto: values });
+      message.success('Line discount applied.');
+      onClose();
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Failed to apply the discount');
+    }
+  };
+
+  return (
       <Modal
         title="Apply a line discount"
-        open={Boolean(discounting)}
-        onCancel={() => setDiscounting(null)}
+        open
+        onCancel={onClose}
         onOk={() => discountForm.submit()}
         okText="Apply discount"
         confirmLoading={lineDiscount.isPending}
         destroyOnHidden
       >
         <Text>
-          {discounting?.description} · {money(discounting?.amount)}
+          {line.description} · {money(line.amount)}
         </Text>
         <Form
           form={discountForm}
@@ -313,7 +328,7 @@ export function BillingInvoicePanel({ invoice, canEdit, canCancelLine, canDiscou
             {({ getFieldValue }) => {
               const type = getFieldValue('type');
               const value = Number(getFieldValue('value') ?? 0);
-              const amount = Number(discounting?.amount ?? 0);
+              const amount = Number(line.amount ?? 0);
               const computed = type === 'PERCENTAGE' ? (amount * value) / 100 : value;
               return value > 0 ? (
                 <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
@@ -331,6 +346,5 @@ export function BillingInvoicePanel({ invoice, canEdit, canCancelLine, canDiscou
           </Form.Item>
         </Form>
       </Modal>
-    </Card>
   );
 }
