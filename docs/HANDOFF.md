@@ -8,7 +8,10 @@ were genuinely green; that branch is retired — do not push to it again.
 
 **ONE working branch off current master**, currently
 `claude/kuwick-2-0-scope-c8h2op`. Per-unit pushes go there and only there
-(no dual-pushing); work reaches master by PR merge when the owner accepts.
+(no dual-pushing). **Owner rule 2026-08-12: every unit that goes green in
+Actions is merged into master in the same session** (PR or fast-forward),
+and master must be green in Actions before the next unit begins — the owner
+reviews on the deployed app, which tracks master.
 
 ## How to resume
 
@@ -130,13 +133,23 @@ prints every row it does this to.
 
 ## Next session starts here
 
-**Start PATIENT ALERTS** (spec below, owner-approved). Suggested unit split,
-each pushed and CI-verified before the next:
-1. Schema + migration (`patient_alerts`, type enum, audited deactivate) +
-   the permission split (`patient.alert.write` / `patient.alert.medical.write`
-   in `permissions.ts`, per the role table below) + API CRUD with boundary
-   tests. Re-run the boundary table after the permission change.
-2. Seeded library + Settings › CLINICAL › Patient alerts CRUD.
+**PATIENT ALERTS in progress** (spec below, owner-approved). A2 continues in
+the owner's 2026-08-12 order: alerts → medications search-first → live
+invoice card → orders & services → documents card → bottom action bar +
+one-transaction Complete + Undo → remaining A2 polish. Merge to master after
+every green unit.
+1. **DONE** — schema + migration (`patient_alerts`; RLS has NO DELETE policy,
+   so hard deletes are refused by PostgreSQL itself), the permission split
+   (`patient.alert.write` / `patient.alert.medical.write`; DOCTOR and
+   CLINICAL_STAFF hold both, ADMINISTRATOR the first only, per the table),
+   API (list with resolved names / create / deactivate — type-aware
+   assertion on BOTH add and retire, attribution from the session), 12
+   boundary tests, and the live boundary table re-run 11/11. That script now
+   resolves clinic/patient at runtime — it carried hardcoded UUIDs from one
+   dead dev database. The legacy accounts it logs in with (siti.front@,
+   faiz.finance@) must exist; recreate them in a fresh world before blaming
+   the table.
+2. **NEXT** — seeded library + Settings › CLINICAL › Patient alerts CRUD.
 3. Type-aware placement: header chips + manage popover (reuse the
    AllergyQuickRecord pattern), MEDICAL alerts joining the allergy strip
    (approved wording guard — the verb attaches ONLY to the allergy clause),
@@ -631,6 +644,12 @@ Task 3 (P1 chip popover + P2 slide-over). Flow's expand/edit is verified
 working; Canvas reaches parity through P2 using the same form component.
 
 ## Standing rules
+
+**DEPLOY CADENCE (owner rule, permanent): after EVERY unit goes green in
+Actions, merge the working branch into master in the same session — PR or
+fast-forward — and master must be green in Actions before moving on.** Work
+that is not on master is invisible to the owner (deployment tracks master)
+and has not been reviewed by anybody real.
 
 **"Done" means green in the Actions tab, citing the CI run — never a local
 run alone** (owner rule, 2026-08-11). Every pre-that-date "local green" claim

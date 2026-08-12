@@ -55,6 +55,8 @@ import { VisitObservationService } from './visit-observation.service';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 import { ChatChannelService } from './chat-channel.service';
+import { PatientAlertController } from './patient-alert.controller';
+import { PatientAlertService } from './patient-alert.service';
 
 // Clinical Operations, Phase 1a. Owns ServiceCatalog, Visit, QueueTicket,
 // ClinicalNote, Diagnosis, OrderService, Prescription, Document, Invoice
@@ -74,6 +76,7 @@ import { ChatChannelService } from './chat-channel.service';
     OrderServiceController,
     ProcedureQueueController,
     PrescriptionController,
+    PatientAlertController,
     PanelClinicController,
     DocumentController,
     InvoiceController,
@@ -106,6 +109,7 @@ import { ChatChannelService } from './chat-channel.service';
     DiagnosisService,
     OrderServiceService,
     PrescriptionService,
+    PatientAlertService,
     PanelClinicService,
     DocumentService,
     InvoiceService,

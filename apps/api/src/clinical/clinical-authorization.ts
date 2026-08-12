@@ -1,7 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import { SystemRole } from '@prisma/client';
 import { Permission, attachedRoles, can } from '../core/permissions';
-import { ClinicalNoteType, Role, Staff } from '@prisma/client';
+import { ClinicalNoteType, PatientAlertType, Role, Staff } from '@prisma/client';
 
 // C0 (D-051) — narrowly-scoped, server-side authorisation for clinical
 // records only. This is NOT a general RBAC system: the rest of the API still
@@ -96,6 +96,26 @@ export function canAuthorNarrative(staff: Staff): boolean {
 // as well as here) and never render as a doctor's clinical note.
 export function canAuthorStaffRemark(staff: Staff): boolean {
   return can(staff, 'note.staffRemark', rolesOn(staff));
+}
+
+// A2 — patient alerts. Type-aware on purpose: front counter records the
+// wheelchair, the language, the VIP note — the things they need before
+// calling a patient — while a MEDICAL standing fact (Pregnant, On Warfarin,
+// G6PD) is recorded by clinical staff, because it joins the allergy strip
+// and bears on prescribing.
+export function canWritePatientAlert(staff: Staff, type: PatientAlertType): boolean {
+  const permission: Permission = type === 'MEDICAL' ? 'patient.alert.medical.write' : 'patient.alert.write';
+  return can(staff, permission, rolesOn(staff));
+}
+
+export function assertCanWritePatientAlert(staff: Staff, type: PatientAlertType): void {
+  if (!canWritePatientAlert(staff, type)) {
+    throw new ForbiddenException(
+      type === 'MEDICAL'
+        ? 'Your account is not permitted to record a MEDICAL alert. Ask a doctor or clinical staff member to record it.'
+        : 'Your account is not permitted to manage patient alerts.',
+    );
+  }
 }
 
 export function canRecordObservations(staff: Staff): boolean {

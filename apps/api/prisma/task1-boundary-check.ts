@@ -22,8 +22,10 @@ config({ path: join(__dirname, '..', '.env') });
  */
 const API = process.env.KUWICK_API_URL ?? 'http://localhost:3000';
 const PASSWORD = 'DevLocal!2026';
-const CLINIC_ID = 'b3ff1158-5edc-4fdf-be8d-702d55af28c0';
-const PATIENT_ID = '3d00ae19-2a8f-4a39-9e7b-cc71d0fad8c5';
+// Resolved at runtime (see `arrange` below). These were hardcoded UUIDs from
+// one particular dev database, which made the table unrunnable anywhere else
+// — and the whole point of this script is that it re-runs after every
+// permission change, in whatever world the session has.
 
 if (process.env.KUWICK_ALLOW_FIXTURES !== 'yes') {
   throw new Error('Refusing to run: set KUWICK_ALLOW_FIXTURES=yes (local development only).');
@@ -117,9 +119,16 @@ async function main() {
   // Arrange: front desk registers a walk-in and assigns it to the doctor.
   // This is itself case 0 — the counter's own queue right, unchanged.
   // ---------------------------------------------------------------------
+  const clinicsResponse = await call(frontDesk, 'GET', '/clinics');
+  const clinicId = (clinicsResponse.json as { id: string }[])[0]?.id;
+  if (!clinicId) throw new Error('arrange: no clinic in this world');
+  const patientsResponse = await call(frontDesk, 'GET', '/patients');
+  const patientId = (patientsResponse.json as { id: string }[])[0]?.id;
+  if (!patientId) throw new Error('arrange: no patient in this world');
+
   const ticket = await call(frontDesk, 'POST', '/queue-tickets', {
-    clinicId: CLINIC_ID,
-    patientId: PATIENT_ID,
+    clinicId,
+    patientId,
     staffId: doctor.staffId,
     billingType: 'SELF_PAY',
     presentingComplaint: 'Task 1 boundary check',
@@ -182,8 +191,8 @@ async function main() {
 
   // 5. Finance registers a walk-in → 403. The intentional narrowing.
   const financeQueue = await call(finance, 'POST', '/queue-tickets', {
-    clinicId: CLINIC_ID,
-    patientId: PATIENT_ID,
+    clinicId,
+    patientId,
     staffId: doctor.staffId,
     billingType: 'SELF_PAY',
     presentingComplaint: 'boundary check — must be refused',

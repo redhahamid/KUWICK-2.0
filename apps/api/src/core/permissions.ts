@@ -50,6 +50,13 @@ export type Permission =
   | 'consultation.complete'
   | 'order.fulfil'
   | 'dispense.perform'
+  // Patient alerts (A2). Two permissions because one cannot express "all
+  // types except MEDICAL": `patient.alert.write` covers ACCESSIBILITY,
+  // COMMUNICATION and ADMINISTRATIVE; the MEDICAL type — the one that joins
+  // the allergy strip and bears on prescribing — needs
+  // `patient.alert.medical.write`, which front counter does not hold.
+  | 'patient.alert.write'
+  | 'patient.alert.medical.write'
   // Administrative
   | 'patient.demographics.write'
   | 'patient.lhdn.write'
@@ -102,6 +109,9 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     'document.issueAdministrative',
     // A doctor authorises dispensing of what they prescribed.
     'dispense.perform',
+    // Standing facts about the patient, every type including MEDICAL.
+    'patient.alert.write',
+    'patient.alert.medical.write',
     // Printing what they issued — an MC, a referral — is part of the act.
     'document.print',
     // Owner decision: a 24-hour clinic runs night shifts with a skeleton
@@ -131,10 +141,18 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     // is a clinical judgement made in a room they cannot see into.
     'consultation.resume',
     'document.print',
+    // Standing facts about the patient, every type including MEDICAL —
+    // a nurse recording "Pregnant" or "On Warfarin" is exactly the workflow.
+    'patient.alert.write',
+    'patient.alert.medical.write',
   ],
 
   ADMINISTRATOR: [
     'patient.demographics.write',
+    // Front counter records wheelchair access, language, VIP handling — the
+    // things they need BEFORE calling a patient. NOT the MEDICAL type: a
+    // clinical standing fact is recorded by clinical staff.
+    'patient.alert.write',
     'patient.lhdn.write',
     'queue.manage',
     'queue.consultationFlow',
@@ -387,6 +405,9 @@ const REFUSAL: Partial<Record<Permission, string>> = {
     'Only the attending clinician may put a consultation on hold.',
   'consultation.complete': 'Only a doctor may complete a consultation.',
   'patient.demographics.write': 'Your account is not permitted to change patient details.',
+  'patient.alert.write': 'Your account is not permitted to manage patient alerts.',
+  'patient.alert.medical.write':
+    'Your account is not permitted to record a MEDICAL alert. Ask a doctor or clinical staff member to record it.',
   'billing.corrections':
     'Applying a discount or cancelling an invoice needs the billing-corrections permission.',
   'settings.manage': 'Only an owner may change clinic settings.',

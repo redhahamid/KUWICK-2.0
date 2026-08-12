@@ -154,6 +154,9 @@ describe('AuthService', () => {
           'note.write',
           'observation.write',
           'order.write',
+          // A2 — standing patient alerts, every type including MEDICAL.
+          'patient.alert.medical.write',
+          'patient.alert.write',
           'prescription.write',
           'queue.consultationFlow',
         ],
