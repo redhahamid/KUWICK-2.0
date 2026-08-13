@@ -15,7 +15,19 @@ import { useLatestObservation } from '../hooks/useVisitObservations';
 import { useVisit } from '../hooks/useVisits';
 import { DEFAULT_SUPPLY_MODE } from '../medicationSupplyPresentation';
 import { CreatePrescriptionDto, DosageCalcMethod, PrescriptionSupplyMode } from '../types';
-import { Item } from '../../inventory/types';
+import { DurationUnit, Item } from '../../inventory/types';
+import { useReferenceCatalog } from '../hooks/useReferenceCatalogs';
+import {
+  computeQuantity,
+  consumptionLabel,
+  durationInDays,
+  frequencyLabel,
+  hasStandardPrescription,
+  indicationLabel,
+  indicationMatches,
+  matchCatalogueByText,
+  prefillFromStandard,
+} from './prescriptionForm';
 import { AllergyStrip } from './AllergyStrip';
 import { DosageCalculator } from './DosageCalculator';
 import { defaultsFromItem, itemOnHand, medicineSearchDetail, stockAdvice } from './prescribing';
@@ -81,12 +93,35 @@ interface FormState {
   itemId?: string;
   itemLabel?: string;
   amount?: number;
+  /**
+   * b1 PHASE A — the catalogue choice AND its text, side by side.
+   *
+   * The id is what the server resolves the patient's Malay label from. The
+   * text is kept because the dosage calculator produces free text ("ml") that
+   * may match no catalogue entry, and because Flow and Copy Rx write
+   * prescriptions without any of these dropdowns. Where an id is present it
+   * wins server-side; where it is not, the text stands on its own and the
+   * prescription honestly carries no Malay label for it.
+   */
   unit?: string;
+  doseUnitId?: string;
   frequency: string;
-  durationDays: number;
+  frequencyId?: string;
+  consumptionMethodId?: string;
+  /** The course as WRITTEN. Days are computed from it, never typed. */
+  durationValue: number;
+  durationUnit: DurationUnit;
   quantity: number;
+  /**
+   * Set the moment a person types in the quantity box, and never cleared while
+   * the form is open. Auto-compute stops for good at that point: a doctor who
+   * has decided on 20 tablets should not have that overwritten because they
+   * then corrected the duration.
+   */
+  quantityTouched: boolean;
   supplyMode: PrescriptionSupplyMode;
   indication: string;
+  indicationId?: string;
   remark: string;
 }
 
@@ -95,11 +130,17 @@ const EMPTY: FormState = {
   itemLabel: undefined,
   amount: undefined,
   unit: undefined,
+  doseUnitId: undefined,
   frequency: '',
-  durationDays: 5,
+  frequencyId: undefined,
+  consumptionMethodId: undefined,
+  durationValue: 5,
+  durationUnit: 'DAY',
   quantity: 1,
+  quantityTouched: false,
   supplyMode: DEFAULT_SUPPLY_MODE,
   indication: '',
+  indicationId: undefined,
   remark: '',
 };
 
@@ -142,10 +183,47 @@ export function AddMedicationModal({
     return (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
   }, [visit?.patient?.dob]);
 
+  // b1 PHASE A — the prescribing vocabulary. Active rows only: a frequency the
+  // clinic has retired must not be offered on a NEW prescription, which is
+  // exactly the distinction Settings' `includeRetired` exists to keep apart.
+  const { data: units } = useReferenceCatalog('dosage-units');
+  const { data: frequencies } = useReferenceCatalog('frequencies');
+  const { data: methods } = useReferenceCatalog('consumption-methods');
+  const { data: indications } = useReferenceCatalog('indications');
+
   const stock = useMemo(
     () => stockAdvice(form.itemId, form.quantity, stockLevels),
     [form.itemId, form.quantity, stockLevels],
   );
+
+  /** The chosen frequency's row — the only place doses-per-day comes from. */
+  const chosenFrequency = useMemo(
+    () => frequencies?.find((row) => row.id === form.frequencyId),
+    [frequencies, form.frequencyId],
+  );
+
+  const suggestedQuantity = useMemo(
+    () =>
+      computeQuantity({
+        amount: form.amount,
+        timesPerDay: chosenFrequency?.timesPerDay ?? null,
+        durationValue: form.durationValue,
+        durationUnit: form.durationUnit,
+      }),
+    [form.amount, form.durationValue, form.durationUnit, chosenFrequency?.timesPerDay],
+  );
+
+  // Live recalculation, until somebody types in the quantity box.
+  //
+  // `null` from `computeQuantity` means "cannot be computed" — PRN and STAT
+  // have no doses-per-day — and the box is LEFT ALONE on it. Writing 1 there
+  // would put a number nobody decided on a when-required painkiller.
+  useEffect(() => {
+    if (form.quantityTouched || suggestedQuantity === null) return;
+    setForm((current) =>
+      current.quantity === suggestedQuantity ? current : { ...current, quantity: suggestedQuantity },
+    );
+  }, [suggestedQuantity, form.quantityTouched]);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -158,6 +236,7 @@ export function AddMedicationModal({
     setSelectedItem(undefined);
     setPrefilled(false);
     setCalcMethod(undefined);
+    prefilledForItemId.current = null;
     // b1 — the medicine came from the rail's search box, so the form opens
     // already filled from the item master rather than asking again. The item
     // is passed in whole, so this needs no request: the row the doctor just
@@ -187,6 +266,65 @@ export function AddMedicationModal({
   }, []);
 
   /**
+   * b1 PHASE A — what this medicine's form opens with.
+   *
+   * The 1F standard prescription FIRST, because it is the structured one and
+   * 226 of the clinic's 236 medicines carry it. `defaultsFromItem` stays as
+   * the fallback for the rest: ten medicines have no 1F defaults by design,
+   * and for anything imported before the seed the legacy free text is all
+   * there is. Neither invents anything — a medicine with no default dose opens
+   * with the dose EMPTY, which is the rule the whole seed was built around.
+   */
+  const applied = useCallback(
+    (item: Item, current: FormState): Partial<FormState> => {
+      const structured = prefillFromStandard(item, { units, frequencies });
+      const legacy = defaultsFromItem(item);
+
+      // The legacy columns are free text ("capsule", "TDS") and the fields
+      // above them are now dropdowns, so the text is resolved to a catalogue
+      // entry or DROPPED. Carrying an unmatched string forward would submit a
+      // unit the doctor never saw and cannot check — the same invisible-prefill
+      // problem this modal already warns about, one field over. An unfilled
+      // dropdown is visible; a hidden mismatched string is not.
+      const legacyUnitId = matchCatalogueByText(legacy.unit, units, (row) => row.systemNameEn);
+      const legacyFrequencyId = matchCatalogueByText(legacy.frequency, frequencies, (row) => row.code);
+      const doseUnitId = structured.doseUnitId ?? legacyUnitId;
+      const frequencyId = structured.frequencyId ?? legacyFrequencyId;
+
+      return {
+        amount: structured.amount ?? legacy.amount ?? current.amount,
+        // Always the catalogue's own spelling, never the item's — the label's
+        // Malay half is looked up from the row this id points at.
+        unit: units?.find((row) => row.id === doseUnitId)?.systemNameEn,
+        doseUnitId,
+        frequency: frequencies?.find((row) => row.id === frequencyId)?.code ?? '',
+        frequencyId,
+        consumptionMethodId: structured.consumptionMethodId,
+        durationValue: structured.durationValue ?? legacy.durationDays ?? current.durationValue,
+        // A legacy duration is a number of DAYS — "5 days" is all that column
+        // ever held — so it lands as DAY rather than inheriting whatever unit
+        // the previous medicine in this session happened to use.
+        durationUnit: structured.durationUnit ?? (legacy.durationDays ? 'DAY' : current.durationUnit),
+        // Only where the medicine states one. Otherwise auto-compute fills it,
+        // and `quantityTouched` stays false so it keeps up with edits.
+        quantity: structured.quantity ?? legacy.quantity ?? current.quantity,
+        quantityTouched: false,
+        indication: legacy.indication ?? current.indication,
+        remark: legacy.remark ?? current.remark,
+      };
+    },
+    [units, frequencies],
+  );
+
+  const prefilledFrom = useCallback(
+    (item: Item) =>
+      hasStandardPrescription(prefillFromStandard(item, { units, frequencies })) ||
+      Object.keys(defaultsFromItem(item)).length > 0,
+    [units, frequencies],
+  );
+
+
+  /**
    * Item-master defaults, applied VISIBLY on selection.
    *
    * Only fields the item genuinely carries. Nothing is invented: an item with
@@ -202,20 +340,9 @@ export function AddMedicationModal({
       // G4.5d6 — the master already knows the usual dose, frequency, duration,
       // pack size, indication and patient instruction. Retyping all six for
       // every amoxicillin is where prescribing time actually goes.
-      const defaults = defaultsFromItem(item);
-      setForm((current) => ({
-        ...current,
-        itemId,
-        itemLabel: label,
-        amount: defaults.amount ?? current.amount,
-        unit: defaults.unit ?? current.unit,
-        frequency: defaults.frequency ?? current.frequency,
-        durationDays: defaults.durationDays ?? current.durationDays,
-        quantity: defaults.quantity ?? current.quantity,
-        indication: defaults.indication ?? current.indication,
-        remark: defaults.remark ?? current.remark,
-      }));
-      setPrefilled(Object.keys(defaults).length > 0);
+      // The prefill itself happens in the effect below, once the prescribing
+      // vocabulary has actually arrived.
+      setForm((current) => ({ ...current, itemId, itemLabel: label }));
     } catch {
       // A failed default lookup must not block prescribing — the doctor types
       // the dose either way.
@@ -232,22 +359,32 @@ export function AddMedicationModal({
    */
   const applyPickedMedicine = useCallback((item: Item) => {
     const label = item.code ? `${item.code} — ${item.name}` : item.name;
-    const defaults = defaultsFromItem(item);
     setSelectedItem(item);
-    setForm((current) => ({
-      ...current,
-      itemId: item.id,
-      itemLabel: label,
-      amount: defaults.amount ?? current.amount,
-      unit: defaults.unit ?? current.unit,
-      frequency: defaults.frequency ?? current.frequency,
-      durationDays: defaults.durationDays ?? current.durationDays,
-      quantity: defaults.quantity ?? current.quantity,
-      indication: defaults.indication ?? current.indication,
-      remark: defaults.remark ?? current.remark,
-    }));
-    setPrefilled(Object.keys(defaults).length > 0);
+    setForm((current) => ({ ...current, itemId: item.id, itemLabel: label }));
   }, []);
+
+  /**
+   * The prefill, applied once per medicine and NOT BEFORE THE VOCABULARY IS
+   * LOADED.
+   *
+   * This was inline in both selection paths and it was a race: the unit and
+   * frequency dropdowns are fed by their own requests, and a doctor who picks
+   * a medicine before those land would have got NO prefill at all — silently,
+   * because an unfilled form looks exactly like a medicine with no defaults.
+   * Waiting is correct: the ids being matched are meaningless without the rows
+   * they point at.
+   *
+   * The ref makes it once-per-medicine rather than once-per-render, so a
+   * catalogue refetch cannot overwrite a dose the doctor has since changed.
+   */
+  const prefilledForItemId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open || !selectedItem || !units || !frequencies) return;
+    if (prefilledForItemId.current === selectedItem.id) return;
+    prefilledForItemId.current = selectedItem.id;
+    setForm((current) => ({ ...current, ...applied(selectedItem, current) }));
+    setPrefilled(prefilledFrom(selectedItem));
+  }, [open, selectedItem, units, frequencies, applied, prefilledFrom]);
 
   /**
    * What the locked title says underneath: the price the clinic charges and
@@ -270,7 +407,10 @@ export function AddMedicationModal({
   }, [medicine]);
 
   const canSubmit = useMemo(
-    () => Boolean(form.itemId && form.amount && form.frequency.trim() && form.durationDays > 0),
+    () =>
+      Boolean(
+        form.itemId && form.amount && (form.frequencyId || form.frequency.trim()) && form.durationValue > 0,
+      ),
     [form],
   );
 
@@ -281,7 +421,11 @@ export function AddMedicationModal({
         form.itemId ||
           form.amount ||
           form.frequency.trim() ||
+          form.frequencyId ||
+          form.doseUnitId ||
+          form.consumptionMethodId ||
           form.indication.trim() ||
+          form.indicationId ||
           form.remark.trim(),
       ),
     [form],
@@ -300,9 +444,20 @@ export function AddMedicationModal({
       amount: form.amount!,
       unit: form.unit || undefined,
       frequency: form.frequency.trim(),
-      durationDays: form.durationDays,
+      // Computed here so the field the rest of the system reads is never
+      // blank, and recomputed server-side from the pair below — the client's
+      // arithmetic is not what the record ends up trusting.
+      durationDays: durationInDays(form.durationValue, form.durationUnit),
       indication: form.indication.trim() || undefined,
       remark: form.remark.trim() || undefined,
+      // b1 PHASE A — the structured choices. IDS ONLY: the patient-facing
+      // Malay text is resolved and copied server-side, never sent from here.
+      doseUnitId: form.doseUnitId,
+      frequencyId: form.frequencyId,
+      consumptionMethodId: form.consumptionMethodId,
+      indicationId: form.indicationId,
+      durationValue: form.durationValue!,
+      durationUnit: form.durationUnit,
       // Still submitted explicitly even though the doctor is no longer asked:
       // there is no hidden database default to fall back on, and the
       // dispensary changes it when the patient is not collecting here.
@@ -462,23 +617,58 @@ export function AddMedicationModal({
             <label htmlFor="kw-med-unit">
               <Text type="secondary" style={{ fontSize: 12 }}>Unit</Text>
             </label>
-            <Input
+            {/* From the catalogue, so the label can print "Tablet (BIJI)".
+                Typing was allowed here before and produced "tab", "tabs",
+                "Tablet" and "tablet" on four prescriptions for one drug —
+                none of which a patient-facing Malay label can be derived
+                from. */}
+            <Select
               id="kw-med-unit"
-              value={form.unit}
-              placeholder="e.g. ml, tablet"
-              onChange={(event) => set('unit', event.target.value)}
+              style={{ width: '100%' }}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="Tablet, Millilitre…"
+              value={form.doseUnitId}
+              onChange={(value?: string) =>
+                setForm((current) => ({
+                  ...current,
+                  doseUnitId: value,
+                  unit: units?.find((row) => row.id === value)?.systemNameEn,
+                }))
+              }
+              options={(units ?? []).map((row) => ({ value: row.id, label: row.systemNameEn }))}
             />
           </Col>
           <Col xs={24} md={8}>
             <label htmlFor="kw-med-frequency">
               <Text type="secondary" style={{ fontSize: 12 }}>Frequency</Text>
             </label>
-            <Input
+            <Select
               id="kw-med-frequency"
-              value={form.frequency}
-              placeholder="e.g. TDS"
-              onChange={(event) => set('frequency', event.target.value)}
+              style={{ width: '100%' }}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="OD, BD, TDS…"
+              value={form.frequencyId}
+              onChange={(value?: string) =>
+                setForm((current) => ({
+                  ...current,
+                  frequencyId: value,
+                  frequency: frequencies?.find((row) => row.id === value)?.code ?? '',
+                }))
+              }
+              options={(frequencies ?? []).map((row) => ({ value: row.id, label: frequencyLabel(row) }))}
             />
+            {/* Said where the decision is made, not in a footnote. A doctor who
+                picks PRN and then watches the quantity box not move deserves to
+                know why it did not. */}
+            {chosenFrequency?.timesPerDay === null && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {chosenFrequency.code} has no fixed daily count — set the quantity yourself.
+              </Text>
+            )}
           </Col>
         </Row>
       </KuwickFormSection>
@@ -493,11 +683,21 @@ export function AddMedicationModal({
           patientAgeMonths={patientAgeMonths}
           recordedWeightKg={vitals?.weight ? Number(vitals.weight) : null}
           onApply={(dose) => {
+            // The calculator speaks free text ("ml"). Where that is EXACTLY a
+            // catalogue entry's name it is the same thing and the id follows,
+            // so the label keeps its Malay half; where it is not, the id is
+            // cleared and the text stands alone. Matching "tab" to "Tablet"
+            // would be this form guessing, which is what the whole 1F seed
+            // refused to do.
             setForm((current) => ({
               ...current,
               amount: dose.amount,
               unit: dose.unit,
+              doseUnitId: matchCatalogueByText(dose.unit, units, (row) => row.systemNameEn),
               frequency: dose.frequency ?? current.frequency,
+              frequencyId: dose.frequency
+                ? matchCatalogueByText(dose.frequency, frequencies, (row) => row.code)
+                : current.frequencyId,
             }));
             setCalcMethod(dose.method);
           }}
@@ -506,19 +706,39 @@ export function AddMedicationModal({
 
       <KuwickFormSection title="Supply">
         <Row gutter={[12, 8]}>
-          <Col xs={12} md={6}>
+          <Col xs={12} md={5}>
             <label htmlFor="kw-med-duration">
-              <Text type="secondary" style={{ fontSize: 12 }}>Duration (days)</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>Duration</Text>
             </label>
             <InputNumber
               id="kw-med-duration"
               min={1}
               style={{ width: '100%' }}
-              value={form.durationDays}
-              onChange={(value) => set('durationDays', value ?? 1)}
+              value={form.durationValue}
+              onChange={(value) => set('durationValue', value ?? 1)}
             />
           </Col>
-          <Col xs={12} md={6}>
+          <Col xs={12} md={4}>
+            <label htmlFor="kw-med-duration-unit">
+              <Text type="secondary" style={{ fontSize: 12 }}>&nbsp;</Text>
+            </label>
+            {/* Beside the number, not a second question. "2 weeks" is one
+                thought; making a doctor convert it to 14 is arithmetic the
+                server can do and get right every time. */}
+            <Select
+              id="kw-med-duration-unit"
+              aria-label="Duration unit"
+              style={{ width: '100%' }}
+              value={form.durationUnit}
+              onChange={(value: DurationUnit) => set('durationUnit', value)}
+              options={[
+                { value: 'DAY', label: 'Days' },
+                { value: 'WEEK', label: 'Weeks' },
+                { value: 'MONTH', label: 'Months' },
+              ]}
+            />
+          </Col>
+          <Col xs={12} md={5}>
             <label htmlFor="kw-med-quantity">
               <Text type="secondary" style={{ fontSize: 12 }}>Quantity</Text>
             </label>
@@ -527,8 +747,18 @@ export function AddMedicationModal({
               min={1}
               style={{ width: '100%' }}
               value={form.quantity}
-              onChange={(value) => set('quantity', value ?? 1)}
+              // Typing here stops auto-compute for the rest of this form. A
+              // doctor who has decided on 20 tablets must not have that
+              // overwritten because they then corrected the duration.
+              onChange={(value) =>
+                setForm((current) => ({ ...current, quantity: value ?? 1, quantityTouched: true }))
+              }
             />
+            {form.quantityTouched && suggestedQuantity !== null && suggestedQuantity !== form.quantity && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Dose × frequency × duration comes to {suggestedQuantity}.
+              </Text>
+            )}
           </Col>
           {/* G4.5d6 — SUPPLY MODE IS GONE FROM THE DOCTOR'S FORM.
               It is a counter decision, not a clinical one: whether the patient
@@ -538,7 +768,7 @@ export function AddMedicationModal({
               on its default and stopped being read. It still submits
               ONSITE_DISPENSE explicitly — the dispensary changes it — so
               nothing is left to a hidden database default. */}
-          <Col xs={24} md={12}>
+          <Col xs={24} md={10}>
             {stock.message && (
               <Alert
                 type={
@@ -565,16 +795,64 @@ export function AddMedicationModal({
         </Row>
       </KuwickFormSection>
 
+      <KuwickFormSection title="How it is taken">
+        <Row gutter={[12, 8]}>
+          <Col xs={24} md={12}>
+            <label htmlFor="kw-med-consumption">
+              <Text type="secondary" style={{ fontSize: 12 }}>Consumption method</Text>
+            </label>
+            {/* Its reason for existing is the sentence it prints for the
+                patient — "Ambil melalui mulut". A route with no instruction
+                leaves the patient to guess. */}
+            <Select
+              id="kw-med-consumption"
+              style={{ width: '100%' }}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="ORAL (MAKAN/MINUM)…"
+              value={form.consumptionMethodId}
+              onChange={(value?: string) => set('consumptionMethodId', value)}
+              options={(methods ?? []).map((row) => ({ value: row.id, label: consumptionLabel(row) }))}
+            />
+          </Col>
+        </Row>
+      </KuwickFormSection>
+
       <KuwickFormSection title="Notes" hint="Optional">
         <Row gutter={[12, 8]}>
           <Col xs={24} md={12}>
             <label htmlFor="kw-med-indication">
               <Text type="secondary" style={{ fontSize: 12 }}>Indication</Text>
             </label>
-            <Input
+            {/* A combobox, not a closed list. It matches on EITHER language —
+                a Malaysian clinic types "demam" as readily as "fever" — and
+                free text remains allowed, because a doctor must never be
+                unable to say why. Typed text simply carries no Malay
+                translation, which is honest. */}
+            <Select
               id="kw-med-indication"
-              value={form.indication}
-              onChange={(event) => set('indication', event.target.value)}
+              style={{ width: '100%' }}
+              allowClear
+              showSearch
+              // Typed text becomes the value itself when nothing matches.
+              filterOption={(input, option) => {
+                const row = indications?.find((candidate) => candidate.id === option?.value);
+                return row ? indicationMatches(row, input) : false;
+              }}
+              value={form.indicationId ?? (form.indication || undefined)}
+              onChange={(value?: string) => {
+                const row = indications?.find((candidate) => candidate.id === value);
+                setForm((current) => ({
+                  ...current,
+                  indicationId: row?.id,
+                  indication: row ? row.labelEn : (value ?? ''),
+                }));
+              }}
+              onSearch={(value) =>
+                setForm((current) => ({ ...current, indicationId: undefined, indication: value }))
+              }
+              options={(indications ?? []).map((row) => ({ value: row.id, label: indicationLabel(row) }))}
             />
           </Col>
           <Col xs={24} md={12}>

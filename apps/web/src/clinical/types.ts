@@ -1,6 +1,6 @@
 import { Staff } from '../hr/types';
 import { Clinic, Patient } from '../core/types';
-import { Item } from '../inventory/types';
+import { DurationUnit, Item } from '../inventory/types';
 import { AttachmentCategory } from './attachmentPresentation';
 
 export type ServiceOrderType = 'STANDARD_SERVICE' | 'TASK_ORDER';
@@ -996,6 +996,18 @@ export interface CreatePrescriptionDto {
   calcMethod?: DosageCalcMethod;
   calcWeightKg?: number;
   calcDoseRateMgKg?: number;
+  // b1 PHASE A — the structured choices, as CATALOGUE IDS. The patient-facing
+  // Malay text is resolved and copied on server-side and is never sent from
+  // here: a client that could post it could print a label contradicting the
+  // prescription. `frequency`/`unit` above stay for Flow and Copy Rx, which do
+  // not use the dropdowns; where an id is given it wins.
+  frequencyId?: string;
+  doseUnitId?: string;
+  consumptionMethodId?: string;
+  indicationId?: string;
+  /** The course as written; the server recomputes `durationDays` from it. */
+  durationValue?: number;
+  durationUnit?: DurationUnit;
   // D-091 — submitted EXPLICITLY by the form (which visibly defaults to
   // ONSITE_DISPENSE). Optional in the type because the server accepts its
   // absence as NULL; the Add Medication form always sends a value.

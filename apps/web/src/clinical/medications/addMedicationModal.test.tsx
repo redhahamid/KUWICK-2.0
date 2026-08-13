@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { ReactNode, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { message } from 'antd';
@@ -41,6 +41,10 @@ const ITEMS = [
     instruction: 'Take after food',
   },
   { id: 'item-2', name: 'Paracetamol 500mg', code: 'PCM500', doseUnitDefault: 'tablet' },
+  // b1 PHASE A — carries NOTHING. Ten of the clinic's 236 medicines are like
+  // this by design (arm slings, soaps, a spacer chamber), and the form must
+  // open empty for them rather than inventing a dose.
+  { id: 'item-3', name: 'Nothing Sling Adult', code: 'SLING' },
 ];
 
 const SERVICES = [{ id: 'svc-1', name: 'Wound dressing', orderType: 'TASK_ORDER' }];
@@ -62,6 +66,14 @@ beforeEach(() => {
   message.destroy();
   STOCK = [{ itemId: 'item-1', quantityOnHand: 100, minThreshold: 0 }];
   get.mockImplementation(async (url: string) => {
+    // b1 PHASE A — the prescribing vocabulary the dropdowns are built from.
+    // Without these the unit and frequency fields are empty lists, which is
+    // itself the defect the E2E catalogue guardrail exists to catch — here it
+    // just makes the modal untestable.
+    if (url.startsWith('/reference-catalogs/dosage-units')) return DOSAGE_UNITS;
+    if (url.startsWith('/reference-catalogs/frequencies')) return FREQUENCIES;
+    if (url.startsWith('/reference-catalogs/consumption-methods')) return METHODS;
+    if (url.startsWith('/reference-catalogs/indications')) return INDICATIONS;
     if (url.startsWith('/items?')) return ITEMS;
     if (url.startsWith('/stock/levels')) return STOCK;
     if (url.includes('/age-dosages')) return [];
@@ -70,6 +82,23 @@ beforeEach(() => {
     return [];
   });
 });
+
+const catalogueBase = { tenantId: 't', origin: 'SYSTEM' as const, active: true, sortOrder: 0 };
+const DOSAGE_UNITS = [
+  { ...catalogueBase, id: 'unit-capsule', systemNameEn: 'capsule', patientLabelBm: 'KAPSUL', useCase: null },
+  { ...catalogueBase, id: 'unit-tablet', systemNameEn: 'Tablet', patientLabelBm: 'BIJI', useCase: null },
+];
+const FREQUENCIES = [
+  { ...catalogueBase, id: 'freq-tds', code: 'TDS', doctorDisplay: 'Three times a day', patientLabelBm: 'Tiga kali sehari', timesPerDay: 3 },
+  { ...catalogueBase, id: 'freq-od', code: 'OD', doctorDisplay: 'Once daily', patientLabelBm: 'Sekali sehari', timesPerDay: 1 },
+  { ...catalogueBase, id: 'freq-prn', code: 'PRN', doctorDisplay: 'When required', patientLabelBm: 'Bila perlu', timesPerDay: null },
+];
+const METHODS = [
+  { ...catalogueBase, id: 'method-oral', methodBilingual: 'ORAL (MAKAN/MINUM)', patientInstructionBm: 'Ambil melalui mulut' },
+];
+const INDICATIONS = [
+  { ...catalogueBase, id: 'ind-fever', labelEn: 'Fever', labelBm: 'Demam' },
+];
 
 const openModal = () =>
   render(
@@ -83,14 +112,76 @@ async function chooseMedicine(term = 'amo') {
   const search = screen.getByRole('combobox', { name: 'Search medicine' });
   await userEvent.click(search);
   await userEvent.type(search, term);
-  const option = await screen.findByTitle(/Amoxicillin/);
-  await userEvent.click(option);
+  const wanted = term.startsWith('noth') ? /Nothing Sling/ : /Amoxicillin/;
+  await userEvent.click(await screen.findByTitle(wanted));
+}
+
+/**
+ * Replaces a number field's contents.
+ *
+ * `clear()` does not empty an antd InputNumber reliably — it leaves the
+ * formatted value behind, so typing "3" after it produces 13 and the test then
+ * asserts against a course nobody entered. Selecting the text first is what a
+ * person does anyway.
+ */
+async function setNumber(label: string, value: string) {
+  const field = screen.getByLabelText(label);
+  await userEvent.tripleClick(field);
+  await userEvent.keyboard(value);
+}
+
+/** Picks a duration unit — the dropdown that sits beside the number. */
+async function chooseDurationUnit(optionLabel: string) {
+  const box = screen.getByRole('combobox', { name: 'Duration unit' });
+  await userEvent.click(box);
+  const listId = box.getAttribute('aria-controls');
+  const anchor = listId ? document.getElementById(listId) : null;
+  const list = anchor?.closest('.ant-select-dropdown') ?? anchor;
+  if (!list) throw new Error('The duration unit dropdown did not open.');
+  await userEvent.click(await within(list as HTMLElement).findByTitle(optionLabel));
 }
 
 async function fillMinimum() {
   await chooseMedicine();
   await userEvent.type(screen.getByLabelText('Dose amount'), '1');
-  await userEvent.type(screen.getByLabelText('Frequency'), 'TDS');
+  await chooseFrequency('TDS — Three times a day');
+}
+
+/**
+ * Picks a frequency from the catalogue dropdown, the way a doctor would.
+ *
+ * Scoped to the OPTION LIST, because the prefill already put the same label in
+ * the closed control — searching the whole document finds both and cannot tell
+ * a choice from what is already chosen.
+ */
+async function chooseFrequency(optionLabel: string) {
+  // Scoped to THIS select's own listbox, found through `aria-controls`.
+  // Two reasons, both learned the hard way: the closed control carries the
+  // same title as the option, so a document-wide search cannot tell a choice
+  // from what is already chosen; and in this antd version the `option` role
+  // sits on an inner node that is not the one carrying the click handler, so
+  // `findByRole('option')` resolves to an element clicking which does nothing
+  // at all — silently, with the test then asserting the unchanged value.
+  const box = screen.getByRole('combobox', { name: 'Frequency' });
+  await userEvent.click(box);
+  const listId = box.getAttribute('aria-controls');
+  const anchor = listId ? document.getElementById(listId) : null;
+  // `aria-controls` points at the inner holder; the options hang off the
+  // dropdown around it.
+  const list = anchor?.closest('.ant-select-dropdown') ?? anchor;
+  if (!list) throw new Error('The frequency dropdown did not open.');
+  await userEvent.click(await within(list as HTMLElement).findByTitle(optionLabel));
+}
+
+/** What a closed dropdown READS, which is all a doctor can check. */
+function selectedText(inputId: string): string {
+  const control = document.getElementById(inputId)?.closest('.ant-select');
+  const content = control?.querySelector('.ant-select-content');
+  // The same node holds the PLACEHOLDER when nothing is chosen, and reading
+  // that back as a value would make an empty dropdown look filled — which is
+  // exactly what the restraint tests are here to catch.
+  if (!content?.classList.contains('ant-select-content-has-value')) return '';
+  return content.textContent?.trim() ?? '';
 }
 
 describe('Add Medication modal', () => {
@@ -122,7 +213,10 @@ describe('Add Medication modal', () => {
     openModal();
     await chooseMedicine();
     await waitFor(() =>
-      expect((screen.getByLabelText('Unit') as HTMLInputElement).value).toBe('capsule'),
+      // The dropdown SHOWS the resolved catalogue entry. The item's legacy
+      // free text is matched to a real unit or dropped — an unfilled dropdown
+      // is visible, a hidden mismatched string is not.
+      expect(selectedText('kw-med-unit')).toBe('capsule'),
     );
   });
 
@@ -325,10 +419,14 @@ describe('G4.5d6 — prescribing from the medication master', () => {
     // instruction for every amoxicillin is where prescribing time went.
     openModal();
     await chooseMedicine();
-    await waitFor(() => expect(screen.getByLabelText('Frequency')).toHaveValue('TDS'));
+    // The frequency and unit are catalogue choices now, so what is asserted is
+    // what the doctor READS in the closed dropdown.
+    await waitFor(() => expect(selectedText('kw-med-frequency')).toBe('TDS — Three times a day'));
     expect(screen.getByLabelText('Dose amount')).toHaveValue('1.0');
-    expect(screen.getByLabelText('Unit')).toHaveValue('capsule');
-    expect(screen.getByLabelText('Duration (days)')).toHaveValue('5');
+    expect(selectedText('kw-med-unit')).toBe('capsule');
+    expect(screen.getByLabelText('Duration')).toHaveValue('5');
+    // 1 capsule x TDS (3/day) x 5 days = 15, and the item's own default
+    // quantity is 15 too — the two agree, which is the point of the seed.
     expect(screen.getByLabelText('Quantity')).toHaveValue('15');
   });
 
@@ -342,11 +440,10 @@ describe('G4.5d6 — prescribing from the medication master', () => {
   it('19. a prefilled value is still the doctor’s to overrule', async () => {
     openModal();
     await chooseMedicine();
-    await waitFor(() => expect(screen.getByLabelText('Frequency')).toHaveValue('TDS'));
-    const frequency = screen.getByLabelText('Frequency');
-    await userEvent.clear(frequency);
-    await userEvent.type(frequency, 'BD');
-    expect(frequency).toHaveValue('BD');
+    await waitFor(() => expect(selectedText('kw-med-frequency')).toBe('TDS — Three times a day'));
+    // Prefilled, never locked: the doctor picks a different one and it takes.
+    await chooseFrequency('OD — Once daily');
+    await waitFor(() => expect(selectedText('kw-med-frequency')).toBe('OD — Once daily'));
   });
 
   it('20. stock on hand is shown while prescribing, not after', async () => {
@@ -387,5 +484,110 @@ describe('G4.5d6 — prescribing from the medication master', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Add Medication' }));
     await waitFor(() => expect(post).toHaveBeenCalled());
     expect(post.mock.calls[0][1]).toMatchObject({ calcMethod: 'MANUAL' });
+  });
+});
+
+// ===========================================================================
+// b1 PHASE A — THE REWIRED FORM.
+//
+// The dropdowns are catalogue-backed, the duration is a number beside a unit,
+// and the quantity computes itself until somebody says otherwise. What is
+// asserted below is what a doctor would SEE and what actually leaves the
+// browser — never internal state.
+// ===========================================================================
+
+describe('b1 PHASE A — quantity computes itself, and knows when it cannot', () => {
+  it('1 capsule TDS for 5 days comes to 15 without anyone typing it', async () => {
+    openModal();
+    await chooseMedicine();
+    await waitFor(() => expect(screen.getByLabelText('Quantity')).toHaveValue('15'));
+  });
+
+  it('recalculates live when the duration changes', async () => {
+    openModal();
+    await chooseMedicine();
+    await waitFor(() => expect(screen.getByLabelText('Quantity')).toHaveValue('15'));
+
+    await setNumber('Duration', '3');
+    // 1 x 3/day x 3 days.
+    await waitFor(() => expect(screen.getByLabelText('Quantity')).toHaveValue('9'));
+  });
+
+  it('counts a WEEK as seven days', async () => {
+    openModal();
+    await chooseMedicine();
+    await waitFor(() => expect(screen.getByLabelText('Quantity')).toHaveValue('15'));
+
+    await setNumber('Duration', '1');
+    await chooseDurationUnit('Weeks');
+    // 1 x 3/day x 7 days.
+    await waitFor(() => expect(screen.getByLabelText('Quantity')).toHaveValue('21'));
+  });
+
+  it('STOPS recalculating once the quantity is typed in', async () => {
+    // A doctor who has decided on 20 must not have that overwritten because
+    // they then corrected the duration.
+    openModal();
+    await chooseMedicine();
+    await waitFor(() => expect(screen.getByLabelText('Quantity')).toHaveValue('15'));
+
+    await setNumber('Quantity', '20');
+    await setNumber('Duration', '3');
+
+    // The suggestion is OFFERED, not applied.
+    expect(await screen.findByText(/comes to 9/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Quantity')).toHaveValue('20');
+  });
+
+  it('SKIPS auto-compute for PRN, and says why on the spot', async () => {
+    // PRN has no doses per day. Computing "1 x 5 days" for a when-required
+    // painkiller is a quantity nobody decided, and a dispensary would hand it
+    // over. The box is left exactly as it was.
+    openModal();
+    await chooseMedicine();
+    await waitFor(() => expect(screen.getByLabelText('Quantity')).toHaveValue('15'));
+
+    await chooseFrequency('PRN — When required');
+
+    expect(await screen.findByText(/no fixed daily count/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Quantity')).toHaveValue('15');
+  });
+});
+
+describe('b1 PHASE A — what actually leaves the browser', () => {
+  it('sends catalogue IDS and the duration as written, never the Malay text', async () => {
+    // The patient-facing labels are resolved server-side. A client able to
+    // send them could print a label contradicting the prescription.
+    post.mockResolvedValue({ id: 'rx-1' });
+    openModal();
+    await chooseMedicine();
+    await waitFor(() => expect(selectedText('kw-med-frequency')).toBe('TDS — Three times a day'));
+    await setNumber('Duration', '2');
+    await chooseDurationUnit('Weeks');
+    await userEvent.click(screen.getByRole('button', { name: 'Add Medication' }));
+
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    const [, dto] = post.mock.calls[0];
+    expect(dto).toMatchObject({
+      frequencyId: 'freq-tds',
+      doseUnitId: 'unit-capsule',
+      durationValue: 2,
+      durationUnit: 'WEEK',
+      // Computed here too, so the field the rest of the system reads is never
+      // blank — the server recomputes it rather than trusting this number.
+      durationDays: 14,
+    });
+    expect(dto).not.toHaveProperty('frequencyBm');
+    expect(dto).not.toHaveProperty('doseUnitBm');
+  });
+
+  it('a medicine with NO defaults opens empty and cannot be submitted blind', async () => {
+    // The seed deliberately leaves ten medicines with nothing. The form must
+    // not invent a dose for them, and must not let one through unfilled.
+    openModal();
+    await chooseMedicine('noth');
+    await waitFor(() => expect(screen.getByLabelText('Dose amount')).toHaveValue(''));
+    expect(selectedText('kw-med-frequency')).toBe('');
+    expect(screen.getByRole('button', { name: 'Add Medication' })).toBeDisabled();
   });
 });

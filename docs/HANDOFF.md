@@ -600,6 +600,53 @@ reads (the Malay label, the refusal sentence) and that paracetamol's seeded
 defaults RESOLVE to names on screen, which is the half that silently fails if the
 reference catalogues were not seeded first.
 
+## PHASE A — **CANVAS DONE, FLOW NOT.** Read this before touching prescribing.
+
+**DONE and tested:** the prescription now carries what its own LABEL has to
+say, as SNAPSHOTS — `dose_unit_bm`, `frequency_bm`, `consumption_method` +
+`consumption_instruction_bm`, `indication_bm`, `duration_value` +
+`duration_unit`. Deliberately NOT foreign keys: correcting a catalogue row must
+never rewrite a prescription already printed or dispensed. The browser sends
+catalogue IDS ONLY and the server resolves the text, refusing cross-tenant and
+retired ids before the write. `durationDays` stays canonical and is recomputed
+server-side ("2 WEEK" = 14 days).
+
+The CANVAS modal (`AddMedicationModal`) is rewired: unit / frequency /
+consumption-method dropdowns, duration as number + DAY/WEEK/MONTH, an
+indication combobox matching EITHER language with free text still allowed,
+prefill from the medicine's 1F defaults, and quantity auto-compute that stops
+on a manual edit and SKIPS PRN/STAT.
+
+**THE SECOND SURFACE IS NOT DONE, and this is the priority.**
+
+`apps/web/src/clinical/MedicationsTab.tsx` — the FLOW layout's Medications
+section — still writes free text (`e.g. ml, tablet`, `e.g. BD`). The golden
+path prescribes through THAT surface, so it passed green while proving nothing
+about the new fields. Measured, not assumed: after a full green E2E run the
+three most recent prescriptions in the database read
+
+    unit "tablet", dose_unit_bm NULL, frequency "TDS", frequency_bm NULL,
+    duration_value NULL, duration_unit NULL
+
+i.e. every prescription a doctor writes in Flow still has no patient-language
+label at all. This is the catalogue-findability rule one layer up — "verify
+each surface independently; fixing one proves nothing about the other" — and it
+is the third time the same shape of defect has appeared in this codebase.
+
+NEXT: give `MedicationsTab` the same dropdowns and the same submit payload, and
+then make the golden path ASSERT the Malay label on the prescription it writes,
+so a surface reverting to free text fails CI instead of passing it.
+
+**Three things learned about testing antd 6 under jsdom** (all cost real time):
+- `findByRole('option')` resolves to a node that is NOT the one carrying the
+  click handler — clicking it does nothing, silently, and the test then asserts
+  an unchanged value. Use `findByTitle`, scoped to the dropdown found via the
+  combobox's `aria-controls` (the closed control carries the same title).
+- `.ant-select-content` holds the PLACEHOLDER when nothing is chosen. Reading it
+  back makes an empty dropdown look filled; check `-has-value` first.
+- `userEvent.clear()` does not empty an `InputNumber`. "clear then type 3" gives
+  13. Triple-click to select, then type.
+
 ## b1+b2 PACKAGE — WHAT IS LEFT (next session starts here)
 
 **Phase 1 remainder:**

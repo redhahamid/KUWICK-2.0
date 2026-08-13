@@ -63,6 +63,14 @@ const COUGH_SYRUP: Item = {
   stockLevels: [{ clinicId: 'c1', quantityOnHand: 20, minThreshold: 5 }],
 };
 
+const catalogueBase = { tenantId: 't', origin: 'SYSTEM' as const, active: true, sortOrder: 0 };
+const CATALOGUE = {
+  units: [{ ...catalogueBase, id: 'unit-ml', systemNameEn: 'ml', patientLabelBm: 'mL', useCase: null }],
+  frequencies: [
+    { ...catalogueBase, id: 'freq-tds', code: 'TDS', doctorDisplay: 'Three times a day', patientLabelBm: 'Tiga kali sehari', timesPerDay: 3 },
+  ],
+};
+
 function Harness({ children }: { children: ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
@@ -73,6 +81,13 @@ beforeEach(() => {
   post.mockReset();
   patch.mockReset();
   get.mockImplementation(async (url: string) => {
+    // b1 PHASE A — the prescribing vocabulary. The form's unit and frequency
+    // are catalogue choices now, so without these the modal opens with empty
+    // dropdowns and nothing can be prescribed at all — which is exactly what
+    // it should do, and exactly what the E2E catalogue guardrail is for.
+    if (String(url).startsWith('/reference-catalogs/dosage-units')) return CATALOGUE.units;
+    if (String(url).startsWith('/reference-catalogs/frequencies')) return CATALOGUE.frequencies;
+    if (String(url).startsWith('/reference-catalogs/')) return [];
     if (String(url).startsWith('/items?')) return [COUGH_SYRUP];
     if (String(url).includes('/items/')) return COUGH_SYRUP;
     return [];
@@ -183,7 +198,12 @@ describe('the form opens with the drug locked', () => {
     expect(get).not.toHaveBeenCalledWith('/items/item-1');
     // By its own attribute: the allergy strip is also a live region, and
     // "the only status on screen" is not a fact this form guarantees.
-    expect(document.querySelector('[data-prefilled="true"]')).not.toBeNull();
+    //
+    // Awaited, because the prefill is deliberately asynchronous now: the unit
+    // and frequency are catalogue ids, and matching them before their rows
+    // arrive would silently drop the prefill for a doctor who picks a medicine
+    // faster than the vocabulary loads.
+    await waitFor(() => expect(document.querySelector('[data-prefilled="true"]')).not.toBeNull());
   });
 
   it('Add & Add Another returns to the RAIL rather than reopening a search here', async () => {
