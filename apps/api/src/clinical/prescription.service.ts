@@ -10,6 +10,7 @@ import { CancelPrescriptionDto } from './dto/cancel-prescription.dto';
 import { CopyPrescriptionsDto } from './dto/copy-prescriptions.dto';
 import { UpdateSupplyModeDto } from './dto/update-supply-mode.dto';
 import { calculateWeightBasedDose, findAgeBracket } from './dosage-calculator';
+import { composeSnapshot, durationInDays } from './prescription-snapshot';
 import { CopiedSupplyDecision, describeCopyOutcome, supplyModeForCopy } from './medication-supply-rules';
 
 @Injectable()
@@ -72,6 +73,14 @@ export class PrescriptionService {
       }
     }
 
+    // b1 PHASE A — resolve the catalogue choices into the text this row keeps.
+    // Before the write, so a bad id is a 400 rather than a half-written record.
+    const snapshot = await this.resolveSnapshot(dto);
+    const durationDays =
+      dto.durationValue && dto.durationUnit
+        ? durationInDays(dto.durationValue, dto.durationUnit)
+        : dto.durationDays;
+
     return this.prisma.prescription.create({
       data: {
         tenantId: currentTenantId(),
@@ -79,11 +88,20 @@ export class PrescriptionService {
         itemId: dto.itemId,
         quantity: dto.quantity,
         amount,
-        unit: dto.unit,
-        frequency: dto.frequency,
-        durationDays: dto.durationDays,
-        indication: dto.indication,
+        // The snapshot wins where a catalogue entry was chosen; the free-text
+        // fields remain for Flow and Copy Rx, which do not use the dropdowns.
+        unit: snapshot.unit ?? dto.unit,
+        frequency: snapshot.frequency ?? dto.frequency,
+        durationDays,
+        indication: snapshot.indication ?? dto.indication,
         remark: dto.remark,
+        doseUnitBm: snapshot.doseUnitBm,
+        frequencyBm: snapshot.frequencyBm,
+        durationValue: dto.durationValue,
+        durationUnit: dto.durationUnit,
+        consumptionMethod: snapshot.consumptionMethod,
+        consumptionInstructionBm: snapshot.consumptionInstructionBm,
+        indicationBm: snapshot.indicationBm,
         calcMethod: dto.calcMethod,
         calcWeightKg: dto.calcMethod === DosageCalcMethod.WEIGHT_BASED ? dto.calcWeightKg : undefined,
         calcDoseRateMgKg: dto.calcMethod === DosageCalcMethod.WEIGHT_BASED ? dto.calcDoseRateMgKg : undefined,
@@ -100,6 +118,63 @@ export class PrescriptionService {
         supplyMode: dto.supplyMode,
       },
     });
+  }
+
+  /**
+   * b1 PHASE A — read what the chosen catalogue rows say, and copy it.
+   *
+   * Each lookup is scoped to this tenant and to ACTIVE rows. Not belt and
+   * braces over the foreign keys: PostgreSQL checks FKs through internal
+   * triggers that row-level security does not apply to, so another clinic's id
+   * would be accepted by the constraint and then read back as nothing — a
+   * prescription printed with no frequency and no error anywhere. A RETIRED
+   * row is refused for a plainer reason: the clinic withdrew it, and a new
+   * prescription must not be written against it.
+   */
+  private async resolveSnapshot(dto: CreatePrescriptionDto) {
+    const tenantId = currentTenantId();
+    const [frequency, doseUnit, consumptionMethod, indication] = await Promise.all([
+      dto.frequencyId
+        ? this.prisma.prescriptionFrequency.findFirst({
+            where: { id: dto.frequencyId, tenantId, active: true },
+            select: { code: true, patientLabelBm: true, timesPerDay: true },
+          })
+        : null,
+      dto.doseUnitId
+        ? this.prisma.dosageUnit.findFirst({
+            where: { id: dto.doseUnitId, tenantId, active: true },
+            select: { systemNameEn: true, patientLabelBm: true },
+          })
+        : null,
+      dto.consumptionMethodId
+        ? this.prisma.consumptionMethodRef.findFirst({
+            where: { id: dto.consumptionMethodId, tenantId, active: true },
+            select: { methodBilingual: true, patientInstructionBm: true },
+          })
+        : null,
+      dto.indicationId
+        ? this.prisma.indicationPreset.findFirst({
+            where: { id: dto.indicationId, tenantId, active: true },
+            select: { labelEn: true, labelBm: true },
+          })
+        : null,
+    ]);
+
+    // Named individually, so a doctor is not sent back to hunt through four
+    // dropdowns for whichever one went stale.
+    const missing = [
+      dto.frequencyId && !frequency ? 'Frequency' : null,
+      dto.doseUnitId && !doseUnit ? 'Dose unit' : null,
+      dto.consumptionMethodId && !consumptionMethod ? 'Consumption method' : null,
+      dto.indicationId && !indication ? 'Indication' : null,
+    ].filter(Boolean);
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `${missing.join(' and ')} ${missing.length === 1 ? 'is' : 'are'} no longer on this clinic's list. Choose again.`,
+      );
+    }
+
+    return composeSnapshot({ frequency, doseUnit, consumptionMethod, indication });
   }
 
   /**

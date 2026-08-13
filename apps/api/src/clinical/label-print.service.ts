@@ -52,6 +52,23 @@ export interface LabelPayload {
     quantity: number;
     indication: string | null;
     remark: string | null;
+
+    // b1 PHASE A — the patient's half, read from the prescription's own
+    // SNAPSHOT and never from the reference catalogues. A label reprinted next
+    // year has to say what the sticker on the bottle said, and a catalogue row
+    // corrected in the meantime must not change it.
+    //
+    // Null on every prescription written before the snapshot existed, and on
+    // any written through Flow or Copy Rx, which do not use the dropdowns. The
+    // renderer omits what is absent — a 40mm label has no room for a blank.
+    doseUnitBm: string | null;
+    frequencyBm: string | null;
+    /** The sentence that tells the patient how to take it. */
+    consumptionInstructionBm: string | null;
+    indicationBm: string | null;
+    /** "2 WEEK" as written; `durationDays` stays the computed figure. */
+    durationValue: number | null;
+    durationUnit: string | null;
   };
   prescriber: string;
   /** Who ran this print. */
@@ -293,6 +310,12 @@ function composeLabelPayload(params: {
       quantity: prescription.quantity,
       indication: prescription.indication ?? null,
       remark: prescription.remark ?? null,
+      doseUnitBm: prescription.doseUnitBm ?? null,
+      frequencyBm: prescription.frequencyBm ?? null,
+      consumptionInstructionBm: prescription.consumptionInstructionBm ?? null,
+      indicationBm: prescription.indicationBm ?? null,
+      durationValue: prescription.durationValue ?? null,
+      durationUnit: prescription.durationUnit ?? null,
     },
     prescriber: prescription.prescribedBy.fullName,
     processedBy: params.actorName,

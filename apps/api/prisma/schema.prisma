@@ -3306,6 +3306,27 @@ model Prescription {
   indication   String?
   remark       String?
 
+  // b1 PHASE A — what the LABEL has to say, SNAPSHOT at prescribing time.
+  //
+  // Deliberately not foreign keys into the reference catalogues. A prescription
+  // is a statement about what a named person was told to take on a named day;
+  // if it pointed at a catalogue row, correcting that row's Malay label would
+  // silently rewrite every prescription ever written, including ones already in
+  // a patient's hand. The catalogues decide what a NEW prescription opens with
+  // and have no authority over one already written.
+  //
+  // All nullable, permanently: rows written before this captured no Malay
+  // label, and the renderer omits what is absent rather than inventing it.
+  doseUnitBm               String?       @map("dose_unit_bm")
+  frequencyBm              String?       @map("frequency_bm")
+  /// How the course was WRITTEN ("2 WEEK"); `durationDays` stays the canonical
+  /// computed figure that every existing reader uses.
+  durationValue            Int?          @map("duration_value")
+  durationUnit             DurationUnit? @map("duration_unit")
+  consumptionMethod        String?       @map("consumption_method")
+  consumptionInstructionBm String?       @map("consumption_instruction_bm")
+  indicationBm             String?       @map("indication_bm")
+
   // Calculator audit trail (docs/DECISIONS.md D-028) — nullable, populated
   // only when the doctor used Calculate Dosage rather than typing amount
   // directly.
