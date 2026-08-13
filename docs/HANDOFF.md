@@ -92,6 +92,18 @@ believing a red that shows 0 failed tests, and fix the race if it recurs.
   logs `CLINICAL CATALOGUE NOT SEEDED` at boot, and the golden path searches
   a term it does NOT seed for itself. **Never assert only on data the spec
   planted.**
+- **"Seeded" is not "findable".** The 162 diagnoses reached staging and the
+  doctor's box still matched NOTHING: the seed tagged every imported row
+  `CUSTOM` while every search surface defaults to `SUMMARIZE`, and the canvas
+  rail HARDCODED that category with no way to change it. An empty antd
+  AutoComplete renders silence, so the outage had no symptom to report. Fixed
+  in three places — the seed writes and REPAIRS `SUMMARIZE` on re-run, the
+  rail sends no category (the whole catalogue), and the field now says
+  "No diagnosis matches …" / "could not be reached". A row count in /health
+  CANNOT catch this class; assert findability where it lives.
+- **Assert every surface, not the convenient one.** The golden path proved
+  diagnosis search in FLOW only, so the owner's CANVAS box stayed broken
+  through a green build. `canvas-viewport.spec.ts` now searches in Canvas too.
 - **A 229-item catalogue is not a 7-item one.** antd Selects virtualise, so
   "open the list and pick the row" silently stopped working once real data
   landed — the row is not in the DOM until you type. `openAndPick` types

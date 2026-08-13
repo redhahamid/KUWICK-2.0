@@ -159,3 +159,70 @@ describe('the pure helpers', () => {
     }
   });
 });
+
+// ===========================================================================
+// THE INVISIBLE CATALOGUE (owner-reported, deployed app).
+//
+// 162 diagnoses sat in staging's database and the doctor's Diagnosis box
+// matched NOTHING — no dropdown, no "no results", no error. Two faults,
+// stacked, each harmless-looking on its own:
+//
+//   1. The seed tagged every imported row CUSTOM while every search surface
+//      defaulted to SUMMARIZE, so the whole catalogue was filtered out.
+//   2. The canvas rail HARDCODED that category with no way to change it, and
+//      an empty AutoComplete renders nothing at all — so the failure had no
+//      symptom a doctor could report beyond "it doesn't work".
+//
+// The seed fix lives in seed-clinic-catalogues.ts. These pin the UI half:
+// omitting the category must ask for the WHOLE catalogue, and every outcome
+// must say which outcome it is.
+// ===========================================================================
+describe('a search that cannot hide the catalogue', () => {
+  it('11. omitting the category asks the server for everything, with no category filter', async () => {
+    render(
+      <Harness>
+        <DiagnosisSearchField onAdd={vi.fn()} />
+      </Harness>,
+    );
+    await userEvent.type(screen.getByLabelText('Search diagnosis'), 'urti');
+    await waitFor(() => expect(get).toHaveBeenCalled());
+
+    const requested = get.mock.calls.at(-1)?.[0] as string;
+    expect(requested).toContain('search=urti');
+    // The bug in one assertion: a category the caller never asked for.
+    expect(requested).not.toContain('category=');
+  });
+
+  it('12. a category IS still sent when one is deliberately chosen', async () => {
+    render(
+      <Harness>
+        <DiagnosisSearchField category="SUMMARIZE" onAdd={vi.fn()} />
+      </Harness>,
+    );
+    await userEvent.type(screen.getByLabelText('Search diagnosis'), 'urti');
+    await waitFor(() => expect(get).toHaveBeenCalled());
+    expect(get.mock.calls.at(-1)?.[0] as string).toContain('category=SUMMARIZE');
+  });
+
+  it('13. a search with no matches SAYS SO, instead of rendering nothing', async () => {
+    get.mockResolvedValue([]);
+    render(
+      <Harness>
+        <DiagnosisSearchField onAdd={vi.fn()} />
+      </Harness>,
+    );
+    await userEvent.type(screen.getByLabelText('Search diagnosis'), 'zzzz');
+    expect(await screen.findByText(/No diagnosis matches/i)).toBeInTheDocument();
+  });
+
+  it('14. a FAILED search says the catalogue is unreachable — not "no matches"', async () => {
+    get.mockRejectedValue(new MockApiError('boom'));
+    render(
+      <Harness>
+        <DiagnosisSearchField onAdd={vi.fn()} />
+      </Harness>,
+    );
+    await userEvent.type(screen.getByLabelText('Search diagnosis'), 'urti');
+    expect(await screen.findByText(/could not be reached/i)).toBeInTheDocument();
+  });
+});

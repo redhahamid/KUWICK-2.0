@@ -37,7 +37,13 @@ export const DIAGNOSIS_SEARCH_DEBOUNCE_MS = 250;
  * record they are reading.
  */
 export interface DiagnosisSearchFieldProps {
-  category: DiagnosisCategory;
+  /**
+   * Narrow the search to one catalogue category. OPTIONAL, and omitted means
+   * "the clinic's whole active catalogue" — the rail used to hardcode
+   * SUMMARIZE with no way to change it, so a catalogue tagged anything else
+   * was invisible to the doctor with no symptom but silence.
+   */
+  category?: DiagnosisCategory;
   /** Resolve to a catalog entry where possible, else add as free text. */
   onAdd: (value: string, entryId?: string) => Promise<void> | void;
   adding?: boolean;
@@ -89,7 +95,7 @@ export function DiagnosisSearchField({
   const [search, setSearch] = useState('');
   // Debounced so typing a diagnosis name is one request, not one per letter.
   const [term, setTerm] = useState('');
-  const { data: catalogResults } = useDiagnosisCatalogSearch(term, category);
+  const { data: catalogResults, isFetching, isError } = useDiagnosisCatalogSearch(term, category);
   // Set by onSelect so the Enter that CHOSE a suggestion is not also read as
   // an Enter that adds the raw typed text.
   const selected = useRef(false);
@@ -133,6 +139,19 @@ export function DiagnosisSearchField({
         label: catalogOptionLabel(entry),
       }))}
       placeholder={placeholder}
+      /* NEVER fail silently. An empty dropdown is indistinguishable from a
+         broken one, and that ambiguity cost a full owner review: the whole
+         catalogue was invisible and the box simply did nothing. Each state
+         now says which one it is. */
+      notFoundContent={
+        !term.trim()
+          ? null
+          : isFetching
+            ? 'Searching…'
+            : isError
+              ? 'Diagnosis search is unavailable — the catalogue could not be reached.'
+              : `No diagnosis matches “${term.trim()}”. Press Enter to record it as free text.`
+      }
       onKeyDown={(event) => {
         if (event.key !== 'Enter' || !search.trim()) return;
         if (selected.current) {

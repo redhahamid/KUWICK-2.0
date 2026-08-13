@@ -92,7 +92,11 @@ async function seedDiagnoses(tx: Tx, tenantId: string): Promise<Counts & { disam
     if (existing) {
       await tx.diagnosisCatalog.update({
         where: { id: existing.id },
-        data: { name, shortform: parsed.shortform, active: true },
+        // SUMMARIZE, and re-stamped on every run on purpose: rows seeded
+        // before this fix landed as CUSTOM, which made the whole catalogue
+        // invisible to every search surface (they default to SUMMARIZE).
+        // An idempotent seed must be able to REPAIR that, not just skip it.
+        data: { name, shortform: parsed.shortform, active: true, category: 'SUMMARIZE' },
       });
       counts.updated += 1;
     } else {
@@ -106,7 +110,12 @@ async function seedDiagnoses(tx: Tx, tenantId: string): Promise<Counts & { disam
       if (byName) {
         await tx.diagnosisCatalog.update({
           where: { id: byName.id },
-          data: { icd10Code: parsed.icd10Code, shortform: parsed.shortform, active: true },
+          data: {
+            icd10Code: parsed.icd10Code,
+            shortform: parsed.shortform,
+            active: true,
+            category: 'SUMMARIZE',
+          },
         });
         counts.updated += 1;
       } else {
@@ -116,7 +125,9 @@ async function seedDiagnoses(tx: Tx, tenantId: string): Promise<Counts & { disam
             icd10Code: parsed.icd10Code,
             name,
             shortform: parsed.shortform,
-            category: 'CUSTOM',
+            // The clinic's own working list — the equivalent of 1.0's
+            // "Summarize" set, not a one-off custom entry a doctor typed.
+            category: 'SUMMARIZE',
           },
         });
         counts.inserted += 1;

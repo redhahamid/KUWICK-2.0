@@ -39,3 +39,28 @@ describe('catalogue health', () => {
     expect(assessCatalogue({ diagnoses: 0, medications: 229 }).ok).toBe(false);
   });
 });
+
+// ===========================================================================
+// The second half of the same outage.
+//
+// Rows existing is not the same as rows being FINDABLE. Staging held 162
+// diagnoses that no search surface could see, because the seed tagged them
+// with a category the UI filtered out. `assessCatalogue` counts rows, so it
+// reported ok while the clinic was unusable — a health check that can be
+// green during the outage it exists to catch is worth saying out loud.
+//
+// The durable guard is in the seed (it now writes and repairs SUMMARIZE) and
+// in diagnosisSearchField.test.tsx (a search with no category asks for the
+// whole catalogue). This test records the limit of what a row count proves,
+// so nobody later reads a green /health as "the doctor can search".
+// ===========================================================================
+describe('what a row count does NOT prove', () => {
+  it('counts alone reported "ok" while every row was filtered out of the UI', () => {
+    // Exactly staging's state on the day the owner reported it.
+    const health = assessCatalogue({ diagnoses: 162, medications: 229 });
+    expect(health.ok).toBe(true);
+    // Which was TRUE about the database and USELESS to the doctor. Findability
+    // is asserted where it can be — the seed's category, and the search
+    // field's request — never inferred from this number.
+  });
+});

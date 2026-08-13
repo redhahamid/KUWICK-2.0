@@ -105,3 +105,36 @@ for (const viewport of VIEWPORTS) {
     await page.screenshot({ path: `test-results/canvas-${viewport.width}.png`, fullPage: false });
   });
 }
+
+/**
+ * THE CANVAS diagnosis box searches the clinic's real catalogue.
+ *
+ * The golden path proved this in FLOW and only in Flow, so it stayed green
+ * while the owner's canvas box matched nothing at all: the rail hardcoded a
+ * category filter, the seed wrote a different category, and an empty
+ * AutoComplete renders silence. Two surfaces, one assertion each — the
+ * cheapest thing that would have caught it.
+ */
+test('the CANVAS diagnosis box finds the clinic catalogue, and says so when it does not', async ({ page }) => {
+  await page.setViewportSize({ width: 1536, height: 864 });
+  await openCanvas(page);
+  await page.reload();
+
+  const search = page.getByLabel('Search diagnosis').first();
+  await expect(search).toBeVisible();
+
+  // A term the spec does NOT seed, typed as a doctor types it.
+  await search.click();
+  await search.fill('urti');
+  await expect(
+    page
+      .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option')
+      .filter({ hasText: /Acute upper respiratory infection/i })
+      .first(),
+  ).toBeVisible();
+
+  // And a term that matches nothing must SAY nothing matched — silence is
+  // what made the outage unreportable.
+  await search.fill('zzzqqq');
+  await expect(page.getByText(/No diagnosis matches/i)).toBeVisible();
+});

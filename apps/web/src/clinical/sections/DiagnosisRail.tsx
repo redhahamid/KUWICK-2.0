@@ -90,7 +90,13 @@ export function DiagnosisRail({ visitId }: DiagnosisRailProps) {
         previewLimit={4}
         addControl={
           <DiagnosisSearchField
-            category="SUMMARIZE"
+            /* No category filter, deliberately. The rail hardcoded
+               "SUMMARIZE" and had no way to change it, so a catalogue seeded
+               under any other tag was invisible here — the doctor's box
+               matched nothing at all, for every term, with no way to tell
+               why. A doctor searching diagnoses wants the clinic's whole
+               active list; narrowing it is the Flow tab's optional filter,
+               never a hidden default. */
             onAdd={add}
             adding={addDiagnosis.isPending}
             placeholder="Search diagnosis or ICD-10…"
