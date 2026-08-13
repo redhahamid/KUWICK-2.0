@@ -271,6 +271,12 @@ test('the medicine box finds a medicine by the clinic Malay group — Canvas AND
   await expect(canvasOption).toContainText(/RM \d+\.\d\d/);
   await expect(canvasOption).toContainText(/in stock|out of stock|stock unknown/);
 
+  // Evidence for the unit's report: the dropdown as the doctor sees it.
+  await page
+    .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')
+    .first()
+    .screenshot({ path: 'test-results/medicine-search-batuk.png' });
+
   // And a term that matches nothing must SAY so — silence is what made the
   // diagnosis outage unreportable. This is the search component's own
   // sentence, asserted verbatim rather than as a loose pattern that a blank
