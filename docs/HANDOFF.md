@@ -13,8 +13,9 @@ Actions is merged into master in the same session** (PR or fast-forward),
 and master must be green in Actions before the next unit begins — the owner
 reviews on the deployed app, which tracks master.
 
-As of 2026-08-13 master and the branch are both at the b1-0 commit, and
-master's own Actions run is green.
+As of 2026-08-13 this session merged four units to master (b0 attachments,
+b1-0 medicine findability, the catalogue-findability guardrail, b1a
+search-first prescribing), each after its own green Actions run.
 
 ## How to resume
 
@@ -67,7 +68,7 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 
 | | |
 |---|---|
-| Last green | **1140 frontend / 1237 backend**, both typechecks clean |
+| Last green | **1159 frontend / 1248 backend**, both typechecks clean |
 | Golden path | **GREEN, both variants, front door to COMPLETED** |
 | CI | **GREEN — including the e2e job, for the first time ever** (see below) |
 | Migrations | 66, no drift |
@@ -374,31 +375,58 @@ wording, including the two different stock answers), and
 the group, a money-shaped price and a stock phrase in the rendered option, plus
 the component's own no-match sentence verbatim.
 
+## b1a — SEARCH-FIRST PRESCRIBING — **DONE**
+
+The rail's "Add Medication" button is gone. `MedicineSearchBox` is always
+visible in the medications rail; choosing a result opens `AddMedicationModal`
+with **the drug locked as the title** and its price + stock as the subtitle,
+and the form no longer has a search field of its own. Copy Previous stays.
+
+Three properties worth not losing:
+- the **whole `Item`** travels from the box to the form, so the form opens
+  filled with NO second request. `defaultsFromItem` is shared with the legacy
+  search-inside-the-form path, so the two cannot disagree about what a prefill
+  means, and the prefill still announces itself (`data-prefilled`).
+- the form asks which medicine **exactly once**. It was asking twice; two boxes
+  onto one decision is the attachments defect in a different costume.
+- **"Add & Add Another" returns to the RAIL box** (`onAddAnother`), because
+  that is where the next prescription starts. The alternative — a filled form
+  left open on a drug already added — reads as unfinished work.
+
+**A0's viewport sweep caught a real defect here, the second time in one
+session.** The box rendered 118px wide at 1366 — too narrow to read a drug name
+in, which is its whole job. `flex-wrap` alone changed nothing, exactly as it did
+not for the Vitals card title: **a flex item shrinks to its minimum before its
+row agrees to wrap.** `min-width: 180px` on `.kw-medicine-search` is what
+refuses, so Copy Previous drops below the box on a narrow rail. If you touch
+this layout, re-run the 1366 case — it is the width that finds these.
+
+Four E2E specs drove the removed button and now drive the box; the
+catalogue-findability table's Canvas medicine row clicks nothing first, which
+is the property b1 exists for.
+
 ## b1 — WHAT IS LEFT (next session starts here)
 
-b1-0 above is done and merged. The rest of the owner's b1 item, in order:
+b1-0 and b1a above are done and merged. The rest of the owner's b1 item:
 
-1. **The always-visible inline box.** Replace the rail's "Add Medication"
-   button with `🔍 add medicine…`, always on screen. Selecting a result opens
-   the centred form with **the drug locked as the title** (price + stock beside
-   it) — so the form loses its own search field, and "Add & Add Another"
-   closes it and refocuses the RAIL box. Keep Copy Previous.
-2. **Dosing per `Item.dosingType`** (the enum already exists, every imported
+1. **Dosing per `Item.dosingType`** (the enum already exists, every imported
    row is `ADULT_DEFAULT` because the source carries no dosing data):
    `WEIGHT_BASED` → calculator using mg/kg × latest Wt; `AGE_BAND` → band
    picker from DOB (`ItemAgeDosage` exists); `ADULT_DEFAULT` → silent fill or
    empty. `DosageCalculator` and `prescribing.ts` already hold the maths.
-3. **Keyboard path**, asserted: type → arrows → Enter → Tab → Enter.
-4. **Row fields**: dose, frequency, qty **+ unit (sachet|strip|bottle|box)**,
+2. **Keyboard path**, asserted: type → arrows → Enter → Tab → Enter. The box
+   is an antd Select, so type/arrows/Enter already work; what is unasserted is
+   the hand-off — Enter opens the form, Tab reaches the dose, Enter submits.
+3. **Row fields**: dose, frequency, qty **+ unit (sachet|strip|bottle|box)**,
    duration, indication, remarks. The qty unit is a NEW column —
    `Prescription.unit` is the DOSE unit (ml, tablet); the pack unit is
    `Item.unitOfMeasure` and nothing stores the prescriber's choice.
-5. **TAPERING** — its own unit's worth: per-medicine Standard|Tapering toggle,
+4. **TAPERING** — its own unit's worth: per-medicine Standard|Tapering toggle,
    steps (dose × freq × days), auto total qty, generated Malay label, collapsed
    row reading "TAPER · N steps", dispensary reading the steps, ONE invoice
    line. Needs a `prescription_taper_steps` table.
 
-6. **THE PRESCRIBER MAY OVERRIDE THE PRICE — owner decision, 2026-08-13.**
+5. **THE PRESCRIBER MAY OVERRIDE THE PRICE — owner decision, 2026-08-13.**
    Asked because money in this system resolves through one tested pipeline
    (`billing-pricing.ts`: `item.sellPrice` → a panel-specific override → the
    panel's inventory markup) and the standing contract is that money moves only
