@@ -68,7 +68,7 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 
 | | |
 |---|---|
-| Last green | **1159 frontend / 1285 backend**, both typechecks clean |
+| Last green | **1159 frontend / 1292 backend**, both typechecks clean |
 | Golden path | **GREEN, both variants, front door to COMPLETED** |
 | CI | **GREEN — including the e2e job, for the first time ever** (see below) |
 | Migrations | 68, no drift |
@@ -491,6 +491,37 @@ Consequences, recorded honestly:
 
 Order for the next session: fix the boot query → wire the assertion in `main.ts`
 → point `DATABASE_URL` at `kuwick_app` in CI → delete the flag.
+
+## PHASE 0 — **COMPLETE.** Runtime tenant isolation is enforced.
+
+As of `95e8a47` in CI, and in staging once the owner runs the switch runbook at
+the end of `docs/STAGING_DEPLOYMENT.md`. Before this, every RLS policy in the
+schema was inert in every environment we run.
+
+- app connects as `kuwick_app` (NOSUPERUSER NOBYPASSRLS); `assertNotSuperuser`
+  runs from `main.ts` BEFORE Nest and refuses to boot as anything else.
+- `withSystemConnection()` — short-lived plain `pg`, no tenant context, system
+  questions only. **Boot-time checks must never use request-scoped
+  infrastructure**; the tenant-scoped client throwing outside a request is
+  correct behaviour.
+- BEFORE DELETE + BEFORE TRUNCATE triggers on `patient_alerts`, `label_prints`
+  and the five reference catalogues. They fire for every role, superuser
+  included.
+- `scripts/provision-app-role.mjs` (node + `pg`, not psql) reads the flags back
+  and refuses to report success if the role came out SUPERUSER or BYPASSRLS.
+
+**TWO ROLES, TWO JOBS — the part that bites.** `start:prod` runs migrations and
+then the app. `kuwick_app` deliberately has no CREATE on the schema, so
+`prisma migrate deploy` as that role fails with `permission denied for schema
+public` (measured). `apps/api/scripts/migrate-deploy.mjs` runs the migration
+step under `MIGRATE_DATABASE_URL` (the owner) and falls back to `DATABASE_URL`
+when it is unset — so local and CI are unchanged and need no new variable.
+**Any deployed environment needs BOTH variables set.**
+
+**Once RLS is real, a boot check cannot count tenant-scoped rows** — it gets a
+confident ZERO, not an error. The catalogue check now asks whether the TABLES
+exist (RLS cannot filter metadata) and the per-clinic count moved to the
+authenticated session. `scripts/smoke-catalogue.mjs` signs in to ask it.
 
 ## b1+b2 PACKAGE — WHAT IS LEFT (next session starts here)
 

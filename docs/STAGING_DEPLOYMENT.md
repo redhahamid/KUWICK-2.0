@@ -328,3 +328,147 @@ unauthenticated and deployment-level; `scripts/smoke-catalogue.mjs` signs in.
 **Boot-time checks must never use request-scoped infrastructure.** The
 tenant-scoped Prisma client throwing "Tenant context not set" outside a request
 is correct behaviour; anything at boot uses `withSystemConnection` instead.
+
+
+---
+
+# STAGING SWITCH RUNBOOK — turning on tenant isolation
+
+**For the owner, in the Railway web Console. No terminal, no local setup.**
+Whole thing is about five minutes. Read step 5 before you start.
+
+Until this is done, staging runs with row-level security **inert** — every
+tenant-isolation policy in the database is being ignored, because the API
+connects as a superuser. Nothing else changes: no data is moved, copied,
+re-owned or re-seeded.
+
+---
+
+## 1 · Provision the role (kuwick-api → Console)
+
+Open the **kuwick-api** service → **Console** tab. Paste these, one at a time.
+
+Pick a password first and keep it somewhere — you need the same one in step 2.
+
+```
+APP_ROLE_PASSWORD='CHANGE-ME-to-a-long-random-password' node scripts/provision-app-role.mjs
+```
+
+You want exactly this line back:
+
+```
+provision-app-role: kuwick_app ready (NOSUPERUSER NOBYPASSRLS), privileges granted.
+```
+
+If it says anything else, **stop** — nothing has changed yet, and the script
+refuses to claim success unless the role really came out safe. Send me the
+output.
+
+> Run this while `DATABASE_URL` is still the old one. The script needs the
+> owner's credentials to create a role, which is exactly what is in there now.
+
+---
+
+## 2 · Point the API at the new role (kuwick-api → Variables)
+
+**First, copy the current `DATABASE_URL` somewhere safe.** That one line is your
+rollback (step 5).
+
+It looks like:
+
+```
+postgresql://postgres:LONGPASSWORD@somehost.railway.internal:5432/railway
+```
+
+Now make **two** variables on **kuwick-api** only:
+
+| Variable | Value |
+|---|---|
+| `MIGRATE_DATABASE_URL` | the **old** value, pasted exactly as it was |
+| `DATABASE_URL` | the same line, but with `postgres:LONGPASSWORD` replaced by `kuwick_app:` + the password you chose in step 1 |
+
+So `DATABASE_URL` ends up as:
+
+```
+postgresql://kuwick_app:THE-PASSWORD-FROM-STEP-1@somehost.railway.internal:5432/railway
+```
+
+Everything after the `@` stays **exactly** as it was — host, port, database name.
+
+**Why two:** migrations create tables, and the new role deliberately cannot.
+`MIGRATE_DATABASE_URL` runs the migration step as the owner; `DATABASE_URL` runs
+the application under row-level security. Miss the first one and the service will
+not start on the next release.
+
+**kuwick-web needs nothing.** It talks to the API over HTTPS and never touches
+the database.
+
+Railway redeploys when you save. Wait for it to go green.
+
+---
+
+## 3 · Check it worked (phone browser, no terminal)
+
+**a. Open** `https://<your-api-domain>/health`
+
+You want:
+
+```json
+{"status":"ok","database":"connected","build":"abc1234",
+ "catalogue":{"tablesPresent":true,"missing":[],"ok":true,"warning":null}}
+```
+
+`"ok":true` and an empty `missing` is the whole test.
+
+**b. Sign in to the app**, open the **avatar menu** (top right). It shows
+`build <sha>` — the first 7 characters should match the `build` above. If they
+differ, the browser is on an older bundle: hard-refresh.
+
+**c. Open any patient's record** and type `urti` in the diagnosis box. Getting
+results back means row-level security is on *and* the clinic can still read its
+own data — which is the thing worth confirming.
+
+---
+
+## 4 · What "it went wrong" looks like
+
+If the API **refuses to start** and the deploy log says:
+
+> The application is connected as "postgres", which is a SUPERUSER…
+
+**that is the safety net working, not a broken deploy.** It means `DATABASE_URL`
+is still (or again) the owner's. The service is protecting you from silently
+running with isolation off. Fix the variable, or roll back.
+
+---
+
+## 5 · ROLLBACK — under a minute
+
+On **kuwick-api** → Variables, set `DATABASE_URL` back to the old line you
+copied in step 2:
+
+```
+postgresql://postgres:LONGPASSWORD@somehost.railway.internal:5432/railway
+```
+
+Save. Railway redeploys and staging is exactly as it was. You can leave
+`MIGRATE_DATABASE_URL` in place — it is harmless.
+
+Rolling back costs you nothing but the isolation guarantee. **No data is
+affected either way.**
+
+---
+
+## 6 · Your data is untouched
+
+- **Nothing is moved, copied or re-owned.** This adds a login role and grants it
+  permission to read and write the tables that already exist. Every row stays
+  exactly where it is, owned by exactly whom it was.
+- **Do NOT re-run `seed:catalogues`.** The 162 diagnoses, 236 medicines and the
+  prescription vocabulary are untouched by any of this. Re-running is harmless
+  (it is idempotent) but pointless.
+- **Patients, visits, invoices and prints are untouched.**
+
+The one thing that genuinely changes: from now on, every query the application
+makes is filtered by the clinic it belongs to, by PostgreSQL itself, instead of
+by the application asking nicely.
