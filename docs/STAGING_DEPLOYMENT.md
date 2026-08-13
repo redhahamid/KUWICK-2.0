@@ -265,38 +265,58 @@ it does. This was the real state of every environment until it was measured: a
 plain `DELETE` succeeded on `patient_alerts` and `label_prints`, both of which
 carried comments claiming PostgreSQL refused exactly that.
 
-`PrismaService` now **refuses to boot** as such a role, naming it and the fix.
-That is deliberate: a warning would mean one clinic's patient data is reachable
-from another with nobody finding out.
+**The API now refuses to boot as such a role** (`assertNotSuperuser`, called from
+`main.ts` before Nest starts, on its own short-lived connection). A warning would
+mean one clinic's patient data is reachable from another with nobody finding out.
 
-Run once per database, as the owner:
+### Provisioning
 
-```sql
-CREATE ROLE kuwick_app LOGIN PASSWORD '<secret>'
-  NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
-GRANT USAGE ON SCHEMA public TO kuwick_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO kuwick_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO kuwick_app;
--- So future migrations' tables are reachable without re-granting.
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO kuwick_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO kuwick_app;
+One file, the same one CI runs — do not retype the SQL:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -v app_password='<secret>' \
+  -f apps/api/prisma/provision-app-role.sql
 ```
 
-**TRUNCATE is deliberately not granted.** It is a separate privilege that RLS
-does not filter, and withholding it from a non-superuser is itself a guarantee.
+It is idempotent, rotates the password on each run, and **re-asserts
+NOSUPERUSER NOBYPASSRLS every time** — a role granted either flag by hand for one
+migration and left that way is how this guarantee gets lost silently, because
+everything keeps working.
 
-Then point the SERVICE at it — `DATABASE_URL` on `kuwick-api` becomes
+**TRUNCATE is never granted.** It is a separate privilege that RLS does not
+filter, and withholding it from a non-superuser is itself one of the append-only
+guarantees.
+
+### Then point the SERVICE at it
+
+`DATABASE_URL` on `kuwick-api` becomes
 `postgresql://kuwick_app:<secret>@<host>:<port>/<db>?schema=public`.
 
 **Migrations keep running as the OWNER**, because they create and alter objects
-the app role has no business creating. Two different roles for two different
-jobs: `prisma migrate deploy` as the owner, the running service as `kuwick_app`.
-After any migration that adds a table, the `ALTER DEFAULT PRIVILEGES` above
-covers it; if a table was created before those defaults were set, re-run the two
-`GRANT ... ON ALL TABLES` lines.
+the app role has no business creating. Two roles, two jobs: `prisma migrate
+deploy` as the owner, the running service as `kuwick_app`. Re-run the
+provisioning file after any migration that adds tables — `ALTER DEFAULT
+PRIVILEGES` covers future migrations, not the one that just ran in the same
+session.
 
 `KUWICK_ALLOW_SUPERUSER_DB=yes` skips the boot refusal. It exists for a developer
-who has not provisioned the role yet and is not testing isolation. It must never
-be set on a deployed service.
+who has not provisioned the role yet and is not testing isolation, and it logs
+that isolation is unenforced on every start. **It must never be set on a deployed
+service.**
+
+### What boot may and may not ask
+
+Once RLS is real, a boot-time check cannot read tenant-scoped rows: with no
+`app.tenant_id` a count returns a confident **zero**. The catalogue check used to
+count rows at boot and, on the first boot as `kuwick_app`, reported
+"0 diagnoses and 0 medications" against a database holding 162 and 236.
+
+So boot asks only what RLS cannot filter — do the catalogue **tables** exist —
+and the per-clinic question ("does THIS clinic hold a usable catalogue?") is
+answered on the authenticated session, where a tenant exists. `/health` stays
+unauthenticated and deployment-level; `scripts/smoke-catalogue.mjs` signs in.
+
+**Boot-time checks must never use request-scoped infrastructure.** The
+tenant-scoped Prisma client throwing "Tenant context not set" outside a request
+is correct behaviour; anything at boot uses `withSystemConnection` instead.

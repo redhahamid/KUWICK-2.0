@@ -1,6 +1,8 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { assertNotSuperuser } from './core/prisma.service';
+import { withSystemConnection } from './core/system-db';
 
 /**
  * G4.5-STAGING — CORS is configurable, and unchanged when it is not configured.
@@ -23,6 +25,25 @@ function corsOptions(): Parameters<Awaited<ReturnType<typeof NestFactory.create>
 }
 
 async function bootstrap() {
+  // PHASE 0 — BEFORE Nest, and on its own connection.
+  //
+  // Row-level security does not apply to a superuser or to a role with
+  // BYPASSRLS, so if the application connects as either then tenant isolation
+  // and every append-only guarantee in the schema are unenforced. This refuses
+  // to start rather than warning: a warning here means one clinic's patient
+  // data is reachable from another and nobody finds out.
+  //
+  // Deliberately here and not in `PrismaService.onModuleInit`. That was tried
+  // and it killed the process: the Prisma client is extended with a
+  // tenant-scoping hook that rejects any query outside a request, and a raw
+  // query on the service still goes through it. A boot check has no business on
+  // the request path — see `withSystemConnection`.
+  await withSystemConnection((query) =>
+    assertNotSuperuser(
+      (sql) => query(sql) as Promise<Array<{ rolsuper: boolean; rolbypassrls: boolean; rolname: string }>>,
+    ),
+  );
+
   const app = await NestFactory.create(AppModule);
   app.enableCors(corsOptions());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

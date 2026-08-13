@@ -2,6 +2,7 @@ import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/co
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../core/prisma.service';
+import { CatalogueHealth, assessCatalogue } from '../core/catalogue-health';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { PlatformLoginDto } from './dto/platform-login.dto';
@@ -118,6 +119,30 @@ export class AuthService {
     return this.finalizeTenantLogin(matches[0], matches[0].tenant);
   }
 
+  /**
+   * Is THIS clinic's catalogue usable? Scoped to the tenant, which is the only
+   * scope in which the question means anything.
+   */
+  private async catalogueHealthForTenant(tenantId: string): Promise<CatalogueHealth | null> {
+    // NULL, never a throw. This is a diagnostic, and a diagnostic that can deny
+    // a doctor their sign-in is worse than the problem it reports — login is the
+    // front door to the entire clinical record. Same rule as the boot check: it
+    // says what it can and gets out of the way. `null` means "not determined",
+    // which the browser must not render as "empty".
+    try {
+      const [diagnoses, medications] = await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+        return Promise.all([
+          tx.diagnosisCatalog.count({ where: { tenantId } }),
+          tx.item.count({ where: { tenantId, category: 'Medication' } }),
+        ]);
+      });
+      return assessCatalogue({ diagnoses, medications });
+    } catch {
+      return null;
+    }
+  }
+
   // Original slug-scoped path (D-034), kept as the disambiguation fallback.
   private async loginWithSlug(slug: string, email: string, password: string) {
     const tenant = await this.prisma.$transaction(async (tx) => {
@@ -211,6 +236,19 @@ export class AuthService {
         roles: assignedRoles,
       },
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
+      // PHASE 0 — the per-CLINIC catalogue answer, on the first authenticated
+      // request, because this is the first moment a tenant exists.
+      //
+      // It used to be reported at BOOT from a cross-tenant count, which was only
+      // ever right because the app connected as a superuser: under real RLS that
+      // count is a confident ZERO. Worse, the wording said "this CLINIC holds
+      // only N" from a number that described the whole database — reassuring and
+      // wrong in both directions on a multi-clinic deployment.
+      //
+      // An empty catalogue means this clinic's doctors cannot record a diagnosis
+      // or prescribe anything, so the browser is told at sign-in rather than
+      // finding out when a search box answers nothing.
+      catalogue: await this.catalogueHealthForTenant(tenant.id),
     };
   }
 

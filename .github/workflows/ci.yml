@@ -54,32 +54,26 @@ jobs:
       # cheapest place to find out.
       - name: Provision the NON-SUPERUSER application role
         # PHASE 0. The postgres image makes POSTGRES_USER a superuser, and RLS
-        # does not apply to one — so until now CI proved nothing about tenant
+        # does not apply to one — so before this, CI proved nothing about tenant
         # isolation or about any append-only table. Migrations still run as the
         # owner (they create objects); the APPLICATION connects as this role.
-        run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-          DO $$ BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='kuwick_app') THEN
-              CREATE ROLE kuwick_app LOGIN PASSWORD 'apppass' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
-            END IF;
-          END $$;
-          GRANT USAGE ON SCHEMA public TO kuwick_app;
-          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO kuwick_app;
-          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO kuwick_app;
-          SQL
+        #
+        # One SQL file, shared with the Railway runbook, run with `psql -f`. It
+        # was an inline heredoc for one push and that push turned CI red: the
+        # `SQL` terminator was indented inside a YAML block scalar, which never
+        # terminates a `<<'SQL'`. A file has no quoting or indentation to get
+        # wrong, and no second copy to drift.
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f prisma/provision-app-role.sql
+        working-directory: apps/api
       - name: Apply migrations
         run: npx prisma migrate deploy
         working-directory: apps/api
       - name: Grant the application role on the migrated schema
-        run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO kuwick_app;
-          GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO kuwick_app;
-          -- TRUNCATE is deliberately NOT granted: it is a separate privilege
-          -- that RLS does not filter, and for a non-superuser the absence is
-          -- itself a guarantee.
-          SQL
+        # Re-run after migrations: ALTER DEFAULT PRIVILEGES covers tables a
+        # FUTURE migration creates, not ones created by the migration that just
+        # ran in the same session.
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f prisma/provision-app-role.sql
+        working-directory: apps/api
       - name: API typecheck
         run: npx tsc --noEmit -p tsconfig.json
         working-directory: apps/api
@@ -135,32 +129,26 @@ jobs:
         working-directory: apps/api
       - name: Provision the NON-SUPERUSER application role
         # PHASE 0. The postgres image makes POSTGRES_USER a superuser, and RLS
-        # does not apply to one — so until now CI proved nothing about tenant
+        # does not apply to one — so before this, CI proved nothing about tenant
         # isolation or about any append-only table. Migrations still run as the
         # owner (they create objects); the APPLICATION connects as this role.
-        run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-          DO $$ BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='kuwick_app') THEN
-              CREATE ROLE kuwick_app LOGIN PASSWORD 'apppass' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
-            END IF;
-          END $$;
-          GRANT USAGE ON SCHEMA public TO kuwick_app;
-          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO kuwick_app;
-          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO kuwick_app;
-          SQL
+        #
+        # One SQL file, shared with the Railway runbook, run with `psql -f`. It
+        # was an inline heredoc for one push and that push turned CI red: the
+        # `SQL` terminator was indented inside a YAML block scalar, which never
+        # terminates a `<<'SQL'`. A file has no quoting or indentation to get
+        # wrong, and no second copy to drift.
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f prisma/provision-app-role.sql
+        working-directory: apps/api
       - name: Apply migrations
         run: npx prisma migrate deploy
         working-directory: apps/api
       - name: Grant the application role on the migrated schema
-        run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO kuwick_app;
-          GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO kuwick_app;
-          -- TRUNCATE is deliberately NOT granted: it is a separate privilege
-          -- that RLS does not filter, and for a non-superuser the absence is
-          -- itself a guarantee.
-          SQL
+        # Re-run after migrations: ALTER DEFAULT PRIVILEGES covers tables a
+        # FUTURE migration creates, not ones created by the migration that just
+        # ran in the same session.
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f prisma/provision-app-role.sql
+        working-directory: apps/api
       # Two steps on purpose. The staging seed is the only script in the repo
       # that brings an EMPTY database up to a working clinic, and it is
       # maintained for UAT; seed-e2e adds only what the golden path asserts on
@@ -205,19 +193,13 @@ jobs:
       # up and migrated before the web build is served, and a failed start
       # should surface here rather than inside a test timeout.
       - name: Start API
-        # NOT yet pointed at kuwick_app. The role exists and is granted above,
-        # but the application cannot currently BOOT as a non-superuser: a
-        # boot-time clinical-catalogue count runs through the tenant-scoped
-        # client with no tenant context, and RLS bypass was hiding it. Measured,
-        # not assumed — `Tenant context not set` on startup.
-        #
-        # So the flag below is set DELIBERATELY and temporarily, and it makes the
-        # current state loud rather than silent: the boot assertion logs that
-        # isolation is unenforced on every start. Fix the boot query, delete the
-        # flag, and switch DATABASE_URL to kuwick_app — the assertion will then
-        # keep it that way.
+        # AS THE APPLICATION ROLE. This is the line that makes row-level
+        # security real: as the owner (a superuser) every policy in the schema
+        # was inert. `assertNotSuperuser` runs in main.ts before Nest starts and
+        # REFUSES to boot as a superuser, so a regression here fails this job
+        # rather than quietly disabling tenant isolation again.
         env:
-          KUWICK_ALLOW_SUPERUSER_DB: 'yes'
+          DATABASE_URL: postgresql://kuwick_app:apppass@127.0.0.1:5432/kuwick_dev?schema=public
         run: |
           node dist/main > "$RUNNER_TEMP/api.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/api.pid"
@@ -241,6 +223,12 @@ jobs:
       # broken clinic: no diagnosis can be recorded and nothing prescribed.
       # /health reports it; this fails the build on it.
       - name: Smoke — the clinical catalogue is loaded
+        # Signs in, because "does THIS clinic have a catalogue" is a per-tenant
+        # question and there is no tenant on /health. It read /health's counts
+        # until Phase 0, which worked only while the app was a superuser: under
+        # real RLS that count is a confident zero.
+        env:
+          SMOKE_EMAIL: frontdesk@uat.kuwick.invalid
         run: node scripts/smoke-catalogue.mjs http://localhost:3000
 
       # Every spec in e2e/, not just the golden path — the name said otherwise
