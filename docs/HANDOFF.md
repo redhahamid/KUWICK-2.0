@@ -68,7 +68,7 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 
 | | |
 |---|---|
-| Last green | **1159 frontend / 1292 backend**, both typechecks clean |
+| Last green | **1159 frontend / 1383 backend**, both typechecks clean |
 | Golden path | **GREEN, both variants, front door to COMPLETED** |
 | CI | **GREEN — including the e2e job, for the first time ever** (see below) |
 | Migrations | 68, no drift |
@@ -522,6 +522,49 @@ when it is unset — so local and CI are unchanged and need no new variable.
 confident ZERO, not an error. The catalogue check now asks whether the TABLES
 exist (RLS cannot filter metadata) and the per-clinic count moved to the
 authenticated session. `scripts/smoke-catalogue.mjs` signs in to ask it.
+
+## PHASE 1G — **SEED DONE, UI NOT.** Read this before planning 1G.
+
+**DONE and merged:**
+- `src/clinical/standard-prescription-seed.ts` + `prisma/seed-standard-prescriptions.ts`
+  (`npm run seed:standard-rx`), wired into CI **after** the reference
+  catalogues — these defaults are FKs into them, and seeding first writes nulls
+  that look like "this medicine has no defaults".
+- **226 of 236** medicines seeded: 81 CURATED (full regimen), 145 FORM-DERIVED
+  (route + unit only). The 10 with nothing are arm slings, soaps, a spacer
+  chamber, rinse bottles and a tumbler — correctly not medicines.
+- `docs/seed-review/standard-prescriptions.csv` — one row per medicine, every
+  field, the BASIS, and why anything was left blank. **The owner is a doctor;
+  every row is a clinical claim and this is how it gets audited.**
+- 91 tests, weighted toward restraint.
+
+**THE RULE, which any future edit must keep:** an unrecognised drug gets NO
+dose. Curated = the conventional adult regimen is unambiguous. Everything else
+gets unit + route from the clinic's own naming prefixes and nothing more.
+Paediatric syrups/suspensions get no dose amount — that is the calculator's.
+
+**Reading the CSV found three gaps the summary counts hid**, which is the
+argument for keeping it: `[PREORDER] ` defeated every anchored form rule (12
+medicines with no route); the staging seed's plainly-named medicines matched
+nothing, including the golden path's own `Paracetamol 500mg`; and "PLASTER" is
+a patch. **Re-read the CSV after any change to the mapping.**
+
+The seeder skips a clinic-edited row and NAMES it (`defaultsFromSeed` marks
+what it wrote). Verified by hand-editing one and re-running.
+
+**STILL TO DO in 1G — screens only, the API and data are ready:**
+1. **Settings UI for catalogs 1A–1E.** One section per catalogue, SYSTEM rows
+   rendered LOCKED, "Add custom" per catalogue. `/reference-catalogs/:catalog`
+   is complete and tested, including `?includeRetired=true` so Settings can
+   offer bringing a retired row back. The API already refuses SYSTEM edits with
+   wording that says what to do instead — the UI should not re-derive that rule,
+   just render the lock and surface the refusal.
+2. **Inventory medicine form** — a "Standard Prescription (default)" section
+   with the seven 1F fields, all optional, referencing the catalogues. Needed so
+   the owner can correct any CSV row and so future medicines can carry defaults.
+   Editing affects FUTURE prescriptions only; a prescription copies its values
+   when written, so nothing retroactive is possible by construction — say so in
+   the UI.
 
 ## b1+b2 PACKAGE — WHAT IS LEFT (next session starts here)
 
