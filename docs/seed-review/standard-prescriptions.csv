@@ -1,0 +1,237 @@
+medicine,code,group,basis,dose_amount,dose_unit,frequency,duration,consumption_method,action,note
+A-CERUMEN EAR DROP,,,FORM,,Drop,,,EAR DROP (TITIS TELINGA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+ALOCLAIR PLUS SPRAY 15ML,,ULSER MULUT,FORM,,Puff,,,ORAL TOPICAL (SPRAY TEKAK),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+APIPRO AQUA KIDS THROAT SPRAY - 20ML,,SAKIT TEKAK,FORM,,Puff,,,ORAL TOPICAL (SPRAY TEKAK),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+ARM SLING ADULT,,,NONE,,,,,,no defaults,Not a medicine — no prescription defaults
+ARM SLING CHILD,,,NONE,,,,,,no defaults,Not a medicine — no prescription defaults
+Amoxicillin 500mg,AMX500,,CURATED,1,Capsule,TDS,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+BETADINE SORE THROAT SPRAY - 50ML,,SAKIT TEKAK,FORM,,Puff,,,ORAL TOPICAL (SPRAY TEKAK),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+BIOFLOR 250MG SACHET (PROBIOTIC),,PROBIOTIK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+C. CELECOXIB 200MG (RABIROX),,ANALGESIA/TAHAN SAKIT,CURATED,1,Capsule,OD,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+C. CEPHALEXIN 250MG (DYNAPHARM),,ANTIBIOTIK,CURATED,1,Capsule,QID,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+C. CLOXACILIN 250MG,,ANTIBIOTIK,CURATED,1,Capsule,QID,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+C. DOXYCYCLINE 100MG (HOVID),,ANTIBIOTIK,CURATED,1,Capsule,BD,7 DAY,ORAL (MAKAN/MINUM),set (curated),
+C. FUKOLE 150MG (FLUCONAZOLE),,ANTIFUNGAL,CURATED,1,Capsule,STAT,1 DAY,ORAL (MAKAN/MINUM),set (curated),STAT — auto-compute deliberately skipped
+C. LOPERAMIDE 2MG (LORAMIDE),,CIRIT-BIRIT,CURATED,1,Capsule,PRN,3 DAY,ORAL (MAKAN/MINUM),set (curated),PRN — auto-compute deliberately skipped
+C. OSELTAMIVIR 75MG (FLUHALT),,ANTIVIRAL,CURATED,1,Capsule,BD,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+C. TRAMADOL 50MG (ACUGESIC),,ANALGESIA/TAHAN SAKIT,CURATED,1,Capsule,TDS,3 DAY,ORAL (MAKAN/MINUM),set (curated),
+C. ZINCOFER (HAEMATINIC),,VIT TAMBAH DARAH MERAH,CURATED,1,Capsule,OD,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+CHILDREN ILIADIN DROP 0.025% 10ML,,SELSEMA,FORM,,Drop,,,NASAL DROP (TITIS HIDUNG),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+CLOTRIMAZOLE PESSARY (USP),,ANTIFUNGAL,CURATED,1,Suppository,ON,6 DAY,PER VAGINAL (MELALUI VAGINA),set (curated),
+CR. ACYCLOVIR (VIREST) 5G,,ANTIVIRAL,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+CR. AQUADIN (AQUEOUS) 100G,,JANGKITAN KULIT,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+CR. AQUEOUS 100G (WINWA),,JANGKITAN KULIT,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+CR. BURN AID 25G (DERMOPLAX),,,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+CR. CLOBETASOL (UNIVATE) 0.05%,,ANTI RADANG,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+CR. CLOTRIMAZOLE + BECLOMETHASONE (CANDID B) 15G,,"ANTI RADANG, ANTIFUNGAL",FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+CR. ECONAZOLE (ECONAZINE) 1% 10GM,,ANTIFUNGAL,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+CR. FLANIL ANAGESIC 30G,,SAKIT OTOT / SENDI,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+CR. FUSIDIC + HYDROCORT (FUCIDIN H LEO) 15G,,ANTIBIOTIK,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+CR. FUSIDIC ACID (DEFUZIN) 15G,,ANTIBIOTIK,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+CR. FUSIDIC ACID + BETAMETHASONE 0.064% (FOBANCORT) 15G,,ANTIBIOTIK,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+CR. HYDROCORTISONE 1% (XEPACORT) 15G,,ANTI-RADANG,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+CR. MICONAZOLE + HYDROCORTISONE (ZARICORT) 15G,,ANTIFUNGAL,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+CR. NEOMYCIN + BETAMETHASONE (UNIFLEX-N) 15G,,JANGKITAN KULIT,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+CR. SALICYLIC (ELLGY PLUS CORNS AND WARTS) 10ML,,WART / KETUAT,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+CR. TRETINON (TRETINON),,JERAWAT,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+Cetirizine 10mg,CTZ10,,CURATED,1,Tablet,ON,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+DERMOPLEX CALAMINE LOTION 120ML,,ALAHAN/GATAL/SELSEMA,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+DICLOFENAC GEL (VOREN PLUS GEL) 20G,,ANALGESIA/TAHAN SAKIT,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+EAR DROP CLOTRIMAZOLE+ GLYCOL (CANDID),,ANTIFUNGAL,FORM,,Drop,,,EAR DROP (TITIS TELINGA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+EAR DROP DEXA+NEOMYCIN (DEXTRACIN) 5ML,,ANTIBIOTIK,FORM,,Drop,,,EAR DROP (TITIS TELINGA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+EAR DROP OFLOXACIN 0.3% (EFFEXIN) 5ML,,ANTIBIOTIK,FORM,,Drop,,,EAR DROP (TITIS TELINGA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+EAR WAX SOFTENER (SOLUWAX) 10ML,,,FORM,,Drop,,,EAR DROP (TITIS TELINGA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+ESFLURBIPROFEN 40MG PATCH (LOCOA),,ANALGESIA/TAHAN SAKIT,FORM,,Application,,,PATCH/TRANSDERMAL (TAMPAL),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+EVIN RINSE SACHET PACKET (REFILL),,,NONE,,,,,,no defaults,Not a medicine — no prescription defaults
+EVIN SINUS RINSE BOTTLE WITH SACHET,,,NONE,,,,,,no defaults,Not a medicine — no prescription defaults
+EYE DROP ALCON NATURALE II (ARTIFICIAL TEARS)- 15ML,,,FORM,,Drop,,,EYE DROP (TITIS MATA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+EYE DROP ALLERGO-COMOD,,GATAL MATA,FORM,,Drop,,,EYE DROP (TITIS MATA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+EYE DROP CIPROFLOXACIN (CIPMAX),,ANTIBIOTIK,FORM,,Drop,,,EYE DROP (TITIS MATA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+EYE OINT. GENTAMICIN SULFATE,,ANTIBIOTIK,FORM,,Application,,,EYE DROP (TITIS MATA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+FLUIMUCIL 100MG SACHET,,CAIR KAHAK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+FLUIMUCIL 200MG SACHET,,CAIR KAHAK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+FLUIMUCIL A 600MG SOLUBLE,,CAIR KAHAK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+FREE GIFT TUMBLER FOR GOOGLE REVIEW,,,NONE,,,,,,no defaults,Not a medicine — no prescription defaults
+GEL. AVERA LIQUID ORAL 10G,,ULSER MULUT,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+GENTAMICIN SULPHATE 0.3% EYE DROPS 5ML,,ANTIBIOTIK,FORM,,Drop,,,EYE DROP (TITIS MATA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+GLYCERIN ENEMA (PRIME) 10ML,,,FORM,,Millilitre,,,PER RECTAL (MELALUI DUBUR),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+GLYCERIN ENEMA (PRIME) 20ML,,,FORM,,Millilitre,,,PER RECTAL (MELALUI DUBUR),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IM. ADRENALINE 1MG/ML,,,FORM,,Millilitre,,,INTRAMUSCULAR–IM (SUNTIK OTOT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IM. ATT,,,FORM,,Millilitre,,,INTRAMUSCULAR–IM (SUNTIK OTOT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IM. DICLOFENAC (ANALPAN/VOREN) 75MG *NOT IV MEDS,,TAHAN SAKIT,FORM,,Millilitre,,,INTRAMUSCULAR–IM (SUNTIK OTOT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IM. DTAP-IPV-HEPB-HIB VACCINE (HEXAXIM) 0.5ML,,,FORM,,Millilitre,,,INTRAMUSCULAR–IM (SUNTIK OTOT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IM. HEPATITIS B VACCINE (ENGERIX B) 20MCG,,,FORM,,Millilitre,,,INTRAMUSCULAR–IM (SUNTIK OTOT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IM. INFLUENZA VACCINE (INFLUVAC) 0.5ML,,,FORM,,Millilitre,,,INTRAMUSCULAR–IM (SUNTIK OTOT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IM. MEDROXYPROGESTERONE ACETATE (DEPO-PROVERA) 150MG,,,FORM,,Millilitre,,,INTRAMUSCULAR–IM (SUNTIK OTOT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IM. MENINGOCOCCAL VACCINE (NIMENRIX) 0.5ML,,,FORM,,Millilitre,,,INTRAMUSCULAR–IM (SUNTIK OTOT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IM. PNEUMOCOCCAL VACCINE (PNEUMOVAX) 0.5ML,,,FORM,,Millilitre,,,INTRAMUSCULAR–IM (SUNTIK OTOT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IM. PNEUMOCOCCAL VACCINE (PREVENAR) 0.5ML,,,FORM,,Millilitre,,,INTRAMUSCULAR–IM (SUNTIK OTOT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IM. SHINCORT 40MG/ML,,,FORM,,Millilitre,,,INTRAMUSCULAR–IM (SUNTIK OTOT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IM. TYPHIM VACCINE 0.5ML (TYPHOID),,,FORM,,Millilitre,,,INTRAMUSCULAR–IM (SUNTIK OTOT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+INFANT ILIADIN DROP PF 0.01% - 5ML,,SELSEMA,FORM,,Drop,,,NASAL DROP (TITIS HIDUNG),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+INHALER FLUTICASONE 125MCG (FLOHALE),,ASMA (LELAH),CURATED,2,Puff,BD,1 MONTH,INHALE (SEDUT),set (curated),
+INHALER SALBUTAMOL (SALTAMOL),,ASMA (LELAH),CURATED,2,Puff,PRN,,INHALE (SEDUT),set (curated),"Reliever — PRN, no course length"
+INHALER SYMBICORT (160/4.5mcg) (RAPIHALER),,ASMA (LELAH),CURATED,2,Puff,BD,1 MONTH,INHALE (SEDUT),set (curated),
+IV. CEFTRIAXONE (CEF-3) 1G,,ANTIBIOTIK,FORM,,Millilitre,,,INTRAVENOUS–IV (SUNTIK VENA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IV. HYDROCORTISONE 100MG,,ANTI RADANG,FORM,,Millilitre,,,INTRAVENOUS–IV (SUNTIK VENA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IV. PANTOPRAZOLE (PANTOCID) 40MG,,GASTRIK,FORM,,Millilitre,,,INTRAVENOUS–IV (SUNTIK VENA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IV. PCM 1% W/V 100ML,,ANALGESIA/TAHAN SAKIT,FORM,,Millilitre,,,INTRAVENOUS–IV (SUNTIK VENA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IV. TROVITE 5ML,,VITAMIN (SUPPLEMENT),FORM,,Millilitre,,,INTRAVENOUS–IV (SUNTIK VENA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IV/IM FUROSEMIDE (SUOPINCHON) 20MG/2ML,,,FORM,,Millilitre,,,INTRAVENOUS–IV (SUNTIK VENA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IV/IM KETOROLAC TROMETHAMINE (XEVOLAC) 30MG/1ML,,ANALGESIA/TAHAN SAKIT,FORM,,Millilitre,,,INTRAVENOUS–IV (SUNTIK VENA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IV/IM PARECOXIB SODIUM (PANAXIB) 40MG,,TAHAN SAKIT,FORM,,Millilitre,,,INTRAVENOUS–IV (SUNTIK VENA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IV/IM. CHLORPHENIRAMINE (PIRIMAT)10MG/ML,,ALAHAN/GATAL/SELSEMA,FORM,,Millilitre,,,INTRAVENOUS–IV (SUNTIK VENA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IV/IM. HYOSCINE (BUSCOPAN) 20 MG,,,FORM,,Millilitre,,,INTRAVENOUS–IV (SUNTIK VENA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IV/IM. METOCLOPRAMIDE 10MG/2ML (MAXOLON),,TAHAN MUNTAH / LOYA,FORM,,Millilitre,,,INTRAVENOUS–IV (SUNTIK VENA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IV/IM. PROCHLORPERAZINE 12.5MG/1ML (PREMETIL),,,FORM,,Millilitre,,,INTRAVENOUS–IV (SUNTIK VENA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+IV/IM. TRAMADOL 50MG (ACUGESIC),,TAHAN SAKIT,FORM,,Millilitre,,,INTRAVENOUS–IV (SUNTIK VENA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+Ibuprofen 400mg,IBU400,,CURATED,1,Tablet,TDS,3 DAY,ORAL (MAKAN/MINUM),set (curated),
+KETOPROFEN PLASTER 30MG (KETOTOP),,ANALGESIA/TAHAN SAKIT,FORM,,Application,,,PATCH/TRANSDERMAL (TAMPAL),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+KIDS THROAT SPRAY (TRAZESIL) 20ML,,SAKIT TEKAK,FORM,,Puff,,,ORAL TOPICAL (SPRAY TEKAK),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+LOTION CLINDAMYCIN 30ML (T3 MYCIN),,JERAWAT,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+LOTION PERMETHRIN (A-SCABS),,SCABIES/KUDIS BUTA,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+LOZENGES STREPSILS SOOTHING (HONEY LEMON),,SAKIT TEKAK,CURATED,1,Lozenge,PRN,3 DAY,BUCCAL (DALAM MULUT),set (curated),
+LOZENGES THROATSIL (MENTHOL),,SAKIT TEKAK,CURATED,1,Lozenge,PRN,3 DAY,BUCCAL (DALAM MULUT),set (curated),
+LOZENGES THROATSIL (WILD BERRIES & ORANGES),,SAKIT TEKAK,CURATED,1,Lozenge,PRN,3 DAY,BUCCAL (DALAM MULUT),set (curated),
+MONTELUKAST 4MG PACKED SACHET (ASPIRA),,ASMA (LELAH),FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+NASAL SPRAY BABY (STERIMAR) 50ML,,SELSEMA,FORM,,Puff,,,NASAL SPRAY (SEMBUR HIDUNG),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+NASAL SPRAY MOMATE (60 DOSES),,RESDUNG / SELSEMA,FORM,,Puff,,,NASAL SPRAY (SEMBUR HIDUNG),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+NASAL SPRAY OXYNASE 0.05% 15ML,,RESDUNG / SELSEMA,FORM,,Puff,,,NASAL SPRAY (SEMBUR HIDUNG),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+NEILMED RINSE SACHET PACKET (REFILL),,,NONE,,,,,,no defaults,Not a medicine — no prescription defaults
+NEILMED SINUS RINSE BOTTLE WITH SACHET,,,NONE,,,,,,no defaults,Not a medicine — no prescription defaults
+OINT. CHLORAMPHENICOL EYE 5G CMC (CHLOROP),,ANTIBIOTIK,FORM,,Application,,,EYE DROP (TITIS MATA),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+OINT. DOPROCT 10G,,HAEMORRHOID/BUASIR,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+ORAL PASTE DEXAMETHASONE (DEXALTIN),,ULSER MULUT,FORM,,Application,,,ORAL TOPICAL (UBAT DALAM MULUT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+ORAL ROTAVIRUS VACCINE (ROTARIX) 1.5ML,,,FORM,,Millilitre,,,INTRAMUSCULAR–IM (SUNTIK OTOT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+ORS SACHET,,,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+ORS SYN E JUICE 200ML,,,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+ORS Sachets,ORS01,,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+Omeprazole 20mg,OMP20,,CURATED,1,Tablet,OD,14 DAY,ORAL (MAKAN/MINUM),set (curated),
+PATCH HERBA COUGH (CASH ONLY),,BATUK,FORM,,Application,,,PATCH/TRANSDERMAL (TAMPAL),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+Paracetamol 125mg/5ml Suspension,PCM125S,,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+Paracetamol 500mg,PCM500,,CURATED,2,Tablet,TDS,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+RACETASH INFANT 10MG SACHET (RACECADOTRIL),,CIRIT-BIRIT,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+RAPIDKOOL PATCH (CASH ONLY),,DEMAM,FORM,,Application,,,PATCH/TRANSDERMAL (TAMPAL),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+RYALTRIS NASAL SPRAY 56 DOSES,,RESDUNG / SELSEMA,FORM,,Puff,,,NASAL SPRAY (SEMBUR HIDUNG),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+"S/C. MEASLES, MUMPS & RUBELLA VACCINE (MMR) 0.5ML",,,FORM,,Millilitre,,,SUBCUTANEOUS–SC (SUNTIK BAWAH KULIT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+SACH. DIOCTHDRAL SMECTITE 3G (SMECTA),,CIRIT-BIRIT,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+SOAP BIOSULPHUR,,JANGKITAN KULIT,NONE,,,,,,no defaults,Not a medicine — no prescription defaults
+SOAP OLEDERM,,SABUN PELEMBAB,NONE,,,,,,no defaults,Not a medicine — no prescription defaults
+SPACER CHAMBER FOR INHALER CHILDREN (MEDIHANDS),,,NONE,,,,,,no defaults,Not a medicine — no prescription defaults
+STAT. NITROGLYCERIN SL (GTN),,,CURATED,1,Tablet,PRN,,SUBLINGUAL (BAWAH LIDAH),set (curated),"Emergency use — PRN, no course length"
+STAT. TAB. ASPIRIN 300MG,,,CURATED,1,Tablet,STAT,1 DAY,ORAL (MAKAN/MINUM),set (curated),STAT — auto-compute deliberately skipped
+SUPP DIMENHYDRINATE 50MG (GRAVOL),,TAHAN MUNTAH / LOYA,CURATED,1,Suppository,TDS,3 DAY,PER RECTAL (MELALUI DUBUR),set (curated),
+SUPP HYDROCORT+ BENZOCAINE+ZINC (DOPROCT),,HAEMORRHOID/BUASIR,CURATED,1,Suppository,BD,5 DAY,PER RECTAL (MELALUI DUBUR),set (curated),
+SUPP PCM 125MG,,DEMAM/TAHAN SAKIT,CURATED,1,Suppository,TDS,3 DAY,PER RECTAL (MELALUI DUBUR),set (curated),
+SUPP PCM 250MG,,DEMAM/TAHAN SAKIT,CURATED,1,Suppository,TDS,3 DAY,PER RECTAL (MELALUI DUBUR),set (curated),
+SYP. ACYCLOVIR 200MG/5ML (ZORAX) 120ML,,ANTIVIRAL,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. AUGMENTIN 457MG/5ML 35ML (ORIGINAL),,ANTIBIOTIK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. AZITHROMYCIN 200MG/5ML (ZITHROMAX) 15ML,,ANTIBIOTIK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. AZITHROMYCIN 200MG/5ML (ZYNOMAX) 20ML,,ANTIBIOTIK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. BROMHEXINE 4MG/5ML (AXCEL) 60ML,,"BATUK, CAIR KAHAK",FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. CEFUROXIME 125MG/5ML (AXCEL) 50ML,,ANTIBIOTIK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. CETIRIZINE HCL 1MG/ML,,ALAHAN/GATAL/SELSEMA,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. CHLORPHENIRAMINE 4MG/5ML (ANTAMIN) 60ML,,ALAHAN/GATAL/SELSEMA,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. CO-AMOXICLAV 312MG/5ML (CURAM) 60ML,,ANTIBIOTIK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. COLIMIX (DICYCLOMINE) 90ML,,,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. DESLORATADINE 2.5MG/5ML (DESTACURE) 60ML,,SELSEMA,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. DEXCHLORPHENIRAMINE 1MG/5ML (PAEDICOF) 60ML,,BATUK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. DIMENHYDRINATE (NOVOMIN) 15MG/5ML 60ML,,TAHAN MUNTAH / LOYA,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. DIPHENHYDRAMINE EXPECTORANT (BENADRYL) 90ML,,BATUK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. EVILINE FORTE 100ML (MMT),,GASTRIK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. HEDERA EXTRACT 0.7G/100ML (PROSPAN) 100ML,,BATUK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. HEDERA EXTRACT 35MG/5ML (PROSPAN F) 100ML,,BATUK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. IBUPROFEN 100MG/5ML 100ML,,TAHAN SAKIT,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. LACTULOSE 100ML,,,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. MEBENDAZOLE 500MG/10ML (M-ZOLE) 10ML,,,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. MMT (HOVID) 120ML,,GASTRIK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+"SYP. NYSTATIN 100,000/ML (TYSTATIN) 30ML",,ANTIFUNGAL,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. OSELTAMIVIR (FLUHALT) 60MG/5ML,,ANTIVIRAL,CURATED,1,Capsule,BD,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+SYP. PCM 250MG 100ML (AXCEL),,DEMAM/TAHAN SAKIT,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. POTASSIUM CITRATE 120ML,,KENCING KOTOR,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. PREDNISOLONE 3MG/5ML 60ML,,ANTI RADANG,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. SALMODEX 100ML,,"ASMA (LELAH), BATUK",FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+SYP. SEDILIX-DM LINCTUS 90ML,,BATUK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+T. ALBENDAZOLE (ZENTEL) 200MG,,,CURATED,2,Tablet,STAT,1 DAY,ORAL (MAKAN/MINUM),set (curated),STAT — auto-compute deliberately skipped
+T. ALLOPURINOL 100MG (HOVID),,,CURATED,1,Tablet,OD,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+T. AMLODIPINE (ANLODIN) 10MG,,DARAH TINGGI (HYPERTENSION),CURATED,1,Tablet,OD,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+T. ATORVASTATIN 20MG (CRYSTORVAS),,KURANGKAN CHOLESTEROL,CURATED,1,Tablet,ON,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+T. ATORVASTATIN 20MG (LIPITOR),,KURANGKAN CHOLESTEROL,CURATED,1,Tablet,ON,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+T. AUGMENTIN (CO-AMOXICLAV) 625MG,,ANTIBIOTIK,CURATED,1,Tablet,BD,7 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. AUGMENTIN 625MG (ORIGINAL),,ANTIBIOTIK,CURATED,1,Tablet,BD,7 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. AZITHROMYCIN (AXCEL) 500MG,,ANTIBIOTIK,CURATED,1,Tablet,OD,3 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. BETASERC 24MG,,PENING / MUNTAH,FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+T. BILAXTEN 20MG,,ALAHAN/GATAL/SELSEMA,CURATED,1,Tablet,OD,7 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. BILAXTEN ODT 10MG,,ALAHAN/GATAL/SELSEMA,CURATED,1,Tablet,OD,7 DAY,ORAL (MAKAN/MINUM),set (curated),
+"T. BIONERV (VITAMIN B1,B6, B12 + ALPHA LIPOIC ACID)",,VITAMIN SARAF,CURATED,1,Tablet,OD,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+T. CAPTOPRIL 25MG (APUZIN)- *IN EMERGENCY BOX,,DARAH TINGGI (HYPERTENSION),FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+T. CARBIMAZOLE 5MG (CAMAZOL),,,CURATED,1,Tablet,TDS,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+T. CARICA PAPAYA PROTEOLYTIC ENZYMES (PAPAIN),,SURUT BENGKAK,FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+T. CEFUROXIME 250MG (XYLID),,ANTIBIOTIK,CURATED,1,Tablet,BD,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. CETIRIZINE 10MG,,ALAHAN/GATAL/SELSEMA,CURATED,1,Tablet,ON,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. CHARCOAL (DYNA),,CIRIT-BIRIT,CURATED,2,Tablet,TDS,3 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. CHLORPHENIRAMINE 4MG (AXCEL),,ALAHAN/GATAL/SELSEMA,CURATED,1,Tablet,TDS,3 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. CIPROFLOXACIN (CIPRICIN) 500MG,,ANTIBIOTIK,CURATED,1,Tablet,BD,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. CLARITHROMYCIN 250MG,,ANTIBIOTIK,CURATED,1,Tablet,BD,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. CLOPERASTINE HCL 10MG (COPASTIN),,BATUK,CURATED,1,Tablet,TDS,3 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. COLCHICINE 0.6MG (GOUTNOR),,,CURATED,1,Tablet,BD,3 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. DAPGLFZIN+ MTF 10/1000 (XIGDUO),,KENCING MANIS (DIABETES),FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+T. DAPGLFZIN+ MTF 10/500 (XIGDUO),,KENCING MANIS (DIABETES),FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+T. DEXAMETHASONE 0.75MG (DECAN),,ANTI-RADANG,CURATED,1,Tablet,BD,3 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. DICLOFENAC 50MG (VOREN),,ANALGESIA/TAHAN SAKIT,CURATED,1,Tablet,BD,3 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. DIOSMIN/HESPERIDIN 500MG (AVEFLON),,HAEMORRHOID/BUASIR,FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+T. DULCOLAX 5MG (BISACODYL),,,CURATED,1,Tablet,ON,3 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. ERGOTAMINE (CAFFOX),,,FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+T. FOLIC ACID 5MG,,VITAMIN (SUPPLEMENT),CURATED,1,Tablet,OD,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+T. HYOSCINE 10MG (FUCON) - BUSCOPAN,,,CURATED,1,Tablet,TDS,3 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. ITOPRIDE 50MG (GANATON),,GASTRIK,CURATED,1,Tablet,TDS,7 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. MEFENAMIC ACID 500MG (PONTALON),,ANALGESIA/TAHAN SAKIT,CURATED,1,Tablet,TDS,3 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. METFORMIN 500MG,,KENCING MANIS (DIABETES),CURATED,1,Tablet,BD,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+T. METOCLOPRAMIDE 10MG,,TAHAN MUNTAH / LOYA,CURATED,1,Tablet,TDS,3 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. MONTELUKAST 10MG (ALTRA),,ASMA (LELAH),CURATED,1,Tablet,ON,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+T. MUCOCLEAR 30MG,,CAIR KAHAK,CURATED,1,Tablet,TDS,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. MULTIVITAMIN & MINERAL (BLACKMORES KOALAKIDS),,VITAMIN (SUPPLEMENT),FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+T. NAPROXEN 550MG (NORIPHARMA),,ANALGESIA/TAHAN SAKIT,CURATED,1,Tablet,BD,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. NORETHISTERONE 5MG (NORCOLUT),,,CURATED,1,Tablet,TDS,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. PANTOPRAZOLE 40MG (CONPANZOLE),,GASTRIK,CURATED,1,Tablet,OD,14 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. PCM 450MG+ORPHENADRINE CITRATE 35MG (ANAREX),,SAKIT OTOT / SENDI,CURATED,1,Tablet,TDS,3 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. PCM 500MG (AXCEL),,DEMAM/TAHAN SAKIT,CURATED,2,Tablet,TDS,5 DAY,ORAL (MAKAN/MINUM),SKIPPED — edited at this clinic,
+T. PERINDOPRIL 4MG (PROVINACE),,DARAH TINGGI (HYPERTENSION),CURATED,1,Tablet,OD,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+T. PREDNISOLONE 5MG,,ANTI-RADANG,CURATED,1,Tablet,OD,5 DAY,ORAL (MAKAN/MINUM),set (curated),Review for tapering where indicated
+T. ROSUVASTATIN 20MG (SANDOZ),,KURANGKAN CHOLESTEROL,CURATED,1,Tablet,ON,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+T. SINGULAIR CHEWABLE 5MG (MONTELUKAST ORIGINAL),,ASMA (LELAH),FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+T. SULTAMICILLIN 375MG (UNASYN),,ANTIBIOTIK,CURATED,1,Tablet,BD,7 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. TRADOL (TRAMADOL HCI 37.5MG / PCM 325MG),,ANALGESIA/TAHAN SAKIT,CURATED,1,Tablet,TDS,3 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. TRANEXAMIC 250MG (TRANSAMIN),,,CURATED,2,Tablet,TDS,3 DAY,ORAL (MAKAN/MINUM),set (curated),
+T. VIRLESS (ACYCLOVIR) 800MG,,ANTIVIRAL,CURATED,1,Tablet,QID,7 DAY,ORAL (MAKAN/MINUM),set (curated),
+"T. VITAMIN B1, B6, B12 (NEUROBINE)",,VITAMIN SARAF,CURATED,1,Tablet,OD,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+T. YASMIN 3MG,,,FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+T. ZINNAT 250MG (CEFUROXIME ORIGINAL),,ANTIBIOTIK,CURATED,1,Tablet,BD,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+THYMOL GARGLE 60ML (ORAFLAM),,ANTISEPTIK,CURATED,10,Millilitre,TDS,5 DAY,GARGLE (KUMUR),set (curated),
+URAL EFFERVESCENT GRANULES 4G SACHET,,KENCING KOTOR,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+VANICREAM MOISTURISING LOTION 57G,,JANGKITAN KULIT,FORM,,Application,,,TOPICAL (SAPU LUARAN),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+VAPOUR PATCH (BREATHCLOUD) (CASH ONLY),,SELSEMA,FORM,,Application,,,PATCH/TRANSDERMAL (TAMPAL),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] INHALER FOSTER 100/6MCG 120 DOSES,,ASMA (LELAH),CURATED,2,Puff,BD,1 MONTH,INHALE (SEDUT),set (curated),
+[PREORDER] INHALER SERETIDE ACCUHALER 50/250MCG - 60 DOSES,,ASMA (LELAH),CURATED,2,Puff,BD,1 MONTH,INHALE (SEDUT),set (curated),
+[PREORDER] S/C MOUNJARO (TIRZEPATIDE) 10MG INJECTION,,KENCING MANIS (DIABETES),FORM,,Millilitre,,,SUBCUTANEOUS–SC (SUNTIK BAWAH KULIT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] S/C MOUNJARO (TIRZEPATIDE) 2.5MG INJECTION,,KENCING MANIS (DIABETES),FORM,,Millilitre,,,SUBCUTANEOUS–SC (SUNTIK BAWAH KULIT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] S/C MOUNJARO (TIRZEPATIDE) 5MG INJECTION,,KENCING MANIS (DIABETES),FORM,,Millilitre,,,SUBCUTANEOUS–SC (SUNTIK BAWAH KULIT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] S/C MOUNJARO (TIRZEPATIDE) 7.5MG INJECTION,,KENCING MANIS (DIABETES),FORM,,Millilitre,,,SUBCUTANEOUS–SC (SUNTIK BAWAH KULIT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] T. AMLODIPINE+VALSARTAN 10MG/160MG (EXFORGE),,DARAH TINGGI (HYPERTENSION),CURATED,1,Tablet,OD,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+[PREORDER] T. CONCOR 2.5MG (BISOPROLOL FUMARATE),,DARAH TINGGI (HYPERTENSION),FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] T. COVERSYL 10MG 30'S,,DARAH TINGGI (HYPERTENSION),CURATED,1,Tablet,OD,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+[PREORDER] T. COVERSYL PLUS 5MG/1.25MG 30'S,,DARAH TINGGI (HYPERTENSION),CURATED,1,Tablet,OD,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+[PREORDER] T. COZAAR 50MG (LOSARTAN),,DARAH TINGGI (HYPERTENSION),FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] T. CRESTOR 20MG,,KURANGKAN CHOLESTEROL,CURATED,1,Tablet,ON,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+[PREORDER] T. GLICLIZIDE 60MG (DIAMICRON MR),,KENCING MANIS (DIABETES),FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] T. JANUMET 50/1000 MG,,KENCING MANIS (DIABETES),FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] T. JANUMET XR 100/1000MG,,KENCING MANIS (DIABETES),FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] T. JANUVIA 100MG (SITAGLIPTIN),,KENCING MANIS (DIABETES),FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] T. MICARDIS 40MG (TELMISARTAN),,DARAH TINGGI (HYPERTENSION),FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] T. PERINDPRIL+INDAPMDE+AMLO 5/1.25/5MG (TRIPLIXAM),,DARAH TINGGI (HYPERTENSION),FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] T. PLAVIX 75MG,,,FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] T. SINGULAIR 10MG (MONTELUKAST ORIGINAL),,ASMA (LELAH),CURATED,1,Tablet,ON,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
+[PREORDER] T. TWYNSTA 40/10MG,,DARAH TINGGI (HYPERTENSION),FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] T. TWYNSTA 40/5MG,,DARAH TINGGI (HYPERTENSION),FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] T. TWYNSTA 80/10MG,,DARAH TINGGI (HYPERTENSION),FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+[PREORDER] T. VYTORIN 10/20MG,,KURANGKAN CHOLESTEROL,FORM,,Tablet,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed

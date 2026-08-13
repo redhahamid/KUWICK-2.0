@@ -176,6 +176,13 @@ jobs:
       - name: Seed the prescription reference catalogues
         run: npm run seed:reference --workspace=apps/api
 
+      # PHASE 1G — each medicine's standard prescription, so the prescribing
+      # form opens filled. Ordered after the reference catalogues on purpose:
+      # these defaults are FOREIGN KEYS into them, and seeding first would
+      # write nulls that look like "this medicine has no defaults".
+      - name: Seed the standard prescriptions
+        run: npm run seed:standard-rx --workspace=apps/api
+
       - name: Build API
         run: npm run build
         working-directory: apps/api
