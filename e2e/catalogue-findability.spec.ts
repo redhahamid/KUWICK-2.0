@@ -150,12 +150,11 @@ const CATALOGUES: CatalogueCase[] = [
     field: 'the clinic\'s Malay group tag',
     surfaces: [
       {
-        name: 'Canvas — Add medication',
+        name: 'Canvas — the rail\'s medicine search box',
         layout: 'canvas',
-        reach: async (page) => {
-          await page.getByRole('button', { name: /add medication/i }).first().click();
-          return page.getByLabel('Search medicine').first();
-        },
+        // Always visible: b1 removed the button that used to stand in front
+        // of it, so there is nothing to click first.
+        reach: async (page) => page.getByRole('combobox', { name: 'Add medicine' }).first(),
       },
       {
         name: 'Flow — Medications section (filters in the BROWSER)',
@@ -231,8 +230,7 @@ test('a term that matches nothing says so, rather than rendering silence', async
   await page.getByLabel('Search diagnosis').first().fill('zzzqqq');
   await expect(page.getByText(/No diagnosis matches/i)).toBeVisible();
 
-  await page.getByRole('button', { name: /add medication/i }).first().click();
-  const medicine = page.getByLabel('Search medicine').first();
+  const medicine = page.getByRole('combobox', { name: 'Add medicine' }).first();
   await medicine.click();
   await medicine.fill('zzzqqq');
   await expect(page.getByText('No match. Check the spelling, or search by code.')).toBeVisible();

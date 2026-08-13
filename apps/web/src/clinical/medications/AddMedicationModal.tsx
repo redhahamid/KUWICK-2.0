@@ -18,7 +18,7 @@ import { CreatePrescriptionDto, DosageCalcMethod, PrescriptionSupplyMode } from 
 import { Item } from '../../inventory/types';
 import { AllergyStrip } from './AllergyStrip';
 import { DosageCalculator } from './DosageCalculator';
-import { defaultsFromItem, medicineSearchDetail, stockAdvice } from './prescribing';
+import { defaultsFromItem, itemOnHand, medicineSearchDetail, stockAdvice } from './prescribing';
 
 const { Text } = Typography;
 
@@ -57,8 +57,24 @@ export interface AddMedicationModalProps {
   open: boolean;
   visitId: string;
   onClose: () => void;
-  /** Focused on close — usually the Add Medication button. */
+  /** Focused on close — usually the rail's medicine search box. */
   restoreFocusTo?: () => HTMLElement | null;
+  /**
+   * b1 — the medicine already chosen in the rail's search box.
+   *
+   * When present the form has NO search field of its own: the drug is the
+   * modal's title, with its price and stock beside it. Two search boxes onto
+   * one decision is the attachments defect in a different costume — the doctor
+   * has already said which medicine, and being asked again invites a second,
+   * different answer.
+   */
+  medicine?: Item;
+  /**
+   * Called instead of onClose when the doctor chose "Add & Add Another", so the
+   * parent can put the cursor back in the rail's search box. The next
+   * medication starts by typing, which is the whole point of search-first.
+   */
+  onAddAnother?: () => void;
 }
 
 interface FormState {
@@ -87,7 +103,14 @@ const EMPTY: FormState = {
   remark: '',
 };
 
-export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: AddMedicationModalProps) {
+export function AddMedicationModal({
+  open,
+  visitId,
+  onClose,
+  restoreFocusTo,
+  medicine,
+  onAddAnother,
+}: AddMedicationModalProps) {
   const createPrescription = useCreatePrescription(visitId);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [error, setError] = useState<string | null>(null);
@@ -128,15 +151,21 @@ export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: A
     setForm((current) => ({ ...current, [key]: value }));
 
   useEffect(() => {
-    if (open) {
-      setForm(EMPTY);
-      setError(null);
-      setLastAdded(null);
-      setSelectedItem(undefined);
-      setPrefilled(false);
-      setCalcMethod(undefined);
-    }
-  }, [open]);
+    if (!open) return;
+    setForm(EMPTY);
+    setError(null);
+    setLastAdded(null);
+    setSelectedItem(undefined);
+    setPrefilled(false);
+    setCalcMethod(undefined);
+    // b1 — the medicine came from the rail's search box, so the form opens
+    // already filled from the item master rather than asking again. The item
+    // is passed in whole, so this needs no request: the row the doctor just
+    // read carried the price, the stock and the dosing type.
+    if (medicine) applyPickedMedicine(medicine);
+    // applyPickedMedicine is stable (useCallback with no deps that change).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, medicine?.id]);
 
   /**
    * Bounded, server-side. The catalogue is never pulled into the browser to be
@@ -193,6 +222,53 @@ export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: A
     }
   }, []);
 
+  /**
+   * b1 — apply an item the caller already holds. No request: the rail's search
+   * row carried the whole medicine, and asking the server for what is already
+   * in hand is a spinner in front of a form that could have opened filled.
+   *
+   * Shares `defaultsFromItem` with the search-inside-the-modal path, so the two
+   * cannot disagree about what a prefill means.
+   */
+  const applyPickedMedicine = useCallback((item: Item) => {
+    const label = item.code ? `${item.code} — ${item.name}` : item.name;
+    const defaults = defaultsFromItem(item);
+    setSelectedItem(item);
+    setForm((current) => ({
+      ...current,
+      itemId: item.id,
+      itemLabel: label,
+      amount: defaults.amount ?? current.amount,
+      unit: defaults.unit ?? current.unit,
+      frequency: defaults.frequency ?? current.frequency,
+      durationDays: defaults.durationDays ?? current.durationDays,
+      quantity: defaults.quantity ?? current.quantity,
+      indication: defaults.indication ?? current.indication,
+      remark: defaults.remark ?? current.remark,
+    }));
+    setPrefilled(Object.keys(defaults).length > 0);
+  }, []);
+
+  /**
+   * What the locked title says underneath: the price the clinic charges and
+   * what is on the shelf — the two facts the doctor was reading in the search
+   * row a moment ago, kept in front of them while they set the dose.
+   *
+   * "Stock unknown" is stated rather than left out, for the same reason it is
+   * on the search row: an absent stock line reads as "in stock".
+   */
+  const lockedMedicineFacts = useMemo(() => {
+    if (!medicine) return undefined;
+    const onHand = itemOnHand(medicine);
+    return [
+      `RM ${Number(medicine.sellPrice ?? 0).toFixed(2)}`,
+      onHand === null ? 'stock unknown' : onHand <= 0 ? 'out of stock' : `${onHand} in stock`,
+      medicine.cashOnly ? 'CASH ONLY' : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }, [medicine]);
+
   const canSubmit = useMemo(
     () => Boolean(form.itemId && form.amount && form.frequency.trim() && form.durationDays > 0),
     [form],
@@ -237,9 +313,18 @@ export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: A
     try {
       await createPrescription.mutateAsync(dto);
       if (thenAddAnother) {
+        const added = form.itemLabel ?? 'Medication';
+        // b1 — when the medicine came from the RAIL, the next one has to start
+        // there too. The parent closes this form and puts the cursor back in
+        // the rail's box; keeping the form open on a drug that has already been
+        // added would leave a filled form for a finished prescription.
+        if (onAddAnother) {
+          message.success(`${added} added — search for the next one`);
+          onAddAnother();
+          return;
+        }
         // Only the FORM is cleared. The visit, the list behind the modal and
         // every other piece of state stay exactly as they were.
-        const added = form.itemLabel ?? 'Medication';
         setForm(EMPTY);
         setLastAdded(added);
         setSearchKey((key) => key + 1);
@@ -262,8 +347,16 @@ export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: A
   return (
     <KuwickModal
       open={open}
-      title="Add medication"
-      subtitle="One medication at a time. The visit's medication list stays behind this window."
+      // b1 — the DRUG is the title when it was chosen in the rail. A modal
+      // headed "Add medication" while a specific medicine is being prescribed
+      // makes the doctor look for confirmation of which one; the title is the
+      // confirmation.
+      title={medicine ? (medicine.code ? `${medicine.code} — ${medicine.name}` : medicine.name) : 'Add medication'}
+      subtitle={
+        medicine
+          ? lockedMedicineFacts
+          : "One medication at a time. The visit's medication list stays behind this window."
+      }
       size="medium"
       dirty={dirty}
       loading={createPrescription.isPending}
@@ -316,6 +409,11 @@ export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: A
         />
       )}
 
+      {/* b1 — NO search field when the medicine came from the rail. The drug is
+          the title; a second box onto the same decision invites a second,
+          different answer. The prefill notice stays, because a prefill the
+          doctor cannot see is a prefill they cannot check. */}
+      {!medicine && (
       <KuwickFormSection title="Medicine">
         <div ref={searchWrapRef}>
           <KuwickSearchSelect
@@ -333,15 +431,17 @@ export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: A
             emptyHint="Type at least one character to search the medicine list."
           />
         </div>
-        {/* A prefill the doctor cannot see is a prefill they cannot check.
-            Said plainly, once, rather than marking six fields individually. */}
-        {prefilled && (
-          <Text type="secondary" style={{ fontSize: 12 }} role="status" data-prefilled="true">
-            Dose, frequency and supply below were filled from the medicine list — check and change them for this
-            patient.
-          </Text>
-        )}
       </KuwickFormSection>
+      )}
+
+      {/* A prefill the doctor cannot see is a prefill they cannot check.
+          Said plainly, once, rather than marking six fields individually. */}
+      {prefilled && (
+        <Text type="secondary" style={{ fontSize: 12 }} role="status" data-prefilled="true">
+          Dose, frequency and supply below were filled from the medicine list — check and change them for this
+          patient.
+        </Text>
+      )}
 
       <KuwickFormSection title="Dose">
         <Row gutter={[12, 8]}>

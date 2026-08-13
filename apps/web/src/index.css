@@ -1131,6 +1131,35 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   margin-bottom: 6px;
 }
 
+/* b1 — the medications rail's add control is now a search box plus Copy
+   Previous, on one line. The box GROWS and the button does not: the box is
+   where every prescription starts, and a fixed-width search field on a rail
+   that changes width with the viewport is a field that stops fitting a drug
+   name. `min-width: 0` because a flex item will not shrink below its content
+   without it, which is what pushes a rail into a horizontal scroll. */
+/* Scoped by the panel's own data attribute, which RailPanel already sets —
+   cheaper than threading a className through it for one panel. */
+.kw-rail-panel[data-panel='Medications'] .kw-rail-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Wrap, so Copy Previous drops BELOW the box on a narrow rail instead of
+     taking width from it. See the min-width below for why wrap alone is not
+     enough — this is the same trap as the Vitals card title under A0. */
+  flex-wrap: wrap;
+}
+
+/* A0's viewport sweep caught this box at 118px wide at 1366 — a search field
+   too narrow to read a drug name in, which is the whole job.
+   `flex-wrap` alone changed nothing, exactly as it did not for the Vitals
+   title: a flex item SHRINKS to its minimum before its row agrees to wrap. The
+   `min-width` is what refuses to shrink and so forces the wrap; `flex-basis`
+   keeps it greedy when there IS room. */
+.kw-medicine-search {
+  flex: 1 1 200px;
+  min-width: 180px;
+}
+
 .kw-rail-body {
   display: flex;
   flex-direction: column;

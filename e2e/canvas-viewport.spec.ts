@@ -89,7 +89,9 @@ for (const viewport of VIEWPORTS) {
     const columns: Array<[string, ReturnType<Page['locator']>]> = [
       ['visits rail', page.getByTestId('canvas-visit-today')],
       ['middle — the clinical note', page.locator('.ProseMirror, [contenteditable="true"]').first()],
-      ['right rail — medications', page.getByRole('button', { name: /add medication/i }).first()],
+      // b1 — the rail's key control is the medicine SEARCH BOX now; the
+      // "Add Medication" button it replaced was a door in front of it.
+      ['right rail — medicine search', page.getByRole('combobox', { name: 'Add medicine' }).first()],
     ];
     for (const [label, locator] of columns) {
       await expect(locator, `${label} is not visible at ${viewport.width}px`).toBeVisible();
@@ -255,8 +257,9 @@ test('the medicine box finds a medicine by the clinic Malay group — Canvas AND
   await page.reload();
 
   // ---- CANVAS: the search-first box in the medications rail ---------------
-  await page.getByRole('button', { name: /add medication/i }).first().click();
-  const canvasBox = page.getByLabel('Search medicine').first();
+  // No click first: b1 put the box in the rail, always visible, and typing is
+  // the first act. A click here would have been the defect it removed.
+  const canvasBox = page.getByRole('combobox', { name: 'Add medicine' }).first();
   await expect(canvasBox).toBeVisible();
   await canvasBox.click();
   await canvasBox.fill('batuk');
@@ -285,7 +288,6 @@ test('the medicine box finds a medicine by the clinic Malay group — Canvas AND
   await expect(page.getByText('No match. Check the spelling, or search by code.')).toBeVisible();
 
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: /^cancel$/i }).first().click();
 
   // ---- FLOW: the other surface, which filters in the browser -------------
   await page.evaluate(() => {

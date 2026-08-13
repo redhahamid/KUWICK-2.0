@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Button, Drawer, Dropdown, Space, Tag, Tooltip, Typography, message } from 'antd';
-import { ExperimentOutlined, MoreOutlined } from '@ant-design/icons';
+import { MoreOutlined } from '@ant-design/icons';
 import {
   useCancelPrescription,
   useDispensePrescription,
@@ -20,6 +20,8 @@ import { MedicationsTab } from '../MedicationsTab';
 import { AllergyStrip } from '../medications/AllergyStrip';
 import { useVisit } from '../hooks/useVisits';
 import { AddMedicationModal } from '../medications/AddMedicationModal';
+import { MedicineSearchBox } from '../medications/MedicineSearchBox';
+import { Item } from '../../inventory/types';
 import { Prescription } from '../types';
 import { ApiError } from '../../core/api-client';
 import { RailPanel } from './RailPanel';
@@ -65,6 +67,11 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
   // wrong shape for it.
   const [addingMedication, setAddingMedication] = useState(false);
   const [prescribing, setPrescribing] = useState(false);
+  // The medicine chosen in the rail's search box, handed to the form whole so
+  // it can lock the title and show price and stock without a second request.
+  const [pickedMedicine, setPickedMedicine] = useState<Item | undefined>();
+  // Bumped to put the cursor back in the search box after Add & Add Another.
+  const [searchFocus, setSearchFocus] = useState(0);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const { data: prescriptions, isLoading, error } = usePrescriptions(visitId);
   // C1/D-091 — the visit query only. The allergy strip needs the patient, and
@@ -128,20 +135,27 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
         emptyText="No medications prescribed for this visit"
         previewLimit={5}
         addControl={
-          <Space size={6} wrap>
-            <Button
-              ref={addButtonRef}
-              type="primary"
-              icon={<ExperimentOutlined />}
-              onClick={() => setAddingMedication(true)}
-            >
-              Add Medication
-            </Button>
+          /* b1 — SEARCH-FIRST. "Add Medication" was a button whose only job was
+             to reveal a search box, so every prescription began with a click
+             that decided nothing. The box is here now, always visible, and
+             typing is the first act. Choosing a result opens the pre-filled
+             form with the drug locked as its title. */
+          <div className="kw-rail-add">
+            <MedicineSearchBox
+              onPick={(item) => {
+                setPickedMedicine(item);
+                setAddingMedication(true);
+              }}
+              focusSignal={searchFocus}
+              disabled={Boolean(visit?.checkOutAt)}
+            />
             {/* Copy Previous stays deliberate and re-runs the current
                 allergy and prescribing checks — it lives inside the same
                 prescribing surface rather than being a one-click shortcut. */}
-            <Button onClick={() => setPrescribing(true)}>Copy Previous</Button>
-          </Space>
+            <Button ref={addButtonRef} onClick={() => setPrescribing(true)}>
+              Copy Previous
+            </Button>
+          </div>
         }
         items={list.map((prescription) => {
           const strength = strengthOf(prescription);
@@ -276,7 +290,19 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
       <AddMedicationModal
         open={addingMedication}
         visitId={visitId}
-        onClose={() => setAddingMedication(false)}
+        medicine={pickedMedicine}
+        onClose={() => {
+          setAddingMedication(false);
+          setPickedMedicine(undefined);
+        }}
+        // b1 — Add & Add Another returns to the RAIL's box, because that is
+        // where the next medication now starts. Bumping the signal remounts
+        // the box focused, which is also how it clears itself.
+        onAddAnother={() => {
+          setAddingMedication(false);
+          setPickedMedicine(undefined);
+          setSearchFocus((n) => n + 1);
+        }}
         restoreFocusTo={() => addButtonRef.current}
       />
 
