@@ -7,20 +7,51 @@
 were genuinely green; that branch is retired — do not push to it again.
 
 **ONE working branch off current master**, currently
-`claude/kuwick-2-0-scope-c8h2op`. Per-unit pushes go there and only there
-(no dual-pushing). **Owner rule 2026-08-12: every unit that goes green in
+`claude/kuwick-2-0-session-opener-bfumia`. Per-unit pushes go there and only
+there (no dual-pushing). **Owner rule 2026-08-12: every unit that goes green in
 Actions is merged into master in the same session** (PR or fast-forward),
 and master must be green in Actions before the next unit begins — the owner
 reviews on the deployed app, which tracks master.
 
+As of 2026-08-13 master and the branch are both at the b1-0 commit, and
+master's own Actions run is green.
+
 ## How to resume
 
+A fresh container has NOTHING installed and NO database. Full sequence:
+
 ```bash
-git fetch origin master claude/kuwick-2-0-scope-c8h2op
-git checkout claude/kuwick-2-0-scope-c8h2op && git merge --ff-only origin/claude/kuwick-2-0-scope-c8h2op
-pg_ctlcluster 16 main start          # container resets stop it
-cd apps/api && npx prisma generate   # stale client after a reset
+npm ci
+pg_ctlcluster 16 main start
+su postgres -c "psql -c \"CREATE ROLE kuwick_dev LOGIN PASSWORD 'devpass' SUPERUSER\""
+su postgres -c "createdb -O kuwick_dev kuwick_dev"
+su postgres -c "createdb -O kuwick_dev kuwick_test"
+# apps/api/.env — only .env.example is committed. Use the CI values, and note
+# the JWT names: JWT_ACCESS_SECRET / JWT_REFRESH_SECRET, never JWT_SECRET.
+cd apps/api && npx prisma generate && npx prisma migrate deploy
 npx prisma migrate status            # must say "up to date"
+
+git fetch origin master claude/kuwick-2-0-session-opener-bfumia
+git checkout claude/kuwick-2-0-session-opener-bfumia
+git merge --ff-only origin/claude/kuwick-2-0-session-opener-bfumia
+```
+
+To run Playwright locally (worth it — it caught two real defects this
+session that the unit suites could not see):
+
+```bash
+cd apps/api
+KUWICK_ALLOW_FIXTURES=yes KUWICK_STAGING_SEED=yes STAGING_SEED_PASSWORD='DevLocal!2026' \
+  npx tsx prisma/seed-staging-uat.ts
+npx tsx prisma/seed-e2e.ts
+cd ../.. && npm run seed:catalogues --workspace=apps/api
+(cd apps/api && npm run build) && (cd apps/web && VITE_API_BASE_URL=http://localhost:3000 npm run build)
+(cd apps/api && KUWICK_ALLOW_FIXTURES=yes nohup node dist/main >/tmp/api.log 2>&1 &)
+(cd apps/web && nohup npx vite preview --port 5173 --strictPort >/tmp/web.log 2>&1 &)
+node scripts/wait-for.mjs http://localhost:3000/health http://localhost:5173
+# From the REPO ROOT — run it inside apps/web and Playwright collects the
+# vitest files and dies with "No tests found".
+CHROME_PATH=/opt/pw-browsers/chromium E2E_PASSWORD='DevLocal!2026' npx playwright test
 ```
 
 Suites: `cd apps/web && npx vitest run` · `cd apps/api && npx jest --silent`.
