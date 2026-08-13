@@ -167,3 +167,48 @@ export function stockAdvice(
   }
   return { position: 'SUFFICIENT', onHand, message: `${onHand} in stock.` };
 }
+
+// ---------------------------------------------------------------------------
+// b1 — WHAT THE MEDICINE SEARCH ROW SAYS
+// ---------------------------------------------------------------------------
+
+/**
+ * The quantity on hand for this medicine, from the stock levels that travel
+ * with the item.
+ *
+ * `null`, not 0, when there is no stock record: "we have none" and "nobody has
+ * ever counted these" are different facts, and rendering the second as the
+ * first is how a doctor is told a medicine is out when it may be on the shelf.
+ */
+export function itemOnHand(item: Pick<Item, 'stockLevels'>): number | null {
+  const levels = item.stockLevels;
+  if (!levels || levels.length === 0) return null;
+  return levels.reduce((total, level) => total + Number(level.quantityOnHand ?? 0), 0);
+}
+
+/**
+ * The second line of a medicine search row: group · price · stock · CASH ONLY.
+ *
+ * All four are what the clinic actually needs at the moment of choosing, and
+ * three of them were invisible until now — the row said the strength and
+ * nothing else, so "which of these is in stock, and what does it cost" was a
+ * question the doctor could not answer without leaving the consultation.
+ *
+ * CASH ONLY is stated, never applied: the flag is a fact about how the clinic
+ * sells the medicine, and turning it into behaviour (refusing to prescribe it
+ * on a panel visit, say) is a billing decision this list does not get to make.
+ */
+export function medicineSearchDetail(item: Item): string {
+  const parts: string[] = [];
+  if (item.groupTag?.trim()) parts.push(item.groupTag.trim());
+  if (item.strengthMg) parts.push(`${item.strengthMg}mg`);
+  parts.push(`RM ${Number(item.sellPrice ?? 0).toFixed(2)}`);
+
+  const onHand = itemOnHand(item);
+  // The clinic's own words for the shelf, and "unknown" said out loud rather
+  // than left as silence that reads as "in stock".
+  parts.push(onHand === null ? 'stock unknown' : onHand <= 0 ? 'out of stock' : `${onHand} in stock`);
+
+  if (item.cashOnly) parts.push('CASH ONLY');
+  return parts.join(' · ');
+}

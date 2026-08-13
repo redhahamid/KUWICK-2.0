@@ -3,6 +3,7 @@ import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-s
 import { currentTenantId } from '../core/tenant-context';
 import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
+import { itemSearchClauses } from './item-search';
 
 /**
  * The catalogue page size. 20 matches what a search field can usefully show
@@ -43,16 +44,14 @@ export class ItemService {
     return this.prisma.item.findMany({
       where: {
         ...(activeOnly ? { active: true } : {}),
-        ...(term
-          ? {
-              OR: [
-                { name: { contains: term, mode: 'insensitive' as const } },
-                { code: { contains: term, mode: 'insensitive' as const } },
-              ],
-            }
-          : {}),
+        ...(term ? { OR: itemSearchClauses(term) } : {}),
       },
       orderBy: { name: 'asc' },
+      // b1 — the search box shows what is on the shelf, so the row it renders
+      // has to come back with the row it is about. Fetching every stock level
+      // separately to annotate twenty options is the same "download the whole
+      // catalogue" mistake this method was written to fix, one table across.
+      include: { stockLevels: { select: { clinicId: true, quantityOnHand: true, minThreshold: true } } },
       ...(term || take
         ? { take: Math.min(take ?? DEFAULT_CATALOGUE_TAKE, MAX_CATALOGUE_TAKE) }
         : {}),
@@ -60,7 +59,13 @@ export class ItemService {
   }
 
   async findById(id: string) {
-    const item = await this.prisma.item.findUnique({ where: { id } });
+    // b1 — same shape as the search rows. The prescribing form shows price and
+    // stock beside the locked drug name, and it should not need a second
+    // request to say what the list it was picked from already said.
+    const item = await this.prisma.item.findUnique({
+      where: { id },
+      include: { stockLevels: { select: { clinicId: true, quantityOnHand: true, minThreshold: true } } },
+    });
     if (!item) {
       throw new NotFoundException('Item not found');
     }

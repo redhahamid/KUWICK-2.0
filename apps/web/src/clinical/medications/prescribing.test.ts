@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   bracketForAgeMonths,
   defaultsFromItem,
+  itemOnHand,
+  medicineSearchDetail,
   stockAdvice,
   supportsWeightBasedDosing,
   weightBasedDose,
@@ -202,5 +204,81 @@ describe('what the doctor is told about stock', () => {
   it('21. says nothing at all before a medicine is chosen', () => {
     expect(stockAdvice(undefined, 5, [level()]).message).toBeNull();
     expect(stockAdvice('item-1', 5, undefined).message).toBeNull();
+  });
+});
+
+// ===========================================================================
+// b1 — WHAT THE MEDICINE SEARCH ROW SAYS
+//
+// This is the "seeded is not findable" family again, one catalogue across. 181
+// of the clinic's 236 medicines carry a Malay group tag (BATUK, DEMAM,
+// ANTIBIOTIK — 42 of them), the search matched name and code only, and the
+// row it drew said the strength and nothing else. So a doctor could neither
+// find a medicine by the word the clinic files it under, nor see its price or
+// whether it was on the shelf.
+// ===========================================================================
+
+describe('the medicine search row', () => {
+  it('22. leads with the clinic\'s own group, because that is what staff read', () => {
+    const detail = medicineSearchDetail(item({ groupTag: 'BATUK', sellPrice: '33.00' }));
+    expect(detail.startsWith('BATUK')).toBe(true);
+  });
+
+  it('23. states the price as money, always to two places', () => {
+    // "RM 33" and "RM 8.5" are what the raw decimals look like; neither reads
+    // as a price on a row a doctor scans in half a second.
+    expect(medicineSearchDetail(item({ sellPrice: '33' }))).toContain('RM 33.00');
+    expect(medicineSearchDetail(item({ sellPrice: '8.5' }))).toContain('RM 8.50');
+  });
+
+  it('24. states what is on the shelf', () => {
+    const detail = medicineSearchDetail(
+      item({ stockLevels: [{ clinicId: 'c1', quantityOnHand: 39, minThreshold: 10 }] }),
+    );
+    expect(detail).toContain('39 in stock');
+  });
+
+  it('25. adds stock across the clinics that hold it', () => {
+    const detail = medicineSearchDetail(
+      item({
+        stockLevels: [
+          { clinicId: 'c1', quantityOnHand: 20, minThreshold: 0 },
+          { clinicId: 'c2', quantityOnHand: 19, minThreshold: 0 },
+        ],
+      }),
+    );
+    expect(detail).toContain('39 in stock');
+  });
+
+  it('26. "out of stock" and "stock unknown" are DIFFERENT answers', () => {
+    // Nobody has ever counted these, versus we have none. Rendering the first
+    // as the second tells a doctor a medicine is unavailable when it may be
+    // sitting on the shelf; rendering the second as the first is worse.
+    expect(medicineSearchDetail(item({ stockLevels: [] }))).toContain('stock unknown');
+    expect(medicineSearchDetail(item({}))).toContain('stock unknown');
+    expect(
+      medicineSearchDetail(item({ stockLevels: [{ clinicId: 'c1', quantityOnHand: 0, minThreshold: 5 }] })),
+    ).toContain('out of stock');
+  });
+
+  it('27. never renders an unknown stock level as a number', () => {
+    expect(itemOnHand(item({}))).toBeNull();
+    expect(itemOnHand(item({ stockLevels: [] }))).toBeNull();
+    expect(itemOnHand(item({ stockLevels: [{ clinicId: 'c1', quantityOnHand: 0, minThreshold: 0 }] }))).toBe(0);
+  });
+
+  it('28. CASH ONLY is stated on the row', () => {
+    expect(medicineSearchDetail(item({ cashOnly: true }))).toContain('CASH ONLY');
+    expect(medicineSearchDetail(item({ cashOnly: false }))).not.toContain('CASH ONLY');
+  });
+
+  it('29. an untagged medicine simply has no group — no placeholder, no "Uncategorised"', () => {
+    const detail = medicineSearchDetail(item({ groupTag: null, sellPrice: '0.80' }));
+    expect(detail.startsWith('RM 0.80')).toBe(true);
+    expect(detail).not.toMatch(/uncategor|none|n\/a/i);
+  });
+
+  it('30. a blank group tag is treated as no group, not as a blank leading field', () => {
+    expect(medicineSearchDetail(item({ groupTag: '   ', sellPrice: '1.00' })).startsWith('RM 1.00')).toBe(true);
   });
 });

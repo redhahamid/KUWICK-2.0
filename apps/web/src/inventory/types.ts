@@ -25,6 +25,41 @@ export interface Item {
   sellPrice: string;
   cost: string | null;
   active: boolean;
+
+  // ---- KW2-Q3 fields, imported from the clinic's own export --------------
+  //
+  // b1 — the browser has always received these; the type simply did not admit
+  // it, so the medicine search could not show the clinic its own shelf. The
+  // Malay grouping in particular is how staff think about medicines, and it
+  // was invisible to every surface for want of four lines here.
+
+  /** The clinic's own Malay grouping: BATUK, DEMAM, ANTIBIOTIK… */
+  groupTag?: string | null;
+  /** Flagged "(CASH ONLY)" in the source. Shown, never silently applied. */
+  cashOnly?: boolean;
+  /** The name exactly as exported, "##***" and all. */
+  sourceName?: string | null;
+  /** The raw packaging string: "10 BIJI / STRIP", "PLASTIC/6 SACHET". */
+  packDescription?: string | null;
+  /** Parsed only where the pack string starts with a count; else null. */
+  unitsPerPack?: number | null;
+  /** How the prescribing form behaves when this medicine is chosen. */
+  dosingType?: ItemDosingType;
+
+  /**
+   * b1 — stock, travelling WITH the item. The search list has to say what is
+   * on the shelf, and annotating twenty options by downloading every stock
+   * level is the whole-catalogue mistake one table across.
+   */
+  stockLevels?: ItemStockLevel[];
+}
+
+export type ItemDosingType = 'WEIGHT_BASED' | 'AGE_BAND' | 'ADULT_DEFAULT';
+
+export interface ItemStockLevel {
+  clinicId: string;
+  quantityOnHand: number;
+  minThreshold: number;
 }
 
 export interface CreateItemDto {

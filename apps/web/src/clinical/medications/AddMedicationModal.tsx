@@ -18,7 +18,7 @@ import { CreatePrescriptionDto, DosageCalcMethod, PrescriptionSupplyMode } from 
 import { Item } from '../../inventory/types';
 import { AllergyStrip } from './AllergyStrip';
 import { DosageCalculator } from './DosageCalculator';
-import { defaultsFromItem, stockAdvice } from './prescribing';
+import { defaultsFromItem, medicineSearchDetail, stockAdvice } from './prescribing';
 
 const { Text } = Typography;
 
@@ -146,10 +146,14 @@ export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: A
     const items = await apiClient.get<Item[]>(
       `/items?activeOnly=true&take=20&search=${encodeURIComponent(term)}`,
     );
+    // b1 — the row says what the clinic needs in order to choose: the clinic's
+    // own Malay group, the price, and what is on the shelf. It used to say the
+    // strength and nothing else, so "which of these do we have, and what does
+    // it cost" meant leaving the consultation to find out.
     return items.map((item) => ({
       value: item.id,
       label: item.code ? `${item.code} — ${item.name}` : item.name,
-      detail: item.strengthMg ? `${item.strengthMg}mg` : undefined,
+      detail: medicineSearchDetail(item),
     }));
   }, []);
 
@@ -318,7 +322,9 @@ export function AddMedicationModal({ open, visitId, onClose, restoreFocusTo }: A
             key={searchKey}
             id="kw-medication-search"
             ariaLabel="Search medicine"
-            placeholder="Search by name or code…"
+            // b1 — the placeholder names the group, because the group is what
+            // staff type and what used to match nothing at all.
+            placeholder="Search by name, code or group (e.g. batuk)…"
             value={form.itemId}
             autoFocus
             onSearch={searchItems}

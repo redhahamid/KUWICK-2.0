@@ -252,6 +252,93 @@ state, with a sanity case so a broken path cannot make it vacuous), and
 real PNG, exactly one region, one label, one chip, and the region's box does
 not overlap the editor's).
 
+## b1-0 — THE MEDICINE BOX CAN FIND THE CLINIC'S OWN SHELF — **DONE**
+
+The first slice of b1, and it is the diagnosis outage again one catalogue
+across. **181 of this clinic's 236 medicines carry a Malay `groupTag`** —
+BATUK, DEMAM, ANTIBIOTIK, ANALGESIA/TAHAN SAKIT, 42 groups in all — and
+nothing looked at that column. Measured against the running server:
+
+| typed | found before | found now |
+|---|---|---|
+| `batuk` | **0** | 9 |
+| `demam` | **0** | 5 |
+| `antibiotik` | **0** | 26 |
+
+TWO surfaces were broken in two different ways, which is why fixing one would
+have proved nothing:
+
+- the **server** matched `name` and `code` only. Now `name`, `code`,
+  `groupTag`, `sourceName` — one tested list (`item-search.ts`), deliberately
+  NOT the sentence columns (`remark`/`instruction`/`indication` would put an
+  antihistamine under every cough search).
+- **Flow's** Select never asks the server at all: it loads the catalogue and
+  filters client-side on the option's printed LABEL. A server fix alone leaves
+  Flow exactly as broken. It now filters on the same four columns.
+
+The search ROW also said the strength and nothing else, so "which of these do
+we have, and what does it cost" meant leaving the consultation. It now reads
+`GROUP · strength · RM 0.00 · N in stock · CASH ONLY`. Stock travels WITH the
+item (`include: { stockLevels }`) rather than being annotated from a
+whole-table fetch — the same mistake `findAll` was bounded to fix, one table
+across. **"out of stock" and "stock unknown" are different sentences**; a
+missing stock record is never rendered as zero.
+
+**A design-system defect found on the way:** `KuwickSearchOption.detail` is
+documented as "a quiet second line" and was folded into the `title` attribute
+and nowhere else — a tooltip, which this project already ruled out for the
+upload errors (unreachable on a touch screen, invisible to anyone scanning).
+It renders as a real second line now (`optionLabelProp="text"` keeps the
+closed field plain). Every KuwickSearchSelect gains this, including Add
+Procedure.
+
+Pinned by `item-search.spec.ts` (5), `prescribing.test.ts` 22–30 (the row's
+wording, including the two different stock answers), and
+`canvas-viewport.spec.ts` — "batuk" typed in **Canvas AND Flow**, asserting
+the group, a money-shaped price and a stock phrase in the rendered option, plus
+the component's own no-match sentence verbatim.
+
+## b1 — WHAT IS LEFT (next session starts here)
+
+b1-0 above is done and merged. The rest of the owner's b1 item, in order:
+
+1. **The always-visible inline box.** Replace the rail's "Add Medication"
+   button with `🔍 add medicine…`, always on screen. Selecting a result opens
+   the centred form with **the drug locked as the title** (price + stock beside
+   it) — so the form loses its own search field, and "Add & Add Another"
+   closes it and refocuses the RAIL box. Keep Copy Previous.
+2. **Dosing per `Item.dosingType`** (the enum already exists, every imported
+   row is `ADULT_DEFAULT` because the source carries no dosing data):
+   `WEIGHT_BASED` → calculator using mg/kg × latest Wt; `AGE_BAND` → band
+   picker from DOB (`ItemAgeDosage` exists); `ADULT_DEFAULT` → silent fill or
+   empty. `DosageCalculator` and `prescribing.ts` already hold the maths.
+3. **Keyboard path**, asserted: type → arrows → Enter → Tab → Enter.
+4. **Row fields**: dose, frequency, qty **+ unit (sachet|strip|bottle|box)**,
+   duration, indication, remarks. The qty unit is a NEW column —
+   `Prescription.unit` is the DOSE unit (ml, tablet); the pack unit is
+   `Item.unitOfMeasure` and nothing stores the prescriber's choice.
+5. **TAPERING** — its own unit's worth: per-medicine Standard|Tapering toggle,
+   steps (dose × freq × days), auto total qty, generated Malay label, collapsed
+   row reading "TAPER · N steps", dispensary reading the steps, ONE invoice
+   line. Needs a `prescription_taper_steps` table.
+
+**OPEN QUESTION FOR THE OWNER — the editable `price` on a medication row.**
+Everything else in that list is clinical and was built. Price is not: money in
+this system resolves through one tested pipeline
+(`billing-pricing.ts` — `item.sellPrice`, then a panel-specific override, then
+the panel's inventory markup) and the standing contract is that money moves
+only via `invoice_lines`, with corrections carrying an actor and a reason under
+`billing.corrections`. A prescriber-typed price would be a fourth precedence
+level, decided by whoever happens to be prescribing. So the row **shows** the
+resolved price and does not yet let a doctor change it. Three ways to close
+this, owner's call:
+  (a) it stays read-only on the row; changing what a patient pays is counter
+      work, through the existing discount/correction path (recommended — it is
+      the only option that leaves the money trail intact);
+  (b) the doctor may override it, and the override becomes the top of the
+      pricing precedence, stored on the prescription with actor + timestamp;
+  (c) as (b) but a reason is mandatory, matching `billing.corrections`.
+
 ## MASTER v3 is canonical (owner, 2026-08-13)
 
 Order: **A0 (done)** → b1 medications search-first → b1.5 profile slide-over →

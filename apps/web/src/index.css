@@ -1585,6 +1585,33 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   padding-left: 2px;
 }
 
+/* b1 — the search result's two lines. The name is what is being picked; the
+   detail is what the pick is decided ON (a medicine's group, its price, what
+   is on the shelf), so it is visible text under the name rather than a
+   tooltip nobody on a tablet can reach.
+
+   `line-height` is tightened because two lines have to fit an antd option row
+   without the dropdown scrolling after four results. */
+.kw-search-option {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.35;
+  padding-block: 2px;
+}
+
+.kw-search-option-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--kw-text, #17212b);
+}
+
+/* 12px is the clinical floor and this is a price and a stock count, so it sits
+   on the floor rather than below it. */
+.kw-search-option-detail {
+  font-size: 12px;
+  color: var(--kw-text-secondary, #667085);
+}
+
 /* --- Result card ---------------------------------------------------------- */
 
 /* The number a clinician acts on. Large, with its unit attached rather than

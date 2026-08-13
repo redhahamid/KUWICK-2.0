@@ -235,3 +235,79 @@ for (const layout of ['canvas', 'flow'] as const) {
     });
   });
 }
+
+/**
+ * b1 — THE MEDICINE BOX FINDS THE CLINIC'S OWN SHELF, ON BOTH SURFACES.
+ *
+ * The same defect family as the diagnosis outage above, one catalogue across.
+ * 181 of this clinic's 236 medicines carry a Malay group tag — BATUK, DEMAM,
+ * ANTIBIOTIK, 42 of them — and neither surface looked at that column: the
+ * server matched name and code, and Flow's Select filtered client-side on the
+ * option's printed label. So a doctor typing the word the clinic files a cough
+ * medicine under matched NOTHING, while nine cough medicines sat in stock.
+ *
+ * "batuk" is deliberately a term no spec seeds. It comes from the clinic's own
+ * import, which is the only kind of term that can catch this class.
+ */
+test('the medicine box finds a medicine by the clinic Malay group — Canvas AND Flow', async ({ page }) => {
+  await page.setViewportSize({ width: 1536, height: 864 });
+  await openCanvas(page);
+  await page.reload();
+
+  // ---- CANVAS: the search-first box in the medications rail ---------------
+  await page.getByRole('button', { name: /add medication/i }).first().click();
+  const canvasBox = page.getByLabel('Search medicine').first();
+  await expect(canvasBox).toBeVisible();
+  await canvasBox.click();
+  await canvasBox.fill('batuk');
+
+  const canvasOption = page
+    .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option')
+    .first();
+  await expect(canvasOption).toBeVisible();
+  // The row says what the clinic needs in order to choose: its own group, the
+  // price, and what is on the shelf. Before this it said the strength alone.
+  await expect(canvasOption).toContainText(/BATUK/i);
+  await expect(canvasOption).toContainText(/RM \d+\.\d\d/);
+  await expect(canvasOption).toContainText(/in stock|out of stock|stock unknown/);
+
+  // And a term that matches nothing must SAY so — silence is what made the
+  // diagnosis outage unreportable. This is the search component's own
+  // sentence, asserted verbatim rather than as a loose pattern that a blank
+  // dropdown could also satisfy.
+  await canvasBox.fill('zzzqqq');
+  await expect(page.getByText('No match. Check the spelling, or search by code.')).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: /^cancel$/i }).first().click();
+
+  // ---- FLOW: the other surface, which filters in the browser -------------
+  await page.evaluate(() => {
+    const session = JSON.parse(window.localStorage.getItem('kuwick-auth') ?? '{}');
+    const staffId = session?.state?.staff?.id;
+    window.localStorage.setItem(
+      'kuwick-record-view-layout-v2',
+      JSON.stringify({
+        state: { byStaffId: staffId ? { [staffId]: 'flow' } : {}, anonymous: 'flow' },
+        version: 0,
+      }),
+    );
+  });
+  await page.reload();
+  // Flow's Record View sections are plain labels, not tabs — the same handle
+  // the golden path uses.
+  await page.getByText('Medications', { exact: true }).first().click();
+
+  // antd renders a Select's placeholder as a span, not an input attribute, so
+  // the box is reached the way the golden path reaches it.
+  const flowBox = page.locator('.ant-select').filter({ hasText: 'Search medicine' }).first();
+  await expect(flowBox).toBeVisible();
+  await flowBox.click();
+  // TYPED, not opened-and-scanned: a 236-item antd Select virtualises, so the
+  // row is not in the DOM until the list is narrowed. This is also the only
+  // way the client-side filter under test is exercised at all.
+  await flowBox.locator('input').fill('batuk');
+  await expect(
+    page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option').first(),
+  ).toBeVisible();
+});

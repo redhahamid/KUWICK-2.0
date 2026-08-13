@@ -155,12 +155,30 @@ export function KuwickSearchSelect({
         }}
         notFoundContent={notFound}
         style={{ width: '100%' }}
-        optionLabelProp="label"
+        // b1 — `detail` is a VISIBLE second line, which is what this
+        // component's own interface has always promised ("a quiet second line
+        // — strength, code, category") and never delivered: it was folded into
+        // the `title` attribute and nowhere else. A tooltip is unreachable on
+        // a touch screen and invisible to anyone scanning a list, and the
+        // detail is exactly what the reader is choosing between — a medicine's
+        // group, its price and whether it is on the shelf.
+        //
+        // `optionLabelProp="text"` keeps the CLOSED field showing the plain
+        // name: the rich node belongs in the dropdown, not in the input.
+        optionLabelProp="text"
         options={options.map((option) => ({
           value: option.value,
-          label: option.label,
+          text: option.label,
           disabled: option.disabled,
           title: option.detail ? `${option.label} — ${option.detail}` : option.label,
+          label: option.detail ? (
+            <div className="kw-search-option">
+              <span className="kw-search-option-label">{option.label}</span>
+              <span className="kw-search-option-detail">{option.detail}</span>
+            </div>
+          ) : (
+            option.label
+          ),
         }))}
       />
       {capped && (

@@ -225,10 +225,23 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
             setUnit(undefined);
             setCalcMethod(undefined);
           }}
-          filterOption={(input, option) => (option?.label as string).toLowerCase().includes(input.toLowerCase())}
+          // b1 — matches what the CLINIC files the medicine under, not just
+          // what the option happens to print. This filter read `label` only,
+          // so typing "batuk" found nothing here while 181 of 236 medicines
+          // carry a Malay group tag — the same defect the Canvas box had, on
+          // the other surface. Fixing one and not the other is how the
+          // diagnosis outage survived a green build.
+          filterOption={(input, option) =>
+            String(option?.searchText ?? option?.label ?? '')
+              .toLowerCase()
+              .includes(input.toLowerCase())
+          }
           options={items?.map((item) => ({
             value: item.id,
             label: item.code ? `${item.code} — ${item.name}` : item.name,
+            // Everything the server matches on, so the two surfaces agree
+            // about what is findable.
+            searchText: [item.code, item.name, item.groupTag, item.sourceName].filter(Boolean).join(' '),
           }))}
         />
 
