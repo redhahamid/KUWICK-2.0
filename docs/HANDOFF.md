@@ -68,10 +68,10 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 
 | | |
 |---|---|
-| Last green | **1159 frontend / 1248 backend**, both typechecks clean |
+| Last green | **1159 frontend / 1278 backend**, both typechecks clean |
 | Golden path | **GREEN, both variants, front door to COMPLETED** |
 | CI | **GREEN — including the e2e job, for the first time ever** (see below) |
-| Migrations | 66, no drift |
+| Migrations | 67, no drift |
 | Last commit | see `git log` |
 
 **A fresh container starts with NOTHING installed.** `npm ci`, then create
@@ -404,6 +404,90 @@ this layout, re-run the 1366 case — it is the width that finds these.
 Four E2E specs drove the removed button and now drive the box; the
 catalogue-findability table's Canvas medicine row clicks nothing first, which
 is the property b1 exists for.
+
+## b1 PHASE 1 — PRESCRIPTION REFERENCE DATA — **DATA LAYER DONE, UI NOT**
+
+The owner's combined b1+b2 package has four phases. **Phase 1's data layer is
+done and merged; everything else in that package is NOT started.** Read the
+"what is left" list below before planning.
+
+**DONE (merged, CI green):**
+- migration `20260813120000_prescription_reference_catalogs` — five catalogues
+  (`prescription_frequencies`, `dosage_units`, `consumption_methods`,
+  `indication_presets`, `stock_units`), `CatalogOrigin` SYSTEM|CUSTOM,
+  `DurationUnit` DAY|WEEK|MONTH, and on `items`: the seven 1F default columns,
+  `defaults_from_seed`, `stock_unit_id`, `quantity_per_stock_unit`.
+- seed data in `src/clinical/prescription-reference-seed.ts` (7/12/19/47/13,
+  exactly the owner's lists) and `prisma/seed-reference-catalogs.ts`
+  (`npm run seed:reference`), idempotent, repairing, wired into CI.
+- `ReferenceCatalogService` + `/reference-catalogs/:catalog` — list, create
+  CUSTOM, update CUSTOM, retire/restore. SYSTEM rows refused. 30 tests.
+
+**THREE FINDINGS THAT MUST NOT BE RE-LEARNED:**
+
+1. **RLS DOES NOT MAKE A TABLE APPEND-ONLY IN THIS ENVIRONMENT.** The pattern
+   used by `patient_alerts` — omit the DELETE policy under FORCE RLS — was
+   implemented here, then tested, and **a plain `DELETE` succeeded.** RLS is not
+   applied to a superuser, and the role the app connects as IS a superuser both
+   locally and in CI (the postgres image makes `POSTGRES_USER` one). `REVOKE`
+   does not help, for the same reason it did not help `label_prints`.
+   These five tables use **BEFORE DELETE and BEFORE TRUNCATE triggers**, which
+   fire for every role; `TRUNCATE ... CASCADE` would otherwise walk past a
+   delete trigger. Both verified as superuser.
+   → **OPEN, FOR THE OWNER:** the append-only claims on `patient_alerts` and
+   `label_prints` rest on RLS alone. They are probably not enforced in any
+   environment we run. Not silently rewritten — it is a security-relevant
+   decision whether to add triggers there too, or to provision a non-superuser
+   application role (which would fix all of them at once and is the better fix).
+
+2. **A spec in `src/` importing from `prisma/` moves the whole `dist` tree to
+   `dist/src/`**, which breaks `node dist/main` — i.e. CI's entire e2e job.
+   Seed data lives in `src/` and prisma scripts import from it, never the
+   reverse. `seed-clinic-catalogues.ts` already did it that way.
+
+3. The seeder does NOT take over a CUSTOM row holding a platform key (a clinic
+   may have invented "QDS" first; relabelling it would change dispensed
+   labels). That skip is REPORTED — a seed that says "repaired 6" when it meant
+   7 lies by omission, which is how the diagnosis outage stayed invisible.
+
+## b1+b2 PACKAGE — WHAT IS LEFT (next session starts here)
+
+**Phase 1 remainder:**
+- **Settings UI for 1A–1E**: one section per catalogue, SYSTEM rows rendered as
+  LOCKED, "Add custom" per catalogue. The API is complete and tested — this is
+  screens only. `/reference-catalogs/:catalog?includeRetired=true` exists so
+  Settings can show a retired row in order to offer bringing it back.
+- **1F, the half that is not schema**: editable default fields in the Settings
+  inventory medicine form, and seeded defaults for the 229-medicine catalogue
+  "where obvious". Deliberately NOT guessed here: the columns exist and are
+  nullable, `defaults_from_seed` marks platform-set values, and a medicine with
+  no defaults opens the form EMPTY. Seed only what the imported row already
+  implies (its own `doseDefault`/`frequencyDefault` text where it parses) — do
+  not invent doses for real drugs to make the list look complete.
+- Stock display/deduction respecting `stockUnitId` + `quantityPerStockUnit`.
+  Nothing reads those columns yet, so "X in stock" is unchanged so far.
+
+**Phase 2** — modal rewiring: unit/frequency/consumption-method dropdowns from
+the catalogues, duration as number + DAY/WEEK/MONTH, indication combobox
+matching EITHER language, prefill from 1F, quantity auto-compute
+(dose x timesPerDay x days, WEEK x7, MONTH x30, manual edit stops recalc,
+PRN/STAT skip), and the bilingual label output.
+
+**Phase 3** — `useDismissableModal(isDirty)`: backdrop (**mousedown** target, so
+a text-selection drag ending outside does not close), Esc, X and Cancel all
+dirty-guarded. Shared, because Phase 4, b1.5 and b3 all reuse it. Build it
+BEFORE Phase 4.
+
+**Phase 4 (b2)** — orders/procedures search-first: inline box replacing
+"+ Add Order" (Direct Services keeps its own card — do NOT merge), detail modal
+with room/urgency/instructions for TASK ORDER vs quantity/remark for STANDARD
+SERVICE, task creation in the Tasks tab with PENDING → COMPLETED round-trip,
+and both types auto-pulling into the invoice draft.
+
+Note for Phase 4: `service-search.ts` already matches name, code and category on
+the server, and all three service surfaces agree — that was this session's
+findability unit. Add a row to `e2e/catalogue-findability.spec.ts` for the new
+box when it lands.
 
 ## b1 — WHAT IS LEFT (next session starts here)
 
