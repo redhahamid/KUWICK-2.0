@@ -59,10 +59,24 @@ async function chooseFromSelect(page: Page, label: string, option: string | RegE
  * box, which is what a person reads too.
  */
 async function chooseFromPlaceholderSelect(page: Page, placeholder: string, option: string | RegExp): Promise<void> {
-  await openAndPick(page, page.locator('.ant-select').filter({ hasText: placeholder }).first(), option);
+  const box = page.locator('.ant-select').filter({ hasText: placeholder }).first();
+  await openAndPick(page, box, option, typeof option === 'string' ? option : undefined);
 }
 
-async function openAndPick(page: Page, selectBox: Locator, option: string | RegExp): Promise<void> {
+async function openAndPick(
+  page: Page,
+  selectBox: Locator,
+  option: string | RegExp,
+  /**
+   * Text to TYPE before picking. Not cosmetic: the clinic's real catalogue
+   * holds 229 medicines, and an antd Select renders a virtualised window of
+   * them — the wanted row is simply not in the DOM until the list is
+   * filtered. Opening and scanning worked only while the database held a
+   * handful of demo items, which is the same illusion that hid the empty
+   * staging catalogue. A doctor types; so does this.
+   */
+  searchText?: string,
+): Promise<void> {
   const optionNode = page
     .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option')
     .filter({ hasText: option })
@@ -71,7 +85,10 @@ async function openAndPick(page: Page, selectBox: Locator, option: string | RegE
   await expect(async () => {
     // Only open it if it is not already open — clicking an OPEN antd Select
     // closes it, which is how a naive retry loop ends up toggling forever.
-    if (!(await optionNode.isVisible())) await selectBox.click();
+    if (!(await optionNode.isVisible())) {
+      await selectBox.click();
+      if (searchText) await page.keyboard.type(searchText);
+    }
     await optionNode.click({ timeout: 2_000 });
   }).toPass({ timeout: 30_000 });
 }
@@ -360,6 +377,22 @@ test('golden path — registration through payment, completion and the history r
   // aria-label, not a placeholder — the control is a search combobox.
   const diagnosisSearch = page.getByLabel('Search diagnosis');
   await diagnosisSearch.click();
+
+  // FIRST, a term this spec does NOT seed for itself.
+  //
+  // The guardrail searched only J06.9 — which seed-e2e plants — so it stayed
+  // green for weeks against a staging database holding that one diagnosis and
+  // nothing else. A doctor found the truth by typing "urti" and getting an
+  // empty box. Searching the clinic's OWN catalogue by a doctor's shorthand
+  // is the assertion that would have gone red.
+  await diagnosisSearch.fill('urti');
+  await expect(
+    page
+      .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option')
+      .filter({ hasText: /Acute upper respiratory infection/i })
+      .first(),
+  ).toBeVisible();
+
   await diagnosisSearch.fill(DIAGNOSIS_CODE);
   const diagnosisOption = page
     .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option')

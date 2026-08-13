@@ -13,7 +13,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "start": "node dist/main",
     "start:prod": "prisma migrate deploy && node dist/main",
-    "seed:staging": "tsx prisma/seed-staging-uat.ts"
+    "seed:staging": "tsx prisma/seed-staging-uat.ts",
+    "seed:catalogues": "tsx prisma/seed-clinic-catalogues.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

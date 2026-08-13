@@ -122,6 +122,43 @@ responsibility splits.
 To choose the password rather than have one generated, add
 `STAGING_SEED_PASSWORD=...` to that command. It is printed once either way.
 
+#### The clinical catalogues — SEPARATE, and not optional
+
+`seed:staging` builds the clinic, its staff and a handful of demo medicines.
+It does **not** load the clinic's real catalogues. Run this second:
+
+```bash
+railway run --service kuwick-api \
+  bash -c 'npm run seed:catalogues --workspace=apps/api'
+```
+
+162 diagnoses and 229 medications (with group, price, stock and unit), from
+`apps/api/prisma/seed-data/*.csv`. **Idempotent** — a second run updates and
+inserts nothing, never duplicates, and never deletes a medicine a past
+prescription references. Safe to re-run after every schema change, and it
+must be re-run whenever the database is rebuilt.
+
+**Who can run it:** anyone with Railway access to the `kuwick-api` service —
+today the owner and the collaborator account holding the project. It needs no
+application login and no OWNER role, because it runs *as* the service.
+
+**Why this has its own heading.** Staging ran for weeks holding exactly ONE
+diagnosis — the single code the E2E seed plants for itself — and every suite
+stayed green throughout, because the guardrail only ever searched that one
+code. The failure surfaced when a doctor typed "urti" into the diagnosis box
+and got nothing. Two defences now exist: the API logs
+`CLINICAL CATALOGUE NOT SEEDED` loudly at boot, and `GET /health` reports
+`catalogue: {diagnoses, medications, ok, warning}` — so the state is one curl
+away rather than a discovery made mid-consultation.
+
+Check it any time:
+
+```bash
+curl -s https://<api>.up.railway.app/health
+# {"status":"ok","database":"connected","build":"<sha>",
+#  "catalogue":{"diagnoses":162,"medications":229,"ok":true,"warning":null}}
+```
+
 ### 5. Verify the real URL
 
 ```bash
@@ -177,9 +214,15 @@ volume can be inspected safely and nothing collides.
 
 ## Auto-deploy
 
-Both services watch `clinical-workspace-c2-canvas-ux`. A push to that branch
-redeploys staging. No service is attached to `master`, so nothing here can
-promote to production.
+**Both services watch `master`** (owner decision 2026-08-12; they were
+originally created against `clinical-workspace-c2-canvas-ux`, which is now
+retired). A push to `master` redeploys staging.
+
+BOTH services have to be repointed, not one. `kuwick-web` on the old branch
+with `kuwick-api` on the new one produces the exact symptom that cost an
+owner review: the API behaves as expected while the screen shows an old
+build. `GET /health` names the API's commit and the avatar menu names the
+web bundle's — if the two disagree, the older one is the service to fix.
 
 To pause it: service → **Settings → Source → Disable automatic deploys**.
 

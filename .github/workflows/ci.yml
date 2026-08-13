@@ -125,6 +125,13 @@ jobs:
         run: npx tsx prisma/seed-e2e.ts
         working-directory: apps/api
 
+      # The clinic's REAL catalogues, exactly as staging loads them. Before
+      # this, CI ran against a database holding one diagnosis — the code the
+      # E2E seed plants for itself — so every search-box defect was invisible
+      # here and discoverable only by a doctor on the deployed app.
+      - name: Seed the clinical catalogues
+        run: npm run seed:catalogues --workspace=apps/api
+
       - name: Build API
         run: npm run build
         working-directory: apps/api
@@ -158,6 +165,12 @@ jobs:
       # real login and spends the token before any browser starts.
       - name: Smoke — the specs' account can actually sign in
         run: node scripts/smoke-login.mjs http://localhost:3000
+
+      # A deployed-shaped environment with an empty clinical catalogue is a
+      # broken clinic: no diagnosis can be recorded and nothing prescribed.
+      # /health reports it; this fails the build on it.
+      - name: Smoke — the clinical catalogue is loaded
+        run: node scripts/smoke-catalogue.mjs http://localhost:3000
 
       - name: Golden path
         run: npx playwright test

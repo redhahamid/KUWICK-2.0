@@ -83,6 +83,20 @@ believing a red that shows 0 failed tests, and fix the race if it recurs.
 
 ## Gotchas that have cost real time
 
+- **A green guardrail can be testing an empty clinic.** Staging (and CI, and
+  every local world) held exactly ONE diagnosis for weeks — J06.9, which
+  `seed-e2e` plants for the golden path — because the 162/229 catalogues live
+  in a SEPARATE seed nobody ran outside a dev box. Every suite was green; a
+  doctor typing "urti" found the truth. CI now seeds the real catalogues,
+  `/health` reports `catalogue{diagnoses,medications,ok,warning}`, the API
+  logs `CLINICAL CATALOGUE NOT SEEDED` at boot, and the golden path searches
+  a term it does NOT seed for itself. **Never assert only on data the spec
+  planted.**
+- **A 229-item catalogue is not a 7-item one.** antd Selects virtualise, so
+  "open the list and pick the row" silently stopped working once real data
+  landed — the row is not in the DOM until you type. `openAndPick` types
+  first, like a doctor would.
+
 - **The deployed app is TWO Railway services** (kuwick-api + kuwick-web,
   docs/STAGING_DEPLOYMENT.md), originally created from the retired
   `clinical-workspace-c2-canvas-ux` branch. When "the owner can't see the
