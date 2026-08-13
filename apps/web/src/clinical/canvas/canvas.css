@@ -731,3 +731,42 @@
   font-weight: 600;
   color: #8a6510;
 }
+
+/* ---------------------------------------------------------------------------
+   A0 — CARD HEADERS WRAP RATHER THAN TRUNCATE.
+
+   antd lays a card's title and its `extra` actions on one row and lets the
+   title lose the fight: at 1366px the Vitals & Observations header was
+   clipped to 38px of a 93px title ("Vitals & Obser…" was not even reached —
+   it rendered as a sliver), because Edit and Record New Reading took the
+   width first. Measured, not guessed: e2e/canvas-viewport.spec.ts asserts no
+   element overflows its own box at 1366 and 1536.
+
+   Wrapping is the honest behaviour — the actions drop to a second line and
+   everything stays readable, instead of a heading being silently cut. Scoped
+   to the vitals card by its own data attribute so it applies in BOTH layouts
+   (the panel renders in Canvas and in Flow's notes tab), plus a general rule
+   for canvas cards so the next tight header behaves the same way.
+   ------------------------------------------------------------------------ */
+[data-vitals-mode] > .ant-card-head .ant-card-head-wrapper,
+.kw-canvas2 .ant-card-head .ant-card-head-wrapper {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+[data-vitals-mode] > .ant-card-head .ant-card-head-title,
+.kw-canvas2 .ant-card-head .ant-card-head-title {
+  /* flex-shrink 0 is the load-bearing part. A flex item SHRINKS before its
+     row wraps, so wrapping alone left the title squeezed to 38px of 93;
+     refusing to shrink is what pushes the actions onto their own line. */
+  flex: 1 0 auto;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+[data-vitals-mode] > .ant-card-head .ant-card-extra,
+.kw-canvas2 .ant-card-head .ant-card-extra {
+  margin-inline-start: auto;
+}

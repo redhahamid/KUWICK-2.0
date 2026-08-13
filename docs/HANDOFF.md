@@ -156,7 +156,35 @@ and the custom-diagnosis upsert depends on that, so the later row keeps the
 code it already carries in its name — "Sebaceous cyst (L72.3)". The run
 prints every row it does this to.
 
+## MASTER v3 is canonical (owner, 2026-08-13)
+
+Order: **A0 (done)** → b1 medications search-first → b1.5 profile slide-over →
+b2 orders & services → b3 documents → b4 invoice + completion (**then the
+owner tests the full manual flow**) → b5 patient alerts 2/3+3/3 → A3 platform
+polish → C0 doctor schedules → C1 clinic appointments → B-shell + B1 → C2
+patient PWA → C3 reminders → B2. Merge to master after EVERY green unit.
+
+**REPORT-READINESS CONTRACT** — every unit from now on: state changes write
+who/when/what (+amount/qty/reason); stage transitions are timestamped (they
+ARE the waiting-time and doctor-performance reports); money moves only via
+invoice_lines and discounts/credits with actor+reason; stock only via
+stock_movements with a source reference; documents write a row with
+type/params/serial/actor; appointments write status transitions with source
+and actor. **Nothing in a report may require new data entry at report time.**
+Each unit's report says which points it satisfies.
+
 ## Next session starts here
+
+**A0 RESPONSIVE: DONE** — `e2e/canvas-viewport.spec.ts` asserts, at 1366×768
+and 1536×864: the document does not scroll sideways, NO element overflows its
+own box, and one key control from each of the three columns is visible, wider
+than 120px and fully on screen. It found a real defect on its first run — the
+Vitals card title clipped to 38px of 93 at 1366 — whose fix is the
+non-obvious part: a flex item SHRINKS before its row wraps, so `flex-wrap`
+alone changed nothing; `flex: 1 0 auto` on the title is what moves the
+actions onto their own line. The three-column geometry itself was already
+sound (canvasLayout.ts), which is why no horizontal page scroll ever
+appeared — the symptom was clipped content, not a too-wide page.
 
 **PATIENT ALERTS in progress** (spec below, owner-approved). A2 continues in
 the owner's 2026-08-12 order: alerts → medications search-first → live
