@@ -58,13 +58,13 @@ jobs:
         # isolation or about any append-only table. Migrations still run as the
         # owner (they create objects); the APPLICATION connects as this role.
         #
-        # One SQL file, shared with the Railway runbook, run with `psql -f`. It
-        # was an inline heredoc for one push and that push turned CI red: the
-        # `SQL` terminator was indented inside a YAML block scalar, which never
-        # terminates a `<<'SQL'`. A file has no quoting or indentation to get
-        # wrong, and no second copy to drift.
-        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f prisma/provision-app-role.sql
-        working-directory: apps/api
+        # One SQL file, shared with the Railway runbook, run through node + pg.
+        # This step turned CI red TWICE before it was right: first an inline
+        # heredoc whose terminator was indented inside a YAML block scalar (which
+        # never terminates a `<<'SQL'`), then `psql -f` — and the runner does not
+        # reliably have a psql binary. Node and `pg` are already here because
+        # this repo depends on them.
+        run: node scripts/provision-app-role.mjs
       - name: Apply migrations
         run: npx prisma migrate deploy
         working-directory: apps/api
@@ -72,8 +72,7 @@ jobs:
         # Re-run after migrations: ALTER DEFAULT PRIVILEGES covers tables a
         # FUTURE migration creates, not ones created by the migration that just
         # ran in the same session.
-        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f prisma/provision-app-role.sql
-        working-directory: apps/api
+        run: node scripts/provision-app-role.mjs
       - name: API typecheck
         run: npx tsc --noEmit -p tsconfig.json
         working-directory: apps/api
@@ -133,13 +132,13 @@ jobs:
         # isolation or about any append-only table. Migrations still run as the
         # owner (they create objects); the APPLICATION connects as this role.
         #
-        # One SQL file, shared with the Railway runbook, run with `psql -f`. It
-        # was an inline heredoc for one push and that push turned CI red: the
-        # `SQL` terminator was indented inside a YAML block scalar, which never
-        # terminates a `<<'SQL'`. A file has no quoting or indentation to get
-        # wrong, and no second copy to drift.
-        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f prisma/provision-app-role.sql
-        working-directory: apps/api
+        # One SQL file, shared with the Railway runbook, run through node + pg.
+        # This step turned CI red TWICE before it was right: first an inline
+        # heredoc whose terminator was indented inside a YAML block scalar (which
+        # never terminates a `<<'SQL'`), then `psql -f` — and the runner does not
+        # reliably have a psql binary. Node and `pg` are already here because
+        # this repo depends on them.
+        run: node scripts/provision-app-role.mjs
       - name: Apply migrations
         run: npx prisma migrate deploy
         working-directory: apps/api
@@ -147,8 +146,7 @@ jobs:
         # Re-run after migrations: ALTER DEFAULT PRIVILEGES covers tables a
         # FUTURE migration creates, not ones created by the migration that just
         # ran in the same session.
-        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f prisma/provision-app-role.sql
-        working-directory: apps/api
+        run: node scripts/provision-app-role.mjs
       # Two steps on purpose. The staging seed is the only script in the repo
       # that brings an EMPTY database up to a working clinic, and it is
       # maintained for UAT; seed-e2e adds only what the golden path asserts on

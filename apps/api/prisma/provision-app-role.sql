@@ -13,18 +13,19 @@
 -- until this role existed, every tenant-isolation policy in the schema was
 -- unenforced in CI and locally — measured, not assumed.
 --
--- Run as the database OWNER:
---   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f prisma/provision-app-role.sql
+-- Run as the database OWNER, through the script that owns the password:
+--   APP_ROLE_PASSWORD='…' node scripts/provision-app-role.mjs
 --
--- Override the password with -v app_password='…' (defaults to the CI value,
--- which unlocks nothing but a throwaway container).
+-- Executed by node + `pg`, NOT by psql — deliberately. Two CI runs died at this
+-- step before that was understood: the GitHub runner has node and this repo's
+-- own `pg` dependency, and it does not reliably have a `psql` binary. A
+-- provisioning step that depends on a client this project never otherwise uses
+-- is a step that fails for a reason unrelated to what it is provisioning.
+--
+-- Therefore NO psql meta-commands in this file (`\if`, `\set`, `:'var'`): it
+-- must be executable as plain SQL.
 --
 -- Idempotent: safe to run on every deploy.
-
-\if :{?app_password}
-\else
-  \set app_password 'apppass'
-\endif
 
 DO $$
 BEGIN
@@ -33,8 +34,11 @@ BEGIN
   END IF;
 END $$;
 
--- Separate from CREATE so a re-run rotates the password rather than skipping it.
-ALTER ROLE kuwick_app WITH PASSWORD :'app_password';
+-- The PASSWORD is set separately, by the script that runs this file, because a
+-- password cannot be a bound parameter in `ALTER ROLE` and building the literal
+-- by hand is how an escaping bug becomes an auth bypass. The script asks
+-- PostgreSQL to quote it (`SELECT quote_literal($1)`) and then issues the
+-- statement — so the escaping is done by the database, not by us.
 
 -- And re-assert the flags every run. A role granted SUPERUSER or BYPASSRLS by
 -- hand for one migration, then left that way, is exactly how this guarantee

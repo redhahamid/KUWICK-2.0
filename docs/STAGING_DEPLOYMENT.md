@@ -274,10 +274,18 @@ mean one clinic's patient data is reachable from another with nobody finding out
 One file, the same one CI runs — do not retype the SQL:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
-  -v app_password='<secret>' \
-  -f apps/api/prisma/provision-app-role.sql
+DATABASE_URL='postgresql://<owner>:<pw>@<host>:<port>/<db>' \
+  APP_ROLE_PASSWORD='<secret>' \
+  node scripts/provision-app-role.mjs
 ```
+
+Run through **node + `pg`, not `psql`** — deliberately. This step turned CI red
+twice before it was right: first an inline heredoc whose terminator was indented
+inside a YAML block scalar (which never terminates a `<<'SQL'`), then `psql -f`,
+which the runner has no reliable binary for. Node and `pg` are already present
+because the project depends on them. The script also **verifies the flags after
+writing them** and refuses to report success if the role came out SUPERUSER or
+BYPASSRLS.
 
 It is idempotent, rotates the password on each run, and **re-asserts
 NOSUPERUSER NOBYPASSRLS every time** — a role granted either flag by hand for one
