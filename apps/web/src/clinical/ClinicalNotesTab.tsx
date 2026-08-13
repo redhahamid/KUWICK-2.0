@@ -34,7 +34,7 @@ import {
 import { autosaveLabel, useAutosave } from './hooks/useAutosave';
 import { useBeforeUnloadGuard } from './hooks/useUnsavedGuard';
 import { RichTextEditor } from './RichTextEditor';
-import { VisitAttachmentsPanel } from './VisitAttachmentsPanel';
+import { VisitAttachments } from './VisitAttachments';
 import { VisitObservationsPanel } from './VisitObservationsPanel';
 import { useAuthStore } from '../core/auth-store';
 import {
@@ -582,16 +582,12 @@ export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: Clin
     // happen to leave over: under C2 every diagnosis or medication added
     // subtracted directly from the doctor's typing area.
     <div style={compact ? { display: 'flex', flexDirection: 'column', gap: 4 } : undefined}>
-      {/* D-077 — the Canvas renders its own compact vitals and image strips
-          ABOVE the note, so rendering these here as well printed every vital
-          twice on one screen and gave an empty attachments box a large
-          placeholder. They stay for the Flow layout, which has no strips. */}
-      {!embedded && (
-        <>
-          <VisitObservationsPanel visitId={visitId} compact={compact} />
-          <VisitAttachmentsPanel visitId={visitId} compact={compact} />
-        </>
-      )}
+      {/* D-077 — the Canvas renders its own compact vitals strip ABOVE the
+          note, so rendering the full panel here as well printed every vital
+          twice on one screen. It stays for the Flow layout, which has no
+          strip. Attachments are NOT in this pair any more: they are one
+          component now and it mounts below the editor, in both layouts. */}
+      {!embedded && <VisitObservationsPanel visitId={visitId} compact={compact} />}
 
       <Space wrap style={{ marginBottom: compact ? 6 : 8, width: '100%' }}>
         <Select
@@ -815,6 +811,12 @@ export function ClinicalNotesTab({ visitId, patientId, compact, embedded }: Clin
           editable={!readOnly}
         />
       </Card>
+
+      {/* b0 — attachments sit BELOW the editor and ABOVE the save row, where
+          the approved canvas puts them (PDF p.2) and where they cannot
+          overlap the typing area. One mount, so both layouts get the same
+          region and neither can render it twice. */}
+      <VisitAttachments visitId={visitId} />
 
       <Space style={{ marginTop: compact ? 8 : 16 }} wrap>
         <Button

@@ -49,6 +49,40 @@ export function canRenderAsImage(attachment: AttachmentLike, blobUrl: string | u
   return attachmentKind(attachment) === 'IMAGE' && Boolean(blobUrl);
 }
 
+// ---------------------------------------------------------------------------
+// b0 — the filing tag
+// ---------------------------------------------------------------------------
+
+/**
+ * What KIND of thing an attachment is, in the clinic's filing terms.
+ *
+ * Distinct from `AttachmentKind` above, which is about the BYTES — whether
+ * something can be rendered as a picture. These are different questions and
+ * conflating them is what the stored tag exists to prevent: a referral letter
+ * photographed off a page is `IMAGE` and `LETTER`; a lab result photographed
+ * off an analyser screen is `IMAGE` and `LAB`.
+ */
+export type AttachmentCategory = 'PHOTO' | 'LAB' | 'LETTER';
+
+const CATEGORY_LABELS: Record<AttachmentCategory, string> = {
+  PHOTO: 'photo',
+  LAB: 'lab',
+  LETTER: 'letter',
+};
+
+/**
+ * The word shown on the chip and in the removal dialog.
+ *
+ * Lower case, because it appears mid-sentence ("Filed as photo — click to
+ * change") far more often than as a heading, and an unknown value falls back
+ * to itself rather than to "photo": a tag this build does not recognise must
+ * not silently read as the most common one.
+ */
+export function categoryLabel(category: AttachmentCategory | string | null | undefined): string {
+  if (!category) return 'unfiled';
+  return CATEGORY_LABELS[category as AttachmentCategory] ?? String(category).toLowerCase();
+}
+
 /** Human-readable size. */
 export function formatFileSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return '—';

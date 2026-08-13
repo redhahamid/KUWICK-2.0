@@ -1,6 +1,7 @@
 import { Staff } from '../hr/types';
 import { Clinic, Patient } from '../core/types';
 import { Item } from '../inventory/types';
+import { AttachmentCategory } from './attachmentPresentation';
 
 export type ServiceOrderType = 'STANDARD_SERVICE' | 'TASK_ORDER';
 
@@ -625,6 +626,12 @@ export interface VisitAttachment extends ClinicalRemovalAudit {
   uploadedByStaffId: string | null;
   uploadedBy?: Staff | null;
   createdAt: string;
+  // b0 — the filing tag the chip carries (photo | lab | letter). Stored, not
+  // derived: a referral letter arrives as a photographed page as often as a
+  // PDF, so the MIME type cannot answer this question.
+  category: AttachmentCategory;
+  categorySetByStaffId?: string | null;
+  categorySetAt?: string | null;
 }
 
 // G3a (D-062) — the request body for an audited removal/void. `reason` is

@@ -88,8 +88,105 @@ describe('VisitAttachmentService', () => {
         mimeType: 'image/png',
         fileSize: 1234,
         uploadedByStaffId: 'staff-1',
+        category: 'PHOTO',
       },
     });
+  });
+
+  // b0 — the tag a fresh upload carries is a SUGGESTION from the file type,
+  // and the record says so: nobody is credited with filing it until somebody
+  // actually does. An upload that arrived pre-attributed would make "no
+  // human has classified this yet" unanswerable from the row.
+  it('an uploaded image is suggested as PHOTO, attributed to nobody', async () => {
+    const { service, prisma } = createService();
+    (fileStorage.saveUploadedFile as jest.Mock).mockResolvedValue({ relativePath: 'p' });
+    (prisma.visitAttachment.create as jest.Mock).mockResolvedValue({ id: 'att-1' });
+
+    await withTenant(() => service.create('visit-1', testFile));
+
+    const { data } = (prisma.visitAttachment.create as jest.Mock).mock.calls[0][0];
+    expect(data.category).toBe('PHOTO');
+    expect(data.categorySetByStaffId).toBeUndefined();
+    expect(data.categorySetAt).toBeUndefined();
+  });
+
+  it('an uploaded PDF is suggested as LAB', async () => {
+    const { service, prisma } = createService();
+    (fileStorage.saveUploadedFile as jest.Mock).mockResolvedValue({ relativePath: 'p' });
+    (prisma.visitAttachment.create as jest.Mock).mockResolvedValue({ id: 'att-1' });
+
+    await withTenant(() =>
+      service.create('visit-1', {
+        originalname: 'fbc.pdf',
+        mimetype: 'application/pdf',
+        size: 90,
+        buffer: Buffer.from('%PDF-1.4\n'),
+      } as Express.Multer.File),
+    );
+
+    expect((prisma.visitAttachment.create as jest.Mock).mock.calls[0][0].data.category).toBe('LAB');
+  });
+
+  it('setCategory records the kind, who filed it and when, and bumps the version', async () => {
+    const { service, tx } = createService();
+    tx.visitAttachment.findUnique.mockResolvedValue(SAVED_ATTACHMENT);
+
+    await withTenant(() => service.setCategory('visit-1', 'att-1', 'LETTER'));
+
+    const { data } = tx.visitAttachment.update.mock.calls[0][0];
+    expect(data.category).toBe('LETTER');
+    expect(data.categorySetByStaffId).toBe('staff-1');
+    expect(data.categorySetAt).toBeInstanceOf(Date);
+    expect(data.version).toEqual({ increment: 1 });
+  });
+
+  // The reference canvas files `referral-hosp.jpg` as a LETTER. An image that
+  // could not be re-filed would make that screen unreachable, so this is the
+  // rule the tag exists for — not a hypothetical.
+  it('an image may be filed as a LETTER', async () => {
+    const { service, tx } = createService();
+    tx.visitAttachment.findUnique.mockResolvedValue({ ...SAVED_ATTACHMENT, mimeType: 'image/jpeg' });
+
+    await withTenant(() => service.setCategory('visit-1', 'att-1', 'LETTER'));
+
+    expect(tx.visitAttachment.update.mock.calls[0][0].data.category).toBe('LETTER');
+  });
+
+  it('setCategory leaves the filename, MIME type and uploader alone', async () => {
+    const { service, tx } = createService();
+    tx.visitAttachment.findUnique.mockResolvedValue(SAVED_ATTACHMENT);
+
+    await withTenant(() => service.setCategory('visit-1', 'att-1', 'LAB'));
+
+    const { data } = tx.visitAttachment.update.mock.calls[0][0];
+    for (const field of ['fileName', 'mimeType', 'filePath', 'fileSize', 'uploadedByStaffId', 'recordStatus']) {
+      expect(data).not.toHaveProperty(field);
+    }
+  });
+
+  it('setCategory refuses a stale expectedVersion', async () => {
+    const { service, tx } = createService();
+    tx.visitAttachment.findUnique.mockResolvedValue(SAVED_ATTACHMENT);
+
+    await expect(withTenant(() => service.setCategory('visit-1', 'att-1', 'LAB', 99))).rejects.toThrow(
+      ConflictException,
+    );
+    expect(tx.visitAttachment.update).not.toHaveBeenCalled();
+  });
+
+  it('setCategory refuses a removed attachment', async () => {
+    const { service, tx } = createService();
+    tx.visitAttachment.findUnique.mockResolvedValue({ ...SAVED_ATTACHMENT, recordStatus: 'REMOVED_IN_ERROR' });
+
+    await expect(withTenant(() => service.setCategory('visit-1', 'att-1', 'LAB'))).rejects.toThrow(ConflictException);
+    expect(tx.visitAttachment.update).not.toHaveBeenCalled();
+  });
+
+  it('setCategory refuses an attachment belonging to a different visit', async () => {
+    const { service, tx } = createService();
+    tx.visitAttachment.findUnique.mockResolvedValue({ ...SAVED_ATTACHMENT, visitId: 'other-visit' });
+
+    await expect(withTenant(() => service.setCategory('visit-1', 'att-1', 'LAB'))).rejects.toThrow(NotFoundException);
   });
 
   // C0 (D-051) — the browser used to post uploadedByStaffId in the body. The

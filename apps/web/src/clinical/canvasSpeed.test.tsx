@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { message } from 'antd';
 import { VisitObservationsPanel } from './VisitObservationsPanel';
-import { VisitAttachmentsPanel } from './VisitAttachmentsPanel';
+import { VisitAttachments } from './VisitAttachments';
 import { FOCUS_MODE_CLASS } from './ClinicalNotesTab';
 
 // ===========================================================================
@@ -348,7 +348,7 @@ const renderAttachments = (attachments: unknown[] = []) => {
   get.mockResolvedValue(attachments);
   return render(
     <Harness>
-      <VisitAttachmentsPanel visitId="visit-1" />
+      <VisitAttachments visitId="visit-1" />
     </Harness>,
   );
 };
@@ -391,14 +391,30 @@ describe('several files can be attached at once', () => {
     await waitFor(() => expect(postFile).toHaveBeenCalledTimes(3));
   });
 
-  it('17. each file reports its own result', async () => {
-    postFile.mockResolvedValue({ id: 'a' });
+  it('17. each file reports its own result, per file and as it happens', async () => {
+    // b0 — a batch that succeeds completely now CLEARS its progress list,
+    // because the chips are the confirmation and keeping the list printed
+    // every filename twice. So per-file reporting is asserted where it
+    // matters — mid-batch — by holding the second upload open: the first file
+    // must already read "Uploaded" while the second is still going.
+    let releaseSecond: (value: unknown) => void = () => {};
+    postFile
+      .mockResolvedValueOnce({ id: 'a' })
+      .mockImplementationOnce(() => new Promise((resolve) => (releaseSecond = resolve)));
+
     renderAttachments();
     await screen.findByLabelText('Choose files to attach to this visit');
     await chooseFiles([file('a.png', 'image/png'), file('b.pdf', 'application/pdf')]);
-    await waitFor(() => expect(screen.getAllByText('Uploaded')).toHaveLength(2));
+
+    await waitFor(() => expect(screen.getAllByText('Uploaded')).toHaveLength(1));
+    // Both files are named, each with its own state — not one spinner over
+    // the pair.
     expect(screen.getByText('a.png')).toBeInTheDocument();
     expect(screen.getByText('b.pdf')).toBeInTheDocument();
+
+    releaseSecond({ id: 'b' });
+    // And once nothing is left to explain, the list goes away.
+    await waitFor(() => expect(screen.queryByText('Uploaded')).toBeNull());
   });
 
   it('18. ONE failure does not cancel the others', async () => {
@@ -479,28 +495,35 @@ describe('a PDF presents as a document', () => {
     fileSize: 2048,
     version: 1,
     recordStatus: 'ACTIVE',
+    category: 'LAB',
     createdAt: '2026-08-06T02:00:00.000Z',
     uploadedBy: { fullName: 'Siti Aminah' },
   };
 
-  it('20. it is rendered as a file card, not as an image', async () => {
+  it('20. it is never rendered as an image', async () => {
+    // The one thing that must never happen: an <img> pointed at PDF bytes,
+    // which draws the browser's broken-image glyph inside a clinical record
+    // and reads as "the file is missing".
     renderAttachments([pdf]);
     expect(await screen.findByText('referral-letter.pdf')).toBeInTheDocument();
-    expect(screen.getByLabelText('PDF document')).toBeInTheDocument();
-    // The one thing that must never happen: an <img> pointed at PDF bytes.
     expect(document.querySelector('img[alt="referral-letter.pdf"]')).toBeNull();
   });
 
-  it('21. the row is marked as a PDF for the rest of the page', async () => {
+  it('21. the chip is marked with its filing kind for the rest of the page', async () => {
     const { container } = renderAttachments([pdf]);
     await screen.findByText('referral-letter.pdf');
-    expect(container.querySelector('[data-attachment-kind="PDF"]')).not.toBeNull();
+    expect(container.querySelector('[data-attachment-category="LAB"]')).not.toBeNull();
   });
 
   it('22. its size and uploader still travel with it', async () => {
-    renderAttachments([pdf]);
-    expect(await screen.findByText(/2 KB/)).toBeInTheDocument();
-    expect(screen.getByText(/Siti Aminah/)).toBeInTheDocument();
+    // On the chip's title rather than as a third line of visible text: the
+    // row has to stay one line at 1366px, and size/uploader are what a
+    // reader reaches for, not what they scan.
+    const { container } = renderAttachments([pdf]);
+    await screen.findByText('referral-letter.pdf');
+    const chip = container.querySelector('.kw-attachment-chip');
+    expect(chip?.getAttribute('title')).toContain('2 KB');
+    expect(chip?.getAttribute('title')).toContain('Siti Aminah');
   });
 });
 

@@ -1,12 +1,12 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { AttachmentRecordStatus } from '@prisma/client';
+import { AttachmentRecordStatus, VisitAttachmentCategory } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentStaffId, currentTenantId } from '../core/tenant-context';
 import { saveUploadedFile } from '../core/file-storage';
 import { assertCanVoidClinicalRecord, snapshotOf } from './clinical-authorization';
 import { assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
-import { validateClinicalAttachment } from './attachment-validation';
+import { defaultCategoryFor, validateClinicalAttachment } from './attachment-validation';
 import { VoidClinicalRecordDto } from './dto/void-clinical-record.dto';
 
 // D-044 — free-standing visit-level uploads (photos, scanned results,
@@ -56,7 +56,52 @@ export class VisitAttachmentService {
         mimeType,
         fileSize: file.size,
         uploadedByStaffId,
+        // b0 — the file type SUGGESTS a kind, and a suggestion is not
+        // attributed: `categorySetBy` stays null until a person actually
+        // files it, so "nobody has looked at this yet" stays legible in the
+        // record instead of every upload appearing to be somebody's decision.
+        category: defaultCategoryFor(mimeType),
       },
+    });
+  }
+
+  /**
+   * b0 — re-file an attachment under a different kind.
+   *
+   * This is the only way the tag changes after upload, and it records who and
+   * when: the tag is what a later reader searches the record by, so a lab
+   * result re-tagged as a photo is a change to the record, not to a label.
+   * `version` increments like every other attachment mutation, so a stale
+   * browser cannot overwrite a newer decision.
+   */
+  async setCategory(visitId: string, attachmentId: string, category: VisitAttachmentCategory, expectedVersion?: number) {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
+      await assertMayTouchVisit(tx, visitId, actor);
+
+      const attachment = await tx.visitAttachment.findUnique({ where: { id: attachmentId } });
+      if (!attachment || attachment.visitId !== visitId) {
+        throw new NotFoundException('Attachment not found');
+      }
+      // A removed file is out of the active record; re-filing it would put a
+      // tag on something nobody is looking at and bump its version under the
+      // audit trail that removal wrote.
+      if (attachment.recordStatus === AttachmentRecordStatus.REMOVED_IN_ERROR) {
+        throw new ConflictException('This attachment has been removed from the visit.');
+      }
+      if (expectedVersion !== undefined && expectedVersion !== attachment.version) {
+        throw new ConflictException('This attachment changed since you loaded it. Reload and try again.');
+      }
+
+      return tx.visitAttachment.update({
+        where: { id: attachmentId },
+        data: {
+          category,
+          categorySetByStaffId: actor.id,
+          categorySetAt: new Date(),
+          version: { increment: 1 },
+        },
+      });
     });
   }
 

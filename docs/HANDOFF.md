@@ -36,11 +36,30 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 
 | | |
 |---|---|
-| Last green | **1107 frontend / 1207 backend**, both typechecks clean |
+| Last green | **1140 frontend / 1237 backend**, both typechecks clean |
 | Golden path | **GREEN, both variants, front door to COMPLETED** |
 | CI | **GREEN — including the e2e job, for the first time ever** (see below) |
-| Migrations | 63, no drift |
+| Migrations | 66, no drift |
 | Last commit | see `git log` |
+
+**A fresh container starts with NOTHING installed.** `npm ci`, then create
+`apps/api/.env` (there is only a `.env.example`; use the CI values —
+`kuwick_dev`/`devpass`, and the JWT names `JWT_ACCESS_SECRET` /
+`JWT_REFRESH_SECRET`), then create the role and both databases:
+
+```bash
+npm ci
+su postgres -c "psql -c \"CREATE ROLE kuwick_dev LOGIN PASSWORD 'devpass' SUPERUSER\""
+su postgres -c "createdb -O kuwick_dev kuwick_dev"
+su postgres -c "createdb -O kuwick_dev kuwick_test"
+cd apps/api && npx prisma generate && npx prisma migrate deploy
+```
+
+**The FIRST `vitest run` in a fresh container reports failures the second run
+does not.** A cold Vite transform cache pushes several jsdom specs past their
+`findBy*` timeouts (238s of test time on run 1, ~110s after). Four "failures"
+with no assertion message is that, not a regression — re-run before believing
+it, and this is separate from the teardown flake noted above.
 
 **CI's e2e job had NEVER passed.** Every run since the workflow was authored
 failed at login: the workflow set `JWT_SECRET` while the API reads
@@ -71,7 +90,7 @@ believing a red that shows 0 failed tests, and fix the race if it recurs.
 | C7 autosave pill, Save & sign, language | **already existed** — verified |
 | C8 Dictate honestly disabled | **done** |
 | C8 `.shortcut` expansion from Settings | not started — today it is a dropdown of hardcoded entries |
-| C9 attachments inside the notes card | not started — today a separate strip + panel |
+| C9 attachments inside the notes card | **done** — one component, one region, chip row (b0) |
 | Q2 retire documentation-pending banner | **done** — now a checkpoint section |
 | Q3 seed data | **done** — 162 diagnoses, 229 medications, idempotent |
 | D10 diagnosis | not started — catalogue is real now, the canvas UI is not |
@@ -167,6 +186,71 @@ name "Sebaceous cyst" (L72.9 and L72.3). `diagnosis_catalog` uniques on NAME
 and the custom-diagnosis upsert depends on that, so the later row keeps the
 code it already carries in its name — "Sebaceous cyst (L72.3)". The run
 prints every row it does this to.
+
+## P0 #1 — CLOSED by the owner on staging (2026-08-13)
+
+Diagnosis search works live. Re-running `seed:catalogues` repaired the 162 rows
+(inserted 0, updated 162) and the owner confirmed "urti" → **J06.9** and
+**A09** both recorded on a real visit. Nothing further is owed on it. The
+lesson it left is above under "Seeded is not findable" and stands.
+
+## b0 — THE ATTACHMENTS DEFECT: one component, one region — **DONE**
+
+Reported: after uploading a file, "Attachments (N)" rendered TWICE, the
+thumbnail was duplicated, and Hide/Upload sat over the note area.
+
+**It was never a layout bug.** `ClinicalImageStrip` and
+`VisitAttachmentsPanel` each rendered the visit's attachment list with its own
+heading and its own Upload, and `PatientDashboardPage` mounted BOTH — the
+strip's Upload button was also the expand toggle for the panel below it. Each
+component was correct alone, and every test either of them had passed
+throughout and would have kept passing. **A duplicate is invisible to a test
+that renders one of the duplicates.**
+
+Both components are deleted. `VisitAttachments.tsx` is the only one, and it
+mounts in exactly ONE place — inside `ClinicalNotesTab`, below the editor and
+above the save row, where the approved canvas puts it (PDF p.2) and where it
+cannot reach the typing area. Flow and Canvas get the same region because
+they now get the same mount; the page owns no attachments state at all.
+
+The shape is the reference: `ATTACHMENTS (N)`, then a wrapping row of chips —
+kind icon, filename, `view · ×` — with Upload and "or drag & drop"
+right-aligned. No thumbnails; an image opens full size in the lightbox, which
+is one click either way.
+
+**The filing tag is STORED, not derived** (`visit_attachments.category`,
+enum PHOTO | LAB | LETTER). The reference itself settles this:
+`referral-hosp.jpg` is an image file and a LETTER, so no rule over the MIME
+type can produce that screen. Upload SUGGESTS a kind from the file type and
+records nobody for it — `categorySetBy` stays null until a person actually
+files it, so "no human has classified this yet" stays answerable. Re-filing
+goes through `PATCH …/attachments/:id/category`, records who and when, and
+bumps `version`, so a stale browser cannot overwrite a newer decision.
+LETTER is never guessed, because nothing in the bytes could guess it.
+
+The migration backfills `category` from the MIME type, and it does so with
+FORCE RLS lifted and put straight back, plus a `DO $$` block that proves the
+rows moved — `visit_attachments` is `FORCE ROW LEVEL SECURITY`, so a bare
+backfill UPDATE matches ZERO rows and reports success (the D-048 trap the
+document-integrity migration already had to bracket).
+
+Two things found while testing, both fixed and both in the reported family:
+- a fully successful batch now CLEARS its progress list. The chip is the
+  confirmation, and keeping `ear-left.png · Uploaded` under a chip that
+  already says `ear-left.png` printed the filename twice. A batch with any
+  failure keeps its list, because the reason has to stay readable.
+- `canvasSpeed` test 17 asserted per-file reporting from the END state, which
+  the clear-on-success rule removes. It now holds the second upload open and
+  asserts the first reads "Uploaded" while the second is still going — which
+  is what "each file reports its own result" actually means.
+
+Pinned by: `attachmentsOneRegion.test.tsx` (rendered count, both layouts,
+before AND after a real upload), `attachmentsSingleMount.test.ts` (the source
+fact — exactly one mount, both old components gone, no page-level attachments
+state, with a sanity case so a broken path cannot make it vacuous), and
+`canvas-viewport.spec.ts` (the assembled page in Canvas AND Flow: upload a
+real PNG, exactly one region, one label, one chip, and the region's box does
+not overlap the editor's).
 
 ## MASTER v3 is canonical (owner, 2026-08-13)
 

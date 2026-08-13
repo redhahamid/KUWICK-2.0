@@ -653,12 +653,156 @@ body.kw-note-focus .kw-editor-min .ProseMirror {
   }
 }
 
-.kw-image-strip {
+/* ---------------------------------------------------------------------------
+   b0 — THE attachments region (spec p.2).
+
+   Replaces `.kw-image-strip`, which styled a summary row that toggled a second
+   panel carrying the same heading and the same thumbnails. One region now, so
+   there is one thing to style and nothing to keep in agreement.
+
+   `margin-top` and no `margin-bottom`: it sits between the editor and the save
+   row, and the save row already owns the gap below it.
+   ------------------------------------------------------------------------ */
+.kw-attachments {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+/* Drag feedback on the whole region, not on a separate drop target: the
+   doctor is dragging a photo at the attachments, not at a rectangle. */
+.kw-attachments-dragging {
+  border-color: var(--kw-navy, #184a6b);
+  border-style: dashed;
+  background: var(--kw-band-bg, #edf6fb);
+}
+
+/* Furniture, so 11px is allowed here — the clinical floor applies to the
+   record's content, and the file names below are 12px. */
+.kw-attachments-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--kw-text-secondary, #667085);
+  margin-bottom: 6px;
+}
+
+.kw-attachments-row {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Upload is right-aligned and travels with its hint, so on a row of two files
+   or of nine the control is always in the same place. `margin-left: auto`
+   collapses harmlessly once the row wraps. */
+.kw-attachments-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.kw-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--kw-border, #dce4ea);
+  border-radius: 8px;
+  background: var(--kw-card, #ffffff);
+  /* A long scanned-report filename must not push the row sideways, so the
+     chip is capped — but see .kw-attachment-name: past the cap the name WRAPS
+     rather than being clipped. */
+  max-width: 240px;
+}
+
+.kw-attachment-kind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: var(--kw-neutral-bg, #f2f4f7);
+  color: var(--kw-neutral-fg, #475467);
+  cursor: pointer;
+  font-size: 13px;
+  flex: 0 0 auto;
+}
+
+.kw-attachment-kind:hover {
+  background: var(--kw-band-bg, #edf6fb);
+  color: var(--kw-navy, #184a6b);
+}
+
+/* The three kinds are distinguishable without reading, because the row is
+   scanned before it is read. Colour is never the only signal — each kind has
+   its own icon, and the word is on the tooltip and the aria-label. */
+.kw-attachment-chip[data-attachment-category='LAB'] .kw-attachment-kind {
+  background: #e6f4f1;
+  color: var(--kw-teal, #0f766e);
+}
+
+.kw-attachment-chip[data-attachment-category='LETTER'] .kw-attachment-kind {
+  background: var(--kw-progress-bg, #dbeafe);
+  color: var(--kw-progress-fg, #1d4ed8);
+}
+
+.kw-attachment-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+/* WRAPS, never clips. The first version ellipsised, and A0's viewport sweep
+   failed it at 1366px — correctly: `overflow: hidden` on a filename hides
+   part of a clinical record's content, and A0 exists because content was
+   being clipped rather than laid out. Exempting ellipsis from that sweep was
+   the tempting fix and would have been the wrong one: antd's own card titles
+   ellipsise, so the exemption would have masked the Vitals-title defect A0 was
+   written to catch. A long name costs a second line instead. */
+.kw-attachment-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--kw-text, #17212b);
+  overflow-wrap: anywhere;
+}
+
+.kw-attachment-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--kw-text-secondary, #667085);
+}
+
+.kw-attachment-action {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--kw-text-secondary, #667085);
+  cursor: pointer;
+}
+
+.kw-attachment-action:hover {
+  color: var(--kw-navy, #184a6b);
+  text-decoration: underline;
+}
+
+.kw-upload-progress-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
+  font-size: 12px;
 }
 
 /* --- Tablet and below: one column, in clinical reading order. ------------ */

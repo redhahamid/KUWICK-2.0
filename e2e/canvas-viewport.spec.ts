@@ -138,3 +138,100 @@ test('the CANVAS diagnosis box finds the clinic catalogue, and says so when it d
   await search.fill('zzzqqq');
   await expect(page.getByText(/No diagnosis matches/i)).toBeVisible();
 });
+
+/**
+ * b0 — ONE ATTACHMENTS REGION, AFTER AN UPLOAD.
+ *
+ * The reported defect: attach a file on the Canvas and "Attachments (N)"
+ * appeared TWICE — once on a summary strip and once inside the panel that the
+ * strip's own Upload button revealed — with the thumbnail duplicated and the
+ * Hide/Upload pair sitting over the note area.
+ *
+ * It was a COMPOSITION defect: two components each rendering the visit's
+ * attachment list, mounted one above the other by the page. Neither
+ * component's own tests could see it, because each was correct alone. So this
+ * asserts on the assembled page, after a real file has actually landed —
+ * before the upload the duplicate was not visible either, which is why it
+ * survived review.
+ *
+ * Both layouts, because "assert every surface" is the rule that this project
+ * keeps paying for: Flow mounts the same component and must also have one.
+ */
+for (const layout of ['canvas', 'flow'] as const) {
+  test(`${layout}: attachments render as exactly ONE region after a file is uploaded`, async ({ page }) => {
+    await page.setViewportSize({ width: 1536, height: 864 });
+    await openCanvas(page);
+    if (layout === 'flow') {
+      await page.evaluate(() => {
+        const session = JSON.parse(window.localStorage.getItem('kuwick-auth') ?? '{}');
+        const staffId = session?.state?.staff?.id;
+        window.localStorage.setItem(
+          'kuwick-record-view-layout-v2',
+          JSON.stringify({
+            state: { byStaffId: staffId ? { [staffId]: 'flow' } : {}, anonymous: 'flow' },
+            version: 0,
+          }),
+        );
+      });
+    }
+    await page.reload();
+
+    const regions = page.locator('[data-attachments-region="visit"]');
+    const chips = page.locator('.kw-attachment-chip');
+    await expect(regions).toHaveCount(1);
+    // Counted, not assumed to be zero: the specs share one worker and one
+    // seeded visit, so this may already carry files the run before it
+    // attached. The DELTA is what this test is about.
+    const before = await chips.count();
+
+    // A real PNG: the server checks the leading bytes, so a fake one is
+    // refused exactly as a hostile upload would be and would prove nothing.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    // Unique per RUN, not just per layout. The seeded visit is not reset
+    // between runs on a re-used database, so a fixed name accumulates and
+    // "exactly one chip with this name" starts failing on the third run —
+    // for a reason that has nothing to do with the defect under test.
+    const fileName = `attachment-${layout}-${Date.now()}.png`;
+    await page
+      .getByLabel('Choose files to attach to this visit')
+      .setInputFiles({ name: fileName, mimeType: 'image/png', buffer: png });
+
+    // The file is on the record — asserted by its own name on a chip, not by
+    // a progress message, which is a claim about a request rather than about
+    // the visit. A per-layout name, so one run's file cannot satisfy the
+    // other run's assertion.
+    await expect(chips.filter({ hasText: fileName })).toHaveCount(1);
+
+    // THE assertion. Still ONE region and ONE count label after the upload,
+    // and exactly one new chip — not two of each, which is what was reported.
+    await expect(regions).toHaveCount(1);
+    await expect(page.getByText(/^Attachments \(\d+\)$/)).toHaveCount(1);
+    await expect(chips).toHaveCount(before + 1);
+    // The heading's number agrees with the chips it is counting.
+    await expect(page.getByText(new RegExp(`^Attachments \\(${before + 1}\\)$`))).toBeVisible();
+
+    // And the upload control has not landed on top of the note: the editor's
+    // box and the attachments region must not intersect.
+    if (layout === 'canvas') {
+      const editor = page.locator('.ProseMirror, [contenteditable="true"]').first();
+      const editorBox = await editor.boundingBox();
+      const regionBox = await regions.boundingBox();
+      expect(editorBox && regionBox, 'the editor or the attachments region has no box').toBeTruthy();
+      const overlaps =
+        editorBox!.y < regionBox!.y + regionBox!.height && regionBox!.y < editorBox!.y + editorBox!.height;
+      expect(overlaps, 'the attachments region overlaps the note editor vertically').toBe(false);
+    }
+
+    // Evidence for the unit's report: the region itself, and the notes card
+    // it lives in — a viewport shot would frame the editor and cut off the
+    // thing under test, which is exactly what happened the first time.
+    await regions.scrollIntoViewIfNeeded();
+    await regions.screenshot({ path: `test-results/attachments-${layout}-region.png` });
+    await page.locator('.kw-notes-card, .ant-card').first().screenshot({
+      path: `test-results/attachments-${layout}-card.png`,
+    });
+  });
+}

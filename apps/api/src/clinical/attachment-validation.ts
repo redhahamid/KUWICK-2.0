@@ -170,3 +170,20 @@ export function validateClinicalAttachment(file: {
 
   return { mimeType: rule.mimeType, fileName };
 }
+
+// ---------------------------------------------------------------------------
+// b0 — the filing tag's DEFAULT
+// ---------------------------------------------------------------------------
+
+/**
+ * What kind of thing a newly uploaded file probably is.
+ *
+ * A suggestion, not a fact, and the caller records it as such: an image is
+ * most often a clinical photo, and everything else this clinic accepts is a
+ * PDF, which is most often a lab report. LETTER is never guessed — a referral
+ * or hospital discharge arrives as both a PDF and a photographed page, so
+ * there is nothing in the bytes to guess it from. Somebody has to say.
+ */
+export function defaultCategoryFor(mimeType: string): 'PHOTO' | 'LAB' {
+  return mimeType.toLowerCase().startsWith('image/') ? 'PHOTO' : 'LAB';
+}

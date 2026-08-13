@@ -5,6 +5,7 @@ import { memoryStorage } from 'multer';
 import { readUploadedFileStream } from '../core/file-storage';
 import { VisitAttachmentService } from './visit-attachment.service';
 import { VoidClinicalRecordDto } from './dto/void-clinical-record.dto';
+import { SetAttachmentCategoryDto } from './dto/set-attachment-category.dto';
 
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 
@@ -46,6 +47,19 @@ export class VisitAttachmentController {
   @Get('history')
   history(@Param('visitId') visitId: string) {
     return this.attachments.listByVisitId(visitId, true);
+  }
+
+  // b0 — re-file an attachment as photo | lab | letter. Its own route rather
+  // than a general PATCH: this is the only field of an attachment that is
+  // meant to change after upload, and the endpoint should not be able to
+  // become a way to edit a filename or a MIME type later.
+  @Patch(':attachmentId/category')
+  setCategory(
+    @Param('visitId') visitId: string,
+    @Param('attachmentId') attachmentId: string,
+    @Body() dto: SetAttachmentCategoryDto,
+  ) {
+    return this.attachments.setCategory(visitId, attachmentId, dto.category, dto.expectedVersion);
   }
 
   // G3a (D-062) — replaces DELETE. Audited removal with a mandatory reason;

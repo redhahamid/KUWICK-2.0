@@ -3,6 +3,7 @@ import {
   ATTACHMENT_ACCEPT,
   UploadEntry,
   attachmentKind,
+  categoryLabel,
   buildUploadQueue,
   canRenderAsImage,
   formatFileSize,
@@ -175,5 +176,26 @@ describe('file sizes', () => {
   it('24. a nonsense size is a dash, not NaN', () => {
     expect(formatFileSize(Number.NaN)).toBe('—');
     expect(formatFileSize(-1)).toBe('—');
+  });
+});
+
+describe('b0 — the filing tag reads as a word', () => {
+  it.each([
+    ['PHOTO', 'photo'],
+    ['LAB', 'lab'],
+    ['LETTER', 'letter'],
+  ])('25. %s reads as "%s"', (category, expected) => {
+    expect(categoryLabel(category)).toBe(expected);
+  });
+
+  it('26. an unrecognised tag reads as itself, never as the commonest one', () => {
+    // A build that meets a tag it does not know must not quietly call an ECG
+    // a photo. It says what the server said.
+    expect(categoryLabel('ECG')).toBe('ecg');
+  });
+
+  it('27. a missing tag says so', () => {
+    expect(categoryLabel(null)).toBe('unfiled');
+    expect(categoryLabel(undefined)).toBe('unfiled');
   });
 });

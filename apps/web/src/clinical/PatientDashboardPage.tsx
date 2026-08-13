@@ -62,9 +62,7 @@ import { VisitHistoryPanel } from './history/VisitHistoryPanel';
 // functional parity is confirmed, then go in a cleanup commit. Only one
 // version is ever public.
 import { InlineVitalsRow } from './InlineVitalsRow';
-import { ClinicalImageStrip } from './ClinicalImageStrip';
 import { VisitObservationsPanel } from './VisitObservationsPanel';
-import { VisitAttachmentsPanel } from './VisitAttachmentsPanel';
 import { Visit } from './types';
 import { ApiError } from '../core/api-client';
 import { useHoldConsultation, useResumeConsultation } from './hooks/useQueueTickets';
@@ -104,7 +102,6 @@ export function PatientDashboardPage() {
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   // D-077 — the compact strips own the values; these reveal the full panels.
   const [vitalsExpanded, setVitalsExpanded] = useState(false);
-  const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
   const [selectedVisitId, setSelectedVisitId] = useState<string>();
   const [activeRecordTab, setActiveRecordTab] = useState('notes');
   // Per staff member, not per browser — a shared consultation-room desktop
@@ -642,14 +639,11 @@ export function PatientDashboardPage() {
                     {vitalsExpanded && (
                       <VisitObservationsPanel visitId={selectedVisit.id} compact={canvasCompact} />
                     )}
-                    <ClinicalImageStrip
-                      visitId={selectedVisit.id}
-                      expanded={attachmentsExpanded}
-                      onToggleExpand={() => setAttachmentsExpanded((prev) => !prev)}
-                    />
-                    {attachmentsExpanded && (
-                      <VisitAttachmentsPanel visitId={selectedVisit.id} compact={canvasCompact} />
-                    )}
+                    {/* b0 — attachments are NOT mounted here any more. The
+                        strip-plus-panel pair rendered "Attachments (N)" twice
+                        with the same thumbnails and two Upload buttons, one of
+                        which landed on the note area. The single component
+                        mounts inside ClinicalNotesTab, below the editor. */}
                     <ClinicalNotesTab
                       visitId={selectedVisit.id}
                       patientId={patient.id}

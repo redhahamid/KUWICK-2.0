@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, apiClient, downloadFile } from '../../core/api-client';
 import { VisitAttachment, VoidClinicalRecordDto } from '../types';
-import { UploadEntry, buildUploadQueue } from '../attachmentPresentation';
+import { AttachmentCategory, UploadEntry, buildUploadQueue } from '../attachmentPresentation';
 
 // D-044 — free-standing visit-level uploads (photos, scanned results,
 // PDFs) shown alongside Clinical Notes/Vitals.
@@ -126,6 +126,22 @@ export function useRemoveVisitAttachment(visitId?: string) {
       queryClient.invalidateQueries({ queryKey: ['visit-attachments', visitId] });
       queryClient.invalidateQueries({ queryKey: ['visit-attachment-history', visitId] });
     },
+  });
+}
+
+/**
+ * b0 — re-file an attachment as photo | lab | letter.
+ *
+ * `expectedVersion` is sent for the same reason removal sends it: two people
+ * looking at the same visit is normal in a clinic, and the second one's click
+ * must not silently overwrite a decision made a moment earlier.
+ */
+export function useSetAttachmentCategory(visitId?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ attachmentId, ...dto }: { attachmentId: string; category: AttachmentCategory; expectedVersion?: number }) =>
+      apiClient.patch<VisitAttachment>(`/visits/${visitId}/attachments/${attachmentId}/category`, dto),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['visit-attachments', visitId] }),
   });
 }
 

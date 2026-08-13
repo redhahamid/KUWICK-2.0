@@ -3,6 +3,7 @@ import {
   ALLOWED_EXTENSIONS,
   ALLOWED_MIME_TYPES,
   UNSUPPORTED_FILE_MESSAGE,
+  defaultCategoryFor,
   sanitiseAttachmentFileName,
   validateClinicalAttachment,
 } from './attachment-validation';
@@ -221,5 +222,25 @@ describe('the refusal says the same thing however it was reached', () => {
   it('39. it leaks no enum, path, header or internal vocabulary', () => {
     expect(UNSUPPORTED_FILE_MESSAGE).not.toMatch(/[A-Z]{2,}_[A-Z_]+/);
     expect(UNSUPPORTED_FILE_MESSAGE).not.toMatch(/mime|signature|magic|buffer|multer/i);
+  });
+});
+
+describe('b0 — the filing tag a fresh upload is suggested', () => {
+  it('40. an image is suggested as a PHOTO', () => {
+    expect(defaultCategoryFor('image/jpeg')).toBe('PHOTO');
+    expect(defaultCategoryFor('image/png')).toBe('PHOTO');
+    expect(defaultCategoryFor('IMAGE/WEBP')).toBe('PHOTO');
+  });
+
+  it('41. a PDF is suggested as a LAB result', () => {
+    expect(defaultCategoryFor('application/pdf')).toBe('LAB');
+  });
+
+  it('42. LETTER is never guessed', () => {
+    // A referral or discharge summary arrives as a PDF as often as a
+    // photographed page, so there is nothing in the bytes to guess it from.
+    // Somebody has to say, and the API records who did.
+    const guesses = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].map(defaultCategoryFor);
+    expect(guesses).not.toContain('LETTER');
   });
 });

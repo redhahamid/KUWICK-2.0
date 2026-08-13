@@ -678,6 +678,7 @@ model Staff {
   diagnosesRemoved             Diagnosis[]                  @relation("DiagnosisRemover")
   documentsVoided              Document[]                   @relation("DocumentVoidedBy")
   visitAttachmentsRemoved      VisitAttachment[]            @relation("VisitAttachmentRemovedBy")
+  visitAttachmentsFiled        VisitAttachment[]            @relation("VisitAttachmentCategoryBy")
   orderAttachmentsRemoved      Attachment[]                 @relation("OrderAttachmentRemovedBy")
   professionalAudits           StaffProfessionalAudit[]     @relation("ProfessionalAuditSubject")
   professionalAuditsMade       StaffProfessionalAudit[]     @relation("ProfessionalAuditActor")
@@ -2251,6 +2252,19 @@ model VisitAttachment {
   uploadedByStaffId String?  @map("uploaded_by_staff_id")
   createdAt         DateTime @default(now()) @map("created_at")
 
+  // b0 — WHAT KIND of file this is, in the clinic's own filing terms: a
+  // clinical PHOTO, a LAB result, or an incoming LETTER. It is stored, not
+  // derived, because the two are genuinely different questions: a referral
+  // letter arrives as a photographed page (image/jpeg) at least as often as
+  // a PDF, and a lab result photographed off a machine screen is not a
+  // clinical photo. Derivation from the MIME type gets both wrong.
+  //
+  // Upload picks a default from the file type; whoever re-files it is
+  // recorded, because the tag is what a later reader searches the record by.
+  category            VisitAttachmentCategory @default(PHOTO)
+  categorySetByStaffId String?                @map("category_set_by_staff_id")
+  categorySetAt        DateTime?              @map("category_set_at")
+
   // G3a (D-062) — audited removal. filePath is deliberately untouched: the
   // clinical image stays on disk so authorised history can still retrieve it.
   recordStatus          AttachmentRecordStatus @default(ACTIVE) @map("record_status")
@@ -2265,6 +2279,7 @@ model VisitAttachment {
   visit      Visit  @relation(fields: [visitId], references: [id])
   uploadedBy Staff? @relation(fields: [uploadedByStaffId], references: [id])
   removedBy  Staff? @relation("VisitAttachmentRemovedBy", fields: [removedByStaffId], references: [id])
+  categoryBy Staff? @relation("VisitAttachmentCategoryBy", fields: [categorySetByStaffId], references: [id])
 
   @@index([tenantId, visitId])
   @@index([tenantId, visitId, recordStatus])
@@ -2635,6 +2650,16 @@ enum DocumentAuthorisationKind {
 enum AttachmentRecordStatus {
   ACTIVE
   REMOVED_IN_ERROR
+}
+
+// b0 — the three kinds of file a consultation actually accumulates, per the
+// approved canvas (PDF p.2). Deliberately three and not a free-text label:
+// the tag is a filing decision the whole team reads the same way, and an open
+// vocabulary would produce "photo", "Photo", "pic" and "wound" in one clinic.
+enum VisitAttachmentCategory {
+  PHOTO
+  LAB
+  LETTER
 }
 
 model Document {
