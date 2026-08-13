@@ -52,9 +52,34 @@ jobs:
       # Migrations run here as well as in the E2E job: a migration that does
       # not apply cleanly to an empty database is a defect, and this is the
       # cheapest place to find out.
+      - name: Provision the NON-SUPERUSER application role
+        # PHASE 0. The postgres image makes POSTGRES_USER a superuser, and RLS
+        # does not apply to one — so until now CI proved nothing about tenant
+        # isolation or about any append-only table. Migrations still run as the
+        # owner (they create objects); the APPLICATION connects as this role.
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='kuwick_app') THEN
+              CREATE ROLE kuwick_app LOGIN PASSWORD 'apppass' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+            END IF;
+          END $$;
+          GRANT USAGE ON SCHEMA public TO kuwick_app;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO kuwick_app;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO kuwick_app;
+          SQL
       - name: Apply migrations
         run: npx prisma migrate deploy
         working-directory: apps/api
+      - name: Grant the application role on the migrated schema
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO kuwick_app;
+          GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO kuwick_app;
+          -- TRUNCATE is deliberately NOT granted: it is a separate privilege
+          -- that RLS does not filter, and for a non-superuser the absence is
+          -- itself a guarantee.
+          SQL
       - name: API typecheck
         run: npx tsc --noEmit -p tsconfig.json
         working-directory: apps/api
@@ -108,9 +133,34 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
         working-directory: apps/api
+      - name: Provision the NON-SUPERUSER application role
+        # PHASE 0. The postgres image makes POSTGRES_USER a superuser, and RLS
+        # does not apply to one — so until now CI proved nothing about tenant
+        # isolation or about any append-only table. Migrations still run as the
+        # owner (they create objects); the APPLICATION connects as this role.
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='kuwick_app') THEN
+              CREATE ROLE kuwick_app LOGIN PASSWORD 'apppass' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+            END IF;
+          END $$;
+          GRANT USAGE ON SCHEMA public TO kuwick_app;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO kuwick_app;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO kuwick_app;
+          SQL
       - name: Apply migrations
         run: npx prisma migrate deploy
         working-directory: apps/api
+      - name: Grant the application role on the migrated schema
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO kuwick_app;
+          GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO kuwick_app;
+          -- TRUNCATE is deliberately NOT granted: it is a separate privilege
+          -- that RLS does not filter, and for a non-superuser the absence is
+          -- itself a guarantee.
+          SQL
       # Two steps on purpose. The staging seed is the only script in the repo
       # that brings an EMPTY database up to a working clinic, and it is
       # maintained for UAT; seed-e2e adds only what the golden path asserts on
@@ -155,6 +205,19 @@ jobs:
       # up and migrated before the web build is served, and a failed start
       # should surface here rather than inside a test timeout.
       - name: Start API
+        # NOT yet pointed at kuwick_app. The role exists and is granted above,
+        # but the application cannot currently BOOT as a non-superuser: a
+        # boot-time clinical-catalogue count runs through the tenant-scoped
+        # client with no tenant context, and RLS bypass was hiding it. Measured,
+        # not assumed — `Tenant context not set` on startup.
+        #
+        # So the flag below is set DELIBERATELY and temporarily, and it makes the
+        # current state loud rather than silent: the boot assertion logs that
+        # isolation is unenforced on every start. Fix the boot query, delete the
+        # flag, and switch DATABASE_URL to kuwick_app — the assertion will then
+        # keep it that way.
+        env:
+          KUWICK_ALLOW_SUPERUSER_DB: 'yes'
         run: |
           node dist/main > "$RUNNER_TEMP/api.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/api.pid"

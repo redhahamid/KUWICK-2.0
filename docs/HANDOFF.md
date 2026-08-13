@@ -68,10 +68,10 @@ Parity shots: `cd apps/api && npx tsx prisma/kw2-parity-shots-2b.ts`
 
 | | |
 |---|---|
-| Last green | **1159 frontend / 1278 backend**, both typechecks clean |
+| Last green | **1159 frontend / 1285 backend**, both typechecks clean |
 | Golden path | **GREEN, both variants, front door to COMPLETED** |
 | CI | **GREEN — including the e2e job, for the first time ever** (see below) |
-| Migrations | 67, no drift |
+| Migrations | 68, no drift |
 | Last commit | see `git log` |
 
 **A fresh container starts with NOTHING installed.** `npm ci`, then create
@@ -449,6 +449,48 @@ done and merged; everything else in that package is NOT started.** Read the
    may have invented "QDS" first; relabelling it would change dispensed
    labels). That skip is REPORTED — a seed that says "repaired 6" when it meant
    7 lies by omission, which is how the diagnosis outage stayed invisible.
+
+## PHASE 0 — THE APPEND-ONLY GUARANTEE — **PARTLY DONE, ONE STEP BLOCKED**
+
+Owner decision 2026-08-13: non-superuser application role + triggers as defence
+in depth. What landed, and the one thing that did not.
+
+**DONE and verified against the running database:**
+- migration `20260813140000_append_only_is_enforced_not_claimed` — BEFORE DELETE
+  and BEFORE TRUNCATE triggers on `patient_alerts` and `label_prints`.
+  Statement-level, so `DELETE ... WHERE false` is refused too.
+- the false `COMMENT ON TABLE` claims on both tables replaced with the real
+  three-layer mechanism, in the schema where a reader will find them.
+- `assertNotSuperuser()` in `prisma.service.ts` + 7 tests: refuses SUPERUSER and
+  BYPASSRLS, names the role and the fix, has a documented escape hatch, and asks
+  postgres about `current_user` rather than a configured name.
+- CI provisions `kuwick_app` (NOSUPERUSER NOBYPASSRLS) and grants it on the
+  migrated schema. TRUNCATE deliberately not granted.
+- `docs/STAGING_DEPLOYMENT.md` — the Railway role SQL, the DATABASE_URL change,
+  and why migrations keep running as the owner.
+
+Proven, all four: as `kuwick_app`, DELETE on both tables hits the trigger and
+TRUNCATE is `permission denied`; as the SUPERUSER, the trigger still refuses.
+
+**BLOCKED — the app cannot yet BOOT as a non-superuser.** Measured, not guessed:
+`tenant-scoped-prisma.provider` extends the client with an `$allOperations` hook
+that throws `Tenant context not set` for any query outside a request, and a
+boot-time clinical-catalogue count goes through it. RLS bypass was hiding this;
+the count only ever worked because the app was a superuser.
+
+Consequences, recorded honestly:
+- `assertNotSuperuser` is **written and tested but NOT called** — calling it from
+  `onModuleInit` killed the process at boot for the same reason. The fix is a
+  short-lived `pg` client from `DATABASE_URL` in `main.ts` before Nest starts
+  (`PrismaPg` already brings `pg` in). **This is the only thing between here and
+  connecting as `kuwick_app`.**
+- CI's API still starts as the owner, with `KUWICK_ALLOW_SUPERUSER_DB=yes` set
+  DELIBERATELY and commented as temporary — so the state is loud, not silent.
+- **Until that is done, tenant isolation is still unenforced at runtime.** The
+  triggers hold regardless of role; the RLS policies do not.
+
+Order for the next session: fix the boot query → wire the assertion in `main.ts`
+→ point `DATABASE_URL` at `kuwick_app` in CI → delete the flag.
 
 ## b1+b2 PACKAGE — WHAT IS LEFT (next session starts here)
 

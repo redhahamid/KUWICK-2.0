@@ -254,3 +254,49 @@ items and users, and nothing in the repository could bring one up.
 
 `seed-staging-uat.ts` closes that: it builds a complete working environment from
 an empty database, and it is the only seed that can.
+
+
+## The application's database role (Phase 0, owner decision 2026-08-13)
+
+**The application must NOT connect as a superuser or as a role with BYPASSRLS.**
+Row-level security is not applied to either, so every tenant-isolation policy in
+this schema — and every append-only guarantee resting on one — is unenforced when
+it does. This was the real state of every environment until it was measured: a
+plain `DELETE` succeeded on `patient_alerts` and `label_prints`, both of which
+carried comments claiming PostgreSQL refused exactly that.
+
+`PrismaService` now **refuses to boot** as such a role, naming it and the fix.
+That is deliberate: a warning would mean one clinic's patient data is reachable
+from another with nobody finding out.
+
+Run once per database, as the owner:
+
+```sql
+CREATE ROLE kuwick_app LOGIN PASSWORD '<secret>'
+  NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+GRANT USAGE ON SCHEMA public TO kuwick_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO kuwick_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO kuwick_app;
+-- So future migrations' tables are reachable without re-granting.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO kuwick_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO kuwick_app;
+```
+
+**TRUNCATE is deliberately not granted.** It is a separate privilege that RLS
+does not filter, and withholding it from a non-superuser is itself a guarantee.
+
+Then point the SERVICE at it — `DATABASE_URL` on `kuwick-api` becomes
+`postgresql://kuwick_app:<secret>@<host>:<port>/<db>?schema=public`.
+
+**Migrations keep running as the OWNER**, because they create and alter objects
+the app role has no business creating. Two different roles for two different
+jobs: `prisma migrate deploy` as the owner, the running service as `kuwick_app`.
+After any migration that adds a table, the `ALTER DEFAULT PRIVILEGES` above
+covers it; if a table was created before those defaults were set, re-run the two
+`GRANT ... ON ALL TABLES` lines.
+
+`KUWICK_ALLOW_SUPERUSER_DB=yes` skips the boot refusal. It exists for a developer
+who has not provisioned the role yet and is not testing isolation. It must never
+be set on a deployed service.
