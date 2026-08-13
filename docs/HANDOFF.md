@@ -353,22 +353,34 @@ b1-0 above is done and merged. The rest of the owner's b1 item, in order:
    row reading "TAPER · N steps", dispensary reading the steps, ONE invoice
    line. Needs a `prescription_taper_steps` table.
 
-**OPEN QUESTION FOR THE OWNER — the editable `price` on a medication row.**
-Everything else in that list is clinical and was built. Price is not: money in
-this system resolves through one tested pipeline
-(`billing-pricing.ts` — `item.sellPrice`, then a panel-specific override, then
-the panel's inventory markup) and the standing contract is that money moves
-only via `invoice_lines`, with corrections carrying an actor and a reason under
-`billing.corrections`. A prescriber-typed price would be a fourth precedence
-level, decided by whoever happens to be prescribing. So the row **shows** the
-resolved price and does not yet let a doctor change it. Three ways to close
-this, owner's call:
-  (a) it stays read-only on the row; changing what a patient pays is counter
-      work, through the existing discount/correction path (recommended — it is
-      the only option that leaves the money trail intact);
-  (b) the doctor may override it, and the override becomes the top of the
-      pricing precedence, stored on the prescription with actor + timestamp;
-  (c) as (b) but a reason is mandatory, matching `billing.corrections`.
+6. **THE PRESCRIBER MAY OVERRIDE THE PRICE — owner decision, 2026-08-13.**
+   Asked because money in this system resolves through one tested pipeline
+   (`billing-pricing.ts`: `item.sellPrice` → a panel-specific override → the
+   panel's inventory markup) and the standing contract is that money moves only
+   via `invoice_lines`. The owner chose the recorded override over read-only
+   and over a mandatory reason. So, when it is built:
+
+   - the row's price is editable, and a doctor-set figure becomes the **top of
+     the pricing precedence** — above the panel-specific override, which is
+     the part to think hardest about, because a panel contract price being
+     beaten by a typed figure is a claim the panel may reject. Consider
+     surfacing that on the row when the visit IS a panel visit; it is the one
+     case where the doctor cannot see what they are overriding.
+   - stored **on the prescription** with actor + timestamp (`priceOverride`,
+     `priceOverrideByStaffId`, `priceOverrideAt`), never on the invoice line —
+     the line is derived, and the decision belongs to the prescription that
+     caused it.
+   - NO reason field: the owner's choice was explicitly the middle option.
+     Attribution and time are the audit trail; do not quietly add a reason
+     prompt back in.
+   - `resolveSourcedPrice` is the ONE place that changes. It must keep
+     returning null for an unpriceable row rather than falling back to a
+     client-supplied figure, which is the property that makes the whole
+     pipeline trustworthy.
+   - the report-readiness contract is satisfied by actor + timestamp + amount
+     on the prescription, and the invoice line still carries
+     `sourcePrescriptionId`, so "who changed what a patient paid, and when"
+     stays answerable without new data entry at report time.
 
 ## MASTER v3 is canonical (owner, 2026-08-13)
 
