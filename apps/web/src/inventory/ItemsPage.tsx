@@ -9,14 +9,17 @@ import {
   InputNumber,
   message,
   Row,
+  Select,
   Space,
   Table,
   Typography,
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import { useCreateItem, useItems, useUpdateItem } from './hooks/useItems';
+import { useCreateItem, useItemSearch, useUpdateItem } from './hooks/useItems';
 import { useCreateItemAgeDosage, useItemAgeDosages, useRemoveItemAgeDosage } from './hooks/useItemAgeDosages';
 import { CreateItemAgeDosageDto, CreateItemDto, Item } from './types';
+import { standardPrescriptionValues, withClearedDefaults } from './standardPrescriptionForm';
+import { useReferenceCatalog } from '../clinical/hooks/useReferenceCatalogs';
 import { ApiError } from '../core/api-client';
 import { PageHeader } from '../design-system/components/PageHeader';
 
@@ -30,7 +33,8 @@ const { Text } = Typography;
 // Reference (Dr's Note), Remark). Pricing/Panel Pricing/Stock Control
 // sections from the reference aren't built yet — sellPrice/cost only.
 export function ItemsPage() {
-  const { data: items, isLoading } = useItems();
+  const [search, setSearch] = useState('');
+  const { data: items, isLoading } = useItemSearch(search);
   const createItem = useCreateItem();
   const updateItem = useUpdateItem();
   const [open, setOpen] = useState(false);
@@ -64,11 +68,16 @@ export function ItemsPage() {
       remark: item.remark ?? undefined,
       sellPrice: Number(item.sellPrice),
       cost: item.cost ? Number(item.cost) : undefined,
+      ...standardPrescriptionValues(item),
     });
     setOpen(true);
   };
 
-  const handleSubmit = async (values: CreateItemDto) => {
+  const handleSubmit = async (raw: CreateItemDto) => {
+    // An emptied dropdown must reach the API as `null`, not vanish from the
+    // payload — see `withClearedDefaults`. Without this, clearing a default
+    // looks like it saved and silently did nothing.
+    const values = withClearedDefaults(raw);
     try {
       if (editing) {
         await updateItem.mutateAsync({ id: editing.id, dto: values });
@@ -91,9 +100,25 @@ export function ItemsPage() {
         title="Items"
         extra={
           <>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          Add Item
-        </Button>
+            <Space wrap>
+              {/* PHASE 1G — 236 medicines, ten to a page. Editing one's standard
+                  prescription meant finding it first, and there was no way to.
+                  The server matches the code and the clinic's own Malay group
+                  tag as well as the name, so "BATUK" finds the cough shelf. */}
+              <Input.Search
+                allowClear
+                placeholder="Search name, code or group…"
+                aria-label="Search items"
+                style={{ width: 280 }}
+                onSearch={setSearch}
+                onChange={(event) => {
+                  if (event.target.value === '') setSearch('');
+                }}
+              />
+              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                Add Item
+              </Button>
+            </Space>
           </>
         }
       />
@@ -149,7 +174,7 @@ export function ItemsPage() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="doseUnitDefault" label="Dose Unit">
+              <Form.Item name="doseUnitDefault" label="Dose Unit (free text)">
                 <Input placeholder="e.g. ml, tablet" />
               </Form.Item>
             </Col>
@@ -172,7 +197,7 @@ export function ItemsPage() {
           </Divider>
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item name="consumptionMethod" label="Consumption Method">
+              <Form.Item name="consumptionMethod" label="Consumption Method (free text)">
                 <Input placeholder="e.g. Oral" />
               </Form.Item>
             </Col>
@@ -184,17 +209,17 @@ export function ItemsPage() {
           </Row>
           <Row gutter={12}>
             <Col span={8}>
-              <Form.Item name="doseDefault" label="Dosage">
+              <Form.Item name="doseDefault" label="Dosage (free text)">
                 <Input />
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="frequencyDefault" label="Frequency">
+              <Form.Item name="frequencyDefault" label="Frequency (free text)">
                 <Input placeholder="e.g. BD" />
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="durationDefault" label="Duration">
+              <Form.Item name="durationDefault" label="Duration (free text)">
                 <Input />
               </Form.Item>
             </Col>
@@ -215,6 +240,8 @@ export function ItemsPage() {
           <Form.Item name="remark" label="Remark">
             <Input.TextArea rows={2} />
           </Form.Item>
+
+          <StandardPrescriptionSection />
 
           <Divider titlePlacement="left" plain>
             Pricing
@@ -245,6 +272,130 @@ export function ItemsPage() {
 
         {editing && <AgeDosageBracketEditor itemId={editing.id} unitOfMeasure={editing.doseUnitDefault} />}
       </Drawer>
+    </>
+  );
+}
+
+/**
+ * PHASE 1G (1F) — what this medicine's prescribing form opens with.
+ *
+ * Every field optional, and every one of them a STARTING POINT: the doctor can
+ * change any of it on the prescription itself. That is why it is safe to fill
+ * these in, and why an empty one is not a gap to be closed with a guess — the
+ * platform seed deliberately leaves the dose blank on any medicine whose
+ * conventional adult dose it does not know, and on weight-based paediatric
+ * syrups where a fixed adult dose does not exist at all.
+ *
+ * The dropdowns come from Settings › Prescription Vocabulary, INCLUDING retired
+ * entries. A medicine can legitimately still point at an entry the clinic has
+ * since withdrawn, and dropping it from the list would render that value as a
+ * bare id — showing the name and marking it retired is the honest version.
+ */
+function StandardPrescriptionSection() {
+  // Retired entries included so an existing reference still renders by name.
+  const { data: units } = useReferenceCatalog('dosage-units', true);
+  const { data: frequencies } = useReferenceCatalog('frequencies', true);
+  const { data: methods } = useReferenceCatalog('consumption-methods', true);
+
+  const label = (text: string, active: boolean) => (active ? text : `${text} (retired)`);
+
+  return (
+    <>
+      <Divider titlePlacement="left" plain>
+        Standard Prescription (default)
+      </Divider>
+      <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+        What the prescribing form opens with for this medicine. Every field is optional and every one
+        can be changed while prescribing. Editing these affects FUTURE prescriptions only — anything
+        already prescribed or dispensed keeps the values it was written with.
+      </Text>
+      <Row gutter={12}>
+        <Col span={8}>
+          <Form.Item name="defaultDoseAmount" label="Dose amount">
+            {/* No fixed precision: the column is a 2dp decimal, so `precision`
+                renders two tablets as "2.00", which is not how anybody writes a
+                dose. Halves and quarters still type in fine without it. */}
+            <InputNumber min={0} style={{ width: '100%' }} placeholder="2" />
+          </Form.Item>
+        </Col>
+        <Col span={16}>
+          <Form.Item name="defaultDoseUnitId" label="Dose unit">
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="Tablet, Millilitre, Puff…"
+              options={(units ?? []).map((unit) => ({
+                value: unit.id,
+                label: label(unit.systemNameEn, unit.active),
+              }))}
+            />
+          </Form.Item>
+        </Col>
+      </Row>
+      <Row gutter={12}>
+        <Col span={12}>
+          <Form.Item
+            name="defaultFrequencyId"
+            label="Frequency"
+            tooltip="PRN and STAT have no doses-per-day, so quantity is never auto-calculated from them."
+          >
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="OD, BD, TDS…"
+              options={(frequencies ?? []).map((frequency) => ({
+                value: frequency.id,
+                label: label(`${frequency.code} — ${frequency.doctorDisplay}`, frequency.active),
+              }))}
+            />
+          </Form.Item>
+        </Col>
+        <Col span={6}>
+          <Form.Item name="defaultDurationValue" label="Duration">
+            <InputNumber min={0} style={{ width: '100%' }} placeholder="5" />
+          </Form.Item>
+        </Col>
+        <Col span={6}>
+          <Form.Item name="defaultDurationUnit" label="Duration unit">
+            <Select
+              allowClear
+              placeholder="Days"
+              options={[
+                { value: 'DAY', label: 'Days' },
+                { value: 'WEEK', label: 'Weeks' },
+                { value: 'MONTH', label: 'Months' },
+              ]}
+            />
+          </Form.Item>
+        </Col>
+      </Row>
+      <Row gutter={12}>
+        <Col span={16}>
+          <Form.Item name="defaultConsumptionMethodId" label="Consumption method">
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="ORAL (MAKAN/MINUM)…"
+              options={(methods ?? []).map((method) => ({
+                value: method.id,
+                label: label(method.methodBilingual, method.active),
+              }))}
+            />
+          </Form.Item>
+        </Col>
+        <Col span={8}>
+          <Form.Item
+            name="defaultQuantity"
+            label="Quantity"
+            tooltip="Leave empty to let the prescribing form work it out from dose × frequency × duration."
+          >
+            <InputNumber min={0} style={{ width: '100%' }} />
+          </Form.Item>
+        </Col>
+      </Row>
     </>
   );
 }

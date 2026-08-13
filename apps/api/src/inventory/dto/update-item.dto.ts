@@ -1,6 +1,7 @@
 import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { StandardPrescriptionDefaultsDto } from './standard-prescription-defaults.dto';
 
-export class UpdateItemDto {
+export class UpdateItemDto extends StandardPrescriptionDefaultsDto {
   @IsOptional()
   @IsString()
   code?: string;

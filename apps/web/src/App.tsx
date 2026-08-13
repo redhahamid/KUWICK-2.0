@@ -26,6 +26,7 @@ import { ConsultationTariffsPage } from './clinical/ConsultationTariffsPage';
 import { PanelClinicsPage } from './clinical/PanelClinicsPage';
 import { PanelClaimsPage } from './clinical/PanelClaimsPage';
 import { DiagnosesDirectoryPage } from './clinical/DiagnosesDirectoryPage';
+import { PrescriptionVocabularyPage } from './clinical/PrescriptionVocabularyPage';
 import { PatientDashboardPage } from './clinical/PatientDashboardPage';
 import { QueueManagementPage } from './clinical/QueueManagementPage';
 import { DispensaryPage } from './clinical/dispensary/DispensaryPage';
@@ -146,6 +147,10 @@ export function App() {
             <Route path="/settings/clinical/services" element={<ServicesPage />} />
             <Route path="/settings/clinical/consultation-tariffs" element={<ConsultationTariffsPage />} />
             <Route path="/settings/clinical/diagnoses" element={<DiagnosesDirectoryPage />} />
+            <Route
+              path="/settings/clinical/prescription-vocabulary"
+              element={<PrescriptionVocabularyPage />}
+            />
             <Route path="/settings/documents/templates" element={<DocumentTemplatesPage />} />
             <Route path="/settings/hr/public-holidays" element={<PublicHolidaysPage />} />
           </Route>

@@ -46,6 +46,26 @@ export interface Item {
   /** How the prescribing form behaves when this medicine is chosen. */
   dosingType?: ItemDosingType;
 
+  // ---- 1F — the standard prescription this medicine's form opens with ----
+  //
+  // PHASE 1G. These are the CLINIC'S data, not platform rows: editable on the
+  // medicine, and they decide only the STARTING POINT of a prescription.
+  // Changing them affects future prescriptions only — a prescription copies
+  // its values when it is written, so nothing already dispensed moves.
+  defaultDoseAmount?: string | null;
+  defaultDoseUnitId?: string | null;
+  defaultFrequencyId?: string | null;
+  defaultDurationValue?: number | null;
+  defaultDurationUnit?: DurationUnit | null;
+  defaultQuantity?: number | null;
+  defaultConsumptionMethodId?: string | null;
+  /**
+   * True while these defaults are still exactly as the platform seeded them.
+   * Cleared by the API the moment anyone here edits one, which is what stops
+   * the next seed run reverting a doctor's correction. Read-only to this app.
+   */
+  defaultsFromSeed?: boolean;
+
   /**
    * b1 — stock, travelling WITH the item. The search list has to say what is
    * on the shelf, and annotating twenty options by downloading every stock
@@ -55,6 +75,9 @@ export interface Item {
 }
 
 export type ItemDosingType = 'WEIGHT_BASED' | 'AGE_BAND' | 'ADULT_DEFAULT';
+
+/** 1F — the units a default course length is expressed in. */
+export type DurationUnit = 'DAY' | 'WEEK' | 'MONTH';
 
 export interface ItemStockLevel {
   clinicId: string;
@@ -81,6 +104,17 @@ export interface CreateItemDto {
   remark?: string;
   sellPrice: number;
   cost?: number;
+
+  // 1F. `null` is a real value here and is not the same as omitting the field:
+  // it is how a doctor says "no default for this one", and the API treats the
+  // key being present as the clinic taking ownership of the row.
+  defaultDoseAmount?: number | null;
+  defaultDoseUnitId?: string | null;
+  defaultFrequencyId?: string | null;
+  defaultDurationValue?: number | null;
+  defaultDurationUnit?: DurationUnit | null;
+  defaultQuantity?: number | null;
+  defaultConsumptionMethodId?: string | null;
 }
 
 export type UpdateItemDto = Partial<CreateItemDto> & { active?: boolean };

@@ -523,7 +523,7 @@ confident ZERO, not an error. The catalogue check now asks whether the TABLES
 exist (RLS cannot filter metadata) and the per-clinic count moved to the
 authenticated session. `scripts/smoke-catalogue.mjs` signs in to ask it.
 
-## PHASE 1G — **SEED DONE, UI NOT.** Read this before planning 1G.
+## PHASE 1G — **DONE.** Seed, both screens, and the E2E that proves them.
 
 **DONE and merged:**
 - `src/clinical/standard-prescription-seed.ts` + `prisma/seed-standard-prescriptions.ts`
@@ -552,34 +552,59 @@ a patch. **Re-read the CSV after any change to the mapping.**
 The seeder skips a clinic-edited row and NAMES it (`defaultsFromSeed` marks
 what it wrote). Verified by hand-editing one and re-running.
 
-**STILL TO DO in 1G — screens only, the API and data are ready:**
-1. **Settings UI for catalogs 1A–1E.** One section per catalogue, SYSTEM rows
-   rendered LOCKED, "Add custom" per catalogue. `/reference-catalogs/:catalog`
-   is complete and tested, including `?includeRetired=true` so Settings can
-   offer bringing a retired row back. The API already refuses SYSTEM edits with
-   wording that says what to do instead — the UI should not re-derive that rule,
-   just render the lock and surface the refusal.
-2. **Inventory medicine form** — a "Standard Prescription (default)" section
-   with the seven 1F fields, all optional, referencing the catalogues. Needed so
-   the owner can correct any CSV row and so future medicines can carry defaults.
-   Editing affects FUTURE prescriptions only; a prescription copies its values
-   when written, so nothing retroactive is possible by construction — say so in
-   the UI.
+**BOTH SCREENS ARE NOW BUILT.**
+
+1. **Settings › Prescription Vocabulary** (`/settings/clinical/prescription-vocabulary`,
+   `PrescriptionVocabularyPage.tsx`). One section per catalogue, all five,
+   declared as data — the five differ only in their columns and the rules around
+   them must not drift. A SYSTEM row renders **no controls at all** rather than
+   three disabled ones, and says "Locked — add your own instead". Stock units'
+   "Add custom" is disabled with the reason **printed on the page**, not in a
+   tooltip: a tooltip does not exist on a phone.
+2. **Inventory medicine form** — a "Standard Prescription (default)" section with
+   the seven 1F fields, dropdowns fed from the catalogues **including retired
+   entries**, so a medicine still pointing at a withdrawn row renders its NAME
+   marked "(retired)" instead of a bare uuid.
+
+**THREE DEFECTS FOUND BUILDING THEM, all invisible in a browser:**
+
+- **`JSON.stringify` drops `undefined`.** antd's `allowClear` returns
+  `undefined`, so clearing a default would have left the browser as "field not
+  sent", which the API reads as "leave it alone". The doctor deletes a wrong
+  dose, the form says saved, and the wrong dose is still there. `withClearedDefaults`
+  sends an explicit `null` for those seven keys only — the rest of the medicine
+  form still relies on `undefined` meaning "don't change this".
+- **Nothing cleared `defaults_from_seed`.** The seeder's skip branch was
+  therefore UNREACHABLE through the API: the next `seed:standard-rx` run would
+  have reverted a doctor's correction without a word. `ItemService` now clears it
+  whenever a payload touches any of the seven keys — presence of the KEY, not the
+  value, because writing the same dose back is still a person saying "this is right".
+- **A foreign key does not enforce tenant isolation.** PostgreSQL checks FKs
+  through internal triggers that RLS does not apply to, so another clinic's
+  frequency id would be ACCEPTED by the constraint and then read back as nothing
+  — a form opening blank with no error anywhere. `assertStandardPrescriptionIsReal`
+  refuses it, and refuses retired entries, naming every offending field at once.
+
+**"Seeded is not findable", a fourth time.** The Items page showed ten of 236
+medicines with no search, so the screen that edits a standard prescription could
+not reach one. Added `useItemSearch` — server-side, so the Malay group tag is
+matched too.
+
+**Two fields on that form were both labelled "Duration."** The legacy free-text
+trio (`doseDefault`/`frequencyDefault`/`durationDefault`) is what the prescribing
+modal still reads until Phase 2, so it stays — but it now says "(free text)".
+Delete those labels' suffix only when Phase 2 removes the columns' last reader.
+
+`e2e/prescription-vocabulary.spec.ts` — 4 specs. It asserts the words the clinic
+reads (the Malay label, the refusal sentence) and that paracetamol's seeded
+defaults RESOLVE to names on screen, which is the half that silently fails if the
+reference catalogues were not seeded first.
 
 ## b1+b2 PACKAGE — WHAT IS LEFT (next session starts here)
 
 **Phase 1 remainder:**
-- **Settings UI for 1A–1E**: one section per catalogue, SYSTEM rows rendered as
-  LOCKED, "Add custom" per catalogue. The API is complete and tested — this is
-  screens only. `/reference-catalogs/:catalog?includeRetired=true` exists so
-  Settings can show a retired row in order to offer bringing it back.
-- **1F, the half that is not schema**: editable default fields in the Settings
-  inventory medicine form, and seeded defaults for the 229-medicine catalogue
-  "where obvious". Deliberately NOT guessed here: the columns exist and are
-  nullable, `defaults_from_seed` marks platform-set values, and a medicine with
-  no defaults opens the form EMPTY. Seed only what the imported row already
-  implies (its own `doseDefault`/`frequencyDefault` text where it parses) — do
-  not invent doses for real drugs to make the list look complete.
+- ~~Settings UI for 1A–1E~~ and ~~the 1F medicine form~~ — **both done**, see
+  PHASE 1G above.
 - Stock display/deduction respecting `stockUnitId` + `quantityPerStockUnit`.
   Nothing reads those columns yet, so "X in stock" is unchanged so far.
 
@@ -588,6 +613,13 @@ the catalogues, duration as number + DAY/WEEK/MONTH, indication combobox
 matching EITHER language, prefill from 1F, quantity auto-compute
 (dose x timesPerDay x days, WEEK x7, MONTH x30, manual edit stops recalc,
 PRN/STAT skip), and the bilingual label output.
+
+**The quantity rule is already written and tested** — `computeQuantity` in
+`apps/web/src/inventory/standardPrescriptionForm.ts`. It returns `null` for
+"cannot be computed" and the caller must LEAVE THE BOX ALONE on null, never fall
+back to 1: a PRN frequency has no doses-per-day, so any number there is one
+nobody decided. It rounds UP, because a half-tablet course rounded down is four
+days of a five-day prescription.
 
 **Phase 3** — `useDismissableModal(isDirty)`: backdrop (**mousedown** target, so
 a text-selection drag ending outside does not close), Esc, X and Cancel all

@@ -34,6 +34,8 @@ const SETTINGS_CATEGORIES: HubCategory[] = [
       { path: '/settings/clinical/services', label: 'Services & Procedures' },
       { path: '/settings/clinical/consultation-tariffs', label: 'Consultation Tariffs' },
       { path: '/settings/clinical/diagnoses', label: 'Diagnoses' },
+      // b1 PHASE 1G — the five lists the prescribing form is built from.
+      { path: '/settings/clinical/prescription-vocabulary', label: 'Prescription Vocabulary' },
     ],
   },
   {

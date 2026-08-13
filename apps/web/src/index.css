@@ -3062,3 +3062,11 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 .kw-iv-more:hover {
   text-decoration: underline;
 }
+
+/* b1 PHASE 1G — a retired vocabulary entry in Settings.
+   Dimmed rather than hidden, because Settings has to show a retired row in
+   order to offer bringing it back. Opacity alone, no strikethrough: the row
+   still has to be readable enough to decide about. */
+.kw-catalog-row-retired td {
+  opacity: 0.55;
+}

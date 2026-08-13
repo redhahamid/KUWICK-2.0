@@ -1,8 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { currentTenantId } from '../core/tenant-context';
 import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
+import { touchesStandardPrescription } from './dto/standard-prescription-defaults.dto';
 import { itemSearchClauses } from './item-search';
 
 /**
@@ -17,8 +18,11 @@ export const MAX_CATALOGUE_TAKE = 100;
 export class ItemService {
   constructor(@Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient) {}
 
-  create(dto: CreateItemDto) {
-    return this.prisma.item.create({ data: { ...dto, tenantId: currentTenantId() } });
+  async create(dto: CreateItemDto) {
+    await this.assertStandardPrescriptionIsReal(dto);
+    return this.prisma.item.create({
+      data: { ...dto, tenantId: currentTenantId(), ...this.ownershipOf(dto) },
+    });
   }
 
   /**
@@ -72,7 +76,80 @@ export class ItemService {
     return item;
   }
 
-  update(id: string, dto: UpdateItemDto) {
-    return this.prisma.item.update({ where: { id }, data: dto });
+  async update(id: string, dto: UpdateItemDto) {
+    await this.assertStandardPrescriptionIsReal(dto);
+    return this.prisma.item.update({ where: { id }, data: { ...dto, ...this.ownershipOf(dto) } });
+  }
+
+  /**
+   * PHASE 1G — once a person here edits the defaults, they are the clinic's.
+   *
+   * `seed:standard-rx` skips any row whose defaults it did not write, and it
+   * decides that by this flag. Nothing cleared it before this, so the skip
+   * branch was unreachable through the API and the next seed run would have
+   * reverted a doctor's correction without a word. The flag is only ever
+   * CLEARED here — set is the seeder's alone.
+   *
+   * Presence of the key is what counts, not the value: writing the same dose
+   * back is still a person at the clinic saying "this one is right".
+   */
+  private ownershipOf(dto: object) {
+    return touchesStandardPrescription(dto) ? { defaultsFromSeed: false } : {};
+  }
+
+  /**
+   * The referenced frequency / unit / method exists, is this clinic's, and is
+   * still in use.
+   *
+   * NOT redundant with the foreign keys. PostgreSQL runs FK checks through
+   * internal triggers that are not subject to row-level security, so a
+   * cross-tenant id passes the constraint and lands on the row — after which
+   * every read of it is RLS-blocked and the doctor's form opens blank with no
+   * explanation. Same reason a RETIRED row is refused: a prescribing form must
+   * not open with a frequency the clinic has withdrawn.
+   */
+  private async assertStandardPrescriptionIsReal(dto: {
+    defaultDoseUnitId?: string | null;
+    defaultFrequencyId?: string | null;
+    defaultConsumptionMethodId?: string | null;
+  }) {
+    const tenantId = currentTenantId();
+    const checks: Array<[string, Promise<{ id: string } | null>]> = [];
+    if (dto.defaultDoseUnitId) {
+      checks.push([
+        'Dose unit',
+        this.prisma.dosageUnit.findFirst({
+          where: { id: dto.defaultDoseUnitId, tenantId, active: true },
+          select: { id: true },
+        }),
+      ]);
+    }
+    if (dto.defaultFrequencyId) {
+      checks.push([
+        'Frequency',
+        this.prisma.prescriptionFrequency.findFirst({
+          where: { id: dto.defaultFrequencyId, tenantId, active: true },
+          select: { id: true },
+        }),
+      ]);
+    }
+    if (dto.defaultConsumptionMethodId) {
+      checks.push([
+        'Consumption method',
+        this.prisma.consumptionMethodRef.findFirst({
+          where: { id: dto.defaultConsumptionMethodId, tenantId, active: true },
+          select: { id: true },
+        }),
+      ]);
+    }
+    if (checks.length === 0) return;
+
+    const found = await Promise.all(checks.map(([, promise]) => promise));
+    const missing = checks.filter((_, index) => found[index] === null).map(([label]) => label);
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `${missing.join(' and ')} ${missing.length === 1 ? 'is' : 'are'} not on this clinic's list. Pick from the list, or add the entry in Settings › Prescription Vocabulary first.`,
+      );
+    }
   }
 }
