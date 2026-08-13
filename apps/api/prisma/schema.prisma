@@ -199,6 +199,11 @@ model Tenant {
   users                       User[]
   patients                    Patient[]
   patientAlerts               PatientAlert[]
+  prescriptionFrequencies     PrescriptionFrequency[]
+  dosageUnits                 DosageUnit[]
+  consumptionMethods          ConsumptionMethodRef[]
+  indicationPresets           IndicationPreset[]
+  stockUnits                  StockUnitRef[]
   globalSettings              GlobalSetting[]
   notificationLogs            NotificationLog[]
   auditLogs                   AuditLog[]
@@ -513,20 +518,20 @@ enum PatientAlertType {
 }
 
 model PatientAlert {
-  id        String           @id @default(uuid())
-  tenantId  String           @map("tenant_id")
-  patientId String           @map("patient_id")
-  type      PatientAlertType
-  label     String
-  note      String?
-  active    Boolean          @default(true)
+  id                   String           @id @default(uuid())
+  tenantId             String           @map("tenant_id")
+  patientId            String           @map("patient_id")
+  type                 PatientAlertType
+  label                String
+  note                 String?
+  active               Boolean          @default(true)
   // Plain staff-id audit columns, same convention as Staff's
   // professionalVerifiedByStaffId — attribution on record without adding two
   // more relations to the Staff constellation.
-  createdByStaffId     String    @map("created_by_staff_id")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  deactivatedByStaffId String?   @map("deactivated_by_staff_id")
-  deactivatedAt        DateTime? @map("deactivated_at")
+  createdByStaffId     String           @map("created_by_staff_id")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  deactivatedByStaffId String?          @map("deactivated_by_staff_id")
+  deactivatedAt        DateTime?        @map("deactivated_at")
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id])
   patient Patient @relation(fields: [patientId], references: [id])
@@ -1164,20 +1169,61 @@ model Item {
    * one thing an import must never do.
    */
   dosingType ItemDosingType @default(ADULT_DEFAULT) @map("dosing_type")
-  createdAt  DateTime       @default(now()) @map("created_at")
-  updatedAt  DateTime       @updatedAt @map("updated_at")
 
-  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
-  stockLevels            StockLevel[]
-  stockBatches           StockBatch[]
-  stockMovements         StockMovement[]
-  procurementRequests    ProcurementRequest[]
-  purchaseOrderLines     PurchaseOrderLine[]
-  goodsReceivedNoteLines GoodsReceivedNoteLine[]
-  ageDosages             ItemAgeDosage[]
-  prescriptions          Prescription[]
-  panelPriceOverrides    PanelPriceOverride[]
-  panelExclusions        PanelExclusion[]
+  // ---- b1 PHASE 1F: STRUCTURED PRESCRIPTION DEFAULTS ---------------------
+  //
+  // What the prescribing form opens filled with. STRUCTURED, and additive to
+  // the free-text `doseDefault` / `doseUnitDefault` / `frequencyDefault` /
+  // `durationDefault` columns above, which still hold the imported catalogue's
+  // own values and are still read where a structured default is absent.
+  //
+  // The point of the FKs is that a default is a REFERENCE to the clinic's
+  // vocabulary rather than a copy of it: rename the Malay label on a frequency
+  // and every medicine defaulting to it says the new thing, instead of 229
+  // rows keeping a string nobody can find.
+  //
+  // Every one is nullable, and a medicine with none opens the form EMPTY.
+  // Inventing a dose for a real drug is the one thing a default must never do.
+  defaultDoseAmount          Decimal?      @map("default_dose_amount") @db.Decimal(10, 2)
+  defaultDoseUnitId          String?       @map("default_dose_unit_id")
+  defaultFrequencyId         String?       @map("default_frequency_id")
+  defaultDurationValue       Int?          @map("default_duration_value")
+  defaultDurationUnit        DurationUnit? @map("default_duration_unit")
+  defaultQuantity            Int?          @map("default_quantity")
+  defaultConsumptionMethodId String?       @map("default_consumption_method_id")
+
+  /// True where the defaults above came from the platform's seed rather than
+  /// from somebody at this clinic. A clinic overriding one clears it, so
+  /// "nobody here has reviewed this medicine's defaults" stays answerable —
+  /// the same reason an attachment's suggested category is unattributed.
+  defaultsFromSeed Boolean @default(false) @map("defaults_from_seed")
+
+  // ---- b1 PHASE 1E: how this medicine is COUNTED -------------------------
+  //
+  // The unit is the platform's word ("TABLET PER STRIP"); the number beside it
+  // is the clinic's, because only they know whether their strips hold 10 or
+  // 12. Stock deduction and the "X in stock" line both read this pair.
+  stockUnitId          String? @map("stock_unit_id")
+  quantityPerStockUnit Int?    @map("quantity_per_stock_unit")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant                   Tenant                  @relation(fields: [tenantId], references: [id])
+  defaultDoseUnit          DosageUnit?             @relation("ItemDefaultDoseUnit", fields: [defaultDoseUnitId], references: [id])
+  defaultFrequency         PrescriptionFrequency?  @relation("ItemDefaultFrequency", fields: [defaultFrequencyId], references: [id])
+  defaultConsumptionMethod ConsumptionMethodRef?   @relation("ItemDefaultConsumptionMethod", fields: [defaultConsumptionMethodId], references: [id])
+  stockUnit                StockUnitRef?           @relation("ItemStockUnit", fields: [stockUnitId], references: [id])
+  stockLevels              StockLevel[]
+  stockBatches             StockBatch[]
+  stockMovements           StockMovement[]
+  procurementRequests      ProcurementRequest[]
+  purchaseOrderLines       PurchaseOrderLine[]
+  goodsReceivedNoteLines   GoodsReceivedNoteLine[]
+  ageDosages               ItemAgeDosage[]
+  prescriptions            Prescription[]
+  panelPriceOverrides      PanelPriceOverride[]
+  panelExclusions          PanelExclusion[]
 
   @@index([tenantId])
   @@map("items")
@@ -2261,9 +2307,9 @@ model VisitAttachment {
   //
   // Upload picks a default from the file type; whoever re-files it is
   // recorded, because the tag is what a later reader searches the record by.
-  category            VisitAttachmentCategory @default(PHOTO)
-  categorySetByStaffId String?                @map("category_set_by_staff_id")
-  categorySetAt        DateTime?              @map("category_set_at")
+  category             VisitAttachmentCategory @default(PHOTO)
+  categorySetByStaffId String?                 @map("category_set_by_staff_id")
+  categorySetAt        DateTime?               @map("category_set_at")
 
   // G3a (D-062) — audited removal. filePath is deliberately untouched: the
   // clinical image stays on disk so authorised history can still retrieve it.
@@ -2290,6 +2336,204 @@ model VisitAttachment {
 // kuwick.com Diagnosis tab's "search/add diagnosis from catalog" — no
 // dedicated admin CRUD screen this phase; entries are created inline when a
 // diagnosis isn't found (Clinical 2b plan, judgment call #3).
+/// ---------------------------------------------------------------------------
+/// b1 PHASE 1 — PRESCRIPTION REFERENCE DATA
+///
+/// Five catalogues that together decide what a prescription can say, and what
+/// its printed label says in Malay. They exist because the alternative is
+/// clinical vocabulary hardcoded in application code: the previous form asked
+/// a doctor to TYPE the frequency and the unit as free text, which is how one
+/// clinic ends up with "TDS", "tds", "3x daily" and "tiga kali" meaning the
+/// same thing on four labels, and how a patient label ends up in English.
+///
+/// THE PLATFORM MODEL, which every one of these follows:
+///
+///   SYSTEM rows are the platform's defaults. They are seeded into each
+///   tenant, and the clinic cannot edit or delete them through the API —
+///   `assertCustomOrigin` refuses. They are shown as locked rows in Settings.
+///
+///   CUSTOM rows are the clinic's own, added on top, fully editable.
+///
+/// Seeded PER TENANT rather than as null-tenant global rows, matching
+/// `DiagnosisCatalog`, which is the existing precedent for exactly this
+/// shape — and matching the standing architectural rule that tenants RECEIVE
+/// defaults rather than reading a shared table they do not own. The platform's
+/// channel for changing a default is the seeder (idempotent, and it REPAIRS on
+/// re-run — the diagnosis outage was a seed that could not repair). The
+/// clinic's channel is the API, and the API refuses to touch SYSTEM rows.
+/// Those are deliberately different channels; do not "fix" one by opening the
+/// other.
+///
+/// Nothing here is deleted, ever: `active = false` retires a row. A frequency
+/// or a unit is referenced by prescriptions that have already been dispensed
+/// and printed, and a label that cannot be reprinted because a lookup row was
+/// removed is a medicolegal gap.
+/// ---------------------------------------------------------------------------
+
+enum CatalogOrigin {
+  /// The platform's default. Seeded; not editable by the clinic.
+  SYSTEM
+  /// The clinic's own addition.
+  CUSTOM
+}
+
+enum DurationUnit {
+  DAY
+  WEEK
+  MONTH
+}
+
+/// 1A — how often a dose is taken.
+model PrescriptionFrequency {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// What the DOCTOR prescribes by, and the only thing they type: OD, BD, TDS.
+  code String
+
+  /// The English expansion, for the prescriber's own list. Never printed on a
+  /// patient label — the label is bilingual by way of `code (patientLabelBm)`.
+  doctorDisplay String @map("doctor_display")
+
+  /// What the PATIENT reads. The printed label shows "OD (Sekali sehari)":
+  /// the code because that is what the clinic says to each other, the Malay
+  /// because that is what the person taking the medicine reads.
+  patientLabelBm String @map("patient_label_bm")
+
+  /// Doses per day, and NULL is a real answer that means "cannot be counted".
+  /// PRN and STAT have no daily count, so quantity auto-compute must SKIP
+  /// them rather than treat them as one — computing "1 × 5 days" for a
+  /// when-required painkiller is a quantity nobody decided.
+  timesPerDay Int? @map("times_per_day")
+
+  origin    CatalogOrigin @default(CUSTOM)
+  active    Boolean       @default(true)
+  sortOrder Int           @default(0) @map("sort_order")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  items  Item[] @relation("ItemDefaultFrequency")
+
+  @@unique([tenantId, code])
+  @@index([tenantId, active])
+  @@map("prescription_frequencies")
+}
+
+/// 1B — the unit a dose is measured in.
+model DosageUnit {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// The doctor's view, in English: Tablet, Millilitre, Puff.
+  systemNameEn String @map("system_name_en")
+
+  /// The patient's view, in Malay: BIJI, mL, SEDUTAN. Deliberately not a
+  /// translation of the English word but what a Malaysian label actually says.
+  patientLabelBm String @map("patient_label_bm")
+
+  /// Where this unit belongs — "syrup/liquid", "eye/ear/nasal". Guidance for
+  /// whoever is choosing, not a rule the system enforces: a clinic may
+  /// legitimately measure something in a way this note did not anticipate.
+  useCase String? @map("use_case")
+
+  origin    CatalogOrigin @default(CUSTOM)
+  active    Boolean       @default(true)
+  sortOrder Int           @default(0) @map("sort_order")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  items  Item[] @relation("ItemDefaultDoseUnit")
+
+  @@unique([tenantId, systemNameEn])
+  @@index([tenantId, active])
+  @@map("dosage_units")
+}
+
+/// 1C — how the medicine is taken, and the instruction that prints for it.
+///
+/// Named `ConsumptionMethodRef` because `Item.consumptionMethod` is an
+/// existing free-text column on the medicine and the two must not be confused
+/// while the structured one is being adopted.
+model ConsumptionMethodRef {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// Bilingual on purpose, as one string: "ORAL (MAKAN/MINUM)". The clinic
+  /// reads both halves and splitting them would invite a screen that shows
+  /// only one.
+  methodBilingual String @map("method_bilingual")
+
+  /// The sentence that PRINTS on the label: "Ambil melalui mulut". This is the
+  /// row's reason for existing — a route with no instruction leaves the
+  /// patient to guess.
+  patientInstructionBm String @map("patient_instruction_bm")
+
+  origin    CatalogOrigin @default(CUSTOM)
+  active    Boolean       @default(true)
+  sortOrder Int           @default(0) @map("sort_order")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  items  Item[] @relation("ItemDefaultConsumptionMethod")
+
+  @@unique([tenantId, methodBilingual])
+  @@index([tenantId, active])
+  @@map("consumption_methods")
+}
+
+/// 1D — what the medicine is FOR, offered in both languages.
+///
+/// A preset list, not a closed one: free text remains allowed on the
+/// prescription, because a doctor must never be unable to say why.
+model IndicationPreset {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  labelEn String @map("label_en")
+  labelBm String @map("label_bm")
+
+  origin    CatalogOrigin @default(CUSTOM)
+  active    Boolean       @default(true)
+  sortOrder Int           @default(0) @map("sort_order")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, labelEn])
+  @@index([tenantId, active])
+  @@map("indication_presets")
+}
+
+/// 1E — how stock is COUNTED on the shelf: "TABLET PER STRIP", "VIAL".
+///
+/// The clinic does not add to this one. It is the platform's list, because the
+/// number beside it (`Item.quantityPerStockUnit`) is what stock deduction
+/// arithmetic depends on, and a clinic-invented packaging word with no agreed
+/// meaning is a deduction nobody can check.
+model StockUnitRef {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  name String
+
+  origin    CatalogOrigin @default(SYSTEM)
+  active    Boolean       @default(true)
+  sortOrder Int           @default(0) @map("sort_order")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  items  Item[] @relation("ItemStockUnit")
+
+  @@unique([tenantId, name])
+  @@index([tenantId, active])
+  @@map("stock_units")
+}
+
 enum DiagnosisCategory {
   CUSTOM
   SUMMARIZE

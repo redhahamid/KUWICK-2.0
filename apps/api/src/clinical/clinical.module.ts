@@ -57,6 +57,8 @@ import { ChatService } from './chat.service';
 import { ChatChannelService } from './chat-channel.service';
 import { PatientAlertController } from './patient-alert.controller';
 import { PatientAlertService } from './patient-alert.service';
+import { ReferenceCatalogController } from './reference-catalog.controller';
+import { ReferenceCatalogService } from './reference-catalog.service';
 
 // Clinical Operations, Phase 1a. Owns ServiceCatalog, Visit, QueueTicket,
 // ClinicalNote, Diagnosis, OrderService, Prescription, Document, Invoice
@@ -65,6 +67,7 @@ import { PatientAlertService } from './patient-alert.service';
 @Module({
   imports: [CoreModule],
   controllers: [
+    ReferenceCatalogController,
     DispensaryController,
     ServiceCatalogController,
     VisitController,
@@ -92,6 +95,7 @@ import { PatientAlertService } from './patient-alert.service';
     ChatController,
   ],
   providers: [
+    ReferenceCatalogService,
     ServiceCatalogService,
     VisitService,
     DoctorCompletionService,

@@ -14,7 +14,8 @@
     "start": "node dist/main",
     "start:prod": "prisma migrate deploy && node dist/main",
     "seed:staging": "tsx prisma/seed-staging-uat.ts",
-    "seed:catalogues": "tsx prisma/seed-clinic-catalogues.ts"
+    "seed:catalogues": "tsx prisma/seed-clinic-catalogues.ts",
+    "seed:reference": "tsx prisma/seed-reference-catalogs.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

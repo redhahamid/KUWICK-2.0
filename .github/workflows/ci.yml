@@ -132,6 +132,14 @@ jobs:
       - name: Seed the clinical catalogues
         run: npm run seed:catalogues --workspace=apps/api
 
+      # b1 PHASE 1 — the prescription vocabulary (frequencies, dosage units,
+      # consumption methods, indications, stock units). Seeded here for the same
+      # reason the clinical catalogues are: a prescribing form whose frequency
+      # dropdown is empty cannot be tested, and "the list was empty" is exactly
+      # the class of defect that reached a doctor last time.
+      - name: Seed the prescription reference catalogues
+        run: npm run seed:reference --workspace=apps/api
+
       - name: Build API
         run: npm run build
         working-directory: apps/api
