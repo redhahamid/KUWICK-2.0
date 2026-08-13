@@ -187,7 +187,8 @@ describe('a search that cannot hide the catalogue', () => {
     await userEvent.type(screen.getByLabelText('Search diagnosis'), 'urti');
     await waitFor(() => expect(get).toHaveBeenCalled());
 
-    const requested = get.mock.calls.at(-1)?.[0] as string;
+    const calls = get.mock.calls;
+    const requested = calls[calls.length - 1]?.[0] as string;
     expect(requested).toContain('search=urti');
     // The bug in one assertion: a category the caller never asked for.
     expect(requested).not.toContain('category=');
@@ -201,7 +202,8 @@ describe('a search that cannot hide the catalogue', () => {
     );
     await userEvent.type(screen.getByLabelText('Search diagnosis'), 'urti');
     await waitFor(() => expect(get).toHaveBeenCalled());
-    expect(get.mock.calls.at(-1)?.[0] as string).toContain('category=SUMMARIZE');
+    const calls = get.mock.calls;
+    expect(calls[calls.length - 1]?.[0] as string).toContain('category=SUMMARIZE');
   });
 
   it('13. a search with no matches SAYS SO, instead of rendering nothing', async () => {
