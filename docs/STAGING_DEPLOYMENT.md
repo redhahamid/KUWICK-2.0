@@ -334,141 +334,236 @@ is correct behaviour; anything at boot uses `withSystemConnection` instead.
 
 # STAGING SWITCH RUNBOOK — turning on tenant isolation
 
-**For the owner, in the Railway web Console. No terminal, no local setup.**
-Whole thing is about five minutes. Read step 5 before you start.
+## READ THIS FIRST — the ordering trap that took staging down
 
-Until this is done, staging runs with row-level security **inert** — every
-tenant-isolation policy in the database is being ignored, because the API
-connects as a superuser. Nothing else changes: no data is moved, copied,
-re-owned or re-seeded.
+**2026-08-13: this runbook's first version broke staging, and would have broken
+production the same way.** It is recorded here rather than quietly fixed,
+because the mistake is in the ORDER, and the order is the whole content.
+
+The original step 1 said: open the service's **Console** and run
+`provision-app-role.mjs` there. That instruction can only be followed by a
+service that is RUNNING. But the release that shipped the boot assertion
+refuses to start while `DATABASE_URL` is the superuser's — which it is, right
+up until the role exists. So:
+
+> the code that requires the role shipped before the role existed, and the only
+> documented way to create the role needed the code to be running.
+
+A closed loop. Migrations applied fine, the app refused to boot, and there was
+no Console to recover from. **Nothing was wrong with the assertion** — it did
+exactly its job. What was wrong was deploying it before provisioning, and
+documenting a recovery path that assumes the thing that is down.
+
+**The correct order, and the only order this runbook now describes:**
+
+1. **Provision the role** — from outside the container, over the database's
+   PUBLIC url. Needs no running service.
+2. **Set the variables** — `MIGRATE_DATABASE_URL` and `DATABASE_URL`.
+3. **Then deploy the code containing the assertion.**
+
+If the assertion is already deployed and the service is down, you are recovering
+rather than switching: start at step 1 anyway. It works from a laptop with no
+running instance, which is the whole point.
 
 ---
 
-## 1 · Provision the role (kuwick-api → Console)
+**Everything below is CLI. No dashboard steps.** `railway login` and
+`railway link` once, then work in the linked project.
 
-Open the **kuwick-api** service → **Console** tab. Paste these, one at a time.
+---
 
-Pick a password first and keep it somewhere — you need the same one in step 2.
+## 0 · Confirm WHAT you are about to change
+
+Never skip this. Railway names a service's default domain after the
+ENVIRONMENT, and Railway's default environment is called `production` even in a
+project that is only ever used for staging. So a domain reading
+`kuwick-api-production.up.railway.app` tells you the environment is named
+`production` — it does **not** tell you whether real patients are in it.
 
 ```
-APP_ROLE_PASSWORD='CHANGE-ME-to-a-long-random-password' node scripts/provision-app-role.mjs
+railway status
+railway environment
+railway service
 ```
 
-You want exactly this line back:
+Then confirm the database is not shared with anything live:
+
+```
+railway variables --service kuwick-api | grep -i 'DATABASE_URL'
+```
+
+**Compare the host and database name against your real production project.** If
+they match, or you are unsure, STOP. Everything below writes to whatever that
+URL points at.
+
+---
+
+## 1 · Save the rollback line BEFORE touching anything
+
+```
+railway variables --service kuwick-api --kv | grep '^DATABASE_URL=' \
+  > docs/ROLLBACK-$(date +%Y-%m-%d).txt
+cat docs/ROLLBACK-$(date +%Y-%m-%d).txt
+```
+
+`docs/ROLLBACK-*.txt` is gitignored — it holds a live database password and must
+never be committed. Keep the file until the switch is verified, then delete it
+and rotate the superuser password if it has been on disk for long.
+
+---
+
+## 2 · Provision the role — no running container needed
+
+This is the step that used to require the Console. It does not.
+
+Railway exposes a **public** connection string for the Postgres service, on a
+`*.proxy.rlwy.net` host, reachable from your laptop:
+
+```
+railway variables --service Postgres --kv | grep '^DATABASE_PUBLIC_URL='
+```
+
+Generate a long random password, keep it in the rollback file, and run the
+provisioning script from a clone of this repo:
+
+```
+NEWPW="$(openssl rand -base64 30 | tr -d '/+=' | cut -c1-32)"
+echo "kuwick_app password: $NEWPW" >> docs/ROLLBACK-$(date +%Y-%m-%d).txt
+
+APP_ROLE_PASSWORD="$NEWPW" node scripts/provision-app-role.mjs \
+  'postgresql://postgres:PW@HOST.proxy.rlwy.net:PORT/railway'
+```
+
+You want **exactly** this line back:
 
 ```
 provision-app-role: kuwick_app ready (NOSUPERUSER NOBYPASSRLS), privileges granted.
 ```
 
-If it says anything else, **stop** — nothing has changed yet, and the script
-refuses to claim success unless the role really came out safe. Send me the
-output.
+Anything else: **stop**. The script re-reads the role's flags from `pg_roles`
+and refuses to claim success unless the role really came out non-superuser and
+non-bypassrls. Nothing has changed yet if it failed.
 
-> Run this while `DATABASE_URL` is still the old one. The script needs the
-> owner's credentials to create a role, which is exactly what is in there now.
+> **If it fails on TLS** — `the server does not support SSL` or a self-signed
+> certificate error — append `?sslmode=no-verify` to the public URL. Railway's
+> proxy terminates with a certificate your machine has no reason to trust, and
+> `pg` reads `sslmode` straight from the connection string.
 
 ---
 
-## 2 · Point the API at the new role (kuwick-api → Variables)
-
-**First, copy the current `DATABASE_URL` somewhere safe.** That one line is your
-rollback (step 5).
-
-It looks like:
+## 3 · Set the two variables
 
 ```
-postgresql://postgres:LONGPASSWORD@somehost.railway.internal:5432/railway
+OLD="$(grep '^DATABASE_URL=' docs/ROLLBACK-$(date +%Y-%m-%d).txt | cut -d= -f2-)"
+
+railway variables --service kuwick-api \
+  --set "MIGRATE_DATABASE_URL=$OLD" \
+  --set "DATABASE_URL=$(echo "$OLD" | sed -E "s|//postgres:[^@]*@|//kuwick_app:$NEWPW@|")"
 ```
 
-Now make **two** variables on **kuwick-api** only:
-
-| Variable | Value |
-|---|---|
-| `MIGRATE_DATABASE_URL` | the **old** value, pasted exactly as it was |
-| `DATABASE_URL` | the same line, but with `postgres:LONGPASSWORD` replaced by `kuwick_app:` + the password you chose in step 1 |
-
-So `DATABASE_URL` ends up as:
+Then **read them back** rather than trusting the substitution — everything after
+the `@` must be byte-identical to the old line:
 
 ```
-postgresql://kuwick_app:THE-PASSWORD-FROM-STEP-1@somehost.railway.internal:5432/railway
+railway variables --service kuwick-api --kv | grep -E '^(DATABASE_URL|MIGRATE_DATABASE_URL)='
 ```
 
-Everything after the `@` stays **exactly** as it was — host, port, database name.
-
-**Why two:** migrations create tables, and the new role deliberately cannot.
-`MIGRATE_DATABASE_URL` runs the migration step as the owner; `DATABASE_URL` runs
-the application under row-level security. Miss the first one and the service will
-not start on the next release.
+**Why two.** Migrations create tables; `kuwick_app` deliberately cannot.
+`MIGRATE_DATABASE_URL` runs `prisma migrate deploy` as the owner,
+`DATABASE_URL` runs the application under row-level security. Miss the first and
+the service will not start on the next release — `permission denied for schema
+public`, measured, not assumed.
 
 **kuwick-web needs nothing.** It talks to the API over HTTPS and never touches
 the database.
 
-Railway redeploys when you save. Wait for it to go green.
-
 ---
 
-## 3 · Check it worked (phone browser, no terminal)
-
-**a. Open** `https://<your-api-domain>/health`
-
-You want:
-
-```json
-{"status":"ok","database":"connected","build":"abc1234",
- "catalogue":{"tablesPresent":true,"missing":[],"ok":true,"warning":null}}
-```
-
-`"ok":true` and an empty `missing` is the whole test.
-
-**b. Sign in to the app**, open the **avatar menu** (top right). It shows
-`build <sha>` — the first 7 characters should match the `build` above. If they
-differ, the browser is on an older bundle: hard-refresh.
-
-**c. Open any patient's record** and type `urti` in the diagnosis box. Getting
-results back means row-level security is on *and* the clinic can still read its
-own data — which is the thing worth confirming.
-
----
-
-## 4 · What "it went wrong" looks like
-
-If the API **refuses to start** and the deploy log says:
-
-> The application is connected as "postgres", which is a SUPERUSER…
-
-**that is the safety net working, not a broken deploy.** It means `DATABASE_URL`
-is still (or again) the owner's. The service is protecting you from silently
-running with isolation off. Fix the variable, or roll back.
-
----
-
-## 5 · ROLLBACK — under a minute
-
-On **kuwick-api** → Variables, set `DATABASE_URL` back to the old line you
-copied in step 2:
+## 4 · Deploy, and watch the boot
 
 ```
-postgresql://postgres:LONGPASSWORD@somehost.railway.internal:5432/railway
+railway up --service kuwick-api --detach
+railway logs --service kuwick-api
 ```
-
-Save. Railway redeploys and staging is exactly as it was. You can leave
-`MIGRATE_DATABASE_URL` in place — it is harmless.
-
-Rolling back costs you nothing but the isolation guarantee. **No data is
-affected either way.**
 
 ---
 
-## 6 · Your data is untouched
+## 5 · Verify from outside — report actual output, assume nothing
+
+```
+curl -s https://<api-domain>/health
+```
+
+Want: `"status":"ok"`, and `"catalogue":{"tablesPresent":true,"missing":[],"ok":true,...}`.
+
+Then two things `/health` cannot tell you:
+
+- **The build is the one you think.** Sign in, open the avatar menu; it shows
+  `build <sha>`. Compare with `git rev-parse --short HEAD`. If they differ the
+  browser is on an older bundle — hard-refresh before concluding anything.
+- **RLS is on AND the clinic can still read its own data.** Open any patient
+  record and type `urti` in the diagnosis box. Results coming back is the test.
+  An empty result here is the "confident zero" signature: isolation on, tenant
+  context not reaching the query. That is a failure, not a pass.
+
+---
+
+## 6 · If it still will not boot
+
+Read the log before changing anything:
+
+```
+railway logs --service kuwick-api | tail -50
+```
+
+> `The application is connected as "postgres", which is a SUPERUSER…`
+
+**That is the safety net working, not a broken deploy.** `DATABASE_URL` is still
+the owner's — the substitution in step 3 did not take. Fix the variable.
+
+If it is anything else, **roll back rather than leaving staging down**:
+
+```
+railway variables --service kuwick-api \
+  --set "DATABASE_URL=$(grep '^DATABASE_URL=' docs/ROLLBACK-$(date +%Y-%m-%d).txt | cut -d= -f2-)"
+```
+
+Staging returns to exactly what it was. `MIGRATE_DATABASE_URL` can stay; it is
+harmless. Rolling back costs nothing but the isolation guarantee, and **no data
+is affected either way.**
+
+---
+
+## 7 · The emergency escape hatch — and why it is a last resort
+
+`KUWICK_ALLOW_SUPERUSER_DB=yes` downgrades the boot refusal to a logged warning
+and lets the service start as a superuser (`apps/api/src/core/prisma.service.ts`).
+
+**It brings a downed service straight back up in one variable.** It is also the
+one setting that turns every row-level-security policy in the database back into
+decoration: the app runs, serves traffic, and silently has no tenant isolation
+at all, with nothing on any screen to say so.
+
+Use it only when service must be restored NOW and provisioning cannot wait —
+and treat it as an open incident until it is removed, not as a configuration.
+**Prefer the rollback in step 6**, which is equally fast, equally safe, and
+honest about what it is: back to before, rather than forward with the guarantee
+switched off.
+
+Never set it in CI beyond the one place it already lives, and never in
+production.
+
+---
+
+## 8 · Your data is untouched
 
 - **Nothing is moved, copied or re-owned.** This adds a login role and grants it
-  permission to read and write the tables that already exist. Every row stays
-  exactly where it is, owned by exactly whom it was.
-- **Do NOT re-run `seed:catalogues`.** The 162 diagnoses, 236 medicines and the
-  prescription vocabulary are untouched by any of this. Re-running is harmless
-  (it is idempotent) but pointless.
+  permission on tables that already exist. Every row stays where it is.
+- **Do NOT run `seed:catalogues`.** The 162 diagnoses, 236 medicines and the
+  prescription vocabulary are LIVE. None of this touches them, and re-running
+  the seed against live data is not part of any recovery.
 - **Patients, visits, invoices and prints are untouched.**
 
-The one thing that genuinely changes: from now on, every query the application
-makes is filtered by the clinic it belongs to, by PostgreSQL itself, instead of
-by the application asking nicely.
+The one thing that genuinely changes: every query the application makes is
+filtered by the clinic it belongs to, by PostgreSQL itself, instead of by the
+application asking nicely.

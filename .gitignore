@@ -16,3 +16,6 @@ apps/api/uploads/
 test-results/
 /playwright-report/
 /blob-report/
+
+# Holds a live database password — the staging/production rollback line.
+docs/ROLLBACK-*.txt
