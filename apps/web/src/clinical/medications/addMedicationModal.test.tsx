@@ -262,7 +262,12 @@ describe('Add Procedure modal', () => {
     const search = screen.getByRole('combobox', { name: 'Search procedures and investigations' });
     await userEvent.click(search);
     await userEvent.type(search, 'wound');
-    await userEvent.click(await screen.findByTitle('Wound dressing'));
+    // Picked by its VISIBLE text, not by the title attribute. The option now
+    // renders a second line (code · category · price) and the title carries
+    // both parts, so a title-coupled assertion breaks on a presentation change
+    // that a user would call an improvement — and it was never what the user
+    // clicks anyway.
+    await userEvent.click(await screen.findByText('Wound dressing'));
     await userEvent.click(screen.getByRole('button', { name: 'Add Order' }));
     await waitFor(() => expect(post).toHaveBeenCalled());
 

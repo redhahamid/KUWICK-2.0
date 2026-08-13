@@ -74,10 +74,17 @@ export function ServicesRail({ visitId }: ServicesRailProps) {
             placeholder="Search services…"
             value={serviceCatalogId}
             onChange={setServiceCatalogId}
-            filterOption={(input, option) => (option?.label as string).toLowerCase().includes(input.toLowerCase())}
+            // Same columns as the server and as the orders tab
+            // (service-search.ts): name, code, category.
+            filterOption={(input, option) =>
+              String(option?.searchText ?? option?.label ?? '')
+                .toLowerCase()
+                .includes(input.toLowerCase())
+            }
             options={addable.map((service) => ({
               value: service.id,
               label: service.code ? `${service.code} — ${service.name}` : service.name,
+              searchText: [service.code, service.name, service.category].filter(Boolean).join(' '),
             }))}
           />
           <Button type="primary" loading={createService.isPending} disabled={!serviceCatalogId} onClick={add}>

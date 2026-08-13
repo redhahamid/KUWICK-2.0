@@ -150,6 +150,36 @@ async function main() {
       });
     }
 
+    // --- 3b. A CODED, CATEGORISED STANDARD SERVICE ---------------------
+    //
+    // For the catalogue-findability guardrail, which asserts that every search
+    // surface finds a row by a NON-name field. The services rail offers
+    // STANDARD_SERVICE only, and the seeded world's standard services carry no
+    // code at all — so the guardrail had nothing to find there and would have
+    // been reporting on an empty shelf rather than on the search. A real
+    // clinic's Services & Procedures rows do carry codes; this makes the test
+    // world resemble one in the single respect the test is about.
+    const dressing = await tx.serviceCatalog.findFirst({
+      where: { name: 'Dressing (E2E)' },
+      select: { id: true },
+    });
+    if (!dressing) {
+      await tx.serviceCatalog.create({
+        data: {
+          tenantId,
+          name: 'Dressing (E2E)',
+          // Deliberately not a substring of the name: a term that also matches
+          // the name would let the guardrail pass while code search is broken.
+          code: 'E2E-WOUNDCARE',
+          category: 'Procedure',
+          orderType: 'STANDARD_SERVICE',
+          durationMinutesDefault: 10,
+          price: 20,
+        },
+      });
+      lines.push('standard service created: Dressing (E2E) / E2E-WOUNDCARE');
+    }
+
     const existingRule = await tx.consultationTariffRule.findFirst({
       where: { clinicId, classification: 'CONSULTATION', active: true },
       select: { id: true },

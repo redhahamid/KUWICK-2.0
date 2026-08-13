@@ -62,7 +62,17 @@ export function AddProcedureModal({ open, visitId, onClose, restoreFocusTo }: Ad
     const services = await apiClient.get<Service[]>(
       `/services?orderType=TASK_ORDER&take=20&search=${encodeURIComponent(term)}`,
     );
-    return services.map((service) => ({ value: service.id, label: service.name }));
+    // The row says what the choice is made on: the code that appears on the
+    // order form, the clinic's own category, and the price. It said the name
+    // alone, which is also the only field the SERVER used to match — so a
+    // procedure could not be found by the code printed on its own form.
+    return services.map((service) => ({
+      value: service.id,
+      label: service.name,
+      detail: [service.code, service.category, `RM ${Number(service.price ?? 0).toFixed(2)}`]
+        .filter(Boolean)
+        .join(' · '),
+    }));
   }, []);
 
   const dirty = useMemo(
@@ -125,7 +135,7 @@ export function AddProcedureModal({ open, visitId, onClose, restoreFocusTo }: Ad
         <KuwickSearchSelect
           id="kw-procedure-search"
           ariaLabel="Search procedures and investigations"
-          placeholder="Search by name…"
+          placeholder="Search by name, code or category…"
           value={serviceCatalogId}
           autoFocus
           onSearch={searchServices}

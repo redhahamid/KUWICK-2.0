@@ -98,10 +98,20 @@ export function OrdersServicesTab({ visitId }: OrdersServicesTabProps) {
           placeholder="Search orders or services..."
           value={serviceCatalogId}
           onChange={setServiceCatalogId}
-          filterOption={(input, option) => (option?.label as string).toLowerCase().includes(input.toLowerCase())}
+          // Matches the SAME columns the server matches (service-search.ts):
+          // name, code, category. This filtered on the option's printed label,
+          // which happens to contain the code and never the category — so this
+          // surface and the server-backed one disagreed about what is
+          // findable, in opposite directions.
+          filterOption={(input, option) =>
+            String(option?.searchText ?? option?.label ?? '')
+              .toLowerCase()
+              .includes(input.toLowerCase())
+          }
           options={services?.map((service) => ({
             value: service.id,
             label: service.code ? `${service.code} — ${service.name}` : service.name,
+            searchText: [service.code, service.name, service.category].filter(Boolean).join(' '),
           }))}
         />
         <Input

@@ -100,12 +100,26 @@ secret threw, login 500'd, and every spec timed out at `/login` — while
 because `.env` carries the real names. Fixed in ci.yml; local green is NOT
 CI green — check the Actions tab after pushing, every time.
 
-Known flake, pre-existing: one full `vitest run` failed rc=1 on an UNHANDLED
-teardown error ("window is not defined", attributed to
-`diagnosisSearchField.test.tsx`) while every test passed; the next identical
-run was clean and the file passes in isolation on repeat. It is a cross-file
-scheduler-tick-after-jsdom-teardown race, not a test failure — re-run before
-believing a red that shows 0 failed tests, and fix the race if it recurs.
+Known flake, pre-existing: a full `vitest run` can exit rc=1 on an UNHANDLED
+teardown error ("window is not defined" at
+`react-dom` → `Immediate.performWorkUntilDeadline`) while EVERY test passes.
+The file it blames moves between runs (`diagnosisSearchField`, then
+`allergyQuickRecord`, then `copyRxModal`), which is the tell that it belongs to
+none of them: React scheduled work, the file's jsdom was torn down, the queued
+Immediate fired afterwards. It is not a failing test, and CI has been green on
+it throughout — it reproduces locally under load.
+
+**2026-08-13 — one hypothesis RULED OUT, so the next attempt need not repeat
+it.** It is NOT scheduled by `cleanup()`: awaiting a `setImmediate` in the
+`afterEach`, draining React's own task queue while the environment is still
+alive, did not fix it (tried, measured, reverted). So the work is scheduled
+AFTER that hook, which points at something settling late rather than at
+unmounting — a mocked request resolving after its test ended, or a React Query
+observer on a per-test `QueryClient` that no test ever clears. **Start there.**
+Note also that `setImmediate` is untyped in the web tsconfig (no node types),
+so a fix using it needs its own typing or a different primitive. Do not
+"fix" this by silencing the reporter: the warning that unhandled errors "might
+cause false positive tests" is the part worth keeping.
 
 ## Checklist state
 
@@ -151,9 +165,40 @@ believing a red that shows 0 failed tests, and fix the race if it recurs.
   rail sends no category (the whole catalogue), and the field now says
   "No diagnosis matches …" / "could not be reached". A row count in /health
   CANNOT catch this class; assert findability where it lives.
-- **Assert every surface, not the convenient one.** The golden path proved
-  diagnosis search in FLOW only, so the owner's CANVAS box stayed broken
-  through a green build. `canvas-viewport.spec.ts` now searches in Canvas too.
+- **STANDING RULE, hardened by the owner 2026-08-13 after the third instance:**
+  **a catalogue is only searchable if EVERY surface queries the same source
+  with the same fields — verify each surface independently; fixing one proves
+  nothing about the other.**
+
+  Three instances, and the third is what forced the wording. Diagnoses: one
+  category written, another queried. Medicines: the server matched name and
+  code while **Flow never asked the server at all**, filtering the catalogue
+  client-side on the option's printed LABEL. Services: the server matched
+  `name` alone — so a procedure could not be found by the code on its own order
+  form — while the two client-filtering rails found it perfectly well, because
+  their label reads "CODE — Name". **That last pair was broken in OPPOSITE
+  directions, so a test of either surface would have certified the other.**
+
+  What follows from it, in practice:
+  - the searchable field list for each catalogue lives in ONE tested module —
+    `item-search.ts`, `service-search.ts`, `diagnosis.service.ts:searchCatalog`
+    — never re-derived in a `where` clause or a `filterOption`;
+  - a client-side `filterOption` must match the same list as the server. Match
+    on an explicit `searchText` field, never on the printed label: a label is a
+    display decision and it silently governs findability;
+  - **diagnoses are the shape to copy** — Canvas and Flow mount ONE
+    `DiagnosisSearchField`, so the catalogue cannot drift between them. Two
+    components onto one catalogue is the defect waiting to happen;
+  - **CI enforces it**: `e2e/catalogue-findability.spec.ts` is a TABLE of
+    catalogue × surface × a term matching a NON-name field (shortform, group
+    tag, code). A term matching the name proves nothing — name matching has
+    never been the thing that broke. **When you add a search box onto a
+    catalogue, add a row.** A surface exposing only a slice of a catalogue
+    (the services rail is STANDARD_SERVICE only) gets its own term rather than
+    a term chosen to match everywhere, which would hide the thing being tested;
+  - the guardrail needs data it can find, so `seed-e2e.ts` plants a coded,
+    categorised standard service. A findability test against rows that carry no
+    code is a test of an empty shelf.
 - **A 229-item catalogue is not a 7-item one.** antd Selects virtualise, so
   "open the list and pick the row" silently stopped working once real data
   landed — the row is not in the DOM until you type. `openAndPick` types

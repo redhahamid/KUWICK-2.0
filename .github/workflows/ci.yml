@@ -172,7 +172,17 @@ jobs:
       - name: Smoke — the clinical catalogue is loaded
         run: node scripts/smoke-catalogue.mjs http://localhost:3000
 
-      - name: Golden path
+      # Every spec in e2e/, not just the golden path — the name said otherwise
+      # while it was already running the viewport and catalogue guardrails, and
+      # a step whose name understates what it covers is a step people skim.
+      #
+      # CATALOGUE FINDABILITY runs here (owner rule, 2026-08-13): for every
+      # searchable catalogue, a term matching a NON-name field must return
+      # results on EVERY surface exposing that search. Three separate outages
+      # came from one surface being fixed and the other left alone, in one case
+      # broken in the opposite direction — so surfaces are asserted
+      # independently and a name-matching term proves nothing.
+      - name: E2E — golden path, viewport, catalogue findability
         run: npx playwright test
 
       # The logs are the first thing anybody wants when this job is red, and
