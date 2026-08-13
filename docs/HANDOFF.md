@@ -614,6 +614,16 @@ matching EITHER language, prefill from 1F, quantity auto-compute
 (dose x timesPerDay x days, WEEK x7, MONTH x30, manual edit stops recalc,
 PRN/STAT skip), and the bilingual label output.
 
+**WHERE PHASE 2 LANDS, concretely** (surveyed, not started):
+`apps/web/src/clinical/medications/AddMedicationModal.tsx` (594 lines) holds a
+`FormState` whose `unit`, `frequency` and `durationDays` are free text/number,
+and `prescribing.ts`'s `defaultsFromItem` prefills them by REGEX-SCRAPING the
+legacy columns (`"5 days"` -> 5). Phase 2 replaces both: the dropdowns read the
+catalogues, and prefill comes from the item's 1F fields, which are already
+populated for 226 of 236 medicines. Keep `defaultsFromItem` working as the
+fallback for a medicine whose 1F fields are empty — 10 of them have none by
+design, and the legacy text is all those rows have.
+
 **The quantity rule is already written and tested** — `computeQuantity` in
 `apps/web/src/inventory/standardPrescriptionForm.ts`. It returns `null` for
 "cannot be computed" and the caller must LEAVE THE BOX ALONE on null, never fall
