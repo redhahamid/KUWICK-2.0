@@ -600,42 +600,39 @@ reads (the Malay label, the refusal sentence) and that paracetamol's seeded
 defaults RESOLVE to names on screen, which is the half that silently fails if the
 reference catalogues were not seeded first.
 
-## PHASE A — **CANVAS DONE, FLOW NOT.** Read this before touching prescribing.
+## PHASE A — **DONE, both surfaces.**
 
-**DONE and tested:** the prescription now carries what its own LABEL has to
-say, as SNAPSHOTS — `dose_unit_bm`, `frequency_bm`, `consumption_method` +
+The prescription carries what its own LABEL has to say, as SNAPSHOTS —
+`dose_unit_bm`, `frequency_bm`, `consumption_method` +
 `consumption_instruction_bm`, `indication_bm`, `duration_value` +
 `duration_unit`. Deliberately NOT foreign keys: correcting a catalogue row must
 never rewrite a prescription already printed or dispensed. The browser sends
-catalogue IDS ONLY and the server resolves the text, refusing cross-tenant and
+catalogue IDS ONLY; the server resolves the text and refuses cross-tenant and
 retired ids before the write. `durationDays` stays canonical and is recomputed
 server-side ("2 WEEK" = 14 days).
 
-The CANVAS modal (`AddMedicationModal`) is rewired: unit / frequency /
-consumption-method dropdowns, duration as number + DAY/WEEK/MONTH, an
-indication combobox matching EITHER language with free text still allowed,
-prefill from the medicine's 1F defaults, and quantity auto-compute that stops
-on a manual edit and SKIPS PRN/STAT.
+**BOTH prescribing surfaces are rewired** — `AddMedicationModal` (Canvas) and
+`MedicationsTab` (Flow): unit / frequency / consumption-method dropdowns,
+duration as number + DAY/WEEK/MONTH, indication combobox matching EITHER
+language with free text still allowed, prefill from the medicine's 1F defaults,
+quantity auto-compute that stops on a manual edit and SKIPS PRN/STAT.
 
-**THE SECOND SURFACE IS NOT DONE, and this is the priority.**
+**The label prints both halves** (`labelPrint.ts`): `2 Tablet (BIJI) TDS (Tiga
+kali sehari) for 5 days`, with the consumption instruction FIRST among the
+extras — it is the line that stops an oral suspension being used as ear drops.
+Where a record has no Malay half it prints one half rather than `TDS ()`.
 
-`apps/web/src/clinical/MedicationsTab.tsx` — the FLOW layout's Medications
-section — still writes free text (`e.g. ml, tablet`, `e.g. BD`). The golden
-path prescribes through THAT surface, so it passed green while proving nothing
-about the new fields. Measured, not assumed: after a full green E2E run the
-three most recent prescriptions in the database read
+**Why Flow was missed the first time, and what now prevents it.** The golden
+path prescribes through Flow, so the whole suite stayed green while every
+prescription it wrote carried `frequency_bm` NULL — nothing failed because
+nothing looked. The golden path now reads the prescription back over the API
+and asserts `frequencyBm` is truthy. Verified in the database after a green
+run: `unit "Tablet", dose_unit_bm "BIJI", frequency "TDS", frequency_bm "Tiga
+kali sehari", consumption_instruction_bm "Ambil melalui mulut"`.
 
-    unit "tablet", dose_unit_bm NULL, frequency "TDS", frequency_bm NULL,
-    duration_value NULL, duration_unit NULL
-
-i.e. every prescription a doctor writes in Flow still has no patient-language
-label at all. This is the catalogue-findability rule one layer up — "verify
-each surface independently; fixing one proves nothing about the other" — and it
-is the third time the same shape of defect has appeared in this codebase.
-
-NEXT: give `MedicationsTab` the same dropdowns and the same submit payload, and
-then make the golden path ASSERT the Malay label on the prescription it writes,
-so a surface reverting to free text fails CI instead of passing it.
+**Known flake (pre-existing, not Phase A):** `canvas: attachments render as
+exactly ONE region` failed once in a full serial run and passed in isolation and
+on a full re-run. Attachments are untouched by this work. CI retries once.
 
 **Three things learned about testing antd 6 under jsdom** (all cost real time):
 - `findByRole('option')` resolves to a node that is NOT the one carrying the

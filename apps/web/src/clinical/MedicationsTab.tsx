@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -35,6 +35,19 @@ import {
   useRemovePrescription,
 } from './hooks/usePrescriptions';
 import { CreatePrescriptionDto, DosageCalcMethod, PrescriptionSupplyMode } from './types';
+import { DurationUnit } from '../inventory/types';
+import { useReferenceCatalog } from './hooks/useReferenceCatalogs';
+import { defaultsFromItem } from './medications/prescribing';
+import {
+  computeQuantity,
+  consumptionLabel,
+  durationInDays,
+  frequencyLabel,
+  indicationLabel,
+  indicationMatches,
+  matchCatalogueByText,
+  prefillFromStandard,
+} from './medications/prescriptionForm';
 import { DEFAULT_SUPPLY_MODE, SUPPLY_MODE_OPTIONS } from './medicationSupplyPresentation';
 import { PrescribedMedicationList } from './sections/PrescribedMedicationList';
 import { ApiError } from '../core/api-client';
@@ -70,7 +83,18 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
   const [amount, setAmount] = useState<number>();
   const [unit, setUnit] = useState<string>();
   const [frequency, setFrequency] = useState('');
-  const [durationDays, setDurationDays] = useState(5);
+  // b1 PHASE A — the catalogue choices, exactly as the Canvas modal carries
+  // them. This surface wrote free text until now, and the golden path uses THIS
+  // one — so it went green while proving nothing about any of it, and every
+  // prescription a doctor wrote in Flow reached the label with no Malay at all.
+  const [doseUnitId, setDoseUnitId] = useState<string>();
+  const [frequencyId, setFrequencyId] = useState<string>();
+  const [consumptionMethodId, setConsumptionMethodId] = useState<string>();
+  const [indicationId, setIndicationId] = useState<string>();
+  const [durationValue, setDurationValue] = useState<number | undefined>(5);
+  const [durationUnit, setDurationUnit] = useState<DurationUnit>('DAY');
+  /** Set the moment the quantity box is typed in; auto-compute stops for good. */
+  const [quantityTouched, setQuantityTouched] = useState(false);
   const [indication, setIndication] = useState('');
   const [remark, setRemark] = useState('');
   const [calcMethod, setCalcMethod] = useState<DosageCalcMethod>();
@@ -124,7 +148,13 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
     setAmount(undefined);
     setUnit(undefined);
     setFrequency('');
-    setDurationDays(5);
+    setDoseUnitId(undefined);
+    setFrequencyId(undefined);
+    setConsumptionMethodId(undefined);
+    setIndicationId(undefined);
+    setDurationValue(5);
+    setDurationUnit('DAY');
+    setQuantityTouched(false);
     setIndication('');
     setRemark('');
     setCalcMethod(undefined);
@@ -133,12 +163,82 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
     setSupplyMode(DEFAULT_SUPPLY_MODE);
   };
 
+  // Active rows only: a frequency the clinic has retired must not be offered
+  // on a NEW prescription.
+  const { data: units } = useReferenceCatalog('dosage-units');
+  const { data: frequencies } = useReferenceCatalog('frequencies');
+  const { data: methods } = useReferenceCatalog('consumption-methods');
+  const { data: indications } = useReferenceCatalog('indications');
+
+  const chosenFrequency = frequencies?.find((row) => row.id === frequencyId);
+  const suggestedQuantity = computeQuantity({
+    amount,
+    timesPerDay: chosenFrequency?.timesPerDay ?? null,
+    durationValue,
+    durationUnit,
+  });
+
+  // Live recalculation until somebody types in the quantity box. `null` means
+  // "cannot be computed" — PRN and STAT have no doses-per-day — and the box is
+  // LEFT ALONE on it rather than collapsing to 1.
+  useEffect(() => {
+    if (quantityTouched || suggestedQuantity === null) return;
+    setQuantity((current) => (current === suggestedQuantity ? current : suggestedQuantity));
+  }, [suggestedQuantity, quantityTouched]);
+
+  /**
+   * Prefill from the medicine's 1F standard prescription — and NOT until the
+   * vocabulary has loaded.
+   *
+   * The ids being matched are meaningless without the rows they point at, so
+   * running this early would silently leave the form empty, which looks exactly
+   * like a medicine that carries no defaults. Once per medicine, so a catalogue
+   * refetch cannot overwrite a dose the doctor has since changed.
+   */
+  const prefilledForItemId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!itemId || !units || !frequencies) return;
+    if (prefilledForItemId.current === itemId) return;
+    const item = items?.find((candidate) => candidate.id === itemId);
+    if (!item) return;
+    prefilledForItemId.current = itemId;
+
+    const structured = prefillFromStandard(item, { units, frequencies });
+    const legacy = defaultsFromItem(item);
+    // Legacy free text is resolved to a catalogue entry or DROPPED — carrying
+    // an unmatched string forward would submit a unit the doctor never saw.
+    const nextUnitId = structured.doseUnitId ?? matchCatalogueByText(legacy.unit, units, (row) => row.systemNameEn);
+    const nextFrequencyId =
+      structured.frequencyId ?? matchCatalogueByText(legacy.frequency, frequencies, (row) => row.code);
+
+    if (structured.amount ?? legacy.amount) setAmount(structured.amount ?? legacy.amount);
+    setDoseUnitId(nextUnitId);
+    setUnit(units.find((row) => row.id === nextUnitId)?.systemNameEn);
+    setFrequencyId(nextFrequencyId);
+    setFrequency(frequencies.find((row) => row.id === nextFrequencyId)?.code ?? '');
+    setConsumptionMethodId(structured.consumptionMethodId);
+    if (structured.durationValue && structured.durationUnit) {
+      setDurationValue(structured.durationValue);
+      setDurationUnit(structured.durationUnit);
+    } else if (legacy.durationDays) {
+      // The legacy column only ever held days.
+      setDurationValue(legacy.durationDays);
+      setDurationUnit('DAY');
+    }
+    if (structured.quantity ?? legacy.quantity) {
+      setQuantity((structured.quantity ?? legacy.quantity)!);
+    }
+    setQuantityTouched(false);
+    if (legacy.indication) setIndication(legacy.indication);
+    if (legacy.remark) setRemark(legacy.remark);
+  }, [itemId, units, frequencies, items]);
+
   const reportFailure = (error: unknown, fallback: string) => {
     message.error(error instanceof ApiError ? error.message : fallback);
   };
 
   const handleAdd = async () => {
-    if (!itemId || !amount || !frequency || !durationDays) {
+    if (!itemId || !amount || !(frequencyId || frequency) || !durationValue) {
       message.warning('Select a medicine and fill in dose, frequency, and duration');
       return;
     }
@@ -149,9 +249,20 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
       amount,
       unit,
       frequency,
-      durationDays,
+      // Computed here so the field the rest of the system reads is never
+      // blank; the server recomputes it from the pair below rather than
+      // trusting this number.
+      durationDays: durationInDays(durationValue, durationUnit),
       indication: indication || undefined,
       remark: remark || undefined,
+      // IDS ONLY — the patient-facing Malay is resolved and copied on
+      // server-side, never sent from a browser.
+      doseUnitId,
+      frequencyId,
+      consumptionMethodId,
+      indicationId,
+      durationValue,
+      durationUnit,
       calcMethod,
       calcWeightKg: calcMethod === 'WEIGHT_BASED' ? calcWeightKg : undefined,
       calcDoseRateMgKg: calcMethod === 'WEIGHT_BASED' ? calcDoseRateMgKg : undefined,
@@ -257,7 +368,17 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
         <Row gutter={12} style={{ marginBottom: 12 }}>
           <Col xs={12} sm={12} md={6}>
             <Text type="secondary">Quantity</Text>
-            <InputNumber min={1} style={{ width: '100%' }} value={quantity} onChange={(v) => setQuantity(v ?? 1)} />
+            <InputNumber
+              aria-label="Quantity"
+              min={1}
+              style={{ width: '100%' }}
+              value={quantity}
+              // Typing here stops auto-compute for the rest of this form.
+              onChange={(v) => {
+                setQuantity(v ?? 1);
+                setQuantityTouched(true);
+              }}
+            />
           </Col>
           <Col xs={12} sm={12} md={6}>
             <Text type="secondary">Dose Amount</Text>
@@ -265,7 +386,24 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
           </Col>
           <Col xs={12} sm={12} md={6}>
             <Text type="secondary">Unit</Text>
-            <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="e.g. ml, tablet" />
+            {/* From the catalogue, so the label can print "Tablet (BIJI)".
+                Free text here produced "tab", "tabs" and "tablet" on three
+                prescriptions for one drug, none of which a patient-facing
+                Malay label can be derived from. */}
+            <Select
+              aria-label="Unit"
+              style={{ width: '100%' }}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="Tablet, Millilitre…"
+              value={doseUnitId}
+              onChange={(value?: string) => {
+                setDoseUnitId(value);
+                setUnit(units?.find((row) => row.id === value)?.systemNameEn);
+              }}
+              options={(units ?? []).map((row) => ({ value: row.id, label: row.systemNameEn }))}
+            />
           </Col>
           <Col xs={12} sm={12} md={6}>
             <Text type="secondary"> </Text>
@@ -383,20 +521,100 @@ export function MedicationsTab({ visitId }: MedicationsTabProps) {
         <Row gutter={12} style={{ marginBottom: 12 }}>
           <Col xs={24} sm={12} md={8}>
             <Text type="secondary">Frequency</Text>
-            <Input value={frequency} onChange={(e) => setFrequency(e.target.value)} placeholder="e.g. BD" />
+            <Select
+              aria-label="Frequency"
+              style={{ width: '100%' }}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="OD, BD, TDS…"
+              value={frequencyId}
+              onChange={(value?: string) => {
+                setFrequencyId(value);
+                setFrequency(frequencies?.find((row) => row.id === value)?.code ?? '');
+              }}
+              options={(frequencies ?? []).map((row) => ({ value: row.id, label: frequencyLabel(row) }))}
+            />
+            {/* Said where the choice is made. A doctor who picks PRN and then
+                watches the quantity box not move deserves to know why. */}
+            {chosenFrequency?.timesPerDay === null && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {chosenFrequency.code} has no fixed daily count — set the quantity yourself.
+              </Text>
+            )}
           </Col>
-          <Col xs={24} sm={12} md={8}>
-            <Text type="secondary">Duration (days)</Text>
+          <Col xs={12} sm={6} md={4}>
+            <Text type="secondary">Duration</Text>
             <InputNumber
+              aria-label="Duration"
               min={1}
               style={{ width: '100%' }}
-              value={durationDays}
-              onChange={(v) => setDurationDays(v ?? 1)}
+              value={durationValue}
+              // Stays EMPTY while it is being retyped. Snapping back to 1 turns
+              // "clear, type 10" into 110.
+              onChange={(v) => setDurationValue(v ?? undefined)}
+            />
+          </Col>
+          <Col xs={12} sm={6} md={4}>
+            <Text type="secondary">&nbsp;</Text>
+            <Select
+              aria-label="Duration unit"
+              style={{ width: '100%' }}
+              value={durationUnit}
+              onChange={(value: DurationUnit) => setDurationUnit(value)}
+              options={[
+                { value: 'DAY', label: 'Days' },
+                { value: 'WEEK', label: 'Weeks' },
+                { value: 'MONTH', label: 'Months' },
+              ]}
             />
           </Col>
           <Col xs={24} sm={12} md={8}>
             <Text type="secondary">Indication</Text>
-            <Input value={indication} onChange={(e) => setIndication(e.target.value)} />
+            {/* Matches on EITHER language — a Malaysian clinic types "demam" as
+                readily as "fever" — and free text is still allowed, because a
+                doctor must never be unable to say why. Typed text simply
+                carries no translation. */}
+            <Select
+              aria-label="Indication"
+              style={{ width: '100%' }}
+              allowClear
+              showSearch
+              filterOption={(input, option) => {
+                const row = indications?.find((candidate) => candidate.id === option?.value);
+                return row ? indicationMatches(row, input) : false;
+              }}
+              value={indicationId ?? (indication || undefined)}
+              onChange={(value?: string) => {
+                const row = indications?.find((candidate) => candidate.id === value);
+                setIndicationId(row?.id);
+                setIndication(row ? row.labelEn : (value ?? ''));
+              }}
+              onSearch={(value) => {
+                setIndicationId(undefined);
+                setIndication(value);
+              }}
+              options={(indications ?? []).map((row) => ({ value: row.id, label: indicationLabel(row) }))}
+            />
+          </Col>
+        </Row>
+        <Row gutter={12} style={{ marginBottom: 12 }}>
+          <Col xs={24} sm={12} md={8}>
+            <Text type="secondary">Consumption method</Text>
+            {/* Its reason for existing is the sentence it prints for the
+                patient — "Ambil melalui mulut". A route with no instruction
+                leaves the patient to guess. */}
+            <Select
+              aria-label="Consumption method"
+              style={{ width: '100%' }}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="ORAL (MAKAN/MINUM)…"
+              value={consumptionMethodId}
+              onChange={(value?: string) => setConsumptionMethodId(value)}
+              options={(methods ?? []).map((row) => ({ value: row.id, label: consumptionLabel(row) }))}
+            />
           </Col>
         </Row>
         <Row gutter={12} style={{ marginBottom: 12 }}>

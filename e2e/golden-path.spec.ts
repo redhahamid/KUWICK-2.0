@@ -415,8 +415,11 @@ test('golden path — registration through payment, completion and the history r
   await chooseFromPlaceholderSelect(page, 'Search medicine', MEDICATION);
   // Plain-text labels in this panel, so the placeholder is the handle.
   await fieldUnder(page, 'Dose Amount').fill('1');
-  await page.getByPlaceholder('e.g. ml, tablet').fill('tablet');
-  await page.getByPlaceholder('e.g. BD').fill('TDS');
+  // b1 PHASE A — unit and frequency are CATALOGUE choices now, on BOTH
+  // prescribing surfaces. Paracetamol carries its own standard prescription,
+  // so the form opens with them already chosen; typing free text here is no
+  // longer possible, which is the point.
+  await expect(page.getByRole('combobox', { name: 'Frequency' })).toBeVisible();
   await page.getByRole('button', { name: /add to prescription/i }).click();
 
   // Scoped to the PRESCRIBED list, not the page.
@@ -429,6 +432,21 @@ test('golden path — registration through payment, completion and the history r
   // than no guardrail, because it is trusted.
   const prescribed = page.locator('.ant-card').filter({ hasText: 'Prescribed Medications' });
   await expect(prescribed.getByText(MEDICATION)).toBeVisible();
+
+  // b1 PHASE A — THE PATIENT'S LANGUAGE REACHED THE RECORD.
+  //
+  // This assertion exists because the suite was green while it was not true.
+  // The Canvas modal was rewired and this surface was not, so every
+  // prescription the golden path wrote carried frequency_bm NULL — and nothing
+  // failed, because nothing looked at it. A surface reverting to free text now
+  // breaks CI here rather than reaching a patient's medicine bottle.
+  const thisVisitId = new URL(page.url()).searchParams.get('visitId')!;
+  const rx = await apiGet<Array<Record<string, unknown>>>(page, `/prescriptions?visitId=${thisVisitId}`);
+  expect(rx?.length ?? 0).toBeGreaterThan(0);
+  expect(
+    rx![0].frequencyBm,
+    'the prescription must carry the patient-facing Malay frequency, not just the code',
+  ).toBeTruthy();
 
   console.log('visit under test:', visitUrl);
   // =====================================================================
@@ -605,8 +623,9 @@ test('OTC (C) variant — the invoice carries the medication and NO consultation
   await section(page, 'Medications');
   await chooseFromPlaceholderSelect(page, 'Search medicine', MEDICATION);
   await fieldUnder(page, 'Dose Amount').fill('1');
-  await page.getByPlaceholder('e.g. ml, tablet').fill('tablet');
-  await page.getByPlaceholder('e.g. BD').fill('PRN');
+  // Catalogue choices, prefilled from the medicine's own defaults — see the
+  // note on the same step in the main golden path.
+  await expect(page.getByRole('combobox', { name: 'Frequency' })).toBeVisible();
   await page.getByRole('button', { name: /add to prescription/i }).click();
   const prescribed = page.locator('.ant-card').filter({ hasText: 'Prescribed Medications' });
   await expect(prescribed.getByText(MEDICATION)).toBeVisible();

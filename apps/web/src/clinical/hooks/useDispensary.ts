@@ -92,6 +92,16 @@ export interface LabelPayload {
     quantity: number;
     indication: string | null;
     remark: string | null;
+
+    // b1 PHASE A — the patient's half, from the prescription's own SNAPSHOT.
+    // Null on anything written before the snapshot existed, and the layout
+    // omits what is absent rather than printing an empty bracket.
+    doseUnitBm: string | null;
+    frequencyBm: string | null;
+    consumptionInstructionBm: string | null;
+    indicationBm: string | null;
+    durationValue: number | null;
+    durationUnit: string | null;
   };
   prescriber: string;
   processedBy: string;

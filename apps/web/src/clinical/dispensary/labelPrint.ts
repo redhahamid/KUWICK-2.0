@@ -78,21 +78,40 @@ export interface LabelLayout {
 }
 
 /**
- * "Take 2 tablet(s) three times daily for 5 days".
+ * "Take 2 Tablet (BIJI) TDS (Tiga kali sehari) for 5 days".
  *
- * The dose unit is printed verbatim where the prescription carries one and
- * omitted where it does not — "Take 2 three times daily" is honest; "Take 2
- * tablets" when the record does not say tablets is not.
+ * b1 PHASE A — THE PATIENT'S LANGUAGE IS ON THE LABEL.
+ *
+ * The person holding this bottle reads Malay. Printing only "TDS" asks them to
+ * know a Latin abbreviation to take their medicine correctly, which is the gap
+ * the whole bilingual reference vocabulary exists to close.
+ *
+ * Both halves, or one honestly. Every Malay string comes from the
+ * prescription's own SNAPSHOT — copied at prescribing time, never looked up
+ * from the catalogue now — so a label reprinted next year says exactly what the
+ * sticker on the bottle said. A prescription written before the snapshot
+ * existed, or through a surface that does not use the dropdowns, simply has no
+ * Malay half; it is omitted rather than printed as "TDS ()", because an empty
+ * bracket on a 40mm label reads as a missing value rather than an absent one.
+ *
+ * The frequency is still not expanded into times of day and the duration is
+ * still not turned into a stop date: both would be this module deciding
+ * something clinical.
  */
 export function directionsText(medication: LabelPayload['medication']): string {
   const dose = medication.doseUnit
-    ? `${medication.doseAmount} ${medication.doseUnit}`
+    ? `${medication.doseAmount} ${bilingual(medication.doseUnit, medication.doseUnitBm)}`
     : medication.doseAmount;
-  const parts = [`Take ${dose}`, medication.frequency];
+  const parts = [`Take ${dose}`, bilingual(medication.frequency, medication.frequencyBm)];
   if (medication.durationDays > 0) {
     parts.push(`for ${medication.durationDays} ${medication.durationDays === 1 ? 'day' : 'days'}`);
   }
-  return parts.join(' ');
+  return parts.filter(Boolean).join(' ');
+}
+
+/** `TDS (Tiga kali sehari)`, or just `TDS` where no Malay label was captured. */
+function bilingual(clinical: string, patient: string | null): string {
+  return patient ? `${clinical} (${patient})` : clinical;
 }
 
 /** The medication name, with strength appended only where the item stores one. */
@@ -102,10 +121,26 @@ export function medicationText(medication: LabelPayload['medication']): string {
 
 export function buildLabelLayout(payload: LabelPayload): LabelLayout {
   const extras: LabelLine[] = [];
+
+  // b1 PHASE A — HOW TO TAKE IT, in the language of the person taking it.
+  //
+  // First among the extras on purpose: "Ambil melalui mulut" is the line that
+  // stops an oral suspension being used as ear drops, and it outranks both the
+  // indication and the doctor's note for the patient standing at the counter.
+  if (payload.medication.consumptionInstructionBm) {
+    extras.push({ value: payload.medication.consumptionInstructionBm });
+  }
+
   // Both are optional free text the doctor may have written. Absent means
   // absent: no "Indication: —" placeholder, which reads as a decision.
   if (payload.medication.indication) {
-    extras.push({ label: 'For', value: payload.medication.indication });
+    extras.push({
+      label: 'For',
+      // The Malay alongside where the indication came from the catalogue.
+      // Free text a doctor typed has no translation, and inventing one would
+      // be this module making a clinical claim in a language it cannot check.
+      value: bilingual(payload.medication.indication, payload.medication.indicationBm),
+    });
   }
   if (payload.medication.remark) {
     extras.push({ label: 'Note', value: payload.medication.remark });

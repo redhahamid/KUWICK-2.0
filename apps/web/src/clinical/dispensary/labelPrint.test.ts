@@ -34,6 +34,15 @@ const PAYLOAD: LabelPayload = {
     quantity: 30,
     indication: null,
     remark: null,
+    // Written before the snapshot existed — the honest state for every
+    // prescription already in the database, and for any surface that does not
+    // use the catalogue dropdowns.
+    doseUnitBm: null,
+    frequencyBm: null,
+    consumptionInstructionBm: null,
+    indicationBm: null,
+    durationValue: null,
+    durationUnit: null,
   },
   prescriber: 'Dr Amira Rahman',
   processedBy: 'Siti Front Desk',
@@ -251,5 +260,84 @@ describe('who is offered the dispensary', () => {
     // dedicated dispenser, and a new role is a migration plus a permission
     // surface everywhere else in the product.
     expect(canViewDispensary('DISPENSARY_STAFF')).toBe(false);
+  });
+});
+
+// ===========================================================================
+// b1 PHASE A — THE PATIENT'S LANGUAGE ON THE LABEL.
+//
+// The person holding the bottle reads Malay. What matters here is that both
+// halves print together when the record has them, and that a record without
+// them prints ONE half rather than an empty bracket — a prescription written
+// before the snapshot existed must still produce a usable sticker.
+// ===========================================================================
+
+const BILINGUAL: LabelPayload = {
+  ...PAYLOAD,
+  medication: {
+    ...PAYLOAD.medication,
+    doseAmount: '2',
+    doseUnit: 'Tablet',
+    doseUnitBm: 'BIJI',
+    frequency: 'TDS',
+    frequencyBm: 'Tiga kali sehari',
+    consumptionInstructionBm: 'Ambil melalui mulut',
+    indication: 'Fever',
+    indicationBm: 'Demam',
+    durationValue: 5,
+    durationUnit: 'DAY',
+  },
+};
+
+describe('the directions print in both languages', () => {
+  it('carries the Malay beside the dose unit and the frequency code', () => {
+    expect(directionsText(BILINGUAL.medication)).toBe(
+      'Take 2 Tablet (BIJI) TDS (Tiga kali sehari) for 5 days',
+    );
+  });
+
+  it('prints ONE half rather than an empty bracket when there is no Malay', () => {
+    // Every prescription already in the database is in this state, and so is
+    // anything written through a surface that does not use the dropdowns.
+    // "TDS ()" on a 40mm label reads as a missing value, not an absent one.
+    expect(directionsText(PAYLOAD.medication)).toBe('Take 2 capsule three times daily for 5 days');
+  });
+
+  it('does not invent a Malay label for one half from the other', () => {
+    const halfKnown = { ...BILINGUAL.medication, frequencyBm: null };
+    const text = directionsText(halfKnown);
+    expect(text).toContain('Tablet (BIJI)');
+    expect(text).toContain('TDS ');
+    expect(text).not.toContain('TDS (');
+  });
+});
+
+describe('how to take it is on the label, in the patient\'s language', () => {
+  it('prints the consumption instruction, and puts it FIRST', () => {
+    // Ahead of the indication and the doctor's note: this is the line that
+    // stops an oral suspension being used as ear drops.
+    const layout = buildLabelLayout(BILINGUAL);
+    expect(layout.extras[0]).toEqual({ value: 'Ambil melalui mulut' });
+  });
+
+  it('omits it entirely when the prescription has none', () => {
+    // No labelled blank. An empty "How to take:" line reads as "no special
+    // instructions", which is a claim nobody made.
+    const layout = buildLabelLayout(PAYLOAD);
+    expect(layout.extras.every((line) => line.value !== '')).toBe(true);
+    expect(JSON.stringify(layout.extras)).not.toContain('melalui');
+  });
+
+  it('shows the indication in both languages where it came from the catalogue', () => {
+    const layout = buildLabelLayout(BILINGUAL);
+    expect(layout.extras).toContainEqual({ label: 'For', value: 'Fever (Demam)' });
+  });
+
+  it('leaves typed free text untranslated', () => {
+    // A doctor may type any indication. Inventing a Malay rendering of it
+    // would be this module making a clinical claim in a language it cannot
+    // check.
+    const typed = { ...BILINGUAL, medication: { ...BILINGUAL.medication, indication: 'Post-op review', indicationBm: null } };
+    expect(buildLabelLayout(typed).extras).toContainEqual({ label: 'For', value: 'Post-op review' });
   });
 });
