@@ -1,7 +1,8 @@
-import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useRef } from 'react';
 import { Alert, Modal, Typography } from 'antd';
 import { ModalSize, modalWidths } from '../tokens';
 import { KuwickConfirmModal } from './KuwickConfirmModal';
+import { useDismissableModal } from './useDismissableModal';
 
 const { Text } = Typography;
 
@@ -86,7 +87,6 @@ export function KuwickModal({
   restoreFocusTo,
   dataTestId,
 }: KuwickModalProps) {
-  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const triggerRef = useRef<HTMLElement | null>(null);
 
   // Captured on OPEN, not on click: the caller does not have to remember to
@@ -108,15 +108,12 @@ export function KuwickModal({
     }
   }, [restoreFocusTo]);
 
-  /** Every close route funnels through here, so none of them can skip the guard. */
-  const requestClose = useCallback(() => {
-    if (loading) return;
-    if (dirty) {
-      setConfirmingDiscard(true);
-      return;
-    }
-    onClose();
-  }, [dirty, loading, onClose]);
+  /**
+   * b1 PHASE B — every close route funnels through the shared hook, so none of
+   * them can skip the guard and no later modal has to re-derive the rule.
+   */
+  const dismiss = useDismissableModal({ open, isDirty: dirty, onClose, busy: loading });
+  const { requestClose } = dismiss;
 
   // Background scroll lock. antd does this for the body, but a nested
   // scrollable workspace pane behind the overlay keeps scrolling under the
@@ -148,14 +145,21 @@ export function KuwickModal({
         }
         width={modalWidths[size]}
         rootClassName={`kw-modal kw-modal-${size}`}
-        // A dirty modal's backdrop does nothing at all. Asking "are you sure"
-        // after an accidental backdrop click is better than losing the data,
-        // but not clicking it away by accident is better still.
-        maskClosable={!dirty && !loading}
+        // Handled here, not by antd. `maskClosable` closes on CLICK, and a
+        // click resolves to the common ancestor of press and release — so
+        // selecting text inside the modal and releasing a few pixels outside
+        // it lands on the mask and closes a half-written prescription. The
+        // press ORIGIN is what carries the intent, so the mask's own
+        // mousedown decides, below.
+        maskClosable={false}
         keyboard={false}
         closable={!loading}
         onCancel={requestClose}
         footer={footer ? <div className="kw-modal-footer">{footer}</div> : null}
+        // The backdrop's own press. antd renders the mask as a sibling of the
+        // dialog inside the wrapper, so a press whose target IS the wrapper or
+        // the mask started outside the content.
+        wrapProps={dismiss.backdropProps}
         afterClose={restoreFocus}
         destroyOnHidden
         data-testid={dataTestId}
@@ -186,17 +190,14 @@ export function KuwickModal({
       {/* Rendered as a sibling, not nested inside the modal above: a modal
           stacked on a modal makes focus order and Escape ambiguous. */}
       <KuwickConfirmModal
-        open={confirmingDiscard}
+        open={dismiss.confirming}
         title={DISCARD_TITLE}
         body={DISCARD_BODY}
         confirmLabel="Discard changes"
         cancelLabel="Keep editing"
         tone="danger"
-        onCancel={() => setConfirmingDiscard(false)}
-        onConfirm={() => {
-          setConfirmingDiscard(false);
-          onClose();
-        }}
+        onCancel={dismiss.cancelDiscard}
+        onConfirm={dismiss.confirmDiscard}
       />
     </>
   );

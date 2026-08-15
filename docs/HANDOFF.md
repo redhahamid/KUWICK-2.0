@@ -644,6 +644,42 @@ on a full re-run. Attachments are untouched by this work. CI retries once.
 - `userEvent.clear()` does not empty an `InputNumber`. "clear then type 3" gives
   13. Triple-click to select, then type.
 
+## PHASE B — **DONE.** `useDismissableModal`, and every modal inherits it.
+
+`apps/web/src/design-system/kuwick/useDismissableModal.ts`, exported from
+`design-system/kuwick`. `KuwickModal` is wired onto it, so **every modal in the
+app already has the guard** — the profile slide-over, orders, documents and
+the rest reuse it by using `KuwickModal`, not by re-deriving the rule.
+
+Escape, the X, Cancel and the backdrop all funnel through `requestClose`, so a
+call site cannot wire three and quietly leave the fourth able to discard a
+half-written prescription.
+
+**THE BACKDROP IS DECIDED ON MOUSEDOWN, NOT CLICK.** A `click` fires on the
+nearest common ancestor of press and release — so selecting text inside the
+modal and letting go a few pixels outside lands a click on the mask, and antd's
+own `maskClosable` would throw the form away because a doctor highlighted a
+dose to re-read it. `maskClosable` is now `false` and the wrapper's own
+mousedown/mouseup decide: a gesture closes only if it BOTH starts and ends on
+the backdrop.
+
+**Dirty means ASK on every route, including the backdrop.** It used to be inert
+while dirty — safe, but it left a doctor clicking a dead area with nothing
+explaining why. No route silently discards, and no route silently does nothing.
+
+Asserted on the real prescribing modal as well as the shell: a guard is worth
+nothing if a modal happens to pass `dirty={false}`, and that is a wiring
+mistake no design-system test would catch.
+
+**Local-only E2E flake, explained — not a regression.** `canvas: attachments
+render as exactly ONE region` failed in two of three full local runs and passes
+in isolation. Cause measured, not guessed: this container's database has
+accumulated **48** attachments on one UAT visit across many suite runs, and the
+spec expects exactly one. CI starts from an empty database every run, which is
+why it has been green there throughout. The latent assumption — "this visit has
+exactly one attachment" — only holds on a fresh database; worth making the spec
+scope to its own upload if it ever needs to run against a long-lived database.
+
 ## b1+b2 PACKAGE — WHAT IS LEFT (next session starts here)
 
 **Phase 1 remainder:**

@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { ReactNode, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { message } from 'antd';
 import { AddMedicationModal } from './AddMedicationModal';
+import { DISCARD_TITLE } from '../../design-system/kuwick';
 import { AddProcedureModal } from '../orders/AddProcedureModal';
 
 // ===========================================================================
@@ -589,5 +590,68 @@ describe('b1 PHASE A — what actually leaves the browser', () => {
     await waitFor(() => expect(screen.getByLabelText('Dose amount')).toHaveValue(''));
     expect(selectedText('kw-med-frequency')).toBe('');
     expect(screen.getByRole('button', { name: 'Add Medication' })).toBeDisabled();
+  });
+});
+
+// ===========================================================================
+// b1 PHASE B — THE PRESCRIPTION MODAL INHERITS THE DIRTY GUARD.
+//
+// Asserted on the real prescribing modal, not only on the shell: the guard is
+// worth nothing if this modal happens to pass `dirty={false}`, and that is a
+// wiring mistake no test of the design system would catch.
+// ===========================================================================
+
+describe('b1 PHASE B — a half-written prescription is not lost by accident', () => {
+  it('Escape on a filled form asks before discarding', async () => {
+    const onClose = vi.fn();
+    render(
+      <Harness>
+        <AddMedicationModal open visitId="visit-1" onClose={onClose} />
+      </Harness>,
+    );
+    await chooseMedicine();
+    await waitFor(() => expect(selectedText('kw-med-frequency')).toBe('TDS — Three times a day'));
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(await screen.findByText(DISCARD_TITLE)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('a text selection released outside the modal does NOT close it', async () => {
+    // A doctor highlighting a dose to re-read it, and letting go a few pixels
+    // outside. A `click` resolves to the common ancestor — the mask — so
+    // antd's own maskClosable would have thrown the prescription away.
+    const onClose = vi.fn();
+    render(
+      <Harness>
+        <AddMedicationModal open visitId="visit-1" onClose={onClose} />
+      </Harness>,
+    );
+    await chooseMedicine();
+    const dose = screen.getByLabelText('Dose amount');
+    const mask = document.querySelector('.ant-modal-wrap') as HTMLElement;
+
+    fireEvent.mouseDown(dose, { target: dose });
+    fireEvent.mouseUp(mask, { target: mask });
+    fireEvent.click(mask, { target: mask });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByText(DISCARD_TITLE)).not.toBeInTheDocument();
+  });
+
+  it('an untouched modal closes straight away', async () => {
+    // Nothing typed, nothing to lose. Asking here would train the doctor to
+    // dismiss the question without reading it.
+    const onClose = vi.fn();
+    render(
+      <Harness>
+        <AddMedicationModal open visitId="visit-1" onClose={onClose} />
+      </Harness>,
+    );
+    await screen.findByRole('combobox', { name: 'Search medicine' });
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 });

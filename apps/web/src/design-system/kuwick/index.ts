@@ -6,6 +6,10 @@
  * for naming consistency alone.
  */
 export { KuwickModal, DISCARD_TITLE, DISCARD_BODY } from './KuwickModal';
+// b1 PHASE B — every later modal (profile slide-over, orders, documents)
+// reuses this rather than re-deriving when a form may be abandoned.
+export { useDismissableModal } from './useDismissableModal';
+export type { DismissableModal } from './useDismissableModal';
 export type { KuwickModalProps } from './KuwickModal';
 export { KuwickConfirmModal } from './KuwickConfirmModal';
 export type { KuwickConfirmModalProps } from './KuwickConfirmModal';
