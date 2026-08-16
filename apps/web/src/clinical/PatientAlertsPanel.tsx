@@ -55,12 +55,24 @@ export function AlertsPanel({
   loading,
   canRecordMedical,
   canEdit,
+  compact = false,
 }: {
   patient: Patient;
   alerts: PatientAlert[] | undefined;
   loading: boolean;
   canRecordMedical: boolean;
   canEdit: boolean;
+  /**
+   * Rendered inside the header popover rather than a full-width form.
+   *
+   * A LAYOUT FLAG, and nothing more. Every rule this panel carries — nothing
+   * is deleted, resolving stamps a second author, a retired row stays visible,
+   * MEDICAL and ALLERGY stay honest-disabled without the permission — is the
+   * same code on both paths. A second, "lighter" alerts component would be a
+   * second place for those to drift, and the one that drifted would be the one
+   * a doctor actually uses.
+   */
+  compact?: boolean;
 }) {
   const [adding, setAdding] = useState(false);
   const [form] = Form.useForm<{ type: PatientAlertType; label: string; note?: string }>();
@@ -90,12 +102,8 @@ export function AlertsPanel({
     }
   };
 
-  return (
-    <KuwickFormSection
-      title="Alerts"
-      hint="Standing facts about this patient — allergies, chronic conditions, access needs"
-    >
-      <div data-testid="patient-alerts">
+  const body = (
+    <div data-testid="patient-alerts">
         {loading && <Text type="secondary">Loading alerts…</Text>}
 
         {!loading && live.length === 0 && (
@@ -163,7 +171,11 @@ export function AlertsPanel({
             style={{ marginTop: 10 }}
           >
             <Row gutter={12}>
-              <Col xs={24} md={7}>
+              {/* Stacked in the popover. The breakpoint antd reads is the
+                  VIEWPORT's, not this box's, so a two-column row on a desktop
+                  would squeeze the type select and the label into ~150px each
+                  inside a 340px popover. */}
+              <Col xs={24} md={compact ? 24 : 7}>
                 <Form.Item name="type" label="Type" rules={[{ required: true }]}>
                   <Select
                     options={ALERT_TYPES.map((type) => ({
@@ -177,7 +189,7 @@ export function AlertsPanel({
                   />
                 </Form.Item>
               </Col>
-              <Col xs={24} md={17}>
+              <Col xs={24} md={compact ? 24 : 17}>
                 <Form.Item
                   name="label"
                   label="Alert"
@@ -212,7 +224,19 @@ export function AlertsPanel({
             </Space>
           </Form>
         )}
-      </div>
+    </div>
+  );
+
+  // The popover puts its own heading above the list, so the section chrome
+  // would be a title under a title.
+  if (compact) return body;
+
+  return (
+    <KuwickFormSection
+      title="Alerts"
+      hint="Standing facts about this patient — allergies, chronic conditions, access needs"
+    >
+      {body}
     </KuwickFormSection>
   );
 }

@@ -154,6 +154,40 @@ Pinned by `apps/web/src/schedulerLifetime.test.tsx`, which fails if a React or
 scheduler upgrade picks a different host callback, or if the setup-file order
 regresses (verified: flipping the order fails the test).
 
+**The alerts open UNDER THE CHIP now, not in a centred modal (2026-08-16).**
+Owner's call from staging: "bila click kt allergy tu nice je pop up; yang alert
+tu mcm complex pop up centre — blh follow mcm allergy tu?" FIX 1 had given the
+alert chip its own view instead of the full profile, but made it a modal: the
+canvas dimmed and a Close button appeared to answer "what is this patient
+flagged for?", while the allergy chip beside it in the same band had always
+opened a popover. Two adjacent chips, two behaviours.
+
+- `apps/web/src/clinical/canvas/AlertsQuickView.tsx` — anchored popover,
+  `bottomLeft`, 340px, `maxHeight: 60vh` with its own scroll so a long history
+  cannot push the resolved rows off the viewport. Same shape as
+  `AllergyQuickRecord`. No Phase B dismissal guard, and it does not need one:
+  adding and resolving each commit on their own button, so there is no
+  half-typed form a click-away could discard. Antd keeps the content mounted
+  when hidden, which is kept deliberately — a doctor who clicks away mid-entry
+  finds the half-typed alert still there.
+- `AlertsPanel` gained `compact` — a LAYOUT FLAG ONLY (drops the
+  `KuwickFormSection` chrome, stacks the type/label row, since antd reads the
+  VIEWPORT breakpoint and would otherwise squeeze two columns into 340px).
+  Every rule stays one implementation: nothing deleted, resolving stamps a
+  second author, resolved rows visible, ALLERGY/MEDICAL honest-disabled.
+- `PatientAlertsModal.tsx` DELETED, and `PatientDashboardPage` no longer holds
+  `alertsOpen`. The header takes `canEditAlerts` / `canRecordMedicalAlert`
+  instead of `onOpenAlerts`.
+- The non-obvious risk, and the test for it: the Type dropdown renders in its
+  OWN portal, outside the popover's DOM. A click there reading as a click
+  *outside* would close the whole thing mid-entry and lose a typed label —
+  something a modal cannot do and an anchored form can. Held by
+  "choosing an alert type does not dismiss the form under the doctor" in
+  `alertsQuickView.test.tsx`, which types a label, opens the dropdown, picks an
+  option and asserts both the popover and the typed text survive.
+- `e2e/patient-profile.spec.ts` closes it by clicking the chip again; there is
+  no Close button to reach for.
+
 ## Checklist state
 
 | Item | Status |

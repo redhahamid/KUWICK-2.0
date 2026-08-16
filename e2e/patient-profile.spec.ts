@@ -74,9 +74,10 @@ test('an alert is recorded against the signed-in doctor, and reaches the banner'
   await expect(alerts.getByText(/Recorded by /).first()).toBeVisible();
 
   // And the prescribing banner now says so, instead of "Allergy not asked".
-  // `.last()`: the modal's own X is also labelled Close. The footer button is
-  // the one a person reaches for.
-  await page.getByRole('button', { name: 'Close' }).last().click();
+  // The alerts open UNDER the chip now, so the chip closes them again — there
+  // is no Close button and nothing was dimmed to need one.
+  await page.getByRole('button', { name: /patient alert/i }).click();
+  await expect(page.getByTestId('patient-alerts-popover')).toBeHidden();
   await expect(page.getByText(/Allergy not asked/)).toHaveCount(0);
   await expect(page.getByText(new RegExp(label)).first()).toBeVisible();
 });

@@ -14,6 +14,7 @@ import dayjs from 'dayjs';
 import { Patient } from '../core/types';
 import { Visit } from './types';
 import { AllergyQuickRecord } from './canvas/AllergyQuickRecord';
+import { AlertsQuickView } from './canvas/AlertsQuickView';
 import { headerAlertSummary, nonAllergyAlerts, usePatientAlerts } from './hooks/usePatientAlerts';
 
 const { Text } = Typography;
@@ -41,8 +42,15 @@ export interface CanvasPatientHeaderProps {
    * control, never a side effect of clicking an alert.
    */
   onOpenProfile?: () => void;
-  /** b1.5 FIX 1 — open the alerts view, and nothing else. */
-  onOpenAlerts?: () => void;
+  /**
+   * Whether this account may record or resolve an alert. The alerts view opens
+   * in place from the chip, so the permissions it needs come down with it —
+   * the API enforces them either way; these only decide what is OFFERED, and
+   * what is offered disabled with the reason.
+   */
+  canEditAlerts?: boolean;
+  /** Whether ALLERGY and MEDICAL may be chosen. See `AlertsPanel`. */
+  canRecordMedicalAlert?: boolean;
 }
 
 /**
@@ -74,7 +82,8 @@ export function CanvasPatientHeader({
   heldByName,
   holdPending,
   onOpenProfile,
-  onOpenAlerts,
+  canEditAlerts = false,
+  canRecordMedicalAlert = false,
 }: CanvasPatientHeaderProps) {
   const onHoldNow = Boolean(heldByName);
   const { data: alerts } = usePatientAlerts(patient.id);
@@ -157,13 +166,18 @@ export function CanvasPatientHeader({
             answer a doctor needs as much as a list is — an indicator that only
             appears when something is wrong leaves its absence ambiguous
             between "nothing recorded" and "nobody looked". */}
+        {/* Opens UNDER THE CHIP, the way the allergy chip beside it does — the
+            ALERTS view and nothing else, so checking why a patient is flagged
+            never lands a doctor in an editable demographics form, and never
+            dims the consultation to ask. */}
+        <AlertsQuickView
+          patient={patient}
+          canEdit={canEditAlerts}
+          canRecordMedical={canRecordMedicalAlert}
+        >
         <button
           type="button"
           className={`kw2-chip kw2-chip-alerts${otherAlerts.length > 0 ? ' kw2-chip-alerts-active' : ''}`}
-          // The ALERTS view, not the profile. Checking why a patient is flagged
-          // must not land a doctor in an editable demographics form.
-          onClick={onOpenAlerts}
-          disabled={!onOpenAlerts}
           // The accessible name carries the full list even where the visible
           // chip collapsed the tail — a screen-reader user should not be the
           // one who has to click.
@@ -188,6 +202,7 @@ export function CanvasPatientHeader({
             'No alerts'
           )}
         </button>
+        </AlertsQuickView>
 
         <span className="kw2-chip kw2-chip-payer">{panelName ? `Panel · ${panelName}` : 'CASH'}</span>
 

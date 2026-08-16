@@ -271,21 +271,34 @@ describe('the identity strip is a way in, not just a label', () => {
     // was flagged landed in an editable demographics form. Two intents, two
     // controls.
     const onOpenProfile = vi.fn();
-    const onOpenAlerts = vi.fn();
-    renderHeader({ onOpenProfile, onOpenAlerts });
+    renderHeader({ onOpenProfile });
     await userEvent.click(await screen.findByRole('button', { name: /patient alert/i }));
-    expect(onOpenAlerts).toHaveBeenCalledTimes(1);
+    expect(await screen.findByTestId('patient-alerts')).toBeInTheDocument();
     expect(onOpenProfile).not.toHaveBeenCalled();
+  });
+
+  it('the alerts open UNDER THE CHIP, not in a centred modal', async () => {
+    // The allergy chip beside it had already settled the shape — click, the
+    // answer opens under it, click away and it is gone. Two adjacent chips in
+    // one band behaving differently is the defect; dimming the consultation to
+    // answer "what is this patient flagged for?" is the cost.
+    renderHeader({ onOpenProfile: vi.fn() });
+    await userEvent.click(await screen.findByRole('button', { name: /patient alert/i }));
+    const view = await screen.findByTestId('patient-alerts-popover');
+    expect(view).toBeInTheDocument();
+    // Anchored, not masked: a popover has no dialog role and no backdrop.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.querySelector('.ant-modal-mask')).toBeNull();
   });
 
   it('FIX 2 — a labelled "Patient details" control opens the profile', async () => {
     // A control a doctor has to guess at is one half of them never find.
     const onOpenProfile = vi.fn();
-    const onOpenAlerts = vi.fn();
-    renderHeader({ onOpenProfile, onOpenAlerts });
+    renderHeader({ onOpenProfile });
     await userEvent.click(screen.getByRole('button', { name: 'Patient details' }));
     expect(onOpenProfile).toHaveBeenCalledTimes(1);
-    expect(onOpenAlerts).not.toHaveBeenCalled();
+    // And it does NOT drag the alerts open with it.
+    expect(screen.queryByTestId('patient-alerts-popover')).toBeNull();
   });
 
   it('is honestly disabled where the screen cannot offer it', () => {
@@ -309,7 +322,7 @@ describe('the alert chip shows what the alerts SAY', () => {
     get.mockImplementation(async (url: string) =>
       String(url).includes('/alerts') ? [alert('a1', 'MEDICAL', 'DM'), alert('a2', 'MEDICAL', 'HPT')] : [],
     );
-    renderHeader({ onOpenAlerts: vi.fn() });
+    renderHeader({});
 
     expect(await screen.findByText(/DM/)).toBeInTheDocument();
     expect(screen.getByText(/HPT/)).toBeInTheDocument();
@@ -323,7 +336,7 @@ describe('the alert chip shows what the alerts SAY', () => {
         ? ['DM', 'HPT', 'OKU', 'Asthma', 'Deaf'].map((label, i) => alert(`a${i}`, 'MEDICAL', label))
         : [],
     );
-    renderHeader({ onOpenAlerts: vi.fn() });
+    renderHeader({});
 
     // The first three are readable; only the tail becomes a number.
     expect(await screen.findByText(/DM, HPT, OKU/)).toBeInTheDocument();
@@ -340,7 +353,7 @@ describe('the alert chip shows what the alerts SAY', () => {
         ? ['DM', 'HPT', 'OKU', 'Asthma'].map((label, i) => alert(`a${i}`, 'MEDICAL', label))
         : [],
     );
-    renderHeader({ onOpenAlerts: vi.fn() });
+    renderHeader({});
 
     expect(await screen.findByRole('button', { name: /Patient alerts: DM, HPT, OKU, Asthma/ })).toBeInTheDocument();
   });
@@ -351,7 +364,7 @@ describe('the alert chip shows what the alerts SAY', () => {
         ? [alert('a1', 'ALLERGY', 'AUGMENTIN'), alert('a2', 'MEDICAL', 'DM')]
         : [],
     );
-    renderHeader({ onOpenAlerts: vi.fn() });
+    renderHeader({});
 
     const chip = await screen.findByRole('button', { name: /Patient alerts:/ });
     expect(chip.textContent).toContain('DM');
@@ -360,7 +373,7 @@ describe('the alert chip shows what the alerts SAY', () => {
 
   it('still says so plainly when there are none', async () => {
     get.mockImplementation(async () => []);
-    renderHeader({ onOpenAlerts: vi.fn() });
+    renderHeader({});
     expect(await screen.findByRole('button', { name: /No active patient alerts/ })).toBeInTheDocument();
   });
 });
