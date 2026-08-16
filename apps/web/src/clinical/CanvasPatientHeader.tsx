@@ -14,7 +14,7 @@ import dayjs from 'dayjs';
 import { Patient } from '../core/types';
 import { Visit } from './types';
 import { AllergyQuickRecord } from './canvas/AllergyQuickRecord';
-import { nonAllergyAlerts, usePatientAlerts } from './hooks/usePatientAlerts';
+import { headerAlertSummary, nonAllergyAlerts, usePatientAlerts } from './hooks/usePatientAlerts';
 
 const { Text } = Typography;
 
@@ -78,10 +78,14 @@ export function CanvasPatientHeader({
 }: CanvasPatientHeaderProps) {
   const onHoldNow = Boolean(heldByName);
   const { data: alerts } = usePatientAlerts(patient.id);
-  // FIX 3 — the indicator counts NON-allergy alerts. Allergies have their own
-  // chip beside it, and counting them twice would tell a doctor there are five
+  // The indicator carries NON-allergy alerts. Allergies have their own chip
+  // beside it, and listing them twice would tell a doctor there are five
   // things to read when there are three.
   const otherAlerts = nonAllergyAlerts(alerts);
+  // FIX 1 — the LABELS, not a count. "1 alert" made a doctor click to find out
+  // it said DM, and information you have to click for is information you do
+  // not have mid-consult.
+  const alertSummary = headerAlertSummary(otherAlerts.map((alert) => alert.label));
   const age = patient.dob ? dayjs().diff(dayjs(patient.dob), 'year') : null;
   const panelName = visit.panelClinic?.name ?? null;
   const initials = patient.name
@@ -156,21 +160,33 @@ export function CanvasPatientHeader({
         <button
           type="button"
           className={`kw2-chip kw2-chip-alerts${otherAlerts.length > 0 ? ' kw2-chip-alerts-active' : ''}`}
-          // FIX 1 — the ALERTS view, not the profile. Checking why a patient is
-          // flagged must not land a doctor in an editable demographics form.
+          // The ALERTS view, not the profile. Checking why a patient is flagged
+          // must not land a doctor in an editable demographics form.
           onClick={onOpenAlerts}
           disabled={!onOpenAlerts}
+          // The accessible name carries the full list even where the visible
+          // chip collapsed the tail — a screen-reader user should not be the
+          // one who has to click.
           aria-label={
             otherAlerts.length > 0
-              ? `${otherAlerts.length} active patient ${otherAlerts.length === 1 ? 'alert' : 'alerts'} — view`
+              ? `Patient alerts: ${otherAlerts.map((alert) => alert.label).join(', ')} — view`
               : 'No active patient alerts — view'
           }
           data-alert-count={otherAlerts.length}
         >
           <WarningOutlined />{' '}
-          {otherAlerts.length > 0
-            ? `${otherAlerts.length} alert${otherAlerts.length === 1 ? '' : 's'}`
-            : 'No alerts'}
+          {otherAlerts.length > 0 ? (
+            <>
+              {alertSummary.shown.join(', ')}
+              {alertSummary.hidden > 0 && (
+                // Only the REMAINDER collapses. Never the whole set: a bare
+                // count is what this fix removed.
+                <span className="kw2-chip-more"> +{alertSummary.hidden} more</span>
+              )}
+            </>
+          ) : (
+            'No alerts'
+          )}
         </button>
 
         <span className="kw2-chip kw2-chip-payer">{panelName ? `Panel · ${panelName}` : 'CASH'}</span>

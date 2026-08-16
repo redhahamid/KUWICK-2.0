@@ -140,3 +140,42 @@ export function allergyAlerts(alerts: PatientAlert[] | undefined): PatientAlert[
 export function nonAllergyAlerts(alerts: PatientAlert[] | undefined): PatientAlert[] {
   return activeAlerts(alerts).filter((alert) => alert.type !== 'ALLERGY');
 }
+
+/**
+ * b1.5 FIX 1 — how many alert labels the header shows before it collapses.
+ *
+ * A CAP rather than a measurement. "As many as fit" is the intent, and the
+ * honest way to implement it in a wrapping flex band is a number that fits the
+ * narrowest supported viewport (1366px, which the A0 sweep pins) with the
+ * allergy chip, the payer chip and three action buttons already in the row.
+ * Three labels clear that; a measured version would reflow on every render and
+ * still have to pick a number when the labels are long.
+ */
+export const HEADER_ALERT_LIMIT = 3;
+
+export interface HeaderAlertSummary {
+  /** Rendered in full, in order. */
+  shown: string[];
+  /** How many did not fit. Zero means nothing was collapsed. */
+  hidden: number;
+}
+
+/**
+ * Show the content, collapse only the REMAINDER.
+ *
+ * The header used to render a bare count — "1 alert" — which a doctor had to
+ * click before learning it said DM. Information you have to click for is
+ * information you do not have mid-consult, which is the opposite of what an
+ * alert is for. So the labels themselves go in the band, and only the overflow
+ * becomes a number.
+ */
+export function headerAlertSummary(
+  labels: string[],
+  limit: number = HEADER_ALERT_LIMIT,
+): HeaderAlertSummary {
+  // A limit of one leaves "X +2 more", which is still more use than "3 alerts".
+  const safeLimit = Math.max(1, limit);
+  if (labels.length <= safeLimit) return { shown: labels, hidden: 0 };
+  return { shown: labels.slice(0, safeLimit), hidden: labels.length - safeLimit };
+}
+

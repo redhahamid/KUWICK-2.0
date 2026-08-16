@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { ALLERGY_NOT_ASKED, AllergyStrip, allergyBannerState, allergyStripText, allergyWords } from './AllergyStrip';
+import { ALLERGY_NOT_ASKED, ALLERGY_STRIP_PREFIX, ALLERGY_STRIP_SUFFIX, AllergyStrip, allergyBannerState, allergyStripText, allergyWords } from './AllergyStrip';
 
 // ===========================================================================
 // KW2-C2 — the persistent allergy strip.
@@ -179,5 +179,51 @@ describe('the allergy banner carries allergies ONLY', () => {
     // would silence the one warning that matters.
     expect(allergyBannerState(null, [])).toBe('NONE_RECORDED');
     expect(allergyStripText(null, [])).toBe(ALLERGY_NOT_ASKED);
+  });
+});
+
+// ===========================================================================
+// b1.5 FIX 2 — THE SAME ALLERGY, RECORDED TWICE, READS ONCE.
+//
+// Staging showed "NSAIDS, AUGMENTIN, PCM, NSAIDS": the drug was in
+// `patient.allergies` AND had since been recorded as an ALLERGY alert. Both
+// stores are legitimate and neither is being merged — but a repeat in the chip
+// reads as two separate findings, and makes the one line that must be exact
+// look careless.
+// ===========================================================================
+
+describe('the allergy words are deduplicated for display', () => {
+  it('the staging case reads once', () => {
+    expect(allergyWords(['NSAIDS', 'AUGMENTIN', 'PCM'], ['NSAIDS'])).toEqual([
+      'NSAIDS',
+      'AUGMENTIN',
+      'PCM',
+    ]);
+  });
+
+  it('ignores case and surrounding whitespace', () => {
+    expect(allergyWords(['NSAIDS'], ['  nsaids  '])).toEqual(['NSAIDS']);
+    expect(allergyWords(['Penicillin'], ['PENICILLIN'])).toEqual(['Penicillin']);
+  });
+
+  it('keeps the FIRST spelling — the patient\'s own words survive', () => {
+    // `patient.allergies` is what the patient said. A later re-entry in a
+    // different case must not overwrite how it was recorded.
+    expect(allergyWords(['penicillin'], ['Penicillin'])).toEqual(['penicillin']);
+  });
+
+  it('deduplicates within a single source too', () => {
+    expect(allergyWords(['NSAIDS', 'nsaids'], [])).toEqual(['NSAIDS']);
+  });
+
+  it('keeps genuinely different drugs apart', () => {
+    // Dedup must not become fuzzy matching: these are two different drugs.
+    expect(allergyWords(['Penicillin'], ['Penicillamine'])).toEqual(['Penicillin', 'Penicillamine']);
+  });
+
+  it('the rendered strip says it once', () => {
+    expect(allergyStripText(['NSAIDS', 'PCM'], ['NSAIDS'])).toBe(
+      `${ALLERGY_STRIP_PREFIX} NSAIDS, PCM ${ALLERGY_STRIP_SUFFIX}`,
+    );
   });
 });

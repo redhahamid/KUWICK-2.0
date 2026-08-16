@@ -55,7 +55,28 @@ export function allergyWords(
   allergies: string[] | null | undefined,
   medicalAlertLabels: string[] = [],
 ): string[] {
-  return [...(allergies ?? []), ...medicalAlertLabels].map((entry) => entry?.trim()).filter(Boolean) as string[];
+  const words = [...(allergies ?? []), ...medicalAlertLabels]
+    .map((entry) => entry?.trim())
+    .filter(Boolean) as string[];
+
+  // DEDUPLICATED, case- and whitespace-insensitively.
+  //
+  // The same allergy legitimately lives in BOTH stores: `patient.allergies` is
+  // the header's quick-record field, and the same drug may since have been
+  // recorded as an ALLERGY alert with an author and a timestamp. Concatenating
+  // them printed "NSAIDS, AUGMENTIN, PCM, NSAIDS" on staging — a repeat that
+  // reads as two separate findings and makes the chip look careless about the
+  // one thing it must be exact about.
+  //
+  // Display-layer only: neither store is touched, and the FIRST spelling wins
+  // so the patient's own words survive rather than a later re-entry's casing.
+  const seen = new Set<string>();
+  return words.filter((word) => {
+    const key = word.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /**

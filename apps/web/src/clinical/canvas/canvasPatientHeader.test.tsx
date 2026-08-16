@@ -2,8 +2,23 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CanvasPatientHeader, headerAllergyState } from '../CanvasPatientHeader';
+
+// The band reads the patient's alerts, so the tests supply them. Defaults to
+// none, which is what the pre-existing cases here assume.
+const { get } = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock('../../core/api-client', () => ({
+  ApiError: class extends Error {},
+  apiClient: { get, post: vi.fn(), patch: vi.fn(), delete: vi.fn(), put: vi.fn(), postFile: vi.fn() },
+  downloadFile: vi.fn(),
+  fetchBlobUrl: vi.fn(),
+}));
+
+beforeEach(() => {
+  get.mockReset();
+  get.mockImplementation(async () => []);
+});
 import { Patient } from '../../core/types';
 import { Visit } from '../types';
 
@@ -41,6 +56,25 @@ const visit = (over: Partial<Visit> = {}): Visit =>
 
 // A2: the allergy chip inside the band is a live control (quick-record)
 // and holds a mutation, so the band now needs a QueryClient like any screen.
+/**
+ * b1.5 FIX 1 — the header reads alerts from the API, so these tests supply
+ * them. Without a mock the query fails and the chip correctly says "No alerts",
+ * which is what the earlier tests here rely on.
+ */
+const alert = (id: string, type: string, label: string) => ({
+  id,
+  patientId: 'p1',
+  type,
+  label,
+  note: null,
+  active: true,
+  createdAt: '2026-08-01T00:00:00Z',
+  createdByStaffId: 's1',
+  createdByName: 'Dr A',
+  deactivatedAt: null,
+  deactivatedByName: null,
+});
+
 const renderHeader = (over: Partial<Parameters<typeof CanvasPatientHeader>[0]> = {}) =>
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -259,5 +293,74 @@ describe('the identity strip is a way in, not just a label', () => {
     // disabled rather than silently doing nothing when clicked.
     renderHeader({ onOpenProfile: undefined });
     expect(screen.getByRole('button', { name: /Open Aisyah Ujian's record/i })).toBeDisabled();
+  });
+});
+
+// ===========================================================================
+// b1.5 FIX 1 — NON-ALLERGY ALERTS ARE READABLE WITHOUT CLICKING.
+//
+// The chip said "1 alert" and a doctor had to open it to learn that meant DM.
+// Information you have to click for is information you do not have
+// mid-consult, which is the opposite of what an alert is for.
+// ===========================================================================
+
+describe('the alert chip shows what the alerts SAY', () => {
+  it('renders the labels inline, not a count', async () => {
+    get.mockImplementation(async (url: string) =>
+      String(url).includes('/alerts') ? [alert('a1', 'MEDICAL', 'DM'), alert('a2', 'MEDICAL', 'HPT')] : [],
+    );
+    renderHeader({ onOpenAlerts: vi.fn() });
+
+    expect(await screen.findByText(/DM/)).toBeInTheDocument();
+    expect(screen.getByText(/HPT/)).toBeInTheDocument();
+    // The thing it replaced.
+    expect(screen.queryByText('2 alerts')).toBeNull();
+  });
+
+  it('collapses only the REMAINDER when there are many', async () => {
+    get.mockImplementation(async (url: string) =>
+      String(url).includes('/alerts')
+        ? ['DM', 'HPT', 'OKU', 'Asthma', 'Deaf'].map((label, i) => alert(`a${i}`, 'MEDICAL', label))
+        : [],
+    );
+    renderHeader({ onOpenAlerts: vi.fn() });
+
+    // The first three are readable; only the tail becomes a number.
+    expect(await screen.findByText(/DM, HPT, OKU/)).toBeInTheDocument();
+    expect(screen.getByText(/\+2 more/)).toBeInTheDocument();
+    // Never the whole set behind a count.
+    expect(screen.queryByText('5 alerts')).toBeNull();
+  });
+
+  it('gives a screen reader the FULL list, including the collapsed tail', async () => {
+    // The one user who cannot glance at the band should not be the one who has
+    // to click.
+    get.mockImplementation(async (url: string) =>
+      String(url).includes('/alerts')
+        ? ['DM', 'HPT', 'OKU', 'Asthma'].map((label, i) => alert(`a${i}`, 'MEDICAL', label))
+        : [],
+    );
+    renderHeader({ onOpenAlerts: vi.fn() });
+
+    expect(await screen.findByRole('button', { name: /Patient alerts: DM, HPT, OKU, Asthma/ })).toBeInTheDocument();
+  });
+
+  it('an ALLERGY alert stays out of this chip — it belongs to the red one', async () => {
+    get.mockImplementation(async (url: string) =>
+      String(url).includes('/alerts')
+        ? [alert('a1', 'ALLERGY', 'AUGMENTIN'), alert('a2', 'MEDICAL', 'DM')]
+        : [],
+    );
+    renderHeader({ onOpenAlerts: vi.fn() });
+
+    const chip = await screen.findByRole('button', { name: /Patient alerts:/ });
+    expect(chip.textContent).toContain('DM');
+    expect(chip.textContent).not.toContain('AUGMENTIN');
+  });
+
+  it('still says so plainly when there are none', async () => {
+    get.mockImplementation(async () => []);
+    renderHeader({ onOpenAlerts: vi.fn() });
+    expect(await screen.findByRole('button', { name: /No active patient alerts/ })).toBeInTheDocument();
   });
 });

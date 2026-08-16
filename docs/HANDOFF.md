@@ -873,6 +873,75 @@ SUBSTRING-matched; testing-library's string form is EXACT. A locator that
 passes in vitest can resolve to two elements in Playwright — that is how the
 "Patient details" collision surfaced.
 
+## b1.5 HEADER FIXES — **DONE.** Inline alerts, deduplicated allergies.
+
+**FIX 1 — non-allergy alerts render their CONTENT in the header.** The chip
+said "1 alert" and a doctor had to click to learn it meant DM. Information you
+have to click for is information you do not have mid-consult. `headerAlertSummary`
+shows up to `HEADER_ALERT_LIMIT` (3) labels and collapses only the REMAINDER as
+"+2 more" — never the whole set. The accessible name always carries the full
+list, so a screen-reader user is not the one who has to click.
+
+A CAP rather than a measurement, deliberately: "as many as fit" in a wrapping
+flex band means a number that clears the narrowest supported viewport, and a
+measured version would reflow every render and still have to pick one.
+
+Hierarchy: allergy chip red at weight 600, alert chip amber at 500. Both
+readable without interaction, one clearly louder — an allergy forbids, a
+chronic condition qualifies.
+
+**The A0 sweep caught this twice, and both are worth knowing.**
+1. `text-overflow: ellipsis` does NOT satisfy the sweep — an ellipsised box
+   still has content wider than itself. Exempting ellipsis is what would have
+   masked the original Vitals-title defect, so the chip WRAPS instead. That is
+   also the honest answer: clipping to "DM, HP…" puts the information back
+   behind a click, which is the thing this fix removes.
+2. `.kw2-chip` sets `white-space: nowrap` and is declared LATER in `canvas.css`,
+   so the single-class override lost on source order — a 426px chip in a 225px
+   box. It is now `.kw2-chip.kw2-chip-alerts-active`, order-independent.
+
+**FIX 2 — the allergy chip deduplicates.** Staging read "NSAIDS, AUGMENTIN,
+PCM, NSAIDS": the drug was in `patient.allergies` AND recorded as an ALLERGY
+alert. `allergyWords` now dedupes case- and whitespace-insensitively, keeping
+the FIRST spelling so the patient's own words survive. Display layer only —
+neither store was touched.
+
+### ON THE RECORD: should `patient.allergies` be retired? — asked by the owner
+
+**Recommendation: yes, eventually — but NOT until alerts can record a confirmed
+negative, and that is a real blocker rather than a detail.**
+
+The case for retiring it is strong and the owner is right that this is the same
+duplication Phase D refused for chronic conditions:
+- `patient.allergies` is a bare `string[]` with **no author and no timestamp**.
+  `patient_alerts` has both, plus resolve-with-attribution and append-only
+  enforcement. For do-not-prescribe information, "who recorded this, when" is
+  precisely what you want, and the array cannot answer it.
+- The dedup shipped above is a display-layer patch on a data-layer duplication.
+  That is a smell, not a fix.
+
+**THE BLOCKER — the array carries a state the alerts table cannot express.**
+`allergies = []` means "asked, none known"; `allergies = null` means "never
+asked". Those are different, the whole three-state banner rests on the
+difference, and **absence of an ALLERGY alert is ambiguous between them**.
+Retiring the column today would trade a duplication for a lost safety state:
+every patient would read "Allergy not asked" forever, including the ones who
+were asked and had none.
+
+So the order of operations is:
+1. Give alerts a way to record a confirmed negative WITH an author — a
+   patient-level "no known allergy, asked by X on <date>" fact. It does not
+   have to be a new table.
+2. Backfill each non-empty `patient.allergies` entry into an ALLERGY alert.
+   Attribution needs a decision: `createdByStaffId` is NOT NULL, and inventing
+   an author for a row nobody signed would be worse than the duplication. A
+   "migrated from the patient record" marker is the honest option.
+3. Point the quick-record chip's WRITE at alerts. Keep the chip itself — two
+   clicks mid-consult is genuinely good, and only the destination changes.
+4. Then drop the column.
+
+Until then the two stores stand, and the dedup keeps the chip honest.
+
 ## b1+b2 PACKAGE — WHAT IS LEFT (next session starts here)
 
 **Phase 1 remainder:**

@@ -122,3 +122,41 @@ describe('the header allergy chip', () => {
     expect(await screen.findByRole('button', { name: /Allergy not asked/i })).toBeInTheDocument();
   });
 });
+
+describe('the two chips are distinguishable, not just different colours', () => {
+  it('the allergy chip and the alert chip carry different words and different roles', async () => {
+    // Asserted as CONTENT and as accessible NAME rather than as a class or a
+    // hex value: a doctor tells them apart by what they say, and a
+    // screen-reader user has no colour at all. Colour alone is never the
+    // carrier of meaning here (D-077 §4).
+    render(
+      <Harness>
+        <AllergyQuickRecord patient={PATIENT} />
+      </Harness>,
+    );
+    const allergyChip = await screen.findByRole('button', { name: /^Allergies:/ });
+    expect(allergyChip.textContent).toContain('NSAIDS');
+    // The allergy chip announces itself as allergies. The alerts chip in the
+    // header announces itself as alerts — two names, two meanings.
+    expect(allergyChip.getAttribute('aria-label')).toMatch(/^Allergies:/);
+    expect(allergyChip.className).toContain('kw2-chip-danger');
+  });
+
+  it('a duplicated drug appears once on the chip a doctor reads', async () => {
+    // FIX 2, end to end through the component: NSAIDS in patient.allergies and
+    // NSAIDS as an ALLERGY alert is one finding.
+    get.mockImplementation(async (url: string) =>
+      String(url).includes('/alerts')
+        ? [{ ...base, id: 'dup', type: 'ALLERGY', label: 'nsaids' }]
+        : [],
+    );
+    render(
+      <Harness>
+        <AllergyQuickRecord patient={PATIENT} />
+      </Harness>,
+    );
+    const chip = await screen.findByRole('button', { name: /^Allergies:/ });
+    const occurrences = (chip.textContent ?? '').toLowerCase().split('nsaids').length - 1;
+    expect(occurrences).toBe(1);
+  });
+});

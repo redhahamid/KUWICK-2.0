@@ -567,13 +567,49 @@
   cursor: default;
 }
 
-/* Amber, never red. Red means stop; nothing here has decided anything is
-   wrong — the chip says this patient has standing facts worth reading. */
+/* FIX 1 — the alert chip now carries CONTENT, so it needs the same room to
+   breathe as the allergy chip beside it without competing with it.
+
+   Amber, never red, and NOT bold. Red and heavy is the allergy chip's, and it
+   has to stay the loudest thing in the band: an allergy forbids a prescription,
+   a chronic condition qualifies one. Two readable weights, one hierarchy —
+   which is the whole point of having split them. */
 .kw2-chip-alerts-active {
   border-color: #ffd591;
   background: #fff7e6;
   color: #ad4e00;
-  font-weight: 600;
+  /* Deliberately not 600. The red chip is the one that shouts. */
+  font-weight: 500;
+  /* WRAPS, rather than ellipsising.
+     The first attempt clipped with `text-overflow: ellipsis`, and the A0
+     viewport sweep failed it at 1366px: an ellipsised box still has content
+     wider than itself, and that sweep deliberately does not exempt ellipsis —
+     exempting it is what would have masked the original Vitals-title defect.
+     Wrapping is also the honest answer here: the whole point of this fix is
+     that the labels are READABLE without interaction, and clipping them to
+     "DM, HP…" would put the information back behind a click. */
+}
+
+/* The wrapping override, as a TWO-CLASS selector and stated here rather than
+   above: `.kw2-chip` sets `white-space: nowrap` and is declared later in this
+   file, so a single-class rule up there loses on source order — which is
+   exactly what happened, and the sweep caught it as a 426px chip in a 225px
+   box. Specificity makes it order-independent so a later edit cannot silently
+   undo it again. */
+.kw2-chip.kw2-chip-alerts-active {
+  max-width: 34ch;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  flex-wrap: wrap;
+  text-align: left;
+  line-height: 1.35;
+}
+
+/* The collapsed tail. Quieter than the labels it stands in for, because it is
+   a pointer rather than a finding. */
+.kw2-chip-more {
+  opacity: 0.75;
+  font-weight: 400;
 }
 
 .kw2-chip-alerts:focus-visible {
@@ -706,10 +742,15 @@
   outline-offset: 1px;
 }
 
+/* The allergy chip. Red and the HEAVIEST thing in the band, deliberately: it
+   is the only chip here that forbids an action rather than qualifying one.
+   The non-allergy alert chip beside it is amber at weight 500 — both readable
+   without interaction, one clearly louder. */
 .kw2-chip-danger {
   background: #fdecec;
   border-color: #f5c2c2;
   color: #b42318;
+  font-weight: 600;
 }
 
 /* "Allergy not asked" — amber, because an unasked question is not a
