@@ -95,13 +95,39 @@ export function VisitCompletionBar({
   return (
     <>
       <div className="kw-completion-bar" aria-label="Visit completion">
-        {/* b4 — THE DOCUMENTS STRIP IS GONE, folded into the Documents card.
-            Its buttons went when the card landed; what was left was a summary
-            ("2 active · Latest Referral 16 Aug") saying what the card says
-            better, on the card that owns it. It was costing the rail vertical
-            space it does not have: the rail starts 277px down at 1366 and needs
-            247px more than it has, and this band was the biggest single item
-            above it. Leftover duplication from before the card existed. */}
+        <div className="kw-completion-group">
+          <Text type="secondary" className="kw-completion-label">
+            DOCUMENTS
+          </Text>
+          {active.length > 0 ? (
+            <Space size={6} wrap>
+              <Text strong style={{ fontSize: 13 }}>
+                {active.length} active
+              </Text>
+              {latest && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Latest {typeLabel(latest)} {dayjs(latest.issuedDate ?? latest.createdAt).format('D MMM')}
+                </Text>
+              )}
+            </Space>
+          ) : (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              None issued
+            </Text>
+          )}
+          {/* b4 PIECE 1 — Create MC, Create Referral and More Documents are
+              GONE from this band. They lived here because the canvas had no
+              Documents card and this was a doctor's only way to issue an MC;
+              the card landed in Phase F and the owner has confirmed it works,
+              so keeping them would be three controls doing what the card does,
+              two of them jumping to a type the card also offers. One button,
+              one function.
+
+              The SUMMARY above stays: "2 active · Latest MC 16 Aug" is the
+              band answering what has been issued, which is a different job
+              from issuing one. */}
+        </div>
+
         <div className="kw-completion-group">
           <Text type="secondary" className="kw-completion-label">
             INVOICE

@@ -522,10 +522,70 @@ the owner's instruction: both are safety information.
 weakened — it still measures against the full 768. The remaining 237px is
 another decision about what gives way above the rail.
 
-**PIECE 2 IS NOT STARTED, deliberately.** The owner's rule: do not start it on
-a rail that already does not fit. The sticky bar has no space to consume at
-1366 — there is a 237px deficit before it arrives, and its ~44px would make it
-281px.
+**OWNER'S REVERSAL (2026-08-16): THE DOCUMENTS STRIP STAYS IN THE BAND.**
+Reverted. It had been removed in `13e4aa5` on the reasoning that the Documents
+card reports the same thing — and the measurement had already shown that removal
+bought ZERO height (the strip sits side by side with the invoice group, so it
+narrowed the band rather than shortening it). The owner's call is that it stays;
+do not fold it into the card again. Also ruled OUT by the owner: a shared
+rail-wide search box. Each card keeps its own add control — one box for
+everything costs staff training the clinic is not paying.
+
+**PIECE A IS NOT FINISHED. What remains, in the owner's own priority order:**
+
+1. Reduce the BAND's height without touching its content — padding, the
+   action-button row, vertical rhythm. The allergy strip and alert chips stay
+   exactly as they are, wrapping included. This is the y=277 line, and it must
+   be attacked as HEIGHT, not by removing contents: that lesson is already paid
+   for above.
+2. Tighten card headers: a title and a count should cost a line, not a block.
+3. Shorten each card's add control further, still without moving it in the DOM.
+   (A first pass took them to 26px in `13e4aa5`; the single DOM position that
+   fixed the focus-loss bug must stay.)
+
+**THEN REDEFINE THE 1366 ASSERTION — deliberately, in the open, not by
+weakening it.** The owner's judgement: four cards holding a real visit will not
+fit 768px once the band and the per-card controls are kept, and pretending
+otherwise costs more than it buys. `TYPICAL fits 1366×768` is to be REPLACED by
+a target that protects what matters, all of it asserted:
+
+  a. At rest, the Medications card header AND its first row are above the fold.
+     Medications is what a doctor opens the rail for.
+  b. Any row carrying the unresolved-supply warning chip is above the fold at
+     rest, or the rail auto-reveals it. That warning must never require a
+     scroll to discover. (Note the related fix already made: rows with no
+     supply decision are ordered FIRST, so the disclosure threshold cannot
+     collapse the warning into "+N more".)
+  c. No item text truncated at any width.
+  d. No card lost — each of the four reachable and of real height.
+  e. At 1920 the full TYPICAL rail still fits with no scrolling at all.
+
+The budget line must still print on every run, pass or fail, and must still
+measure against the full 768 including the sticky bar once Piece B lands.
+
+**PIECES B AND C NOT STARTED.** Piece B (invoice + sticky bar) must read
+`consultation-tariff.ts` (D-094) first — the OTC-skips-consultation rule almost
+certainly belongs there, and a second answer to "should this visit carry a
+consultation charge" is the two-allergy-stores mistake again. The bar is slim at
+rest (~44px), expands over the canvas on click, and never permanently occupies
+more than the slim height. Its height counts inside the measured region; if it
+breaks a Piece A assertion, the HEIGHT is what gets fixed.
+
+**FOR THE MODULES AFTER THE CANVAS**, since the owner moves to Appointments and
+then reports/analytics next, this work has already established:
+
+- **Appointments**: `apps/api/src/appointment/slot-availability.service.ts`
+  exists with its own spec, and Piece C is specified to book through it rather
+  than build a second path — whatever the canvas card ends up doing, the
+  Appointments module is the single store.
+- **Reports/analytics**: three things are now queryable that were not.
+  `Document.type` finally distinguishes TIME_SLIP and CONSENT, so "how many MCs
+  / time slips did we issue" is a query rather than a string match on a title.
+  `patient_identity_changes` is an append-only record of every IC/DOB
+  correction with author and role snapshotted. `patient_alerts` now carries
+  ALLERGY and NO_KNOWN_ALLERGY with an `origin` column, so "how many patients
+  have been ASKED about allergies" is answerable — which it was not while the
+  answer lived in a free-text array.
 
 **A trap already hit, do not re-introduce it:** `TYPICAL fits 1920` PASSED with
 zero rows, because the lowest row bottom of nothing is zero. Same class as

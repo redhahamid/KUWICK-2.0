@@ -54,14 +54,12 @@ describe('top Visit Actions', () => {
     expect(screen.queryByRole('button', { name: /more documents/i })).not.toBeInTheDocument();
   });
 
-  it('2. the whole documents strip is gone — the card reports it now', () => {
-    // The summary went too, in a later pass. Once the Documents card existed
-    // it was the same fact in two places, and the band was costing vertical
-    // space the rail does not have. (It bought no height in the end — the
-    // strip sat side by side with the invoice group — but the duplication was
-    // real and the removal stands.)
+  it('2. it still SAYS what has been issued — reporting is not the same job as issuing', () => {
+    // The summary stays. Removing the buttons must not remove the answer to
+    // "has this visit issued anything", which is the one thing the band was
+    // genuinely adding.
     renderBar();
-    expect(screen.queryByText(/^DOCUMENTS$/)).not.toBeInTheDocument();
+    expect(screen.getByText(/active|None issued/i)).toBeInTheDocument();
   });
 
   it('3. the invoice action opens the invoice surface', async () => {
