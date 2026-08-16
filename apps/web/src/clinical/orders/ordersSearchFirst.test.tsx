@@ -5,6 +5,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OrdersRail } from '../sections/OrdersRail';
+import { AddOrderModal } from './AddOrderModal';
 import { serviceSearchDetail, serviceSearchLabel } from './orderPicker';
 import { Service } from '../types';
 
@@ -51,7 +52,12 @@ beforeEach(() => {
   ORDERS = [];
   get.mockImplementation(async (url: string) => {
     const path = String(url);
-    if (path.startsWith('/services')) return [DRESSING, CONSULT];
+    if (path.startsWith('/services')) {
+      // Mirrors the SERVER's filter. A mock that returns both types whatever
+      // is asked would let the box look scoped while it is not — the test
+      // would then be asserting the mock rather than the boundary.
+      return path.includes('orderType=TASK_ORDER') ? [DRESSING] : [DRESSING, CONSULT];
+    }
     if (path.startsWith('/rooms')) return ROOMS;
     if (path.includes('order-services')) return ORDERS;
     return [];
@@ -118,8 +124,14 @@ describe('the two order types ask for different things', () => {
   });
 
   it('a STANDARD SERVICE asks only how many, and a remark', async () => {
-    openRail();
-    await pick('consult', 'Consultation');
+    // Rendered DIRECTLY, because a standard service is no longer reachable
+    // from the orders box — Direct Services owns that path. The modal stays
+    // generic, and this pins the shape it renders when handed one.
+    render(
+      <Harness>
+        <AddOrderModal open visitId="visit-1" clinicId="clinic-1" service={CONSULT} onClose={vi.fn()} />
+      </Harness>,
+    );
 
     expect(await screen.findByLabelText('Quantity')).toBeInTheDocument();
     expect(screen.getByLabelText('Remark (optional)')).toBeInTheDocument();
@@ -155,8 +167,11 @@ describe('the two order types ask for different things', () => {
   });
 
   it('submits the quantity for a standard service, and shows what it will bill', async () => {
-    openRail();
-    await pick('consult', 'Consultation');
+    render(
+      <Harness>
+        <AddOrderModal open visitId="visit-1" clinicId="clinic-1" service={CONSULT} onClose={vi.fn()} />
+      </Harness>,
+    );
     const quantity = await screen.findByLabelText('Quantity');
     await userEvent.tripleClick(quantity);
     await userEvent.keyboard('3');
@@ -237,5 +252,101 @@ describe('the list says what each row IS', () => {
     expect(within(task).getByText('Completed')).toBeInTheDocument();
     expect(within(task).getByRole('button', { name: 'View Result' })).toBeEnabled();
     expect(screen.getByText(/Clean, redressed/)).toBeInTheDocument();
+  });
+});
+
+// ===========================================================================
+// E-FOLLOWUP — THE BOUNDARY BETWEEN THE TWO CARDS (owner decision).
+//
+// The box briefly offered standard services, which put a consultation fee in
+// two cards at once. The fix is to scope the SEARCH, not to merge the cards —
+// so what has to hold is that the box asks for task orders only, that a
+// standard service cannot be reached from here, and that a visit which
+// already has one recorded under orders still renders it.
+// ===========================================================================
+
+describe('the orders box searches TASK ORDERS only', () => {
+  it('asks the SERVER for task orders, rather than trimming the page here', async () => {
+    // The request is bounded to twenty rows. Filtering in the browser would
+    // return three task orders out of twenty and present them as the lot.
+    openRail();
+    const box = screen.getByRole('combobox', { name: 'Add order or service' });
+    await userEvent.click(box);
+    await userEvent.type(box, 'con');
+    await waitFor(() =>
+      expect(
+        get.mock.calls.some(([url]) => String(url).includes('orderType=TASK_ORDER')),
+      ).toBe(true),
+    );
+  });
+
+  it('returns no standard services, even for a term that names one', async () => {
+    openRail();
+    const box = screen.getByRole('combobox', { name: 'Add order or service' });
+    await userEvent.click(box);
+    await userEvent.type(box, 'consult');
+
+    // The task order is offered; the consultation fee is not.
+    expect(await screen.findByText('DRESS — Wound dressing')).toBeInTheDocument();
+    expect(screen.queryByText('Consultation')).toBeNull();
+  });
+
+  it('says where billable services are added, in the box and on the empty card', async () => {
+    // A boundary a doctor cannot see is a boundary they will cross.
+    openRail();
+    expect(
+      await screen.findByText(/Billable services are added in Direct Services/i),
+    ).toBeInTheDocument();
+
+    const box = screen.getByRole('combobox', { name: 'Add order or service' });
+    await userEvent.click(box);
+    expect(await screen.findByText(/Billable services are added in the Direct Services card/i)).toBeInTheDocument();
+  });
+});
+
+describe('a visit that ALREADY has a standard service under orders still renders it', () => {
+  it('shows the stored row, tagged and with its quantity', async () => {
+    // Scoping the search must not hide data already written. A visit recorded
+    // before this decision still has the row, and it still bills.
+    ORDERS = [
+      {
+        id: 'o2', tenantId: 't', clinicId: 'c', visitId: 'visit-1', serviceCatalogId: 'svc-std',
+        code: null, procedureName: 'Consultation', orderType: 'STANDARD_SERVICE', instruction: null,
+        result: null, status: 'COMPLETED', requestedByStaffId: 's1', requestedAt: '2026-08-13T00:00:00Z',
+        completedAt: '2026-08-13T00:00:00Z', cancelReason: null, formTemplateId: null, formData: null,
+        roomId: null, urgency: null, quantity: 3, room: null,
+      },
+    ];
+    openRail();
+
+    const row = (await screen.findByText('Consultation')).closest('.kw-rail-row') as HTMLElement;
+    expect(within(row).getByText('SERVICE')).toBeInTheDocument();
+    // The quantity is what the invoice multiplies by, so it stays on the row.
+    expect(within(row).getByText('3 ×')).toBeInTheDocument();
+  });
+
+  it('does not filter the LIST — only the search is scoped', async () => {
+    ORDERS = [
+      {
+        id: 'o1', tenantId: 't', clinicId: 'c', visitId: 'visit-1', serviceCatalogId: 'svc-task',
+        code: 'DRESS', procedureName: 'Wound dressing', orderType: 'TASK_ORDER', instruction: null,
+        result: null, status: 'PENDING', requestedByStaffId: 's1', requestedAt: '2026-08-13T00:00:00Z',
+        completedAt: null, cancelReason: null, formTemplateId: null, formData: null,
+        roomId: null, urgency: null, quantity: 1, room: null,
+      },
+      {
+        id: 'o2', tenantId: 't', clinicId: 'c', visitId: 'visit-1', serviceCatalogId: 'svc-std',
+        code: null, procedureName: 'Consultation', orderType: 'STANDARD_SERVICE', instruction: null,
+        result: null, status: 'COMPLETED', requestedByStaffId: 's1', requestedAt: '2026-08-13T00:00:00Z',
+        completedAt: '2026-08-13T00:00:00Z', cancelReason: null, formTemplateId: null, formData: null,
+        roomId: null, urgency: null, quantity: 1, room: null,
+      },
+    ];
+    openRail();
+    expect(await screen.findByText('Wound dressing')).toBeInTheDocument();
+    expect(screen.getByText('Consultation')).toBeInTheDocument();
+    // The list request carries no orderType — mixed stored data renders whole.
+    const listCalls = get.mock.calls.map(([url]) => String(url)).filter((url) => url.includes('order-services'));
+    expect(listCalls.every((url) => !url.includes('orderType='))).toBe(true);
   });
 });

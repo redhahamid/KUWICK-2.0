@@ -5,7 +5,7 @@ import { Service } from '../types';
 import { serviceSearchDetail, serviceSearchLabel } from './orderPicker';
 
 /**
- * b2 PHASE E — SEARCH-FIRST ORDERING.
+ * b2 PHASE E — SEARCH-FIRST ORDERING, TASK ORDERS ONLY.
  *
  * "+ Add Order" was a button whose only job was to reveal a picker, so every
  * order began with a click that decided nothing — the same door-in-front-of-a-
@@ -34,7 +34,17 @@ export function OrderSearchBox({ onPick, focusSignal = 0, disabled }: OrderSearc
 
   const search = useCallback(async (term: string): Promise<KuwickSearchOption[]> => {
     const services = await apiClient.get<Service[]>(
-      `/services?activeOnly=true&take=20&search=${encodeURIComponent(term)}`,
+      // TASK ORDERS ONLY, filtered by the SERVER (owner decision, 2026-08-13).
+      //
+      // This box briefly offered standard services too, which put a
+      // consultation fee in two cards at once. The boundary is the search now:
+      // procedures and investigations are ordered here, billable services are
+      // added in Direct Services, and the two cards stay separate.
+      //
+      // Server-side rather than a filter here, because the request is BOUNDED
+      // to twenty rows — trimming that page in the browser would silently
+      // return three task orders and present them as the whole catalogue.
+      `/services?activeOnly=true&take=20&orderType=TASK_ORDER&search=${encodeURIComponent(term)}`,
     );
     const rows = Array.isArray(services) ? services : [];
     found.current = new Map(rows.map((service) => [service.id, service]));
@@ -53,7 +63,9 @@ export function OrderSearchBox({ onPick, focusSignal = 0, disabled }: OrderSearc
         key={`${instance}-${focusSignal}`}
         id="kw-order-search"
         ariaLabel="Add order or service"
-        placeholder="🔍 add order or service…"
+        // Names what this box is FOR. "add order or service" invited exactly
+        // the confusion the scoping removes.
+        placeholder="🔍 search tests, imaging, procedures…"
         disabled={disabled}
         autoFocus={focusSignal > 0}
         onSearch={search}
@@ -63,7 +75,7 @@ export function OrderSearchBox({ onPick, focusSignal = 0, disabled }: OrderSearc
           setInstance((n) => n + 1);
           onPick(service);
         }}
-        emptyHint="Type a name, code or category — e.g. dressing, XRAYCHEST, imaging."
+        emptyHint="Tests, imaging and procedures — e.g. dressing, XRAYCHEST, imaging. Billable services are added in the Direct Services card."
       />
     </div>
   );

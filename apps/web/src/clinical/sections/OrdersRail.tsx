@@ -92,7 +92,10 @@ export function OrdersRail({ visitId, clinicId }: OrdersRailProps) {
         status={outstanding > 0 ? <Tag className="kw-chip-pending">{outstanding} awaiting result</Tag> : undefined}
         isLoading={isLoading}
         error={error ?? undefined}
-        emptyText="No orders or procedures for this visit"
+        // Says where the OTHER thing lives. The two cards are separate on
+        // purpose, and an empty card that does not name the boundary is how a
+        // doctor ends up hunting for the consultation fee in here.
+        emptyText="No tests, imaging or procedures ordered. Billable services are added in Direct Services below."
         previewLimit={4}
         addControl={
           /* b2 PHASE E — the BOX, not a button in front of one.
