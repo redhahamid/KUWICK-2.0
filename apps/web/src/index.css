@@ -1159,6 +1159,30 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   margin-bottom: 0;
 }
 
+/* THE ONE LINE HAS TO HOLD AT 1366 TOO.
+   The rail is ~457px wide there, and the empty-state wording plus the add
+   control did not fit side by side — so the row wrapped and an "empty" card
+   cost 78px instead of the single line it costs at 1920. That is Piece 1's own
+   rule failing at the narrow width, not new work. The wording shrinks and
+   ellipsises; the control keeps its size, because the control is the part
+   somebody uses. */
+.kw-rail-panel-empty .kw-rail-head {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.kw-rail-panel-empty .kw-rail-head .ant-space-item:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kw-rail-panel-empty .kw-rail-add {
+  flex: 0 0 auto;
+}
+
 .kw-rail-panel-empty .kw-rail-add {
   margin-left: auto;
 }
@@ -1168,7 +1192,22 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 }
 
 .kw-rail-add {
-  margin-bottom: 6px;
+  margin-bottom: 4px;
+}
+
+/* b4 — the add controls were spending ~320px across four cards for six rows of
+   content. Shorter, NOT moved: Piece 1 put them in one DOM position to stop the
+   search box unmounting mid-word, and that stays. Only the height changes. */
+.kw-rail-add .ant-select-selector,
+.kw-rail-add .ant-input,
+.kw-rail-add .ant-input-affix-wrapper {
+  min-height: 26px;
+  height: 26px;
+}
+
+.kw-rail-add .ant-btn {
+  height: 26px;
+  padding-inline: 8px;
 }
 
 /* b1 — the medications rail's add control is now a search box plus Copy

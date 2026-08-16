@@ -491,8 +491,41 @@ which Piece 1 deliberately keeps in one DOM position and on screen). That is the
 owner's call, not a test fix, so the case stays `.fixme` and reports itself as
 outstanding on every run.
 
-**PIECE 2 SHOULD READ THAT NUMBER FIRST.** The sticky bar has no space to
-consume at 1366: there is a 247px deficit before it arrives.
+**OWNER'S THREE FIXES APPLIED (2026-08-16). 247px → 237px. STILL OVER.**
+
+Measured, not estimated — the case prints its own budget line every run:
+
+    RAIL BUDGET — TYPICAL at 1366×768: rail needs 728px, has 491px (OVER by 237px)
+    RAIL BUDGET — TYPICAL at 1920×1080: rail needs 645px, has 845px (200px spare)
+
+What each fix actually bought:
+
+1. **Folding the documents strip into the Documents card bought ZERO HEIGHT,
+   and the measurement says so: the rail still starts at y=277.** The strip is
+   a `kw-completion-group` sitting SIDE BY SIDE with the invoice group in the
+   band's flex row — removing it made the band narrower, not shorter. The
+   change is kept because it is still correct de-duplication (the card owns
+   what the strip was reporting), but the y=277 line comes from the patient
+   header band plus the completion band's own height, and neither moved.
+   **Anyone attacking y=277 next must reduce the BAND'S HEIGHT, not its
+   contents.**
+2. + 3. The empty-card rule at 1366 and the shorter add controls bought the
+   10px between 247 and 237. Both are real and both stay: an empty card is one
+   line at 1366 again (the wording ellipsises, the control keeps its size), and
+   the add controls are 26px without moving in the DOM — Piece 1's single
+   position, which fixed the focus-loss bug, is untouched.
+
+The allergy strip and the unresolved-supply warning chip were not touched, per
+the owner's instruction: both are safety information.
+
+`TYPICAL fits 1366×768` therefore STAYS `.fixme`, and the assertion was not
+weakened — it still measures against the full 768. The remaining 237px is
+another decision about what gives way above the rail.
+
+**PIECE 2 IS NOT STARTED, deliberately.** The owner's rule: do not start it on
+a rail that already does not fit. The sticky bar has no space to consume at
+1366 — there is a 237px deficit before it arrives, and its ~44px would make it
+281px.
 
 **A trap already hit, do not re-introduce it:** `TYPICAL fits 1920` PASSED with
 zero rows, because the lowest row bottom of nothing is zero. Same class as
