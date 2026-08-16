@@ -525,13 +525,18 @@ body.kw-note-focus .kw-editor-min .ProseMirror {
    (documents, the bill) and the way into each. It wraps into two rows on a
    narrow desktop rather than shrinking its text, and it takes no height from
    the note — the note's height is declared separately and untouched. */
+/* b4 PIECE A — the second half of the y=277 line, and the same rule: HEIGHT,
+   not contents. The documents summary and the invoice summary both stay, in
+   full, side by side. Only the vertical padding and the space below the strip
+   change; its content is one 24px control tall, and it was spending 18px of
+   box around it. */
 .kw-completion-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--kw-s2) var(--kw-s6);
-  padding: var(--kw-s2) var(--kw-s4);
-  margin-bottom: var(--kw-s2);
+  gap: 6px var(--kw-s6);
+  padding: 4px var(--kw-s4);
+  margin-bottom: 4px;
   background: var(--kw-band-bg);
   border: 1px solid var(--kw-band-border);
   border-radius: 8px;
@@ -1119,12 +1124,19 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   padding: 8px 10px;
 }
 
+/* b4 PIECE A — A TITLE AND A COUNT COST A LINE, NOT A BLOCK.
+   Four cards were spending 32px each on "Medications (4)" — a 22px line, 2px
+   of sticky padding above it, 6px of margin below, and a status tag leaded to
+   19px for a 12px word. Nothing is removed: the title, the count, the status
+   chip and the empty-state wording are all still here at their own sizes. The
+   header is now the height of the line it contains. */
 .kw-rail-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 2px;
+  line-height: 1.3;
   /* b4 PIECE 1 — the count stays readable while the rail scrolls.
      A doctor halfway down eight medications should not have to scroll back to
      learn which card they are in. Sticky to the PANEL, not to the viewport, so
@@ -1137,7 +1149,6 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   top: 0;
   z-index: 2;
   background: #fff;
-  padding-top: 2px;
 }
 
 /* An empty card is ONE LINE: the count, the wording, and the add control on
@@ -1159,31 +1170,57 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   margin-bottom: 0;
 }
 
-/* THE ONE LINE HAS TO HOLD AT 1366 TOO.
-   The rail is ~457px wide there, and the empty-state wording plus the add
-   control did not fit side by side — so the row wrapped and an "empty" card
-   cost 78px instead of the single line it costs at 1920. That is Piece 1's own
-   rule failing at the narrow width, not new work. The wording shrinks and
-   ellipsises; the control keeps its size, because the control is the part
-   somebody uses. */
+/* THE CARD TITLE KEEPS ITS OWN LINE AT 1366. THE ROW MAY STILL TAKE TWO.
+   Both halves of that are measured, and the second is the honest limit.
+
+   What was wrong: `.kw-rail-panel-empty .kw-rail-head` was `flex: 1 1 0`
+   against an add control that would not shrink, and the previous rule here
+   ellipsised the WORDING to make room. The wording duly ellipsised — and the
+   title, which nothing protected, was squeezed to 58px and wrapped onto THREE
+   lines. "Direct Services (0)" was rendering 66px tall inside an 82px card
+   that is supposed to cost one line. The rule meant to save the row was
+   costing it.
+
+   What holds now: `min-width: min-content` is the title's own unbroken width,
+   so the head can never be narrower than the words it holds, and the title is
+   one line at every width. `0 1 auto` rather than `1 1 auto` keeps the head
+   from growing into the whole row and pushing the control down by itself.
+
+   What does NOT hold, deliberately: at 1366 the rail is ~457px and "Direct
+   Services (0)" plus "No direct services added to this visit" plus a usable
+   control need ~576px. They do not fit, so the control takes a second row —
+   76px rather than 82. The alternative was to clip something, and clipping is
+   ruled out twice over: the viewport sweep rejects a hidden overflow as firmly
+   as a sideways scroll, and a card whose name is an ellipsis is a card a
+   doctor has to guess at. NOTHING here ellipsises. If this row is ever wanted
+   on one line at 1366, the wording is what has to get shorter — that is a
+   wording decision, not a layout one. */
 .kw-rail-panel-empty .kw-rail-head {
-  flex: 1 1 0;
-  min-width: 0;
-  overflow: hidden;
+  flex: 0 1 auto;
+  min-width: min-content;
 }
 
-.kw-rail-panel-empty .kw-rail-head .ant-space-item:last-child {
+.kw-rail-panel-empty .kw-rail-head > .ant-space {
+  display: flex;
+  flex-wrap: wrap;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.kw-rail-panel-empty .kw-rail-head .ant-space-item:first-child,
+.kw-rail-panel-empty .kw-rail-head .ant-space-item:first-child .ant-typography {
+  flex: 0 0 auto;
   white-space: nowrap;
 }
 
+/* The control gives width before the title breaks, and takes its own row
+   before it becomes too narrow to use — 140px is the floor, because A0 already
+   caught a 118px search box on this rail and a field too narrow to read a drug
+   name in is not a field. It does not MOVE: the single DOM position that fixed
+   the focus-loss bug is untouched, and only the width it claims changes. */
 .kw-rail-panel-empty .kw-rail-add {
-  flex: 0 0 auto;
-}
-
-.kw-rail-panel-empty .kw-rail-add {
+  flex: 0 1 auto;
+  min-width: 140px;
   margin-left: auto;
 }
 
@@ -1192,21 +1229,24 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 }
 
 .kw-rail-add {
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 /* b4 — the add controls were spending ~320px across four cards for six rows of
    content. Shorter, NOT moved: Piece 1 put them in one DOM position to stop the
-   search box unmounting mid-word, and that stays. Only the height changes. */
+   search box unmounting mid-word, and that stays. Only the height changes.
+   b4 PIECE A — 24px, down from 26. Still a full-height click target with the
+   placeholder ("🔍 add medicine…") reading at its own size; the box is the
+   width of the card either way, and width is what a drug name needs. */
 .kw-rail-add .ant-select-selector,
 .kw-rail-add .ant-input,
 .kw-rail-add .ant-input-affix-wrapper {
-  min-height: 26px;
-  height: 26px;
+  min-height: 24px;
+  height: 24px;
 }
 
 .kw-rail-add .ant-btn {
-  height: 26px;
+  height: 24px;
   padding-inline: 8px;
 }
 
@@ -1217,8 +1257,11 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
    name. `min-width: 0` because a flex item will not shrink below its content
    without it, which is what pushes a rail into a horizontal scroll. */
 /* Scoped by the panel's own data attribute, which RailPanel already sets —
-   cheaper than threading a className through it for one panel. */
-.kw-rail-panel[data-panel='Medications'] .kw-rail-add {
+   cheaper than threading a className through it for one panel.
+   The inner row, NOT `.kw-rail-add`: this selector used to match RailPanel's
+   own wrapper as well as the row inside it, which is what made the row a
+   shrunken flex item and cost 40px of wrap. */
+.kw-rail-panel[data-panel='Medications'] .kw-rail-add-row {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1286,6 +1329,15 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 .kw-rail-head .ant-tag {
   font-size: 12px;
   line-height: 17px;
+}
+
+/* b4 PIECE A — the same 12px word, on the header's own line rather than
+   above and below it. A tag leaded to 19px made every card header 3px taller
+   than its title needed; D-072's floor is on the FONT SIZE, which is
+   untouched. */
+.kw-rail-head .ant-tag {
+  line-height: 15px;
+  padding-block: 0;
 }
 
 .kw-rail-row .ant-tag {

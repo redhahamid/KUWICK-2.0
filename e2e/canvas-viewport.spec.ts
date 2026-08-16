@@ -475,52 +475,145 @@ function reportBudget(label: string, geometry: { railTop: number; railHeight: nu
   );
 }
 
+/**
+ * What the rail owes a doctor AT REST, as distinct from how tall it is.
+ *
+ * `railGeometry` answers "does everything fit". These four rects answer "is
+ * the right thing on screen", which is the question the 1366 target is written
+ * in now. Read in one pass so nothing can shift between measurements.
+ */
+async function railPromises(page: Page) {
+  return page.evaluate((railSelector) => {
+    const rail = document.querySelector(railSelector);
+    const box = (el: Element | null | undefined) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height) };
+    };
+    const meds = rail?.querySelector('.kw-rail-panel[data-panel="Medications"]') ?? null;
+    // The row is found by its own DOM mark, and the CHIP is then required
+    // inside it. Either alone would let this pass while the warning was gone:
+    // the attribute could outlive the chip, and a chip class could be reused
+    // on a row that carries no warning.
+    const warned = rail?.querySelector('.kw-rail-row[data-unresolved-supply="true"]') ?? null;
+    return {
+      medsHead: box(meds?.querySelector('.kw-rail-head')),
+      medsFirstRow: box(meds?.querySelector('.kw-rail-row')),
+      warnedRow: box(warned),
+      warnedRowHasChip: Boolean(warned?.querySelector('.kw-supply-label')),
+      warnedRowCount: rail?.querySelectorAll('.kw-rail-row[data-unresolved-supply="true"]').length ?? 0,
+      // Every card, so "no card lost" is measured rather than assumed from a
+      // header count that a display:none card would still satisfy.
+      cards: [...(rail?.querySelectorAll<HTMLElement>('.kw-rail-panel') ?? [])].map((panel) => ({
+        name: panel.getAttribute('data-panel'),
+        height: Math.round(panel.getBoundingClientRect().height),
+      })),
+    };
+  }, RAIL);
+}
+
 test.describe('the right rail fits the budget it was compacted for', () => {
   /**
-   * NOT YET PASSING, AND MARKED AS SUCH RATHER THAN QUIETLY WEAKENED.
+   * THE 1366 TARGET, REDEFINED IN THE OPEN (2026-08-16, owner's decision).
    *
-   * This is no longer the fixture problem the other three were. The fixture
-   * loads, the rows render, and the measurement is now trustworthy — and what
-   * it measures is that a TYPICAL visit DOES NOT FIT 1366×768 today:
+   * What this replaced: `TYPICAL fits 1366×768 with every card and row on
+   * screen`, marked `.fixme` because it did not pass. It was over by 247px,
+   * then by 237, and after Piece A's three height fixes it is over by ~101.
+   * The owner's judgement is that the last of it is not worth buying: four
+   * cards holding a real visit will not fit 768px while the band, the allergy
+   * strip and a per-card add control all stay — and every remaining way to
+   * close it takes something away from a doctor.
    *
-   *     rail starts at y=277 (patient header band, then the documents strip)
-   *     rail needs      738px   —  Direct Services 78 (empty), Orders 120,
-   *                                Medications 368, Documents 131, gaps 41
-   *     rail has        491px   —  768 minus where it starts
-   *     OVER BY         247px   —  Documents is entirely below the fold, and
-   *                                two of the four medications with it
+   * So the target changed, DELIBERATELY AND UPWARD IN PRECISION. "Everything
+   * fits" was one blunt assertion that happened to imply the things that
+   * matter; these are the things that matter, each asserted on its own, in the
+   * owner's own priority order. The budget line still prints on every run and
+   * is still measured against the FULL 768 — the sticky bar of Piece B has to
+   * fit inside that number, never be subtracted from it first.
    *
-   * Piece 1 compacted the ROWS and did not reach the per-card overhead: four
-   * cards spend roughly 320px on headers and always-visible add controls for
-   * six rows of content. Two of Piece 1's own rules also come apart at exactly
-   * 1366 and nowhere else — an empty card takes 78px instead of the one line
-   * it takes at 1920, and a medication row with a longer name wraps to two —
-   * because the rail is ~457px wide there and the controls wrap.
+   *   a. NON-NEGOTIABLE — a row carrying the unresolved-supply warning chip is
+   *      on screen at rest, or the rail auto-revealed it. That warning never
+   *      requires a scroll to discover. It outranks (b): D-091 refused to put
+   *      it behind a hover and `unresolvedSupplyFirst` refused to let the
+   *      disclosure threshold collapse it, and a fold is the third way to hide
+   *      the same thing.
+   *   b. The Medications card header and its first row are above the fold at
+   *      rest. Medications is what a doctor opens the rail for.
+   *   c. No item text truncated, at this width or any other.
+   *   d. No card lost — all four present and of real height.
    *
-   * Closing 247px is a layout decision about what else gives way (the header
-   * band, the allergy strip, the per-card add controls — which Piece 1
-   * deliberately keeps in one DOM position and on screen), and that decision
-   * is the owner's, not a test fix. So this case stays `.fixme`: it reports
-   * itself as outstanding on every run and is never counted as green.
-   *
-   * It is also the number Piece 2 was waiting for. The sticky bar has no
-   * space to consume at 1366 — there is a 247px deficit before it arrives.
+   * (e) is the 1920 case below: the whole rail, with no scrolling at all.
    */
-  test.fixme('TYPICAL visit fits 1366×768 with every card and row on screen', async ({ page }) => {
+  test('TYPICAL at 1366×768 keeps the warning, Medications and all four cards', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
     await openDensityVisit(page, 'typical');
 
     const geometry = await railGeometry(page);
     reportBudget('TYPICAL at 1366×768', geometry, 768);
+    // The guard stays first, on every case. `TYPICAL fits 1920` once passed
+    // with zero rows, because the lowest row bottom of nothing is zero.
     expect(geometry.rowCount, 'the fixture did not load — nothing to measure').toBeGreaterThan(0);
 
-    // The FULL viewport height. Piece 2's sticky bar has to fit inside this
-    // number, not be subtracted from it first.
+    const rail = await railPromises(page);
+
+    // (a) THE WARNING. The fixture plants exactly one prescription with a NULL
+    // supply mode, so a missing row here is a missing warning and not a
+    // fixture that happened to resolve everything.
+    expect(rail.warnedRowCount, 'the fixture carries no unresolved-supply row to find').toBe(1);
+    expect(rail.warnedRowHasChip, 'the unresolved-supply row no longer carries its warning chip').toBe(true);
+    // "On screen at rest" covers both halves of the rule: above the fold, or
+    // auto-revealed. Nobody has scrolled at this point, so a row inside the
+    // viewport is a row the doctor was given without asking — which is the
+    // promise. Only a row they would have to go looking for fails.
     expect(
-      geometry.lowestRowBottom,
-      `the last rail row sits below the fold at 1366×768 (${Math.round(geometry.lowestRowBottom)} > 768)`,
+      rail.warnedRow,
+      'the unresolved-supply row is not in the DOM at all',
+    ).not.toBeNull();
+    expect(
+      rail.warnedRow!.top,
+      `the unresolved-supply warning starts below the fold at rest (top ${rail.warnedRow!.top} ≥ 768)`,
+    ).toBeLessThan(768);
+    expect(
+      rail.warnedRow!.bottom,
+      `the unresolved-supply warning is cut by the fold at rest (bottom ${rail.warnedRow!.bottom} > 768)`,
     ).toBeLessThanOrEqual(768);
+
+    // (b) MEDICATIONS — header and first row, both whole.
+    expect(rail.medsHead, 'the Medications card is missing').not.toBeNull();
+    expect(
+      rail.medsHead!.bottom,
+      `the Medications card header is below the fold (${rail.medsHead!.bottom} > 768)`,
+    ).toBeLessThanOrEqual(768);
+    expect(rail.medsFirstRow, 'the Medications card rendered no rows').not.toBeNull();
+    expect(
+      rail.medsFirstRow!.bottom,
+      `the first medication is below the fold (${rail.medsFirstRow!.bottom} > 768)`,
+    ).toBeLessThanOrEqual(768);
+
+    // (c) NOTHING TRUNCATED. The compaction traded lines for hover titles; it
+    // never traded a drug name for an ellipsis, and must not start here.
     expect(geometry.truncated, 'rail rows are truncating their own text').toEqual([]);
+
+    // (d) NO CARD LOST. Present, named, and of real height — a card collapsed
+    // to a sliver is a card gone, and it would satisfy a mere count.
+    expect(rail.cards.map((card) => card.name)).toEqual([
+      'Direct Services',
+      'Orders / Procedures',
+      'Medications',
+      'Documents',
+    ]);
+    for (const card of rail.cards) {
+      expect(card.height, `the ${card.name} card has collapsed to nothing`).toBeGreaterThan(20);
+    }
+    // And reachable: the rail scrolls with the page, so what is below the fold
+    // is below it, not stranded outside a scroller.
+    for (const card of rail.cards) {
+      const head = page
+        .locator(`${RAIL} .kw-rail-panel[data-panel="${card.name}"] .kw-rail-head`)
+        .first();
+      await head.scrollIntoViewIfNeeded();
+      await expect(head, `the ${card.name} header cannot be brought on screen`).toBeVisible();
+    }
   });
 
   test('TYPICAL visit fits 1920×1080 with room to spare', async ({ page }) => {
@@ -534,6 +627,16 @@ test.describe('the right rail fits the budget it was compacted for', () => {
     // same class of vacuous pass as measuring the rail against
     // viewport-minus-bar. Nothing below this line means anything without it.
     expect(geometry.rowCount, 'the fixture did not load — nothing to measure').toBeGreaterThan(0);
+
+    // (e) OF THE REDEFINED TARGET — the FULL rail, with no scrolling at all.
+    // Stated on the rail's own bottom edge rather than on its lowest row: the
+    // rail ends below its last row (card padding, and Piece B's invoice card
+    // when it lands), and "fits with no scrolling" is a claim about the whole
+    // thing, not about the last row inside it.
+    expect(
+      geometry.railTop + geometry.railHeight,
+      `the rail runs past the fold at 1920×1080 (${geometry.railTop + geometry.railHeight} > 1080)`,
+    ).toBeLessThanOrEqual(1080);
     // "Room to spare" stated as a number rather than implied: at the taller
     // viewport the rail should not be within a row's height of the fold.
     expect(geometry.lowestRowBottom).toBeLessThanOrEqual(1080 - 40);

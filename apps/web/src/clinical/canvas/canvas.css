@@ -473,13 +473,21 @@
 /* ---------------------------------------------------------------------------
    Patient header (spec p.2, p.4). One wrapping row, never two toolbars.
    ------------------------------------------------------------------------ */
+/* b4 PIECE A — THE BAND'S HEIGHT, NOT THE BAND'S CONTENTS.
+   The last attempt on y=277 removed the documents strip and bought ZERO
+   pixels, because the strip sat SIDE BY SIDE with the invoice group: taking it
+   out made the band narrower. Nothing here removes anything. The padding, the
+   row gap between the wrapped rows, and the space below the band are what
+   actually set this band's height at 1366, where it wraps into two rows, and
+   they are what changes. Every chip, the allergy strip included, is untouched
+   and still wraps rather than ellipsising. */
 .kw2-patient-header {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px 14px;
-  padding: 10px var(--kw2-pad, 12px);
-  margin-bottom: 14px;
+  gap: 6px 14px;
+  padding: 6px var(--kw2-pad, 12px);
+  margin-bottom: 8px;
   background: #fff;
   border: 1px solid #e2e4ec;
   border-radius: 10px;
@@ -694,14 +702,22 @@
   color: #8a6510;
 }
 
+/* b4 PIECE A — vertical rhythm, and only that. The identity block is three
+   stacked lines and it SETS the height of the band's first row at 1366, where
+   it is taller than the chips and the avatar beside it. antd's 1.57 body
+   leading is sized for paragraphs; at 12px it spends 19px on a 12px line. The
+   SIZES are unchanged — 12px is the D-072 floor and these two lines sit on it
+   — only the leading is tightened, the same trade the rail rows already made. */
 .kw2-identity-meta {
   font-size: 12px;
+  line-height: 1.35;
   color: #6e7288;
 }
 
 /* The complaint is clinical content, so it is ink and not a muted caption. */
 .kw2-complaint {
   font-size: 12px;
+  line-height: 1.35;
   font-weight: 700;
   color: #171e4e;
 }
@@ -802,9 +818,27 @@
   flex-wrap: wrap;
 }
 
+/* b4 PIECE A — THE ACTION-BUTTON ROW.
+   At 1366 the band wraps and these four controls own an entire row of it, so
+   their height is the band's height twice over. 26px instead of antd's 32,
+   which is the height the rail's own add controls already run at — the labels,
+   the icons and the count of buttons are all unchanged, and every one of them
+   still reads at 13px.
+
+   The Segmented layout switch is sized with them. It is the tallest thing in
+   the row, so leaving it at 32 would have made the other three shorter and the
+   row exactly as tall as before. */
 .kw2-header-actions .ant-btn {
   border-radius: 8px;
   font-weight: 600;
+  height: 26px;
+  padding-inline: 10px;
+}
+
+.kw2-header-actions .ant-segmented,
+.kw2-header-actions .ant-segmented .ant-segmented-item-label {
+  min-height: 26px;
+  line-height: 24px;
 }
 
 /* Hold carries the mockup's amber outline even while disabled — the shape

@@ -165,7 +165,17 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
              that decided nothing. The box is here now, always visible, and
              typing is the first act. Choosing a result opens the pre-filled
              form with the drug locked as its title. */
-          <div className="kw-rail-add">
+          /* b4 PIECE A — `kw-rail-add-row`, NOT a second `kw-rail-add`.
+             RailPanel already wraps every addControl in `.kw-rail-add`, so this
+             div carried the same class as its own parent — and the flex rule
+             below matched BOTH. The outer div became the flex container, this
+             one became a flex ITEM that shrank to 297px inside a 435px card,
+             and the search box plus Copy Previous then wrapped onto two rows
+             for want of room that was there all along: 70px of add control at
+             every width, 1920 included. Renaming the class is the whole fix —
+             the div stays exactly where it is, which is the one thing about
+             this control that must not change. */
+          <div className="kw-rail-add-row">
             <MedicineSearchBox
               onPick={(item) => {
                 setPickedMedicine(item);

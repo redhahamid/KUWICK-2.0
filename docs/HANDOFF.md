@@ -387,8 +387,8 @@ sensible empty state on a first visit. NOTE: the current order is Services →
 Orders → Medications → Documents, so only Invoice and the appointment card are
 missing from that sequence.
 
-**b4 PIECE 1 — RIGHT RAIL VERTICAL BUDGET (2026-08-16). Done except one test,
-named below.**
+**b4 PIECE 1 — RIGHT RAIL VERTICAL BUDGET (2026-08-16). Done. The one test it
+left outstanding is closed by Piece A, at the end of this section.**
 
 The problem was density, not item count. A medication row spent FOUR lines —
 name+status, dose, "manual dose entered", "dispense from clinic" — so eight
@@ -422,9 +422,11 @@ medicines was thirty-two lines and an invoice had nowhere to go.
   (owner confirmed the Documents card works). The band's document SUMMARY stays
   — reporting what was issued is a different job from issuing.
 
-**THE DENSITY MEASUREMENT IS BUILT AND RUNNING IN CI. It reports one thing
-still outstanding, and that thing is a layout decision — read it before Piece
-2, because it is the number Piece 2 was waiting for.**
+**THE DENSITY MEASUREMENT IS BUILT AND RUNNING IN CI, AND ALL FOUR CASES ARE
+GREEN.** It prints the budget on every run — that number, not a pass/fail, is
+what Piece B was waiting for. (When this was written it reported one case
+outstanding; Piece A closed it. The history is kept below because the layout
+decision was made on those readings.)
 
 WORKING:
 - `apps/api/prisma/seed-density-fixtures.ts` — runs clean, idempotent. One
@@ -438,9 +440,9 @@ WORKING:
   counts it planted**. The spec navigates by URL rather than clicking the
   visits rail — a density measurement must fail when the RAIL is too tall, not
   when a click path moves — and waits on the counts, for the reason below.
-- Three of the four cases pass for real. Every run now PRINTS the budget,
-  passing or failing: `RAIL BUDGET — TYPICAL at 1920×1080: rail needs 659px,
-  has 845px above the fold (186px to spare)`.
+- Every run PRINTS the budget, passing or failing: `RAIL BUDGET — TYPICAL at
+  1920×1080: rail needs 583px, has 877px above the fold (294px to spare)`.
+  (Three of four cases passed when this was written; all four do now.)
 
 **THE "RAIL RENDERS NO ROWS FOR A DIRECTLY-OPENED VISIT" DIAGNOSIS WAS WRONG.**
 Nothing is missing from the fixture — no queue ticket, no visit state, no
@@ -470,8 +472,12 @@ one HOVER away. Rows with no supply decision are ordered first now; the
 remainder still collapses, and the counts are unchanged. Locked by a web unit
 test as well as the e2e case.
 
-**STILL OUTSTANDING — `TYPICAL fits 1366×768`, and it is the only `.fixme`
-left.** It is no longer a fixture problem; it is the measurement working:
+**HISTORICAL FROM HERE — `TYPICAL fits 1366×768` was the only `.fixme` left,
+and it no longer exists: Piece A finished the three height fixes and the owner
+replaced that assertion. The current state is at the end of this section
+("PIECE A — DONE"). The readings below are kept because they are what the
+decision was made on.** It was no longer a fixture problem; it was the
+measurement working:
 
     rail starts at y=277   patient header band, then the documents strip
     rail needs    738px    Direct Services 78 (empty), Orders 120,
@@ -531,37 +537,83 @@ do not fold it into the card again. Also ruled OUT by the owner: a shared
 rail-wide search box. Each card keeps its own add control — one box for
 everything costs staff training the clinic is not paying.
 
-**PIECE A IS NOT FINISHED. What remains, in the owner's own priority order:**
+**PIECE A — DONE (2026-08-16). 237px → 131px, and the 1366 assertion is
+redefined and GREEN. No `.fixme` remains in the suite.**
 
-1. Reduce the BAND's height without touching its content — padding, the
-   action-button row, vertical rhythm. The allergy strip and alert chips stay
-   exactly as they are, wrapping included. This is the y=277 line, and it must
-   be attacked as HEIGHT, not by removing contents: that lesson is already paid
-   for above.
-2. Tighten card headers: a title and a count should cost a line, not a block.
-3. Shorten each card's add control further, still without moving it in the DOM.
-   (A first pass took them to 26px in `13e4aa5`; the single DOM position that
-   fixed the focus-loss bug must stay.)
+    RAIL BUDGET — TYPICAL at 1366×768: rail needs 660px, has 529px (OVER by 131px)
+    RAIL BUDGET — TYPICAL at 1920×1080: rail needs 583px, has 877px (294px spare)
+    RAIL BUDGET — HEAVY   at 1366×768: rail needs 962px, has 529px (OVER by 433px)
+    RAIL BUDGET — HEAVY   at 1920×1080: rail needs 854px, has 877px (23px spare)
 
-**THEN REDEFINE THE 1366 ASSERTION — deliberately, in the open, not by
-weakening it.** The owner's judgement: four cards holding a real visit will not
-fit 768px once the band and the per-card controls are kept, and pretending
-otherwise costs more than it buys. `TYPICAL fits 1366×768` is to be REPLACED by
-a target that protects what matters, all of it asserted:
+The owner's three fixes, in their priority order, each measured:
 
-  a. At rest, the Medications card header AND its first row are above the fold.
-     Medications is what a doctor opens the rail for.
-  b. Any row carrying the unresolved-supply warning chip is above the fold at
-     rest, or the rail auto-reveals it. That warning must never require a
-     scroll to discover. (Note the related fix already made: rows with no
-     supply decision are ordered FIRST, so the disclosure threshold cannot
-     collapse the warning into "+N more".)
+1. **THE BAND'S HEIGHT — y=277 → y=239, and NOTHING was removed to get it.**
+   The patient header band went 127px → 107px and the completion strip 50px →
+   38px. Padding (10→6 and 8→4), the row gap between the band's two wrapped
+   rows (10→6), the space below each (14→8, 8→4), the identity block's leading
+   (antd's 1.57 at 12px spends 19px on a 12px line; 1.35 spends 16), and the
+   ACTION-BUTTON ROW — every control in it, the Segmented layout switch
+   included, is 26px instead of antd's 32. At 1366 the band wraps into two
+   rows, so that row's height is the band's height twice over; sizing the
+   buttons without the Segmented would have bought nothing, because the
+   Segmented was the tallest thing in it. Every chip, the allergy strip and the
+   alert chips stay exactly as they were, wrapping included, at the sizes they
+   were.
+2. **CARD HEADERS — 32px each → 22px, four cards.** The header's own sticky
+   padding (2→0), the margin below it (6→2), a line-height, and the status tag,
+   which was leaded to 19px for a 12px word (D-072's floor is on the FONT SIZE,
+   and that is untouched). Nothing left the header: title, count, status chip
+   and the empty-state wording are all still there.
+3. **ADD CONTROLS — 26px → 24px, and one 40px defect found while doing it.**
+   `MedicationsRail` rendered its row as a second `<div className="kw-rail-add">`
+   INSIDE the one `RailPanel` already wraps every addControl in — so
+   `.kw-rail-panel[data-panel='Medications'] .kw-rail-add` matched both, the
+   outer div became the flex container, the inner one became a flex ITEM that
+   shrank to 297px inside a 435px card, and the search box plus Copy Previous
+   wrapped onto two rows for want of room that was there all along. 70px of add
+   control at EVERY width, 1920 included. The inner div is `kw-rail-add-row`
+   now: a class rename, so the control does not move — Piece 1's single DOM
+   position, which fixed the focus-loss bug, is untouched.
+
+**A FOURTH THING, FOUND BY MEASURING RATHER THAN SPECIFIED.** Piece 1's
+empty-card rule was not merely "failing at 1366", it was self-inflicted: the
+rule that ellipsised the empty-state WORDING squeezed the row, and the card
+TITLE — which nothing protected — wrapped onto three lines. "Direct Services
+(0)" was rendering 58px wide and 66px tall inside an 82px card. The title is
+`min-width: min-content` now and is one line at every width. The card is 76px
+at 1366, not 46: the wording plus a usable control genuinely need ~576px of a
+457px rail, so the control takes a second row. **Nothing ellipsises anywhere on
+that card.** An earlier attempt at this DID close it to 46px by clipping, and
+the A0 viewport sweep caught it within the hour — that sweep rejects a hidden
+overflow as firmly as a sideways scroll, which is why the honest number here is
+131 and not 101. If the row is ever wanted on one line at 1366, the WORDING is
+what has to get shorter, and that is a wording decision.
+
+**THE 1366 ASSERTION, REDEFINED IN THE OPEN — the owner's order, not the
+earlier one.** `TYPICAL fits 1366×768 with every card and row on screen` is
+GONE, replaced by `TYPICAL at 1366×768 keeps the warning, Medications and all
+four cards`, which asserts each of these separately:
+
+  a. **NON-NEGOTIABLE.** Any row carrying the unresolved-supply warning chip is
+     on screen at rest, or the rail auto-revealed it — that warning never
+     requires a scroll to discover. This OUTRANKS (b), and the ordering is the
+     correction the owner made: D-091 refused to put this warning behind a
+     hover, `unresolvedSupplyFirst` refused to let the disclosure threshold
+     collapse it into "+N more", and a fold is simply the third way to hide the
+     same thing. The spec finds the row by its own DOM mark AND requires the
+     chip inside it, because either alone could outlive the other.
+  b. At rest, the Medications card header AND its first row are above the fold.
   c. No item text truncated at any width.
-  d. No card lost — each of the four reachable and of real height.
-  e. At 1920 the full TYPICAL rail still fits with no scrolling at all.
+  d. No card lost — all four present, named, of real height, and reachable.
+  e. At 1920 the full TYPICAL rail fits with no scrolling at all. Asserted on
+     the RAIL'S OWN BOTTOM EDGE, not its lowest row: the rail ends below its
+     last row, and Piece B's invoice card will end below that.
 
-The budget line must still print on every run, pass or fail, and must still
-measure against the full 768 including the sticky bar once Piece B lands.
+This is a narrowing of what is promised and a widening of what is checked. The
+budget line still prints on every run, pass or fail, and is still measured
+against the FULL 768 — Piece B's sticky bar has to fit inside that number,
+never be subtracted from it first. The `rowCount > 0` guard stays first on
+every case (the vacuous-pass trap below).
 
 **PIECES B AND C NOT STARTED.** Piece B (invoice + sticky bar) must read
 `consultation-tariff.ts` (D-094) first — the OTC-skips-consultation rule almost
