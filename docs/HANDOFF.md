@@ -680,6 +680,51 @@ why it has been green there throughout. The latent assumption — "this visit ha
 exactly one attachment" — only holds on a fresh database; worth making the spec
 scope to its own upload if it ever needs to run against a long-lived database.
 
+## PHASE D — **DONE.** Patient profile slide-over + alerts.
+
+**Screens only — the API already existed.** `patient-alert.controller.ts` has
+list / create / deactivate, with the author resolved from the SESSION, MEDICAL
+alerts behind their own permission, and no DELETE route because the table has
+no DELETE policy. None of that was re-derived in the browser.
+
+- `PatientProfileSlideOver.tsx` — demographics, contact, IC/passport (read-only:
+  it identifies the person across every visit, invoice and claim already
+  written), payer read from the VISIT, alerts, visit summary. A `KuwickModal`,
+  so Phase B's dismissal guard is inherited.
+- The canvas identity strip is a real `<button>` that opens it, plus an alert
+  indicator that is present whether or not there are alerts — one that appears
+  only when something is wrong leaves its absence ambiguous between "nothing
+  recorded" and "nobody looked".
+- **CHRONIC CONDITIONS ARE ALERTS, not a new column.** A standing fact with an
+  author and a timestamp is exactly what `patient_alerts` already is.
+- Resolving stamps a second author and leaves the row VISIBLE. "Penicillin
+  allergy, resolved by Dr X on the 3rd" is the record of a decision.
+- `patientAlertPresentation.ts` mirrors the server's permission split in the
+  SAFE direction: it can only hide or disable a control.
+
+**FIVE surfaces said "Allergy not asked", and one of them was found by the
+E2E.** The banner read `patient.allergies` alone, so recording "Penicillin
+allergy" as a MEDICAL alert left every prescribing surface still asking a
+question that had been answered. `allergyBannerState` now reads both sources;
+the four `AllergyStrip` sites use `PatientAllergyStrip`, which loads them. The
+FIFTH — the header chip `AllergyQuickRecord`, the one a doctor looks at first —
+was missed by reasoning and caught only when the E2E asserted the banner after
+recording an alert. **Assert the consequence, not the component.**
+
+**Two traps worth knowing:**
+- Making `AllergyStrip` fetch its own data broke every direct render and could
+  THROW inside a prescribing screen. It is pure again; `PatientAllergyStrip`
+  does the loading. A component whose job is to warn about allergies is the
+  last one that should be able to break the page it warns on — the query
+  guards shape as well as absence for the same reason.
+- The quick-record popover seeded its draft from the COMBINED list, so opening
+  it and pressing Save would have copied an alert's label into
+  `patient.allergies` — the same allergy in two stores with no way to tell
+  which a later edit meant. It seeds from the editable half only.
+
+**Still true:** the `canvas: attachments` local flake (this container's
+database holds 48+ attachments on one visit; CI starts empty).
+
 ## b1+b2 PACKAGE — WHAT IS LEFT (next session starts here)
 
 **Phase 1 remainder:**

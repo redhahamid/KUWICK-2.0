@@ -7,11 +7,13 @@ import {
   PauseCircleOutlined,
   PlayCircleOutlined,
   UserOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Patient } from '../core/types';
 import { Visit } from './types';
 import { AllergyQuickRecord } from './canvas/AllergyQuickRecord';
+import { activeAlerts, usePatientAlerts } from './hooks/usePatientAlerts';
 
 const { Text } = Typography;
 
@@ -33,6 +35,8 @@ export interface CanvasPatientHeaderProps {
   heldByName?: string | null;
   /** True while either transition is in flight. */
   holdPending?: boolean;
+  /** b1.5 PHASE D — open the patient profile slide-over. */
+  onOpenProfile?: () => void;
 }
 
 /**
@@ -63,8 +67,11 @@ export function CanvasPatientHeader({
   onResume,
   heldByName,
   holdPending,
+  onOpenProfile,
 }: CanvasPatientHeaderProps) {
   const onHoldNow = Boolean(heldByName);
+  const { data: alerts } = usePatientAlerts(patient.id);
+  const liveAlerts = activeAlerts(alerts);
   const age = patient.dob ? dayjs().diff(dayjs(patient.dob), 'year') : null;
   const panelName = visit.panelClinic?.name ?? null;
   const initials = patient.name
@@ -86,7 +93,18 @@ export function CanvasPatientHeader({
         {initials || <UserOutlined />}
       </Avatar>
 
-      <div className="kw2-identity">
+      {/* b1.5 PHASE D — the identity block OPENS THE PROFILE.
+          Everything about the person beyond a name, an age and an identifier
+          had no home in the consult, so answering "what is their number?"
+          meant leaving the record. A button rather than a click handler on a
+          div: this is a real control and it must be reachable by keyboard. */}
+      <button
+        type="button"
+        className="kw2-identity kw2-identity-button"
+        onClick={onOpenProfile}
+        disabled={!onOpenProfile}
+        aria-label={`Open ${patient.name}'s profile`}
+      >
         <div className="kw2-identity-name">
           <span className="kw2-name">{patient.name}</span>
           {/* KW2-C2 — a held patient is not "In Consult", and the pill is the
@@ -107,7 +125,7 @@ export function CanvasPatientHeader({
         {visit.presentingComplaint && (
           <div className="kw2-complaint">{visit.presentingComplaint}</div>
         )}
-      </div>
+      </button>
 
       <div className="kw2-header-chips">
         {/* Allergies lead: the one item that changes what may safely be
@@ -116,6 +134,26 @@ export function CanvasPatientHeader({
             chip is also where the answer gets RECORDED — see
             AllergyQuickRecord for the rules it keeps. */}
         <AllergyQuickRecord patient={patient} />
+
+        {/* b1.5 PHASE D — the alert indicator.
+            Present whether or not there are any, because "no alerts" is an
+            answer a doctor needs as much as a list is — an indicator that only
+            appears when something is wrong leaves its absence ambiguous
+            between "nothing recorded" and "nobody looked". */}
+        <button
+          type="button"
+          className={`kw2-chip kw2-chip-alerts${liveAlerts.length > 0 ? ' kw2-chip-alerts-active' : ''}`}
+          onClick={onOpenProfile}
+          disabled={!onOpenProfile}
+          aria-label={
+            liveAlerts.length > 0
+              ? `${liveAlerts.length} active patient ${liveAlerts.length === 1 ? 'alert' : 'alerts'}`
+              : 'No active patient alerts'
+          }
+          data-alert-count={liveAlerts.length}
+        >
+          <WarningOutlined /> {liveAlerts.length > 0 ? `${liveAlerts.length} alert${liveAlerts.length === 1 ? '' : 's'}` : 'No alerts'}
+        </button>
 
         <span className="kw2-chip kw2-chip-payer">{panelName ? `Panel · ${panelName}` : 'CASH'}</span>
 

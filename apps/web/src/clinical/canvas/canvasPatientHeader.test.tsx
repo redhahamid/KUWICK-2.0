@@ -202,3 +202,47 @@ describe('what the band says about the visit', () => {
     expect(screen.getByText('Fever & productive cough ×3 days')).toBeInTheDocument();
   });
 });
+
+// ===========================================================================
+// b1.5 PHASE D — THE IDENTITY STRIP OPENS THE PROFILE, AND SAYS WHAT IS ON FILE.
+// ===========================================================================
+
+describe('the identity strip is a way in, not just a label', () => {
+  it('opens the profile when the patient is clicked', async () => {
+    const onOpenProfile = vi.fn();
+    renderHeader({ onOpenProfile });
+    await userEvent.click(screen.getByRole('button', { name: /Open Aisyah Ujian's profile/i }));
+    expect(onOpenProfile).toHaveBeenCalledTimes(1);
+  });
+
+  it('is a real button, so a keyboard reaches it', async () => {
+    // A clickable div is invisible to half the clinic.
+    const onOpenProfile = vi.fn();
+    renderHeader({ onOpenProfile });
+    const control = screen.getByRole('button', { name: /Open Aisyah Ujian's profile/i });
+    control.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(onOpenProfile).toHaveBeenCalled();
+  });
+
+  it('states that there are no alerts rather than showing nothing', async () => {
+    // An indicator that only appears when something is wrong leaves its
+    // absence ambiguous between "nothing recorded" and "nobody looked".
+    renderHeader({ onOpenProfile: vi.fn() });
+    expect(await screen.findByRole('button', { name: /No active patient alerts/i })).toBeInTheDocument();
+  });
+
+  it('the alert chip opens the same profile', async () => {
+    const onOpenProfile = vi.fn();
+    renderHeader({ onOpenProfile });
+    await userEvent.click(await screen.findByRole('button', { name: /patient alert/i }));
+    expect(onOpenProfile).toHaveBeenCalledTimes(1);
+  });
+
+  it('is honestly disabled where the screen cannot offer it', () => {
+    // No handler means no profile to open. The control says so by being
+    // disabled rather than silently doing nothing when clicked.
+    renderHeader({ onOpenProfile: undefined });
+    expect(screen.getByRole('button', { name: /Open Aisyah Ujian's profile/i })).toBeDisabled();
+  });
+});

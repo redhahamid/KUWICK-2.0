@@ -67,6 +67,8 @@ import { Visit } from './types';
 import { ApiError } from '../core/api-client';
 import { useHoldConsultation, useResumeConsultation } from './hooks/useQueueTickets';
 import { mayHoldConsultation } from './holdPresentation';
+import { PatientProfileSlideOver } from './PatientProfileSlideOver';
+import { mayManagePatientAlerts, mayRecordMedicalAlert } from './patientAlertPresentation';
 import { useStaff } from '../hr/hooks/useStaff';
 import { isDraftDirty, useClinicalDraftStore, visitPrefix } from './clinical-draft-store';
 
@@ -91,6 +93,8 @@ export function PatientDashboardPage() {
   const [expandProfile, setExpandProfile] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [newVisitOpen, setNewVisitOpen] = useState(false);
+  // b1.5 PHASE D — the patient profile slide-over, opened from the identity strip.
+  const [profileOpen, setProfileOpen] = useState(false);
   const navigate = useNavigate();
   const [copyRxFrom, setCopyRxFrom] = useState<{ id: string; label: string } | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -321,6 +325,18 @@ export function PatientDashboardPage() {
             }
             heldByName={heldByName}
             holdPending={holdPending}
+            onOpenProfile={() => setProfileOpen(true)}
+          />
+          {/* b1.5 PHASE D — the profile behind the identity strip. Mounted
+              here, beside the header that opens it, so the slide-over and the
+              band it belongs to cannot drift apart. */}
+          <PatientProfileSlideOver
+            open={profileOpen}
+            patient={patient}
+            visit={selectedVisit}
+            onClose={() => setProfileOpen(false)}
+            canEdit={mayManagePatientAlerts(staff?.role)}
+            canRecordMedical={mayRecordMedicalAlert(staff?.role)}
           />
           {/* KW2-C1a — the LAST VISIT band is RETIRED in Canvas.
               D-076 put it here to answer "what happened last time?" without

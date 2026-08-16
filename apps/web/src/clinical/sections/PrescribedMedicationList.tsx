@@ -19,7 +19,7 @@ import {
   reviewedLine,
 } from '../medications/reviewState';
 import { useStaff } from '../../hr/hooks/useStaff';
-import { AllergyStrip } from '../medications/AllergyStrip';
+import { PatientAllergyStrip } from '../medications/AllergyStrip';
 import {
   SUPPLY_MODE_OPTIONS,
   SUPPLY_MODE_UNRESOLVED_LABEL,
@@ -108,7 +108,7 @@ export function PrescribedMedicationList({
           anything was wrong, and the blue one reported "none recorded" for a
           patient nobody had asked in exactly the same words as for one who
           had answered no. Three states, one of which is deliberately silent. */}
-      <AllergyStrip allergies={patient ? (patient.allergies ?? null) : undefined} />
+      <PatientAllergyStrip allergies={patient ? (patient.allergies ?? null) : undefined} patientId={patient?.id} />
 
       {latestWeightKg && (
         <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>

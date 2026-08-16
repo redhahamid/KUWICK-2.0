@@ -28,7 +28,7 @@ import {
   matchCatalogueByText,
   prefillFromStandard,
 } from './prescriptionForm';
-import { AllergyStrip } from './AllergyStrip';
+import { PatientAllergyStrip } from './AllergyStrip';
 import { DosageCalculator } from './DosageCalculator';
 import { defaultsFromItem, itemOnHand, medicineSearchDetail, stockAdvice } from './prescribing';
 
@@ -552,7 +552,11 @@ export function AddMedicationModal({
           is dismissed by muscle memory within a week, after which everyone
           believes it is still being read. Here it is simply present, above
           the search, for as long as the form is open. */}
-      <AllergyStrip allergies={visit?.patient ? (visit.patient.allergies ?? null) : undefined} compact />
+      <PatientAllergyStrip
+        allergies={visit?.patient ? (visit.patient.allergies ?? null) : undefined}
+        patientId={visit?.patient?.id}
+        compact
+      />
 
       {lastAdded && (
         <Alert

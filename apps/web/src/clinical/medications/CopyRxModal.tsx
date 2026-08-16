@@ -5,7 +5,7 @@ import { apiClient, ApiError } from '../../core/api-client';
 import { useCopyPrescriptions } from '../hooks/usePrescriptions';
 import { Prescription, VisitHistoryDetail } from '../types';
 import { POSSIBLE_MATCH_LABEL, copyButtonLabel, decorateCandidates } from './copyRx';
-import { AllergyStrip } from './AllergyStrip';
+import { PatientAllergyStrip } from './AllergyStrip';
 
 const { Text } = Typography;
 
@@ -134,7 +134,7 @@ export function CopyRxModal({
           A confirmed "none known" renders nothing at all. Papering a negative
           answer with a warning is how the other two states stop being read. */}
       <div style={{ marginTop: 12 }} data-testid="copy-rx-allergies">
-        <AllergyStrip allergies={allergies} compact />
+        <PatientAllergyStrip allergies={allergies} patientId={patientId} compact />
       </div>
 
       {isLoading && <Skeleton active paragraph={{ rows: 3 }} style={{ marginTop: 12 }} />}

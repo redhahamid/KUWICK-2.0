@@ -1,4 +1,5 @@
 import { AllergyRecordState, allergyRecordState } from './copyRx';
+import { activeAlerts, usePatientAlerts } from '../hooks/usePatientAlerts';
 
 /**
  * KW2-C2 — the PERSISTENT allergy strip.
@@ -36,12 +37,51 @@ export const ALLERGY_STRIP_PREFIX = '⚠ ALLERGIES:';
 export const ALLERGY_STRIP_SUFFIX = '— check before prescribing';
 export const ALLERGY_NOT_ASKED = '⚠ Allergy not asked';
 
+/**
+ * b1.5 PHASE D — the strip reads BOTH places an allergy can be recorded.
+ *
+ * `patient.allergies` is the quick-record field on the header chip. MEDICAL
+ * patient alerts are the other, and they are how a chronic standing fact gets
+ * onto the record with an author and a timestamp. Until now the strip looked
+ * only at the first, so a doctor who recorded "Penicillin allergy" as a
+ * MEDICAL alert still saw "Allergy not asked" on every prescribing surface —
+ * the banner permanently warning about a question that had in fact been
+ * answered, which is precisely how a warning stops being read.
+ *
+ * The patient's own words are never paraphrased, so the alert LABELS join the
+ * list verbatim alongside the quick-record entries.
+ */
+export function allergyWords(
+  allergies: string[] | null | undefined,
+  medicalAlertLabels: string[] = [],
+): string[] {
+  return [...(allergies ?? []), ...medicalAlertLabels].map((entry) => entry?.trim()).filter(Boolean) as string[];
+}
+
+/**
+ * The combined state.
+ *
+ * A MEDICAL alert on record means somebody asked, so it can only move the
+ * state TOWARDS "present" — it can never turn a recorded allergy back into
+ * "not asked".
+ */
+export function allergyBannerState(
+  allergies: string[] | null | undefined,
+  medicalAlertLabels: string[] = [],
+): AllergyRecordState {
+  if (allergyWords(allergies, medicalAlertLabels).length > 0) return 'PRESENT';
+  return allergyRecordState(allergies);
+}
+
 /** The strip's text, or null where there should be no strip at all. */
-export function allergyStripText(allergies: string[] | null | undefined): string | null {
-  const state: AllergyRecordState = allergyRecordState(allergies);
+export function allergyStripText(
+  allergies: string[] | null | undefined,
+  medicalAlertLabels: string[] = [],
+): string | null {
+  const state = allergyBannerState(allergies, medicalAlertLabels);
   if (state === 'NONE_KNOWN') return null;
   if (state === 'NONE_RECORDED') return ALLERGY_NOT_ASKED;
-  const words = (allergies ?? []).map((entry) => entry?.trim()).filter(Boolean).join(', ');
+  const words = allergyWords(allergies, medicalAlertLabels).join(', ');
   return `${ALLERGY_STRIP_PREFIX} ${words} ${ALLERGY_STRIP_SUFFIX}`;
 }
 
@@ -49,10 +89,24 @@ interface AllergyStripProps {
   allergies: string[] | null | undefined;
   /** Tightens the padding where the strip sits inside a modal or a form. */
   compact?: boolean;
+  /** b1.5 PHASE D — labels of the patient's active MEDICAL alerts. */
+  medicalAlertLabels?: string[];
 }
 
-export function AllergyStrip({ allergies, compact }: AllergyStripProps) {
-  const text = allergyStripText(allergies);
+/**
+ * PURE ON PURPOSE — it takes what it renders and fetches nothing.
+ *
+ * The first attempt had this component load the patient's alerts itself, so
+ * that no call site could forget. It also meant a banner could THROW: React
+ * Query needs a provider, and a strip that crashes takes the prescribing
+ * screen down with it. A component whose whole job is to warn about allergies
+ * is the last one that should be able to break the page it warns on.
+ *
+ * `PatientAllergyStrip` below does the loading. Surfaces use that.
+ */
+export function AllergyStrip({ allergies, compact, medicalAlertLabels = [] }: AllergyStripProps) {
+  const medical = medicalAlertLabels;
+  const text = allergyStripText(allergies, medical);
   if (!text) return null;
 
   return (
@@ -62,9 +116,37 @@ export function AllergyStrip({ allergies, compact }: AllergyStripProps) {
       // screen-reader user is reading, and this is a standing condition rather
       // than something that just happened.
       role="status"
-      data-allergy-strip={allergyRecordState(allergies)}
+      data-allergy-strip={allergyBannerState(allergies, medical)}
     >
       {text}
     </div>
   );
+}
+
+/**
+ * The strip, with the patient's MEDICAL alerts loaded.
+ *
+ * Every prescribing surface uses THIS rather than `AllergyStrip` directly, so
+ * none of them can be the one that reads only `patient.allergies` and goes on
+ * warning about a question that has in fact been answered. React Query dedupes
+ * the key, so the four of them share one request.
+ *
+ * A failed or missing alerts response degrades to the patient's own allergies
+ * field — the behaviour before this existed — rather than to a blank screen.
+ */
+export function PatientAllergyStrip({
+  allergies,
+  patientId,
+  compact,
+}: {
+  allergies: string[] | null | undefined;
+  patientId: string | undefined;
+  compact?: boolean;
+}) {
+  const { data: alerts } = usePatientAlerts(patientId);
+  const medicalAlertLabels = activeAlerts(alerts)
+    .filter((alert) => alert.type === 'MEDICAL')
+    .map((alert) => alert.label);
+
+  return <AllergyStrip allergies={allergies} compact={compact} medicalAlertLabels={medicalAlertLabels} />;
 }

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { AllergyStrip, allergyStripText } from './AllergyStrip';
+import { ALLERGY_NOT_ASKED, AllergyStrip, allergyBannerState, allergyStripText } from './AllergyStrip';
 
 // ===========================================================================
 // KW2-C2 — the persistent allergy strip.
@@ -98,5 +98,51 @@ describe('how the strip behaves', () => {
     );
     rerender(<AllergyStrip allergies={[]} />);
     expect(container.querySelector('[data-allergy-strip]')).toBeNull();
+  });
+});
+
+// ===========================================================================
+// b1.5 PHASE D — THE BANNER READS BOTH PLACES AN ALLERGY CAN BE RECORDED.
+//
+// `patient.allergies` is the header chip's quick-record field. MEDICAL patient
+// alerts are the other, and they are how a standing fact gets onto the record
+// with an author and a timestamp. The strip looked only at the first, so a
+// doctor who recorded "Penicillin allergy" as an alert still saw "Allergy not
+// asked" on every prescribing surface — a banner permanently warning about a
+// question that had in fact been answered, which is exactly how a warning
+// stops being read.
+// ===========================================================================
+
+describe('a MEDICAL alert counts as a recorded allergy', () => {
+  it('turns "not asked" into the patient\'s own words', () => {
+    expect(allergyStripText(null, ['Penicillin allergy'])).toContain('Penicillin allergy');
+    expect(allergyStripText(null, ['Penicillin allergy'])).not.toContain(ALLERGY_NOT_ASKED);
+    expect(allergyBannerState(null, ['Penicillin allergy'])).toBe('PRESENT');
+  });
+
+  it('joins the quick-record entries rather than replacing them', () => {
+    // Verbatim, both sources. A summarised allergy is a changed allergy.
+    const text = allergyStripText(['Seafood'], ['Penicillin allergy']);
+    expect(text).toContain('Seafood');
+    expect(text).toContain('Penicillin allergy');
+  });
+
+  it('can only move the state TOWARDS present', () => {
+    // A confirmed "none known" with no medical alert still renders NOTHING.
+    // Papering a negative answer with a warning is how the other states stop
+    // being read.
+    expect(allergyStripText([], [])).toBeNull();
+    expect(allergyBannerState([], [])).toBe('NONE_KNOWN');
+    // And a medical alert on record means somebody asked.
+    expect(allergyBannerState([], ['Latex'])).toBe('PRESENT');
+  });
+
+  it('still says "not asked" when neither source has anything', () => {
+    expect(allergyStripText(null, [])).toBe(ALLERGY_NOT_ASKED);
+    expect(allergyBannerState(null, [])).toBe('NONE_RECORDED');
+  });
+
+  it('ignores blank labels rather than rendering an empty warning', () => {
+    expect(allergyStripText(null, ['   '])).toBe(ALLERGY_NOT_ASKED);
   });
 });

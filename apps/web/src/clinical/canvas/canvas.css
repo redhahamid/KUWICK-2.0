@@ -517,6 +517,84 @@
   gap: 1px;
 }
 
+/* b1.5 PHASE D — the identity block is a BUTTON that opens the profile, so it
+   has to shed every default a button carries and keep the band's own layout.
+   A button rather than a clickable div because this is a real control and a
+   keyboard user must reach it. */
+.kw2-identity-button {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.kw2-identity-button:disabled {
+  cursor: default;
+}
+
+/* Visible on hover AND on keyboard focus. A control discoverable only by
+   mouse is one half the clinic never finds. */
+.kw2-identity-button:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.kw2-identity-button:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+}
+
+/* The alert indicator. Present whether or not there are alerts — an indicator
+   that only appears when something is wrong leaves its absence ambiguous
+   between "nothing recorded" and "nobody looked". */
+.kw2-chip-alerts {
+  appearance: none;
+  border: 1px solid #d9d9d9;
+  background: #fafafa;
+  color: rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kw2-chip-alerts:disabled {
+  cursor: default;
+}
+
+/* Amber, never red. Red means stop; nothing here has decided anything is
+   wrong — the chip says this patient has standing facts worth reading. */
+.kw2-chip-alerts-active {
+  border-color: #ffd591;
+  background: #fff7e6;
+  color: #ad4e00;
+  font-weight: 600;
+}
+
+.kw2-chip-alerts:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+}
+
+/* One alert per row in the profile: chip, words, then the audit line. */
+.kw-alert-row {
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+
+.kw-alert-row-retired {
+  opacity: 0.6;
+}
+
 .kw2-identity-name {
   display: flex;
   align-items: center;

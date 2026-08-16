@@ -4,7 +4,8 @@ import { WarningFilled } from '@ant-design/icons';
 import { ApiError } from '../../core/api-client';
 import { useUpdatePatient } from '../../core/hooks/usePatients';
 import { Patient } from '../../core/types';
-import { allergyRecordState } from '../medications/copyRx';
+import { allergyBannerState, allergyWords } from '../medications/AllergyStrip';
+import { activeAlerts, usePatientAlerts } from '../hooks/usePatientAlerts';
 
 const { Text } = Typography;
 
@@ -29,11 +30,29 @@ export function AllergyQuickRecord({ patient }: { patient: Patient }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<string[]>([]);
 
-  const state = allergyRecordState(patient.allergies);
-  const allergies = (patient.allergies ?? []).filter((entry) => entry?.trim());
+  // b1.5 PHASE D — the chip reads MEDICAL alerts too.
+  //
+  // It said "Allergy not asked" from `patient.allergies` alone, so recording
+  // "Penicillin allergy" as a MEDICAL alert left the header still asking the
+  // question — the FIFTH surface of the same defect, and the one a doctor
+  // looks at first. Found by the E2E, not by reasoning about it.
+  const { data: alerts } = usePatientAlerts(patient.id);
+  const medicalLabels = activeAlerts(alerts)
+    .filter((alert) => alert.type === 'MEDICAL')
+    .map((alert) => alert.label);
+  const state = allergyBannerState(patient.allergies, medicalLabels);
+  // What the chip SHOWS. Both sources, verbatim — a chip reading PRESENT while
+  // listing nothing would be worse than the "not asked" it replaced.
+  const allergies = allergyWords(patient.allergies, medicalLabels);
+  /** Only the quick-record half is editable here; alerts are the profile's. */
+  const editableAllergies = (patient.allergies ?? []).filter((entry) => entry?.trim());
 
   const openWithCurrent = (next: boolean) => {
-    if (next) setDraft(allergies);
+    // Seeded from the QUICK-RECORD half only. Seeding from the combined list
+    // would copy a MEDICAL alert's label into `patient.allergies` the first
+    // time anyone opened this and pressed Save — the same allergy then living
+    // in two stores, with no way to tell which one a later edit meant.
+    if (next) setDraft(editableAllergies);
     setOpen(next);
   };
 
@@ -78,6 +97,12 @@ export function AllergyQuickRecord({ patient }: { patient: Patient }) {
             The patient&rsquo;s own words, verbatim. An emptied list records a confirmed
             &ldquo;no known allergies&rdquo; — not an unasked question.
           </Text>
+          {medicalLabels.length > 0 && (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {medicalLabels.length} also recorded as a medical alert ({medicalLabels.join(', ')}). Change those
+              in the patient profile.
+            </Text>
+          )}
           <Select
             mode="tags"
             open={false}

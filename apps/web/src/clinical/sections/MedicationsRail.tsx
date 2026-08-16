@@ -17,7 +17,7 @@ import {
   unresolvedText,
 } from '../medicationSupplyPresentation';
 import { MedicationsTab } from '../MedicationsTab';
-import { AllergyStrip } from '../medications/AllergyStrip';
+import { PatientAllergyStrip } from '../medications/AllergyStrip';
 import { useVisit } from '../hooks/useVisits';
 import { AddMedicationModal } from '../medications/AddMedicationModal';
 import { MedicineSearchBox } from '../medications/MedicineSearchBox';
@@ -131,7 +131,12 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
         // opens rather than beside the list of what is already prescribed.
         // Undefined (not null) where the visit has not loaded: "we do not
         // know yet" must not render as "nobody asked".
-        banner={<AllergyStrip allergies={visit ? (visit.patient?.allergies ?? null) : undefined} />}
+        banner={
+          <PatientAllergyStrip
+            allergies={visit ? (visit.patient?.allergies ?? null) : undefined}
+            patientId={visit?.patient?.id}
+          />
+        }
         emptyText="No medications prescribed for this visit"
         previewLimit={5}
         addControl={
