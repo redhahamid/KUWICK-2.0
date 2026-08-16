@@ -53,6 +53,7 @@ import { DiagnosisRail } from './sections/DiagnosisRail';
 import { MedicationsRail } from './sections/MedicationsRail';
 import { OrdersRail } from './sections/OrdersRail';
 import { ServicesRail } from './sections/ServicesRail';
+import { DocumentsRail } from './sections/DocumentsRail';
 import { VisitCompletionBar } from './VisitCompletionBar';
 import { ConsultationFooter } from './ConsultationFooter';
 import { PatientSummarySidebar } from './PatientSummarySidebar';
@@ -682,6 +683,13 @@ export function PatientDashboardPage() {
                   <ServicesRail visitId={selectedVisit.id} />
                   <OrdersRail visitId={selectedVisit.id} clinicId={selectedVisit.clinicId} />
                   <MedicationsRail visitId={selectedVisit.id} />
+                  {/* b3 PHASE F — Documents, below Medications, filling the
+                      space the right column used to end in. The visit band's
+                      Create MC control above STAYS for now: it is still a
+                      doctor's only way to issue an MC on a screen this card
+                      has not been proven on yet, and removing it the same day
+                      would trade a duplicate for an outage. */}
+                  <DocumentsRail visit={selectedVisit} />
                 </>
               }
               footer={

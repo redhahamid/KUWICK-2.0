@@ -312,36 +312,80 @@ still PATCH `{ allergies }`. They are screenshot/parity dev tools, excluded from
 tsconfig and not run by CI, and they need rewriting against the alerts API
 before they will work again.
 
-**PIECE 3 — PHASE F (Documents card) NOT STARTED (2026-08-16).** Stopped at
-the piece boundary rather than half-building it. The owner's spec and what the
-survey already established, so the next session can start immediately:
+**PHASE F — DOCUMENTS CARD: DONE (2026-08-16).** The right column's last empty
+space is filled, and the card is `sections/DocumentsRail.tsx` beside
+Services/Orders/Medications.
 
-The card fills the empty space below Medications in the right-hand column,
-following the same search-first/picker pattern as Orders.
+- **Migration** `20260816180000_a_time_slip_is_not_a_certificate` adds
+  `TIME_SLIP` and `CONSENT` to `DocumentType` plus a `hours DOUBLE PRECISION`
+  column. Both enum values and the column are in ONE file safely: nothing there
+  compares against or inserts a new value. The moment a later migration needs
+  to (a CHECK, a backfill) it must be its own file.
+- **`hours` exists because start/end are `@db.Date`.** An MC covers whole days
+  and storing 00:00:00 against one would invite somebody to read a time out of
+  it; a time slip is one date and a duration. Double precision rather than the
+  DECIMAL used for money — half and quarter hours are exactly representable and
+  nothing reconciles hours to the cent.
+- **TIME_SLIP and CONSENT do NOT require clinical authorisation**, and that is
+  the point of naming them as types. A slip attests attendance, which the
+  counter witnessed and `document.issueAdministrative` already covers; a
+  consent records the PATIENT's agreement, not the doctor's judgement.
+  Everything else stays clinical.
+- **MC gained a one-day / date-range toggle.** One day is the commonest MC a GP
+  writes and the range picker made it two clicks on the same date, which is
+  also how it got issued a day out. Stored identically (start === end), so only
+  `describeDates` knows the difference.
+- **Reused, not rewritten:** `CreateDocumentDrawer` (its per-type fields now
+  cover the two new types), `DocumentPreviewDrawer`, `printTextDocument`,
+  `useVoidDocument`. Remove on the card VOIDS — no delete anywhere.
+- **The Create MC control at `PatientDashboardPage.tsx` visit band is STILL
+  THERE**, deliberately. It goes in a follow-up once the card has been used on
+  staging; removing it the same day would trade a duplicate for an outage.
 
-- **Migration FIRST.** `DocumentType` has no `TIME_SLIP` and no `CONSENT`, and
-  there is no `hours` column — `startDate`/`endDate` are `@db.Date`, so a time
-  slip's hours cannot be expressed by them. Note the enum trap this session hit
-  twice: PostgreSQL will not let a new enum value be USED in the transaction
-  that adds it, so if anything backfills or seeds with the new types it needs a
-  SEPARATE later migration.
-- **Reuse `CreateDocumentDrawer`** — it already does per-type fields. Do not
-  rewrite it.
-- **MC issuance is ALREADY a Document row with `type = MC`.** Do not create a
-  second table.
-- Types come from Settings → Documents & Templates: MC (single date or range),
-  time slip (date + hours), referral (auto-pulls from clinical notes), memo,
-  quarantine letter, consent.
-- A PICKER with the required date/field inputs per type, NOT one-click
-  generation.
-- Issued list on the card: type, date(s), issued-by, view/print/remove. "Remove"
-  is `record_status = VOID` — `Document` already has the void columns and the
-  `clinical.void` permission; there is no delete.
-- **Do NOT remove the Create MC control at `PatientDashboardPage.tsx:351`**
-  until the card is landed and working. It is currently a doctor's only way to
-  issue an MC.
-- Tests: each type generates with its required fields; MC issuance recorded;
-  golden path E2E green.
+**The viewport sweep caught a real defect this session, and it was piece 2's.**
+`.kw2-chip-danger` (the allergy chip) never had a max-width or wrapping, which
+did not matter while allergies were a short free-text field. Once every allergy
+became an ALERT the chip started listing everything on record, and a patient
+with several drug allergies pushed the header band past 1366px. Fixed the same
+way as the alerts chip: wrap, do not ellipsise — the words are the patient's own
+and a summarised allergy is a changed allergy. Note the two-class selector
+`.kw2-chip.kw2-chip-danger`, needed because `.kw2-chip { white-space: nowrap }`
+is declared later in `canvas.css` and wins on source order.
+
+**PHASES G AND H — NOT STARTED.** Three session-sized packages arrived in one
+message (F, G, H each said "this session only"); F is done, the other two are
+untouched. Both specs verbatim from the owner:
+
+*PHASE G — b4: invoice + bottom bar.* Invoice card in the canvas auto-pulling
+every billable line already on the visit: medications (quantity × price),
+orders/procedures, direct services, and the consultation charge. Consultation
+auto-billed for every patient EXCEPT OTC (queue type C); queue types are OTC
+(C), Emergency (E), Walk-in (W), Appointment (A). Doctor can apply an
+invoice-level discount with the reason recorded. Bottom bar carrying the
+running total and Complete Consultation. Editing any source line updates the
+draft live. Tests: all sources auto-pull, OTC skips the consultation charge,
+discount recorded with reason, live update on source changes, golden path green.
+Starting points already in the tree: `invoice/InvoiceSummary.tsx`,
+`invoice.service.ts` (note it already fixed the hardcoded `quantity = 1` bug),
+`billing-worklist.ts`, `consultation-tariff.ts` (D-094 consultation auto-billing
+is already modelled server-side — read it before building a second answer).
+
+*PHASE H — appointment calendar in the canvas.* Compact next-appointment card
+showing any existing upcoming booking; a KuwickModal picker (date, time slot,
+doctor, service) honouring Settings → Appointments & Scheduling doctor-service
+mapping and slot capacity; booking from here creates a REAL appointment visible
+in the Appointments module — no second store. Tests: an appointment booked from
+the canvas appears in the Appointments module, capacity and mapping respected,
+golden path green. Starting point: `apps/api/src/appointment/`
+(`slot-availability.service.ts` already exists and has its own spec).
+
+*FINAL LAYOUT PASS (with Phase H).* Follow Option 4 "Compact Pro" in
+`docs/design/kuwick2-canvas-final.pdf`. Right-hand column order: Direct Services
+→ Orders/Procedures → Medications → Documents → Invoice, with the appointment
+card and bottom bar. No large dead space at the bottom; every card shows a
+sensible empty state on a first visit. NOTE: the current order is Services →
+Orders → Medications → Documents, so only Invoice and the appointment card are
+missing from that sequence.
 
 ## Checklist state
 

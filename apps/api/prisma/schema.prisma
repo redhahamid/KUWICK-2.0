@@ -2875,6 +2875,14 @@ enum DocumentType {
   REFERRAL
   MEMO
   QUARANTINE
+  /// "Attended 14:00–16:30" — an attendance fact the counter can attest,
+  /// not a clinical opinion. Carries `hours`; see the column comment for why
+  /// a date-only start/end pair cannot express it.
+  TIME_SLIP
+  /// The patient's consent, recorded. What it holds is THEIR agreement, not
+  /// the doctor's judgement, which is why it does not require clinical
+  /// authorisation either.
+  CONSENT
   // Document builder (D-040) — a document generated from a
   // CustomDocumentTemplate; Document.title carries its display name.
   CUSTOM
@@ -2996,6 +3004,10 @@ model Document {
   issuedDate      DateTime     @default(now()) @map("issued_date") @db.Date
   startDate       DateTime?    @map("start_date") @db.Date
   endDate         DateTime?    @map("end_date") @db.Date
+  /// Hours attended, for a TIME_SLIP only. start/end are date-only — an MC
+  /// covers whole days — so a duration needs a column of its own rather than
+  /// a time component nobody could trust.
+  hours           Float?
   diagnosisText   String?      @map("diagnosis_text")
   referredTo      String?      @map("referred_to")
   // The moment a document was signed off. G3b made this one-way (re-signing

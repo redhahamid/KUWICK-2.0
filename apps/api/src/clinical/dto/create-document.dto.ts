@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsDateString, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { DocumentType } from '@prisma/client';
 
 export class CreateDocumentDto {
@@ -43,4 +43,17 @@ export class CreateDocumentDto {
   @IsOptional()
   @IsString()
   referredTo?: string;
+
+  /**
+   * Hours attended, for a TIME_SLIP.
+   *
+   * Bounded rather than free: a slip for 0 hours records nothing, and one for
+   * more than a day is a typo — 24 is the ceiling because a slip covers a
+   * single date, which is the whole reason it is not an MC.
+   */
+  @IsOptional()
+  @IsNumber()
+  @Min(0.25)
+  @Max(24)
+  hours?: number;
 }

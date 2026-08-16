@@ -25,15 +25,28 @@ export class DocumentService {
    * G3b closure (D-064) — does a document of this shape carry a doctor's
    * clinical opinion?
    *
-   * Decided from the stored TYPE, never from the document's text. The four
-   * built-in types are all clinical: an MC and a quarantine letter are
-   * medical directives, a referral is a clinical hand-over, and MEMO exists
-   * in this system as the clinical memo the templates generate. A CUSTOM
-   * document takes its template's explicit setting, and a template that
-   * cannot be found is treated as clinical — an unclassifiable document is
-   * the one you least want front desk authorising.
+   * Decided from the stored TYPE, never from the document's text. MC,
+   * QUARANTINE, REFERRAL and MEMO are clinical: an MC and a quarantine letter
+   * are medical directives, a referral is a clinical hand-over, and MEMO
+   * exists in this system as the clinical memo the templates generate.
+   *
+   * b3 PHASE F — TIME_SLIP and CONSENT are NOT, and the distinction is the
+   * point of naming them as types at all. A time slip says "this person was
+   * here between two and half past four": an attendance fact the counter
+   * witnessed and can attest, and front desk issuing one is an existing,
+   * legitimate workflow (see `document.issueAdministrative`). A consent form
+   * records THE PATIENT'S agreement, not the doctor's judgement. Requiring a
+   * doctor's authorisation on either would either stop the counter doing its
+   * job or teach a doctor to sign off things they did not witness.
+   *
+   * A CUSTOM document takes its template's explicit setting, and a template
+   * that cannot be found is treated as clinical — an unclassifiable document
+   * is the one you least want front desk authorising.
    */
   private async requiresClinicalAuthorisation(dto: CreateDocumentDto): Promise<boolean> {
+    if (dto.type === DocumentType.TIME_SLIP || dto.type === DocumentType.CONSENT) {
+      return false;
+    }
     if (dto.type !== DocumentType.CUSTOM) {
       return true;
     }
@@ -77,6 +90,7 @@ export class DocumentService {
         endDate: dto.endDate ? new Date(dto.endDate) : undefined,
         diagnosisText: dto.diagnosisText,
         referredTo: dto.referredTo,
+        hours: dto.hours,
       },
     });
   }

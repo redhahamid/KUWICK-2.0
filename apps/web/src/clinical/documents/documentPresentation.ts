@@ -17,6 +17,8 @@ export const BUILT_IN_TYPES: { value: DocumentType; label: string }[] = [
   { value: 'REFERRAL', label: 'Referral Letter' },
   { value: 'MEMO', label: 'Clinical Memo' },
   { value: 'QUARANTINE', label: 'Quarantine Letter' },
+  { value: 'TIME_SLIP', label: 'Time Slip' },
+  { value: 'CONSENT', label: 'Consent Form' },
 ];
 
 // Short forms for the collapsed summary — "1 MC · 1 Referral · 1 Memo".
@@ -25,6 +27,8 @@ export const SHORT_TYPE_LABEL: Record<DocumentType, string> = {
   REFERRAL: 'Referral',
   MEMO: 'Memo',
   QUARANTINE: 'Quarantine',
+  TIME_SLIP: 'Time slip',
+  CONSENT: 'Consent',
   CUSTOM: 'Other',
 };
 
@@ -33,6 +37,11 @@ export const TYPE_COLOR: Record<DocumentType, string> = {
   REFERRAL: 'blue',
   MEMO: 'default',
   QUARANTINE: 'orange',
+  // Green and cyan: neither carries a clinical directive, and colouring them
+  // like an MC would put an attendance note in the same visual class as
+  // "unfit for duty".
+  TIME_SLIP: 'green',
+  CONSENT: 'cyan',
   CUSTOM: 'purple',
 };
 

@@ -753,6 +753,25 @@
   font-weight: 600;
 }
 
+/* WRAPS, exactly as the alerts chip beside it does.
+   It never needed this while allergies were a short free-text field somebody
+   typed at the counter. Once every allergy became an ALERT, the chip started
+   listing whatever was on record — and a patient with five drug allergies
+   pushed the whole header band past 1366px, which the viewport sweep caught.
+   Wrapping rather than ellipsising, for the same reason as before: the words
+   are the patient's own and a summarised allergy is a changed allergy, so the
+   chip grows downward instead of hiding half a do-not-prescribe list.
+   Two classes, because `.kw2-chip { white-space: nowrap }` is declared later
+   in this file and wins on source order. */
+.kw2-chip.kw2-chip-danger {
+  max-width: 34ch;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  flex-wrap: wrap;
+  text-align: left;
+  line-height: 1.35;
+}
+
 /* "Allergy not asked" — amber, because an unasked question is not a
    negative answer. */
 .kw2-chip-warn {

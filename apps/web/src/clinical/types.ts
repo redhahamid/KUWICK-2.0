@@ -658,7 +658,17 @@ export interface VoidClinicalRecordDto {
   expectedVersion?: number;
 }
 
-export type DocumentType = 'MC' | 'REFERRAL' | 'MEMO' | 'QUARANTINE' | 'CUSTOM';
+export type DocumentType =
+  | 'MC'
+  | 'REFERRAL'
+  | 'MEMO'
+  | 'QUARANTINE'
+  // b3 PHASE F — the two the clinic issues that Kuwick could not name. A time
+  // slip attests attendance and carries `hours`; a consent records the
+  // PATIENT's agreement. Neither requires clinical authorisation.
+  | 'TIME_SLIP'
+  | 'CONSENT'
+  | 'CUSTOM';
 
 // G3a (D-062) — an MC or referral that has left the clinic cannot be
 // un-issued by deleting the row; it is VOIDED, and the voided document stays
@@ -681,6 +691,8 @@ export interface ClinicalDocument {
   issuedDate: string;
   startDate: string | null;
   endDate: string | null;
+  /** TIME_SLIP only — hours attended. Null on every other type. */
+  hours: number | null;
   diagnosisText: string | null;
   referredTo: string | null;
   signedAt: string | null;
@@ -718,6 +730,7 @@ export interface CreateDocumentDto {
   issuedDate?: string;
   startDate?: string;
   endDate?: string;
+  hours?: number;
   diagnosisText?: string;
   referredTo?: string;
 }

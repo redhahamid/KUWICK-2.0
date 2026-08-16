@@ -73,6 +73,8 @@ function buildSignatureBlock(doctorName?: string, doctorRole?: string, clinicNam
 }
 
 interface LeaveDocumentParams {
+  /** TIME_SLIP only — hours attended on `startDate`. */
+  hours?: number;
   clinic?: Clinic;
   clinicName?: string;
   patientName?: string;
@@ -199,9 +201,75 @@ export function buildReferralTemplate(params: ReferralTemplateParams): string {
   ].join('\n');
 }
 
+/**
+ * b3 PHASE F — the time slip.
+ *
+ * An attendance fact, and it is written as one. It certifies nothing about the
+ * patient's health and says nothing about fitness for duty, because the person
+ * who can attest that somebody was in the building is the person at the
+ * counter, not a doctor — which is also why this type does not require
+ * clinical authorisation.
+ *
+ * ONE DATE and a DURATION, never a range: a slip covering two days is an MC,
+ * and offering a range here would invite somebody to issue the wrong document.
+ */
+export function buildTimeSlipTemplate(params: LeaveDocumentParams): string {
+  const hours = params.hours;
+  return [
+    buildHeader(params.clinic),
+    '',
+    'TIME SLIP',
+    '',
+    `Date: ${fmtDate(params.issuedDate)}`,
+    '',
+    `This is to confirm that ${params.patientName ?? '____________'}${
+      params.patientIdentifier ? ` (NRIC: ${params.patientIdentifier})` : ''
+    } attended this clinic on ${fmtDate(params.startDate ?? params.issuedDate)} for ${
+      hours ? `${hours} hour${hours === 1 ? '' : 's'}` : '____'
+    }.`,
+    '',
+    'Issued at the patient’s request for their employer’s records.',
+    '',
+    '',
+    buildSignatureBlock(params.doctorName, params.doctorRole, params.clinic?.name ?? params.clinicName),
+  ].join('\n');
+}
+
+/**
+ * b3 PHASE F — consent.
+ *
+ * A FORM TO BE SIGNED, not a statement Kuwick makes on anybody's behalf. The
+ * procedure line is left for the clinician to complete and the signature block
+ * belongs to the PATIENT: pre-filling a consent with a doctor's signature would
+ * produce a document asserting an agreement nobody has given yet.
+ */
+export function buildConsentTemplate(params: LeaveDocumentParams & { procedure?: string }): string {
+  return [
+    buildHeader(params.clinic),
+    '',
+    'CONSENT FORM',
+    '',
+    `Date: ${fmtDate(params.issuedDate)}`,
+    '',
+    `Patient: ${params.patientName ?? '____________'}${
+      params.patientIdentifier ? ` (NRIC: ${params.patientIdentifier})` : ''
+    }`,
+    '',
+    `Procedure / treatment: ${params.procedure || '____________________'}`,
+    '',
+    'The nature, purpose and risks of the above have been explained to me. I have had',
+    'the opportunity to ask questions, and I consent to it being carried out.',
+    '',
+    '',
+    'Patient signature: ____________________     Date: ______________',
+    '',
+    `Explained by: ${params.doctorName ?? '____________________'}`,
+  ].join('\n');
+}
+
 export function buildTemplate(
   type: DocumentType,
-  params: LeaveDocumentParams & ReferralTemplateParams & { visit?: Visit },
+  params: LeaveDocumentParams & ReferralTemplateParams & { visit?: Visit; procedure?: string },
 ): string {
   switch (type) {
     case 'MC':
@@ -210,6 +278,10 @@ export function buildTemplate(
       return buildQuarantineTemplate(params);
     case 'REFERRAL':
       return buildReferralTemplate(params);
+    case 'TIME_SLIP':
+      return buildTimeSlipTemplate(params);
+    case 'CONSENT':
+      return buildConsentTemplate(params);
     case 'MEMO':
     default:
       return buildMemoTemplate(params);

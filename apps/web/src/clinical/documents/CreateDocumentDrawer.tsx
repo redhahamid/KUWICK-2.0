@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, DatePicker, Drawer, Input, Segmented, Select, Space, Tag, Typography, message } from 'antd';
+import { Alert, Button, DatePicker, Drawer, Input, InputNumber, Radio, Segmented, Select, Space, Tag, Typography, message } from 'antd';
 import { EditOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useCreateDocument } from '../hooks/useDocuments';
@@ -67,6 +67,22 @@ export function CreateDocumentDrawer({
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [diagnosisText, setDiagnosisText] = useState('');
   const [referredTo, setReferredTo] = useState('');
+  // b3 PHASE F — a time slip covers ONE date and a duration. A range here
+  // would be an MC wearing the wrong name.
+  const [hours, setHours] = useState<number | null>(null);
+  const [slipDate, setSlipDate] = useState<Dayjs>(dayjs());
+  const [procedure, setProcedure] = useState('');
+  /**
+   * An MC for a single day, or for a range.
+   *
+   * "One day" is far and away the commonest MC a GP writes, and the range
+   * picker made it a two-click job of selecting the same date twice — which
+   * also made "today to today" easy to get wrong by a day. Stored identically
+   * either way: a single date is start === end, so nothing downstream has to
+   * know which control issued it.
+   */
+  const [mcSpan, setMcSpan] = useState<'single' | 'range'>('single');
+  const [mcDate, setMcDate] = useState<Dayjs>(dayjs());
 
   const { data: clinicalNote } = useLatestClinicalNote(visit.id);
   const vitals = useLatestVitals(visit.id);
@@ -96,6 +112,28 @@ export function CreateDocumentDrawer({
   const autoDiagnosis = formatDiagnosisList(diagnoses);
   const vitalsSummary = formatVitals(vitals);
 
+  const needsDiagnosis = type === 'MC' || type === 'QUARANTINE' || type === 'REFERRAL';
+  const needsReferredTo = type === 'REFERRAL';
+  const isTimeSlip = type === 'TIME_SLIP';
+  const isConsent = type === 'CONSENT';
+  const singleDayMc = type === 'MC' && mcSpan === 'single';
+
+  /**
+   * The dates this document actually carries, whichever control produced them.
+   *
+   * One place, so the preview, the validation and the save can never disagree
+   * about what is being issued — the failure that would otherwise show up as a
+   * document reading "1 day" and a stored range of three.
+   */
+  const [effectiveStart, effectiveEnd] = singleDayMc
+    ? [mcDate, mcDate]
+    : isTimeSlip
+      ? [slipDate, slipDate]
+      : [dateRange?.[0] ?? null, dateRange?.[1] ?? null];
+
+  const days =
+    effectiveStart && effectiveEnd ? effectiveEnd.diff(effectiveStart, 'day') + 1 : null;
+
   const generate = useMemo(
     () => () => {
       if (selectedTemplate) {
@@ -118,8 +156,10 @@ export function CreateDocumentDrawer({
         doctorName: doctor?.fullName,
         doctorRole: doctorRoleLabel(doctor),
         issuedDate,
-        startDate: dateRange?.[0],
-        endDate: dateRange?.[1],
+        startDate: effectiveStart,
+        endDate: effectiveEnd,
+        hours: hours ?? undefined,
+        procedure,
         diagnosisText: diagnosisText || autoDiagnosis,
         referredTo,
         presentingComplaint: visit.presentingComplaint ?? undefined,
@@ -140,7 +180,10 @@ export function CreateDocumentDrawer({
       type,
       patientName,
       patientIdentifier,
-      dateRange,
+      effectiveStart,
+      effectiveEnd,
+      hours,
+      procedure,
       diagnosisText,
       referredTo,
       autoDiagnosis,
@@ -168,15 +211,14 @@ export function CreateDocumentDrawer({
     setDateRange(null);
     setDiagnosisText('');
     setReferredTo('');
+    setHours(null);
+    setSlipDate(dayjs());
+    setProcedure('');
+    setMcSpan('single');
+    setMcDate(dayjs());
     // Only on open — a reset on every render would erase the doctor's work.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
-
-  const needsDateRange = type === 'MC' || type === 'QUARANTINE';
-  const needsDiagnosis = type === 'MC' || type === 'QUARANTINE' || type === 'REFERRAL';
-  const needsReferredTo = type === 'REFERRAL';
-  const days =
-    dateRange?.[0] && dateRange?.[1] ? dateRange[1].diff(dateRange[0], 'day') + 1 : null;
 
   const save = async () => {
     if (!content.trim()) return;
@@ -188,8 +230,11 @@ export function CreateDocumentDrawer({
         content: content.trim(),
         issuedByStaffId,
         issuedDate: issuedDate.format('YYYY-MM-DD'),
-        startDate: dateRange?.[0]?.format('YYYY-MM-DD'),
-        endDate: dateRange?.[1]?.format('YYYY-MM-DD'),
+        startDate: effectiveStart?.format('YYYY-MM-DD'),
+        endDate: effectiveEnd?.format('YYYY-MM-DD'),
+        // Sent only for the type that has them, so a stray hours value cannot
+        // ride along on an MC and be read later as an attendance record.
+        hours: isTimeSlip ? (hours ?? undefined) : undefined,
         diagnosisText: diagnosisText || undefined,
         referredTo: referredTo || undefined,
       });
@@ -310,13 +355,87 @@ export function CreateDocumentDrawer({
         </div>
       </Space>
 
-      {needsDateRange &&
+      {type === 'MC' &&
         field(
-          type === 'MC' ? 'Rest period' : 'Quarantine period',
+          'Rest period',
+          <Space direction="vertical" style={{ width: '100%' }} size={6}>
+            {/* One day is the commonest MC a GP writes, and picking the same
+                date twice in a range picker is both slower and easier to get
+                wrong by a day. Stored identically either way. */}
+            <Radio.Group
+              value={mcSpan}
+              onChange={(e) => setMcSpan(e.target.value)}
+              options={[
+                { value: 'single', label: 'One day' },
+                { value: 'range', label: 'Date range' },
+              ]}
+              optionType="button"
+              size="small"
+            />
+            {mcSpan === 'single' ? (
+              <DatePicker
+                style={{ width: '100%' }}
+                value={mcDate}
+                onChange={(d) => d && setMcDate(d)}
+                aria-label="Rest day"
+              />
+            ) : (
+              <RangePicker style={{ width: '100%' }} value={dateRange} onChange={setDateRange} />
+            )}
+            {days !== null && <Tag color="blue">{days} day{days === 1 ? '' : 's'}</Tag>}
+          </Space>,
+        )}
+
+      {type === 'QUARANTINE' &&
+        field(
+          'Quarantine period',
           <Space direction="vertical" style={{ width: '100%' }} size={4}>
             <RangePicker style={{ width: '100%' }} value={dateRange} onChange={setDateRange} />
             {days !== null && <Tag color="blue">{days} day{days === 1 ? '' : 's'}</Tag>}
           </Space>,
+        )}
+
+      {isTimeSlip && (
+        <Space wrap size={12} style={{ width: '100%' }}>
+          <div style={{ minWidth: 180 }}>
+            {field(
+              'Date attended',
+              <DatePicker
+                style={{ width: '100%' }}
+                value={slipDate}
+                onChange={(d) => d && setSlipDate(d)}
+                aria-label="Date attended"
+              />,
+            )}
+          </div>
+          <div style={{ minWidth: 160 }}>
+            {field(
+              'Hours attended',
+              <InputNumber
+                style={{ width: '100%' }}
+                min={0.25}
+                max={24}
+                step={0.5}
+                value={hours}
+                onChange={setHours}
+                aria-label="Hours attended"
+              />,
+              '(e.g. 2.5)',
+            )}
+          </div>
+        </Space>
+      )}
+
+      {isConsent &&
+        field(
+          'Procedure or treatment',
+          <Input
+            placeholder="e.g. Incision and drainage of abscess"
+            value={procedure}
+            onChange={(e) => setProcedure(e.target.value)}
+            aria-label="Procedure or treatment"
+          />,
+          '(left blank prints a line to complete by hand)',
         )}
 
       {needsDiagnosis &&

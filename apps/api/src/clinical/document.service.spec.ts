@@ -84,6 +84,7 @@ describe('DocumentService', () => {
     // discriminates instead of passing by coincidence.
     (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'dr-attending' });
     (prisma.document.create as jest.Mock).mockResolvedValue({ id: 'doc-1' });
+    (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'dr-1' });
 
     await withTenant(() => service.create({ visitId: 'visit-1', type: DocumentType.MC, content: '3 days rest' }));
 
@@ -100,8 +101,57 @@ describe('DocumentService', () => {
         endDate: undefined,
         diagnosisText: undefined,
         referredTo: undefined,
+        hours: undefined,
       },
     });
+  });
+
+  // b3 PHASE F — the two new types, and why they are classified differently.
+  it('a TIME SLIP does not require clinical authorisation — attendance is not an opinion', async () => {
+    // "Attended between two and half past four" is a fact the counter
+    // witnessed. Requiring a doctor to sign it would either stop front desk
+    // doing an existing part of their job, or teach a doctor to authorise
+    // things they did not see.
+    const { service, prisma, visits } = createService();
+    (prisma.document.create as jest.Mock).mockResolvedValue({ id: 'doc-1' });
+    (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'dr-1' });
+    await withTenant(() =>
+      service.create({ visitId: 'visit-1', type: DocumentType.TIME_SLIP, content: 'slip', hours: 2.5 }),
+    );
+    expect((prisma.document.create as jest.Mock).mock.calls[0][0].data).toMatchObject({
+      type: DocumentType.TIME_SLIP,
+      requiresClinicalAuthorisation: false,
+      hours: 2.5,
+    });
+  });
+
+  it('a CONSENT does not either — it records the PATIENT\'s agreement', async () => {
+    const { service, prisma, visits } = createService();
+    (prisma.document.create as jest.Mock).mockResolvedValue({ id: 'doc-1' });
+    (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'dr-1' });
+    await withTenant(() => service.create({ visitId: 'visit-1', type: DocumentType.CONSENT, content: 'consent' }));
+    expect((prisma.document.create as jest.Mock).mock.calls[0][0].data).toMatchObject({
+      type: DocumentType.CONSENT,
+      requiresClinicalAuthorisation: false,
+    });
+  });
+
+  it('an MC still does — nothing here widened the clinical types', async () => {
+    const { service, prisma, visits } = createService();
+    (prisma.document.create as jest.Mock).mockResolvedValue({ id: 'doc-1' });
+    (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'dr-1' });
+    await withTenant(() => service.create({ visitId: 'visit-1', type: DocumentType.MC, content: 'mc' }));
+    expect((prisma.document.create as jest.Mock).mock.calls[0][0].data).toMatchObject({
+      requiresClinicalAuthorisation: true,
+    });
+  });
+
+  it('hours are stored only where they were sent — an MC carries none', async () => {
+    const { service, prisma, visits } = createService();
+    (prisma.document.create as jest.Mock).mockResolvedValue({ id: 'doc-1' });
+    (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'dr-1' });
+    await withTenant(() => service.create({ visitId: 'visit-1', type: DocumentType.MC, content: 'mc' }));
+    expect((prisma.document.create as jest.Mock).mock.calls[0][0].data.hours).toBeUndefined();
   });
 
   // SUPERSEDED BY D-085. `issuedByStaffId` used to be accepted from the
@@ -112,6 +162,7 @@ describe('DocumentService', () => {
     const { service, prisma, visits } = createService();
     (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'staff-1' });
     (prisma.document.create as jest.Mock).mockResolvedValue({ id: 'doc-1' });
+    (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'dr-1' });
 
     await withTenant(() =>
       service.create({
@@ -446,6 +497,7 @@ describe('DocumentService', () => {
       const { service, prisma, visits } = createService();
       (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'staff-1' });
       (prisma.document.create as jest.Mock).mockResolvedValue({ id: 'doc-1' });
+    (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'dr-1' });
 
       await withTenant(() => service.create({ visitId: 'visit-1', type, content: 'x' }));
 
@@ -462,6 +514,7 @@ describe('DocumentService', () => {
       requiresClinicalAuthorisation: false,
     });
     (prisma.document.create as jest.Mock).mockResolvedValue({ id: 'doc-1' });
+    (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'dr-1' });
 
     await withTenant(() =>
       service.create({ visitId: 'visit-1', type: DocumentType.CUSTOM, title: 'Time Slip', content: 'x' }),
@@ -479,6 +532,7 @@ describe('DocumentService', () => {
     (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'staff-1' });
     (prisma.customDocumentTemplate.findFirst as jest.Mock).mockResolvedValue(null);
     (prisma.document.create as jest.Mock).mockResolvedValue({ id: 'doc-1' });
+    (visits.findById as jest.Mock).mockResolvedValue({ id: 'visit-1', staffId: 'dr-1' });
 
     await withTenant(() =>
       service.create({ visitId: 'visit-1', type: DocumentType.CUSTOM, title: 'Unknown', content: 'x' }),

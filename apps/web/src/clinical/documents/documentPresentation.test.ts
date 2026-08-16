@@ -21,6 +21,7 @@ const BASE: ClinicalDocument = {
   issuedDate: '2026-08-02',
   startDate: null,
   endDate: null,
+  hours: null,
   diagnosisText: null,
   referredTo: null,
   signedAt: null,
