@@ -165,43 +165,44 @@ export function CanvasPatientHeader({
             Present whether or not there are any, because "no alerts" is an
             answer a doctor needs as much as a list is — an indicator that only
             appears when something is wrong leaves its absence ambiguous
-            between "nothing recorded" and "nobody looked". */}
-        {/* Opens UNDER THE CHIP, the way the allergy chip beside it does — the
+            between "nothing recorded" and "nobody looked".
+
+            It opens UNDER ITSELF, the way the allergy chip beside it does: the
             ALERTS view and nothing else, so checking why a patient is flagged
-            never lands a doctor in an editable demographics form, and never
+            never lands a doctor in an editable demographics form — and never
             dims the consultation to ask. */}
         <AlertsQuickView
           patient={patient}
           canEdit={canEditAlerts}
           canRecordMedical={canRecordMedicalAlert}
         >
-        <button
-          type="button"
-          className={`kw2-chip kw2-chip-alerts${otherAlerts.length > 0 ? ' kw2-chip-alerts-active' : ''}`}
-          // The accessible name carries the full list even where the visible
-          // chip collapsed the tail — a screen-reader user should not be the
-          // one who has to click.
-          aria-label={
-            otherAlerts.length > 0
-              ? `Patient alerts: ${otherAlerts.map((alert) => alert.label).join(', ')} — view`
-              : 'No active patient alerts — view'
-          }
-          data-alert-count={otherAlerts.length}
-        >
-          <WarningOutlined />{' '}
-          {otherAlerts.length > 0 ? (
-            <>
-              {alertSummary.shown.join(', ')}
-              {alertSummary.hidden > 0 && (
-                // Only the REMAINDER collapses. Never the whole set: a bare
-                // count is what this fix removed.
-                <span className="kw2-chip-more"> +{alertSummary.hidden} more</span>
-              )}
-            </>
-          ) : (
-            'No alerts'
-          )}
-        </button>
+          <button
+            type="button"
+            className={`kw2-chip kw2-chip-alerts${otherAlerts.length > 0 ? ' kw2-chip-alerts-active' : ''}`}
+            // The accessible name carries the full list even where the visible
+            // chip collapsed the tail — a screen-reader user should not be the
+            // one who has to click.
+            aria-label={
+              otherAlerts.length > 0
+                ? `Patient alerts: ${otherAlerts.map((alert) => alert.label).join(', ')} — view`
+                : 'No active patient alerts — view'
+            }
+            data-alert-count={otherAlerts.length}
+          >
+            <WarningOutlined />{' '}
+            {otherAlerts.length > 0 ? (
+              <>
+                {alertSummary.shown.join(', ')}
+                {alertSummary.hidden > 0 && (
+                  // Only the REMAINDER collapses. Never the whole set: a bare
+                  // count is what this fix removed.
+                  <span className="kw2-chip-more"> +{alertSummary.hidden} more</span>
+                )}
+              </>
+            ) : (
+              'No alerts'
+            )}
+          </button>
         </AlertsQuickView>
 
         <span className="kw2-chip kw2-chip-payer">{panelName ? `Panel · ${panelName}` : 'CASH'}</span>

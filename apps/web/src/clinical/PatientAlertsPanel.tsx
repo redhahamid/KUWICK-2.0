@@ -104,126 +104,126 @@ export function AlertsPanel({
 
   const body = (
     <div data-testid="patient-alerts">
-        {loading && <Text type="secondary">Loading alerts…</Text>}
+      {loading && <Text type="secondary">Loading alerts…</Text>}
 
-        {!loading && live.length === 0 && (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="No active alerts for this patient."
-            style={{ margin: '8px 0' }}
-          />
-        )}
+      {!loading && live.length === 0 && (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description="No active alerts for this patient."
+          style={{ margin: '8px 0' }}
+        />
+      )}
 
-        {live.map((alert) => (
-          <div key={alert.id} className="kw-alert-row" data-alert-id={alert.id}>
-            <Space size={6} wrap>
-              <Tag color={alert.type === 'MEDICAL' ? 'red' : 'blue'}>{alert.type}</Tag>
-              <Text strong>{alert.label}</Text>
-              {alert.note && <Text type="secondary">— {alert.note}</Text>}
-            </Space>
-            <div>
-              {/* Author and time, on the row. An alert nobody can attribute is
-                  one nobody can question. */}
+      {live.map((alert) => (
+        <div key={alert.id} className="kw-alert-row" data-alert-id={alert.id}>
+          <Space size={6} wrap>
+            <Tag color={alert.type === 'MEDICAL' ? 'red' : 'blue'}>{alert.type}</Tag>
+            <Text strong>{alert.label}</Text>
+            {alert.note && <Text type="secondary">— {alert.note}</Text>}
+          </Space>
+          <div>
+            {/* Author and time, on the row. An alert nobody can attribute is
+                one nobody can question. */}
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Recorded by {alert.createdByName ?? 'unknown'} · {formatStamp(alert.createdAt)}
+            </Text>
+          </div>
+          {canEdit && (
+            <Button size="small" onClick={() => void retire(alert)} loading={deactivateAlert.isPending}>
+              Resolve
+            </Button>
+          )}
+        </div>
+      ))}
+
+      {retired.length > 0 && (
+        <>
+          <Text type="secondary" style={{ display: 'block', marginTop: 12, fontSize: 12 }}>
+            Resolved
+          </Text>
+          {retired.map((alert) => (
+            <div key={alert.id} className="kw-alert-row kw-alert-row-retired" data-alert-id={alert.id}>
+              <Space size={6} wrap>
+                <Tag>{alert.type}</Tag>
+                <Text delete>{alert.label}</Text>
+              </Space>
               <Text type="secondary" style={{ fontSize: 12 }}>
-                Recorded by {alert.createdByName ?? 'unknown'} · {formatStamp(alert.createdAt)}
+                Resolved by {alert.deactivatedByName ?? 'unknown'} ·{' '}
+                {alert.deactivatedAt ? formatStamp(alert.deactivatedAt) : '—'}
               </Text>
             </div>
-            {canEdit && (
-              <Button size="small" onClick={() => void retire(alert)} loading={deactivateAlert.isPending}>
-                Resolve
-              </Button>
-            )}
-          </div>
-        ))}
+          ))}
+        </>
+      )}
 
-        {retired.length > 0 && (
-          <>
-            <Text type="secondary" style={{ display: 'block', marginTop: 12, fontSize: 12 }}>
-              Resolved
-            </Text>
-            {retired.map((alert) => (
-              <div key={alert.id} className="kw-alert-row kw-alert-row-retired" data-alert-id={alert.id}>
-                <Space size={6} wrap>
-                  <Tag>{alert.type}</Tag>
-                  <Text delete>{alert.label}</Text>
-                </Space>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  Resolved by {alert.deactivatedByName ?? 'unknown'} ·{' '}
-                  {alert.deactivatedAt ? formatStamp(alert.deactivatedAt) : '—'}
-                </Text>
-              </div>
-            ))}
-          </>
-        )}
+      {canEdit && !adding && (
+        <Button size="small" style={{ marginTop: 10 }} onClick={() => setAdding(true)}>
+          Add alert
+        </Button>
+      )}
 
-        {canEdit && !adding && (
-          <Button size="small" style={{ marginTop: 10 }} onClick={() => setAdding(true)}>
-            Add alert
-          </Button>
-        )}
-
-        {adding && (
-          <Form
-            form={form}
-            layout="vertical"
-            initialValues={{ type: canRecordMedical ? 'ALLERGY' : 'ADMINISTRATIVE' }}
-            onFinish={add}
-            style={{ marginTop: 10 }}
-          >
-            <Row gutter={12}>
-              {/* Stacked in the popover. The breakpoint antd reads is the
-                  VIEWPORT's, not this box's, so a two-column row on a desktop
-                  would squeeze the type select and the label into ~150px each
-                  inside a 340px popover. */}
-              <Col xs={24} md={compact ? 24 : 7}>
-                <Form.Item name="type" label="Type" rules={[{ required: true }]}>
-                  <Select
-                    options={ALERT_TYPES.map((type) => ({
-                      value: type.value,
-                      label: type.label,
-                      // Honest-disabled: the option stays visible with the
-                      // reason, rather than vanishing and leaving the account
-                      // wondering where allergies are recorded.
-                      disabled: (type.value === 'MEDICAL' || type.value === 'ALLERGY') && !canRecordMedical,
-                    }))}
-                  />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={compact ? 24 : 17}>
-                <Form.Item
-                  name="label"
-                  label="Alert"
-                  rules={[{ required: true, message: 'An alert needs a short label' }]}
-                  extra="Short — it renders as a chip. Detail goes in the note."
-                >
-                  <Input maxLength={60} placeholder="e.g. Penicillin allergy, Type 2 diabetes" />
-                </Form.Item>
-              </Col>
-            </Row>
-            <Form.Item name="note" label="Note (optional)">
-              <Input.TextArea rows={2} maxLength={300} />
-            </Form.Item>
-            {!canRecordMedical && (
-              <Paragraph type="secondary" style={{ fontSize: 12 }}>
-                Your account cannot record an Allergy or Medical alert — those change what may safely be
-                prescribed. Ask a clinician to add it.
-              </Paragraph>
-            )}
-            <Space>
-              <Button type="primary" htmlType="submit" loading={createAlert.isPending}>
-                Record alert
-              </Button>
-              <Button
-                onClick={() => {
-                  form.resetFields();
-                  setAdding(false);
-                }}
+      {adding && (
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{ type: canRecordMedical ? 'ALLERGY' : 'ADMINISTRATIVE' }}
+          onFinish={add}
+          style={{ marginTop: 10 }}
+        >
+          <Row gutter={12}>
+            {/* Stacked in the popover. The breakpoint antd reads is the
+                VIEWPORT's, not this box's, so a two-column row on a desktop
+                would squeeze the type select and the label into ~150px each
+                inside a 340px popover. */}
+            <Col xs={24} md={compact ? 24 : 7}>
+              <Form.Item name="type" label="Type" rules={[{ required: true }]}>
+                <Select
+                  options={ALERT_TYPES.map((type) => ({
+                    value: type.value,
+                    label: type.label,
+                    // Honest-disabled: the option stays visible with the
+                    // reason, rather than vanishing and leaving the account
+                    // wondering where allergies are recorded.
+                    disabled: (type.value === 'MEDICAL' || type.value === 'ALLERGY') && !canRecordMedical,
+                  }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={compact ? 24 : 17}>
+              <Form.Item
+                name="label"
+                label="Alert"
+                rules={[{ required: true, message: 'An alert needs a short label' }]}
+                extra="Short — it renders as a chip. Detail goes in the note."
               >
-                Cancel
-              </Button>
-            </Space>
-          </Form>
-        )}
+                <Input maxLength={60} placeholder="e.g. Penicillin allergy, Type 2 diabetes" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="note" label="Note (optional)">
+            <Input.TextArea rows={2} maxLength={300} />
+          </Form.Item>
+          {!canRecordMedical && (
+            <Paragraph type="secondary" style={{ fontSize: 12 }}>
+              Your account cannot record an Allergy or Medical alert — those change what may safely be
+              prescribed. Ask a clinician to add it.
+            </Paragraph>
+          )}
+          <Space>
+            <Button type="primary" htmlType="submit" loading={createAlert.isPending}>
+              Record alert
+            </Button>
+            <Button
+              onClick={() => {
+                form.resetFields();
+                setAdding(false);
+              }}
+            >
+              Cancel
+            </Button>
+          </Space>
+        </Form>
+      )}
     </div>
   );
 
