@@ -18,10 +18,15 @@ import { Patient } from '../core/types';
 // across two files. Staging holds an 11-digit IC and a date of birth of
 // 05/05/2026 that nobody can correct.
 //
-// The lock is replaced by four things, and these hold all of them: a narrower
-// permission, a confirmation that NAMES what is attached, the server's refusal
-// when the identifier is already somebody else's, and the fact that a
-// phone-number save is untouched by any of it.
+// It then shipped restricted to owner and front counter, which was the same
+// mistake one step smaller, and the owner removed it: in a small clinic whoever
+// is holding the IC card is who needs to fix it, and sending them to find
+// another account is how the second file gets created anyway.
+//
+// So what makes it safe is what these hold, and none of it is the grant list: a
+// confirmation that NAMES what is attached, the server's refusal when the
+// identifier is already somebody else's, and the fact that a phone-number save
+// triggers none of it.
 // ===========================================================================
 
 const { get, patch } = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn() }));
@@ -79,31 +84,41 @@ const open = (props: Partial<Parameters<typeof PatientProfileSlideOver>[0]> = {}
   );
 
 describe('who is offered the fields', () => {
-  it('the counter and the owner may correct an identity', () => {
+  it('EVERY staff role that sees patients may correct an identity', () => {
+    // The whole point of the owner's change: whoever is at the counter with the
+    // IC card in hand fixes the typo, rather than going to find an account that
+    // can — which is how the second patient record gets created.
     expect(mayCorrectPatientIdentity({ permissions: ['patient.identity.write'] })).toBe(true);
-    expect(mayCorrectPatientIdentity({ role: 'OWNER_ADMIN' })).toBe(true);
-    expect(mayCorrectPatientIdentity({ role: 'FRONT_DESK_CLINICAL_STAFF' })).toBe(true);
+    for (const role of ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF', 'DOCTOR_RESIDENT', 'DOCTOR_LOCUM']) {
+      expect(mayCorrectPatientIdentity({ role })).toBe(true);
+    }
   });
 
-  it('a doctor is not', () => {
-    expect(mayCorrectPatientIdentity({ permissions: ['note.write'] })).toBe(false);
-    expect(mayCorrectPatientIdentity({ role: 'DOCTOR_RESIDENT' })).toBe(false);
-  });
-
-  it('a session minted before permissions existed falls back to the NARROW reading', () => {
-    // A stale session must never be shown a control the server would refuse.
-    expect(mayCorrectPatientIdentity({ role: 'FINANCE_STAFF' })).toBe(false);
+  it('a back-office account is not — open to everyone who SEES patients, not everyone', () => {
+    // Finance, HR, stock and panel hold no system role at all, so the server
+    // would refuse them, and the browser must not offer a control the server
+    // refuses.
+    expect(mayCorrectPatientIdentity({ permissions: ['billing.counter'] })).toBe(false);
+    for (const role of ['FINANCE_STAFF', 'HR_STAFF', 'STOCK_STAFF', 'PANEL_STAFF', 'PATIENT_PORTAL']) {
+      expect(mayCorrectPatientIdentity({ role })).toBe(false);
+    }
     expect(mayCorrectPatientIdentity(null)).toBe(false);
   });
 
-  it('an account without it sees the field, disabled, WITH the reason', async () => {
-    // Hidden would be worse than locked: somebody who cannot see the field has
-    // no way to learn the value is wrong and fixable, which is how the second
-    // patient record gets created.
+  it("the server's published permissions win over the legacy role fallback", () => {
+    // The fallback exists only for a session minted before permissions were
+    // published. Once the server has answered, the browser does not re-derive.
+    expect(mayCorrectPatientIdentity({ role: 'DOCTOR_RESIDENT', permissions: [] })).toBe(false);
+  });
+
+  it('an account without it sees the field disabled rather than hidden', async () => {
+    // Hidden would be worse: somebody who cannot see the field has no way to
+    // learn the value is wrong and fixable. There is no explanatory line any
+    // more — with every clinical and counter account holding the permission, a
+    // sentence about who to ask would be advice almost nobody needs.
     open({ canCorrectIdentity: false });
     expect(await screen.findByDisplayValue('12345678901')).toBeDisabled();
-    expect(screen.getByText(/Only the front counter or the clinic owner/i)).toBeInTheDocument();
-    expect(screen.getByText(/rather than registering the patient again/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Only the front counter or the clinic owner/i)).toBeNull();
   });
 
   it('an account with it can type into the IC field', async () => {

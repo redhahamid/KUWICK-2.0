@@ -1,26 +1,37 @@
 /**
  * Who the profile OFFERS the IC and date-of-birth fields to.
  *
+ * EVERY STAFF ROLE THAT SEES PATIENTS (owner's decision, 2026-08-16). It
+ * shipped restricted to owner and front counter, and that was the wrong trade:
+ * in a small clinic the person holding the IC card is whoever happens to be at
+ * the counter, and sending them off to find an account with the permission is
+ * how the second patient record gets created — the exact failure the editable
+ * field exists to prevent. The restriction was never what made this safe. The
+ * duplicate check, the confirmation and the append-only record are.
+ *
  * Mirrors the server's `patient.identity.write`, and only ever disables a
  * control — the API refuses regardless of what the browser believes, so a
  * drift here costs somebody an editable field, never an unauthorised write.
- *
- * The fields are OFFERED DISABLED rather than hidden. A counter clerk who
- * cannot see an IC field at all has no way to know the value is wrong and
- * correctable; one who sees it greyed out with the reason knows to ask. That
- * distinction is the whole point of this change: the failure being fixed is
- * somebody deciding the only way forward is a second patient record.
  */
 
 const PERMISSION = 'patient.identity.write';
 
 /**
  * The pre-permissions fallback, for a session minted before the server
- * published a permission list. Deliberately the NARROW reading — owner and
- * front counter, matching OWNER and ADMINISTRATOR on the server — because a
- * stale session should never be shown a control the server would refuse.
+ * published a permission list. The four legacy roles that map to a system role
+ * which now holds the permission — every account that sees patients.
+ *
+ * The back-office four (finance, HR, stock, panel) and the patient portal are
+ * absent on purpose. They hold no system role at all, so the server would
+ * refuse them, and a stale session must never be shown a control the server
+ * would refuse.
  */
-const LEGACY_ROLES = ['OWNER_ADMIN', 'FRONT_DESK_CLINICAL_STAFF'];
+const LEGACY_ROLES = [
+  'OWNER_ADMIN',
+  'FRONT_DESK_CLINICAL_STAFF',
+  'DOCTOR_RESIDENT',
+  'DOCTOR_LOCUM',
+];
 
 export interface IdentitySubject {
   role?: string;
@@ -33,10 +44,6 @@ export function mayCorrectPatientIdentity(staff: IdentitySubject | null | undefi
   if (staff.permissions) return staff.permissions.includes(PERMISSION);
   return LEGACY_ROLES.includes(staff.role ?? '');
 }
-
-/** What the disabled field says, so it is honest rather than merely inert. */
-export const IDENTITY_LOCKED_REASON =
-  'Only the front counter or the clinic owner can correct an IC or date of birth. Ask them rather than registering the patient again.';
 
 /**
  * The sentence shown before an identity correction is saved.

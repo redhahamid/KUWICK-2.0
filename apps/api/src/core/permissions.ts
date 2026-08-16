@@ -59,14 +59,21 @@ export type Permission =
   | 'patient.alert.medical.write'
   // Administrative
   | 'patient.demographics.write'
-  // Correcting the IC / passport number or the date of birth. SEPARATE from
-  // demographics, and narrower, because it is not the same act: a phone
-  // number is a way to reach someone, while the identifier is what ties their
-  // visits, panel claims and e-Invoice records together. It stays editable
-  // because the alternative is worse — a typo taken at registration used to
-  // force the counter to open a SECOND patient, splitting one person's
-  // history across two files — but it is not something everyone who can fix
-  // an address should be able to do.
+  // Correcting the IC / passport number or the date of birth.
+  //
+  // HELD BY EVERY STAFF ROLE THAT SEES PATIENTS (owner's decision, 2026-08-16).
+  // It shipped restricted to owner and front counter, and that was the wrong
+  // trade: in a single-doctor clinic the person holding the IC card is whoever
+  // is at the counter, and sending them to find an account with the permission
+  // is how the SECOND patient record gets created — the exact failure this
+  // capability exists to prevent.
+  //
+  // It stays a named permission rather than being folded into demographics,
+  // because the safeguards hang off it and because narrowing it later should be
+  // a one-line change somebody can review. What makes it safe was never the
+  // grant list: a server-side check that no other patient holds the identifier,
+  // a confirmation naming what is attached, and an append-only record of old
+  // value → new value with the author's name and role snapshotted.
   | 'patient.identity.write'
   | 'patient.lhdn.write'
   | 'queue.manage'
@@ -121,6 +128,10 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     // Standing facts about the patient, every type including MEDICAL.
     'patient.alert.write',
     'patient.alert.medical.write',
+    // A doctor who spots a transposed digit fixes it. In a small clinic they
+    // are frequently the only person on shift, and the alternative is a second
+    // patient record for the same human being.
+    'patient.identity.write',
     // Printing what they issued — an MC, a referral — is part of the act.
     'document.print',
     // Owner decision: a 24-hour clinic runs night shifts with a skeleton
@@ -154,6 +165,9 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     // a nurse recording "Pregnant" or "On Warfarin" is exactly the workflow.
     'patient.alert.write',
     'patient.alert.medical.write',
+    // Same reasoning as the doctor's: whoever is looking at the IC card when
+    // the typo is spotted is who should be able to correct it.
+    'patient.identity.write',
   ],
 
   ADMINISTRATOR: [
@@ -184,9 +198,9 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
   // `patient.identity.write` is the one patient-facing entry, and it does not
   // breach the rule above: correcting a transposed digit in an IC is records
   // administration, not a clinical act — it asserts nothing about the patient's
-  // health and appears in no clinical record. The owner holds it because they
-  // are the escalation path when the counter cannot resolve a duplicate, and
-  // in a single-doctor clinic they are frequently the only account on shift.
+  // health and appears in no clinical record. Every staff role that sees
+  // patients now holds it; the owner is listed explicitly so an owner-only
+  // account is not the one exception that has to go and find somebody.
   OWNER: [
     'settings.manage',
     'discount.approve',
@@ -431,7 +445,7 @@ const REFUSAL: Partial<Record<Permission, string>> = {
   'consultation.complete': 'Only a doctor may complete a consultation.',
   'patient.demographics.write': 'Your account is not permitted to change patient details.',
   'patient.identity.write':
-    'Your account is not permitted to change a patient’s IC or date of birth. Ask the front counter or the clinic owner to correct it — please do not create a second record for the same person.',
+    'Your account is not permitted to change a patient’s IC or date of birth. Ask any clinical or counter staff member to correct it — please do not create a second record for the same person.',
   'patient.alert.write': 'Your account is not permitted to manage patient alerts.',
   'patient.alert.medical.write':
     'Your account is not permitted to record a MEDICAL alert. Ask a doctor or clinical staff member to record it.',

@@ -43,6 +43,23 @@ const doctor: Actor = {
   active: true,
   assigned: ['DOCTOR'],
 };
+const nurse: Actor = {
+  id: 'staff-cs',
+  tenantId: 't1',
+  role: 'FRONT_DESK_CLINICAL_STAFF',
+  fullName: 'Nurse Faridah',
+  active: true,
+  assigned: ['CLINICAL_STAFF'],
+};
+/** Back office. Holds no system role at all — see LEGACY_ROLE_PERMISSIONS. */
+const finance: Actor = {
+  id: 'staff-fin',
+  tenantId: 't1',
+  role: 'FINANCE_STAFF',
+  fullName: 'Encik Zaki',
+  active: true,
+  assigned: [],
+};
 
 const STORED = {
   id: 'p1',
@@ -96,26 +113,41 @@ describe('who may correct an identifier', () => {
     expect(tx.patient.update).toHaveBeenCalled();
   });
 
-  it('a doctor cannot, and is told what to do instead of opening a second file', async () => {
-    // Not a slight on doctors: an identifier correction is records
-    // administration, and the counter is where the IC was read off the card.
+  it('a doctor can — in a small clinic they are often the only person on shift', async () => {
+    // This used to be refused, and the refusal was the friction the owner
+    // removed: a doctor who spots a transposed digit and cannot fix it is a
+    // doctor who ends up with two files for one patient.
     const { service, tx } = createService(doctor);
+    await asActor(doctor, () => service.update('p1', { identifierValue: '900101145566' }));
+    expect(tx.patient.update).toHaveBeenCalled();
+  });
+
+  it('clinical staff can — whoever is looking at the IC card', async () => {
+    const { service, tx } = createService(nurse);
+    await asActor(nurse, () => service.update('p1', { identifierValue: '900101145566' }));
+    expect(tx.patient.update).toHaveBeenCalled();
+  });
+
+  it('a back-office account cannot, and is told what to do instead', async () => {
+    // Finance holds no system role at all. Open to everyone who SEES patients
+    // is not the same as open to everyone with a login.
+    const { service, tx } = createService(finance);
     await expect(
-      asActor(doctor, () => service.update('p1', { identifierValue: '900101145566' })),
+      asActor(finance, () => service.update('p1', { identifierValue: '900101145566' })),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(tx.patient.update).not.toHaveBeenCalled();
 
     await expect(
-      asActor(doctor, () => service.update('p1', { identifierValue: '900101145566' })),
+      asActor(finance, () => service.update('p1', { identifierValue: '900101145566' })),
     ).rejects.toThrow(/do not create a second record/i);
   });
 
-  it('a doctor can still fix a phone number — only the identifier is gated', async () => {
-    // The whole profile form posts on every save. If any save demanded the
-    // identity permission, this fix would have taken away demographics editing
-    // from everyone who had it.
-    const { service, scoped, tx } = createService(doctor);
-    await asActor(doctor, () => service.update('p1', { phone: '0111111111' }));
+  it('an ordinary demographics save takes no identity permission at all', async () => {
+    // The whole profile form posts on every save. If any save went down the
+    // identity path it would be confirmed and recorded, which would make the
+    // ordinary case slower and noisier for nothing.
+    const { service, scoped, tx } = createService(finance);
+    await asActor(finance, () => service.update('p1', { phone: '0111111111' }));
     expect(scoped.patient.update).toHaveBeenCalled();
     expect(tx.patient.update).not.toHaveBeenCalled();
   });
@@ -123,8 +155,8 @@ describe('who may correct an identifier', () => {
   it('re-submitting the SAME IC is not a correction and needs no permission', async () => {
     // The form submits every field it holds, so "the IC is in the payload"
     // says nothing about whether it moved.
-    const { service, scoped, tx } = createService(doctor);
-    await asActor(doctor, () =>
+    const { service, scoped, tx } = createService(finance);
+    await asActor(finance, () =>
       service.update('p1', { identifierValue: '12345678901', dob: '2026-05-05', phone: '0111111111' }),
     );
     expect(scoped.patient.update).toHaveBeenCalled();
@@ -215,5 +247,33 @@ describe('the change is answerable later', () => {
       asActor(counter, () => service.update('p1', { identifierValue: '900101145566' })),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(tx.patientIdentityChange.createMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('an already-issued document keeps the IC it was issued with', () => {
+  it('a correction writes to the patient and the change record — and NOTHING else', async () => {
+    // Asserted structurally, because that is where the guarantee actually
+    // lives. `identifier_value` exists on exactly one table: `patients`. A
+    // document's content is a string rendered and frozen at issue, and there is
+    // no e-Invoice table yet — so nothing anywhere holds a COPY of the
+    // identifier that a correction could silently rewrite.
+    //
+    // This is the test that would catch a regression: if somebody later adds an
+    // IC snapshot to documents or claims and wires it into this path, a write
+    // appears on the transaction that is not one of these two, and this fails.
+    // A test asserting "the document still says 900101…" would pass whether or
+    // not that snapshot existed.
+    const { service, tx } = createService(counter);
+    await asActor(counter, () => service.update('p1', { identifierValue: '900101145566' }));
+
+    const written = Object.entries(tx)
+      .filter(([, model]) => model && typeof model === 'object')
+      .flatMap(([name, model]) =>
+        Object.entries(model as Record<string, jest.Mock>)
+          .filter(([op, fn]) => /create|update|delete|upsert/i.test(op) && fn.mock?.calls.length)
+          .map(([op]) => `${name}.${op}`),
+      );
+
+    expect(written.sort()).toEqual(['patient.update', 'patientIdentityChange.createMany']);
   });
 });

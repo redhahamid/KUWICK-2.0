@@ -5,10 +5,7 @@ import { KuwickFormSection, KuwickModal, KuwickModalActionBar } from '../design-
 import { ApiError, apiClient } from '../core/api-client';
 import { Patient, UpdatePatientDto } from '../core/types';
 import { useUpdatePatient } from '../core/hooks/usePatients';
-import {
-  IDENTITY_LOCKED_REASON,
-  describeIdentityImpact,
-} from '../core/patient-identity-access';
+import { describeIdentityImpact } from '../core/patient-identity-access';
 import { Visit } from './types';
 import { usePatientAlerts } from './hooks/usePatientAlerts';
 import { AlertsPanel } from './PatientAlertsPanel';
@@ -51,8 +48,9 @@ export interface PatientProfileSlideOverProps {
   canRecordMedical?: boolean;
   /**
    * Whether this account may correct the IC / passport number and the date of
-   * birth. Narrower than `canEdit`: fixing a phone number and re-identifying a
-   * person are not the same act.
+   * birth. Every staff role that sees patients holds it; it stays a separate
+   * flag because the act is separate — a correction is confirmed and recorded,
+   * where a phone-number edit is neither.
    */
   canCorrectIdentity?: boolean;
 }
@@ -73,10 +71,12 @@ interface ProfileForm {
    * history the lock was protecting. Staging has an 11-digit IC and a date of
    * birth of 05/05/2026 to prove it.
    *
-   * Safe because of what surrounds the field, not because of who is trusted:
-   * a narrower permission than the rest of the form, a server-side check that
-   * no other patient holds the identifier, a confirmation naming what is
-   * attached, and an append-only record of old value → new value, by whom.
+   * Safe because of what surrounds the field, not because of who is trusted —
+   * which is also why the permission is open to every staff role that sees
+   * patients. A server-side check that no other patient holds the identifier, a
+   * confirmation naming what is attached, and an append-only record of old
+   * value → new value with the author's name and role: those are the
+   * safeguards. The grant list never was one.
    */
   identifierValue?: string;
   dob?: Dayjs | null;
@@ -256,18 +256,20 @@ export function PatientProfileSlideOver({
               </Form.Item>
             </Col>
             <Col xs={12} md={6}>
-              {/* CORRECTABLE, by the counter and the owner only.
+              {/* CORRECTABLE, by every staff role that sees patients.
                   It used to be locked, and the lock is what produced the
                   duplicate patients: a transposed digit could not be fixed, so
                   a second file got opened for the same person and their history
-                  split in two. Offered DISABLED to everyone else rather than
-                  hidden — somebody who cannot see the field has no way to learn
-                  the value is wrong and fixable, which is how the second file
-                  gets created. */}
+                  split in two. It then shipped restricted to owner and counter,
+                  which was the same mistake one step smaller — in a small clinic
+                  whoever is holding the IC card is who needs to fix it, and
+                  sending them to find another account is how the second file
+                  gets created anyway. What keeps this safe is below and behind
+                  it: the duplicate check, the confirmation naming what is
+                  attached, and the append-only record of who changed what. */}
               <Form.Item
                 name="identifierValue"
                 label={identityLabel}
-                extra={canCorrectIdentity ? undefined : IDENTITY_LOCKED_REASON}
                 // Validated only where it is editable, and only against what
                 // the save would CHANGE. Older records hold ICs with dashes;
                 // refusing to submit the form until a locked legacy value is

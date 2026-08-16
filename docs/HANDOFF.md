@@ -196,14 +196,23 @@ carries an 11-digit IC and a date of birth of 05/05/2026 as proof.
 
 Four things replace the lock, and none of them is "trust the user":
 
-- **A narrower permission.** New `patient.identity.write`, granted to OWNER and
-  ADMINISTRATOR only — not to DOCTOR, and separate from
-  `patient.demographics.write` because fixing a phone number and re-identifying
-  a person are different acts. It is the one patient-facing entry in the OWNER
-  grant list and does not breach "OWNER alone is not clinical": an identifier
-  correction is records administration, asserts nothing about health, and
-  appears in no clinical record. Web mirror: `core/patient-identity-access.ts`,
-  with the pre-permissions fallback deliberately NARROW.
+- **A permission, held by EVERY STAFF ROLE THAT SEES PATIENTS** — DOCTOR,
+  CLINICAL_STAFF, ADMINISTRATOR, OWNER. It shipped restricted to owner and
+  counter and the owner removed that restriction the same day (2026-08-16):
+  in a small clinic whoever is holding the IC card is who needs to fix it, and
+  sending them to find another account is how the second file gets created
+  anyway. **The restriction was never the protection** — the three safeguards
+  below are, and all three are unchanged.
+  Back office (finance/HR/stock/panel) and the patient portal are still refused:
+  they hold no system role at all. Web mirror:
+  `core/patient-identity-access.ts`.
+
+  Worth recording, because the owner's instruction was to "grant it to every
+  role that already holds `patient.demographics.write`" and that would NOT have
+  done it: `patient.demographics.write` is held by ADMINISTRATOR **alone**, and
+  is enforced **nowhere** — no service checks it, so the patient-update route
+  has never gated demographics. Following it literally would have been a no-op
+  that also dropped OWNER. Implemented to the intent, and flagged.
 - **A duplicate check with a sentence.** `@@unique([tenantId, identifierType,
   identifierValue])` already refused it, but as a 500 and a stack trace, which
   invites a retry with a different spelling. Now named: "X is already

@@ -157,6 +157,10 @@ describe('AuthService', () => {
           // A2 — standing patient alerts, every type including MEDICAL.
           'patient.alert.medical.write',
           'patient.alert.write',
+          // Correcting an IC or date of birth. Held by every staff role that
+          // sees patients — a doctor who spots a transposed digit and cannot
+          // fix it is a doctor who ends up with two files for one person.
+          'patient.identity.write',
           'prescription.write',
           'queue.consultationFlow',
         ],
