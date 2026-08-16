@@ -764,6 +764,63 @@ round-trip untouched.
    service added from the orders box appears in both places, and somebody
    should decide whether that is right.
 
+## E-FOLLOWUP — **DONE.** The orders box searches TASK ORDERS only.
+
+Owner's resolution to the overlap: scope the SEARCH, do not merge the cards.
+`OrderSearchBox` asks `/services?orderType=TASK_ORDER`, filtered SERVER-side
+because the request is bounded to twenty rows — trimming that page in the
+browser would return three task orders and present them as the catalogue.
+
+**The LIST is deliberately not filtered.** A visit recorded before this
+decision still has a standard service under orders; it still renders, still
+shows its quantity, and still bills. Scoping the search must not hide data
+already written, and there is a test that the list request carries no
+`orderType`.
+
+Boundary copy is on the screen, not left to be discovered: the box reads
+"search tests, imaging, procedures…", the empty card says billable services are
+added in Direct Services. `AddOrderModal` keeps both shapes and its
+standard-service tests now render it DIRECTLY, because that route belongs to
+Direct Services — a test reaching it through the orders box would assert a path
+that no longer exists.
+
+## PHASE F — **NOT STARTED.** Surveyed, so the next session starts building.
+
+Stopped at the phase boundary on the owner's standing rule rather than begin
+something this session could not finish cleanly. What a fresh session needs:
+
+**MODEL GAPS — a migration is required first.**
+- `DocumentType` has `MC | REFERRAL | MEMO | QUARANTINE | CUSTOM`. Phase F also
+  needs **TIME_SLIP** and **CONSENT**.
+- A time slip is a date + HOURS, and no hours column exists. `startDate` /
+  `endDate` are `@db.Date`, so they cannot carry a time either — add an
+  explicit `hours` (Decimal, nullable) rather than overloading a date.
+- Nullable, not backfilled: documents already issued have no hours.
+
+**MOST OF THE FORM ALREADY EXISTS — reuse, do not rewrite.**
+`apps/web/src/clinical/documents/CreateDocumentDrawer.tsx` (380 lines) already
+does per-type fields: `needsDateRange` (MC, QUARANTINE), `needsDiagnosis`,
+`needsReferredTo`. Phase F adds the two new types and their fields, and puts a
+`KuwickModal` picker in front rather than a drawer. `DocumentsWorkspace` (397
+lines) is the Flow surface and already lists, previews, prints and voids.
+
+**WHERE THE CARD GOES.** `sections/ClinicalRail.tsx` is the canvas right-hand
+column — `MedicationsRail`, `OrdersRail`, `ServicesRail`. The Documents card
+belongs there. NOTE the comment at `PatientDashboardPage.tsx:351`: the
+visit band below holds the ONLY Create MC / Create Referral / Open Invoice
+controls in Canvas, and it is explicitly to be removed the day the Documents
+card lands. Removing it before the card works would take away a doctor's only
+way to issue an MC in production.
+
+**MC ISSUANCE IS ALREADY RECORDED.** A `Document` row with `type = MC`,
+`issuedDate`, `startDate`/`endDate` and `issuedByStaffId` is the record an
+"MC issued" report reads. Do NOT add a second table for it — that would be two
+stores for one fact, the thing Phase D refused for chronic conditions.
+
+**Voiding, not deleting** (D-062) is already the rule and the card's "remove"
+must use `useVoidDocument`. An issued MC has left the clinic; deleting the row
+erases the only evidence it was ever issued.
+
 ## b1+b2 PACKAGE — WHAT IS LEFT (next session starts here)
 
 **Phase 1 remainder:**
