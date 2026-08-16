@@ -21,6 +21,10 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    setupFiles: ['./src/test-setup.ts'],
+    // ORDER MATTERS. `test-scheduler-lifetime.ts` must bind React's scheduler
+    // before anything imports react-dom, and `test-setup.ts` imports
+    // @testing-library/react. See the comment in that file for the teardown
+    // race this ordering closes.
+    setupFiles: ['./src/test-scheduler-lifetime.ts', './src/test-setup.ts'],
   },
 });

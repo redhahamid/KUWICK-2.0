@@ -101,26 +101,58 @@ secret threw, login 500'd, and every spec timed out at `/login` — while
 because `.env` carries the real names. Fixed in ci.yml; local green is NOT
 CI green — check the Actions tab after pushing, every time.
 
-Known flake, pre-existing: a full `vitest run` can exit rc=1 on an UNHANDLED
-teardown error ("window is not defined" at
-`react-dom` → `Immediate.performWorkUntilDeadline`) while EVERY test passes.
-The file it blames moves between runs (`diagnosisSearchField`, then
-`allergyQuickRecord`, then `copyRxModal`), which is the tell that it belongs to
-none of them: React scheduled work, the file's jsdom was torn down, the queued
-Immediate fired afterwards. It is not a failing test, and CI has been green on
-it throughout — it reproduces locally under load.
+**THE TEARDOWN FLAKE IS FIXED (2026-08-16).** It is no longer a known flake and
+should not be re-run past.
 
-**2026-08-13 — one hypothesis RULED OUT, so the next attempt need not repeat
-it.** It is NOT scheduled by `cleanup()`: awaiting a `setImmediate` in the
-`afterEach`, draining React's own task queue while the environment is still
-alive, did not fix it (tried, measured, reverted). So the work is scheduled
-AFTER that hook, which points at something settling late rather than at
-unmounting — a mocked request resolving after its test ended, or a React Query
-observer on a per-test `QueryClient` that no test ever clears. **Start there.**
-Note also that `setImmediate` is untyped in the web tsconfig (no node types),
-so a fix using it needs its own typing or a different primitive. Do not
-"fix" this by silencing the reporter: the warning that unhandled errors "might
-cause false positive tests" is the part worth keeping.
+What it was: a full `vitest run` reported every test passing and then exited 1
+on one unhandled `ReferenceError: window is not defined` at `react-dom` →
+`performWorkOnRootViaSchedulerTask` → `Immediate.performWorkUntilDeadline`. The
+file it blamed moved between runs (`prescriptionVocabulary`,
+`patientProfileSlideOver`, `allergyQuickRecord`, `medicineSearchFirst`), which
+is the tell that it belonged to none of them. It blocked the merge of `56243b5`
+on CI #89.
+
+What it actually was, measured by instrumenting `setImmediate` with the stack of
+whatever scheduled each callback:
+
+1. React takes an update AFTER the last `afterEach` has completed — it arrives
+   on a microtask, past every hook a test file can register. That is why the
+   2026-08-13 `setImmediate`-drain attempt failed, and why no hook-based drain
+   could ever have been the answer.
+2. React's work loop then hops across `setImmediate`, yielding every 5ms and
+   re-scheduling itself, so one render can span three ticks. `setImmediate` is
+   NODE's queue — process-global, unrelated to the jsdom window the work renders
+   into. Vitest closes that window between files; the callback fires anyway and
+   reads `window.event`.
+
+The defect was (2): the scheduling primitive outlived the DOM it scheduled work
+for. React binds that primitive once, at `scheduler` module init, preferring
+`setImmediate`, then `MessageChannel`, then `setTimeout` — and in this
+environment ALL THREE are Node's. jsdom 26 implements neither of the first two,
+and vitest deliberately puts Node's timers on the global window so fake timers
+work, so `window.setTimeout` is Node's as well. (The first version of this fix
+routed through `window.setTimeout` and the race survived, on `listOnTimeout`
+instead of `processImmediate` — worth knowing before assuming `window.x` is
+jsdom's.)
+
+The fix: `apps/web/src/test-scheduler-lifetime.ts`, a setup file listed BEFORE
+`test-setup.ts` in `vitest.config.ts` (order matters — `test-setup.ts` imports
+@testing-library/react, and the scheduler binds its host callback the moment
+react-dom is imported). It gives React a `setImmediate` backed by the only timer
+jsdom itself owns and cancels, `globalThis.jsdom.window.setTimeout`, then hands
+Node's real one straight back so nothing else is affected. Work scheduled
+against a document is now discarded with that document instead of running
+against its corpse.
+
+Nothing is suppressed: no error is caught, no unhandled rejection ignored, no
+reporter silenced. React work still runs and still throws if genuinely broken,
+and jsdom routes such a throw to the window error handler vitest already listens
+on. Measured: red 4/4 full runs before, green 3/3 after (66 files, 1309 tests),
+duration unchanged at ~91s.
+
+Pinned by `apps/web/src/schedulerLifetime.test.tsx`, which fails if a React or
+scheduler upgrade picks a different host callback, or if the setup-file order
+regresses (verified: flipping the order fails the test).
 
 ## Checklist state
 
