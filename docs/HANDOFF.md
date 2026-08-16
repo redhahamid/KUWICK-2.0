@@ -821,6 +821,58 @@ stores for one fact, the thing Phase D refused for chronic conditions.
 must use `useVoidDocument`. An issued MC has left the clinic; deleting the row
 erases the only evidence it was ever issued.
 
+## b1.5 STAGING FIXES — **DONE.** Alerts routing, profile control, allergy split.
+
+Three defects the owner found manually testing staging.
+
+**FIX 1 — the alert chip opens the ALERTS view only.** It opened the whole
+profile, so a doctor checking why a patient was flagged landed in an editable
+demographics form. `PatientAlertsModal` renders the same `AlertsPanel` the
+profile does — extracted to `PatientAlertsPanel.tsx` so the rules (nothing is
+deleted, resolving stamps a second author, resolved rows stay visible) are one
+implementation rather than two that drift.
+
+**FIX 2 — "Patient details" is its own labelled button** in the header actions.
+The identity block still opens the profile, because clicking a patient's name
+to see the patient is what everyone tries first; its aria-label is now "Open
+<name>'s record" rather than "…full patient details", because two controls
+whose accessible names end in the same two words are two a screen-reader user
+cannot tell apart.
+
+**FIX 3 — an allergy is not a chronic condition. THIS NEEDED A SCHEMA CHANGE,
+deliberately.**
+
+`PatientAlertType` gains **ALLERGY**. The instruction was display-and-routing
+only, and this is the one part that could not be honoured: `MEDICAL` held both
+drug allergies and chronic conditions, so the only alternative was to treat a
+row as an allergy when its LABEL contains "allergy" — inferring clinical
+meaning from typed text, which this codebase refuses everywhere it matters (the
+order type is read from the stored column and never the service name; the
+standard-prescription seed leaves a dose blank rather than guess it from a drug
+title). Same store: one enum value, no second table.
+
+- `allergyAlerts()` / `nonAllergyAlerts()` in `usePatientAlerts.ts` — the split
+  lives in ONE place, keyed on the stored type.
+- Allergy chip and prescribing banner: `patient.allergies` + ALLERGY alerts.
+- Everything else renders as **"Also on record:"** under the banner, neutral
+  rather than red — chronic conditions stop masquerading as allergies without
+  disappearing.
+- ALLERGY takes the SAME permission as MEDICAL (`patient.alert.medical.write`).
+  Adding the value without that would have handed the front counter a
+  do-not-prescribe list.
+
+**EXISTING ROWS ARE NOT BACKFILLED, and this is a live consequence on staging.**
+A `MEDICAL` alert reading "Penicillin allergy" stays MEDICAL, so it now shows
+under "Also on record:" rather than in the red allergy chip. "Almost certainly
+an allergy" is not a basis for moving a row onto a do-not-prescribe list on a
+patient's behalf. **Real drug allergies should be re-recorded from the alerts
+view**, where ALLERGY is now the default type.
+
+**Testing note that keeps costing time:** Playwright's `getByRole` name is
+SUBSTRING-matched; testing-library's string form is EXACT. A locator that
+passes in vitest can resolve to two elements in Playwright — that is how the
+"Patient details" collision surfaced.
+
 ## b1+b2 PACKAGE — WHAT IS LEFT (next session starts here)
 
 **Phase 1 remainder:**
