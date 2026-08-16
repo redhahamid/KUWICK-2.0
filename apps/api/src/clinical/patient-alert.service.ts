@@ -45,7 +45,11 @@ export class PatientAlertService {
       const nameOf = new Map(staff.map((member) => [member.id, member.fullName]));
       return alerts.map((alert) => ({
         ...alert,
-        createdByName: nameOf.get(alert.createdByStaffId) ?? null,
+        // Null on a MIGRATED row, and left null rather than filled with
+        // "System" or "Unknown". The surface says "carried over from the
+        // patient record" in words; a placeholder NAME would read as an
+        // author, which is the thing nobody can supply here.
+        createdByName: alert.createdByStaffId ? (nameOf.get(alert.createdByStaffId) ?? null) : null,
         deactivatedByName: alert.deactivatedByStaffId ? (nameOf.get(alert.deactivatedByStaffId) ?? null) : null,
       }));
     });

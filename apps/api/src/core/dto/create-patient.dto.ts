@@ -1,4 +1,4 @@
-import { IsArray, IsDateString, IsEnum, IsOptional, IsString, Matches, MinLength, ValidateIf } from 'class-validator';
+import { IsDateString, IsEnum, IsOptional, IsString, Matches, MinLength, ValidateIf } from 'class-validator';
 import { PatientIdentifierType } from '@prisma/client';
 
 // D-022 (docs/DECISIONS.md): basic format validation only, matching the
@@ -50,8 +50,4 @@ export class CreatePatientDto {
   @IsString()
   emergencyContactPhone?: string;
 
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  allergies?: string[];
 }

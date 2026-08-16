@@ -130,7 +130,7 @@ export interface DoctorPhaseEvaluation {
    * naming either is a box to tick rather than a thing to read.
    *
    * THIS IS NOT A CHECK. Nothing here compares the two — there is no drug
-   * dictionary behind `Patient.allergies`, and the server does not pretend to
+   * dictionary behind an ALLERGY alert's free-text label, and the server does not pretend to
    * one. It puts both lists in front of the person who can actually compare
    * them, and records that they said they had.
    */
@@ -156,23 +156,31 @@ async function allergyCheckpointFor(
 ): Promise<AllergyCheckpoint | null> {
   const visit = await tx.visit.findUnique({
     where: { id: visitId },
-    select: { patient: { select: { allergies: true } } },
+    select: { patientId: true },
   });
-  // `Patient.allergies` is a Json column holding a list of free-text entries.
-  // Anything else in there — a string, an object, a null left by an old
-  // import — is not something this can honestly read, so it reads as none
-  // rather than as a warning built from a guess.
-  const raw = visit?.patient?.allergies;
-  const allergies = (Array.isArray(raw) ? raw : [])
-    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
-    .filter((entry): entry is string => entry.length > 0);
+  if (!visit) return null;
+
+  // Read from ALERTS, which is now the only place an allergy is recorded. The
+  // free-text `patients.allergies` column this used to read is gone — one
+  // clinical fact with two stores, one of which had no author and no
+  // timestamp, and the checkpoint was reading the unattributed one.
+  //
+  // NO_KNOWN_ALLERGY is deliberately not selected: a confirmed negative is
+  // exactly the case where there is nothing to check a prescription against.
+  const rows = await tx.patientAlert.findMany({
+    where: { patientId: visit.patientId, active: true, type: 'ALLERGY' },
+    select: { label: true },
+  });
+  const allergies = rows
+    .map((row) => row.label.trim())
+    .filter((label) => label.length > 0);
   if (allergies.length === 0) return null;
 
-  const rows = await tx.prescription.findMany({
+  const prescriptions = await tx.prescription.findMany({
     where: { visitId, deletedAt: null, status: { not: PrescriptionStatus.CANCELLED } },
     select: { item: { select: { name: true } } },
   });
-  const prescribedMedications = rows
+  const prescribedMedications = prescriptions
     .map((row) => row.item?.name)
     .filter((name): name is string => Boolean(name));
   if (prescribedMedications.length === 0) return null;

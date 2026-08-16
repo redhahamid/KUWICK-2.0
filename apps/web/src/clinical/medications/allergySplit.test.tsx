@@ -29,13 +29,17 @@ vi.mock('../../core/api-client', () => ({
 
 const base = { patientId: 'p1', note: null, active: true, createdAt: '2026-08-01T00:00:00Z', createdByStaffId: 's1', createdByName: 'Dr A', deactivatedAt: null, deactivatedByName: null };
 const ALERTS = [
+  // All three drug allergies are ALERTS now — `patient.allergies` is gone, and
+  // NSAIDS/PCM used to come from it. The split being asserted is unchanged.
+  { ...base, id: 'a0a', type: 'ALLERGY', label: 'NSAIDS' },
+  { ...base, id: 'a0b', type: 'ALLERGY', label: 'PCM' },
   { ...base, id: 'a1', type: 'ALLERGY', label: 'AUGMENTIN' },
   { ...base, id: 'a2', type: 'MEDICAL', label: 'DM' },
   { ...base, id: 'a3', type: 'MEDICAL', label: 'HPT' },
   { ...base, id: 'a4', type: 'ACCESSIBILITY', label: 'OKU' },
 ];
 
-const PATIENT = { id: 'p1', name: 'Ujian', allergies: ['NSAIDS', 'PCM'] } as unknown as Patient;
+const PATIENT = { id: 'p1', name: 'Ujian' } as unknown as Patient;
 
 function Harness({ children }: { children: ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -51,12 +55,11 @@ describe('the prescribing banner', () => {
   it('warns on the allergies, and on nothing else', async () => {
     render(
       <Harness>
-        <PatientAllergyStrip allergies={PATIENT.allergies} patientId="p1" />
+        <PatientAllergyStrip patientId="p1" />
       </Harness>,
     );
-    // Awaited: the ALLERGY alerts arrive with a request, while the patient's
-    // own allergies render immediately from props. Asserting too early would
-    // pass for the wrong reason.
+    // Awaited: every allergy now arrives with the alerts request, so there is
+    // nothing rendered synchronously to assert against too early.
     await screen.findByText(/AUGMENTIN/);
     const strip = document.querySelector('[data-allergy-strip]') as HTMLElement;
     expect(strip.textContent).toContain('NSAIDS');
@@ -73,7 +76,7 @@ describe('the prescribing banner', () => {
     // previously see DM on the banner must still see it somewhere.
     render(
       <Harness>
-        <PatientAllergyStrip allergies={PATIENT.allergies} patientId="p1" />
+        <PatientAllergyStrip patientId="p1" />
       </Harness>,
     );
     const others = await screen.findByText(/Also on record:/);
@@ -83,10 +86,10 @@ describe('the prescribing banner', () => {
   });
 
   it('renders no other-alerts line when there are none', async () => {
-    get.mockImplementation(async () => []);
+    get.mockImplementation(async () => [{ ...base, id: 'only', type: 'ALLERGY', label: 'NSAIDS' }]);
     render(
       <Harness>
-        <PatientAllergyStrip allergies={['NSAIDS']} patientId="p1" />
+        <PatientAllergyStrip patientId="p1" />
       </Harness>,
     );
     await screen.findByText(/NSAIDS/);

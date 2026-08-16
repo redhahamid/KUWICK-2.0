@@ -14,6 +14,16 @@ import { apiClient } from '../../core/api-client';
 export type PatientAlertType =
   /** DO NOT PRESCRIBE. Feeds the allergy chip and the prescribing banner. */
   | 'ALLERGY'
+  /**
+   * The CONFIRMED NEGATIVE — somebody asked, and the answer was none.
+   *
+   * It exists because absence cannot say this. No ALLERGY alert means nobody
+   * has recorded one, which is the same shape as nobody having asked, and the
+   * difference between those two is the whole reason the banner has three
+   * states. `patient.allergies = []` used to carry it; this carries it now,
+   * with an author and a timestamp the array never had.
+   */
+  | 'NO_KNOWN_ALLERGY'
   /** Take into account — chronic conditions, pregnancy, anticoagulation. */
   | 'MEDICAL'
   | 'ACCESSIBILITY'
@@ -28,7 +38,18 @@ export interface PatientAlert {
   note: string | null;
   active: boolean;
   createdAt: string;
-  createdByStaffId: string;
+  /**
+   * Null ONLY on a row carried over from the old `patient.allergies` field,
+   * which had no author to name. A database CHECK refuses an unattributed row
+   * from anywhere else.
+   */
+  createdByStaffId: string | null;
+  /**
+   * HUMAN — somebody recorded this. MIGRATED — carried over from the free-text
+   * allergy field, where nobody knows who typed it. Surfaces say so in words
+   * rather than filling the blank with "System", which would read as an author.
+   */
+  origin?: 'HUMAN' | 'MIGRATED';
   /** Resolved server-side for the audit line. Null where the staff row is gone. */
   createdByName: string | null;
   deactivatedAt: string | null;
@@ -138,7 +159,25 @@ export function allergyAlerts(alerts: PatientAlert[] | undefined): PatientAlert[
  * hidden either: they show here until a clinician re-records them.
  */
 export function nonAllergyAlerts(alerts: PatientAlert[] | undefined): PatientAlert[] {
-  return activeAlerts(alerts).filter((alert) => alert.type !== 'ALLERGY');
+  return activeAlerts(alerts).filter(
+    // NO_KNOWN_ALLERGY is excluded as well as ALLERGY. It belongs to the
+    // allergy question, and rendering "No known allergy" under "Also on
+    // record:" alongside the wheelchair and the language would read as a
+    // finding rather than as the answer to a question.
+    (alert) => alert.type !== 'ALLERGY' && alert.type !== 'NO_KNOWN_ALLERGY',
+  );
+}
+
+/**
+ * The confirmed negative, if somebody recorded one.
+ *
+ * Only meaningful when there is no ALLERGY alert: a patient can have been
+ * asked, answered none, and later turned out to react to something. In that
+ * order the allergies win, and the stale negative is simply outranked rather
+ * than treated as a contradiction the UI has to resolve.
+ */
+export function noKnownAllergyAlerts(alerts: PatientAlert[] | undefined): PatientAlert[] {
+  return activeAlerts(alerts).filter((alert) => alert.type === 'NO_KNOWN_ALLERGY');
 }
 
 /**

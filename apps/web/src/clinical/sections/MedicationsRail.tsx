@@ -133,7 +133,6 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
         // know yet" must not render as "nobody asked".
         banner={
           <PatientAllergyStrip
-            allergies={visit ? (visit.patient?.allergies ?? null) : undefined}
             patientId={visit?.patient?.id}
           />
         }

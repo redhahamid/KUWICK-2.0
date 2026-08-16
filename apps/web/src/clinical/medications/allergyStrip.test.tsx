@@ -32,18 +32,19 @@ describe('what the strip says', () => {
   });
 
   it('NEVER ASKED is its own warning — absence of data is a finding', () => {
-    expect(allergyStripText(null)).toBe('⚠ Allergy not asked');
-    expect(allergyStripText(undefined)).toBe('⚠ Allergy not asked');
+    expect(allergyStripText([])).toBe('⚠ Allergy not asked');
   });
 
   it('ASKED AND NONE KNOWN renders nothing at all', () => {
-    expect(allergyStripText([])).toBeNull();
+    // It takes a RECORDED negative to claim this now — an empty list is what
+    // "nobody asked" looks like too, and the two must not collapse.
+    expect(allergyStripText([], true)).toBeNull();
   });
 
   it('a list of blank entries is "none known", not a warning with no words', () => {
     // A strip reading "⚠ ALLERGIES:  — check before prescribing" is worse
     // than no strip: it warns and then names nothing.
-    expect(allergyStripText(['', '   '])).toBeNull();
+    expect(allergyStripText(['', '   '], true)).toBeNull();
   });
 
   it('claims no check it does not perform', () => {
@@ -56,7 +57,7 @@ describe('what the strip says', () => {
 
 describe('how the strip behaves', () => {
   it('is amber and advisory, never an assertive alarm', () => {
-    const { container } = render(<AllergyStrip allergies={['NSAIDs']} />);
+    const { container } = render(<AllergyStrip allergyLabels={['NSAIDs']} />);
     const strip = container.querySelector('.kw-allergy-strip');
     // role=status, not role=alert: this is a standing condition, not
     // something that just happened, and it must not interrupt a screen
@@ -66,7 +67,7 @@ describe('how the strip behaves', () => {
   });
 
   it('cannot be dismissed — there is no control on it at all', () => {
-    const { container } = render(<AllergyStrip allergies={['NSAIDs']} />);
+    const { container } = render(<AllergyStrip allergyLabels={['NSAIDs']} />);
     const strip = container.querySelector('.kw-allergy-strip');
     expect(strip?.querySelector('button')).toBeNull();
     expect(strip?.querySelector('[aria-label="Close"]')).toBeNull();
@@ -75,7 +76,7 @@ describe('how the strip behaves', () => {
   it('blocks nothing — it renders no overlay and traps no focus', () => {
     render(
       <div>
-        <AllergyStrip allergies={['NSAIDs']} />
+        <AllergyStrip allergyLabels={['NSAIDs']} />
         <button>Add medication</button>
       </div>,
     );
@@ -86,17 +87,17 @@ describe('how the strip behaves', () => {
   });
 
   it('the three states are distinguishable as data, not only as pixels', () => {
-    const { container, rerender } = render(<AllergyStrip allergies={['NSAIDs']} />);
+    const { container, rerender } = render(<AllergyStrip allergyLabels={['NSAIDs']} />);
     expect(container.querySelector('[data-allergy-strip]')).toHaveAttribute(
       'data-allergy-strip',
       'PRESENT',
     );
-    rerender(<AllergyStrip allergies={null} />);
+    rerender(<AllergyStrip allergyLabels={[]} />);
     expect(container.querySelector('[data-allergy-strip]')).toHaveAttribute(
       'data-allergy-strip',
       'NONE_RECORDED',
     );
-    rerender(<AllergyStrip allergies={[]} />);
+    rerender(<AllergyStrip allergyLabels={[]} askedAndNoneKnown />);
     expect(container.querySelector('[data-allergy-strip]')).toBeNull();
   });
 });
@@ -113,37 +114,30 @@ describe('how the strip behaves', () => {
 // stops being read.
 // ===========================================================================
 
-describe('a MEDICAL alert counts as a recorded allergy', () => {
-  it('turns "not asked" into the patient\'s own words', () => {
-    expect(allergyStripText(null, ['Penicillin allergy'])).toContain('Penicillin allergy');
-    expect(allergyStripText(null, ['Penicillin allergy'])).not.toContain(ALLERGY_NOT_ASKED);
-    expect(allergyBannerState(null, ['Penicillin allergy'])).toBe('PRESENT');
+describe('the three states now come from alerts alone', () => {
+  it('a recorded ALLERGY alert turns "not asked" into the patient\'s own words', () => {
+    expect(allergyStripText(['Penicillin allergy'])).toContain('Penicillin allergy');
+    expect(allergyStripText(['Penicillin allergy'])).not.toContain(ALLERGY_NOT_ASKED);
+    expect(allergyBannerState(['Penicillin allergy'])).toBe('PRESENT');
   });
 
-  it('joins the quick-record entries rather than replacing them', () => {
-    // Verbatim, both sources. A summarised allergy is a changed allergy.
-    const text = allergyStripText(['Seafood'], ['Penicillin allergy']);
-    expect(text).toContain('Seafood');
-    expect(text).toContain('Penicillin allergy');
+  it('a CONFIRMED negative renders nothing, and takes a record to claim', () => {
+    // The distinction the whole retirement had to preserve. `allergies = []`
+    // used to carry "asked, none known"; a NO_KNOWN_ALLERGY alert carries it
+    // now, and WITHOUT one an empty list is "nobody asked".
+    expect(allergyStripText([], true)).toBeNull();
+    expect(allergyBannerState([], true)).toBe('NONE_KNOWN');
+    expect(allergyStripText([], false)).toBe(ALLERGY_NOT_ASKED);
+    expect(allergyBannerState([], false)).toBe('NONE_RECORDED');
   });
 
-  it('can only move the state TOWARDS present', () => {
-    // A confirmed "none known" with no medical alert still renders NOTHING.
-    // Papering a negative answer with a warning is how the other states stop
-    // being read.
-    expect(allergyStripText([], [])).toBeNull();
-    expect(allergyBannerState([], [])).toBe('NONE_KNOWN');
-    // And a medical alert on record means somebody asked.
-    expect(allergyBannerState([], ['Latex'])).toBe('PRESENT');
-  });
-
-  it('still says "not asked" when neither source has anything', () => {
-    expect(allergyStripText(null, [])).toBe(ALLERGY_NOT_ASKED);
-    expect(allergyBannerState(null, [])).toBe('NONE_RECORDED');
+  it('an allergy outranks a stale negative rather than contradicting it', () => {
+    // Asked-and-none in March does not survive a reaction recorded in June.
+    expect(allergyBannerState(['Latex'], true)).toBe('PRESENT');
   });
 
   it('ignores blank labels rather than rendering an empty warning', () => {
-    expect(allergyStripText(null, ['   '])).toBe(ALLERGY_NOT_ASKED);
+    expect(allergyStripText(['   '])).toBe(ALLERGY_NOT_ASKED);
   });
 });
 
@@ -162,23 +156,23 @@ describe('the allergy banner carries allergies ONLY', () => {
   it('a chronic condition never reaches the allergy text', () => {
     // Passed as an allergy label it would; the point is that the CALLER now
     // only ever hands it allergies. This pins the contract the caller relies on.
-    const text = allergyStripText(['NSAIDS'], ['AUGMENTIN']);
+    const text = allergyStripText(['NSAIDS', 'AUGMENTIN']);
     expect(text).toContain('NSAIDS');
     expect(text).toContain('AUGMENTIN');
     expect(text).not.toContain('DM');
     expect(text).not.toContain('HPT');
   });
 
-  it('the words are the union of the two ALLERGY sources, and nothing else', () => {
-    expect(allergyWords(['NSAIDS'], ['Penicillin allergy'])).toEqual(['NSAIDS', 'Penicillin allergy']);
+  it('the words are the ALLERGY labels, verbatim and in order', () => {
+    expect(allergyWords(['NSAIDS', 'Penicillin allergy'])).toEqual(['NSAIDS', 'Penicillin allergy']);
   });
 
   it('still says "not asked" when only a chronic condition is on record', () => {
     // A patient with diabetes and no allergy question asked has NOT been asked
     // about allergies. Letting the chronic condition satisfy the allergy state
     // would silence the one warning that matters.
-    expect(allergyBannerState(null, [])).toBe('NONE_RECORDED');
-    expect(allergyStripText(null, [])).toBe(ALLERGY_NOT_ASKED);
+    expect(allergyBannerState([], false)).toBe('NONE_RECORDED');
+    expect(allergyStripText([], false)).toBe(ALLERGY_NOT_ASKED);
   });
 });
 
@@ -186,15 +180,16 @@ describe('the allergy banner carries allergies ONLY', () => {
 // b1.5 FIX 2 — THE SAME ALLERGY, RECORDED TWICE, READS ONCE.
 //
 // Staging showed "NSAIDS, AUGMENTIN, PCM, NSAIDS": the drug was in
-// `patient.allergies` AND had since been recorded as an ALLERGY alert. Both
-// stores are legitimate and neither is being merged — but a repeat in the chip
-// reads as two separate findings, and makes the one line that must be exact
-// look careless.
+// `patient.allergies` AND had since been recorded as an ALLERGY alert. That
+// pair of stores is now one, so THAT cause is gone — but two clinicians can
+// still record the same allergy in different words on different days, and a
+// repeat in the chip reads as two separate findings about the one line that
+// must be exact. The dedup stays for that.
 // ===========================================================================
 
 describe('the allergy words are deduplicated for display', () => {
   it('the staging case reads once', () => {
-    expect(allergyWords(['NSAIDS', 'AUGMENTIN', 'PCM'], ['NSAIDS'])).toEqual([
+    expect(allergyWords(['NSAIDS', 'AUGMENTIN', 'PCM', 'NSAIDS'])).toEqual([
       'NSAIDS',
       'AUGMENTIN',
       'PCM',
@@ -202,27 +197,27 @@ describe('the allergy words are deduplicated for display', () => {
   });
 
   it('ignores case and surrounding whitespace', () => {
-    expect(allergyWords(['NSAIDS'], ['  nsaids  '])).toEqual(['NSAIDS']);
-    expect(allergyWords(['Penicillin'], ['PENICILLIN'])).toEqual(['Penicillin']);
+    expect(allergyWords(['NSAIDS', '  nsaids  '])).toEqual(['NSAIDS']);
+    expect(allergyWords(['Penicillin', 'PENICILLIN'])).toEqual(['Penicillin']);
   });
 
   it('keeps the FIRST spelling — the patient\'s own words survive', () => {
-    // `patient.allergies` is what the patient said. A later re-entry in a
-    // different case must not overwrite how it was recorded.
-    expect(allergyWords(['penicillin'], ['Penicillin'])).toEqual(['penicillin']);
+    // The earliest record is closest to what the patient said. A later
+    // re-entry in a different case must not overwrite how it was recorded.
+    expect(allergyWords(['penicillin', 'Penicillin'])).toEqual(['penicillin']);
   });
 
   it('deduplicates within a single source too', () => {
-    expect(allergyWords(['NSAIDS', 'nsaids'], [])).toEqual(['NSAIDS']);
+    expect(allergyWords(['NSAIDS', 'nsaids'])).toEqual(['NSAIDS']);
   });
 
   it('keeps genuinely different drugs apart', () => {
     // Dedup must not become fuzzy matching: these are two different drugs.
-    expect(allergyWords(['Penicillin'], ['Penicillamine'])).toEqual(['Penicillin', 'Penicillamine']);
+    expect(allergyWords(['Penicillin', 'Penicillamine'])).toEqual(['Penicillin', 'Penicillamine']);
   });
 
   it('the rendered strip says it once', () => {
-    expect(allergyStripText(['NSAIDS', 'PCM'], ['NSAIDS'])).toBe(
+    expect(allergyStripText(['NSAIDS', 'PCM', 'NSAIDS'])).toBe(
       `${ALLERGY_STRIP_PREFIX} NSAIDS, PCM ${ALLERGY_STRIP_SUFFIX}`,
     );
   });

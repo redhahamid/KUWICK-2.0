@@ -3,7 +3,7 @@
  *
  * THIS IS NOT AN INTERACTION CHECK, AND MUST NEVER READ AS ONE.
  *
- * `Patient.allergies` is free text a receptionist typed. There is no drug
+ * An ALLERGY alert's label is free text somebody typed. There is no drug
  * dictionary behind it, no ingredient mapping, no cross-reactivity table.
  * What can honestly be done is compare strings and say so — which is worth
  * doing, because "Penicillin" against "Tab Penicillin V 250mg" is a match a
@@ -21,13 +21,19 @@ export type AllergyRecordState = 'NONE_RECORDED' | 'NONE_KNOWN' | 'PRESENT';
  * Three states, not two.
  *
  * "Never asked" and "asked, none known" are different clinical facts and the
- * modal says so: an empty allergy field on a new patient is a question nobody
- * put, not a negative answer.
+ * modal says so. The second one takes a recorded answer to claim — no alert at
+ * all is a question nobody put, not a negative answer.
  */
-export function allergyRecordState(allergies: string[] | null | undefined): AllergyRecordState {
-  if (allergies === null || allergies === undefined) return 'NONE_RECORDED';
-  const real = allergies.filter((entry) => entry?.trim());
-  return real.length > 0 ? 'PRESENT' : 'NONE_KNOWN';
+export function allergyRecordState(
+  allergies: string[] | null | undefined,
+  askedAndNoneKnown = false,
+): AllergyRecordState {
+  const real = (allergies ?? []).filter((entry) => entry?.trim());
+  if (real.length > 0) return 'PRESENT';
+  // NONE_KNOWN is now a POSITIVE record — a NO_KNOWN_ALLERGY alert — rather
+  // than an empty array. An absent list can no longer be read as a negative
+  // answer, because absence is exactly what "nobody asked" looks like.
+  return askedAndNoneKnown ? 'NONE_KNOWN' : 'NONE_RECORDED';
 }
 
 /** The heading above the patient's own words. Never paraphrased. */

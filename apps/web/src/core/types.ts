@@ -33,7 +33,9 @@ export interface Patient {
   address: string | null;
   emergencyContactName: string | null;
   emergencyContactPhone: string | null;
-  allergies: string[] | null;
+  // `allergies` was here. It is gone: an allergy is recorded as an ALLERGY
+  // alert, with an author and a timestamp, and "no known allergy" as a
+  // NO_KNOWN_ALLERGY alert. One clinical fact, one store.
 }
 
 export interface CreatePatientDto {
@@ -47,7 +49,6 @@ export interface CreatePatientDto {
   address?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
-  allergies?: string[];
 }
 
 export type UpdatePatientDto = Partial<CreatePatientDto>;

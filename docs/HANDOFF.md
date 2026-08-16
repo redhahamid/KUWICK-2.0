@@ -242,6 +242,67 @@ Two things worth knowing before touching this:
   `Modal.destroyAll()` in an `afterEach`, or the NEXT test finds two of every
   button.
 
+**ONE PLACE TO RECORD AN ALLERGY (2026-08-16).** `patients.allergies` is
+DROPPED. Every allergy is an ALLERGY alert; "asked, none known" is a
+NO_KNOWN_ALLERGY alert. The header quick-record chip STAYS — two clicks
+mid-consult is what gets allergies recorded at all — only its destination
+changed.
+
+Migrations: `20260816140000_no_known_allergy_is_an_answer` (the enum value
+alone, because PostgreSQL will not let a new enum value be USED in the
+transaction that adds it) then `20260816150000_one_place_to_record_an_allergy`
+(origin column, nullable author, CHECK, backfill, verification, drop).
+
+**The owner's attribution decision.** `created_by_staff_id` is now NULLABLE, and
+a CHECK permits the null ONLY when `origin = 'MIGRATED'`. Nothing in the API can
+write MIGRATED — it is in no DTO and the service does not accept it — so the
+exemption cannot spread. The rejected alternative was a system staff row, which
+would have put a non-person into the table that HR screens, rosters, user lists
+and every staff picker read. The migration TIMESTAMP is the migration's own and
+the row says so: it records when Kuwick learned this, the only date anybody
+knows.
+
+**The backfill was verified on a scratch database before the drop**, because
+this migration destroys its own source. Method worth repeating: `createdb`, move
+the last migration folder aside, `migrate deploy`, insert fixtures, move it
+back, `migrate deploy`. Verified: two entries → two ALLERGY alerts; `[]` →
+NO_KNOWN_ALLERGY; `["  "]` → NO_KNOWN_ALLERGY (whitespace is not an allergy);
+NULL → nothing (never asked stays never asked); an existing HUMAN alert with the
+same label case-insensitively → no duplicate. The migration also REFUSES to drop
+the column if any patient with a non-null array has no corresponding alert.
+
+**RLS trap for any future data migration.** `patient_alerts` is under FORCE ROW
+LEVEL SECURITY and its INSERT policy tests `current_setting('app.tenant_id')`,
+which no migration sets — and FORCE applies to the table owner too. The backfill
+does `ALTER TABLE ... NO FORCE ROW LEVEL SECURITY`, copies, then restores it.
+Any migration inserting into an RLS table needs the same.
+
+What changed in code:
+- `allergyBannerState` / `allergyStripText` / `allergyWords` take alert LABELS
+  plus an explicit `askedAndNoneKnown`, not a patient object. `NONE_KNOWN` now
+  requires a POSITIVE record — an empty list is indistinguishable from nobody
+  asking, and collapsing those two would have put "Allergy not asked" back on
+  every patient who had already answered.
+- `AllergyQuickRecord` writes alerts: new words POST, removed words PATCH to
+  deactivate (resolve, never delete), an emptied box posts NO_KNOWN_ALLERGY, and
+  recording an allergy retires a standing negative so the history reads as the
+  sequence it was.
+- `headerAllergyState(labels, askedAndNoneKnown)`, `PatientSummarySidebar`,
+  `CopyRxModal` (fetches alerts itself now, so its row-level "possible match"
+  and the strip cannot disagree), `EditPatientDrawer` (field removed),
+  `doctor-completion.service` allergy checkpoint (reads active ALLERGY alerts,
+  deliberately not NO_KNOWN_ALLERGY).
+- `NO_KNOWN_ALLERGY` takes `patient.alert.medical.write` like ALLERGY. Letting
+  the front counter write it would let the counter clear a do-not-prescribe
+  warning.
+- The display-layer dedup STAYS. Its old cause (the same drug in both stores) is
+  gone, but two clinicians can still record the same allergy in different words.
+
+**Known untidy:** `apps/api/prisma/kw2-shots-a.ts` and `kw2-parity-shots-2b.ts`
+still PATCH `{ allergies }`. They are screenshot/parity dev tools, excluded from
+tsconfig and not run by CI, and they need rewriting against the alerts API
+before they will work again.
+
 ## Checklist state
 
 | Item | Status |

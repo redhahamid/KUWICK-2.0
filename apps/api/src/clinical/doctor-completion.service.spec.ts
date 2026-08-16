@@ -33,6 +33,8 @@ interface World {
   branchCount?: number;
   /** D-094 — active consultation tariff rules ([] = the feature is off). */
   tariffRules?: Array<Record<string, unknown>>;
+  /** Active ALLERGY alerts, which is where the checkpoint reads from now. */
+  allergyAlerts?: Array<{ label: string }>;
 }
 
 function build(actor: Record<string, unknown> | null, world: World = {}) {
@@ -46,6 +48,7 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
     services = 0,
     branchCount = 1,
     tariffRules = [],
+    allergyAlerts = [],
   } = world;
 
   const directory: Record<string, unknown> = {};
@@ -72,6 +75,11 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
       update: jest.fn(),
     },
     clinicalNote: { count: jest.fn().mockResolvedValue(signedNotes) },
+    // The allergy checkpoint reads ALLERGY alerts now — `patient.allergies` is
+    // gone. Empty by default: these tests are about completion routing, and a
+    // checkpoint only appears when the patient has allergies AND the visit
+    // prescribes, which allergyCheckpoint.spec.ts covers on its own.
+    patientAlert: { findMany: jest.fn().mockResolvedValue(allergyAlerts) },
     orderService: {
       count: jest.fn(async ({ where }: any) => (where?.status?.in ? openProcedures : services)),
       // D-093 — the billing worklist reads orders itemised. STANDARD_SERVICE
@@ -835,5 +843,46 @@ describe('the write refuses with the same structured blockers', () => {
       response: { blockers: [{ code: 'QUEUE_STATE_INELIGIBLE' }] },
     });
     expect(ctx.tx.visit.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// THE ALLERGY CHECKPOINT READS ALERTS, NOT A FREE-TEXT COLUMN.
+//
+// It used to read `patients.allergies` — a JSON array with no author and no
+// timestamp. That column is gone; every allergy is an ALLERGY alert now. What
+// matters here is that the checkpoint kept working across the move, because it
+// is the last thing between a doctor and completing a consultation with a
+// prescription the patient reacts to.
+// ===========================================================================
+describe('the allergy checkpoint, after allergies moved to alerts', () => {
+  // A named medicine, because the checkpoint only asks when there is both an
+  // allergy AND something prescribed to compare it against.
+  const prescribing = {
+    prescriptions: [{ supplyMode: 'CLINIC_SUPPLY', status: 'ORDERED', item: { name: 'Tab Penicillin V' } }],
+  };
+
+  it('puts the recorded allergies in front of the doctor, verbatim', async () => {
+    const ctx = build(DR_A, { ...prescribing, allergyAlerts: [{ label: 'NSAIDS' }, { label: 'Penicillin' }] });
+    const status = await read(ctx);
+    expect(status.allergyCheckpoint?.allergies).toEqual(['NSAIDS', 'Penicillin']);
+  });
+
+  it('asks nothing when there is nothing on record', async () => {
+    const ctx = build(DR_A, prescribing);
+    const status = await read(ctx);
+    expect(status.allergyCheckpoint).toBeNull();
+  });
+
+  it('reads ACTIVE ALLERGY alerts only — not a resolved one, not a chronic condition', async () => {
+    // The query is the assertion here: a checkpoint built from MEDICAL alerts
+    // would put "Type 2 diabetes" in a do-not-prescribe comparison, and one
+    // built from resolved rows would warn about an allergy a doctor already
+    // retired.
+    const ctx = build(DR_A, { ...prescribing, allergyAlerts: [{ label: 'NSAIDS' }] });
+    await read(ctx);
+    expect(ctx.tx.patientAlert.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ active: true, type: 'ALLERGY' }) }),
+    );
   });
 });

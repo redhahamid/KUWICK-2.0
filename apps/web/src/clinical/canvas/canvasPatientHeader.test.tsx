@@ -40,7 +40,6 @@ const patient = (over: Partial<Patient> = {}): Patient =>
     gender: 'Female',
     identifierType: 'NRIC',
     identifierValue: '000000-00-1001',
-    allergies: [],
     ...over,
   }) as Patient;
 
@@ -178,28 +177,41 @@ describe('hold and resume', () => {
 });
 
 describe('allergy state — three answers, not two', () => {
-  it('5. a recorded allergy is stated in full and marked', () => {
-    renderHeader({ patient: patient({ allergies: ['NSAIDs', 'Penicillin'] }) });
-    expect(screen.getByText(/NSAIDs, Penicillin/)).toBeInTheDocument();
+  // Read from ALERTS now. `patient.allergies` is gone: one clinical fact had
+  // two stores, and the header chip wrote to the one with no author.
+  it('5. a recorded allergy is stated in full and marked', async () => {
+    get.mockImplementation(async (url: string) =>
+      String(url).includes('/alerts')
+        ? [alert('a1', 'ALLERGY', 'NSAIDs'), alert('a2', 'ALLERGY', 'Penicillin')]
+        : [],
+    );
+    renderHeader();
+    expect(await screen.findByText(/NSAIDs, Penicillin/)).toBeInTheDocument();
   });
 
-  it('6. asked-and-none reads as a negative answer', () => {
-    renderHeader({ patient: patient({ allergies: [] }) });
-    expect(screen.getByText(/No known allergy/)).toBeInTheDocument();
+  it('6. asked-and-none reads as a negative answer', async () => {
+    get.mockImplementation(async (url: string) =>
+      String(url).includes('/alerts') ? [alert('a1', 'NO_KNOWN_ALLERGY', 'No known allergy')] : [],
+    );
+    renderHeader();
+    expect(await screen.findByText(/No known allergy/)).toBeInTheDocument();
   });
 
-  it('7. NEVER ASKED is its own state, and says so', () => {
-    // The failure this prevents: a new patient's blank allergy field reading
-    // as "no known allergy" — a negative answer nobody gave.
-    renderHeader({ patient: patient({ allergies: null as never }) });
-    expect(screen.getByText(/Allergy not asked/)).toBeInTheDocument();
+  it('7. NEVER ASKED is its own state, and says so', async () => {
+    // The failure this prevents, and the one the retirement had to be careful
+    // about: with no allergy record at all, the chip must NOT read as a
+    // negative answer nobody gave.
+    renderHeader();
+    expect(await screen.findByText(/Allergy not asked/)).toBeInTheDocument();
     expect(screen.queryByText(/No known allergy/)).not.toBeInTheDocument();
   });
 
   it('8. the three states are distinguishable as data, not only as pixels', () => {
-    expect(headerAllergyState({ allergies: null as never })).toBe('NONE_RECORDED');
-    expect(headerAllergyState({ allergies: [] })).toBe('NONE_KNOWN');
-    expect(headerAllergyState({ allergies: ['NSAIDs'] })).toBe('PRESENT');
+    expect(headerAllergyState([], false)).toBe('NONE_RECORDED');
+    expect(headerAllergyState([], true)).toBe('NONE_KNOWN');
+    expect(headerAllergyState(['NSAIDs'], false)).toBe('PRESENT');
+    // An allergy outranks a stale negative rather than contradicting it.
+    expect(headerAllergyState(['NSAIDs'], true)).toBe('PRESENT');
   });
 });
 

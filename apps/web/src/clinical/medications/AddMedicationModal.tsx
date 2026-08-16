@@ -553,7 +553,6 @@ export function AddMedicationModal({
           believes it is still being read. Here it is simply present, above
           the search, for as long as the form is open. */}
       <PatientAllergyStrip
-        allergies={visit?.patient ? (visit.patient.allergies ?? null) : undefined}
         patientId={visit?.patient?.id}
         compact
       />

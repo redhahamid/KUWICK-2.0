@@ -5,6 +5,7 @@ import { apiClient, ApiError } from '../../core/api-client';
 import { useCopyPrescriptions } from '../hooks/usePrescriptions';
 import { Prescription, VisitHistoryDetail } from '../types';
 import { POSSIBLE_MATCH_LABEL, copyButtonLabel, decorateCandidates } from './copyRx';
+import { allergyAlerts, usePatientAlerts } from '../hooks/usePatientAlerts';
 import { PatientAllergyStrip } from './AllergyStrip';
 
 const { Text } = Typography;
@@ -33,8 +34,6 @@ export interface CopyRxModalProps {
   patientId: string;
   /** The visit being copied TO — the one in progress. */
   targetVisitId: string;
-  /** The patient's recorded allergies, exactly as stored. */
-  allergies: string[] | null | undefined;
   onClose: () => void;
 }
 
@@ -44,7 +43,6 @@ export function CopyRxModal({
   sourceLabel,
   patientId,
   targetVisitId,
-  allergies,
   onClose,
 }: CopyRxModalProps) {
   const [selected, setSelected] = useState<string[]>([]);
@@ -79,6 +77,12 @@ export function CopyRxModal({
     [data],
   );
 
+  // Read from ALERTS rather than taken as a prop. The prop used to carry
+  // `patient.allergies`, which is gone; reading here also means the row-level
+  // "possible allergy match" and the strip above it cannot disagree about what
+  // the patient is allergic to.
+  const { data: alerts } = usePatientAlerts(patientId);
+  const allergies = useMemo(() => allergyAlerts(alerts).map((alert) => alert.label), [alerts]);
   const rows = useMemo(() => decorateCandidates(candidates, allergies), [candidates, allergies]);
 
   // Everything starts ticked: the common case is carrying the whole
@@ -134,7 +138,7 @@ export function CopyRxModal({
           A confirmed "none known" renders nothing at all. Papering a negative
           answer with a warning is how the other two states stop being read. */}
       <div style={{ marginTop: 12 }} data-testid="copy-rx-allergies">
-        <PatientAllergyStrip allergies={allergies} patientId={patientId} compact />
+        <PatientAllergyStrip patientId={patientId} compact />
       </div>
 
       {isLoading && <Skeleton active paragraph={{ rows: 3 }} style={{ marginTop: 12 }} />}

@@ -45,7 +45,6 @@ const PATIENT: Patient = {
   address: 'Jalan Satu',
   emergencyContactName: 'Ahmad',
   emergencyContactPhone: '0198887777',
-  allergies: null,
 };
 
 let IMPACT = { visits: 0, invoices: 0, documents: 0 };

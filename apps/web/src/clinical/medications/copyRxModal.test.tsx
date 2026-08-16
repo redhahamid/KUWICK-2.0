@@ -52,15 +52,46 @@ const DETAIL = {
   ],
 };
 
+/**
+ * The allergies the modal reads. They come from ALERTS now — `patient.allergies`
+ * is gone, and the modal fetches them itself so its row-level "possible match"
+ * and the strip above it cannot disagree about what the patient reacts to.
+ */
+const alertRow = (label: string, type = 'ALLERGY') => ({
+  id: `alert-${label}`,
+  patientId: 'patient-1',
+  type,
+  label,
+  note: null,
+  active: true,
+  createdAt: '2026-08-01T00:00:00Z',
+  createdByStaffId: 's1',
+  createdByName: 'Dr A',
+  deactivatedAt: null,
+  deactivatedByName: null,
+});
+let ALERTS: ReturnType<typeof alertRow>[] = [];
+
 beforeEach(() => {
+  ALERTS = [];
   get.mockReset();
   post.mockReset();
   message.destroy();
-  get.mockResolvedValue(DETAIL);
+  get.mockImplementation(async (url: string) =>
+    String(url).includes('/alerts') ? ALERTS : DETAIL,
+  );
   post.mockResolvedValue({ prescriptions: [], supplySummary: '' });
 });
 
 const renderModal = (allergies: string[] | null = null, onClose = vi.fn()) => {
+  // null means "nobody asked" — no alert at all. An empty array is the
+  // confirmed negative, which now takes a NO_KNOWN_ALLERGY record to say.
+  ALERTS =
+    allergies === null
+      ? []
+      : allergies.length > 0
+        ? allergies.map((label) => alertRow(label))
+        : [alertRow('No known allergy', 'NO_KNOWN_ALLERGY')];
   render(
     <Harness>
       <CopyRxModal
@@ -69,7 +100,6 @@ const renderModal = (allergies: string[] | null = null, onClose = vi.fn()) => {
         sourceLabel="4 Aug · 02:18"
         patientId="patient-1"
         targetVisitId="visit-today"
-        allergies={allergies}
         onClose={onClose}
       />
     </Harness>,

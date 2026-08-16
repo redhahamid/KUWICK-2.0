@@ -1,6 +1,7 @@
 import { Button, Card, Descriptions, Space, Tag, Typography } from 'antd';
 import { HistoryOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { allergyAlerts, noKnownAllergyAlerts, usePatientAlerts } from './hooks/usePatientAlerts';
 import { Patient } from '../core/types';
 import { Visit } from './types';
 
@@ -34,7 +35,11 @@ export function PatientSummarySidebar({
 }: PatientSummarySidebarProps) {
   const age = patient.dob ? dayjs().diff(dayjs(patient.dob), 'year') : null;
   const lastVisit = visits?.[0];
-  const hasAllergies = patient.allergies && patient.allergies.length > 0;
+  // Alerts, not the retired free-text column. Same card, same red tags — what
+  // changed underneath is that every one of these words now has an author.
+  const { data: alerts } = usePatientAlerts(patient.id);
+  const allergies = allergyAlerts(alerts).map((alert) => alert.label);
+  const askedAndNoneKnown = noKnownAllergyAlerts(alerts).length > 0;
 
   return (
     <Space direction="vertical" size={8} style={{ width: '100%' }}>
@@ -65,16 +70,21 @@ export function PatientSummarySidebar({
       </Card>
 
       <Card size="small" title="Allergies">
-        {hasAllergies ? (
+        {allergies.length > 0 ? (
           <Space wrap>
-            {patient.allergies!.map((allergy) => (
+            {allergies.map((allergy) => (
               <Tag color="red" key={allergy}>
                 {allergy}
               </Tag>
             ))}
           </Space>
+        ) : askedAndNoneKnown ? (
+          // Green only for a CONFIRMED negative. "None recorded" used to cover
+          // both this and nobody having asked, which reads as reassurance the
+          // record cannot actually give.
+          <Tag color="green">No known allergy</Tag>
         ) : (
-          <Tag color="green">None recorded</Tag>
+          <Tag color="orange">Not asked</Tag>
         )}
       </Card>
 

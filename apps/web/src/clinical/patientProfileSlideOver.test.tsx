@@ -37,7 +37,6 @@ const PATIENT: Patient = {
   address: 'Jalan Satu',
   emergencyContactName: 'Ahmad',
   emergencyContactPhone: '0198887777',
-  allergies: null,
 };
 
 const PENICILLIN = {

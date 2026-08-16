@@ -62,7 +62,6 @@ function EditPatientForm({ patient, onClose }: { patient: Patient; onClose: () =
         emergencyContactName: patient.emergencyContactName ?? undefined,
         emergencyContactPhone: patient.emergencyContactPhone ?? undefined,
         dob: patient.dob ? dayjs(patient.dob) : undefined,
-        allergies: patient.allergies ?? [],
       }}
     >
       <Form.Item name="name" label="Name" rules={[{ required: true }]}>
@@ -100,9 +99,10 @@ function EditPatientForm({ patient, onClose }: { patient: Patient; onClose: () =
       <Form.Item name="emergencyContactPhone" label="Emergency Contact Phone">
         <Input />
       </Form.Item>
-      <Form.Item name="allergies" label="Known Allergies">
-        <Select mode="tags" open={false} placeholder="Type an allergy and press Enter" />
-      </Form.Item>
+      {/* Allergies are recorded as ALERTS now, from the header chip or the
+          alerts view — with an author and a timestamp this free-text field
+          never had. A second box here would put the same clinical fact back
+          into two stores, which is the duplication that was just removed. */}
       <Button type="primary" htmlType="submit" loading={updatePatient.isPending} block>
         Save
       </Button>

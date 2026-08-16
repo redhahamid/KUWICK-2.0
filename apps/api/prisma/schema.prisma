@@ -492,7 +492,6 @@ model Patient {
   address               String?
   emergencyContactName  String?               @map("emergency_contact_name")
   emergencyContactPhone String?               @map("emergency_contact_phone")
-  allergies             Json?
   deletedAt             DateTime?             @map("deleted_at")
   createdAt             DateTime              @default(now()) @map("created_at")
   updatedAt             DateTime              @updatedAt @map("updated_at")
@@ -551,11 +550,24 @@ enum PatientAlertType {
   /// Split out of MEDICAL because the two are different instructions: an
   /// allergy forbids, a chronic condition qualifies.
   ALLERGY
+  /// The CONFIRMED NEGATIVE — somebody asked and the answer was none. Not the
+  /// same as no ALLERGY row, which means nobody has recorded one and is the
+  /// same shape as nobody having asked.
+  NO_KNOWN_ALLERGY
   /// Take into account — chronic conditions, pregnancy, anticoagulation.
   MEDICAL
   ACCESSIBILITY
   COMMUNICATION
   ADMINISTRATIVE
+}
+
+/// Where an alert came from. HUMAN means somebody recorded it and
+/// `createdByStaffId` names them; MIGRATED means it was carried over from the
+/// old free-text `patients.allergies`, which had no author. Nothing in the API
+/// can write MIGRATED — it is in no DTO and the service does not accept it.
+enum PatientAlertOrigin {
+  HUMAN
+  MIGRATED
 }
 
 model PatientAlert {
@@ -569,7 +581,11 @@ model PatientAlert {
   // Plain staff-id audit columns, same convention as Staff's
   // professionalVerifiedByStaffId — attribution on record without adding two
   // more relations to the Staff constellation.
-  createdByStaffId     String           @map("created_by_staff_id")
+  /// Null ONLY on a MIGRATED row, and a CHECK constraint enforces that: the
+  /// values carried over from `patients.allergies` had no author to name, and
+  /// inventing one was judged worse than an honest blank.
+  createdByStaffId     String?             @map("created_by_staff_id")
+  origin               PatientAlertOrigin  @default(HUMAN)
   createdAt            DateTime         @default(now()) @map("created_at")
   deactivatedByStaffId String?          @map("deactivated_by_staff_id")
   deactivatedAt        DateTime?        @map("deactivated_at")

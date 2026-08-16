@@ -22,13 +22,17 @@ describe('three allergy states, not two', () => {
     expect(allergyRecordState(undefined)).toBe('NONE_RECORDED');
   });
 
-  it('2. asked, none known', () => {
-    expect(allergyRecordState([])).toBe('NONE_KNOWN');
+  it('2. asked, none known — and it takes a RECORDED answer to say so', () => {
+    // The second argument is a NO_KNOWN_ALLERGY alert on the patient. An empty
+    // list on its own is indistinguishable from nobody asking, which is why
+    // retiring `patient.allergies` needed the confirmed negative to exist.
+    expect(allergyRecordState([], true)).toBe('NONE_KNOWN');
+    expect(allergyRecordState([], false)).toBe('NONE_RECORDED');
   });
 
   it('3. blank strings are not an allergy record', () => {
     // A row of empty strings is a data artefact, not a clinical answer.
-    expect(allergyRecordState(['', '   '])).toBe('NONE_KNOWN');
+    expect(allergyRecordState(['', '   '], true)).toBe('NONE_KNOWN');
   });
 
   it('4. something recorded', () => {

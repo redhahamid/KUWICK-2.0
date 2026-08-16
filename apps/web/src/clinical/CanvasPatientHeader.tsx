@@ -294,10 +294,22 @@ export function CanvasPatientHeader({
   );
 }
 
-/** Exported for the header's own tests. */
-export function headerAllergyState(patient: Pick<Patient, 'allergies'>): 'NONE_RECORDED' | 'NONE_KNOWN' | 'PRESENT' {
-  if (patient.allergies === null || patient.allergies === undefined) return 'NONE_RECORDED';
-  return patient.allergies.length > 0 ? 'PRESENT' : 'NONE_KNOWN';
+/**
+ * The chip's three states, from ALERTS — the only place an allergy is recorded
+ * now that the free-text `patient.allergies` column is gone.
+ *
+ * NONE_KNOWN takes a POSITIVE record rather than an empty list. That is the
+ * fact this migration had to be careful not to lose: "asked, and none known"
+ * and "nobody asked" look identical in the absence of data, and collapsing the
+ * first into the second would put "Allergy not asked" back on the header of
+ * every patient who had already answered.
+ */
+export function headerAllergyState(
+  allergyLabels: string[],
+  askedAndNoneKnown: boolean,
+): 'NONE_RECORDED' | 'NONE_KNOWN' | 'PRESENT' {
+  if (allergyLabels.length > 0) return 'PRESENT';
+  return askedAndNoneKnown ? 'NONE_KNOWN' : 'NONE_RECORDED';
 }
 
 export { Text };

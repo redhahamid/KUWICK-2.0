@@ -1,5 +1,10 @@
-import { AllergyRecordState, allergyRecordState } from './copyRx';
-import { allergyAlerts, nonAllergyAlerts, usePatientAlerts } from '../hooks/usePatientAlerts';
+import { AllergyRecordState } from './copyRx';
+import {
+  allergyAlerts,
+  noKnownAllergyAlerts,
+  nonAllergyAlerts,
+  usePatientAlerts,
+} from '../hooks/usePatientAlerts';
 
 /**
  * KW2-C2 — the PERSISTENT allergy strip.
@@ -38,38 +43,23 @@ export const ALLERGY_STRIP_SUFFIX = '— check before prescribing';
 export const ALLERGY_NOT_ASKED = '⚠ Allergy not asked';
 
 /**
- * b1.5 PHASE D — the strip reads BOTH places an allergy can be recorded.
+ * ONE PLACE TO RECORD AN ALLERGY — this reads that one place.
  *
- * `patient.allergies` is the quick-record field on the header chip. MEDICAL
- * patient alerts are the other, and they are how a chronic standing fact gets
- * onto the record with an author and a timestamp. Until now the strip looked
- * only at the first, so a doctor who recorded "Penicillin allergy" as a
- * MEDICAL alert still saw "Allergy not asked" on every prescribing surface —
- * the banner permanently warning about a question that had in fact been
- * answered, which is precisely how a warning stops being read.
+ * There used to be two. `patient.allergies` was a free-text array the header
+ * chip wrote with no author and no timestamp; ALLERGY alerts were the other,
+ * attributed and append-only. The strip had to read both and de-duplicate
+ * between them, and the same allergy legitimately appeared twice — staging
+ * printed "NSAIDS, AUGMENTIN, PCM, NSAIDS". The array is gone; its contents
+ * were carried into alerts and the column dropped.
  *
- * The patient's own words are never paraphrased, so the alert LABELS join the
- * list verbatim alongside the quick-record entries.
+ * The de-duplication STAYS, because two clinicians can still record the same
+ * allergy in slightly different words on different days, and a chip that says
+ * a thing twice reads as two findings about the one thing it must be exact
+ * about. Display-layer only, and the FIRST spelling wins so the earliest
+ * record's words survive rather than a later re-entry's casing.
  */
-export function allergyWords(
-  allergies: string[] | null | undefined,
-  medicalAlertLabels: string[] = [],
-): string[] {
-  const words = [...(allergies ?? []), ...medicalAlertLabels]
-    .map((entry) => entry?.trim())
-    .filter(Boolean) as string[];
-
-  // DEDUPLICATED, case- and whitespace-insensitively.
-  //
-  // The same allergy legitimately lives in BOTH stores: `patient.allergies` is
-  // the header's quick-record field, and the same drug may since have been
-  // recorded as an ALLERGY alert with an author and a timestamp. Concatenating
-  // them printed "NSAIDS, AUGMENTIN, PCM, NSAIDS" on staging — a repeat that
-  // reads as two separate findings and makes the chip look careless about the
-  // one thing it must be exact about.
-  //
-  // Display-layer only: neither store is touched, and the FIRST spelling wins
-  // so the patient's own words survive rather than a later re-entry's casing.
+export function allergyWords(labels: string[]): string[] {
+  const words = labels.map((entry) => entry?.trim()).filter(Boolean) as string[];
   const seen = new Set<string>();
   return words.filter((word) => {
     const key = word.toLowerCase();
@@ -80,18 +70,23 @@ export function allergyWords(
 }
 
 /**
- * The combined state.
+ * The three states, from alerts alone.
  *
- * A MEDICAL alert on record means somebody asked, so it can only move the
- * state TOWARDS "present" — it can never turn a recorded allergy back into
- * "not asked".
+ * NONE_KNOWN needs a POSITIVE record now — an active NO_KNOWN_ALLERGY alert —
+ * where it used to be inferred from an empty array. That is the same fact with
+ * an author attached, and it is the one this whole change had to be careful
+ * not to lose: without it, every patient who had been asked and answered none
+ * would silently fall back to "Allergy not asked", and a banner that warns
+ * about a question somebody already answered is a banner people stop reading.
  */
 export function allergyBannerState(
-  allergies: string[] | null | undefined,
-  medicalAlertLabels: string[] = [],
+  labels: string[],
+  askedAndNoneKnown = false,
 ): AllergyRecordState {
-  if (allergyWords(allergies, medicalAlertLabels).length > 0) return 'PRESENT';
-  return allergyRecordState(allergies);
+  if (allergyWords(labels).length > 0) return 'PRESENT';
+  // Allergies outrank a stale negative: asked-and-none in March does not
+  // survive a reaction recorded in June, and the check above already ran.
+  return askedAndNoneKnown ? 'NONE_KNOWN' : 'NONE_RECORDED';
 }
 
 /**
@@ -102,23 +97,20 @@ export function allergyBannerState(
 export const OTHER_ALERTS_PREFIX = 'Also on record:';
 
 /** The strip's text, or null where there should be no strip at all. */
-export function allergyStripText(
-  allergies: string[] | null | undefined,
-  medicalAlertLabels: string[] = [],
-): string | null {
-  const state = allergyBannerState(allergies, medicalAlertLabels);
+export function allergyStripText(labels: string[], askedAndNoneKnown = false): string | null {
+  const state = allergyBannerState(labels, askedAndNoneKnown);
   if (state === 'NONE_KNOWN') return null;
   if (state === 'NONE_RECORDED') return ALLERGY_NOT_ASKED;
-  const words = allergyWords(allergies, medicalAlertLabels).join(', ');
-  return `${ALLERGY_STRIP_PREFIX} ${words} ${ALLERGY_STRIP_SUFFIX}`;
+  return `${ALLERGY_STRIP_PREFIX} ${allergyWords(labels).join(', ')} ${ALLERGY_STRIP_SUFFIX}`;
 }
 
 interface AllergyStripProps {
-  allergies: string[] | null | undefined;
+  /** Labels of the patient's active ALLERGY alerts, verbatim. */
+  allergyLabels: string[];
+  /** True where an active NO_KNOWN_ALLERGY alert says the question was asked. */
+  askedAndNoneKnown?: boolean;
   /** Tightens the padding where the strip sits inside a modal or a form. */
   compact?: boolean;
-  /** b1.5 PHASE D — labels of the patient's active MEDICAL alerts. */
-  medicalAlertLabels?: string[];
 }
 
 /**
@@ -132,9 +124,8 @@ interface AllergyStripProps {
  *
  * `PatientAllergyStrip` below does the loading. Surfaces use that.
  */
-export function AllergyStrip({ allergies, compact, medicalAlertLabels = [] }: AllergyStripProps) {
-  const medical = medicalAlertLabels;
-  const text = allergyStripText(allergies, medical);
+export function AllergyStrip({ allergyLabels, askedAndNoneKnown = false, compact }: AllergyStripProps) {
+  const text = allergyStripText(allergyLabels, askedAndNoneKnown);
   if (!text) return null;
 
   return (
@@ -144,7 +135,7 @@ export function AllergyStrip({ allergies, compact, medicalAlertLabels = [] }: Al
       // screen-reader user is reading, and this is a standing condition rather
       // than something that just happened.
       role="status"
-      data-allergy-strip={allergyBannerState(allergies, medical)}
+      data-allergy-strip={allergyBannerState(allergyLabels, askedAndNoneKnown)}
     >
       {text}
     </div>
@@ -159,15 +150,14 @@ export function AllergyStrip({ allergies, compact, medicalAlertLabels = [] }: Al
  * warning about a question that has in fact been answered. React Query dedupes
  * the key, so the four of them share one request.
  *
- * A failed or missing alerts response degrades to the patient's own allergies
- * field — the behaviour before this existed — rather than to a blank screen.
+ * A failed or missing alerts response degrades to "Allergy not asked" rather
+ * than to a blank screen — the loudest of the three states, which is the right
+ * way round for a request that did not answer.
  */
 export function PatientAllergyStrip({
-  allergies,
   patientId,
   compact,
 }: {
-  allergies: string[] | null | undefined;
   patientId: string | undefined;
   compact?: boolean;
 }) {
@@ -181,7 +171,11 @@ export function PatientAllergyStrip({
 
   return (
     <>
-      <AllergyStrip allergies={allergies} compact={compact} medicalAlertLabels={allergyLabels} />
+      <AllergyStrip
+        allergyLabels={allergyLabels}
+        askedAndNoneKnown={noKnownAllergyAlerts(alerts).length > 0}
+        compact={compact}
+      />
       {others.length > 0 && (
         <div
           className={`kw-other-alerts${compact ? ' kw-other-alerts-compact' : ''}`}

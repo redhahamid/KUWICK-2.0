@@ -108,7 +108,12 @@ export function canWritePatientAlert(staff: Staff, type: PatientAlertType): bool
   // that reaches the prescribing banner, so if anything it is the more
   // consequential of the two. Adding the enum value without adding it here
   // would have handed the front counter a do-not-prescribe list.
-  const clinical = type === 'MEDICAL' || type === 'ALLERGY';
+  // NO_KNOWN_ALLERGY joins the other two. It is the CONFIRMED NEGATIVE that
+  // turns the prescribing banner from "Allergy not asked" to "None known" —
+  // an assertion about what may safely be prescribed, made by whoever asked
+  // the question. Letting the front counter write it would let the counter
+  // clear a do-not-prescribe warning.
+  const clinical = type === 'MEDICAL' || type === 'ALLERGY' || type === 'NO_KNOWN_ALLERGY';
   const permission: Permission = clinical ? 'patient.alert.medical.write' : 'patient.alert.write';
   return can(staff, permission, rolesOn(staff));
 }
@@ -116,8 +121,8 @@ export function canWritePatientAlert(staff: Staff, type: PatientAlertType): bool
 export function assertCanWritePatientAlert(staff: Staff, type: PatientAlertType): void {
   if (!canWritePatientAlert(staff, type)) {
     throw new ForbiddenException(
-      type === 'MEDICAL' || type === 'ALLERGY'
-        ? 'Your account is not permitted to record a MEDICAL alert. Ask a doctor or clinical staff member to record it.'
+      type === 'MEDICAL' || type === 'ALLERGY' || type === 'NO_KNOWN_ALLERGY'
+        ? 'Your account is not permitted to record an allergy or MEDICAL alert. Ask a doctor or clinical staff member to record it.'
         : 'Your account is not permitted to manage patient alerts.',
     );
   }

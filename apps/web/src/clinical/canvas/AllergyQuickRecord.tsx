@@ -2,72 +2,108 @@ import { useState } from 'react';
 import { Button, Popover, Select, Space, Typography, message } from 'antd';
 import { WarningFilled } from '@ant-design/icons';
 import { ApiError } from '../../core/api-client';
-import { useUpdatePatient } from '../../core/hooks/usePatients';
 import { Patient } from '../../core/types';
 import { allergyBannerState, allergyWords } from '../medications/AllergyStrip';
-import { allergyAlerts, usePatientAlerts } from '../hooks/usePatientAlerts';
+import {
+  allergyAlerts,
+  noKnownAllergyAlerts,
+  useCreatePatientAlert,
+  useDeactivatePatientAlert,
+  usePatientAlerts,
+} from '../hooks/usePatientAlerts';
 
 const { Text } = Typography;
 
 /**
- * A2 — ALLERGY QUICK-RECORD (spec p.2: the header chip is where allergies
- * get asked and answered, mid-consultation, without leaving the canvas).
+ * A2 — ALLERGY QUICK-RECORD (spec p.2: the header chip is where allergies get
+ * asked and answered, mid-consultation, without leaving the canvas).
  *
- * The chip keeps its three states — not asked (amber), none known, present —
- * and becomes the entry point for recording the answer. The popover opens on
- * a deliberate click, which keeps the standing allergy rules intact: nothing
- * red, nothing blocking, no per-add popups. The strip, the Copy Rx modal and
- * the completion checkpoint all read the same patient record this writes, so
- * one save updates every surface through the ['patients', id] invalidation.
+ * THE CHIP STAYS. Recording an allergy in two clicks is the behaviour that
+ * gets allergies recorded at all, and removing it to win a tidier data model
+ * would cost more than the duplication ever did. What changed is only where it
+ * WRITES: it used to put free text into `patient.allergies` — no author, no
+ * timestamp, no history — while the alerts popover beside it wrote an
+ * attributed, append-only ALLERGY alert. Two stores for one clinical fact, and
+ * the one a doctor actually reached for was the one that could not say who
+ * recorded it. That column is gone; this writes alerts now.
+ *
+ * A doctor sees no difference: same three states, same words, same two clicks.
+ * The difference is that "NSAIDS, 16/08/2026, Dr Amira" is now answerable.
  *
  * "Save" records exactly what is in the box, and says so on the button: an
- * emptied box reads "Record: no known allergies", because a confirmed
- * negative is a real answer (NONE_KNOWN) and must never be recordable by
- * accident under a label that says something else.
+ * emptied box reads "Record: no known allergies", because a confirmed negative
+ * is a real answer and must never be recordable by accident under a label that
+ * says something else. It now writes a NO_KNOWN_ALLERGY alert rather than an
+ * empty array — the same fact, with an author attached.
  */
 export function AllergyQuickRecord({ patient }: { patient: Patient }) {
-  const updatePatient = useUpdatePatient();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
-  // b1.5 PHASE D — the chip reads MEDICAL alerts too.
-  //
-  // It said "Allergy not asked" from `patient.allergies` alone, so recording
-  // "Penicillin allergy" as a MEDICAL alert left the header still asking the
-  // question — the FIFTH surface of the same defect, and the one a doctor
-  // looks at first. Found by the E2E, not by reasoning about it.
   const { data: alerts } = usePatientAlerts(patient.id);
-  // FIX 3 — ALLERGY alerts only. This read every MEDICAL alert, so diabetes
-  // and hypertension arrived in a red do-not-prescribe chip beside three real
-  // drug allergies: "NSAIDS, AUGMENTIN, PCM, DM, HPT, OKU". Six words, two
-  // meanings, one colour. Chronic conditions now have their own indicator.
-  const allergyLabels = allergyAlerts(alerts).map((alert) => alert.label);
-  const state = allergyBannerState(patient.allergies, allergyLabels);
-  // What the chip SHOWS. Both sources, verbatim — a chip reading PRESENT while
-  // listing nothing would be worse than the "not asked" it replaced.
-  const allergies = allergyWords(patient.allergies, allergyLabels);
-  /** Only the quick-record half is editable here; alerts are the profile's. */
-  const editableAllergies = (patient.allergies ?? []).filter((entry) => entry?.trim());
+  const createAlert = useCreatePatientAlert(patient.id);
+  const deactivateAlert = useDeactivatePatientAlert(patient.id);
+
+  // FIX 3 — ALLERGY alerts only. This once read every MEDICAL alert, so
+  // diabetes and hypertension arrived in a red do-not-prescribe chip beside
+  // three real drug allergies: "NSAIDS, AUGMENTIN, PCM, DM, HPT, OKU". Six
+  // words, two meanings, one colour.
+  const recorded = allergyAlerts(alerts);
+  const noKnown = noKnownAllergyAlerts(alerts);
+  const allergyLabels = recorded.map((alert) => alert.label);
+  const allergies = allergyWords(allergyLabels);
+  const state = allergyBannerState(allergyLabels, noKnown.length > 0);
 
   const openWithCurrent = (next: boolean) => {
-    // Seeded from the QUICK-RECORD half only. Seeding from the combined list
-    // would copy a MEDICAL alert's label into `patient.allergies` the first
-    // time anyone opened this and pressed Save — the same allergy then living
-    // in two stores, with no way to tell which one a later edit meant.
-    if (next) setDraft(editableAllergies);
+    // Seeded from what is actually recorded, because that is now ONE list
+    // rather than two. Before the merge this had to seed from the quick-record
+    // half alone, or pressing Save would copy an alert's label into the free
+    // text field and the same allergy would live in both stores.
+    if (next) setDraft(allergies);
     setOpen(next);
   };
 
   const save = async () => {
-    const cleaned = draft.map((entry) => entry.trim()).filter(Boolean);
+    const cleaned = allergyWords(draft);
+    const before = new Map(recorded.map((alert) => [alert.label.trim().toLowerCase(), alert]));
+    const after = new Set(cleaned.map((entry) => entry.toLowerCase()));
+
+    setSaving(true);
     try {
-      await updatePatient.mutateAsync({ id: patient.id, dto: { allergies: cleaned } });
-      message.success(
-        cleaned.length > 0 ? 'Allergies recorded.' : 'Recorded: no known allergies.',
-      );
+      // REMOVED entries are RESOLVED, not deleted. Taking a word out of this
+      // box is a clinical decision — "the penicillin reaction turned out to be
+      // the virus" — and the record of it is exactly what the free-text array
+      // could never hold: the row stays, stamped with who retired it and when.
+      for (const [key, alert] of before) {
+        if (!after.has(key)) await deactivateAlert.mutateAsync(alert.id);
+      }
+      for (const entry of cleaned) {
+        if (!before.has(entry.toLowerCase())) {
+          await createAlert.mutateAsync({ type: 'ALLERGY', label: entry });
+        }
+      }
+
+      if (cleaned.length === 0) {
+        // The confirmed negative, recorded POSITIVELY. An empty list used to
+        // mean this by implication; implication does not survive a column
+        // being dropped, and it never had an author.
+        if (noKnown.length === 0) {
+          await createAlert.mutateAsync({ type: 'NO_KNOWN_ALLERGY', label: 'No known allergy' });
+        }
+      } else {
+        // An allergy and "none known" cannot both be true. The negative is
+        // retired rather than left to be outranked silently, so the history
+        // reads as the sequence it was.
+        for (const alert of noKnown) await deactivateAlert.mutateAsync(alert.id);
+      }
+
+      message.success(cleaned.length > 0 ? 'Allergies recorded.' : 'Recorded: no known allergies.');
       setOpen(false);
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : 'Failed to record allergies');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -99,12 +135,10 @@ export function AllergyQuickRecord({ patient }: { patient: Patient }) {
             The patient&rsquo;s own words, verbatim. An emptied list records a confirmed
             &ldquo;no known allergies&rdquo; — not an unasked question.
           </Text>
-          {allergyLabels.length > 0 && (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {allergyLabels.length} also recorded as an allergy alert ({allergyLabels.join(', ')}). Change those
-              in the alerts view.
-            </Text>
-          )}
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Recorded against your name, with the time. Removing one resolves it — nothing is
+            deleted, and the alerts view keeps the history.
+          </Text>
           <Select
             mode="tags"
             open={false}
@@ -114,10 +148,8 @@ export function AllergyQuickRecord({ patient }: { patient: Patient }) {
             style={{ width: '100%' }}
             aria-label="Allergies"
           />
-          <Button type="primary" block loading={updatePatient.isPending} onClick={save} style={{ minHeight: 44 }}>
-            {draft.some((entry) => entry.trim())
-              ? 'Save allergies'
-              : 'Record: no known allergies'}
+          <Button type="primary" block loading={saving} onClick={save} style={{ minHeight: 44 }}>
+            {draft.some((entry) => entry.trim()) ? 'Save allergies' : 'Record: no known allergies'}
           </Button>
         </Space>
       }

@@ -700,7 +700,6 @@ export function PatientDashboardPage() {
                 sourceLabel={copyRxFrom.label}
                 patientId={patient.id}
                 targetVisitId={selectedVisit.id}
-                allergies={patient.allergies}
                 onClose={() => setCopyRxFrom(null)}
               />
             )}

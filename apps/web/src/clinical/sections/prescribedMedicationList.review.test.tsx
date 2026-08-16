@@ -20,14 +20,14 @@ import { Prescription } from '../types';
 // nothing about it blocks dispensing.
 // ===========================================================================
 
-const { patch, MockApiError } = vi.hoisted(() => {
+const { patch, get, MockApiError } = vi.hoisted(() => {
   class MockApiError extends Error {}
-  return { patch: vi.fn(), MockApiError };
+  return { patch: vi.fn(), get: vi.fn(async (_url: string): Promise<unknown> => []), MockApiError };
 });
 
 vi.mock('../../core/api-client', () => ({
   ApiError: MockApiError,
-  apiClient: { patch, get: vi.fn(async () => []), post: vi.fn(), delete: vi.fn() },
+  apiClient: { patch, get, post: vi.fn(), delete: vi.fn() },
 }));
 
 vi.mock('../../inventory/hooks/useStock', () => ({ useStockLevels: () => ({ data: [] }) }));
@@ -175,41 +175,72 @@ describe('once it has been re-read', () => {
 // words as for one who had answered no.
 // ===========================================================================
 describe('the allergy strip on the medications card', () => {
-  const patientWith = (allergies: string[] | null) =>
-    ({ id: 'p1', name: 'Aisyah Ujian', allergies }) as never;
+  const patientWith = () => ({ id: 'p1', name: 'Aisyah Ujian' }) as never;
+
+  // Allergies come from ALERTS now. `null` here means nobody asked (no alert
+  // at all); `[]` means the confirmed negative, which takes its own record.
+  const alertRow = (label: string, type = 'ALLERGY') => ({
+    id: `alert-${label}`,
+    patientId: 'p1',
+    type,
+    label,
+    note: null,
+    active: true,
+    createdAt: '2026-08-01T00:00:00Z',
+    createdByStaffId: 's1',
+    createdByName: 'Dr A',
+    deactivatedAt: null,
+    deactivatedByName: null,
+  });
 
   const renderWithPatient = (allergies: string[] | null) => {
+    get.mockImplementation(async (url: string) =>
+      String(url).includes('/alerts')
+        ? allergies === null
+          ? []
+          : allergies.length > 0
+            ? allergies.map((label) => alertRow(label))
+            : [alertRow('No known allergy', 'NO_KNOWN_ALLERGY')]
+        : [],
+    );
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     return render(
       <QueryClientProvider client={client}>
         <PrescribedMedicationList
           visitId="visit-1"
           prescriptions={[RX()]}
-          patient={patientWith(allergies)}
+          patient={patientWith()}
         />
       </QueryClientProvider>,
     );
   };
 
-  it('is pinned above the medications, with the words verbatim', () => {
+  it('is pinned above the medications, with the words verbatim', async () => {
+    // Awaited now: the words arrive with the alerts request rather than
+    // rendering synchronously from a patient prop.
     renderWithPatient(['NSAIDs']);
-    expect(screen.getByText(/⚠ ALLERGIES: NSAIDs — check before prescribing/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/⚠ ALLERGIES: NSAIDs — check before prescribing/),
+    ).toBeInTheDocument();
   });
 
-  it('is amber and advisory — the old RED alert is gone', () => {
+  it('is amber and advisory — the old RED alert is gone', async () => {
     const { container } = renderWithPatient(['NSAIDs']);
+    await screen.findByText(/⚠ ALLERGIES/);
     expect(container.querySelector('.kw-allergy-strip')).toHaveAttribute('role', 'status');
     expect(container.querySelector('.ant-alert-error')).toBeNull();
   });
 
-  it('never-asked gets its own warning', () => {
+  it('never-asked gets its own warning', async () => {
     renderWithPatient(null);
-    expect(screen.getByText('⚠ Allergy not asked')).toBeInTheDocument();
+    expect(await screen.findByText('⚠ Allergy not asked')).toBeInTheDocument();
   });
 
-  it('asked-and-none-known is silent — no banner competing with the real ones', () => {
+  it('asked-and-none-known is silent — no banner competing with the real ones', async () => {
     const { container } = renderWithPatient([]);
-    expect(container.querySelector('.kw-allergy-strip')).toBeNull();
+    // Awaited on the NEGATIVE: asserting "no strip" the instant it renders
+    // would pass before the alerts request had a chance to produce one.
+    await waitFor(() => expect(container.querySelector('.kw-allergy-strip')).toBeNull());
     // And no leftover informational panel in its place.
     expect(screen.queryByText(/No allergies recorded/i)).not.toBeInTheDocument();
   });

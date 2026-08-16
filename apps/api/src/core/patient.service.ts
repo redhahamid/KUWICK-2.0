@@ -36,7 +36,6 @@ export class PatientService {
         address: dto.address,
         emergencyContactName: dto.emergencyContactName,
         emergencyContactPhone: dto.emergencyContactPhone,
-        allergies: dto.allergies,
       },
     });
   }

@@ -1,4 +1,4 @@
-import { IsArray, IsDateString, IsOptional, IsString, Matches, MinLength, ValidateIf } from 'class-validator';
+import { IsDateString, IsOptional, IsString, Matches, MinLength, ValidateIf } from 'class-validator';
 import { PatientIdentifierType } from '@prisma/client';
 
 const NRIC_RE = /^\d{12}$/;
@@ -46,8 +46,4 @@ export class UpdatePatientDto {
   @IsString()
   emergencyContactPhone?: string;
 
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  allergies?: string[];
 }
