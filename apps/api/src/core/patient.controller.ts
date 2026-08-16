@@ -22,6 +22,24 @@ export class PatientController {
     return this.patients.findById(id);
   }
 
+  /**
+   * What an identity correction on this patient would reach.
+   *
+   * Its own read, taken before the confirmation is shown, rather than folded
+   * into the patient payload every screen loads: the counts are three COUNT
+   * queries, and the profile does not need them to render a phone number.
+   */
+  @Get(':id/identity-impact')
+  identityImpact(@Param('id') id: string) {
+    return this.patients.identityImpact(id);
+  }
+
+  /** Corrections already made — old value, new value, who, when. */
+  @Get(':id/identity-history')
+  identityHistory(@Param('id') id: string) {
+    return this.patients.identityHistory(id);
+  }
+
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdatePatientDto) {
     return this.patients.update(id, dto);

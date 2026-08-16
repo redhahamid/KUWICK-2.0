@@ -69,6 +69,7 @@ import { useHoldConsultation, useResumeConsultation } from './hooks/useQueueTick
 import { mayHoldConsultation } from './holdPresentation';
 import { PatientProfileSlideOver } from './PatientProfileSlideOver';
 import { mayManagePatientAlerts, mayRecordMedicalAlert } from './patientAlertPresentation';
+import { mayCorrectPatientIdentity } from '../core/patient-identity-access';
 import { useStaff } from '../hr/hooks/useStaff';
 import { isDraftDirty, useClinicalDraftStore, visitPrefix } from './clinical-draft-store';
 
@@ -342,6 +343,7 @@ export function PatientDashboardPage() {
             onClose={() => setProfileOpen(false)}
             canEdit={mayManagePatientAlerts(staff?.role)}
             canRecordMedical={mayRecordMedicalAlert(staff?.role)}
+            canCorrectIdentity={mayCorrectPatientIdentity(staff)}
           />
           {/* KW2-C1a — the LAST VISIT band is RETIRED in Canvas.
               D-076 put it here to answer "what happened last time?" without

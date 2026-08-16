@@ -199,6 +199,7 @@ model Tenant {
   users                       User[]
   patients                    Patient[]
   patientAlerts               PatientAlert[]
+  patientIdentityChanges      PatientIdentityChange[]
   prescriptionFrequencies     PrescriptionFrequency[]
   dosageUnits                 DosageUnit[]
   consumptionMethods          ConsumptionMethodRef[]
@@ -496,14 +497,49 @@ model Patient {
   createdAt             DateTime              @default(now()) @map("created_at")
   updatedAt             DateTime              @updatedAt @map("updated_at")
 
-  tenant       Tenant         @relation(fields: [tenantId], references: [id])
-  appointments Appointment[]
-  visits       Visit[]
-  alerts       PatientAlert[]
+  tenant           Tenant                  @relation(fields: [tenantId], references: [id])
+  appointments     Appointment[]
+  visits           Visit[]
+  alerts           PatientAlert[]
+  identityChanges  PatientIdentityChange[]
 
   @@unique([tenantId, identifierType, identifierValue])
   @@index([tenantId])
   @@map("patients")
+}
+
+/// Every correction to an IC, identifier type or date of birth.
+///
+/// The identifier is what ties a person's visits, panel claims and e-Invoice
+/// submissions together, so changing it has to stay answerable. One row per
+/// FIELD changed, so "IC 12345678901 → 900101145566, by Dr X, on the 16th"
+/// reads as a sentence rather than a JSON blob of everything that moved.
+///
+/// Append-only in the database, not by convention: no UPDATE policy, no DELETE
+/// policy, and BEFORE DELETE/TRUNCATE triggers that fire for every role.
+model PatientIdentityChange {
+  id                    String   @id @default(uuid())
+  tenantId              String   @map("tenant_id")
+  patientId             String   @map("patient_id")
+  /// 'identifierType' | 'identifierValue' | 'dob'. A string, so renaming a
+  /// column later cannot rewrite what this row says used to be true.
+  field                 String
+  /// Null where nothing was recorded before — "was blank" is a different fact
+  /// from "was wrong".
+  oldValue              String?  @map("old_value")
+  newValue              String?  @map("new_value")
+  changedByStaffId      String   @map("changed_by_staff_id")
+  /// Snapshots. A staff member who leaves must not turn last year's
+  /// correction into a blank.
+  changedByNameSnapshot String   @map("changed_by_name_snapshot")
+  changedByRoleSnapshot String   @map("changed_by_role_snapshot")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@index([tenantId, patientId])
+  @@map("patient_identity_changes")
 }
 
 // A2 — PATIENT ALERTS (owner spec): standing facts about a person, visible

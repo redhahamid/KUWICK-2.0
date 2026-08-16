@@ -59,6 +59,15 @@ export type Permission =
   | 'patient.alert.medical.write'
   // Administrative
   | 'patient.demographics.write'
+  // Correcting the IC / passport number or the date of birth. SEPARATE from
+  // demographics, and narrower, because it is not the same act: a phone
+  // number is a way to reach someone, while the identifier is what ties their
+  // visits, panel claims and e-Invoice records together. It stays editable
+  // because the alternative is worse — a typo taken at registration used to
+  // force the counter to open a SECOND patient, splitting one person's
+  // history across two files — but it is not something everyone who can fix
+  // an address should be able to do.
+  | 'patient.identity.write'
   | 'patient.lhdn.write'
   | 'queue.manage'
   // Owner decision: queue actions split in two. The consultation FLOW —
@@ -149,6 +158,10 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
 
   ADMINISTRATOR: [
     'patient.demographics.write',
+    // Registration took the IC, so registration corrects it. Sending the
+    // counter to find an owner for a transposed digit is how the duplicate
+    // patient gets created instead.
+    'patient.identity.write',
     // Front counter records wheelchair access, language, VIP handling — the
     // things they need BEFORE calling a patient. NOT the MEDICAL type: a
     // clinical standing fact is recorded by clinical staff.
@@ -168,7 +181,19 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
   // OWNER ALONE IS NOT CLINICAL. Not one permission here touches a patient's
   // record. A doctor-owner gets clinical ability from the DOCTOR role they
   // also hold — never from this one.
-  OWNER: ['settings.manage', 'discount.approve', 'users.manage', 'billing.corrections'],
+  // `patient.identity.write` is the one patient-facing entry, and it does not
+  // breach the rule above: correcting a transposed digit in an IC is records
+  // administration, not a clinical act — it asserts nothing about the patient's
+  // health and appears in no clinical record. The owner holds it because they
+  // are the escalation path when the counter cannot resolve a duplicate, and
+  // in a single-doctor clinic they are frequently the only account on shift.
+  OWNER: [
+    'settings.manage',
+    'discount.approve',
+    'users.manage',
+    'billing.corrections',
+    'patient.identity.write',
+  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -405,6 +430,8 @@ const REFUSAL: Partial<Record<Permission, string>> = {
     'Only the attending clinician may put a consultation on hold.',
   'consultation.complete': 'Only a doctor may complete a consultation.',
   'patient.demographics.write': 'Your account is not permitted to change patient details.',
+  'patient.identity.write':
+    'Your account is not permitted to change a patient’s IC or date of birth. Ask the front counter or the clinic owner to correct it — please do not create a second record for the same person.',
   'patient.alert.write': 'Your account is not permitted to manage patient alerts.',
   'patient.alert.medical.write':
     'Your account is not permitted to record a MEDICAL alert. Ask a doctor or clinical staff member to record it.',

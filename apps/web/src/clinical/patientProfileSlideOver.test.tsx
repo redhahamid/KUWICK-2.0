@@ -97,10 +97,10 @@ describe('the profile answers what the identity strip cannot', () => {
     expect(screen.getByDisplayValue('900101-14-5566')).toBeInTheDocument();
   });
 
-  it('will not let the IC be edited here', async () => {
-    // It identifies the person across every visit, invoice and claim already
-    // written. Correcting a typo is a records job; doing it mid-consult would
-    // silently orphan the history.
+  it('will not let an account without the permission edit the IC', async () => {
+    // Offered disabled, never hidden. See patientIdentityCorrection.test.tsx
+    // for why the field exists at all: locking it outright is what forced the
+    // counter to open a second patient for a transposed digit.
     open();
     expect(await screen.findByDisplayValue('900101-14-5566')).toBeDisabled();
   });

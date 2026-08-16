@@ -1,10 +1,14 @@
 import { useMemo, useState } from 'react';
-import { Alert, Button, Col, Form, Input, Row, Typography, message } from 'antd';
-import dayjs from 'dayjs';
+import { Alert, Button, Col, DatePicker, Form, Input, Modal, Row, Typography, message } from 'antd';
+import dayjs, { Dayjs } from 'dayjs';
 import { KuwickFormSection, KuwickModal, KuwickModalActionBar } from '../design-system/kuwick';
-import { ApiError } from '../core/api-client';
+import { ApiError, apiClient } from '../core/api-client';
 import { Patient, UpdatePatientDto } from '../core/types';
 import { useUpdatePatient } from '../core/hooks/usePatients';
+import {
+  IDENTITY_LOCKED_REASON,
+  describeIdentityImpact,
+} from '../core/patient-identity-access';
 import { Visit } from './types';
 import { usePatientAlerts } from './hooks/usePatientAlerts';
 import { AlertsPanel } from './PatientAlertsPanel';
@@ -45,6 +49,12 @@ export interface PatientProfileSlideOverProps {
    * with the reason rather than removed.
    */
   canRecordMedical?: boolean;
+  /**
+   * Whether this account may correct the IC / passport number and the date of
+   * birth. Narrower than `canEdit`: fixing a phone number and re-identifying a
+   * person are not the same act.
+   */
+  canCorrectIdentity?: boolean;
 }
 
 interface ProfileForm {
@@ -53,6 +63,23 @@ interface ProfileForm {
   address?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
+  /**
+   * Editable now, and deliberately.
+   *
+   * They were read-only on the reasoning that an identifier ties a person's
+   * history together and must not move. True — but the consequence was that a
+   * transposed digit taken at registration could not be fixed, so the counter's
+   * only remaining move was to open a SECOND patient, which splits exactly the
+   * history the lock was protecting. Staging has an 11-digit IC and a date of
+   * birth of 05/05/2026 to prove it.
+   *
+   * Safe because of what surrounds the field, not because of who is trusted:
+   * a narrower permission than the rest of the form, a server-side check that
+   * no other patient holds the identifier, a confirmation naming what is
+   * attached, and an append-only record of old value → new value, by whom.
+   */
+  identifierValue?: string;
+  dob?: Dayjs | null;
 }
 
 export function PatientProfileSlideOver({
@@ -62,6 +89,7 @@ export function PatientProfileSlideOver({
   onClose,
   canEdit = true,
   canRecordMedical = true,
+  canCorrectIdentity = false,
 }: PatientProfileSlideOverProps) {
   const [form] = Form.useForm<ProfileForm>();
   const [dirty, setDirty] = useState(false);
@@ -75,29 +103,100 @@ export function PatientProfileSlideOver({
       address: patient.address ?? undefined,
       emergencyContactName: patient.emergencyContactName ?? undefined,
       emergencyContactPhone: patient.emergencyContactPhone ?? undefined,
+      identifierValue: patient.identifierValue,
+      dob: patient.dob ? dayjs(patient.dob) : null,
     }),
     [patient],
   );
 
+  const identityLabel = patient.identifierType === 'PASSPORT' ? 'Passport' : 'IC';
+
+  /**
+   * A NEW identifier must be well-formed. An UNCHANGED one is left alone.
+   *
+   * The server takes exactly 12 digits for an NRIC, so anything typed here has
+   * to clear that bar or the save fails with a validation error nobody asked
+   * for. What is deliberately NOT enforced is the value already on the record:
+   * a legacy IC stored with dashes is not this save's business unless somebody
+   * is actually changing it.
+   */
+  const validateIdentifier = async (_rule: unknown, value?: string) => {
+    const next = value?.trim() ?? '';
+    if (next === patient.identifierValue) return;
+    if (!next) throw new Error(`A ${identityLabel} is required`);
+    if (patient.identifierType === 'NRIC' && !/^\d{12}$/.test(next)) {
+      throw new Error('An IC is exactly 12 digits, no dashes');
+    }
+  };
+
   const age = patient.dob ? dayjs().diff(dayjs(patient.dob), 'year') : null;
   const payer = visit?.panelClinic?.name ? `Panel · ${visit.panelClinic.name}` : 'Cash';
 
-  const save = async (values: ProfileForm) => {
-    const dto: UpdatePatientDto = {
-      name: values.name,
-      phone: values.phone ?? '',
-      address: values.address ?? '',
-      emergencyContactName: values.emergencyContactName ?? '',
-      emergencyContactPhone: values.emergencyContactPhone ?? '',
-    };
+  const commit = async (dto: UpdatePatientDto) => {
     try {
       await updatePatient.mutateAsync({ id: patient.id, dto });
       message.success('Patient details updated');
       setDirty(false);
       onClose();
     } catch (error) {
+      // The server's sentence, not a generic one. A duplicate-IC refusal names
+      // the other patient, and that name is the whole content of the warning.
       message.error(error instanceof ApiError ? error.message : 'Could not save the patient details');
     }
+  };
+
+  const save = async (values: ProfileForm) => {
+    const nextDob = values.dob ? values.dob.format('YYYY-MM-DD') : undefined;
+    const dto: UpdatePatientDto = {
+      name: values.name,
+      phone: values.phone ?? '',
+      address: values.address ?? '',
+      emergencyContactName: values.emergencyContactName ?? '',
+      emergencyContactPhone: values.emergencyContactPhone ?? '',
+      // Only sent where this account may change them. A payload carrying the
+      // unchanged value is harmless — the server compares by value — but
+      // sending fields the account cannot edit invites the next reader to
+      // assume the browser is the gate.
+      ...(canCorrectIdentity
+        ? { identifierValue: values.identifierValue?.trim(), dob: nextDob }
+        : {}),
+    };
+
+    const identityMoved =
+      canCorrectIdentity &&
+      (dto.identifierValue !== patient.identifierValue ||
+        nextDob !== (patient.dob ? dayjs(patient.dob).format('YYYY-MM-DD') : undefined));
+
+    if (!identityMoved) {
+      await commit(dto);
+      return;
+    }
+
+    // WHAT IS ATTACHED, BEFORE THE CHANGE. Fetched at this moment rather than
+    // loaded with the profile: three COUNT queries are not worth running every
+    // time somebody opens a record to read a phone number.
+    let impact = { visits: 0, invoices: 0, documents: 0 };
+    try {
+      impact = await apiClient.get<typeof impact>(`/patients/${patient.id}/identity-impact`);
+    } catch {
+      // A failed count must not block a correction — it only makes the
+      // confirmation less specific, and the correction is the safer state.
+    }
+
+    Modal.confirm({
+      title: `Change this patient's ${identityLabel} or date of birth?`,
+      okText: 'Change it',
+      cancelText: 'Keep as it is',
+      content: (
+        <>
+          <Paragraph style={{ marginBottom: 8 }}>{describeIdentityImpact(impact)}</Paragraph>
+          <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0 }}>
+            The change is recorded against this patient with your name and the time.
+          </Paragraph>
+        </>
+      ),
+      onOk: () => commit(dto),
+    });
   };
 
   return (
@@ -157,17 +256,40 @@ export function PatientProfileSlideOver({
               </Form.Item>
             </Col>
             <Col xs={12} md={6}>
-              {/* Read-only on purpose. An IC/passport number identifies the
-                  person across every visit, invoice and claim already written;
-                  correcting a typo in one is a records job, not a mid-consult
-                  edit, and doing it here would silently orphan the history. */}
-              <Form.Item label={patient.identifierType === 'PASSPORT' ? 'Passport' : 'IC'}>
-                <Input value={patient.identifierValue} readOnly disabled />
+              {/* CORRECTABLE, by the counter and the owner only.
+                  It used to be locked, and the lock is what produced the
+                  duplicate patients: a transposed digit could not be fixed, so
+                  a second file got opened for the same person and their history
+                  split in two. Offered DISABLED to everyone else rather than
+                  hidden — somebody who cannot see the field has no way to learn
+                  the value is wrong and fixable, which is how the second file
+                  gets created. */}
+              <Form.Item
+                name="identifierValue"
+                label={identityLabel}
+                extra={canCorrectIdentity ? undefined : IDENTITY_LOCKED_REASON}
+                // Validated only where it is editable, and only against what
+                // the save would CHANGE. Older records hold ICs with dashes;
+                // refusing to submit the form until a locked legacy value is
+                // "fixed" would block a phone-number correction on the
+                // strength of a field the account cannot even touch — the
+                // same dead end this whole change is removing.
+                rules={canCorrectIdentity ? [{ validator: validateIdentifier }] : []}
+              >
+                <Input disabled={!canEdit || !canCorrectIdentity} />
               </Form.Item>
             </Col>
             <Col xs={12} md={6}>
-              <Form.Item label="Date of birth">
-                <Input value={patient.dob ? dayjs(patient.dob).format('DD/MM/YYYY') : '—'} readOnly disabled />
+              <Form.Item name="dob" label="Date of birth">
+                <DatePicker
+                  format="DD/MM/YYYY"
+                  style={{ width: '100%' }}
+                  disabled={!canEdit || !canCorrectIdentity}
+                  // A date of birth in the future is always a typo, and
+                  // 05/05/2026 on staging is the one this whole change exists
+                  // to let somebody fix.
+                  disabledDate={(current) => current && current.isAfter(dayjs(), 'day')}
+                />
               </Form.Item>
             </Col>
           </Row>

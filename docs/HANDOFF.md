@@ -188,6 +188,60 @@ opened a popover. Two adjacent chips, two behaviours.
 - `e2e/patient-profile.spec.ts` closes it by clicking the chip again; there is
   no Close button to reach for.
 
+**IC AND DATE OF BIRTH ARE CORRECTABLE (2026-08-16).** They were read-only,
+which read as caution and worked as the opposite: a transposed digit taken at
+registration could not be fixed, so the counter's only remaining move was a
+SECOND patient record — splitting the very history the lock protected. Staging
+carries an 11-digit IC and a date of birth of 05/05/2026 as proof.
+
+Four things replace the lock, and none of them is "trust the user":
+
+- **A narrower permission.** New `patient.identity.write`, granted to OWNER and
+  ADMINISTRATOR only — not to DOCTOR, and separate from
+  `patient.demographics.write` because fixing a phone number and re-identifying
+  a person are different acts. It is the one patient-facing entry in the OWNER
+  grant list and does not breach "OWNER alone is not clinical": an identifier
+  correction is records administration, asserts nothing about health, and
+  appears in no clinical record. Web mirror: `core/patient-identity-access.ts`,
+  with the pre-permissions fallback deliberately NARROW.
+- **A duplicate check with a sentence.** `@@unique([tenantId, identifierType,
+  identifierValue])` already refused it, but as a 500 and a stack trace, which
+  invites a retry with a different spelling. Now named: "X is already
+  registered under this NRIC". Soft-deleted clashes get their own wording —
+  they still hold the constraint, so "nothing found" would be a lie the save
+  contradicts.
+- **A confirmation naming what is attached.** `GET
+  /patients/:id/identity-impact` returns visit/invoice/document counts, fetched
+  at save time (three COUNTs are not worth running to read a phone number). It
+  also states plainly that already-issued documents are not rewritten.
+- **An append-only record.** New table `patient_identity_changes`, ONE ROW PER
+  FIELD, with the author's name and role as SNAPSHOTS. Deliberately not
+  `audit_logs`: that table is generic, has NO RLS at all, is written by nothing
+  in the codebase, and names an actor by a nullable user id. This one is
+  tenant-scoped, has no UPDATE or DELETE policy, and carries the BEFORE
+  DELETE/TRUNCATE triggers from 20260813140000. Readable at
+  `GET /patients/:id/identity-history`.
+
+Two things worth knowing before touching this:
+
+- **Nothing snapshots the IC.** Grepped: `identifier_value` exists only on
+  `patients`. `Document.content` is a rendered string frozen at issue, and
+  there is no e-Invoice/LHDN table yet (only a `patient.lhdn.write`
+  permission). So "do not rewrite issued documents" holds by construction, not
+  by a rule someone has to remember.
+- **The identity path only triggers on a REAL change.** `identityDelta`
+  compares by value, because the profile form posts every field it holds. A
+  save that only moved a phone number must not demand the identity permission
+  or write "IC changed from 900101145566 to 900101145566". Held by a test.
+- The client-side IC rule validates only what CHANGES. Legacy records hold ICs
+  with dashes; refusing to submit the form until a locked legacy value is
+  "fixed" would block a phone-number correction on a field the account cannot
+  touch — the same dead end.
+- `Modal.confirm` renders into antd's own module-level root, which
+  testing-library's cleanup never unmounts. A test file that opens one needs
+  `Modal.destroyAll()` in an `afterEach`, or the NEXT test finds two of every
+  button.
+
 ## Checklist state
 
 | Item | Status |
