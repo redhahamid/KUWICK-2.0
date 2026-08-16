@@ -725,6 +725,45 @@ recording an alert. **Assert the consequence, not the component.**
 **Still true:** the `canvas: attachments` local flake (this container's
 database holds 48+ attachments on one visit; CI starts empty).
 
+## PHASE E — **DONE for the Canvas rail.** Orders/procedures, search-first.
+
+**Data layer.** `order_services` gains `room_id`, `urgency` (ROUTINE/URGENT)
+and `quantity`. The two order types ask for different things and the SERVER
+decides which apply, keyed on the stored `orderType`, never on the name: a room
+and an urgency describe work somebody carries out and are dropped for a
+standard service; a quantity is what a standard service is billed by and a task
+order is always 1, because three dressings are three orders each with their own
+room and result. The room is validated against this clinic's ACTIVE rooms —
+the FK cannot do it, since PostgreSQL checks FKs through internal triggers RLS
+does not apply to.
+
+**THE INVOICE WAS HARDCODED TO `quantity = 1` for orders.** Storing the column
+without this would have been a money bug: three dressings recorded as three,
+billed once. It now reads the order's own quantity the same way a prescription's
+is read, and a client's figure is still ignored.
+
+**UI.** `OrderSearchBox` replaces the "+ Add Order" button — the box IS the
+affordance, and it asks the server so the CATEGORY is searchable ("imaging" is
+how a doctor looks for an X-ray they cannot spell). Result rows carry category,
+price and a TASK/SERVICE tag, which is the most consequential fact on the row.
+`AddOrderModal` has two shapes behind one title, on `KuwickModal` so Phase B's
+guard is inherited. The rail lists BOTH types with type, status, room, urgency
+and quantity, and keeps the existing PENDING → Start → Complete → View Result
+round-trip untouched.
+
+**NOT DONE, and deliberately named rather than left to be discovered:**
+1. **Flow's `OrdersSectionBody` still has its own "+ Add Order" picker.** The
+   Canvas rail is what Phase E described, but this is the second surface, and
+   the last three phases each shipped with one surface behind. Give it the same
+   box before calling b2 finished.
+2. **`AddProcedureModal` is now dead except in tests.** Delete it with Flow's
+   rewiring, not before — Flow may yet be pointed at it.
+3. **The orders list and the Direct Services card now overlap**: the picker
+   offers standard services and the rail lists them, and Direct Services lists
+   them too. The owner said do NOT merge the cards, so both stand — but a
+   service added from the orders box appears in both places, and somebody
+   should decide whether that is right.
+
 ## b1+b2 PACKAGE — WHAT IS LEFT (next session starts here)
 
 **Phase 1 remainder:**

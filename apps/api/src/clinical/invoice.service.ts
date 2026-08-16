@@ -371,7 +371,7 @@ export class InvoiceService {
       } else if (dto.sourceOrderServiceId) {
         const order = await tx.orderService.findUnique({
           where: { id: dto.sourceOrderServiceId },
-          select: { orderType: true, status: true },
+          select: { orderType: true, status: true, quantity: true },
         });
         if (!order) {
           throw new NotFoundException('Order not found');
@@ -382,7 +382,13 @@ export class InvoiceService {
         if (order.orderType === 'TASK_ORDER' && order.status !== OrderServiceStatus.COMPLETED) {
           throw new BadRequestException('This procedure has not been completed yet, so it cannot be charged.');
         }
-        quantity = 1;
+        // b2 PHASE E — from the ORDER, the same way a prescription's is.
+        //
+        // This was hardcoded to 1, so three dressings recorded as a quantity
+        // of three were billed once. The quantity is a money fact and it is
+        // read from the record rather than assumed; a task order is always one
+        // piece of work, and its stored quantity is 1 by construction.
+        quantity = order.quantity;
       }
 
       // --- Pricing (D-093) -------------------------------------------------

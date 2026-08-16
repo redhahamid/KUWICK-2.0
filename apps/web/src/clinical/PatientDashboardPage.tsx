@@ -673,7 +673,7 @@ export function PatientDashboardPage() {
               right={
                 <>
                   <ServicesRail visitId={selectedVisit.id} />
-                  <OrdersRail visitId={selectedVisit.id} />
+                  <OrdersRail visitId={selectedVisit.id} clinicId={selectedVisit.clinicId} />
                   <MedicationsRail visitId={selectedVisit.id} />
                 </>
               }

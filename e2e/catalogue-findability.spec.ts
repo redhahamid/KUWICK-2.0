@@ -175,12 +175,11 @@ const CATALOGUES: CatalogueCase[] = [
     field: 'the service code',
     surfaces: [
       {
-        name: 'Canvas — Add order (asks the SERVER)',
+        // b2 PHASE E — the button that revealed a picker is gone; the box IS
+        // the affordance, so there is nothing to click first.
+        name: 'Canvas — the orders search box (asks the SERVER)',
         layout: 'canvas',
-        reach: async (page) => {
-          await page.getByRole('button', { name: /add order/i }).first().click();
-          return page.getByLabel('Search procedures and investigations').first();
-        },
+        reach: async (page) => page.getByLabel('Add order or service').first(),
       },
       {
         name: 'Canvas — services rail (filters in the BROWSER)',

@@ -28,7 +28,7 @@ export function ClinicalRail({ visit }: ClinicalRailProps) {
     <div className="kw-clinical-rail">
       <DiagnosisRail visitId={visit.id} />
       <MedicationsRail visitId={visit.id} />
-      <OrdersRail visitId={visit.id} />
+      <OrdersRail visitId={visit.id} clinicId={visit.clinicId} />
       <ServicesRail visitId={visit.id} />
     </div>
   );

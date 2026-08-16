@@ -547,6 +547,9 @@ export interface CreateCustomDiagnosisDto {
 
 export type OrderServiceStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
+/** b2 PHASE E — how soon a task order is needed. */
+export type OrderUrgency = 'ROUTINE' | 'URGENT';
+
 export interface OrderService {
   id: string;
   tenantId: string;
@@ -565,6 +568,13 @@ export interface OrderService {
   cancelReason: string | null;
   formTemplateId: string | null;
   formData: Record<string, unknown> | null;
+  // b2 PHASE E — where the work happens, how urgently, and how many.
+  // The first two are null on anything ordered before they were captured, and
+  // on every standard service: nobody is waiting on a consultation fee.
+  roomId: string | null;
+  urgency: OrderUrgency | null;
+  quantity: number;
+  room?: { id: string; name: string } | null;
   visit?: Visit;
   requestedBy?: Staff;
   // G2b — read-only counts from the list endpoint, so the section can show an
@@ -577,6 +587,13 @@ export interface CreateOrderServiceDto {
   visitId: string;
   serviceCatalogId: string;
   instruction?: string;
+  // b2 PHASE E. All optional: the two order types ask for different things and
+  // the SERVER decides which apply, keyed on the stored orderType. Sending a
+  // quantity on a task order, or a room on a standard service, is ignored
+  // rather than refused — the picker has two shapes, not two error messages.
+  roomId?: string;
+  urgency?: OrderUrgency;
+  quantity?: number;
 }
 
 export interface CompleteOrderServiceDto {

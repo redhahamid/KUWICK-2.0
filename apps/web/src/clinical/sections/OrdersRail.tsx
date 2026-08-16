@@ -1,19 +1,19 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Button, Popconfirm, Select, Space, Tag, Typography, message } from 'antd';
-import { MoreOutlined, PaperClipOutlined, PlusOutlined } from '@ant-design/icons';
-import { useServices } from '../hooks/useServices';
+import { MoreOutlined, PaperClipOutlined } from '@ant-design/icons';
 import {
   useCancelOrderService,
   useCompleteOrderService,
-  useCreateOrderService,
   useOrderServices,
   useStartOrderService,
 } from '../hooks/useOrderServices';
 import { CompleteOrderModal } from '../CompleteOrderModal';
-import { OrderService, OrderServiceStatus } from '../types';
+import { OrderService, OrderServiceStatus, Service } from '../types';
 import { ApiError } from '../../core/api-client';
 import { RailPanel } from './RailPanel';
-import { AddProcedureModal } from '../orders/AddProcedureModal';
+import { AddOrderModal } from '../orders/AddOrderModal';
+import { OrderSearchBox } from '../orders/OrderSearchBox';
+import { orderTypeLabel } from '../orders/orderPicker';
 
 const { Text } = Typography;
 
@@ -45,6 +45,8 @@ const STATUS_RANK: Record<OrderServiceStatus, number> = {
 
 interface OrdersRailProps {
   visitId: string;
+  /** The visit's clinic — the room dropdown is scoped to its stations. */
+  clinicId?: string;
 }
 
 /**
@@ -59,15 +61,18 @@ interface OrdersRailProps {
  * expanded section used. Completion, result forms, attachments and per-order
  * chat all remain the unchanged `CompleteOrderModal`.
  */
-export function OrdersRail({ visitId }: OrdersRailProps) {
-  const [serviceCatalogId, setServiceCatalogId] = useState<string>();
+export function OrdersRail({ visitId, clinicId }: OrdersRailProps) {
   const [activeOrder, setActiveOrder] = useState<OrderService | null>(null);
 
-  const [ordering, setOrdering] = useState(false);
-  const addButtonRef = useRef<HTMLButtonElement>(null);
-  const { data: services } = useServices();
-  const { data: orders, isLoading, error } = useOrderServices(visitId, { orderType: 'TASK_ORDER' });
-  const createOrder = useCreateOrderService(visitId);
+  // b2 PHASE E — the service chosen in the search box. Its presence IS the
+  // modal being open, so the two cannot disagree about which service is being
+  // ordered.
+  const [picked, setPicked] = useState<Service | undefined>();
+  const [focusSignal, setFocusSignal] = useState(0);
+  // BOTH order types. The picker offers tasks and standard services alike and
+  // tags each, so the list has to show what it let the doctor add — filtering
+  // to TASK_ORDER here would make a service added from this box vanish.
+  const { data: orders, isLoading, error } = useOrderServices(visitId);
   const startOrder = useStartOrderService(visitId);
   const completeOrder = useCompleteOrderService(visitId);
   const cancelOrder = useCancelOrderService(visitId);
@@ -77,19 +82,6 @@ export function OrdersRail({ visitId }: OrdersRailProps) {
 
   const list = [...(orders ?? [])].sort((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status]);
   const outstanding = list.filter((o) => o.status === 'PENDING' || o.status === 'IN_PROGRESS').length;
-
-  const add = async () => {
-    if (!serviceCatalogId) return;
-    try {
-      await createOrder.mutateAsync({ visitId, serviceCatalogId });
-      setServiceCatalogId(undefined);
-    } catch (err) {
-      report(err, 'Failed to add the order');
-    }
-  };
-
-  // Only TASK_ORDER catalogue entries can be ordered here.
-  const orderable = (services ?? []).filter((service) => service.orderType === 'TASK_ORDER');
 
   return (
     <>
@@ -103,18 +95,11 @@ export function OrdersRail({ visitId }: OrdersRailProps) {
         emptyText="No orders or procedures for this visit"
         previewLimit={4}
         addControl={
-          /* G4.5d5b-1 — the whole service catalogue used to live in this
-             Select, filtered for TASK_ORDER in the browser, and the order's
-             `instruction` field had nowhere to be typed. Both are the modal's
-             job now; the rail keeps the list, which is what a rail is for. */
-          <Button
-            ref={addButtonRef}
-            type="primary"
-            icon={<PlusOutlined aria-hidden />}
-            onClick={() => setOrdering(true)}
-          >
-            Add Order
-          </Button>
+          /* b2 PHASE E — the BOX, not a button in front of one.
+             "+ Add Order" revealed a picker and decided nothing, which is the
+             same door b1 removed from prescribing. Typing is the first act,
+             and the server matches name, code and category. */
+          <OrderSearchBox onPick={setPicked} focusSignal={focusSignal} />
         }
         items={list.map((order) => (
           <div key={order.id} className="kw-rail-row">
@@ -123,8 +108,17 @@ export function OrdersRail({ visitId }: OrdersRailProps) {
                 <Text strong style={{ fontSize: 14 }}>
                   {order.procedureName}
                 </Text>
+                {/* TASK or SERVICE. The most consequential fact on the row:
+                    one puts work in somebody's queue and comes back with a
+                    result, the other is billed and finished. */}
+                <Tag className={order.orderType === 'TASK_ORDER' ? 'kw-chip-clinical' : 'kw-chip-neutral'}>
+                  {orderTypeLabel(order.orderType)}
+                </Tag>
                 {/* A word, never colour alone. */}
                 <Tag className={STATUS_CHIP[order.status]}>{STATUS_LABEL[order.status]}</Tag>
+                {order.quantity > 1 && <Tag>{order.quantity} ×</Tag>}
+                {order.room?.name && <Tag>{order.room.name}</Tag>}
+                {order.urgency === 'URGENT' && <Tag className="kw-chip-pending">URGENT</Tag>}
                 {(order._count?.attachments ?? 0) > 0 && (
                   <Tag icon={<PaperClipOutlined />}>{order._count!.attachments}</Tag>
                 )}
@@ -182,12 +176,18 @@ export function OrdersRail({ visitId }: OrdersRailProps) {
         ))}
       />
 
-      {/* Unchanged: form templates, attachments and per-order chat. */}
-      <AddProcedureModal
-        open={ordering}
+      <AddOrderModal
+        open={Boolean(picked)}
         visitId={visitId}
-        onClose={() => setOrdering(false)}
-        restoreFocusTo={() => addButtonRef.current}
+        clinicId={clinicId}
+        service={picked}
+        onClose={() => setPicked(undefined)}
+        // Back to the box, so the next order starts by typing rather than by
+        // aiming — the same hand-off the medications rail makes.
+        onAddAnother={() => {
+          setPicked(undefined);
+          setFocusSignal((n) => n + 1);
+        }}
       />
 
       <CompleteOrderModal

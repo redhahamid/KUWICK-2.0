@@ -173,6 +173,9 @@ function createService(role = 'FINANCE_STAFF', world: World = {}) {
         serviceCatalog: { price: 30 },
         orderType: 'STANDARD_SERVICE',
         status: 'PENDING',
+        // b2 PHASE E — the order's own quantity. NOT NULL at 1 in the schema,
+        // so every row has one.
+        quantity: 1,
       }),
       findMany: jest.fn(async () => world.worklistOrders ?? []),
     },
@@ -710,8 +713,36 @@ describe('sourced quantity truth', () => {
     expect(created.amount).toBe(70);
   });
 
-  it('27/29. an order-sourced line is quantity 1, whatever the client sends', async () => {
+  it('27/29. an order-sourced line takes the ORDER\'s quantity, not the client\'s', async () => {
+    // b2 PHASE E — this was hardcoded to 1, so three dressings recorded as a
+    // quantity of three were billed once. The figure is a money fact and it
+    // comes from the record, exactly as a prescription's does; a client's is
+    // still ignored.
     const ctx = createService('FINANCE_STAFF');
+    ctx.tx.orderService.findUnique.mockResolvedValue({
+      serviceCatalogId: 'svc-1',
+      serviceCatalog: { price: 30 },
+      orderType: 'STANDARD_SERVICE',
+      status: 'PENDING',
+      quantity: 3,
+    });
+    await withTenant(() =>
+      ctx.service.addLine('inv-1', { description: 'Svc', sourceOrderServiceId: 'os-1', quantity: 42 } as never),
+    );
+    const created = (ctx.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data;
+    expect(created.quantity).toBe(3);
+    expect(created.amount).toBe(90);
+  });
+
+  it('27b. a task order is billed once — it is one piece of work', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    ctx.tx.orderService.findUnique.mockResolvedValue({
+      serviceCatalogId: 'svc-1',
+      serviceCatalog: { price: 30 },
+      orderType: 'TASK_ORDER',
+      status: 'COMPLETED',
+      quantity: 1,
+    });
     await withTenant(() =>
       ctx.service.addLine('inv-1', { description: 'Svc', sourceOrderServiceId: 'os-1', quantity: 42 } as never),
     );
