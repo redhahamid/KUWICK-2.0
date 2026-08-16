@@ -60,15 +60,20 @@ function renderRail(prescriptions: Prescription[]) {
 }
 
 describe('medication rows', () => {
-  it('23. rows show the user-facing supply wording', async () => {
+  it('23. rows carry the user-facing supply wording — on hover, since b4', async () => {
+    // b4 PIECE 1 compacted the row to one line and moved the RESOLVED supply
+    // source to a title attribute. Deliberately a title and not a portal
+    // tooltip: it stays in the DOM and in the accessibility tree, so the
+    // wording is still there for a screen reader and for this test. The
+    // UNRESOLVED state did not move — see the next case.
     renderRail([
       RX({ id: 'a', supplyMode: 'ONSITE_DISPENSE', item: { id: 'i1', name: 'Ibuprofen 400mg' } as never }),
       RX({ id: 'b', supplyMode: 'EXTERNAL_PRESCRIPTION', item: { id: 'i2', name: 'Cetirizine 10mg' } as never }),
       RX({ id: 'c', supplyMode: 'PATIENT_OWN_SUPPLY', item: { id: 'i3', name: 'Metformin 500mg' } as never }),
     ]);
-    expect(await screen.findByText('Dispense from clinic')).toBeInTheDocument();
-    expect(screen.getByText('External prescription')).toBeInTheDocument();
-    expect(screen.getByText('Patient already has medication')).toBeInTheDocument();
+    expect(await screen.findByTitle(/Dispense from clinic/)).toBeInTheDocument();
+    expect(screen.getByTitle(/External prescription/)).toBeInTheDocument();
+    expect(screen.getByTitle(/Patient already has medication/)).toBeInTheDocument();
   });
 
   it('4. a NULL mode reads as not confirmed, never as clinic dispensing', async () => {
@@ -83,8 +88,13 @@ describe('medication rows', () => {
       RX({ id: 'b', supplyMode: null }),
       RX({ id: 'c', supplyMode: 'NO_SUPPLY_REQUIRED', status: 'DISPENSED' }),
     ]);
-    await screen.findByText('Dispense from clinic');
-    // Including the STATUS chips — the rail used to print the raw enum.
+    await screen.findByTitle(/Dispense from clinic/);
+    // Including the STATUS chips — the rail used to print the raw enum. The
+    // title attributes are checked too: moving text to hover must not be a
+    // route for a raw enum to reappear where nobody is looking.
+    expect(
+      [...container.querySelectorAll('[title]')].map((el) => el.getAttribute('title')).join(' '),
+    ).not.toMatch(/ONSITE_DISPENSE|EXTERNAL_PRESCRIPTION|PATIENT_OWN_SUPPLY|NO_SUPPLY_REQUIRED/);
     expect(container.textContent).not.toMatch(
       /ONSITE_DISPENSE|EXTERNAL_PRESCRIPTION|PATIENT_OWN_SUPPLY|NO_SUPPLY_REQUIRED|ORDERED|DISPENSED|CANCELLED/,
     );
@@ -112,7 +122,7 @@ describe('rail badges', () => {
 
   it('an external prescription produces NO dispensing badge at all', async () => {
     renderRail([RX({ supplyMode: 'EXTERNAL_PRESCRIPTION' })]);
-    await screen.findByText('External prescription');
+    await screen.findByTitle(/External prescription/);
     expect(screen.queryByText(/to dispense/)).not.toBeInTheDocument();
     expect(screen.queryByText(/unresolved/)).not.toBeInTheDocument();
   });
@@ -131,7 +141,7 @@ describe('dispense gating', () => {
     ['DEFERRED', 'Deferred supply'],
   ])('25b. %s offers no Dispense action', async (mode, label) => {
     renderRail([RX({ supplyMode: mode as never })]);
-    await screen.findByText(label);
+    await screen.findByTitle(new RegExp(label));
     expect(screen.queryByRole('button', { name: 'Dispense' })).not.toBeInTheDocument();
   });
 

@@ -102,12 +102,16 @@ describe('the card says what this visit has issued', () => {
     expect(await screen.findByText(/No documents issued for this visit yet/i)).toBeInTheDocument();
   });
 
-  it('lists type, dates and who issued it', async () => {
+  it('lists type and dates on ONE line, with who issued it on hover', async () => {
     ISSUED = [doc({ startDate: '2026-08-16', endDate: '2026-08-18' })];
     open();
     expect(await screen.findByText('MC')).toBeInTheDocument();
     expect(screen.getByText(/16\/08 – 18\/08\/2026 · 3 days/)).toBeInTheDocument();
-    expect(screen.getByText(/Issued by Dr Amira Rahman/)).toBeInTheDocument();
+    // b4 PIECE 1 — who issued it moved to hover so the row costs one line.
+    // Asserted on the title attribute rather than as rendered text: it is
+    // still in the DOM and still in the accessibility tree, which is the whole
+    // reason a title was used instead of a portal tooltip.
+    expect(screen.getByTitle(/Issued by Dr Amira Rahman/)).toBeInTheDocument();
   });
 
   it('offers view, print and remove on every row', async () => {

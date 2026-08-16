@@ -115,17 +115,17 @@ export function VisitCompletionBar({
               None issued
             </Text>
           )}
-          <Space size={6} wrap className="kw-completion-actions">
-            <Button size="small" type="primary" ghost icon={<FileTextOutlined />} onClick={() => setCreating('MC')}>
-              Create MC
-            </Button>
-            <Button size="small" icon={<SwapOutlined />} onClick={() => setCreating('REFERRAL')}>
-              Create Referral
-            </Button>
-            <Button size="small" onClick={onOpenDocuments}>
-              More Documents
-            </Button>
-          </Space>
+          {/* b4 PIECE 1 — Create MC, Create Referral and More Documents are
+              GONE from this band. They lived here because the canvas had no
+              Documents card and this was a doctor's only way to issue an MC;
+              the card landed in Phase F and the owner has confirmed it works,
+              so keeping them would be three controls doing what the card does,
+              two of them jumping to a type the card also offers. One button,
+              one function.
+
+              The SUMMARY above stays: "2 active · Latest MC 16 Aug" is the
+              band answering what has been issued, which is a different job
+              from issuing one. */}
         </div>
 
         <div className="kw-completion-group">

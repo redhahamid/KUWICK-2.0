@@ -96,7 +96,7 @@ export function OrdersRail({ visitId, clinicId }: OrdersRailProps) {
         // purpose, and an empty card that does not name the boundary is how a
         // doctor ends up hunting for the consultation fee in here.
         emptyText="No tests, imaging or procedures ordered. Billable services are added in Direct Services below."
-        previewLimit={4}
+        previewLimit={5}
         addControl={
           /* b2 PHASE E — the BOX, not a button in front of one.
              "+ Add Order" revealed a picker and decided nothing, which is the

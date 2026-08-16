@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Popconfirm, Select, Space, Tag, Typography, message } from 'antd';
-import { EyeOutlined, PrinterOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EyeOutlined, PrinterOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useDocuments, useVoidDocument } from '../hooks/useDocuments';
 import { useDocumentTemplates } from '../hooks/useDocumentTemplates';
@@ -82,7 +82,7 @@ export function DocumentsRail({ visit }: { visit: Visit }) {
         // A first visit has none, and says so in the words a doctor would use
         // rather than "No data".
         emptyText="No documents issued for this visit yet."
-        previewLimit={4}
+        previewLimit={5}
         addControl={
           <Select
             style={{ width: 190 }}
@@ -98,21 +98,27 @@ export function DocumentsRail({ visit }: { visit: Visit }) {
         }
         items={issued.map((document) => (
           <div className="kw-rail-row" key={document.id} data-document-id={document.id}>
-            <Space size={6} wrap>
+            {/* b4 PIECE 1 — one line. Type, what it covers, and the actions.
+                Who issued it moves to hover: it is the fact a doctor checks
+                once, not the one they scan the list for. */}
+            {/* Who issued it moves to HOVER — via a title attribute, so it
+                stays in the DOM and the accessibility tree rather than existing
+                only while a pointer is over it. It is the fact a doctor checks
+                once, not the one they scan the list for. */}
+            <Space
+              size={6}
+              wrap
+              className="kw-rail-row-main"
+              title={`Issued by ${document.issuedBy?.fullName ?? 'unknown'} · ${dayjs(
+                document.issuedDate,
+              ).format('DD/MM/YYYY')}`}
+            >
               <Tag color={TYPE_COLOR[document.type]}>{shortLabel(document)}</Tag>
               <Text strong style={{ fontSize: 13 }}>
                 {describeDates(document)}
               </Text>
             </Space>
-            <div>
-              {/* Issued-by, on the row. A document nobody can attribute is one
-                  nobody can question — the same reasoning as the alert rows. */}
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                Issued by {document.issuedBy?.fullName ?? 'unknown'} ·{' '}
-                {dayjs(document.issuedDate).format('DD/MM/YYYY')}
-              </Text>
-            </div>
-            <Space size={4}>
+            <Space size={4} className="kw-rail-row-actions">
               <Button
                 size="small"
                 icon={<EyeOutlined />}
@@ -132,9 +138,12 @@ export function DocumentsRail({ visit }: { visit: Visit }) {
                 cancelText="Keep it"
                 onConfirm={() => void remove(document)}
               >
-                <Button size="small" danger aria-label={`Remove ${shortLabel(document)}`}>
-                  Remove
-                </Button>
+                <Button
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  danger
+                  aria-label={`Remove ${shortLabel(document)}`}
+                />
               </Popconfirm>
             </Space>
           </div>

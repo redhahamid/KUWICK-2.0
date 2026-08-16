@@ -87,7 +87,7 @@ export function DiagnosisRail({ visitId }: DiagnosisRailProps) {
         isLoading={isLoading}
         error={error ?? undefined}
         emptyText="No diagnosis recorded for this visit"
-        previewLimit={4}
+        previewLimit={5}
         addControl={
           <DiagnosisSearchField
             /* No category filter, deliberately. The rail hardcoded

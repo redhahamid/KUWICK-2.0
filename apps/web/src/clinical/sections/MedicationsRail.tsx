@@ -59,6 +59,26 @@ const STATUS_CHIP: Record<string, { className: string; label: string }> = {
  * At 1366 the Drawer may cover the rail. It must never resize the note: the
  * note's height is declared in CSS and nothing here touches it.
  */
+/**
+ * b4 PIECE 1 — what moved off the row, kept as one hoverable string.
+ *
+ * How it was calculated, where it is dispensed from, and the prescriber's
+ * remark. Each was a permanent line; together they were half the height of the
+ * medications card and the reason eight medicines ran to thirty-two lines.
+ */
+export function secondaryDetail(
+  prescription: Pick<Prescription, 'supplyMode' | 'status' | 'remark' | 'indication'>,
+  calculated: string | null,
+): string {
+  return [
+    calculated ? `⚖ ${calculated}` : null,
+    prescription.status !== 'CANCELLED' ? supplyModeLabel(prescription.supplyMode) : null,
+    prescription.remark ?? prescription.indication ?? null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 export function MedicationsRail({ visitId }: MedicationsRailProps) {
   // G4.5d5b-1 — two distinct surfaces now, where there was one drawer holding
   // everything. Adding a medication is a focused modal; Copy Previous still
@@ -175,7 +195,24 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
               {...(unresolvedRow ? { 'data-unresolved-supply': 'true', tabIndex: -1 } : {})}
             >
               <div className="kw-rail-row-main">
-                <Space size={4} wrap>
+                {/* b4 PIECE 1 — ONE LINE, the way a paper prescription writes
+                    one line per drug.
+                    It spent four: name+status, the dose line, the calculation
+                    note, and the supply source. Eight medicines was thirty-two
+                    lines and the invoice had nowhere to go. The two that moved
+                    are secondary — how it was calculated, and where it is
+                    dispensed from — and they moved to HOVER, not to a click:
+                    nothing is behind an interaction a doctor has to know to
+                    make. */}
+                {/*
+                  HOVER, via a plain title attribute rather than a portal.
+                  The detail stays in the DOM and in the accessibility tree —
+                  a screen reader and a test can both still find "Dispense from
+                  clinic". A tooltip that only exists while a pointer is over it
+                  would have removed the information rather than relocated it,
+                  which on a supply decision is not a layout choice.
+                */}
+                <Space size={4} wrap title={secondaryDetail(prescription, calculated)}>
                   <Text strong style={{ fontSize: 14 }}>
                     {prescription.item?.name ?? 'Medication'}
                   </Text>
@@ -183,40 +220,23 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
                   <Tag className={STATUS_CHIP[prescription.status]?.className}>
                     {STATUS_CHIP[prescription.status]?.label ?? prescription.status}
                   </Tag>
-                </Space>
-                <Text style={{ fontSize: 12 }}>
-                  {prescription.amount}
-                  {prescription.unit ? ` ${prescription.unit}` : ''} · {prescription.frequency} ·{' '}
-                  {prescription.durationDays} day{prescription.durationDays === 1 ? '' : 's'} · qty{' '}
-                  {prescription.quantity}
-                  {(prescription.remark || prescription.indication) && (
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {' · '}
-                      {prescription.remark ?? prescription.indication}
-                    </Text>
-                  )}
-                </Text>
-
-                {calculated && (
-                  <Tooltip title="The calculation recorded at prescribing time, kept with the prescription.">
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      ⚖ {calculated}
-                    </Text>
-                  </Tooltip>
-                )}
-
-                {/* D-091 — the supply intent, in the owner's words. NULL has
-                    its own wording and colour-plus-words treatment; it is
-                    never rendered as clinic dispensing. */}
-                {prescription.status !== 'CANCELLED' && (
-                  <Text
-                    type={unresolvedRow ? 'warning' : 'secondary'}
-                    style={{ fontSize: 12 }}
-                    className="kw-supply-label"
-                  >
-                    {supplyModeLabel(prescription.supplyMode)}
+                  <Text style={{ fontSize: 12 }}>
+                    {prescription.amount}
+                    {prescription.unit ? ` ${prescription.unit}` : ''} · {prescription.frequency} ·{' '}
+                    {prescription.durationDays}d · qty {prescription.quantity}
                   </Text>
-                )}
+                  {/* THE ONE THING THAT DOES NOT MOVE TO HOVER.
+                      D-091: a NULL supply mode is an unmade decision, and it is
+                      the state the completion checkpoint stops on. Putting a
+                      warning behind a hover is how a medication gets missed —
+                      the failure this compaction must not cause. Resolved
+                      supply hides; unresolved never does. */}
+                  {unresolvedRow && (
+                    <Tag className="kw-chip-pending kw-supply-label">
+                      {supplyModeLabel(prescription.supplyMode)}
+                    </Tag>
+                  )}
+                </Space>
               </div>
               {/* D-077 — ONE next action, plus More. Dispense is what the row
                   is usually for; cancelling is real but rare, and a red button

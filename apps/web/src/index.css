@@ -1125,6 +1125,46 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 6px;
+  /* b4 PIECE 1 — the count stays readable while the rail scrolls.
+     A doctor halfway down eight medications should not have to scroll back to
+     learn which card they are in. Sticky to the PANEL, not to the viewport, so
+     each header parks at the top of its own card and hands over to the next —
+     no stack of accumulated headers eating the screen.
+     There is deliberately no inner scroll region on any card: a scroller inside
+     a rail beside a scrolling page hides clinical content behind a gesture
+     nobody makes. */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fff;
+  padding-top: 2px;
+}
+
+/* An empty card is ONE LINE: the count, the wording, and the add control on
+   the same row. Nothing is hidden — there is nothing to hide — and the card
+   opens itself the moment a first item exists.
+   Done with LAYOUT, not by moving the control in the tree: rendering the add
+   box in a different parent while empty unmounted it the moment the first item
+   arrived, which dropped focus mid-word for anyone typing a drug name. */
+.kw-rail-panel-empty {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+.kw-rail-panel-empty .kw-rail-head,
+.kw-rail-panel-empty .kw-rail-add {
+  margin-bottom: 0;
+}
+
+.kw-rail-panel-empty .kw-rail-add {
+  margin-left: auto;
+}
+
+.kw-rail-panel-empty .kw-rail-body {
+  display: none;
 }
 
 .kw-rail-add {

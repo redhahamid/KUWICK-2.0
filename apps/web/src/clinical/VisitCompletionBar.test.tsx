@@ -42,27 +42,24 @@ function renderBar(overrides: { onOpenDocuments?: () => void; onOpenInvoice?: ()
 }
 
 describe('top Visit Actions', () => {
-  it('1. document actions are all present', () => {
+  it('1. the document ACTIONS are gone — the Documents card owns issuing now', () => {
+    // b4 PIECE 1. Create MC, Create Referral and More Documents lived here
+    // because the canvas had no Documents card and this was a doctor's only
+    // way to issue an MC. The card landed in Phase F and the owner confirmed
+    // it works, so three controls doing what the card does is exactly the
+    // one-button-one-function rule this band is supposed to obey.
     renderBar();
-    expect(screen.getByRole('button', { name: /create mc/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /create referral/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /more documents/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /create mc/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /create referral/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /more documents/i })).not.toBeInTheDocument();
   });
 
-  it('2. Create MC opens the document creation flow directly', async () => {
-    const user = userEvent.setup();
+  it('2. it still SAYS what has been issued — reporting is not the same job as issuing', () => {
+    // The summary stays. Removing the buttons must not remove the answer to
+    // "has this visit issued anything", which is the one thing the band was
+    // genuinely adding.
     renderBar();
-    expect(screen.queryByTestId('create-document-drawer')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /create mc/i }));
-    expect(screen.getByTestId('create-document-drawer')).toBeInTheDocument();
-  });
-
-  it('2b. More Documents hands over to the full Documents surface', async () => {
-    const user = userEvent.setup();
-    const onOpenDocuments = vi.fn();
-    renderBar({ onOpenDocuments });
-    await user.click(screen.getByRole('button', { name: /more documents/i }));
-    expect(onOpenDocuments).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/active|None issued/i)).toBeInTheDocument();
   });
 
   it('3. the invoice action opens the invoice surface', async () => {

@@ -70,8 +70,28 @@ export function RailPanel({
   const hidden = Math.max(items.length - previewLimit, 0);
   const visible = showAll ? items : items.slice(0, previewLimit);
 
+  /**
+   * b4 PIECE 1 — AN EMPTY CARD COSTS ONE LINE.
+   *
+   * "Direct Services (0)" used to spend a heading, a search box and an
+   * italic "nothing recorded" — three lines and a control, before anything
+   * existed. On a first visit that is four cards' worth of nothing pushing the
+   * one card with content off the bottom of a 1366px screen.
+   *
+   * Collapsed means the count and the add affordance share the header line.
+   * It is NOT collapsed-by-default in the toggle sense: there is nothing to
+   * expand, no click reveals hidden clinical content, and the moment a first
+   * item exists the card opens on its own.
+   */
+  const isEmpty = !isLoading && !error && items.length === 0;
+
   return (
-    <section className="kw-rail-panel" data-panel={title} id={anchorId}>
+    <section
+      className={`kw-rail-panel${isEmpty ? ' kw-rail-panel-empty' : ''}`}
+      data-panel={title}
+      data-empty={isEmpty ? 'true' : undefined}
+      id={anchorId}
+    >
       <div className="kw-rail-head">
         <Space size={6} align="center">
           <Text strong style={{ fontSize: 14 }}>
@@ -79,11 +99,25 @@ export function RailPanel({
             {count !== undefined && ` (${count})`}
           </Text>
           {status}
+          {/* The wording survives the collapse — it just stops owning a line
+              of its own. On a card with nothing in it there is room beside
+              the count. */}
+          {isEmpty && emptyText && (
+            <Text type="secondary" italic style={{ fontSize: 12 }}>
+              {emptyText}
+            </Text>
+          )}
         </Space>
       </div>
 
       {banner}
 
+      {/* ONE DOM POSITION, always. An earlier attempt moved this control into
+          the header while the card was empty, which unmounted and remounted the
+          search box the moment the first item loaded — dropping focus in the
+          middle of typing a drug name. The empty card collapses to one line
+          through LAYOUT instead (see `.kw-rail-panel-empty`), so nothing moves
+          in the tree. */}
       {addControl && <div className="kw-rail-add">{addControl}</div>}
 
       <div className="kw-rail-body">
@@ -91,16 +125,15 @@ export function RailPanel({
           <Skeleton active paragraph={{ rows: 2 }} title={false} />
         ) : error ? (
           <Alert type="error" showIcon message="Could not be loaded" description={errorMessage(error)} />
-        ) : items.length === 0 ? (
-          <Text type="secondary" italic style={{ fontSize: 12 }}>
-            {emptyText ?? 'Nothing recorded'}
-          </Text>
-        ) : (
+        ) : items.length === 0 ? null : (
           <>
             {visible}
             {hidden > 0 && !showAll && (
               <Button type="link" size="small" className="kw-rail-more" onClick={() => setShowAll(true)}>
-                View all {items.length}
+                {/* The REMAINDER collapses, never the list. Same rule as the
+                    header alert chip: a doctor scanning a rail must be able to
+                    see that there are eight medications without clicking. */}
+                +{hidden} more
               </Button>
             )}
             {showAll && hidden > 0 && (

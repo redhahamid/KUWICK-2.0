@@ -387,6 +387,55 @@ sensible empty state on a first visit. NOTE: the current order is Services →
 Orders → Medications → Documents, so only Invoice and the appointment card are
 missing from that sequence.
 
+**b4 PIECE 1 — RIGHT RAIL VERTICAL BUDGET (2026-08-16). Done except one test,
+named below.**
+
+The problem was density, not item count. A medication row spent FOUR lines —
+name+status, dose, "manual dose entered", "dispense from clinic" — so eight
+medicines was thirty-two lines and an invoice had nowhere to go.
+
+- **Medication rows are one line**: name · strength · status · dose·freq·Nd·qty.
+  The calculation note, the resolved supply source and the remark moved to
+  hover.
+- **HOVER IS A `title` ATTRIBUTE, NOT A PORTAL TOOLTIP.** Deliberate: a portal
+  renders nothing until a pointer is over it, so the wording would have left the
+  DOM and the accessibility tree — that is removing information, not relocating
+  it. A title stays findable by a screen reader and by a test (`getByTitle`).
+- **UNRESOLVED supply never moves.** D-091: a NULL supply mode is an unmade
+  decision and the state the completion checkpoint stops on. Resolved supply
+  hides; unresolved stays on the row as a chip. Hiding a warning behind a hover
+  is the failure this compaction must not cause.
+- **Document rows are one line** too; issued-by moved to the same title
+  treatment.
+- **Empty cards collapse to one line** — count, wording and the add control on
+  one row. **Done with CSS, not by moving the control in the tree.** The first
+  attempt rendered the add box in the header while empty, which unmounted and
+  remounted it the moment the first item loaded, dropping focus mid-word for
+  anyone typing a drug name. The orders search tests caught it. If you touch
+  `.kw-rail-panel-empty`, keep the control in one DOM position.
+- **Disclosure threshold is 5 everywhere**, and the button reads "+N more" —
+  the remainder collapses, never the list.
+- **Sticky headers** stick to the PANEL, not the viewport, so each hands over to
+  the next instead of accumulating. No card has an inner scroll region; none is
+  collapsed by default; no tabs.
+- **Create MC / Create Referral / More Documents removed from the visit band**
+  (owner confirmed the Documents card works). The band's document SUMMARY stays
+  — reporting what was issued is a different job from issuing.
+
+**NOT DONE, and it is part of this piece:** the explicit density budget test —
+a typical visit (4 medications, 1 order, 1 document, 1 invoice) fitting 1366px
+with no scrolling, plus a heavy visit (10 medications, 4 orders, 3 documents) at
+1366 and 1920. The existing `canvas-viewport.spec.ts` measures horizontal
+overflow at both widths and is green, but nothing yet asserts the VERTICAL
+budget, and no seed builds a heavy visit. Write that before trusting the target
+is met — the compaction is measured only by eye so far.
+
+**b4 PIECES 2 AND 3 — NOT STARTED.** Specs are in the owner's message and in
+the Phase G/H entries above. Piece 2 note that matters: the invoice lives in the
+STICKY BOTTOM BAR, not as a sixth card in the scrolling rail, and
+`consultation-tariff.ts` (D-094) already answers "should this visit carry a
+consultation charge" server-side — do not build a second answer.
+
 ## Checklist state
 
 | Item | Status |

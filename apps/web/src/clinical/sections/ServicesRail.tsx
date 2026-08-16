@@ -64,7 +64,7 @@ export function ServicesRail({ visitId }: ServicesRailProps) {
       isLoading={isLoading}
       error={error ?? undefined}
       emptyText="No direct services added to this visit"
-      previewLimit={3}
+      previewLimit={5}
       addControl={
         <Space.Compact style={{ width: '100%' }}>
           <Select
