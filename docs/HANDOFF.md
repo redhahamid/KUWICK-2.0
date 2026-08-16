@@ -303,6 +303,37 @@ still PATCH `{ allergies }`. They are screenshot/parity dev tools, excluded from
 tsconfig and not run by CI, and they need rewriting against the alerts API
 before they will work again.
 
+**PIECE 3 — PHASE F (Documents card) NOT STARTED (2026-08-16).** Stopped at
+the piece boundary rather than half-building it. The owner's spec and what the
+survey already established, so the next session can start immediately:
+
+The card fills the empty space below Medications in the right-hand column,
+following the same search-first/picker pattern as Orders.
+
+- **Migration FIRST.** `DocumentType` has no `TIME_SLIP` and no `CONSENT`, and
+  there is no `hours` column — `startDate`/`endDate` are `@db.Date`, so a time
+  slip's hours cannot be expressed by them. Note the enum trap this session hit
+  twice: PostgreSQL will not let a new enum value be USED in the transaction
+  that adds it, so if anything backfills or seeds with the new types it needs a
+  SEPARATE later migration.
+- **Reuse `CreateDocumentDrawer`** — it already does per-type fields. Do not
+  rewrite it.
+- **MC issuance is ALREADY a Document row with `type = MC`.** Do not create a
+  second table.
+- Types come from Settings → Documents & Templates: MC (single date or range),
+  time slip (date + hours), referral (auto-pulls from clinical notes), memo,
+  quarantine letter, consent.
+- A PICKER with the required date/field inputs per type, NOT one-click
+  generation.
+- Issued list on the card: type, date(s), issued-by, view/print/remove. "Remove"
+  is `record_status = VOID` — `Document` already has the void columns and the
+  `clinical.void` permission; there is no delete.
+- **Do NOT remove the Create MC control at `PatientDashboardPage.tsx:351`**
+  until the card is landed and working. It is currently a doctor's only way to
+  issue an MC.
+- Tests: each type generates with its required fields; MC issuance recorded;
+  golden path E2E green.
+
 ## Checklist state
 
 | Item | Status |
