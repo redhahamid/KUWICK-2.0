@@ -422,9 +422,9 @@ medicines was thirty-two lines and an invoice had nowhere to go.
   (owner confirmed the Documents card works). The band's document SUMMARY stays
   — reporting what was issued is a different job from issuing.
 
-**THE DENSITY MEASUREMENT IS HALF-BUILT AND MARKED `.fixme`. Finish it before
-Piece 2** — the owner's rule is that once the sticky bar lands, a TYPICAL visit
-failing to fit at 1366px is a failing test, not a note here.
+**THE DENSITY MEASUREMENT IS BUILT AND RUNNING IN CI. It reports one thing
+still outstanding, and that thing is a layout decision — read it before Piece
+2, because it is the number Piece 2 was waiting for.**
 
 WORKING:
 - `apps/api/prisma/seed-density-fixtures.ts` — runs clean, idempotent. One
@@ -432,29 +432,73 @@ WORKING:
   order, 1 doc) and `V-DENSITY-HEAVY` (10/4/3). Each carries ONE prescription
   with `supplyMode: null` on purpose — the unresolved state Piece 1 refused to
   move to hover, so the warning-chip assertion has something to find. Needs
-  `DATABASE_URL` passed explicitly (tsx does not load `.env`).
-- It writes `e2e/.density-fixtures.json` (gitignored) with both URLs. The spec
-  navigates by URL rather than clicking the visits rail — the first version did
-  click through and timed out, and a density measurement must fail when the RAIL
-  is too tall, not when a click path moves.
+  `DATABASE_URL` passed explicitly (tsx does not load `.env`). **In CI now**,
+  as its own step after "Seed the E2E world".
+- It writes `e2e/.density-fixtures.json` (gitignored) with both URLs **and the
+  counts it planted**. The spec navigates by URL rather than clicking the
+  visits rail — a density measurement must fail when the RAIL is too tall, not
+  when a click path moves — and waits on the counts, for the reason below.
+- Three of the four cases pass for real. Every run now PRINTS the budget,
+  passing or failing: `RAIL BUDGET — TYPICAL at 1920×1080: rail needs 659px,
+  has 845px above the fold (186px to spare)`.
 
-NOT WORKING, and the reason all four are `.fixme`:
-- **The rail renders NO ROWS for a visit opened directly by URL.** The page
-  loads, `Record View` is visible, `.kw-rail-row` count is 0. Diagnose this
-  first — a directly-seeded visit is probably missing whatever the canvas rail
-  filters on (a queue ticket, or a visit state), which the golden path gets by
-  creating its visit through the UI. Everything else is blocked on it.
-- `HEAVY at 1366` reported "2 card header(s) pushed off screen" — a real
-  geometric reading, but not trustworthy until rows render.
+**THE "RAIL RENDERS NO ROWS FOR A DIRECTLY-OPENED VISIT" DIAGNOSIS WAS WRONG.**
+Nothing is missing from the fixture — no queue ticket, no visit state, no
+assignment. Compared in the database against a golden-path visit, the two
+differ only in the ways the seed intends. The rail renders all six TYPICAL rows
+and all twelve HEAVY ones. **The spec was measuring too early**: it waited for
+`.kw-rail-panel` to be visible, and Piece 1's own empty-card rule means a panel
+with nothing in it renders a full card — so a rail whose fetches have not
+returned and a rail with no content are the same DOM to a selector. The wait is
+on the panel headers printing the counts the SEED planted; a count cannot be
+satisfied early, and it cannot be satisfied by the wrong visit (opening a
+patient shows their most recent visit for a moment before `?visitId=` takes
+effect, which is why the two fixtures have different counts).
+
+**`.kw-rail-row` AND `.kw-rail-head` ARE NOT RIGHT-RAIL SELECTORS.** They also
+match the DIAGNOSIS card, which is in the MIDDLE column under the note editor.
+That card's position tracks the editor's height, not rail density — and it was
+one of the two "card headers pushed off screen" in the first HEAVY reading. The
+measurement scopes to `[data-testid="canvas-right"]` now.
+
+**A DEFECT THE MEASUREMENT FOUND, now fixed** (`unresolvedSupplyFirst`,
+`medicationSupplyPresentation.ts`): the disclosure threshold of 5 was
+collapsing the unresolved-supply warning out of sight. On the ten-medication
+fixture the unresolved row sat tenth in the server's order, inside "+5 more" —
+the same warning one CLICK away, for exactly the reason D-091 refused to put it
+one HOVER away. Rows with no supply decision are ordered first now; the
+remainder still collapses, and the counts are unchanged. Locked by a web unit
+test as well as the e2e case.
+
+**STILL OUTSTANDING — `TYPICAL fits 1366×768`, and it is the only `.fixme`
+left.** It is no longer a fixture problem; it is the measurement working:
+
+    rail starts at y=277   patient header band, then the documents strip
+    rail needs    738px    Direct Services 78 (empty), Orders 120,
+                           Medications 368, Documents 131, gaps
+    rail has      491px    768 minus where it starts
+    OVER BY       247px    Documents entirely below the fold, and two of the
+                           four medications with it
+
+Piece 1 compacted the ROWS and did not reach the per-card overhead: four cards
+spend roughly 320px on headers and always-visible add controls for six rows of
+content. Two of Piece 1's own rules also come apart at exactly 1366 and nowhere
+else, because the rail is ~457px wide there and the controls wrap — an empty
+card takes 78px instead of the one line it takes at 1920, and a medication row
+with a longer name wraps to two. Closing 247px is a decision about what else
+gives way (the header band, the allergy strip, the per-card add controls —
+which Piece 1 deliberately keeps in one DOM position and on screen). That is the
+owner's call, not a test fix, so the case stays `.fixme` and reports itself as
+outstanding on every run.
+
+**PIECE 2 SHOULD READ THAT NUMBER FIRST.** The sticky bar has no space to
+consume at 1366: there is a 247px deficit before it arrives.
 
 **A trap already hit, do not re-introduce it:** `TYPICAL fits 1920` PASSED with
 zero rows, because the lowest row bottom of nothing is zero. Same class as
 measuring the rail against viewport-minus-bar: an assertion that holds by
-construction. Every case now guards on `rowCount > 0` first. Keep that.
-
-STILL TO DO: a CI step running the fixture seed (deliberately NOT added yet —
-adding it before the tests work would put an unverified step in the e2e job),
-then drop the `.fixme`.
+construction. Every case still guards on `rowCount > 0` first, and HEAVY now
+also asserts the exact row count disclosure should leave. Keep both.
 
 **b4 PIECES 2 AND 3 — NOT STARTED.** Specs are in the owner's message and in
 the Phase G/H entries above. Piece 2 note that matters: the invoice lives in the

@@ -103,3 +103,31 @@ export function canOfferDispense(prescription: SupplyCountable): boolean {
 export function isUnresolvedSupply(prescription: SupplyCountable): boolean {
   return prescription.status === 'ORDERED' && prescription.supplyMode == null;
 }
+
+/**
+ * b4 PIECE 1 — the rail's row order: rows nobody has decided come FIRST.
+ *
+ * D-091 refused to move the unresolved-supply chip to hover, on the grounds
+ * that a warning behind an interaction is a warning that gets missed. The
+ * density measurement then found the same information behind a different
+ * interaction: the rail discloses five rows and collapses the remainder, so on
+ * a ten-medication visit an unresolved row in sixth place sat inside "+5 more"
+ * — visible only after a click, which is what hover was rejected for. The
+ * panel header still counts it, but a count is not the row, and the row is
+ * where the decision is made.
+ *
+ * So the outstanding decision is what orders the list. This is a CLINICAL
+ * order, which is the only kind `RailPanel` accepts: what still needs an
+ * answer is read before what has one. The relative order of everything else —
+ * the server's, newest first — is untouched, and the completion checkpoint's
+ * jump to the first `[data-unresolved-supply]` row (D-091) lands on the first
+ * row rather than scrolling into a collapsed remainder.
+ */
+export function unresolvedSupplyFirst<T extends SupplyCountable>(prescriptions: T[]): T[] {
+  const unresolved = prescriptions.filter(isUnresolvedSupply);
+  // Not a sort: Array.prototype.sort's stability is guaranteed, but a
+  // comparator says less about intent here than the partition does.
+  return unresolved.length === 0
+    ? prescriptions
+    : [...unresolved, ...prescriptions.filter((p) => !isUnresolvedSupply(p))];
+}

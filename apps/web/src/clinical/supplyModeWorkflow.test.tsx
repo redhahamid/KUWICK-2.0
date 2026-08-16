@@ -106,6 +106,29 @@ describe('medication rows', () => {
     const marked = container.querySelectorAll('[data-unresolved-supply]');
     expect(marked).toHaveLength(1);
   });
+
+  it('b4 — disclosure never collapses an unresolved row out of sight', async () => {
+    // FOUND BY THE DENSITY MEASUREMENT, on the ten-medication fixture.
+    //
+    // D-091 kept this chip off hover because a warning behind an interaction
+    // is a warning that gets missed. b4 Piece 1 then set the disclosure
+    // threshold to five, and a tenth-in-the-list unresolved row went straight
+    // into "+5 more" — the same information, behind a different click.
+    //
+    // Ten rows, the unresolved one LAST in the server's order, which is where
+    // the fixture's oldest prescription lands. It has to be on screen without
+    // expanding anything.
+    const many = Array.from({ length: 9 }, (_, i) =>
+      RX({ id: `r${i}`, supplyMode: 'ONSITE_DISPENSE', item: { id: `i${i}`, name: `Medicine ${i}` } as never }),
+    );
+    renderRail([...many, RX({ id: 'last', supplyMode: null, item: { id: 'iz', name: 'Paracetamol 500mg' } as never })]);
+
+    expect(await screen.findByText('Supply mode not confirmed')).toBeInTheDocument();
+    // The remainder is still collapsed — this is not "show everything", which
+    // would give the rail back the height Piece 1 just reclaimed.
+    expect(screen.getByRole('button', { name: '+5 more' })).toBeInTheDocument();
+    expect(screen.getByText('Paracetamol 500mg')).toBeInTheDocument();
+  });
 });
 
 describe('rail badges', () => {

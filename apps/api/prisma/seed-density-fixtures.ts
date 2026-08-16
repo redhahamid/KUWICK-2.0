@@ -189,8 +189,10 @@ async function main() {
       return visit.id;
     };
 
-    const typical = await buildVisit(TYPICAL_VISIT_NUMBER, { medications: 4, orders: 1, documents: 1 });
-    const heavy = await buildVisit(HEAVY_VISIT_NUMBER, { medications: 10, orders: 4, documents: 3 });
+    const TYPICAL_COUNTS = { medications: 4, orders: 1, documents: 1 };
+    const HEAVY_COUNTS = { medications: 10, orders: 4, documents: 3 };
+    const typical = await buildVisit(TYPICAL_VISIT_NUMBER, TYPICAL_COUNTS);
+    const heavy = await buildVisit(HEAVY_VISIT_NUMBER, HEAVY_COUNTS);
 
     // Printed the way golden-path.spec.ts prints its visit under test, so a
     // failing run says which URL to open.
@@ -199,12 +201,23 @@ async function main() {
     // timed out: a density measurement should fail when the RAIL is too tall,
     // not when a click path changed. Reading ids from a file makes the
     // navigation deterministic and keeps the assertion about geometry.
+    //
+    // THE COUNTS TRAVEL WITH THE URL, and they are what the spec waits on.
+    // The rail renders its panels — headers, empty states, the add controls —
+    // before any of the visit's clinical rows have arrived, so "a panel is
+    // visible" was a signal that fired on an EMPTY rail: the spec measured a
+    // rail with nothing in it and reported zero rows, which read like a
+    // fixture the canvas would not accept. It accepts this one; the spec was
+    // simply measuring too early. Waiting for the panel to say the number
+    // THIS seed planted is the only wait that cannot pass early, and it comes
+    // from the seed rather than being copied into the spec as a literal that
+    // the two would then have to be kept agreeing on by hand.
     writeFileSync(
       resolve(__dirname, '../../../e2e/.density-fixtures.json'),
       `${JSON.stringify(
         {
-          typical: `/patients/${patient.id}?visitId=${typical}`,
-          heavy: `/patients/${patient.id}?visitId=${heavy}`,
+          typical: { url: `/patients/${patient.id}?visitId=${typical}`, ...TYPICAL_COUNTS },
+          heavy: { url: `/patients/${patient.id}?visitId=${heavy}`, ...HEAVY_COUNTS },
         },
         null,
         2,

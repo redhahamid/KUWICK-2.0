@@ -161,6 +161,20 @@ jobs:
         run: npx tsx prisma/seed-e2e.ts
         working-directory: apps/api
 
+      # b4 PIECE 1 — the two visits the right rail's vertical budget is
+      # measured on (4/1/1 and 10/4/3). Its own script rather than lines in
+      # seed-e2e: these visits exist to be MEASURED and are deliberately never
+      # touched by the golden path, which would change their density as it ran.
+      #
+      # It also writes e2e/.density-fixtures.json — the URLs and the counts the
+      # spec waits on — so it has to run after the clinic exists and before
+      # Playwright starts. DATABASE_URL is passed explicitly because tsx does
+      # not load .env, and this script talks to the database as the migration
+      # owner rather than the application role, exactly as the seeds above do.
+      - name: Seed the density-measurement fixtures
+        run: npx tsx prisma/seed-density-fixtures.ts
+        working-directory: apps/api
+
       # The clinic's REAL catalogues, exactly as staging loads them. Before
       # this, CI ran against a database holding one diagnosis — the code the
       # E2E seed plants for itself — so every search-box defect was invisible

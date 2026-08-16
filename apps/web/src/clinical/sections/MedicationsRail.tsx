@@ -14,6 +14,7 @@ import {
   supplyCounts,
   supplyModeLabel,
   toDispenseText,
+  unresolvedSupplyFirst,
   unresolvedText,
 } from '../medicationSupplyPresentation';
 import { MedicationsTab } from '../MedicationsTab';
@@ -181,7 +182,10 @@ export function MedicationsRail({ visitId }: MedicationsRailProps) {
             </Button>
           </div>
         }
-        items={list.map((prescription) => {
+        /* Rows nobody has decided the supply for come first, so the disclosure
+           threshold below can never collapse one out of sight. The counts
+           above are computed from the unordered list and are unaffected. */
+        items={unresolvedSupplyFirst(list).map((prescription) => {
           const strength = strengthOf(prescription);
           const calculated = calculationNote(prescription);
           const unresolvedRow = isUnresolvedSupply(prescription);
