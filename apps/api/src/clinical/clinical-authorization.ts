@@ -104,14 +104,19 @@ export function canAuthorStaffRemark(staff: Staff): boolean {
 // G6PD) is recorded by clinical staff, because it joins the allergy strip
 // and bears on prescribing.
 export function canWritePatientAlert(staff: Staff, type: PatientAlertType): boolean {
-  const permission: Permission = type === 'MEDICAL' ? 'patient.alert.medical.write' : 'patient.alert.write';
+  // ALLERGY takes the SAME permission as MEDICAL, and must: it is the alert
+  // that reaches the prescribing banner, so if anything it is the more
+  // consequential of the two. Adding the enum value without adding it here
+  // would have handed the front counter a do-not-prescribe list.
+  const clinical = type === 'MEDICAL' || type === 'ALLERGY';
+  const permission: Permission = clinical ? 'patient.alert.medical.write' : 'patient.alert.write';
   return can(staff, permission, rolesOn(staff));
 }
 
 export function assertCanWritePatientAlert(staff: Staff, type: PatientAlertType): void {
   if (!canWritePatientAlert(staff, type)) {
     throw new ForbiddenException(
-      type === 'MEDICAL'
+      type === 'MEDICAL' || type === 'ALLERGY'
         ? 'Your account is not permitted to record a MEDICAL alert. Ask a doctor or clinical staff member to record it.'
         : 'Your account is not permitted to manage patient alerts.',
     );

@@ -1,5 +1,5 @@
 import { AllergyRecordState, allergyRecordState } from './copyRx';
-import { activeAlerts, usePatientAlerts } from '../hooks/usePatientAlerts';
+import { allergyAlerts, nonAllergyAlerts, usePatientAlerts } from '../hooks/usePatientAlerts';
 
 /**
  * KW2-C2 — the PERSISTENT allergy strip.
@@ -73,6 +73,13 @@ export function allergyBannerState(
   return allergyRecordState(allergies);
 }
 
+/**
+ * The heading on the OTHER alerts line. Deliberately not a warning word:
+ * a chronic condition is context, and dressing it as an alarm is what made the
+ * red chip unreadable in the first place.
+ */
+export const OTHER_ALERTS_PREFIX = 'Also on record:';
+
 /** The strip's text, or null where there should be no strip at all. */
 export function allergyStripText(
   allergies: string[] | null | undefined,
@@ -144,9 +151,25 @@ export function PatientAllergyStrip({
   compact?: boolean;
 }) {
   const { data: alerts } = usePatientAlerts(patientId);
-  const medicalAlertLabels = activeAlerts(alerts)
-    .filter((alert) => alert.type === 'MEDICAL')
-    .map((alert) => alert.label);
+  // FIX 3 — the banner warns on ALLERGIES. It read every MEDICAL alert, so a
+  // chronic condition arrived inside "Recorded allergies", which is a
+  // do-not-prescribe list. Chronic conditions and access needs still appear —
+  // on their own line below, where they say what they actually are.
+  const allergyLabels = allergyAlerts(alerts).map((alert) => alert.label);
+  const others = nonAllergyAlerts(alerts);
 
-  return <AllergyStrip allergies={allergies} compact={compact} medicalAlertLabels={medicalAlertLabels} />;
+  return (
+    <>
+      <AllergyStrip allergies={allergies} compact={compact} medicalAlertLabels={allergyLabels} />
+      {others.length > 0 && (
+        <div
+          className={`kw-other-alerts${compact ? ' kw-other-alerts-compact' : ''}`}
+          role="status"
+          data-other-alerts={others.length}
+        >
+          {OTHER_ALERTS_PREFIX} {others.map((alert) => alert.label).join(', ')}
+        </div>
+      )}
+    </>
+  );
 }

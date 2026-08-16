@@ -11,7 +11,14 @@ import { apiClient } from '../../core/api-client';
  * that is re-derived here.
  */
 
-export type PatientAlertType = 'MEDICAL' | 'ACCESSIBILITY' | 'COMMUNICATION' | 'ADMINISTRATIVE';
+export type PatientAlertType =
+  /** DO NOT PRESCRIBE. Feeds the allergy chip and the prescribing banner. */
+  | 'ALLERGY'
+  /** Take into account — chronic conditions, pregnancy, anticoagulation. */
+  | 'MEDICAL'
+  | 'ACCESSIBILITY'
+  | 'COMMUNICATION'
+  | 'ADMINISTRATIVE';
 
 export interface PatientAlert {
   id: string;
@@ -104,4 +111,32 @@ export function useDeactivatePatientAlert(patientId: string | undefined) {
 export function activeAlerts(alerts: PatientAlert[] | undefined): PatientAlert[] {
   if (!Array.isArray(alerts)) return [];
   return alerts.filter((alert) => alert?.active);
+}
+
+/**
+ * b1.5 FIX 3 — THE SPLIT, in one place.
+ *
+ * An allergy and a chronic condition are different instructions: one forbids a
+ * prescription, the other qualifies it. The header chip rendered them as one
+ * red line — "NSAIDS, AUGMENTIN, PCM, DM, HPT, OKU" — leaving a doctor to work
+ * out which of six words was which, which is the work the chip existed to save.
+ *
+ * Split by the STORED type, never by reading the label. A row saying
+ * "Penicillin allergy" is almost certainly an allergy, and "almost certainly"
+ * is not a basis for putting something on, or leaving it off, a
+ * do-not-prescribe list.
+ */
+export function allergyAlerts(alerts: PatientAlert[] | undefined): PatientAlert[] {
+  return activeAlerts(alerts).filter((alert) => alert.type === 'ALLERGY');
+}
+
+/**
+ * Everything else that is live — chronic conditions, access needs, admin flags.
+ *
+ * Includes MEDICAL, which is where allergies recorded before the ALLERGY type
+ * existed still sit. They are not silently reclassified, and they are not
+ * hidden either: they show here until a clinician re-records them.
+ */
+export function nonAllergyAlerts(alerts: PatientAlert[] | undefined): PatientAlert[] {
+  return activeAlerts(alerts).filter((alert) => alert.type !== 'ALLERGY');
 }

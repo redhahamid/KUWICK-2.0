@@ -68,6 +68,7 @@ import { ApiError } from '../core/api-client';
 import { useHoldConsultation, useResumeConsultation } from './hooks/useQueueTickets';
 import { mayHoldConsultation } from './holdPresentation';
 import { PatientProfileSlideOver } from './PatientProfileSlideOver';
+import { PatientAlertsModal } from './PatientAlertsModal';
 import { mayManagePatientAlerts, mayRecordMedicalAlert } from './patientAlertPresentation';
 import { useStaff } from '../hr/hooks/useStaff';
 import { isDraftDirty, useClinicalDraftStore, visitPrefix } from './clinical-draft-store';
@@ -95,6 +96,7 @@ export function PatientDashboardPage() {
   const [newVisitOpen, setNewVisitOpen] = useState(false);
   // b1.5 PHASE D — the patient profile slide-over, opened from the identity strip.
   const [profileOpen, setProfileOpen] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const navigate = useNavigate();
   const [copyRxFrom, setCopyRxFrom] = useState<{ id: string; label: string } | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -326,10 +328,21 @@ export function PatientDashboardPage() {
             heldByName={heldByName}
             holdPending={holdPending}
             onOpenProfile={() => setProfileOpen(true)}
+            onOpenAlerts={() => setAlertsOpen(true)}
           />
           {/* b1.5 PHASE D — the profile behind the identity strip. Mounted
               here, beside the header that opens it, so the slide-over and the
               band it belongs to cannot drift apart. */}
+          {/* FIX 1 — the lightweight alerts view the chip opens. Separate from
+              the profile below, because checking a flag and editing
+              demographics are two different intents. */}
+          <PatientAlertsModal
+            open={alertsOpen}
+            patient={patient}
+            onClose={() => setAlertsOpen(false)}
+            canEdit={mayManagePatientAlerts(staff?.role)}
+            canRecordMedical={mayRecordMedicalAlert(staff?.role)}
+          />
           <PatientProfileSlideOver
             open={profileOpen}
             patient={patient}

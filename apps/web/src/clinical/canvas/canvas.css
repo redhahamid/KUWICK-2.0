@@ -595,6 +595,24 @@
   opacity: 0.6;
 }
 
+/* FIX 3 — the OTHER alerts line, under the allergy banner.
+   Neutral, never red: red is reserved for the instruction that forbids. A
+   chronic condition in alarm colours is what made the merged chip unreadable. */
+.kw-other-alerts {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #e6e6e6;
+  background: #fafafa;
+  color: rgba(0, 0, 0, 0.65);
+  font-size: 12px;
+}
+
+.kw-other-alerts-compact {
+  margin-top: 4px;
+  padding: 4px 8px;
+}
+
 .kw2-identity-name {
   display: flex;
   align-items: center;

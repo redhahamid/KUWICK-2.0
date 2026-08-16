@@ -166,7 +166,10 @@ describe('alerts are attributed, and never deleted', () => {
     await waitFor(() => expect(post).toHaveBeenCalled());
     expect(post.mock.calls[0][0]).toBe('/patients/patient-1/alerts');
     expect(post.mock.calls[0][1]).toMatchObject({
-      type: 'MEDICAL',
+      // FIX 3 — ALLERGY is the default now. It is the consequential one: it
+      // reaches the do-not-prescribe chip and the prescribing banner, and a
+      // form that defaults to the milder type invites the wrong one.
+      type: 'ALLERGY',
       label: 'Type 2 diabetes',
       note: 'Metformin',
     });
@@ -197,6 +200,6 @@ describe('alerts are attributed, and never deleted', () => {
     open({ canRecordMedical: false });
     await screen.findByTestId('patient-alerts');
     await userEvent.click(screen.getByRole('button', { name: 'Add alert' }));
-    expect(await screen.findByText(/cannot record a Medical alert/i)).toBeInTheDocument();
+    expect(await screen.findByText(/cannot record an Allergy or Medical alert/i)).toBeInTheDocument();
   });
 });

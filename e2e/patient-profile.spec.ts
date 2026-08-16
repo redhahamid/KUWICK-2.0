@@ -32,13 +32,13 @@ async function openConsult(page: import('@playwright/test').Page) {
     );
   });
   await page.reload();
-  await expect(page.getByRole('button', { name: /profile$/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Patient details', exact: true })).toBeVisible();
 }
 
 test('the identity strip opens the profile, and the profile knows the patient', async ({ page }) => {
   await openConsult(page);
 
-  await page.getByRole('button', { name: /profile$/i }).click();
+  await page.getByRole('button', { name: 'Patient details', exact: true }).click();
 
   // The things that had no home in the consult at all.
   // Exact, because "Emergency contact phone" also ends in both words.
@@ -49,7 +49,14 @@ test('the identity strip opens the profile, and the profile knows the patient', 
 
 test('an alert is recorded against the signed-in doctor, and reaches the banner', async ({ page }) => {
   await openConsult(page);
-  await page.getByRole('button', { name: /profile$/i }).click();
+  // FIX 1 — through the ALERT CHIP, which is the control a doctor reaches for
+  // mid-consult. It used to open the whole profile.
+  await page.getByRole('button', { name: /patient alert/i }).click();
+  // By its heading: antd does not forward data-testid to the dialog root, and
+  // the heading is what a doctor reads anyway.
+  await expect(page.getByText('Patient alerts')).toBeVisible();
+  // And it is NOT the profile: no editable demographics behind this click.
+  await expect(page.getByLabel('Phone', { exact: true })).toHaveCount(0);
 
   const alerts = page.getByTestId('patient-alerts');
   await expect(alerts).toBeVisible();

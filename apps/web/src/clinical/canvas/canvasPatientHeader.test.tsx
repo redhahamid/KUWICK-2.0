@@ -211,7 +211,7 @@ describe('the identity strip is a way in, not just a label', () => {
   it('opens the profile when the patient is clicked', async () => {
     const onOpenProfile = vi.fn();
     renderHeader({ onOpenProfile });
-    await userEvent.click(screen.getByRole('button', { name: /Open Aisyah Ujian's profile/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Open Aisyah Ujian's record/i }));
     expect(onOpenProfile).toHaveBeenCalledTimes(1);
   });
 
@@ -219,7 +219,7 @@ describe('the identity strip is a way in, not just a label', () => {
     // A clickable div is invisible to half the clinic.
     const onOpenProfile = vi.fn();
     renderHeader({ onOpenProfile });
-    const control = screen.getByRole('button', { name: /Open Aisyah Ujian's profile/i });
+    const control = screen.getByRole('button', { name: /Open Aisyah Ujian's record/i });
     control.focus();
     await userEvent.keyboard('{Enter}');
     expect(onOpenProfile).toHaveBeenCalled();
@@ -232,17 +232,32 @@ describe('the identity strip is a way in, not just a label', () => {
     expect(await screen.findByRole('button', { name: /No active patient alerts/i })).toBeInTheDocument();
   });
 
-  it('the alert chip opens the same profile', async () => {
+  it('FIX 1 — the alert chip opens the ALERTS view, never the profile', async () => {
+    // It used to open the whole profile, so a doctor checking why a patient
+    // was flagged landed in an editable demographics form. Two intents, two
+    // controls.
     const onOpenProfile = vi.fn();
-    renderHeader({ onOpenProfile });
+    const onOpenAlerts = vi.fn();
+    renderHeader({ onOpenProfile, onOpenAlerts });
     await userEvent.click(await screen.findByRole('button', { name: /patient alert/i }));
+    expect(onOpenAlerts).toHaveBeenCalledTimes(1);
+    expect(onOpenProfile).not.toHaveBeenCalled();
+  });
+
+  it('FIX 2 — a labelled "Patient details" control opens the profile', async () => {
+    // A control a doctor has to guess at is one half of them never find.
+    const onOpenProfile = vi.fn();
+    const onOpenAlerts = vi.fn();
+    renderHeader({ onOpenProfile, onOpenAlerts });
+    await userEvent.click(screen.getByRole('button', { name: 'Patient details' }));
     expect(onOpenProfile).toHaveBeenCalledTimes(1);
+    expect(onOpenAlerts).not.toHaveBeenCalled();
   });
 
   it('is honestly disabled where the screen cannot offer it', () => {
     // No handler means no profile to open. The control says so by being
     // disabled rather than silently doing nothing when clicked.
     renderHeader({ onOpenProfile: undefined });
-    expect(screen.getByRole('button', { name: /Open Aisyah Ujian's profile/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Open Aisyah Ujian's record/i })).toBeDisabled();
   });
 });

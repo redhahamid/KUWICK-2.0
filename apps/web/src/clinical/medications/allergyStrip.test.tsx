@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { ALLERGY_NOT_ASKED, AllergyStrip, allergyBannerState, allergyStripText } from './AllergyStrip';
+import { ALLERGY_NOT_ASKED, AllergyStrip, allergyBannerState, allergyStripText, allergyWords } from './AllergyStrip';
 
 // ===========================================================================
 // KW2-C2 — the persistent allergy strip.
@@ -144,5 +144,40 @@ describe('a MEDICAL alert counts as a recorded allergy', () => {
 
   it('ignores blank labels rather than rendering an empty warning', () => {
     expect(allergyStripText(null, ['   '])).toBe(ALLERGY_NOT_ASKED);
+  });
+});
+
+// ===========================================================================
+// b1.5 FIX 3 — AN ALLERGY IS NOT A CHRONIC CONDITION.
+//
+// The chip rendered both as one red line: "NSAIDS, AUGMENTIN, PCM, DM, HPT,
+// OKU". Six words, two meanings, one colour — an allergy forbids a
+// prescription, diabetes qualifies it, and a doctor scanning that line had to
+// know which was which. What is asserted here is the CONSEQUENCE: the allergy
+// text contains no chronic condition, and the chronic condition is still on
+// screen somewhere rather than quietly dropped.
+// ===========================================================================
+
+describe('the allergy banner carries allergies ONLY', () => {
+  it('a chronic condition never reaches the allergy text', () => {
+    // Passed as an allergy label it would; the point is that the CALLER now
+    // only ever hands it allergies. This pins the contract the caller relies on.
+    const text = allergyStripText(['NSAIDS'], ['AUGMENTIN']);
+    expect(text).toContain('NSAIDS');
+    expect(text).toContain('AUGMENTIN');
+    expect(text).not.toContain('DM');
+    expect(text).not.toContain('HPT');
+  });
+
+  it('the words are the union of the two ALLERGY sources, and nothing else', () => {
+    expect(allergyWords(['NSAIDS'], ['Penicillin allergy'])).toEqual(['NSAIDS', 'Penicillin allergy']);
+  });
+
+  it('still says "not asked" when only a chronic condition is on record', () => {
+    // A patient with diabetes and no allergy question asked has NOT been asked
+    // about allergies. Letting the chronic condition satisfy the allergy state
+    // would silence the one warning that matters.
+    expect(allergyBannerState(null, [])).toBe('NONE_RECORDED');
+    expect(allergyStripText(null, [])).toBe(ALLERGY_NOT_ASKED);
   });
 });

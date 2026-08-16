@@ -5,7 +5,7 @@ import { ApiError } from '../../core/api-client';
 import { useUpdatePatient } from '../../core/hooks/usePatients';
 import { Patient } from '../../core/types';
 import { allergyBannerState, allergyWords } from '../medications/AllergyStrip';
-import { activeAlerts, usePatientAlerts } from '../hooks/usePatientAlerts';
+import { allergyAlerts, usePatientAlerts } from '../hooks/usePatientAlerts';
 
 const { Text } = Typography;
 
@@ -37,13 +37,15 @@ export function AllergyQuickRecord({ patient }: { patient: Patient }) {
   // question — the FIFTH surface of the same defect, and the one a doctor
   // looks at first. Found by the E2E, not by reasoning about it.
   const { data: alerts } = usePatientAlerts(patient.id);
-  const medicalLabels = activeAlerts(alerts)
-    .filter((alert) => alert.type === 'MEDICAL')
-    .map((alert) => alert.label);
-  const state = allergyBannerState(patient.allergies, medicalLabels);
+  // FIX 3 — ALLERGY alerts only. This read every MEDICAL alert, so diabetes
+  // and hypertension arrived in a red do-not-prescribe chip beside three real
+  // drug allergies: "NSAIDS, AUGMENTIN, PCM, DM, HPT, OKU". Six words, two
+  // meanings, one colour. Chronic conditions now have their own indicator.
+  const allergyLabels = allergyAlerts(alerts).map((alert) => alert.label);
+  const state = allergyBannerState(patient.allergies, allergyLabels);
   // What the chip SHOWS. Both sources, verbatim — a chip reading PRESENT while
   // listing nothing would be worse than the "not asked" it replaced.
-  const allergies = allergyWords(patient.allergies, medicalLabels);
+  const allergies = allergyWords(patient.allergies, allergyLabels);
   /** Only the quick-record half is editable here; alerts are the profile's. */
   const editableAllergies = (patient.allergies ?? []).filter((entry) => entry?.trim());
 
@@ -97,10 +99,10 @@ export function AllergyQuickRecord({ patient }: { patient: Patient }) {
             The patient&rsquo;s own words, verbatim. An emptied list records a confirmed
             &ldquo;no known allergies&rdquo; — not an unasked question.
           </Text>
-          {medicalLabels.length > 0 && (
+          {allergyLabels.length > 0 && (
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {medicalLabels.length} also recorded as a medical alert ({medicalLabels.join(', ')}). Change those
-              in the patient profile.
+              {allergyLabels.length} also recorded as an allergy alert ({allergyLabels.join(', ')}). Change those
+              in the alerts view.
             </Text>
           )}
           <Select

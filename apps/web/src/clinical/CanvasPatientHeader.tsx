@@ -4,6 +4,7 @@ import {
   ArrowLeftOutlined,
   CalendarOutlined,
   CheckOutlined,
+  IdcardOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   UserOutlined,
@@ -13,7 +14,7 @@ import dayjs from 'dayjs';
 import { Patient } from '../core/types';
 import { Visit } from './types';
 import { AllergyQuickRecord } from './canvas/AllergyQuickRecord';
-import { activeAlerts, usePatientAlerts } from './hooks/usePatientAlerts';
+import { nonAllergyAlerts, usePatientAlerts } from './hooks/usePatientAlerts';
 
 const { Text } = Typography;
 
@@ -35,8 +36,13 @@ export interface CanvasPatientHeaderProps {
   heldByName?: string | null;
   /** True while either transition is in flight. */
   holdPending?: boolean;
-  /** b1.5 PHASE D — open the patient profile slide-over. */
+  /**
+   * b1.5 FIX 2 — open the FULL patient profile. Its own clearly labelled
+   * control, never a side effect of clicking an alert.
+   */
   onOpenProfile?: () => void;
+  /** b1.5 FIX 1 — open the alerts view, and nothing else. */
+  onOpenAlerts?: () => void;
 }
 
 /**
@@ -68,10 +74,14 @@ export function CanvasPatientHeader({
   heldByName,
   holdPending,
   onOpenProfile,
+  onOpenAlerts,
 }: CanvasPatientHeaderProps) {
   const onHoldNow = Boolean(heldByName);
   const { data: alerts } = usePatientAlerts(patient.id);
-  const liveAlerts = activeAlerts(alerts);
+  // FIX 3 — the indicator counts NON-allergy alerts. Allergies have their own
+  // chip beside it, and counting them twice would tell a doctor there are five
+  // things to read when there are three.
+  const otherAlerts = nonAllergyAlerts(alerts);
   const age = patient.dob ? dayjs().diff(dayjs(patient.dob), 'year') : null;
   const panelName = visit.panelClinic?.name ?? null;
   const initials = patient.name
@@ -93,17 +103,20 @@ export function CanvasPatientHeader({
         {initials || <UserOutlined />}
       </Avatar>
 
-      {/* b1.5 PHASE D — the identity block OPENS THE PROFILE.
-          Everything about the person beyond a name, an age and an identifier
-          had no home in the consult, so answering "what is their number?"
-          meant leaving the record. A button rather than a click handler on a
-          div: this is a real control and it must be reachable by keyboard. */}
+      {/* b1.5 FIX 2 — the identity block still opens the full profile, but it
+          is no longer the ONLY way in and no longer shares a control with the
+          alerts. The explicit "Patient details" button below is the labelled
+          affordance; this stays because clicking a patient's name to see the
+          patient is what everyone tries first. */}
       <button
         type="button"
         className="kw2-identity kw2-identity-button"
         onClick={onOpenProfile}
         disabled={!onOpenProfile}
-        aria-label={`Open ${patient.name}'s profile`}
+        // Deliberately NOT "…patient details": the labelled button beside it
+        // is called that, and two controls whose names end in the same two
+        // words are two controls a screen-reader user cannot tell apart.
+        aria-label={`Open ${patient.name}'s record`}
       >
         <div className="kw2-identity-name">
           <span className="kw2-name">{patient.name}</span>
@@ -142,17 +155,22 @@ export function CanvasPatientHeader({
             between "nothing recorded" and "nobody looked". */}
         <button
           type="button"
-          className={`kw2-chip kw2-chip-alerts${liveAlerts.length > 0 ? ' kw2-chip-alerts-active' : ''}`}
-          onClick={onOpenProfile}
-          disabled={!onOpenProfile}
+          className={`kw2-chip kw2-chip-alerts${otherAlerts.length > 0 ? ' kw2-chip-alerts-active' : ''}`}
+          // FIX 1 — the ALERTS view, not the profile. Checking why a patient is
+          // flagged must not land a doctor in an editable demographics form.
+          onClick={onOpenAlerts}
+          disabled={!onOpenAlerts}
           aria-label={
-            liveAlerts.length > 0
-              ? `${liveAlerts.length} active patient ${liveAlerts.length === 1 ? 'alert' : 'alerts'}`
-              : 'No active patient alerts'
+            otherAlerts.length > 0
+              ? `${otherAlerts.length} active patient ${otherAlerts.length === 1 ? 'alert' : 'alerts'} — view`
+              : 'No active patient alerts — view'
           }
-          data-alert-count={liveAlerts.length}
+          data-alert-count={otherAlerts.length}
         >
-          <WarningOutlined /> {liveAlerts.length > 0 ? `${liveAlerts.length} alert${liveAlerts.length === 1 ? '' : 's'}` : 'No alerts'}
+          <WarningOutlined />{' '}
+          {otherAlerts.length > 0
+            ? `${otherAlerts.length} alert${otherAlerts.length === 1 ? '' : 's'}`
+            : 'No alerts'}
         </button>
 
         <span className="kw2-chip kw2-chip-payer">{panelName ? `Panel · ${panelName}` : 'CASH'}</span>
@@ -166,6 +184,21 @@ export function CanvasPatientHeader({
 
       <div className="kw2-header-actions">
         {layoutControl}
+
+        {/* FIX 2 — an explicit, labelled way to the full record. The identity
+            block opens the same thing, but a control a doctor has to guess at
+            is one half of them never find. */}
+        {/* An explicit label, so the accessible name is exactly "Patient
+            details" — the icon would otherwise fold into it, and the identity
+            block's own label ends in the same two words. */}
+        <Button
+          icon={<IdcardOutlined />}
+          aria-label="Patient details"
+          onClick={onOpenProfile}
+          disabled={!onOpenProfile}
+        >
+          Patient details
+        </Button>
 
         <Button icon={<CalendarOutlined />} onClick={onBookAppointment} disabled={!onBookAppointment}>
           Appointment
