@@ -1939,9 +1939,10 @@ model Room {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  clinic       Clinic        @relation(fields: [clinicId], references: [id])
-  queueTickets QueueTicket[]
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  clinic        Clinic         @relation(fields: [clinicId], references: [id])
+  queueTickets  QueueTicket[]
+  orderServices OrderService[]
 
   @@unique([tenantId, clinicId, name])
   @@index([tenantId, clinicId])
@@ -2645,6 +2646,12 @@ model Diagnosis {
   @@map("diagnoses")
 }
 
+/// b2 PHASE E — how soon the work is needed.
+enum OrderUrgency {
+  ROUTINE
+  URGENT
+}
+
 enum OrderServiceStatus {
   PENDING
   IN_PROGRESS
@@ -2669,6 +2676,15 @@ model OrderService {
   procedureName      String             @map("procedure_name")
   orderType          ServiceOrderType   @map("order_type")
   instruction        String?
+  // b2 PHASE E — where the work happens, how urgently, and how many.
+  //
+  // Nullable on purpose for the first two: an order placed before this existed
+  // had no room and no urgency, and backfilling "Routine" would be a claim
+  // about work nobody assessed. `quantity` is NOT NULL at 1 because every row
+  // already written was exactly one of the thing — a fact, not a guess.
+  roomId             String?            @map("room_id")
+  urgency            OrderUrgency?
+  quantity           Int                @default(1)
   result             String?
   status             OrderServiceStatus @default(PENDING)
   // Defaults to Visit.staffId at creation — no separate doctor-picker UI
@@ -2697,12 +2713,16 @@ model OrderService {
   serviceCatalog ServiceCatalog @relation(fields: [serviceCatalogId], references: [id])
   requestedBy    Staff          @relation(fields: [requestedByStaffId], references: [id])
   formTemplate   FormTemplate?  @relation(fields: [formTemplateId], references: [id])
+  // SetNull, never Cascade: retiring a treatment room must not delete the
+  // record that a procedure was carried out in it.
+  room           Room?          @relation(fields: [roomId], references: [id], onDelete: SetNull)
   attachments    Attachment[]
   invoiceLines   InvoiceLine[]
   chatMessages   ChatMessage[]
 
   @@index([tenantId, visitId])
   @@index([tenantId, clinicId, orderType, status])
+  @@index([tenantId, roomId, status])
   @@map("order_services")
 }
 

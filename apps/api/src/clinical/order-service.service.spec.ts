@@ -43,6 +43,9 @@ function createService(actor: Record<string, unknown> = DOCTOR) {
     visit: { findUnique: jest.fn().mockResolvedValue({ id: 'visit-1', clinicId: 'clinic-1', staffId: 'staff-1' }) },
     serviceCatalog: { findUnique: jest.fn() },
     attachment: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({ id: 'att-1' }), delete: jest.fn() },
+    // b2 PHASE E — the room a task order is sent to, checked against THIS
+    // clinic's active rooms before the order is written.
+    room: { findFirst: jest.fn().mockResolvedValue({ id: 'room-1' }) },
   };
   const rawPrisma = { $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) } as unknown as PrismaService;
 
@@ -87,6 +90,11 @@ describe('OrderServiceService', () => {
         procedureName: 'Chest X-Ray',
         orderType: ServiceOrderType.TASK_ORDER,
         instruction: 'PA VIEW',
+        // b2 PHASE E — a task order carries no room or urgency unless one was
+        // chosen, and is always one piece of work whatever a client sends.
+        roomId: undefined,
+        urgency: undefined,
+        quantity: 1,
         requestedByStaffId: 'staff-1',
       },
     });
@@ -696,5 +704,139 @@ describe('order/service creation branch integrity', () => {
     expect(ctx.tx.visit.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'visit-1' } }),
     );
+  });
+});
+
+// ===========================================================================
+// b2 PHASE E — WHERE, HOW URGENTLY, AND HOW MANY.
+//
+// The two order types ask for different things and the SERVER decides which
+// fields apply, keyed on the stored `orderType` rather than on the name. What
+// is worth pinning is the asymmetry — a quantity on a task order is
+// meaningless, a room on a consultation fee is meaningless — and the room
+// check, which the foreign key cannot do.
+// ===========================================================================
+
+const TASK_CATALOG = { id: 'cat-1', code: 'DRESS', name: 'Wound dressing', orderType: ServiceOrderType.TASK_ORDER };
+const SERVICE_CATALOG = {
+  id: 'cat-2',
+  code: null,
+  name: 'Consultation',
+  orderType: ServiceOrderType.STANDARD_SERVICE,
+};
+
+const written = (prisma: TenantScopedPrismaClient) =>
+  ((prisma.orderService.create as unknown as jest.Mock).mock.calls[0][0] as { data: Record<string, unknown> }).data;
+
+describe('a task order records where and how urgently', () => {
+  it('stores the room, the urgency and the instruction', async () => {
+    const { service, prisma, tx } = createService();
+    tx.serviceCatalog.findUnique.mockResolvedValue(TASK_CATALOG);
+    await withTenant(() =>
+      service.create({
+        visitId: 'visit-1',
+        serviceCatalogId: 'cat-1',
+        roomId: 'room-1',
+        urgency: 'URGENT',
+        instruction: 'Left forearm',
+      }),
+    );
+    expect(written(prisma)).toMatchObject({
+      roomId: 'room-1',
+      urgency: 'URGENT',
+      instruction: 'Left forearm',
+    });
+    // No status written at all: a task order takes the schema default of
+    // PENDING and joins the queue, unlike a standard service which is created
+    // COMPLETED because adding it IS the delivery.
+    expect(written(prisma)).not.toHaveProperty('status');
+  });
+
+  it('is always ONE piece of work, whatever quantity a client sends', async () => {
+    // Three dressings is three orders, each with its own room and result —
+    // not one order with a 3 in it that nobody can complete separately.
+    const { service, prisma, tx } = createService();
+    tx.serviceCatalog.findUnique.mockResolvedValue(TASK_CATALOG);
+    await withTenant(() =>
+      service.create({ visitId: 'visit-1', serviceCatalogId: 'cat-1', quantity: 3 }),
+    );
+    expect(written(prisma).quantity).toBe(1);
+  });
+
+  it('refuses another clinic\'s room before writing anything', async () => {
+    // The foreign key would ACCEPT it — PostgreSQL checks FKs through internal
+    // triggers that RLS does not apply to — and the task would then sit in a
+    // room nobody can see, with no error anywhere.
+    const { service, prisma, tx } = createService();
+    tx.serviceCatalog.findUnique.mockResolvedValue(TASK_CATALOG);
+    tx.room.findFirst.mockResolvedValue(null);
+    await expect(
+      withTenant(() => service.create({ visitId: 'visit-1', serviceCatalogId: 'cat-1', roomId: 'room-x' })),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.orderService.create).not.toHaveBeenCalled();
+  });
+
+  it('says where to fix a bad room', async () => {
+    const { service, tx } = createService();
+    tx.serviceCatalog.findUnique.mockResolvedValue(TASK_CATALOG);
+    tx.room.findFirst.mockResolvedValue(null);
+    await expect(
+      withTenant(() => service.create({ visitId: 'visit-1', serviceCatalogId: 'cat-1', roomId: 'room-x' })),
+    ).rejects.toThrow(/Settings › Rooms & Stations/);
+  });
+
+  it('does not look for a room that was not chosen', async () => {
+    const { service, tx } = createService();
+    tx.serviceCatalog.findUnique.mockResolvedValue(TASK_CATALOG);
+    await withTenant(() => service.create({ visitId: 'visit-1', serviceCatalogId: 'cat-1' }));
+    expect(tx.room.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe('a standard service records how many', () => {
+  it('stores the quantity the invoice will multiply by', async () => {
+    const { service, prisma, tx } = createService();
+    tx.serviceCatalog.findUnique.mockResolvedValue(SERVICE_CATALOG);
+    await withTenant(() =>
+      service.create({ visitId: 'visit-1', serviceCatalogId: 'cat-2', quantity: 3 }),
+    );
+    expect(written(prisma).quantity).toBe(3);
+  });
+
+  it('defaults to one rather than to nothing', async () => {
+    const { service, prisma, tx } = createService();
+    tx.serviceCatalog.findUnique.mockResolvedValue(SERVICE_CATALOG);
+    await withTenant(() => service.create({ visitId: 'visit-1', serviceCatalogId: 'cat-2' }));
+    expect(written(prisma).quantity).toBe(1);
+  });
+
+  it('carries no room or urgency — nobody is waiting on a consultation fee', async () => {
+    const { service, prisma, tx } = createService();
+    tx.serviceCatalog.findUnique.mockResolvedValue(SERVICE_CATALOG);
+    await withTenant(() =>
+      service.create({ visitId: 'visit-1', serviceCatalogId: 'cat-2', roomId: 'room-1', urgency: 'URGENT' }),
+    );
+    expect(written(prisma).roomId).toBeUndefined();
+    expect(written(prisma).urgency).toBeUndefined();
+  });
+
+  it('is still created COMPLETED — adding it IS the delivery', async () => {
+    const { service, prisma, tx } = createService();
+    tx.serviceCatalog.findUnique.mockResolvedValue(SERVICE_CATALOG);
+    await withTenant(() => service.create({ visitId: 'visit-1', serviceCatalogId: 'cat-2' }));
+    expect(written(prisma).status).toBe(OrderServiceStatus.COMPLETED);
+  });
+
+  it('decides on the STORED order type, never on the name', async () => {
+    // A catalogue entry named "X-Ray" that is configured as a standard service
+    // is a standard service. The name is what a clinic types; the type is what
+    // it configured.
+    const { service, prisma, tx } = createService();
+    tx.serviceCatalog.findUnique.mockResolvedValue({ ...SERVICE_CATALOG, name: 'Chest X-Ray' });
+    await withTenant(() =>
+      service.create({ visitId: 'visit-1', serviceCatalogId: 'cat-2', quantity: 2 }),
+    );
+    expect(written(prisma).quantity).toBe(2);
+    expect(written(prisma).status).toBe(OrderServiceStatus.COMPLETED);
   });
 });

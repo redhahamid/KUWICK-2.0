@@ -93,6 +93,26 @@ export class OrderServiceService {
         throw new NotFoundException('Service catalog entry not found');
       }
 
+      // b2 PHASE E — the room must be one of THIS clinic's, and still in use.
+      //
+      // Not redundant with the foreign key: PostgreSQL checks FKs through
+      // internal triggers that row-level security does not apply to, so
+      // another clinic's room id would be accepted by the constraint and then
+      // read back as nothing — a task queued to a room nobody can see, with no
+      // error anywhere. A retired room is refused for the plainer reason that
+      // nobody is working in it.
+      if (dto.roomId) {
+        const room = await tx.room.findFirst({
+          where: { id: dto.roomId, clinicId: resolvedVisit.clinicId, active: true },
+          select: { id: true },
+        });
+        if (!room) {
+          throw new BadRequestException(
+            'That room is not one of this clinic\'s active rooms. Choose another, or add it in Settings › Rooms & Stations.',
+          );
+        }
+      }
+
       return { visit: resolvedVisit, catalogEntry: resolvedCatalog, orderAuthor };
     });
 
@@ -110,6 +130,7 @@ export class OrderServiceService {
     // The decision keys on the STORED orderType snapshotted from the
     // catalogue, never on the service's name.
     const isDirectService = catalogEntry.orderType === ServiceOrderType.STANDARD_SERVICE;
+    const isTaskOrder = !isDirectService;
     const now = new Date();
 
     return this.prisma.orderService.create({
@@ -122,6 +143,17 @@ export class OrderServiceService {
         procedureName: catalogEntry.name,
         orderType: catalogEntry.orderType,
         instruction: dto.instruction,
+        // b2 PHASE E — keyed on the STORED order type, never on the name.
+        //
+        // A room and an urgency describe work somebody has to carry out, so
+        // they are dropped for a standard service rather than stored where
+        // nothing will ever read them; a quantity is what a standard service
+        // is billed by, and a task order is one piece of work whatever the
+        // client sends. Silently ignoring the wrong field is right here —
+        // refusing would make the picker's two shapes into two error messages.
+        roomId: isTaskOrder ? dto.roomId : undefined,
+        urgency: isTaskOrder ? dto.urgency : undefined,
+        quantity: isTaskOrder ? 1 : (dto.quantity ?? 1),
         // G4.5d3c-1c (D-085) — the requesting clinician is the one who
         // ordered it, not whoever the visit happens to be assigned to.
         requestedByStaffId: orderAuthor.id,
