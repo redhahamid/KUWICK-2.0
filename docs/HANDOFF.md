@@ -422,49 +422,39 @@ medicines was thirty-two lines and an invoice had nowhere to go.
   (owner confirmed the Documents card works). The band's document SUMMARY stays
   — reporting what was issued is a different job from issuing.
 
-**NOT DONE, and it is the NEXT THING TO BUILD (owner's instruction,
-2026-08-16): the density measurement, before Piece 2.**
+**THE DENSITY MEASUREMENT IS HALF-BUILT AND MARKED `.fixme`. Finish it before
+Piece 2** — the owner's rule is that once the sticky bar lands, a TYPICAL visit
+failing to fit at 1366px is a failing test, not a note here.
 
-The reason it goes first: Piece 2 puts the invoice in a sticky bottom bar that
-permanently consumes vertical space. Landing the measurement first means the
-budget is KNOWN when the bar starts eating it, rather than assumed — and the
-owner's rule is that if the TYPICAL visit stops fitting at 1366px once the bar
-lands, that is a FAILING TEST, not a note in this file.
+WORKING:
+- `apps/api/prisma/seed-density-fixtures.ts` — runs clean, idempotent. One
+  patient (IC `880808088808`) and two visits: `V-DENSITY-TYPICAL` (4 med, 1
+  order, 1 doc) and `V-DENSITY-HEAVY` (10/4/3). Each carries ONE prescription
+  with `supplyMode: null` on purpose — the unresolved state Piece 1 refused to
+  move to hover, so the warning-chip assertion has something to find. Needs
+  `DATABASE_URL` passed explicitly (tsx does not load `.env`).
+- It writes `e2e/.density-fixtures.json` (gitignored) with both URLs. The spec
+  navigates by URL rather than clicking the visits rail — the first version did
+  click through and timed out, and a density measurement must fail when the RAIL
+  is too tall, not when a click path moves.
 
-Right now the compaction is verified by eye only. `canvas-viewport.spec.ts`
-measures HORIZONTAL overflow at 1366 and 1920 and is green; nothing asserts the
-vertical budget, and no fixture builds a heavy visit.
+NOT WORKING, and the reason all four are `.fixme`:
+- **The rail renders NO ROWS for a visit opened directly by URL.** The page
+  loads, `Record View` is visible, `.kw-rail-row` count is 0. Diagnose this
+  first — a directly-seeded visit is probably missing whatever the canvas rail
+  filters on (a queue ticket, or a visit state), which the golden path gets by
+  creating its visit through the UI. Everything else is blocked on it.
+- `HEAVY at 1366` reported "2 card header(s) pushed off screen" — a real
+  geometric reading, but not trustworthy until rows render.
 
-What to build, so the next session does not re-derive it:
+**A trap already hit, do not re-introduce it:** `TYPICAL fits 1920` PASSED with
+zero rows, because the lowest row bottom of nothing is zero. Same class as
+measuring the rail against viewport-minus-bar: an assertion that holds by
+construction. Every case now guards on `rowCount > 0` first. Keep that.
 
-1. **`apps/api/prisma/seed-density-fixtures.ts`**, modelled on `seed-e2e.ts`
-   (same `inTenant` helper, same tenant slug `kuwick-uat-staging`). One patient
-   with a stable identifier the spec can search for, and TWO visits:
-   - TYPICAL — 4 prescriptions, 1 TASK_ORDER, 1 document.
-   - HEAVY — 10 prescriptions, 4 TASK_ORDERs, 3 documents.
-   Give the visits recognisable `visitNumber`s or presenting complaints so the
-   spec can land on each by URL (`/patients/:id?visitId=:id`) — print both URLs
-   from the seed the way `golden-path.spec.ts` prints its visit under test.
-   At least one prescription on each visit must have `supplyMode: null`, for
-   the warning-chip assertion below.
-2. **A CI step** in the e2e job, beside "Seed the E2E world".
-3. **Extend `canvas-viewport.spec.ts`** — do NOT start a second sweep. It
-   already has the viewport loop and the overflow helper; add vertical
-   assertions to it:
-   - TYPICAL at 1366: the right rail's `scrollHeight` fits its `clientHeight`,
-     and every `.kw-rail-panel` head plus every `.kw-rail-row` is inside the
-     viewport (`boundingBox().y + height <= 768`). At 1920 the same, with room
-     to spare.
-   - HEAVY at both widths: it DEGRADES as designed — a "+N more" control is
-     present (disclosure collapsed the overflow), every card's header is still
-     on screen (no card pushed off entirely), no item text is truncated
-     (`scrollWidth <= clientWidth` on each `.kw-rail-row-main`), and the
-     no-supply-mode warning chip is still rendered ON its row rather than only
-     in a `title` — assert `.kw-supply-label` is visible, not just present.
-
-Note the local artefact when running this: `canvas: attachments render as
-exactly ONE region` fails in a long-lived container because the DB accumulates
-attachments across runs. CI starts empty; re-run it alone before believing it.
+STILL TO DO: a CI step running the fixture seed (deliberately NOT added yet —
+adding it before the tests work would put an unverified step in the e2e job),
+then drop the `.fixme`.
 
 **b4 PIECES 2 AND 3 — NOT STARTED.** Specs are in the owner's message and in
 the Phase G/H entries above. Piece 2 note that matters: the invoice lives in the

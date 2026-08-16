@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Page, expect, test } from '@playwright/test';
 import { ACCOUNTS, login } from './support/app';
 
@@ -318,4 +320,162 @@ test('the medicine box finds a medicine by the clinic Malay group — Canvas AND
   await expect(
     page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option').first(),
   ).toBeVisible();
+});
+
+// ===========================================================================
+// b4 PIECE 1 — THE RIGHT RAIL'S VERTICAL BUDGET, MEASURED.
+//
+// The compaction that made a medication one line was verified by eye. That is
+// not a measurement, and it matters more than usual: Piece 2 puts a sticky
+// bottom bar into the same space, so the budget has to be known before
+// something starts consuming it.
+//
+// MEASURED AGAINST THE FULL VIEWPORT HEIGHT, BAR INCLUDED. Measuring the rail
+// against viewport-minus-bar would pass by construction and prove nothing — the
+// bar's height is exactly what the budget has to absorb. So the assertion is
+// "every row is above 768", not "every row is above 768 minus whatever the bar
+// turned out to be".
+//
+// Fixtures: `apps/api/prisma/seed-density-fixtures.ts`.
+//   TYPICAL — 4 medications, 1 order, 1 document. Must FIT.
+//   HEAVY   — 10 medications, 4 orders, 3 documents. Must DEGRADE as designed.
+// ===========================================================================
+
+/**
+ * The URLs the fixture seed wrote. Read rather than navigated to by clicking:
+ * a density measurement must fail when the RAIL is too tall, not when a click
+ * path through the visits rail changed.
+ */
+function densityUrls(): { typical: string; heavy: string } {
+  return JSON.parse(readFileSync(join(__dirname, '.density-fixtures.json'), 'utf8'));
+}
+
+/** Open a seeded density visit in the canvas layout. */
+async function openDensityVisit(page: Page, which: 'typical' | 'heavy'): Promise<void> {
+  const url = densityUrls()[which];
+  await login(page, ACCOUNTS.doctor);
+  await page.goto(url);
+  await expect(page.getByText('Record View')).toBeVisible();
+
+  await page.evaluate(() => {
+    const session = JSON.parse(window.localStorage.getItem('kuwick-auth') ?? '{}');
+    const staffId = session?.state?.staff?.id;
+    window.localStorage.setItem(
+      'kuwick-record-view-layout-v2',
+      JSON.stringify({
+        state: { byStaffId: staffId ? { [staffId]: 'canvas' } : {}, anonymous: 'canvas' },
+        version: 0,
+      }),
+    );
+  });
+  await page.reload();
+  await expect(page.locator('.kw-rail-panel').first()).toBeVisible();
+}
+
+/** Every rail row and card header, with whether it is inside the viewport. */
+async function railGeometry(page: Page) {
+  return page.evaluate(() => {
+    const rows = [...document.querySelectorAll<HTMLElement>('.kw-rail-row')];
+    const heads = [...document.querySelectorAll<HTMLElement>('.kw-rail-head')];
+    const box = (el: HTMLElement) => {
+      const r = el.getBoundingClientRect();
+      return { bottom: r.bottom, top: r.top };
+    };
+    return {
+      rowCount: rows.length,
+      headCount: heads.length,
+      lowestRowBottom: rows.length ? Math.max(...rows.map((r) => box(r).bottom)) : 0,
+      lowestHeadBottom: heads.length ? Math.max(...heads.map((h) => box(h).bottom)) : 0,
+      // Any row whose own text is wider than its box — truncation, which the
+      // compaction is not allowed to introduce.
+      truncated: [...document.querySelectorAll<HTMLElement>('.kw-rail-row-main')]
+        .filter((el) => el.scrollWidth > el.clientWidth + 2)
+        .map((el) => el.textContent?.slice(0, 40) ?? '')
+        .slice(0, 5),
+    };
+  });
+}
+
+// NOT YET PASSING, AND MARKED AS SUCH RATHER THAN QUIETLY LEFT OUT.
+//
+// `.fixme` reports these as outstanding on every run — they are never counted
+// as green, and nobody has to remember they exist. Three of the four fail for
+// one reason: the rail renders NO ROWS for a visit opened directly by URL, so
+// the page loads and the clinical content does not. Diagnose that first (a
+// directly-seeded visit is likely missing whatever the rail filters on — a
+// queue ticket, or the visit state the canvas expects), then drop the `.fixme`.
+//
+// Note what `TYPICAL fits 1920` did before the guard below was added: it
+// PASSED, with zero rows, because the lowest row bottom of nothing is zero.
+// That is the same failure the owner warned about for the sticky bar —
+// an assertion that holds by construction and measures nothing. Every case
+// here now asserts the fixture actually loaded before it measures anything.
+test.describe.fixme('the right rail fits the budget it was compacted for', () => {
+  test('TYPICAL visit fits 1366×768 with every card and row on screen', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await openDensityVisit(page, 'typical');
+
+    const geometry = await railGeometry(page);
+    expect(geometry.rowCount, 'the fixture did not load — nothing to measure').toBeGreaterThan(0);
+
+    // The FULL viewport height. Piece 2's sticky bar has to fit inside this
+    // number, not be subtracted from it first.
+    expect(
+      geometry.lowestRowBottom,
+      `the last rail row sits below the fold at 1366×768 (${Math.round(geometry.lowestRowBottom)} > 768)`,
+    ).toBeLessThanOrEqual(768);
+    expect(geometry.truncated, 'rail rows are truncating their own text').toEqual([]);
+  });
+
+  test('TYPICAL visit fits 1920×1080 with room to spare', async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await openDensityVisit(page, 'typical');
+
+    const geometry = await railGeometry(page);
+    expect(geometry.rowCount, 'the fixture did not load — nothing to measure').toBeGreaterThan(0);
+    // "Room to spare" stated as a number rather than implied: at the taller
+    // viewport the rail should not be within a row's height of the fold.
+    expect(geometry.lowestRowBottom).toBeLessThanOrEqual(1080 - 40);
+  });
+
+  for (const width of [1366, 1920]) {
+    test(`HEAVY visit degrades as designed at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: width === 1366 ? 768 : 1080 });
+      await openDensityVisit(page, 'heavy');
+
+      const loaded = await railGeometry(page);
+      expect(loaded.rowCount, 'the fixture did not load — nothing to measure').toBeGreaterThan(0);
+
+      // 1. Disclosure collapsed the overflow rather than the list. Ten
+      //    medications past a threshold of five means a "+N more".
+      await expect(page.getByRole('button', { name: /\+\d+ more/ }).first()).toBeVisible();
+
+      // 2. No card pushed off screen ENTIRELY. Every card's header is the
+      //    thing that must survive: a doctor has to be able to see that
+      //    Documents exists even when Medications is long.
+      const fold = width === 1366 ? 768 : 1080;
+      const headsOnScreen = await page.evaluate(
+        (h) =>
+          [...document.querySelectorAll<HTMLElement>('.kw-rail-head')].filter(
+            (el) => el.getBoundingClientRect().top < h,
+          ).length,
+        fold,
+      );
+      const headCount = await page.locator('.kw-rail-head').count();
+      expect(
+        headsOnScreen,
+        `${headCount - headsOnScreen} card header(s) pushed off screen at ${width}px`,
+      ).toBe(headCount);
+
+      // 3. No item text truncated.
+      const geometry = await railGeometry(page);
+      expect(geometry.truncated, 'rail rows are truncating their own text').toEqual([]);
+
+      // 4. The unresolved-supply warning is still ON ITS ROW, not behind a
+      //    hover. VISIBLE, not merely present: Piece 1 moved other detail to
+      //    title attributes, so asserting presence alone would pass even if
+      //    this had been hidden with the rest.
+      await expect(page.locator('.kw-supply-label').first()).toBeVisible();
+    });
+  }
 });

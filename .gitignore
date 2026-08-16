@@ -19,3 +19,4 @@ test-results/
 
 # Holds a live database password — the staging/production rollback line.
 docs/ROLLBACK-*.txt
+e2e/.density-fixtures.json
