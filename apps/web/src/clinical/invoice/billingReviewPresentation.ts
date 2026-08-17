@@ -30,6 +30,11 @@ const STATE: Record<BillingWorklistState, WorklistStatePresentation> = {
   NOT_READY: { label: 'Not ready', color: 'orange', actionable: false },
   NOT_CHARGEABLE: { label: 'Not chargeable', color: 'default', actionable: false },
   TARIFF_REVIEW: { label: 'Tariff requires review', color: 'red', actionable: false },
+  // b4 PIECE C (2a) — the branch has no consultation tariff at all, so there
+  // is nothing to add and nothing to review a rule against. Amber rather than
+  // red: it is a settings gap, not a broken rule, and it does not block the
+  // counter from finishing the bill.
+  NOT_CONFIGURED: { label: 'No consultation tariff configured', color: 'orange', actionable: false },
   WAIVED: { label: 'Waived', color: 'default', actionable: false },
 };
 

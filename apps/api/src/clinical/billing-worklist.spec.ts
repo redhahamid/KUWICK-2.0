@@ -1,4 +1,9 @@
-import { collectBillingWorklist, pendingBillingWork, unbilledReadyItems } from './billing-worklist';
+import {
+  collectBillingWorklist,
+  pendingBillingWork,
+  tariffReviewItems,
+  unbilledReadyItems,
+} from './billing-worklist';
 
 // ===========================================================================
 // G4.5d3c-3b1 (D-093) / 3b2 (D-094) — SOURCE-AWARE BILLING WORKLIST
@@ -83,7 +88,13 @@ describe('billing worklist — medication', () => {
       txWith({ prescriptions: [RX('a', 'DEFERRED'), RX('b', null)] }),
       'visit-1',
     );
-    expect(items.map((i) => i.state)).toEqual(['UNRESOLVED_SUPPLY', 'UNRESOLVED_SUPPLY']);
+    // Scoped to the medications under test: every visit now also carries a
+    // consultation row (b4 PIECE C (2a) — a clinic with no tariff says so
+    // rather than going silent), and these cases are about supply modes.
+    expect(items.filter((i) => i.sourceType === 'PRESCRIPTION').map((i) => i.state)).toEqual([
+      'UNRESOLVED_SUPPLY',
+      'UNRESOLVED_SUPPLY',
+    ]);
     expect(unbilledReadyItems(items)).toHaveLength(0);
     expect(pendingBillingWork(items)).toHaveLength(0);
   });
@@ -94,9 +105,12 @@ describe('billing worklist — medication', () => {
     ['18. NO_SUPPLY_REQUIRED', 'NO_SUPPLY_REQUIRED'],
   ])('%s is listed as NOT_CHARGEABLE with its reason', async (_n, mode) => {
     const items = await collectBillingWorklist(txWith({ prescriptions: [RX('a', mode)] }), 'visit-1');
-    expect(items).toHaveLength(1);
-    expect(items[0].state).toBe('NOT_CHARGEABLE');
-    expect(items[0].stateReason).toBeTruthy();
+    // The medication under test, scoped: every visit also carries a
+    // consultation row now (b4 PIECE C (2a)).
+    const meds = items.filter((i) => i.sourceType === 'PRESCRIPTION');
+    expect(meds).toHaveLength(1);
+    expect(meds[0].state).toBe('NOT_CHARGEABLE');
+    expect(meds[0].stateReason).toBeTruthy();
     expect(unbilledReadyItems(items)).toHaveLength(0);
     expect(pendingBillingWork(items)).toHaveLength(0);
   });
@@ -164,9 +178,27 @@ describe('billing worklist — billed state', () => {
 });
 
 describe('billing worklist — consultation item (D-094)', () => {
-  it('no tariff configured → no consultation row at all', async () => {
+  /**
+   * b4 PIECE C (2a) — this said "no consultation row at all", and that silence
+   * is what cost a consultation fee on every visit in a clinic that had never
+   * configured a tariff. Reported from staging: RM45 of orders + RM50 of
+   * medications, no consultation charge, no explanation, and the visit was not
+   * OTC.
+   *
+   * The RULE is untouched — no tariff still means no price and no completion
+   * blocker (D-094). What is asserted now is that the omission is stated.
+   */
+  it('no tariff configured → a LISTED, unpriced consultation row that says why', async () => {
     const items = await collectBillingWorklist(txWith({ tariffRules: [] }), 'visit-1');
-    expect(items.filter((i) => i.sourceType === 'CONSULTATION')).toHaveLength(0);
+    const consult = items.filter((i) => i.sourceType === 'CONSULTATION');
+    expect(consult).toHaveLength(1);
+    expect(consult[0]).toMatchObject({ state: 'NOT_CONFIGURED', billed: false, quantity: 1 });
+    expect(consult[0].stateReason).toMatch(/no consultation tariff configured/i);
+    // NOT a completion blocker, and NOT chargeable work: a clinic that has not
+    // configured tariffs must still be able to finish its consultations.
+    expect(unbilledReadyItems(items)).toHaveLength(0);
+    expect(pendingBillingWork(items)).toHaveLength(0);
+    expect(tariffReviewItems(items)).toHaveLength(0);
   });
 
   it('a matched tariff yields a READY consultation item with quantity 1', async () => {

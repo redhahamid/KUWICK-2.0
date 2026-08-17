@@ -48,6 +48,14 @@ export type BillingWorklistState =
   | 'NOT_READY'
   | 'NOT_CHARGEABLE'
   | 'TARIFF_REVIEW'
+  // b4 PIECE C (2a) — the clinic has no consultation tariff at all, so nothing
+  // can be charged for the consultation. Distinct from TARIFF_REVIEW, which is
+  // a configured clinic whose rules do not cover this visit and IS a
+  // completion blocker: this one must never block, because a clinic that has
+  // not configured tariffs yet still has to be able to finish consultations
+  // (D-094). It is listed, unpriced and uncounted so that the omission is
+  // VISIBLE rather than silent.
+  | 'NOT_CONFIGURED'
   | 'WAIVED';
 
 export interface BillingWorklistItem {
@@ -245,6 +253,39 @@ export async function collectBillingWorklist(tx: ClinicalTx, visitId: string): P
       invoiceLineId: null,
       quantity: 1,
     });
+  } else if (consultation.kind === 'NOT_CONFIGURED') {
+    /**
+     * b4 PIECE C (2a) — WHY THIS ROW EXISTS NOW, WHEN IT DID NOT BEFORE.
+     *
+     * Reported from staging: a doctor consultation whose invoice read Orders
+     * RM45 + Medications RM50 = RM95, with no consultation charge and nothing
+     * saying why. The visit was not OTC. The cause is this state: the clinic
+     * has no active `ConsultationTariffRule`, D-094 turns consultation
+     * auto-billing OFF for that clinic, and the worklist added NO ROW — so
+     * every consultation in that clinic was billed without its consultation
+     * fee and no screen mentioned it.
+     *
+     * The rule itself is unchanged and deliberately so: no tariff means no
+     * price, and inventing one would be worse than omitting it. What changes
+     * is the SILENCE. The consultation is listed, with no price, counted
+     * towards nothing, carrying the reason and where to fix it. Nothing here
+     * blocks completion — a clinic mid-day must still be able to finish.
+     */
+    items.push({
+      sourceType: 'CONSULTATION',
+      sourceId: visitId,
+      description: 'Consultation',
+      state: 'NOT_CONFIGURED',
+      stateReason:
+        'No consultation charge has been added: this branch has no consultation tariff configured. ' +
+        'Settings → Clinical → Consultation Tariffs.',
+      sourceStatus: null,
+      orderType: null,
+      supplyMode: null,
+      billed: false,
+      invoiceLineId: null,
+      quantity: 1,
+    });
   } else if (consultation.kind === 'EXEMPT') {
     items.push({
       sourceType: 'CONSULTATION',
@@ -260,7 +301,8 @@ export async function collectBillingWorklist(tx: ClinicalTx, visitId: string): P
       quantity: 1,
     });
   }
-  // NOT_CONFIGURED and NOT_APPLICABLE add no row: nothing to review.
+  // NOT_APPLICABLE adds no row: no consultation happened, so there is nothing
+  // to say about a charge for one.
 
   return items;
 }

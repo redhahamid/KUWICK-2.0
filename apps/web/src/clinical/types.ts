@@ -1252,6 +1252,9 @@ export type BillingWorklistState =
   | 'NOT_READY'
   | 'NOT_CHARGEABLE'
   | 'TARIFF_REVIEW'
+  // The clinic has no consultation tariff configured at all, so no
+  // consultation charge can be added. Listed and unpriced rather than absent.
+  | 'NOT_CONFIGURED'
   | 'WAIVED';
 
 export interface BillingWorklistItem {

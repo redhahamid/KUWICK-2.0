@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BLOCKER_CHIP,
   BLOCKER_ORDER,
   BLOCKER_TEXT,
+  blockerChipLabel,
   DOCUMENTATION_PENDING_ACTION,
   DOCUMENTATION_PENDING_BODY,
   completedStation,
@@ -468,5 +470,37 @@ describe('documentation pending — after completion', () => {
   it('46. a completed phase never offers a completion action, pending or not', () => {
     expect(completed({ documentationPending: true }).primary).toBeNull();
     expect(completed({ documentationPending: false }).primary).toBeNull();
+  });
+});
+
+
+// ===========================================================================
+// b4 PIECE C (2b) — WHAT IS OUTSTANDING, NAMED.
+//
+// The one-line completion control said "1 item outstanding" beside a running
+// total, and a doctor could not tell from it whether a medicine was waiting on
+// a decision only they could make, or whether the visit was at the wrong queue
+// stage. Different problems, different actions.
+// ===========================================================================
+describe('the outstanding chip names what is outstanding', () => {
+  it('names a single blocker rather than counting it', () => {
+    const blockers = orderBlockers([{ code: 'MEDICATION_SUPPLY_UNCONFIRMED' }]);
+    expect(blockerChipLabel(blockers)).toBe('supply mode to confirm');
+  });
+
+  it('names EVERY kind when several are outstanding, in the approved order', () => {
+    const blockers = orderBlockers([
+      { code: 'MEDICATION_SUPPLY_UNCONFIRMED' },
+      { code: 'PROCEDURE_PENDING' },
+    ]);
+    // Showing one and counting the rest is how a doctor ends up opening the
+    // popover to learn the same thing twice.
+    expect(blockerChipLabel(blockers)).toBe('procedure pending · supply mode to confirm');
+  });
+
+  it('every known blocker has a chip name — a missing one would silently count instead', () => {
+    for (const code of BLOCKER_ORDER) {
+      expect(BLOCKER_CHIP[code], code).toBeTruthy();
+    }
   });
 });

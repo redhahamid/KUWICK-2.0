@@ -132,8 +132,74 @@ describe('draftBarSummary', () => {
 
   it('says when chargeable work has no price — the total is short by an unknown amount', () => {
     const summary = draftBarSummary(DRAFT({ lines: [LINE()], total: 10, unpricedCount: 2 }));
-    expect(summary.unpricedLabel).toBe('2 items not priced yet');
-    expect(summary.ariaLabel).toContain('2 items not priced yet');
+    expect(summary.unpricedLabel).toBe('2 items not priced');
+    expect(summary.ariaLabel).toContain('2 items not priced');
+  });
+
+  /**
+   * b4 PIECE C (2b) — THE CHIP DID NOT FIRE ON THE STATE IT WAS BUILT FOR.
+   *
+   * `unpricedCount` is the server's count of COUNTED lines whose price failed
+   * to resolve. A medicine whose supply mode is undecided (D-091) is listed,
+   * unpriced and UNCOUNTED — so it was in neither number, and a visit carrying
+   * one showed a confident total with nothing beside it. An undecided supply
+   * is precisely "not priced".
+   */
+  it('counts an undecided supply as not priced, though the server does not count it', () => {
+    const summary = draftBarSummary(
+      DRAFT({
+        lines: [
+          LINE(),
+          LINE({
+            sourceId: 'rx-2',
+            state: 'UNRESOLVED_SUPPLY',
+            unitPrice: null,
+            amount: null,
+            counted: false,
+          }),
+        ],
+        total: 10,
+        unpricedCount: 0,
+      }),
+    );
+    expect(summary.unpricedLabel).toBe('1 item not priced');
+  });
+
+  /**
+   * b4 PIECE C (2b) — TWO FACTS, NAMED, AND BOTH WHEN BOTH ARE TRUE.
+   *
+   * "1 item outstanding" could not tell a doctor whether the TOTAL was
+   * incomplete or whether the PATIENT had not been handed their medicine.
+   * Different facts, different actions, different words.
+   */
+  it('names an undispensed medicine separately from an unpriced item', () => {
+    const summary = draftBarSummary(
+      DRAFT({
+        lines: [
+          LINE({ state: 'AWAITING_DISPENSE' }),
+          LINE({ sourceId: 'rx-2', state: 'AWAITING_DISPENSE' }),
+          LINE({
+            sourceId: 'rx-3',
+            state: 'UNRESOLVED_SUPPLY',
+            unitPrice: null,
+            amount: null,
+            counted: false,
+          }),
+        ],
+        total: 20,
+      }),
+    );
+    expect(summary.toDispenseLabel).toBe('2 medicines to dispense');
+    expect(summary.unpricedLabel).toBe('1 item not priced');
+    // A screen reader gets both, each with what it means.
+    expect(summary.ariaLabel).toContain('the total is incomplete');
+    expect(summary.ariaLabel).toContain('not yet received by the patient');
+  });
+
+  it('says neither when everything is priced and dispensed', () => {
+    const summary = draftBarSummary(DRAFT({ lines: [LINE()], total: 10 }));
+    expect(summary.unpricedLabel).toBeNull();
+    expect(summary.toDispenseLabel).toBeNull();
   });
 
   it('reads as a sentence for a screen reader, since the visual is terse', () => {

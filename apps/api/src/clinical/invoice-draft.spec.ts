@@ -310,10 +310,48 @@ describe('the consultation charge follows the tariff resolver, not the bar', () 
     expect(draft.subtotal).toBe(45);
   });
 
-  it('adds no consultation row at all when the clinic has configured no tariff', async () => {
+  /**
+   * b4 PIECE C (2a) — THE STAGING REPORT, AND WHAT IT TURNED OUT TO BE.
+   *
+   * Staging showed a doctor consultation billed as Orders RM45 + Medications
+   * RM50 = RM95 with no consultation charge. The visit was NOT OTC: the cause
+   * was that the UAT clinic has no `ConsultationTariffRule` at all, and this
+   * spec's previous assertion — "adds no consultation row at all when the
+   * clinic has configured no tariff" — was pinning exactly that silence as
+   * correct. It is not correct. It is a consultation fee lost on every visit,
+   * with no screen mentioning it.
+   *
+   * What has NOT changed: no price is invented. D-094's rule stands — no
+   * tariff, no charge, and no completion blocker either, because a clinic
+   * that has not configured tariffs still has to be able to finish
+   * consultations. What changed is that the omission is now SAID.
+   */
+  it('a clinic with NO tariff still gets a consultation line — unpriced, and saying why', async () => {
     const draft = await buildInvoiceDraft(txWith({ ...base, tariffRules: [] }), 'visit-1');
-    expect(draft.lines.some((line) => line.sourceType === 'CONSULTATION')).toBe(false);
+
+    // The line exists at all — the whole point of the change.
+    const consultation = draft.lines.find((line) => line.sourceType === 'CONSULTATION');
+    expect(consultation).toBeDefined();
+    expect(consultation!.state).toBe('NOT_CONFIGURED');
+    // Never RM 0.00 — that reads as a consultation the clinic gives away.
+    expect(consultation!.unitPrice).toBeNull();
+    expect(consultation!.amount).toBeNull();
+    expect(consultation!.counted).toBe(false);
+    expect(consultation!.stateReason).toMatch(/no consultation tariff configured/i);
+    // And it says where to fix it, because the person reading this screen is
+    // the person who can.
+    expect(consultation!.stateReason).toMatch(/Consultation Tariffs/);
+    // The total is still only what IS priced. An unpriced line must not be
+    // guessed into the sum.
     expect(draft.subtotal).toBe(10);
+  });
+
+  it('the unpriced consultation is not counted as a priced-but-unresolved item either', async () => {
+    // `unpricedCount` drives "N items not priced yet", which is about COUNTED
+    // work whose price failed to resolve. A consultation nobody can charge for
+    // is a different fact and has its own wording on the card.
+    const draft = await buildInvoiceDraft(txWith({ ...base, tariffRules: [] }), 'visit-1');
+    expect(draft.unpricedCount).toBe(0);
   });
 });
 

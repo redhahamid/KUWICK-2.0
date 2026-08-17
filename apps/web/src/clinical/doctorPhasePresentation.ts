@@ -95,6 +95,39 @@ const REVIEW_ACTION: Record<DoctorPhaseBlockerCode, { label: string; anchor: Can
   MEDICATION_SUPPLY_DEFERRED: { label: 'Review Medications', anchor: 'medications' },
 };
 
+/**
+ * b4 PIECE C (2b) — WHAT IS OUTSTANDING, IN A CHIP'S WORTH OF WORDS.
+ *
+ * The one-line completion control said "1 item outstanding". A count is not a
+ * fact: a doctor reading it could not tell whether a medicine was waiting on a
+ * decision they had to make or whether the visit was simply at the wrong queue
+ * stage — different problems, different actions, same chip.
+ *
+ * Each code gets a short NAME here, three to four words, next to the full
+ * sentence in BLOCKER_TEXT that the popover still shows. When several kinds
+ * are outstanding, all of them are named: showing one and counting the rest is
+ * how the doctor ends up clicking twice to learn the same thing.
+ */
+export const BLOCKER_CHIP: Record<DoctorPhaseBlockerCode, string> = {
+  QUEUE_STATE_INELIGIBLE: 'visit stage',
+  PROCEDURE_PENDING: 'procedure pending',
+  MEDICATION_SUPPLY_UNCONFIRMED: 'supply mode to confirm',
+  MEDICATION_SUPPLY_DEFERRED: 'deferred supply to resolve',
+};
+
+/**
+ * The chip's own label: every outstanding kind, named, in the approved order.
+ * Falls back to a count only if the server ever returns codes this file does
+ * not know — which `orderBlockers` drops, so in practice never.
+ */
+export function blockerChipLabel(blockers: BlockerView[]): string {
+  const named = blockers.map((blocker) => BLOCKER_CHIP[blocker.code]).filter(Boolean);
+  if (named.length === 0) {
+    return blockers.length === 1 ? '1 item outstanding' : `${blockers.length} items outstanding`;
+  }
+  return named.join(' · ');
+}
+
 /** Known codes in the approved order; anything unrecognised is dropped. */
 export function orderBlockers(
   blockers: Array<{ code: string; message?: string }> | undefined,

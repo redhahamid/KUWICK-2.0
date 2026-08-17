@@ -53,6 +53,12 @@ import { resolveConsultationState } from './consultation-tariff';
  *                      there is no consultation charge rather than going
  *                      silent about it.
  *   TARIFF_REVIEW      listed with its reason, not counted, not priceable.
+ *   NOT_CONFIGURED     the same, for a clinic with no consultation tariff at
+ *                      all. b4 PIECE C (2a): before this state existed the
+ *                      consultation was simply MISSING from the draft, so a
+ *                      clinic that had never configured a tariff billed every
+ *                      visit without its consultation fee and no screen said
+ *                      so. No price is invented — the omission is stated.
  *
  * WHAT IT DELIBERATELY DOES NOT SHOW. The panel/patient split. That is
  * Billing Review's screen and its own engine run against the visit's verified
@@ -66,7 +72,7 @@ import { resolveConsultationState } from './consultation-tariff';
 const COUNTED_STATES = new Set(['READY', 'AWAITING_DISPENSE']);
 
 /** States that have no price and must never be shown as RM 0.00. */
-const UNPRICEABLE_STATES = new Set(['UNRESOLVED_SUPPLY', 'TARIFF_REVIEW']);
+const UNPRICEABLE_STATES = new Set(['UNRESOLVED_SUPPLY', 'TARIFF_REVIEW', 'NOT_CONFIGURED']);
 
 export interface InvoiceDraftLine {
   sourceType: BillingWorklistSourceType;

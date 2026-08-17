@@ -5,6 +5,7 @@ import { RailPanel } from '../sections/RailPanel';
 import { useApplyDraftDiscount, useInvoiceDraft } from '../hooks/useInvoiceDraft';
 import { InvoiceDiscountType, InvoiceDraftDiscount, Visit } from '../types';
 import {
+  consultationGap,
   discountAvailability,
   draftBarSummary,
   groupDraftLines,
@@ -58,6 +59,7 @@ export function InvoiceRail({ visit }: { visit: Visit }) {
   const groups = groupDraftLines(draft);
   const availability = discountAvailability(draft);
   const discount = draft?.discount ?? null;
+  const gap = consultationGap(draft);
 
   return (
     <>
@@ -102,9 +104,28 @@ export function InvoiceRail({ visit }: { visit: Visit }) {
                 {summary.discountLabel}
               </Tag>
             )}
+            {/* b4 PIECE C (2b) — TWO DIFFERENT FACTS, NAMED, and BOTH shown
+                when both are true. "N items not priced" means the total beside
+                it is incomplete; "N medicines to dispense" means the patient
+                has not received something they are being charged for. A single
+                "N items outstanding" made a doctor guess which they had. */}
             {summary.unpricedLabel && (
               <Tag color="warning" data-testid="invoice-unpriced">
                 {summary.unpricedLabel}
+              </Tag>
+            )}
+            {summary.toDispenseLabel && (
+              <Tag className="kw-chip-pending" data-testid="invoice-to-dispense">
+                {summary.toDispenseLabel}
+              </Tag>
+            )}
+            {/* b4 PIECE C (2a) — a consultation fee the clinic meant to charge
+                and is not charging, said at rest. Never shown for an OTC visit
+                or a waiver: those are decisions, and a chip that fires on every
+                OTC visit is a chip nobody reads. */}
+            {gap && (
+              <Tag color="warning" data-testid="invoice-consultation-gap">
+                {gap}
               </Tag>
             )}
           </Space>
@@ -115,11 +136,25 @@ export function InvoiceRail({ visit }: { visit: Visit }) {
           // disclosure, and a group subtotal is not one of those. The text
           // still carries `.kw-rail-row-main`, so the no-truncation assertion
           // covers it.
-          <div className="kw-invoice-group-row" key={group.key} data-group={group.key}>
+          <div
+            className="kw-invoice-group-row"
+            key={group.key}
+            data-group={group.key}
+            data-charged={group.charged ? 'true' : 'false'}
+          >
             <span className="kw-rail-row-main">
               <Text style={{ fontSize: 13 }}>{group.title}</Text>
             </span>
-            <Text style={{ fontSize: 13 }}>{money(group.amount)}</Text>
+            {/* NEVER RM 0.00 for a group that charges nothing — that reads as
+                a thing the clinic gave away. The reason for each line is in
+                Details, in the server's own words. */}
+            {group.charged ? (
+              <Text style={{ fontSize: 13 }}>{money(group.amount)}</Text>
+            ) : (
+              <Text type="secondary" style={{ fontSize: 13 }}>
+                No charge
+              </Text>
+            )}
           </div>
         ))}
       >
@@ -172,6 +207,11 @@ export function InvoiceRail({ visit }: { visit: Visit }) {
                 {summary.unpricedLabel && (
                   <Text type="warning" style={{ fontSize: 12 }}>
                     {summary.unpricedLabel} — the total is incomplete until they are.
+                  </Text>
+                )}
+                {summary.toDispenseLabel && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {summary.toDispenseLabel} — priced and in the total, not yet handed over.
                   </Text>
                 )}
                 {groups.map((group) => (

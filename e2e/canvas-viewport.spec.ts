@@ -847,6 +847,25 @@ test.describe('the right rail fits the budget it was compacted for', () => {
       'the draft invoice did not pull the visit’s orders',
     ).toHaveCount(fixture.orders);
 
+    // b4 PIECE C (2a) — THE CONSULTATION IS ON THE BILL, on a visit that is
+    // not OTC. Staging showed orders + medications and no consultation charge:
+    // the branch had no tariff rule, D-094 turned auto-billing off, and the
+    // worklist added no row at all — RM35 lost on every visit, silently. The
+    // staging seed now configures the rule, and this asserts the line arrives.
+    const consultation = sheet.locator('[data-source-type="CONSULTATION"]');
+    await expect(consultation, 'the draft carries no consultation line at all').toHaveCount(1);
+    await expect(consultation).toHaveAttribute('data-counted', 'true');
+    await expect(consultation).toContainText(/RM \d+\.\d\d/);
+
+    // b4 PIECE C (2b) — TWO NAMED FACTS, BOTH ON SCREEN AT ONCE. The fixture
+    // carries three medications awaiting dispensing and one whose supply mode
+    // is undecided, which are different problems with different actions:
+    // "not priced" means the total is incomplete, "to dispense" means the
+    // patient has not received something they are being charged for. A single
+    // "N items outstanding" could say neither.
+    await expect(page.getByTestId('invoice-unpriced')).toContainText(/\d+ items? not priced/);
+    await expect(page.getByTestId('invoice-to-dispense')).toContainText(/\d+ medicines? to dispense/);
+
     // And the total is stated, not blank.
     await expect(page.getByTestId('invoice-total')).toContainText(/RM \d+\.\d\d/);
 

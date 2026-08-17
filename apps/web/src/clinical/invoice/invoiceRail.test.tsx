@@ -230,12 +230,16 @@ describe('1. every billable source auto-pulls', () => {
         ],
         subtotal: 10,
         total: 10,
-        unpricedCount: 1,
+        // ZERO, faithfully: the server counts COUNTED lines whose price
+        // failed, and an undecided supply is uncounted. That is exactly why
+        // this chip used to stay silent on the state it exists for, and why
+        // the card derives the number from the lines instead (b4 PIECE C 2b).
+        unpricedCount: 0,
       }),
     );
     renderCard();
     await waitFor(() =>
-      expect(screen.getByTestId('invoice-unpriced')).toHaveTextContent('1 item not priced yet'),
+      expect(screen.getByTestId('invoice-unpriced')).toHaveTextContent('1 item not priced'),
     );
   });
 
@@ -311,6 +315,89 @@ describe('2. OTC skips the consultation charge', () => {
     const consultation = sheet.querySelector('[data-source-type="CONSULTATION"]')!;
     expect(consultation.getAttribute('data-counted')).toBe('true');
     expect(consultation.textContent).toContain('RM 35.00');
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('2a. a consultation the clinic is NOT charging for says so', () => {
+  const NOT_CONFIGURED = DRAFT({
+    lines: [
+      LINE({ sourceId: 'rx-1', description: 'Amoxicillin 500mg', unitPrice: 10, amount: 10 }),
+      LINE({
+        sourceType: 'CONSULTATION',
+        sourceId: 'visit-1',
+        description: 'Consultation',
+        state: 'NOT_CONFIGURED',
+        stateReason:
+          'No consultation charge has been added: this branch has no consultation tariff configured. ' +
+          'Settings → Clinical → Consultation Tariffs.',
+        unitPrice: null,
+        amount: null,
+        counted: false,
+      }),
+    ],
+    subtotal: 10,
+    total: 10,
+  });
+
+  it('names the gap on the card at rest — it is a fee the clinic meant to charge', async () => {
+    // The staging report: orders + medications, no consultation, nothing
+    // saying why. The chip is the answer to "why is this bill short?".
+    serveDraft(NOT_CONFIGURED);
+    renderCard();
+    expect(await screen.findByTestId('invoice-consultation-gap')).toHaveTextContent(
+      'Consultation not charged',
+    );
+  });
+
+  it('shows the consultation as No charge, never as RM 0.00', async () => {
+    serveDraft(NOT_CONFIGURED);
+    renderCard();
+    const row = await waitFor(() => {
+      const found = card().querySelector('[data-group="CONSULTATION"]');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    // RM 0.00 reads as a consultation the clinic gave away for free.
+    expect(row.textContent).not.toContain('RM 0.00');
+    expect(row.textContent).toContain('No charge');
+    expect(row.getAttribute('data-charged')).toBe('false');
+  });
+
+  it('the reason, and where to fix it, are in the detail in the server’s words', async () => {
+    const user = userEvent.setup();
+    serveDraft(NOT_CONFIGURED);
+    renderCard();
+    const sheet = await expand(user);
+    expect(within(sheet).getByText(/no consultation tariff configured/i)).toBeInTheDocument();
+    expect(within(sheet).getByText(/Consultation Tariffs/)).toBeInTheDocument();
+  });
+
+  it('an OTC visit gets NO gap chip — that one is a decision, not an omission', async () => {
+    // A chip that fires on every OTC visit is a chip nobody reads, and the
+    // exemption is already stated on the line with its reason.
+    serveDraft(
+      DRAFT({
+        lines: [
+          LINE({ sourceId: 'rx-1', unitPrice: 3, amount: 3 }),
+          LINE({
+            sourceType: 'CONSULTATION',
+            sourceId: 'visit-1',
+            description: 'Consultation',
+            state: 'NOT_CHARGEABLE',
+            stateReason: 'This kind of visit carries no consultation charge.',
+            unitPrice: null,
+            amount: null,
+            counted: false,
+          }),
+        ],
+        subtotal: 3,
+        total: 3,
+      }),
+    );
+    renderCard();
+    await waitFor(() => expect(total()).toHaveTextContent('RM 3.00'));
+    expect(screen.queryByTestId('invoice-consultation-gap')).toBeNull();
   });
 });
 

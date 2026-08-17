@@ -293,6 +293,50 @@ async function main() {
     }
   });
 
+  /**
+   * b4 PIECE C (2a) — THE CONSULTATION TARIFF, WITHOUT WHICH NOTHING IS
+   * CHARGED FOR A CONSULTATION.
+   *
+   * Reported from staging: a doctor consultation billed as orders plus
+   * medications with no consultation fee. The cause was here. This seed
+   * created the "General Consultation" SERVICE and its RM35 price, but never
+   * a `ConsultationTariffRule` — and D-094 is explicit that a clinic with no
+   * active rule has consultation auto-billing OFF. So the deployed clinic had
+   * the price and no rule that says when to apply it, and every visit was
+   * billed without its consultation fee.
+   *
+   * ALL DAY, deliberately. The approved spec prints "CONSULTATION (8AM–11PM)"
+   * and this tenant is a 24-hour clinic; a band with a gap in it would turn
+   * every night consultation into a TARIFF_REVIEW blocker rather than a
+   * charge. One all-day rule charges correctly at every hour, and splitting it
+   * into day and night tiers is a two-field change in Settings → Clinical →
+   * Consultation Tariffs once the clinic says what the night rate is.
+   */
+  await scoped(async (tx) => {
+    const clinic = await tx.clinic.findFirst({ where: { tenantId: TENANT_ID }, select: { id: true } });
+    const consultation = await tx.serviceCatalog.findFirst({
+      where: { name: 'General Consultation' },
+      select: { id: true },
+    });
+    if (!clinic || !consultation) return;
+    const existing = await tx.consultationTariffRule.findFirst({
+      where: { clinicId: clinic.id, classification: 'CONSULTATION' },
+      select: { id: true },
+    });
+    if (existing) return;
+    await tx.consultationTariffRule.create({
+      data: {
+        tenantId: TENANT_ID,
+        clinicId: clinic.id,
+        name: 'Standard consultation (all day)',
+        classification: 'CONSULTATION',
+        startTime: '00:00',
+        endTime: '23:59',
+        serviceCatalogId: consultation.id,
+      },
+    });
+  });
+
   const panelId = await scoped(async (tx) => {
     const existing = await tx.panelClinic.findFirst({ where: { name: 'UAT Panel Sdn Bhd (Synthetic)' } });
     if (existing) return existing.id;

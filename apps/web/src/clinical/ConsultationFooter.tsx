@@ -12,6 +12,7 @@ import { attendingClinician } from './attendingClinician';
 import { formatClinicDateTime } from './clinicTime';
 import { useCompleteDoctorPhase, useDoctorPhaseStatus } from './hooks/useDoctorPhase';
 import {
+  blockerChipLabel,
   CanvasAnchor,
   DOCUMENTATION_PENDING_ACTION,
   DOCUMENTATION_PENDING_BODY,
@@ -346,10 +347,11 @@ export function ConsultationFooter({ visit, onReview, variant = 'panel' }: Consu
               title="Consultation cannot be completed yet"
               content={<div style={{ maxWidth: 380 }}>{blockedBody}</div>}
             >
+              {/* b4 PIECE C (2b) — NAMED, not counted. "1 item outstanding"
+                  made a doctor open the popover to learn which of four
+                  different problems they had. */}
               <Button size="small" danger data-testid="consult-bar-blockers">
-                {shownBlockers.length === 1
-                  ? '1 item outstanding'
-                  : `${shownBlockers.length} items outstanding`}
+                {blockerChipLabel(shownBlockers)}
               </Button>
             </Popover>
           </div>
@@ -365,7 +367,7 @@ export function ConsultationFooter({ visit, onReview, variant = 'panel' }: Consu
             <Text strong>
               {shownBlockers.length === 1
                 ? 'Consultation cannot be completed yet'
-                : `Consultation cannot be completed yet — ${shownBlockers.length} items outstanding`}
+                : `Consultation cannot be completed yet — ${blockerChipLabel(shownBlockers)}`}
             </Text>
           </div>
           {blockedBody}
