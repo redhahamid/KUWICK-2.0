@@ -615,6 +615,53 @@ against the FULL 768 — Piece B's sticky bar has to fit inside that number,
 never be subtracted from it first. The `rowCount > 0` guard stays first on
 every case (the vacuous-pass trap below).
 
+## THE PRICING FIX — STEP 1, THE AUDIT. **THE DIVISOR IS MOSTLY NOT THERE.**
+
+**Run it:** `cd apps/api && npx tsx prisma/pricing-divisor-audit.ts`.
+Report-only — reads, writes one CSV, changes no row. Output:
+`docs/seed-review/medicine-pricing-divisors.csv`, one row per medicine with
+its price, pack string, stock unit, both candidate divisors, the EFFECTIVE
+divisor and where it came from, and its dose unit.
+
+**THE NUMBER THE SEQUENCING TURNS ON: 149 of 242 rows have no divisor at all
+(61.6%).** Against the clinic's real imported shelf alone — Medication +
+Vaccine, dropping the 13 demo/density fixture rows and the 4 "Item" rows
+(arm slings, a tumbler) that are correctly not medicines — it is **132 of
+225, 58.7%.** `ceil(clinical ÷ unitsPerPack)` would leave the majority of the
+catalogue UNPRICED on the day it shipped.
+
+| | rows | no divisor |
+|---|---|---|
+| Medication | 218 | 125 |
+| Vaccine | 7 | 7 |
+| Medicine (demo fixtures) | 7 | 7 |
+| (no category — density fixtures) | 6 | 6 |
+| Item (not medicines) | 4 | 4 |
+| **total** | **242** | **149** |
+
+**TWO COLUMNS COULD BE THE DIVISOR AND ONLY ONE IS POPULATED AT ALL.**
+`units_per_pack` (parsed at import from the source's own pack string) is set
+on 93 rows. `quantity_per_stock_unit` — b1 Phase 1E, the CLINIC'S number,
+which is the one meant to WIN because only they know whether their strips
+hold 10 or 12 — is set on **zero**, and `stock_unit_id` with it. Phase 1E
+built the columns and the Settings screen; nobody has filled them in. The
+audit prints both and applies clinic-over-import precedence, so the day
+somebody curates, the number moves without the formula changing.
+
+**ALMOST NOTHING IS RECOVERABLE BY PARSING HARDER, WHICH IS THE POINT.** Of
+the 149 divisorless rows: **8** carry a count the regex missed
+(`PLASTIC/6 SACHET` — `parseUnitsPerPack` anchors on a LEADING digit), **13**
+have no pack string at all, and **128 name a container and no count** — BOX
+(41), BOTTLE (35), AMP (14), TUBE (12), DOSE (8), BIJI (7), PEN (4), VIAL
+(3), `-` (2). A better regex buys 8 rows. The other 141 need a human to state
+a fact the spreadsheet never carried, and inventing 1 for them is exactly
+what `parseUnitsPerPack` was written to refuse: a divisor of 1 does not fail
+loudly, it silently bills a 5-day course as 40 boxes.
+
+**SEQUENCING, PUT TO THE OWNER 2026-08-17 AT THE STEP-1 BOUNDARY.** The
+instruction was to stop here and say so if most medicines had no divisor.
+They do. Curation before formula.
+
 **PIECE C — DONE (2026-08-17), AND THEN RE-LAID-OUT ON THE OWNER'S DECISION
 THE SAME DAY. b4 IS COMPLETE. Read this section, not the Piece B one, for
 where things are now.**
