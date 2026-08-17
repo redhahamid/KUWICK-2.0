@@ -615,8 +615,147 @@ against the FULL 768 — Piece B's sticky bar has to fit inside that number,
 never be subtracted from it first. The `rowCount > 0` guard stays first on
 every case (the vacuous-pass trap below).
 
-**PIECE B — DONE (2026-08-17). The invoice is the sticky bottom bar. PIECE C
-NOT STARTED.**
+**PIECE C — DONE (2026-08-17). The appointment card, the follow-up picker, and
+the layout pass. b4 IS COMPLETE.**
+
+WHAT WAS BUILT:
+
+- **`NextAppointmentCard` — the fifth rail card, LAST in the column.** Shows
+  the patient's next standing booking (when, doctor, service, status) and
+  carries the control that makes one. It is a `RailPanel`, so an empty card is
+  ONE LINE: "Next Appointment (0) · Book follow-up · No follow-up booked."
+  **Measured: 38px empty, 92px holding a booking.**
+- **WHY LAST, and it is a measurement rather than a preference.** The rail at
+  1366×768 is 281px over its window with the card present. Anything inserted
+  above Medications moves the unresolved-supply warning and the first
+  medication row toward the fold — assertions (a) and (b), the two the owner
+  ranked highest. Below Documents it can break neither, and it is also where
+  the decision belongs: a TCA is settled at the end, directly above Complete
+  Consultation.
+- **THE HEIGHT COUNTS, and the first version cost too much.** As a
+  `RailPanel` `addControl` the button took a line of its own and the card
+  measured 116px. Moved onto the header line it costs nothing and the card
+  measures 38/92. `RailPanel` keeps `addControl` in one DOM position because
+  the other cards put a SEARCH BOX there and moving one remounts it and drops
+  focus mid-word; this is a button that opens a modal, so that rule does not
+  reach it. **The card's height prints on every run beside the bar's.**
+- **`BookFollowUpModal` — a `KuwickModal`, and NOT a second scheduler.** Slots
+  come from `/availability` (`SlotAvailabilityService`: roster, minus schedule
+  exceptions, minus booked time, cut by the clinic's slot length, capped at
+  daily capacity). The booking is `POST /appointments`, which resolves every
+  reference under the caller's tenant and then runs
+  `AppointmentBookingValidator` — qualification, roster, overlap, capacity.
+  Nothing about scheduling is decided in the canvas.
+- **DOCTOR-SERVICE MAPPING NARROWS THE PICKER BEFORE IT IS SHOWN.** The
+  service list is Settings → Appointments & Scheduling → Doctor-Service
+  Mapping, filtered for the chosen doctor. A doctor with NO mapping is offered
+  NOTHING and told where mappings are made — an empty mapping treated as "no
+  filter" would offer the whole catalogue and every booking would die on a
+  qualification nobody was shown. Both halves are asserted (the mapped service
+  IS offered; a second catalogue service that is NOT mapped is not).
+- **`source: FRONT_DESK`, deliberately.** The source decides the initial
+  status: FRONT_DESK is CONFIRMED on the spot, ONLINE_PORTAL waits to be
+  confirmed. A doctor booking a TCA with the patient in the room has done the
+  confirming; REQUESTED would put a task on the front desk for an appointment
+  nobody is waiting on.
+- **AN EMPTY DIARY NAMES THE SETTING THAT DECIDES IT.** `/availability`
+  returns `[]` for three different reasons and says which for none of them.
+  The one that IS knowable is read from the configuration rather than guessed
+  from the emptiness: no `SlotCapacityConfig` for this doctor/service/branch →
+  "Settings → Appointments & Scheduling → Slot Capacity". Otherwise it says the
+  day is full or unrostered and to try another date.
+- **A DEFECT FIXED ON THE WAY THROUGH: the header's Appointment button opened
+  the NEW VISIT drawer.** A visit is a patient who is here; an appointment is a
+  patient who is coming back, and the mockup (p.4) gives that button exactly
+  one job — "Book TCA / follow-up date into Schedules", "unique — only place to
+  book follow-up". It now raises the same flag the card's control raises: TWO
+  ENTRY POINTS, ONE PICKER, mounted once. Pinned in `canvasReachability`.
+- **Layout pass:** right-column order is Direct Services → Orders / Procedures
+  → Medications → Documents → Next Appointment, and all five carry a first-visit
+  empty state. One wording defect found and fixed: the Orders card's empty
+  sentence said billable services are added "in Direct Services below" — Direct
+  Services is the card ABOVE it, so the sentence written to stop a doctor
+  hunting was sending them the wrong way down the rail.
+
+**THE FIVE ASSERTIONS ALL HOLD WITH BOTH THE BAR AND THE CARD PRESENT**, and
+the geometry assertions were not touched. What changed in the spec is (d)'s
+ROSTER — the list of cards the rail must hold is now five — and the HEAVY head
+count with it. That is the thing (d) exists to state, not a fold weakened: the
+card is last, so it cannot move (a) or (b), and (e) measures it in full.
+
+**MEASURED (this container, real database, whole Playwright suite green):**
+
+| | rail needs | window | card |
+|---|---|---|---|
+| TYPICAL 1366×768, no card (baseline) | 660px | 485px | — |
+| TYPICAL 1366×768, empty card | 712px | 485px | 38px |
+| TYPICAL 1366×768, one booking | 766px | 485px | 92px |
+| TYPICAL 1920×1080, one booking | 688px | 833px | **145px to spare** |
+
+The card's true cost is 52px empty and ~106px with a booking (its own height
+plus the column gap). (e) has 145px of headroom at 1920 with a booking on
+screen, so the card can grow by half again before it is the thing that breaks.
+**If it ever does: shorten the CARD.**
+
+An order dependency worth knowing: `canvas-appointment.spec.ts` books a
+follow-up for the density patient and sorts BEFORE `canvas-viewport.spec.ts`,
+so the viewport measurement runs with a booking on the card. That is the WORSE
+case and therefore the right one to measure; it is also why the 1366 budget
+line moved from 660 to 766.
+
+Tests: 15 presentation cases, 9 card/picker cases (jsdom, the whole flow
+including the POST body), 3 new composition assertions, and one E2E that books
+from the canvas and then FINDS THE APPOINTMENT IN THE APPOINTMENTS MODULE —
+by patient, at the time that was picked, carrying that module's own Arrived
+and Reschedule actions. Web 1414 (from 1387), API 1482, both typechecks, both
+production builds, and the full Playwright suite 30 passed / 2 skipped
+(`route-sweep` and the golden-path scaffold, skipped before this work too).
+
+**WHAT PIECE C LEAVES READY FOR THE APPOINTMENTS MODULE (the owner's next
+area):**
+
+1. **The booking path is proven end to end through the UI**, not just the
+   service layer. `canvas-appointment.spec.ts` is the first spec that drives a
+   real booking through `/availability` + `POST /appointments` and then reads
+   it back out of `AppointmentsPage`. Anything the module changes about
+   booking now has a guardrail that fails loudly.
+2. **The fixture seed carries a working scheduling backbone**
+   (`seed-density-fixtures.ts`): a roster on all seven days, a slot capacity
+   config (30-minute slots, 20 a day), one mapped service and one deliberately
+   UNMAPPED service. Any appointments spec can now book without seeding its
+   own settings, and the unmapped service is there so "the mapping is
+   honoured" is assertable against something that exists and is refused.
+   `.density-fixtures.json` hands the names and numbers to the spec; the
+   helper that opens a density visit moved to `e2e/support/density.ts`.
+3. **`followUpPresentation.ts` holds the two rules the module will need on
+   every surface**: which statuses still stand (`SETTLED_APPOINTMENT_STATUSES`
+   — the server's terminal three plus COMPLETED) and which services a doctor
+   may be booked for. The reschedule pair is handled: the RESCHEDULED original
+   is dropped and its successor kept, never both.
+4. **The seed no longer accepts an OWNER_ADMIN as a doctor.**
+   `StaffService.isActiveDoctor` counts only DOCTOR_RESIDENT and DOCTOR_LOCUM,
+   so an unordered `findFirst` could seed a mapping, a roster and a capacity
+   against somebody who can never be booked — and the failure would surface as
+   "Staff member is not an active doctor" from a screen that offered them.
+5. **Two things the module should decide, flagged not decided.** (a) **The
+   canvas cannot cancel or reschedule** — the card shows and books, nothing
+   more, because those actions have lifecycle rules and a home already. (b)
+   **Times are stored and compared in UTC and rendered in the browser's
+   timezone**, which is the convention `BookAppointmentDrawer` and
+   `AppointmentsPage` already use and which the API's own comment calls a
+   deliberate single-timezone simplification. One convention, three surfaces —
+   worth confirming rather than discovering.
+
+**ONE LAYOUT CLEANUP LEFT, DELIBERATELY NOT TAKEN HERE.** The visit band under
+the header (`VisitCompletionBar`) is now a DOCUMENTS summary beside a Documents
+card and an INVOICE summary beside a live invoice bar — the duplication the
+mockup's p.4 removed from the header, and its own comment says it goes the day
+the Documents card lands. It was not retired in this piece because it still
+carries the only route from the canvas to the billing surface ("Open Billing" /
+"Open Invoice"). Retiring it is worth ~34px of the first screen and needs that
+one route re-homed into the bar's breakdown first.
+
+**PIECE B — DONE (2026-08-17). The invoice is the sticky bottom bar.**
 
 `consultation-tariff.ts` was read first and it already owned the rule, exactly
 as suspected: `classifyVisit` maps an OTC queue ticket to `OTC_ONLY`,
@@ -741,7 +880,11 @@ measuring the rail against viewport-minus-bar: an assertion that holds by
 construction. Every case still guards on `rowCount > 0` first, and HEAVY now
 also asserts the exact row count disclosure should leave. Keep both.
 
-**b4 PIECES 2 AND 3 — NOT STARTED.** Specs are in the owner's message and in
+**b4 IS COMPLETE (Pieces 1, A, B and C).** The note below was written when
+Pieces 2 and 3 were the names for what became B and C; it is kept because its
+warning still stands and is still the reason the invoice is a bar.
+
+**b4 PIECES 2 AND 3 — DONE as Pieces B and C.** Specs are in the owner's message and in
 the Phase G/H entries above. Piece 2 note that matters: the invoice lives in the
 STICKY BOTTOM BAR, not as a sixth card in the scrolling rail, and
 `consultation-tariff.ts` (D-094) already answers "should this visit carry a
@@ -770,6 +913,7 @@ consultation charge" server-side — do not build a second answer.
 | G19 documents | not started |
 | H20 invoice (canvas) | **done** — b4 Piece B: the sticky bottom bar, server-priced draft, discount through the existing invoice path |
 | H21 complete | **done** — carried by the same bar (`ConsultationFooter variant="bar"`) |
+| b4 Piece C appointment in the canvas | **done** — fifth rail card, last in the column; books through `slot-availability.service.ts` and `POST /appointments`, so the Appointments module is the only store |
 | I22–I23 polish | not started |
 
 ## Gotchas that have cost real time

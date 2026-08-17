@@ -33,8 +33,23 @@ const TENANT_SLUG = 'kuwick-uat-staging';
 
 /** Stable, so the spec can find this patient without depending on seed order. */
 export const DENSITY_PATIENT_IC = '880808088808';
+export const DENSITY_PATIENT_NAME = 'Density Fixture (Synthetic)';
 export const TYPICAL_VISIT_NUMBER = 'V-DENSITY-TYPICAL';
 export const HEAVY_VISIT_NUMBER = 'V-DENSITY-HEAVY';
+
+/**
+ * b4 PIECE C — what the canvas's follow-up picker is booked against.
+ *
+ * The names travel to the spec through `.density-fixtures.json` rather than
+ * being copied into it, for the reason the counts already do: two places that
+ * have to be kept agreeing by hand eventually stop agreeing.
+ */
+export const FOLLOW_UP_SERVICE_CODE = 'DENSITY-FOLLOWUP';
+export const FOLLOW_UP_SERVICE_NAME = 'Density Follow-up Review';
+export const UNMAPPED_SERVICE_CODE = 'DENSITY-UNMAPPED';
+export const UNMAPPED_SERVICE_NAME = 'Density Unmapped Procedure';
+export const SLOT_LENGTH_MINUTES = 30;
+export const DAILY_CAPACITY = 20;
 
 type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
@@ -67,11 +82,26 @@ async function main() {
   const report = await inTenant(async (tx, tenantId, clinicId) => {
     const lines: string[] = [];
 
+    // A REAL DOCTOR, and OWNER_ADMIN is no longer accepted as one.
+    //
+    // b4 PIECE C made this load-bearing rather than cosmetic. The appointment
+    // backbone below hangs off this staff member, and
+    // `StaffService.isActiveDoctor` — which every booking goes through —
+    // counts only DOCTOR_RESIDENT and DOCTOR_LOCUM. An OWNER_ADMIN picked by
+    // an unordered `findFirst` would seed a mapping, a roster and a capacity
+    // against somebody who can never be booked, and the failure would arrive
+    // as "Staff member is not an active doctor" from a screen that offered
+    // them. Failing here instead names the fixture, which is what is wrong.
     const doctor = await tx.staff.findFirst({
-      where: { role: { in: ['DOCTOR_RESIDENT', 'OWNER_ADMIN'] }, active: true },
+      where: { role: { in: ['DOCTOR_RESIDENT', 'DOCTOR_LOCUM'] }, active: true },
       select: { id: true },
     });
-    if (!doctor) throw new Error('No doctor in the tenant — run the staging seed first.');
+    if (!doctor) {
+      throw new Error(
+        'No active DOCTOR_RESIDENT/DOCTOR_LOCUM in the tenant — run the staging seed first. ' +
+          '(An OWNER_ADMIN cannot hold appointments, so it is deliberately not accepted here.)',
+      );
+    }
 
     // Items and a service to hang the fixtures off. Reused if the seed has run
     // before: this script is re-run on every CI e2e job.
@@ -104,7 +134,7 @@ async function main() {
           tenantId,
           identifierType: 'NRIC',
           identifierValue: DENSITY_PATIENT_IC,
-          name: 'Density Fixture (Synthetic)',
+          name: DENSITY_PATIENT_NAME,
           dob: new Date('1988-08-08'),
           gender: 'FEMALE',
         },
@@ -194,6 +224,108 @@ async function main() {
     const typical = await buildVisit(TYPICAL_VISIT_NUMBER, TYPICAL_COUNTS);
     const heavy = await buildVisit(HEAVY_VISIT_NUMBER, HEAVY_COUNTS);
 
+    // ---------------------------------------------------------------------
+    // b4 PIECE C — THE SCHEDULING BACKBONE THE CANVAS BOOKS THROUGH.
+    //
+    // A follow-up booked from the canvas goes through the same three settings
+    // a front-desk booking does, so the fixture has to plant all three or the
+    // picker correctly offers nothing:
+    //
+    //   DOCTOR-SERVICE MAPPING  who may be booked for what
+    //   DOCTOR SCHEDULE         the roster window a slot must fall inside
+    //   SLOT CAPACITY           the slot length, and how many a day
+    //
+    // TWO services, and the second one is the point: `FOLLOW_UP_SERVICE` is
+    // mapped to this doctor and `UNMAPPED_SERVICE` deliberately is not, so
+    // "the picker offers only what the mapping allows" is assertable against a
+    // service that exists and is refused rather than against an empty list.
+    // ---------------------------------------------------------------------
+    const ensureService = async (code: string, name: string) => {
+      const existing = await tx.serviceCatalog.findFirst({ where: { code }, select: { id: true } });
+      return (
+        existing ??
+        (await tx.serviceCatalog.create({
+          data: {
+            tenantId,
+            code,
+            name,
+            category: 'Consultation',
+            orderType: 'STANDARD_SERVICE',
+            durationMinutesDefault: 30,
+            price: 35,
+          },
+          select: { id: true },
+        }))
+      );
+    };
+    const followUpService = await ensureService(FOLLOW_UP_SERVICE_CODE, FOLLOW_UP_SERVICE_NAME);
+    const unmappedService = await ensureService(UNMAPPED_SERVICE_CODE, UNMAPPED_SERVICE_NAME);
+
+    await tx.doctorServiceQualification.upsert({
+      where: {
+        tenantId_staffId_serviceId: {
+          tenantId,
+          staffId: doctor.id,
+          serviceId: followUpService.id,
+        },
+      },
+      update: {},
+      create: { tenantId, staffId: doctor.id, serviceId: followUpService.id },
+    });
+
+    // A roster on EVERY day of the week, wide enough that the date the spec
+    // picks cannot fall outside it. A single weekday window would make the
+    // booking test pass or fail depending on which day CI ran — the thing
+    // under test is the canvas booking through the engine, not the calendar.
+    //
+    // Stored as `@db.Time` values, which Prisma hands back as 1970-01-01
+    // instants and `SlotAvailabilityService` reads with UTC getters. The
+    // window is written in the same UTC terms the engine compares in.
+    for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek += 1) {
+      const already = await tx.doctorSchedule.findFirst({
+        where: { staffId: doctor.id, clinicId, dayOfWeek },
+        select: { id: true },
+      });
+      if (already) continue;
+      await tx.doctorSchedule.create({
+        data: {
+          tenantId,
+          clinicId,
+          staffId: doctor.id,
+          dayOfWeek,
+          startTime: new Date('1970-01-01T00:00:00.000Z'),
+          endTime: new Date('1970-01-01T12:00:00.000Z'),
+          effectiveFrom: new Date('2020-01-01T00:00:00.000Z'),
+        },
+      });
+    }
+
+    await tx.slotCapacityConfig.upsert({
+      where: {
+        tenantId_clinicId_staffId_serviceId: {
+          tenantId,
+          clinicId,
+          staffId: doctor.id,
+          serviceId: followUpService.id,
+        },
+      },
+      update: { slotLengthMinutes: SLOT_LENGTH_MINUTES, dailyCapacity: DAILY_CAPACITY },
+      create: {
+        tenantId,
+        clinicId,
+        staffId: doctor.id,
+        serviceId: followUpService.id,
+        slotLengthMinutes: SLOT_LENGTH_MINUTES,
+        dailyCapacity: DAILY_CAPACITY,
+      },
+    });
+
+    lines.push(
+      `booking: ${FOLLOW_UP_SERVICE_NAME} mapped to ${doctor.id}, ` +
+        `${SLOT_LENGTH_MINUTES}-min slots, capacity ${DAILY_CAPACITY}; ` +
+        `${UNMAPPED_SERVICE_NAME} deliberately unmapped (${unmappedService.id})`,
+    );
+
     // Printed the way golden-path.spec.ts prints its visit under test, so a
     // failing run says which URL to open.
     // HANDED TO THE SPEC AS URLS, not found by clicking through the UI.
@@ -218,6 +350,14 @@ async function main() {
         {
           typical: { url: `/patients/${patient.id}?visitId=${typical}`, ...TYPICAL_COUNTS },
           heavy: { url: `/patients/${patient.id}?visitId=${heavy}`, ...HEAVY_COUNTS },
+          // b4 PIECE C — the booking backbone, handed over the same way.
+          booking: {
+            patientName: DENSITY_PATIENT_NAME,
+            followUpService: FOLLOW_UP_SERVICE_NAME,
+            unmappedService: UNMAPPED_SERVICE_NAME,
+            slotLengthMinutes: SLOT_LENGTH_MINUTES,
+            dailyCapacity: DAILY_CAPACITY,
+          },
         },
         null,
         2,

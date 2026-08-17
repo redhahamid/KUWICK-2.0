@@ -1,7 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { Page, expect, test } from '@playwright/test';
 import { ACCOUNTS, login } from './support/app';
+import { openDensityVisit } from './support/density';
 
 /**
  * A0 — THE CANVAS FITS THE CLINIC'S SCREENS.
@@ -343,27 +342,6 @@ test('the medicine box finds a medicine by the clinic Malay group — Canvas AND
 
 
 /**
- * What the fixture seed planted, and where.
- *
- * Read from the seed's own file rather than navigated to by clicking: a
- * density measurement must fail when the RAIL is too tall, not when a click
- * path through the visits rail changed. The COUNTS come from the same file for
- * the same reason — copying them here as literals would make two places that
- * have to be kept agreeing by hand about how many medications a "typical"
- * visit has.
- */
-interface DensityFixture {
-  url: string;
-  medications: number;
-  orders: number;
-  documents: number;
-}
-
-function densityFixtures(): Record<'typical' | 'heavy', DensityFixture> {
-  return JSON.parse(readFileSync(join(__dirname, '.density-fixtures.json'), 'utf8'));
-}
-
-/**
  * THE RIGHT RAIL, and only the right rail.
  *
  * `.kw-rail-panel` also matches the DIAGNOSIS card, which lives in the MIDDLE
@@ -373,60 +351,6 @@ function densityFixtures(): Record<'typical' | 'heavy', DensityFixture> {
  * counted as one of its two "card headers pushed off screen".
  */
 const RAIL = '[data-testid="canvas-right"]';
-
-/**
- * Open a seeded density visit in the canvas layout, AND WAIT FOR ITS CONTENT.
- *
- * The wait is the point of this helper, and it was the whole blocker. Waiting
- * for `.kw-rail-panel` to be visible looked like waiting for the rail; it is
- * not. Piece 1 made an EMPTY card collapse to one line rather than render
- * nothing, so a rail with no rows in it yet and a rail whose fetches have not
- * returned are the same DOM to a selector — the panels are there either way.
- * Every measurement taken on that signal read zero rows, which looked like a
- * canvas refusing a directly-seeded visit. It refuses nothing: the visit
- * loads, the rows arrive, the measurement was simply taken first. Nothing in
- * the fixture needed a queue ticket or a visit state.
- *
- * So the wait is on the panel headers PRINTING THE COUNTS THE SEED PLANTED.
- * A count cannot be satisfied early — the header reads (0) until that panel's
- * rows are in hand — and it cannot be satisfied by the wrong visit, because
- * opening a patient renders their most recent visit for a moment before the
- * `visitId` in the URL takes effect, and the two fixtures have different
- * counts on purpose.
- */
-async function openDensityVisit(page: Page, which: 'typical' | 'heavy'): Promise<DensityFixture> {
-  const fixture = densityFixtures()[which];
-  await login(page, ACCOUNTS.doctor);
-  await page.goto(fixture.url);
-  await expect(page.getByText('Record View')).toBeVisible();
-
-  await page.evaluate(() => {
-    const session = JSON.parse(window.localStorage.getItem('kuwick-auth') ?? '{}');
-    const staffId = session?.state?.staff?.id;
-    window.localStorage.setItem(
-      'kuwick-record-view-layout-v2',
-      JSON.stringify({
-        state: { byStaffId: staffId ? { [staffId]: 'canvas' } : {}, anonymous: 'canvas' },
-        version: 0,
-      }),
-    );
-  });
-  await page.reload();
-
-  const rail = page.locator(RAIL);
-  await expect(rail).toBeVisible();
-  for (const [title, count] of [
-    ['Orders / Procedures', fixture.orders],
-    ['Medications', fixture.medications],
-    ['Documents', fixture.documents],
-  ] as const) {
-    await expect(
-      rail.locator('.kw-rail-head').filter({ hasText: `${title} (${count})` }).first(),
-      `the ${which} fixture's ${title} never reached the rail`,
-    ).toBeVisible();
-  }
-  return fixture;
-}
 
 /** Every rail row and card header, with whether it is inside the viewport. */
 async function railGeometry(page: Page) {
@@ -541,6 +465,10 @@ async function railPromises(page: Page) {
         name: panel.getAttribute('data-panel'),
         height: Math.round(panel.getBoundingClientRect().height),
       })),
+      // b4 PIECE C — the appointment card, measured on its own so its cost to
+      // the rail is a number on every run rather than something inferred from
+      // a total that moved. The bar's height is printed the same way.
+      appointmentCard: box(rail?.querySelector('.kw-rail-panel[data-panel="Next Appointment"]')),
     };
   }, RAIL);
 }
@@ -573,11 +501,13 @@ test.describe('the right rail fits the budget it was compacted for', () => {
    *   b. The Medications card header and its first row are above the fold at
    *      rest. Medications is what a doctor opens the rail for.
    *   c. No item text truncated, at this width or any other.
-   *   d. No card lost — all four present and of real height.
+   *   d. No card lost — every card the rail mounts is present and of real
+   *      height. Four when this target was written; five since Piece C added
+   *      the appointment card BELOW them, where it cannot move (a) or (b).
    *
    * (e) is the 1920 case below: the whole rail, with no scrolling at all.
    */
-  test('TYPICAL at 1366×768 keeps the warning, Medications and all four cards', async ({ page }) => {
+  test('TYPICAL at 1366×768 keeps the warning, Medications and every card', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
     await openDensityVisit(page, 'typical');
 
@@ -596,6 +526,13 @@ test.describe('the right rail fits the budget it was compacted for', () => {
     expect(bar, 'the sticky bottom bar is not on the canvas at all').not.toBeNull();
     const fold = visibleFold(768, bar);
     console.log(`RAIL BUDGET — TYPICAL at 1366×768: bar is ${bar!.height}px, visible fold is ${fold}px`);
+    // b4 PIECE C — the card's own cost, printed beside the bar's for the same
+    // reason: two things now consume this budget and both are stated on every
+    // run, pass or fail.
+    console.log(
+      `RAIL BUDGET — TYPICAL at 1366×768: appointment card is ${rail.appointmentCard?.height ?? 0}px`,
+    );
+    expect(rail.appointmentCard, 'the appointment card is not on the rail at all').not.toBeNull();
 
     // (a) THE WARNING. The fixture plants exactly one prescription with a NULL
     // supply mode, so a missing row here is a missing warning and not a
@@ -638,13 +575,24 @@ test.describe('the right rail fits the budget it was compacted for', () => {
     // never traded a drug name for an ellipsis, and must not start here.
     expect(geometry.truncated, 'rail rows are truncating their own text').toEqual([]);
 
-    // (d) NO CARD LOST. Present, named, and of real height — a card collapsed
-    // to a sliver is a card gone, and it would satisfy a mere count.
+    // (d) NO CARD LOST. Present, named, IN ORDER, and of real height — a card
+    // collapsed to a sliver is a card gone, and it would satisfy a mere count.
+    //
+    // b4 PIECE C added the fifth entry, and that is a change to the ROSTER,
+    // not a weakening of a fold assertion. The handoff's rule — if a card
+    // breaks (a)–(e), shorten the CARD and not the assertion — is about the
+    // geometry above and below, all of which is untouched: the appointment
+    // card is LAST, so nothing it does can push the unresolved-supply warning
+    // or the first medication row toward the fold. What it does change is the
+    // list of cards the rail is required to hold, and that list is the thing
+    // this assertion exists to state. Its height is measured with the rest of
+    // the rail in (e), where the whole column has to clear the bar.
     expect(rail.cards.map((card) => card.name)).toEqual([
       'Direct Services',
       'Orders / Procedures',
       'Medications',
       'Documents',
+      'Next Appointment',
     ]);
     for (const card of rail.cards) {
       expect(card.height, `the ${card.name} card has collapsed to nothing`).toBeGreaterThan(20);
@@ -724,7 +672,8 @@ test.describe('the right rail fits the budget it was compacted for', () => {
       //    clipped, or stranded outside the scroll: a doctor can still get to
       //    Documents when Medications is long.
       const heads = rail.locator('.kw-rail-head');
-      await expect(heads).toHaveCount(4); // Services, Orders, Medications, Documents
+      // Services, Orders, Medications, Documents, Next Appointment (Piece C).
+      await expect(heads).toHaveCount(5);
       for (const head of await heads.all()) {
         await head.scrollIntoViewIfNeeded();
         await expect(head, 'a card header cannot be brought on screen at all').toBeVisible();

@@ -1303,6 +1303,20 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   border-bottom: none;
 }
 
+/* b4 PIECE C — the appointment row.
+   Laid out exactly like a rail row and deliberately NOT called one: the
+   density measurement counts `.kw-rail-row` as a clinical row and asserts
+   exact numbers about how many the disclosure leaves on screen, and a
+   follow-up booking is not one of those. Its text still carries
+   `.kw-rail-row-main`, so the no-truncation assertion covers it. */
+.kw-appt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 0;
+}
+
 .kw-rail-row-main {
   flex: 1 1 auto;
   min-width: 0;

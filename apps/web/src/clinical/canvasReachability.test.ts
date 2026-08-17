@@ -8,6 +8,7 @@ import secondarySource from './sections/SecondarySections.tsx?raw';
 import documentsSectionSource from './sections/DocumentsSection.tsx?raw';
 import invoiceSectionSource from './sections/InvoiceSection.tsx?raw';
 import barSource from './invoice/InvoiceBottomBar.tsx?raw';
+import cardSource from './canvas/NextAppointmentCard.tsx?raw';
 // Vitest's CSS pipeline swallows `?raw` on stylesheets, so the one non-TS
 // asset is read straight from disk. Test-only; the app tsconfig has no node
 // types, hence the local suppression.
@@ -62,6 +63,31 @@ describe('duplicate bottom sections are gone from the active Canvas', () => {
 
   it('the top Visit Actions surface is untouched', () => {
     expect(page).toContain('<VisitCompletionBar');
+  });
+
+  /**
+   * b4 PIECE C — ONE FOLLOW-UP PICKER, TWO ENTRY POINTS.
+   *
+   * The header's Appointment button used to open the NEW VISIT drawer. A
+   * visit is a patient who is here; an appointment is a patient who is coming
+   * back, and the spec gives that button exactly one job ("Book TCA /
+   * follow-up date into Schedules"). It now raises the same flag the rail
+   * card's control raises, so the page holds one picker rather than two
+   * booking surfaces — which is the duplication this whole block guards.
+   */
+  it('the canvas mounts exactly one appointment card', () => {
+    expect(page.match(/<NextAppointmentCard/g)).toHaveLength(1);
+  });
+
+  it('the header Appointment button opens the follow-up picker, not a new visit', () => {
+    expect(page).toMatch(/onBookAppointment=\{\(\) => setBookFollowUpOpen\(true\)\}/);
+  });
+
+  it('the picker itself is mounted by the card, so there is only one of it', () => {
+    // Rendered inside NextAppointmentCard rather than beside it on the page:
+    // two mounts would be two forms, two states and two ways to double-book.
+    expect(page).not.toContain('<BookFollowUpModal');
+    expect(cardSource.match(/<BookFollowUpModal/g)).toHaveLength(1);
   });
 
   it('the full surfaces are reachable as drawers, same components as Flow', () => {

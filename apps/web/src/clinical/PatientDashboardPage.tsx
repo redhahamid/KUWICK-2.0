@@ -48,6 +48,7 @@ import { AllergyQuickRecord } from './canvas/AllergyQuickRecord';
 import { CanvasQuickNav } from './CanvasQuickNav';
 import { CanvasWorkspace } from './canvas/CanvasWorkspace';
 import { CanvasVisitsRail } from './canvas/CanvasVisitsRail';
+import { NextAppointmentCard } from './canvas/NextAppointmentCard';
 import { CopyRxModal } from './medications/CopyRxModal';
 import { DiagnosisRail } from './sections/DiagnosisRail';
 import { MedicationsRail } from './sections/MedicationsRail';
@@ -108,6 +109,12 @@ export function PatientDashboardPage() {
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   // D-077 — the compact strips own the values; these reveal the full panels.
   const [vitalsExpanded, setVitalsExpanded] = useState(false);
+  // b4 PIECE C — the follow-up picker, opened from TWO controls and mounted
+  // ONCE. The header's Appointment button and the rail card's "Book follow-up"
+  // are two entry points to the same modal, not two booking surfaces: the
+  // spec's "one function, one home" rule is about implementations, and a
+  // second picker is exactly what it forbids.
+  const [bookFollowUpOpen, setBookFollowUpOpen] = useState(false);
   const [selectedVisitId, setSelectedVisitId] = useState<string>();
   const [activeRecordTab, setActiveRecordTab] = useState('notes');
   // Per staff member, not per browser — a shared consultation-room desktop
@@ -306,7 +313,12 @@ export function PatientDashboardPage() {
             visit={selectedVisit}
             layoutControl={layoutSwitch}
             onBack={() => navigate('/queue')}
-            onBookAppointment={() => setNewVisitOpen(true)}
+            // b4 PIECE C — this opened the NEW VISIT drawer, which is not what
+            // the button says and not what the spec gives it as its unique job
+            // ("Book TCA / follow-up date into Schedules"). A visit is a
+            // patient who is here; an appointment is a patient who is coming
+            // back. It now opens the follow-up picker the rail card owns.
+            onBookAppointment={() => setBookFollowUpOpen(true)}
             // The one exit action. It scrolls to the completion footer, which
             // owns the eligibility rules, the blockers and the confirmation —
             // duplicating that logic here would give two answers to one
@@ -690,6 +702,18 @@ export function PatientDashboardPage() {
                       has not been proven on yet, and removing it the same day
                       would trade a duplicate for an outage. */}
                   <DocumentsRail visit={selectedVisit} />
+                  {/* b4 PIECE C — the follow-up, LAST in the column and
+                      directly above the completion bar. It is where the
+                      decision is actually made, and it is the only place in
+                      the rail where a card can be added without pushing the
+                      medication rows the 1366×768 assertions protect. */}
+                  <NextAppointmentCard
+                    visit={selectedVisit}
+                    patientId={patient.id}
+                    patientName={patient.name}
+                    bookingOpen={bookFollowUpOpen}
+                    onBookingOpenChange={setBookFollowUpOpen}
+                  />
                 </>
               }
               footer={

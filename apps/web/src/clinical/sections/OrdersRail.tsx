@@ -95,7 +95,11 @@ export function OrdersRail({ visitId, clinicId }: OrdersRailProps) {
         // Says where the OTHER thing lives. The two cards are separate on
         // purpose, and an empty card that does not name the boundary is how a
         // doctor ends up hunting for the consultation fee in here.
-        emptyText="No tests, imaging or procedures ordered. Billable services are added in Direct Services below."
+        // b4 PIECE C, layout pass: it said "below". Direct Services is the
+        // card ABOVE this one and has been since the column took the Option 4
+        // order, so the sentence meant to stop a doctor hunting was sending
+        // them the wrong way down the rail.
+        emptyText="No tests, imaging or procedures ordered. Billable services are added in Direct Services above."
         previewLimit={5}
         addControl={
           /* b2 PHASE E — the BOX, not a button in front of one.
