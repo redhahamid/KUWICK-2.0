@@ -7,6 +7,7 @@ import { VisitService } from './visit.service';
 import { DoctorCompletionService } from './doctor-completion.service';
 import { PanelBenefitService } from './panel-benefit.service';
 import { BillingWorklistService } from './billing-worklist.service';
+import { InvoiceDraftService } from './invoice-draft.service';
 import { ConsultationTariffService } from './consultation-tariff.service';
 import { QueueBoardService } from './queue-board.service';
 import { DispensaryService } from './dispensary.service';
@@ -101,6 +102,7 @@ import { ReferenceCatalogService } from './reference-catalog.service';
     DoctorCompletionService,
     PanelBenefitService,
     BillingWorklistService,
+    InvoiceDraftService,
     ConsultationTariffService,
     QueueBoardService,
     DispensaryService,
@@ -135,6 +137,7 @@ import { ReferenceCatalogService } from './reference-catalog.service';
     DoctorCompletionService,
     PanelBenefitService,
     BillingWorklistService,
+    InvoiceDraftService,
     ConsultationTariffService,
     QueueBoardService,
     DispensaryService,

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Modal, Skeleton, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Modal, Popover, Skeleton, Space, Tag, Typography } from 'antd';
 import {
   CheckCircleOutlined,
   ExclamationCircleOutlined,
@@ -32,6 +32,21 @@ interface ConsultationFooterProps {
   visit: Visit;
   /** Moves the viewport to an existing Canvas section. Never opens a form. */
   onReview: (anchor: CanvasAnchor) => void;
+  /**
+   * b4 PIECE B — where this is being rendered.
+   *
+   * `panel` is the original full-width band at the end of the record.
+   * `bar` is ONE LINE, for the canvas's slim sticky bottom bar, which is
+   * ~44px at rest and cannot carry a blocker list or a completion summary
+   * inline. Nothing is removed in `bar`: the blockers, their review actions
+   * and the failure wording all still render, in a popover opened from the
+   * same place the action would be.
+   *
+   * This is a LAYOUT switch and only a layout switch. Both variants share one
+   * component, one status query, one mutation and one confirmation dialog —
+   * two components would be two places for the completion rules to drift.
+   */
+  variant?: 'panel' | 'bar';
 }
 
 /**
@@ -55,7 +70,8 @@ interface ConsultationFooterProps {
  * by anything here — which is what keeps C1's unsaved-draft protection intact
  * through a completion.
  */
-export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps) {
+export function ConsultationFooter({ visit, onReview, variant = 'panel' }: ConsultationFooterProps) {
+  const bar = variant === 'bar';
   const status = useDoctorPhaseStatus(visit.id);
   const complete = useCompleteDoctorPhase(visit.id);
   const { data: staff } = useStaff();
@@ -121,12 +137,12 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
   // and then withdraws teaches a doctor to click before reading.
   if (view.mode === 'LOADING') {
     return (
-      <section className="kw-consult-footer" aria-label="Consultation completion">
+      <section className={sectionClass(bar)} aria-label="Consultation completion">
         <div className="kw-consult-status" role="status" aria-live="polite">
           <Text type="secondary" style={{ fontSize: 12 }}>
             Checking consultation status…
           </Text>
-          <Skeleton.Button active size="small" style={{ width: 180 }} />
+          {!bar && <Skeleton.Button active size="small" style={{ width: 180 }} />}
         </div>
       </section>
     );
@@ -134,8 +150,28 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
 
   // ---- 6. ERROR (the status read itself) ---------------------------------
   if (view.mode === 'UNAVAILABLE') {
+    // In the bar the same two facts fit on one line: it is unavailable, and
+    // the record is untouched. The reassurance moves into the retry's title
+    // rather than being dropped.
+    if (bar) {
+      return (
+        <section className={sectionClass(bar)} aria-label="Consultation completion">
+          <Space size={6} role="alert">
+            <ExclamationCircleOutlined aria-hidden />
+            <Text style={{ fontSize: 12 }}>Consultation status unavailable</Text>
+            <Button
+              size="small"
+              onClick={() => status.refetch()}
+              title="The record is unaffected and nothing you have typed has been lost."
+            >
+              Retry
+            </Button>
+          </Space>
+        </section>
+      );
+    }
     return (
-      <section className="kw-consult-footer" aria-label="Consultation completion">
+      <section className={sectionClass(bar)} aria-label="Consultation completion">
         <Alert
           type="warning"
           showIcon
@@ -160,6 +196,24 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
       ? attendingClinician(person.fullName, person.role, person.id).text
       : 'Not recorded';
     const queueText = queueStatusText(stored.queueStatus);
+
+    // In the bar: the fact, and where the patient went. The full record of
+    // who/when/status stays on the panel variant, which is where somebody
+    // looking those up would go — a 44px line cannot hold a definition list,
+    // and squeezing one in is how a bar stops being slim.
+    if (bar) {
+      return (
+        <section className={sectionClass(bar)} aria-label="Consultation completion">
+          <Space size={6} role="status">
+            <CheckCircleOutlined aria-hidden style={{ color: 'var(--kw-teal)' }} />
+            <Text strong style={{ fontSize: 12 }}>
+              Doctor phase completed
+            </Text>
+            {queueText && <Tag className="kw-chip-progress">{queueText}</Tag>}
+          </Space>
+        </section>
+      );
+    }
 
     return (
       <section className="kw-consult-footer kw-consult-done" aria-label="Consultation completion">
@@ -250,8 +304,56 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
 
   if (view.mode === 'BLOCKED' || lateBlockers) {
     const reviews = reviewActions(shownBlockers);
+    const blockedBody = (
+      <>
+        {/* All of them, together. Fixing four problems one refresh at a time
+            is how a consultation room backs up. */}
+        <ul className="kw-consult-blocker-list">
+          {shownBlockers.map((blocker) => (
+            <li key={blocker.code}>{blocker.message}</li>
+          ))}
+        </ul>
+        {reviews.length > 0 && (
+          <Space size={6} wrap className="kw-consult-reviews">
+            {reviews.map((action) => (
+              <Button key={action.anchor} size="small" onClick={() => onReview(action.anchor)}>
+                {action.label}
+              </Button>
+            ))}
+          </Space>
+        )}
+      </>
+    );
+
+    // THE BAR STILL SAYS WHY, and still offers every review action. The count
+    // and the alert semantics are on the line itself — a doctor must not have
+    // to open anything to learn that completion is blocked — and the list
+    // opens from the same control, on click as well as hover, so it is
+    // reachable from the keyboard.
+    if (bar) {
+      return (
+        <section className={sectionClass(bar)} aria-label="Consultation completion">
+          <div className="kw-consult-bar-blocked" role="alert" aria-live="assertive">
+            <ExclamationCircleOutlined aria-hidden />
+            <Popover
+              trigger={['click', 'hover']}
+              placement="topRight"
+              title="Consultation cannot be completed yet"
+              content={<div style={{ maxWidth: 380 }}>{blockedBody}</div>}
+            >
+              <Button size="small" danger data-testid="consult-bar-blockers">
+                {shownBlockers.length === 1
+                  ? '1 item outstanding'
+                  : `${shownBlockers.length} items outstanding`}
+              </Button>
+            </Popover>
+          </div>
+        </section>
+      );
+    }
+
     return (
-      <section className="kw-consult-footer" aria-label="Consultation completion">
+      <section className={sectionClass(bar)} aria-label="Consultation completion">
         <div className="kw-consult-blocked" role="alert" aria-live="assertive">
           <div className="kw-consult-blocked-head">
             <ExclamationCircleOutlined aria-hidden />
@@ -261,22 +363,7 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
                 : `Consultation cannot be completed yet — ${shownBlockers.length} items outstanding`}
             </Text>
           </div>
-          {/* All of them, together. Fixing four problems one refresh at a time
-              is how a consultation room backs up. */}
-          <ul className="kw-consult-blocker-list">
-            {shownBlockers.map((blocker) => (
-              <li key={blocker.code}>{blocker.message}</li>
-            ))}
-          </ul>
-          {reviews.length > 0 && (
-            <Space size={6} wrap className="kw-consult-reviews">
-              {reviews.map((action) => (
-                <Button key={action.anchor} size="small" onClick={() => onReview(action.anchor)}>
-                  {action.label}
-                </Button>
-              ))}
-            </Space>
-          )}
+          {blockedBody}
         </div>
       </section>
     );
@@ -298,13 +385,51 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
     allergyCheckpoint: view.allergyCheckpoint,
   });
 
+  const primaryButton = (
+    <Button
+      type="primary"
+      size={bar ? 'middle' : 'large'}
+      loading={complete.isPending}
+      disabled={complete.isPending}
+      onClick={(event) => {
+        triggerRef.current = event.currentTarget;
+        setConfirming(true);
+      }}
+    >
+      {primary.label}
+    </Button>
+  );
+
   return (
     <section
-      className="kw-consult-footer"
+      className={sectionClass(bar)}
       aria-label="Consultation completion"
       data-documentation-pending={pending ? 'true' : 'false'}
     >
-      {failure && (
+      {/* A refused completion. Full width on the panel; on the bar the same
+          two sentences, in a popover that opens on the failure chip — the
+          words are not shortened, the surface holding them is. */}
+      {failure && bar && (
+        <Popover
+          trigger={['click', 'hover']}
+          placement="topRight"
+          open={undefined}
+          title="Consultation not completed"
+          content={
+            <div style={{ maxWidth: 340 }}>
+              <div>{`${failure} Nothing on this record has been changed.`}</div>
+              <Button size="small" style={{ marginTop: 6 }} onClick={() => setFailure(null)}>
+                Dismiss
+              </Button>
+            </div>
+          }
+        >
+          <Tag color="error" role="alert" style={{ cursor: 'pointer' }}>
+            Not completed
+          </Tag>
+        </Popover>
+      )}
+      {failure && !bar && (
         <Alert
           type="error"
           showIcon
@@ -324,34 +449,27 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
           completion checkpoint, read once, at the point it changes what
           somebody would do. */}
 
-      <div className="kw-consult-bar">
-        <div className="kw-consult-summary">
-          {/* U2 — the chips are GONE.
-              They were the retired banner's other half: a signed/not-signed
-              chip and a destination chip repeating, permanently, what the
-              completion checkpoint now says once and the bottom action bar
-              (Section I) will carry. Three surfaces asserting the same two
-              facts is how a doctor stops reading any of them.
+      {bar ? (
+        // On the bar the action IS the content. No wrapper row, no empty
+        // summary column — the invoice bar owns the layout around it.
+        <div className="kw-consult-primary">{primaryButton}</div>
+      ) : (
+        <div className="kw-consult-bar">
+          <div className="kw-consult-summary">
+            {/* U2 — the chips are GONE.
+                They were the retired banner's other half: a signed/not-signed
+                chip and a destination chip repeating, permanently, what the
+                completion checkpoint now says once and the bottom action bar
+                (Section I) will carry. Three surfaces asserting the same two
+                facts is how a doctor stops reading any of them.
 
-              The button itself still names the destination — "Complete &
-              Send to Dispensary" — so nothing was lost by removing the chip
-              that said "Dispensary" beside it. */}
+                The button itself still names the destination — "Complete &
+                Send to Dispensary" — so nothing was lost by removing the chip
+                that said "Dispensary" beside it. */}
+          </div>
+          <div className="kw-consult-primary">{primaryButton}</div>
         </div>
-        <div className="kw-consult-primary">
-          <Button
-            type="primary"
-            size="large"
-            loading={complete.isPending}
-            disabled={complete.isPending}
-            onClick={(event) => {
-              triggerRef.current = event.currentTarget;
-              setConfirming(true);
-            }}
-          >
-            {primary.label}
-          </Button>
-        </div>
-      </div>
+      )}
 
       {/* One compact confirmation. The doctor confirms the ACT, never chooses
           the destination — that is derived and is not offered as a choice.
@@ -479,6 +597,15 @@ export function ConsultationFooter({ visit, onReview }: ConsultationFooterProps)
       </Modal>
     </section>
   );
+}
+
+/**
+ * The bar variant drops the panel's card chrome — border, padding, the navy
+ * top edge — because the invoice bar around it supplies all three. A second
+ * bordered box inside a 44px bar is a box with nothing left inside it.
+ */
+function sectionClass(bar: boolean): string {
+  return bar ? 'kw-consult-inbar' : 'kw-consult-footer';
 }
 
 function iconFor(reason: string) {

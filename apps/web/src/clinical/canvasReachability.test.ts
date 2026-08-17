@@ -7,6 +7,7 @@ import editorSource from './RichTextEditor.tsx?raw';
 import secondarySource from './sections/SecondarySections.tsx?raw';
 import documentsSectionSource from './sections/DocumentsSection.tsx?raw';
 import invoiceSectionSource from './sections/InvoiceSection.tsx?raw';
+import barSource from './invoice/InvoiceBottomBar.tsx?raw';
 // Vitest's CSS pipeline swallows `?raw` on stylesheets, so the one non-TS
 // asset is read straight from disk. Test-only; the app tsconfig has no node
 // types, hence the local suppression.
@@ -34,8 +35,29 @@ describe('duplicate bottom sections are gone from the active Canvas', () => {
     expect(page).not.toContain("from './sections/SecondarySections'");
   });
 
-  it('the footer is still the final active-Canvas workflow element', () => {
-    expect(page).toContain('<ConsultationFooter');
+  /**
+   * b4 PIECE B moved this, and the assertion moved with it DELIBERATELY.
+   *
+   * What it guarded is that the Canvas ends in exactly ONE completion
+   * surface, reachable, and that nothing quietly removed it. That is still
+   * what is asserted — the surface is now the sticky bottom bar, which
+   * CARRIES the completion action rather than sitting beside it
+   * (`ConsultationFooter variant="bar"` inside `InvoiceBottomBar`).
+   *
+   * The page must therefore mount the bar and must NOT mount a second,
+   * panel-variant footer of its own: two completion actions on one page is
+   * precisely the duplication this whole describe block exists to prevent.
+   */
+  it('the sticky bottom bar is the final active-Canvas workflow element', () => {
+    expect(page).toContain('<InvoiceBottomBar');
+    expect(page).not.toContain('<ConsultationFooter');
+  });
+
+  it('the bar carries the completion action rather than duplicating it', () => {
+    expect(barSource).toContain('<ConsultationFooter');
+    expect(barSource).toContain('variant="bar"');
+    // One instance, one set of completion rules.
+    expect(barSource.match(/<ConsultationFooter/g)).toHaveLength(1);
   });
 
   it('the top Visit Actions surface is untouched', () => {

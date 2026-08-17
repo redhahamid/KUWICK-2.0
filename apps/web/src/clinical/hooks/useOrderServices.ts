@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../core/api-client';
+import { invoiceDraftKey } from './useInvoiceDraft';
 import {
   CancelOrderServiceDto,
   CompleteOrderServiceDto,
@@ -48,7 +49,13 @@ export function useCreateOrderService(visitId?: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (dto: CreateOrderServiceDto) => apiClient.post<OrderService>('/order-services', dto),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['order-services', visitId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order-services', visitId] });
+      // b4 PIECE B — orders, procedures and direct services are three of the
+      // bottom bar's four sources; adding, completing or cancelling one moves
+      // the running total.
+      queryClient.invalidateQueries({ queryKey: invoiceDraftKey(visitId) });
+    },
   });
 }
 
@@ -57,7 +64,13 @@ function useOrderServiceAction(visitId: string | undefined, action: string) {
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input?: CompleteOrderServiceDto | CancelOrderServiceDto }) =>
       apiClient.patch<OrderService>(`/order-services/${id}/${action}`, input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['order-services', visitId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order-services', visitId] });
+      // b4 PIECE B — orders, procedures and direct services are three of the
+      // bottom bar's four sources; adding, completing or cancelling one moves
+      // the running total.
+      queryClient.invalidateQueries({ queryKey: invoiceDraftKey(visitId) });
+    },
   });
 }
 

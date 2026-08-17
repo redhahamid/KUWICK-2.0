@@ -59,6 +59,15 @@ export interface BillingWorklistItem {
   stateReason: string | null;
   /** The source's own clinical/operational status (ORDERED, COMPLETED, ...). */
   sourceStatus: string | null;
+  /**
+   * b4 PIECE B — STANDARD_SERVICE or TASK_ORDER for an order-sourced item,
+   * NULL for everything else. Already snapshotted on the order and already
+   * read by this query; it is exposed because a direct service and a
+   * procedure are two different rail cards and two different lines on a bill,
+   * and a surface that has to re-fetch the order to tell them apart ends up
+   * guessing from the description instead.
+   */
+  orderType: string | null;
   supplyMode: string | null;
   billed: boolean;
   invoiceLineId: string | null;
@@ -116,6 +125,7 @@ export async function collectBillingWorklist(tx: ClinicalTx, visitId: string): P
       sourceId: prescription.id,
       description: prescription.item?.name ?? 'Medication',
       sourceStatus: prescription.status,
+      orderType: null,
       supplyMode: mode,
       billed: lineId !== null,
       invoiceLineId: lineId,
@@ -156,6 +166,7 @@ export async function collectBillingWorklist(tx: ClinicalTx, visitId: string): P
       sourceId: order.id,
       description: order.procedureName,
       sourceStatus: order.status,
+      orderType: order.orderType,
       supplyMode: null,
       billed: lineId !== null,
       invoiceLineId: lineId,
@@ -186,6 +197,7 @@ export async function collectBillingWorklist(tx: ClinicalTx, visitId: string): P
       state: 'READY',
       stateReason: null,
       sourceStatus: null,
+      orderType: null,
       supplyMode: null,
       billed: false,
       invoiceLineId: null,
@@ -199,6 +211,7 @@ export async function collectBillingWorklist(tx: ClinicalTx, visitId: string): P
       state: 'READY',
       stateReason: null,
       sourceStatus: null,
+      orderType: null,
       supplyMode: null,
       billed: true,
       invoiceLineId: consultation.invoiceLineId,
@@ -212,6 +225,7 @@ export async function collectBillingWorklist(tx: ClinicalTx, visitId: string): P
       state: 'WAIVED',
       stateReason: 'Consultation charge was waived. It stays in the invoice history.',
       sourceStatus: null,
+      orderType: null,
       supplyMode: null,
       billed: false,
       invoiceLineId: consultation.invoiceLineId,
@@ -225,6 +239,7 @@ export async function collectBillingWorklist(tx: ClinicalTx, visitId: string): P
       state: 'TARIFF_REVIEW',
       stateReason: consultation.reason,
       sourceStatus: null,
+      orderType: null,
       supplyMode: null,
       billed: false,
       invoiceLineId: null,
@@ -238,6 +253,7 @@ export async function collectBillingWorklist(tx: ClinicalTx, visitId: string): P
       state: 'NOT_CHARGEABLE',
       stateReason: 'This kind of visit carries no consultation charge.',
       sourceStatus: null,
+      orderType: null,
       supplyMode: null,
       billed: false,
       invoiceLineId: null,

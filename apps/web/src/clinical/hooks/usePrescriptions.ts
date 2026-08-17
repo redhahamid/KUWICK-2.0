@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../core/api-client';
+import { invoiceDraftKey } from './useInvoiceDraft';
 import {
   CancelPrescriptionDto,
   CopyPrescriptionsDto,
@@ -20,6 +21,10 @@ function useInvalidatePrescriptionWork(visitId?: string) {
   return () => {
     queryClient.invalidateQueries({ queryKey: ['prescriptions', visitId] });
     queryClient.invalidateQueries({ queryKey: ['doctor-phase-status', visitId] });
+    // b4 PIECE B — and the draft invoice, for the same reason: a medicine
+    // added or a supply mode set changes what the visit costs, and the
+    // bottom bar must not need a remount to say so.
+    queryClient.invalidateQueries({ queryKey: invoiceDraftKey(visitId) });
   };
 }
 

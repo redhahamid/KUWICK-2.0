@@ -176,7 +176,18 @@ describe('dispense gating', () => {
 });
 
 describe('26/28. the hook refreshes narrowly and never completes anything', () => {
-  it('invalidates prescriptions and doctor-phase status — and nothing else', async () => {
+  /**
+   * b4 PIECE B added the third key, deliberately.
+   *
+   * "Narrowly" was never a count — it is a rule about WHAT may be refetched:
+   * nothing that feeds an editor holding unsaved text (C1/D-091). The draft
+   * invoice feeds a read-only bottom bar, and a supply mode set is exactly
+   * the change that moves what the visit costs, so leaving the bar stale
+   * would put two different answers about the same prescription on one
+   * screen. The clinical-notes assertion below is the rule, and it is
+   * unchanged.
+   */
+  it('invalidates prescriptions, doctor-phase status and the draft — and nothing else', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const invalidated: unknown[] = [];
     vi.spyOn(client, 'invalidateQueries').mockImplementation(async (filters) => {
@@ -193,6 +204,7 @@ describe('26/28. the hook refreshes narrowly and never completes anything', () =
     expect(invalidated).toEqual([
       ['prescriptions', 'visit-1'],
       ['doctor-phase-status', 'visit-1'],
+      ['invoice-draft', 'visit-1'],
     ]);
     // 29-31 rest on this line: the clinical-notes query is NOT invalidated, so
     // no refetch can carry a server seed toward an editor holding a draft.

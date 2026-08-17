@@ -476,6 +476,39 @@ function reportBudget(label: string, geometry: { railTop: number; railHeight: nu
 }
 
 /**
+ * b4 PIECE B — THE STICKY BOTTOM BAR, AND WHY IT CHANGES WHAT "ON SCREEN"
+ * MEANS.
+ *
+ * The bar is `position: fixed` at the bottom of the viewport, so it COVERS
+ * the last ~44px of whatever is behind it. A rail row at y=760 is inside the
+ * viewport and behind the bar — which is not "on screen at rest" in any sense
+ * a doctor would recognise.
+ *
+ * So the visibility assertions measure against the BAR'S TOP EDGE, and that
+ * is a STRENGTHENING, not a weakening: every row that passed before must
+ * still pass, and rows the bar now hides fail. Per the handoff, if a Piece A
+ * assertion breaks with the bar present, THE BAR'S HEIGHT is what gets fixed
+ * — never the assertion.
+ *
+ * The BUDGET LINE is unaffected and still prints against the full viewport
+ * height. Measuring the rail against viewport-minus-bar is the vacuous pass
+ * this file has already been burned by once.
+ */
+async function barGeometry(page: Page) {
+  return page.evaluate(() => {
+    const bar = document.querySelector('.kw-invoice-bar');
+    if (!bar) return null;
+    const rect = bar.getBoundingClientRect();
+    return { top: Math.round(rect.top), height: Math.round(rect.height) };
+  });
+}
+
+/** The fold a row must be above to count as on screen at rest. */
+function visibleFold(fold: number, bar: { top: number } | null): number {
+  return bar ? Math.min(fold, bar.top) : fold;
+}
+
+/**
  * What the rail owes a doctor AT REST, as distinct from how tall it is.
  *
  * `railGeometry` answers "does everything fit". These four rects answer "is
@@ -556,6 +589,14 @@ test.describe('the right rail fits the budget it was compacted for', () => {
 
     const rail = await railPromises(page);
 
+    // b4 PIECE B — the bar is part of the measured region. Everything below
+    // is asserted against ITS top edge, because a row behind a fixed bar is
+    // not on screen. The bar's own height is checked in its case below.
+    const bar = await barGeometry(page);
+    expect(bar, 'the sticky bottom bar is not on the canvas at all').not.toBeNull();
+    const fold = visibleFold(768, bar);
+    console.log(`RAIL BUDGET — TYPICAL at 1366×768: bar is ${bar!.height}px, visible fold is ${fold}px`);
+
     // (a) THE WARNING. The fixture plants exactly one prescription with a NULL
     // supply mode, so a missing row here is a missing warning and not a
     // fixture that happened to resolve everything.
@@ -564,31 +605,34 @@ test.describe('the right rail fits the budget it was compacted for', () => {
     // "On screen at rest" covers both halves of the rule: above the fold, or
     // auto-revealed. Nobody has scrolled at this point, so a row inside the
     // viewport is a row the doctor was given without asking — which is the
-    // promise. Only a row they would have to go looking for fails.
+    // promise. Only a row they would have to go looking for fails. And
+    // "behind the bottom bar" is a row they would have to go looking for.
     expect(
       rail.warnedRow,
       'the unresolved-supply row is not in the DOM at all',
     ).not.toBeNull();
     expect(
       rail.warnedRow!.top,
-      `the unresolved-supply warning starts below the fold at rest (top ${rail.warnedRow!.top} ≥ 768)`,
-    ).toBeLessThan(768);
+      `the unresolved-supply warning starts below the fold at rest (top ${rail.warnedRow!.top} ≥ ${fold})`,
+    ).toBeLessThan(fold);
     expect(
       rail.warnedRow!.bottom,
-      `the unresolved-supply warning is cut by the fold at rest (bottom ${rail.warnedRow!.bottom} > 768)`,
-    ).toBeLessThanOrEqual(768);
+      `the unresolved-supply warning is hidden by the fold or the bottom bar at rest ` +
+        `(bottom ${rail.warnedRow!.bottom} > ${fold}). Per the handoff, shorten the BAR, not this assertion.`,
+    ).toBeLessThanOrEqual(fold);
 
-    // (b) MEDICATIONS — header and first row, both whole.
+    // (b) MEDICATIONS — header and first row, both whole, and both clear of
+    // the bar.
     expect(rail.medsHead, 'the Medications card is missing').not.toBeNull();
     expect(
       rail.medsHead!.bottom,
-      `the Medications card header is below the fold (${rail.medsHead!.bottom} > 768)`,
-    ).toBeLessThanOrEqual(768);
+      `the Medications card header is below the fold (${rail.medsHead!.bottom} > ${fold})`,
+    ).toBeLessThanOrEqual(fold);
     expect(rail.medsFirstRow, 'the Medications card rendered no rows').not.toBeNull();
     expect(
       rail.medsFirstRow!.bottom,
-      `the first medication is below the fold (${rail.medsFirstRow!.bottom} > 768)`,
-    ).toBeLessThanOrEqual(768);
+      `the first medication is below the fold (${rail.medsFirstRow!.bottom} > ${fold})`,
+    ).toBeLessThanOrEqual(fold);
 
     // (c) NOTHING TRUNCATED. The compaction traded lines for hover titles; it
     // never traded a drug name for an ellipsis, and must not start here.
@@ -630,16 +674,24 @@ test.describe('the right rail fits the budget it was compacted for', () => {
 
     // (e) OF THE REDEFINED TARGET — the FULL rail, with no scrolling at all.
     // Stated on the rail's own bottom edge rather than on its lowest row: the
-    // rail ends below its last row (card padding, and Piece B's invoice card
-    // when it lands), and "fits with no scrolling" is a claim about the whole
-    // thing, not about the last row inside it.
+    // rail ends below its last row (card padding), and "fits with no
+    // scrolling" is a claim about the whole thing, not about the last row
+    // inside it.
+    //
+    // b4 PIECE B: the invoice did NOT land in the rail — it is the sticky
+    // bottom bar — so the rail's bottom edge is unchanged, and it must now
+    // also clear that bar.
+    const bar = await barGeometry(page);
+    expect(bar, 'the sticky bottom bar is not on the canvas at all').not.toBeNull();
+    const fold = visibleFold(1080, bar);
     expect(
       geometry.railTop + geometry.railHeight,
-      `the rail runs past the fold at 1920×1080 (${geometry.railTop + geometry.railHeight} > 1080)`,
-    ).toBeLessThanOrEqual(1080);
+      `the rail runs past the fold or under the bottom bar at 1920×1080 ` +
+        `(${geometry.railTop + geometry.railHeight} > ${fold})`,
+    ).toBeLessThanOrEqual(fold);
     // "Room to spare" stated as a number rather than implied: at the taller
     // viewport the rail should not be within a row's height of the fold.
-    expect(geometry.lowestRowBottom).toBeLessThanOrEqual(1080 - 40);
+    expect(geometry.lowestRowBottom).toBeLessThanOrEqual(fold - 40);
     expect(geometry.truncated, 'rail rows are truncating their own text').toEqual([]);
   });
 
@@ -720,4 +772,116 @@ test.describe('the right rail fits the budget it was compacted for', () => {
       await expect(rail.locator('[data-unresolved-supply]')).toHaveCount(1);
     });
   }
+
+  // =========================================================================
+  // b4 PIECE B — THE STICKY BOTTOM BAR ITSELF.
+  //
+  // The bar's height is the number every assertion above now depends on, so
+  // it is measured rather than trusted to the stylesheet. The other half is
+  // that the EXPANSION costs nothing permanent: the breakdown is an overlay,
+  // so a doctor opening it and closing it must leave the rail exactly where
+  // it was. A breakdown that pushed the page would be the fifth rail card
+  // this piece exists not to build, arriving by a different route.
+  // =========================================================================
+  test('the invoice bar is slim at rest, and its breakdown costs the rail nothing', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await openDensityVisit(page, 'typical');
+
+    const before = await railGeometry(page);
+    expect(before.rowCount, 'the fixture did not load — nothing to measure').toBeGreaterThan(0);
+
+    const bar = page.locator('.kw-invoice-bar');
+    await expect(bar, 'the sticky bottom bar is not on the canvas').toBeVisible();
+    const barBox = (await bar.boundingBox())!;
+
+    // 1. SLIM, and pinned to the bottom. The ~44px is the budget the rail was
+    //    compacted for; 48 is the tolerance, not a new allowance.
+    console.log(`INVOICE BAR — height ${Math.round(barBox.height)}px, top ${Math.round(barBox.y)}px at 1366×768`);
+    expect(barBox.height, `the bottom bar is ${barBox.height}px, not slim`).toBeLessThanOrEqual(48);
+    expect(
+      Math.round(barBox.y + barBox.height),
+      'the bottom bar is not sitting on the bottom edge of the viewport',
+    ).toBeGreaterThanOrEqual(768 - SLACK);
+
+    // 2. It carries BOTH of its jobs at rest: the running total and the
+    //    completion action, without anything being expanded.
+    await expect(page.getByTestId('invoice-bar-total')).toBeVisible();
+    await expect(page.getByTestId('invoice-bar-total')).toContainText(/RM \d+\.\d\d|—/);
+    await expect(page.getByTestId('invoice-breakdown')).toHaveCount(0);
+
+    // 3. The breakdown opens OVER the canvas — above the bar, and the bar
+    //    keeps its height and its place.
+    await page.getByTestId('invoice-bar-total').click();
+    const sheet = page.getByTestId('invoice-breakdown');
+    await expect(sheet).toBeVisible();
+    const sheetBox = (await sheet.boundingBox())!;
+    const barAfterOpen = (await bar.boundingBox())!;
+    expect(Math.round(barAfterOpen.height), 'the bar grew when the breakdown opened').toBe(
+      Math.round(barBox.height),
+    );
+    expect(
+      Math.round(sheetBox.y + sheetBox.height),
+      'the breakdown does not sit above the bar',
+    ).toBeLessThanOrEqual(Math.round(barAfterOpen.y) + SLACK);
+
+    // 4. THE POINT: it is an OVERLAY. With the breakdown open, every rail row
+    //    is exactly where it was — no reflow, no push, nothing scrolled.
+    const duringOpen = await railGeometry(page);
+    expect(duringOpen.railTop, 'the rail moved when the breakdown opened').toBe(before.railTop);
+    expect(duringOpen.railHeight, 'the rail resized when the breakdown opened').toBe(before.railHeight);
+
+    // 5. And collapsing returns to the slim bar.
+    await page.getByTestId('invoice-bar-total').click();
+    await expect(sheet).toHaveCount(0);
+    const after = await railGeometry(page);
+    expect(after.railTop).toBe(before.railTop);
+    expect(after.railHeight).toBe(before.railHeight);
+    expect(Math.round((await bar.boundingBox())!.height)).toBe(Math.round(barBox.height));
+
+    await page.screenshot({ path: 'test-results/invoice-bar-1366.png', fullPage: false });
+  });
+
+  // =========================================================================
+  // b4 PIECE B — THE FOUR SOURCES, AND THE OTC RULE, ON THE REAL SCREEN.
+  //
+  // The unit suites assert the draft's shape and the bar's rendering against
+  // fixtures. This asserts that a REAL seeded visit's medications and orders
+  // reach the bar at all — the composition failure that no component test can
+  // see, and the one that has cost this project the most time.
+  // =========================================================================
+  test('the invoice bar pulls the seeded visit’s own medications and orders', async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    const fixture = await openDensityVisit(page, 'typical');
+
+    await page.getByTestId('invoice-bar-total').click();
+    const sheet = page.getByTestId('invoice-breakdown');
+    await expect(sheet).toBeVisible();
+
+    // Every medication on the visit is a line on the draft — including the
+    // one with an undecided supply mode, which must be LISTED with its
+    // reason rather than dropped. D-091's rule, on the bill this time.
+    const medicationLines = sheet.locator('[data-source-type="PRESCRIPTION"]');
+    await expect(
+      medicationLines,
+      'the draft invoice did not pull the visit’s medications',
+    ).toHaveCount(fixture.medications);
+
+    // The unresolved one is present, uncounted, and carries the server's own
+    // wording — never priced at RM 0.00, which would read as free.
+    const unresolved = sheet.locator('[data-state="UNRESOLVED_SUPPLY"]');
+    await expect(unresolved).toHaveCount(1);
+    await expect(unresolved.first()).toHaveAttribute('data-counted', 'false');
+    await expect(unresolved.first()).toContainText(/supply mode has not been confirmed/i);
+
+    // The orders on the visit reach it too.
+    await expect(
+      sheet.locator('[data-source-type="ORDER_SERVICE"]'),
+      'the draft invoice did not pull the visit’s orders',
+    ).toHaveCount(fixture.orders);
+
+    // And the total is stated, not blank.
+    await expect(page.getByTestId('invoice-bar-total')).toContainText(/RM \d+\.\d\d/);
+
+    await sheet.screenshot({ path: 'test-results/invoice-breakdown-1920.png' });
+  });
 });

@@ -615,13 +615,109 @@ against the FULL 768 — Piece B's sticky bar has to fit inside that number,
 never be subtracted from it first. The `rowCount > 0` guard stays first on
 every case (the vacuous-pass trap below).
 
-**PIECES B AND C NOT STARTED.** Piece B (invoice + sticky bar) must read
-`consultation-tariff.ts` (D-094) first — the OTC-skips-consultation rule almost
-certainly belongs there, and a second answer to "should this visit carry a
-consultation charge" is the two-allergy-stores mistake again. The bar is slim at
-rest (~44px), expands over the canvas on click, and never permanently occupies
-more than the slim height. Its height counts inside the measured region; if it
-breaks a Piece A assertion, the HEIGHT is what gets fixed.
+**PIECE B — DONE (2026-08-17). The invoice is the sticky bottom bar. PIECE C
+NOT STARTED.**
+
+`consultation-tariff.ts` was read first and it already owned the rule, exactly
+as suspected: `classifyVisit` maps an OTC queue ticket to `OTC_ONLY`,
+`resolveConsultationState` returns `EXEMPT`, and `collectBillingWorklist` turns
+that into a NOT_CHARGEABLE consultation row carrying the words "This kind of
+visit carries no consultation charge." **There is no queue-type test anywhere
+in Piece B's code** — not in the new server module, not in the bar. The OTC
+answer arrives already decided and the bar prints the reason it was given.
+
+WHAT WAS BUILT:
+
+- **`invoice-draft.ts` + `invoice-draft.service.ts`, `GET
+  /visits/:id/invoice-draft`.** A composition, not a new authority: the
+  WORKLIST decides which sources are billable and in what state
+  (`collectBillingWorklist`), `resolveSourcedPrice` prices them (the one
+  pricing truth, D-093), and `calculateResponsibility` does the discount
+  arithmetic in its CASH shape. Three existing owners, called; nothing
+  re-derived.
+- **A BILLED LINE IS READ, NOT RE-PRICED.** Once a source has an active
+  invoice line, that line's stored quantity and unit price are the facts. A
+  catalogue edit must never silently restate a charge already made — asserted
+  (the fixture moves the price to 9.00 and the draft still reports 4.50).
+- **WHAT COUNTS IN THE TOTAL**, and it is a judgement worth knowing: READY and
+  AWAITING_DISPENSE count (ordered-but-undispensed clinic medication is
+  chargeable work, and omitting it would understate every visit that has not
+  reached the dispensary — i.e. all of them during the consultation).
+  UNRESOLVED_SUPPLY is LISTED, UNPRICED and UNCOUNTED: a NULL supply mode is
+  an unmade decision (D-091), and pricing it would answer for the doctor the
+  question the rail refuses to answer. `unitPrice`/`amount` are NULL, never 0
+  — RM 0.00 reads as free. The bar carries an "N items not priced yet" chip AT
+  REST, because a total that quietly omits something is wrong by an unknown
+  amount.
+- **The bar.** `InvoiceBottomBar`, `position: fixed`, `--kw-invoice-bar-h:
+  44px`. Running total on the left (the control that expands), Complete
+  Consultation on the right. The breakdown is an OVERLAY at `bottom:
+  var(--kw-invoice-bar-h)`, `max-height: 50vh`, so it takes no layout height
+  and the rail does not move when it opens — asserted by measuring `railTop`
+  and `railHeight` before, during and after.
+- **ONE completion action, not two.** `ConsultationFooter` gained
+  `variant="bar"`: a LAYOUT switch only, one component, one status query, one
+  mutation, one confirmation dialog. The page no longer renders the panel
+  variant at all. Nothing was dropped in the bar — blockers keep their count on
+  the line and their full list plus review actions in a popover; a refusal
+  keeps both its sentences. `canvasReachability.test.ts` was updated
+  deliberately and now asserts BOTH that the page mounts the bar and that it
+  does NOT mount a second `<ConsultationFooter>`.
+- **Live update is an invalidation.** The draft is derived on every read, so
+  `invoiceDraftKey` is invalidated by `usePrescriptions`, `useOrderServices`
+  and `useBillingRefresh`. One exported key function rather than a string
+  literal in four files.
+- **`BillingWorklistItem.orderType` is now exposed** (STANDARD_SERVICE /
+  TASK_ORDER). It was already selected by that query; the breakdown needs it to
+  group Direct Services apart from Orders / Procedures the way the rail cards
+  do, and a surface that has to re-fetch the order guesses from the description
+  instead.
+
+**TWO THINGS THE OWNER SHOULD DECIDE, both flagged rather than decided here:**
+
+1. **"Doctor can apply a discount" COLLIDES WITH D-093 OWNER DECISION 5**,
+   which is explicit in `clinical-authorization.ts`: `APPLY_DISCOUNT` is
+   `billing.corrections`, and the comment says in so many words "Front desk and
+   doctors are refused." The control was built and wired through the ONE
+   existing path (`PATCH /visits/:id/invoice-draft/discount` → the visit's
+   invoice → `InvoiceService.applyInvoiceDiscount`), so the permission, the
+   mandatory reason, the actor, the timestamp, the ceiling check and the store
+   are all the existing ones — no canvas-specific discount, no second store.
+   **The GATE was not changed**: silently granting every doctor
+   financial-correction powers is not a change to make inside a layout piece.
+   Anyone holding `billing.corrections` gets the control today; a doctor who
+   does not gets the server's own refusal, in the server's own words, which the
+   bar renders as-is. If the owner means doctors to hold it, that is a one-line
+   change to `BILLING_PERMISSION` and it is theirs to make.
+2. **A discount needs an invoice to reduce, and the doctor's canvas often has
+   none yet.** The endpoint refuses in words ("There is no open invoice for
+   this visit yet…") and the expanded panel says so instead of offering a dead
+   control. Raising the invoice from the canvas was considered and REJECTED:
+   an invoice with lines pulled early flips worklist items to `billed`, and
+   `pendingBillingWork` reads exactly that to decide where completion sends the
+   patient. A bottom bar must not be able to route a patient away from the
+   payment counter as a side effect of recording a discount.
+
+**THE FIVE PIECE A ASSERTIONS NOW MEASURE AGAINST THE BAR'S TOP EDGE, AND THAT
+IS A STRENGTHENING.** A row at y=760 is inside the viewport and behind a fixed
+bar, which is not "on screen" in any sense a doctor would recognise. So (a),
+(b) and (e) assert against `min(fold, barTop)`: every row that passed before
+still passes, and rows the bar hides now fail. **The budget line is unchanged
+and still prints against the FULL 768/1080** — measuring the rail against
+viewport-minus-bar is the vacuous pass this file has already been burned by.
+A second line prints the bar's measured height beside it. The failure message
+on (a) names the remedy the owner set: shorten the BAR, not the assertion.
+
+Two new e2e cases: the bar is slim at rest and its breakdown costs the rail
+nothing, and a real seeded visit's own medications and orders reach the draft
+(including the unresolved one, listed with its reason and uncounted).
+
+**NOT RUN HERE: the e2e suite.** This container has no PostgreSQL, so
+`canvas-viewport.spec.ts` was typechecked and listed (12 cases) but not
+executed; CI runs it. Everything else is green and was run: 1482 API tests,
+1387 web tests, both typechecks, both production builds. `npm run lint` is
+broken repo-wide and was already — there is no `eslint.config.js` and ESLint 10
+refuses `.eslintrc`; CI does not run it either.
 
 **FOR THE MODULES AFTER THE CANVAS**, since the owner moves to Appointments and
 then reports/analytics next, this work has already established:
@@ -672,7 +768,8 @@ consultation charge" server-side — do not build a second answer.
 | E11–E14 orders | not started |
 | F15–F18 medications | not started |
 | G19 documents | not started |
-| H20–H21 invoice + complete | not started |
+| H20 invoice (canvas) | **done** — b4 Piece B: the sticky bottom bar, server-priced draft, discount through the existing invoice path |
+| H21 complete | **done** — carried by the same bar (`ConsultationFooter variant="bar"`) |
 | I22–I23 polish | not started |
 
 ## Gotchas that have cost real time

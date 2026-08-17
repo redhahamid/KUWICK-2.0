@@ -7,9 +7,11 @@ import { VisitCompletionService } from './visit-completion.service';
 import { CompleteVisitDto } from './dto/complete-visit.dto';
 import { PanelBenefitService } from './panel-benefit.service';
 import { BillingWorklistService } from './billing-worklist.service';
+import { InvoiceDraftService } from './invoice-draft.service';
 import { RecordPanelVerificationDto } from './dto/record-panel-verification.dto';
 import { OverridePanelBenefitDto } from './dto/override-panel-benefit.dto';
 import { SetVisitClassificationDto } from './dto/set-visit-classification.dto';
+import { ApplyInvoiceDiscountDto } from './dto/apply-invoice-discount.dto';
 
 @Controller('visits')
 export class VisitController {
@@ -19,6 +21,7 @@ export class VisitController {
     private readonly visitCompletion: VisitCompletionService,
     private readonly panelBenefit: PanelBenefitService,
     private readonly billingWorklist: BillingWorklistService,
+    private readonly invoiceDraft: InvoiceDraftService,
   ) {}
 
   // Patient Dashboard's "New Visit" — creates a Visit with no queue ticket,
@@ -77,6 +80,22 @@ export class VisitController {
   @Get(':id/billing-worklist')
   getBillingWorklist(@Param('id') id: string) {
     return this.billingWorklist.forVisit(id);
+  }
+
+  // b4 PIECE B - the PRICED draft the canvas bottom bar renders: the same
+  // worklist above, with the one pricing truth applied and a running total.
+  // Read only, database-enforced.
+  @Get(':id/invoice-draft')
+  getInvoiceDraft(@Param('id') id: string) {
+    return this.invoiceDraft.forVisit(id);
+  }
+
+  // The invoice-level discount, from the bar. Delegates to
+  // InvoiceService#applyInvoiceDiscount - same permission, same mandatory
+  // reason, same store. No canvas-specific discount path exists.
+  @Patch(':id/invoice-draft/discount')
+  applyDraftDiscount(@Param('id') id: string, @Body() dto: ApplyInvoiceDiscountDto) {
+    return this.invoiceDraft.applyDiscount(id, dto);
   }
 
   // G4.5d3c-3b2 (D-094) - the operational kind of visit for consultation

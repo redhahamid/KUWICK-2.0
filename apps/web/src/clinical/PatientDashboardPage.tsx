@@ -55,7 +55,7 @@ import { OrdersRail } from './sections/OrdersRail';
 import { ServicesRail } from './sections/ServicesRail';
 import { DocumentsRail } from './sections/DocumentsRail';
 import { VisitCompletionBar } from './VisitCompletionBar';
-import { ConsultationFooter } from './ConsultationFooter';
+import { InvoiceBottomBar } from './invoice/InvoiceBottomBar';
 import { PatientSummarySidebar } from './PatientSummarySidebar';
 import { VisitHistoryPanel } from './history/VisitHistoryPanel';
 // G1 (D-058) — the four *SummaryCard components are deliberately still in the
@@ -693,11 +693,20 @@ export function PatientDashboardPage() {
                 </>
               }
               footer={
-                /* G4.5d3c-3a (D-089) — how the DOCTOR's part of the
-                   consultation ends. Last on the page, after everything it
-                   summarises, and carrying no "Complete Visit": closing the
-                   visit is counter work under a different permission (D-087). */
-                <ConsultationFooter visit={selectedVisit} onReview={revealCanvasSection} />
+                /* b4 PIECE B — the STICKY BOTTOM BAR: the visit's running
+                   total and how the doctor's part of the consultation ends,
+                   on one slim line that never scrolls away.
+
+                   It does not sit ABOVE the completion footer, it CARRIES it:
+                   `ConsultationFooter` renders inside in its one-line `bar`
+                   variant, so there is still exactly one completion action on
+                   the page, with one set of rules behind it (D-089, and no
+                   "Complete Visit" here either — closing the visit is counter
+                   work under a different permission, D-087).
+
+                   The invoice is deliberately NOT a fifth rail card: below
+                   Documents it would already be past the fold at 1366×768. */
+                <InvoiceBottomBar visit={selectedVisit} onReview={revealCanvasSection} />
               }
             />
 

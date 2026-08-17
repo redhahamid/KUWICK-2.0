@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../core/api-client';
+import { invoiceDraftKey } from './useInvoiceDraft';
 import {
   AddInvoiceLineDto,
   ApplyDiscountDto,
@@ -84,6 +85,10 @@ function useBillingRefresh(visitId?: string) {
   return () => {
     queryClient.invalidateQueries({ queryKey: ['invoices', visitId] });
     queryClient.invalidateQueries({ queryKey: ['billing-worklist', visitId] });
+    // b4 PIECE B — the canvas bar reads the same state through the priced
+    // draft; a billing write that refreshed the worklist and not the draft
+    // would leave the two disagreeing on the same screen.
+    queryClient.invalidateQueries({ queryKey: invoiceDraftKey(visitId) });
     queryClient.invalidateQueries({ queryKey: ['completion-blockers', visitId] });
     // The visit query's real key is ['visits', id] (see useVisits) — the
     // singular form matched nothing and left the header stale.

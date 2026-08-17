@@ -1261,6 +1261,8 @@ export interface BillingWorklistItem {
   state: BillingWorklistState;
   stateReason: string | null;
   sourceStatus: string | null;
+  /** STANDARD_SERVICE / TASK_ORDER for an order-sourced item, NULL otherwise. */
+  orderType: string | null;
   supplyMode: PrescriptionSupplyMode | null;
   billed: boolean;
   invoiceLineId: string | null;
@@ -1270,6 +1272,54 @@ export interface BillingWorklistItem {
 export interface VisitCompletionBlocker {
   code: string;
   message: string;
+}
+
+// ---------------------------------------------------------------------------
+// b4 PIECE B — the visit's PRICED draft invoice, rendered by the canvas's
+// sticky bottom bar. Built server-side from the same worklist above; the
+// browser renders it and derives none of it.
+//
+// `unitPrice`/`amount` are NULL, never 0, when no price has been established
+// — an undecided medication supply (D-091) and a consultation awaiting tariff
+// review are both unpriced, and neither is free.
+// ---------------------------------------------------------------------------
+export interface InvoiceDraftLine {
+  sourceType: BillingWorklistSourceType;
+  sourceId: string;
+  description: string;
+  state: BillingWorklistState;
+  stateReason: string | null;
+  /** STANDARD_SERVICE / TASK_ORDER, so the breakdown can group direct
+   *  services apart from procedures the way the rail cards do. */
+  orderType: string | null;
+  quantity: number;
+  unitPrice: number | null;
+  amount: number | null;
+  /** Whether this line's amount is inside `subtotal`. */
+  counted: boolean;
+  billed: boolean;
+  invoiceLineId: string | null;
+  lineDiscountAmount: number | null;
+}
+
+export interface InvoiceDraftDiscount {
+  type: InvoiceDiscountType;
+  value: number;
+  amount: number;
+  reason: string;
+  byStaffId: string | null;
+  at: string | null;
+}
+
+export interface InvoiceDraft {
+  visitId: string;
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+  lines: InvoiceDraftLine[];
+  subtotal: number;
+  discount: InvoiceDraftDiscount | null;
+  total: number;
+  unpricedCount: number;
 }
 
 export interface ConsultationTariffRule {

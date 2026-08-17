@@ -24,6 +24,7 @@ const item = (patch: Partial<BillingWorklistItem> = {}): BillingWorklistItem => 
   state: 'READY',
   stateReason: null,
   sourceStatus: 'DISPENSED',
+  orderType: null,
   supplyMode: 'ONSITE_DISPENSE',
   billed: false,
   invoiceLineId: null,
