@@ -79,9 +79,23 @@ export function NextAppointmentCard({
   const { data: services } = useServices();
 
   const upcoming = upcomingAppointments(appointments, new Date());
-  const doctorName = (id: string) => staff?.find((member) => member.id === id)?.fullName ?? 'doctor';
+  // An id is never printed, and neither is a plausible-looking noun. While the
+  // directory is still loading the row says so; once it has loaded and the row
+  // is still not in it, that is a fact worth reading as one.
+  const named = <T extends { id: string }>(
+    list: T[] | undefined,
+    id: string,
+    label: (item: T) => string,
+    missing: string,
+  ) => {
+    if (!list) return '…';
+    const found = list.find((item) => item.id === id);
+    return found ? label(found) : missing;
+  };
+  const doctorName = (id: string) =>
+    named(staff, id, (member) => member.fullName, 'doctor no longer listed');
   const serviceName = (id: string) =>
-    services?.find((service) => service.id === id)?.name ?? 'service';
+    named(services, id, (service) => service.name, 'service no longer listed');
 
   return (
     <>
@@ -99,8 +113,9 @@ export function NextAppointmentCard({
         previewLimit={1}
         // ON THE HEADER LINE, not in `addControl`, and this is a measurement
         // rather than a preference: as an add control it took a line of its
-        // own and the card cost 116px of a rail that is already 305px over at
-        // 1366×768. In the header it costs nothing.
+        // own and the card measured 116px on a rail that is already ~280px
+        // over its window at 1366×768. In the header the card measures 38px
+        // empty and 92px holding a booking.
         //
         // The rule `addControl` exists for does not reach this button.
         // RailPanel keeps that slot in ONE DOM position because the other
