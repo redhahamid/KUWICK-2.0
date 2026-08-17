@@ -191,7 +191,16 @@ export function BookFollowUpModal({
                 style={{ width: '100%' }}
                 value={serviceId}
                 aria-label="Follow-up service"
-                placeholder={offered.length ? 'Choose a service' : 'No services mapped to this doctor'}
+                placeholder={
+                  // A visit can have no attending clinician yet (D-082), and
+                  // "no services mapped to this doctor" would be blaming a
+                  // doctor nobody has chosen.
+                  !staffId
+                    ? 'Choose a doctor first'
+                    : offered.length
+                      ? 'Choose a service'
+                      : 'No services mapped to this doctor'
+                }
                 disabled={offered.length === 0}
                 showSearch
                 optionFilterProp="label"
