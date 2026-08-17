@@ -27,6 +27,14 @@ export interface BookFollowUpModalProps {
   patientId: string;
   patientName: string;
   onClose: () => void;
+  /**
+   * b4 PIECE C (3) — the day the doctor tapped on the month calendar.
+   *
+   * The picker opens ON that date rather than asking for it again: choosing a
+   * day and then being shown an empty date field is the form asking twice. It
+   * stays editable, and the roster still decides whether anything is open.
+   */
+  initialDate?: Dayjs;
   /** Called with the new appointment's id once the server has stored it. */
   onBooked?: (appointmentId: string) => void;
 }
@@ -68,11 +76,12 @@ export function BookFollowUpModal({
   patientId,
   patientName,
   onClose,
+  initialDate,
   onBooked,
 }: BookFollowUpModalProps) {
   const [staffId, setStaffId] = useState<string | undefined>(visit.staffId ?? undefined);
   const [serviceId, setServiceId] = useState<string>();
-  const [date, setDate] = useState<Dayjs>();
+  const [date, setDate] = useState<Dayjs | undefined>(initialDate);
   const [slot, setSlot] = useState<AvailableSlot>();
   const [error, setError] = useState<string | null>(null);
 
@@ -89,10 +98,14 @@ export function BookFollowUpModal({
     if (!open) return;
     setStaffId(visit.staffId ?? undefined);
     setServiceId(undefined);
-    setDate(undefined);
+    setDate(initialDate);
     setSlot(undefined);
     setError(null);
-  }, [open, visit.staffId]);
+    // `initialDate` is a dayjs object rebuilt on every render of the caller,
+    // so it is compared by its value — a new object for the same day must not
+    // reset a half-filled form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, visit.staffId, initialDate?.format('YYYY-MM-DD')]);
 
   const doctors = bookableDoctors(staff);
   const offered = servicesForDoctor(services, qualifications, staffId);
@@ -130,7 +143,9 @@ export function BookFollowUpModal({
     }
   };
 
-  const dirty = Boolean(serviceId || date || slot);
+  // A date the doctor did not type is not typed data: opening the picker from
+  // a calendar day and pressing Escape must not ask them to confirm a discard.
+  const dirty = Boolean(serviceId || slot || (date && !date.isSame(initialDate, 'day')));
 
   return (
     <KuwickModal

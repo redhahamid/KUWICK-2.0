@@ -61,6 +61,46 @@ export function upcomingAppointments(
     );
 }
 
+/**
+ * b4 PIECE C (3) — the patient's most recent appointment BEFORE now.
+ *
+ * Cancelled and rescheduled ones are dropped: neither happened, and a "Last:
+ * 12 Aug" that names an appointment nobody attended-or-not is worse than
+ * saying there was none. A NO_SHOW is kept deliberately — "they did not come
+ * last time" is exactly the context a doctor wants before booking another.
+ */
+export function previousAppointment(
+  appointments: Appointment[] | undefined,
+  now: Date,
+): Appointment | null {
+  const past = (appointments ?? [])
+    .filter(
+      (appointment) =>
+        appointment.status !== AppointmentStatus.CANCELLED &&
+        appointment.status !== AppointmentStatus.RESCHEDULED,
+    )
+    .filter((appointment) => new Date(appointment.scheduledStart).getTime() < now.getTime())
+    .sort(
+      (a, b) => new Date(b.scheduledStart).getTime() - new Date(a.scheduledStart).getTime(),
+    );
+  return past[0] ?? null;
+}
+
+/**
+ * Every appointment on a given calendar day, in the reader's own timezone —
+ * the same timezone the day cell is drawn in, so a booking never lands on the
+ * cell beside the one it was made from.
+ */
+export function appointmentsOn(
+  appointments: Appointment[] | undefined,
+  day: Date,
+): Appointment[] {
+  const key = dayjs(day).format('YYYY-MM-DD');
+  return (appointments ?? []).filter(
+    (appointment) => dayjs(appointment.scheduledStart).format('YYYY-MM-DD') === key,
+  );
+}
+
 /** "Mon 24 Aug · 09:30–10:00". The year only when it is not this one. */
 export function describeWhen(appointment: Appointment, now: Date = new Date()): string {
   const start = dayjs(appointment.scheduledStart);

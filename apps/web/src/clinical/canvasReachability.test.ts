@@ -8,7 +8,7 @@ import secondarySource from './sections/SecondarySections.tsx?raw';
 import documentsSectionSource from './sections/DocumentsSection.tsx?raw';
 import invoiceSectionSource from './sections/InvoiceSection.tsx?raw';
 import invoiceSource from './invoice/InvoiceRail.tsx?raw';
-import cardSource from './canvas/NextAppointmentCard.tsx?raw';
+import cardSource from './canvas/CanvasAppointmentCalendar.tsx?raw';
 // Vitest's CSS pipeline swallows `?raw` on stylesheets, so the one non-TS
 // asset is read straight from disk. Test-only; the app tsconfig has no node
 // types, hence the local suppression.
@@ -79,8 +79,12 @@ describe('duplicate bottom sections are gone from the active Canvas', () => {
    * card's control raises, so the page holds one picker rather than two
    * booking surfaces — which is the duplication this whole block guards.
    */
-  it('the canvas mounts exactly one appointment card', () => {
-    expect(page.match(/<NextAppointmentCard/g)).toHaveLength(1);
+  it('the canvas mounts exactly one appointment surface, in the LEFT column', () => {
+    expect(page).not.toContain('NextAppointmentCard');
+    expect(page.match(/<CanvasAppointmentCalendar/g)).toHaveLength(1);
+    // Bottom left, under the visits rail — the owner's layout decision. It is
+    // rendered into the workspace's `visits` slot, which is that column.
+    expect(page).toMatch(/visits=\{[\s\S]{0,1200}<CanvasAppointmentCalendar/);
   });
 
   it('the header Appointment button opens the follow-up picker, not a new visit', () => {

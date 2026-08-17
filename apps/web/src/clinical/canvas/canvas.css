@@ -1048,3 +1048,123 @@
 }
 
 
+
+/* ===========================================================================
+   b4 PIECE C (3) — THE APPOINTMENT MONTH, DOCKED BOTTOM-LEFT.
+
+   The owner's layout decision: the appointment left the right rail and became
+   a month calendar in the empty space under the visits panel, which a doctor
+   books from directly.
+
+   TWO CONSTRAINTS: it must not push the visits panel, and it must not make
+   the page scroll. Both are MEASURED in `canvas-viewport.spec.ts` rather than
+   asserted in a comment, and both are satisfied by ORDINARY FLOW — which is
+   the second thing this was:
+
+   `position: sticky; bottom` was tried first and rejected on the measurement.
+   Stuck to the bottom of the viewport, the dock DREW OVER the lower half of
+   the visits panel: the panel kept its height and its position, so both
+   assertions passed, while a doctor lost the bottom two visits behind a
+   calendar. An assertion that a panel has not moved says nothing about
+   whether it can still be read.
+
+   In flow it sits directly under the visits panel, which is where the empty
+   space is at 1536 and above. It adds no page height — the middle and right
+   columns are hundreds of pixels taller — and at 1366 it is reached by the
+   same scroll the rail already needs.
+   ======================================================================== */
+.kw2-appt-dock {
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kw2-appt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kw2-appt-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.3;
+}
+
+/* The month itself, compacted. antd's small calendar is built for a card of
+   its own; in a 260px rail its default padding costs 80px for nothing. */
+.kw2-appt-month {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+
+.kw2-appt-calendar .ant-picker-panel {
+  border-top: 0;
+}
+
+.kw2-appt-calendar .ant-picker-content th {
+  height: 18px;
+  line-height: 18px;
+  font-size: 10px;
+  color: var(--kw2-muted);
+}
+
+.kw2-appt-calendar .ant-picker-cell,
+.kw2-appt-calendar .ant-picker-content td {
+  padding: 0;
+}
+
+/* A MONTH IN 220px, NOT 420. antd's small calendar leads its rows for a card
+   of its own; six rows of that spend most of the space the visits panel left
+   behind, and the dock has to fit in what is actually there. The DATES are
+   untouched at 11px — only the space between them is tightened. */
+.kw2-appt-calendar .ant-picker-body {
+  padding: 4px 0 0;
+}
+
+/* THE 256px THAT WAS NOT COMING FROM THE CELLS. antd's mini calendar pins its
+   grid to a fixed `height: 256px` so a 5-row month and a 6-row month occupy
+   the same box. Compacting the cells alone changed nothing measurable — the
+   grid simply spread them out again. `auto` lets the month be as tall as the
+   month is. */
+.kw2-appt-calendar .ant-picker-content {
+  height: auto;
+}
+
+.kw2-appt-cell {
+  position: relative;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  font-size: 11px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.kw2-appt-cell:hover {
+  background: var(--kw-band-bg);
+}
+
+/* A dot, not a number: the cell is 22px and the fact is binary — this patient
+   has something standing on that day. What it is is on the two lines above. */
+.kw2-appt-dot {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+}
+
+.kw2-appt-dot .ant-badge-status-dot {
+  width: 4px;
+  height: 4px;
+}
+
+

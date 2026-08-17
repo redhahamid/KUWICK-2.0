@@ -5,16 +5,19 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import dayjs from 'dayjs';
-import { NextAppointmentCard } from './NextAppointmentCard';
+import { CanvasAppointmentCalendar } from './CanvasAppointmentCalendar';
 import { Visit } from '../types';
 
 // ===========================================================================
-// b4 PIECE C — THE APPOINTMENT CARD AND ITS PICKER.
+// b4 PIECE C (3) — THE APPOINTMENT MONTH AND ITS PICKER.
 //
 // What these hold is the part that would otherwise only be visible in a
 // browser, and the part a second store would break:
 //
-//   - the card shows a STANDING booking and not a cancelled one;
+//   - the calendar names this patient's PREVIOUS and NEXT appointment, and a
+//     cancelled one is neither;
+//   - tapping a day opens the picker ON that day — the form does not ask for
+//     a date the doctor has already chosen;
 //   - the service list is the doctor's MAPPING, not the catalogue;
 //   - the slots come from /availability — the capacity engine — with the
 //     clinic, doctor, service and date the doctor chose;
@@ -53,9 +56,13 @@ function Harness({ children }: { children: ReactNode }) {
 const renderCard = () =>
   render(
     <Harness>
-      <NextAppointmentCard visit={VISIT} patientId="p1" patientName="Aisyah Ujian" />
+      <CanvasAppointmentCalendar visit={VISIT} patientId="p1" patientName="Aisyah Ujian" />
     </Harness>,
   );
+
+/** A day cell in the month, by date — how a doctor starts a booking. */
+const dayCell = (date: dayjs.Dayjs) =>
+  document.querySelector(`[data-date="${date.format('YYYY-MM-DD')}"]`) as HTMLElement;
 
 beforeEach(() => {
   APPOINTMENTS = [];
@@ -134,20 +141,16 @@ beforeEach(() => {
   post.mockResolvedValue({ id: 'appt-new' });
 });
 
-describe('the card', () => {
-  it('a first visit says there is no follow-up, in one line, with the control still there', async () => {
+describe('the month, and the two facts above it', () => {
+  it('a patient with no appointments says so on both lines, and still offers a month', async () => {
     renderCard();
-    expect(await screen.findByText('No follow-up booked.')).toBeInTheDocument();
-    expect(screen.getByTestId('book-follow-up-button')).toBeInTheDocument();
-    // The empty state collapses the card rather than removing anything: the
-    // panel carries the marker the stylesheet uses to put it on one line.
-    expect(document.querySelector('.kw-rail-panel[data-panel="Next Appointment"]')).toHaveAttribute(
-      'data-empty',
-      'true',
-    );
+    expect(await screen.findByTestId('appointment-previous')).toHaveTextContent('no previous appointment');
+    expect(screen.getByTestId('appointment-next')).toHaveTextContent('none booked');
+    // The calendar is the control: there is always a day to tap.
+    expect(dayCell(dayjs())).not.toBeNull();
   });
 
-  it('shows a standing booking with when, who and what', async () => {
+  it('names the next standing booking with when, who and what', async () => {
     APPOINTMENTS = [
       {
         id: 'appt-1',
@@ -162,13 +165,38 @@ describe('the card', () => {
       },
     ];
     renderCard();
-    const row = await screen.findByText(/Dr UAT Doctor · Wound dressing/);
-    expect(row).toBeInTheDocument();
-    expect(screen.getByText('CONFIRMED')).toBeInTheDocument();
-    expect(screen.getByText(SLOT_START.format('HH:mm'), { exact: false })).toBeInTheDocument();
+    const next = await screen.findByTestId('appointment-next');
+    await waitFor(() => expect(next).toHaveTextContent(/Dr UAT Doctor · Wound dressing/));
+    expect(next).toHaveTextContent(SLOT_START.format('HH:mm'));
   });
 
-  it('a cancelled booking is not shown as one', async () => {
+  it('names the previous one too, including a visit the patient did not attend', async () => {
+    const lastWeek = dayjs().subtract(7, 'day').hour(9).minute(0).second(0).millisecond(0);
+    APPOINTMENTS = [
+      {
+        id: 'appt-old',
+        clinicId: 'clinic-1',
+        patientId: 'p1',
+        staffId: 'dr-1',
+        serviceId: 'svc-2',
+        status: 'NO_SHOW',
+        source: 'FRONT_DESK',
+        scheduledStart: lastWeek.toISOString(),
+        scheduledEnd: lastWeek.add(30, 'minute').toISOString(),
+      },
+    ];
+    renderCard();
+    const previous = await screen.findByTestId('appointment-previous');
+    await waitFor(() => expect(previous).toHaveTextContent('Dr UAT Doctor'));
+    // "They did not come last time" is the context that decides whether to
+    // book another, so it is said rather than left to the status column of
+    // another screen.
+    expect(previous).toHaveTextContent('did not attend');
+    // …and it is NOT offered as the next appointment.
+    expect(screen.getByTestId('appointment-next')).toHaveTextContent('none booked');
+  });
+
+  it('a cancelled booking is neither the next nor the last', async () => {
     APPOINTMENTS = [
       {
         id: 'appt-1',
@@ -183,7 +211,30 @@ describe('the card', () => {
       },
     ];
     renderCard();
-    expect(await screen.findByText('No follow-up booked.')).toBeInTheDocument();
+    expect(await screen.findByTestId('appointment-next')).toHaveTextContent('none booked');
+    expect(screen.getByTestId('appointment-previous')).toHaveTextContent('no previous appointment');
+  });
+
+  it('marks the days this patient has something standing on', async () => {
+    APPOINTMENTS = [
+      {
+        id: 'appt-1',
+        clinicId: 'clinic-1',
+        patientId: 'p1',
+        staffId: 'dr-1',
+        serviceId: 'svc-2',
+        status: 'CONFIRMED',
+        source: 'FRONT_DESK',
+        scheduledStart: SLOT_START.toISOString(),
+        scheduledEnd: SLOT_START.add(30, 'minute').toISOString(),
+      },
+    ];
+    renderCard();
+    await waitFor(() => {
+      expect(dayCell(SLOT_START)?.getAttribute('data-appointments')).toBe('1');
+    });
+    // A day with nothing on it carries no mark at all.
+    expect(dayCell(SLOT_START.add(1, 'day'))?.getAttribute('data-appointments')).toBeNull();
   });
 });
 
@@ -195,6 +246,26 @@ describe('the picker', () => {
     expect(await screen.findByText('Book a follow-up')).toBeInTheDocument();
     return user;
   };
+
+  /** Opens the picker the way a doctor does: by tapping a day in the month. */
+  const openPickerOn = async (day: dayjs.Dayjs) => {
+    const user = userEvent.setup();
+    renderCard();
+    await waitFor(() => expect(dayCell(day)).not.toBeNull());
+    await user.click(dayCell(day));
+    expect(await screen.findByText('Book a follow-up')).toBeInTheDocument();
+    return user;
+  };
+
+  it('tapping a day opens the picker ON that day, without asking for it again', async () => {
+    const user = userEvent.setup();
+    renderCard();
+    await waitFor(() => expect(dayCell(TOMORROW)).not.toBeNull());
+    await user.click(dayCell(TOMORROW));
+
+    expect(await screen.findByText('Book a follow-up')).toBeInTheDocument();
+    expect(screen.getByLabelText('Follow-up date')).toHaveValue(TOMORROW.format('YYYY-MM-DD'));
+  });
 
   it('offers only the services THIS doctor is mapped to', async () => {
     const user = await openPicker();
@@ -208,16 +279,10 @@ describe('the picker', () => {
     expect(screen.queryByTitle('Minor surgery')).not.toBeInTheDocument();
   });
 
-  it('asks the availability engine for the chosen clinic, doctor, service and date', async () => {
-    const user = await openPicker();
+  it('asks the availability engine for the clinic, doctor, service and the DAY that was tapped', async () => {
+    const user = await openPickerOn(TOMORROW);
     await user.click(screen.getByLabelText('Follow-up service'));
     await user.click(await screen.findByTitle('Wound dressing'));
-
-    // The date picker's own input, typed the way a user types it.
-    const dateInput = screen.getByLabelText('Follow-up date');
-    await user.click(dateInput);
-    await user.type(dateInput, TOMORROW.format('YYYY-MM-DD'));
-    await user.keyboard('{Enter}');
 
     await waitFor(() => expect(availabilityCalls.length).toBeGreaterThan(0));
     const asked = availabilityCalls[availabilityCalls.length - 1];
@@ -228,13 +293,9 @@ describe('the picker', () => {
   });
 
   it('books exactly the slot that was picked, through the appointments endpoint', async () => {
-    const user = await openPicker();
+    const user = await openPickerOn(TOMORROW);
     await user.click(screen.getByLabelText('Follow-up service'));
     await user.click(await screen.findByTitle('Wound dressing'));
-    const dateInput = screen.getByLabelText('Follow-up date');
-    await user.click(dateInput);
-    await user.type(dateInput, TOMORROW.format('YYYY-MM-DD'));
-    await user.keyboard('{Enter}');
 
     const slots = await screen.findByTestId('follow-up-slots');
     await user.click(within(slots).getByText(SLOT_START.format('HH:mm')));
@@ -256,13 +317,9 @@ describe('the picker', () => {
 
   it('an empty diary says which setting decides it', async () => {
     SLOTS = [];
-    const user = await openPicker();
+    const user = await openPickerOn(TOMORROW);
     await user.click(screen.getByLabelText('Follow-up service'));
     await user.click(await screen.findByTitle('Wound dressing'));
-    const dateInput = screen.getByLabelText('Follow-up date');
-    await user.click(dateInput);
-    await user.type(dateInput, TOMORROW.format('YYYY-MM-DD'));
-    await user.keyboard('{Enter}');
 
     expect(await screen.findByText('No open slots')).toBeInTheDocument();
     // The pairing IS configured here, so the message must not send anybody to

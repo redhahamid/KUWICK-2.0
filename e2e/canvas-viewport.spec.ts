@@ -28,6 +28,25 @@ const VIEWPORTS = [
 /** Tolerance: sub-pixel layout rounding is not a defect. */
 const SLACK = 2;
 
+/**
+ * A count that has stopped changing.
+ *
+ * Playwright's auto-waiting settles on the SELECTOR, not on the fetch behind
+ * it: a list component renders its empty shell first, so `count()` can return
+ * a confident zero for a list that is still loading. Two equal readings in a
+ * row is the cheapest honest "it has arrived".
+ */
+async function settledCount(locator: ReturnType<Page['locator']>): Promise<number> {
+  let previous = -1;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const current = await locator.count();
+    if (current === previous) return current;
+    previous = current;
+    await locator.page().waitForTimeout(150);
+  }
+  return previous;
+}
+
 async function openCanvas(page: Page): Promise<void> {
   await login(page, ACCOUNTS.doctor);
   await page.goto('/queue');
@@ -185,7 +204,13 @@ for (const layout of ['canvas', 'flow'] as const) {
     // Counted, not assumed to be zero: the specs share one worker and one
     // seeded visit, so this may already carry files the run before it
     // attached. The DELTA is what this test is about.
-    const before = await chips.count();
+    //
+    // SETTLED, not just counted. `toHaveCount(1)` on the region is satisfied
+    // by an EMPTY region — the component renders before its fetch returns —
+    // so on a database carrying a few dozen attachments this read a zero that
+    // was really "not loaded yet", and the delta assertion then failed with a
+    // count nobody had uploaded. It cost two false failures in one session.
+    const before = await settledCount(chips);
 
     // A real PNG: the server checks the leading bytes, so a fake one is
     // refused exactly as a hostile upload would be and would prove nothing.
@@ -455,10 +480,11 @@ async function railPromises(page: Page) {
         name: panel.getAttribute('data-panel'),
         height: Math.round(panel.getBoundingClientRect().height),
       })),
-      // b4 PIECE C — the appointment card, measured on its own so its cost to
-      // the rail is a number on every run rather than something inferred from
-      // a total that moved. The bar's height is printed the same way.
-      appointmentCard: box(rail?.querySelector('.kw-rail-panel[data-panel="Next Appointment"]')),
+      // b4 PIECE C — the invoice card, measured on its own so its cost to the
+      // rail is a number on every run rather than something inferred from a
+      // total that moved. The sticky bar's height used to print here the same
+      // way; the appointment card's did too, until it left for the left
+      // column.
       invoiceCard: box(rail?.querySelector('.kw-rail-panel[data-panel="Invoice"]')),
     };
   }, RAIL);
@@ -515,11 +541,7 @@ test.describe('the right rail fits the budget it was compacted for', () => {
     const fold = 768;
     // The two cards that consume this budget, each stated on every run, pass
     // or fail — the number the whole exercise exists to produce.
-    console.log(
-      `RAIL BUDGET — TYPICAL at 1366×768: appointment card ${rail.appointmentCard?.height ?? 0}px, ` +
-        `invoice card ${rail.invoiceCard?.height ?? 0}px`,
-    );
-    expect(rail.appointmentCard, 'the appointment card is not on the rail at all').not.toBeNull();
+    console.log(`RAIL BUDGET — TYPICAL at 1366×768: invoice card ${rail.invoiceCard?.height ?? 0}px`);
     expect(rail.invoiceCard, 'the invoice card is not on the rail at all').not.toBeNull();
 
     // (a) THE WARNING. The fixture plants exactly one prescription with a NULL
@@ -580,7 +602,6 @@ test.describe('the right rail fits the budget it was compacted for', () => {
       'Orders / Procedures',
       'Medications',
       'Documents',
-      'Next Appointment',
       'Invoice',
     ]);
     for (const card of rail.cards) {
@@ -660,8 +681,9 @@ test.describe('the right rail fits the budget it was compacted for', () => {
       //    clipped, or stranded outside the scroll: a doctor can still get to
       //    Documents when Medications is long.
       const heads = rail.locator('.kw-rail-head');
-      // Services, Orders, Medications, Documents, Next Appointment, Invoice.
-      await expect(heads).toHaveCount(6);
+      // Services, Orders, Medications, Documents, Invoice — the appointment
+      // left the rail for the left column in Piece C (3).
+      await expect(heads).toHaveCount(5);
       for (const head of await heads.all()) {
         await head.scrollIntoViewIfNeeded();
         await expect(head, 'a card header cannot be brought on screen at all').toBeVisible();
@@ -808,6 +830,144 @@ test.describe('the right rail fits the budget it was compacted for', () => {
 
     await page.screenshot({ path: 'test-results/invoice-card-1366.png', fullPage: false });
   });
+
+  // =========================================================================
+  // b4 PIECE C (3) — THE APPOINTMENT MONTH, DOCKED BOTTOM-LEFT.
+  //
+  // The owner's brief for it was a layout contract, not a feature list:
+  // "Fixed position: it must not push the Visits panel or scroll the page."
+  // Both halves are measured here, because both are the kind of thing that
+  // looks fine on the screen it was built on and breaks on a shorter one.
+  // =========================================================================
+  test('the appointment month sits under the visits panel without moving it or the page', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await openDensityVisit(page, 'typical');
+
+    const calendar = page.getByTestId('canvas-appointment-calendar');
+    await expect(calendar, 'the appointment month is not on the canvas').toBeVisible();
+
+    // 1. IN THE LEFT COLUMN, BELOW THE VISITS PANEL. Read off the geometry
+    //    rather than the source: "bottom left" is a position, and a component
+    //    imported into the right file can still render in the wrong place.
+    const placement = await page.evaluate(() => {
+      const column = document.querySelector('[data-testid="canvas-visits"]');
+      const dock = document.querySelector('.kw2-appt-dock');
+      const visits = document.querySelector('.kw2-visits-card, [data-testid="canvas-visit-today"]');
+      if (!column || !dock || !visits) return null;
+      return {
+        insideLeftColumn: column.contains(dock),
+        belowVisits: Math.round(dock.getBoundingClientRect().top) >=
+          Math.round(visits.getBoundingClientRect().top),
+        docHeight: document.documentElement.scrollHeight,
+        visitsTop: Math.round(visits.getBoundingClientRect().top),
+        dockHeight: Math.round(dock.getBoundingClientRect().height),
+      };
+    });
+    expect(placement, 'the left column, the dock or the visits panel is missing').not.toBeNull();
+    expect(placement!.insideLeftColumn, 'the appointment month is not in the left column').toBe(true);
+    expect(placement!.belowVisits, 'the appointment month is not below the visits panel').toBe(true);
+    console.log(`APPOINTMENT MONTH — ${placement!.dockHeight}px, docked in the left column`);
+
+    // 2. IT DOES NOT MAKE THE PAGE SCROLL. Measured by removing it and
+    //    re-measuring: if the document is no shorter without it, it is not
+    //    what decides the page's height. The middle and right columns are far
+    //    taller, which is exactly why the empty space below the visits panel
+    //    was free to use.
+    const withoutDock = await page.evaluate(() => {
+      const dock = document.querySelector('.kw2-appt-dock') as HTMLElement | null;
+      if (!dock) return null;
+      const previous = dock.style.display;
+      dock.style.display = 'none';
+      const height = document.documentElement.scrollHeight;
+      dock.style.display = previous;
+      return height;
+    });
+    expect(
+      placement!.docHeight,
+      'the appointment month is making the page taller — it must live in space the ' +
+        'other columns already occupy',
+    ).toBe(withoutDock);
+
+    // 3. IT DOES NOT PUSH THE VISITS PANEL. Same method: the panel is where it
+    //    was with the dock gone.
+    const visitsTopWithout = await page.evaluate(() => {
+      const dock = document.querySelector('.kw2-appt-dock') as HTMLElement | null;
+      const visits = document.querySelector('.kw2-visits-card, [data-testid="canvas-visit-today"]');
+      if (!dock || !visits) return null;
+      const previous = dock.style.display;
+      dock.style.display = 'none';
+      const top = Math.round(visits.getBoundingClientRect().top);
+      dock.style.display = previous;
+      return top;
+    });
+    expect(placement!.visitsTop, 'the appointment month moved the visits panel').toBe(visitsTopWithout);
+
+    // 4. AND IT DOES NOT DRAW OVER THE VISITS PANEL. This is the assertion the
+    //    first implementation needed and did not have: `position: sticky`
+    //    passed (2) and (3) — the panel kept its height and its position —
+    //    while the calendar sat ON TOP of its lower half and a doctor lost two
+    //    visits behind it. A panel that has not moved can still have been
+    //    made unreadable.
+    const overlap = await page.evaluate(() => {
+      const dock = document.querySelector('.kw2-appt-dock');
+      const visits = document.querySelector('.kw2-visits');
+      if (!dock || !visits) return null;
+      const d = dock.getBoundingClientRect();
+      const v = visits.getBoundingClientRect();
+      return { dockTop: Math.round(d.top), visitsBottom: Math.round(v.bottom) };
+    });
+    expect(
+      overlap!.dockTop,
+      `the appointment month is drawn over the visits panel (starts at ${overlap!.dockTop}, ` +
+        `the panel ends at ${overlap!.visitsBottom})`,
+    ).toBeGreaterThanOrEqual(overlap!.visitsBottom - SLACK);
+
+    await calendar.screenshot({ path: 'test-results/canvas-appointment-month.png' });
+  });
+
+  /**
+   * 5. THE EMPTY SPACE THE OWNER POINTED AT IS REAL, AND THIS MEASURES WHERE.
+   *
+   * At 1920×1080 the month is on screen at rest, under the visits panel,
+   * with nothing scrolled — which is the layout the brief describes.
+   *
+   * It is asserted THERE and not at 1366 or 1536, and the number says why: a
+   * 449px visits panel starting at y=253 plus a 267px month ends at ~1006, so
+   * it clears an 1080 fold and does not clear a 768 or an 864 one. Making it
+   * clear those would mean shrinking the visits panel, which is exactly what
+   * the brief forbids — so at the shorter screens it is reached by the same
+   * scroll the rail already needs, and this test prints where it lands at each
+   * width rather than pretending otherwise.
+   */
+  for (const viewport of [
+    { width: 1920, height: 1080, mustFit: true },
+    { width: 1536, height: 864, mustFit: false },
+  ]) {
+    test(`the appointment month at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await openDensityVisit(page, 'typical');
+
+      const calendar = page.getByTestId('canvas-appointment-calendar');
+      await expect(calendar).toBeVisible();
+      const box = (await calendar.boundingBox())!;
+      const bottom = Math.round(box.y + box.height);
+      console.log(
+        `APPOINTMENT MONTH — at ${viewport.width}×${viewport.height} it ends at ${bottom} of ${viewport.height}`,
+      );
+      if (viewport.mustFit) {
+        expect(
+          bottom,
+          `the appointment month runs past the fold at ${viewport.width}×${viewport.height}`,
+        ).toBeLessThanOrEqual(viewport.height + SLACK);
+      }
+      // At every width it is reachable, which is the promise that holds
+      // everywhere: the page scrolls, and nothing is stranded outside it.
+      await calendar.scrollIntoViewIfNeeded();
+      await expect(calendar).toBeVisible();
+    });
+  }
 
   // =========================================================================
   // b4 PIECE B/C — THE FOUR SOURCES, AND THE OTC RULE, ON THE REAL SCREEN.

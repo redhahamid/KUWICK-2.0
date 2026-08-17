@@ -48,7 +48,7 @@ import { AllergyQuickRecord } from './canvas/AllergyQuickRecord';
 import { CanvasQuickNav } from './CanvasQuickNav';
 import { CanvasWorkspace } from './canvas/CanvasWorkspace';
 import { CanvasVisitsRail } from './canvas/CanvasVisitsRail';
-import { NextAppointmentCard } from './canvas/NextAppointmentCard';
+import { CanvasAppointmentCalendar } from './canvas/CanvasAppointmentCalendar';
 import { CopyRxModal } from './medications/CopyRxModal';
 import { DiagnosisRail } from './sections/DiagnosisRail';
 import { MedicationsRail } from './sections/MedicationsRail';
@@ -640,14 +640,30 @@ export function PatientDashboardPage() {
                 never become a popup — and it still is. */}
             <CanvasWorkspace
               visits={
-                <CanvasVisitsRail
-                  patientId={patient.id}
-                  currentVisit={selectedVisit}
-                  onOpenHistory={() => setHistoryOpen(true)}
-                  onOpenVisit={() => setHistoryOpen(true)}
-                  onNewVisit={() => setNewVisitOpen(true)}
-                  onCopyRx={setCopyRxFrom}
-                />
+                <>
+                  <CanvasVisitsRail
+                    patientId={patient.id}
+                    currentVisit={selectedVisit}
+                    onOpenHistory={() => setHistoryOpen(true)}
+                    onOpenVisit={() => setHistoryOpen(true)}
+                    onNewVisit={() => setNewVisitOpen(true)}
+                    onCopyRx={setCopyRxFrom}
+                  />
+                  {/* b4 PIECE C (3) — THE MONTH, in the empty space below the
+                      visits rail. The owner's layout decision: the appointment
+                      stopped being a rail card and became a calendar a doctor
+                      books from directly, showing this patient's previous and
+                      next appointment in place. Docked rather than stacked —
+                      it cannot push the visits panel and cannot make the page
+                      scroll (see `.kw2-appt-dock`). */}
+                  <CanvasAppointmentCalendar
+                    visit={selectedVisit}
+                    patientId={patient.id}
+                    patientName={patient.name}
+                    bookingOpen={bookFollowUpOpen}
+                    onBookingOpenChange={setBookFollowUpOpen}
+                  />
+                </>
               }
               middle={
                 <>
@@ -708,18 +724,6 @@ export function PatientDashboardPage() {
                       has not been proven on yet, and removing it the same day
                       would trade a duplicate for an outage. */}
                   <DocumentsRail visit={selectedVisit} />
-                  {/* b4 PIECE C — the follow-up, LAST in the column and
-                      directly above the completion bar. It is where the
-                      decision is actually made, and it is the only place in
-                      the rail where a card can be added without pushing the
-                      medication rows the 1366×768 assertions protect. */}
-                  <NextAppointmentCard
-                    visit={selectedVisit}
-                    patientId={patient.id}
-                    patientName={patient.name}
-                    bookingOpen={bookFollowUpOpen}
-                    onBookingOpenChange={setBookFollowUpOpen}
-                  />
                   {/* b4 PIECE C — THE INVOICE IS THE LAST CARD, not a sticky
                       bar. It prices the four cards above it and is read in the
                       same direction they are. Everything it computes is

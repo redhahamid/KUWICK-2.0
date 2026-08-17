@@ -5,10 +5,12 @@ import { Appointment, DoctorServiceQualification, SlotCapacityConfig } from '../
 import { Service } from '../types';
 import { Staff } from '../../hr/types';
 import {
+  appointmentsOn,
   bookableDoctors,
   capacityFor,
   describeWhen,
   isStanding,
+  previousAppointment,
   noSlotsReason,
   servicesForDoctor,
   upcomingAppointments,
@@ -246,5 +248,87 @@ describe('slot capacity', () => {
     expect(noSlotsReason(false)).toContain('Slot Capacity');
     expect(noSlotsReason(true)).not.toContain('Settings');
     expect(noSlotsReason(true)).toContain('another date');
+  });
+});
+
+
+// ===========================================================================
+// b4 PIECE C (3) — WHAT THE MONTH NEEDS THAT A CARD DID NOT.
+// ===========================================================================
+describe('the previous appointment', () => {
+  it('is the most recent one before now', () => {
+    const previous = previousAppointment(
+      [
+        appointment({ id: 'older', scheduledStart: '2026-07-01T01:00:00.000Z' }),
+        appointment({ id: 'recent', scheduledStart: '2026-08-10T01:00:00.000Z' }),
+        appointment({ id: 'future', scheduledStart: '2026-09-01T01:00:00.000Z' }),
+      ],
+      NOW,
+    );
+    expect(previous?.id).toBe('recent');
+  });
+
+  it('keeps a no-show — "they did not come last time" is the context that decides', () => {
+    const previous = previousAppointment(
+      [
+        appointment({
+          id: 'missed',
+          status: AppointmentStatus.NO_SHOW,
+          scheduledStart: '2026-08-10T01:00:00.000Z',
+        }),
+      ],
+      NOW,
+    );
+    expect(previous?.id).toBe('missed');
+  });
+
+  it('drops a cancelled or rescheduled one — neither happened', () => {
+    expect(
+      previousAppointment(
+        [
+          appointment({
+            id: 'gone',
+            status: AppointmentStatus.CANCELLED,
+            scheduledStart: '2026-08-10T01:00:00.000Z',
+          }),
+          appointment({
+            id: 'moved',
+            status: AppointmentStatus.RESCHEDULED,
+            scheduledStart: '2026-08-11T01:00:00.000Z',
+          }),
+        ],
+        NOW,
+      ),
+    ).toBeNull();
+  });
+
+  it('is null when the patient has never had one', () => {
+    expect(previousAppointment([], NOW)).toBeNull();
+    expect(previousAppointment(undefined, NOW)).toBeNull();
+  });
+});
+
+describe('marking a day on the month', () => {
+  it('finds the appointments on that calendar day, in the reader’s own timezone', () => {
+    const day = dayjs('2026-08-24T01:30:00.000Z');
+    const on = appointmentsOn(
+      [
+        appointment({ id: 'same-day', scheduledStart: '2026-08-24T01:30:00.000Z' }),
+        appointment({ id: 'next-day', scheduledStart: '2026-08-25T01:30:00.000Z' }),
+      ],
+      day.toDate(),
+    );
+    // The cell is drawn in the reader's timezone, so the match is made in it
+    // too — otherwise a booking marks the day beside the one it was made from.
+    expect(on.map((a) => a.id)).toEqual(['same-day']);
+  });
+
+  it('counts a cancelled one as being on the day — the dot is filtered, not this', () => {
+    const day = dayjs('2026-08-24T01:30:00.000Z');
+    const on = appointmentsOn(
+      [appointment({ status: AppointmentStatus.CANCELLED, scheduledStart: '2026-08-24T01:30:00.000Z' })],
+      day.toDate(),
+    );
+    expect(on).toHaveLength(1);
   });
 });

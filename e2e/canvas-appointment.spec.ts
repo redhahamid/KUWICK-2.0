@@ -33,35 +33,27 @@ test.describe('booking a follow-up from the consultation', () => {
     await openDensityVisit(page, 'typical');
     const { booking } = densityFixtures();
 
-    // ---- THE CARD AT REST --------------------------------------------------
-    const card = page.locator('.kw-rail-panel[data-panel="Next Appointment"]');
-    await expect(card, 'the appointment card is not in the rail').toBeVisible();
-    // It sits BELOW the four clinical cards, above the invoice that closes the
-    // column: anything inserted above Medications would push the rows the
-    // 1366×768 assertions protect.
-    const panels = page.locator('[data-testid="canvas-right"] .kw-rail-panel');
-    await expect(panels.last()).toHaveAttribute('data-panel', 'Invoice');
-    await expect(panels.nth(-2)).toHaveAttribute('data-panel', 'Next Appointment');
+    // ---- THE MONTH AT REST -------------------------------------------------
+    const calendar = page.getByTestId('canvas-appointment-calendar');
+    await expect(calendar, 'the appointment month is not on the canvas').toBeVisible();
+    // BOTTOM LEFT: in the visits column, below the visits panel. Its layout
+    // contract — it must not push that panel or scroll the page — is measured
+    // in canvas-viewport.spec.ts.
+    await expect(page.locator('[data-testid="canvas-visits"] .kw2-appt-dock')).toHaveCount(1);
+    // The two facts a doctor reads before deciding to book at all.
+    await expect(calendar.getByTestId('appointment-previous')).toBeVisible();
+    await expect(calendar.getByTestId('appointment-next')).toBeVisible();
+    await calendar.screenshot({ path: 'test-results/canvas-appointment-month-at-rest.png' });
 
-    // A SENSIBLE STATE BEFORE ANYTHING IS BOOKED. Asserted as "says one of the
-    // two true things" rather than as "is empty": these specs share one worker
-    // and one database, so on a re-run against a re-used database this patient
-    // already carries the follow-up the last run booked, and a strict empty
-    // assertion would fail for a reason that has nothing to do with the card.
-    // The exact empty wording is pinned in the unit suite, where it is not
-    // subject to the order the specs ran in.
-    const CARD = '.kw-rail-panel[data-panel="Next Appointment"]';
-    await expect(
-      page.locator(`${CARD}[data-empty="true"], ${CARD} [data-appointment-id]`).first(),
-      'the card neither says there is no follow-up nor shows one',
-    ).toBeVisible();
-    await card.scrollIntoViewIfNeeded();
-    await card.screenshot({ path: 'test-results/canvas-appointment-card-at-rest.png' });
-
-    // ---- THE PICKER --------------------------------------------------------
-    await card.getByTestId('book-follow-up-button').scrollIntoViewIfNeeded();
-    await card.getByTestId('book-follow-up-button').click();
+    // ---- THE PICKER, OPENED BY TAPPING THE DAY -----------------------------
+    // The day the follow-up is for. Tapping it IS the booking gesture: the
+    // picker opens on that date rather than asking for it again.
+    const when = dayjs().add(FOLLOW_UP_DAYS_AHEAD, 'day');
+    const day = calendar.locator(`[data-date="${when.format('YYYY-MM-DD')}"]`);
+    await expect(day, 'the month does not carry the day that was asked for').toBeVisible();
+    await day.click();
     await expect(page.getByText('Book a follow-up')).toBeVisible();
+    await expect(page.getByLabel('Follow-up date')).toHaveValue(when.format('YYYY-MM-DD'));
 
     // DOCTOR-SERVICE MAPPING. Both halves: the mapped service is offered and
     // the unmapped one — which exists in the same catalogue — is not.
@@ -78,13 +70,7 @@ test.describe('booking a follow-up from the consultation', () => {
     ).toHaveCount(0);
     await dropdown.getByTitle(booking.followUpService).click();
 
-    // ---- THE DATE, AND THE ENGINE'S OWN SLOTS ------------------------------
-    const when = dayjs().add(FOLLOW_UP_DAYS_AHEAD, 'day');
-    const dateInput = page.getByLabel('Follow-up date');
-    await dateInput.click();
-    await dateInput.fill(when.format('YYYY-MM-DD'));
-    await page.keyboard.press('Enter');
-
+    // ---- THE ENGINE'S OWN SLOTS -------------------------------------------
     const slots = page.getByTestId('follow-up-slots');
     await expect(slots, 'the availability engine returned no slots for a rostered day').toBeVisible();
     const slotButtons = slots.locator('button[data-slot]');
@@ -127,15 +113,17 @@ test.describe('booking a follow-up from the consultation', () => {
     await slotButtons.first().click();
     await page.getByTestId('confirm-follow-up').click();
 
-    // ---- THE CARD NOW CARRIES IT ------------------------------------------
+    // ---- THE MONTH NOW CARRIES IT -----------------------------------------
     await expect(page.getByText('Book a follow-up')).toHaveCount(0);
-    const bookedRow = card.locator('[data-appointment-id]').first();
-    await expect(bookedRow, 'the card did not pick up the booking it just made').toBeVisible();
-    await expect(bookedRow).toContainText(booking.followUpService);
-    await expect(bookedRow).toContainText(chosenLabel);
-    await expect(card.locator('.kw-rail-head')).toContainText('Next Appointment (');
+    const next = calendar.getByTestId('appointment-next');
+    await expect(next, 'the month did not pick up the booking it just made').toContainText(
+      booking.followUpService,
+    );
+    await expect(next).toContainText(chosenLabel);
+    // And the day itself is marked, so the diary reads at a glance.
+    await expect(day).toHaveAttribute('data-appointments', /[1-9]/);
 
-    await page.screenshot({ path: 'test-results/canvas-appointment-card.png', fullPage: false });
+    await page.screenshot({ path: 'test-results/canvas-appointment-month.png', fullPage: false });
 
     // ---- THE APPOINTMENTS MODULE IS THE STORE ------------------------------
     // Not "an appointment exists somewhere": the row is found in the module's
