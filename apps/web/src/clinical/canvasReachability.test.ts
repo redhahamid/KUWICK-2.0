@@ -7,7 +7,7 @@ import editorSource from './RichTextEditor.tsx?raw';
 import secondarySource from './sections/SecondarySections.tsx?raw';
 import documentsSectionSource from './sections/DocumentsSection.tsx?raw';
 import invoiceSectionSource from './sections/InvoiceSection.tsx?raw';
-import barSource from './invoice/InvoiceBottomBar.tsx?raw';
+import invoiceSource from './invoice/InvoiceRail.tsx?raw';
 import cardSource from './canvas/NextAppointmentCard.tsx?raw';
 // Vitest's CSS pipeline swallows `?raw` on stylesheets, so the one non-TS
 // asset is read straight from disk. Test-only; the app tsconfig has no node
@@ -37,28 +37,32 @@ describe('duplicate bottom sections are gone from the active Canvas', () => {
   });
 
   /**
-   * b4 PIECE B moved this, and the assertion moved with it DELIBERATELY.
+   * b4 PIECE C moved this again, and the assertion moved with it
+   * DELIBERATELY.
    *
-   * What it guarded is that the Canvas ends in exactly ONE completion
-   * surface, reachable, and that nothing quietly removed it. That is still
-   * what is asserted — the surface is now the sticky bottom bar, which
-   * CARRIES the completion action rather than sitting beside it
-   * (`ConsultationFooter variant="bar"` inside `InvoiceBottomBar`).
+   * What it guards has never changed: the Canvas offers exactly ONE
+   * completion action, and nothing quietly removes it. Piece B put that
+   * action inside the sticky invoice bar; the owner's layout decision took
+   * the bar away — the invoice is the last rail card and Complete
+   * Consultation is back in the header band, which is where the approved
+   * header (spec p.4) puts it.
    *
-   * The page must therefore mount the bar and must NOT mount a second,
-   * panel-variant footer of its own: two completion actions on one page is
-   * precisely the duplication this whole describe block exists to prevent.
+   * So: exactly one `<ConsultationFooter>` on the page, rendered into the
+   * header's completion slot, and the invoice card carrying none.
    */
-  it('the sticky bottom bar is the final active-Canvas workflow element', () => {
-    expect(page).toContain('<InvoiceBottomBar');
-    expect(page).not.toContain('<ConsultationFooter');
+  it('the canvas mounts exactly ONE completion action', () => {
+    expect(page.match(/<ConsultationFooter/g)).toHaveLength(1);
+    expect(page).toContain('variant="inline"');
+    // In the header band's slot, not floating somewhere of its own.
+    expect(page).toMatch(/completionAction=\{[\s\S]{0,160}<ConsultationFooter/);
   });
 
-  it('the bar carries the completion action rather than duplicating it', () => {
-    expect(barSource).toContain('<ConsultationFooter');
-    expect(barSource).toContain('variant="bar"');
-    // One instance, one set of completion rules.
-    expect(barSource.match(/<ConsultationFooter/g)).toHaveLength(1);
+  it('the sticky bottom bar is gone, and the invoice is a rail card', () => {
+    expect(page).not.toContain('InvoiceBottomBar');
+    expect(page).toContain('<InvoiceRail');
+    // The card prices the visit and does not complete it: a completion
+    // control in there would be the second one this block exists to prevent.
+    expect(invoiceSource).not.toContain('<ConsultationFooter');
   });
 
   it('the top Visit Actions surface is untouched', () => {

@@ -23,13 +23,11 @@ export interface CanvasWorkspaceProps {
   visits: ReactNode;
   /** The note, diagnosis and documents — what the doctor WRITES. */
   middle: ReactNode;
-  /** Orders, medications and the live invoice — what the doctor ORDERS. */
+  /** Orders, medications, documents and the invoice — what the doctor ORDERS. */
   right: ReactNode;
-  /** Rendered above the columns, full width (the completion bar). */
-  footer?: ReactNode;
 }
 
-export function CanvasWorkspace({ visits, middle, right, footer }: CanvasWorkspaceProps) {
+export function CanvasWorkspace({ visits, middle, right }: CanvasWorkspaceProps) {
   const shell = useRef<HTMLDivElement>(null);
   const [widths, setWidths] = useState<CanvasWidths | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -132,8 +130,6 @@ export function CanvasWorkspace({ visits, middle, right, footer }: CanvasWorkspa
           {right}
         </aside>
       </div>
-
-      {footer}
     </div>
   );
 }

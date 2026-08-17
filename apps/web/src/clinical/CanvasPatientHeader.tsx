@@ -3,7 +3,6 @@ import { Avatar, Button, Tooltip, Typography } from 'antd';
 import {
   ArrowLeftOutlined,
   CalendarOutlined,
-  CheckOutlined,
   IdcardOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
@@ -28,7 +27,17 @@ export interface CanvasPatientHeaderProps {
   autosaveLabel?: string;
   onBack?: () => void;
   onBookAppointment?: () => void;
-  onCompleteConsultation?: () => void;
+  /**
+   * b4 PIECE C — THE COMPLETION ACTION ITSELF, rendered by the page.
+   *
+   * It was a `Complete Consultation` button here that scrolled to a footer,
+   * then a button inside the sticky invoice bar. It is a SLOT now, and the
+   * page fills it with the one `ConsultationFooter` in its `inline` variant,
+   * so the control a doctor presses IS the component that owns the rules —
+   * no second button, nothing to keep in step, and no scroll to somewhere
+   * else that does the work.
+   */
+  completionAction?: ReactNode;
   /** KW2-C2 — pause the consultation and send the patient back to wait. */
   onHold?: () => void;
   /** Take a held patient back. Rendered in place of Hold while held. */
@@ -76,7 +85,7 @@ export function CanvasPatientHeader({
   autosaveLabel,
   onBack,
   onBookAppointment,
-  onCompleteConsultation,
+  completionAction,
   onHold,
   onResume,
   heldByName,
@@ -280,15 +289,9 @@ export function CanvasPatientHeader({
           </Tooltip>
         )}
 
-        <Button
-          type="primary"
-          icon={<CheckOutlined />}
-          onClick={onCompleteConsultation}
-          disabled={!onCompleteConsultation}
-          className="kw2-complete"
-        >
-          Complete Consultation
-        </Button>
+        {/* The one completion action on the page, in the position the
+            approved header gives it. */}
+        <div className="kw2-complete-slot">{completionAction}</div>
       </div>
     </div>
   );

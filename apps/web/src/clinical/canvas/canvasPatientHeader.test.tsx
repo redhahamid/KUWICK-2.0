@@ -81,7 +81,7 @@ const renderHeader = (over: Partial<Parameters<typeof CanvasPatientHeader>[0]> =
         patient={patient()}
         visit={visit()}
         onBookAppointment={vi.fn()}
-        onCompleteConsultation={vi.fn()}
+        completionAction={<button type="button">Complete Consultation</button>}
         {...over}
       />
     </QueryClientProvider>,

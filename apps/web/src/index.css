@@ -1418,20 +1418,16 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
    The doctor's end of the consultation: what is outstanding, or where the
    patient goes next, and one action.
 
-   "DELIBERATELY NOT STICKY" WAS TRUE UNTIL b4 PIECE B AND IS NOT ANY MORE.
-   The rules below still describe the PANEL variant, which is what the Flow
-   surfaces and the component's own tests render. On the Canvas the same
-   component now renders in its one-line `bar` variant inside the sticky
-   invoice bar (`.kw-invoice-bar`, canvas.css), because the owner's Piece B
-   put the running total and Complete Consultation on one bar that never
-   scrolls away.
+   "DELIBERATELY NOT STICKY" IS TRUE AGAIN. Piece B put this line inside a
+   sticky bottom bar; Piece C removed that bar — the invoice became the last
+   rail card and the completion action went back to the header band. The
+   rules below describe the PANEL variant, which is what the Flow surfaces
+   and the component's own tests render; on the Canvas the same component
+   renders in its one-line `inline` variant (`.kw-consult-inline`,
+   canvas.css) inside the header's action row.
 
-   The three overlaps the original objection named were answered, not
-   ignored: the page RESERVES the bar's height with padding, so the bar
-   covers reserved space rather than the note editor's lower lines; the only
-   thing that ever overlays the canvas is the breakdown, which the doctor
-   opened and can close with Esc; and the mobile quick-nav is sticky at the
-   TOP, which this does not touch.
+   Nothing on the canvas is fixed to the viewport any more, and nothing
+   overlays the note editor.
    =========================================================================== */
 .kw-consult-footer {
   margin-top: var(--kw-s3);

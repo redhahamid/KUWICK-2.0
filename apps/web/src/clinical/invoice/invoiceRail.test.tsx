@@ -4,23 +4,26 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { InvoiceBottomBar } from './InvoiceBottomBar';
+import { InvoiceRail } from './InvoiceRail';
 import { invoiceDraftKey } from '../hooks/useInvoiceDraft';
 import { DoctorPhaseStatus, InvoiceDraft, InvoiceDraftLine, Visit } from '../types';
 
 // ===========================================================================
-// b4 PIECE B — THE STICKY BOTTOM BAR, IN A DOM.
+// b4 PIECE C — THE INVOICE CARD, IN A DOM.
 //
-// The five things the owner asked for, asserted where a person would notice
-// them going wrong:
+// The surface moved from the sticky bottom bar into the rail; what it must do
+// did not, and these are the same five assertions Piece B was accepted on:
 //
-//   1. every source auto-pulls into the breakdown — medications with their
+//   1. every source auto-pulls into the card — medications with their
 //      quantity × price, orders/procedures, direct services, consultation;
 //   2. an OTC visit shows NO consultation charge, and says why;
 //   3. a discount is applied WITH A REASON, and the reason is on screen;
 //   4. editing a source updates the draft live — no remount, no reload;
-//   5. the bar is SLIM at rest and the breakdown is an overlay, so expanding
-//      it never permanently costs the rail any height.
+//   5. the card is COMPACT at rest — group totals and the total — and the
+//      itemised detail discloses in place, the way every rail card does.
+//
+// Plus the one thing Piece C changed: the card carries NO completion action.
+// There is exactly one of those on the page and it is in the header band.
 //
 // The numbers are the server's. Nothing here re-computes a total, and a test
 // that summed the lines itself would be asserting the fixture.
@@ -146,20 +149,19 @@ function serveDraft(draft: InvoiceDraft, status: DoctorPhaseStatus = PHASE_STATU
   });
 }
 
-function renderBar(onReview = vi.fn()) {
-  return {
-    onReview,
-    ...render(
-      <Harness>
-        <InvoiceBottomBar visit={VISIT} onReview={onReview} />
-      </Harness>,
-    ),
-  };
+function renderCard() {
+  return render(
+    <Harness>
+      <InvoiceRail visit={VISIT} />
+    </Harness>,
+  );
 }
 
-const bar = () => screen.getByTestId('invoice-bar-total');
+/** The card's own header total — the figure a doctor reads without opening anything. */
+const total = () => screen.getByTestId('invoice-total');
+const card = () => document.querySelector('.kw-rail-panel[data-panel="Invoice"]') as HTMLElement;
 const expand = async (user: ReturnType<typeof userEvent.setup>) => {
-  await user.click(bar());
+  await user.click(await screen.findByTestId('invoice-details-toggle'));
   return screen.findByTestId('invoice-breakdown');
 };
 
@@ -173,8 +175,8 @@ beforeEach(() => {
 describe('1. every billable source auto-pulls', () => {
   it('shows the running total at rest, without expanding anything', async () => {
     serveDraft(FULL_DRAFT);
-    renderBar();
-    await waitFor(() => expect(bar()).toHaveTextContent('RM 127.50'));
+    renderCard();
+    await waitFor(() => expect(total()).toHaveTextContent('RM 127.50'));
     // Slim at rest: the breakdown is NOT in the DOM until it is asked for.
     expect(screen.queryByTestId('invoice-breakdown')).toBeNull();
   });
@@ -182,8 +184,8 @@ describe('1. every billable source auto-pulls', () => {
   it('lists medications, orders/procedures, direct services and the consultation', async () => {
     const user = userEvent.setup();
     serveDraft(FULL_DRAFT);
-    renderBar();
-    await waitFor(() => expect(bar()).toHaveTextContent('RM 127.50'));
+    renderCard();
+    await waitFor(() => expect(total()).toHaveTextContent('RM 127.50'));
 
     const sheet = await expand(user);
     // Grouped under the SAME names the rail cards use, so a figure can be
@@ -199,7 +201,7 @@ describe('1. every billable source auto-pulls', () => {
   it('a medication line shows quantity × price as well as its amount', async () => {
     const user = userEvent.setup();
     serveDraft(FULL_DRAFT);
-    renderBar();
+    renderCard();
     const sheet = await expand(user);
 
     const row = sheet.querySelector('[data-source-type="PRESCRIPTION"]')!;
@@ -208,9 +210,10 @@ describe('1. every billable source auto-pulls', () => {
     expect(row.textContent).toContain('RM 7.50');
   });
 
-  it('an unpriced chargeable item is flagged on the BAR, not only inside', async () => {
+  it('an unpriced chargeable item is flagged on the CARD HEADER, not only inside', async () => {
     // A medication whose supply mode is undecided (D-091) has no price. The
-    // total is therefore incomplete, and the bar must say so at rest.
+    // total is therefore incomplete, and the card must say so at rest —
+    // without the detail being opened.
     serveDraft(
       DRAFT({
         lines: [
@@ -230,9 +233,9 @@ describe('1. every billable source auto-pulls', () => {
         unpricedCount: 1,
       }),
     );
-    renderBar();
+    renderCard();
     await waitFor(() =>
-      expect(screen.getByTestId('invoice-bar-unpriced')).toHaveTextContent('1 item not priced yet'),
+      expect(screen.getByTestId('invoice-unpriced')).toHaveTextContent('1 item not priced yet'),
     );
   });
 
@@ -255,7 +258,7 @@ describe('1. every billable source auto-pulls', () => {
         ],
       }),
     );
-    renderBar();
+    renderCard();
     const sheet = await expand(user);
     expect(within(sheet).getByText('Nebuliser')).toBeInTheDocument();
     expect(within(sheet).getByText('Cancelled — not chargeable.')).toBeInTheDocument();
@@ -286,8 +289,8 @@ describe('2. OTC skips the consultation charge', () => {
         total: 3,
       }),
     );
-    renderBar();
-    await waitFor(() => expect(bar()).toHaveTextContent('RM 3.00'));
+    renderCard();
+    await waitFor(() => expect(total()).toHaveTextContent('RM 3.00'));
 
     const sheet = await expand(user);
     const consultation = sheet.querySelector('[data-source-type="CONSULTATION"]')!;
@@ -297,13 +300,13 @@ describe('2. OTC skips the consultation charge', () => {
     // The consultation GROUP totals nothing, and the visit's total is the
     // medication alone — the assertion that would fail if the bar started
     // deciding for itself that an OTC visit is billable.
-    expect(bar()).toHaveTextContent('RM 3.00');
+    expect(total()).toHaveTextContent('RM 3.00');
   });
 
   it('a non-OTC visit does carry it, from the same shape of payload', async () => {
     const user = userEvent.setup();
     serveDraft(FULL_DRAFT);
-    renderBar();
+    renderCard();
     const sheet = await expand(user);
     const consultation = sheet.querySelector('[data-source-type="CONSULTATION"]')!;
     expect(consultation.getAttribute('data-counted')).toBe('true');
@@ -322,10 +325,11 @@ describe('3. the discount is recorded with a reason', () => {
   it('will not submit without a reason', async () => {
     const user = userEvent.setup();
     serveDraft(WITH_INVOICE);
-    renderBar();
-    const sheet = await expand(user);
-
-    await user.click(within(sheet).getByTestId('invoice-discount-button'));
+    renderCard();
+    // The control lives WITH the itemised bill it changes, which is also where
+    // the refusal is worded when there is nothing to discount yet.
+    await expand(user);
+    await user.click(await screen.findByTestId('invoice-discount-button'));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('Amount'), '10');
     await user.click(within(dialog).getByRole('button', { name: 'Apply discount' }));
@@ -353,10 +357,9 @@ describe('3. the discount is recorded with a reason', () => {
       serveDraft(discounted);
       return discounted;
     });
-    renderBar();
-    const sheet = await expand(user);
-
-    await user.click(within(sheet).getByTestId('invoice-discount-button'));
+    renderCard();
+    await expand(user);
+    await user.click(await screen.findByTestId('invoice-discount-button'));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('Amount'), '10');
     await user.type(within(dialog).getByLabelText('Reason'), 'Regular dressing patient');
@@ -375,19 +378,18 @@ describe('3. the discount is recorded with a reason', () => {
       expect(screen.getByTestId('invoice-discount-row')).toHaveTextContent('Regular dressing patient'),
     );
     expect(screen.getByTestId('invoice-discount-row')).toHaveTextContent('RM 12.75');
-    await waitFor(() => expect(bar()).toHaveTextContent('RM 114.75'));
-    // And the bar itself says a discount is in force, at rest.
-    expect(screen.getByTestId('invoice-bar-discount')).toHaveTextContent('less RM 12.75 discount');
+    await waitFor(() => expect(total()).toHaveTextContent('RM 114.75'));
+    // And the card header itself says a discount is in force, at rest.
+    expect(screen.getByTestId('invoice-discount-chip')).toHaveTextContent('less RM 12.75 discount');
   });
 
   it("shows the server's refusal rather than inventing its own", async () => {
     const user = userEvent.setup();
     serveDraft(WITH_INVOICE);
     patch.mockRejectedValue(new ApiError('Your role may not apply a billing discount.', 403, {}));
-    renderBar();
-    const sheet = await expand(user);
-
-    await user.click(within(sheet).getByTestId('invoice-discount-button'));
+    renderCard();
+    await expand(user);
+    await user.click(await screen.findByTestId('invoice-discount-button'));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('Amount'), '10');
     await user.type(within(dialog).getByLabelText('Reason'), 'Regular dressing patient');
@@ -399,10 +401,14 @@ describe('3. the discount is recorded with a reason', () => {
   it('explains, rather than offering a dead control, when no invoice exists yet', async () => {
     const user = userEvent.setup();
     serveDraft(FULL_DRAFT); // invoiceId: null
-    renderBar();
-    const sheet = await expand(user);
+    renderCard();
 
-    expect(within(sheet).queryByTestId('invoice-discount-button')).toBeNull();
+    // No dead button at rest — and the reason is one click away rather than
+    // spending five lines of a rail that is over its window. The words are the
+    // server's rule, unchanged.
+    expect(await screen.findByTestId('invoice-details-toggle')).toBeInTheDocument();
+    expect(screen.queryByTestId('invoice-discount-button')).toBeNull();
+    const sheet = await expand(user);
     expect(within(sheet).getByTestId('invoice-discount-unavailable')).toHaveTextContent(
       /no open invoice for this visit yet/i,
     );
@@ -413,8 +419,8 @@ describe('3. the discount is recorded with a reason', () => {
 describe('4. editing a source updates the draft live', () => {
   it('a medication added to the rail moves the total without a remount', async () => {
     serveDraft(DRAFT({ lines: [LINE({ unitPrice: 10, amount: 10 })], subtotal: 10, total: 10 }));
-    renderBar();
-    await waitFor(() => expect(bar()).toHaveTextContent('RM 10.00'));
+    renderCard();
+    await waitFor(() => expect(total()).toHaveTextContent('RM 10.00'));
 
     // Exactly what the rail's mutations do: invalidate the draft's query key
     // (`usePrescriptions`, `useOrderServices` and the billing hooks all call
@@ -427,74 +433,65 @@ describe('4. editing a source updates the draft live', () => {
     });
     serveDraft(grown);
     await client.invalidateQueries({ queryKey: invoiceDraftKey(VISIT.id) });
-    await waitFor(() => expect(bar()).toHaveTextContent('RM 15.00'));
+    await waitFor(() => expect(total()).toHaveTextContent('RM 15.00'));
   });
 });
 
 // ---------------------------------------------------------------------------
-describe('5. slim at rest, and the expansion is an overlay', () => {
-  it('carries the running total AND the completion action on one line', async () => {
+describe('5. compact at rest, and the detail discloses in place', () => {
+  it('shows the group totals and the total without anything being opened', async () => {
     serveDraft(FULL_DRAFT);
-    renderBar();
-    await waitFor(() => expect(bar()).toHaveTextContent('RM 127.50'));
-    // The one completion action, in its bar variant. It still names the
-    // destination the server derived.
-    expect(await screen.findByRole('button', { name: /Complete & Send to Dispensary/i })).toBeInTheDocument();
+    renderCard();
+    await waitFor(() => expect(total()).toHaveTextContent('RM 127.50'));
+
+    // One row per group — the four figures a doctor checks continuously — and
+    // no itemised list until it is asked for. That is the card's whole budget
+    // argument: the rail is measured with this card in it.
+    for (const group of ['CONSULTATION', 'SERVICE', 'ORDER', 'MEDICATION']) {
+      expect(card().querySelector(`[data-group="${group}"]`), group).not.toBeNull();
+    }
+    expect(within(card()).getByText('Total')).toBeInTheDocument();
+    expect(screen.queryByTestId('invoice-breakdown')).toBeNull();
   });
 
-  it('the breakdown is fixed to the viewport, so it takes no layout height', async () => {
+  it('the detail opens INSIDE the card, in flow — no overlay, nothing fixed', async () => {
     const user = userEvent.setup();
     serveDraft(FULL_DRAFT);
-    renderBar();
+    renderCard();
     const sheet = await expand(user);
-    // The CLASS is the contract with canvas.css, which pins it above the bar
-    // at `bottom: var(--kw-invoice-bar-h)`. jsdom does not lay out, so the
-    // class is what is assertable here; the e2e case measures the geometry.
-    expect(sheet.className).toContain('kw-invoice-sheet');
+    // The contract with canvas.css: an in-flow disclosure block inside the
+    // rail panel, not a fixed sheet pinned to the viewport. jsdom does not lay
+    // out, so containment and the class are what is assertable here; the e2e
+    // case measures the geometry.
+    expect(sheet.className).toContain('kw-invoice-detail');
+    expect(card().contains(sheet)).toBe(true);
   });
 
-  it('collapsing returns to the slim bar', async () => {
+  it('collapsing returns to the compact card', async () => {
     const user = userEvent.setup();
     serveDraft(FULL_DRAFT);
-    renderBar();
+    renderCard();
     await expand(user);
-    await user.click(bar());
+    await user.click(screen.getByTestId('invoice-details-toggle'));
     await waitFor(() => expect(screen.queryByTestId('invoice-breakdown')).toBeNull());
-    expect(bar()).toHaveTextContent('RM 127.50');
+    expect(total()).toHaveTextContent('RM 127.50');
   });
 
-  it('Escape closes it and gives focus back to the control that opened it', async () => {
-    const user = userEvent.setup();
+  it('carries NO completion action — there is exactly one of those and it is in the header', async () => {
+    // The invariant Piece C has to keep. The bar used to hold both; the card
+    // holds the money and nothing else, so the page cannot end up with two
+    // ways to complete a consultation.
     serveDraft(FULL_DRAFT);
-    renderBar();
-    await expand(user);
-    await user.keyboard('{Escape}');
-    await waitFor(() => expect(screen.queryByTestId('invoice-breakdown')).toBeNull());
-    expect(document.activeElement).toBe(bar());
+    renderCard();
+    await waitFor(() => expect(total()).toHaveTextContent('RM 127.50'));
+    expect(screen.queryByRole('button', { name: /Complete/i })).toBeNull();
+    expect(screen.queryByTestId('consult-bar-blockers')).toBeNull();
   });
 
-  it('a blocked completion still says how many items are outstanding, on the line', async () => {
-    serveDraft(FULL_DRAFT, {
-      ...PHASE_STATUS,
-      blockers: [{ code: 'PROCEDURE_PENDING' }, { code: 'MEDICATION_SUPPLY_UNCONFIRMED' }],
-    } as DoctorPhaseStatus);
-    renderBar();
-    const outstanding = await screen.findByTestId('consult-bar-blockers');
-    expect(outstanding).toHaveTextContent('2 items outstanding');
-    // And no completion action is offered while it is blocked.
-    expect(screen.queryByRole('button', { name: /Complete &/i })).toBeNull();
-  });
-
-  it('the blockers themselves are one click away, with their review actions', async () => {
-    const user = userEvent.setup();
-    serveDraft(FULL_DRAFT, {
-      ...PHASE_STATUS,
-      blockers: [{ code: 'MEDICATION_SUPPLY_UNCONFIRMED' }],
-    } as DoctorPhaseStatus);
-    renderBar();
-    await user.click(await screen.findByTestId('consult-bar-blockers'));
-    // The clinic's own wording, from `doctorPhasePresentation` — not a
-    // server string, and not re-worded for the bar.
-    expect(await screen.findByText('Medication supply mode must be confirmed.')).toBeInTheDocument();
+  it('an empty visit says so in one line, and offers no totals to read', async () => {
+    serveDraft(DRAFT());
+    renderCard();
+    expect(await screen.findByText('Nothing chargeable added to this visit yet.')).toBeInTheDocument();
+    expect(screen.queryByTestId('invoice-details-toggle')).toBeNull();
   });
 });

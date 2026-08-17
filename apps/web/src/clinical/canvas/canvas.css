@@ -962,164 +962,42 @@
 }
 
 /* ===========================================================================
-   b4 PIECE B — THE STICKY BOTTOM BAR (invoice + Complete Consultation).
+   b4 PIECE C — THE INVOICE CARD.
 
-   THE HEIGHT IS THE WHOLE POINT. `--kw-invoice-bar-h` is 44px and every rule
-   below is written against it, because the rail's vertical budget is measured
-   against the FULL viewport with this bar present (`canvas-viewport.spec.ts`):
-   a row hidden behind the bar is a row off screen. If a Piece A assertion ever
-   fails with the bar in place, THIS NUMBER is what gets fixed — never the
-   assertion. Nothing in the bar may grow it: the breakdown is an overlay above
-   it, and the completion action renders in its one-line `bar` variant.
+   It was a fixed overlay above a sticky bar. It is a rail card now, so every
+   rule below is ordinary in-flow layout: the card grows when the detail is
+   opened and the page grows with it, which is what the rail does everywhere
+   else. No `position: fixed`, no internal scroller — a scroller inside a rail
+   beside a scrolling page hides content behind a gesture nobody makes.
 
-   It replaces the panel-variant footer's position on the canvas rather than
-   sitting under it. The earlier comment in index.css says a sticky bar was
-   ruled out because it would sit over the note editor's lower lines — that
-   objection is answered by the layout below, not ignored: the page reserves
-   the bar's height with padding, so the bar covers reserved space rather than
-   content, and the only thing that ever overlays the canvas is the breakdown,
-   which the doctor opened.
+   THE CARD'S HEIGHT IS A BUDGET. At rest it is one row per group plus the
+   total, because the rail's vertical budget is measured with this card in it
+   (`canvas-viewport.spec.ts`). If an assertion there fails with the invoice
+   card present, THE CARD is what gets shorter — never the assertion.
    ======================================================================== */
-.kw-canvas2 {
-  --kw-invoice-bar-h: 44px;
-  /* Reserved, so the last thing on the page can be scrolled clear of the bar
-     instead of living underneath it. */
-  padding-bottom: var(--kw-invoice-bar-h);
-}
-
-.kw-invoice-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 20;
-  height: var(--kw-invoice-bar-h);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--kw-s3);
-  padding: 0 var(--kw-s4);
-  background: var(--kw-card);
-  border-top: 2px solid var(--kw-navy);
-  box-shadow: 0 -2px 8px rgb(0 0 0 / 8%);
-  /* A bar that grew would eat the budget silently. It cannot. */
-  overflow: hidden;
-}
-
-/* The running total is the control that opens the breakdown — one target,
-   so there is no separate chevron to find. */
-.kw-invoice-bar-total {
-  display: flex;
-  align-items: center;
-  gap: var(--kw-s2);
-  min-width: 0;
-  height: 32px;
-  padding: 0 var(--kw-s2);
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
-  white-space: nowrap;
-}
-
-.kw-invoice-bar-total:hover {
-  border-color: var(--kw-border);
-}
-
-.kw-invoice-bar-total:focus-visible {
-  outline: 2px solid var(--kw-navy);
-  outline-offset: 1px;
-}
-
-.kw-invoice-bar-amount {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--kw-navy);
-}
-
-.kw-invoice-bar-meta {
-  font-size: 12px;
-  color: #6b7a86;
-}
-
-.kw-invoice-bar-action {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-/* The completion action inside the bar: no card chrome, no vertical padding,
-   nothing that could add to the 44px. */
-.kw-consult-inbar {
-  display: flex;
-  align-items: center;
-  gap: var(--kw-s2);
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-}
-
-.kw-consult-inbar .kw-consult-primary .ant-btn,
-.kw-consult-inbar .ant-btn {
-  min-height: 32px;
-  height: 32px;
-}
-
-.kw-consult-inbar .kw-consult-status {
-  min-height: 0;
-}
-
-.kw-consult-inbar .ant-btn-primary {
-  background: var(--kw-navy);
-  border-color: var(--kw-navy);
-}
-
-.kw-consult-inbar .ant-btn-primary:not(:disabled):hover {
-  background: var(--kw-navy-hover) !important;
-  border-color: var(--kw-navy-hover) !important;
-}
-
-.kw-consult-bar-blocked {
-  display: flex;
-  align-items: center;
-  gap: var(--kw-s2);
-  color: #a8641b;
-}
-
-/* ---- The breakdown: an OVERLAY, sitting on top of the bar --------------- */
-.kw-invoice-sheet {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: var(--kw-invoice-bar-h);
-  z-index: 21;
-  /* Never taller than half the screen, and it scrolls inside itself rather
-     than growing — a long visit must not turn the expansion into the page. */
-  max-height: 50vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--kw-s2);
-  padding: var(--kw-s3) var(--kw-s4);
-  background: var(--kw-card);
-  border-top: 1px solid var(--kw-border);
-  box-shadow: 0 -6px 18px rgb(0 0 0 / 12%);
-}
-
-.kw-invoice-sheet-head {
+.kw-invoice-group-row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--kw-s3);
+  padding: 2px 0;
+  font-variant-numeric: tabular-nums;
 }
 
-.kw-invoice-sheet-body {
+.kw-invoice-total-grand {
+  border-top: 1px solid var(--kw-border);
+  padding-top: 3px;
+  color: var(--kw-navy);
+}
+
+/* The itemised detail, disclosed in place. */
+.kw-invoice-detail {
   display: flex;
   flex-direction: column;
   gap: var(--kw-s2);
+  margin-top: var(--kw-s2);
+  padding-top: var(--kw-s2);
+  border-top: 1px dashed var(--kw-border);
 }
 
 .kw-invoice-group-head {
@@ -1161,14 +1039,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.kw-invoice-sheet-foot {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  border-top: 1px solid var(--kw-border);
-  padding-top: var(--kw-s2);
-}
-
 .kw-invoice-total-row {
   display: flex;
   justify-content: space-between;
@@ -1177,26 +1047,4 @@
   font-variant-numeric: tabular-nums;
 }
 
-.kw-invoice-total-grand {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--kw-navy);
-}
 
-.kw-invoice-sheet-actions {
-  display: flex;
-  gap: var(--kw-s2);
-  margin-top: var(--kw-s2);
-}
-
-/* Phone: the bar keeps its height and its two jobs. The item count is the
-   first thing to go — the amount and the action are what it is for. */
-@media (max-width: 640px) {
-  .kw-invoice-bar-meta {
-    display: none;
-  }
-
-  .kw-invoice-sheet {
-    max-height: 60vh;
-  }
-}

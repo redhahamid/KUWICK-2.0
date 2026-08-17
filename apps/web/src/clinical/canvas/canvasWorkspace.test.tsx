@@ -119,18 +119,11 @@ describe('the three-column shell', () => {
     ).toBeInTheDocument();
   });
 
-  it('4. the footer spans the columns rather than sitting inside one', () => {
-    render(
-      <CanvasWorkspace
-        visits={<div>H</div>}
-        middle={<div>M</div>}
-        right={<div>R</div>}
-        footer={<div>completion bar</div>}
-      />,
-    );
-    const shell = screen.getByTestId('canvas-shell');
-    expect(shell.contains(screen.getByText('completion bar'))).toBe(false);
-  });
+  // b4 PIECE C — the `footer` slot is GONE. It existed for the sticky invoice
+  // bar; the invoice is the last card in the right rail now and the completion
+  // action is back in the header band, so the shell holds three columns and
+  // nothing else. Its job was always geometry, and it has one less thing to
+  // place.
 
   it('5. it survives a browser with no ResizeObserver', () => {
     // jsdom has none, and neither did Safari until recently. Falling back to

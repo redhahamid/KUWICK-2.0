@@ -33,20 +33,25 @@ interface ConsultationFooterProps {
   /** Moves the viewport to an existing Canvas section. Never opens a form. */
   onReview: (anchor: CanvasAnchor) => void;
   /**
-   * b4 PIECE B — where this is being rendered.
+   * b4 PIECE B/C — where this is being rendered.
    *
    * `panel` is the original full-width band at the end of the record.
-   * `bar` is ONE LINE, for the canvas's slim sticky bottom bar, which is
-   * ~44px at rest and cannot carry a blocker list or a completion summary
-   * inline. Nothing is removed in `bar`: the blockers, their review actions
-   * and the failure wording all still render, in a popover opened from the
-   * same place the action would be.
+   * `inline` is ONE LINE, for the canvas's header action row, which has room
+   * for a button and nothing else — no blocker list, no completion summary.
+   * Nothing is removed in `inline`: the blockers, their review actions and
+   * the failure wording all still render, in a popover opened from the same
+   * place the action would be.
+   *
+   * It was called `bar` while this line lived in the sticky bottom bar. Piece
+   * C moved the invoice into the rail and the completion action back to the
+   * header band it came from; the LAYOUT this variant describes — one line,
+   * everything else in a popover — is unchanged.
    *
    * This is a LAYOUT switch and only a layout switch. Both variants share one
    * component, one status query, one mutation and one confirmation dialog —
    * two components would be two places for the completion rules to drift.
    */
-  variant?: 'panel' | 'bar';
+  variant?: 'panel' | 'inline';
 }
 
 /**
@@ -71,7 +76,7 @@ interface ConsultationFooterProps {
  * through a completion.
  */
 export function ConsultationFooter({ visit, onReview, variant = 'panel' }: ConsultationFooterProps) {
-  const bar = variant === 'bar';
+  const bar = variant === 'inline';
   const status = useDoctorPhaseStatus(visit.id);
   const complete = useCompleteDoctorPhase(visit.id);
   const { data: staff } = useStaff();
@@ -600,12 +605,13 @@ export function ConsultationFooter({ visit, onReview, variant = 'panel' }: Consu
 }
 
 /**
- * The bar variant drops the panel's card chrome — border, padding, the navy
- * top edge — because the invoice bar around it supplies all three. A second
- * bordered box inside a 44px bar is a box with nothing left inside it.
+ * The inline variant drops the panel's card chrome — border, padding, the
+ * navy top edge — because the header action row around it supplies all three.
+ * A second bordered box inside a row of buttons is a box with nothing left
+ * inside it.
  */
 function sectionClass(bar: boolean): string {
-  return bar ? 'kw-consult-inbar' : 'kw-consult-footer';
+  return bar ? 'kw-consult-inline' : 'kw-consult-footer';
 }
 
 function iconFor(reason: string) {

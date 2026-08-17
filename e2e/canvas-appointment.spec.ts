@@ -36,11 +36,12 @@ test.describe('booking a follow-up from the consultation', () => {
     // ---- THE CARD AT REST --------------------------------------------------
     const card = page.locator('.kw-rail-panel[data-panel="Next Appointment"]');
     await expect(card, 'the appointment card is not in the rail').toBeVisible();
-    // It is the LAST card in the column: a follow-up is decided at the end of
-    // the consultation, and anything inserted above Medications would push the
-    // rows the 1366×768 assertions protect.
+    // It sits BELOW the four clinical cards, above the invoice that closes the
+    // column: anything inserted above Medications would push the rows the
+    // 1366×768 assertions protect.
     const panels = page.locator('[data-testid="canvas-right"] .kw-rail-panel');
-    await expect(panels.last()).toHaveAttribute('data-panel', 'Next Appointment');
+    await expect(panels.last()).toHaveAttribute('data-panel', 'Invoice');
+    await expect(panels.nth(-2)).toHaveAttribute('data-panel', 'Next Appointment');
 
     // A SENSIBLE STATE BEFORE ANYTHING IS BOOKED. Asserted as "says one of the
     // two true things" rather than as "is empty": these specs share one worker

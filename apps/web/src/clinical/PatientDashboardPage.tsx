@@ -56,7 +56,8 @@ import { OrdersRail } from './sections/OrdersRail';
 import { ServicesRail } from './sections/ServicesRail';
 import { DocumentsRail } from './sections/DocumentsRail';
 import { VisitCompletionBar } from './VisitCompletionBar';
-import { InvoiceBottomBar } from './invoice/InvoiceBottomBar';
+import { ConsultationFooter } from './ConsultationFooter';
+import { InvoiceRail } from './invoice/InvoiceRail';
 import { PatientSummarySidebar } from './PatientSummarySidebar';
 import { VisitHistoryPanel } from './history/VisitHistoryPanel';
 // G1 (D-058) — the four *SummaryCard components are deliberately still in the
@@ -319,11 +320,16 @@ export function PatientDashboardPage() {
             // patient who is here; an appointment is a patient who is coming
             // back. It now opens the follow-up picker the rail card owns.
             onBookAppointment={() => setBookFollowUpOpen(true)}
-            // The one exit action. It scrolls to the completion footer, which
-            // owns the eligibility rules, the blockers and the confirmation —
-            // duplicating that logic here would give two answers to one
-            // question.
-            onCompleteConsultation={() => revealCanvasSection('note')}
+            // b4 PIECE C — THE ONE COMPLETION ACTION, back in the header band
+            // the approved header puts it in. It is the component that owns
+            // the rules, not a button that scrolls to one: `ConsultationFooter`
+            // in its one-line `inline` variant, with the eligibility, the
+            // blockers, the review actions and the confirmation all inside it.
+            // The page renders it in exactly one place — the invoice card
+            // carries no completion control of its own.
+            completionAction={
+              <ConsultationFooter visit={selectedVisit} onReview={revealCanvasSection} variant="inline" />
+            }
             // Withheld where it cannot be honoured: no ticket to move, the
             // visit already closed, or a role the server would refuse. The
             // header renders the reason rather than a button that fails.
@@ -714,23 +720,16 @@ export function PatientDashboardPage() {
                     bookingOpen={bookFollowUpOpen}
                     onBookingOpenChange={setBookFollowUpOpen}
                   />
+                  {/* b4 PIECE C — THE INVOICE IS THE LAST CARD, not a sticky
+                      bar. It prices the four cards above it and is read in the
+                      same direction they are. Everything it computes is
+                      unchanged — the server's draft, the consultation charge
+                      from `consultation-tariff.ts`, unpriced items listed
+                      unpriced and uncounted — and the completion action it
+                      used to carry has gone back to the header band, so there
+                      is still exactly one of those on the page. */}
+                  <InvoiceRail visit={selectedVisit} />
                 </>
-              }
-              footer={
-                /* b4 PIECE B — the STICKY BOTTOM BAR: the visit's running
-                   total and how the doctor's part of the consultation ends,
-                   on one slim line that never scrolls away.
-
-                   It does not sit ABOVE the completion footer, it CARRIES it:
-                   `ConsultationFooter` renders inside in its one-line `bar`
-                   variant, so there is still exactly one completion action on
-                   the page, with one set of rules behind it (D-089, and no
-                   "Complete Visit" here either — closing the visit is counter
-                   work under a different permission, D-087).
-
-                   The invoice is deliberately NOT a fifth rail card: below
-                   Documents it would already be past the fold at 1366×768. */
-                <InvoiceBottomBar visit={selectedVisit} onReview={revealCanvasSection} />
               }
             />
 
