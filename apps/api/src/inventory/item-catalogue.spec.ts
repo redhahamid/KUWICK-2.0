@@ -102,26 +102,32 @@ describe('the worklist count', () => {
 describe('the category tabs', () => {
   it('unions the registry with the strings actually on items', () => {
     const result = catalogueCategories(
-      [{ name: 'Medication', sortOrder: 0 }, { name: 'Vaccine', sortOrder: 1 }],
+      [
+        { id: 'c1', name: 'Medication', sortOrder: 0 },
+        { id: 'c2', name: 'Vaccine', sortOrder: 1 },
+      ],
       ['Medication', 'Medication', 'Item'],
     );
     expect(result).toEqual([
-      { name: 'Medication', count: 2, registered: true },
+      { id: 'c1', name: 'Medication', count: 2, registered: true },
       // Named and not yet filled. Dropping it makes "add a category" look broken.
-      { name: 'Vaccine', count: 0, registered: true },
+      { id: 'c2', name: 'Vaccine', count: 0, registered: true },
       // Arrived on an imported row and never registered. Hiding it hides stock.
-      { name: 'Item', count: 1, registered: false },
+      { id: null, name: 'Item', count: 1, registered: false },
     ]);
   });
 
   it('ignores blank and whitespace-only categories, and trims the rest', () => {
     const result = catalogueCategories([], [null, '', '   ', '  Medication  ', 'Medication']);
-    expect(result).toEqual([{ name: 'Medication', count: 2, registered: false }]);
+    expect(result).toEqual([{ id: null, name: 'Medication', count: 2, registered: false }]);
   });
 
   it('keeps the clinic’s own arrangement, then falls back to alphabetical', () => {
     const result = catalogueCategories(
-      [{ name: 'Zinc', sortOrder: 0 }, { name: 'Antibiotik', sortOrder: 1 }],
+      [
+        { id: 'c1', name: 'Zinc', sortOrder: 0 },
+        { id: 'c2', name: 'Antibiotik', sortOrder: 1 },
+      ],
       ['Batuk', 'Demam'],
     );
     expect(result.map((c) => c.name)).toEqual(['Zinc', 'Antibiotik', 'Batuk', 'Demam']);

@@ -71,6 +71,9 @@ export interface CatalogueCounts {
 }
 
 export interface CatalogueCategory {
+  /** Null for a name that is on items but not in the registry — nothing to
+   *  rename or delete until somebody adopts it. */
+  id: string | null;
   name: string;
   /** How many items carry this name. Zero is legal — a section not yet filled. */
   count: number;
@@ -128,7 +131,7 @@ export function catalogueCounts(rows: CatalogueRow[]): CatalogueCounts {
  * that has arranged its sections sees them arranged.
  */
 export function catalogueCategories(
-  registry: Array<{ name: string; sortOrder: number }>,
+  registry: Array<{ id: string; name: string; sortOrder: number }>,
   itemCategories: Array<string | null>,
 ): CatalogueCategory[] {
   const counts = new Map<string, number>();
@@ -139,10 +142,16 @@ export function catalogueCategories(
   }
 
   const order = new Map(registry.map((r) => [r.name, r.sortOrder]));
+  const ids = new Map(registry.map((r) => [r.name, r.id]));
   const names = new Set<string>([...registry.map((r) => r.name), ...counts.keys()]);
 
   return [...names]
-    .map((name) => ({ name, count: counts.get(name) ?? 0, registered: order.has(name) }))
+    .map((name) => ({
+      id: ids.get(name) ?? null,
+      name,
+      count: counts.get(name) ?? 0,
+      registered: order.has(name),
+    }))
     .sort((a, b) => {
       const byOrder = (order.get(a.name) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.name) ?? Number.MAX_SAFE_INTEGER);
       return byOrder !== 0 ? byOrder : a.name.localeCompare(b.name);

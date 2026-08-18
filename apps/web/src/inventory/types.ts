@@ -315,3 +315,67 @@ export interface GoodsReceivedNote {
   receivedAt: string;
   lines: GoodsReceivedNoteLine[];
 }
+
+// ---- INVENTORY PIECE 1 — the management list's row ------------------------
+//
+// Shaped by the server (`item-catalogue.ts`), not assembled here. The divisor
+// and whether the row can be priced at all are the same facts the bill will
+// use, and a browser that worked them out itself would be a second opinion on
+// the one number this whole package exists to have one of.
+
+/** Where the row's divisor came from. Clinic beats import (b1 Phase 1E). */
+export type DivisorSource = 'CLINIC' | 'IMPORT' | 'NONE';
+
+/** Why a row is on the pricing worklist. Null when it is not. */
+export type DivisorAttention = 'NO_DIVISOR' | 'UNCONFIRMED_ONE';
+
+export interface CatalogueStockUnit {
+  id: string;
+  /** The platform's word: "TABLET PER STRIP". */
+  name: string;
+  /** The Malay half, where somebody has written one. */
+  nameMs: string | null;
+  active: boolean;
+}
+
+export interface CatalogueRow {
+  id: string;
+  code: string | null;
+  name: string;
+  category: string | null;
+  active: boolean;
+  /** Price to the patient. A string, because it is a Decimal(10,2). */
+  sellPrice: string;
+  cost: string | null;
+  /** Plain date, earliest across batches. */
+  earliestExpiry: string | null;
+  quantityOnHand: number;
+  belowThreshold: boolean;
+  stockUnit: CatalogueStockUnit | null;
+  packDescription: string | null;
+  divisor: number | null;
+  divisorSource: DivisorSource;
+  dispensedWhole: boolean;
+  attention: DivisorAttention | null;
+}
+
+export interface CatalogueCounts {
+  items: number;
+  /** The pricing worklist. Over ACTIVE rows, and never narrowed by the filters. */
+  needsAttention: number;
+}
+
+export interface CatalogueResponse {
+  rows: CatalogueRow[];
+  counts: CatalogueCounts;
+}
+
+export interface ItemCategory {
+  /** Null where the name is on items but not in the registry — nothing to
+   *  rename or delete until somebody adopts it. */
+  id: string | null;
+  name: string;
+  count: number;
+  /** False for a name that arrived on an imported row and nobody has adopted. */
+  registered: boolean;
+}

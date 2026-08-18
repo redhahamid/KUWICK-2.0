@@ -3221,3 +3221,15 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 .kw-catalog-row-retired td {
   opacity: 0.55;
 }
+
+/* INVENTORY PIECE 1 — a deactivated item stays on the list and reads as
+   deactivated.
+
+   D3: there is no delete. Items are referenced by prescriptions and invoice
+   lines, so the toggle is the control and the row has to still be findable
+   afterwards — hiding it would make the toggle look like the delete it is
+   deliberately not. Dimmed rather than struck through, because the row is
+   still the truth about a medicine somebody was dispensed last month. */
+.kw-inventory-row-inactive > td {
+  opacity: 0.55;
+}

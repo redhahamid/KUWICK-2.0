@@ -43,3 +43,19 @@ export function useUpdateItem() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['items'] }),
   });
 }
+
+/**
+ * ONE item, by id — what the edit drawer opens on.
+ *
+ * The page used to hold the entire catalogue in memory purely so a click on a
+ * row could find the object behind it. Now the LIST is its own request
+ * (`/items/catalogue`, shaped for the screen), so keeping a second full copy
+ * of the catalogue alongside it downloads everything twice to open one drawer.
+ */
+export function useItem(id: string | null) {
+  return useQuery({
+    queryKey: ['items', 'detail', id],
+    queryFn: () => apiClient.get<Item>(`/items/${id}`),
+    enabled: id !== null,
+  });
+}

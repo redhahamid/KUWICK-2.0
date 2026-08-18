@@ -15,7 +15,8 @@ import {
   Typography,
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import { useCreateItem, useItemSearch, useUpdateItem } from './hooks/useItems';
+import { useCreateItem, useItem, useUpdateItem } from './hooks/useItems';
+import { InventoryList } from './InventoryList';
 import { useCreateItemAgeDosage, useItemAgeDosages, useRemoveItemAgeDosage } from './hooks/useItemAgeDosages';
 import { CreateItemAgeDosageDto, CreateItemDto, Item } from './types';
 import { standardPrescriptionValues, withClearedDefaults } from './standardPrescriptionForm';
@@ -33,22 +34,27 @@ const { Text } = Typography;
 // Reference (Dr's Note), Remark). Pricing/Panel Pricing/Stock Control
 // sections from the reference aren't built yet — sellPrice/cost only.
 export function ItemsPage() {
-  const [search, setSearch] = useState('');
-  const { data: items, isLoading } = useItemSearch(search);
   const createItem = useCreateItem();
   const updateItem = useUpdateItem();
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<Item | null>(null);
+  // The ID, not the object. The list is its own request now, so holding a
+  // second full copy of the catalogue here just to find the row behind a click
+  // would download everything twice to open one drawer.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const { data: editing } = useItem(editingId);
   const [form] = Form.useForm<CreateItemDto>();
 
   const openCreate = () => {
-    setEditing(null);
+    setEditingId(null);
     form.resetFields();
     setOpen(true);
   };
 
-  const openEdit = (item: Item) => {
-    setEditing(item);
+  // The item arrives after the drawer does, so the form is filled when it
+  // lands rather than at the moment of the click.
+  useEffect(() => {
+    const item = editing;
+    if (!item || !open) return;
     form.setFieldsValue({
       code: item.code ?? undefined,
       name: item.name,
@@ -70,8 +76,7 @@ export function ItemsPage() {
       cost: item.cost ? Number(item.cost) : undefined,
       ...standardPrescriptionValues(item),
     });
-    setOpen(true);
-  };
+  }, [editing, open, form]);
 
   const handleSubmit = async (raw: CreateItemDto) => {
     // An emptied dropdown must reach the API as `null`, not vanish from the
@@ -79,8 +84,8 @@ export function ItemsPage() {
     // looks like it saved and silently did nothing.
     const values = withClearedDefaults(raw);
     try {
-      if (editing) {
-        await updateItem.mutateAsync({ id: editing.id, dto: values });
+      if (editingId) {
+        await updateItem.mutateAsync({ id: editingId, dto: values });
         message.success('Item updated');
       } else {
         await createItem.mutateAsync(values);
@@ -88,7 +93,7 @@ export function ItemsPage() {
       }
       form.resetFields();
       setOpen(false);
-      setEditing(null);
+      setEditingId(null);
     } catch (error) {
       message.error(error instanceof ApiError ? error.message : 'Failed to save item');
     }
@@ -97,57 +102,30 @@ export function ItemsPage() {
   return (
     <>
       <PageHeader
-        title="Items"
-        extra={
-          <>
-            <Space wrap>
-              {/* PHASE 1G — 236 medicines, ten to a page. Editing one's standard
-                  prescription meant finding it first, and there was no way to.
-                  The server matches the code and the clinic's own Malay group
-                  tag as well as the name, so "BATUK" finds the cough shelf. */}
-              <Input.Search
-                allowClear
-                placeholder="Search name, code or group…"
-                aria-label="Search items"
-                style={{ width: 280 }}
-                onSearch={setSearch}
-                onChange={(event) => {
-                  if (event.target.value === '') setSearch('');
-                }}
-              />
-              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                Add Item
-              </Button>
-            </Space>
-          </>
-        }
+        title="Inventory"
+        subtitle="Every item this clinic stocks. Deactivate rather than delete — prescriptions and invoice lines point at these rows."
       />
-      <Table
-        rowKey="id"
-        loading={isLoading}
-        dataSource={items}
-        columns={[
-          { title: 'Code', dataIndex: 'code', render: (value: string | null) => value ?? '—' },
-          { title: 'Name', dataIndex: 'name' },
-          { title: 'Category', dataIndex: 'category', render: (value: string | null) => value ?? '—' },
-          { title: 'Unit', dataIndex: 'unitOfMeasure', render: (value: string | null) => value ?? '—' },
-          { title: 'Sell Price (RM)', dataIndex: 'sellPrice' },
-          { title: 'Cost (RM)', dataIndex: 'cost', render: (value: string | null) => value ?? '—' },
-          { title: 'Active', dataIndex: 'active', render: (value: boolean) => (value ? 'Yes' : 'No') },
-          {
-            title: 'Actions',
-            render: (_: unknown, record: Item) => (
-              <Button size="small" onClick={() => openEdit(record)}>
-                Edit
-              </Button>
-            ),
-          },
-        ]}
+      {/*
+        PIECE 1 — the list is its own component. It is the pricing worklist as
+        much as it is a catalogue, and the drawer below is Piece 2's to rebuild.
+      */}
+      <InventoryList
+        onAdd={openCreate}
+        onEdit={(itemId) => {
+          setEditingId(itemId);
+          setOpen(true);
+        }}
       />
       <Drawer
-        title={editing ? `Edit Item — ${editing.name}` : 'Add Item'}
+        // Keyed off the ID, not the loaded object: the drawer opens before the
+        // item arrives, and a title that said "Add Item" for a moment while
+        // editing one is a lie the user has time to read.
+        title={editingId ? `Edit Item${editing ? ` — ${editing.name}` : ''}` : 'Add Item'}
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={() => {
+          setOpen(false);
+          setEditingId(null);
+        }}
         destroyOnHidden
         width={480}
       >
