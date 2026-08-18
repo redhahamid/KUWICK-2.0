@@ -21,6 +21,7 @@ import { DispensingSection } from './DispensingSection';
 import { PanelPricingSection } from './PanelPricingSection';
 import { StockControlSection } from './StockControlSection';
 import { CategorySelect } from './CategorySelect';
+import { IndicationTags } from './IndicationTags';
 import { useCreateItemAgeDosage, useItemAgeDosages, useRemoveItemAgeDosage } from './hooks/useItemAgeDosages';
 import { CreateItemAgeDosageDto, CreateItemDto, Item } from './types';
 import { standardPrescriptionValues, withClearedDefaults } from './standardPrescriptionForm';
@@ -229,8 +230,12 @@ export function ItemsPage() {
           <Form.Item name="instruction" label="Instruction">
             <Input />
           </Form.Item>
-          <Form.Item name="indication" label="Indication">
-            <Input />
+          <Form.Item
+            name="indication"
+            label="Indication"
+            tooltip="Offered from Settings › Prescription Vocabulary. Stored as text, because a prescription copies it at prescribe-time — renaming a preset later does not rewrite items."
+          >
+            <IndicationTags />
           </Form.Item>
           <Form.Item
             name="prescriptionReference"
