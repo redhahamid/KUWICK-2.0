@@ -875,6 +875,87 @@ a pricing fix. **This is the first thing to settle in the next session.**
 **MEASURED:** 1619 API tests, 1501 web tests, both typechecks, both production
 builds. Not run here: the e2e suite (no PostgreSQL in this container).
 
+## INVENTORY PACKAGE — PIECE 4b DONE (2026-08-18). **THE E2E SUITE RUNS HERE.**
+
+**READ THIS FIRST — every "not run here: no PostgreSQL" note in this file is
+out of date.** The container has PostgreSQL 16 installed but not started. The
+whole guardrail runs locally:
+
+```bash
+pg_ctlcluster 16 main start                     # or service postgresql start
+export DATABASE_URL="postgresql://kuwick_dev:devpass@127.0.0.1:5432/kuwick_dev?schema=public"
+node scripts/provision-app-role.mjs
+cd apps/api && npx prisma migrate deploy
+KUWICK_STAGING_SEED=yes STAGING_SEED_PASSWORD='CiOnly!2026' npx tsx prisma/seed-staging-uat.ts
+npx tsx prisma/seed-e2e.ts && npx tsx prisma/seed-density-fixtures.ts
+npm run seed:catalogues && npm run seed:reference && npm run seed:standard-rx
+# API as the APPLICATION role — RLS is inert as the owner:
+DATABASE_URL="postgresql://kuwick_app:apppass@127.0.0.1:5432/kuwick_dev?schema=public" node dist/main &
+cd ../web && npx vite preview --port 5173 --strictPort &
+# and from the REPO ROOT:
+CHROME_PATH=/opt/pw-browsers/chromium E2E_PASSWORD='CiOnly!2026' \
+  NO_PROXY='localhost,127.0.0.1' npx playwright test
+```
+`NO_PROXY` matters — the agent proxy otherwise intercepts localhost.
+**`seed-density-fixtures.ts` SKIPS visits that already exist**, so a fixture
+change needs the old rows deleted first or it silently keeps the old ones.
+
+**MEASURED, BEFORE AND AFTER.** At 1366×768 the right rail needed **792px
+against 529px** above the fold: the invoice card and the tail of Medications
+were reachable only by scrolling the whole consultation away. Now **523px in
+537px, and the page does not scroll at all.**
+
+**THE RULE THAT WAS REVERSED, AND WHY IT IS NOT A CONTRADICTION.**
+`.kw-rail-head` carried "there is deliberately no inner scroll region on any
+card: a scroller inside a rail beside a scrolling page hides clinical content
+behind a gesture nobody makes." That is right about a scroller beside a
+SCROLLING PAGE, and it stops applying the moment the page is fixed — the inner
+scroller is then the only scroller there is. **Stacked (tablet/phone) is
+exempt** and keeps its page scroll.
+
+**THREE THINGS THE MEASUREMENTS CORRECTED** (all three would have shipped from
+a reasoning-only pass):
+
+1. Cards sharing the column with `flex: 1 1 0` measured well until the invoice
+   detail opened: the invoice grew, every card above gave up 27px, Medications
+   MOVED. Cards now sit at natural heights, capped, and the COLUMN scrolls.
+2. `overflow: hidden` on the right column was set expecting an inner element to
+   scroll. **Nothing did** — `.kw-clinical-rail` is the FLOW layout's wrapper
+   and does not exist in the canvas; the five cards are direct children of
+   `.kw-canvas2-right`. The effect was CLIPPED cards.
+3. The last 16px of page scroll was **the body's default 8px vertical margin**,
+   not the shell's height at all.
+
+**THE STICKY HEADER IS GONE and that is the fix.** As a plain flex sibling of a
+scrolling body the header is pinned by layout — nothing to stack, and a rect is
+a rect. The invoice assertion had already been forced to work around a sticky
+rect reporting a scroll as a reflow; the cause is removed.
+
+**THE FIVE ASSERTIONS, RE-EXPRESSED.** (a) EVERY unresolved-supply row is
+inside the rail's visible box at rest, with `railScrollTop === 0` asserted so
+"at rest" means it — the fixture plants **TWO** now and the count comes from
+the seed, because one row cannot express "all of them". (b)(c)(d) unchanged in
+words. (e) "the whole rail fits 1080 unscrolled" is now **true by
+construction** — the third vacuous-pass trap this file has met — so it becomes
+"the page does not scroll, either direction" plus "the rail's content fits
+without using its scroll at 1920×1080".
+
+**TWO REGRESSIONS THE SUITE CAUGHT, both from earlier pieces of this session,
+neither visible to any unit test:** Piece 1's Items→Inventory rename moved the
+search box's aria-label, which `prescription-vocabulary.spec.ts` reached by;
+and **Piece 4a's refusal stopped the golden path dead.**
+
+**THE SEEDED MEDICINES ARE PRICED PER DOSE — the imported ones are priced per
+PACK.** RM0.30 is one paracetamol tablet; RM155.00 against "10 BIJI / STRIP" is
+a whole course. **The divisor is exactly what tells the two apart**, and a
+seeded medicine with none could not be billed at all. The seeds state
+`quantityPerStockUnit: 1` now, and deliberately do NOT mark it dispensed-whole:
+nobody at the clinic has confirmed it, so those rows sit on the worklist where
+they belong and still price.
+
+**MEASURED:** whole e2e suite green (33 passed, 2 gated), route sweep clean on
+all twelve routes, 1619 API tests, 1501 web tests, both typechecks, both builds.
+
 ## THE PRICING FIX — STEP 1, THE AUDIT. **THE DIVISOR IS MOSTLY NOT THERE.**
 
 **Run it:** `cd apps/api && npx tsx prisma/pricing-divisor-audit.ts`.
