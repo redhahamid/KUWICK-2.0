@@ -690,6 +690,87 @@ open one drawer; the drawer fetches its one item now (`useItem`).
 **MEASURED:** 1520 API tests, 1466 web tests, both typechecks, both production
 builds. Not run here: the e2e suite (no PostgreSQL in this container).
 
+## INVENTORY PACKAGE — PIECE 2 DONE (2026-08-18). The divisor is writable.
+
+**THE FINDING THAT EXPLAINS THE AUDIT'S ZERO.** Phase 1E built
+`stockUnitId` and `quantityPerStockUnit`, and the audit found
+`quantity_per_stock_unit` set on ZERO of 242 rows. The reason was not that
+nobody curated: **neither field was in any DTO.** No screen and no endpoint
+ever accepted them. The majority of the catalogue had no divisor for
+`ceil(clinical ÷ divisor)` for want of two DTO properties.
+
+- **D1'S WRITE PATH: the client sends a BOOLEAN, the server owns who and when.**
+  A caller that could post `dispensedWholeAt` could backdate a clinical
+  decision and sign somebody else's name to it. `withoutServerOwnedFields`
+  strips the audit columns in the service as well as through the pipe's
+  whitelist, because the guarantee is clinical and should not rest on an option
+  configured in another file. Three rules, all tested: declaring sets the
+  divisor to 1; withdrawing clears the marker and **leaves the divisor alone**
+  (withdrawing a statement is not stating the real count, and blanking it would
+  make a priced item unpriceable via a checkbox); and moving the divisor off 1
+  clears the marker **even when the payload never mentions it**.
+- **The existing-row read is CONDITIONAL** — only when the payload could
+  disturb the pair. Every update paying for a lookup it does not use is a cost
+  that shows up on an import, not on one form.
+- **`withClearedDefaults` NOW COVERS `stockUnitId` AND `quantityPerStockUnit`.**
+  The Phase 1G trap one section down, and it costs money rather than a dose:
+  antd's `allowClear` returns `undefined`, `JSON.stringify` drops it, the API
+  reads a missing key as "leave it alone" — so a clinic withdrawing a divisor
+  would be told "saved" while the old number kept dividing their quantities.
+  `dispensedWhole` is deliberately NOT in that list: it is a boolean the form
+  always sends, and `false` IS the withdrawal.
+- **THE STOCK UNIT IS NOW TENANCY-CHECKED like the other three FKs on the row.**
+  FK triggers are not subject to RLS, so a cross-tenant id lands and reads back
+  as nothing — and this is the id the divisor hangs off, so a silent failure
+  there is a pricing failure.
+
+**ON D2 — A PREMISE THE OWNER SHOULD RE-EXAMINE, flagged not overridden.**
+D2 says panel pricing is stored ahead of billing logic and the screen must say
+"recorded — not yet used in billing". **For ITEM overrides that is not true
+today.** `resolveSourcedPrice` (D-093, the one pricing truth, called by both
+`invoice.service.ts` and `invoice-draft.ts`) reads `PanelPriceOverride` for any
+prescription line on a panel visit. A price set on this screen changes what a
+panel patient is billed on the next invoice raised. Printing the caveat would
+be a **false reassurance about money**, which is the failure D2 exists to
+prevent — so the screen says the true thing: "Applies to invoices raised from
+now on; lines already billed keep the price they were billed at." If the owner
+wants the caveat, the thing to change is the BILLING path, not the sentence.
+
+- **The panel table shows what is CHARGED, not only what is stored.** The
+  effective price comes from `resolveContractualPrice` — the invoice line's own
+  function — and the rule behind it is named in words (this panel's own price /
+  cash + panel markup / cash price), with the markup's number beside it. An
+  override box alone would leave the clinic to work out what a panel with a
+  blanket markup and no override actually charges. **Clearing DELETES the
+  override rather than storing zero** — zero is a real and different statement.
+
+- **Stock Control is TWO things and the screen says so.** "Track batch &
+  expiry" is a fact about the ITEM (defaults TRUE — a medicine whose expiry
+  nobody was asked for expires while the near-expiry screen stays quiet). The
+  low-stock level belongs to a BRANCH's shelf (`StockLevel` is keyed by clinic),
+  so it has its own control, its own save, and it names the branch. One number
+  that looked item-wide would leave every other branch with no reorder alert.
+
+**DEFAULT DISPENSE QUANTITY — and a wrong turn worth recording.** The first
+attempt made a stated quantity suppress the auto-compute entirely. It broke two
+tests and deserved to: live recalculation is deliberate, most medicines state a
+default, and where a course can be multiplied out the computed number IS the
+better answer. **The real defect was narrower** — the clinic's own number
+vanished without trace, set on this screen and silently replaced,
+indistinguishable from never having been set. It is now NAMED under the
+quantity box whenever the box shows something else, with a link to use it.
+Offered, not applied. `quantityFromItem` holds it; the precedence is unchanged.
+
+**INDICATION is now the clinic's own catalogue, as tags — and STILL TEXT.** A
+prescription copies the indication at prescribe-time for historical stability,
+so making the item's field a reference means making the prescription's one too
+and back-filling every prescription ever written. **Renaming a preset does not
+rewrite items that copied its label.** Same trade-off as the free-text dosage
+trio, same reason; it belongs with whoever retires those columns' last reader.
+
+**MEASURED:** 1538 API tests, 1491 web tests, both typechecks, both production
+builds. Not run here: the e2e suite (no PostgreSQL in this container).
+
 ## THE PRICING FIX — STEP 1, THE AUDIT. **THE DIVISOR IS MOSTLY NOT THERE.**
 
 **Run it:** `cd apps/api && npx tsx prisma/pricing-divisor-audit.ts`.
