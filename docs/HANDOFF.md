@@ -771,6 +771,60 @@ trio, same reason; it belongs with whoever retires those columns' last reader.
 **MEASURED:** 1538 API tests, 1491 web tests, both typechecks, both production
 builds. Not run here: the e2e suite (no PostgreSQL in this container).
 
+## INVENTORY PACKAGE — PIECE 3 DONE (2026-08-18). The onboarding path, and D4.
+
+**`GET /items/csv-template` + `POST /items/csv-import`.** The file arrives as
+TEXT in a JSON body rather than multipart: a few hundred rows of ASCII the
+browser can read, and a multipart parser on this API for one screen would be a
+dependency and an upload-size policy nobody asked for.
+
+- **`DISPENSED_WHOLE` IS A VALUE THE QUANTITY COLUMN TAKES.** The spreadsheet
+  is exactly where somebody fills 1 down a column of 128 rows. A bare 1 imports
+  as a NUMBER and stays on the worklist; the word imports as a STATEMENT with
+  an author and a date. The template's second example row is that case, because
+  nobody would guess it from a header. Spellings accepted:
+  `DISPENSED_WHOLE`, `dispensed whole`, `Dispensed-Whole`.
+- **NOTHING IS WRITTEN WHILE ANYTHING IS WRONG.** A partially-imported file is
+  the worst available outcome — the clinic cannot tell which rows landed, and
+  the remedy (fix, re-upload) is safe anyway because rows match by NAME. So the
+  whole file validates first and every problem reports at once, keyed to the
+  line number the SPREADSHEET shows (header counted). One pass through the file
+  instead of one round trip per mistake. The screen checks (`dryRun`) before it
+  applies, and Apply is only enabled on a clean check.
+- **A BLANK CELL MEANS "I did not fill this in", never "delete this".** In a
+  200-row template most cells are blank; reading blank as a clear makes a
+  partially-filled upload a bulk wipe. An unrecognised yes/no word is REFUSED
+  rather than read as no — guessing there switches off expiry tracking on a
+  medicine.
+- **A MISSING DIVISOR IS COUNTED, NOT REFUSED.** Refusing would keep the
+  medicine out of the catalogue entirely to protect a number already missing on
+  149 rows. The row imports and the screen says how many landed on the worklist.
+- **ONE CELL WRITES BOTH HOMES** for dose unit, frequency, duration and
+  consumption method — the structured 1F reference AND the legacy free-text
+  column beside it, both of which are still read (`defaultsFromItem` is the
+  fallback path). Two columns meaning the same thing get filled inconsistently.
+  **1F's `defaultQuantity` is deliberately NOT in the template**:
+  `seed:standard-rx` sets it well and a second "how many to hand over" column
+  beside Default Dispense Quantity is a trap.
+- An unresolved name names the SETTING where it would be added. Two existing
+  items with the same name make "update by name" ambiguous and are refused
+  rather than edited at random.
+
+**D4 IS TESTED AGAINST THE SEEDER'S ACTUAL PREDICATE, not a description of it.**
+Every row the upload touches gets `defaultsFromSeed` cleared — **including rows
+carrying no dosage instruction at all**, because the flag is the seeder's only
+signal and whether a clinic's curation is protected must not depend on which
+columns of the template they filled. The end-to-end claim (upload → re-run
+`seed:standard-rx` → clinic values stand) is asserted by copying
+`seed-standard-prescriptions.ts`'s `clinicEdited` rule into the test, so it
+FAILS if the two ever stop agreeing. **Worth knowing:** that predicate is
+`hasDefaults && !defaultsFromSeed`, so clearing the flag only protects a row
+that also HAS 1F defaults — which is correct (a row with none has nothing for
+the seeder to overwrite) but is the sentence to re-read if the rule ever moves.
+
+**MEASURED:** 1586 API tests, 1500 web tests, both typechecks, both production
+builds. Not run here: the e2e suite (no PostgreSQL in this container).
+
 ## THE PRICING FIX — STEP 1, THE AUDIT. **THE DIVISOR IS MOSTLY NOT THERE.**
 
 **Run it:** `cd apps/api && npx tsx prisma/pricing-divisor-audit.ts`.
