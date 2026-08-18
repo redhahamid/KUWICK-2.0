@@ -1280,6 +1280,17 @@ model Item {
   // A CHECK constraint holds the pair together: the marker cannot survive a
   // later edit that sets the divisor to 30. Marking it whole and then
   // counting it in thirties is not a state the clinic can be left in.
+  // ---- INVENTORY PIECE 2: Stock Control -----------------------------------
+  //
+  // Whether receiving this item asks for a batch number and an expiry date.
+  //
+  // Defaults TRUE, which is the safe direction: a medicine whose expiry
+  // nobody was asked for is a medicine that expires on the shelf unnoticed,
+  // and the near-expiry screen goes quiet about it. Turned off for the things
+  // that genuinely have no expiry — arm slings, a tumbler, the four "Item"
+  // rows the audit already identified as not medicines.
+  tracksBatchExpiry Boolean @default(true) @map("tracks_batch_expiry")
+
   /// When somebody at this clinic declared this item dispensed whole.
   dispensedWholeAt        DateTime? @map("dispensed_whole_at")
   /// Who declared it. Plain staff-id audit column, the same convention as

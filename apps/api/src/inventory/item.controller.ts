@@ -1,11 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ItemService } from './item.service';
+import { ItemPanelPricingService } from './item-panel-pricing.service';
 import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
 
 @Controller('items')
 export class ItemController {
-  constructor(private readonly itemService: ItemService) {}
+  constructor(
+    private readonly itemService: ItemService,
+    private readonly panelPricing: ItemPanelPricingService,
+  ) {}
 
   @Post()
   create(@Body() dto: CreateItemDto) {
@@ -51,6 +55,26 @@ export class ItemController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.itemService.findById(id);
+  }
+
+  /**
+   * Panel pricing, seen from the item. The same `PanelPriceOverride` table the
+   * Panel detail screen writes — read the other way round, because "what does
+   * each panel pay for THIS medicine" cannot be answered from a panel-keyed
+   * screen without opening every panel in turn.
+   */
+  @Get(':id/panel-pricing')
+  panelPricingFor(@Param('id') id: string) {
+    return this.panelPricing.listForItem(id);
+  }
+
+  @Put(':id/panel-pricing/:panelClinicId')
+  setPanelPricing(
+    @Param('id') id: string,
+    @Param('panelClinicId') panelClinicId: string,
+    @Body() body: { overridePrice?: number | null },
+  ) {
+    return this.panelPricing.setForItem(id, panelClinicId, body?.overridePrice ?? null);
   }
 
   @Patch(':id')

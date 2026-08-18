@@ -1,6 +1,6 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
-import { currentTenantId } from '../core/tenant-context';
+import { currentStaffId, currentTenantId } from '../core/tenant-context';
 import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
 import { touchesStandardPrescription } from './dto/standard-prescription-defaults.dto';
@@ -21,8 +21,14 @@ export class ItemService {
 
   async create(dto: CreateItemDto) {
     await this.assertStandardPrescriptionIsReal(dto);
+    const rest = this.withoutServerOwnedFields(dto);
     return this.prisma.item.create({
-      data: { ...dto, tenantId: currentTenantId(), ...this.ownershipOf(dto) },
+      data: {
+        ...rest,
+        tenantId: currentTenantId(),
+        ...this.ownershipOf(dto),
+        ...this.dispensedWholeOf(dto, null),
+      },
     });
   }
 
@@ -143,7 +149,89 @@ export class ItemService {
 
   async update(id: string, dto: UpdateItemDto) {
     await this.assertStandardPrescriptionIsReal(dto);
-    return this.prisma.item.update({ where: { id }, data: { ...dto, ...this.ownershipOf(dto) } });
+    // Read the row back ONLY when the payload could disturb the dispensed-whole
+    // pair. Most edits are a price or a dosage default and have nothing to do
+    // with it; making every update pay for a lookup it does not use is the kind
+    // of cost that gets noticed on a catalogue import, not on one form.
+    const existing =
+      dto.dispensedWhole !== undefined || dto.quantityPerStockUnit !== undefined
+        ? await this.prisma.item.findUnique({
+            where: { id },
+            select: { quantityPerStockUnit: true, dispensedWholeAt: true },
+          })
+        : null;
+
+    const rest = this.withoutServerOwnedFields(dto);
+    return this.prisma.item.update({
+      where: { id },
+      data: { ...rest, ...this.ownershipOf(dto), ...this.dispensedWholeOf(dto, existing) },
+    });
+  }
+
+  /**
+   * The three keys a caller never gets to write.
+   *
+   * `whitelist: true` on the global ValidationPipe already strips anything the
+   * DTO does not declare, and that is the first line. This is the second, and
+   * it is here because the guarantee is a CLINICAL one — who said this, and
+   * when — and it should not depend on a pipe option configured in another
+   * file. `dispensedWhole` goes too: it is the API's word for the decision,
+   * not a column, and Prisma would reject it.
+   */
+  private withoutServerOwnedFields<T extends object>(dto: T) {
+    const {
+      dispensedWhole: _declaration,
+      dispensedWholeAt: _at,
+      dispensedWholeByStaffId: _by,
+      ...rest
+    } = dto as T & { dispensedWhole?: unknown; dispensedWholeAt?: unknown; dispensedWholeByStaffId?: unknown };
+    return rest;
+  }
+
+  /**
+   * D1 — "DISPENSED WHOLE" IS A STATEMENT, AND THE SERVER OWNS ITS AUTHOR AND
+   * ITS DATE.
+   *
+   * The client sends a BOOLEAN. It never sends `dispensedWholeAt`, because a
+   * caller that could would be able to backdate a clinical decision, and an
+   * author the browser picks is not attribution.
+   *
+   * Three rules, and all three are about the pair staying honest:
+   *
+   *   - Declaring it sets the divisor to 1 as well. The CHECK constraint
+   *     `items_dispensed_whole_means_one` refuses the row otherwise, and being
+   *     refused by PostgreSQL is not an explanation anybody can act on.
+   *   - UNdeclaring it clears the marker and LEAVES THE DIVISOR ALONE. Somebody
+   *     withdrawing a statement has not said what the real count is, and
+   *     blanking the number would take an item that was priced and make it
+   *     unpriceable as a side effect of a checkbox.
+   *   - Moving the divisor to anything but 1 clears the marker, whether or not
+   *     the payload mentions it. "Handed over whole" and "counted in thirties"
+   *     cannot both be true, and the row that says both is the one the
+   *     constraint exists to prevent — this is what stops it ever reaching it.
+   */
+  private dispensedWholeOf(
+    dto: { dispensedWhole?: boolean; quantityPerStockUnit?: number | null },
+    existing: { quantityPerStockUnit: number | null; dispensedWholeAt: Date | null } | null,
+  ) {
+    if (dto.dispensedWhole === true) {
+      return {
+        quantityPerStockUnit: 1,
+        dispensedWholeAt: new Date(),
+        dispensedWholeByStaffId: currentStaffId() ?? null,
+      };
+    }
+
+    if (dto.dispensedWhole === false) {
+      return { dispensedWholeAt: null, dispensedWholeByStaffId: null };
+    }
+
+    // Not mentioned. The marker only moves if the divisor moved out from
+    // under it.
+    const stillWhole = existing?.dispensedWholeAt != null;
+    const divisorMoved =
+      dto.quantityPerStockUnit !== undefined && dto.quantityPerStockUnit !== 1;
+    return stillWhole && divisorMoved ? { dispensedWholeAt: null, dispensedWholeByStaffId: null } : {};
   }
 
   /**
@@ -177,6 +265,7 @@ export class ItemService {
     defaultDoseUnitId?: string | null;
     defaultFrequencyId?: string | null;
     defaultConsumptionMethodId?: string | null;
+    stockUnitId?: string | null;
   }) {
     const tenantId = currentTenantId();
     const checks: Array<[string, Promise<{ id: string } | null>]> = [];
@@ -207,6 +296,21 @@ export class ItemService {
         }),
       ]);
     }
+    // PIECE 2 — the stock unit is the fourth FK on this row and it has exactly
+    // the same hole: a cross-tenant id passes the constraint (FK triggers are
+    // not subject to RLS) and then reads back as nothing, so the form opens
+    // with the packaging blank and no error anywhere. It is also the id the
+    // DIVISOR hangs off, which makes a silent failure here a pricing failure.
+    if (dto.stockUnitId) {
+      checks.push([
+        'Stock unit',
+        this.prisma.stockUnitRef.findFirst({
+          where: { id: dto.stockUnitId, tenantId, active: true },
+          select: { id: true },
+        }),
+      ]);
+    }
+
     if (checks.length === 0) return;
 
     const found = await Promise.all(checks.map(([, promise]) => promise));

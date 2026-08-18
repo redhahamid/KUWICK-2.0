@@ -4,6 +4,7 @@ import { ItemController } from './item.controller';
 import { ItemService } from './item.service';
 import { ItemCategoryController } from './item-category.controller';
 import { ItemCategoryService } from './item-category.service';
+import { ItemPanelPricingService } from './item-panel-pricing.service';
 import { SupplierController } from './supplier.controller';
 import { SupplierService } from './supplier.service';
 import { StockController } from './stock.controller';
@@ -35,6 +36,7 @@ import { ItemAgeDosageService } from './item-age-dosage.service';
   providers: [
     ItemService,
     ItemCategoryService,
+    ItemPanelPricingService,
     SupplierService,
     StockService,
     ProcurementRequestService,
