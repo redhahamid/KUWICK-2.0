@@ -8,6 +8,7 @@ import {
   SEED_FREQUENCIES,
   SEED_INDICATIONS,
   SEED_STOCK_UNITS,
+  SEED_STOCK_UNIT_MALAY,
 } from './prescription-reference-seed';
 
 // ===========================================================================
@@ -106,6 +107,20 @@ describe('the seeded vocabulary is complete and shaped as specified', () => {
     unique(SEED_CONSUMPTION_METHODS.map((m) => m.methodBilingual));
     unique(SEED_INDICATIONS.map((i) => i.labelEn));
     unique(SEED_STOCK_UNITS);
+  });
+
+  // INVENTORY PIECE 1 — the shelf is read in two languages, and the Malay half
+  // lives in a map beside the list rather than on it. That is the drift this
+  // closes: a unit added to one and not the other would render "99 Strip / "
+  // with nothing after the slash on the screen the stock staff actually use.
+  it('every seeded stock unit has a Malay label, and nothing else does', () => {
+    expect(Object.keys(SEED_STOCK_UNIT_MALAY).sort()).toEqual([...SEED_STOCK_UNITS].sort());
+    for (const [en, ms] of Object.entries(SEED_STOCK_UNIT_MALAY)) {
+      expect(ms.trim()).not.toBe('');
+      // VIAL is VIAL in both languages; everything else is a real translation
+      // rather than the English word copied across to fill the column.
+      if (en !== 'VIAL') expect(ms).not.toBe(en);
+    }
   });
 });
 

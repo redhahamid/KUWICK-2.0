@@ -217,6 +217,7 @@ model Tenant {
   doctorServiceQualifications DoctorServiceQualification[]
   appointments                Appointment[]
   items                       Item[]
+  itemCategories              ItemCategory[]
   suppliers                   Supplier[]
   stockLevels                 StockLevel[]
   stockBatches                StockBatch[]
@@ -1263,6 +1264,29 @@ model Item {
   stockUnitId          String? @map("stock_unit_id")
   quantityPerStockUnit Int?    @map("quantity_per_stock_unit")
 
+  // ---- INVENTORY PIECE 1 (D1): "dispensed whole" is STATED, never inferred --
+  //
+  // A divisor of 1 arrived at by a person saying "this bottle is handed over
+  // whole" and a divisor of 1 sitting in the column because nobody has looked
+  // are the same number and opposite facts. The audit found 149 of 242 rows
+  // with no divisor at all, and the one thing that must not happen is a
+  // curation pass filling them with 1 to clear the worklist.
+  //
+  // So the STATEMENT gets its own storage, exactly as a MIGRATED allergy does:
+  // an author and a moment, nullable, with the bare column beside it. A row
+  // whose quantityPerStockUnit is 1 and whose dispensedWholeAt is NULL is
+  // still NEEDS ATTENTION, because nobody has said anything about it.
+  //
+  // A CHECK constraint holds the pair together: the marker cannot survive a
+  // later edit that sets the divisor to 30. Marking it whole and then
+  // counting it in thirties is not a state the clinic can be left in.
+  /// When somebody at this clinic declared this item dispensed whole.
+  dispensedWholeAt        DateTime? @map("dispensed_whole_at")
+  /// Who declared it. Plain staff-id audit column, the same convention as
+  /// PatientAlert.createdByStaffId — attribution on record without another
+  /// relation into the Staff constellation.
+  dispensedWholeByStaffId String?   @map("dispensed_whole_by_staff_id")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -1308,6 +1332,40 @@ model ItemAgeDosage {
 
   @@index([tenantId, itemId])
   @@map("item_age_dosages")
+}
+
+// INVENTORY PIECE 1 — the clinic's own category list.
+//
+// `Item.category` is a plain string and REMAINS the truth carried on the row:
+// the import writes it, the CSV upload writes it, and every existing reader
+// reads it. This table is a REGISTRY of the names, not a second copy of the
+// fact, and it exists for the three things a string column cannot do:
+//
+//   - ADD a category before any item uses it (a clinic setting up their shelf
+//     names the sections first and files stock into them afterwards);
+//   - RENAME one in a single place, which is a transaction over this row and
+//     every item carrying the old string — a rename that left 40 items
+//     pointing at a name no longer on the list is the drift this avoids;
+//   - DELETE one, refused while any item still carries it. There is no
+//     cascade and no silent re-filing: the guard names the count and the
+//     clinic moves those items first.
+//
+// The screen lists the registry UNION the distinct strings actually in use, so
+// a category that arrived on an imported row without ever being registered
+// still gets a tab. An in-use name nobody can see is worse than an untidy list.
+model ItemCategory {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("item_categories")
 }
 
 model Supplier {
@@ -2577,6 +2635,19 @@ model StockUnitRef {
   tenantId String @map("tenant_id")
 
   name String
+
+  // INVENTORY PIECE 1 — the shelf is read in two languages.
+  //
+  // Kuwick 1.0 prints the stock balance as "99 Strip / Papan", and the staff
+  // who count the shelf read the Malay half. The English name is the
+  // platform's word and stays the identifier (`@@unique([tenantId, name])`);
+  // this is the label beside it.
+  //
+  // Nullable, and deliberately: the 13 SYSTEM units are translated in the
+  // seed, and a unit a clinic adds itself has no translation until somebody
+  // types one. A missing Malay label renders the English name alone rather
+  // than a blank or a machine guess.
+  nameMs String? @map("name_ms")
 
   origin    CatalogOrigin @default(SYSTEM)
   active    Boolean       @default(true)

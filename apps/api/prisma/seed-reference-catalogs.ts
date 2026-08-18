@@ -8,6 +8,7 @@ import {
   SEED_FREQUENCIES,
   SEED_INDICATIONS,
   SEED_STOCK_UNITS,
+  SEED_STOCK_UNIT_MALAY,
 } from '../src/clinical/prescription-reference-seed';
 
 config({ path: join(__dirname, '..', '.env') });
@@ -228,7 +229,10 @@ async function main(): Promise<void> {
 
     const stockUnits = await seedCatalog(
       'stock units',
-      SEED_STOCK_UNITS.map((name) => ({ name })),
+      // The Malay label rides along on create AND on repair, so an existing
+      // SYSTEM row seeded before the column existed picks it up on the next run
+      // rather than needing a backfill nobody would remember to write.
+      SEED_STOCK_UNITS.map((name) => ({ name, nameMs: SEED_STOCK_UNIT_MALAY[name] ?? null })),
       {
         find: (row) =>
           tx.stockUnitRef.findFirst({ where: { tenantId, name: row.name }, select: { id: true, origin: true } }),

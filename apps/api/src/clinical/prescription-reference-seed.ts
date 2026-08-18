@@ -180,3 +180,37 @@ export const SEED_STOCK_UNITS: string[] = [
   'TABLET PER BOX',
   'VIAL',
 ];
+
+/**
+ * INVENTORY PIECE 1 — the Malay half of each stock unit.
+ *
+ * Kuwick 1.0 prints a stock balance as "99 Strip / Papan", and the staff who
+ * physically count the shelf read the second half. The English name stays the
+ * identifier — it is what `@@unique([tenantId, name])` is on and what every
+ * existing row points at — so the translation is a column beside it, seeded
+ * here, rather than a rename that would orphan 13 references.
+ *
+ * A SEPARATE map rather than a field on `SEED_STOCK_UNITS`, because that array
+ * is a plain `string[]` that four call sites and two specs already treat as
+ * one; the drift a separate map risks is closed by the spec that asserts every
+ * seeded unit appears here and nothing else does.
+ *
+ * `PAPAN` for strip, `BIJI` for a loose piece, `KEPING` for a sheet: the
+ * clinic's own import data uses these words (the source pack strings include
+ * "10 BIJI / STRIP"), so they are the shelf's vocabulary and not a dictionary's.
+ */
+export const SEED_STOCK_UNIT_MALAY: Record<string, string> = {
+  'TABLET PER STRIP': 'TABLET PER PAPAN',
+  'TABLET PER BOTTLE': 'TABLET PER BOTOL',
+  BOTTLE: 'BOTOL',
+  'TAB PER PACK': 'TAB PER PEKET',
+  'SHEETS PER PACK': 'KEPING PER PEKET',
+  'SACHET PER PACK': 'SASET PER PEKET',
+  'AMPULE PER PACK': 'AMPUL PER PEKET',
+  AMPULE: 'AMPUL',
+  BOX: 'KOTAK',
+  'PATCH PER BOX': 'TAMPAL PER KOTAK',
+  'SACHET PER BOX': 'SASET PER KOTAK',
+  'TABLET PER BOX': 'TABLET PER KOTAK',
+  VIAL: 'VIAL',
+};
