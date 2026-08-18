@@ -9,7 +9,13 @@ function createService() {
     stockMovement: { create: jest.fn() },
     stockLevel: { upsert: jest.fn(), findUnique: jest.fn() },
     item: { findUnique: jest.fn() },
+    $transaction: undefined as unknown,
   } as unknown as TenantScopedPrismaClient;
+  // The adjust path runs its movement and its level in one transaction; the
+  // mock hands the same client back so both writes land on the spies above.
+  (prisma as unknown as { $transaction: unknown }).$transaction = jest.fn(
+    (fn: (c: TenantScopedPrismaClient) => unknown) => fn(prisma),
+  );
   return { service: new StockService(prisma), prisma };
 }
 
@@ -195,5 +201,58 @@ describe('StockService.performStockTake', () => {
       countedQuantity: 5,
       variance: 5,
     });
+  });
+});
+
+describe('StockService.adjust — the quick +/- on the inventory list', () => {
+  it('writes an ADJUSTMENT carrying the reason, NOT a goods receipt', async () => {
+    // quickAdd would create a StockBatch and a GOODS_RECEIVED movement: stock
+    // that arrived from a supplier nobody named, with no expiry, landing in
+    // the near-expiry screen. A person correcting 40 to 41 received nothing.
+    const { service, prisma } = createService();
+    (prisma.item.findUnique as jest.Mock).mockResolvedValue({ id: 'item-1' });
+    (prisma.stockLevel.upsert as jest.Mock).mockResolvedValue({ id: 'level-1' });
+
+    await withTenant(() =>
+      service.adjust({ clinicId: 'clinic-1', itemId: 'item-1', quantityDelta: 1, reason: 'Shelf count' }),
+    );
+
+    expect(prisma.stockBatch.create).not.toHaveBeenCalled();
+    expect(prisma.stockMovement.create).toHaveBeenCalledWith({
+      data: {
+        tenantId: 'test-tenant',
+        clinicId: 'clinic-1',
+        itemId: 'item-1',
+        movementType: StockMovementType.ADJUSTMENT,
+        quantityDelta: 1,
+        referenceType: 'InventoryQuickAdjust',
+        notes: 'Shelf count',
+      },
+    });
+  });
+
+  it('takes stock off the shelf on a negative delta and lets the balance go under', async () => {
+    // D-020 unchanged: dispensing is never blocked by a system count that has
+    // not caught up, and admin reconciles from GET /stock/negative-stock.
+    const { service, prisma } = createService();
+    (prisma.item.findUnique as jest.Mock).mockResolvedValue({ id: 'item-1' });
+    (prisma.stockLevel.upsert as jest.Mock).mockResolvedValue({ id: 'level-1' });
+
+    await withTenant(() =>
+      service.adjust({ clinicId: 'clinic-1', itemId: 'item-1', quantityDelta: -3, reason: 'Broken vial' }),
+    );
+
+    expect(prisma.stockLevel.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ update: { quantityOnHand: { increment: -3 } } }),
+    );
+  });
+
+  it('refuses an item that is not this clinic\'s', async () => {
+    const { service, prisma } = createService();
+    (prisma.item.findUnique as jest.Mock).mockResolvedValue(null);
+    await expect(
+      withTenant(() => service.adjust({ clinicId: 'c', itemId: 'gone', quantityDelta: 1, reason: 'x' })),
+    ).rejects.toThrow('Item not found');
+    expect(prisma.stockMovement.create).not.toHaveBeenCalled();
   });
 });

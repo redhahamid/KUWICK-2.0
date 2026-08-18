@@ -1,5 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { StockMovementType } from '@prisma/client';
+import { AdjustStockDto } from './dto/adjust-stock.dto';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { currentTenantId } from '../core/tenant-context';
 import { SetStockMinThresholdDto } from './dto/set-stock-min-threshold.dto';
@@ -146,6 +147,55 @@ export class StockService {
   // movement + stock-level writes, just without a PO/GRN to link against;
   // referenceType/referenceId point at the batch itself so the movement
   // ledger still has a traceable source.
+  /**
+   * THE QUICK +/− ON THE INVENTORY LIST — a correction, recorded as one.
+   *
+   * Deliberately NOT `quickAdd`. That writes a StockBatch and a GOODS_RECEIVED
+   * movement, which asserts stock arrived from a supplier; doing that with no
+   * supplier, no batch number and no expiry produces receipts nobody can
+   * reconcile and batches with no expiry date polluting the near-expiry
+   * screen. Somebody tapping + because the shelf says 41 and the screen says
+   * 40 is correcting the record, and ADJUSTMENT is the entry that says so —
+   * the same movement type the stock-take writes, for the same reason.
+   *
+   * The balance is allowed to go negative, unchanged from D-020: front-line
+   * staff dispense before the system catches up, and admin reconciles from
+   * GET /stock/negative-stock rather than being blocked at the shelf.
+   *
+   * One transaction. A movement without the level it justifies is a ledger
+   * that does not add up, and the ledger is the thing being protected here.
+   */
+  async adjust(dto: AdjustStockDto) {
+    const tenantId = currentTenantId();
+    const item = await this.prisma.item.findUnique({ where: { id: dto.itemId }, select: { id: true } });
+    if (!item) throw new NotFoundException('Item not found');
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.stockMovement.create({
+        data: {
+          tenantId,
+          clinicId: dto.clinicId,
+          itemId: dto.itemId,
+          movementType: StockMovementType.ADJUSTMENT,
+          quantityDelta: dto.quantityDelta,
+          referenceType: 'InventoryQuickAdjust',
+          notes: dto.reason,
+        },
+      });
+
+      return tx.stockLevel.upsert({
+        where: { tenantId_clinicId_itemId: { tenantId, clinicId: dto.clinicId, itemId: dto.itemId } },
+        create: {
+          tenantId,
+          clinicId: dto.clinicId,
+          itemId: dto.itemId,
+          quantityOnHand: dto.quantityDelta,
+        },
+        update: { quantityOnHand: { increment: dto.quantityDelta } },
+      });
+    });
+  }
+
   async quickAdd(dto: QuickAddStockDto) {
     const tenantId = currentTenantId();
 

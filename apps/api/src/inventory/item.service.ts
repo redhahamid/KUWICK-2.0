@@ -5,6 +5,7 @@ import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
 import { touchesStandardPrescription } from './dto/standard-prescription-defaults.dto';
 import { itemSearchClauses } from './item-search';
+import { CatalogueCounts, CatalogueRow, catalogueCounts, catalogueRow } from './item-catalogue';
 
 /**
  * The catalogue page size. 20 matches what a search field can usefully show
@@ -60,6 +61,70 @@ export class ItemService {
         ? { take: Math.min(take ?? DEFAULT_CATALOGUE_TAKE, MAX_CATALOGUE_TAKE) }
         : {}),
     });
+  }
+
+  /**
+   * THE INVENTORY MANAGEMENT LIST — the whole catalogue, shaped for the screen.
+   *
+   * Separate from `findAll`, which is the PRESCRIBING search: bounded, twenty
+   * rows, no stock unit and no divisor. This one is the management page, which
+   * legitimately lists everything and needs three things that search does not:
+   * the packaging words in both languages, the effective divisor with its
+   * provenance, and the pricing worklist's count.
+   *
+   * The count is computed over the UNFILTERED catalogue and returned beside
+   * the filtered rows. That is the point of it: it answers "how much curation
+   * is left at this clinic", and a number that shrank when somebody typed in
+   * the search box would answer a question nobody asked.
+   *
+   * `attention` filtering happens here rather than in SQL, because the rule is
+   * `divisorFacts` and there is going to be exactly one of those. A WHERE
+   * clause encoding "coalesce(qps, upp) IS NULL OR (= 1 AND whole IS NULL)" is
+   * the second implementation, and the first one to drift.
+   */
+  async catalogue(options: {
+    search?: string;
+    category?: string;
+    attentionOnly?: boolean;
+    activeOnly?: boolean;
+    clinicId?: string;
+  }): Promise<{ rows: CatalogueRow[]; counts: CatalogueCounts }> {
+    const term = options.search?.trim();
+    const items = await this.prisma.item.findMany({
+      orderBy: { name: 'asc' },
+      include: {
+        stockUnit: { select: { id: true, name: true, nameMs: true, active: true } },
+        stockLevels: { select: { clinicId: true, quantityOnHand: true, minThreshold: true } },
+      },
+    });
+
+    const all = items.map((item) => catalogueRow(item, options.clinicId));
+    const counts = catalogueCounts(all);
+
+    // A second, id-only query rather than filtering the rows already in hand:
+    // `itemSearchClauses` is the one definition of what a search matches (name,
+    // code, and the clinic's own Malay group tag), and reimplementing it in
+    // JavaScript to save a cheap round trip is how the two start disagreeing.
+    const searchIds = term
+      ? new Set(
+          (
+            await this.prisma.item.findMany({
+              where: { OR: itemSearchClauses(term) },
+              select: { id: true },
+            })
+          ).map((i) => i.id),
+        )
+      : null;
+
+    const rows = all.filter((row) => {
+      if (options.activeOnly && !row.active) return false;
+      if (searchIds && !searchIds.has(row.id)) return false;
+      if (options.category && (row.category ?? '').trim() !== options.category) return false;
+      if (options.attentionOnly && row.attention === null) return false;
+      return true;
+    });
+
+    return { rows, counts };
   }
 
   async findById(id: string) {

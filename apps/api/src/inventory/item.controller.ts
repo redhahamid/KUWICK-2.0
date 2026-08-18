@@ -26,6 +26,28 @@ export class ItemController {
     );
   }
 
+  /**
+   * DECLARED BEFORE `:id`, and it has to be: Nest matches routes in the order
+   * they are declared, so `/items/catalogue` would otherwise arrive at
+   * `findOne('catalogue')` and 404 on an item id nobody asked for.
+   */
+  @Get('catalogue')
+  catalogue(
+    @Query('search') search?: string,
+    @Query('category') category?: string,
+    @Query('attentionOnly') attentionOnly?: string,
+    @Query('activeOnly') activeOnly?: string,
+    @Query('clinicId') clinicId?: string,
+  ) {
+    return this.itemService.catalogue({
+      search,
+      category,
+      attentionOnly: attentionOnly === 'true',
+      activeOnly: activeOnly === 'true',
+      clinicId,
+    });
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.itemService.findById(id);

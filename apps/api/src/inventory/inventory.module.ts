@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { CoreModule } from '../core/core.module';
 import { ItemController } from './item.controller';
 import { ItemService } from './item.service';
+import { ItemCategoryController } from './item-category.controller';
+import { ItemCategoryService } from './item-category.service';
 import { SupplierController } from './supplier.controller';
 import { SupplierService } from './supplier.service';
 import { StockController } from './stock.controller';
@@ -23,6 +25,7 @@ import { ItemAgeDosageService } from './item-age-dosage.service';
   imports: [CoreModule],
   controllers: [
     ItemController,
+    ItemCategoryController,
     SupplierController,
     StockController,
     ProcurementRequestController,
@@ -31,6 +34,7 @@ import { ItemAgeDosageService } from './item-age-dosage.service';
   ],
   providers: [
     ItemService,
+    ItemCategoryService,
     SupplierService,
     StockService,
     ProcurementRequestService,

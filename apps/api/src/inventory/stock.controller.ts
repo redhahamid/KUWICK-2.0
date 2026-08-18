@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { StockService } from './stock.service';
 import { SetStockMinThresholdDto } from './dto/set-stock-min-threshold.dto';
+import { AdjustStockDto } from './dto/adjust-stock.dto';
 import { QuickAddStockDto } from './dto/quick-add-stock.dto';
 import { StockTakeDto } from './dto/stock-take.dto';
 
@@ -46,6 +47,11 @@ export class StockController {
   @Post('quick-add')
   quickAdd(@Body() dto: QuickAddStockDto) {
     return this.stockService.quickAdd(dto);
+  }
+
+  @Post('adjust')
+  adjust(@Body() dto: AdjustStockDto) {
+    return this.stockService.adjust(dto);
   }
 
   @Post('stock-take')
