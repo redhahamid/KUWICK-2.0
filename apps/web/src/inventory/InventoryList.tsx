@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Button, Empty, Input, InputNumber, message, Modal, Space, Switch, Table, Tabs, Tag, Tooltip, Typography } from 'antd';
-import { MinusOutlined, PlusOutlined, SettingOutlined, WarningFilled } from '@ant-design/icons';
+import { MinusOutlined, PlusOutlined, SettingOutlined, UploadOutlined, WarningFilled } from '@ant-design/icons';
 import { CatalogueRow, ItemCategory } from './types';
 import { useAdjustStock, useItemCatalogue, useItemCategories } from './hooks/useItemCatalogue';
 import { useUpdateItem } from './hooks/useItems';
 import { ManageCategoriesModal } from './ManageCategoriesModal';
+import { ImportInventoryModal } from './ImportInventoryModal';
 import { stockBalanceLabel } from './stockUnitLabel';
 import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { ApiError } from '../core/api-client';
@@ -52,6 +53,7 @@ export function InventoryList({ onEdit, onAdd }: InventoryListProps) {
   const [category, setCategory] = useState<string>(ALL);
   const [attentionOnly, setAttentionOnly] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [adjusting, setAdjusting] = useState<{ row: CatalogueRow; sign: 1 | -1 } | null>(null);
 
   const { clinicId } = useClinicFilter();
@@ -99,6 +101,11 @@ export function InventoryList({ onEdit, onAdd }: InventoryListProps) {
         </Button>
         <Button icon={<SettingOutlined />} onClick={() => setManageOpen(true)}>
           Manage Categories
+        </Button>
+        {/* The onboarding path. 149 of 242 medicines need a divisor stated;
+            one at a time through the form is 149 form opens. */}
+        <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>
+          Import / Template
         </Button>
         {/*
           The worklist, at rest, whether or not the filter is on. A clinic that
@@ -248,6 +255,7 @@ export function InventoryList({ onEdit, onAdd }: InventoryListProps) {
       />
 
       <ManageCategoriesModal open={manageOpen} onClose={() => setManageOpen(false)} />
+      <ImportInventoryModal open={importOpen} onClose={() => setImportOpen(false)} />
       <QuickAdjustModal state={adjusting} clinicId={clinicId} onClose={() => setAdjusting(null)} />
     </>
   );

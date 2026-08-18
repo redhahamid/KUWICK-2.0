@@ -1,6 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { ItemService } from './item.service';
 import { ItemPanelPricingService } from './item-panel-pricing.service';
+import { InventoryImportService } from './inventory-import.service';
+import { inventoryCsvTemplate } from './inventory-csv';
 import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
 
@@ -9,6 +12,7 @@ export class ItemController {
   constructor(
     private readonly itemService: ItemService,
     private readonly panelPricing: ItemPanelPricingService,
+    private readonly importer: InventoryImportService,
   ) {}
 
   @Post()
@@ -50,6 +54,32 @@ export class ItemController {
       activeOnly: activeOnly === 'true',
       clinicId,
     });
+  }
+
+  /**
+   * The template, as CSV text. Declared before `:id` for the same reason
+   * `catalogue` is.
+   */
+  @Get('csv-template')
+  csvTemplate(@Res() res: Response) {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="kuwick-inventory-template.csv"');
+    res.send(inventoryCsvTemplate());
+  }
+
+  /**
+   * The upload. `dryRun` is what the screen calls first: the clinic sees every
+   * problem in the file before anything is written, which is one pass through
+   * the spreadsheet instead of one round trip per mistake.
+   *
+   * The CSV arrives as TEXT in a JSON body rather than as multipart. The file
+   * is a few hundred rows of ASCII, the browser can read it, and adding a
+   * multipart parser to this API for one screen would be a dependency and an
+   * upload-size policy nobody has asked for.
+   */
+  @Post('csv-import')
+  csvImport(@Body() body: { csv?: string; dryRun?: boolean }) {
+    return this.importer.import(body?.csv ?? '', { dryRun: body?.dryRun === true });
   }
 
   @Get(':id')

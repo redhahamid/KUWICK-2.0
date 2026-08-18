@@ -5,6 +5,7 @@ import { ItemService } from './item.service';
 import { ItemCategoryController } from './item-category.controller';
 import { ItemCategoryService } from './item-category.service';
 import { ItemPanelPricingService } from './item-panel-pricing.service';
+import { InventoryImportService } from './inventory-import.service';
 import { SupplierController } from './supplier.controller';
 import { SupplierService } from './supplier.service';
 import { StockController } from './stock.controller';
@@ -37,6 +38,7 @@ import { ItemAgeDosageService } from './item-age-dosage.service';
     ItemService,
     ItemCategoryService,
     ItemPanelPricingService,
+    InventoryImportService,
     SupplierService,
     StockService,
     ProcurementRequestService,
