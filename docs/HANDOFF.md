@@ -615,6 +615,81 @@ against the FULL 768 — Piece B's sticky bar has to fit inside that number,
 never be subtracted from it first. The `rowCount > 0` guard stays first on
 every case (the vacuous-pass trap below).
 
+## THE INVENTORY PACKAGE — PIECE 1 DONE (2026-08-18). The list is the worklist.
+
+**FOUR DECISIONS THE OWNER FIXED AT THE STEP-1 BOUNDARY, and they are not open:**
+
+- **D1. "Dispensed whole" is STORED, never inferred from a 1.** `unitsPerPack`
+  /`quantityPerStockUnit` = 1 PLUS `dispensedWholeAt` + `dispensedWholeByStaffId`
+  — the same shape a MIGRATED allergy uses. A bare 1 is never enough.
+- **D2. Panel pricing is stored ahead of billing logic**, and the screen must
+  SAY so ("recorded — not yet used in billing") until a bill consumes it.
+- **D3. Delete on an inventory row is DEACTIVATE.** Items are referenced by
+  prescriptions and invoice lines. The active toggle is the control; there is
+  no hard delete and no route for one.
+- **D4. A clinic's CSV upload clears `defaultsFromSeed` on every row it
+  touches**, so `seed:standard-rx` can never overwrite their curation. Tested
+  explicitly: upload → re-run seeder → clinic values stand.
+
+**WHAT PIECE 1 BUILT.**
+
+- **`divisorFacts` (`apps/api/src/inventory/dispensing-divisor.ts`) is the ONE
+  reader of the divisor.** Clinic over import (1E — only they know whether
+  their strips hold 10 or 12); zero and negatives treated as not-stated rather
+  than trusted; and the worklist rule in one function, because the list, the
+  form and Piece 4's formula are three callers and three copies of it is three
+  chances for the screen and the bill to disagree.
+- **THE WORKLIST RULE, and the one number worth knowing:** a row needs
+  attention when it has NO divisor, or when the divisor is 1 and nobody has
+  declared the item dispensed whole. The second half applies to an
+  IMPORT-parsed 1 as well — a pack string is not a person — and it costs
+  **exactly one row** across the current 242-row catalogue. It is there for the
+  curation pass, where the temptation is to clear 149 blanks by typing 1.
+- **A CHECK CONSTRAINT holds the marker to a divisor of 1** (`items_dispensed_whole_means_one`).
+  The API clears the marker on a divisor change; the constraint is what refuses
+  the row if it ever stops doing so.
+- **`GET /items/catalogue`** — the MANAGEMENT list, separate from the
+  prescribing search on purpose (that one is bounded to 20 rows and carries no
+  stock unit and no divisor). The `attention` filter is applied in JavaScript
+  over `divisorFacts` rather than as a WHERE clause: a SQL encoding of
+  "coalesce(qps, upp) IS NULL OR (= 1 AND whole IS NULL)" is the second
+  implementation of the rule and the first to drift.
+- **THE COUNT IS THE CLINIC'S TOTAL and does not move with the filters.** Over
+  ACTIVE rows only — a deactivated item cannot be dispensed, so it is not
+  outstanding work. The chip shows AT REST, before anybody opens the filter,
+  because a count that appeared only once you went looking would let the
+  149-row gap ship in silence.
+- **`stock_units.name_ms`, and one derivation for both languages.** The balance
+  reads "99 Strip / Papan". The stored unit is the FULL name ("TABLET PER
+  STRIP") because that is what makes the divisor unambiguous; the container is
+  taken off the end of it, and "TABLET PER PAPAN" yields "Papan" by exactly the
+  rule that yields "Strip". No third column. A clinic-added unit with no
+  translation renders the English alone — "Strip / " with nothing after the
+  slash is worse than "Strip". All 13 SYSTEM units are seeded, and a spec
+  asserts the map and the list stay in step.
+- **`item_categories` is a REGISTRY, not a second copy of the fact.**
+  `items.category` stays the truth on the row. Rename is ONE transaction over
+  the registry row AND every item carrying the old string — renaming only the
+  list leaves those items filed under a name no longer on it, and because the
+  tabs union in-use strings the clinic would watch the old category reappear
+  beside the new one. Delete is refused while items point at it and the refusal
+  NAMES THE COUNT. `adopt` registers an imported string nobody owns, which is
+  what makes it renameable at all.
+- **`POST /stock/adjust` is the quick +/-, and deliberately NOT `quickAdd`.**
+  That writes a StockBatch and a GOODS_RECEIVED movement — a receipt with no
+  supplier, no batch and no expiry, polluting the near-expiry screen. Somebody
+  tapping + because the shelf says 41 and the screen says 40 received nothing.
+  ADJUSTMENT with a required reason is the entry that says so. Negative
+  balances stay legal (D-020).
+
+**A DEFECT FIXED ON THE WAY THROUGH:** the Items page held the entire
+catalogue in memory purely so a click on a row could find the object behind it.
+With the list as its own request that was the catalogue downloaded twice to
+open one drawer; the drawer fetches its one item now (`useItem`).
+
+**MEASURED:** 1520 API tests, 1466 web tests, both typechecks, both production
+builds. Not run here: the e2e suite (no PostgreSQL in this container).
+
 ## THE PRICING FIX — STEP 1, THE AUDIT. **THE DIVISOR IS MOSTLY NOT THERE.**
 
 **Run it:** `cd apps/api && npx tsx prisma/pricing-divisor-audit.ts`.
