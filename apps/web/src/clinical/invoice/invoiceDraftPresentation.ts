@@ -144,14 +144,16 @@ export function draftBarSummary(draft: InvoiceDraft | undefined): DraftBarSummar
     ? `less ${money(draft.discount.amount)} discount`
     : null;
 
-  // Counted-but-unpriced (the server's own count) PLUS the undecided supplies,
-  // which are unpriced and uncounted and were therefore invisible to it. Not
-  // the consultation gap: that has its own wording, and counting it twice
-  // would make one problem look like two.
-  const undecidedSupply = draft.lines.filter(
-    (line) => line.state === 'UNRESOLVED_SUPPLY' && line.amount == null,
-  ).length;
-  const notPriced = draft.unpricedCount + undecidedSupply;
+  // PIECE 4 — the server's own count, not the browser's reconstruction of it.
+  //
+  // This used to be `unpricedCount` plus a locally-derived count of undecided
+  // supplies, because `unpricedCount` only counts lines that are COUNTED and a
+  // D-091 supply is deliberately uncounted. That worked until a third such
+  // state arrived (a medicine with no divisor, Piece 4), at which point the
+  // browser would have been maintaining its own list of "states that mean the
+  // total is incomplete" — a billing fact, derived on the wrong side.
+  // `notPricedCount` is that number, computed once where the lines are built.
+  const notPriced = draft.notPricedCount ?? draft.unpricedCount;
   const unpricedLabel = notPriced > 0 ? `${plural(notPriced, 'item')} not priced` : null;
 
   const awaitingDispense = draft.lines.filter((line) => line.state === 'AWAITING_DISPENSE').length;

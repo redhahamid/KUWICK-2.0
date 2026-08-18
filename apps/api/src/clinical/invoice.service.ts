@@ -405,6 +405,27 @@ export class InvoiceService {
         if (!resolved) {
           throw new BadRequestException('This item cannot be priced — its catalog record was not found.');
         }
+        // PIECE 4 — A MEDICINE IS CHARGED IN PACKS.
+        //
+        // `unitPrice` on a medicine is the price of one STOCK UNIT; the
+        // prescription's quantity is in DOSE UNITS. Multiplying them, which is
+        // what this did, bills a ten-capsule course of Oseltamivir at
+        // RM1,550.00 against a real price of RM155.00. The stored quantity
+        // becomes the number of PACKS, which is also what the line then means
+        // on a printed bill: "1 x RM155.00", not "10 x RM155.00".
+        if (resolved.dispense) {
+          if (resolved.dispense.dispenseQuantity === null) {
+            // Refused, not guessed. A divisor of 1 assumed here is the same
+            // arithmetic that produced the RM1,550, and an invoice line is a
+            // charge somebody pays — the draft may list it unpriced, but a
+            // real line cannot be created without a number.
+            throw new BadRequestException(
+              resolved.dispense.reason ??
+                'This medicine cannot be priced per dispense until its quantity per stock unit is set.',
+            );
+          }
+          quantity = resolved.dispense.dispenseQuantity;
+        }
         unitPrice = resolved.unitPrice;
         priceRule = resolved.priceRule;
         baseUnitPrice = resolved.baseUnitPrice;

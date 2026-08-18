@@ -1,3 +1,4 @@
+import { DispenseCalculation, dispenseCalculation } from './dispense-pricing';
 import { InvoiceLinePriceRule } from '@prisma/client';
 import { ClinicalTx } from './clinical-actor';
 
@@ -24,6 +25,21 @@ export interface ResolvedPrice {
   priceRule: InvoiceLinePriceRule;
   baseUnitPrice: number;
   panelMarkupAmount: number | null;
+  /**
+   * PRESCRIPTIONS ONLY — the conversion from what the doctor wrote to what
+   * comes off the shelf and onto the bill.
+   *
+   * `unitPrice` on a medicine is the price of one STOCK UNIT (a strip, a pack),
+   * which the clinic's own import settles beyond doubt: RM155.00 against
+   * "10 BIJI / STRIP" is a course of Tamiflu, not one capsule. The
+   * prescription's quantity is counted in DOSE UNITS. Multiplying them
+   * together — which is what every caller did before this field existed —
+   * bills that course at RM1,550.
+   *
+   * Absent on services and orders, whose quantity and price are already in the
+   * same unit.
+   */
+  dispense?: DispenseCalculation;
 }
 
 function round2(value: number): number {
@@ -91,7 +107,18 @@ export async function resolveSourcedPrice(
   if (params.sourcePrescriptionId) {
     const prescription = await tx.prescription.findUnique({
       where: { id: params.sourcePrescriptionId },
-      select: { itemId: true, item: { select: { sellPrice: true } } },
+      select: {
+        itemId: true,
+        quantity: true,
+        item: {
+          select: {
+            sellPrice: true,
+            quantityPerStockUnit: true,
+            unitsPerPack: true,
+            dispensedWholeAt: true,
+          },
+        },
+      },
     });
     if (!prescription?.item) return null;
     const override = panelClinicId
@@ -100,11 +127,17 @@ export async function resolveSourcedPrice(
           select: { overridePrice: true },
         })
       : null;
-    return resolveContractualPrice({
-      cashPrice: Number(prescription.item.sellPrice),
-      specificPanelPrice: override ? Number(override.overridePrice) : null,
-      panelMarkupAmount: panel?.inventoryMarkupAmount != null ? Number(panel.inventoryMarkupAmount) : null,
-    });
+    return {
+      ...resolveContractualPrice({
+        cashPrice: Number(prescription.item.sellPrice),
+        specificPanelPrice: override ? Number(override.overridePrice) : null,
+        panelMarkupAmount: panel?.inventoryMarkupAmount != null ? Number(panel.inventoryMarkupAmount) : null,
+      }),
+      // Attached here rather than left to each caller, because there are three
+      // of them and the one thing worse than the wrong number is two surfaces
+      // reaching different wrong numbers.
+      dispense: dispenseCalculation(prescription.quantity, prescription.item),
+    };
   }
 
   if (params.serviceCatalogId) {

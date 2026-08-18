@@ -157,7 +157,10 @@ function createService(role = 'FINANCE_STAFF', world: World = {}) {
     prescription: {
       findUnique: jest.fn().mockResolvedValue({
         itemId: 'item-1',
-        item: { sellPrice: 10 },
+        // PIECE 4 — a medicine is charged in PACKS. A divisor of 1 means one
+        // dose per pack, which keeps every case below at the arithmetic it was
+        // written for; the pack-pricing cases state their own divisor.
+        item: { sellPrice: 10, quantityPerStockUnit: 1, unitsPerPack: null, dispensedWholeAt: null },
         // D-094 — a chargeable medication source by default: DISPENSED and
         // clinic-dispensed, with the SOURCE quantity the server must use.
         status: 'DISPENSED',
@@ -703,7 +706,7 @@ describe('sourced quantity truth', () => {
   it('26/28. medication quantity comes from the Prescription — a client figure is ignored', async () => {
     const ctx = createService('FINANCE_STAFF');
     ctx.tx.prescription.findUnique.mockResolvedValue({
-      itemId: 'item-1', item: { sellPrice: 10 }, status: 'DISPENSED', supplyMode: 'ONSITE_DISPENSE', quantity: 7, deletedAt: null,
+      itemId: 'item-1', item: { sellPrice: 10, quantityPerStockUnit: 1, unitsPerPack: null, dispensedWholeAt: null }, status: 'DISPENSED', supplyMode: 'ONSITE_DISPENSE', quantity: 7, deletedAt: null,
     });
     await withTenant(() =>
       ctx.service.addLine('inv-1', { description: 'Med', sourcePrescriptionId: 'rx-1', quantity: 99 } as never),
@@ -711,6 +714,74 @@ describe('sourced quantity truth', () => {
     const created = (ctx.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data;
     expect(created.quantity).toBe(7);
     expect(created.amount).toBe(70);
+  });
+
+  // ===========================================================================
+  // PIECE 4 — A MEDICINE IS CHARGED IN PACKS.
+  //
+  // `sellPrice` is the price of one STOCK UNIT, which the clinic's own import
+  // settles: RM155.00 against "10 BIJI / STRIP" is a course of Tamiflu, not one
+  // capsule. Quantity × unitPrice bills that course at RM1,550.
+  // ===========================================================================
+
+  it('stores the number of PACKS, so a ten-capsule course bills as one strip', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    ctx.tx.prescription.findUnique.mockResolvedValue({
+      itemId: 'item-1',
+      item: { sellPrice: 155, quantityPerStockUnit: 10, unitsPerPack: null, dispensedWholeAt: null },
+      status: 'DISPENSED', supplyMode: 'ONSITE_DISPENSE', quantity: 10, deletedAt: null,
+    });
+    await withTenant(() =>
+      ctx.service.addLine('inv-1', { description: 'Oseltamivir', sourcePrescriptionId: 'rx-1' } as never),
+    );
+    const created = (ctx.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data;
+    // The stored quantity is what a printed bill reads: "1 x RM155.00".
+    expect(created.quantity).toBe(1);
+    expect(created.amount).toBe(155);
+  });
+
+  it('rounds a partial pack UP — charging for two of three strips gives one away', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    ctx.tx.prescription.findUnique.mockResolvedValue({
+      itemId: 'item-1',
+      item: { sellPrice: 26, quantityPerStockUnit: 10, unitsPerPack: null, dispensedWholeAt: null },
+      status: 'DISPENSED', supplyMode: 'ONSITE_DISPENSE', quantity: 25, deletedAt: null,
+    });
+    await withTenant(() =>
+      ctx.service.addLine('inv-1', { description: 'Celecoxib', sourcePrescriptionId: 'rx-1' } as never),
+    );
+    const created = (ctx.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data;
+    expect(created.quantity).toBe(3);
+    expect(created.amount).toBe(78);
+  });
+
+  it('REFUSES a medicine with no divisor rather than assuming 1', async () => {
+    // A divisor of 1 assumed here is the same arithmetic that produced the
+    // RM1,550. The draft may LIST such a line unpriced; a real invoice line is
+    // a charge somebody pays, and it cannot be created without a number.
+    const ctx = createService('FINANCE_STAFF');
+    ctx.tx.prescription.findUnique.mockResolvedValue({
+      itemId: 'item-1',
+      item: { sellPrice: 26, quantityPerStockUnit: null, unitsPerPack: null, dispensedWholeAt: null },
+      status: 'DISPENSED', supplyMode: 'ONSITE_DISPENSE', quantity: 30, deletedAt: null,
+    });
+    await expect(
+      withTenant(() => ctx.service.addLine('inv-1', { description: 'X', sourcePrescriptionId: 'rx-1' } as never)),
+    ).rejects.toThrow(/quantity per stock unit/);
+    expect(ctx.tx.invoiceLine.create).not.toHaveBeenCalled();
+  });
+
+  it('takes the clinic’s divisor over the import’s parse', async () => {
+    const ctx = createService('FINANCE_STAFF');
+    ctx.tx.prescription.findUnique.mockResolvedValue({
+      itemId: 'item-1',
+      item: { sellPrice: 12, quantityPerStockUnit: 12, unitsPerPack: 10, dispensedWholeAt: null },
+      status: 'DISPENSED', supplyMode: 'ONSITE_DISPENSE', quantity: 24, deletedAt: null,
+    });
+    await withTenant(() =>
+      ctx.service.addLine('inv-1', { description: 'Lozenges', sourcePrescriptionId: 'rx-1' } as never),
+    );
+    expect((ctx.tx.invoiceLine.create as jest.Mock).mock.calls[0][0].data.quantity).toBe(2);
   });
 
   it('27/29. an order-sourced line takes the ORDER\'s quantity, not the client\'s', async () => {
@@ -760,7 +831,7 @@ describe('sourced quantity truth', () => {
   it('an ORDERED medication cannot be finalised — dispense first', async () => {
     const ctx = createService('FINANCE_STAFF');
     ctx.tx.prescription.findUnique.mockResolvedValue({
-      itemId: 'item-1', item: { sellPrice: 10 }, status: 'ORDERED', supplyMode: 'ONSITE_DISPENSE', quantity: 7, deletedAt: null,
+      itemId: 'item-1', item: { sellPrice: 10, quantityPerStockUnit: 1, unitsPerPack: null, dispensedWholeAt: null }, status: 'ORDERED', supplyMode: 'ONSITE_DISPENSE', quantity: 7, deletedAt: null,
     });
     await expect(
       withTenant(() => ctx.service.addLine('inv-1', { description: 'Med', sourcePrescriptionId: 'rx-1' } as never)),
@@ -770,7 +841,7 @@ describe('sourced quantity truth', () => {
   it('a non-ONSITE supply mode is never a clinic medication charge', async () => {
     const ctx = createService('FINANCE_STAFF');
     ctx.tx.prescription.findUnique.mockResolvedValue({
-      itemId: 'item-1', item: { sellPrice: 10 }, status: 'DISPENSED', supplyMode: 'EXTERNAL_PRESCRIPTION', quantity: 7, deletedAt: null,
+      itemId: 'item-1', item: { sellPrice: 10, quantityPerStockUnit: 1, unitsPerPack: null, dispensedWholeAt: null }, status: 'DISPENSED', supplyMode: 'EXTERNAL_PRESCRIPTION', quantity: 7, deletedAt: null,
     });
     await expect(
       withTenant(() => ctx.service.addLine('inv-1', { description: 'Med', sourcePrescriptionId: 'rx-1' } as never)),

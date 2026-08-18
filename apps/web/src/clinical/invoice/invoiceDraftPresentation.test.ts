@@ -142,10 +142,16 @@ describe('draftBarSummary', () => {
    * `unpricedCount` is the server's count of COUNTED lines whose price failed
    * to resolve. A medicine whose supply mode is undecided (D-091) is listed,
    * unpriced and UNCOUNTED — so it was in neither number, and a visit carrying
-   * one showed a confident total with nothing beside it. An undecided supply
-   * is precisely "not priced".
+   * one showed a confident total with nothing beside it.
+   *
+   * PIECE 4 — that used to be patched here, by re-deriving the count from the
+   * line states in the browser. It held until a THIRD such state arrived (a
+   * medicine with no divisor), at which point the browser would have been
+   * maintaining its own list of "states that mean the total is incomplete" —
+   * a billing fact, derived on the wrong side. The server counts it now, and
+   * the chip reads `notPricedCount`.
    */
-  it('counts an undecided supply as not priced, though the server does not count it', () => {
+  it('reads the server’s count of unpriced work, counted or not', () => {
     const summary = draftBarSummary(
       DRAFT({
         lines: [
@@ -160,9 +166,15 @@ describe('draftBarSummary', () => {
         ],
         total: 10,
         unpricedCount: 0,
+        notPricedCount: 1,
       }),
     );
     expect(summary.unpricedLabel).toBe('1 item not priced');
+  });
+
+  it('falls back to unpricedCount for a draft from before the field existed', () => {
+    const summary = draftBarSummary(DRAFT({ lines: [LINE()], total: 10, unpricedCount: 2 }));
+    expect(summary.unpricedLabel).toBe('2 items not priced');
   });
 
   /**
@@ -187,6 +199,7 @@ describe('draftBarSummary', () => {
           }),
         ],
         total: 20,
+        notPricedCount: 1,
       }),
     );
     expect(summary.toDispenseLabel).toBe('2 medicines to dispense');

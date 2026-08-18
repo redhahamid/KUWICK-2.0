@@ -230,11 +230,14 @@ describe('1. every billable source auto-pulls', () => {
         ],
         subtotal: 10,
         total: 10,
-        // ZERO, faithfully: the server counts COUNTED lines whose price
-        // failed, and an undecided supply is uncounted. That is exactly why
-        // this chip used to stay silent on the state it exists for, and why
-        // the card derives the number from the lines instead (b4 PIECE C 2b).
+        // ZERO, faithfully: `unpricedCount` counts COUNTED lines whose price
+        // failed, and an undecided supply is uncounted. That is why this chip
+        // used to stay silent on the state it exists for. PIECE 4 moved the
+        // fix to the server — `notPricedCount` is every line that is real work
+        // with no price on it — rather than leaving the browser to maintain
+        // its own list of states that make a total incomplete.
         unpricedCount: 0,
+        notPricedCount: 1,
       }),
     );
     renderCard();

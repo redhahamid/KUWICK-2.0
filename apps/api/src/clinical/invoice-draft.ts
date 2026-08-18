@@ -121,6 +121,23 @@ export interface InvoiceDraft {
    * whole story while this is non-zero, and the bar says so.
    */
   unpricedCount: number;
+  /**
+   * PIECE 4 — EVERY line that is real work with no price on it, whether or not
+   * it is counted in the total.
+   *
+   * `unpricedCount` is counted-lines-whose-price-failed, and it keeps that
+   * meaning because the total's arithmetic depends on it. But it has never
+   * been the number the SCREEN needs: an undecided supply (D-091) and now a
+   * medicine with no divisor are both listed, unpriced and UNCOUNTED, so the
+   * chip built to say "the total is incomplete" was silent on the two states
+   * that make it incomplete.
+   *
+   * The browser was patching that by re-deriving the count from the line
+   * states — a surface working out a billing fact for itself, which is the
+   * thing this file exists to stop. It is computed here now, once, from the
+   * lines as assembled.
+   */
+  notPricedCount: number;
 }
 
 function round2(value: number): number {
@@ -270,18 +287,34 @@ export async function buildInvoiceDraft(tx: ClinicalTx, visitId: string): Promis
         ? { serviceCatalogId: consultationServiceId }
         : {}),
     });
-    const quantity = item.quantity ?? 1;
+    // A MEDICINE IS CHARGED IN PACKS, NOT IN TABLETS.
+    //
+    // `resolved.dispense` carries the conversion for prescriptions: the
+    // doctor's 30 tablets against strips of 10 is three strips, priced at the
+    // strip price. Services and orders carry no conversion and their quantity
+    // stands as it always did.
+    //
+    // A medicine whose divisor nobody has stated cannot be converted, so it is
+    // LISTED, UNPRICED and UNCOUNTED with the reason on the line — the same
+    // shape an undecided supply mode already uses (D-091). Falling back to a
+    // divisor of 1 is the identity that bills a course of Tamiflu at RM1,550.
+    const dispense = resolved?.dispense;
+    const quantity = dispense ? (dispense.dispenseQuantity ?? item.quantity ?? 1) : (item.quantity ?? 1);
+    const unpriceable = dispense != null && dispense.dispenseQuantity === null;
+
     lines.push({
       sourceType: item.sourceType,
       sourceId: item.sourceId,
       description: item.description,
       state: item.state,
-      stateReason: item.stateReason,
+      stateReason: unpriceable ? dispense.reason : item.stateReason,
       orderType: item.orderType,
       quantity,
-      unitPrice: resolved ? resolved.unitPrice : null,
-      amount: resolved ? round2(resolved.unitPrice * quantity) : null,
-      counted: true,
+      unitPrice: resolved && !unpriceable ? resolved.unitPrice : null,
+      amount: resolved && !unpriceable ? round2(resolved.unitPrice * quantity) : null,
+      // Uncounted, so the total is not quietly wrong by an unknown amount. The
+      // unpriced chip reads exactly this.
+      counted: !unpriceable,
       billed: false,
       invoiceLineId: null,
       lineDiscountAmount: null,
@@ -320,6 +353,13 @@ export async function buildInvoiceDraft(tx: ClinicalTx, visitId: string): Promis
         : null,
     total: totals.total,
     unpricedCount: totals.unpricedCount,
+    // Chargeable work with no price on it. A NOT_CHARGEABLE line is excluded
+    // deliberately: "this visit carries no consultation charge" is an answer,
+    // not a gap, and counting it would send somebody looking for a price that
+    // was never meant to exist.
+    notPricedCount: lines.filter(
+      (line) => !line.billed && line.amount == null && line.state !== 'NOT_CHARGEABLE',
+    ).length,
   };
 }
 

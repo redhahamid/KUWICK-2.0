@@ -40,6 +40,8 @@ interface World {
   invoice?: Record<string, unknown> | null;
   /** itemId/serviceCatalogId → price, for the pricing resolver. */
   itemPrice?: Record<string, number>;
+  /** Doses per stock unit. `null` means the clinic has never stated one. */
+  itemDivisor?: Record<string, number | null>;
   servicePrice?: Record<string, number>;
 }
 
@@ -63,7 +65,21 @@ function txWith(world: World) {
           | undefined;
         if (!rx) return null;
         const itemId = (rx.itemId as string) ?? 'item-x';
-        return { itemId, item: { sellPrice: world.itemPrice?.[itemId] ?? 0 } };
+        return {
+          itemId,
+          quantity: (rx.quantity as number) ?? 1,
+          item: {
+            sellPrice: world.itemPrice?.[itemId] ?? 0,
+            // PIECE 4 — a medicine is charged in PACKS. The fixtures default to
+            // one dose per pack, so every existing case keeps the arithmetic it
+            // was written for; `itemDivisor` is how a case says otherwise, and
+            // `null` is how it says nobody has stated one.
+            quantityPerStockUnit:
+              world.itemDivisor && itemId in world.itemDivisor ? world.itemDivisor[itemId] : 1,
+            unitsPerPack: null,
+            dispensedWholeAt: null,
+          },
+        };
       }),
     },
     orderService: {
@@ -130,6 +146,91 @@ const ORDER = (
 
 const find = (draft: InvoiceDraft, sourceId: string) =>
   draft.lines.find((line) => line.sourceId === sourceId);
+
+// ---------------------------------------------------------------------------
+// 0. A MEDICINE IS CHARGED IN PACKS (Piece 4)
+//
+// `Item.sellPrice` is the price of one STOCK UNIT, which the clinic's own
+// import settles: RM155.00 against "10 BIJI / STRIP" is a course of Tamiflu,
+// not one capsule. `quantity × unitPrice` bills that course at RM1,550.
+// ---------------------------------------------------------------------------
+describe('a prescription is priced in whole packs, not in tablets', () => {
+  const world = (quantity: number, divisor: number | null): World => ({
+    prescriptions: [RX('rx-1', { quantity, itemId: 'item-tamiflu' })],
+    itemPrice: { 'item-tamiflu': 155 },
+    itemDivisor: { 'item-tamiflu': divisor },
+    servicePrice: { 'svc-consult': 35 },
+  });
+
+  it('charges one strip for a ten-capsule course, not ten', async () => {
+    const draft = await buildInvoiceDraft(txWith(world(10, 10)), 'visit-1');
+    expect(find(draft, 'rx-1')).toMatchObject({ quantity: 1, unitPrice: 155, amount: 155 });
+  });
+
+  it('rounds a partial pack UP — down would give the remainder away', async () => {
+    const draft = await buildInvoiceDraft(txWith(world(25, 10)), 'visit-1');
+    expect(find(draft, 'rx-1')).toMatchObject({ quantity: 3, amount: 465 });
+  });
+
+  it('leaves a service’s quantity alone — it is already in the priced unit', async () => {
+    const draft = await buildInvoiceDraft(
+      txWith({
+        orders: [ORDER('ord-1', { orderType: 'TASK_ORDER', serviceCatalogId: 'svc-xray' })],
+        servicePrice: { 'svc-xray': 60, 'svc-consult': 35 },
+      }),
+      'visit-1',
+    );
+    expect(find(draft, 'ord-1')).toMatchObject({ quantity: 1, unitPrice: 60, amount: 60 });
+  });
+});
+
+describe('a medicine with no divisor is listed, unpriced, and counted as outstanding', () => {
+  const world: World = {
+    prescriptions: [RX('rx-1', { quantity: 30, itemId: 'item-mystery' })],
+    itemPrice: { 'item-mystery': 26 },
+    itemDivisor: { 'item-mystery': null },
+    servicePrice: { 'svc-consult': 35 },
+  };
+
+  it('never falls back to a divisor of 1 — that is the RM1,550 identity', async () => {
+    const draft = await buildInvoiceDraft(txWith(world), 'visit-1');
+    expect(find(draft, 'rx-1')).toMatchObject({ unitPrice: null, amount: null });
+  });
+
+  it('keeps it OUT of the total rather than guessing at it', async () => {
+    const draft = await buildInvoiceDraft(txWith(world), 'visit-1');
+    expect(find(draft, 'rx-1')?.counted).toBe(false);
+    // The consultation only.
+    expect(draft.total).toBe(35);
+  });
+
+  it('carries the reason on the line, and names the remedy', async () => {
+    const draft = await buildInvoiceDraft(txWith(world), 'visit-1');
+    expect(find(draft, 'rx-1')?.stateReason).toContain('no quantity per stock unit');
+    expect(find(draft, 'rx-1')?.stateReason).toContain('dispensed whole');
+  });
+
+  it('reaches the outstanding chip, which `unpricedCount` alone does not', async () => {
+    // `unpricedCount` counts COUNTED lines whose price failed, and this line is
+    // deliberately uncounted — the exact hole the D-091 supply case fell into.
+    const draft = await buildInvoiceDraft(txWith(world), 'visit-1');
+    expect(draft.unpricedCount).toBe(0);
+    expect(draft.notPricedCount).toBe(1);
+  });
+
+  it('does not count a NOT_CHARGEABLE line as outstanding', async () => {
+    // "This visit carries no consultation charge" is an answer, not a gap.
+    // Counting it would send somebody looking for a price never meant to exist.
+    const draft = await buildInvoiceDraft(
+      txWith({
+        visit: { queueTicket: { queueType: 'OTC', status: 'IN_CONSULTATION', calledAt: null } },
+        servicePrice: { 'svc-consult': 35 },
+      }),
+      'visit-1',
+    );
+    expect(draft.notPricedCount).toBe(0);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // 1. EVERY SOURCE AUTO-PULLS
@@ -211,6 +312,43 @@ describe('the draft auto-pulls every billable source on the visit', () => {
 
     expect(find(draft, 'rx-1')).toMatchObject({ billed: true, unitPrice: 4.5, amount: 13.5 });
     expect(draft.invoiceId).toBe('inv-1');
+  });
+
+  it('does not RE-QUANTIFY a billed line when the divisor changes either', async () => {
+    // PIECE 4 — the same guarantee, one field over and more dangerous. A
+    // clinic curating the catalogue afterwards states a divisor of 10, and the
+    // charge already made must not silently become a tenth of itself. What was
+    // billed is what was billed.
+    const draft = await buildInvoiceDraft(
+      txWith({
+        ...world,
+        itemDivisor: { 'item-amox': 10 },
+        lines: [{ id: 'line-1', sourcePrescriptionId: 'rx-1', sourceOrderServiceId: null }],
+        invoice: {
+          id: 'inv-1',
+          invoiceNumber: 'INV-000001',
+          invoiceDiscountType: null,
+          invoiceDiscountValue: null,
+          invoiceDiscountReason: null,
+          invoiceDiscountByStaffId: null,
+          invoiceDiscountAt: null,
+          lines: [
+            {
+              id: 'line-1',
+              quantity: 3,
+              unitPrice: 4.5,
+              amount: 13.5,
+              lineDiscountType: null,
+              lineDiscountValue: null,
+              lineDiscountAmount: null,
+            },
+          ],
+        },
+      }),
+      'visit-1',
+    );
+
+    expect(find(draft, 'rx-1')).toMatchObject({ billed: true, quantity: 3, amount: 13.5 });
   });
 
   it('lists an undecided supply as UNPRICED, never as zero', async () => {

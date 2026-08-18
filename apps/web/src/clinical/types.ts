@@ -1323,6 +1323,13 @@ export interface InvoiceDraft {
   discount: InvoiceDraftDiscount | null;
   total: number;
   unpricedCount: number;
+  /**
+   * PIECE 4 — every line that is real work with no price on it, counted or
+   * not. What the "N items not priced" chip reads: `unpricedCount` counts only
+   * COUNTED lines, and the two states that make a total incomplete (an
+   * undecided supply, a medicine with no divisor) are deliberately uncounted.
+   */
+  notPricedCount?: number;
 }
 
 export interface ConsultationTariffRule {
