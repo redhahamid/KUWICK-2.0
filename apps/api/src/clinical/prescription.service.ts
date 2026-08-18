@@ -10,6 +10,7 @@ import { CancelPrescriptionDto } from './dto/cancel-prescription.dto';
 import { CopyPrescriptionsDto } from './dto/copy-prescriptions.dto';
 import { UpdateSupplyModeDto } from './dto/update-supply-mode.dto';
 import { calculateWeightBasedDose, findAgeBracket } from './dosage-calculator';
+import { dispenseCalculation } from './dispense-pricing';
 import { composeSnapshot, durationInDays } from './prescription-snapshot';
 import { CopiedSupplyDecision, describeCopyOutcome, supplyModeForCopy } from './medication-supply-rules';
 
@@ -391,7 +392,16 @@ export class PrescriptionService {
   async dispense(id: string) {
     return withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
-      const prescription = await tx.prescription.findUnique({ where: { id } });
+      const prescription = await tx.prescription.findUnique({
+        where: { id },
+        // The divisor comes with the prescription because the deduction cannot
+        // be worked out without it — see the conversion below.
+        include: {
+          item: {
+            select: { quantityPerStockUnit: true, unitsPerPack: true, dispensedWholeAt: true },
+          },
+        },
+      });
       if (!prescription || prescription.deletedAt) {
         throw new NotFoundException('Prescription not found');
       }
@@ -401,6 +411,25 @@ export class PrescriptionService {
       });
       if (!visit) {
         throw new NotFoundException('Visit not found');
+      }
+
+      // WHAT LEAVES THE SHELF IS NOT WHAT THE DOCTOR WROTE.
+      //
+      // `prescription.quantity` is 30 tablets. Stock is counted in strips, so
+      // 30 tablets of a 10-per-strip medicine is three strips leaving — and
+      // this line used to decrement thirty. The conversion is the same one the
+      // bill goes through, deliberately: a clinic whose ledger and whose
+      // invoice disagree about what a unit is has two wrong numbers, not one.
+      //
+      // Computed BEFORE the claim, so a refusal leaves the prescription
+      // ORDERED rather than marked dispensed with no stock moved.
+      const dispense = dispenseCalculation(prescription.quantity, prescription.item);
+      if (dispense.dispenseQuantity === null) {
+        // No divisor means no answer, and 1 is not a safe guess — it is the
+        // guess that produced this defect. Refusing is recoverable in the
+        // minute it takes to state the pack size; deducting a number nobody
+        // computed is recoverable only by counting the shelf.
+        throw new BadRequestException(dispense.reason ?? 'This medication cannot be dispensed yet.');
       }
 
       const dispensedAt = new Date();
@@ -438,7 +467,10 @@ export class PrescriptionService {
           clinicId: visit.clinicId,
           itemId: prescription.itemId,
           movementType: StockMovementType.DISPENSED,
-          quantityDelta: -prescription.quantity,
+          // Stock units out, dose units beside them. Both, so the row explains
+          // itself without a join to an item whose divisor may move later.
+          quantityDelta: -dispense.dispenseQuantity,
+          clinicalQuantity: dispense.clinicalQuantity,
           referenceType: 'Prescription',
           referenceId: prescription.id,
           // The ACTOR, not a blank: the ledger says who moved the stock.
@@ -453,9 +485,9 @@ export class PrescriptionService {
           tenantId,
           clinicId: visit.clinicId,
           itemId: prescription.itemId,
-          quantityOnHand: -prescription.quantity,
+          quantityOnHand: -dispense.dispenseQuantity,
         },
-        update: { quantityOnHand: { decrement: prescription.quantity } },
+        update: { quantityOnHand: { decrement: dispense.dispenseQuantity } },
       });
 
       return tx.prescription.findUnique({ where: { id }, include: { item: true, prescribedBy: true } });

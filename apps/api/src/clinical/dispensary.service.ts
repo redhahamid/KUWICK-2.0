@@ -16,6 +16,7 @@ import {
   withReadOnlyTenantTx,
   withTenantTx,
 } from './clinical-actor';
+import { dispenseCalculation } from './dispense-pricing';
 import { assertCanPerformDispensary } from './dispensary-authorization';
 import { isLegalQueueTransition } from './queue-authorization';
 
@@ -157,7 +158,18 @@ export class DispensaryService {
 
         const prescription = await tx.prescription.findUnique({
           where: { id: prescriptionId },
-          include: { item: { select: { name: true } } },
+          include: {
+            item: {
+              select: {
+                name: true,
+                // The divisor travels with the medicine: without it there is
+                // no number of packs to hand over. See the conversion below.
+                quantityPerStockUnit: true,
+                unitsPerPack: true,
+                dispensedWholeAt: true,
+              },
+            },
+          },
         });
         const name = prescription?.item?.name ?? null;
 
@@ -176,6 +188,26 @@ export class DispensaryService {
         });
         if (!visit) throw new NotFoundException('Visit not found');
 
+        // WHAT LEAVES THE SHELF IS NOT WHAT THE DOCTOR WROTE.
+        //
+        // 30 tablets of a 10-per-strip medicine is three strips off the shelf.
+        // This path used to deduct thirty, and to warn about a shortage of
+        // thirty — so a counter with four strips was told it was short, and a
+        // counter that dispensed anyway went ninety units negative. Both
+        // numbers come from the one conversion the bill also uses.
+        const dispense = dispenseCalculation(prescription.quantity, prescription.item);
+        if (dispense.dispenseQuantity === null) {
+          // A soft refusal, like the shortage warning: this medicine does not
+          // go out, the rest of the batch is unaffected, and the message names
+          // the fix. Never a fallback of 1 — that guess is what this replaced.
+          return {
+            prescriptionId,
+            outcome: 'FAILED' as const,
+            message: dispense.reason ?? 'This medication cannot be dispensed yet.',
+            medicationName: name,
+          };
+        }
+
         // Stock is read BEFORE the claim so the warning describes the state
         // the user was shown, and the acknowledgement is recorded against it.
         const level = await tx.stockLevel.findUnique({
@@ -189,7 +221,9 @@ export class DispensaryService {
           select: { quantityOnHand: true },
         });
         const onHand = level?.quantityOnHand ?? 0;
-        const insufficient = onHand < prescription.quantity;
+        // Compared in STOCK UNITS, because that is what `quantityOnHand`
+        // counts. "Insufficient" now means what the shelf means by it.
+        const insufficient = onHand < dispense.dispenseQuantity;
 
         if (insufficient && !acknowledgeStockWarning) {
           // Not a hard block — the approved policy allows dispensing under an
@@ -198,7 +232,9 @@ export class DispensaryService {
           return {
             prescriptionId,
             outcome: 'FAILED' as const,
-            message: `Only ${onHand} in stock at this branch and ${prescription.quantity} is required. Acknowledge the shortage to dispense anyway.`,
+            // Both figures, so the message does not read as arithmetic the
+            // staff member cannot follow: 3 required for a course of 30.
+            message: `Only ${onHand} in stock at this branch and ${dispense.dispenseQuantity} is required for ${dispense.clinicalQuantity} (${dispense.divisor} per unit). Acknowledge the shortage to dispense anyway.`,
             medicationName: name,
           };
         }
@@ -242,10 +278,14 @@ export class DispensaryService {
             clinicId: visit.clinicId,
             itemId: prescription.itemId,
             movementType: StockMovementType.DISPENSED,
-            // The SERVER's quantity, from the prescription the doctor wrote.
-            // No caller-supplied number reaches this line, which is what makes
+            // The SERVER's quantity, from the prescription the doctor wrote,
+            // converted to the stock units the shelf is counted in. No
+            // caller-supplied number reaches this line, which is what makes
             // partial dispensing impossible rather than merely unimplemented.
-            quantityDelta: -prescription.quantity,
+            quantityDelta: -dispense.dispenseQuantity,
+            // The dose units beside them, so "why did three strips leave" is
+            // answerable from the row.
+            clinicalQuantity: dispense.clinicalQuantity,
             referenceType: 'Prescription',
             referenceId: prescription.id,
             createdByUserId: actor.userId,
@@ -262,9 +302,9 @@ export class DispensaryService {
             tenantId,
             clinicId: visit.clinicId,
             itemId: prescription.itemId,
-            quantityOnHand: -prescription.quantity,
+            quantityOnHand: -dispense.dispenseQuantity,
           },
-          update: { quantityOnHand: { decrement: prescription.quantity } },
+          update: { quantityOnHand: { decrement: dispense.dispenseQuantity } },
         });
 
         return {

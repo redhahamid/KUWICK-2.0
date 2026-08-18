@@ -41,7 +41,25 @@ interface Rx {
   status?: PrescriptionStatus;
   supplyMode?: PrescriptionSupplyMode | null;
   deletedAt?: Date | null;
+  /** The medicine's pack size. Undefined means the default below. */
+  item?: {
+    name?: string;
+    quantityPerStockUnit?: number | null;
+    unitsPerPack?: number | null;
+    dispensedWholeAt?: Date | null;
+  };
 }
+
+// The default medicine is DISPENSED WHOLE — one prescribed unit is one unit
+// off the shelf. It is the case where dose units and stock units coincide,
+// which is what every test written before the conversion assumed, so those
+// tests still describe the behaviour they were written to describe.
+const WHOLE_ITEM = {
+  name: 'Amoxicillin 500mg',
+  quantityPerStockUnit: 1,
+  unitsPerPack: null,
+  dispensedWholeAt: new Date('2026-01-01'),
+};
 
 function build(
   actor: Staff | null = staff(),
@@ -73,7 +91,7 @@ function build(
         supplyMode: p.supplyMode === undefined ? PrescriptionSupplyMode.ONSITE_DISPENSE : p.supplyMode,
         deletedAt: p.deletedAt ?? null,
         dispensedByStaffId: null as string | null,
-        item: { name: 'Amoxicillin 500mg' },
+        item: { ...WHOLE_ITEM, ...(p.item ?? {}) },
       },
     ]),
   );
@@ -501,5 +519,153 @@ describe('stock state is honest about units', () => {
     // Pretending a bottle/tablet conversion is known is how a dispenser is
     // told there is enough when nobody has worked out what "enough" means.
     expect(stockStateFor({ onHand: 100, required: 1, comparable: false })).toBe('UNIT_UNKNOWN');
+  });
+});
+
+// ===========================================================================
+// A COURSE IS NOT A COUNT OF PACKS
+//
+// `prescription.quantity` is what the doctor wrote — 30 tablets — and the
+// shelf is counted in strips. Both dispensing paths deducted the doctor's
+// number straight into a stock level counted in the other unit, so a five-day
+// course of a 10-per-strip antibiotic took thirty strips off a drawer holding
+// four, reported a shortage that was not one, and left the balance at -26.
+//
+// The conversion is `ceil(clinical / divisor)` — the same one the invoice
+// goes through, so the ledger and the bill cannot disagree about what a unit
+// is. These tests pin the deduction, the shortage comparison, and the pair of
+// figures the ledger now carries.
+// ===========================================================================
+
+describe('dispense quantity — packs off the shelf, not doses', () => {
+  const strip = { name: 'Oseltamivir 75mg', quantityPerStockUnit: 10, unitsPerPack: null, dispensedWholeAt: null };
+
+  it('1. 30 tablets of a 10-per-strip medicine deducts 3 strips, not 30', async () => {
+    const ctx = build(staff(), { prescriptions: [{ id: 'rx-1', quantity: 30, item: strip }], onHand: 40 });
+
+    const result = await ctx.dispense(['rx-1']);
+
+    expect(result.results[0].outcome).toBe('DISPENSED');
+    expect(ctx.movements[0].quantityDelta).toBe(-3);
+    expect(ctx.stock).toBe(37);
+  });
+
+  it('2. a partial pack is a WHOLE pack — 25 tablets takes 3 strips, never 2', async () => {
+    // Rounding down hands over three strips and charges for two: the clinic
+    // gives the remainder away on every partial pack, every time.
+    const ctx = build(staff(), { prescriptions: [{ id: 'rx-1', quantity: 25, item: strip }], onHand: 40 });
+
+    await ctx.dispense(['rx-1']);
+
+    expect(ctx.movements[0].quantityDelta).toBe(-3);
+  });
+
+  it('3. the ledger carries BOTH figures — 3 strips out, for a course of 30', async () => {
+    // Otherwise "why did three strips leave" is only answerable by joining
+    // back to an item whose divisor may have been corrected since.
+    const ctx = build(staff(), { prescriptions: [{ id: 'rx-1', quantity: 30, item: strip }], onHand: 40 });
+
+    await ctx.dispense(['rx-1']);
+
+    expect(ctx.movements[0]).toMatchObject({ quantityDelta: -3, clinicalQuantity: 30 });
+  });
+
+  it('4. an item dispensed whole deducts one unit per prescribed unit', async () => {
+    // A bottle handed over whole: divisor 1, and the arithmetic is identity.
+    const ctx = build(staff(), { prescriptions: [{ id: 'rx-1', quantity: 1 }], onHand: 5 });
+
+    await ctx.dispense(['rx-1']);
+
+    expect(ctx.movements[0]).toMatchObject({ quantityDelta: -1, clinicalQuantity: 1 });
+    expect(ctx.stock).toBe(4);
+  });
+
+  it('5. a PRN quantity a person typed converts the same way', async () => {
+    // PRN and STAT carry no doses-per-day, so the form cannot compute the
+    // quantity and somebody types it — still in dose units, still divided.
+    const ctx = build(staff(), { prescriptions: [{ id: 'rx-1', quantity: 12, item: strip }], onHand: 40 });
+
+    await ctx.dispense(['rx-1']);
+
+    expect(ctx.movements[0]).toMatchObject({ quantityDelta: -2, clinicalQuantity: 12 });
+  });
+});
+
+describe('insufficient stock — measured in stock units', () => {
+  const strip = { name: 'Oseltamivir 75mg', quantityPerStockUnit: 10, unitsPerPack: null, dispensedWholeAt: null };
+
+  it('6. four strips is ENOUGH for a 30-tablet course — no warning', async () => {
+    // The old comparison read 4 < 30 and refused a drawer that was full.
+    const ctx = build(staff(), { prescriptions: [{ id: 'rx-1', quantity: 30, item: strip }], onHand: 4 });
+
+    const result = await ctx.dispense(['rx-1']);
+
+    expect(result.results[0].outcome).toBe('DISPENSED');
+    expect(ctx.stock).toBe(1);
+  });
+
+  it('7. two strips is NOT enough for a 30-tablet course', async () => {
+    const ctx = build(staff(), { prescriptions: [{ id: 'rx-1', quantity: 30, item: strip }], onHand: 2 });
+
+    const result = await ctx.dispense(['rx-1']);
+
+    expect(result.results[0].outcome).toBe('FAILED');
+    expect(result.results[0].message).toContain('Only 2 in stock');
+    expect(result.results[0].message).toContain('3 is required for 30');
+    expect(ctx.movements).toHaveLength(0);
+    expect(ctx.stock).toBe(2);
+  });
+
+  it('8. acknowledging the shortage dispenses the STOCK-unit quantity', async () => {
+    const ctx = build(staff(), { prescriptions: [{ id: 'rx-1', quantity: 30, item: strip }], onHand: 2 });
+
+    const result = await ctx.dispense(['rx-1'], true);
+
+    expect(result.results[0].outcome).toBe('STOCK_WARNING_ACKNOWLEDGED');
+    expect(ctx.movements[0].quantityDelta).toBe(-3);
+    // -1, not -28. A shortage of one strip, which is the truth.
+    expect(ctx.stock).toBe(-1);
+  });
+});
+
+describe('no divisor — the one thing that must not be guessed', () => {
+  const unstated = { name: 'Ketoprofen Plaster', quantityPerStockUnit: null, unitsPerPack: null, dispensedWholeAt: null };
+
+  it('9. a medicine with no stated pack size is refused, not guessed at 1', async () => {
+    // Falling back to 1 is exactly the identity that produced this defect.
+    // Refusing costs the minute it takes to state the pack size; deducting a
+    // number nobody computed costs a physical stock-take.
+    const ctx = build(staff(), { prescriptions: [{ id: 'rx-1', quantity: 30, item: unstated }], onHand: 40 });
+
+    const result = await ctx.dispense(['rx-1']);
+
+    expect(result.results[0].outcome).toBe('FAILED');
+    expect(result.results[0].message).toContain('no quantity per stock unit');
+    expect(ctx.movements).toHaveLength(0);
+    expect(ctx.stock).toBe(40);
+  });
+
+  it('10. the refusal is per medicine — the rest of the batch still goes out', async () => {
+    const ctx = build(staff(), {
+      prescriptions: [
+        { id: 'rx-1', quantity: 30, item: unstated },
+        { id: 'rx-2', quantity: 2 },
+      ],
+      onHand: 40,
+    });
+
+    const result = await ctx.dispense(['rx-1', 'rx-2']);
+
+    expect(result.results[0].outcome).toBe('FAILED');
+    expect(result.results[1].outcome).toBe('DISPENSED');
+    expect(ctx.movements).toHaveLength(1);
+  });
+
+  it('11. the refused prescription stays ORDERED — nothing was handed over', async () => {
+    const ctx = build(staff(), { prescriptions: [{ id: 'rx-1', quantity: 30, item: unstated }], onHand: 40 });
+
+    await ctx.dispense(['rx-1']);
+
+    expect(ctx.rows.get('rx-1')?.status).toBe(PrescriptionStatus.ORDERED);
   });
 });

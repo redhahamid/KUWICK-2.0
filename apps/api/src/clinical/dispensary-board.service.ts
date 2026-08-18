@@ -6,6 +6,7 @@ import { currentTenantId } from '../core/tenant-context';
 import { requireActor, withReadOnlyTenantTx } from './clinical-actor';
 import { assertCanPerformDispensary, dispensaryPermissionsFor } from './dispensary-authorization';
 import { StockState, stockStateFor } from './dispensary.service';
+import { dispenseCalculation } from './dispense-pricing';
 
 /**
  * G4.5d5b-2 — ONE read behind the whole dispensary workspace.
@@ -118,7 +119,18 @@ export class DispensaryBoardService {
       const prescriptions = await tx.prescription.findMany({
         where: { visitId: { in: visitIds }, deletedAt: null },
         include: {
-          item: { select: { id: true, name: true, strengthMg: true } },
+          item: {
+            select: {
+              id: true,
+              name: true,
+              strengthMg: true,
+              // The divisor, so the board's shortage warning counts the same
+              // units the deduction does.
+              quantityPerStockUnit: true,
+              unitsPerPack: true,
+              dispensedWholeAt: true,
+            },
+          },
           prescribedBy: { select: { fullName: true } },
         },
       });
@@ -168,6 +180,7 @@ export class DispensaryBoardService {
 
         const medications: DispensaryMedication[] = dispensable.map((p) => {
           const onHand = onHandByItem.get(p.itemId) ?? null;
+          const dispense = dispenseCalculation(p.quantity, p.item);
           const prints = printsByPrescription.get(p.id);
           return {
             prescriptionId: p.id,
@@ -188,13 +201,16 @@ export class DispensaryBoardService {
               onHand,
               state: stockStateFor({
                 onHand,
-                required: p.quantity,
-                // There is no unit-conversion model, so the comparison is
-                // only made where the prescription's quantity IS a stock-unit
-                // quantity. Where the prescription carries a dose unit that
-                // differs from a countable pack, the board says the units
-                // cannot be compared instead of inventing a conversion.
-                comparable: onHand !== null,
+                // STOCK UNITS on both sides. This used to compare a shelf
+                // counted in strips against a course counted in tablets and
+                // call a full drawer INSUFFICIENT; the conversion is the one
+                // the deduction and the bill both use.
+                required: dispense.dispenseQuantity ?? 0,
+                // The conversion model exists now, so "cannot be compared" is
+                // reserved for the case where it genuinely cannot: an item
+                // whose pack size nobody has stated. Inventing a divisor of 1
+                // is what this replaced.
+                comparable: onHand !== null && dispense.dispenseQuantity !== null,
               }),
               prescriptionUnit: p.unit ?? null,
             },

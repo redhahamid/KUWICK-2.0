@@ -164,6 +164,20 @@ describe('PrescriptionService', () => {
         },
         claimCount = 1,
       } = world;
+      // The medicine every test here shares is DISPENSED WHOLE — divisor 1, so
+      // dose units and stock units coincide and the pre-conversion assertions
+      // still describe what they were written to describe. A test that cares
+      // about the conversion passes its own `item`.
+      const rx = prescription
+        ? {
+            item: {
+              quantityPerStockUnit: 1,
+              unitsPerPack: null,
+              dispensedWholeAt: new Date('2026-01-01'),
+            },
+            ...prescription,
+          }
+        : null;
       const tx = {
         $executeRaw: jest.fn(),
         staff: {
@@ -173,7 +187,7 @@ describe('PrescriptionService', () => {
           }),
         },
         prescription: {
-          findUnique: jest.fn(async () => prescription),
+          findUnique: jest.fn(async () => rx),
           // The atomic claim: WHERE carries status ORDERED + ONSITE mode.
           updateMany: jest.fn().mockResolvedValue({ count: claimCount }),
         },
@@ -249,6 +263,82 @@ describe('PrescriptionService', () => {
         claimCount: 0,
       });
       await expect(runDispense(ctx)).rejects.toThrow(/already been dispensed/i);
+    });
+
+    // ---------------------------------------------------------------------
+    // A COURSE IS NOT A COUNT OF PACKS.
+    //
+    // `quantity` is 30 tablets; the shelf holds strips. This path deducted the
+    // doctor's number straight into a level counted in the other unit.
+    // ---------------------------------------------------------------------
+
+    const STRIP = { quantityPerStockUnit: 10, unitsPerPack: null, dispensedWholeAt: null };
+    const rxWith = (item: Record<string, unknown>, quantity = 30) => ({
+      id: 'rx-1', visitId: 'visit-1', itemId: 'item-1', quantity, item,
+      status: PrescriptionStatus.ORDERED, supplyMode: 'ONSITE_DISPENSE', deletedAt: null,
+    });
+
+    it('35. 30 tablets of a 10-per-strip medicine deducts 3 strips, not 30', async () => {
+      const ctx = buildDispense({ prescription: rxWith(STRIP) });
+      await runDispense(ctx);
+
+      expect(ctx.tx.stockMovement.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ quantityDelta: -3, clinicalQuantity: 30 }),
+      });
+      expect(ctx.tx.stockLevel.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ update: { quantityOnHand: { decrement: 3 } } }),
+      );
+    });
+
+    it('36. a partial pack rounds UP — 25 tablets takes 3 strips', async () => {
+      const ctx = buildDispense({ prescription: rxWith(STRIP, 25) });
+      await runDispense(ctx);
+
+      expect(ctx.tx.stockMovement.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ quantityDelta: -3 }),
+      });
+    });
+
+    it('37. a PRN quantity somebody typed converts the same way', async () => {
+      const ctx = buildDispense({ prescription: rxWith(STRIP, 12) });
+      await runDispense(ctx);
+
+      expect(ctx.tx.stockMovement.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ quantityDelta: -2, clinicalQuantity: 12 }),
+      });
+    });
+
+    it('38. an item dispensed whole deducts one unit per prescribed unit', async () => {
+      const ctx = buildDispense({ prescription: rxWith({ quantityPerStockUnit: 1, unitsPerPack: null, dispensedWholeAt: new Date('2026-01-01') }, 2) });
+      await runDispense(ctx);
+
+      expect(ctx.tx.stockMovement.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ quantityDelta: -2, clinicalQuantity: 2 }),
+      });
+    });
+
+    it('39. no stated pack size is refused, not guessed at 1 — and nothing is claimed', async () => {
+      // The check runs BEFORE the claim, so a refusal leaves the prescription
+      // ORDERED rather than marked dispensed with no stock moved.
+      const ctx = buildDispense({
+        prescription: rxWith({ quantityPerStockUnit: null, unitsPerPack: null, dispensedWholeAt: null }),
+      });
+
+      await expect(runDispense(ctx)).rejects.toThrow(/no quantity per stock unit/i);
+      expect(ctx.tx.prescription.updateMany).not.toHaveBeenCalled();
+      expect(ctx.tx.stockMovement.create).not.toHaveBeenCalled();
+      expect(ctx.tx.stockLevel.upsert).not.toHaveBeenCalled();
+    });
+
+    it("40. the import's pack size is used when the clinic has not stated one", async () => {
+      const ctx = buildDispense({
+        prescription: rxWith({ quantityPerStockUnit: null, unitsPerPack: 10, dispensedWholeAt: null }),
+      });
+      await runDispense(ctx);
+
+      expect(ctx.tx.stockMovement.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ quantityDelta: -3 }),
+      });
     });
   });
 

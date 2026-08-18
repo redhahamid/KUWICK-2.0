@@ -863,17 +863,84 @@ charge is `ceil(clinical ÷ divisor) × packPrice`.
   re-priced and not re-quantified — a clinic curating the catalogue afterwards
   must not turn a charge already made into a tenth of itself.
 
-**⚠ STOCK DEDUCTION HAS THE SAME BUG AND IS DELIBERATELY NOT FIXED HERE.**
-`prescription.service.ts:441` and `dispensary.service.ts:248` both decrement
-`quantityOnHand` by the CLINICAL quantity, so a 30-tablet prescription takes
-**30 strips** off a shelf counted in strips. The conversion they need is
-`dispenseCalculation`, already written and tested. It was not applied because
-it changes what "insufficient stock" means at the dispensary and what
-`STOCK_WARNING_ACKNOWLEDGED` fires on — the owner's call, not a side effect of
-a pricing fix. **This is the first thing to settle in the next session.**
+**⚠ STOCK DEDUCTION HAD THE SAME BUG — FIXED IN PIECE 4c BELOW.**
 
 **MEASURED:** 1619 API tests, 1501 web tests, both typechecks, both production
 builds. Not run here: the e2e suite (no PostgreSQL in this container).
+
+## INVENTORY PACKAGE — PIECE 4c DONE (2026-08-18). **THE SHELF IS COUNTED IN PACKS.**
+
+Owner's decision, verbatim: *"apply dispenseCalculation to both paths. A
+30-tablet prescription deducts 3 strips, not 30."*
+
+`prescription.quantity` is DOSE UNITS; `stock_levels.quantity_on_hand` is STOCK
+UNITS. Both dispensing paths decremented one straight into the other, so a
+five-day course of a 10-per-strip antibiotic took **thirty strips** off a
+drawer holding four — reported a shortage that was not one, and if the shortage
+was acknowledged, left the balance at **-26**.
+
+Fixed in **four** places, not the two the brief named:
+
+| file | what changed |
+|---|---|
+| `prescription.service.ts` | `dispenseCalculation` before the claim; delta and decrement in stock units |
+| `dispensary.service.ts` | same, plus the shortage comparison and its message |
+| `dispensary-board.service.ts` | `stockStateFor({ required })` — **see below** |
+| `schema.prisma` | the comment on `Prescription.quantity` said "stock units". Both paths believed it. |
+
+**THE BOARD WAS THE THIRD PLACE AND IT WAS NOT OPTIONAL.** The dispensary
+board is the screen the counter reads before pressing Dispense, and it compared
+a shelf counted in strips against a course counted in tablets. Fixing only the
+server would have left the board saying INSUFFICIENT on a full drawer while
+the server dispensed happily — the screen and the server disagreeing, which is
+the exact class of defect this package exists to end. Its old comment
+("there is no unit-conversion model, so the comparison is only made where the
+prescription's quantity IS a stock-unit quantity") described a world that
+stopped being true when `dispenseCalculation` was written.
+
+**NO DIVISOR REFUSES THE HAND-OVER.** Not a fallback of 1 — that guess is the
+defect. `prescription.service.dispense` throws; the dispensary returns a soft
+`FAILED` for that medicine and the rest of the batch still goes out. The
+refusal runs BEFORE the atomic claim, so the prescription stays ORDERED rather
+than marked dispensed with no stock moved.
+
+The trade-off, stated plainly: **149 of the 242 staging medicines have no
+divisor** and will now refuse to dispense until somebody states a pack size.
+It is the same 149 that already refuse to PRICE (Piece 4a), so this adds no new
+worklist — but it is a visible behaviour change at the counter. The alternative
+(dispense, deduct nothing) was rejected because a wrong shelf balance is only
+recoverable by counting the shelf, where a refusal is recoverable in the minute
+it takes to type the pack size.
+
+**THE LEDGER CARRIES BOTH FIGURES.** New migration
+`20260818140000_the_ledger_says_how_many_left_the_shelf` adds
+`stock_movements.clinical_quantity INTEGER` (nullable). `quantity_delta` is -3;
+`clinical_quantity` is 30. The dispensary can answer "why did three strips
+leave" without joining back to an item whose divisor may have been corrected
+since.
+
+**NOT BACKFILLED, AND THAT IS THE OWNER'S INSTRUCTION.** *"Do NOT retroactively
+correct historical stock balances — wrong past deductions are a physical
+stock-take's job, not a migration's."* Every pre-existing row carries a
+dose-unit delta mislabelled as stock units; NULL `clinical_quantity` means
+exactly "this row predates the conversion", which is true.
+
+**WHICH TEST INVOICES TO IGNORE** — `npm run list:dose-priced-lines`
+(`apps/api`, optional `-- --tenant <id>`). READ-ONLY: it lists medication
+invoice lines still carrying `packPrice × clinicalQuantity` (the RM1,550
+Tamiflu shape), with the correct figure beside each, and changes nothing.
+Reissuing a printed document or rewriting a submitted e-Invoice is not a
+script's decision.
+
+**DOES STAGING NEED RE-SEEDING?** No. `clinical_quantity` is nullable and
+deliberately unbackfilled — `prisma migrate deploy` is the whole of it. The
+divisors are what needs filling, and that is entirely in-app: the NEEDS
+ATTENTION worklist (Piece 1) lists all 149, and the edit form (Piece 2) sets
+them. No seeder writes a divisor onto an existing item.
+
+**MEASURED:** 1636 API tests (17 new), 1501 web tests, both typechecks. The
+e2e golden path is safe — `seed-e2e.ts` gives its medicine
+`quantityPerStockUnit: 1`, so its stock-movement assertion is unaffected.
 
 ## INVENTORY PACKAGE — PIECE 4b DONE (2026-08-18). **THE E2E SUITE RUNS HERE.**
 

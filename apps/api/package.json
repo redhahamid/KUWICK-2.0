@@ -16,7 +16,8 @@
     "seed:staging": "tsx prisma/seed-staging-uat.ts",
     "seed:catalogues": "tsx prisma/seed-clinic-catalogues.ts",
     "seed:reference": "tsx prisma/seed-reference-catalogs.ts",
-    "seed:standard-rx": "tsx prisma/seed-standard-prescriptions.ts"
+    "seed:standard-rx": "tsx prisma/seed-standard-prescriptions.ts",
+    "list:dose-priced-lines": "tsx prisma/list-dose-priced-invoice-lines.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

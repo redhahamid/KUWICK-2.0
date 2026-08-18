@@ -1471,7 +1471,19 @@ model StockMovement {
   itemId          String            @map("item_id")
   batchId         String?           @map("batch_id")
   movementType    StockMovementType @map("movement_type")
+
+  /// STOCK UNITS — strips, boxes, bottles. The same unit `StockLevel` counts
+  /// and the same unit a person counting the shelf counts. A 30-tablet course
+  /// of a 10-per-strip medicine moves -3 here, not -30.
   quantityDelta   Int               @map("quantity_delta")
+
+  /// The DOSE units the prescription was written for: 30, beside a delta of
+  /// -3. Recorded so the dispensary can answer "why did three strips leave"
+  /// without joining back to an item whose divisor may have been corrected
+  /// since. Null on every row written before the conversion existed — those
+  /// carry a dose-unit delta mislabelled as stock units, and reinterpreting
+  /// them now would be arithmetic nobody performed at the counter.
+  clinicalQuantity Int?             @map("clinical_quantity")
   referenceType   String?           @map("reference_type")
   referenceId     String?           @map("reference_id")
   createdByUserId String?           @map("created_by_user_id")
@@ -3464,12 +3476,20 @@ model Prescription {
   visitId  String @map("visit_id")
   itemId   String @map("item_id")
 
-  // "Dispense Quantity" — stock units (e.g. bottles), decremented from
-  // StockLevel only at DISPENSED (D-028), never at ORDERED.
+  // THE CLINICAL QUANTITY — DOSE UNITS, NOT STOCK UNITS.
+  //
+  // What the doctor wrote: 30 tablets. The form computes it as
+  // dose x doses-per-day x days (`computeQuantity`), and for PRN and STAT,
+  // where there is no doses-per-day, a person types it — still in dose units.
+  //
+  // It is NOT what leaves the shelf. Stock moves in strips and boxes, and the
+  // conversion is `ceil(quantity / divisor)` in `dispense-pricing.ts`. This
+  // comment used to say "stock units", and both dispensing paths believed it:
+  // a 30-tablet course deducted 30 strips.
   quantity Int @default(1)
 
   // "Dosage Instructions" — the per-dose amount (e.g. 1.64 mL), distinct
-  // from quantity (stock units dispensed).
+  // from quantity (the whole course).
   amount       Decimal @db.Decimal(10, 2)
   unit         String?
   frequency    String
