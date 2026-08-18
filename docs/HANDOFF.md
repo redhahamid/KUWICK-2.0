@@ -1374,6 +1374,102 @@ STICKY BOTTOM BAR, not as a sixth card in the scrolling rail, and
 `consultation-tariff.ts` (D-094) already answers "should this visit carry a
 consultation charge" server-side — do not build a second answer.
 
+## APPOINTMENTS PIECE 1 — DONE (2026-08-18). Settings: providers & bookable services.
+
+**THE TIMEZONE CONVENTION, CONFIRMED AND WRITTEN DOWN — READ THIS FIRST.**
+It was asked for, and confirming it turned up a live defect rather than a
+tick-box.
+
+    STORED   — `Appointment.scheduledStart/End` are REAL UTC INSTANTS.
+    MATCHED  — roster, exception, closed-date and window comparisons happen in
+               the CLINIC's wall clock, converted through `Clinic.timezone`.
+    RENDERED — the CLINIC's wall clock, never the reader's.
+
+What it was before: `combineDateAndTime` built slots with
+`Date.UTC(y, m, d, 9, 0)`, so a 09:00 roster produced the instant **09:00Z —
+5pm in Kuala Lumpur** — and the web rendered it back with bare `dayjs()`, the
+browser's local zone. On a UTC test runner and a UTC CI box the wrong instant
+renders back as the right wall clock and nothing looks amiss. **On a clinic
+laptop in Malaysia the whole diary reads eight hours late.** The old
+`clinicTime.ts` comment said no per-tenant timezone was stored; `Clinic.timezone`
+has existed (default `Asia/Kuala_Lumpur`) and the consultation tariff has
+converted through it since D-090. The appointment module was the outlier.
+
+Now: `apps/api/src/appointment/time.util.ts` holds the conversion
+(`zonedWallClockToInstant`, `combineInClinicZone`, `clinicDayBounds`,
+`clinicDateKey`), and `apps/web/src/clinical/clinicTime.ts` renders through
+`dayjs.tz` with the zone set once at boot by `useClinicTimeZoneSync`. The
+reader's zone is the wrong answer even when it agrees: an owner checking the
+diary from Jakarta must see the same 09:00 the front desk sees.
+
+**⚠ EXISTING APPOINTMENT ROWS ARE NOT MIGRATED.** Anything booked before this
+carries a wall-clock-as-UTC instant and is now 8 hours out. Staging test data
+only, and NOT rewritten — the same reasoning as the stock deduction: guessing
+which historical rows meant what is arithmetic nobody performed. Say the word
+and it is a one-line UPDATE on staging.
+
+**ONE PATH, AND IT IS NOW ACTUALLY ONE.** `AppointmentBookingValidator` used to
+re-derive the roster, exception, overlap and daily cap from the same tables the
+engine reads — the same rules, written twice, with its own `isWithinWindow`
+comparing time-of-day through UTC getters. It now ASKS the engine and checks
+the requested time is one of the slots it offered. Every constraint the engine
+learns is enforced at booking the moment it is written, because there is
+nothing left to keep in step. Deliberate consequence: **a booking must land ON
+the grid** — a drag to 09:07 is refused with a reason, which is what piece 3
+needs anyway.
+
+**A CAPACITY FLAW THAT MADE THAT UNSOUND, FIXED.** `dailyCapacity` used to
+`slice()` the offered list — cap 5, none booked, and the patient could only
+pick the earliest slot. It is now a GATE: refuse when `booked >= capacity`,
+otherwise offer every free slot.
+
+**THE SIX CONSTRAINTS**, all server-side, in `findAvailability`, each returning
+a NAMED reason so the front desk gets a sentence rather than an empty list:
+`CLINIC_CLOSED`, `SERVICE_NOT_BOOKABLE`, `NOT_QUALIFIED`, `NOT_ROSTERED`,
+`OUTSIDE_BOOKING_WINDOW`, `TOO_LATE_TO_BOOK`, `FULLY_BOOKED`.
+
+**NEW TABLES** (`20260818160000_a_clinic_can_say_when_it_is_open`):
+- `clinic_booking_settings` — first/last session (wall clock), minimum notice.
+  One row per clinic, CHECK that the window is a window.
+- `clinic_closed_dates` — the building shut, distinct from one doctor's leave,
+  so "is the clinic open on the 24th" is answerable without knowing which
+  doctors exist.
+- `service_catalog` + `bookable` (defaults FALSE — nothing goes public by
+  migration), `slot_interval_minutes`, `booking_fee`, `booking_description`,
+  `booking_photo_url`, `requires_approval`, `concurrent_limit`.
+
+**DURATION vs INTERVAL vs CONCURRENT — three different numbers.** Duration is
+how long it runs; interval is how often one starts; concurrent limit is how
+many rooms. A 30-minute service on a 15-minute interval offers 09:00/09:15/09:30
+and lets them overlap up to the room count.
+
+**SCREENS.** `/settings/scheduling/provider-availability` — doctor picker, all
+seven days always visible (a day off says "Not working"; an absent row is
+indistinguishable from one that failed to load), saved as ONE replace in one
+transaction; plus date overrides on the same card set. `/settings/scheduling/booking-rules`
+— window, notice, closed dates. Services & Procedures gains a **Booking**
+column and its own drawer, deliberately separate from Edit: publishing a
+service and repricing it are different acts by different people.
+
+**Publishing a service with NO doctor mapped is refused**, naming Doctor-Service
+Mapping. The failure it prevents is silent — the service appears publicly and
+every doctor offers an empty date picker.
+
+**MEASURED:** API 1692, web 1518, both typechecks. **NOT run here:** e2e (no
+PostgreSQL in this container — see piece 4b for how to run it).
+
+**FEEDS INTO REPORTS** (nothing built yet, but the columns are now there to
+build from): no-show rate = `AppointmentStatus.NO_SHOW` over non-cancelled per
+period; bookings per doctor = count by `staffId`; potential vs realised sales =
+`booking_fee + ServiceCatalog.price` summed over BOOKED/ARRIVED versus what the
+matching invoices actually collected. Piece 2's stats bar is the first consumer
+and should compute these SERVER-side so the report and the bar cannot disagree.
+
+**NEXT — PIECE 2**: clinic dashboard, list + stats bar + tabs + WhatsApp
+deep-link reminder. `AppointmentStatus` already carries what the tabs need;
+check whether a "reminder sent" column exists before building the action (it
+does not — it is new).
+
 ## Checklist state
 
 | Item | Status |

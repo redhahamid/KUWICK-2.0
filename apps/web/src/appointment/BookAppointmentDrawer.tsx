@@ -9,6 +9,7 @@ import { useServices } from '../clinical/hooks/useServices';
 import { useAvailability, useCreateAppointment } from './hooks/useAppointments';
 import { AvailableSlot } from './types';
 import { ApiError } from '../core/api-client';
+import { formatClinicTime } from '../clinical/clinicTime';
 
 const { Text } = Typography;
 
@@ -159,7 +160,7 @@ export function BookAppointmentDrawer({ open, onClose }: BookAppointmentDrawerPr
                       type={selectedSlot?.start === slot.start ? 'primary' : 'default'}
                       onClick={() => setSelectedSlot(slot)}
                     >
-                      {dayjs(slot.start).format('HH:mm')}
+                      {formatClinicTime(slot.start)}
                     </Button>
                   ))
                 ) : (

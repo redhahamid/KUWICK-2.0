@@ -42,6 +42,8 @@ import { HistoricalVisitPage } from './clinical/history/HistoricalVisitPage';
 import { DoctorSchedulesPage } from './appointment/DoctorSchedulesPage';
 import { DoctorServiceQualificationsPage } from './appointment/DoctorServiceQualificationsPage';
 import { SlotCapacityConfigsPage } from './appointment/SlotCapacityConfigsPage';
+import { ProviderAvailabilityPage } from './appointment/ProviderAvailabilityPage';
+import { BookingRulesPage } from './appointment/BookingRulesPage';
 import { ItemsPage } from './inventory/ItemsPage';
 import { SuppliersPage } from './inventory/SuppliersPage';
 import { StockTakePage } from './inventory/StockTakePage';
@@ -144,6 +146,8 @@ export function App() {
             <Route path="/settings/scheduling/slot-capacity" element={<SlotCapacityConfigsPage />} />
             <Route path="/settings/queue/rooms" element={<RoomsPage />} />
             <Route path="/settings/queue/display" element={<QueueDisplaySettingsPage />} />
+            <Route path="/settings/scheduling/provider-availability" element={<ProviderAvailabilityPage />} />
+            <Route path="/settings/scheduling/booking-rules" element={<BookingRulesPage />} />
             <Route path="/settings/clinical/services" element={<ServicesPage />} />
             <Route path="/settings/clinical/consultation-tariffs" element={<ConsultationTariffsPage />} />
             <Route path="/settings/clinical/diagnoses" element={<DiagnosesDirectoryPage />} />

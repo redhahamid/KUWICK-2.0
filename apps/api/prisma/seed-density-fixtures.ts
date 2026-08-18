@@ -267,6 +267,12 @@ async function main() {
             orderType: 'STANDARD_SERVICE',
             durationMinutesDefault: 30,
             price: 35,
+            // BOOKABLE, or the availability engine answers
+            // SERVICE_NOT_BOOKABLE and the spec sees an empty picker for a
+            // reason that has nothing to do with what it is testing. The
+            // column defaults to false so that nothing goes public by
+            // migration; a fixture for a booking test has to say so.
+            bookable: true,
           },
           select: { id: true },
         }))
@@ -307,8 +313,14 @@ async function main() {
           clinicId,
           staffId: doctor.id,
           dayOfWeek,
+          // The whole day, in the CLINIC's wall clock. It used to be 00:00-12:00
+          // and the engine read it as UTC, so the two agreed by accident on a
+          // UTC runner. Now the engine converts through `Clinic.timezone`, and
+          // a half-day window would put the spec's slots in the clinic's
+          // morning — fine in Malaysia, and a coin toss for the past-slot
+          // filter depending on the hour CI happened to run.
           startTime: new Date('1970-01-01T00:00:00.000Z'),
-          endTime: new Date('1970-01-01T12:00:00.000Z'),
+          endTime: new Date('1970-01-01T23:00:00.000Z'),
           effectiveFrom: new Date('2020-01-01T00:00:00.000Z'),
         },
       });

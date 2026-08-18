@@ -9,6 +9,7 @@ import {
 import { Staff } from '../../hr/types';
 import { Service } from '../types';
 import { isDoctorRole } from '../attendingClinician';
+import { clinicDayjs } from '../clinicTime';
 
 /**
  * b4 PIECE C — the rules behind the canvas appointment card, as functions.
@@ -95,17 +96,17 @@ export function appointmentsOn(
   appointments: Appointment[] | undefined,
   day: Date,
 ): Appointment[] {
-  const key = dayjs(day).format('YYYY-MM-DD');
+  const key = clinicDayjs(day).format('YYYY-MM-DD');
   return (appointments ?? []).filter(
-    (appointment) => dayjs(appointment.scheduledStart).format('YYYY-MM-DD') === key,
+    (appointment) => clinicDayjs(appointment.scheduledStart).format('YYYY-MM-DD') === key,
   );
 }
 
 /** "Mon 24 Aug · 09:30–10:00". The year only when it is not this one. */
 export function describeWhen(appointment: Appointment, now: Date = new Date()): string {
-  const start = dayjs(appointment.scheduledStart);
-  const end = dayjs(appointment.scheduledEnd);
-  const day = start.isSame(dayjs(now), 'year')
+  const start = clinicDayjs(appointment.scheduledStart);
+  const end = clinicDayjs(appointment.scheduledEnd);
+  const day = start.isSame(clinicDayjs(now), 'year')
     ? start.format('ddd D MMM')
     : start.format('ddd D MMM YYYY');
   return `${day} · ${start.format('HH:mm')}–${end.format('HH:mm')}`;
@@ -173,7 +174,7 @@ export function bookableDoctors(staff: Staff[] | undefined): Staff[] {
 
 /** "09:30" — the slot as the doctor picks it. */
 export function slotLabel(slot: AvailableSlot): string {
-  return dayjs(slot.start).format('HH:mm');
+  return clinicDayjs(slot.start).format('HH:mm');
 }
 
 /**

@@ -15,6 +15,10 @@ const SETTINGS_CATEGORIES: HubCategory[] = [
     key: 'scheduling',
     label: 'Appointments & Scheduling',
     items: [
+      // Availability first: it is what a clinic sets up before anything else
+      // here means anything.
+      { path: '/settings/scheduling/provider-availability', label: 'Provider Availability' },
+      { path: '/settings/scheduling/booking-rules', label: 'Booking Rules' },
       { path: '/settings/scheduling/doctor-service-mapping', label: 'Doctor-Service Mapping' },
       { path: '/settings/scheduling/slot-capacity', label: 'Slot Capacity' },
     ],

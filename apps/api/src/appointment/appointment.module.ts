@@ -15,6 +15,8 @@ import { SlotAvailabilityService } from './slot-availability.service';
 import { AppointmentController } from './appointment.controller';
 import { AppointmentService } from './appointment.service';
 import { AppointmentBookingValidator } from './appointment-booking-validator.service';
+import { ClinicBookingSettingsController } from './clinic-booking-settings.controller';
+import { ClinicBookingSettingsService } from './clinic-booking-settings.service';
 
 @Module({
   imports: [CoreModule, HrModule, ClinicalModule],
@@ -25,6 +27,7 @@ import { AppointmentBookingValidator } from './appointment-booking-validator.ser
     DoctorServiceQualificationController,
     AvailabilityController,
     AppointmentController,
+    ClinicBookingSettingsController,
   ],
   providers: [
     DoctorScheduleService,
@@ -34,6 +37,7 @@ import { AppointmentBookingValidator } from './appointment-booking-validator.ser
     SlotAvailabilityService,
     AppointmentBookingValidator,
     AppointmentService,
+    ClinicBookingSettingsService,
   ],
 })
 export class AppointmentModule {}

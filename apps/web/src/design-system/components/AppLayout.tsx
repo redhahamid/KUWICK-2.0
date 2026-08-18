@@ -3,6 +3,7 @@ import { Avatar, Dropdown, Layout, Menu, Space, Typography } from 'antd';
 import { ArrowLeftOutlined, BarChartOutlined, LogoutOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../core/auth-store';
+import { useClinicTimeZoneSync } from '../../core/hooks/useClinicTimeZone';
 import { canViewDispensary } from '../../clinical/dispensary/dispensaryAccess';
 import { NotificationBell } from './NotificationBell';
 import { ClinicChatWidget } from '../../clinical/ClinicChatWidget';
@@ -71,6 +72,10 @@ export function AppLayout() {
   const clearAuth = useAuthStore((state) => state.clearAuth);
   const [chatOpen, setChatOpen] = useState(false);
   const [unreadChat, setUnreadChat] = useState(0);
+
+  // Every clinical time on every screen renders in the CLINIC's zone, not the
+  // laptop's. This is the one place that zone is set.
+  useClinicTimeZoneSync();
 
   const navItems = useMemo(
     () =>

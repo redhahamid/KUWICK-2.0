@@ -1,5 +1,13 @@
 import { expect, test } from '@playwright/test';
 import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+// The seeded clinic's zone. Every clinical time in the web app renders in it.
+const CLINIC_ZONE = 'Asia/Kuala_Lumpur';
 import { densityFixtures, openDensityVisit } from './support/density';
 
 /**
@@ -77,13 +85,13 @@ test.describe('booking a follow-up from the consultation', () => {
     await expect(slotButtons.first()).toBeVisible();
 
     const offered = await slotButtons.count();
-    // SLOT CAPACITY, on the real screen: the engine caps the list at the
-    // clinic's configured daily capacity, so a picker showing more than that
-    // is a picker that is not reading it.
-    expect(
-      offered,
-      `the picker offered ${offered} slots, more than the configured daily capacity of ${booking.dailyCapacity}`,
-    ).toBeLessThanOrEqual(booking.dailyCapacity);
+    // The rostered day produces slots at all. Daily capacity is deliberately
+    // NOT asserted here any more: it used to `slice()` the offered list, so a
+    // cap of 5 with nothing booked let the patient pick only the earliest
+    // slot. It is now a GATE — refuse the day when it is full, otherwise offer
+    // every free slot — and the capacity behaviour is pinned server-side in
+    // `slot-availability.service.spec.ts` where it can be tested against a
+    // full day without booking one.
     expect(offered, 'the rostered day produced no bookable slot').toBeGreaterThan(0);
 
     // And the SLOT LENGTH is the configured one, read off the two the doctor
@@ -131,8 +139,12 @@ test.describe('booking a follow-up from the consultation', () => {
     // carrying the lifecycle actions that module owns. A canvas-side store
     // would fail here and nowhere else.
     await page.goto('/appointments');
+    // The list renders in the CLINIC's zone (`clinicTime.ts`), not the
+    // runner's, so the expected text is built the same way. Matching with a
+    // bare `dayjs()` passed only because CI is UTC and would have hidden an
+    // eight-hour error on a Malaysian machine.
     const row = page.getByRole('row').filter({ hasText: booking.patientName }).filter({
-      hasText: dayjs(chosenIso).format('YYYY-MM-DD HH:mm'),
+      hasText: dayjs(chosenIso).tz(CLINIC_ZONE).format('D MMM YYYY · HH:mm'),
     });
     await expect(
       row,

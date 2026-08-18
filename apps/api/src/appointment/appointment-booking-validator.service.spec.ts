@@ -1,118 +1,150 @@
 import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
-import { AppointmentBookingValidator, BookingRequest } from './appointment-booking-validator.service';
-import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
+import { AppointmentBookingValidator } from './appointment-booking-validator.service';
 import { StaffService } from '../hr/staff.service';
-import { parseTimeToDate } from './time.util';
+import {
+  AvailabilityQuery,
+  AvailabilityResult,
+  SlotAvailabilityService,
+  UnavailableReason,
+} from './slot-availability.service';
 
-const CLINIC_ID = 'clinic-1';
-const STAFF_ID = 'staff-1';
-const SERVICE_ID = 'service-1';
+const CLINIC = 'clinic-1';
+const STAFF = 'staff-1';
+const SERVICE = 'service-1';
 
-function windowOn(dateISO: string, startHHMM: string, endHHMM: string) {
+// 09:00 Kuala Lumpur on Wednesday 5 August 2026, as the instant it really is.
+const NINE = new Date('2026-08-05T01:00:00.000Z');
+const NINE_THIRTY = new Date('2026-08-05T01:30:00.000Z');
+const TEN = new Date('2026-08-05T02:00:00.000Z');
+
+// ===========================================================================
+// THE VALIDATOR HAS NO RULES OF ITS OWN.
+//
+// It used to re-derive the roster, the exception, the overlap and the daily
+// cap — the same rules the availability engine applies, written a second time
+// and comparing time-of-day through UTC getters. These tests pin the property
+// that replaced all of it: what the engine offers is what may be booked, and
+// nothing else.
+// ===========================================================================
+function build(
+  world: { slots?: { start: Date; end: Date }[]; reason?: UnavailableReason | null } = {},
+) {
+  const seen: AvailabilityQuery[] = [];
+  const availability = {
+    clinicTimeZone: jest.fn().mockResolvedValue('Asia/Kuala_Lumpur'),
+    findAvailability: jest.fn(async (query: AvailabilityQuery): Promise<AvailabilityResult> => {
+      seen.push(query);
+      return {
+        slots: world.slots ?? [{ start: NINE, end: NINE_THIRTY }],
+        reason: world.reason ?? null,
+      };
+    }),
+  } as unknown as SlotAvailabilityService;
+
+  const staffService = { assertActiveDoctor: jest.fn() } as unknown as StaffService;
+  const validator = new AppointmentBookingValidator(staffService, availability);
+
   return {
-    start: new Date(`${dateISO}T${startHHMM}:00.000Z`),
-    end: new Date(`${dateISO}T${endHHMM}:00.000Z`),
+    validator,
+    availability,
+    staffService,
+    seen,
+    validate: (start = NINE, end = NINE_THIRTY, extra: Record<string, unknown> = {}) =>
+      validator.validate({
+        clinicId: CLINIC,
+        staffId: STAFF,
+        serviceId: SERVICE,
+        scheduledStart: start,
+        scheduledEnd: end,
+        ...extra,
+      }),
   };
 }
 
-function baseRequest(overrides: Partial<BookingRequest> = {}): BookingRequest {
-  const { start, end } = windowOn('2026-08-05', '10:00', '10:30');
-  return {
-    clinicId: CLINIC_ID,
-    staffId: STAFF_ID,
-    serviceId: SERVICE_ID,
-    scheduledStart: start,
-    scheduledEnd: end,
-    ...overrides,
-  };
-}
-
-function createValidator(overrides: {
-  qualified?: boolean;
-  exception?: { startTime: Date | null; endTime: Date | null } | null;
-  schedules?: { startTime: Date; endTime: Date }[];
-  overlapping?: unknown | null;
-  capacityConfig?: { dailyCapacity: number | null } | null;
-  countSameDay?: number;
-}) {
-  const staffService = {
-    assertActiveDoctor: jest.fn().mockResolvedValue(undefined),
-  } as unknown as StaffService;
-
-  const prisma = {
-    doctorServiceQualification: {
-      findFirst: jest.fn().mockResolvedValue(overrides.qualified === false ? null : { id: 'q1' }),
-    },
-    scheduleException: {
-      findFirst: jest.fn().mockResolvedValue(overrides.exception ?? null),
-    },
-    doctorSchedule: {
-      findMany: jest.fn().mockResolvedValue(overrides.schedules ?? []),
-    },
-    appointment: {
-      findFirst: jest.fn().mockResolvedValue(overrides.overlapping ?? null),
-      count: jest.fn().mockResolvedValue(overrides.countSameDay ?? 0),
-    },
-    slotCapacityConfig: {
-      findFirst: jest.fn().mockResolvedValue(overrides.capacityConfig ?? null),
-    },
-  } as unknown as TenantScopedPrismaClient;
-
-  return { validator: new AppointmentBookingValidator(prisma, staffService), prisma, staffService };
-}
-
-describe('AppointmentBookingValidator', () => {
-  it('rejects a booking when the doctor has no DoctorServiceQualification for the service', async () => {
-    const { validator } = createValidator({ qualified: false });
-    await expect(validator.validate(baseRequest())).rejects.toThrow(UnprocessableEntityException);
+describe('what the engine offers is what may be booked', () => {
+  it('1. a slot the engine offers is accepted', async () => {
+    const ctx = build();
+    await expect(ctx.validate()).resolves.toBeUndefined();
   });
 
-  it('rejects a booking outside any DoctorSchedule window for that day', async () => {
-    const { validator } = createValidator({ schedules: [] });
-    await expect(validator.validate(baseRequest())).rejects.toThrow(UnprocessableEntityException);
+  it('2. an inactive doctor is refused before anything is computed', async () => {
+    const ctx = build();
+    (ctx.staffService.assertActiveDoctor as jest.Mock).mockRejectedValueOnce(new Error('not a doctor'));
+
+    await expect(ctx.validate()).rejects.toThrow('not a doctor');
+    expect(ctx.availability.findAvailability).not.toHaveBeenCalled();
   });
 
-  it('rejects a booking on a date covered by a null-window ScheduleException, even if DoctorSchedule would allow it', async () => {
-    const { validator, prisma } = createValidator({
-      exception: { startTime: null, endTime: null },
-      schedules: [{ startTime: parseTimeToDate('09:00'), endTime: parseTimeToDate('17:00') }],
-    });
-    await expect(validator.validate(baseRequest())).rejects.toThrow(UnprocessableEntityException);
-    // The exception short-circuits roster resolution — DoctorSchedule must
-    // never be consulted once a leave exception is found for that date.
-    expect(prisma.doctorSchedule.findMany).not.toHaveBeenCalled();
+  it('3. a time that is not on the grid is refused', async () => {
+    // 09:07, dragged. The engine never offered it, so it is not bookable —
+    // this is the drag-and-drop refusal, not a special case for it.
+    const ctx = build();
+    const offGrid = new Date('2026-08-05T01:07:00.000Z');
+
+    await expect(ctx.validate(offGrid, new Date('2026-08-05T01:37:00.000Z'))).rejects.toThrow(
+      ConflictException,
+    );
   });
 
-  it('accepts a booking inside a populated-window ScheduleException even when it falls outside the normal DoctorSchedule', async () => {
-    const { validator } = createValidator({
-      exception: { startTime: parseTimeToDate('09:00'), endTime: parseTimeToDate('12:00') },
-      schedules: [],
-    });
-    await expect(validator.validate(baseRequest())).resolves.toBeUndefined();
+  it('4. the right start with the wrong LENGTH is refused, and says so', async () => {
+    const ctx = build();
+
+    await expect(ctx.validate(NINE, TEN)).rejects.toThrow(
+      /available, but not for that length/i,
+    );
+  });
+});
+
+describe('the engine names the reason, and the validator says it in words', () => {
+  const cases: [UnavailableReason, RegExp, typeof ConflictException][] = [
+    ['CLINIC_CLOSED', /clinic is closed/i, UnprocessableEntityException],
+    ['NOT_ROSTERED', /outside the doctor's roster/i, UnprocessableEntityException],
+    ['NOT_QUALIFIED', /not set up to perform/i, UnprocessableEntityException],
+    ['SERVICE_NOT_BOOKABLE', /cannot be booked/i, UnprocessableEntityException],
+    ['OUTSIDE_BOOKING_WINDOW', /booking hours/i, UnprocessableEntityException],
+    ['TOO_LATE_TO_BOOK', /more notice/i, UnprocessableEntityException],
+    // A race with another booking rather than a malformed request: 409, so the
+    // caller knows a different slot is worth trying.
+    ['FULLY_BOOKED', /no room left/i, ConflictException],
+  ];
+
+  it.each(cases)('5. %s is refused with a sentence a person can act on', async (reason, message, type) => {
+    const ctx = build({ slots: [], reason });
+
+    await expect(ctx.validate()).rejects.toThrow(type);
+    await expect(ctx.validate()).rejects.toThrow(message);
   });
 
-  it('accepts a booking that falls within a normal DoctorSchedule window with no exception', async () => {
-    const { validator } = createValidator({
-      exception: null,
-      schedules: [{ startTime: parseTimeToDate('09:00'), endTime: parseTimeToDate('17:00') }],
-    });
-    await expect(validator.validate(baseRequest())).resolves.toBeUndefined();
+  it('6. no refusal message names a table, a column or an enum', async () => {
+    // These end up in a toast at a front desk and on a public booking page.
+    for (const [reason] of cases) {
+      const ctx = build({ slots: [], reason });
+      const error = await ctx.validate().catch((caught: Error) => caught);
+      expect((error as Error).message).not.toMatch(
+        /doctor_schedules|schedule_exceptions|slot_capacity|null|undefined|_id\b/i,
+      );
+    }
+  });
+});
+
+describe('the day it asks about is the CLINIC’s day', () => {
+  it('7. a late-evening booking asks about the local date, not the UTC one', async () => {
+    // 23:30 in Kuala Lumpur is 15:30Z the SAME day; but 00:30 local is 16:30Z
+    // the day BEFORE. Reading the UTC date off the instant asks the engine
+    // about the wrong day and refuses a perfectly good booking.
+    const ctx = build();
+    const halfPastMidnightLocal = new Date('2026-08-05T16:30:00.000Z'); // 6 Aug, 00:30 KL
+
+    await ctx.validate(halfPastMidnightLocal, halfPastMidnightLocal).catch(() => undefined);
+
+    expect(ctx.seen[0].date.toISOString()).toBe('2026-08-06T00:00:00.000Z');
   });
 
-  it('rejects an overlapping booking for the same doctor', async () => {
-    const { validator } = createValidator({
-      schedules: [{ startTime: parseTimeToDate('09:00'), endTime: parseTimeToDate('17:00') }],
-      overlapping: { id: 'existing-appt' },
-    });
-    await expect(validator.validate(baseRequest())).rejects.toThrow(ConflictException);
-  });
+  it('8. a reschedule tells the engine not to count the appointment being moved', async () => {
+    const ctx = build();
 
-  it('rejects a booking once daily capacity for the service is reached', async () => {
-    const { validator } = createValidator({
-      schedules: [{ startTime: parseTimeToDate('09:00'), endTime: parseTimeToDate('17:00') }],
-      capacityConfig: { dailyCapacity: 3 },
-      countSameDay: 3,
-    });
-    await expect(validator.validate(baseRequest())).rejects.toThrow(ConflictException);
+    await ctx.validate(NINE, NINE_THIRTY, { excludeAppointmentId: 'appt-9' });
+
+    expect(ctx.seen[0].excludeAppointmentId).toBe('appt-9');
   });
 });

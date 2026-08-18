@@ -21,6 +21,7 @@ import { ARRIVABLE_FROM_STATUSES, NON_CANCELLABLE_STATUSES } from './appointment
 import { AppointmentCalendarView } from './calendar/AppointmentCalendarView';
 import { ApiError } from '../core/api-client';
 import { PageHeader } from '../design-system/components/PageHeader';
+import { formatClinicDateTime, formatClinicTime } from '../clinical/clinicTime';
 
 export function AppointmentsPage() {
   const [pageView, setPageView] = useState<'list' | 'calendar'>('list');
@@ -139,7 +140,7 @@ export function AppointmentsPage() {
               {
                 title: 'Scheduled',
                 render: (_, record: Appointment) =>
-                  `${dayjs(record.scheduledStart).format('YYYY-MM-DD HH:mm')}–${dayjs(record.scheduledEnd).format('HH:mm')}`,
+                  `${formatClinicDateTime(record.scheduledStart)}–${formatClinicTime(record.scheduledEnd)}`,
               },
               {
                 title: 'Status',

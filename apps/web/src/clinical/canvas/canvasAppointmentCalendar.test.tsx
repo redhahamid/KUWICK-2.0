@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import dayjs from 'dayjs';
 import { CanvasAppointmentCalendar } from './CanvasAppointmentCalendar';
 import { Visit } from '../types';
+import { clinicDayjs } from '../clinicTime';
 
 // ===========================================================================
 // b4 PIECE C (3) — THE APPOINTMENT MONTH AND ITS PICKER.
@@ -40,7 +41,12 @@ const VISIT = {
   visitNumber: 'V-000004',
 } as unknown as Visit;
 
-const TOMORROW = dayjs().add(1, 'day');
+// BUILT IN THE CLINIC'S ZONE, and asserted in it. These were built with a
+// bare `dayjs()`, which meant "09:30" was 09:30 to the TEST RUNNER — so the
+// assertions agreed with whatever zone CI happened to run in and could never
+// have caught the eight-hour error the module actually had. The card renders
+// through `clinicTime.ts` now, so the fixture has to speak the same clock.
+const TOMORROW = clinicDayjs(dayjs().add(1, 'day').valueOf());
 const SLOT_START = TOMORROW.hour(9).minute(30).second(0).millisecond(0);
 
 let APPOINTMENTS: unknown[] = [];
@@ -171,7 +177,11 @@ describe('the month, and the two facts above it', () => {
   });
 
   it('names the previous one too, including a visit the patient did not attend', async () => {
-    const lastWeek = dayjs().subtract(7, 'day').hour(9).minute(0).second(0).millisecond(0);
+    const lastWeek = clinicDayjs(dayjs().subtract(7, 'day').valueOf())
+      .hour(9)
+      .minute(0)
+      .second(0)
+      .millisecond(0);
     APPOINTMENTS = [
       {
         id: 'appt-old',

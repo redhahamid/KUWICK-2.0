@@ -143,18 +143,15 @@ describe('which booking is next', () => {
     expect(upcomingAppointments(undefined, NOW)).toEqual([]);
   });
 
-  it('says when, with the day a person reads', () => {
-    // Rendered in the reader's own timezone, exactly as the Appointments
-    // module's list and its booking drawer already render a scheduled time.
-    // Asserted against dayjs rather than a literal clock face, because CI runs
-    // in UTC and a Malaysian clinic does not — the point of this assertion is
-    // the SHAPE ("day · start–end"), which a hardcoded 09:30 would turn into a
-    // test about the runner's timezone.
-    const start = dayjs('2026-08-24T01:30:00.000Z');
-    const end = dayjs('2026-08-24T02:00:00.000Z');
-    expect(describeWhen(appointment(), NOW)).toBe(
-      `${start.format('ddd D MMM')} · ${start.format('HH:mm')}–${end.format('HH:mm')}`,
-    );
+  it('says when, in the CLINIC’s clock', () => {
+    // A LITERAL clock face now, deliberately. This used to assert against
+    // `dayjs()` on the grounds that CI runs in UTC and a Malaysian clinic does
+    // not, so only the shape could be pinned — which meant the assertion
+    // agreed with whatever the reader's zone produced, including the wrong
+    // thing. The zone is the clinic's now (`clinicTime.ts`), so 01:30Z is
+    // 09:30 in Kuala Lumpur wherever this runs, and the number can be written
+    // down. If this ever fails on a laptop, the zone is not being set.
+    expect(describeWhen(appointment(), NOW)).toBe('Mon 24 Aug · 09:30–10:00');
   });
 
   it('a booking in another year says which year', () => {

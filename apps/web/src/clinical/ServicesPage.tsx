@@ -7,6 +7,8 @@ import { FormFieldBuilder } from './FormFieldBuilder';
 import { CreateServiceDto, FormField, Service, ServiceOrderType } from './types';
 import { ApiError } from '../core/api-client';
 import { PageHeader } from '../design-system/components/PageHeader';
+import { ServiceBookingDrawer } from './ServiceBookingDrawer';
+import { KuwickStatusTag } from '../design-system/kuwick';
 
 const { Text } = Typography;
 
@@ -66,6 +68,9 @@ function ResultFormBuilder({ service }: { service: Service }) {
 }
 
 export function ServicesPage() {
+  // The BOOKING half, on its own drawer — publishing a service to patients and
+  // repricing it are two different acts by two different people.
+  const [bookingFor, setBookingFor] = useState<Service | null>(null);
   const { data: services, isLoading } = useServices();
   const createService = useCreateService();
   const updateService = useUpdateService();
@@ -169,11 +174,28 @@ export function ServicesPage() {
           { title: 'Price (RM)', dataIndex: 'price' },
           { title: 'Active', dataIndex: 'active', render: (value: boolean) => (value ? 'Yes' : 'No') },
           {
+            title: 'Booking',
+            render: (_: unknown, r: Service) =>
+              r.bookable ? (
+                <KuwickStatusTag
+                  tone={r.requiresApproval ? 'attention' : 'success'}
+                  label={r.requiresApproval ? 'On request' : 'Bookable'}
+                />
+              ) : (
+                <Typography.Text type="secondary">—</Typography.Text>
+              ),
+          },
+          {
             title: 'Actions',
             render: (_: unknown, r: Service) => (
-              <Button size="small" onClick={() => openEdit(r)}>
-                Edit
-              </Button>
+              <Space size={4}>
+                <Button size="small" onClick={() => openEdit(r)}>
+                  Edit
+                </Button>
+                <Button size="small" onClick={() => setBookingFor(r)}>
+                  Booking
+                </Button>
+              </Space>
             ),
           },
         ]}
@@ -224,6 +246,12 @@ export function ServicesPage() {
         </Form>
         {editing && editing.orderType === 'TASK_ORDER' && <ResultFormBuilder service={editing} />}
       </Drawer>
+
+      <ServiceBookingDrawer
+        service={bookingFor}
+        open={Boolean(bookingFor)}
+        onClose={() => setBookingFor(null)}
+      />
     </>
   );
 }

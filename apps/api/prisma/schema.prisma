@@ -214,6 +214,8 @@ model Tenant {
   doctorSchedules             DoctorSchedule[]
   scheduleExceptions          ScheduleException[]
   slotCapacityConfigs         SlotCapacityConfig[]
+  clinicBookingSettings       ClinicBookingSettings[]
+  clinicClosedDates           ClinicClosedDate[]
   doctorServiceQualifications DoctorServiceQualification[]
   appointments                Appointment[]
   items                       Item[]
@@ -308,6 +310,8 @@ model Clinic {
   doctorSchedules         DoctorSchedule[]
   scheduleExceptions      ScheduleException[]
   slotCapacityConfigs     SlotCapacityConfig[]
+  bookingSettings         ClinicBookingSettings[]
+  closedDates             ClinicClosedDate[]
   appointments            Appointment[]
   stockLevels             StockLevel[]
   stockBatches            StockBatch[]
@@ -701,6 +705,7 @@ model Staff {
   doctorSchedules              DoctorSchedule[]
   scheduleExceptions           ScheduleException[]
   slotCapacityConfigs          SlotCapacityConfig[]
+  clinicClosedDates            ClinicClosedDate[]
   doctorServiceQualifications  DoctorServiceQualification[]
   appointments                 Appointment[]
   // Two different roles on a visit: the attending clinician, and whoever
@@ -870,6 +875,29 @@ model ServiceCatalog {
   durationMinutesDefault Int              @map("duration_minutes_default")
   price                  Decimal          @default(0) @db.Decimal(10, 2)
   active                 Boolean          @default(true)
+
+  // --- BOOKING CONFIG (Appointments piece 1) --------------------------------
+  // Separate from the clinical facts above because most of this catalogue is
+  // NOT bookable: a chest X-ray is an order a doctor places, not a slot a
+  // patient picks. `bookable` defaults false so nothing goes public by
+  // migration — a clinic decides service by service.
+  bookable            Boolean  @default(false)
+  /// How finely the day is sliced. NULL = same as the duration (back-to-back).
+  slotIntervalMinutes Int?     @map("slot_interval_minutes")
+  /// RM. Zero is a real answer — most consultations carry no booking fee —
+  /// which is why it is not nullable.
+  bookingFee          Decimal  @default(0) @map("booking_fee") @db.Decimal(10, 2)
+  /// What the PATIENT reads. `name` is "CONSULTATION - GENERAL"; this is the
+  /// sentence under it on the public page.
+  bookingDescription  String?  @map("booking_description")
+  bookingPhotoUrl     String?  @map("booking_photo_url")
+  /// TRUE lands the booking in the Requests tab for a human to accept.
+  requiresApproval    Boolean  @default(false) @map("requires_approval")
+  /// How many can run AT ONCE across the clinic — two treatment rooms, one
+  /// ultrasound. NULL means the room is not the constraint; the doctor is,
+  /// and the doctor is already the roster.
+  concurrentLimit     Int?     @map("concurrent_limit")
+
   createdAt              DateTime         @default(now()) @map("created_at")
   updatedAt              DateTime         @updatedAt @map("updated_at")
 
@@ -1017,6 +1045,61 @@ model ScheduleException {
   @@unique([tenantId, staffId, clinicId, date])
   @@index([tenantId, clinicId])
   @@map("schedule_exceptions")
+}
+
+/// The CLINIC's own booking rules — one row per clinic, distinct from any
+/// doctor's roster.
+///
+/// A doctor rostered 08:00-20:00 at a clinic whose last session is 17:00 must
+/// not be offered at 19:30, and "book me in four minutes" is a slot the engine
+/// can compute and the front desk cannot honour.
+///
+/// Times are WALL CLOCK in `Clinic.timezone` (see `time.util.ts`).
+model ClinicBookingSettings {
+  id                   String   @id @default(uuid())
+  tenantId             String   @map("tenant_id")
+  clinicId             String   @map("clinic_id")
+  firstSessionTime     DateTime @default(dbgenerated("'09:00'::time")) @map("first_session_time") @db.Time
+  lastSessionTime      DateTime @default(dbgenerated("'17:00'::time")) @map("last_session_time") @db.Time
+  /// 0 means walk-up booking is fine — a real answer, and the safe default: a
+  /// clinic that has not thought about this should not find its diary silently
+  /// narrowed.
+  minimumNoticeMinutes Int      @default(0) @map("minimum_notice_minutes")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+
+  @@unique([tenantId, clinicId])
+  @@map("clinic_booking_settings")
+}
+
+/// A day the BUILDING is shut. Deliberately not a `ScheduleException` with a
+/// null staff id: an exception is one doctor's day off and is read per doctor,
+/// where a public holiday has to be answerable ("is the clinic open on the
+/// 24th") without first knowing which doctors exist.
+model ClinicClosedDate {
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  clinicId          String   @map("clinic_id")
+  /// A DATE in the clinic's own zone. 24 December is 24 December whatever the
+  /// server is set to.
+  date              DateTime @db.Date
+  /// Shown to patients ("Deepavali"), and nullable because a clinic closing
+  /// for a reason it would rather not publish must still be able to close.
+  reason            String?
+  createdByStaffId  String?  @map("created_by_staff_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant @relation(fields: [tenantId], references: [id])
+  clinic         Clinic @relation(fields: [clinicId], references: [id])
+  createdByStaff Staff? @relation(fields: [createdByStaffId], references: [id])
+
+  @@unique([tenantId, clinicId, date])
+  @@index([tenantId, clinicId])
+  @@map("clinic_closed_dates")
 }
 
 model SlotCapacityConfig {

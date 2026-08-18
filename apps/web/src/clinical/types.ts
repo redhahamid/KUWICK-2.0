@@ -15,6 +15,22 @@ export interface Service {
   durationMinutesDefault: number;
   price: string;
   active: boolean;
+
+  // --- Booking config (Appointments piece 1) -------------------------------
+  // Separate from the clinical fields above because they are edited on a
+  // different form by different people. See ServiceBookingDrawer.
+  //
+  // OPTIONAL in TypeScript, always present from the API. A fixture written to
+  // test order search should not have to enumerate booking config to compile,
+  // and every reader here treats absent as "not bookable" — which is what the
+  // column defaults to anyway.
+  bookable?: boolean;
+  slotIntervalMinutes?: number | null;
+  bookingFee?: string;
+  bookingDescription?: string | null;
+  bookingPhotoUrl?: string | null;
+  requiresApproval?: boolean;
+  concurrentLimit?: number | null;
 }
 
 export interface CreateServiceDto {

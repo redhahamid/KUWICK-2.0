@@ -11,6 +11,7 @@ import {
 import { ARRIVABLE_FROM_STATUSES, NON_CANCELLABLE_STATUSES } from './appointment-status.constants';
 import { Appointment } from './types';
 import { ApiError } from '../core/api-client';
+import { formatClinicDateTime, formatClinicTime } from '../clinical/clinicTime';
 
 interface AppointmentDetailPopoverProps {
   appointment: Appointment | null;
@@ -57,8 +58,8 @@ export function AppointmentDetailPopover({
             <Descriptions.Item label="Doctor">{staffName}</Descriptions.Item>
             <Descriptions.Item label="Service">{serviceName}</Descriptions.Item>
             <Descriptions.Item label="Scheduled">
-              {dayjs(appointment.scheduledStart).format('YYYY-MM-DD HH:mm')} –{' '}
-              {dayjs(appointment.scheduledEnd).format('HH:mm')}
+              {formatClinicDateTime(appointment.scheduledStart)} –{' '}
+              {formatClinicTime(appointment.scheduledEnd)}
             </Descriptions.Item>
             {appointment.notes && <Descriptions.Item label="Notes">{appointment.notes}</Descriptions.Item>}
           </Descriptions>

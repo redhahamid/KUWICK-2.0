@@ -1,10 +1,7 @@
-import { ConflictException, Inject, Injectable, UnprocessableEntityException } from '@nestjs/common';
-import {
-  TENANT_SCOPED_PRISMA,
-  TenantScopedPrismaClient,
-} from '../core/tenant-scoped-prisma.provider';
+import { ConflictException, Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { StaffService } from '../hr/staff.service';
-import { TERMINAL_APPOINTMENT_STATUSES } from './appointment-status.constants';
+import { SlotAvailabilityService, UnavailableReason } from './slot-availability.service';
+import { clinicDateKey, parseDateOnly } from './time.util';
 
 export interface BookingRequest {
   clinicId: string;
@@ -15,132 +12,101 @@ export interface BookingRequest {
   // Set when re-validating a reschedule, so the appointment being replaced
   // doesn't count against its own overlap/capacity check.
   excludeAppointmentId?: string;
+  /** Injectable so the minimum-notice cut is testable and not a race. */
+  now?: Date;
 }
 
-function minutesSinceMidnightUTC(date: Date): number {
-  return date.getUTCHours() * 60 + date.getUTCMinutes();
-}
+/**
+ * What to tell the person, per reason the engine gave. Written for a front
+ * desk and a patient, not for a developer: every one of these ends up in a
+ * toast, a drag-and-drop refusal, or a public booking page.
+ */
+const REFUSALS: Record<UnavailableReason, string> = {
+  CLINIC_CLOSED: 'The clinic is closed on that date.',
+  NOT_ROSTERED: "That time is outside the doctor's roster, or they are away that day.",
+  NOT_QUALIFIED: 'This doctor is not set up to perform that service.',
+  SERVICE_NOT_BOOKABLE: 'That service cannot be booked.',
+  OUTSIDE_BOOKING_WINDOW: "That time is outside the clinic's booking hours.",
+  FULLY_BOOKED: 'There is no room left for that service on that date.',
+  TOO_LATE_TO_BOOK: 'That is too soon — the clinic needs more notice than that.',
+};
 
-// Malaysia has a single timezone, so comparing time-of-day via UTC getters
-// throughout is a deliberate simplification, not a bug — revisit only if
-// the product ever needs to span timezones.
-function isWithinWindow(requestedStart: Date, requestedEnd: Date, windowStart: Date, windowEnd: Date): boolean {
-  const reqStart = minutesSinceMidnightUTC(requestedStart);
-  const reqEnd = minutesSinceMidnightUTC(requestedEnd);
-  const winStart = minutesSinceMidnightUTC(windowStart);
-  const winEnd = minutesSinceMidnightUTC(windowEnd);
-  return reqStart >= winStart && reqEnd <= winEnd;
-}
-
-function dateOnlyUTC(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-}
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-// Enforces PRODUCT_REQUIREMENTS.md §8/§18: a doctor can only be booked for a
-// service they're configured to perform, and only within their active
-// roster minus approved leave/exceptions. Lives in the service layer per
-// docs/DATABASE_ARCHITECTURE.md §4 — a pure FK can't express "within roster
-// minus exceptions." The appointments_no_overlap EXCLUDE constraint
-// (see the add_appointment_module migration) is the DB-level backstop for
-// the overlap check specifically; this produces the friendly error message
-// for the common, non-racing case.
+// ===========================================================================
+// ONE PATH, AND THIS IS HOW IT STAYS ONE.
+//
+// This validator used to re-derive the roster, the exception, the overlap and
+// the daily cap from the same tables the availability engine reads — the same
+// rules, written twice, with `isWithinWindow` comparing time-of-day through
+// UTC getters while the engine sliced the day its own way. Two implementations
+// of "is this bookable" is how a screen offers a slot the server then refuses,
+// and how a clinic gets double-booked by two surfaces that each believed
+// themselves.
+//
+// So it does not re-derive anything. It ASKS THE ENGINE for the day's slots
+// and checks the requested time is one of them. Every constraint the engine
+// learns — closed dates, the clinic's window, minimum notice, concurrent
+// room limits — is enforced here the moment it is written there, because
+// there is nothing here to keep in step.
+//
+// The consequence is deliberate and wanted: a booking must land ON the grid.
+// A drag-and-drop that drops an appointment at 09:07 is refused with a reason
+// rather than quietly creating a slot nobody can ever book beside.
+//
+// The `appointments_no_overlap` EXCLUDE constraint stays the database-level
+// backstop for the racing case (see the add_appointment_module migration);
+// this produces the friendly message for the common one.
+// ===========================================================================
 @Injectable()
 export class AppointmentBookingValidator {
   constructor(
-    @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly staffService: StaffService,
+    private readonly availability: SlotAvailabilityService,
   ) {}
 
   async validate(request: BookingRequest): Promise<void> {
     await this.staffService.assertActiveDoctor(request.staffId);
 
-    const qualified = await this.prisma.doctorServiceQualification.findFirst({
-      where: { staffId: request.staffId, serviceId: request.serviceId },
-    });
-    if (!qualified) {
-      throw new UnprocessableEntityException('Doctor is not qualified to perform this service');
-    }
+    const clinic = await this.availability.clinicTimeZone(request.clinicId);
+    // The date is the CLINIC's calendar date for that instant. A 23:30 booking
+    // in Kuala Lumpur is 15:30Z — reading the UTC date off it would ask the
+    // engine about the wrong day.
+    const date = parseDateOnly(clinicDateKey(request.scheduledStart, clinic));
 
-    await this.assertWithinRoster(request);
-    await this.assertNoOverlap(request);
-    await this.assertWithinCapacity(request);
-  }
-
-  private async assertWithinRoster(request: BookingRequest): Promise<void> {
-    const date = dateOnlyUTC(request.scheduledStart);
-
-    const exception = await this.prisma.scheduleException.findFirst({
-      where: { staffId: request.staffId, clinicId: request.clinicId, date },
+    const { slots, reason } = await this.availability.findAvailability({
+      staffId: request.staffId,
+      clinicId: request.clinicId,
+      serviceId: request.serviceId,
+      date,
+      now: request.now,
+      excludeAppointmentId: request.excludeAppointmentId,
     });
 
-    let withinRoster: boolean;
-    if (exception) {
-      withinRoster =
-        exception.startTime !== null &&
-        exception.endTime !== null &&
-        isWithinWindow(request.scheduledStart, request.scheduledEnd, exception.startTime, exception.endTime);
-    } else {
-      const dayOfWeek = request.scheduledStart.getUTCDay();
-      const schedules = await this.prisma.doctorSchedule.findMany({
-        where: {
-          staffId: request.staffId,
-          clinicId: request.clinicId,
-          dayOfWeek,
-          effectiveFrom: { lte: date },
-          OR: [{ effectiveTo: null }, { effectiveTo: { gte: date } }],
-        },
-      });
-      withinRoster = schedules.some((schedule) =>
-        isWithinWindow(request.scheduledStart, request.scheduledEnd, schedule.startTime, schedule.endTime),
-      );
+    if (reason) {
+      // FULLY_BOOKED is a race with another booking, not a malformed request:
+      // 409, so a caller can retry a different slot. The rest are the request
+      // itself being wrong for the clinic's configuration: 422.
+      throw reason === 'FULLY_BOOKED'
+        ? new ConflictException(REFUSALS[reason])
+        : new UnprocessableEntityException(REFUSALS[reason]);
     }
 
-    if (!withinRoster) {
+    const requestedStart = request.scheduledStart.getTime();
+    const requestedEnd = request.scheduledEnd.getTime();
+    const exact = slots.find(
+      (slot) => slot.start.getTime() === requestedStart && slot.end.getTime() === requestedEnd,
+    );
+    if (exact) return;
+
+    // The slot exists but is taken, versus the time is not a slot at all.
+    // Different problems, different words, and one of them is a 409.
+    const startsOnTheGrid = slots.some((slot) => slot.start.getTime() === requestedStart);
+    if (startsOnTheGrid) {
       throw new UnprocessableEntityException(
-        "Requested time is outside the doctor's active roster (or falls on a leave/exception date)",
+        'That start time is available, but not for that length of appointment.',
       );
     }
-  }
-
-  private async assertNoOverlap(request: BookingRequest): Promise<void> {
-    const overlapping = await this.prisma.appointment.findFirst({
-      where: {
-        staffId: request.staffId,
-        status: { notIn: TERMINAL_APPOINTMENT_STATUSES },
-        id: request.excludeAppointmentId ? { not: request.excludeAppointmentId } : undefined,
-        scheduledStart: { lt: request.scheduledEnd },
-        scheduledEnd: { gt: request.scheduledStart },
-      },
-    });
-    if (overlapping) {
-      throw new ConflictException('Doctor already has an appointment overlapping this time');
-    }
-  }
-
-  private async assertWithinCapacity(request: BookingRequest): Promise<void> {
-    const config = await this.prisma.slotCapacityConfig.findFirst({
-      where: { staffId: request.staffId, clinicId: request.clinicId, serviceId: request.serviceId },
-    });
-    if (!config?.dailyCapacity) {
-      return;
-    }
-
-    const dayStart = dateOnlyUTC(request.scheduledStart);
-    const dayEnd = new Date(dayStart.getTime() + DAY_MS);
-    const countSameDay = await this.prisma.appointment.count({
-      where: {
-        staffId: request.staffId,
-        clinicId: request.clinicId,
-        serviceId: request.serviceId,
-        status: { notIn: TERMINAL_APPOINTMENT_STATUSES },
-        id: request.excludeAppointmentId ? { not: request.excludeAppointmentId } : undefined,
-        scheduledStart: { gte: dayStart, lt: dayEnd },
-      },
-    });
-    if (countSameDay >= config.dailyCapacity) {
-      throw new ConflictException('Doctor has reached daily capacity for this service');
-    }
+    throw new ConflictException(
+      'That time is no longer available — it is taken, or it is not one of the clinic’s slots.',
+    );
   }
 }
