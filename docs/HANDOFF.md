@@ -825,6 +825,56 @@ the seeder to overwrite) but is the sentence to re-read if the rule ever moves.
 **MEASURED:** 1586 API tests, 1500 web tests, both typechecks, both production
 builds. Not run here: the e2e suite (no PostgreSQL in this container).
 
+## INVENTORY PACKAGE — PIECE 4a DONE (2026-08-18). **A LIVE MONEY DEFECT.**
+
+**`Item.sellPrice` IS THE PRICE OF A PACK, NOT A TABLET**, and the clinic's own
+import settles it beyond argument once the rows are read beside their pack
+strings:
+
+| medicine | price | pack |
+|---|---|---|
+| C. OSELTAMIVIR 75MG (FLUHALT) | RM 155.00 | 10 BIJI / STRIP |
+| C. CELECOXIB 200MG (RABIROX) | RM 26.00 | 10 BIJI / STRIP |
+| KETOPROFEN PLASTER 30MG | RM 17.00 | 7 SHEETS / PACK |
+
+RM155 is a COURSE of Tamiflu. A prescription's `quantity` is in DOSE UNITS
+(dose × doses-per-day × days). **`amount = quantity × unitPrice` — what both
+the draft and the real invoice did — bills that course at RM 1,550.00.** The
+charge is `ceil(clinical ÷ divisor) × packPrice`.
+
+- **CEIL, NEVER DOWN.** Not a rounding preference: down means handing over
+  three strips and charging for two, on every partial pack, every time.
+- **NO DIVISOR MEANS NO PRICE**, and never a fallback of 1 — that fallback IS
+  the RM1,550 identity. In the DRAFT the line is listed, unpriced, uncounted,
+  carrying the reason and the remedy (the D-091 shape). On a REAL INVOICE LINE
+  it is REFUSED: a draft may show an incomplete total, but an invoice line is a
+  charge somebody pays.
+- **ONE conversion (`dispenseCalculation`), attached to `resolveSourcedPrice`**
+  rather than left to each of the three callers. The only thing worse than the
+  wrong number is two surfaces reaching different wrong numbers.
+- **`notPricedCount` — the outstanding chip's number, moved to the SERVER.**
+  The browser was patching `unpricedCount` by re-deriving undecided supplies
+  from line states. That held until a THIRD such state arrived (no divisor), at
+  which point the browser would have been maintaining its own list of "states
+  that mean the total is incomplete" — a billing fact on the wrong side.
+  NOT_CHARGEABLE is excluded deliberately: "this visit carries no consultation
+  charge" is an answer, not a gap.
+- **NO RETRO-PRICING, now including quantity.** A billed line is read, not
+  re-priced and not re-quantified — a clinic curating the catalogue afterwards
+  must not turn a charge already made into a tenth of itself.
+
+**⚠ STOCK DEDUCTION HAS THE SAME BUG AND IS DELIBERATELY NOT FIXED HERE.**
+`prescription.service.ts:441` and `dispensary.service.ts:248` both decrement
+`quantityOnHand` by the CLINICAL quantity, so a 30-tablet prescription takes
+**30 strips** off a shelf counted in strips. The conversion they need is
+`dispenseCalculation`, already written and tested. It was not applied because
+it changes what "insufficient stock" means at the dispensary and what
+`STOCK_WARNING_ACKNOWLEDGED` fires on — the owner's call, not a side effect of
+a pricing fix. **This is the first thing to settle in the next session.**
+
+**MEASURED:** 1619 API tests, 1501 web tests, both typechecks, both production
+builds. Not run here: the e2e suite (no PostgreSQL in this container).
+
 ## THE PRICING FIX — STEP 1, THE AUDIT. **THE DIVISOR IS MOSTLY NOT THERE.**
 
 **Run it:** `cd apps/api && npx tsx prisma/pricing-divisor-audit.ts`.
