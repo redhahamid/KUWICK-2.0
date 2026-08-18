@@ -17,6 +17,10 @@ import {
 import { PlusOutlined } from '@ant-design/icons';
 import { useCreateItem, useItem, useUpdateItem } from './hooks/useItems';
 import { InventoryList } from './InventoryList';
+import { DispensingSection } from './DispensingSection';
+import { PanelPricingSection } from './PanelPricingSection';
+import { StockControlSection } from './StockControlSection';
+import { CategorySelect } from './CategorySelect';
 import { useCreateItemAgeDosage, useItemAgeDosages, useRemoveItemAgeDosage } from './hooks/useItemAgeDosages';
 import { CreateItemAgeDosageDto, CreateItemDto, Item } from './types';
 import { standardPrescriptionValues, withClearedDefaults } from './standardPrescriptionForm';
@@ -47,6 +51,9 @@ export function ItemsPage() {
   const openCreate = () => {
     setEditingId(null);
     form.resetFields();
+    // A new item tracks batch and expiry unless somebody says otherwise — the
+    // safe direction, and the same default the column carries.
+    form.setFieldsValue({ tracksBatchExpiry: true, dispensedWhole: false });
     setOpen(true);
   };
 
@@ -74,6 +81,12 @@ export function ItemsPage() {
       remark: item.remark ?? undefined,
       sellPrice: Number(item.sellPrice),
       cost: item.cost ? Number(item.cost) : undefined,
+      // PIECE 2 — how it is counted, and the declaration behind a divisor of 1.
+      stockUnitId: item.stockUnitId ?? undefined,
+      quantityPerStockUnit: item.quantityPerStockUnit ?? undefined,
+      // The FORM holds the boolean; the date and the author are the server's.
+      dispensedWhole: item.dispensedWholeAt != null,
+      tracksBatchExpiry: item.tracksBatchExpiry ?? true,
       ...standardPrescriptionValues(item),
     });
   }, [editing, open, form]);
@@ -127,7 +140,10 @@ export function ItemsPage() {
           setEditingId(null);
         }}
         destroyOnHidden
-        width={480}
+        // Wider than it was: the form now carries a panel-pricing table and a
+        // stock-control block, and a 480px drawer put the panel names on two
+        // lines each.
+        width={640}
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <Row gutter={12}>
@@ -138,7 +154,7 @@ export function ItemsPage() {
             </Col>
             <Col span={12}>
               <Form.Item name="category" label="Category">
-                <Input />
+                <CategorySelect />
               </Form.Item>
             </Col>
           </Row>
@@ -169,6 +185,14 @@ export function ItemsPage() {
               </Form.Item>
             </Col>
           </Row>
+
+          <Divider titlePlacement="left" plain>
+            How this item is counted
+          </Divider>
+          {/* PIECE 2 — the two fields the pricing fix waits on. The audit found
+              `quantity_per_stock_unit` set on ZERO of 242 rows because no
+              screen ever accepted it; this is that screen. */}
+          <DispensingSection item={editing} />
 
           <Divider titlePlacement="left" plain>
             Dispensing &amp; Prescription Details
@@ -236,6 +260,22 @@ export function ItemsPage() {
               </Form.Item>
             </Col>
           </Row>
+
+          <Divider titlePlacement="left" plain>
+            Panel Pricing
+          </Divider>
+          {editingId ? (
+            <PanelPricingSection itemId={editingId} />
+          ) : (
+            <Text type="secondary">
+              Panel prices are set once the item exists — each one is a row against a panel, not a field on the item.
+            </Text>
+          )}
+
+          <Divider titlePlacement="left" plain>
+            Stock Control
+          </Divider>
+          <StockControlSection itemId={editingId} />
 
           <Button
             type="primary"

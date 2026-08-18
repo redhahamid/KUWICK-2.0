@@ -119,6 +119,22 @@ interface FormState {
    * then corrected the duration.
    */
   quantityTouched: boolean;
+  /**
+   * PIECE 2 — what this medicine says it dispenses, kept so the screen can SAY
+   * so when the auto-compute is showing something else.
+   *
+   * The precedence is unchanged and deliberate: where dose, frequency and
+   * duration are all present the computed number is the better answer, and it
+   * keeps recalculating as the doctor edits. Where it CANNOT be computed —
+   * PRN, STAT, an incomplete course — the medicine's own default fills the
+   * box, which is the case `defaultDispenseQuantity` was always for.
+   *
+   * What was missing is that a clinic setting Default Dispense Quantity on the
+   * Edit Inventory screen had no way to know it was being replaced. This is
+   * the number, held so the hint under the box can name it and offer it. The
+   * doctor decides; the screen stops hiding one of the two candidates.
+   */
+  quantityFromItem?: number;
   supplyMode: PrescriptionSupplyMode;
   indication: string;
   indicationId?: string;
@@ -138,6 +154,7 @@ const EMPTY: FormState = {
   durationUnit: 'DAY',
   quantity: 1,
   quantityTouched: false,
+  quantityFromItem: undefined,
   supplyMode: DEFAULT_SUPPLY_MODE,
   indication: '',
   indicationId: undefined,
@@ -286,6 +303,11 @@ export function AddMedicationModal({
       // unit the doctor never saw and cannot check — the same invisible-prefill
       // problem this modal already warns about, one field over. An unfilled
       // dropdown is visible; a hidden mismatched string is not.
+      // 1F's `defaultQuantity` first, then the item master's own
+      // `defaultDispenseQuantity` — both are the clinic saying how much of
+      // this goes over the counter.
+      const statedQuantity = structured.quantity ?? legacy.quantity ?? null;
+
       const legacyUnitId = matchCatalogueByText(legacy.unit, units, (row) => row.systemNameEn);
       const legacyFrequencyId = matchCatalogueByText(legacy.frequency, frequencies, (row) => row.code);
       const doseUnitId = structured.doseUnitId ?? legacyUnitId;
@@ -307,8 +329,11 @@ export function AddMedicationModal({
         durationUnit: structured.durationUnit ?? (legacy.durationDays ? 'DAY' : current.durationUnit),
         // Only where the medicine states one. Otherwise auto-compute fills it,
         // and `quantityTouched` stays false so it keeps up with edits.
-        quantity: structured.quantity ?? legacy.quantity ?? current.quantity,
+        quantity: statedQuantity ?? current.quantity,
         quantityTouched: false,
+        // Held, not applied. The compute still wins where it can run; this is
+        // what lets the screen say what the medicine itself specifies.
+        quantityFromItem: statedQuantity ?? undefined,
         indication: legacy.indication ?? current.indication,
         remark: legacy.remark ?? current.remark,
       };
@@ -754,12 +779,57 @@ export function AddMedicationModal({
               // doctor who has decided on 20 tablets must not have that
               // overwritten because they then corrected the duration.
               onChange={(value) =>
-                setForm((current) => ({ ...current, quantity: value ?? 1, quantityTouched: true }))
+                setForm((current) => ({
+                  ...current,
+                  quantity: value ?? 1,
+                  quantityTouched: true,
+                }))
               }
             />
+            {/* The clinic's own number, named whenever the box is showing
+                something else. Without this, Default Dispense Quantity is a
+                field somebody fills in on the Edit Inventory screen and never
+                sees again — set, silently overridden, and indistinguishable
+                from not set at all. */}
+            {form.quantityFromItem !== undefined && form.quantityFromItem !== form.quantity && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                This medicine dispenses {form.quantityFromItem} by default.{' '}
+                <Button
+                  type="link"
+                  size="small"
+                  style={{ padding: 0, height: 'auto', fontSize: 12 }}
+                  onClick={() =>
+                    setForm((current) => ({
+                      ...current,
+                      quantity: current.quantityFromItem ?? current.quantity,
+                      quantityTouched: true,
+                    }))
+                  }
+                >
+                  Use it
+                </Button>
+              </Text>
+            )}
             {form.quantityTouched && suggestedQuantity !== null && suggestedQuantity !== form.quantity && (
               <Text type="secondary" style={{ fontSize: 12 }}>
-                Dose × frequency × duration comes to {suggestedQuantity}.
+                Dose × frequency × duration comes to {suggestedQuantity}.{' '}
+                {/* Offered, never applied. The clinic's stated quantity and the
+                    doctor's typed one are both decisions; a link is how the
+                    computed number stays available without overruling either. */}
+                <Button
+                  type="link"
+                  size="small"
+                  style={{ padding: 0, height: 'auto', fontSize: 12 }}
+                  onClick={() =>
+                    setForm((current) => ({
+                      ...current,
+                      quantity: suggestedQuantity,
+                      quantityTouched: true,
+                    }))
+                  }
+                >
+                  Use it
+                </Button>
               </Text>
             )}
           </Col>

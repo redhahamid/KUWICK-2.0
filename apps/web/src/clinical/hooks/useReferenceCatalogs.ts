@@ -56,6 +56,12 @@ export interface IndicationRow extends ReferenceCatalogRow {
 /** 1E — how stock is counted on the shelf. Platform-owned. */
 export interface StockUnitRow extends ReferenceCatalogRow {
   name: string;
+  /**
+   * The Malay half, where somebody has written one. NULL on a unit a clinic
+   * added itself — the screen shows the English alone rather than a blank
+   * after the slash.
+   */
+  nameMs: string | null;
 }
 
 export interface ReferenceCatalogRows {

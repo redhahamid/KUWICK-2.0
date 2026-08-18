@@ -43,6 +43,18 @@ export interface Item {
   packDescription?: string | null;
   /** Parsed only where the pack string starts with a count; else null. */
   unitsPerPack?: number | null;
+
+  // ---- 1E + PIECE 2 — how this medicine is COUNTED ------------------------
+  /** The platform's packaging word, from Settings › Prescription Vocabulary. */
+  stockUnitId?: string | null;
+  /** The CLINIC'S number, and the one that beats the import's parse. */
+  quantityPerStockUnit?: number | null;
+  /** D1 — when somebody here declared this item handed over whole. */
+  dispensedWholeAt?: string | null;
+  /** Who declared it. */
+  dispensedWholeByStaffId?: string | null;
+  /** Whether receiving this item asks for a batch number and an expiry. */
+  tracksBatchExpiry?: boolean;
   /** How the prescribing form behaves when this medicine is chosen. */
   dosingType?: ItemDosingType;
 
@@ -100,6 +112,11 @@ export interface CreateItemDto {
   strengthMg?: number;
   consumptionMethod?: string;
   defaultDispenseQuantity?: number;
+  stockUnitId?: string | null;
+  quantityPerStockUnit?: number | null;
+  /** The DECLARATION, not the date — the server stamps who and when. */
+  dispensedWhole?: boolean;
+  tracksBatchExpiry?: boolean;
   prescriptionReference?: string;
   remark?: string;
   sellPrice: number;
@@ -378,4 +395,19 @@ export interface ItemCategory {
   count: number;
   /** False for a name that arrived on an imported row and nobody has adopted. */
   registered: boolean;
+}
+
+/** One panel's price for one item, and what it works out to. */
+export interface ItemPanelPrice {
+  panelClinicId: string;
+  panelName: string;
+  panelCode: string | null;
+  overrideId: string | null;
+  /** This panel's own price for this item, where one is set. */
+  overridePrice: string | null;
+  /** The panel's blanket inventory markup, which applies where there is none. */
+  markupAmount: string | null;
+  /** What a patient on this panel is charged — the invoice line's own maths. */
+  effectivePrice: string;
+  priceRule: 'SPECIFIC_PANEL_PRICE' | 'CASH_PLUS_MARKUP' | 'CASH';
 }

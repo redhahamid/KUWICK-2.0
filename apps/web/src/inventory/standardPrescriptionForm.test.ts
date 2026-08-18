@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  COUNTING_KEYS,
   STANDARD_PRESCRIPTION_KEYS,
   computeQuantity,
   standardPrescriptionValues,
@@ -45,6 +46,21 @@ describe('an emptied field is sent as an explicit null', () => {
     for (const key of STANDARD_PRESCRIPTION_KEYS) {
       expect(payload).toHaveProperty(key, null);
     }
+  });
+
+  // PIECE 2 — the same trap one section down, and it costs money rather than
+  // a dose. A clinic withdrawing a divisor they are no longer sure of must not
+  // be told "saved" while the old number keeps dividing their quantities.
+  it.each(COUNTING_KEYS)('%s survives JSON.stringify when cleared', (key) => {
+    const payload = withClearedDefaults({ name: 'x', sellPrice: 1, [key]: undefined } as CreateItemDto);
+    expect(JSON.parse(JSON.stringify(payload))).toHaveProperty(key, null);
+  });
+
+  it('leaves `dispensedWhole` out of it — false IS the withdrawal', () => {
+    // A boolean the form always sends. Nulling it would post `null` for a
+    // field the API reads as a decision, which is neither true nor false.
+    const payload = withClearedDefaults({ name: 'x', sellPrice: 1, dispensedWhole: false });
+    expect(payload.dispensedWhole).toBe(false);
   });
 
   it('leaves the REST of the medicine form alone', () => {

@@ -12,7 +12,7 @@ import { CreateItemDto, DurationUnit, Item } from './types';
  * would still be there next time they opened the form, and nothing would have
  * reported a failure.
  *
- * So: for these seven fields only, an empty box is sent as an explicit `null`.
+ * So: for these fields only, an empty box is sent as an explicit `null`.
  */
 
 export const STANDARD_PRESCRIPTION_KEYS = [
@@ -24,6 +24,22 @@ export const STANDARD_PRESCRIPTION_KEYS = [
   'defaultQuantity',
   'defaultConsumptionMethodId',
 ] as const;
+
+/**
+ * PIECE 2 — the same trap, one section down, and it costs money rather than a
+ * dose.
+ *
+ * `stockUnitId` and `quantityPerStockUnit` are cleared through exactly the same
+ * antd `allowClear`, so a clinic withdrawing a divisor they are no longer sure
+ * of would see "saved" and the old number would still be dividing their
+ * dispense quantities. The whole point of the NEEDS ATTENTION worklist is that
+ * a divisor nobody has confirmed is visible; a divisor that cannot be
+ * withdrawn is worse than one that was never set.
+ *
+ * `dispensedWhole` is NOT in this list: it is a boolean the form always sends,
+ * and `false` is the withdrawal.
+ */
+export const COUNTING_KEYS = ['stockUnitId', 'quantityPerStockUnit'] as const;
 
 export type StandardPrescriptionValues = {
   defaultDoseAmount?: number | null;
@@ -63,7 +79,7 @@ export function standardPrescriptionValues(item: Item): StandardPrescriptionValu
  */
 export function withClearedDefaults(values: CreateItemDto): CreateItemDto {
   const payload: Record<string, unknown> = { ...values };
-  for (const key of STANDARD_PRESCRIPTION_KEYS) {
+  for (const key of [...STANDARD_PRESCRIPTION_KEYS, ...COUNTING_KEYS]) {
     // Empty string is what an emptied InputNumber can hand back in some antd
     // versions; treat it the same as cleared rather than sending "".
     if (payload[key] === undefined || payload[key] === '') {

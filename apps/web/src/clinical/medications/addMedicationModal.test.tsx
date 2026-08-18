@@ -525,6 +525,43 @@ describe('b1 PHASE A — quantity computes itself, and knows when it cannot', ()
     await waitFor(() => expect(screen.getByLabelText('Quantity')).toHaveValue('21'));
   });
 
+  // PIECE 2 — Default Dispense Quantity stops being an invisible field.
+  //
+  // The precedence is unchanged: where the course can be multiplied out, the
+  // computed number is the better answer and keeps up with edits. What was
+  // wrong is that the clinic's own number vanished without trace — set on the
+  // Edit Inventory screen, silently replaced here, and indistinguishable from
+  // never having been set.
+  it('names what the medicine itself dispenses when the box shows something else', async () => {
+    openModal();
+    await chooseMedicine();
+    await waitFor(() => expect(screen.getByLabelText('Quantity')).toHaveValue('15'));
+
+    // 1 x 3/day x 3 days = 9, against the medicine's stated 15.
+    await setNumber('Duration', '3');
+    await waitFor(() => expect(screen.getByLabelText('Quantity')).toHaveValue('9'));
+    expect(screen.getByText(/This medicine dispenses 15 by default/)).toBeTruthy();
+  });
+
+  it('offers the medicine\'s number rather than applying it', async () => {
+    openModal();
+    await chooseMedicine();
+    await setNumber('Duration', '3');
+    await waitFor(() => expect(screen.getByLabelText('Quantity')).toHaveValue('9'));
+
+    await userEvent.click(within(screen.getByText(/This medicine dispenses 15/).closest('div') as HTMLElement).getByRole('button', { name: 'Use it' }));
+    await waitFor(() => expect(screen.getByLabelText('Quantity')).toHaveValue('15'));
+  });
+
+  it('says nothing when the medicine\'s number is what the box already shows', async () => {
+    // 1 x 3/day x 5 days = 15, which is also what the medicine states. A hint
+    // offering the number already in the box is noise.
+    openModal();
+    await chooseMedicine();
+    await waitFor(() => expect(screen.getByLabelText('Quantity')).toHaveValue('15'));
+    expect(screen.queryByText(/This medicine dispenses/)).toBeNull();
+  });
+
   it('STOPS recalculating once the quantity is typed in', async () => {
     // A doctor who has decided on 20 must not have that overwritten because
     // they then corrected the duration.

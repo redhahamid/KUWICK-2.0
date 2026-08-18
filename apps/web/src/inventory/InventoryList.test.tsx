@@ -135,7 +135,7 @@ describe('the pricing worklist', () => {
     await screen.findByText('Paracetamol 500mg');
     await userEvent.click(screen.getByRole('button', { name: /3 items need attention/i }));
     await waitFor(() => {
-      expect(get.mock.calls.some(([url]: [string]) => url.includes('attentionOnly=true'))).toBe(true);
+      expect(get.mock.calls.some((call: unknown[]) => String(call[0]).includes('attentionOnly=true'))).toBe(true);
     });
   });
 
@@ -228,7 +228,7 @@ describe('category tabs', () => {
     render();
     await userEvent.click(await screen.findByRole('tab', { name: 'Medication (1)' }));
     await waitFor(() => {
-      expect(get.mock.calls.some(([url]: [string]) => url.includes('category=Medication'))).toBe(true);
+      expect(get.mock.calls.some((call: unknown[]) => String(call[0]).includes('category=Medication'))).toBe(true);
     });
   });
 });
