@@ -36,7 +36,40 @@ export function CanvasWorkspace({ visits, middle, right }: CanvasWorkspaceProps)
     const node = shell.current;
     if (!node) return undefined;
 
-    const measure = () => setWidths(canvasWidths(node.clientWidth));
+    const measure = () => {
+      setWidths(canvasWidths(node.clientWidth));
+      // PIECE 4 — THE PAGE STOPS SCROLLING, SO THE SHELL HAS TO KNOW ITS OWN
+      // HEIGHT.
+      //
+      // The columns scroll instead of the page, which means the shell must be
+      // exactly as tall as the space under the app header — no more (the page
+      // would scroll) and no less (the rail would end early with white space
+      // beneath it). That distance cannot be written as a constant: the header
+      // and the context band above this point change height with the patient's
+      // alerts and with the width.
+      //
+      // So it is MEASURED, for the same reason the widths are — and BOTH ends
+      // are measured, which the first attempt at this did not do. Subtracting
+      // the shell's top alone left the page scrolling by 16px, because the app
+      // layout has padding below the shell that is no more a constant than the
+      // header above it is.
+      //
+      // The shell is released to its natural height first, so what is read is
+      // the page as it would lay out without this rule; `gutter` is whatever
+      // sits between the shell's bottom edge and the end of the document.
+      node.style.removeProperty('--kw2-shell-h');
+      const rect = node.getBoundingClientRect();
+      const top = rect.top + window.scrollY;
+      const gutter = Math.max(0, document.documentElement.scrollHeight - (top + rect.height));
+      const height = `calc(100vh - ${Math.round(top + gutter)}px)`;
+
+      // Written only when it CHANGES. This runs inside a ResizeObserver that
+      // watches the body, and an unconditional write is a resize on every
+      // frame — the loop the browser eventually breaks by logging an error.
+      if (node.style.getPropertyValue('--kw2-shell-h') !== height) {
+        node.style.setProperty('--kw2-shell-h', height);
+      }
+    };
     measure();
 
     // ResizeObserver is absent in jsdom and in older Safari. Falling back to
@@ -48,7 +81,16 @@ export function CanvasWorkspace({ visits, middle, right }: CanvasWorkspaceProps)
     }
     const observer = new ResizeObserver(measure);
     observer.observe(node);
-    return () => observer.disconnect();
+    // The shell's TOP moves when the band above it grows — an allergy added
+    // mid-consult adds a line — and that is not a resize of the shell itself.
+    // Watching the document body catches it; watching only the shell leaves it
+    // overhanging the fold by exactly the height of the new line.
+    observer.observe(document.body);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
   }, []);
 
   // Before the first measurement the mode is unknown. Rendering the three

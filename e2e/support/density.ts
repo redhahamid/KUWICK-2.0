@@ -28,6 +28,16 @@ export interface DensityFixture {
   medications: number;
   orders: number;
   documents: number;
+  /**
+   * PIECE 4 — how many of those medications have NO supply mode decided.
+   *
+   * Two, and the spec asserts that ALL of them are on screen at rest. It comes
+   * from the seed for the same reason the other counts do: a number copied
+   * into the spec by hand is one the two files then have to be kept agreeing
+   * on, which is how an assertion quietly starts checking a count that no
+   * longer exists.
+   */
+  unresolvedSupply: number;
 }
 
 /** b4 PIECE C — the scheduling backbone the canvas books a follow-up through. */

@@ -214,6 +214,11 @@ async function main() {
           name: E2E_MEDICATION,
           category: 'Medication',
           unitOfMeasure: 'tablet',
+          // PIECE 4 — one dose per stock unit. RM8 is one tablet here, not a
+          // strip; the divisor is what says so, and without it this medicine
+          // cannot be billed at all (`ceil(quantity / null)` is not a number,
+          // and inventing a 1 is the thing the pricing fix refuses).
+          quantityPerStockUnit: 1,
           sellPrice: 8,
         },
         select: { id: true },

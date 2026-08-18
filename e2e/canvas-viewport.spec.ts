@@ -409,6 +409,26 @@ async function railGeometry(page: Page) {
 }
 
 /**
+ * PIECE 4 — DOES THE PAGE ITSELF SCROLL?
+ *
+ * The layout's central promise, and it is not "is anything scrollable" — the
+ * columns are, deliberately. It is "can the document be scrolled away", which
+ * is what used to take a doctor's note off screen when they went to look at
+ * what the visit cost.
+ *
+ * A page that cannot scroll has a scrollHeight equal to its clientHeight.
+ */
+async function pageOverflow(page: Page) {
+  return page.evaluate(() => {
+    const doc = document.documentElement;
+    return {
+      vertical: Math.max(0, doc.scrollHeight - doc.clientHeight),
+      horizontal: Math.max(0, doc.scrollWidth - doc.clientWidth),
+    };
+  });
+}
+
+/**
  * The measurement itself, printed on every run.
  *
  * The number this whole exercise exists to produce is "how much vertical space
@@ -474,6 +494,25 @@ async function railPromises(page: Page) {
       warnedRow: box(warned),
       warnedRowHasChip: Boolean(warned?.querySelector('.kw-supply-label')),
       warnedRowCount: rail?.querySelectorAll('.kw-rail-row[data-unresolved-supply="true"]').length ?? 0,
+      // PIECE 4 — EVERY unresolved row, each with its own box and its own chip.
+      //
+      // The rule is that all of them are on screen at rest, and one row cannot
+      // express it: "the first unresolved row is visible" passes identically
+      // and is the weaker rule that fails a doctor with two undecided
+      // medicines and a card tall enough for one.
+      warnedRows: [
+        ...(rail?.querySelectorAll<HTMLElement>('.kw-rail-row[data-unresolved-supply="true"]') ?? []),
+      ].map((row) => ({
+        ...box(row)!,
+        hasChip: Boolean(row.querySelector('.kw-supply-label')),
+      })),
+      // The rail's own visible window. With the page fixed, "on screen" means
+      // inside this box — the viewport's bottom edge stopped being the limit
+      // the moment the rail became a scroller of its own.
+      railBox: box(rail),
+      // Proof that nothing was scrolled to make the rows visible. A rail that
+      // auto-scrolled to reveal a warning has still hidden the others.
+      railScrollTop: Math.round((rail as HTMLElement | null)?.scrollTop ?? 0),
       // Every card, so "no card lost" is measured rather than assumed from a
       // header count that a display:none card would still satisfy.
       cards: [...(rail?.querySelectorAll<HTMLElement>('.kw-rail-panel') ?? [])].map((panel) => ({
@@ -523,10 +562,39 @@ test.describe('the right rail fits the budget it was compacted for', () => {
    *      the appointment card BELOW them, where it cannot move (a) or (b).
    *
    * (e) is the 1920 case below: the whole rail, with no scrolling at all.
+   *
+   * ---------------------------------------------------------------------
+   * PIECE 4 — RE-EXPRESSED FOR A PAGE THAT DOES NOT SCROLL.
+   *
+   * The five were written against a layout where the whole page scrolled and
+   * "the fold" was the viewport's bottom edge. That layout is gone: the shell
+   * is exactly as tall as the space under the header, and the columns scroll
+   * inside it. Each assertion keeps its MEANING and changes its measurement:
+   *
+   *   (a) was "the warning row is above the fold". Now: EVERY unresolved-supply
+   *       row is inside the rail's visible box at rest, without the rail having
+   *       been scrolled. Strengthened twice over — from one row to all of them,
+   *       and from "in the viewport" to "in the card you can actually see".
+   *   (b) unchanged in words: the Medications header and first row are visible
+   *       at rest. It is now nearly free, because every card's header is on
+   *       screen by construction.
+   *   (c) unchanged. Nothing truncates, at any width.
+   *   (d) unchanged in the roster; a card must still be present and of real
+   *       height. A card capped to a share of the column is not a collapsed
+   *       card — it scrolls, and (a) is what proves its contents are reachable.
+   *   (e) was "the whole rail fits 1920 with nothing scrolled". It cannot mean
+   *       that any more, because the rail is now exactly the height it is
+   *       given at every width. It becomes: THE PAGE DOES NOT SCROLL — at any
+   *       width, on either fixture. That is the property the old (e) was a
+   *       proxy for, asserted directly.
+   *
+   * The budget line still prints on every run, and it is still worth printing:
+   * it now reports how much of the rail's own height its cards want.
+   * ---------------------------------------------------------------------
    */
   test('TYPICAL at 1366×768 keeps the warning, Medications and every card', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
-    await openDensityVisit(page, 'typical');
+    const fixture = await openDensityVisit(page, 'typical');
 
     const geometry = await railGeometry(page);
     reportBudget('TYPICAL at 1366×768', geometry, 768);
@@ -544,29 +612,54 @@ test.describe('the right rail fits the budget it was compacted for', () => {
     console.log(`RAIL BUDGET — TYPICAL at 1366×768: invoice card ${rail.invoiceCard?.height ?? 0}px`);
     expect(rail.invoiceCard, 'the invoice card is not on the rail at all').not.toBeNull();
 
-    // (a) THE WARNING. The fixture plants exactly one prescription with a NULL
-    // supply mode, so a missing row here is a missing warning and not a
-    // fixture that happened to resolve everything.
-    expect(rail.warnedRowCount, 'the fixture carries no unresolved-supply row to find').toBe(1);
-    expect(rail.warnedRowHasChip, 'the unresolved-supply row no longer carries its warning chip').toBe(true);
-    // "On screen at rest" covers both halves of the rule: above the fold, or
-    // auto-revealed. Nobody has scrolled at this point, so a row inside the
-    // viewport is a row the doctor was given without asking — which is the
-    // promise. Only a row they would have to go looking for fails. And
-    // "behind the bottom bar" is a row they would have to go looking for.
+    // (a) THE WARNING — ALL OF THEM (PIECE 4; it used to be the first one).
+    //
+    // The fixture plants TWO prescriptions with a NULL supply mode, and the
+    // count comes from the fixture file rather than a literal here, so the two
+    // cannot drift apart. A missing row is a missing warning, not a fixture
+    // that happened to resolve everything.
+    expect(rail.warnedRowCount, 'the fixture carries no unresolved-supply row to find').toBe(
+      fixture.unresolvedSupply,
+    );
+    // Nobody has scrolled anything at this point, and this proves it: a rail
+    // that auto-scrolled to reveal one warning has still hidden the others.
+    expect(rail.railScrollTop, 'the rail had already scrolled — this is not "at rest"').toBe(0);
+    expect(rail.railBox, 'the rail is not in the DOM').not.toBeNull();
+
+    for (const [index, row] of rail.warnedRows.entries()) {
+      expect(row.hasChip, `unresolved-supply row ${index + 1} no longer carries its warning chip`).toBe(
+        true,
+      );
+      // "On screen at rest" is measured against the RAIL'S OWN BOX now, not
+      // the viewport's fold. The page does not scroll; the rail does. A row
+      // inside the viewport but below the rail's visible window is a row the
+      // doctor has to go looking for, which is exactly what this forbids —
+      // so this is a stronger reading of the same rule, not a relaxed one.
+      expect(
+        row.top,
+        `unresolved-supply row ${index + 1} starts below the rail's visible window at rest ` +
+          `(top ${row.top} ≥ ${rail.railBox!.bottom})`,
+      ).toBeLessThan(rail.railBox!.bottom);
+      expect(
+        row.bottom,
+        `unresolved-supply row ${index + 1} is cut off at rest (bottom ${row.bottom} > ` +
+          `${rail.railBox!.bottom}). Per the handoff, shorten the CARD, not this assertion.`,
+      ).toBeLessThanOrEqual(rail.railBox!.bottom);
+      expect(
+        row.top,
+        `unresolved-supply row ${index + 1} is above the rail's visible window (top ${row.top} < ${rail.railBox!.top})`,
+      ).toBeGreaterThanOrEqual(rail.railBox!.top - 1);
+    }
+
+    // AND THE PAGE ITSELF DOES NOT SCROLL. The property every one of these
+    // assertions now rests on: if the document can be scrolled, "on screen at
+    // rest" stops meaning anything, because the doctor's note can be scrolled
+    // away from under the rail.
+    const overflow = await pageOverflow(page);
     expect(
-      rail.warnedRow,
-      'the unresolved-supply row is not in the DOM at all',
-    ).not.toBeNull();
-    expect(
-      rail.warnedRow!.top,
-      `the unresolved-supply warning starts below the fold at rest (top ${rail.warnedRow!.top} ≥ ${fold})`,
-    ).toBeLessThan(fold);
-    expect(
-      rail.warnedRow!.bottom,
-      `the unresolved-supply warning is hidden by the fold or the bottom bar at rest ` +
-        `(bottom ${rail.warnedRow!.bottom} > ${fold}). Per the handoff, shorten the BAR, not this assertion.`,
-    ).toBeLessThanOrEqual(fold);
+      overflow.vertical,
+      `the canvas page scrolls vertically by ${overflow.vertical}px — the columns scroll, the page does not`,
+    ).toBeLessThanOrEqual(2);
 
     // (b) MEDICATIONS — header and first row, both whole, and both clear of
     // the bar.
@@ -630,25 +723,57 @@ test.describe('the right rail fits the budget it was compacted for', () => {
     // viewport-minus-bar. Nothing below this line means anything without it.
     expect(geometry.rowCount, 'the fixture did not load — nothing to measure').toBeGreaterThan(0);
 
-    // (e) OF THE REDEFINED TARGET — the FULL rail, with no scrolling at all.
-    // Stated on the rail's own bottom edge rather than on its lowest row: the
-    // rail ends below its last row (card padding), and "fits with no
-    // scrolling" is a claim about the whole thing, not about the last row
-    // inside it.
+    // (e), RE-EXPRESSED FOR PIECE 4 — THE PAGE DOES NOT SCROLL.
     //
-    // b4 PIECE C: the invoice DID land in the rail — it is the last card —
-    // and the sticky bar is gone, so the rail's bottom edge now includes the
-    // bill and is measured against the plain fold.
+    // It used to be "the whole rail fits 1080 with nothing scrolled", which
+    // cannot mean anything now: the rail is exactly as tall as the space it is
+    // given, at every width, so `railTop + railHeight <= fold` is true by
+    // construction and would pass whatever the cards inside it did. An
+    // assertion that holds by construction is the trap this file has already
+    // been burned by twice.
+    //
+    // What the old (e) was really a proxy for is that a doctor never has to
+    // scroll the consultation away to see the rail. That is now a property of
+    // the PAGE, and it is stated directly.
     expect(await noFixedStrip(page), 'a fixed bottom strip is back on the canvas').toBe(0);
     const fold = 1080;
+    const overflow = await pageOverflow(page);
+    expect(
+      overflow.vertical,
+      `the canvas page scrolls vertically by ${overflow.vertical}px at 1920×1080 — ` +
+        'the columns scroll, the page does not',
+    ).toBeLessThanOrEqual(2);
+    expect(
+      overflow.horizontal,
+      `the canvas page scrolls sideways by ${overflow.horizontal}px at 1920×1080`,
+    ).toBeLessThanOrEqual(2);
+
+    // The rail still has to END inside the window — a column measured taller
+    // than the space it was given would be one whose height calculation is
+    // wrong, and every "on screen at rest" reading above rests on it.
     expect(
       geometry.railTop + geometry.railHeight,
       `the rail runs past the fold at 1920×1080 ` +
         `(${geometry.railTop + geometry.railHeight} > ${fold})`,
     ).toBeLessThanOrEqual(fold);
-    // "Room to spare" stated as a number rather than implied: at the taller
-    // viewport the rail should not be within a row's height of the fold.
-    expect(geometry.lowestRowBottom).toBeLessThanOrEqual(fold - 40);
+
+    // AND ITS CONTENT FITS WITHOUT THE RAIL SCROLLING. This is what "room to
+    // spare" means once the rail is a scroller: not that the box fits — it
+    // always does — but that at a 1080px screen a typical visit does not need
+    // to use the scroll at all.
+    // The right column IS the scroller — the five cards are its direct
+    // children, with no wrapper between them and it.
+    const railScroll = await page.evaluate((selector) => {
+      const scroller = document.querySelector(selector);
+      if (!scroller) return null;
+      return { scrollHeight: scroller.scrollHeight, clientHeight: scroller.clientHeight };
+    }, RAIL);
+    expect(railScroll, 'the rail scroller is not in the DOM').not.toBeNull();
+    expect(
+      railScroll!.scrollHeight - railScroll!.clientHeight,
+      `a TYPICAL visit needs the rail to scroll at 1920×1080 (content ${railScroll!.scrollHeight}px ` +
+        `in ${railScroll!.clientHeight}px). Per the handoff, shorten a CARD, not this assertion.`,
+    ).toBeLessThanOrEqual(2);
     expect(geometry.truncated, 'rail rows are truncating their own text').toEqual([]);
   });
 
@@ -728,7 +853,10 @@ test.describe('the right rail fits the budget it was compacted for', () => {
       //    first now (`unresolvedSupplyFirst`), so the count of them on the
       //    rail is asserted, not just that one exists somewhere.
       await expect(rail.locator('.kw-supply-label').first()).toBeVisible();
-      await expect(rail.locator('[data-unresolved-supply]')).toHaveCount(1);
+      // PIECE 4 — from the fixture, not a literal. The seed plants two
+      // unresolved rows now, and a hard-coded 1 here is the second place that
+      // has to be kept agreeing with the seed by hand.
+      await expect(rail.locator('[data-unresolved-supply]')).toHaveCount(fixture.unresolvedSupply);
     });
   }
 
@@ -762,12 +890,25 @@ test.describe('the right rail fits the budget it was compacted for', () => {
      * its panel, so its rect moves with the scroll and would report a scroll
      * as a reflow. The panel's own box does not move.
      */
+    // PIECE 4 — MEASURED INSIDE THE SCROLLED CONTENT, not against the rail's
+    // box.
+    //
+    // The page no longer scrolls; the rail does. So `scrollIntoViewIfNeeded()`
+    // on the invoice toggle moves the rail's own scroller, and a reading taken
+    // against the rail ELEMENT changes by the scroll distance — reporting a
+    // scroll as a reflow for the second time in this assertion's life, one
+    // level further down. Adding `scrollTop` back removes it: what is under
+    // test is where the Medications card sits in the rail's CONTENT, which is
+    // the thing that must not move when a card below it grows.
     const medsOffset = () =>
       page.evaluate(() => {
         const rail = document.querySelector('[data-testid="canvas-right"]');
+        const scroller = rail;
         const meds = rail?.querySelector('.kw-rail-panel[data-panel="Medications"]');
-        if (!rail || !meds) return null;
-        return Math.round(meds.getBoundingClientRect().top - rail.getBoundingClientRect().top);
+        if (!rail || !scroller || !meds) return null;
+        return Math.round(
+          meds.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop,
+        );
       });
 
     const card = page.locator('[data-testid="canvas-right"] .kw-rail-panel[data-panel="Invoice"]');
@@ -815,9 +956,22 @@ test.describe('the right rail fits the budget it was compacted for', () => {
       'the Medications card moved when the invoice detail opened — the disclosure must grow ' +
         'DOWNWARD, never push the cards above it',
     ).toBe(medsOffsetBefore);
-    expect(duringOpen.railHeight, 'the detail did not grow the card at all').toBeGreaterThan(
-      before.railHeight,
+    // PIECE 4 — THE CARD, not the rail. The rail is a fixed-height frame now
+    // and cannot grow by design, so measuring it here would assert the
+    // opposite of the layout. What has to grow is the invoice CARD, which is
+    // the direct statement of "the disclosure opened" and was only ever
+    // measured through the rail because the rail used to be the sum of its
+    // cards.
+    const cardAfterOpen = (await card.boundingBox())!;
+    expect(cardAfterOpen.height, 'the detail did not grow the card at all').toBeGreaterThan(
+      cardBox.height,
     );
+    // And it grew INSIDE the frame: the rail is still exactly as tall as the
+    // space it was given, which is the whole point of the page not scrolling.
+    expect(
+      duringOpen.railHeight,
+      'the invoice detail made the rail taller — it must grow inside the frame, not stretch it',
+    ).toBe(before.railHeight);
 
     // 5. And closing it returns the rail to exactly its resting height.
     await page.getByTestId('invoice-details-toggle').scrollIntoViewIfNeeded();
@@ -994,12 +1148,17 @@ test.describe('the right rail fits the budget it was compacted for', () => {
       'the draft invoice did not pull the visit’s medications',
     ).toHaveCount(fixture.medications);
 
-    // The unresolved one is present, uncounted, and carries the server's own
-    // wording — never priced at RM 0.00, which would read as free.
+    // EVERY unresolved one is present, uncounted, and carries the server's own
+    // wording — never priced at RM 0.00, which would read as free. PIECE 4:
+    // the count comes from the fixture, and "every" rather than "the first"
+    // for the same reason the rail assertion changed — a bill that listed one
+    // of two undecided medicines is a bill that is wrong and does not say so.
     const unresolved = sheet.locator('[data-state="UNRESOLVED_SUPPLY"]');
-    await expect(unresolved).toHaveCount(1);
-    await expect(unresolved.first()).toHaveAttribute('data-counted', 'false');
-    await expect(unresolved.first()).toContainText(/supply mode has not been confirmed/i);
+    await expect(unresolved).toHaveCount(fixture.unresolvedSupply);
+    for (let i = 0; i < fixture.unresolvedSupply; i += 1) {
+      await expect(unresolved.nth(i)).toHaveAttribute('data-counted', 'false');
+      await expect(unresolved.nth(i)).toContainText(/supply mode has not been confirmed/i);
+    }
 
     // The orders on the visit reach it too.
     await expect(

@@ -4,9 +4,11 @@ ALOCLAIR PLUS SPRAY 15ML,,ULSER MULUT,FORM,,Puff,,,ORAL TOPICAL (SPRAY TEKAK),se
 APIPRO AQUA KIDS THROAT SPRAY - 20ML,,SAKIT TEKAK,FORM,,Puff,,,ORAL TOPICAL (SPRAY TEKAK),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
 ARM SLING ADULT,,,NONE,,,,,,no defaults,Not a medicine — no prescription defaults
 ARM SLING CHILD,,,NONE,,,,,,no defaults,Not a medicine — no prescription defaults
+Amlodipine 5mg,,,NONE,,,,,,no defaults,Dosage form not recognised from the name
 Amoxicillin 500mg,AMX500,,CURATED,1,Capsule,TDS,5 DAY,ORAL (MAKAN/MINUM),set (curated),
 BETADINE SORE THROAT SPRAY - 50ML,,SAKIT TEKAK,FORM,,Puff,,,ORAL TOPICAL (SPRAY TEKAK),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
 BIOFLOR 250MG SACHET (PROBIOTIC),,PROBIOTIK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+Bromhexine 8mg,,,NONE,,,,,,no defaults,Dosage form not recognised from the name
 C. CELECOXIB 200MG (RABIROX),,ANALGESIA/TAHAN SAKIT,CURATED,1,Capsule,OD,5 DAY,ORAL (MAKAN/MINUM),set (curated),
 C. CEPHALEXIN 250MG (DYNAPHARM),,ANTIBIOTIK,CURATED,1,Capsule,QID,5 DAY,ORAL (MAKAN/MINUM),set (curated),
 C. CLOXACILIN 250MG,,ANTIBIOTIK,CURATED,1,Capsule,QID,5 DAY,ORAL (MAKAN/MINUM),set (curated),
@@ -94,6 +96,7 @@ LOZENGES STREPSILS SOOTHING (HONEY LEMON),,SAKIT TEKAK,CURATED,1,Lozenge,PRN,3 D
 LOZENGES THROATSIL (MENTHOL),,SAKIT TEKAK,CURATED,1,Lozenge,PRN,3 DAY,BUCCAL (DALAM MULUT),set (curated),
 LOZENGES THROATSIL (WILD BERRIES & ORANGES),,SAKIT TEKAK,CURATED,1,Lozenge,PRN,3 DAY,BUCCAL (DALAM MULUT),set (curated),
 MONTELUKAST 4MG PACKED SACHET (ASPIRA),,ASMA (LELAH),FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+Metformin 500mg,,,NONE,,,,,,no defaults,Dosage form not recognised from the name
 NASAL SPRAY BABY (STERIMAR) 50ML,,SELSEMA,FORM,,Puff,,,NASAL SPRAY (SEMBUR HIDUNG),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
 NASAL SPRAY MOMATE (60 DOSES),,RESDUNG / SELSEMA,FORM,,Puff,,,NASAL SPRAY (SEMBUR HIDUNG),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
 NASAL SPRAY OXYNASE 0.05% 15ML,,RESDUNG / SELSEMA,FORM,,Puff,,,NASAL SPRAY (SEMBUR HIDUNG),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
@@ -110,6 +113,7 @@ Omeprazole 20mg,OMP20,,CURATED,1,Tablet,OD,14 DAY,ORAL (MAKAN/MINUM),set (curate
 PATCH HERBA COUGH (CASH ONLY),,BATUK,FORM,,Application,,,PATCH/TRANSDERMAL (TAMPAL),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
 Paracetamol 125mg/5ml Suspension,PCM125S,,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
 Paracetamol 500mg,PCM500,,CURATED,2,Tablet,TDS,5 DAY,ORAL (MAKAN/MINUM),set (curated),
+Prednisolone 5mg,,,NONE,,,,,,no defaults,Dosage form not recognised from the name
 RACETASH INFANT 10MG SACHET (RACECADOTRIL),,CIRIT-BIRIT,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
 RAPIDKOOL PATCH (CASH ONLY),,DEMAM,FORM,,Application,,,PATCH/TRANSDERMAL (TAMPAL),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
 RYALTRIS NASAL SPRAY 56 DOSES,,RESDUNG / SELSEMA,FORM,,Puff,,,NASAL SPRAY (SEMBUR HIDUNG),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
@@ -152,6 +156,8 @@ SYP. POTASSIUM CITRATE 120ML,,KENCING KOTOR,FORM,,Millilitre,,,ORAL (MAKAN/MINUM
 SYP. PREDNISOLONE 3MG/5ML 60ML,,ANTI RADANG,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
 SYP. SALMODEX 100ML,,"ASMA (LELAH), BATUK",FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
 SYP. SEDILIX-DM LINCTUS 90ML,,BATUK,FORM,,Millilitre,,,ORAL (MAKAN/MINUM),set (form-derived),"Weight-based paediatric preparation — dose comes from the calculator, never a default"
+Salbutamol Inhaler 100mcg,,,FORM,,Puff,,,INHALE (SEDUT),set (form-derived),Route and unit only — no conventional fixed adult dose was assumed
+Simvastatin 20mg,,,NONE,,,,,,no defaults,Dosage form not recognised from the name
 T. ALBENDAZOLE (ZENTEL) 200MG,,,CURATED,2,Tablet,STAT,1 DAY,ORAL (MAKAN/MINUM),set (curated),STAT — auto-compute deliberately skipped
 T. ALLOPURINOL 100MG (HOVID),,,CURATED,1,Tablet,OD,1 MONTH,ORAL (MAKAN/MINUM),set (curated),
 T. AMLODIPINE (ANLODIN) 10MG,,DARAH TINGGI (HYPERTENSION),CURATED,1,Tablet,OD,1 MONTH,ORAL (MAKAN/MINUM),set (curated),

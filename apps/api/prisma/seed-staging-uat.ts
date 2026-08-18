@@ -244,6 +244,22 @@ async function main() {
             strengthMg: med.strength ?? undefined,
             concVolMl: med.concVolMl ?? undefined,
             prescriptionReference: med.reference ?? undefined,
+            // PIECE 4 — ONE DOSE PER STOCK UNIT, and it has to be stated.
+            //
+            // These prices are PER DOSE: RM0.30 is one paracetamol tablet, not
+            // a strip of them. The clinic's imported catalogue is the other way
+            // round — RM155.00 against "10 BIJI / STRIP" is a whole course —
+            // and the divisor is precisely what tells the two apart. A seeded
+            // medicine that left it blank could not be billed at all, because
+            // `ceil(quantity / null)` is not a number and inventing a 1 is what
+            // the whole pricing fix exists to refuse.
+            //
+            // NOT marked "dispensed whole": nobody at the clinic has confirmed
+            // it, so these rows appear on the NEEDS ATTENTION worklist exactly
+            // as they should. They still PRICE — an unconfirmed 1 is the right
+            // arithmetic if the 1 is right — so nothing is blocked while it is
+            // waiting to be checked.
+            quantityPerStockUnit: 1,
             sellPrice: med.price,
             active: true,
           },

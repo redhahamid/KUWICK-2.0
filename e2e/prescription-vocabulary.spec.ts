@@ -72,8 +72,12 @@ test.describe('a medicine carries the standard prescription it was seeded with',
 
     // Through the search box, because that is the only way a person reaches
     // one medicine out of 236 on a page that shows ten at a time.
-    await page.getByLabel('Search items').fill('Paracetamol 500mg');
-    await page.getByLabel('Search items').press('Enter');
+    // "Search inventory", not "Search items": INVENTORY PIECE 1 renamed the
+    // page and its search box with it, and this spec is where that rename
+    // showed up — the aria-label is the only handle a screen reader or a test
+    // has on that field.
+    await page.getByLabel('Search inventory').fill('Paracetamol 500mg');
+    await page.getByLabel('Search inventory').press('Enter');
 
     const row = page.locator('tr', { hasText: 'Paracetamol 500mg' }).first();
     await expect(row).toBeVisible({ timeout: 30_000 });

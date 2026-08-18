@@ -22,7 +22,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
  *             entirely, no item text is truncated, and the no-supply-mode
  *             warning is still on its row.
  *
- * Each visit carries one prescription with `supplyMode: null` on purpose. That
+ * Each visit carries TWO prescriptions with `supplyMode: null` on purpose. That
  * is the unresolved state Piece 1 deliberately refused to move to hover, and a
  * fixture without one would let the assertion pass by having nothing to find.
  */
@@ -177,10 +177,19 @@ async function main() {
             durationDays: 5,
             quantity: 15,
             prescribedByStaffId: doctor.id,
-            // ONE unresolved row per visit, deliberately. It is the state Piece
-            // 1 refused to move to hover, and the spec asserts the warning chip
-            // is still rendered — a fixture with none would pass on absence.
-            supplyMode: i === 0 ? null : 'ONSITE_DISPENSE',
+            // TWO unresolved rows per visit (PIECE 4; it was one).
+            //
+            // The rule is that EVERY unresolved-supply row is on screen at
+            // rest, and a fixture carrying one cannot tell that rule from a
+            // weaker one — "the first unresolved row is visible" passes
+            // identically, and it is the rule that fails a doctor with two
+            // undecided medicines and a card tall enough for one.
+            //
+            // Two is the smallest number that distinguishes them. They are
+            // deliberately NOT adjacent in insertion order, so a layout that
+            // happens to show the top of the list is not mistaken for one that
+            // sorts unresolved rows first (`unresolvedSupplyFirst`).
+            supplyMode: i === 0 || i === 2 ? null : 'ONSITE_DISPENSE',
           },
         });
       }
@@ -219,8 +228,13 @@ async function main() {
       return visit.id;
     };
 
-    const TYPICAL_COUNTS = { medications: 4, orders: 1, documents: 1 };
-    const HEAVY_COUNTS = { medications: 10, orders: 4, documents: 3 };
+    // PIECE 4 — `unresolvedSupply` is handed to the spec rather than written
+    // into it as a literal. The spec asserts that EVERY unresolved row is on
+    // screen at rest, and a number copied into the spec by hand is one the two
+    // files then have to be kept agreeing on — which is exactly how an
+    // assertion quietly starts checking a count that no longer exists.
+    const TYPICAL_COUNTS = { medications: 4, orders: 1, documents: 1, unresolvedSupply: 2 };
+    const HEAVY_COUNTS = { medications: 10, orders: 4, documents: 3, unresolvedSupply: 2 };
     const typical = await buildVisit(TYPICAL_VISIT_NUMBER, TYPICAL_COUNTS);
     const heavy = await buildVisit(HEAVY_VISIT_NUMBER, HEAVY_COUNTS);
 

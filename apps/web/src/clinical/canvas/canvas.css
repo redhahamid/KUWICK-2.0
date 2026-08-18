@@ -1168,3 +1168,76 @@
 }
 
 
+
+/* ---------------------------------------------------------------------------
+   PIECE 4 — THE PAGE IS THE FRAME. THE COLUMNS ARE THE SCROLLERS.
+
+   What this replaces: one long page that scrolled as a whole. At 1366×768 the
+   right rail needed 792px against 529px above the fold, so the invoice card
+   and the tail of Medications lived below it — reachable, but only by
+   scrolling the entire consultation away, note and all. A doctor checking
+   what a visit costs lost sight of what they had written.
+
+   The rule an earlier pass wrote into `.kw-rail-head` — "there is deliberately
+   no inner scroll region on any card: a scroller inside a rail beside a
+   scrolling page hides clinical content behind a gesture nobody makes" — was
+   right about a scroller BESIDE A SCROLLING PAGE. It stops applying the moment
+   the page itself is fixed: an inner scroller is then the only scroller there
+   is, and the gesture is the one the doctor already has to make.
+
+   STACKED IS EXEMPT, and deliberately. A phone has no room to give a card its
+   own scroller, and a fixed-height column on a 600px screen is four cards two
+   rows tall. Small screens keep the page scroll they have always had.
+   ------------------------------------------------------------------------ */
+.kw-canvas2-shell:not([data-mode='stacked']) {
+  /* Set from the measured offset in CanvasWorkspace. `auto` until the first
+     measurement lands, so the layout is never briefly the wrong height. */
+  height: var(--kw2-shell-h, auto);
+  /* Columns are full-height siblings now, not top-aligned blocks. */
+  align-items: stretch;
+  overflow: hidden;
+}
+
+.kw-canvas2-shell:not([data-mode='stacked']) .kw-canvas2-col {
+  /* Without this a flex child refuses to shrink below its content and every
+     overflow rule below is silently ignored. */
+  min-height: 0;
+  height: 100%;
+}
+
+/* The visits history and the note scroll as columns: their content is one
+   continuous thing, and cutting it into per-card scrollers would be dividing a
+   paragraph. The right rail is the opposite — five separate cards — so it
+   distributes its height among them instead (see `.kw-rail-panel` in
+   index.css). */
+.kw-canvas2-shell:not([data-mode='stacked']) .kw-canvas2-visits,
+.kw-canvas2-shell:not([data-mode='stacked']) .kw-canvas2-middle {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* The right column IS the rail — the five cards are its direct children, with
+   no wrapper between (`.kw-clinical-rail` is the FLOW layout's container and
+   does not exist here). So the column is the scroller.
+
+   A first pass set `overflow: hidden` here on the assumption that an inner
+   element would scroll. Nothing did, and the effect was worse than the problem
+   it was fixing: the cards below the fold were CLIPPED rather than reachable.
+   Clipped clinical content is the one outcome this whole piece is against. */
+.kw-canvas2-shell:not([data-mode='stacked']) .kw-canvas2-right {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* THE LAST 16px, AND IT WAS NOT THE SHELL'S.
+   With the shell measured to the pixel the page still scrolled by exactly 16,
+   which is the BODY's default 8px margin top and bottom — the app layout is
+   already viewport-height, so that margin is pure overflow rather than space
+   anything sits in. Vertical only: the horizontal 8px is real gutter that
+   every other page has, and removing it would make the canvas the one screen
+   whose chrome runs to the edge. Scoped by `:has` to the canvas, because the
+   pages that still scroll are entitled to their margin. */
+body:has(.kw-canvas2-shell) {
+  margin-top: 0;
+  margin-bottom: 0;
+}

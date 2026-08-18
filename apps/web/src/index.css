@@ -3233,3 +3233,84 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 .kw-inventory-row-inactive > td {
   opacity: 0.55;
 }
+
+/* ---------------------------------------------------------------------------
+   PIECE 4 — THE RIGHT RAIL DIVIDES ITS HEIGHT AMONG ITS CARDS.
+
+   Five cards share the column, each scrolling its own rows. The point is that
+   every card's HEADER is on screen at rest, always, at every height: a doctor
+   can see that there are eight medications and what the invoice comes to
+   without scrolling anything. Before this, at 1366×768, the invoice card began
+   263px below the fold.
+
+   THE STICKY HEADER IS GONE, and this is the fix rather than a casualty of it.
+   `.kw-rail-head` was `position: sticky; top: 0` so the count stayed readable
+   while the PAGE scrolled past it. That bought two problems: a sticky element's
+   rect reports a scroll as a reflow (the invoice-card assertion had to measure
+   a sibling to work around it), and stacked cards each stuck at their own top
+   with a z-index that had to out-rank the row beneath. With the head as a plain
+   flex sibling of the scrolling body, it is pinned by LAYOUT — it cannot move,
+   there is no stacking context to order, and a rect is a rect.
+   ------------------------------------------------------------------------ */
+/* THE RAIL SCROLLS TOO, AND THAT IS NOT A HEDGE — it is what makes a card's
+   position independent of what its neighbours are doing.
+
+   An earlier attempt gave the cards `flex: 1 1 0` and let them share the
+   column. It measured well until the invoice detail was opened: the invoice
+   card grew, every card above it gave up 27px, and the Medications card MOVED
+   — which is exactly what the invoice assertion forbids, and for a good reason
+   (a doctor opening the bill should not lose their place in the medication
+   list). With the cards at their natural heights and the column as the outer
+   scroller, a card that grows extends the scroll length and nothing above it
+   shifts by a pixel.
+
+   The column itself carries `overflow-y: auto` in canvas.css — the five cards
+   are its direct children. */
+.kw-canvas2-shell:not([data-mode='stacked']) .kw-rail-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Natural height, capped. `flex-shrink: 0` matters: without it a long
+     Medications card is squeezed by its neighbours instead of scrolling. */
+  flex: 0 0 auto;
+  /* No single card may take more than this much of the column, so every
+     card's HEADER is on screen at rest whatever one of them is holding. That
+     is the property the whole piece exists for: a doctor sees that there are
+     eight medications AND what the invoice comes to, without scrolling. */
+  max-height: 38%;
+}
+
+/* Medications is allowed more. It is what a doctor opens the rail for
+   (assertion b), it carries the unresolved-supply warnings (assertion a), and
+   it is the card most likely to hold eight rows rather than one. */
+.kw-canvas2-shell:not([data-mode='stacked']) .kw-rail-panel[data-panel='Medications'] {
+  max-height: 52%;
+}
+
+/* An empty card is one line: nothing to cap and nothing to scroll. */
+.kw-canvas2-shell:not([data-mode='stacked']) .kw-rail-panel[data-empty='true'] {
+  max-height: none;
+}
+
+/* THE SCROLLER. Head, banner and add control stay pinned above it; only the
+   rows move. */
+.kw-canvas2-shell:not([data-mode='stacked']) .kw-rail-body {
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+/* THE STICKY HEADER IS GONE, and layout pins it instead.
+
+   `.kw-rail-head` was `position: sticky; top: 0` so the count stayed readable
+   while the PAGE scrolled past it. That bought two problems: a sticky
+   element's rect reports a scroll as a reflow (the invoice assertion had to
+   measure a sibling to work around it, and then had to work around it a second
+   time), and stacked cards each stuck at their own top with a z-index that had
+   to out-rank the row beneath. As a plain flex sibling of a scrolling body it
+   cannot move, there is no stacking context to order, and a rect is a rect. */
+.kw-canvas2-shell:not([data-mode='stacked']) .kw-rail-head {
+  position: static;
+  z-index: auto;
+}
