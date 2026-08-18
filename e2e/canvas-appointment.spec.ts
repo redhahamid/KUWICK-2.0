@@ -148,12 +148,14 @@ test.describe('booking a follow-up from the consultation', () => {
     // runner's, and date and time are separate columns. Matching with a bare
     // `dayjs()` passed only because CI is UTC, and would have hidden an
     // eight-hour error on a Malaysian machine.
-    const when = dayjs(chosenIso).tz(CLINIC_ZONE);
+    // `bookedAt`, not `when` — that name is already the follow-up DATE this
+    // test picked in the canvas, forty lines up.
+    const bookedAt = dayjs(chosenIso).tz(CLINIC_ZONE);
     const row = page
       .getByRole('row')
       .filter({ hasText: booking.patientName })
-      .filter({ hasText: when.format('D MMM YYYY') })
-      .filter({ hasText: when.format('HH:mm') });
+      .filter({ hasText: bookedAt.format('D MMM YYYY') })
+      .filter({ hasText: bookedAt.format('HH:mm') });
     await expect(
       row,
       'the follow-up booked in the canvas is not in the Appointments module',
