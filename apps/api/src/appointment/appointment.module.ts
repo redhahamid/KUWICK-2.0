@@ -17,6 +17,11 @@ import { AppointmentService } from './appointment.service';
 import { AppointmentBookingValidator } from './appointment-booking-validator.service';
 import { ClinicBookingSettingsController } from './clinic-booking-settings.controller';
 import { ClinicBookingSettingsService } from './clinic-booking-settings.service';
+import {
+  AppointmentDashboardController,
+  AppointmentReminderController,
+} from './appointment-dashboard.controller';
+import { AppointmentDashboardService } from './appointment-dashboard.service';
 
 @Module({
   imports: [CoreModule, HrModule, ClinicalModule],
@@ -28,6 +33,8 @@ import { ClinicBookingSettingsService } from './clinic-booking-settings.service'
     AvailabilityController,
     AppointmentController,
     ClinicBookingSettingsController,
+    AppointmentDashboardController,
+    AppointmentReminderController,
   ],
   providers: [
     DoctorScheduleService,
@@ -38,6 +45,7 @@ import { ClinicBookingSettingsService } from './clinic-booking-settings.service'
     AppointmentBookingValidator,
     AppointmentService,
     ClinicBookingSettingsService,
+    AppointmentDashboardService,
   ],
 })
 export class AppointmentModule {}

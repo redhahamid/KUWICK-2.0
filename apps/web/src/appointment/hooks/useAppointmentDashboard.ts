@@ -1,0 +1,84 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiClient } from '../../core/api-client';
+
+export type DashboardTab =
+  | 'UPCOMING'
+  | 'COMPLETED'
+  | 'NO_SHOW'
+  | 'CANCELLED'
+  | 'TO_BE_SCHEDULED'
+  | 'REQUESTS';
+
+export type PaymentState = 'NO_FEE' | 'UNPAID' | 'PAID';
+
+export interface DashboardRow {
+  id: string;
+  status: string;
+  source: string;
+  clinicId: string;
+  staffId: string;
+  serviceId: string;
+  patientId: string;
+  scheduledStart: string;
+  scheduledEnd: string;
+  notes: string | null;
+  patient: { id: string; name: string; phone: string | null };
+  provider: { id: string; fullName: string };
+  service: { id: string; name: string; price: string };
+  payment: { state: PaymentState; amount: number; paidAt: string | null };
+  reminder: { sentAt: string | null; sentBy: string | null };
+}
+
+export interface DashboardStats {
+  upcoming: number;
+  completed: number;
+  cancelled: number;
+  noShow: number;
+  noShowRate: number | null;
+  potentialSales: number;
+  realisedSales: number;
+  timeZone: string;
+}
+
+export interface DashboardResponse {
+  range: { from: string; to: string; timeZone: string };
+  stats: DashboardStats;
+  rows: DashboardRow[];
+}
+
+export interface DashboardFilter {
+  clinicId?: string;
+  from: string;
+  to: string;
+  tab: DashboardTab;
+  staffId?: string;
+  serviceId?: string;
+  search?: string;
+}
+
+function toQuery(filter: DashboardFilter): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(filter)) {
+    if (value) search.set(key, String(value));
+  }
+  return search.toString();
+}
+
+export function useAppointmentDashboard(filter: DashboardFilter) {
+  return useQuery({
+    queryKey: ['appointment-dashboard', filter],
+    queryFn: () => apiClient.get<DashboardResponse>(`/appointments/dashboard?${toQuery(filter)}`),
+    enabled: Boolean(filter.clinicId),
+    // The bar and the list come from one response, so they cannot show two
+    // different periods mid-refresh.
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useMarkReminderSent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.post(`/appointments/${id}/reminder-sent`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['appointment-dashboard'] }),
+  });
+}

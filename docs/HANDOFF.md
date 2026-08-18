@@ -1470,6 +1470,108 @@ deep-link reminder. `AppointmentStatus` already carries what the tabs need;
 check whether a "reminder sent" column exists before building the action (it
 does not — it is new).
 
+## APPOINTMENTS PIECE 2 — DONE (2026-08-18). The clinic dashboard.
+
+**ONE QUERY SOURCE, TWO CONSUMERS.** `appointment-dashboard.service.ts` holds
+the five figures. The stats bar is simply the first thing to ask; the reports
+module asks the same method. Built twice they would disagree the first time
+either definition moved, and the disagreement would be found by an owner
+comparing a screen to a report and trusting neither.
+
+**THE DEFINITIONS, so a report does not re-invent them:**
+- `upcoming` — CONFIRMED, REMINDED, ARRIVED, IN_QUEUE. **NOT REQUESTED**: a
+  request is awaiting a decision, and counting it in both Upcoming and Requests
+  would double it on the bar.
+- `completed` / `cancelled` / `noShow` — their own statuses.
+- `noShowRate` — noShow ÷ (completed + noShow). **Cancellations are not in the
+  denominator**: a clinic that cancels a whole clinic day has not improved its
+  no-show rate, and dividing by them says it has. NULL, never 0, when nothing
+  was attendable — "no no-shows" and "no appointments" are different facts.
+- `potentialSales` — booking fee (SNAPSHOT) + service price (LIVE), over live
+  appointments only. Cancellations excluded, or the figure would grow whenever
+  a clinic lost business; pending requests excluded, or it would fall whenever
+  one was declined.
+- `realisedSales` — the same sum over COMPLETED. Not on the bar; it is the
+  other half of "potential vs realised" and costs one reduce.
+
+**RESCHEDULED APPEARS IN NO TAB AND NO COUNT.** It marks the OLD row of a move
+— the booking still exists at its new time as a different row. Filing it under
+Cancelled would tell a clinic it lost a booking it still has.
+
+**⚠ "TO BE SCHEDULED" IS AN INTERPRETATION, FLAGGED.** Kuwick has no
+"booking with no slot yet" state — `scheduledStart` is NOT NULL — so the Yezza
+tab cannot be reproduced literally. It is implemented as **live appointments
+whose time has passed that nobody marked arrived, completed or no-show**: a
+real worklist somebody must act on. Piece 4's call-back requests may be what
+the tab should really hold. **Owner decision pending.**
+
+**A REMINDER IS A THING SOMEBODY DID, NOT A STATUS.** `AppointmentStatus.REMINDED`
+cannot say when or by whom, and is mutually exclusive with CONFIRMED — an
+appointment that has been reminded AND confirmed can only hold one. New columns
+`reminder_sent_at` / `reminder_sent_by_staff_id` carry the fact ON the row.
+Never backfilled: no appointment booked before today has a reminder anybody can
+name.
+
+**WHATSAPP IS A DEEP LINK, NOT AN INTEGRATION.** `wa.me` opens on the staff
+member's own phone. Kuwick sends nothing and therefore claims nothing about
+delivery — pressing the button records only that somebody sent a message. The
+link is opened FIRST and recorded second: marking a reminder sent for a popup
+that was blocked is worse than no mark. Numbers normalise `012-345 6789` →
+`60123456789`; a number that is neither local nor Malaysian is **not** given a
+country code, because a wrong one sends a stranger somebody's appointment time.
+
+**BOOKING FEE IS SNAPSHOT, SERVICE PRICE IS LIVE**, and the split is
+deliberate: the fee is a commitment (a clinic raising it in March must not
+change what a February booking asked for), the price is an estimate of future
+revenue. `booking_fee_paid_at` exists and **nothing writes it yet** — piece 4
+collects. Every row with a fee therefore reads UNPAID, which is true.
+
+**THE DEFAULT PERIOD FOLLOWS THE TAB.** Upcoming → today..+30d; history tabs →
+-30d..today. A month-to-date default shows an empty Completed tab on the 1st
+and an empty Upcoming tab on the 30th. Once a person picks a period it is
+theirs and tab changes stop overriding it.
+
+**`AppointmentsPage.tsx` IS DELETED**, not left beside its replacement. Its
+lifecycle actions moved onto the dashboard rows using the SHARED
+`appointment-status.constants` guards rather than a third copy.
+
+**MEASURED:** API 1717, web 1549, both typechecks. E2E updated for the rebuilt
+page (search by name, separate Date/Time columns, clinic-zone assertion).
+
+### The +8h correction — RAN AS A SCRIPT, AND THE DIRECTION WAS MINUS
+
+Owner asked for "+8h". **It is MINUS eight.** A row holding 09:00Z was MEANT to
+be 09:00 at the clinic, which is 01:00Z. Nothing hardcodes eight: the shift is
+derived per row from that clinic's own `timezone`, so a clinic on UTC does not
+move at all.
+
+    npm run correct:appointment-instants           # dry run, prints every row
+    npm run correct:appointment-instants -- --apply
+
+APPOINTMENTS ONLY. Run-once, guarded by the new append-only `data_corrections`
+table — a corrected row is indistinguishable from an uncorrected one, so a
+second run would shift twice. The cutoff is read from `_prisma_migrations`
+(piece 1's migration finish time), so nobody has to remember the deploy moment.
+
+### Owner decisions recorded
+
+- **Booking window is time-of-day** — confirmed correct. A separate **"book up
+  to N days ahead" horizon is a PIECE 4 public-page rule**, deliberately NOT
+  built yet. It belongs on `clinic_booking_settings` when it lands.
+- **Unmapped-service refusal on publish** — keep.
+
+### Feeds into reports
+
+`AppointmentDashboardService.stats` already returns everything the reports
+brief asks for: no-show rate, potential vs realised sales, and bookings per
+doctor (pass `staffId`). The reports module should CALL it rather than write
+its own aggregate.
+
+**NEXT — PIECE 3**: the clinic calendar. Detail panel, day/week/month,
+drag-and-drop reschedule. Note that the booking validator now refuses any time
+that is not one of the engine's offered slots, so an invalid drop already has a
+reason to show — see piece 1.
+
 ## Checklist state
 
 | Item | Status |

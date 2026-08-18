@@ -1,0 +1,350 @@
+import { AppointmentStatus } from '@prisma/client';
+import {
+  AppointmentDashboardService,
+  TAB_STATUSES,
+  paymentStateOf,
+} from './appointment-dashboard.service';
+import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
+import { SlotAvailabilityService } from './slot-availability.service';
+import { tenantContextStorage } from '../core/tenant-context';
+
+const CLINIC = 'clinic-1';
+
+interface World {
+  grouped?: { status: AppointmentStatus; count: number; fees?: number }[];
+  live?: { bookingFeeAmount: number; price: number }[];
+  completed?: { bookingFeeAmount: number; price: number }[];
+  rows?: Record<string, unknown>[];
+  timeZone?: string;
+}
+
+function build(world: World = {}) {
+  const findManyCalls: Record<string, unknown>[] = [];
+  const updates: Record<string, unknown>[] = [];
+
+  const prisma = {
+    appointment: {
+      groupBy: jest.fn(async () =>
+        (world.grouped ?? []).map((row) => ({
+          status: row.status,
+          _count: { _all: row.count },
+          _sum: { bookingFeeAmount: row.fees ?? 0 },
+        })),
+      ),
+      findMany: jest.fn(async (args: never) => {
+        const call = args as { where: { status?: unknown }; select?: unknown };
+        findManyCalls.push(call);
+        const status = call.where.status as { in?: AppointmentStatus[] } | AppointmentStatus;
+        // The two money queries ask by status; the row query asks with an
+        // include. Distinguished the same way the service distinguishes them.
+        if (!call.select) return world.rows ?? [];
+        if (status === AppointmentStatus.COMPLETED) {
+          return (world.completed ?? []).map((row) => ({
+            bookingFeeAmount: row.bookingFeeAmount,
+            service: { price: row.price },
+          }));
+        }
+        return (world.live ?? []).map((row) => ({
+          bookingFeeAmount: row.bookingFeeAmount,
+          service: { price: row.price },
+        }));
+      }),
+      findUnique: jest.fn(async () => ({ id: 'appt-1', reminderSentAt: null })),
+      update: jest.fn(async ({ data }: never) => {
+        updates.push(data as Record<string, unknown>);
+        return { id: 'appt-1', ...(data as object) };
+      }),
+    },
+  } as unknown as TenantScopedPrismaClient;
+
+  const availability = {
+    clinicTimeZone: jest.fn(async () => world.timeZone ?? 'Asia/Kuala_Lumpur'),
+  } as unknown as SlotAvailabilityService;
+
+  const service = new AppointmentDashboardService(prisma, availability);
+  const run = <T>(fn: () => Promise<T>) =>
+    tenantContextStorage.run({ tenantId: 't1', staffId: 'staff-7', userId: 'u1' }, fn);
+
+  return { service, prisma, findManyCalls, updates, run };
+}
+
+const ask = (ctx: ReturnType<typeof build>, overrides: Record<string, unknown> = {}) =>
+  ctx.run(() =>
+    ctx.service.dashboard({
+      clinicId: CLINIC,
+      from: '2026-08-01',
+      to: '2026-08-31',
+      tab: 'UPCOMING',
+      now: new Date('2026-08-18T02:00:00.000Z'),
+      ...overrides,
+    } as never),
+  );
+
+// ===========================================================================
+// ONE QUERY SOURCE, TWO CONSUMERS.
+//
+// The stats bar and the reports module compute the same five numbers. Built
+// twice they disagree the first time either definition moves, and the
+// disagreement is found by an owner comparing a screen to a report and
+// trusting neither. The definitions are pinned here.
+// ===========================================================================
+
+describe('the period is the CLINIC’s, not UTC’s', () => {
+  it('1. a Malaysian August runs 31 Jul 16:00Z to 31 Aug 16:00Z', async () => {
+    // Asking between UTC midnights puts the evening clinic on the wrong day
+    // and quietly mis-states every count on the bar.
+    const ctx = build();
+
+    await ask(ctx);
+
+    const where = (ctx.prisma.appointment.groupBy as jest.Mock).mock.calls[0][0].where;
+    expect(where.scheduledStart.gte.toISOString()).toBe('2026-07-31T16:00:00.000Z');
+    expect(where.scheduledStart.lt.toISOString()).toBe('2026-08-31T16:00:00.000Z');
+  });
+
+  it('2. the last day of the range is INCLUDED', async () => {
+    const ctx = build();
+
+    await ask(ctx, { from: '2026-08-18', to: '2026-08-18' });
+
+    const where = (ctx.prisma.appointment.groupBy as jest.Mock).mock.calls[0][0].where;
+    // Midnight-to-midnight of that one clinic day, not a zero-width range.
+    expect(where.scheduledStart.gte.toISOString()).toBe('2026-08-17T16:00:00.000Z');
+    expect(where.scheduledStart.lt.toISOString()).toBe('2026-08-18T16:00:00.000Z');
+  });
+
+  it('3. a clinic in another zone gets its own day boundaries', async () => {
+    const ctx = build({ timeZone: 'Asia/Kolkata' });
+
+    await ask(ctx, { from: '2026-08-18', to: '2026-08-18' });
+
+    const where = (ctx.prisma.appointment.groupBy as jest.Mock).mock.calls[0][0].where;
+    expect(where.scheduledStart.gte.toISOString()).toBe('2026-08-17T18:30:00.000Z');
+  });
+});
+
+describe('the five figures', () => {
+  const world: World = {
+    grouped: [
+      { status: AppointmentStatus.CONFIRMED, count: 4 },
+      { status: AppointmentStatus.REMINDED, count: 2 },
+      { status: AppointmentStatus.COMPLETED, count: 6 },
+      { status: AppointmentStatus.CANCELLED, count: 3 },
+      { status: AppointmentStatus.NO_SHOW, count: 2 },
+      { status: AppointmentStatus.REQUESTED, count: 5 },
+    ],
+  };
+
+  it('4. upcoming counts live bookings and NOT pending requests', async () => {
+    // Counting a request as upcoming tells a clinic it is expecting somebody
+    // it may yet turn away, and double-counts the row against the Requests tab.
+    const ctx = build(world);
+
+    const { stats } = await ask(ctx);
+
+    expect(stats.upcoming).toBe(6);
+  });
+
+  it('5. completed, cancelled and no-show are each their own status', async () => {
+    const ctx = build(world);
+
+    const { stats } = await ask(ctx);
+
+    expect(stats).toMatchObject({ completed: 6, cancelled: 3, noShow: 2 });
+  });
+
+  it('6. the no-show RATE excludes cancellations from the denominator', async () => {
+    // A clinic that cancels a whole clinic day has not improved its no-show
+    // rate, and dividing by cancellations says it has. 2 of (6 + 2).
+    const ctx = build(world);
+
+    const { stats } = await ask(ctx);
+
+    expect(stats.noShowRate).toBeCloseTo(0.25);
+  });
+
+  it('7. a period with nothing attendable has NO rate rather than zero', async () => {
+    // Zero per cent no-shows and no appointments at all are different facts.
+    const ctx = build({ grouped: [{ status: AppointmentStatus.CANCELLED, count: 3 }] });
+
+    const { stats } = await ask(ctx);
+
+    expect(stats.noShowRate).toBeNull();
+  });
+});
+
+describe('potential sales', () => {
+  it('8. is the booking fee plus the service price, over live appointments', async () => {
+    const ctx = build({
+      live: [
+        { bookingFeeAmount: 10, price: 35 },
+        { bookingFeeAmount: 0, price: 50 },
+      ],
+    });
+
+    const { stats } = await ask(ctx);
+
+    expect(stats.potentialSales).toBe(95);
+  });
+
+  it('9. asks only for LIVE appointments — a cancellation is not potential revenue', async () => {
+    const ctx = build({ live: [{ bookingFeeAmount: 10, price: 35 }] });
+
+    await ask(ctx);
+
+    const moneyQuery = ctx.findManyCalls.find((call) => (call as { select?: unknown }).select);
+    expect((moneyQuery as { where: { status: { in: AppointmentStatus[] } } }).where.status.in).toEqual([
+      ...TAB_STATUSES.UPCOMING,
+    ]);
+  });
+
+  it('10. realised sales is computed the same way, so the report cannot diverge', async () => {
+    const ctx = build({
+      live: [{ bookingFeeAmount: 10, price: 35 }],
+      completed: [{ bookingFeeAmount: 5, price: 35 }],
+    });
+
+    const { stats } = await ask(ctx);
+
+    expect(stats.potentialSales).toBe(45);
+    expect(stats.realisedSales).toBe(40);
+  });
+
+  it('11. money is rounded to sen, not left as a float artefact', async () => {
+    const ctx = build({ live: [{ bookingFeeAmount: 0.1, price: 0.2 }] });
+
+    const { stats } = await ask(ctx);
+
+    expect(stats.potentialSales).toBe(0.3);
+  });
+});
+
+describe('a rescheduled row is not a lost booking', () => {
+  it('12. RESCHEDULED is excluded from every count', async () => {
+    // It marks the OLD row of a move; the booking still exists at its new
+    // time as a different row. Filing it under Cancelled would tell a clinic
+    // it lost a booking it still has.
+    const ctx = build();
+
+    await ask(ctx);
+
+    const where = (ctx.prisma.appointment.groupBy as jest.Mock).mock.calls[0][0].where;
+    expect(where.status).toEqual({ not: AppointmentStatus.RESCHEDULED });
+  });
+
+  it('13. no tab contains it either', () => {
+    for (const statuses of Object.values(TAB_STATUSES)) {
+      expect(statuses).not.toContain(AppointmentStatus.RESCHEDULED);
+    }
+  });
+});
+
+describe('the tabs', () => {
+  it('14. To Be Scheduled is live appointments whose time has PASSED', async () => {
+    // Somebody has to decide what happened: re-book, or record they never
+    // came. An interpretation — see the comment on the query.
+    const ctx = build();
+
+    await ask(ctx, { tab: 'TO_BE_SCHEDULED' });
+
+    const rowQuery = ctx.findManyCalls.find((call) => !(call as { select?: unknown }).select) as {
+      where: { scheduledEnd?: { lt: Date }; status: { in: AppointmentStatus[] } };
+    };
+    expect(rowQuery.where.scheduledEnd?.lt.toISOString()).toBe('2026-08-18T02:00:00.000Z');
+    expect(rowQuery.where.status.in).toEqual([...TAB_STATUSES.TO_BE_SCHEDULED]);
+  });
+
+  it('15. other tabs carry no time cut', async () => {
+    const ctx = build();
+
+    await ask(ctx, { tab: 'COMPLETED' });
+
+    const rowQuery = ctx.findManyCalls.find((call) => !(call as { select?: unknown }).select) as {
+      where: { scheduledEnd?: unknown };
+    };
+    expect(rowQuery.where.scheduledEnd).toBeUndefined();
+  });
+
+  it('16. Upcoming reads forwards, history reads backwards', async () => {
+    const ctx = build();
+
+    await ask(ctx, { tab: 'UPCOMING' });
+    await ask(ctx, { tab: 'COMPLETED' });
+
+    const orders = ctx.findManyCalls
+      .filter((call) => !(call as { select?: unknown }).select)
+      .map((call) => (call as { orderBy: { scheduledStart: string } }).orderBy.scheduledStart);
+    expect(orders).toEqual(['asc', 'desc']);
+  });
+
+  it('17. search matches a patient by name or phone, never by id', async () => {
+    const ctx = build();
+
+    await ask(ctx, { search: '  012-3456  ' });
+
+    const rowQuery = ctx.findManyCalls.find((call) => !(call as { select?: unknown }).select) as {
+      where: { patient: { OR: { name?: unknown; phone?: unknown }[] } };
+    };
+    expect(rowQuery.where.patient.OR).toEqual([
+      { name: { contains: '012-3456', mode: 'insensitive' } },
+      { phone: { contains: '012-3456', mode: 'insensitive' } },
+    ]);
+  });
+
+  it('18. the row list is bounded', async () => {
+    // A year-wide range on a busy clinic is a page nobody can read and a
+    // response nobody should send.
+    const ctx = build();
+
+    await ask(ctx);
+
+    const rowQuery = ctx.findManyCalls.find((call) => !(call as { select?: unknown }).select) as {
+      take: number;
+    };
+    expect(rowQuery.take).toBe(500);
+  });
+});
+
+describe('payment status tells the truth about a thing nothing collects yet', () => {
+  it.each([
+    [0, null, 'NO_FEE'],
+    [15, null, 'UNPAID'],
+    [15, new Date('2026-08-01T00:00:00.000Z'), 'PAID'],
+  ])('19. fee %p paid %p reads %s', (amount, paidAt, expected) => {
+    expect(paymentStateOf({ bookingFeeAmount: amount, bookingFeePaidAt: paidAt }).state).toBe(expected);
+  });
+
+  it('20. a fee of zero is NO_FEE, never "unpaid" — there is nothing to pay', () => {
+    expect(paymentStateOf({ bookingFeeAmount: '0.00', bookingFeePaidAt: null }).state).toBe('NO_FEE');
+  });
+});
+
+describe('a reminder is a thing somebody did', () => {
+  it('21. it records WHO and WHEN, and does not touch the status', async () => {
+    // `REMINDED` is mutually exclusive with CONFIRMED and ARRIVED, so using it
+    // would lose the appointment's real state to record a phone call.
+    const ctx = build();
+
+    await ctx.run(() => ctx.service.markReminderSent('appt-1'));
+
+    expect(ctx.updates[0]).toMatchObject({ reminderSentByStaffId: 'staff-7' });
+    expect(ctx.updates[0].reminderSentAt).toBeInstanceOf(Date);
+    expect(ctx.updates[0]).not.toHaveProperty('status');
+  });
+
+  it('22. sending a second reminder overwrites the first — the last one matters', async () => {
+    const ctx = build();
+
+    await ctx.run(() => ctx.service.markReminderSent('appt-1'));
+    await ctx.run(() => ctx.service.markReminderSent('appt-1'));
+
+    expect(ctx.updates).toHaveLength(2);
+  });
+
+  it('23. an appointment that does not exist is a 404, not a silent no-op', async () => {
+    const ctx = build();
+    (ctx.prisma.appointment.findUnique as jest.Mock).mockResolvedValueOnce(null);
+
+    await expect(ctx.run(() => ctx.service.markReminderSent('nope'))).rejects.toThrow(/not found/i);
+  });
+});

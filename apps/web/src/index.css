@@ -3492,3 +3492,122 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 .kw-booking-config-body[data-off='true'] {
   opacity: 0.55;
 }
+
+/* ===========================================================================
+   APPOINTMENTS DASHBOARD (piece 2)
+
+   The bar reads first and reads fast: five figures, generous spacing, one
+   colour each and never more than one accent competing for attention.
+   =========================================================================== */
+
+.kw-appt-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.kw-appt-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  transition: opacity 160ms ease;
+}
+
+.kw-appt-stats[data-loading='true'] {
+  opacity: 0.6;
+}
+
+.kw-appt-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--kw-border, #e4e7ec);
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 5%);
+  /* A hairline of the figure's own colour, rather than a coloured card. Five
+     saturated tiles side by side is a dashboard nobody can scan. */
+  border-left-width: 3px;
+}
+
+.kw-appt-stat[data-tone='active'] { border-left-color: #1d4ed8; }
+.kw-appt-stat[data-tone='success'] { border-left-color: #166534; }
+.kw-appt-stat[data-tone='error'] { border-left-color: #b42318; }
+.kw-appt-stat[data-tone='neutral'] { border-left-color: #98a2b3; }
+.kw-appt-stat[data-tone='primary'] { border-left-color: #184a6b; }
+
+.kw-appt-stat-label {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--kw-text-muted, #667085);
+}
+
+.kw-appt-stat-value {
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 600;
+  color: var(--kw-text, #101828);
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-appt-stat-money .kw-appt-stat-value {
+  font-size: 21px;
+}
+
+.kw-appt-stat-detail {
+  font-size: 12px;
+  color: var(--kw-text-muted, #667085);
+  min-height: 16px;
+}
+
+.kw-appt-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.kw-appt-tabs {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.kw-appt-filters {
+  row-gap: 8px;
+}
+
+.kw-appt-patient {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.35;
+}
+
+.kw-appt-patient-name {
+  font-weight: 500;
+  color: var(--kw-text, #101828);
+}
+
+.kw-appt-patient-phone {
+  font-size: 12px;
+  color: var(--kw-text-muted, #667085);
+}
+
+.kw-appt-avatar {
+  background: #184a6b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.kw-appt-reminded {
+  font-size: 13px;
+  color: #166534;
+}
+
+.kw-appt-empty {
+  padding: 40px 24px;
+  max-width: 420px;
+  margin: 0 auto;
+}

@@ -103,7 +103,9 @@ export async function resolveEligibleAttendingDoctor(
 export async function resolveService(tx: ClinicalTx, serviceId: string) {
   const service = await tx.serviceCatalog.findUnique({
     where: { id: serviceId },
-    select: { id: true, name: true, active: true },
+    // `bookingFee` comes back so a booking can SNAPSHOT it. A clinic raising
+    // its fee in March must not change what a February booking asked for.
+    select: { id: true, name: true, active: true, bookingFee: true },
   });
   if (!service) {
     throw new NotFoundException('Service not found');

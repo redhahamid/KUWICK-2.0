@@ -14,7 +14,7 @@ import { PlatformSubscriptionsPage } from './platform/PlatformSubscriptionsPage'
 import { PlatformPanelClinicsPage } from './platform/PlatformPanelClinicsPage';
 import { PlatformProceduresPage } from './platform/PlatformProceduresPage';
 import { PlatformSettingsPage } from './platform/PlatformSettingsPage';
-import { AppointmentsPage } from './appointment/AppointmentsPage';
+import { AppointmentsDashboardPage } from './appointment/AppointmentsDashboardPage';
 import { ClinicsPage } from './core/ClinicsPage';
 import { PatientsPage } from './core/PatientsPage';
 import { StaffPage } from './hr/StaffPage';
@@ -89,8 +89,8 @@ export function App() {
 
       <Route element={<RequireAuth />}>
         <Route element={<AppLayout />}>
-          <Route index element={<AppointmentsPage />} />
-          <Route path="/appointments" element={<AppointmentsPage />} />
+          <Route index element={<AppointmentsDashboardPage />} />
+          <Route path="/appointments" element={<AppointmentsDashboardPage />} />
           <Route path="/patients" element={<PatientsPage />} />
           <Route path="/patients/:id" element={<PatientDashboardPage />} />
           <Route path="/queue" element={<QueueManagementPage />} />

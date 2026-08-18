@@ -101,6 +101,9 @@ export class AppointmentService {
         scheduledStart,
         scheduledEnd,
         notes: dto.notes,
+        // SNAPSHOT, not a join — see the column comment. Zero is the normal
+        // answer: most consultations carry no booking fee.
+        bookingFeeAmount: resolved.service.bookingFee ?? 0,
       },
     });
   }

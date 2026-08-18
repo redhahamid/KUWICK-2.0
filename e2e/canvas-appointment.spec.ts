@@ -139,18 +139,27 @@ test.describe('booking a follow-up from the consultation', () => {
     // carrying the lifecycle actions that module owns. A canvas-side store
     // would fail here and nowhere else.
     await page.goto('/appointments');
+    // The dashboard opens on Upcoming over the next 30 days, which covers a
+    // follow-up three days out. Searching by name as well, because a busy
+    // seeded clinic can put the row on a second page.
+    await page.getByPlaceholder(/patient name or phone/i).fill(booking.patientName);
+
     // The list renders in the CLINIC's zone (`clinicTime.ts`), not the
-    // runner's, so the expected text is built the same way. Matching with a
-    // bare `dayjs()` passed only because CI is UTC and would have hidden an
+    // runner's, and date and time are separate columns. Matching with a bare
+    // `dayjs()` passed only because CI is UTC, and would have hidden an
     // eight-hour error on a Malaysian machine.
-    const row = page.getByRole('row').filter({ hasText: booking.patientName }).filter({
-      hasText: dayjs(chosenIso).tz(CLINIC_ZONE).format('D MMM YYYY · HH:mm'),
-    });
+    const when = dayjs(chosenIso).tz(CLINIC_ZONE);
+    const row = page
+      .getByRole('row')
+      .filter({ hasText: booking.patientName })
+      .filter({ hasText: when.format('D MMM YYYY') })
+      .filter({ hasText: when.format('HH:mm') });
     await expect(
       row,
       'the follow-up booked in the canvas is not in the Appointments module',
     ).toHaveCount(1);
-    await expect(row).toContainText('CONFIRMED');
+    // The status chip reads as words, not as an enum.
+    await expect(row).toContainText(/confirmed/i);
     // The module's own actions are on it — it is an ordinary appointment, not
     // a read-only echo of something the canvas keeps elsewhere.
     await expect(row.getByRole('button', { name: 'Reschedule' })).toBeVisible();

@@ -215,6 +215,7 @@ model Tenant {
   scheduleExceptions          ScheduleException[]
   slotCapacityConfigs         SlotCapacityConfig[]
   clinicBookingSettings       ClinicBookingSettings[]
+  dataCorrections             DataCorrection[]
   clinicClosedDates           ClinicClosedDate[]
   doctorServiceQualifications DoctorServiceQualification[]
   appointments                Appointment[]
@@ -706,6 +707,7 @@ model Staff {
   scheduleExceptions           ScheduleException[]
   slotCapacityConfigs          SlotCapacityConfig[]
   clinicClosedDates            ClinicClosedDate[]
+  appointmentRemindersSent     Appointment[]         @relation("AppointmentReminderAuthor")
   doctorServiceQualifications  DoctorServiceQualification[]
   appointments                 Appointment[]
   // Two different roles on a visit: the attending clinician, and whoever
@@ -1055,6 +1057,27 @@ model ScheduleException {
 /// can compute and the front desk cannot honour.
 ///
 /// Times are WALL CLOCK in `Clinic.timezone` (see `time.util.ts`).
+/// A one-off data correction that RAN, recorded so it cannot run twice.
+///
+/// A correction shifts real rows by a real amount and nothing in the corrected
+/// row says whether it has already been shifted. The unique (tenant, name) IS
+/// the guard. Append-only by trigger — a guard that can be deleted is a guard
+/// that can be switched off by accident.
+model DataCorrection {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  name         String
+  rowsAffected Int      @map("rows_affected")
+  note         String?
+  appliedBy    String?  @map("applied_by")
+  appliedAt    DateTime @default(now()) @map("applied_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name])
+  @@map("data_corrections")
+}
+
 model ClinicBookingSettings {
   id                   String   @id @default(uuid())
   tenantId             String   @map("tenant_id")
@@ -1158,6 +1181,21 @@ model Appointment {
   cancelReason      String?           @map("cancel_reason")
   arrivedAt         DateTime?         @map("arrived_at")
   rescheduledFromId String?           @unique @map("rescheduled_from_id")
+
+  /// WHO reminded this patient, and WHEN. Not the `REMINDED` status, which
+  /// cannot hold either and is mutually exclusive with CONFIRMED — an
+  /// appointment can be both reminded and confirmed, and the dashboard has to
+  /// show both.
+  reminderSentAt        DateTime? @map("reminder_sent_at")
+  reminderSentByStaffId String?   @map("reminder_sent_by_staff_id")
+
+  /// SNAPSHOT of the service's booking fee at the moment of booking. A clinic
+  /// raising its fee in March must not change what a February booking asked
+  /// for. The SERVICE price is deliberately not snapshotted — it is an
+  /// estimate of future revenue, not a commitment, so it reads live.
+  bookingFeeAmount    Decimal   @default(0) @map("booking_fee_amount") @db.Decimal(10, 2)
+  bookingFeePaidAt    DateTime? @map("booking_fee_paid_at")
+  bookingFeeReference String?   @map("booking_fee_reference")
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
 
@@ -1168,9 +1206,11 @@ model Appointment {
   service         ServiceCatalog @relation(fields: [serviceId], references: [id])
   rescheduledFrom Appointment?   @relation("AppointmentReschedule", fields: [rescheduledFromId], references: [id])
   rescheduledTo   Appointment?   @relation("AppointmentReschedule")
+  reminderSentBy  Staff?         @relation("AppointmentReminderAuthor", fields: [reminderSentByStaffId], references: [id])
 
   @@index([tenantId])
   @@index([tenantId, clinicId])
+  @@index([tenantId, clinicId, scheduledStart])
   @@index([tenantId, staffId, scheduledStart])
   @@index([tenantId, patientId])
   @@index([tenantId, status])

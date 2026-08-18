@@ -23,7 +23,7 @@ interface AppointmentDetailPopoverProps {
 }
 
 // Opened by clicking a Calendar-view block — reuses the exact same lifecycle
-// mutations and status guards as AppointmentsPage's row actions
+// mutations and status guards as AppointmentsDashboardPage's row actions
 // (appointment-status.constants.ts), so the two entry points can't diverge.
 export function AppointmentDetailPopover({
   appointment,
