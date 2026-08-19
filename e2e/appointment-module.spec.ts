@@ -115,6 +115,9 @@ test.describe('a patient books themselves in, and the clinic works the booking',
 
     await page.getByLabel(/your full name/i).fill(patientName);
     await page.getByLabel(/mobile number/i).fill(phone);
+    // §42 — the review step stands between the form and the booking.
+    await page.getByRole('button', { name: /review booking/i }).click();
+    await expect(page.getByTestId('public-review')).toBeVisible();
     await page.getByRole('button', { name: /confirm appointment/i }).click();
 
     // The confirmation, and the manage link the patient keeps. The premium
@@ -211,6 +214,7 @@ test.describe('the patient can manage their own booking', () => {
 
     await page.getByLabel(/your full name/i).fill(patientName);
     await page.getByLabel(/mobile number/i).fill(`0198${Date.now().toString().slice(-6)}`);
+    await page.getByRole('button', { name: /review booking/i }).click();
     await page.getByRole('button', { name: /confirm appointment/i }).click();
 
     const manageHref = await page

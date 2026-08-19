@@ -12,10 +12,8 @@ import {
   InputNumber,
   Radio,
   Result,
-  Segmented,
   Skeleton,
   Space,
-  Steps,
   Tag,
   Typography,
 } from 'antd';
@@ -43,12 +41,31 @@ const REASON_WORDS: Record<string, string> = {
   NOT_QUALIFIED: 'That doctor does not offer this.',
 };
 
-function daypart(start: string): 'Morning' | 'Afternoon' | 'Evening' {
+const DAYPARTS = ['Morning', 'Afternoon', 'Evening', 'Late night'] as const;
+type Daypart = (typeof DAYPARTS)[number];
+
+// §39 — Late night exists because the clinic does: a 24-hour roster offers
+// 23:00, and calling that "Evening" buries it under twenty earlier chips.
+function daypart(start: string): Daypart {
   const hour = clinicDayjs(start).hour();
   if (hour < 12) return 'Morning';
   if (hour < 17) return 'Afternoon';
-  return 'Evening';
+  if (hour < 22) return 'Evening';
+  return 'Late night';
 }
+
+/** "Today · 8:30 PM" / "Tomorrow · 9:00 AM" — the next-available hint (§36–37). */
+function hintLabel(dayOffset: number, start: string): string {
+  return `${dayOffset === 0 ? 'Today' : 'Tomorrow'} · ${formatClinicTime(start)}`;
+}
+
+const STEP_TITLES = [
+  'Choose a service',
+  'Choose a doctor',
+  'Pick a time',
+  'Your details',
+  'Review & confirm',
+];
 
 /**
  * PUBLIC BOOKING — mobile first, and no account required (§31).
@@ -92,6 +109,17 @@ export function PublicBookingPage() {
     slotCount: number;
   } | null>(null);
   const [probing, setProbing] = useState(false);
+  // §36–37 — "Today · 8:30 PM" on the doctor tiles. Keyed 'ANY' for the
+  // any-doctor tile, staffId for each person; asked of the SAME engine, today
+  // then tomorrow, and simply absent when neither day has anything.
+  const [hints, setHints] = useState<{ key: string; byId: Record<string, string> }>({
+    key: '',
+    byId: {},
+  });
+  // §42 — the review step holds the validated answers, so Back re-fills the
+  // form and Confirm books exactly what was reviewed.
+  const [details, setDetails] = useState<Record<string, string> | null>(null);
+  const [extraAnswers, setExtraAnswers] = useState<Record<string, unknown>>({});
 
   const { data: page, isLoading, error } = useQuery({
     queryKey: ['public-page', slug, serviceSlug],
@@ -145,13 +173,50 @@ export function PublicBookingPage() {
 
   const grouped = useMemo(() => {
     const slots = availability?.slots ?? [];
-    return {
-      Morning: slots.filter((entry) => daypart(entry.start) === 'Morning'),
-      Afternoon: slots.filter((entry) => daypart(entry.start) === 'Afternoon'),
-      Evening: slots.filter((entry) => daypart(entry.start) === 'Evening'),
-      total: slots.length,
-    };
+    const parts = Object.fromEntries(
+      DAYPARTS.map((part) => [part, slots.filter((entry) => daypart(entry.start) === part)]),
+    ) as Record<Daypart, PublicSlot[]>;
+    return { ...parts, total: slots.length };
   }, [availability]);
+
+  // The next-available hints for the doctor step. Sequential and shallow on
+  // purpose: at most two days per tile, stopped the moment the step is left.
+  useEffect(() => {
+    if (step !== 1 || !serviceId || !providers) return;
+    const key = `${serviceId}:${providers.map((row) => row.id).join(',')}`;
+    if (hints.key === key) return;
+    let cancelled = false;
+    (async () => {
+      const byId: Record<string, string> = {};
+      const targets: { id: string; staffId?: string }[] = [
+        { id: 'ANY', staffId: undefined },
+        ...providers.map((row) => ({ id: row.id, staffId: row.id })),
+      ];
+      for (const target of targets) {
+        for (let ahead = 0; ahead <= 1; ahead += 1) {
+          try {
+            const answer = await publicBooking.availability(slug, {
+              serviceId,
+              date: dayjs().add(ahead, 'day').format('YYYY-MM-DD'),
+              staffId: target.staffId,
+            });
+            if (cancelled) return;
+            if (answer.slots.length > 0) {
+              byId[target.id] = hintLabel(ahead, answer.slots[0].start);
+              break;
+            }
+          } catch {
+            break;
+          }
+        }
+      }
+      if (!cancelled) setHints({ key, byId });
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, serviceId, providers, slug]);
 
   const probeKey = `${serviceId ?? ''}:${staffId ?? 'ANY'}:${date.format('YYYY-MM-DD')}`;
   useEffect(() => {
@@ -270,26 +335,38 @@ export function PublicBookingPage() {
             </Button>
           </Space>
 
+          {/* §43 — labelled sections, and ONLY when there is something true
+              to put in them. No invented addresses, no placeholder phone. */}
           {service?.preInstructions ? (
-            <Alert
-              type="info"
-              style={{ marginTop: 16, textAlign: 'left' }}
-              message="Before your appointment"
-              description={service.preInstructions}
-            />
+            <div className="kw-public-after">
+              <div className="kw-public-section">Before your appointment</div>
+              <div className="kw-public-instructions">{service.preInstructions}</div>
+            </div>
           ) : null}
-          <Paragraph type="secondary" style={{ marginTop: 16, fontSize: 12 }}>
-            Keep the link above safe — it is how you change or cancel this appointment.
-          </Paragraph>
+          <div className="kw-public-after">
+            <div className="kw-public-section">Need help?</div>
+            <Paragraph type="secondary" style={{ margin: 0, fontSize: 13 }}>
+              Use <Text strong>Manage my appointment</Text> above to change or cancel — keep that
+              link safe, it is yours alone. For anything else, ring {page.clinic.displayName}.
+            </Paragraph>
+          </div>
         </div>
       </div>
     );
   }
 
-  const submit = async () => {
-    const details = await form.validateFields();
+  // §42 — details are VALIDATED on the way into the review step and booked
+  // from what was reviewed, never from a form the patient can no longer see.
+  const toReview = async () => {
+    const values = await form.validateFields();
     const extra = fields?.length ? await answers.validateFields() : {};
-    if (!slot || !serviceId) return;
+    setDetails(values);
+    setExtraAnswers(extra);
+    setStep(4);
+  };
+
+  const submit = async () => {
+    if (!slot || !serviceId || !details) return;
     await book.mutateAsync({
       serviceId,
       staffId: slot.staffId,
@@ -304,11 +381,11 @@ export function PublicBookingPage() {
       answers: (fields ?? []).map((field) => ({
         fieldId: field.id,
         answer:
-          extra[field.id] === undefined || extra[field.id] === null
+          extraAnswers[field.id] === undefined || extraAnswers[field.id] === null
             ? undefined
-            : Array.isArray(extra[field.id])
-              ? extra[field.id].join(', ')
-              : String(extra[field.id]),
+            : Array.isArray(extraAnswers[field.id])
+              ? (extraAnswers[field.id] as unknown[]).join(', ')
+              : String(extraAnswers[field.id]),
       })),
     });
   };
@@ -328,28 +405,28 @@ export function PublicBookingPage() {
               .toUpperCase()}
           </span>
         )}
-        <Title level={3} className="kw-public-clinic-name">
-          {page.clinic.displayName}
-        </Title>
-        {page.clinic.introText ? (
-          <Text type="secondary" className="kw-public-intro">
-            {page.clinic.introText}
-          </Text>
-        ) : null}
+        <div className="kw-public-hero-text">
+          <Title level={4} className="kw-public-clinic-name">
+            {page.clinic.displayName}
+          </Title>
+          {page.clinic.introText ? (
+            <Text type="secondary" className="kw-public-intro">
+              {page.clinic.introText}
+            </Text>
+          ) : null}
+        </div>
       </header>
 
-      <Steps
-        size="small"
-        current={step}
-        responsive
-        items={[
-          { title: 'Service' },
-          { title: 'Doctor' },
-          { title: 'Time' },
-          { title: 'Your details' },
-        ]}
-        style={{ marginBottom: 16 }}
-      />
+      {/* §35 — one quiet line and a sliver of progress, not a stepper that
+          owns half a phone screen. */}
+      <div className="kw-public-progress" data-testid="public-progress">
+        <Text type="secondary" style={{ fontSize: 13 }}>
+          Step {step + 1} of 5 · {STEP_TITLES[step]}
+        </Text>
+        <div className="kw-public-progress-bar" aria-hidden>
+          <span style={{ width: `${((step + 1) / 5) * 100}%` }} />
+        </div>
+      </div>
 
       {book.isError ? (
         <Alert
@@ -366,6 +443,9 @@ export function PublicBookingPage() {
 
       {step === 0 ? (
         <Space direction="vertical" size={8} style={{ width: '100%' }}>
+          <Title level={5} style={{ margin: 0 }}>
+            What would you like to book?
+          </Title>
           {page.services.length === 0 ? (
             <Alert
               type="info"
@@ -417,6 +497,9 @@ export function PublicBookingPage() {
 
       {step === 1 ? (
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <Title level={5} style={{ margin: 0 }}>
+            Choose a doctor
+          </Title>
           <div className="kw-public-providers" role="radiogroup" aria-label="Choose a doctor">
             <button
               type="button"
@@ -426,11 +509,14 @@ export function PublicBookingPage() {
               onClick={() => setStaffId(undefined)}
             >
               <span className="kw-public-provider-avatar kw-public-provider-avatar--any" aria-hidden>
-                ✦
+                ⚡
               </span>
               <span className="kw-public-provider-body">
                 <span className="kw-public-provider-name">Any available doctor</span>
-                <span className="kw-public-provider-sub">Usually the soonest appointment</span>
+                <span className="kw-public-provider-sub">
+                  Fastest appointment
+                  {hints.byId.ANY ? ` · ${hints.byId.ANY}` : ''}
+                </span>
               </span>
             </button>
             {(providers ?? []).map((provider) => (
@@ -453,6 +539,11 @@ export function PublicBookingPage() {
                 </span>
                 <span className="kw-public-provider-body">
                   <span className="kw-public-provider-name">{provider.fullName}</span>
+                  {hints.byId[provider.id] ? (
+                    <span className="kw-public-provider-sub">
+                      Next available · {hints.byId[provider.id]}
+                    </span>
+                  ) : null}
                 </span>
               </button>
             ))}
@@ -478,14 +569,28 @@ export function PublicBookingPage() {
               {date.format('dddd, D MMM')}
             </Text>
           </div>
-          <Segmented
-            block
-            options={[0, 1, 2, 3, 4, 5, 6].map((offset) => {
+          {/* §38 — date CHIPS that keep their words: "Wed 26" is never
+              squeezed into "W…"; the fortnight scrolls sideways instead. */}
+          <div className="kw-public-days" role="group" aria-label="Pick a day">
+            {Array.from({ length: 14 }, (_, offset) => {
               const day = dayjs().add(offset, 'day');
-              return { value: offset, label: `${day.format('ddd')} ${day.format('D')}` };
+              const on = date.isSame(day, 'day');
+              return (
+                <button
+                  key={offset}
+                  type="button"
+                  className={`kw-public-day${on ? ' kw-public-day--on' : ''}`}
+                  aria-pressed={on}
+                  onClick={() => setDate(day)}
+                >
+                  <span className="kw-public-day-dow">
+                    {offset === 0 ? 'Today' : day.format('ddd')}
+                  </span>
+                  <span className="kw-public-day-num">{day.format('D MMM')}</span>
+                </button>
+              );
             })}
-            onChange={(value) => setDate(dayjs().add(Number(value), 'day'))}
-          />
+          </div>
           <DatePicker
             value={date}
             onChange={(value) => value && setDate(value)}
@@ -532,7 +637,7 @@ export function PublicBookingPage() {
             </div>
           ) : null}
 
-          {(['Morning', 'Afternoon', 'Evening'] as const).map((part) =>
+          {DAYPARTS.map((part) =>
             grouped[part].length > 0 ? (
               <div key={part}>
                 <Text type="secondary" style={{ fontSize: 12 }}>
@@ -570,7 +675,12 @@ export function PublicBookingPage() {
           <Title level={5} style={{ margin: '4px 0 0' }}>
             Your details
           </Title>
-          <Form form={form} layout="vertical" requiredMark={false}>
+          <Form
+            form={form}
+            layout="vertical"
+            requiredMark={false}
+            initialValues={details ?? undefined}
+          >
             <Form.Item
               name="name"
               label="Your full name"
@@ -616,7 +726,12 @@ export function PublicBookingPage() {
               <Title level={5} style={{ margin: '4px 0 0' }}>
                 Appointment questions
               </Title>
-              <Form form={answers} layout="vertical" requiredMark={false}>
+              <Form
+                form={answers}
+                layout="vertical"
+                requiredMark={false}
+                initialValues={extraAnswers}
+              >
                 {fields.map((field) => (
                   <Form.Item
                     key={field.id}
@@ -647,6 +762,39 @@ export function PublicBookingPage() {
             </>
           ) : null}
 
+          <Space>
+            <Button onClick={() => setStep(2)}>Back</Button>
+            <Button type="primary" onClick={toReview}>
+              Review booking
+            </Button>
+          </Space>
+        </Space>
+      ) : null}
+
+      {/* §42 — the review step: everything the patient is about to commit
+          to, on one card, before anything is sent. */}
+      {step === 4 && slot ? (
+        <Space direction="vertical" size={12} style={{ width: '100%' }} data-testid="public-review">
+          <Title level={5} style={{ margin: 0 }}>
+            Check your booking
+          </Title>
+          <div className="kw-public-done-card" style={{ maxWidth: 'none' }}>
+            <div className="kw-public-done-when">
+              <div className="kw-public-done-date">{formatClinicDate(slot.start)}</div>
+              <div className="kw-public-done-time">
+                {formatClinicTime(slot.start)} – {formatClinicTime(slot.end)}
+              </div>
+            </div>
+            <div className="kw-public-done-lines">
+              <Text strong>{service?.name}</Text>
+              <Text>
+                {providers?.find((row) => row.id === slot.staffId)?.fullName ?? 'Your doctor'}
+              </Text>
+              <Text type="secondary">For {details?.name}</Text>
+              {details?.phone ? <Text type="secondary">{details.phone}</Text> : null}
+            </div>
+          </div>
+
           {service && service.paymentRule !== 'NONE' ? (
             <Alert
               type="warning"
@@ -660,8 +808,15 @@ export function PublicBookingPage() {
             />
           ) : null}
 
+          {service?.requiresApproval ? (
+            <Paragraph type="secondary" style={{ margin: 0, fontSize: 13 }}>
+              The clinic confirms this booking personally — you will hear back once it is
+              accepted.
+            </Paragraph>
+          ) : null}
+
           <Space>
-            <Button onClick={() => setStep(2)}>Back</Button>
+            <Button onClick={() => setStep(3)}>Back</Button>
             <Button type="primary" loading={book.isPending} onClick={submit}>
               Confirm appointment
             </Button>
