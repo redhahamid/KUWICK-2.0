@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Calendar as BigCalendar, dayjsLocalizer, Views } from 'react-big-calendar';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import {
@@ -170,6 +170,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
         const lines = cardLines(
           {
             time: formatClinicTime(appointment.scheduledStart),
+            timeRange: `${formatClinicTime(appointment.scheduledStart)} – ${formatClinicTime(appointment.scheduledEnd)}`,
             patientName: patientName(appointment.patientId),
             serviceName: serviceName(appointment.serviceId),
             providerName: staffName(appointment.staffId),
@@ -212,6 +213,41 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
       }),
     [anchor, shifts],
   );
+
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  // §12 — WHERE NOW IS, said in the gutter's own words. react-big-calendar
+  // draws the red line; this pins a small pill reading the clinic clock into
+  // the hour gutter at the same height, so "now" is a time you can read and
+  // not only a line you can see. DOM-side on purpose: the indicator is
+  // library-rendered, and re-applied on a slow tick because the grid
+  // re-renders freely and replaces it.
+  useEffect(() => {
+    const paint = () => {
+      const grid = gridRef.current;
+      if (!grid) return;
+      const gutter = grid.querySelector<HTMLElement>('.rbc-time-gutter');
+      const indicator = grid.querySelector<HTMLElement>('.rbc-current-time-indicator');
+      let pill = grid.querySelector<HTMLElement>('.kw-now-pill');
+      if (!gutter || !indicator) {
+        pill?.remove();
+        return;
+      }
+      if (!pill || pill.parentElement !== gutter) {
+        pill?.remove();
+        pill = document.createElement('span');
+        pill.className = 'kw-now-pill';
+        pill.setAttribute('aria-hidden', 'true');
+        gutter.appendChild(pill);
+      }
+      pill.textContent = formatClinicTime(new Date());
+      const offset = indicator.getBoundingClientRect().top - gutter.getBoundingClientRect().top;
+      pill.style.top = `${Math.max(0, offset)}px`;
+    };
+    paint();
+    const timer = window.setInterval(paint, 30_000);
+    return () => window.clearInterval(timer);
+  }, [viewMode, anchor, events, isLoading]);
 
   // Keyboard: D / W / M / P and the arrows. A receptionist works the calendar
   // all day and reaching for the mouse to move one day is friction that adds up.
@@ -401,6 +437,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
       ) : null}
 
       <div
+        ref={gridRef}
         className={
           'kw-calendar-grid' +
           (viewMode === 'providers' && (resources?.length ?? 0) > 4 ? ' kw-calendar-grid--wide' : '')

@@ -57,6 +57,13 @@ export const colors = {
   warningBg: '#fef3c7',
   errorBg: '#fee4e2',
   neutralBg: '#f2f4f7',
+  /** In the building: waiting, checked in, in consultation. The clinical
+   *  teal worn softly — the state a receptionist scans the room for. */
+  clinical: '#0f766e',
+  clinicalBg: '#eaf5f6',
+  /** Asked-for but not yet real: requests, planned leave. */
+  planned: '#6941c6',
+  plannedBg: '#f4ebff',
 
   // --- Semantic (base hue, for antd's own derivation) ----------------------
   /**
@@ -149,4 +156,6 @@ export const statusPalette: Record<StatusTone, { fg: string; bg: string }> = {
   warning: { fg: colors.warning, bg: colors.warningBg },
   error: { fg: colors.error, bg: colors.errorBg },
   neutral: { fg: colors.neutral, bg: colors.neutralBg },
+  clinical: { fg: colors.clinical, bg: colors.clinicalBg },
+  planned: { fg: colors.planned, bg: colors.plannedBg },
 };

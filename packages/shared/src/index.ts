@@ -15,7 +15,17 @@ export enum Role {
 
 // Semantic status color families — see docs/UI_DESIGN_SYSTEM.md §2.
 // Every lifecycle status below must map to exactly one of these.
-export type StatusTone = 'success' | 'active' | 'attention' | 'warning' | 'error' | 'neutral';
+export type StatusTone =
+  | 'success'
+  | 'active'
+  | 'attention'
+  | 'warning'
+  | 'error'
+  | 'neutral'
+  // V2 semantic additions (docs/DECISIONS.md, D-105): the clinical
+  // teal for in-the-building states, and violet for requested/planned.
+  | 'clinical'
+  | 'planned';
 
 /**
  * Mirrors the Prisma enum exactly (apps/api/prisma/schema.prisma) — Prisma
@@ -41,17 +51,22 @@ export enum AppointmentStatus {
 }
 
 export const APPOINTMENT_STATUS_TONE: Record<AppointmentStatus, StatusTone> = {
-  [AppointmentStatus.REQUESTED]: 'attention',
+  // One status language everywhere (§5 of the V2 design direction):
+  // requested is PLANNED (violet), arrived is ATTENTION (amber — somebody is
+  // physically waiting at the desk), in-the-building states are CLINICAL
+  // (teal), a no-show is WARNING (it is a fact to follow up, not an error
+  // the clinic made), and cancelled stays the soft red of a released slot.
+  [AppointmentStatus.REQUESTED]: 'planned',
   [AppointmentStatus.CONFIRMED]: 'active',
-  [AppointmentStatus.ARRIVED]: 'active',
-  [AppointmentStatus.CHECKED_IN]: 'success',
+  [AppointmentStatus.ARRIVED]: 'attention',
+  [AppointmentStatus.CHECKED_IN]: 'clinical',
   [AppointmentStatus.COMPLETED]: 'success',
   [AppointmentStatus.CANCELLED]: 'error',
-  [AppointmentStatus.NO_SHOW]: 'error',
+  [AppointmentStatus.NO_SHOW]: 'warning',
   [AppointmentStatus.WAITLIST]: 'neutral',
   [AppointmentStatus.REMINDED]: 'active',
   [AppointmentStatus.RESCHEDULED]: 'neutral',
-  [AppointmentStatus.IN_QUEUE]: 'success',
+  [AppointmentStatus.IN_QUEUE]: 'clinical',
 };
 
 /**

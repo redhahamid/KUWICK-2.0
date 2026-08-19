@@ -29,12 +29,16 @@ import { FixedWeeklyEditor } from './FixedWeeklyEditor';
 
 const { Text, Title } = Typography;
 
+// §5 — planning states keep the same language as everywhere else: leave is
+// PLANNED (violet, an HR fact this screen reads), blocked is a dark neutral
+// (unavailable, not an error), and amber/red stay reserved for people
+// physically waiting and for released slots.
 const SHIFT_TONE: Record<string, { bg: string; fg: string; label?: string }> = {
   WORKING: { bg: '#e6f4ff', fg: '#0958d9' },
   LOCUM: { bg: '#f0f5ff', fg: '#2f54eb', label: 'Locum' },
   OFF: { bg: '#f2f4f7', fg: '#667085', label: 'OFF' },
-  LEAVE: { bg: '#fef3c7', fg: '#92400e', label: 'Leave' },
-  BLOCKED: { bg: '#fee4e2', fg: '#b42318', label: 'Blocked' },
+  LEAVE: { bg: '#f4ebff', fg: '#6941c6', label: 'Leave' },
+  BLOCKED: { bg: '#e4e7ec', fg: '#344054', label: 'Blocked' },
 };
 
 interface RosterPageProps {
@@ -330,7 +334,7 @@ function RosterCellContent({
         // Read from HR, and NOT editable here. Two records of the same absence
         // is how they come to disagree.
         <Tooltip title="Approved leave, recorded in HR">
-          <span className="kw-roster-chip" style={{ background: '#fef3c7', color: '#92400e' }}>
+          <span className="kw-roster-chip" style={{ background: '#f4ebff', color: '#6941c6' }}>
             Leave
           </span>
         </Tooltip>

@@ -45,6 +45,21 @@
   --kw-danger-bg: #fee4e2;
   --kw-neutral-fg: #475467;
   --kw-neutral-bg: #f2f4f7;
+  /* V2 (§5) — two more semantic pairs: clinical teal for in-the-building
+     states, violet for requested/planned. Same rule as the rest: always
+     rendered with a word, never colour alone. */
+  --kw-clinical-fg: #0f766e;
+  --kw-clinical-bg: #eaf5f6;
+  --kw-planned-fg: #6941c6;
+  --kw-planned-bg: #f4ebff;
+
+  /* V2 (§4) — surface steps and the strong border. surface-2 is the quiet
+     panel behind a group, surface-3 the header/gutter fill; border-strong is
+     for the few lines that must survive next to a colour (table headers,
+     sticky rails), everything else keeps the hairline. */
+  --kw-surface-2: #f8fafc;
+  --kw-surface-3: #eef2f6;
+  --kw-border-strong: #d0d5dd;
 
   /* Spacing scale — 4 / 8 / 12 / 16 / 24, nothing between. */
   --kw-s1: 4px;
@@ -3710,6 +3725,14 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   color: #344054;
 }
 
+/* §10 — the header strip is a quiet band (surface-2), so the canvas below it
+   is unmistakably THE page and not a card floating on one. */
+.rbc-time-header-content,
+.rbc-time-header-gutter,
+.rbc-month-view .rbc-row.rbc-month-header {
+  background: var(--kw-surface-2, #f8fafc);
+}
+
 .rbc-today {
   background: #f4f9fd;
 }
@@ -3751,22 +3774,34 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   font-variant-numeric: tabular-nums;
 }
 
-/* WHERE NOW IS. A diary's most-read line: solid, warm, and dotted at the
-   gutter so the eye can carry it across provider columns. */
+/* WHERE NOW IS (§12). A thin warm line across the columns, and the clinic
+   clock as a pill in the gutter at the same height (positioned from
+   CalendarWorkspace, because the line is library-rendered). The pill is the
+   anchor the old dot used to be, with the actual time on it. */
 .rbc-current-time-indicator {
   height: 2px;
   background: #d92d20;
 }
 
-.rbc-current-time-indicator::before {
-  content: '';
+.rbc-time-gutter {
+  position: relative;
+}
+
+.kw-now-pill {
   position: absolute;
-  left: -4px;
-  top: -3px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  z-index: 6;
+  padding: 1px 7px;
+  border-radius: 999px;
   background: #d92d20;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .rbc-event {
@@ -3781,14 +3816,16 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   box-shadow: 0 3px 8px rgba(16, 24, 40, 0.14);
 }
 
+/* §13 — teal is the SELECTED state, everywhere: the same cue as a selected
+   slot chip and a delivered service. Navy stays the action colour. */
 .rbc-event:focus {
-  outline: 2px solid #184a6b;
+  outline: 2px solid #0f766e;
   outline-offset: 1px;
 }
 
 .rbc-event.rbc-selected {
-  outline: 2px solid #184a6b;
-  box-shadow: 0 4px 12px rgba(24, 74, 107, 0.25);
+  outline: 2px solid #0f766e;
+  box-shadow: 0 4px 12px rgba(15, 118, 110, 0.25);
 }
 
 .rbc-show-more {
@@ -3865,12 +3902,18 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   min-width: 1560px;
 }
 
-.kw-calendar-grid--wide .rbc-time-gutter,
-.kw-calendar-grid--wide .rbc-time-header-gutter {
+.kw-calendar-grid--wide .rbc-time-gutter {
   position: sticky;
   left: 0;
   z-index: 12;
   background: #fff;
+}
+
+.kw-calendar-grid--wide .rbc-time-header-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 12;
+  background: var(--kw-surface-2, #f8fafc);
 }
 
 /* ---------------------------------------------------------------------------

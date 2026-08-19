@@ -2,15 +2,16 @@
 // only, since nothing in the spec requires a persisted/configurable color. The
 // same staffId always maps to the same color across renders and reloads
 // without needing a schema field on Staff.
+// V2 identity palette (§6): saturated enough to tell apart at a 3px accent,
+// calm enough never to be mistaken for a status. Identity only — the accent
+// edge, the avatar ring, the header chip. Never a card fill.
 const PALETTE = [
-  '#1677ff', // blue
-  '#722ed1', // purple
-  '#13a8a8', // teal
-  '#d4b106', // gold
-  '#eb2f96', // magenta
-  '#52c41a', // green
-  '#fa541c', // volcano
-  '#2f54eb', // geekblue
+  '#2e90fa', // blue
+  '#15b79e', // teal-green
+  '#7f56d9', // violet
+  '#f79009', // amber
+  '#6172f3', // indigo
+  '#06aed4', // cyan
 ];
 
 function hashString(value: string): number {

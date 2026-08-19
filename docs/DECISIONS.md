@@ -2305,6 +2305,20 @@ One pass, three commits, zero engine changes: `SlotAvailabilityService`, the boo
 
 ---
 
+## D-105 — V2 visual redesign: one status language, and two new words in it
+
+The enterprise visual redesign (V2) runs entirely at the presentation layer — the backend named frozen in the brief stays frozen — and its first structural change is to the STATUS LANGUAGE, because every later screen inherits it.
+
+**Two tones added, none removed.** `StatusTone` gains `clinical` (teal — the patient is IN THE BUILDING: checked in, in queue) and `planned` (violet — a request or an HR fact: REQUESTED appointments, approved leave on the roster). The appointment mapping now reads: requested is planned, confirmed is active (blue), arrived is attention (amber — somebody is physically at the desk), checked-in is clinical, completed is success, cancelled is the soft red of a released slot, and a no-show is a warning to follow up rather than an error the clinic made. Roster chips speak the same words: LEAVE moved from amber (which falsely matched "arrived") to the planned violet, BLOCKED from red (not an error) to a dark neutral. Colour still never carries meaning alone — every pair renders beside its word.
+
+**Provider identity palette (§6)** replaced with the six-colour set (#2E90FA, #15B79E, #7F56D9, #F79009, #6172F3, #06AED4), used for avatars and card edges only, never as a card fill — the provider is the colour, the status is the chip.
+
+**Deliberate deviation, kept from the premium pass:** the structural navy stays `#184a6b` and the teal `#0f766e` rather than the reference hexes in the V2 brief (#0B1736 / #0F6B78). They are the anchors every existing screen already uses; swapping them app-wide is a whole-product decision, not an appointment-module one, and the brief's own rule — tokens once, no per-screen colours — argues for changing them once, everywhere, or not now.
+
+**This work is gated on human visual approval (§54): it is NOT merged on green CI.**
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

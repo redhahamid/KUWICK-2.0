@@ -30,6 +30,8 @@ export function isReleased(status: AppointmentStatus): boolean {
 
 export interface CardLabelInput {
   time: string;
+  /** "09:00 – 10:00" — shown instead of the bare start on EXPANDED cards. */
+  timeRange?: string;
   patientName: string;
   serviceName: string;
   providerName: string;
@@ -60,9 +62,22 @@ export function cardLines(input: CardLabelInput, minutes: number): string[] {
   // The time leads EVERY size — the grid's own 12-hour range label is hidden
   // (index.css) so this line is the chip's only clock, in the clinic format
   // everything else on the page already speaks.
-  if (minutes <= 15) return [`${input.time} ${input.patientName}`];
+  //
+  // Four densities (§14): SHORT is the two facts a receptionist scans for,
+  // first name only; STANDARD adds what and who-with; EXPANDED — an hour or
+  // more of card — has room for the full range on its own line, which is the
+  // one place "how long" matters more than "when does it start".
+  if (minutes <= 15) return [compactLine(input.time, input.patientName)];
   if (minutes <= 30) return [`${input.time} ${input.patientName}`, input.serviceName];
-  return [`${input.time} ${input.patientName}`, input.serviceName, input.providerName];
+  if (minutes <= 45) {
+    return [`${input.time} ${input.patientName}`, input.serviceName, input.providerName];
+  }
+  return [
+    input.timeRange ?? input.time,
+    input.patientName,
+    input.serviceName,
+    input.providerName,
+  ];
 }
 
 /**

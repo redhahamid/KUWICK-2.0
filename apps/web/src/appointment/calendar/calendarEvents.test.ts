@@ -50,13 +50,29 @@ describe('a card says as much as it has room for', () => {
     ).toEqual(['09:00 Ahmad', 'Consultation']);
   });
 
-  it('3. an hour gets the provider too', () => {
+  it('3. forty-five minutes gets the provider too', () => {
     expect(
       cardLines(
         { time: '09:00', patientName: 'Ahmad', serviceName: 'Consultation', providerName: 'Dr A' },
-        60,
+        45,
       ),
     ).toHaveLength(3);
+  });
+
+  it('3b. an hour or more is EXPANDED: the full range leads, four lines', () => {
+    // The one card size where "how long" matters more than "when it starts".
+    expect(
+      cardLines(
+        {
+          time: '09:00',
+          timeRange: '09:00 – 10:00',
+          patientName: 'Ahmad',
+          serviceName: 'Consultation',
+          providerName: 'Dr A',
+        },
+        60,
+      ),
+    ).toEqual(['09:00 – 10:00', 'Ahmad', 'Consultation', 'Dr A']);
   });
 });
 

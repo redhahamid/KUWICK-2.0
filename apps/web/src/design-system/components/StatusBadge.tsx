@@ -9,6 +9,8 @@ const toneColor: Record<StatusTone, string> = {
   warning: colors.warning,
   error: colors.error,
   neutral: colors.neutral,
+  clinical: colors.clinical,
+  planned: colors.planned,
 };
 
 interface StatusBadgeProps {
