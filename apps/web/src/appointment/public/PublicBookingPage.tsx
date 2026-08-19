@@ -20,6 +20,9 @@ import {
   Typography,
 } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+
+dayjs.extend(utc);
 import { PublicBookingError, publicBooking, type PublicSlot } from './publicBookingApi';
 import { setClinicTimeZone, formatClinicDate, formatClinicTime, clinicDayjs } from '../../clinical/clinicTime';
 
@@ -75,9 +78,20 @@ export function PublicBookingPage() {
   const [confirmation, setConfirmation] = useState<{
     status: string;
     scheduledStart: string;
+    scheduledEnd: string;
     manageUrl: string;
     message: string;
   } | null>(null);
+  // §24 — when a day is empty the page goes LOOKING instead of shrugging:
+  // scan forward day by day (same engine, same endpoint) until something is
+  // free or a fortnight is exhausted. State keyed by what was scanned so a
+  // stale probe never labels a different service's day.
+  const [nextFree, setNextFree] = useState<{
+    key: string;
+    date: string;
+    slotCount: number;
+  } | null>(null);
+  const [probing, setProbing] = useState(false);
 
   const { data: page, isLoading, error } = useQuery({
     queryKey: ['public-page', slug, serviceSlug],
@@ -139,6 +153,44 @@ export function PublicBookingPage() {
     };
   }, [availability]);
 
+  const probeKey = `${serviceId ?? ''}:${staffId ?? 'ANY'}:${date.format('YYYY-MM-DD')}`;
+  useEffect(() => {
+    if (!serviceId || step !== 2) return;
+    if (loadingSlots || !availability || (availability.slots?.length ?? 0) > 0) return;
+    let cancelled = false;
+    setProbing(true);
+    setNextFree(null);
+    (async () => {
+      for (let ahead = 1; ahead <= 14; ahead += 1) {
+        const day = date.add(ahead, 'day');
+        try {
+          const answer = await publicBooking.availability(slug, {
+            serviceId,
+            date: day.format('YYYY-MM-DD'),
+            staffId,
+          });
+          if (cancelled) return;
+          if (answer.slots.length > 0) {
+            setNextFree({
+              key: probeKey,
+              date: day.format('YYYY-MM-DD'),
+              slotCount: answer.slots.length,
+            });
+            setProbing(false);
+            return;
+          }
+        } catch {
+          break;
+        }
+      }
+      if (!cancelled) setProbing(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [probeKey, step, loadingSlots, availability, slug]);
+
   if (isLoading) {
     return (
       <div className="kw-public-booking">
@@ -160,43 +212,76 @@ export function PublicBookingPage() {
   }
 
   if (confirmation) {
+    const requested = confirmation.status === 'REQUESTED';
+    const providerName = slot
+      ? providers?.find((row) => row.id === slot.staffId)?.fullName
+      : undefined;
+    // Add to calendar: an .ics built from the confirmed facts and nothing
+    // else — instants straight from the server, no third party involved.
+    const ics = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Kuwick//Booking//EN',
+      'BEGIN:VEVENT',
+      `UID:${confirmation.manageUrl.split('/').pop()}@kuwick`,
+      `DTSTART:${dayjs(confirmation.scheduledStart).utc().format('YYYYMMDD[T]HHmmss[Z]')}`,
+      `DTEND:${dayjs(confirmation.scheduledEnd).utc().format('YYYYMMDD[T]HHmmss[Z]')}`,
+      `SUMMARY:${(service?.name ?? 'Appointment').replace(/[,;]/g, ' ')} — ${page.clinic.displayName.replace(/[,;]/g, ' ')}`,
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
     return (
       <div className="kw-public-booking">
-        <Result
-          status={confirmation.status === 'REQUESTED' ? 'info' : 'success'}
-          title={
-            confirmation.status === 'REQUESTED'
-              ? 'Your request has been sent'
-              : 'Your appointment is booked'
-          }
-          subTitle={confirmation.message}
-          extra={
-            <Card size="small" style={{ textAlign: 'left', maxWidth: 460, margin: '0 auto' }}>
-              <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                <Text strong>{formatClinicDate(confirmation.scheduledStart)}</Text>
-                <Text>{formatClinicTime(confirmation.scheduledStart)}</Text>
-                <Text type="secondary">
-                  {service?.name} at {page.clinic.displayName}
-                </Text>
-                {service?.preInstructions ? (
-                  <Alert
-                    type="info"
-                    style={{ marginTop: 8 }}
-                    message="Before you come"
-                    description={service.preInstructions}
-                  />
-                ) : null}
-                <Paragraph style={{ marginTop: 12, marginBottom: 0 }}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    Keep this link to change or cancel your appointment:
-                  </Text>
-                  <br />
-                  <a href={confirmation.manageUrl}>Manage my appointment</a>
-                </Paragraph>
-              </Space>
-            </Card>
-          }
-        />
+        <div className="kw-public-done" data-testid="public-confirmation">
+          <div className={`kw-public-done-badge${requested ? ' kw-public-done-badge--wait' : ''}`}>
+            {requested ? '…' : '✓'}
+          </div>
+          <Title level={4} style={{ margin: '8px 0 0' }}>
+            {requested ? 'Your request has been sent' : 'Appointment confirmed'}
+          </Title>
+          <Text type="secondary">{confirmation.message}</Text>
+
+          <div className="kw-public-done-card">
+            <div className="kw-public-done-when">
+              <div className="kw-public-done-date">
+                {formatClinicDate(confirmation.scheduledStart)}
+              </div>
+              <div className="kw-public-done-time">
+                {formatClinicTime(confirmation.scheduledStart)} –{' '}
+                {formatClinicTime(confirmation.scheduledEnd)}
+              </div>
+            </div>
+            <div className="kw-public-done-lines">
+              <Text strong>{service?.name}</Text>
+              {providerName ? <Text>{providerName}</Text> : null}
+              <Text type="secondary">{page.clinic.displayName}</Text>
+            </div>
+          </div>
+
+          <Space wrap className="kw-public-done-actions">
+            <Button type="primary" href={confirmation.manageUrl}>
+              Manage my appointment
+            </Button>
+            <Button
+              href={`data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`}
+              download="appointment.ics"
+            >
+              Add to calendar
+            </Button>
+          </Space>
+
+          {service?.preInstructions ? (
+            <Alert
+              type="info"
+              style={{ marginTop: 16, textAlign: 'left' }}
+              message="Before your appointment"
+              description={service.preInstructions}
+            />
+          ) : null}
+          <Paragraph type="secondary" style={{ marginTop: 16, fontSize: 12 }}>
+            Keep the link above safe — it is how you change or cancel this appointment.
+          </Paragraph>
+        </div>
       </div>
     );
   }
@@ -230,14 +315,27 @@ export function PublicBookingPage() {
 
   return (
     <div className="kw-public-booking" data-testid="public-booking">
-      <header className="kw-public-header">
+      <header className="kw-public-hero">
         {page.clinic.logoUrl ? (
           <img src={page.clinic.logoUrl} alt="" className="kw-public-logo" />
-        ) : null}
-        <Title level={4} style={{ margin: 0 }}>
+        ) : (
+          <span className="kw-public-mark" aria-hidden>
+            {page.clinic.displayName
+              .split(/\s+/)
+              .slice(0, 2)
+              .map((word) => word[0] ?? '')
+              .join('')
+              .toUpperCase()}
+          </span>
+        )}
+        <Title level={3} className="kw-public-clinic-name">
           {page.clinic.displayName}
         </Title>
-        {page.clinic.introText ? <Text type="secondary">{page.clinic.introText}</Text> : null}
+        {page.clinic.introText ? (
+          <Text type="secondary" className="kw-public-intro">
+            {page.clinic.introText}
+          </Text>
+        ) : null}
       </header>
 
       <Steps
@@ -276,62 +374,89 @@ export function PublicBookingPage() {
             />
           ) : null}
           {page.services.map((row) => (
-            <Card
+            <button
               key={row.id}
-              size="small"
-              hoverable
+              type="button"
+              className="kw-public-service"
               onClick={() => {
                 setServiceId(row.id);
                 setStep(1);
               }}
             >
-              <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start">
-                <Space direction="vertical" size={2}>
-                  <Text strong>{row.name}</Text>
-                  {row.description ? (
-                    <Text type="secondary" style={{ fontSize: 13 }}>
-                      {row.description}
-                    </Text>
+              {row.photoUrl ? (
+                <img src={row.photoUrl} alt="" className="kw-public-service-photo" />
+              ) : null}
+              <span className="kw-public-service-body">
+                <span className="kw-public-service-name">{row.name}</span>
+                {row.description ? (
+                  <span className="kw-public-service-desc">{row.description}</span>
+                ) : null}
+                <span className="kw-public-service-chips">
+                  <Tag>{row.durationMinutes} min</Tag>
+                  {row.requiresApproval ? <Tag color="orange">Confirmed by the clinic</Tag> : null}
+                  {row.paymentRule === 'DEPOSIT' ? (
+                    <Tag color="blue">RM {Number(row.depositAmount).toFixed(0)} deposit</Tag>
                   ) : null}
-                  <Space size={4}>
-                    <Tag>{row.durationMinutes} min</Tag>
-                    {row.requiresApproval ? <Tag color="orange">Confirmed by the clinic</Tag> : null}
-                  </Space>
-                </Space>
+                </span>
+              </span>
+              <span className="kw-public-service-side">
                 {row.price ? (
-                  <Text strong>
+                  <span className="kw-public-service-price">
                     {row.price.display === 'FROM' ? 'from ' : ''}RM{' '}
                     {Number(row.price.amount).toFixed(2)}
-                  </Text>
+                  </span>
                 ) : null}
-              </Space>
-            </Card>
+                <span className="kw-public-service-go" aria-hidden>
+                  →
+                </span>
+              </span>
+            </button>
           ))}
         </Space>
       ) : null}
 
       {step === 1 ? (
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
-          <Radio.Group
-            value={staffId ?? 'ANY'}
-            onChange={(event) =>
-              setStaffId(event.target.value === 'ANY' ? undefined : event.target.value)
-            }
-            style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
-          >
-            <Radio value="ANY">
-              <Text strong>Any available doctor</Text>
-              <br />
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                Usually the soonest appointment
-              </Text>
-            </Radio>
+          <div className="kw-public-providers" role="radiogroup" aria-label="Choose a doctor">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!staffId}
+              className={`kw-public-provider${!staffId ? ' kw-public-provider--on' : ''}`}
+              onClick={() => setStaffId(undefined)}
+            >
+              <span className="kw-public-provider-avatar kw-public-provider-avatar--any" aria-hidden>
+                ✦
+              </span>
+              <span className="kw-public-provider-body">
+                <span className="kw-public-provider-name">Any available doctor</span>
+                <span className="kw-public-provider-sub">Usually the soonest appointment</span>
+              </span>
+            </button>
             {(providers ?? []).map((provider) => (
-              <Radio key={provider.id} value={provider.id}>
-                {provider.fullName}
-              </Radio>
+              <button
+                key={provider.id}
+                type="button"
+                role="radio"
+                aria-checked={staffId === provider.id}
+                className={`kw-public-provider${staffId === provider.id ? ' kw-public-provider--on' : ''}`}
+                onClick={() => setStaffId(provider.id)}
+              >
+                <span className="kw-public-provider-avatar" aria-hidden>
+                  {provider.fullName
+                    .replace(/^Dr\.?\s+/i, '')
+                    .split(/\s+/)
+                    .slice(0, 2)
+                    .map((word) => word[0] ?? '')
+                    .join('')
+                    .toUpperCase()}
+                </span>
+                <span className="kw-public-provider-body">
+                  <span className="kw-public-provider-name">{provider.fullName}</span>
+                </span>
+              </button>
             ))}
-          </Radio.Group>
+          </div>
           <Space>
             <Button onClick={() => setStep(0)}>Back</Button>
             <Button type="primary" onClick={() => setStep(2)}>
@@ -343,6 +468,16 @@ export function PublicBookingPage() {
 
       {step === 2 ? (
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <div className="kw-public-context">
+            <Text strong>{service?.name}</Text>
+            <Text type="secondary">
+              {staffId
+                ? providers?.find((row) => row.id === staffId)?.fullName ?? 'Your doctor'
+                : 'Any available doctor'}
+              {' · '}
+              {date.format('dddd, D MMM')}
+            </Text>
+          </div>
           <Segmented
             block
             options={[0, 1, 2, 3, 4, 5, 6].map((offset) => {
@@ -361,14 +496,40 @@ export function PublicBookingPage() {
 
           {loadingSlots ? <Skeleton active paragraph={{ rows: 3 }} /> : null}
           {!loadingSlots && grouped.total === 0 ? (
-            <Alert
-              type="info"
-              showIcon
-              message="Nothing free that day"
-              description={
-                REASON_WORDS[availability?.reason ?? ''] ?? 'Please try another day.'
-              }
-            />
+            <div className="kw-public-empty">
+              <Text strong>No appointments on {date.format('D MMM')}</Text>
+              <Text type="secondary">
+                {REASON_WORDS[availability?.reason ?? ''] ?? 'Please try another day.'}
+              </Text>
+              {probing ? (
+                <Text type="secondary">Looking for the next free day…</Text>
+              ) : nextFree && nextFree.key === probeKey ? (
+                <>
+                  <Text>
+                    Next available:{' '}
+                    <Text strong>{dayjs(nextFree.date).format('ddd, D MMM')}</Text>
+                    {` · ${nextFree.slotCount} time${nextFree.slotCount === 1 ? '' : 's'} free`}
+                  </Text>
+                  <Space wrap>
+                    <Button type="primary" onClick={() => setDate(dayjs(nextFree.date))}>
+                      See next available
+                    </Button>
+                    {staffId ? (
+                      <Button onClick={() => setStaffId(undefined)}>
+                        See any available doctor
+                      </Button>
+                    ) : null}
+                  </Space>
+                </>
+              ) : (
+                <Space wrap>
+                  {staffId ? (
+                    <Button onClick={() => setStaffId(undefined)}>See any available doctor</Button>
+                  ) : null}
+                  <Button onClick={() => setDate(date.add(1, 'day'))}>Try the next day</Button>
+                </Space>
+              )}
+            </div>
           ) : null}
 
           {(['Morning', 'Afternoon', 'Evening'] as const).map((part) =>
@@ -406,6 +567,9 @@ export function PublicBookingPage() {
             message={`${formatClinicDate(slot?.start ?? '')} at ${formatClinicTime(slot?.start ?? '')}`}
             description={service?.name}
           />
+          <Title level={5} style={{ margin: '4px 0 0' }}>
+            Your details
+          </Title>
           <Form form={form} layout="vertical" requiredMark={false}>
             <Form.Item
               name="name"
@@ -449,7 +613,9 @@ export function PublicBookingPage() {
 
           {fields?.length ? (
             <>
-              <Text strong>A few questions from the clinic</Text>
+              <Title level={5} style={{ margin: '4px 0 0' }}>
+                Appointment questions
+              </Title>
               <Form form={answers} layout="vertical" requiredMark={false}>
                 {fields.map((field) => (
                   <Form.Item

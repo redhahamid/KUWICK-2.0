@@ -15,10 +15,11 @@ import {
   Typography,
   message,
 } from 'antd';
-import { CopyOutlined, PrinterOutlined } from '@ant-design/icons';
+import { CopyOutlined, PrinterOutlined, DownloadOutlined } from '@ant-design/icons';
 import { ApiError } from '../../core/api-client';
 import { useBookingPage, useSaveBookingPage, useSaveReminderRules } from '../hooks/useBookingPage';
 import { qrSvg } from './qr';
+import { KuwickStatusTag } from '../../design-system/kuwick';
 
 const { Text, Paragraph } = Typography;
 
@@ -104,6 +105,31 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
     }
   };
 
+  const downloadQrPng = () => {
+    if (!qr || !generalUrl) return;
+    // The SVG the page already shows, rasterised in the browser at print
+    // resolution — nothing leaves the machine.
+    const blob = new Blob([qr], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 800;
+      canvas.height = 800;
+      const context = canvas.getContext('2d');
+      if (!context) return;
+      context.fillStyle = '#fff';
+      context.fillRect(0, 0, 800, 800);
+      context.drawImage(image, 0, 0, 800, 800);
+      URL.revokeObjectURL(url);
+      const link = document.createElement('a');
+      link.download = 'booking-qr.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    };
+    image.src = url;
+  };
+
   const printQr = () => {
     if (!qr) return;
     const frame = window.open('', '_blank', 'width=420,height=560');
@@ -128,6 +154,24 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
         onValuesChange={() => setDirty(true)}
         disabled={isFetching && !data}
       >
+        {data?.page ? (
+          <div className="kw-bp-status">
+            <div className="kw-bp-status-left">
+              <KuwickStatusTag
+                tone={data.page.active ? 'success' : 'neutral'}
+                label={data.page.active ? 'LIVE' : 'Not published'}
+              />
+              <Text className="kw-bp-status-url" copyable={{ text: generalUrl }}>
+                {generalUrl}
+              </Text>
+            </div>
+            <Space>
+              <Button size="small" onClick={() => window.open(generalUrl, '_blank', 'noopener')}>
+                Open page
+              </Button>
+            </Space>
+          </div>
+        ) : null}
         <Tabs
           items={[
             {
@@ -306,9 +350,14 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
                         size="small"
                         title="QR code"
                         extra={
-                          <Button size="small" icon={<PrinterOutlined />} onClick={printQr}>
-                            Print
-                          </Button>
+                          <Space>
+                            <Button size="small" icon={<DownloadOutlined />} onClick={downloadQrPng}>
+                              Download PNG
+                            </Button>
+                            <Button size="small" icon={<PrinterOutlined />} onClick={printQr}>
+                              Print
+                            </Button>
+                          </Space>
                         }
                       >
                         {qr ? (

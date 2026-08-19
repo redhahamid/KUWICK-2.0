@@ -97,32 +97,43 @@ export function ManageBookingPage() {
 
   return (
     <div className="kw-public-booking" data-testid="manage-booking">
-      <header className="kw-public-header">
+      <header className="kw-public-hero">
         {data.clinic.logoUrl ? (
           <img src={data.clinic.logoUrl} alt="" className="kw-public-logo" />
-        ) : null}
+        ) : (
+          <span className="kw-public-mark" aria-hidden>
+            {data.clinic.displayName
+              .split(/\s+/)
+              .slice(0, 2)
+              .map((word) => word[0] ?? '')
+              .join('')
+              .toUpperCase()}
+          </span>
+        )}
         <Title level={4} style={{ margin: 0 }}>
           {data.clinic.displayName}
         </Title>
       </header>
 
-      <Card>
-        <Space direction="vertical" size={8} style={{ width: '100%' }}>
-          <KuwickStatusTag {...statusChip(appointment.status)} />
-          <Title level={5} style={{ margin: 0 }}>
+      <div style={{ marginBottom: 8 }}>
+        <KuwickStatusTag {...statusChip(appointment.status)} />
+      </div>
+      <div className="kw-public-done-card" style={{ maxWidth: 'none' }}>
+        <div className="kw-public-done-when">
+          <div className="kw-public-done-date">
             {formatClinicDate(appointment.scheduledStart)}
-          </Title>
-          <Text style={{ fontSize: 18 }}>
+          </div>
+          <div className="kw-public-done-time">
             {formatClinicTime(appointment.scheduledStart)} –{' '}
             {formatClinicTime(appointment.scheduledEnd)}
-          </Text>
-          <Descriptions column={1} size="small" colon={false}>
-            <Descriptions.Item label="Service">{appointment.serviceName}</Descriptions.Item>
-            <Descriptions.Item label="With">{appointment.providerName}</Descriptions.Item>
-            <Descriptions.Item label="For">{appointment.patientName}</Descriptions.Item>
-          </Descriptions>
-        </Space>
-      </Card>
+          </div>
+        </div>
+        <div className="kw-public-done-lines">
+          <Text strong>{appointment.serviceName}</Text>
+          <Text>{appointment.providerName}</Text>
+          <Text type="secondary">For {appointment.patientName}</Text>
+        </div>
+      </div>
 
       {appointment.preInstructions ? (
         <Alert
@@ -147,39 +158,44 @@ export function ManageBookingPage() {
         />
       ) : null}
 
-      <Space style={{ marginTop: 16 }} wrap>
-        <Button
-          type="primary"
-          disabled={!can.reschedule}
-          onClick={() => setRescheduling(true)}
-        >
-          Change the time
-        </Button>
-        <Button
-          danger
-          disabled={!can.cancel}
-          loading={cancel.isPending}
-          onClick={() =>
-            Modal.confirm({
-              title: 'Cancel this appointment?',
-              content: 'The clinic will be told, and your slot is released to somebody else.',
-              okText: 'Cancel appointment',
-              okButtonProps: { danger: true },
-              cancelText: 'Keep it',
-              onOk: () => cancel.mutateAsync(),
-            })
-          }
-        >
-          Cancel
-        </Button>
-      </Space>
-
-      {!can.reschedule && !can.cancel ? (
-        <Paragraph type="secondary" style={{ marginTop: 12, fontSize: 13 }}>
-          Changes have to be made at least {data.cutoffHours} hours before your appointment. Please
-          ring the clinic.
+      {can.reschedule || can.cancel ? (
+        <Space style={{ marginTop: 16 }} wrap>
+          {can.reschedule ? (
+            <Button type="primary" onClick={() => setRescheduling(true)}>
+              Change the time
+            </Button>
+          ) : null}
+          {can.cancel ? (
+            <Button
+              danger
+              loading={cancel.isPending}
+              onClick={() =>
+                Modal.confirm({
+                  title: 'Cancel this appointment?',
+                  content: 'The clinic will be told, and your slot is released to somebody else.',
+                  okText: 'Cancel appointment',
+                  okButtonProps: { danger: true },
+                  cancelText: 'Keep it',
+                  onOk: () => cancel.mutateAsync(),
+                })
+              }
+            >
+              Cancel
+            </Button>
+          ) : null}
+        </Space>
+      ) : (
+        // §27 — no dead buttons: when nothing can be changed the page SAYS
+        // why in the patient's words, which is more useful than two grey
+        // controls that refuse to explain themselves.
+        <Paragraph type="secondary" style={{ marginTop: 16, fontSize: 13 }}>
+          {appointment.status === 'CANCELLED'
+            ? 'This appointment has been cancelled. Ring the clinic if you would like to book again.'
+            : appointment.status === 'COMPLETED'
+              ? 'This appointment has already taken place.'
+              : `Online changes close ${data.cutoffHours} hours before the appointment. Please ring the clinic and they will help.`}
         </Paragraph>
-      ) : null}
+      )}
 
       <RescheduleModal
         open={rescheduling}
