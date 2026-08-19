@@ -4437,6 +4437,37 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   text-overflow: ellipsis;
 }
 
+/* §21 — the quick-action row: the three reaches made mid-phone-call, one
+   press below the header. A hairline under it closes the header zone. */
+.kw-apt-quick {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--kw-border-subtle, #f2f4f7);
+}
+
+/* §21 — a quiet uppercase word above each block, so the drawer scans like a
+   record card rather than a run of dividers. */
+.kw-apt-section {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--kw-text-muted, #98a2b3);
+  margin: 16px 0 6px;
+}
+
+.kw-apt-instructions {
+  background: var(--kw-surface-2, #f8fafc);
+  border: 1px solid var(--kw-border-subtle, #f2f4f7);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #344054;
+}
+
 .kw-apt-queue {
   width: 100%;
   display: flex;

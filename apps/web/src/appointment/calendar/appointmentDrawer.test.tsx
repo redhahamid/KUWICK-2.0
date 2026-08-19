@@ -167,7 +167,7 @@ describe('the drawer says what happened to this booking', () => {
     expect(screen.getByText('Regular patient')).toBeInTheDocument();
     // Two headings, because one of the two is safe to show a patient and the
     // other is not.
-    expect(screen.getByText(/what the patient said/i)).toBeInTheDocument();
+    expect(screen.getByText(/patient message/i)).toBeInTheDocument();
     expect(screen.getByText(/internal note/i)).toBeInTheDocument();
   });
 

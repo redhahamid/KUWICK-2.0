@@ -4,7 +4,6 @@ import {
   Avatar,
   Button,
   Descriptions,
-  Divider,
   Drawer,
   Dropdown,
   Empty,
@@ -19,9 +18,10 @@ import {
 import {
   CheckCircleOutlined,
   EllipsisOutlined,
-  FileTextOutlined,
+  PhoneOutlined,
   RightOutlined,
   SwapOutlined,
+  UserOutlined,
   WhatsAppOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -138,40 +138,37 @@ export function AppointmentDrawer({
     }
   };
 
+  // Patient record, WhatsApp and Call are QUICK ACTIONS beside the header
+  // (§21) — the three reaches a receptionist makes mid-phone-call — so the
+  // ••• menu holds only the occasional and the destructive.
   const moreItems = [
-    whatsapp
-      ? {
-          key: 'whatsapp',
-          icon: <WhatsAppOutlined />,
-          label: 'WhatsApp patient',
-        }
-      : null,
     appointment?.patient.phone ? { key: 'reminder', label: 'Record reminder sent' } : null,
     onBookFollowUp ? { key: 'follow-up', label: 'Book a follow-up' } : null,
     appointment?.visitId ? { key: 'record', label: 'Open clinical record' } : null,
-    { key: 'patient', label: 'Open patient record' },
     { key: 'history', label: showHistory ? 'Hide history' : 'View history' },
     canCheckIn || canCancel ? { type: 'divider' as const, key: 'd1' } : null,
     canCheckIn ? { key: 'no-show', danger: true, label: 'Mark as no-show' } : null,
     canCancel ? { key: 'cancel', danger: true, label: 'Cancel appointment' } : null,
   ].filter(Boolean) as { key: string; label: string }[];
 
+  // Recorded as MANUAL: the receptionist sent it themselves, and calling
+  // that anything else would claim a gateway Kuwick does not have.
+  const openWhatsApp = async () => {
+    if (!appointment || !whatsapp) return;
+    window.open(whatsapp, '_blank', 'noopener');
+    await run('Reminder recorded', () =>
+      logCommunication.mutateAsync({
+        appointmentId: appointment.id,
+        channel: 'WHATSAPP',
+        template: 'REMINDER_MANUAL',
+        destination: appointment.patient.phone ?? undefined,
+      }),
+    );
+  };
+
   const onMore = async (key: string) => {
     if (!appointment) return;
     switch (key) {
-      case 'whatsapp':
-        if (whatsapp) window.open(whatsapp, '_blank', 'noopener');
-        // Recorded as MANUAL: the receptionist sent it themselves, and calling
-        // that anything else would claim a gateway Kuwick does not have.
-        await run('Reminder recorded', () =>
-          logCommunication.mutateAsync({
-            appointmentId: appointment.id,
-            channel: 'WHATSAPP',
-            template: 'REMINDER_MANUAL',
-            destination: appointment.patient.phone ?? undefined,
-          }),
-        );
-        break;
       case 'reminder':
         await run('Reminder recorded', () =>
           logCommunication.mutateAsync({
@@ -186,9 +183,6 @@ export function AppointmentDrawer({
         break;
       case 'record':
         navigate(`/clinical/canvas/${appointment.visitId}`);
-        break;
-      case 'patient':
-        navigate(`/patients/${appointment.patientId}`);
         break;
       case 'history':
         setShowHistory((previous) => !previous);
@@ -318,6 +312,33 @@ export function AppointmentDrawer({
 
       {appointment ? (
         <div data-testid="appointment-drawer">
+          {/* §21 — the three reaches a receptionist makes while the patient
+              is still on the phone, one press from the header. Call only
+              renders when there is a number to dial. */}
+          <div className="kw-apt-quick">
+            <Button
+              size="small"
+              icon={<UserOutlined />}
+              onClick={() => navigate(`/patients/${appointment.patientId}`)}
+            >
+              Patient record
+            </Button>
+            {whatsapp ? (
+              <Button size="small" icon={<WhatsAppOutlined />} onClick={openWhatsApp}>
+                WhatsApp
+              </Button>
+            ) : null}
+            {appointment.patient.phone ? (
+              <Button
+                size="small"
+                icon={<PhoneOutlined />}
+                href={`tel:${appointment.patient.phone}`}
+              >
+                Call
+              </Button>
+            ) : null}
+          </div>
+
           {appointment.overriddenRule ? (
             <Alert
               type="warning"
@@ -379,6 +400,7 @@ export function AppointmentDrawer({
           ) : null}
 
           {/* THE APPOINTMENT, said once and said big: when, what, with whom. */}
+          <div className="kw-apt-section">Booking</div>
           <div className="kw-apt-summary">
             <div className="kw-apt-when">
               <div className="kw-apt-date">{formatClinicDate(appointment.scheduledStart)}</div>
@@ -420,20 +442,18 @@ export function AppointmentDrawer({
             </Descriptions.Item>
           </Descriptions>
 
+          {/* §21 — labelled sections instead of dividers: a quiet uppercase
+              word above each block, so the drawer scans like a record card. */}
           {appointment.patientNote ? (
             <>
-              <Divider titlePlacement="start" plain style={{ margin: '12px 0 8px' }}>
-                What the patient said
-              </Divider>
+              <div className="kw-apt-section">Patient message</div>
               <Paragraph style={{ marginBottom: 0 }}>{appointment.patientNote}</Paragraph>
             </>
           ) : null}
 
           {appointment.notes ? (
             <>
-              <Divider titlePlacement="start" plain style={{ margin: '12px 0 8px' }}>
-                Internal note
-              </Divider>
+              <div className="kw-apt-section">Internal note</div>
               <Paragraph type="secondary" style={{ marginBottom: 0 }}>
                 {appointment.notes}
               </Paragraph>
@@ -442,9 +462,7 @@ export function AppointmentDrawer({
 
           {appointment.formAnswers.length > 0 ? (
             <>
-              <Divider titlePlacement="start" plain style={{ margin: '12px 0 8px' }}>
-                Booking answers
-              </Divider>
+              <div className="kw-apt-section">Booking answers</div>
               <Descriptions column={1} size="small" colon={false}>
                 {appointment.formAnswers.map((answer) => (
                   <Descriptions.Item key={answer.id} label={answer.label}>
@@ -456,21 +474,15 @@ export function AppointmentDrawer({
           ) : null}
 
           {appointment.service.preInstructions ? (
-            <Alert
-              style={{ marginTop: 12 }}
-              type="info"
-              icon={<FileTextOutlined />}
-              showIcon
-              message="Before the appointment"
-              description={appointment.service.preInstructions}
-            />
+            <>
+              <div className="kw-apt-section">Instructions</div>
+              <div className="kw-apt-instructions">{appointment.service.preInstructions}</div>
+            </>
           ) : null}
 
           {showHistory ? (
             <>
-              <Divider titlePlacement="start" plain style={{ margin: '16px 0 8px' }}>
-                History
-              </Divider>
+              <div className="kw-apt-section">History</div>
               <Timeline
                 items={appointment.events.map((event) => ({
                   key: event.id,
