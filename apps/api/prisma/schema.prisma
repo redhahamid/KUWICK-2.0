@@ -2603,7 +2603,7 @@ model QueueTicket {
   clinic         Clinic               @relation(fields: [clinicId], references: [id])
   visit          Visit                @relation(fields: [visitId], references: [id])
   room           Room?                @relation(fields: [roomId], references: [id])
-  heldBy         Staff?               @relation("QueueTicketHeldBy", fields: [heldByStaffId], references: [id])
+  heldBy         Staff?               @relation("QueueTicketHeldBy", fields: [heldByStaffId], references: [id], onDelete: Restrict)
   // The ticket holds the CURRENT location; these hold where it has been.
   workflowEvents VisitWorkflowEvent[]
 
@@ -2707,7 +2707,7 @@ model ClinicalNote {
   visit       Visit                  @relation(fields: [visitId], references: [id])
   author      Staff?                 @relation("ClinicalNoteAuthor", fields: [authorStaffId], references: [id])
   signedBy    Staff?                 @relation("ClinicalNoteSigner", fields: [signedByStaffId], references: [id])
-  finalizedBy Staff?                 @relation("ClinicalNoteFinalizer", fields: [finalizedByStaffId], references: [id])
+  finalizedBy Staff?                 @relation("ClinicalNoteFinalizer", fields: [finalizedByStaffId], references: [id], onDelete: Restrict)
   supersedes  ClinicalNote?          @relation("ClinicalNoteAmendment", fields: [supersedesNoteId], references: [id])
   amendments  ClinicalNote[]         @relation("ClinicalNoteAmendment")
   revisions   ClinicalNoteRevision[]
@@ -4011,7 +4011,7 @@ model Prescription {
   sourceVisit  Visit?        @relation("PrescriptionCopySource", fields: [sourceVisitId], references: [id], onDelete: SetNull)
   item         Item          @relation(fields: [itemId], references: [id])
   prescribedBy Staff         @relation(fields: [prescribedByStaffId], references: [id])
-  reviewedBy   Staff?        @relation("PrescriptionReviewer", fields: [reviewedByStaffId], references: [id])
+  reviewedBy   Staff?        @relation("PrescriptionReviewer", fields: [reviewedByStaffId], references: [id], onDelete: Restrict)
   invoiceLines InvoiceLine[]
   labelPrints  LabelPrint[]
 
@@ -4212,7 +4212,7 @@ model BookingFormField {
   updatedAt DateTime         @updatedAt @map("updated_at")
 
   tenant  Tenant          @relation(fields: [tenantId], references: [id])
-  clinic  Clinic?         @relation(fields: [clinicId], references: [id])
+  clinic  Clinic?         @relation(fields: [clinicId], references: [id], onDelete: Restrict)
   service ServiceCatalog? @relation(fields: [serviceId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, clinicId])
