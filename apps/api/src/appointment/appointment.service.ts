@@ -211,8 +211,21 @@ export class AppointmentService {
     });
   }
 
-  findAll(filter: FindAppointmentsFilter) {
-    return this.prisma.appointment.findMany({
+  /**
+   * The manage token is the PATIENT'S credential — possession of the link IS
+   * the authentication on the public manage routes. Staff reads have no use
+   * for it (the drawer never renders it), so shipping it in every list and
+   * detail response was handing a live bypass-the-login token to every
+   * browser devtools pane and HAR capture for nothing. Stripped HERE, at the
+   * read boundary, rather than trusted to each caller's select list.
+   */
+  private redactToken<T extends { manageToken?: string | null }>(row: T): Omit<T, 'manageToken'> {
+    const { manageToken: _token, ...safe } = row;
+    return safe;
+  }
+
+  async findAll(filter: FindAppointmentsFilter) {
+    const rows = await this.prisma.appointment.findMany({
       where: {
         clinicId: filter.clinicId,
         staffId: filter.staffId,
@@ -223,6 +236,7 @@ export class AppointmentService {
       },
       orderBy: { scheduledStart: 'asc' },
     });
+    return rows.map((row) => this.redactToken(row));
   }
 
   async findById(id: string) {
@@ -230,7 +244,7 @@ export class AppointmentService {
     if (!appointment) {
       throw new NotFoundException('Appointment not found');
     }
-    return appointment;
+    return this.redactToken(appointment);
   }
 
   /** The full record behind the detail drawer, including its history. */
@@ -260,7 +274,7 @@ export class AppointmentService {
         })
       : null;
 
-    return { ...appointment, queueTicket: ticket };
+    return { ...this.redactToken(appointment), queueTicket: ticket };
   }
 
   async confirm(id: string) {

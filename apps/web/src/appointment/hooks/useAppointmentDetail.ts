@@ -37,7 +37,6 @@ export interface AppointmentDetail {
   reminderSentAt: string | null;
   overriddenRule: string | null;
   overrideReason: string | null;
-  manageToken: string | null;
   patient: { id: string; name: string; phone: string | null; identifierValue: string };
   staff: { id: string; fullName: string; calendarColor: string | null };
   service: { id: string; name: string; preInstructions: string | null; postInstructions: string | null };

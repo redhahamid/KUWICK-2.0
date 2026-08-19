@@ -2249,6 +2249,20 @@ The Canvas rendered `ClinicalImageStrip` and `VisitAttachmentsPanel` one above t
 
 ---
 
+## D-101 — Pre-merge hardening: the public surface, reviewed as an attacker and repaired in three places
+
+The §2/§3 review of the unauthenticated booking surface (`public-booking-security.e2e-spec.ts`, 19 negative tests) confirmed the core design holds: the slug bootstrap is the only tenant-less query; everything after runs under ordinary RLS; a bare token with no tenant context reaches nothing at the database; NRIC matching returns identical response shapes whether it matched or not; unknown and unpublished slugs share one 404; HIDDEN prices never leave the server; a foreign tenant's service uuid is byte-identical to a nonsense uuid on the availability route. Three real repairs came out of it:
+
+1. **`rescheduleByToken` now takes the same two sorted advisory locks as `book()` and the staff paths, before validating.** Without them, two patients racing onto the last shared-capacity slot both passed `check()` and both committed — the `appointments_no_overlap` EXCLUDE constraint only backstops same-provider time overlap, not capacity (FULLY_BOOKED) rules. The one public write path that skipped the locks was the one a forwarded link makes easiest to race.
+
+2. **`providers()` and `formFields()` now 404 for a service the page does not offer** (`bookable: true, active: true`), with the same wording as every other refusal on the surface. Before, anybody holding a retired or never-published service's uuid could list which doctors are mapped to it and read its intake questions.
+
+3. **Staff reads no longer ship the patient's credential.** `manageToken` is the manage link's whole authentication, and `findAll`/`findById`/`findDetail` returned it in every response to any signed-in appointment-reader — devtools, HAR captures, screen shares — while the drawer never rendered it. Redacted at the read boundary in `AppointmentService` (`redactToken`), not in each caller's select list; the dashboard already whitelisted. The token now exists in exactly two responses: the booking confirmation and the reschedule result, both addressed to the patient who owns it.
+
+Documented as SAFE, deliberately, rather than changed: the old link after a reschedule still OPENS (the patient sees their cancelled booking rather than a dead page) but `can` is all-false and both mutation routes refuse — token rotation on reschedule plus the status gate is the revocation mechanism, and a cancelled appointment's manage view carries only what the confirmation SMS already did. No expiry timestamp was added: the cutoff gate already stops changes near the appointment, and an expiring view would strand exactly the patient checking their time on the morning of the visit.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

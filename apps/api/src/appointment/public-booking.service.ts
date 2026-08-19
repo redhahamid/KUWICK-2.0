@@ -233,6 +233,15 @@ export class PublicBookingService {
   async providers(slug: string, serviceId: string) {
     const page = await this.resolvePage(slug);
     return this.inTenant(page, async () => {
+      // Only for services this page actually offers. Without this, anybody
+      // holding a service's uuid — a retired or never-published one — could
+      // list which doctors are mapped to it. Same 404 wording as everywhere
+      // else on this surface: no oracle for which uuids exist.
+      const service = await this.scoped.serviceCatalog.findFirst({
+        where: { id: serviceId, bookable: true, active: true },
+        select: { id: true },
+      });
+      if (!service) throw new NotFoundException('That service is not available for booking.');
       const qualified = await this.scoped.doctorServiceQualification.findMany({
         where: { serviceId },
         select: { staffId: true },
@@ -311,8 +320,15 @@ export class PublicBookingService {
   /** The questions this service asks, clinic-wide ones included. */
   async formFields(slug: string, serviceId: string) {
     const page = await this.resolvePage(slug);
-    return this.inTenant(page, () =>
-      this.scoped.bookingFormField.findMany({
+    return this.inTenant(page, async () => {
+      // Same gate as providers(): questions belong to a service the page
+      // offers, not to any uuid somebody once saw.
+      const service = await this.scoped.serviceCatalog.findFirst({
+        where: { id: serviceId, bookable: true, active: true },
+        select: { id: true },
+      });
+      if (!service) throw new NotFoundException('That service is not available for booking.');
+      return this.scoped.bookingFormField.findMany({
         where: {
           active: true,
           OR: [{ serviceId }, { serviceId: null, clinicId: page.clinicId }],
@@ -327,8 +343,8 @@ export class PublicBookingService {
           options: true,
           sortOrder: true,
         },
-      }),
-    );
+      });
+    });
   }
 
   async book(slug: string, dto: PublicBookDto) {
@@ -696,6 +712,20 @@ export class PublicBookingService {
       const appointment = await tx.appointment.findFirst({ where: { manageToken: token } });
       if (!appointment) throw new NotFoundException('This booking link is not valid.');
       this.assertPatientMayChange(page, appointment, 'reschedule');
+
+      // THE SAME LOCKS. book() and the staff paths serialise racers for a
+      // slot with two sorted advisory locks before validating; this path
+      // must too, or two patients moving onto the last shared-capacity slot
+      // both pass the check and the clinic is overbooked past its room
+      // limit — the EXCLUDE constraint only backstops same-provider overlap.
+      const timeZone = await this.availability.clinicTimeZone(appointment.clinicId);
+      const dateKey = clinicDateKey(start, timeZone);
+      for (const key of [
+        `appointment:${appointment.clinicId}:staff:${appointment.staffId}:${dateKey}`,
+        `appointment:${appointment.clinicId}:service:${appointment.serviceId}:${dateKey}`,
+      ].sort()) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+      }
 
       // THE SAME ENGINE. A patient moving their own appointment is checked
       // against exactly what the front desk is checked against.
