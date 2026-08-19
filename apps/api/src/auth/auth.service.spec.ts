@@ -134,6 +134,16 @@ describe('AuthService', () => {
         // mapping, which is the DOCTOR role.
         permissions: [
           'allergy.write',
+          // The diary. A doctor books the follow-up at the end of a
+          // consultation and may move or cancel one; they may NOT check a
+          // patient in (that is counter work), override the clinic's booking
+          // rules, configure services, or write the roster.
+          'appointment.cancel',
+          'appointment.create',
+          'appointment.edit',
+          'appointment.no_show',
+          'appointment.reschedule',
+          'appointment.view',
           // Owner decision: the night-shift doctor raises the invoice and
           // takes payment. NOT billing.corrections — no doctor discounts or
           // voids a bill.

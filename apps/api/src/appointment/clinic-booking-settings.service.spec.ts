@@ -120,7 +120,7 @@ describe('the window has to be a window', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
-  it.each(['9:00', '25:00', '09:60', 'morning', ''])('6. %p is not a time', async (bad) => {
+  it.each(['9:00', '25:00', '09:60', 'morning'])('6. %p is not a time', async (bad) => {
     const ctx = build();
 
     await expect(
@@ -132,6 +132,24 @@ describe('the window has to be a window', () => {
         }),
       ),
     ).rejects.toThrow(/HH:MM/);
+  });
+
+  it('6b. BLANK is a real answer — a 24-hour clinic narrows neither end', async () => {
+    // This used to be refused, and the refusal was the bug: both columns were
+    // NOT NULL with a 09:00-17:00 default, which silently amputated a night
+    // roster the first time anybody saved this form.
+    const ctx = build();
+
+    const saved = await ctx.run(() =>
+      ctx.service.upsert(CLINIC, {
+        firstSessionTime: '',
+        lastSessionTime: '',
+        minimumNoticeMinutes: 0,
+      }),
+    );
+
+    expect(saved.firstSessionTime).toBeNull();
+    expect(saved.lastSessionTime).toBeNull();
   });
 
   it('7. a valid window is written once, as a create', async () => {

@@ -22,11 +22,14 @@ import {
   AppointmentReminderController,
 } from './appointment-dashboard.controller';
 import { AppointmentDashboardService } from './appointment-dashboard.service';
+import { ProviderShiftController } from './provider-shift.controller';
+import { ProviderShiftService } from './provider-shift.service';
 
 @Module({
   imports: [CoreModule, HrModule, ClinicalModule],
   controllers: [
     DoctorScheduleController,
+    ProviderShiftController,
     ScheduleExceptionController,
     SlotCapacityConfigController,
     DoctorServiceQualificationController,
@@ -47,6 +50,7 @@ import { AppointmentDashboardService } from './appointment-dashboard.service';
   ],
   providers: [
     DoctorScheduleService,
+    ProviderShiftService,
     ScheduleExceptionService,
     SlotCapacityConfigService,
     DoctorServiceQualificationService,

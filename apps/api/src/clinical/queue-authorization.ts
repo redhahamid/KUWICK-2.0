@@ -1,6 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { QueueTicketStatus, Role, Staff } from '@prisma/client';
-import { Permission, attachedRoles, can, hasDoctorIdentity } from '../core/permissions';
+import { Permission, attachedGrants, attachedRoles, can, hasDoctorIdentity } from '../core/permissions';
 
 /**
  * S3 (D-079) — who may move a patient through the queue.
@@ -109,7 +109,7 @@ const ACTION_WORDS: Record<QueueAction, string> = {
 };
 
 export function canPerformQueueAction(staff: Staff, action: QueueAction): boolean {
-  return can(staff, QUEUE_PERMISSION[action], attachedRoles(staff));
+  return can(staff, QUEUE_PERMISSION[action], attachedRoles(staff), attachedGrants(staff));
 }
 
 export function assertCanPerformQueueAction(staff: Staff, action: QueueAction): void {

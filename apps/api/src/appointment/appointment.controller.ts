@@ -58,8 +58,32 @@ export class AppointmentController {
     return this.appointments.noShow(id);
   }
 
+  /**
+   * Kept as `arrived` because the front desk, the calendar and the canvas all
+   * call it, and renaming a live route to say the same thing differently is
+   * churn. What it DOES is the full check-in: mark arrived, create the visit
+   * and the type-A queue ticket, link both, and move to CHECKED_IN.
+   */
   @Patch(':id/arrived')
   arrived(@Param('id') id: string) {
-    return this.appointments.arrived(id);
+    return this.appointments.checkIn(id);
+  }
+
+  /** "They're here" without committing to a visit yet. */
+  @Patch(':id/mark-arrived')
+  markArrived(@Param('id') id: string) {
+    return this.appointments.markArrived(id);
+  }
+
+  /** §30 — the clinic declining a request that needed approval. */
+  @Patch(':id/reject')
+  reject(@Param('id') id: string, @Body('reason') reason?: string) {
+    return this.appointments.reject(id, reason);
+  }
+
+  /** Everything the detail drawer shows, including the appointment's history. */
+  @Get(':id/detail')
+  detail(@Param('id') id: string) {
+    return this.appointments.findDetail(id);
   }
 }

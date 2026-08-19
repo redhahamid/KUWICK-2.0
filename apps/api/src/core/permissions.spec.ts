@@ -398,7 +398,16 @@ describe('individual permission grants', () => {
 
   it('only a closed list may be handed out', () => {
     // "Grant anything to anyone" is how a role model becomes decorative.
-    expect(INDIVIDUALLY_GRANTABLE).toEqual(['billing.corrections', 'dispense.perform']);
+    expect(INDIVIDUALLY_GRANTABLE).toEqual([
+      'billing.corrections',
+      'dispense.perform',
+      // A senior receptionist or practice manager who is not an owner is
+      // exactly who squeezes the extra patient in, and exactly who writes the
+      // roster. Granting either by name is safer than widening ADMINISTRATOR
+      // for everybody.
+      'appointment.override',
+      'appointment.manage_roster',
+    ]);
     expect(isIndividuallyGrantable('note.write')).toBe(false);
     expect(isIndividuallyGrantable('settings.manage')).toBe(false);
   });

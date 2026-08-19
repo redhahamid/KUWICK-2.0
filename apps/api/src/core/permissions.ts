@@ -88,6 +88,34 @@ export type Permission =
   | 'billing.counter'
   | 'billing.corrections'
   | 'document.print'
+  // ---------------------------------------------------------------------
+  // APPOINTMENTS & SCHEDULING
+  //
+  // These endpoints were gated by authentication alone. Any signed-in staff
+  // member could book, move, cancel or no-show an appointment — including
+  // stock and finance accounts, in a system granular enough elsewhere to name
+  // who may sign a clinical note. The diary is the clinic's front door and it
+  // needs the same treatment as the rest.
+  //
+  // Split by ACT, as everything here is: reading the diary, adding to it,
+  // editing what is there, moving it, cancelling it, receiving the patient,
+  // marking them absent, setting the rules aside, and configuring the module.
+  // ---------------------------------------------------------------------
+  | 'appointment.view'
+  | 'appointment.create'
+  | 'appointment.edit'
+  | 'appointment.reschedule'
+  | 'appointment.cancel'
+  | 'appointment.check_in'
+  | 'appointment.no_show'
+  // Booking against the clinic's own scheduling rules — a full diary, notice
+  // it would normally insist on. Never against approved leave or a closed
+  // branch; see OVERRIDABLE_REASONS.
+  | 'appointment.override'
+  // Services, booking page, reminders, closed dates, branch booking rules.
+  | 'appointment.configure'
+  // The provider roster: shifts, OFF, blocks, locums.
+  | 'appointment.manage_roster'
   // Ownership
   | 'clinical.void'
   | 'document.issueAdministrative'
@@ -140,6 +168,20 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     // somebody else's login, which is worse. Corrections stay out of reach —
     // a doctor may bill for what they did, not discount or void it.
     'billing.counter',
+    // A doctor books the follow-up from the canvas at the end of a
+    // consultation — that IS the workflow, and it is the reason the "Book
+    // follow-up" card exists. They may also move and cancel one, because a
+    // doctor who is running late is the person who knows it first.
+    'appointment.view',
+    'appointment.create',
+    'appointment.edit',
+    'appointment.reschedule',
+    'appointment.cancel',
+    'appointment.no_show',
+    // NOT check_in: receiving a patient is counter work, and the doctor is in
+    // a room. NOT override, configure or manage_roster — a doctor arranging
+    // their own roster around their own diary is exactly the conflict the
+    // roster is meant to resolve.
   ],
 
   CLINICAL_STAFF: [
@@ -168,6 +210,16 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     // Same reasoning as the doctor's: whoever is looking at the IC card when
     // the typo is spotted is who should be able to correct it.
     'patient.identity.write',
+    // Nurses and front-desk-clinical run the diary alongside the counter, and
+    // in a small clinic they ARE the counter. The full operational set, minus
+    // the three that decide policy.
+    'appointment.view',
+    'appointment.create',
+    'appointment.edit',
+    'appointment.reschedule',
+    'appointment.cancel',
+    'appointment.check_in',
+    'appointment.no_show',
   ],
 
   ADMINISTRATOR: [
@@ -190,6 +242,16 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     'document.print',
     // Front desk calls patients through, so resuming a held one is theirs.
     'consultation.resume',
+    // THE DIARY IS THE FRONT COUNTER'S JOB. Everything operational, and
+    // nothing that changes the clinic's rules: an override, the service
+    // configuration and the roster belong to whoever runs the clinic.
+    'appointment.view',
+    'appointment.create',
+    'appointment.edit',
+    'appointment.reschedule',
+    'appointment.cancel',
+    'appointment.check_in',
+    'appointment.no_show',
   ],
 
   // OWNER ALONE IS NOT CLINICAL. Not one permission here touches a patient's
@@ -207,6 +269,21 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     'users.manage',
     'billing.corrections',
     'patient.identity.write',
+    // The diary is administration, not a clinical record, so the whole module
+    // sits comfortably here without breaching "owner alone is not clinical" —
+    // an appointment asserts nothing about anybody's health. The three
+    // policy-shaped permissions are OWNER'S ALONE: setting a booking rule
+    // aside, configuring services and the public page, and writing the roster.
+    'appointment.view',
+    'appointment.create',
+    'appointment.edit',
+    'appointment.reschedule',
+    'appointment.cancel',
+    'appointment.check_in',
+    'appointment.no_show',
+    'appointment.override',
+    'appointment.configure',
+    'appointment.manage_roster',
   ],
 };
 
@@ -361,6 +438,17 @@ export function attachedRoles(staff: Staff): SystemRole[] | undefined {
   return attached && attached.length > 0 ? attached : undefined;
 }
 
+/**
+ * The permissions granted to THIS PERSON by name, if the actor loader attached
+ * any. Same shape and same reason as `attachedRoles`: a plain Staff row from a
+ * test or an older code path has none, and none is exactly what every caller
+ * got before individual grants were wired up.
+ */
+export function attachedGrants(staff: Staff): Permission[] | undefined {
+  const attached = (staff as { directGrants?: Permission[] }).directGrants;
+  return attached && attached.length > 0 ? attached : undefined;
+}
+
 export function effectivePermissions(
   staff: Staff,
   assigned?: SystemRole[],
@@ -419,7 +507,17 @@ export function can(
  * without the medical registration behind it is not a permission anybody can
  * give.
  */
-export const INDIVIDUALLY_GRANTABLE: Permission[] = ['billing.corrections', 'dispense.perform'];
+export const INDIVIDUALLY_GRANTABLE: Permission[] = [
+  'billing.corrections',
+  'dispense.perform',
+  // A senior receptionist or a practice manager who is not an owner is
+  // exactly who squeezes the extra patient in. Granting it to one person by
+  // name is safer than widening ADMINISTRATOR for everybody, and every use of
+  // it is recorded on the appointment with a reason.
+  'appointment.override',
+  // A clinic manager who writes the roster without owning the clinic.
+  'appointment.manage_roster',
+];
 
 export function isIndividuallyGrantable(permission: string): permission is Permission {
   return (INDIVIDUALLY_GRANTABLE as string[]).includes(permission);
@@ -452,6 +550,17 @@ const REFUSAL: Partial<Record<Permission, string>> = {
   'billing.corrections':
     'Applying a discount or cancelling an invoice needs the billing-corrections permission.',
   'settings.manage': 'Only an owner may change clinic settings.',
+  'appointment.view': 'Your account is not permitted to view the appointment diary.',
+  'appointment.create': 'Your account is not permitted to book appointments.',
+  'appointment.edit': 'Your account is not permitted to change appointments.',
+  'appointment.reschedule': 'Your account is not permitted to move appointments.',
+  'appointment.cancel': 'Your account is not permitted to cancel appointments.',
+  'appointment.check_in': 'Your account is not permitted to check patients in.',
+  'appointment.no_show': 'Your account is not permitted to mark an appointment as a no-show.',
+  'appointment.override':
+    'Booking against the clinic’s scheduling rules needs the appointment-override permission.',
+  'appointment.configure': 'Only an owner may change how appointments and services are configured.',
+  'appointment.manage_roster': 'Your account is not permitted to change the provider roster.',
   'users.manage': 'Only an owner may manage users and roles.',
 };
 

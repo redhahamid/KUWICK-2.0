@@ -105,7 +105,19 @@ export async function resolveService(tx: ClinicalTx, serviceId: string) {
     where: { id: serviceId },
     // `bookingFee` comes back so a booking can SNAPSHOT it. A clinic raising
     // its fee in March must not change what a February booking asked for.
-    select: { id: true, name: true, active: true, bookingFee: true },
+    // `requiresApproval` decides whether the booking lands CONFIRMED or in the
+    // Requests tab, and is read here so the appointment service does not have
+    // to fetch the same row twice.
+    select: {
+      id: true,
+      name: true,
+      active: true,
+      bookingFee: true,
+      requiresApproval: true,
+      bookingPaymentRule: true,
+      depositAmount: true,
+      price: true,
+    },
   });
   if (!service) {
     throw new NotFoundException('Service not found');

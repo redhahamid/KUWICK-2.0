@@ -3,6 +3,7 @@ import { Prisma, Staff, SystemRole } from '@prisma/client';
 import { PrismaService } from '../core/prisma.service';
 import { currentStaffId, currentTenantId } from '../core/tenant-context';
 import { assertBranchAccess, canAuthorNarrative, type BranchAccessContext } from './clinical-authorization';
+import { isIndividuallyGrantable, type Permission } from '../core/permissions';
 
 export type ClinicalTx = Prisma.TransactionClient;
 
@@ -18,7 +19,23 @@ export type ClinicalTx = Prisma.TransactionClient;
  * answers with the legacy role's mapping — so an account that predates the
  * roles table behaves precisely as it did before.
  */
-export type ActingStaff = Staff & { assignedRoles: SystemRole[] };
+export type ActingStaff = Staff & {
+  assignedRoles: SystemRole[];
+  /**
+   * Permissions granted to THIS PERSON by name, outside any role.
+   *
+   * These were stored (`StaffPermissionGrant`, with a granter and a mandatory
+   * reason) and read by nothing: `effectivePermissions` has always accepted a
+   * `directGrants` argument and no caller passed one. So `INDIVIDUALLY_
+   * GRANTABLE` — the list of capabilities an owner can hand to one named
+   * person — was decorative, and a senior receptionist granted
+   * `billing.corrections` still could not apply a discount.
+   *
+   * Loaded here for the same reason the roles are: one place decides what
+   * somebody may do, and one place loads the input to that decision.
+   */
+  directGrants: Permission[];
+};
 
 /** Reads a staff member's capability roles. */
 export async function loadAssignedRoles(
@@ -98,13 +115,42 @@ export async function requireActor(tx: ClinicalTx): Promise<ActingStaff> {
   if (!staff || !staff.active) {
     throw new ForbiddenException('Your staff account is inactive');
   }
-  return { ...staff, assignedRoles: await loadAssignedRoles(tx as never, staff.id) };
+  return {
+    ...staff,
+    assignedRoles: await loadAssignedRoles(tx as never, staff.id),
+    directGrants: await loadDirectGrants(tx as never, staff.id),
+  };
+}
+
+/**
+ * The permissions granted to this person by name.
+ *
+ * Filtered through `isIndividuallyGrantable` on the way out, deliberately: the
+ * column is free text, and a row naming a permission an owner is not allowed
+ * to hand out individually — `note.sign`, say — must not become one just
+ * because somebody wrote it. The closed list is the policy; this table is only
+ * a record of it being applied.
+ */
+export async function loadDirectGrants(
+  db: { staffPermissionGrant?: { findMany(args: unknown): Promise<{ permission: string }[]> } },
+  staffId: string,
+): Promise<Permission[]> {
+  // Same fail-to-previous-behaviour rule as `loadAssignedRoles`: a client that
+  // cannot read the table yields none, and none is what every caller had
+  // before this existed.
+  if (!db.staffPermissionGrant) return [];
+  const rows = await db.staffPermissionGrant.findMany({
+    where: { staffId },
+    select: { permission: true },
+  });
+  return rows.map((row) => row.permission).filter(isIndividuallyGrantable);
 }
 
 /** Anything with a tenant-scoped `staff.findUnique` — a tx or the scoped client. */
 type StaffReader = {
   staff: { findUnique(args: { where: { id: string } }): Promise<Staff | null> };
   staffRoleAssignment: { findMany(args: unknown): Promise<{ role: SystemRole }[]> };
+  staffPermissionGrant?: { findMany(args: unknown): Promise<{ permission: string }[]> };
 };
 
 /**
@@ -134,7 +180,11 @@ export async function requireClinicalAuthor(db: StaffReader, action: string): Pr
   if (!found || !found.active) {
     throw new ForbiddenException('Your staff account is inactive');
   }
-  const staff: ActingStaff = { ...found, assignedRoles: await loadAssignedRoles(db, found.id) };
+  const staff: ActingStaff = {
+    ...found,
+    assignedRoles: await loadAssignedRoles(db, found.id),
+    directGrants: await loadDirectGrants(db, found.id),
+  };
   if (!canAuthorNarrative(staff)) {
     // Says what was refused, never who else could do it, and never suggests
     // that recording it under the attending doctor is an option.

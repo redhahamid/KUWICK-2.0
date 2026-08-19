@@ -10,6 +10,7 @@ import { parseDateOnly, parseTimeToDate, timeToMinutesOfDay } from './time.util'
 import { SetWeeklyAvailabilityDto } from './dto/set-weekly-availability.dto';
 
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 @Injectable()
@@ -59,7 +60,12 @@ export class DoctorScheduleService {
    */
   async weekly(staffId: string, clinicId: string) {
     const rows = await this.prisma.doctorSchedule.findMany({
-      where: { staffId, clinicId, OR: [{ effectiveTo: null }, { effectiveTo: { gte: today() } }] },
+      where: {
+        staffId,
+        clinicId,
+        effectiveFrom: { lte: today() },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: today() } }],
+      },
       orderBy: { dayOfWeek: 'asc' },
     });
     return rows.map((row) => ({
@@ -71,18 +77,28 @@ export class DoctorScheduleService {
   }
 
   /**
-   * REPLACE the doctor's week, in one transaction.
+   * REPLACE the doctor's week, in one transaction — WITHOUT destroying the
+   * roster history somebody else recorded.
    *
-   * The screen is seven toggles and seven time ranges; a person reads it as
-   * one statement and saves it as one. Doing it as adds and deletes from the
-   * browser would put the diff on the side of the wire that cannot see what is
-   * stored, and a failed third request would leave a week half-changed.
+   * THE BUG THIS FIXES. This method used to `deleteMany` every
+   * `DoctorSchedule` row for the pair and write the seven new ones. But this
+   * is not the only screen that writes that table: `/management/operation/
+   * doctor-schedules` adds EFFECTIVE-DATED rows — "Dr Redha works Tuesdays
+   * from 1 March to 30 June" — and saving the weekly form silently deleted
+   * every one of them, dating included. Same table, two mental models, and one
+   * of them was destructive. That is data loss, not an information-architecture
+   * opinion.
    *
-   * The old rows are DELETED rather than end-dated. A weekly pattern is a
-   * standing arrangement, not a record of what happened: appointments already
-   * booked keep their own times and are untouched by this, and `effectiveFrom`
-   * exists for a roster that is genuinely changing on a date, which is a
-   * different screen and a different act.
+   * So the old rows are now END-DATED rather than deleted. A weekly pattern
+   * that was in force until yesterday remains a true statement about
+   * yesterday; the new pattern is in force from today. Rows that had not taken
+   * effect before today are replaced outright, because a pattern starting
+   * today that is rewritten the same day has no history to preserve — and
+   * end-dating one to yesterday would produce a row whose end precedes its
+   * start.
+   *
+   * Appointments already booked keep their own times and are untouched by any
+   * of this: a booking is an instant, not a reference to a roster row.
    */
   async setWeekly(dto: SetWeeklyAvailabilityDto) {
     const seen = new Set<number>();
@@ -90,9 +106,12 @@ export class DoctorScheduleService {
       if (!HHMM.test(day.startTime) || !HHMM.test(day.endTime)) {
         throw new BadRequestException('Times must be written as HH:MM, e.g. 09:00.');
       }
-      if (timeToMinutesOfDay(parseTimeToDate(day.endTime)) <= timeToMinutesOfDay(parseTimeToDate(day.startTime))) {
+      // `end === start` is still nothing; `end < start` is now an OVERNIGHT
+      // shift and is read as running into the following day, which is what a
+      // night clinic works and what the availability engine now understands.
+      if (timeToMinutesOfDay(parseTimeToDate(day.endTime)) === timeToMinutesOfDay(parseTimeToDate(day.startTime))) {
         throw new BadRequestException(
-          `${DAY_NAMES[day.dayOfWeek]} ends before it starts — nothing could be booked in it.`,
+          `${DAY_NAMES[day.dayOfWeek]} starts and ends at the same time — nothing could be booked in it.`,
         );
       }
       if (seen.has(day.dayOfWeek)) {
@@ -103,10 +122,23 @@ export class DoctorScheduleService {
 
     const tenantId = currentTenantId();
     const from = today();
+    const until = new Date(from.getTime() - DAY_MS);
 
     await this.prisma.$transaction([
+      // History: in force up to and including yesterday, and preserved.
+      this.prisma.doctorSchedule.updateMany({
+        where: {
+          staffId: dto.staffId,
+          clinicId: dto.clinicId,
+          effectiveFrom: { lt: from },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gte: from } }],
+        },
+        data: { effectiveTo: until },
+      }),
+      // Not yet history: a pattern that starts today or later and is being
+      // rewritten now was never in force for any past date.
       this.prisma.doctorSchedule.deleteMany({
-        where: { staffId: dto.staffId, clinicId: dto.clinicId },
+        where: { staffId: dto.staffId, clinicId: dto.clinicId, effectiveFrom: { gte: from } },
       }),
       ...dto.days.map((day) =>
         this.prisma.doctorSchedule.create({

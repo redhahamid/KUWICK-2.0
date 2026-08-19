@@ -1,6 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { SystemRole } from '@prisma/client';
-import { Permission, attachedRoles, can } from '../core/permissions';
+import { Permission, attachedGrants, attachedRoles, can } from '../core/permissions';
 import { ClinicalNoteType, PatientAlertType, Role, Staff } from '@prisma/client';
 
 // C0 (D-051) — narrowly-scoped, server-side authorisation for clinical
@@ -84,18 +84,28 @@ function rolesOn(staff: Staff): SystemRole[] | undefined {
   return attachedRoles(staff);
 }
 
+/**
+ * The permissions granted to this person BY NAME. Passed alongside the roles
+ * everywhere, because `INDIVIDUALLY_GRANTABLE` is only a real capability if
+ * somebody reads it — and until the actor loader started attaching these,
+ * nobody did.
+ */
+function grantsOn(staff: Staff): Permission[] | undefined {
+  return attachedGrants(staff);
+}
+
 // Authoring a DOCTOR_NARRATIVE is restricted to doctors. Front-desk staff
 // record observations and STAFF_REMARKs instead; a scribe/countersign
 // workflow for dictated narrative is a separately approved future feature.
 export function canAuthorNarrative(staff: Staff): boolean {
-  return can(staff, 'note.write', rolesOn(staff));
+  return can(staff, 'note.write', rolesOn(staff), grantsOn(staff));
 }
 
 // Staff remarks ("patient refused medication", "called 3x, no answer") are
 // how non-doctors document. They can never be signed (enforced by a DB CHECK
 // as well as here) and never render as a doctor's clinical note.
 export function canAuthorStaffRemark(staff: Staff): boolean {
-  return can(staff, 'note.staffRemark', rolesOn(staff));
+  return can(staff, 'note.staffRemark', rolesOn(staff), grantsOn(staff));
 }
 
 // A2 — patient alerts. Type-aware on purpose: front counter records the
@@ -115,7 +125,7 @@ export function canWritePatientAlert(staff: Staff, type: PatientAlertType): bool
   // clear a do-not-prescribe warning.
   const clinical = type === 'MEDICAL' || type === 'ALLERGY' || type === 'NO_KNOWN_ALLERGY';
   const permission: Permission = clinical ? 'patient.alert.medical.write' : 'patient.alert.write';
-  return can(staff, permission, rolesOn(staff));
+  return can(staff, permission, rolesOn(staff), grantsOn(staff));
 }
 
 export function assertCanWritePatientAlert(staff: Staff, type: PatientAlertType): void {
@@ -129,7 +139,7 @@ export function assertCanWritePatientAlert(staff: Staff, type: PatientAlertType)
 }
 
 export function canRecordObservations(staff: Staff): boolean {
-  return can(staff, 'observation.write', rolesOn(staff));
+  return can(staff, 'observation.write', rolesOn(staff), grantsOn(staff));
 }
 
 // G2 closure (D-061) — who may change a visit's diagnoses.
@@ -148,7 +158,7 @@ export function canModifyDiagnosis(staff: Staff): boolean {
   // TASK 1 — delegated. The professional-identity path this used to spell out
   // lives in the policy module's fallback, so an owner who IS a doctor still
   // qualifies through their identity rather than their job title.
-  return can(staff, 'diagnosis.write', rolesOn(staff));
+  return can(staff, 'diagnosis.write', rolesOn(staff), grantsOn(staff));
 }
 
 // G3a (D-062) — voiding a clinical document, or removing a clinical image or
@@ -166,7 +176,7 @@ export function canVoidClinicalRecord(staff: Staff): boolean {
   // TASK 1 — delegated. The professional-identity path this used to spell out
   // lives in the policy module's fallback, so an owner who IS a doctor still
   // qualifies through their identity rather than their job title.
-  return can(staff, 'clinical.void', rolesOn(staff));
+  return can(staff, 'clinical.void', rolesOn(staff), grantsOn(staff));
 }
 
 /**
@@ -187,7 +197,7 @@ export function canClinicallyAuthoriseDocument(staff: Staff): boolean {
   // TASK 1 — delegated. The professional-identity path this used to spell out
   // lives in the policy module's fallback, so an owner who IS a doctor still
   // qualifies through their identity rather than their job title.
-  return can(staff, 'document.authoriseClinical', rolesOn(staff));
+  return can(staff, 'document.authoriseClinical', rolesOn(staff), grantsOn(staff));
 }
 
 /**
@@ -203,7 +213,7 @@ export function canIssueAdministrativeDocument(staff: Staff): boolean {
   // would have handed a finance account the ability to issue patient
   // documents — a widening the old CLINICAL_ROLES list specifically excluded,
   // and one a test caught before it shipped.
-  return can(staff, 'document.issueAdministrative', rolesOn(staff));
+  return can(staff, 'document.issueAdministrative', rolesOn(staff), grantsOn(staff));
 }
 
 export function assertCanAuthoriseDocument(staff: Staff, requiresClinical: boolean): void {
@@ -288,7 +298,7 @@ export function canAccessBilling(staff: Staff): boolean {
 }
 
 export function canPerformBilling(staff: Staff, action: BillingAction): boolean {
-  return can(staff, BILLING_PERMISSION[action], rolesOn(staff));
+  return can(staff, BILLING_PERMISSION[action], rolesOn(staff), grantsOn(staff));
 }
 
 const BILLING_ACTION_WORDS: Record<BillingAction, string> = {

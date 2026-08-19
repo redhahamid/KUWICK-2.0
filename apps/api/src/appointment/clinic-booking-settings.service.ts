@@ -8,13 +8,27 @@ import { parseDateOnly, parseTimeToDate, timeToMinutesOfDay } from './time.util'
 import { UpsertClinicBookingSettingsDto } from './dto/upsert-clinic-booking-settings.dto';
 import { CreateClinicClosedDateDto } from './dto/create-clinic-closed-date.dto';
 
-/** What a clinic that has never opened this screen behaves like. */
+/**
+ * What a clinic that has never opened this screen behaves like.
+ *
+ * BOTH SESSION TIMES ARE NULL, and that is a correction rather than a
+ * simplification. They used to read 09:00-17:00, which the SCREEN showed and
+ * the ENGINE did not apply — an unconfigured clinic has no settings row, and
+ * the engine clamps nothing when there is no row. Two answers to "when does
+ * this clinic book", and the one the owner could see was the wrong one.
+ *
+ * Null means "the clinic does not narrow that end", which is also the only
+ * honest default for a 24-hour clinic: a fixed 9-to-5 assumption would
+ * silently amputate a night roster the first time anybody saved this form.
+ */
 export const DEFAULT_BOOKING_SETTINGS = {
-  firstSessionTime: '09:00',
-  lastSessionTime: '17:00',
+  firstSessionTime: null as string | null,
+  lastSessionTime: null as string | null,
   // Zero, deliberately. A clinic that has not thought about notice should not
   // find its diary silently narrowed by a number nobody chose.
   minimumNoticeMinutes: 0,
+  maxAdvanceDays: null as number | null,
+  observePublicHolidays: false,
 };
 
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -37,28 +51,40 @@ export class ClinicBookingSettingsService {
     }
     return {
       clinicId,
-      firstSessionTime: formatTime(row.firstSessionTime),
-      lastSessionTime: formatTime(row.lastSessionTime),
+      firstSessionTime: row.firstSessionTime ? formatTime(row.firstSessionTime) : null,
+      lastSessionTime: row.lastSessionTime ? formatTime(row.lastSessionTime) : null,
       minimumNoticeMinutes: row.minimumNoticeMinutes,
+      maxAdvanceDays: row.maxAdvanceDays,
+      observePublicHolidays: row.observePublicHolidays,
       configured: true,
     };
   }
 
   async upsert(clinicId: string, dto: UpsertClinicBookingSettingsDto) {
-    if (!HHMM.test(dto.firstSessionTime) || !HHMM.test(dto.lastSessionTime)) {
+    // An EMPTY session time is now a real answer meaning "we do not narrow that
+    // end" — a 24-hour clinic says it by leaving both blank. Only a non-empty
+    // value has to look like a time.
+    const firstRaw = dto.firstSessionTime?.trim() || null;
+    const lastRaw = dto.lastSessionTime?.trim() || null;
+    if ((firstRaw && !HHMM.test(firstRaw)) || (lastRaw && !HHMM.test(lastRaw))) {
       throw new BadRequestException('Session times must be written as HH:MM, e.g. 09:00.');
     }
-    const first = parseTimeToDate(dto.firstSessionTime);
-    const last = parseTimeToDate(dto.lastSessionTime);
+    const first = firstRaw ? parseTimeToDate(firstRaw) : null;
+    const last = lastRaw ? parseTimeToDate(lastRaw) : null;
     // The database refuses this too, but being refused by a CHECK constraint
     // is not an explanation anybody can act on.
-    if (timeToMinutesOfDay(last) <= timeToMinutesOfDay(first)) {
+    if (first && last && timeToMinutesOfDay(last) <= timeToMinutesOfDay(first)) {
       throw new BadRequestException(
         'The last session must be after the first — otherwise nothing can ever be booked.',
       );
     }
     if (dto.minimumNoticeMinutes < 0) {
       throw new BadRequestException('Minimum notice cannot be negative.');
+    }
+    if (dto.maxAdvanceDays != null && dto.maxAdvanceDays < 1) {
+      throw new BadRequestException(
+        'How far ahead patients may book must be at least one day, or left blank for no limit.',
+      );
     }
 
     const tenantId = currentTenantId();
@@ -71,6 +97,8 @@ export class ClinicBookingSettingsService {
       firstSessionTime: first,
       lastSessionTime: last,
       minimumNoticeMinutes: dto.minimumNoticeMinutes,
+      maxAdvanceDays: dto.maxAdvanceDays ?? null,
+      observePublicHolidays: dto.observePublicHolidays ?? false,
     };
 
     if (existing) {
@@ -98,6 +126,7 @@ export class ClinicBookingSettingsService {
       id: row.id,
       date: row.date.toISOString().slice(0, 10),
       reason: row.reason,
+      reasonIsPublic: row.reasonIsPublic,
       createdBy: row.createdByStaff?.fullName ?? null,
       createdAt: row.createdAt,
     }));
@@ -120,6 +149,10 @@ export class ClinicBookingSettingsService {
         clinicId,
         date,
         reason: dto.reason?.trim() || null,
+        // A patient may only read the reason if somebody said so. "Deepavali"
+        // is fine; the reason a clinic would rather not publish must still be
+        // recordable, so this is opt-in.
+        reasonIsPublic: dto.reasonIsPublic ?? false,
         createdByStaffId: currentStaffId() ?? null,
       },
     });

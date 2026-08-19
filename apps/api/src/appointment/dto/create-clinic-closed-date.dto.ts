@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength, Matches } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, MaxLength, Matches } from 'class-validator';
 
 export class CreateClinicClosedDateDto {
   /** YYYY-MM-DD, in the clinic's own zone. */
@@ -10,4 +10,12 @@ export class CreateClinicClosedDateDto {
   @IsString()
   @MaxLength(120)
   reason?: string;
+
+  /**
+   * Whether a PATIENT may read that reason. Opt-in: a clinic closing for a
+   * reason it would rather not publish must still be able to close.
+   */
+  @IsOptional()
+  @IsBoolean()
+  reasonIsPublic?: boolean;
 }

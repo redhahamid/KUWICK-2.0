@@ -219,6 +219,16 @@ model Tenant {
   clinicClosedDates           ClinicClosedDate[]
   doctorServiceQualifications DoctorServiceQualification[]
   appointments                Appointment[]
+  providerShifts              ProviderShift[]
+  appointmentEvents           AppointmentEvent[]
+  appointmentSeries           AppointmentSeries[]
+  appointmentFormAnswers      AppointmentFormAnswer[]
+  appointmentCommunications   AppointmentCommunication[]
+  appointmentReminderRules    AppointmentReminderRule[]
+  bookingFormFields           BookingFormField[]
+  clinicBookingPages          ClinicBookingPage[]
+  serviceBookableHours        ServiceBookableHour[]
+  waitlistEntries             WaitlistEntry[]
   items                       Item[]
   itemCategories              ItemCategory[]
   suppliers                   Supplier[]
@@ -306,7 +316,7 @@ model Clinic {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant                  Tenant                   @relation(fields: [tenantId], references: [id])
+  tenant                  Tenant                    @relation(fields: [tenantId], references: [id])
   access                  UserClinicAccess[]
   doctorSchedules         DoctorSchedule[]
   scheduleExceptions      ScheduleException[]
@@ -314,6 +324,12 @@ model Clinic {
   bookingSettings         ClinicBookingSettings[]
   closedDates             ClinicClosedDate[]
   appointments            Appointment[]
+  providerShifts          ProviderShift[]
+  bookingPage             ClinicBookingPage?
+  bookingFormFields       BookingFormField[]
+  reminderRules           AppointmentReminderRule[]
+  appointmentSeries       AppointmentSeries[]
+  waitlistEntries         WaitlistEntry[]
   stockLevels             StockLevel[]
   stockBatches            StockBatch[]
   stockMovements          StockMovement[]
@@ -502,11 +518,13 @@ model Patient {
   createdAt             DateTime              @default(now()) @map("created_at")
   updatedAt             DateTime              @updatedAt @map("updated_at")
 
-  tenant           Tenant                  @relation(fields: [tenantId], references: [id])
-  appointments     Appointment[]
-  visits           Visit[]
-  alerts           PatientAlert[]
-  identityChanges  PatientIdentityChange[]
+  tenant            Tenant                  @relation(fields: [tenantId], references: [id])
+  appointments      Appointment[]
+  appointmentSeries AppointmentSeries[]
+  waitlistEntries   WaitlistEntry[]
+  visits            Visit[]
+  alerts            PatientAlert[]
+  identityChanges   PatientIdentityChange[]
 
   @@unique([tenantId, identifierType, identifierValue])
   @@index([tenantId])
@@ -577,24 +595,24 @@ enum PatientAlertOrigin {
 }
 
 model PatientAlert {
-  id                   String           @id @default(uuid())
-  tenantId             String           @map("tenant_id")
-  patientId            String           @map("patient_id")
+  id                   String             @id @default(uuid())
+  tenantId             String             @map("tenant_id")
+  patientId            String             @map("patient_id")
   type                 PatientAlertType
   label                String
   note                 String?
-  active               Boolean          @default(true)
+  active               Boolean            @default(true)
   // Plain staff-id audit columns, same convention as Staff's
   // professionalVerifiedByStaffId — attribution on record without adding two
   // more relations to the Staff constellation.
   /// Null ONLY on a MIGRATED row, and a CHECK constraint enforces that: the
   /// values carried over from `patients.allergies` had no author to name, and
   /// inventing one was judged worse than an honest blank.
-  createdByStaffId     String?             @map("created_by_staff_id")
-  origin               PatientAlertOrigin  @default(HUMAN)
-  createdAt            DateTime         @default(now()) @map("created_at")
-  deactivatedByStaffId String?          @map("deactivated_by_staff_id")
-  deactivatedAt        DateTime?        @map("deactivated_at")
+  createdByStaffId     String?            @map("created_by_staff_id")
+  origin               PatientAlertOrigin @default(HUMAN)
+  createdAt            DateTime           @default(now()) @map("created_at")
+  deactivatedByStaffId String?            @map("deactivated_by_staff_id")
+  deactivatedAt        DateTime?          @map("deactivated_at")
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id])
   patient Patient @relation(fields: [patientId], references: [id])
@@ -700,15 +718,33 @@ model Staff {
   clinicalSigningEnabledAt        DateTime?        @map("clinical_signing_enabled_at")
   clinicalSigningEnabledByStaffId String?          @map("clinical_signing_enabled_by_staff_id")
 
+  /// Where this provider's bookable time comes from (§18). FIXED_WEEKLY is
+  /// the default because it is what every existing provider already has — a
+  /// `DoctorSchedule` weekly pattern — and a migration must not change what
+  /// anybody's diary says.
+  appointmentScheduleMode ProviderScheduleMode @default(FIXED_WEEKLY) @map("appointment_schedule_mode")
+  /// The provider's colour on the calendar. NULL = derived from the id, which
+  /// is what the web app already does; set it to override.
+  calendarColor           String?              @map("calendar_color")
+
   tenant                       Tenant                       @relation(fields: [tenantId], references: [id])
   user                         User?                        @relation(fields: [userId], references: [id])
   clinic                       Clinic?                      @relation(fields: [clinicId], references: [id])
+  providerShifts               ProviderShift[]              @relation("ProviderShiftProvider")
+  providerShiftsCreated        ProviderShift[]              @relation("ProviderShiftAuthor")
+  appointmentEvents            AppointmentEvent[]           @relation("AppointmentEventActor")
+  appointmentsOverridden       Appointment[]                @relation("AppointmentOverrideAuthor")
+  appointmentSeriesCreated     AppointmentSeries[]          @relation("AppointmentSeriesAuthor")
+  appointmentSeriesProvided    AppointmentSeries[]          @relation("AppointmentSeriesProvider")
+  waitlistEntries              WaitlistEntry[]              @relation("WaitlistPreferredProvider")
+  waitlistEntriesCreated       WaitlistEntry[]              @relation("WaitlistAuthor")
+  appointmentCommunications    AppointmentCommunication[]   @relation("CommunicationActor")
   doctorSchedules              DoctorSchedule[]
   scheduleExceptions           ScheduleException[]
   slotCapacityConfigs          SlotCapacityConfig[]
   clinicClosedDates            ClinicClosedDate[]
-  appointmentRemindersSent     Appointment[]         @relation("AppointmentReminderAuthor")
-  appointmentsCancelled        Appointment[]         @relation("AppointmentCancelAuthor")
+  appointmentRemindersSent     Appointment[]                @relation("AppointmentReminderAuthor")
+  appointmentsCancelled        Appointment[]                @relation("AppointmentCancelAuthor")
   doctorServiceQualifications  DoctorServiceQualification[]
   appointments                 Appointment[]
   // Two different roles on a visit: the attending clinician, and whoever
@@ -833,18 +869,180 @@ model PublicHoliday {
 enum AppointmentStatus {
   REQUESTED
   CONFIRMED
-  REMINDED
+  /// The patient is physically here. Recorded the moment the counter greets
+  /// them, BEFORE the visit and the queue ticket exist.
   ARRIVED
-  IN_QUEUE
+  /// The visit and the type-A queue ticket exist and are linked. This is the
+  /// state the queue board reads; ARRIVED on its own is a person at a desk.
+  CHECKED_IN
   COMPLETED
-  RESCHEDULED
   CANCELLED
   NO_SHOW
+  /// Wants this service but has no time yet. Occupies no slot and is excluded
+  /// from every overlap and capacity check — see TERMINAL_APPOINTMENT_STATUSES
+  /// and the appointments_no_overlap constraint.
+  WAITLIST
+  /// DEPRECATED, retained so no historical row is destroyed by a migration.
+  /// A reminder is a FACT (see AppointmentCommunication), not a state that can
+  /// displace CONFIRMED. Nothing writes this any more.
+  REMINDED
+  /// DEPRECATED, retained for the same reason. A rescheduled appointment is
+  /// CANCELLED with cancellationReason = RESCHEDULED and a link to its
+  /// replacement, so the history survives (§12). Nothing writes this any more.
+  RESCHEDULED
+  /// DEPRECATED. Folded into CHECKED_IN, which is the same fact with a better
+  /// name and an actual link to the ticket.
+  IN_QUEUE
 }
 
+/// WHY an appointment was cancelled, as a fact the clinic can count, beside
+/// the free-text `cancelReason` a person typed. RESCHEDULED is the one that
+/// carries structural meaning: it says a replacement exists.
+enum AppointmentCancellationReason {
+  PATIENT_REQUEST
+  CLINIC_REQUEST
+  RESCHEDULED
+  PROVIDER_UNAVAILABLE
+  DUPLICATE
+  OTHER
+}
+
+/// Money owed for the BOOKING, kept deliberately separate from the
+/// appointment's own status (§36): a paid deposit does not confirm an
+/// appointment and a cancelled appointment may still hold a refundable
+/// deposit.
+enum AppointmentPaymentStatus {
+  NOT_REQUIRED
+  PENDING
+  PAID
+  PARTIALLY_PAID
+  FAILED
+  REFUNDED
+}
+
+/// How much of the price a booking asks for up front.
+enum ServiceBookingPaymentRule {
+  NONE
+  DEPOSIT
+  FULL
+}
+
+/// What the PUBLIC page shows where the price would go.
+enum ServicePriceDisplay {
+  HIDDEN
+  EXACT
+  FROM
+}
+
+/// Whether a provider's bookable time comes from the monthly roster or from a
+/// standing weekly pattern. A clinic maintains ONE of them, never both (§2).
+enum ProviderScheduleMode {
+  ROSTER_LINKED
+  FIXED_WEEKLY
+}
+
+/// What a roster cell MEANS. Only WORKING and LOCUM offer time; the rest are
+/// recorded so the matrix can say why a doctor is not there.
+enum ProviderShiftType {
+  WORKING
+  OFF
+  LEAVE
+  BLOCKED
+  LOCUM
+}
+
+/// Everything an appointment can have DONE to it, in one append-only log.
+/// Follows the house pattern (VisitWorkflowEvent), not the unused generic
+/// AuditLog.
+enum AppointmentEventType {
+  CREATED
+  STATUS_CHANGED
+  TIME_CHANGED
+  PROVIDER_CHANGED
+  SERVICE_CHANGED
+  RESCHEDULED
+  CANCELLED
+  CHECKED_IN
+  OVERRIDE_APPLIED
+  PAYMENT_CHANGED
+  PATIENT_LINKED
+  COMMUNICATION_SENT
+  NOTE_ADDED
+}
+
+/// How confident the server is that a public booking belongs to the patient it
+/// was attached to. NEEDS_REVIEW never blocks the booking — it puts it on a
+/// reconciliation worklist instead of merging two people (§33).
+enum PatientMatchConfidence {
+  MATCHED_IDENTIFIER
+  MATCHED_PHONE_AND_NAME
+  CREATED_NEW
+  NEEDS_REVIEW
+}
+
+enum BookingFieldType {
+  SHORT_TEXT
+  LONG_TEXT
+  YES_NO
+  SINGLE_CHOICE
+  MULTI_CHOICE
+  NUMBER
+  DATE
+}
+
+enum CommunicationChannel {
+  WHATSAPP
+  EMAIL
+  SMS
+  PUSH
+}
+
+/// MANUAL is not a lesser status — a receptionist pressing "WhatsApp patient"
+/// and sending the message themselves IS the delivery, and recording it as
+/// anything else would be faking one (§37).
+enum CommunicationStatus {
+  QUEUED
+  SENT
+  FAILED
+  SKIPPED
+  MANUAL
+}
+
+enum RecurrenceFrequency {
+  WEEKLY
+  FORTNIGHTLY
+  MONTHLY
+  CUSTOM_DAYS
+}
+
+enum WaitlistStatus {
+  ACTIVE
+  OFFERED
+  BOOKED
+  EXPIRED
+  CANCELLED
+}
+
+/// WHERE the booking came from, kept separate from its status (§41).
+///
+/// `FRONT_DESK` and `ONLINE_PORTAL` keep the exact meanings they have always
+/// had — staff-created, and the public booking page — rather than being
+/// renamed to STAFF/PUBLIC_BOOKING. A rename would rewrite roughly ninety
+/// call sites, seeds and fixtures to say the same thing in different words,
+/// and an enum value is not a label: it is a stored fact in every historical
+/// row. The marketing-shaped detail (campaign, referrer, UTM) lives in
+/// `Appointment.sourceDetail` so a new campaign never needs a new enum value.
 enum AppointmentSource {
   ONLINE_PORTAL
   FRONT_DESK
+  PATIENT_APP
+  FOLLOW_UP
+  QR
+  WEBSITE
+  WHATSAPP
+  CAMPAIGN
+  IMPORT
+  API
 }
 
 // Owned by Clinical Operations (Phase 1a), consolidating the temporary
@@ -884,27 +1082,60 @@ model ServiceCatalog {
   // NOT bookable: a chest X-ray is an order a doctor places, not a slot a
   // patient picks. `bookable` defaults false so nothing goes public by
   // migration — a clinic decides service by service.
-  bookable            Boolean  @default(false)
+  bookable            Boolean @default(false)
   /// How finely the day is sliced. NULL = same as the duration (back-to-back).
-  slotIntervalMinutes Int?     @map("slot_interval_minutes")
+  slotIntervalMinutes Int?    @map("slot_interval_minutes")
   /// RM. Zero is a real answer — most consultations carry no booking fee —
   /// which is why it is not nullable.
-  bookingFee          Decimal  @default(0) @map("booking_fee") @db.Decimal(10, 2)
+  bookingFee          Decimal @default(0) @map("booking_fee") @db.Decimal(10, 2)
   /// What the PATIENT reads. `name` is "CONSULTATION - GENERAL"; this is the
   /// sentence under it on the public page.
-  bookingDescription  String?  @map("booking_description")
-  bookingPhotoUrl     String?  @map("booking_photo_url")
+  bookingDescription  String? @map("booking_description")
+  bookingPhotoUrl     String? @map("booking_photo_url")
   /// TRUE lands the booking in the Requests tab for a human to accept.
-  requiresApproval    Boolean  @default(false) @map("requires_approval")
+  requiresApproval    Boolean @default(false) @map("requires_approval")
   /// How many can run AT ONCE across the clinic — two treatment rooms, one
   /// ultrasound. NULL means the room is not the constraint; the doctor is,
   /// and the doctor is already the roster.
-  concurrentLimit     Int?     @map("concurrent_limit")
+  concurrentLimit     Int?    @map("concurrent_limit")
 
-  createdAt              DateTime         @default(now()) @map("created_at")
-  updatedAt              DateTime         @updatedAt @map("updated_at")
+  // --- SCHEDULING RULES (§23) ----------------------------------------------
+  /// Time the provider needs BEFORE the appointment — setting up a room,
+  /// reading a referral. It is not offered to anyone else and it is not part
+  /// of the appointment: a 09:00 slot with a 10-minute lead-in still starts at
+  /// 09:00, but nothing may end between 08:50 and 09:00.
+  bufferBeforeMinutes  Int  @default(0) @map("buffer_before_minutes")
+  /// Time the provider needs AFTER — turning the room over, writing up.
+  bufferAfterMinutes   Int  @default(0) @map("buffer_after_minutes")
+  /// How far ahead this service may be booked, in whole days. NULL = the
+  /// clinic's own horizon, and if the clinic has none, no limit.
+  maxAdvanceDays       Int? @map("max_advance_days")
+  /// Overrides the clinic's minimum notice for THIS service. NULL = use the
+  /// clinic's. Zero is a real answer and means walk-up booking is fine.
+  minimumNoticeMinutes Int? @map("minimum_notice_minutes")
+
+  // --- PUBLIC PRESENTATION & PAYMENT (§22, §36) ----------------------------
+  priceDisplay       ServicePriceDisplay       @default(HIDDEN) @map("price_display")
+  bookingPaymentRule ServiceBookingPaymentRule @default(NONE) @map("booking_payment_rule")
+  /// RM asked for at booking when the rule is DEPOSIT. FULL uses `price`.
+  depositAmount      Decimal                   @default(0) @map("deposit_amount") @db.Decimal(10, 2)
+  /// Read before the appointment ("fast for 8 hours") and after ("keep the
+  /// dressing dry"). Reused verbatim by confirmation, reminders, the
+  /// manage-booking page and the patient app — written once (§35).
+  preInstructions    String?                   @map("pre_instructions")
+  postInstructions   String?                   @map("post_instructions")
+  /// The tail of a service-specific public link: /hijraa-bangi/sinus (§40).
+  bookingSlug        String?                   @map("booking_slug")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   tenant                      Tenant                       @relation(fields: [tenantId], references: [id])
+  bookableHours               ServiceBookableHour[]
+  bookingFormFields           BookingFormField[]
+  reminderRules               AppointmentReminderRule[]
+  appointmentSeries           AppointmentSeries[]
+  waitlistEntries             WaitlistEntry[]
   slotCapacityConfigs         SlotCapacityConfig[]
   doctorServiceQualifications DoctorServiceQualification[]
   appointments                Appointment[]
@@ -914,6 +1145,7 @@ model ServiceCatalog {
   panelExclusions             PanelExclusion[]
   consultationTariffRules     ConsultationTariffRule[]
 
+  @@unique([tenantId, bookingSlug])
   @@index([tenantId])
   @@map("service_catalog")
 }
@@ -1080,17 +1312,30 @@ model DataCorrection {
 }
 
 model ClinicBookingSettings {
-  id                   String   @id @default(uuid())
-  tenantId             String   @map("tenant_id")
-  clinicId             String   @map("clinic_id")
-  firstSessionTime     DateTime @default(dbgenerated("'09:00'::time")) @map("first_session_time") @db.Time
-  lastSessionTime      DateTime @default(dbgenerated("'17:00'::time")) @map("last_session_time") @db.Time
+  id                    String    @id @default(uuid())
+  tenantId              String    @map("tenant_id")
+  clinicId              String    @map("clinic_id")
+  /// The clinic's own booking band, which NARROWS a provider's roster and
+  /// never widens it. Both nullable since the roster redesign: a 24-hour
+  /// clinic has no first or last session, and a hard 09:00-17:00 default
+  /// silently amputated a night roster (§50). NULL on either side means "the
+  /// clinic does not narrow that end".
+  firstSessionTime      DateTime? @map("first_session_time") @db.Time
+  lastSessionTime       DateTime? @map("last_session_time") @db.Time
   /// 0 means walk-up booking is fine — a real answer, and the safe default: a
   /// clinic that has not thought about this should not find its diary silently
   /// narrowed.
-  minimumNoticeMinutes Int      @default(0) @map("minimum_notice_minutes")
-  createdAt            DateTime @default(now()) @map("created_at")
-  updatedAt            DateTime @updatedAt @map("updated_at")
+  minimumNoticeMinutes  Int       @default(0) @map("minimum_notice_minutes")
+  /// How far ahead anybody may book at this branch. NULL = no horizon.
+  maxAdvanceDays        Int?      @map("max_advance_days")
+  /// Whether the tenant-wide HR public-holiday calendar closes THIS branch.
+  /// Defaults false so no existing diary is narrowed by a migration: a
+  /// Malaysian holiday is a payroll fact first, and plenty of clinics open on
+  /// one. A branch that does shut ticks this once instead of re-typing the
+  /// national calendar as branch closed dates (§3).
+  observePublicHolidays Boolean   @default(false) @map("observe_public_holidays")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
   clinic Clinic @relation(fields: [clinicId], references: [id])
@@ -1104,18 +1349,21 @@ model ClinicBookingSettings {
 /// where a public holiday has to be answerable ("is the clinic open on the
 /// 24th") without first knowing which doctors exist.
 model ClinicClosedDate {
-  id                String   @id @default(uuid())
-  tenantId          String   @map("tenant_id")
-  clinicId          String   @map("clinic_id")
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  clinicId         String   @map("clinic_id")
   /// A DATE in the clinic's own zone. 24 December is 24 December whatever the
   /// server is set to.
-  date              DateTime @db.Date
+  date             DateTime @db.Date
   /// Shown to patients ("Deepavali"), and nullable because a clinic closing
   /// for a reason it would rather not publish must still be able to close.
-  reason            String?
-  createdByStaffId  String?  @map("created_by_staff_id")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  reason           String?
+  /// Whether a PATIENT may read the reason. "Deepavali" is fine; "audit by the
+  /// ministry" is not, and a clinic must still be able to close for it (§29).
+  reasonIsPublic   Boolean  @default(false) @map("reason_is_public")
+  createdByStaffId String?  @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   tenant         Tenant @relation(fields: [tenantId], references: [id])
   clinic         Clinic @relation(fields: [clinicId], references: [id])
@@ -1168,20 +1416,66 @@ model DoctorServiceQualification {
 }
 
 model Appointment {
-  id                String            @id @default(uuid())
-  tenantId          String            @map("tenant_id")
-  clinicId          String            @map("clinic_id")
-  patientId         String            @map("patient_id")
-  staffId           String            @map("staff_id")
-  serviceId         String            @map("service_id")
-  status            AppointmentStatus @default(REQUESTED)
-  source            AppointmentSource
-  scheduledStart    DateTime          @map("scheduled_start")
-  scheduledEnd      DateTime          @map("scheduled_end")
-  notes             String?
-  cancelReason      String?           @map("cancel_reason")
-  arrivedAt         DateTime?         @map("arrived_at")
-  rescheduledFromId String?           @unique @map("rescheduled_from_id")
+  id                 String                         @id @default(uuid())
+  tenantId           String                         @map("tenant_id")
+  clinicId           String                         @map("clinic_id")
+  patientId          String                         @map("patient_id")
+  staffId            String                         @map("staff_id")
+  serviceId          String                         @map("service_id")
+  status             AppointmentStatus              @default(REQUESTED)
+  source             AppointmentSource
+  scheduledStart     DateTime                       @map("scheduled_start")
+  scheduledEnd       DateTime                       @map("scheduled_end")
+  /// INTERNAL note — what the counter needs to know. Never shown to a patient.
+  notes              String?
+  /// What the PATIENT wrote when booking, or a note written FOR them and shown
+  /// on the manage-booking page. Kept apart from `notes` because one of the two
+  /// is safe to publish and the other is not.
+  patientNote        String?                        @map("patient_note")
+  cancelReason       String?                        @map("cancel_reason")
+  /// The countable half of the cancellation. RESCHEDULED here is what makes
+  /// `rescheduledTo` meaningful (§12).
+  cancellationReason AppointmentCancellationReason? @map("cancellation_reason")
+  arrivedAt          DateTime?                      @map("arrived_at")
+  checkedInAt        DateTime?                      @map("checked_in_at")
+  rescheduledFromId  String?                        @unique @map("rescheduled_from_id")
+
+  /// §28 — the same request retried must not become two appointments. A double
+  /// click, a network retry and a payment-callback retry all send the same key;
+  /// the unique index is what makes the second one a no-op rather than a
+  /// duplicate booking. NULL for anything that did not supply one.
+  idempotencyKey String? @map("idempotency_key")
+
+  /// §16 — booking rules were deliberately set aside, by somebody, for a
+  /// reason. All three or none: the service refuses an override with no reason
+  /// and no permission behind it.
+  overriddenRule      String? @map("overridden_rule")
+  overrideReason      String? @map("override_reason")
+  overriddenByStaffId String? @map("overridden_by_staff_id")
+
+  /// §36 — money for the BOOKING, separate from the appointment's own status.
+  paymentStatus    AppointmentPaymentStatus @default(NOT_REQUIRED) @map("payment_status")
+  /// The clinic invoice this booking's deposit was applied to, so a deposit is
+  /// never counted twice as revenue.
+  depositInvoiceId String?                  @map("deposit_invoice_id")
+
+  /// §42 — the secret in the manage-booking URL. Long, random, per booking, and
+  /// the ONLY thing that link carries: it identifies one appointment and
+  /// reaches no other patient's data.
+  manageToken String? @unique @map("manage_token")
+
+  /// §33 — how the server decided this booking belongs to this patient.
+  /// NEEDS_REVIEW is a worklist entry, never a refusal and never a merge.
+  patientMatch PatientMatchConfidence? @map("patient_match")
+
+  /// §41 — campaign, referrer, UTM. Free text on purpose: a new campaign must
+  /// never require a new enum value or a migration.
+  sourceDetail String? @map("source_detail")
+
+  /// §43 — the series this occurrence belongs to. Each real session is its own
+  /// appointment; the series only records the intent that generated them.
+  seriesId    String? @map("series_id")
+  seriesIndex Int?    @map("series_index")
 
   /// WHO reminded this patient, and WHEN. Not the `REMINDED` status, which
   /// cannot hold either and is mutually exclusive with CONFIRMED — an
@@ -1196,13 +1490,13 @@ model Appointment {
   /// under it. Without it, `completeVisit` cannot find the appointment that
   /// started the consultation, so appointments sat at ARRIVED forever and the
   /// Completed tab stayed empty. Unique both ways; null for a walk-in.
-  visitId               String?   @unique @map("visit_id")
+  visitId String? @unique @map("visit_id")
 
   /// WHO cancelled it, beside the reason that was already recorded. A reason
   /// with nobody's name on it cannot be followed up when the patient rings
   /// back to ask why.
-  cancelledByStaffId    String?   @map("cancelled_by_staff_id")
-  cancelledAt           DateTime? @map("cancelled_at")
+  cancelledByStaffId String?   @map("cancelled_by_staff_id")
+  cancelledAt        DateTime? @map("cancelled_at")
 
   /// SNAPSHOT of the service's booking fee at the moment of booking. A clinic
   /// raising its fee in March must not change what a February booking asked
@@ -1211,26 +1505,37 @@ model Appointment {
   bookingFeeAmount    Decimal   @default(0) @map("booking_fee_amount") @db.Decimal(10, 2)
   bookingFeePaidAt    DateTime? @map("booking_fee_paid_at")
   bookingFeeReference String?   @map("booking_fee_reference")
-  createdAt         DateTime          @default(now()) @map("created_at")
-  updatedAt         DateTime          @updatedAt @map("updated_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  tenant          Tenant         @relation(fields: [tenantId], references: [id])
-  clinic          Clinic         @relation(fields: [clinicId], references: [id])
-  patient         Patient        @relation(fields: [patientId], references: [id])
-  staff           Staff          @relation(fields: [staffId], references: [id])
-  service         ServiceCatalog @relation(fields: [serviceId], references: [id])
-  rescheduledFrom Appointment?   @relation("AppointmentReschedule", fields: [rescheduledFromId], references: [id])
-  rescheduledTo   Appointment?   @relation("AppointmentReschedule")
-  reminderSentBy  Staff?         @relation("AppointmentReminderAuthor", fields: [reminderSentByStaffId], references: [id])
-  visit           Visit?         @relation(fields: [visitId], references: [id])
-  cancelledBy     Staff?         @relation("AppointmentCancelAuthor", fields: [cancelledByStaffId], references: [id])
+  tenant          Tenant                     @relation(fields: [tenantId], references: [id])
+  clinic          Clinic                     @relation(fields: [clinicId], references: [id])
+  patient         Patient                    @relation(fields: [patientId], references: [id])
+  staff           Staff                      @relation(fields: [staffId], references: [id])
+  service         ServiceCatalog             @relation(fields: [serviceId], references: [id])
+  rescheduledFrom Appointment?               @relation("AppointmentReschedule", fields: [rescheduledFromId], references: [id])
+  /// THE REPLACEMENT. `rescheduledTo` is the forward link §12 asks for; it is
+  /// the same relation read the other way, so the two can never disagree.
+  rescheduledTo   Appointment?               @relation("AppointmentReschedule")
+  series          AppointmentSeries?         @relation(fields: [seriesId], references: [id])
+  overriddenBy    Staff?                     @relation("AppointmentOverrideAuthor", fields: [overriddenByStaffId], references: [id])
+  depositInvoice  Invoice?                   @relation("AppointmentDepositInvoice", fields: [depositInvoiceId], references: [id])
+  events          AppointmentEvent[]
+  formAnswers     AppointmentFormAnswer[]
+  communications  AppointmentCommunication[]
+  waitlistEntries WaitlistEntry[]            @relation("WaitlistBookedAppointment")
+  reminderSentBy  Staff?                     @relation("AppointmentReminderAuthor", fields: [reminderSentByStaffId], references: [id])
+  visit           Visit?                     @relation(fields: [visitId], references: [id])
+  cancelledBy     Staff?                     @relation("AppointmentCancelAuthor", fields: [cancelledByStaffId], references: [id])
 
+  @@unique([tenantId, idempotencyKey])
   @@index([tenantId])
   @@index([tenantId, clinicId])
   @@index([tenantId, clinicId, scheduledStart])
   @@index([tenantId, staffId, scheduledStart])
   @@index([tenantId, patientId])
   @@index([tenantId, status])
+  @@index([tenantId, seriesId])
   @@map("appointments")
 }
 
@@ -1605,17 +1910,17 @@ model StockBatch {
 // the derived/cached total, never the only record of truth
 // (docs/DATABASE_ARCHITECTURE.md §6).
 model StockMovement {
-  id              String            @id @default(uuid())
-  tenantId        String            @map("tenant_id")
-  clinicId        String            @map("clinic_id")
-  itemId          String            @map("item_id")
-  batchId         String?           @map("batch_id")
-  movementType    StockMovementType @map("movement_type")
+  id           String            @id @default(uuid())
+  tenantId     String            @map("tenant_id")
+  clinicId     String            @map("clinic_id")
+  itemId       String            @map("item_id")
+  batchId      String?           @map("batch_id")
+  movementType StockMovementType @map("movement_type")
 
   /// STOCK UNITS — strips, boxes, bottles. The same unit `StockLevel` counts
   /// and the same unit a person counting the shelf counts. A 30-tablet course
   /// of a 10-per-strip medicine moves -3 here, not -30.
-  quantityDelta   Int               @map("quantity_delta")
+  quantityDelta Int @map("quantity_delta")
 
   /// The DOSE units the prescription was written for: 30, beside a delta of
   /// -3. Recorded so the dispensary can answer "why did three strips leave"
@@ -1623,11 +1928,11 @@ model StockMovement {
   /// since. Null on every row written before the conversion existed — those
   /// carry a dose-unit delta mislabelled as stock units, and reinterpreting
   /// them now would be arithmetic nobody performed at the counter.
-  clinicalQuantity Int?             @map("clinical_quantity")
-  referenceType   String?           @map("reference_type")
-  referenceId     String?           @map("reference_id")
-  createdByUserId String?           @map("created_by_user_id")
-  createdAt       DateTime          @default(now()) @map("created_at")
+  clinicalQuantity Int?     @map("clinical_quantity")
+  referenceType    String?  @map("reference_type")
+  referenceId      String?  @map("reference_id")
+  createdByUserId  String?  @map("created_by_user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
 
   /// G4.5d5b-2 — why this movement happened, when it needs saying.
   ///
@@ -3371,11 +3676,14 @@ model Invoice {
   createdAt                 DateTime             @default(now()) @map("created_at")
   updatedAt                 DateTime             @updatedAt @map("updated_at")
 
-  tenant          Tenant           @relation(fields: [tenantId], references: [id])
-  visit           Visit            @relation(fields: [visitId], references: [id])
-  createdBy       Staff            @relation(fields: [createdByStaffId], references: [id])
-  lines           InvoiceLine[]
-  claimBatchLines ClaimBatchLine[]
+  tenant              Tenant           @relation(fields: [tenantId], references: [id])
+  visit               Visit            @relation(fields: [visitId], references: [id])
+  createdBy           Staff            @relation(fields: [createdByStaffId], references: [id])
+  lines               InvoiceLine[]
+  claimBatchLines     ClaimBatchLine[]
+  /// Bookings whose deposit was applied to this invoice, so a deposit taken at
+  /// booking is reconciled against the clinic bill rather than counted twice.
+  depositAppointments Appointment[]    @relation("AppointmentDepositInvoice")
 
   @@unique([tenantId, invoiceNumber])
   @@index([tenantId, visitId])
@@ -3760,4 +4068,356 @@ model LabelPrint {
   @@index([tenantId, prescriptionId])
   @@index([tenantId, clinicId, printedAt])
   @@map("label_prints")
+}
+
+// ===========================================================================
+// APPOINTMENTS & SCHEDULING — the roster, the log, and everything the public
+// booking page needs. Added by the Appointment & Scheduling redesign.
+// ===========================================================================
+
+/// ONE SHIFT A PROVIDER ACTUALLY WORKS, as two instants.
+///
+/// This replaces the weekday + start-time + end-time representation for
+/// ROSTER_LINKED providers, and it exists because that representation cannot
+/// express three things a real clinic has:
+///
+///   1. AN OVERNIGHT SHIFT. 23:00 → 09:00 gave `end < start`, and the slot
+///      loop `cursor + duration <= window.end` then ran zero times. A night
+///      doctor was silently unbookable — no error, no empty state, just no
+///      slots. Instants cross midnight, month ends and DST without a special
+///      case, because they are moments and not times of day.
+///   2. TWO SHIFTS IN ONE DAY. 08:00-15:00 and 20:00-23:00 is one provider,
+///      one date, two rows. `ScheduleException` was `@@unique(... date)` and
+///      could hold exactly one window.
+///   3. WHY somebody is not there. OFF, LEAVE, BLOCKED and LOCUM are recorded
+///      as shifts rather than as absences of shifts, so the monthly matrix can
+///      say "Leave" instead of leaving a cell blank and meaning four things.
+///
+/// `shiftDate` is the CLINIC-LOCAL date the shift belongs to — the date it
+/// STARTS. A 23:00 Wednesday shift ending 09:00 Thursday is Wednesday's, which
+/// is how a roster is read aloud and how it is paid.
+model ProviderShift {
+  id        String            @id @default(uuid())
+  tenantId  String            @map("tenant_id")
+  clinicId  String            @map("clinic_id")
+  staffId   String            @map("staff_id")
+  shiftDate DateTime          @map("shift_date") @db.Date
+  /// Instants. `endsAt` may fall on the following day; that is the point.
+  startsAt  DateTime          @map("starts_at")
+  endsAt    DateTime          @map("ends_at")
+  shiftType ProviderShiftType @default(WORKING) @map("shift_type")
+
+  /// §19 — appointment availability defaults to the roster, and may be
+  /// NARROWER than it. A doctor working 09:00-17:00 who takes bookings only
+  /// 09:00-12:00 sets these two; everything else in the shift is still worked,
+  /// just not bookable. NULL on both = the whole shift is bookable.
+  bookableStartsAt DateTime? @map("bookable_starts_at")
+  bookableEndsAt   DateTime? @map("bookable_ends_at")
+
+  note             String?
+  /// The `DoctorSchedule` row this was generated from, when a weekly pattern
+  /// was materialised into a month. Provenance, so a regeneration can tell its
+  /// own rows from ones a human typed.
+  sourceScheduleId String?  @map("source_schedule_id")
+  createdByStaffId String?  @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant @relation(fields: [tenantId], references: [id])
+  clinic         Clinic @relation(fields: [clinicId], references: [id])
+  staff          Staff  @relation("ProviderShiftProvider", fields: [staffId], references: [id])
+  createdByStaff Staff? @relation("ProviderShiftAuthor", fields: [createdByStaffId], references: [id])
+
+  @@index([tenantId, clinicId, shiftDate])
+  @@index([tenantId, staffId, shiftDate])
+  @@index([tenantId, clinicId, startsAt])
+  @@map("provider_shifts")
+}
+
+/// APPEND-ONLY. Everything that was done to an appointment, by whom, when and
+/// why — the house pattern (`VisitWorkflowEvent`), written inside the same
+/// transaction as the change it describes.
+///
+/// Deliberately ONE table rather than a status-history table plus a separate
+/// audit table: "the provider was changed" and "the status became CANCELLED"
+/// are the same kind of fact about the same row, and splitting them is how one
+/// of the two ends up not being written.
+model AppointmentEvent {
+  id            String               @id @default(uuid())
+  tenantId      String               @map("tenant_id")
+  appointmentId String               @map("appointment_id")
+  eventType     AppointmentEventType @map("event_type")
+  fromStatus    AppointmentStatus?   @map("from_status")
+  toStatus      AppointmentStatus?   @map("to_status")
+  /// BEFORE and AFTER for anything that is not a status — the old provider,
+  /// the old time, the old service. Json so one table can carry all of them
+  /// without a column per field.
+  beforeValue   Json?                @map("before_value")
+  afterValue    Json?                @map("after_value")
+  reason        String?
+  /// WHERE the action came from — the same vocabulary as the booking source,
+  /// so "who moved this" and "who booked this" are answerable the same way.
+  source        AppointmentSource?
+  actorStaffId  String?              @map("actor_staff_id")
+  /// The actor's NAME as it was, snapshotted. A staff member who leaves must
+  /// not erase their name from the record of what they did.
+  actorLabel    String?              @map("actor_label")
+  occurredAt    DateTime             @default(now()) @map("occurred_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  actor       Staff?      @relation("AppointmentEventActor", fields: [actorStaffId], references: [id])
+
+  @@index([tenantId, appointmentId, occurredAt])
+  @@index([tenantId, occurredAt])
+  @@map("appointment_events")
+}
+
+/// §23 — hours during which a SERVICE may be booked, narrower than the
+/// provider's roster. Absence of rows means "whenever the provider is free",
+/// which is the normal case and why this is a table rather than columns.
+model ServiceBookableHour {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  serviceId String   @map("service_id")
+  /// 0 = Sunday, matching `DoctorSchedule.dayOfWeek`.
+  dayOfWeek Int      @map("day_of_week")
+  startTime DateTime @map("start_time") @db.Time
+  endTime   DateTime @map("end_time") @db.Time
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant  Tenant         @relation(fields: [tenantId], references: [id])
+  service ServiceCatalog @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, serviceId, dayOfWeek])
+  @@map("service_bookable_hours")
+}
+
+/// §34 — a question the booking page asks. Clinic-wide when `serviceId` is
+/// null, service-specific when it is not.
+model BookingFormField {
+  id        String           @id @default(uuid())
+  tenantId  String           @map("tenant_id")
+  clinicId  String?          @map("clinic_id")
+  serviceId String?          @map("service_id")
+  label     String
+  helpText  String?          @map("help_text")
+  fieldType BookingFieldType @map("field_type")
+  required  Boolean          @default(false)
+  active    Boolean          @default(true)
+  sortOrder Int              @default(0) @map("sort_order")
+  /// Choices, for SINGLE_CHOICE and MULTI_CHOICE. Empty otherwise.
+  options   String[]         @default([])
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id])
+  clinic  Clinic?         @relation(fields: [clinicId], references: [id])
+  service ServiceCatalog? @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, clinicId])
+  @@index([tenantId, serviceId])
+  @@map("booking_form_fields")
+}
+
+/// §34 — the ANSWERS, snapshotted with the question as it was asked.
+///
+/// The label and the type are copied rather than joined on purpose: a clinic
+/// that rewords "Are you pregnant?" next March must not change what a booking
+/// made in February appears to have asked. Same rule as the prescription
+/// snapshot and the invoice line.
+model AppointmentFormAnswer {
+  id            String           @id @default(uuid())
+  tenantId      String           @map("tenant_id")
+  appointmentId String           @map("appointment_id")
+  /// Provenance only — nullable, and never read for the wording.
+  fieldId       String?          @map("field_id")
+  label         String
+  fieldType     BookingFieldType @map("field_type")
+  answer        String?
+  sortOrder     Int              @default(0) @map("sort_order")
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, appointmentId])
+  @@map("appointment_form_answers")
+}
+
+/// §37 — what was sent, to whom, through what, and whether it actually left.
+///
+/// MANUAL is a first-class status, not a lesser one: a receptionist pressing
+/// "WhatsApp patient" opens wa.me and sends the message with their own hands.
+/// That IS the delivery. Recording it as SENT would claim an integration this
+/// system does not have, and recording it as nothing would lose the fact.
+model AppointmentCommunication {
+  id                String               @id @default(uuid())
+  tenantId          String               @map("tenant_id")
+  appointmentId     String               @map("appointment_id")
+  channel           CommunicationChannel
+  /// Which message this was — 'CONFIRMATION', 'REMINDER_24H', 'CANCELLED'.
+  template          String
+  /// The phone number or address it went to, as it was at the time.
+  destination       String?
+  status            CommunicationStatus  @default(QUEUED)
+  /// The gateway's own id, when there is a gateway.
+  providerMessageId String?              @map("provider_message_id")
+  error             String?
+  queuedAt          DateTime             @default(now()) @map("queued_at")
+  sentAt            DateTime?            @map("sent_at")
+  failedAt          DateTime?            @map("failed_at")
+  /// Who pressed the button, for MANUAL.
+  actorStaffId      String?              @map("actor_staff_id")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  actor       Staff?      @relation("CommunicationActor", fields: [actorStaffId], references: [id])
+
+  @@index([tenantId, appointmentId])
+  @@index([tenantId, status, queuedAt])
+  @@map("appointment_communications")
+}
+
+/// §38 — "remind me 24 hours before, and again 2 hours before". Rows, not two
+/// columns: a clinic wanting three reminders, or none, must not need a
+/// migration to say so.
+model AppointmentReminderRule {
+  id            String               @id @default(uuid())
+  tenantId      String               @map("tenant_id")
+  clinicId      String               @map("clinic_id")
+  /// NULL = every bookable service at this branch.
+  serviceId     String?              @map("service_id")
+  /// MINUTES BEFORE the appointment starts. 1440 = a day.
+  offsetMinutes Int                  @map("offset_minutes")
+  channel       CommunicationChannel @default(WHATSAPP)
+  active        Boolean              @default(true)
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id])
+  clinic  Clinic          @relation(fields: [clinicId], references: [id])
+  service ServiceCatalog? @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, clinicId])
+  @@map("appointment_reminder_rules")
+}
+
+/// §39/§40 — the public booking page for one branch, and the settings that
+/// belong to it. One row per clinic, so there is one place these live rather
+/// than four technical screens.
+model ClinicBookingPage {
+  id                       String   @id @default(uuid())
+  tenantId                 String   @map("tenant_id")
+  clinicId                 String   @unique @map("clinic_id")
+  /// The public URL segment: /hijraa-bangi. Unique across the platform,
+  /// because the link is public and shared outside any tenant.
+  slug                     String   @unique
+  displayName              String   @map("display_name")
+  logoUrl                  String?  @map("logo_url")
+  /// 'en' or 'ms'. Free text rather than an enum so adding a language is
+  /// content, not a migration.
+  language                 String   @default("en")
+  introText                String?  @map("intro_text")
+  /// Which patient details the page insists on. Name is always required and
+  /// is therefore not a flag.
+  requirePhone             Boolean  @default(true) @map("require_phone")
+  requireEmail             Boolean  @default(false) @map("require_email")
+  requireNric              Boolean  @default(false) @map("require_nric")
+  showReasonField          Boolean  @default(true) @map("show_reason_field")
+  /// Whether the page is live at all. False = the link 404s.
+  active                   Boolean  @default(false)
+  /// §42 — what a patient may do with their own booking, and up to when.
+  allowPatientReschedule   Boolean  @default(true) @map("allow_patient_reschedule")
+  allowPatientCancel       Boolean  @default(true) @map("allow_patient_cancel")
+  /// Hours before the appointment after which the patient can no longer
+  /// change it themselves. 0 = right up to the start.
+  patientChangeCutoffHours Int      @default(4) @map("patient_change_cutoff_hours")
+  confirmationMessage      String?  @map("confirmation_message")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+
+  @@index([tenantId])
+  @@map("clinic_booking_pages")
+}
+
+/// §43 — the INTENT that produced a run of appointments. Every real session is
+/// its own `Appointment` row with its own time, status and history; this
+/// records only that they were meant as a course, so "this and all future"
+/// has something to mean.
+model AppointmentSeries {
+  id               String              @id @default(uuid())
+  tenantId         String              @map("tenant_id")
+  clinicId         String              @map("clinic_id")
+  patientId        String              @map("patient_id")
+  staffId          String              @map("staff_id")
+  serviceId        String              @map("service_id")
+  frequency        RecurrenceFrequency
+  /// For CUSTOM_DAYS: the gap in days. Ignored otherwise.
+  intervalDays     Int?                @map("interval_days")
+  occurrences      Int?
+  endDate          DateTime?           @map("end_date") @db.Date
+  active           Boolean             @default(true)
+  createdByStaffId String?             @map("created_by_staff_id")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id])
+  clinic       Clinic         @relation(fields: [clinicId], references: [id])
+  patient      Patient        @relation(fields: [patientId], references: [id])
+  staff        Staff          @relation("AppointmentSeriesProvider", fields: [staffId], references: [id])
+  service      ServiceCatalog @relation(fields: [serviceId], references: [id])
+  createdBy    Staff?         @relation("AppointmentSeriesAuthor", fields: [createdByStaffId], references: [id])
+  appointments Appointment[]
+
+  @@index([tenantId, clinicId])
+  @@index([tenantId, patientId])
+  @@map("appointment_series")
+}
+
+/// §44 — a patient who wants this service but has no time yet.
+///
+/// Deliberately its own table and not an appointment in a WAITLIST status:
+/// a waitlist entry has no time, spans a RANGE of acceptable dates, and may
+/// name a daypart rather than an hour. Forcing that into a row whose primary
+/// key facts are `scheduledStart` and `scheduledEnd` would mean inventing
+/// times nobody agreed to.
+model WaitlistEntry {
+  id                  String         @id @default(uuid())
+  tenantId            String         @map("tenant_id")
+  clinicId            String         @map("clinic_id")
+  patientId           String         @map("patient_id")
+  serviceId           String         @map("service_id")
+  /// NULL = any qualified provider.
+  preferredStaffId    String?        @map("preferred_staff_id")
+  earliestDate        DateTime?      @map("earliest_date") @db.Date
+  latestDate          DateTime?      @map("latest_date") @db.Date
+  /// 'MORNING' | 'AFTERNOON' | 'EVENING' | 'ANY'. Free text so a clinic that
+  /// thinks in "after school" is not blocked by an enum.
+  preferredDaypart    String?        @map("preferred_daypart")
+  /// Higher goes first. Only staff holding appointment.override may raise it.
+  priority            Int            @default(0)
+  note                String?
+  status              WaitlistStatus @default(ACTIVE)
+  offeredAt           DateTime?      @map("offered_at")
+  /// The appointment that finally came out of this entry.
+  bookedAppointmentId String?        @unique @map("booked_appointment_id")
+  createdByStaffId    String?        @map("created_by_staff_id")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+
+  tenant            Tenant         @relation(fields: [tenantId], references: [id])
+  clinic            Clinic         @relation(fields: [clinicId], references: [id])
+  patient           Patient        @relation(fields: [patientId], references: [id])
+  service           ServiceCatalog @relation(fields: [serviceId], references: [id])
+  preferredStaff    Staff?         @relation("WaitlistPreferredProvider", fields: [preferredStaffId], references: [id])
+  createdBy         Staff?         @relation("WaitlistAuthor", fields: [createdByStaffId], references: [id])
+  bookedAppointment Appointment?   @relation("WaitlistBookedAppointment", fields: [bookedAppointmentId], references: [id])
+
+  @@index([tenantId, clinicId, status])
+  @@index([tenantId, serviceId, status])
+  @@map("waitlist_entries")
 }
