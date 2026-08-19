@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { createTestPrismaClient, randomId, withTenantContext } from './test-db';
+import { createOwnerAndBearer } from './auth';
 
 // Covers the Inventory acceptance criterion PRODUCT_REQUIREMENTS.md §18
 // gives (a partial goods-received entry must correctly reduce the
@@ -14,6 +15,7 @@ describe('Inventory: goods-received receiving and stock rules (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaClient;
   let tenantId: string;
+  let bearer: string;
   let clinicId: string;
 
   beforeAll(async () => {
@@ -34,9 +36,10 @@ describe('Inventory: goods-received receiving and stock rules (e2e)', () => {
     await withTenantContext(prisma, tenantId, (tx) =>
       tx.tenant.create({ data: { id: tenantId, name: 'Inventory Test Tenant' } }),
     );
+    bearer = (await createOwnerAndBearer(prisma, tenantId)).bearer;
     const clinic = await request(app.getHttpServer())
       .post('/clinics')
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .send({ name: 'Inventory Test Clinic' })
       .expect(201);
     clinicId = clinic.body.id;
@@ -55,6 +58,7 @@ describe('Inventory: goods-received receiving and stock rules (e2e)', () => {
       await tx.item.deleteMany({ where: { tenantId } });
       await tx.supplier.deleteMany({ where: { tenantId } });
       await tx.clinic.deleteMany({ where: { tenantId } });
+      await tx.staff.deleteMany({ where: { tenantId } });
       await tx.tenant.deleteMany({ where: { id: tenantId } });
     });
   });
@@ -62,12 +66,12 @@ describe('Inventory: goods-received receiving and stock rules (e2e)', () => {
   async function createItemAndSupplier() {
     const item = await request(app.getHttpServer())
       .post('/items')
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .send({ name: 'Paracetamol 500mg', sellPrice: 1.5 })
       .expect(201);
     const supplier = await request(app.getHttpServer())
       .post('/suppliers')
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .send({ name: 'Test Pharma Supplier' })
       .expect(201);
     return { itemId: item.body.id as string, supplierId: supplier.body.id as string };
@@ -78,28 +82,28 @@ describe('Inventory: goods-received receiving and stock rules (e2e)', () => {
 
     const po = await request(app.getHttpServer())
       .post('/purchase-orders')
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .send({ clinicId, supplierId, lines: [{ itemId, orderedQuantity: 10, unitCost: 2 }] })
       .expect(201);
     const lineId = po.body.lines[0].id;
 
     const firstReceive = await request(app.getHttpServer())
       .post(`/purchase-orders/${po.body.id}/receive`)
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .send({ clinicId, lines: [{ purchaseOrderLineId: lineId, quantityReceived: 4, batchNumber: 'B1' }] })
       .expect(201);
     expect(firstReceive.body.lines).toHaveLength(1);
 
     const poAfterFirst = await request(app.getHttpServer())
       .get(`/purchase-orders/${po.body.id}`)
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .expect(200);
     expect(poAfterFirst.body.status).toBe('PARTIALLY_RECEIVED');
     expect(poAfterFirst.body.lines[0].receivedQuantity).toBe(4);
 
     let levels = await request(app.getHttpServer())
       .get(`/stock/levels?clinicId=${clinicId}`)
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .expect(200);
     expect(levels.body.find((l: { itemId: string }) => l.itemId === itemId).quantityOnHand).toBe(4);
 
@@ -107,26 +111,26 @@ describe('Inventory: goods-received receiving and stock rules (e2e)', () => {
     // silently allowed to overshoot the ordered quantity.
     await request(app.getHttpServer())
       .post(`/purchase-orders/${po.body.id}/receive`)
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .send({ clinicId, lines: [{ purchaseOrderLineId: lineId, quantityReceived: 10 }] })
       .expect(400);
 
     await request(app.getHttpServer())
       .post(`/purchase-orders/${po.body.id}/receive`)
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .send({ clinicId, lines: [{ purchaseOrderLineId: lineId, quantityReceived: 6, batchNumber: 'B2' }] })
       .expect(201);
 
     const poAfterFull = await request(app.getHttpServer())
       .get(`/purchase-orders/${po.body.id}`)
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .expect(200);
     expect(poAfterFull.body.status).toBe('FULLY_RECEIVED');
     expect(poAfterFull.body.lines[0].receivedQuantity).toBe(10);
 
     levels = await request(app.getHttpServer())
       .get(`/stock/levels?clinicId=${clinicId}`)
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .expect(200);
     expect(levels.body.find((l: { itemId: string }) => l.itemId === itemId).quantityOnHand).toBe(10);
   });
@@ -136,30 +140,30 @@ describe('Inventory: goods-received receiving and stock rules (e2e)', () => {
 
     await request(app.getHttpServer())
       .post('/stock/min-threshold')
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .send({ clinicId, itemId, minThreshold: 5 })
       .expect(201);
 
     let lowStock = await request(app.getHttpServer())
       .get(`/stock/low-stock?clinicId=${clinicId}`)
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .expect(200);
     expect(lowStock.body.map((l: { itemId: string }) => l.itemId)).toContain(itemId);
 
     const po = await request(app.getHttpServer())
       .post('/purchase-orders')
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .send({ clinicId, supplierId, lines: [{ itemId, orderedQuantity: 5, unitCost: 2 }] })
       .expect(201);
     await request(app.getHttpServer())
       .post(`/purchase-orders/${po.body.id}/receive`)
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .send({ clinicId, lines: [{ purchaseOrderLineId: po.body.lines[0].id, quantityReceived: 5 }] })
       .expect(201);
 
     lowStock = await request(app.getHttpServer())
       .get(`/stock/low-stock?clinicId=${clinicId}`)
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .expect(200);
     expect(lowStock.body.map((l: { itemId: string }) => l.itemId)).not.toContain(itemId);
   });
@@ -190,7 +194,7 @@ describe('Inventory: goods-received receiving and stock rules (e2e)', () => {
 
     const negativeStock = await request(app.getHttpServer())
       .get(`/stock/negative-stock?clinicId=${clinicId}`)
-      .set('x-tenant-id', tenantId)
+      .set('Authorization', bearer)
       .expect(200);
 
     const itemIds = negativeStock.body.map((level: { itemId: string }) => level.itemId);

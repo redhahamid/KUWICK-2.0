@@ -121,8 +121,9 @@ the last 10:00; rejecting one releases it.
 
 ## 5. History and audit
 
-`AppointmentEvent` is append-only — RLS, plus BEFORE DELETE and BEFORE TRUNCATE
-triggers that fire for every role including a superuser. Every state change
+`AppointmentEvent` is append-only — RLS policies that exist only for SELECT and
+INSERT, privileges revoked from the application role, and BEFORE UPDATE, DELETE
+and TRUNCATE triggers that fire for every role including a superuser (D-100). Every state change
 writes one **in the same transaction as the change**, with the actor's name
 snapshotted beside their id.
 

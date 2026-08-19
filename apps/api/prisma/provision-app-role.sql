@@ -62,3 +62,34 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 -- that RLS does not filter, and withholding it from a non-superuser is itself
 -- one of the append-only guarantees.
 REVOKE TRUNCATE ON ALL TABLES IN SCHEMA public FROM kuwick_app;
+
+-- APPEND-ONLY CARVE-OUT. The broad grant above re-opens UPDATE/DELETE on
+-- every table — including the audit tables that migrations deliberately
+-- closed (visit_workflow_events per D-083, appointment_events and
+-- appointment_form_answers per the a_history_anyone_can_rewrite migration).
+-- Those migrations REVOKE from the role that RUNS migrations and from
+-- PUBLIC, but kuwick_app's privileges come from THIS file — and this file
+-- re-runs on every deploy AND runs again after `migrate deploy` in CI, so
+-- without this block every provisioning run silently reinstated the
+-- privileges the migrations withdrew. RLS-without-a-policy and the BEFORE
+-- triggers still refused the writes (measured: UPDATE 0, "append-only"
+-- exception), but a defense in depth where one layer quietly evaporates on
+-- each deploy is two layers pretending to be three.
+--
+-- Guarded per-table: on a FRESH database this file legitimately runs before
+-- migrations have created these tables (PHASE 0), and a REVOKE on a missing
+-- table would abort the whole provisioning.
+DO $$
+DECLARE
+  t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'visit_workflow_events',
+    'appointment_events',
+    'appointment_form_answers'
+  ] LOOP
+    IF to_regclass('public.' || t) IS NOT NULL THEN
+      EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE ON TABLE %I FROM kuwick_app', t);
+    END IF;
+  END LOOP;
+END $$;

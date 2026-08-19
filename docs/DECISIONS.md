@@ -2233,6 +2233,22 @@ The Canvas rendered `ClinicalImageStrip` and `VisitAttachmentsPanel` one above t
 
 ---
 
+## D-100 — Pre-merge hardening: an appointment history nobody can rewrite, in any environment
+
+**The defect.** `appointment_events` carried the combined `tenant_isolation` FOR ALL policy, so with a valid tenant context an `UPDATE appointment_events SET reason='…'` as the application role returned `UPDATE 1` — measured, not assumed. The table refused DELETE and TRUNCATE but not edits, and D-083 already named the principle: a history anyone can rewrite is not a history.
+
+**The fix is three independent layers, each tested from the seat it defends against** (migration `20260819160000_a_history_anyone_can_rewrite_is_not_a_history`, covering `appointment_events` and `appointment_form_answers`):
+
+1. **RLS with no UPDATE/DELETE policy** — the D-083 mechanism, now applied here: split the FOR ALL policy into SELECT and INSERT; under FORCE ROW LEVEL SECURITY the absence of an UPDATE policy IS the refusal.
+2. **BEFORE triggers that RAISE** — new beyond D-083, because they are the only layer that binds a **superuser**: BEFORE UPDATE (per row) and BEFORE DELETE/TRUNCATE (per statement) raise unconditionally. A side effect that is not an accident: `appointment_id` is ON DELETE CASCADE, and the cascade from a parent hard-delete hits the DELETE trigger — so an appointment that HAS history cannot be hard-deleted by anyone, which is the module constraint ("do not hard-delete historical appointments") enforced at the deepest level available.
+3. **Privileges** — and here a second defect: `provision-app-role.sql`'s broad `GRANT … UPDATE, DELETE ON ALL TABLES` runs AFTER `migrate deploy` (CI does so explicitly; production re-runs it on every password rotation), silently re-granting on every audit table what the migrations had revoked — including D-083's `visit_workflow_events`, on every deploy since. The provisioning file now ends with an append-only carve-out revoking UPDATE/DELETE/TRUNCATE on the three audit tables from the app role, so provisioning is idempotent WITH its guarantees instead of quietly against them.
+
+**The suite that proves it** (`test/appointment-audit-immutability.e2e-spec.ts`): as `kuwick_app`, raw SQL and Prisma UPDATE/DELETE/TRUNCATE are all refused and the rows read back unchanged; as the OWNER/superuser seat (`TEST_OWNER_DATABASE_URL`), the triggers alone refuse the same statements; the grants themselves are asserted so a dropped carve-out fails the build. One trap worth recording: Prisma error messages embed a source frame of the failing call site, so `rejects.toThrow(/append-only/)` written NEXT to the invocation matches its own quoted assertion text and passes against the wrong error. The refusal patterns live at the top of the file, out of frame.
+
+**And the reason none of this had been caught: CI never ran the integration suite.** `test:api:e2e` — including `rls-enforcement` and `tenant-isolation`, the two proofs everything else leans on — existed but was in no workflow step. The `unit` job now runs it against the job's real PostgreSQL as `kuwick_app` (NOSUPERUSER NOBYPASSRLS). Getting it green surfaced that the three older suites had rotted while unwatched: they still authenticated with the bare `x-tenant-id` header D-034 removed (now a signed JWT via `test/auth.ts` — no test-only bypass added to the app, deliberately), asserted the pre-D-094 double-transition 400s (now assert idempotency: the repeat succeeds and the workflow history records NO second event), booked appointments in the past and without `bookable: true`, and deleted visits/appointments in cleanup that now carry undeletable history (cleanup dropped; disposable database, fresh random tenants).
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.
