@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Select, Space, Tabs } from 'antd';
+import { Select, Tabs, Typography } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
-import { PageHeader } from '../design-system/components/PageHeader';
 import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { CalendarWorkspace } from './calendar/CalendarWorkspace';
 import { AppointmentListView } from './list/AppointmentListView';
@@ -58,39 +57,32 @@ export function AppointmentsModulePage() {
 
   return (
     <div className="kw-appt-module">
-      <PageHeader
-        title="Appointments"
-        subtitle={
-          active === 'calendar'
-            ? 'The diary, in the clinic’s own clock.'
-            : active === 'roster'
-              ? 'Who is working, and when they can be booked.'
-              : active === 'services'
-                ? 'What can be booked, by whom, and on what terms.'
-                : active === 'booking-page'
-                  ? 'The link patients book through.'
-                  : 'The diary as a worklist.'
-        }
-        extra={
-          showSelector ? (
-            <Space>
-              <Select
-                placeholder="Branch"
-                value={clinicId}
-                onChange={setClinicId}
-                options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
-                style={{ minWidth: 170 }}
-              />
-            </Space>
-          ) : null
-        }
-      />
-
-      <Tabs
-        activeKey={active}
-        onChange={(key) => navigate(`/appointments/${key}`)}
-        items={TABS.map((value) => ({ key: value, label: TAB_LABELS[value] }))}
-      />
+      {/* §9 — ONE header row: title, the five surfaces, the branch. The old
+          composition spent three stacked bands (title+subtitle, tabs, then
+          the toolbar) before a single appointment was visible; on a laptop
+          that was the first booking of the day below the fold. The tab name
+          already says what the surface is — the subtitle line paid rent in
+          pixels for information the tab label carried. */}
+      <div className="kw-appt-header">
+        <Typography.Title level={4} className="kw-page-title" style={{ margin: 0 }}>
+          Appointments
+        </Typography.Title>
+        <Tabs
+          className="kw-appt-tabs"
+          activeKey={active}
+          onChange={(key) => navigate(`/appointments/${key}`)}
+          items={TABS.map((value) => ({ key: value, label: TAB_LABELS[value] }))}
+        />
+        {showSelector ? (
+          <Select
+            placeholder="Branch"
+            value={clinicId}
+            onChange={setClinicId}
+            options={clinics?.map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+            style={{ minWidth: 170 }}
+          />
+        ) : null}
+      </div>
 
       {active === 'calendar' ? <CalendarWorkspace clinicId={clinicId} /> : null}
       {active === 'list' ? (
