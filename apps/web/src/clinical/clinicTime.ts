@@ -76,6 +76,41 @@ export function clinicDayjs(value: string | Date | number) {
   return dayjs(value).tz(clinicTimeZone);
 }
 
+/**
+ * THE CALENDAR-GRID BRIDGE. react-big-calendar positions events by a Date's
+ * LOCAL fields — it has no zone of its own — so a diary rendered from raw
+ * instants sits at the READER'S hours, not the clinic's. On a Malaysian
+ * machine the two coincide and the defect is invisible; anywhere else the
+ * 09:00 patient is drawn at 01:00 and the morning list scrolls off the top
+ * of the rostered grid (found in the pre-merge QA pass, D-103).
+ *
+ * `clinicWallDate` re-expresses an instant as a pseudo-Date whose local
+ * fields equal the clinic wall clock, for the GRID ONLY. `fromClinicWallDate`
+ * is the inverse, for everything the grid hands back (a clicked slot, a
+ * drag target) — those must become real instants again before they reach
+ * the server. Neither belongs anywhere near data that is stored.
+ */
+export function clinicWallDate(value: string | Date): Date {
+  const zoned = inClinicZone(value);
+  return new Date(
+    zoned.year(),
+    zoned.month(),
+    zoned.date(),
+    zoned.hour(),
+    zoned.minute(),
+    zoned.second(),
+  );
+}
+
+export function fromClinicWallDate(pseudo: Date): Date {
+  return dayjs.tz(dayjs(pseudo).format('YYYY-MM-DD HH:mm:ss'), clinicTimeZone).toDate();
+}
+
+/** Parse a wall-clock text (no offset) AS clinic time — 'YYYY-MM-DD HH:mm'. */
+export function clinicDayjsAtWall(text: string) {
+  return dayjs.tz(text, clinicTimeZone);
+}
+
 export const CLINIC_DATE = 'D MMM YYYY';
 export const CLINIC_TIME = 'HH:mm';
 export const CLINIC_DATE_SHORT = 'D MMM';

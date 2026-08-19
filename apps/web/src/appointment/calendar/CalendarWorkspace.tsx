@@ -24,7 +24,7 @@ import { useRosterRange } from '../hooks/useRoster';
 import { useStaff } from '../../hr/hooks/useStaff';
 import { useServices } from '../../clinical/hooks/useServices';
 import { usePatients } from '../../core/hooks/usePatients';
-import { clinicDayjs, formatClinicTime, getClinicTimeZone } from '../../clinical/clinicTime';
+import { clinicDayjs, clinicWallDate, fromClinicWallDate, formatClinicTime, getClinicTimeZone } from '../../clinical/clinicTime';
 import { Appointment } from '../types';
 import { AppointmentDrawer } from './AppointmentDrawer';
 import { StaffBookingFlow } from '../StaffBookingFlow';
@@ -158,8 +158,12 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
         term ? patientName(appointment.patientId).toLowerCase().includes(term) : true,
       )
       .map((appointment) => {
-        const start = new Date(appointment.scheduledStart);
-        const end = new Date(appointment.scheduledEnd);
+        // Pseudo-dates: the grid positions by LOCAL fields, so it is handed
+        // the clinic wall clock (clinicWallDate) — the same clock every label
+        // already renders. Anything the grid returns goes back through
+        // fromClinicWallDate before it touches the server. D-103.
+        const start = clinicWallDate(appointment.scheduledStart);
+        const end = clinicWallDate(appointment.scheduledEnd);
         const minutes = (end.getTime() - start.getTime()) / 60000;
         const lines = cardLines(
           {
@@ -229,8 +233,11 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
    */
   const onSlot = async (slot: { start: Date; end: Date; resourceId?: string | number }) => {
     const staffId = slot.resourceId ? String(slot.resourceId) : moving?.staffId;
+    // The grid speaks wall-clock pseudo-dates (see the events mapping);
+    // convert back to a real instant the moment one leaves it.
+    const slotStart = fromClinicWallDate(slot.start);
     if (!moving) {
-      setBooking({ staffId, start: clinicDayjs(slot.start) });
+      setBooking({ staffId, start: clinicDayjs(slotStart) });
       return;
     }
     const minutes =
@@ -241,8 +248,8 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
       await reschedule.mutateAsync({
         id: target.id,
         input: {
-          scheduledStart: slot.start.toISOString(),
-          scheduledEnd: new Date(slot.start.getTime() + minutes * 60000).toISOString(),
+          scheduledStart: slotStart.toISOString(),
+          scheduledEnd: new Date(slotStart.getTime() + minutes * 60000).toISOString(),
           ...(staffId && staffId !== target.staffId ? { staffId } : {}),
           reason: 'Moved on the calendar',
         },
@@ -411,6 +418,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             resources={resources}
             resourceIdAccessor="resourceId"
             resourceTitleAccessor="resourceTitle"
+            getNow={() => clinicWallDate(new Date())}
             onSelectSlot={onSlot}
             onSelectEvent={onSelectEvent}
             onDoubleClickEvent={(event: CalendarEvent) => setMoving(event.appointment)}

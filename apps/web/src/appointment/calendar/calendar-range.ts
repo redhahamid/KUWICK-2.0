@@ -1,4 +1,5 @@
 import dayjs, { Dayjs } from 'dayjs';
+import { clinicDayjsAtWall } from '../../clinical/clinicTime';
 
 /**
  * FOUR VIEWS, and each answers a different question.
@@ -21,17 +22,22 @@ export interface CalendarRange {
 }
 
 export function getCalendarRange(viewMode: CalendarViewMode, anchor: Dayjs): CalendarRange {
+  // The anchor names a CALENDAR DATE (whatever zone the picker built it in);
+  // the range must cover that date IN THE CLINIC'S ZONE, or a reader west of
+  // the clinic fetches a window that misses the clinic's early morning — the
+  // 00:30 booking exists, the API was simply never asked for it (D-103).
+  const wall = clinicDayjsAtWall(`${anchor.format('YYYY-MM-DD')} 12:00`);
   switch (viewMode) {
     case 'day':
     case 'providers':
-      return { start: anchor.startOf('day'), end: anchor.endOf('day') };
+      return { start: wall.startOf('day'), end: wall.endOf('day') };
     case 'week':
       // Sunday-Saturday, matching the audited Yezza patient calendar
       // (docs/PROPOSED_ADDENDUM_2026-07-30_appointment-yezza-gaps.md source)
       // and dayjs's default English-locale week start.
-      return { start: anchor.startOf('week'), end: anchor.endOf('week') };
+      return { start: wall.startOf('week'), end: wall.endOf('week') };
     case 'month':
-      return { start: anchor.startOf('month'), end: anchor.endOf('month') };
+      return { start: wall.startOf('month'), end: wall.endOf('month') };
   }
 }
 

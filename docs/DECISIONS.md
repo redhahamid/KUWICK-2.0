@@ -2277,6 +2277,22 @@ Three defects, all found by treating §4/§5 of the hardening pass as an adversa
 
 ---
 
+## D-103 — Pre-merge QA: the diary really is in the clinic's own clock now
+
+The §6–§10 manual QA pass ran the seeded Klinik Hijraa-shaped week (`prisma/premerge-qa-seed.ts`: six providers across both schedule modes, split and overnight shifts, approved leave, every price-display and payment rule, ~18 appointments in every live status) through the real UI (`prisma/premerge-qa-shots.ts` → `docs/premerge-qa-screenshots/`, 19 images). It found one defect family the whole suite had been structurally unable to see, because every developer machine and CI assertion to date ran with the browser's clock in or near the clinic's zone:
+
+**react-big-calendar positions events by a Date's LOCAL fields.** Feeding it raw instants drew the 09:00 patient at 01:00 for any reader not in Malaysia — while every LABEL on the same chip correctly said 09:00, because labels go through `clinicTime.ts`. Worse than cosmetic: the grid's hour bounds come from the roster (clinic hours), so in week view the entire live morning sat ABOVE the visible window — bookings that exist, invisible. And the fetch range was computed from browser-day boundaries, so a reader west of the clinic never even asked the API for the clinic's early morning.
+
+The fix is one bridge with two directions (`clinicWallDate` / `fromClinicWallDate` in `clinicTime.ts`): the grid is handed pseudo-dates whose local fields equal the clinic wall clock, and everything the grid hands back (clicked slots, drag targets) is converted back to real instants before it reaches the server. `getCalendarRange` now derives from clinic-day boundaries (`clinicDayjsAtWall`). Nothing stored changes shape; the bridge exists only at the grid's edge.
+
+Same family, second member: the canvas mini-month marked the patient's appointment dot one day off its own printed label after 16:00 UTC, because antd calendar cells carry the panel's time-of-day and the grouping keyed them through `clinicDayjs` — the cell's instant crossed the clinic's midnight while its label did not. This is also why `canvasAppointmentCalendar.test.tsx` flaked by hour of run. `appointmentsOn` now keys a cell by the date PRINTED on it and an appointment by its CLINIC date, which agree always.
+
+And a small honesty fix the hidden label forced: rbc's built-in 12-hour range label was two clocks on one chip next to our 24-hour clinic time. It is hidden outright, and `cardLines` now leads with the clinic time at every card size, so the chip's only clock is the clinic's.
+
+What the pass did NOT find: the roster editor, services catalogue, booking-page settings with QR and per-service links, the list's money figures (Booked value vs realised as separate truths), the public flow's split-shift lunch gap and 22:00–06:00 night-shift slots, the deposit and approval chips, the BM copy, and the manage page all rendered correctly at 1440, 1024 and 390 wide — evidence in the screenshot set.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

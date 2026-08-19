@@ -44,7 +44,10 @@ export interface CardLabelInput {
  * the rest lives in the drawer.
  */
 export function cardLines(input: CardLabelInput, minutes: number): string[] {
-  if (minutes <= 15) return [input.patientName];
+  // The time leads EVERY size — the grid's own 12-hour range label is hidden
+  // (index.css) so this line is the chip's only clock, in the clinic format
+  // everything else on the page already speaks.
+  if (minutes <= 15) return [`${input.time} ${input.patientName}`];
   if (minutes <= 30) return [`${input.time} ${input.patientName}`, input.serviceName];
   return [`${input.time} ${input.patientName}`, input.serviceName, input.providerName];
 }

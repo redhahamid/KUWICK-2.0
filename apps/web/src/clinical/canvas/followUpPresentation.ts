@@ -96,7 +96,15 @@ export function appointmentsOn(
   appointments: Appointment[] | undefined,
   day: Date,
 ): Appointment[] {
-  const key = clinicDayjs(day).format('YYYY-MM-DD');
+  // `day` is a CALENDAR CELL from antd's picker: its printed label is its
+  // local date, and antd builds it carrying the panel value's time-of-day.
+  // Keying it through clinicDayjs meant that after 16:00 UTC (midnight in
+  // Kuala Lumpur) every cell's instant crossed the clinic's midnight and the
+  // patient's dot landed one day off its own label — a time-of-day-dependent
+  // defect that also made this file's test flake by hour of run (D-103).
+  // The cell means the date PRINTED ON IT; the appointment belongs to its
+  // CLINIC date. Compare those two directly.
+  const key = dayjs(day).format('YYYY-MM-DD');
   return (appointments ?? []).filter(
     (appointment) => clinicDayjs(appointment.scheduledStart).format('YYYY-MM-DD') === key,
   );

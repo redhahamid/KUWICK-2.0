@@ -29,15 +29,16 @@ const shift = (startsAt: string, endsAt: string, shiftType = 'WORKING'): RangeSh
 });
 
 describe('a card says as much as it has room for', () => {
-  it('1. a 15-minute slot gets the name and nothing else', () => {
+  it('1. a 15-minute slot gets one line: the time and the name', () => {
     // Twenty pixels of card. Four lines into it is four clipped lines, which
-    // is worse than one readable one.
+    // is worse than one readable one — and since the grid's own 12-hour
+    // label is hidden, this line carries the chip's only clock.
     expect(
       cardLines(
         { time: '09:00', patientName: 'Ahmad', serviceName: 'Consultation', providerName: 'Dr A' },
         15,
       ),
-    ).toEqual(['Ahmad']);
+    ).toEqual(['09:00 Ahmad']);
   });
 
   it('2. half an hour gets the time and the service', () => {

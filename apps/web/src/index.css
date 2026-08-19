@@ -3671,6 +3671,13 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   min-width: 0;
 }
 
+/* The card renders its own clinic-clock time (24h, CLINIC_TIME) as its first
+   line; react-big-calendar's built-in 12-hour range label on top of that was
+   two clocks on one chip. Hidden, not restyled: one time, one format. */
+.kw-calendar-workspace .rbc-event-label {
+  display: none;
+}
+
 .kw-calendar-event {
   font-size: 12px;
   line-height: 1.3;
