@@ -4,6 +4,7 @@ import {
   AppointmentDashboardController,
   AppointmentReminderController,
 } from './appointment-dashboard.controller';
+import { PublicBookingController } from './public-booking.controller';
 
 /**
  * THE ORDERING IN `appointment.module.ts` IS LOAD-BEARING.
@@ -34,5 +35,23 @@ describe('route registration order', () => {
       expect(index).toBeGreaterThan(-1);
       expect(index).toBeLessThan(catchAll);
     }
+  });
+
+  it('2. the public booking page registers its literal manage/ routes before :slug', () => {
+    // Same trap, one level down. `@Get(':slug')` registered first reads
+    // /public/booking/manage/<token> as a clinic whose slug is "manage" — and
+    // the failure mode is a 404 on a link the clinic has already sent to a
+    // patient by SMS.
+    const prototype = PublicBookingController.prototype as unknown as Record<string, unknown>;
+    const paths = Reflect.ownKeys(prototype)
+      .filter((key) => key !== 'constructor')
+      .map((key) => Reflect.getMetadata('path', prototype[key as string] as object));
+
+    const manage = paths.findIndex((path) => String(path).startsWith('manage'));
+    const slug = paths.findIndex((path) => String(path).startsWith(':slug'));
+
+    expect(manage).toBeGreaterThan(-1);
+    expect(slug).toBeGreaterThan(-1);
+    expect(manage).toBeLessThan(slug);
   });
 });

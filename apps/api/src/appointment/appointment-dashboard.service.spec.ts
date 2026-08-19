@@ -13,7 +13,8 @@ const CLINIC = 'clinic-1';
 interface World {
   grouped?: { status: AppointmentStatus; count: number; fees?: number }[];
   live?: { bookingFeeAmount: number; price: number }[];
-  completed?: { bookingFeeAmount: number; price: number }[];
+  /** Completed appointments that became visits, and what those visits billed. */
+  invoices?: number[];
   rows?: Record<string, unknown>[];
   timeZone?: string;
 }
@@ -38,11 +39,10 @@ function build(world: World = {}) {
         // The two money queries ask by status; the row query asks with an
         // include. Distinguished the same way the service distinguishes them.
         if (!call.select) return world.rows ?? [];
+        // The realised-revenue query asks for completed appointments that
+        // became visits, and reads the invoices on those visits.
         if (status === AppointmentStatus.COMPLETED) {
-          return (world.completed ?? []).map((row) => ({
-            bookingFeeAmount: row.bookingFeeAmount,
-            service: { price: row.price },
-          }));
+          return (world.invoices ?? []).map((_amount, index) => ({ visitId: `visit-${index}` }));
         }
         return (world.live ?? []).map((row) => ({
           bookingFeeAmount: row.bookingFeeAmount,
@@ -55,6 +55,12 @@ function build(world: World = {}) {
         return { id: 'appt-1', ...(data as object) };
       }),
     },
+    invoice: {
+      findMany: jest.fn(async () =>
+        (world.invoices ?? []).map((totalAmount) => ({ totalAmount })),
+      ),
+    },
+    waitlistEntry: { findMany: jest.fn(async () => []) },
   } as unknown as TenantScopedPrismaClient;
 
   const availability = {
@@ -173,8 +179,8 @@ describe('the five figures', () => {
   });
 });
 
-describe('potential sales', () => {
-  it('8. is the booking fee plus the service price, over live appointments', async () => {
+describe('booked value and realised revenue are different questions', () => {
+  it('8. booked value is the booking fee plus the service price, over live appointments', async () => {
     const ctx = build({
       live: [
         { bookingFeeAmount: 10, price: 35 },
@@ -184,10 +190,10 @@ describe('potential sales', () => {
 
     const { stats } = await ask(ctx);
 
-    expect(stats.potentialSales).toBe(95);
+    expect(stats.bookedValue).toBe(95);
   });
 
-  it('9. asks only for LIVE appointments — a cancellation is not potential revenue', async () => {
+  it('9. asks only for LIVE appointments — a cancellation is not booked value', async () => {
     const ctx = build({ live: [{ bookingFeeAmount: 10, price: 35 }] });
 
     await ask(ctx);
@@ -195,27 +201,40 @@ describe('potential sales', () => {
     const moneyQuery = ctx.findManyCalls.find((call) => (call as { select?: unknown }).select);
     expect((moneyQuery as { where: { status: { in: AppointmentStatus[] } } }).where.status.in).toEqual([
       ...TAB_STATUSES.UPCOMING,
+      ...TAB_STATUSES.ARRIVED,
     ]);
   });
 
-  it('10. realised sales is computed the same way, so the report cannot diverge', async () => {
+  it('10. realised revenue comes from the INVOICES, not from the price list read twice', async () => {
+    // A completed consultation that also dispensed three medicines earned more
+    // than its catalogue price. Reading the catalogue again and calling the
+    // second reading "realised" would be a forecast wearing an actual's name.
     const ctx = build({
       live: [{ bookingFeeAmount: 10, price: 35 }],
-      completed: [{ bookingFeeAmount: 5, price: 35 }],
+      invoices: [88.5, 24],
     });
 
     const { stats } = await ask(ctx);
 
-    expect(stats.potentialSales).toBe(45);
-    expect(stats.realisedSales).toBe(40);
+    expect(stats.bookedValue).toBe(45);
+    expect(stats.realisedRevenue).toBe(112.5);
   });
 
-  it('11. money is rounded to sen, not left as a float artefact', async () => {
+  it('11. a completed appointment with no linked visit contributes nothing', async () => {
+    // Honest: there is no invoice to read.
+    const ctx = build({ live: [{ bookingFeeAmount: 10, price: 35 }], invoices: [] });
+
+    const { stats } = await ask(ctx);
+
+    expect(stats.realisedRevenue).toBe(0);
+  });
+
+  it('12. money is rounded to sen, not left as a float artefact', async () => {
     const ctx = build({ live: [{ bookingFeeAmount: 0.1, price: 0.2 }] });
 
     const { stats } = await ask(ctx);
 
-    expect(stats.potentialSales).toBe(0.3);
+    expect(stats.bookedValue).toBe(0.3);
   });
 });
 
@@ -229,7 +248,13 @@ describe('a rescheduled row is not a lost booking', () => {
     await ask(ctx);
 
     const where = (ctx.prisma.appointment.groupBy as jest.Mock).mock.calls[0][0].where;
-    expect(where.status).toEqual({ not: AppointmentStatus.RESCHEDULED });
+    // Two clauses, because the fact moved: historical rows carry the
+    // deprecated RESCHEDULED status, and new ones are CANCELLED with a
+    // cancellation reason that says so.
+    expect(where.NOT).toEqual([
+      { status: AppointmentStatus.RESCHEDULED },
+      { cancellationReason: 'RESCHEDULED' },
+    ]);
   });
 
   it('13. no tab contains it either', () => {

@@ -24,12 +24,32 @@ import {
 import { AppointmentDashboardService } from './appointment-dashboard.service';
 import { ProviderShiftController } from './provider-shift.controller';
 import { ProviderShiftService } from './provider-shift.service';
+import { ServiceBookingConfigController } from './service-booking-config.controller';
+import { ServiceBookingConfigService } from './service-booking-config.service';
+import { BookingPageService } from './booking-page.service';
+import { WaitlistService } from './waitlist.service';
+import { AppointmentSeriesService } from './appointment-series.service';
+import { AppointmentCommunicationService } from './appointment-communication.service';
+import { PublicBookingController } from './public-booking.controller';
+import { PublicBookingService } from './public-booking.service';
+import {
+  AppointmentCommunicationController,
+  AppointmentSeriesController,
+  BookingPageController,
+  WaitlistController,
+} from './appointment-extras.controller';
 
 @Module({
   imports: [CoreModule, HrModule, ClinicalModule],
   controllers: [
     DoctorScheduleController,
     ProviderShiftController,
+    ServiceBookingConfigController,
+    BookingPageController,
+    WaitlistController,
+    AppointmentSeriesController,
+    AppointmentCommunicationController,
+    PublicBookingController,
     ScheduleExceptionController,
     SlotCapacityConfigController,
     DoctorServiceQualificationController,
@@ -51,6 +71,12 @@ import { ProviderShiftService } from './provider-shift.service';
   providers: [
     DoctorScheduleService,
     ProviderShiftService,
+    ServiceBookingConfigService,
+    BookingPageService,
+    WaitlistService,
+    AppointmentSeriesService,
+    AppointmentCommunicationService,
+    PublicBookingService,
     ScheduleExceptionService,
     SlotCapacityConfigService,
     DoctorServiceQualificationService,

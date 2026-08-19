@@ -9,23 +9,31 @@ import { clinicDateKey, parseDateOnly, zonedWallClockToInstant } from './time.ut
 import { SlotAvailabilityService } from './slot-availability.service';
 
 /**
- * The six tabs, and what each one actually means in stored terms.
+ * The tabs, and what each one actually means in stored terms.
  *
- * `RESCHEDULED` appears in NONE of them, deliberately. That status marks the
- * OLD row of a move — the booking still exists, at its new time, as a
- * different row. Filing it under Cancelled would tell a clinic it lost a
- * booking it still has, and would make the cancellation count wrong. It stays
- * reachable as history through `rescheduledFrom`.
+ * A cancellation whose reason is RESCHEDULED appears in NONE of them,
+ * deliberately: that row marks the OLD half of a move and the booking still
+ * exists, at its new time, as a different row. Filing it under Cancelled would
+ * tell a clinic it lost a booking it still has and would make the cancellation
+ * count wrong. It stays reachable as history through `rescheduledFrom`.
+ *
+ * WAITLIST is absent because it is not a status set at all — a waitlist entry
+ * is its own record with a date RANGE rather than a time, and the tab reads
+ * `WaitlistEntry`. See `waitlist()`.
  */
 export const TAB_STATUSES = {
   // REQUESTED is NOT here. A request is awaiting a decision, not a booking the
   // clinic is expecting; counting it in both tabs would double it on the stats
   // bar, and telling a clinic it has ten upcoming appointments when three of
   // them might be declined is a worse answer than telling it seven and three.
-  UPCOMING: [
-    AppointmentStatus.CONFIRMED,
-    AppointmentStatus.REMINDED,
+  //
+  // ARRIVED and CHECKED_IN moved OUT to their own tab: "who is in the building
+  // right now" is the counter's most-asked question and it was previously
+  // mixed in with next Thursday.
+  UPCOMING: [AppointmentStatus.CONFIRMED, AppointmentStatus.REMINDED],
+  ARRIVED: [
     AppointmentStatus.ARRIVED,
+    AppointmentStatus.CHECKED_IN,
     AppointmentStatus.IN_QUEUE,
   ],
   COMPLETED: [AppointmentStatus.COMPLETED],
@@ -35,6 +43,12 @@ export const TAB_STATUSES = {
   // See `TO_BE_SCHEDULED` below — it is a time comparison, not a status set.
   TO_BE_SCHEDULED: [AppointmentStatus.CONFIRMED, AppointmentStatus.REMINDED],
 } as const;
+
+/** Everything that still occupies a slot — the union the stats bar counts. */
+const LIVE_STATUSES = [
+  ...TAB_STATUSES.UPCOMING,
+  ...TAB_STATUSES.ARRIVED,
+] as const;
 
 export type DashboardTab = keyof typeof TAB_STATUSES;
 
@@ -110,11 +124,14 @@ export class AppointmentDashboardService {
         .filter((row) => statuses.includes(row.status))
         .reduce((total, row) => total + row._count._all, 0);
 
-    // POTENTIAL SALES — what this period is worth if every live appointment
-    // happens. Booking fees are read from the SNAPSHOT on each row (what the
-    // patient was actually committed to); service prices are read LIVE from
-    // the catalogue, because nobody has agreed to pay them yet and an estimate
-    // of future revenue should use today's price list.
+    // BOOKED VALUE — what this period is worth if every live appointment
+    // happens. NOT "potential sales", which reads as a forecast of takings and
+    // is not what this is: it is the value of what is in the diary, and a
+    // consultation frequently ends in a bill several times larger once
+    // medicines and procedures are added. Booking fees are read from the
+    // SNAPSHOT on each row (what the patient was actually committed to);
+    // service prices are read LIVE from the catalogue, because nobody has
+    // agreed to pay them yet and an estimate should use today's price list.
     //
     // Only live appointments count. A cancellation is not potential revenue,
     // and counting one would make the figure grow every time a clinic lost
@@ -122,25 +139,35 @@ export class AppointmentDashboardService {
     // nobody has agreed to them yet, and a figure that counts requests would
     // fall when one was declined without any business being lost.
     const live = await this.prisma.appointment.findMany({
-      where: { ...base, status: { in: [...TAB_STATUSES.UPCOMING] } },
+      where: { ...base, status: { in: [...LIVE_STATUSES] } },
       select: { bookingFeeAmount: true, service: { select: { price: true } } },
     });
-    const potentialSales = live.reduce(
+    const bookedValue = live.reduce(
       (total, row) => total + Number(row.bookingFeeAmount) + Number(row.service?.price ?? 0),
       0,
     );
 
-    // REALISED is not asked for on the bar, but it is half of "potential vs
-    // realised" in the reports brief and costs one more reduce. Kept here so
-    // the report does not invent a second definition of the same subtraction.
+    // REALISED REVENUE — what was actually invoiced, read from the INVOICES on
+    // the visits those appointments became. Not the service price again: a
+    // completed consultation that also dispensed three medicines earned more
+    // than its catalogue price, and a consultation waived for a follow-up
+    // earned less. Reading the catalogue twice and calling the second reading
+    // "realised" would be a forecast wearing an actual's name.
+    //
+    // Appointments completed without a linked visit contribute nothing, which
+    // is honest: there is no invoice to read.
     const completed = await this.prisma.appointment.findMany({
-      where: { ...base, status: AppointmentStatus.COMPLETED },
-      select: { bookingFeeAmount: true, service: { select: { price: true } } },
+      where: { ...base, status: AppointmentStatus.COMPLETED, visitId: { not: null } },
+      select: { visitId: true },
     });
-    const realisedSales = completed.reduce(
-      (total, row) => total + Number(row.bookingFeeAmount) + Number(row.service?.price ?? 0),
-      0,
-    );
+    const visitIds = completed.map((row) => row.visitId!).filter(Boolean);
+    const invoices = visitIds.length
+      ? await this.prisma.invoice.findMany({
+          where: { visitId: { in: visitIds }, status: { not: 'CANCELLED' } },
+          select: { totalAmount: true },
+        })
+      : [];
+    const realisedRevenue = invoices.reduce((total, row) => total + Number(row.totalAmount), 0);
 
     const noShow = countOf(TAB_STATUSES.NO_SHOW);
     const completedCount = countOf(TAB_STATUSES.COMPLETED);
@@ -155,8 +182,10 @@ export class AppointmentDashboardService {
       cancelled: countOf(TAB_STATUSES.CANCELLED),
       noShow,
       noShowRate: attendable === 0 ? null : noShow / attendable,
-      potentialSales: round2(potentialSales),
-      realisedSales: round2(realisedSales),
+      arrived: countOf(TAB_STATUSES.ARRIVED),
+      requests: countOf(TAB_STATUSES.REQUESTS),
+      bookedValue: round2(bookedValue),
+      realisedRevenue: round2(realisedRevenue),
       timeZone,
     };
   }
@@ -198,6 +227,12 @@ export class AppointmentDashboardService {
         staff: { select: { id: true, fullName: true } },
         service: { select: { id: true, name: true, price: true } },
         reminderSentBy: { select: { fullName: true } },
+        communications: {
+          where: { template: { startsWith: 'REMINDER' } },
+          orderBy: { queuedAt: 'desc' },
+          take: 1,
+          select: { status: true, channel: true, sentAt: true },
+        },
       },
     });
 
@@ -205,6 +240,7 @@ export class AppointmentDashboardService {
       id: row.id,
       status: row.status,
       source: row.source,
+      sourceDetail: row.sourceDetail,
       // The flat ids as well as the nested objects: the reschedule drawer
       // drives the availability engine and needs them, and re-fetching the
       // appointment to get ids the list already holds is a round trip for
@@ -223,7 +259,63 @@ export class AppointmentDashboardService {
       reminder: {
         sentAt: row.reminderSentAt,
         sentBy: row.reminderSentBy?.fullName ?? null,
+        lastChannel: row.communications[0]?.channel ?? null,
+        lastStatus: row.communications[0]?.status ?? null,
       },
+    }));
+  }
+
+  /**
+   * §44/§45 — the WAITLIST tab, which reads its own table.
+   *
+   * A waitlist entry has no time. It has a service, a date RANGE and possibly
+   * a daypart, so it cannot be an appointment row with `scheduledStart`
+   * invented for it — and inventing one is how a waitlist entry ends up
+   * occupying a slot nobody agreed to.
+   */
+  async waitlist(query: Pick<DashboardQuery, 'clinicId' | 'staffId' | 'serviceId' | 'search'>) {
+    const rows = await this.prisma.waitlistEntry.findMany({
+      where: {
+        clinicId: query.clinicId,
+        status: { in: ['ACTIVE', 'OFFERED'] },
+        ...(query.serviceId ? { serviceId: query.serviceId } : {}),
+        ...(query.staffId ? { preferredStaffId: query.staffId } : {}),
+        ...(query.search?.trim()
+          ? {
+              patient: {
+                OR: [
+                  { name: { contains: query.search.trim(), mode: 'insensitive' } },
+                  { phone: { contains: query.search.trim(), mode: 'insensitive' } },
+                ],
+              },
+            }
+          : {}),
+      },
+      // Priority first, then who asked first. A clinic that raises somebody's
+      // priority expects to see them move; a clinic that does not expects the
+      // queue to be a queue.
+      orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
+      take: 500,
+      include: {
+        patient: { select: { id: true, name: true, phone: true } },
+        service: { select: { id: true, name: true } },
+        preferredStaff: { select: { id: true, fullName: true } },
+      },
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      patient: row.patient,
+      service: row.service,
+      preferredProvider: row.preferredStaff,
+      earliestDate: row.earliestDate,
+      latestDate: row.latestDate,
+      preferredDaypart: row.preferredDaypart,
+      priority: row.priority,
+      note: row.note,
+      status: row.status,
+      offeredAt: row.offeredAt,
+      createdAt: row.createdAt,
     }));
   }
 
@@ -291,8 +383,14 @@ export class AppointmentDashboardService {
       scheduledStart: { gte: range.start, lt: range.end },
       ...(query.staffId ? { staffId: query.staffId } : {}),
       ...(query.serviceId ? { serviceId: query.serviceId } : {}),
-      // The old row of a move is not a booking anybody has — see TAB_STATUSES.
-      status: { not: AppointmentStatus.RESCHEDULED },
+      // The old half of a move is not a booking anybody has — see TAB_STATUSES.
+      // Two clauses because the fact moved: historical rows carry the
+      // deprecated RESCHEDULED status, and new ones are CANCELLED with a
+      // cancellation reason that says so.
+      NOT: [
+        { status: AppointmentStatus.RESCHEDULED },
+        { cancellationReason: 'RESCHEDULED' },
+      ],
     };
   }
 }

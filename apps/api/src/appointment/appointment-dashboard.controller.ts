@@ -42,6 +42,22 @@ export class AppointmentDashboardController {
       search,
     });
   }
+
+  /**
+   * The WAITLIST tab, which reads its own table. Not a `tab` value on the
+   * query above, because a waitlist entry has no scheduled time and the date
+   * range that bounds every other tab means nothing to it.
+   */
+  @Get('waitlist')
+  waitlist(
+    @Query('clinicId') clinicId: string,
+    @Query('staffId') staffId?: string,
+    @Query('serviceId') serviceId?: string,
+    @Query('search') search?: string,
+  ) {
+    if (!clinicId) throw new BadRequestException('clinicId is required');
+    return this.dashboard.waitlist({ clinicId, staffId, serviceId, search });
+  }
 }
 
 @Controller('appointments')
