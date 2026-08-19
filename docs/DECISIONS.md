@@ -2293,6 +2293,18 @@ What the pass did NOT find: the roster editor, services catalogue, booking-page 
 
 ---
 
+## D-104 — The premium product pass: same engine, a product a clinic would pay for
+
+One pass, three commits, zero engine changes: `SlotAvailabilityService`, the booking validator, the locks, the audit tables, RBAC and RLS are untouched — every change sits at the presentation boundary, plus one read-model filter with a functional justification.
+
+**The navigation decision (§4), documented:** top-nav **Roster** and Appointments ▸ **Roster & Availability** are the SAME route (`/appointments/roster`), one workspace, one source of truth — Option A, which the codebase had already chosen when the two writing surfaces were unified; the nav item is a deep link, and the legacy URLs redirect. Nothing to build, everything to state.
+
+**What changed, by surface:** the calendar quieted its chrome and gained a real now-line, no-overlap columns, compact week/month chips ("09:00 Siti" — the drawer holds the rest), person-shaped provider headers and a pinned hour gutter past four columns. The drawer leads with the patient and the queue banner outranks everything once they are in the building; dead primaries are GONE, not disabled (the e2e and unit specs now pin absence). The list keeps one primary per row behind a ••• menu and the KPI strip became figures instead of cards. The roster matrix says "23:00→09:00 +1" in the cell and fixed-weekly providers fold to a line. The public flow got the §18–27 storefront: identity hero, decision-shaped service cards, people-shaped doctor cards, a context strip over the slots, an empty day that goes and FINDS the next free one through the same engine, a confirmation with an in-browser .ics, and a manage page that explains instead of greying out.
+
+**The §36 review caught four and the gates caught two more.** Visual: the mobile day-strip truncating to "W… T…"; a split-shift week summarised as "11 days a week" (rows, not days); finance/front-desk accounts rendering as weekly-availability entries — fixed by filtering the roster read model to DOCTOR_ROLES, the same gate `assertActiveDoctor` applies; stacked overlap fragments. Process: the local Playwright invocations had been piping into `tail`, so the pipeline exit was tail's — the "exit 0" they reported was vacuous (CI's independent E2E job was the real gate all along, and was green). The final run captures playwright's own exit: 38 passed, 0 failed. And repeated suite runs polluting the queue and diary are handled as cancellations, never deletes — the append-only rules apply to the test data too, which is the point of having them.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

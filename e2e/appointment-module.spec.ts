@@ -117,11 +117,13 @@ test.describe('a patient books themselves in, and the clinic works the booking',
     await page.getByLabel(/mobile number/i).fill(phone);
     await page.getByRole('button', { name: /confirm appointment/i }).click();
 
-    // The confirmation, and the manage link the patient keeps.
-    // The RESULT TITLE specifically: the subtitle carries a similar sentence
-    // and an unscoped match resolves to both.
+    // The confirmation, and the manage link the patient keeps. The premium
+    // pass replaced antd's <Result> with the kw-public-done card; the
+    // HEADING carries the verdict and the testid scopes it.
     await expect(
-      page.locator('.ant-result-title').filter({ hasText: /booked|request has been sent/i }),
+      page
+        .getByTestId('public-confirmation')
+        .getByRole('heading', { name: /appointment confirmed|request has been sent/i }),
     ).toBeVisible();
     const manageLink = page.getByRole('link', { name: /manage my appointment/i });
     await expect(manageLink).toBeVisible();
@@ -177,10 +179,12 @@ test.describe('a patient books themselves in, and the clinic works the booking',
     // the assertion the whole path exists for: appointment → visit → queue,
     // all three linked, all three readable from the booking.
     await expect(drawer.getByText(/^A\d+/)).toBeVisible();
-    // And it cannot be checked in twice. Scoped to the PAGE, not the drawer
-    // body: antd renders a Drawer's footer outside the content element the
-    // test id is on.
-    await expect(page.getByRole('button', { name: /check in/i })).toBeDisabled();
+    // And it cannot be checked in twice: the premium drawer removes the dead
+    // primary outright and offers the NEXT step instead. Scoped to the PAGE,
+    // not the drawer body: antd renders a Drawer's footer outside the
+    // content element the test id is on.
+    await expect(page.getByRole('button', { name: /open visit/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^check in$/i })).toHaveCount(0);
   });
 });
 

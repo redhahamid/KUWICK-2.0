@@ -172,8 +172,11 @@ test.describe('booking a follow-up from the consultation', () => {
     // The status chip reads as words, not as an enum.
     await expect(row).toContainText(/confirmed/i);
     // The module's own actions are on it — it is an ordinary appointment, not
-    // a read-only echo of something the canvas keeps elsewhere.
-    await expect(row.getByRole('button', { name: 'Reschedule' })).toBeVisible();
+    // a read-only echo of something the canvas keeps elsewhere. The premium
+    // list keeps ONE primary per row; Reschedule lives behind the dots.
+    await row.getByRole('button', { name: /more actions/i }).click();
+    await expect(page.getByRole('menuitem', { name: 'Reschedule' })).toBeVisible();
+    await page.keyboard.press('Escape');
     // "Check in" and not "Arrived": the action creates the visit and the queue
     // ticket, and naming it after the lesser half was part of why the two were
     // ever conflated.
