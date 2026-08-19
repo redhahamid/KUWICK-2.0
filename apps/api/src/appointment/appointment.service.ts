@@ -4,7 +4,7 @@ import {
   TENANT_SCOPED_PRISMA,
   TenantScopedPrismaClient,
 } from '../core/tenant-scoped-prisma.provider';
-import { currentTenantId } from '../core/tenant-context';
+import { currentStaffId, currentTenantId } from '../core/tenant-context';
 import { AppointmentBookingValidator } from './appointment-booking-validator.service';
 import { TERMINAL_APPOINTMENT_STATUSES } from './appointment-status.constants';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
@@ -146,7 +146,14 @@ export class AppointmentService {
     }
     return this.prisma.appointment.update({
       where: { id },
-      data: { status: AppointmentStatus.CANCELLED, cancelReason: dto.cancelReason },
+      data: {
+        status: AppointmentStatus.CANCELLED,
+        cancelReason: dto.cancelReason,
+        // The reason was already recorded; the PERSON is the half that matters
+        // when a patient rings back to ask why.
+        cancelledByStaffId: currentStaffId() ?? null,
+        cancelledAt: new Date(),
+      },
     });
   }
 
@@ -166,11 +173,11 @@ export class AppointmentService {
   async arrived(id: string) {
     const appointment = await this.findById(id);
     assertStatus(appointment.status, ARRIVABLE_FROM, 'mark as arrived');
-    const updated = await this.prisma.appointment.update({
+    await this.prisma.appointment.update({
       where: { id },
       data: { status: AppointmentStatus.ARRIVED, arrivedAt: new Date() },
     });
-    await this.queueTickets.addToQueue({
+    const ticket = await this.queueTickets.addToQueue({
       clinicId: appointment.clinicId,
       patientId: appointment.patientId,
       staffId: appointment.staffId,
@@ -179,7 +186,17 @@ export class AppointmentService {
       // D-038 — appointment arrivals join the "A" queue stream.
       queueType: QueueType.APPOINTMENT,
     });
-    return updated;
+
+    // THE LINK, written the moment it exists. `addToQueue` created a VISIT to
+    // hang the ticket on, and without recording which one:
+    //   - `completeVisit` cannot find the appointment that started the
+    //     consultation, so it would sit at ARRIVED forever;
+    //   - the calendar's "open record" would have to guess at the patient's
+    //     most recent visit, which is the wrong one as soon as they have two.
+    return this.prisma.appointment.update({
+      where: { id },
+      data: { visitId: ticket.visitId },
+    });
   }
 
   async reschedule(id: string, dto: RescheduleAppointmentDto) {

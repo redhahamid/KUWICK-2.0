@@ -9,6 +9,7 @@ dayjs.extend(timezone);
 // The seeded clinic's zone. Every clinical time in the web app renders in it.
 const CLINIC_ZONE = 'Asia/Kuala_Lumpur';
 import { densityFixtures, openDensityVisit } from './support/density';
+import { ACCOUNTS, login } from './support/app';
 
 /**
  * b4 PIECE C — A FOLLOW-UP BOOKED IN THE CANVAS IS AN APPOINTMENT.
@@ -173,5 +174,68 @@ test.describe('booking a follow-up from the consultation', () => {
     await expect(row.getByRole('button', { name: 'Arrived' })).toBeVisible();
 
     await page.screenshot({ path: 'test-results/canvas-appointment-in-module.png', fullPage: false });
+  });
+});
+
+// ===========================================================================
+// THE ROUND TRIP, THE OTHER WAY.
+//
+// The test above proves canvas → module: a follow-up booked in the
+// consultation is found in the Appointments module. This proves module →
+// canvas, which is the direction that actually breaks when a second store
+// creeps in: the module writes somewhere the canvas does not read, and a
+// doctor opening the record sees a diary that is missing an appointment the
+// front desk made ten minutes ago.
+//
+// Booked through the CALENDAR's own modal, so the piece 3 booking path is what
+// is under test rather than an API call standing in for it.
+// ===========================================================================
+test.describe('an appointment booked in the module reaches the canvas', () => {
+  test('the module books it, the consultation month shows it', async ({ page }) => {
+    const { booking } = densityFixtures();
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    // ---- BOOK IT IN THE MODULE --------------------------------------------
+    // Through the module's own drawer, which drives the same availability
+    // engine and the same create endpoint the calendar's slot modal uses. What
+    // is under test here is that the two SURFACES read one store — not the
+    // mechanics of a particular grid widget.
+    await login(page, ACCOUNTS.frontDesk);
+    await page.goto('/appointments');
+    await page.getByRole('button', { name: 'Book appointment' }).click();
+
+    const drawer = page.getByRole('dialog').filter({ hasText: 'Book Appointment' });
+    await expect(drawer).toBeVisible();
+
+    // Each control is a label above an antd Select in the same wrapper. The
+    // option list renders in a portal outside the drawer, so the click on it
+    // is scoped to the page rather than to `drawer`.
+    const pick = async (label: string, option: string) => {
+      await drawer.getByText(label, { exact: true }).locator('..').locator('.ant-select').click();
+      await page.getByTitle(option, { exact: true }).first().click();
+    };
+
+    await pick('Patient', booking.patientName);
+    await pick('Doctor', booking.doctorName);
+    await pick('Service', booking.followUpService);
+
+    // The date the fixture doctor is rostered on — every day, by design.
+    const when = dayjs().add(FOLLOW_UP_DAYS_AHEAD, 'day');
+    await drawer.getByPlaceholder('Select date').fill(when.format('YYYY-MM-DD'));
+    await page.keyboard.press('Enter');
+
+    const slot = drawer.locator('button').filter({ hasText: /^\d{2}:\d{2}$/ }).first();
+    await expect(slot, 'the engine offered no slots for a rostered day').toBeVisible();
+    await slot.click();
+    await drawer.getByRole('button', { name: 'Book Appointment' }).click();
+    await expect(drawer).toBeHidden();
+
+    // ---- AND THE CANVAS HAS IT --------------------------------------------
+    await openDensityVisit(page, 'typical');
+    const calendar = page.getByTestId('canvas-appointment-calendar');
+    await expect(
+      calendar.getByTestId('appointment-next'),
+      'the canvas month does not show an appointment the module just booked',
+    ).toContainText(booking.followUpService);
   });
 });

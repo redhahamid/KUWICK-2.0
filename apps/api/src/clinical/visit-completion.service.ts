@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  AppointmentStatus,
   ClinicalNoteStatus,
   InvoiceStatus,
   OrderServiceStatus,
@@ -204,6 +205,26 @@ export class VisitCompletionService {
           data: { status: QueueTicketStatus.COMPLETED },
         });
       }
+
+      // COMPLETING THE CONSULTATION COMPLETES THE APPOINTMENT.
+      //
+      // Inside the same transaction that closed the visit, for the same reason
+      // the documentation is finalized here: either both happened or neither
+      // did. A closed visit whose appointment still reads ARRIVED is a diary
+      // that disagrees with the clinical record, and the Completed tab would
+      // stay empty however many patients had been seen.
+      //
+      // `updateMany` rather than `update`: a WALK-IN visit has no appointment
+      // pointing at it, which is the normal case and must not throw. The
+      // status guard makes it idempotent and stops a re-completion dragging a
+      // CANCELLED appointment back to COMPLETED.
+      await tx.appointment.updateMany({
+        where: {
+          visitId,
+          status: { in: [AppointmentStatus.ARRIVED, AppointmentStatus.IN_QUEUE] },
+        },
+        data: { status: AppointmentStatus.COMPLETED },
+      });
 
       // G4.5d6 — the documentation is finalized HERE, inside the same
       // transaction that closed the visit. Either both happened or neither

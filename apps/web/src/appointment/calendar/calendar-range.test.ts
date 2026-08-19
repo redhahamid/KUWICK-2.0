@@ -13,13 +13,6 @@ describe('getCalendarRange', () => {
     expect(end.hour()).toBe(23);
   });
 
-  it('provider view covers the same single day as day view', () => {
-    const dayRange = getCalendarRange('day', anchor);
-    const providerRange = getCalendarRange('provider', anchor);
-    expect(providerRange.start.isSame(dayRange.start)).toBe(true);
-    expect(providerRange.end.isSame(dayRange.end)).toBe(true);
-  });
-
   it('week view runs Sunday through Saturday and contains the anchor', () => {
     const { start, end } = getCalendarRange('week', anchor);
     expect(start.day()).toBe(0);
@@ -42,7 +35,6 @@ describe('shiftAnchor', () => {
 
   it('day/provider view shifts by one day', () => {
     expect(shiftAnchor('day', anchor, 1).isSame(anchor.add(1, 'day'), 'day')).toBe(true);
-    expect(shiftAnchor('provider', anchor, -1).isSame(anchor.subtract(1, 'day'), 'day')).toBe(true);
   });
 
   it('week view shifts by seven days', () => {

@@ -1,18 +1,24 @@
 import dayjs, { Dayjs } from 'dayjs';
 
-export type CalendarViewMode = 'day' | 'week' | 'month' | 'provider';
+/**
+ * DAY is the provider grid — one column per selected doctor.
+ *
+ * There used to be a fourth mode, `provider`, rendering exactly that while
+ * `day` rendered a single undifferentiated column. Two modes for one view is a
+ * choice nobody wants to make, and the plain day column answered a question
+ * ("what is happening today, in aggregate") that the week view already answers
+ * better.
+ */
+export type CalendarViewMode = 'day' | 'week' | 'month';
 
 export interface CalendarRange {
   start: Dayjs;
   end: Dayjs;
 }
 
-// Provider view is Day's grid rendered as one column per doctor instead of
-// one column for the clinic, so it covers the same single-day range.
 export function getCalendarRange(viewMode: CalendarViewMode, anchor: Dayjs): CalendarRange {
   switch (viewMode) {
     case 'day':
-    case 'provider':
       return { start: anchor.startOf('day'), end: anchor.endOf('day') };
     case 'week':
       // Sunday-Saturday, matching the audited Yezza patient calendar
@@ -27,7 +33,6 @@ export function getCalendarRange(viewMode: CalendarViewMode, anchor: Dayjs): Cal
 export function shiftAnchor(viewMode: CalendarViewMode, anchor: Dayjs, direction: 1 | -1): Dayjs {
   switch (viewMode) {
     case 'day':
-    case 'provider':
       return anchor.add(direction, 'day');
     case 'week':
       return anchor.add(direction, 'week');

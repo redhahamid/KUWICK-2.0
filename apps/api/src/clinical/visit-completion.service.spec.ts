@@ -106,6 +106,12 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
       findUnique: jest.fn().mockResolvedValue(ticketStatus === null ? null : { id: 't1', status: ticketStatus }),
       update: jest.fn(),
     },
+    // Completing the visit completes the APPOINTMENT it came from, in the same
+    // transaction. `updateMany` because a walk-in visit has no appointment
+    // pointing at it — the normal case, and it must not throw.
+    appointment: {
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
     orderService: {
       count: jest.fn(async ({ where }: any) => (where?.status?.in ? openProcedures : services)),
       findMany: jest.fn(async () =>
@@ -507,5 +513,61 @@ describe('atomicity, idempotency and concurrency', () => {
     await run(ctx, { checkOutAt: new Date('2020-01-01') } as never);
     const written = (ctx.tx.visit.updateMany as jest.Mock).mock.calls[0][0].data.checkOutAt as Date;
     expect(written.getUTCFullYear()).toBeGreaterThan(2020);
+  });
+});
+
+// ===========================================================================
+// COMPLETING THE CONSULTATION COMPLETES THE APPOINTMENT.
+//
+// Before the appointment carried a `visitId`, this was impossible: the only
+// completion path is `completeVisit(visitId)` and it had no way to find the
+// appointment that started the consultation. Appointments sat at ARRIVED
+// forever and the dashboard's Completed tab stayed empty however many
+// patients had been seen.
+// ===========================================================================
+
+describe('the appointment the visit came from', () => {
+  it('40. is completed inside the SAME transaction that closed the visit', async () => {
+    // Not afterwards. A closed visit whose appointment still reads ARRIVED is
+    // a diary that disagrees with the clinical record — the same reasoning
+    // that finalizes the documentation here rather than in a follow-up call.
+    const ctx = build(FRONT_DESK);
+
+    await run(ctx);
+
+    expect(ctx.tx.appointment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ visitId: 'visit-1' }) }),
+    );
+  });
+
+  it('41. only moves an appointment that is mid-visit', async () => {
+    // The status guard makes it idempotent and stops a re-completion dragging
+    // a CANCELLED appointment back to COMPLETED.
+    const ctx = build(FRONT_DESK);
+
+    await run(ctx);
+
+    const call = (ctx.tx.appointment.updateMany as jest.Mock).mock.calls[0][0];
+    expect(call.where.status.in).toEqual(['ARRIVED', 'IN_QUEUE']);
+    expect(call.data).toEqual({ status: 'COMPLETED' });
+  });
+
+  it('42. a WALK-IN visit completes normally with no appointment to close', async () => {
+    // `updateMany` matching nothing is the normal case, not an error.
+    const ctx = build(FRONT_DESK);
+    (ctx.tx.appointment.updateMany as jest.Mock).mockResolvedValueOnce({ count: 0 });
+
+    await expect(run(ctx)).resolves.toMatchObject({ alreadyCompleted: false });
+  });
+
+  it('43. an ALREADY completed visit does not touch the appointment again', async () => {
+    // The idempotent early return happens before any of this.
+    const ctx = build(FRONT_DESK, {
+      visit: { id: 'visit-1', clinicId: 'clinic-1', checkOutAt: DONE, doctorCompletedAt: DONE },
+    });
+
+    await run(ctx);
+
+    expect(ctx.tx.appointment.updateMany).not.toHaveBeenCalled();
   });
 });

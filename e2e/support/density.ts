@@ -43,6 +43,8 @@ export interface DensityFixture {
 /** b4 PIECE C — the scheduling backbone the canvas books a follow-up through. */
 export interface BookingFixture {
   patientName: string;
+  /** The doctor the follow-up service is mapped to. */
+  doctorName: string;
   /** Mapped to the fixture doctor, with a slot length and a daily capacity. */
   followUpService: string;
   /** Exists in the catalogue and is deliberately NOT mapped to that doctor. */

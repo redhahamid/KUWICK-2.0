@@ -1572,6 +1572,83 @@ drag-and-drop reschedule. Note that the booking validator now refuses any time
 that is not one of the engine's offered slots, so an invalid drop already has a
 reason to show — see piece 1.
 
+## APPOINTMENTS PIECE 3 — DONE (2026-08-19). The clinic calendar.
+
+**STAGING CONSOLE COMMANDS NEED `--workspace=apps/api`.** Owner's note, recorded
+so future prompts carry it:
+`npm run correct:appointment-instants --workspace=apps/api -- --apply`.
+
+**THE CORRECTION RAN AND FOUND NOTHING.** "No appointments predate the change"
+— zero rows. Expected: staging had no appointments booked before piece 1's
+migration. The `data_corrections` guard means re-running is safe either way.
+
+**THE LINK THAT MADE THE LIFECYCLE POSSIBLE.** `appointments.visit_id`, unique
+both ways, nullable (a walk-in has none). `arrived()` creates the type-A queue
+ticket, `addToQueue` creates the VISIT under it, and that visit id is now
+recorded. Two things were impossible without it:
+- **Completing the consultation completes the appointment.** The only
+  completion path is `completeVisit(visitId)`, which had no way back to the
+  appointment. Appointments sat at ARRIVED forever and the Completed tab stayed
+  empty however many patients were seen. Now done INSIDE the same transaction
+  that closes the visit, `updateMany` so a walk-in doesn't throw, guarded on
+  ARRIVED/IN_QUEUE so a re-completion can't drag a CANCELLED one to COMPLETED.
+- **"Open record" opens the RIGHT visit** rather than the patient's most recent,
+  which is the wrong one the moment they have two.
+
+Also `cancelled_by_staff_id` + `cancelled_at`: the reason was already recorded,
+the person is the half that matters when a patient rings back.
+
+**`arrived()` HAD NO TEST AT ALL** before this piece, which is how it shipped
+creating a ticket and losing the visit. `appointment-lifecycle.spec.ts` now
+pins arrival, the type-A stream, the link, and the cancel attribution.
+
+**⚠ DRAG-AND-DROP BECAME PICK-UP-AND-PLACE, AND THIS IS A DEVIATION FROM THE
+BRIEF.** `react-big-calendar`'s drag-and-drop addon is CommonJS-only against an
+ESM entry; its default export does not survive this project's production
+bundle. It throws at render, and because the router mounts at the ROOT that
+**blanks every page in the application**, not just the calendar. Three fixes
+were tried and measured (namespace-import unwrap, the addon's inner module,
+`commonjsOptions.transformMixedEsModules`) — all still `(X.default ?? X) is not
+a function` in the built app.
+
+So: select an appointment → **Move to another time** → click the target slot.
+A banner says whose appointment is in hand and offers Cancel move. It is the
+better interaction regardless — a drag is unusable from a keyboard, awkward on
+the tablet the front desk uses, and offers no chance to change your mind — but
+it is NOT what was asked for. **Owner decision: accept, or pay for the RBC
+upgrade/replacement that would restore the drag.**
+
+The move keeps the appointment's LENGTH and only moves its start; taking the
+clicked slot's end would silently resize a 30-minute consultation to whatever
+the grid is sliced at. Dropping into another doctor's column is refused in
+words — reschedule does not express a change of provider.
+
+**EVERY REFUSAL IS THE SERVER'S OWN SENTENCE.** The move and the slot booking
+both go through the same reschedule/create endpoints the drawer uses, so the
+same validator decides — capacity, roster, clinic window, service mapping — and
+piece 1's named reasons surface verbatim.
+
+**LAYOUT.** Mini-month + colour-coded provider checkboxes left, grid centre,
+detail PANEL right (not the popover it replaces — a popover closes when you
+look away, which is wrong for the thing you are working from). Day view is one
+column per selected provider; the old separate "Provider" view is GONE, because
+two modes for one view is a choice nobody wants and the plain day column
+answered a question the week view answers better.
+
+**THE CALENDAR WAS ORPHANED** when piece 2 retired `AppointmentsPage` — nothing
+rendered it. The dashboard now carries a List/Calendar toggle. A screen nothing
+links to may as well not exist, and only the e2e caught it.
+
+**ROUND TRIP, BOTH DIRECTIONS, both in `canvas-appointment.spec.ts`:**
+canvas → module (book a follow-up in the consultation, find it in the module)
+and module → canvas (book in the module, find it on the consultation month).
+
+**MEASURED:** API 1734, web (see the commit), e2e 34 passed / 2 skipped.
+
+**NEXT — PIECE 4**: the public booking page. Note that `booking_fee_paid_at`
+exists and nothing writes it yet; the "book up to N days ahead" horizon is
+still deliberately unbuilt and belongs on `clinic_booking_settings`.
+
 ## Checklist state
 
 | Item | Status |

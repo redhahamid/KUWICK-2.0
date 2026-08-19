@@ -34,6 +34,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../core/api-client";
 import { RescheduleAppointmentDrawer } from "./RescheduleAppointmentDrawer";
 import { BookAppointmentDrawer } from "./BookAppointmentDrawer";
+import { AppointmentCalendarView } from "./calendar/AppointmentCalendarView";
 import { AppointmentStatus } from "@kuwick/shared";
 // The SAME guards the popover and the API use. A third copy of "which
 // statuses may be marked arrived" is a third thing to forget to update.
@@ -112,6 +113,10 @@ export function AppointmentsDashboardPage() {
   // it away.
   const [rangeChosen, setRangeChosen] = useState(false);
   const [bookOpen, setBookOpen] = useState(false);
+  // LIST or CALENDAR — the same appointments, two ways of reading them. The
+  // calendar was orphaned when the old page was retired; this is the only
+  // route to it, and a screen nothing links to may as well not exist.
+  const [surface, setSurface] = useState<"list" | "calendar">("list");
 
   const changeTab = (next: DashboardTab) => {
     setTab(next);
@@ -152,14 +157,29 @@ export function AppointmentsDashboardPage() {
         title="Appointments"
         subtitle="The diary for the selected period, and what it is worth."
         extra={
-          <Button type="primary" onClick={() => setBookOpen(true)}>
-            Book appointment
-          </Button>
+          <Space size={8}>
+            <Segmented
+              value={surface}
+              onChange={(value) => setSurface(value as "list" | "calendar")}
+              options={[
+                { value: "list", label: "List" },
+                { value: "calendar", label: "Calendar" },
+              ]}
+            />
+            <Button type="primary" onClick={() => setBookOpen(true)}>
+              Book appointment
+            </Button>
+          </Space>
         }
       />
 
-      <StatsBar stats={data?.stats} loading={isFetching && !data} />
+      {surface === "calendar" && (
+        <AppointmentCalendarView clinicId={clinicId} onSwitchToList={() => setSurface("list")} />
+      )}
 
+      {surface === "list" && <StatsBar stats={data?.stats} loading={isFetching && !data} />}
+
+      {surface === "list" && (
       <div className="kw-appt-controls">
         <Segmented
           className="kw-appt-tabs"
@@ -227,13 +247,16 @@ export function AppointmentsDashboardPage() {
           />
         </Space>
       </div>
+      )}
 
+      {surface === "list" && (
       <AppointmentTable
         rows={data?.rows ?? []}
         loading={isFetching}
         tab={tab}
         clinicName={clinicName}
       />
+      )}
 
       <BookAppointmentDrawer open={bookOpen} onClose={() => setBookOpen(false)} />
     </div>

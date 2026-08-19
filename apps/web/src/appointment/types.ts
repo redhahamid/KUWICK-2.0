@@ -93,6 +93,16 @@ export interface Appointment {
   cancelReason: string | null;
   arrivedAt: string | null;
   rescheduledFromId: string | null;
+
+  /**
+   * The visit this appointment BECAME when the patient arrived. Null until
+   * then, and null forever for one that never arrived — which is why "Open
+   * record" is only offered when it is set.
+   */
+  visitId?: string | null;
+  cancelledByStaffId?: string | null;
+  cancelledAt?: string | null;
+  reminderSentAt?: string | null;
 }
 
 export interface CreateAppointmentDto {

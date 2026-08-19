@@ -3611,3 +3611,211 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   max-width: 420px;
   margin: 0 auto;
 }
+
+/* ===========================================================================
+   APPOINTMENT CALENDAR (piece 3)
+
+   Three panes: the month and who is on it at the left, the grid in the
+   centre, the appointment being worked on at the right. The grid is the only
+   thing that scrolls — the rail and the panel stay where the eye left them.
+   =========================================================================== */
+
+.kw-cal-shell {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+/* Below a laptop the three columns become one: a 320px panel beside a grid
+   on a tablet leaves neither enough room to read. */
+@media (max-width: 1200px) {
+  .kw-cal-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.kw-cal-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid var(--kw-border, #e4e7ec);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.kw-cal-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--kw-border-subtle, #f2f4f7);
+}
+
+/* The colour that identifies a doctor everywhere on this screen. A dot, not a
+   filled tag: eight filled tags stacked in a rail is a colour chart, and the
+   name is what people read. */
+.kw-cal-provider-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: baseline;
+}
+
+.kw-cal-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.kw-cal-toolbar {
+  row-gap: 8px;
+}
+
+.kw-cal-grid {
+  height: 640px;
+  transition: opacity 160ms ease;
+}
+
+.kw-cal-grid[data-loading='true'] {
+  opacity: 0.6;
+}
+
+/* --- The detail panel ---------------------------------------------------- */
+
+.kw-cal-panel {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--kw-border, #e4e7ec);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 5%);
+}
+
+.kw-cal-panel-empty {
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  box-shadow: none;
+  border-style: dashed;
+}
+
+.kw-cal-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kw-cal-panel-name {
+  margin: 0 0 6px !important;
+}
+
+.kw-cal-panel-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+}
+
+.kw-cal-panel-facts dt {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--kw-text-muted, #667085);
+  margin-bottom: 2px;
+}
+
+.kw-cal-panel-facts dd {
+  margin: 0;
+  color: var(--kw-text, #101828);
+}
+
+.kw-cal-panel-notes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.kw-cal-panel-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--kw-border-subtle, #f2f4f7);
+}
+
+/* --- The booking modal --------------------------------------------------- */
+
+/* The doctor and the time are a STATEMENT, not two more fields. Re-opening
+   them as pickers would make this a second booking form beside the drawer. */
+.kw-cal-slot-statement {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  border-radius: 10px;
+  background: rgb(24 74 107 / 5%);
+}
+
+.kw-cal-quick-register {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.kw-cal-quick-register > *:first-child {
+  grid-column: 1 / -1;
+  font-size: 13px;
+}
+
+.kw-cal-quick-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--kw-border, #e4e7ec);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+
+.kw-cal-quick-btn:hover:not(:disabled) {
+  border-color: #184a6b;
+  color: #184a6b;
+}
+
+.kw-cal-quick-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* The calendar while an appointment is being moved. A banner, not a cursor
+   change: a cursor is invisible on a tablet, and the front desk needs to know
+   the next click will move somebody's appointment. */
+.kw-cal-moving {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #b2ddff;
+  background: #eff8ff;
+  color: #175cd3;
+  font-size: 13px;
+}
+
+.kw-cal-grid[data-moving='true'] .rbc-time-slot:hover {
+  background: rgb(24 74 107 / 8%);
+  cursor: copy;
+}

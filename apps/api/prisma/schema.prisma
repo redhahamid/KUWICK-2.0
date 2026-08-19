@@ -708,6 +708,7 @@ model Staff {
   slotCapacityConfigs          SlotCapacityConfig[]
   clinicClosedDates            ClinicClosedDate[]
   appointmentRemindersSent     Appointment[]         @relation("AppointmentReminderAuthor")
+  appointmentsCancelled        Appointment[]         @relation("AppointmentCancelAuthor")
   doctorServiceQualifications  DoctorServiceQualification[]
   appointments                 Appointment[]
   // Two different roles on a visit: the attending clinician, and whoever
@@ -1189,6 +1190,20 @@ model Appointment {
   reminderSentAt        DateTime? @map("reminder_sent_at")
   reminderSentByStaffId String?   @map("reminder_sent_by_staff_id")
 
+  /// The visit this appointment BECAME when the patient arrived.
+  ///
+  /// Set by `arrived()`, which creates the queue ticket (type A) and the visit
+  /// under it. Without it, `completeVisit` cannot find the appointment that
+  /// started the consultation, so appointments sat at ARRIVED forever and the
+  /// Completed tab stayed empty. Unique both ways; null for a walk-in.
+  visitId               String?   @unique @map("visit_id")
+
+  /// WHO cancelled it, beside the reason that was already recorded. A reason
+  /// with nobody's name on it cannot be followed up when the patient rings
+  /// back to ask why.
+  cancelledByStaffId    String?   @map("cancelled_by_staff_id")
+  cancelledAt           DateTime? @map("cancelled_at")
+
   /// SNAPSHOT of the service's booking fee at the moment of booking. A clinic
   /// raising its fee in March must not change what a February booking asked
   /// for. The SERVICE price is deliberately not snapshotted — it is an
@@ -1207,6 +1222,8 @@ model Appointment {
   rescheduledFrom Appointment?   @relation("AppointmentReschedule", fields: [rescheduledFromId], references: [id])
   rescheduledTo   Appointment?   @relation("AppointmentReschedule")
   reminderSentBy  Staff?         @relation("AppointmentReminderAuthor", fields: [reminderSentByStaffId], references: [id])
+  visit           Visit?         @relation(fields: [visitId], references: [id])
+  cancelledBy     Staff?         @relation("AppointmentCancelAuthor", fields: [cancelledByStaffId], references: [id])
 
   @@index([tenantId])
   @@index([tenantId, clinicId])
@@ -1959,6 +1976,7 @@ model Visit {
   tenant                        Tenant               @relation(fields: [tenantId], references: [id])
   clinic                        Clinic               @relation(fields: [clinicId], references: [id])
   patient                       Patient              @relation(fields: [patientId], references: [id])
+  appointment                   Appointment?
   staff                         Staff?               @relation("VisitAttendingStaff", fields: [staffId], references: [id])
   registeredByStaff             Staff?               @relation("VisitRegisteredBy", fields: [registeredByStaffId], references: [id])
   doctorCompletedByStaff        Staff?               @relation("VisitDoctorCompletedBy", fields: [doctorCompletedByStaffId], references: [id])

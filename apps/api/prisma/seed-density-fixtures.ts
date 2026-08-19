@@ -94,7 +94,9 @@ async function main() {
     // them. Failing here instead names the fixture, which is what is wrong.
     const doctor = await tx.staff.findFirst({
       where: { role: { in: ['DOCTOR_RESIDENT', 'DOCTOR_LOCUM'] }, active: true },
-      select: { id: true },
+      // `fullName` travels to the fixture file so a spec can pick this doctor
+      // out of a dropdown rather than guessing which seeded staff member it is.
+      select: { id: true, fullName: true },
     });
     if (!doctor) {
       throw new Error(
@@ -391,6 +393,9 @@ async function main() {
           // b4 PIECE C — the booking backbone, handed over the same way.
           booking: {
             patientName: DENSITY_PATIENT_NAME,
+            // The mapped doctor's own name, so a spec can pick them in a
+            // dropdown instead of guessing which of the seeded staff it is.
+            doctorName: doctor.fullName,
             followUpService: FOLLOW_UP_SERVICE_NAME,
             unmappedService: UNMAPPED_SERVICE_NAME,
             slotLengthMinutes: SLOT_LENGTH_MINUTES,
