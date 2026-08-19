@@ -620,6 +620,45 @@ export class PublicBookingService {
     });
   }
 
+  /**
+   * The slot grid for a patient moving their OWN appointment.
+   *
+   * Same engine, same service, same provider, and the appointment excludes
+   * itself from its own overlap check — without that, the 09:00 booking being
+   * moved is the thing refusing the move.
+   */
+  async availabilityForToken(token: string, dateKey: string) {
+    const context = await this.contextForToken(token);
+    return this.inTenant(context.page, async () => {
+      const appointment = await this.prisma.appointment.findFirst({
+        where: { manageToken: token },
+        select: {
+          id: true,
+          clinicId: true,
+          staffId: true,
+          serviceId: true,
+          scheduledStart: true,
+          scheduledEnd: true,
+        },
+      });
+      if (!appointment) throw new NotFoundException('This booking link is not valid.');
+
+      const timeZone = await this.availability.clinicTimeZone(appointment.clinicId);
+      const result = await this.availability.findAvailability({
+        staffId: appointment.staffId,
+        clinicId: appointment.clinicId,
+        serviceId: appointment.serviceId,
+        date: parseDateOnly(dateKey),
+        excludeAppointmentId: appointment.id,
+      });
+      return {
+        timeZone,
+        reason: result.reason,
+        slots: result.slots.map((slot) => ({ ...slot, staffId: appointment.staffId })),
+      };
+    });
+  }
+
   async rescheduleByToken(token: string, dto: PublicRescheduleDto) {
     const start = new Date(dto.scheduledStart);
     const end = new Date(dto.scheduledEnd);

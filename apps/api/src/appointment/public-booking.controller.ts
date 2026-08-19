@@ -20,6 +20,11 @@ export class PublicBookingController {
     return this.booking.manage(token);
   }
 
+  @Get('manage/:token/availability')
+  availabilityForToken(@Param('token') token: string, @Query('date') date: string) {
+    return this.booking.availabilityForToken(token, date);
+  }
+
   @Patch('manage/:token/reschedule')
   rescheduleByToken(@Param('token') token: string, @Body() dto: PublicRescheduleDto) {
     return this.booking.rescheduleByToken(token, dto);

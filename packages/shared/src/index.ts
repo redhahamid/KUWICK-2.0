@@ -17,29 +17,71 @@ export enum Role {
 // Every lifecycle status below must map to exactly one of these.
 export type StatusTone = 'success' | 'active' | 'attention' | 'warning' | 'error' | 'neutral';
 
+/**
+ * Mirrors the Prisma enum exactly (apps/api/prisma/schema.prisma) — Prisma
+ * cannot import a TS enum from another package, so the two are kept in step by
+ * hand rather than redefining the wording.
+ *
+ * The last three are DEPRECATED: nothing writes them any more, and they remain
+ * only so that rows written before the scheduling redesign stay readable. See
+ * `DEPRECATED_APPOINTMENT_STATUSES`.
+ */
 export enum AppointmentStatus {
   REQUESTED = 'REQUESTED',
   CONFIRMED = 'CONFIRMED',
-  REMINDED = 'REMINDED',
   ARRIVED = 'ARRIVED',
-  IN_QUEUE = 'IN_QUEUE',
+  CHECKED_IN = 'CHECKED_IN',
   COMPLETED = 'COMPLETED',
-  RESCHEDULED = 'RESCHEDULED',
   CANCELLED = 'CANCELLED',
   NO_SHOW = 'NO_SHOW',
+  WAITLIST = 'WAITLIST',
+  REMINDED = 'REMINDED',
+  RESCHEDULED = 'RESCHEDULED',
+  IN_QUEUE = 'IN_QUEUE',
 }
 
 export const APPOINTMENT_STATUS_TONE: Record<AppointmentStatus, StatusTone> = {
   [AppointmentStatus.REQUESTED]: 'attention',
   [AppointmentStatus.CONFIRMED]: 'active',
-  [AppointmentStatus.REMINDED]: 'active',
   [AppointmentStatus.ARRIVED]: 'active',
-  [AppointmentStatus.IN_QUEUE]: 'attention',
+  [AppointmentStatus.CHECKED_IN]: 'success',
   [AppointmentStatus.COMPLETED]: 'success',
-  [AppointmentStatus.RESCHEDULED]: 'neutral',
   [AppointmentStatus.CANCELLED]: 'error',
   [AppointmentStatus.NO_SHOW]: 'error',
+  [AppointmentStatus.WAITLIST]: 'neutral',
+  [AppointmentStatus.REMINDED]: 'active',
+  [AppointmentStatus.RESCHEDULED]: 'neutral',
+  [AppointmentStatus.IN_QUEUE]: 'success',
 };
+
+/**
+ * WHAT A PERSON READS. The enum value is a stored fact; this is the word on
+ * the chip, and the two are allowed to differ — "Checked in" reads better than
+ * CHECKED_IN and survives the enum being renamed.
+ */
+export const APPOINTMENT_STATUS_LABEL: Record<AppointmentStatus, string> = {
+  [AppointmentStatus.REQUESTED]: 'Requested',
+  [AppointmentStatus.CONFIRMED]: 'Confirmed',
+  [AppointmentStatus.ARRIVED]: 'Arrived',
+  [AppointmentStatus.CHECKED_IN]: 'Checked in',
+  [AppointmentStatus.COMPLETED]: 'Completed',
+  [AppointmentStatus.CANCELLED]: 'Cancelled',
+  [AppointmentStatus.NO_SHOW]: 'No-show',
+  [AppointmentStatus.WAITLIST]: 'Waitlist',
+  [AppointmentStatus.REMINDED]: 'Confirmed',
+  [AppointmentStatus.RESCHEDULED]: 'Rescheduled',
+  [AppointmentStatus.IN_QUEUE]: 'Checked in',
+};
+
+/**
+ * Statuses no code path writes any more, kept so no historical row becomes
+ * unreadable. A screen must still render them; nothing must produce them.
+ */
+export const DEPRECATED_APPOINTMENT_STATUSES: AppointmentStatus[] = [
+  AppointmentStatus.REMINDED,
+  AppointmentStatus.RESCHEDULED,
+  AppointmentStatus.IN_QUEUE,
+];
 
 export enum ProcurementRequestStatus {
   PENDING = 'PENDING',

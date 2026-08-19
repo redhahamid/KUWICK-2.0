@@ -1,0 +1,484 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Calendar as BigCalendar, dayjsLocalizer, Views } from 'react-big-calendar';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
+import {
+  Alert,
+  Button,
+  DatePicker,
+  Input,
+  Segmented,
+  Select,
+  Space,
+  Spin,
+  Tooltip,
+  Typography,
+  message,
+} from 'antd';
+import { LeftOutlined, PlusOutlined, RightOutlined } from '@ant-design/icons';
+import dayjs, { Dayjs } from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+import { AppointmentStatus } from '@kuwick/shared';
+import { useAppointments, useRescheduleAppointment } from '../hooks/useAppointments';
+import { useRosterRange } from '../hooks/useRoster';
+import { useStaff } from '../../hr/hooks/useStaff';
+import { useServices } from '../../clinical/hooks/useServices';
+import { usePatients } from '../../core/hooks/usePatients';
+import { clinicDayjs, formatClinicTime, getClinicTimeZone } from '../../clinical/clinicTime';
+import { Appointment } from '../types';
+import { AppointmentDrawer } from './AppointmentDrawer';
+import { StaffBookingFlow } from '../StaffBookingFlow';
+import { CalendarMetrics } from './CalendarMetrics';
+import { CalendarViewMode, getCalendarRange, shiftAnchor, todayAnchor } from './calendar-range';
+import { cardLines, earliestRosteredHour, gridBounds, isReleased, scrollToHour } from './calendar-events';
+import { getDoctorColor } from './doctor-color';
+import { ApiError } from '../../core/api-client';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+const localizer = dayjsLocalizer(dayjs);
+
+const { Text } = Typography;
+
+const VIEW_OPTIONS: { label: string; value: CalendarViewMode }[] = [
+  { label: 'Day', value: 'day' },
+  { label: 'Week', value: 'week' },
+  { label: 'Month', value: 'month' },
+  { label: 'Providers', value: 'providers' },
+];
+
+interface CalendarEvent {
+  id: string;
+  title: string;
+  start: Date;
+  end: Date;
+  resourceId: string;
+  appointment: Appointment;
+  lines: string[];
+  released: boolean;
+}
+
+interface CalendarWorkspaceProps {
+  clinicId?: string;
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  const tag = (target as HTMLElement | null)?.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
+/**
+ * THE CALENDAR — the module's default workspace (§7).
+ *
+ * LAYOUT (§8). The grid takes the whole width. Selecting an appointment opens
+ * a DRAWER over the right-hand edge rather than a panel that is permanently
+ * reserved and empty most of the time: on a 13-inch laptop that panel was the
+ * difference between five provider columns and three.
+ *
+ * RESCHEDULING (§48) is pick-up-and-place, and that is a deliberate choice
+ * rather than a missing feature. Drag-and-drop through `react-big-calendar`'s
+ * addon does not survive this project's production bundle — the CJS default
+ * export comes through as an object, `(0, addon.default)` is not a function,
+ * and because the router mounts at the root the whole application renders
+ * blank. Pick-up-and-place works identically on a tablet, which drag does not,
+ * and it goes through the SAME server-side reschedule endpoint: availability
+ * is revalidated, conflicts refuse with a sentence, and the move is audited.
+ * Nothing is ever mutated client-side.
+ */
+export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
+  const [viewMode, setViewMode] = useState<CalendarViewMode>('day');
+  const [anchor, setAnchor] = useState<Dayjs>(() => todayAnchor());
+  const [providerFilter, setProviderFilter] = useState<string[]>([]);
+  const [serviceFilter, setServiceFilter] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [search, setSearch] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [booking, setBooking] = useState<{ staffId?: string; start?: Dayjs } | null>(null);
+  // The appointment picked up for moving. Two-step rather than a drag — see
+  // the block comment above.
+  const [moving, setMoving] = useState<Appointment | null>(null);
+
+  const reschedule = useRescheduleAppointment();
+  const { data: staff } = useStaff();
+  const { data: services } = useServices();
+  const { data: patients } = usePatients();
+
+  const range = useMemo(() => getCalendarRange(viewMode, anchor), [viewMode, anchor]);
+
+  const { data: appointments, isLoading } = useAppointments({
+    clinicId,
+    from: range.start.toISOString(),
+    to: range.end.toISOString(),
+  });
+  const { data: shifts } = useRosterRange(
+    clinicId,
+    range.start.format('YYYY-MM-DD'),
+    range.end.format('YYYY-MM-DD'),
+  );
+
+  const providers = useMemo(() => {
+    // The providers ON THIS CLINIC'S ROSTER, not every staff member. A grid
+    // with a column for the finance clerk is a grid nobody can read.
+    const rostered = new Set((shifts ?? []).map((shift) => shift.staffId));
+    const booked = new Set((appointments ?? []).map((appointment) => appointment.staffId));
+    return (staff ?? []).filter(
+      (member) => rostered.has(member.id) || booked.has(member.id),
+    );
+  }, [staff, shifts, appointments]);
+
+  const visibleProviderIds = useMemo(
+    () => new Set(providerFilter.length > 0 ? providerFilter : providers.map((p) => p.id)),
+    [providerFilter, providers],
+  );
+
+  const patientName = useCallback(
+    (id: string) => patients?.find((patient) => patient.id === id)?.name ?? 'Patient',
+    [patients],
+  );
+  const staffName = useCallback(
+    (id: string) => staff?.find((member) => member.id === id)?.fullName ?? '',
+    [staff],
+  );
+  const serviceName = useCallback(
+    (id: string) => services?.find((service) => service.id === id)?.name ?? '',
+    [services],
+  );
+
+  const events: CalendarEvent[] = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return (appointments ?? [])
+      .filter((appointment) => visibleProviderIds.has(appointment.staffId))
+      .filter(
+        (appointment) => serviceFilter.length === 0 || serviceFilter.includes(appointment.serviceId),
+      )
+      .filter(
+        (appointment) => statusFilter.length === 0 || statusFilter.includes(appointment.status),
+      )
+      .filter((appointment) =>
+        term ? patientName(appointment.patientId).toLowerCase().includes(term) : true,
+      )
+      .map((appointment) => {
+        const start = new Date(appointment.scheduledStart);
+        const end = new Date(appointment.scheduledEnd);
+        const minutes = (end.getTime() - start.getTime()) / 60000;
+        const lines = cardLines(
+          {
+            time: formatClinicTime(appointment.scheduledStart),
+            patientName: patientName(appointment.patientId),
+            serviceName: serviceName(appointment.serviceId),
+            providerName: staffName(appointment.staffId),
+          },
+          minutes,
+        );
+        return {
+          id: appointment.id,
+          title: lines.join(' · '),
+          start,
+          end,
+          resourceId: appointment.staffId,
+          appointment,
+          lines,
+          released: isReleased(appointment.status),
+        };
+      });
+  }, [
+    appointments,
+    visibleProviderIds,
+    serviceFilter,
+    statusFilter,
+    search,
+    patientName,
+    serviceName,
+    staffName,
+  ]);
+
+  const bounds = useMemo(() => gridBounds(shifts), [shifts]);
+  const scrollHour = useMemo(
+    () =>
+      scrollToHour({
+        anchor,
+        now: clinicDayjs(new Date()),
+        earliestRosteredHour: earliestRosteredHour(shifts),
+      }),
+    [anchor, shifts],
+  );
+
+  // Keyboard: D / W / M / P and the arrows. A receptionist works the calendar
+  // all day and reaching for the mouse to move one day is friction that adds up.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (isTypingTarget(event.target) || event.metaKey || event.ctrlKey) return;
+      const map: Record<string, CalendarViewMode> = { d: 'day', w: 'week', m: 'month', p: 'providers' };
+      const view = map[event.key.toLowerCase()];
+      if (view) {
+        setViewMode(view);
+        return;
+      }
+      if (event.key === 'ArrowLeft') setAnchor((current) => shiftAnchor(viewMode, current, -1));
+      if (event.key === 'ArrowRight') setAnchor((current) => shiftAnchor(viewMode, current, 1));
+      if (event.key.toLowerCase() === 't') setAnchor(todayAnchor());
+      if (event.key === 'Escape') setMoving(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [viewMode]);
+
+  /**
+   * An empty slot: either PLACE the appointment being moved, or start a new
+   * booking prefilled with the provider, the date and the time.
+   */
+  const onSlot = async (slot: { start: Date; end: Date; resourceId?: string | number }) => {
+    const staffId = slot.resourceId ? String(slot.resourceId) : moving?.staffId;
+    if (!moving) {
+      setBooking({ staffId, start: clinicDayjs(slot.start) });
+      return;
+    }
+    const minutes =
+      (new Date(moving.scheduledEnd).getTime() - new Date(moving.scheduledStart).getTime()) / 60000;
+    const target = moving;
+    setMoving(null);
+    try {
+      await reschedule.mutateAsync({
+        id: target.id,
+        input: {
+          scheduledStart: slot.start.toISOString(),
+          scheduledEnd: new Date(slot.start.getTime() + minutes * 60000).toISOString(),
+          ...(staffId && staffId !== target.staffId ? { staffId } : {}),
+          reason: 'Moved on the calendar',
+        },
+      });
+      message.success('Appointment moved');
+    } catch (error) {
+      // THE SERVER'S OWN WORDS. It knows whether the slot is taken, off the
+      // grid, outside the clinic's hours or past its notice period, and a
+      // generic "could not move" would send somebody hunting for which.
+      message.error(
+        error instanceof ApiError ? error.message : 'That appointment could not be moved.',
+      );
+    }
+  };
+
+  const onSelectEvent = (event: CalendarEvent) => {
+    if (moving?.id === event.id) {
+      setMoving(null);
+      return;
+    }
+    setSelectedId(event.id);
+  };
+
+  const rbcView =
+    viewMode === 'providers' ? Views.DAY : viewMode === 'day' ? Views.DAY : viewMode === 'week' ? Views.WEEK : Views.MONTH;
+
+  const resources =
+    viewMode === 'providers'
+      ? providers
+          .filter((provider) => visibleProviderIds.has(provider.id))
+          .map((provider) => ({ resourceId: provider.id, resourceTitle: provider.fullName }))
+      : undefined;
+
+  const heading = useMemo(() => {
+    if (viewMode === 'month') return anchor.format('MMMM YYYY');
+    if (viewMode === 'week') {
+      return `${range.start.format('D MMM')} – ${range.end.format('D MMM YYYY')}`;
+    }
+    return anchor.format('dddd D MMMM YYYY');
+  }, [viewMode, anchor, range]);
+
+  return (
+    <div className="kw-calendar-workspace" data-testid="calendar-workspace">
+      <div className="kw-calendar-toolbar">
+        <Space wrap size={8}>
+          <Button.Group>
+            <Button
+              icon={<LeftOutlined />}
+              aria-label="Previous"
+              onClick={() => setAnchor((current) => shiftAnchor(viewMode, current, -1))}
+            />
+            <Button onClick={() => setAnchor(todayAnchor())}>Today</Button>
+            <Button
+              icon={<RightOutlined />}
+              aria-label="Next"
+              onClick={() => setAnchor((current) => shiftAnchor(viewMode, current, 1))}
+            />
+          </Button.Group>
+          <DatePicker
+            value={anchor}
+            onChange={(value) => value && setAnchor(value)}
+            allowClear={false}
+            format="D MMM YYYY"
+          />
+          <Text strong style={{ fontSize: 15 }}>
+            {heading}
+          </Text>
+          <Segmented
+            value={viewMode}
+            options={VIEW_OPTIONS}
+            onChange={(value) => setViewMode(value as CalendarViewMode)}
+          />
+        </Space>
+
+        <Space wrap size={8}>
+          <Select
+            mode="multiple"
+            allowClear
+            maxTagCount={1}
+            style={{ minWidth: 160 }}
+            placeholder="All providers"
+            value={providerFilter}
+            onChange={setProviderFilter}
+            options={providers.map((provider) => ({
+              value: provider.id,
+              label: provider.fullName,
+            }))}
+          />
+          <Select
+            mode="multiple"
+            allowClear
+            maxTagCount={1}
+            style={{ minWidth: 150 }}
+            placeholder="All services"
+            value={serviceFilter}
+            onChange={setServiceFilter}
+            options={(services ?? []).map((service) => ({
+              value: service.id,
+              label: service.name,
+            }))}
+          />
+          <Select
+            mode="multiple"
+            allowClear
+            maxTagCount={1}
+            style={{ minWidth: 140 }}
+            placeholder="All statuses"
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              AppointmentStatus.REQUESTED,
+              AppointmentStatus.CONFIRMED,
+              AppointmentStatus.ARRIVED,
+              AppointmentStatus.CHECKED_IN,
+              AppointmentStatus.COMPLETED,
+              AppointmentStatus.NO_SHOW,
+              AppointmentStatus.CANCELLED,
+            ].map((status) => ({ value: status, label: status.replace(/_/g, ' ') }))}
+          />
+          <Input.Search
+            allowClear
+            placeholder="Find a patient"
+            style={{ width: 180 }}
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setBooking({})}>
+            New appointment
+          </Button>
+        </Space>
+      </div>
+
+      <CalendarMetrics appointments={appointments ?? []} />
+
+      {moving ? (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 8 }}
+          message={`Moving ${patientName(moving.patientId)} — click an empty slot to place it, or press Escape to stop.`}
+          action={<Button size="small" onClick={() => setMoving(null)}>Stop</Button>}
+        />
+      ) : null}
+
+      <div className="kw-calendar-grid">
+        {isLoading ? (
+          <div style={{ padding: 48, textAlign: 'center' }}>
+            <Spin />
+          </div>
+        ) : (
+          <BigCalendar
+            localizer={localizer}
+            events={events}
+            date={anchor.toDate()}
+            view={rbcView}
+            onNavigate={(value) => setAnchor(clinicDayjs(value))}
+            onView={() => undefined}
+            toolbar={false}
+            selectable
+            popup
+            step={15}
+            timeslots={2}
+            min={anchor.hour(bounds.startHour).minute(0).toDate()}
+            max={anchor.hour(Math.min(23, bounds.endHour)).minute(59).toDate()}
+            scrollToTime={anchor.hour(scrollHour).minute(0).toDate()}
+            resources={resources}
+            resourceIdAccessor="resourceId"
+            resourceTitleAccessor="resourceTitle"
+            onSelectSlot={onSlot}
+            onSelectEvent={onSelectEvent}
+            onDoubleClickEvent={(event: CalendarEvent) => setMoving(event.appointment)}
+            onDrillDown={(value: Date) => {
+              // A month cell click opens that DAY, which is what "+3 more"
+              // means to somebody who clicked it.
+              setAnchor(clinicDayjs(value));
+              setViewMode('day');
+            }}
+            messages={{ showMore: (count: number) => `+ ${count} more` }}
+            components={{
+              event: ({ event }: { event: CalendarEvent }) => (
+                <Tooltip title={`${event.lines.join(' · ')} — double-click to move`}>
+                  <div className="kw-calendar-event">
+                    {event.lines.map((line, index) => (
+                      <div key={line + index} className={index === 0 ? 'kw-event-primary' : 'kw-event-secondary'}>
+                        {line}
+                      </div>
+                    ))}
+                  </div>
+                </Tooltip>
+              ),
+            }}
+            eventPropGetter={(event: CalendarEvent) => {
+              const colour = getDoctorColor(event.appointment.staffId);
+              const picked = moving?.id === event.id;
+              return {
+                style: {
+                  // The PROVIDER is the colour; the status is a chip in the
+                  // drawer and an opacity here. Colour never carries the
+                  // meaning on its own.
+                  backgroundColor: event.released ? '#f2f4f7' : `${colour}1a`,
+                  borderLeft: `3px solid ${event.released ? '#98a2b3' : colour}`,
+                  color: '#17212b',
+                  opacity: event.released ? 0.6 : 1,
+                  textDecoration: event.released ? 'line-through' : undefined,
+                  outline: picked ? '2px dashed #184a6b' : undefined,
+                },
+              };
+            }}
+            style={{ height: '100%' }}
+          />
+        )}
+      </div>
+
+      <AppointmentDrawer
+        appointmentId={selectedId}
+        open={Boolean(selectedId)}
+        onClose={() => setSelectedId(null)}
+        onReschedule={(id) => {
+          const appointment = appointments?.find((row) => row.id === id);
+          if (appointment) {
+            setMoving(appointment);
+            setSelectedId(null);
+          }
+        }}
+      />
+
+      <StaffBookingFlow
+        open={Boolean(booking)}
+        clinicId={clinicId}
+        prefill={booking}
+        onClose={() => setBooking(null)}
+        onBooked={(id) => setSelectedId(id)}
+      />
+    </div>
+  );
+}
+
+/** Exported for the tests, which assert on the clinic's clock, not the runner's. */
+export { getClinicTimeZone };

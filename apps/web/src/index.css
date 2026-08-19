@@ -3613,209 +3613,308 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 }
 
 /* ===========================================================================
-   APPOINTMENT CALENDAR (piece 3)
+   THE APPOINTMENT MODULE — calendar, roster, services, public booking.
 
-   Three panes: the month and who is on it at the left, the grid in the
-   centre, the appointment being worked on at the right. The grid is the only
-   thing that scrolls — the rail and the panel stay where the eye left them.
+   The layout rule that governs all of it: the WORK takes the width, and
+   context is compact. A calendar squeezed between a rail and a permanently
+   reserved panel had about half the screen for the thing people came to look
+   at, and the panel was empty most of the time.
    =========================================================================== */
 
-.kw-cal-shell {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 320px;
-  gap: 16px;
-  align-items: start;
-}
-
-/* Below a laptop the three columns become one: a 320px panel beside a grid
-   on a tablet leaves neither enough room to read. */
-@media (max-width: 1200px) {
-  .kw-cal-shell {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.kw-cal-rail {
+.kw-appt-module {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 12px;
-  border: 1px solid var(--kw-border, #e4e7ec);
-  border-radius: 12px;
-  background: #fff;
+  gap: 12px;
 }
 
-.kw-cal-providers {
+.kw-calendar-workspace {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-top: 12px;
-  border-top: 1px solid var(--kw-border-subtle, #f2f4f7);
-}
-
-/* The colour that identifies a doctor everywhere on this screen. A dot, not a
-   filled tag: eight filled tags stacked in a rail is a colour chart, and the
-   name is what people read. */
-.kw-cal-provider-swatch {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  margin-right: 8px;
-  vertical-align: baseline;
-}
-
-.kw-cal-main {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
   min-width: 0;
 }
 
-.kw-cal-toolbar {
-  row-gap: 8px;
-}
-
-.kw-cal-grid {
-  height: 640px;
-  transition: opacity 160ms ease;
-}
-
-.kw-cal-grid[data-loading='true'] {
-  opacity: 0.6;
-}
-
-/* --- The detail panel ---------------------------------------------------- */
-
-.kw-cal-panel {
-  position: sticky;
-  top: 16px;
+.kw-calendar-toolbar {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 16px;
-  border: 1px solid var(--kw-border, #e4e7ec);
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 1px 2px rgb(16 24 40 / 5%);
-}
-
-.kw-cal-panel-empty {
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  min-height: 240px;
-  box-shadow: none;
-  border-style: dashed;
-}
-
-.kw-cal-panel-head {
-  display: flex;
-  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
 }
 
-.kw-cal-panel-name {
-  margin: 0 0 6px !important;
+/* THE METRICS STRIP — one line, small type, no boxes. Five 120px KPI cards
+   push the first appointment of the day below the fold, which is the one
+   thing that must not happen on a receptionist's screen. */
+.kw-calendar-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--kw-border-subtle, #f2f4f7);
 }
 
-.kw-cal-panel-facts {
+.kw-metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.kw-metric > :first-child {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-calendar-grid {
+  /* Tall enough to hold a working day without scrolling the page itself, and
+     it grows with the viewport rather than being pinned to one number. */
+  height: clamp(520px, calc(100vh - 320px), 900px);
+  min-width: 0;
+}
+
+.kw-calendar-event {
+  font-size: 12px;
+  line-height: 1.3;
+  overflow: hidden;
+}
+
+.kw-event-primary {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kw-event-secondary {
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* react-big-calendar's own chrome, brought into the Kuwick palette rather
+   than left as library defaults. */
+.rbc-header {
+  padding: 8px 4px;
+  font-weight: 600;
+  font-size: 13px;
+  border-bottom: 1px solid var(--kw-border, #dce4ea);
+}
+
+.rbc-today {
+  background: #f0f7fc;
+}
+
+.rbc-time-view,
+.rbc-month-view {
+  border: 1px solid var(--kw-border, #dce4ea);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.rbc-event {
+  border: none;
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+.rbc-event.rbc-selected {
+  outline: 2px solid #184a6b;
+}
+
+.rbc-show-more {
+  color: #184a6b;
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------------------
+   ROSTER & AVAILABILITY — the monthly matrix.
+
+   Providers down, dates across. It scrolls HORIZONTALLY inside its own box
+   with the provider column pinned, because a 31-column grid cannot fit on a
+   laptop and a page that scrolls sideways as a whole loses its own header.
+   --------------------------------------------------------------------------- */
+
+.kw-roster {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin: 0;
 }
 
-.kw-cal-panel-facts dt {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: var(--kw-text-muted, #667085);
-  margin-bottom: 2px;
-}
-
-.kw-cal-panel-facts dd {
-  margin: 0;
-  color: var(--kw-text, #101828);
-}
-
-.kw-cal-panel-notes {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.kw-cal-panel-actions {
+.kw-roster-toolbar {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--kw-border-subtle, #f2f4f7);
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
-/* --- The booking modal --------------------------------------------------- */
+.kw-roster-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--kw-border, #dce4ea);
+  border-radius: 12px;
+  background: #fff;
+}
 
-/* The doctor and the time are a STATEMENT, not two more fields. Re-opening
-   them as pickers would make this a second booking form beside the drawer. */
-.kw-cal-slot-statement {
+.kw-roster-grid {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  font-size: 12px;
+}
+
+.kw-roster-grid th,
+.kw-roster-grid td {
+  border: 1px solid var(--kw-border-subtle, #f2f4f7);
+  padding: 4px;
+  vertical-align: top;
+}
+
+.kw-roster-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fff;
+  text-align: center;
+  min-width: 62px;
+}
+
+.kw-roster-grid thead th[data-closed] {
+  background: #fef3c7;
+}
+
+.kw-roster-daynum {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.kw-roster-dayname {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--kw-text-muted, #667085);
+}
+
+.kw-roster-provider-head,
+.kw-roster-provider {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: #fff;
+  min-width: 170px;
+  text-align: left;
+  font-weight: 600;
+}
+
+.kw-roster-cell {
+  cursor: pointer;
+  min-height: 44px;
+  transition: background 120ms ease;
+}
+
+.kw-roster-cell:hover {
+  background: #f8fafc;
+}
+
+.kw-roster-cell[data-picked] {
+  background: #e6f4ff;
+  outline: 2px solid #184a6b;
+  outline-offset: -2px;
+}
+
+.kw-roster-cell[data-closed] {
+  background: repeating-linear-gradient(
+    45deg,
+    #fffbeb,
+    #fffbeb 4px,
+    #fef3c7 4px,
+    #fef3c7 8px
+  );
+}
+
+.kw-roster-cell-body {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 12px 14px;
-  margin-bottom: 16px;
-  border-radius: 10px;
-  background: rgb(24 74 107 / 5%);
 }
 
-.kw-cal-quick-register {
-  display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  align-items: center;
+.kw-roster-chip {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.kw-roster-closed {
+  display: block;
+  font-size: 10px;
+  color: #92400e;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.kw-weekly-grid {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
+}
+
+.kw-weekly-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ---------------------------------------------------------------------------
+   THE PUBLIC BOOKING PAGE — mobile first, and no staff chrome at all.
+   --------------------------------------------------------------------------- */
+
+.kw-public-booking {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+  min-height: 100vh;
+  background: #fff;
+}
+
+.kw-public-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
   margin-bottom: 20px;
 }
 
-.kw-cal-quick-register > *:first-child {
-  grid-column: 1 / -1;
-  font-size: 13px;
+.kw-public-logo {
+  max-height: 56px;
+  max-width: 180px;
+  object-fit: contain;
 }
 
-.kw-cal-quick-btn {
-  padding: 4px 12px;
-  border: 1px solid var(--kw-border, #e4e7ec);
-  border-radius: 6px;
-  background: #fff;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: border-color 140ms ease, color 140ms ease;
+/* Slots are a WRAPPING GRID of touch targets, not a dropdown. On a phone a
+   select of thirty times is four taps; this is one. */
+.kw-public-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+  margin-top: 6px;
 }
 
-.kw-cal-quick-btn:hover:not(:disabled) {
-  border-color: #184a6b;
-  color: #184a6b;
+.kw-public-slots .ant-btn {
+  min-height: 44px;
 }
 
-.kw-cal-quick-btn:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
+@media (max-width: 600px) {
+  .kw-calendar-toolbar,
+  .kw-roster-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
 
-/* The calendar while an appointment is being moved. A banner, not a cursor
-   change: a cursor is invisible on a tablet, and the front desk needs to know
-   the next click will move somebody's appointment. */
-.kw-cal-moving {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 1px solid #b2ddff;
-  background: #eff8ff;
-  color: #175cd3;
-  font-size: 13px;
-}
-
-.kw-cal-grid[data-moving='true'] .rbc-time-slot:hover {
-  background: rgb(24 74 107 / 8%);
-  cursor: copy;
+  .kw-calendar-grid {
+    height: clamp(420px, calc(100vh - 260px), 700px);
+  }
 }

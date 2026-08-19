@@ -37,7 +37,10 @@ const MANAGEMENT_CATEGORIES: HubCategory[] = [
     label: 'HR & Incentives',
     items: [
       { path: '/management/hr/staff', label: 'Staff' },
-      { path: '/management/operation/doctor-schedules', label: 'Doctor & Staff Schedules' },
+      // The roster moved to Appointments ▸ Roster & Availability, so that one
+      // screen is the only thing writing provider schedules. Leave and
+      // attendance stay here: they are HR facts the roster READS.
+      { path: '/appointments/roster', label: 'Roster & Availability' },
       { path: '/management/hr/attendance', label: 'Attendance' },
       { path: '/management/hr/leave-requests', label: 'Leave Requests' },
     ],

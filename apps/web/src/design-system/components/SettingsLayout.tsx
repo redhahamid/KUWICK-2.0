@@ -15,12 +15,21 @@ const SETTINGS_CATEGORIES: HubCategory[] = [
     key: 'scheduling',
     label: 'Appointments & Scheduling',
     items: [
-      // Availability first: it is what a clinic sets up before anything else
-      // here means anything.
-      { path: '/settings/scheduling/provider-availability', label: 'Provider Availability' },
-      { path: '/settings/scheduling/booking-rules', label: 'Booking Rules' },
-      { path: '/settings/scheduling/doctor-service-mapping', label: 'Doctor-Service Mapping' },
-      { path: '/settings/scheduling/slot-capacity', label: 'Slot Capacity' },
+      // What remains here is the BRANCH's own booking policy — its session
+      // band, its notice, how far ahead it takes bookings, and the days it is
+      // shut. Everything else that used to live here has moved to where the
+      // question is actually asked:
+      //
+      //   Provider Availability  → Appointments ▸ Roster & Availability
+      //   Doctor-Service Mapping → Appointments ▸ Services ▸ Providers
+      //   Slot Capacity          → Appointments ▸ Services ▸ Scheduling
+      //
+      // No data was deleted; the junction tables are untouched, and every old
+      // URL redirects.
+      { path: '/settings/scheduling/booking-rules', label: 'Branch Booking Rules' },
+      { path: '/appointments/roster', label: 'Roster & Availability →' },
+      { path: '/appointments/services', label: 'Services & Booking →' },
+      { path: '/appointments/booking-page', label: 'Public Booking Page →' },
     ],
   },
   {

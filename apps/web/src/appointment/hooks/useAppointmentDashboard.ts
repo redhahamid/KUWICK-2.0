@@ -3,11 +3,15 @@ import { apiClient } from '../../core/api-client';
 
 export type DashboardTab =
   | 'UPCOMING'
+  | 'REQUESTS'
+  | 'ARRIVED'
   | 'COMPLETED'
   | 'NO_SHOW'
   | 'CANCELLED'
-  | 'TO_BE_SCHEDULED'
-  | 'REQUESTS';
+  | 'TO_BE_SCHEDULED';
+
+/** WAITLIST reads its own table and has no date range — see `useWaitlist`. */
+export type ListTab = DashboardTab | 'WAITLIST';
 
 export type PaymentState = 'NO_FEE' | 'UNPAID' | 'PAID';
 
@@ -25,8 +29,14 @@ export interface DashboardRow {
   patient: { id: string; name: string; phone: string | null };
   provider: { id: string; fullName: string };
   service: { id: string; name: string; price: string };
+  sourceDetail: string | null;
   payment: { state: PaymentState; amount: number; paidAt: string | null };
-  reminder: { sentAt: string | null; sentBy: string | null };
+  reminder: {
+    sentAt: string | null;
+    sentBy: string | null;
+    lastChannel: string | null;
+    lastStatus: string | null;
+  };
 }
 
 export interface DashboardStats {
@@ -35,8 +45,12 @@ export interface DashboardStats {
   cancelled: number;
   noShow: number;
   noShowRate: number | null;
-  potentialSales: number;
-  realisedSales: number;
+  arrived: number;
+  requests: number;
+  /** §46 — what the diary is WORTH if it all happens. Not a sales forecast. */
+  bookedValue: number;
+  /** §46 — what the linked invoices actually came to. */
+  realisedRevenue: number;
   timeZone: string;
 }
 

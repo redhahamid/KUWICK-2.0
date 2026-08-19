@@ -30,7 +30,13 @@ const PRIMARY_NAV_ITEMS = [
   navItem('/patients', 'Patients'),
   navItem('/queue', 'Queue'),
   navItem('/procedure-queue', 'Tasks'),
-  navItem('/management/operation/doctor-schedules', 'Schedules'),
+  // "Schedules" is gone from the main nav, and this is the visible half of a
+  // real fix rather than a tidy-up. It and Settings ▸ Provider Availability
+  // wrote the SAME table with opposite models, and saving one silently deleted
+  // the other's effective-dated rows. There is now one roster, and it lives
+  // where the diary does: Appointments ▸ Roster & Availability. The old URL
+  // redirects there.
+  navItem('/appointments/roster', 'Roster'),
 ];
 
 /**

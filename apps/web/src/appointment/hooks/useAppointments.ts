@@ -52,11 +52,27 @@ export function useAvailability(query: AvailabilityQuery) {
   });
 }
 
+/**
+ * Everything that has to be thrown away when an appointment moves.
+ *
+ * Named once because getting it wrong is invisible: a stale slot grid offers a
+ * time that was taken thirty seconds ago, the server refuses it, and the
+ * receptionist is told "no longer available" about a slot the screen is still
+ * showing.
+ */
+function invalidateDiary(queryClient: ReturnType<typeof useQueryClient>): void {
+  queryClient.invalidateQueries({ queryKey: ['appointments'] });
+  queryClient.invalidateQueries({ queryKey: ['appointment-dashboard'] });
+  queryClient.invalidateQueries({ queryKey: ['appointment-detail'] });
+  queryClient.invalidateQueries({ queryKey: ['availability'] });
+  queryClient.invalidateQueries({ queryKey: ['calendar-appointments'] });
+}
+
 export function useCreateAppointment() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (dto: CreateAppointmentDto) => apiClient.post<Appointment>('/appointments', dto),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['appointments'] }),
+    onSuccess: () => invalidateDiary(queryClient),
   });
 }
 
@@ -68,13 +84,16 @@ function useAppointmentAction<TInput = void>(action: string) {
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input?: TInput }) =>
       apiClient.patch<Appointment>(`/appointments/${id}/${action}`, input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['appointments'] }),
+    onSuccess: () => invalidateDiary(queryClient),
   });
 }
 
 export const useConfirmAppointment = () => useAppointmentAction('confirm');
 export const useNoShowAppointment = () => useAppointmentAction('no-show');
 export const useArrivedAppointment = () => useAppointmentAction('arrived');
-export const useCancelAppointment = () => useAppointmentAction<{ cancelReason?: string }>('cancel');
+export const useCancelAppointment = () =>
+  useAppointmentAction<{ cancelReason?: string; cancellationReason?: string }>('cancel');
 export const useRescheduleAppointment = () =>
   useAppointmentAction<RescheduleAppointmentDto>('reschedule');
+/** "They're here" without creating the visit yet — see the service. */
+export const useMarkArrivedAppointment = () => useAppointmentAction('mark-arrived');

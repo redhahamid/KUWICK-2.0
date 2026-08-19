@@ -76,7 +76,31 @@ export interface CreateSlotCapacityConfigDto {
   dailyCapacity?: number;
 }
 
-export type AppointmentSource = 'ONLINE_PORTAL' | 'FRONT_DESK';
+export type AppointmentSource =
+  | 'ONLINE_PORTAL'
+  | 'FRONT_DESK'
+  | 'PATIENT_APP'
+  | 'FOLLOW_UP'
+  | 'QR'
+  | 'WEBSITE'
+  | 'WHATSAPP'
+  | 'CAMPAIGN'
+  | 'IMPORT'
+  | 'API';
+
+/** How a booking is described to a person, per source. */
+export const SOURCE_LABELS: Record<AppointmentSource, string> = {
+  FRONT_DESK: 'Staff',
+  ONLINE_PORTAL: 'Booking page',
+  PATIENT_APP: 'Patient app',
+  FOLLOW_UP: 'Follow-up',
+  QR: 'QR code',
+  WEBSITE: 'Website',
+  WHATSAPP: 'WhatsApp',
+  CAMPAIGN: 'Campaign',
+  IMPORT: 'Imported',
+  API: 'API',
+};
 
 export interface Appointment {
   id: string;
@@ -114,11 +138,22 @@ export interface CreateAppointmentDto {
   scheduledStart: string;
   scheduledEnd: string;
   notes?: string;
+  patientNote?: string;
+  sourceDetail?: string;
+  /** §28 — a retried POST returns the booking already made, not a second one. */
+  idempotencyKey?: string;
+  override?: boolean;
+  overrideReason?: string;
 }
 
 export interface RescheduleAppointmentDto {
   scheduledStart: string;
   scheduledEnd: string;
+  /** A reschedule frequently moves the patient to a different provider. */
+  staffId?: string;
+  reason?: string;
+  override?: boolean;
+  overrideReason?: string;
 }
 
 export interface AvailableSlot {
