@@ -91,14 +91,19 @@ export function FixedWeeklyEditor({
   };
 
   const summary = (() => {
-    const count = days.length;
-    if (count === 0) return 'No working days configured';
+    // DISTINCT days — a split-shift day is two rows but one day, and
+    // "11 days a week" is not a schedule anybody works.
+    const distinct = new Set(days.map((day) => day.dayOfWeek)).size;
+    if (distinct === 0) return 'No working days configured';
     const sorted = [...days].sort((a, b) => a.dayOfWeek - b.dayOfWeek);
-    const sameHours = sorted.every(
-      (day) => day.startTime === sorted[0].startTime && day.endTime === sorted[0].endTime,
-    );
-    const hours = sameHours ? ` · ${sorted[0].startTime}–${sorted[0].endTime}` : '';
-    return `${count} day${count === 1 ? '' : 's'} a week${hours}`;
+    const split = days.length > distinct;
+    const sameHours =
+      !split &&
+      sorted.every(
+        (day) => day.startTime === sorted[0].startTime && day.endTime === sorted[0].endTime,
+      );
+    const hours = sameHours ? ` · ${sorted[0].startTime}–${sorted[0].endTime}` : split ? ' · split shifts' : '';
+    return `${distinct} day${distinct === 1 ? '' : 's'} a week${hours}`;
   })();
 
   if (!editing) {

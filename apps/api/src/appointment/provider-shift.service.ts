@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { LeaveStatus, ProviderShiftType } from '@prisma/client';
+import { LeaveStatus, ProviderShiftType, Role } from '@prisma/client';
 import {
   TENANT_SCOPED_PRISMA,
   TenantScopedPrismaClient,
@@ -98,7 +98,12 @@ export class ProviderShiftService {
 
     const [providers, shifts, leave, closed] = await Promise.all([
       this.prisma.staff.findMany({
-        where: { clinicId, active: true },
+        // BOOKABLE providers only — the same DOCTOR_ROLES gate the engine's
+        // assertActiveDoctor applies. Before this, every active staff row
+        // (finance, front desk) rendered as a weekly-availability entry
+        // reading "No working days configured", which is noise pretending
+        // to be a roster (found in the §36 visual review).
+        where: { clinicId, active: true, role: { in: [Role.DOCTOR_RESIDENT, Role.DOCTOR_LOCUM] } },
         select: {
           id: true,
           fullName: true,

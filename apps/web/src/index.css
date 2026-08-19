@@ -4499,3 +4499,27 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   font-size: 13px;
   color: #475467;
 }
+
+/* The 7-day strip on a phone: labels stay whole and the strip scrolls,
+   because "W… T… F…" identifies no day of anybody's week. */
+.kw-public-booking .ant-segmented {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.kw-public-booking .ant-segmented .ant-segmented-group {
+  flex-wrap: nowrap;
+}
+
+.kw-public-booking .ant-segmented .ant-segmented-item {
+  flex: none;
+  min-width: 64px;
+}
+
+.kw-public-booking .ant-segmented .ant-segmented-item-label {
+  white-space: nowrap;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
