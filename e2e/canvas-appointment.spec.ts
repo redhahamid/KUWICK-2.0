@@ -150,12 +150,17 @@ test.describe('booking a follow-up from the consultation', () => {
     // eight-hour error on a Malaysian machine.
     // `bookedAt`, not `when` — that name is already the follow-up DATE this
     // test picked in the canvas, forty lines up.
+    // The FULL range, not the start time alone. The Time column renders
+    // "08:00–08:30", so filtering on "08:30" matches the 08:00 row as well as
+    // the 08:30 one — and this spec deliberately books the next free slot each
+    // run, so on any re-used database both rows exist.
     const bookedAt = dayjs(chosenIso).tz(CLINIC_ZONE);
+    const bookedUntil = bookedAt.add(booking.slotLengthMinutes, 'minute');
     const row = page
       .getByRole('row')
       .filter({ hasText: booking.patientName })
       .filter({ hasText: bookedAt.format('D MMM YYYY') })
-      .filter({ hasText: bookedAt.format('HH:mm') });
+      .filter({ hasText: `${bookedAt.format('HH:mm')}–${bookedUntil.format('HH:mm')}` });
     await expect(
       row,
       'the follow-up booked in the canvas is not in the Appointments module',

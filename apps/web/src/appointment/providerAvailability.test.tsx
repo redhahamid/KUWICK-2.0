@@ -7,6 +7,17 @@ import { MemoryRouter } from 'react-router-dom';
 import { ProviderAvailabilityPage } from './ProviderAvailabilityPage';
 import { apiClient } from '../core/api-client';
 
+/**
+ * `waitFor` with room to breathe.
+ *
+ * testing-library's default is 1000ms. These assertions wait on a react-query
+ * refetch inside a jsdom render of an antd Table, in a suite running 83 files
+ * in parallel — a second is tight on a loaded CI runner, and the contract
+ * under test is "the request is made", never "within one second".
+ */
+const waitForSlow = (check: () => void | Promise<void>) => waitFor(check, { timeout: 8000 });
+
+
 // ===========================================================================
 // A DOCTOR'S WEEK IS ONE STATEMENT.
 //
@@ -74,7 +85,7 @@ describe('the week is visible before it is edited', () => {
     await userEvent.click(await screen.findByTitle('Dr Lim'));
 
     // Six days off, one worked.
-    await waitFor(() => expect(screen.getAllByText('Not working')).toHaveLength(6));
+    await waitForSlow(() => expect(screen.getAllByText('Not working')).toHaveLength(6));
   });
 
   it('4. the header counts the working days', async () => {
@@ -114,7 +125,7 @@ describe('saving is one act', () => {
     await userEvent.click(await screen.findByRole('switch', { name: 'Tuesday' }));
     await userEvent.click(await screen.findByRole('button', { name: /save weekly hours/i }));
 
-    await waitFor(() => expect(put).toHaveBeenCalled());
+    await waitForSlow(() => expect(put).toHaveBeenCalled());
     const body = put.mock.calls[0][1] as { days: { dayOfWeek: number }[] };
     expect(body.days.map((day) => day.dayOfWeek).sort()).toEqual([1, 2]);
   });
@@ -131,7 +142,7 @@ describe('saving is one act', () => {
     await userEvent.click(await screen.findByRole('switch', { name: 'Monday' }));
     await userEvent.click(await screen.findByRole('button', { name: /save weekly hours/i }));
 
-    await waitFor(() => expect(put).toHaveBeenCalled());
+    await waitForSlow(() => expect(put).toHaveBeenCalled());
     expect((put.mock.calls[0][1] as { days: unknown[] }).days).toEqual([]);
   });
 });

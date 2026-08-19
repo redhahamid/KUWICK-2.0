@@ -9,6 +9,17 @@ import { apiClient } from '../core/api-client';
 import { setClinicTimeZone } from '../clinical/clinicTime';
 import type { DashboardStats } from './hooks/useAppointmentDashboard';
 
+/**
+ * `waitFor` with room to breathe.
+ *
+ * testing-library's default is 1000ms. These assertions wait on a react-query
+ * refetch inside a jsdom render of an antd Table, in a suite running 83 files
+ * in parallel — a second is tight on a loaded CI runner, and the contract
+ * under test is "the request is made", never "within one second".
+ */
+const waitForSlow = (check: () => void | Promise<void>) => waitFor(check, { timeout: 8000 });
+
+
 const CLINIC = { id: 'clinic-1', name: 'Klinik Utama', timezone: 'Asia/Kuala_Lumpur' };
 const DOCTOR = { id: 'doc-1', fullName: 'Dr Lim', role: 'DOCTOR_RESIDENT', active: true, clinicId: 'clinic-1' };
 
@@ -134,7 +145,7 @@ describe('the tabs ask the server, they do not filter in the browser', () => {
       screen.getByRole('radio', { name: 'No-Show' }),
     );
 
-    await waitFor(() => {
+    await waitForSlow(() => {
       const calls = (apiClient.get as ReturnType<typeof vi.fn>).mock.calls.map((call) => call[0]);
       expect(calls.some((path: string) => path.includes('tab=NO_SHOW'))).toBe(true);
     });
@@ -170,7 +181,7 @@ describe('the WhatsApp reminder', () => {
       '_blank',
       'noopener,noreferrer',
     );
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/appointments/appt-1/reminder-sent', {}));
+    await waitForSlow(() => expect(post).toHaveBeenCalledWith('/appointments/appt-1/reminder-sent', {}));
     expect(open.mock.invocationCallOrder[0]).toBeLessThan(post.mock.invocationCallOrder[0]);
   });
 
@@ -233,8 +244,8 @@ describe('the lifecycle actions travel with the row', () => {
     const rowEl = (await screen.findByText('Aminah')).closest('tr')!;
     await userEvent.click(within(rowEl).getByRole('button', { name: 'No-Show' }));
 
-    await waitFor(() => expect(patch).toHaveBeenCalledWith('/appointments/appt-1/no-show', undefined));
-    await waitFor(() => {
+    await waitForSlow(() => expect(patch).toHaveBeenCalledWith('/appointments/appt-1/no-show', undefined));
+    await waitForSlow(() => {
       const calls = (apiClient.get as ReturnType<typeof vi.fn>).mock.calls.filter((call) =>
         String(call[0]).startsWith('/appointments/dashboard'),
       );
@@ -253,7 +264,7 @@ describe('filters', () => {
     await screen.findByText('Aminah');
     await userEvent.type(screen.getByPlaceholderText(/patient name or phone/i), 'Ami');
 
-    await waitFor(() => {
+    await waitForSlow(() => {
       const calls = (apiClient.get as ReturnType<typeof vi.fn>).mock.calls.map((call) => String(call[0]));
       expect(calls.some((path) => path.includes('search=Ami'))).toBe(true);
     });

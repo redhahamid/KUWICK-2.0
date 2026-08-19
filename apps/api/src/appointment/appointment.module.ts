@@ -31,10 +31,19 @@ import { AppointmentDashboardService } from './appointment-dashboard.service';
     SlotCapacityConfigController,
     DoctorServiceQualificationController,
     AvailabilityController,
-    AppointmentController,
-    ClinicBookingSettingsController,
+    // BEFORE `AppointmentController`, and this ordering is load-bearing.
+    // That controller is `@Controller('appointments')` with a `@Get(':id')`,
+    // and Nest matches in registration order — registered first, it reads
+    // `/appointments/dashboard` as an appointment whose id is "dashboard" and
+    // the dashboard silently returns nothing. The same trap `@Get('bookable')`
+    // and `@Get('weekly')` avoid within a single controller, which is exactly
+    // why it was easy to miss across two.
+    // Pinned by `appointment-route-order.spec.ts` — reordering this list
+    // breaks the dashboard silently.
     AppointmentDashboardController,
     AppointmentReminderController,
+    AppointmentController,
+    ClinicBookingSettingsController,
   ],
   providers: [
     DoctorScheduleService,

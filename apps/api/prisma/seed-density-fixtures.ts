@@ -256,9 +256,17 @@ async function main() {
     // ---------------------------------------------------------------------
     const ensureService = async (code: string, name: string) => {
       const existing = await tx.serviceCatalog.findFirst({ where: { code }, select: { id: true } });
+      if (existing) {
+        // UPDATE, not "leave it alone". `bookable` was added after these rows
+        // existed, so a find-or-create left every previously-seeded database
+        // with a service the availability engine refuses — and the booking
+        // spec then failed for a reason that had nothing to do with booking.
+        // The same trap this file already carries a warning about for visits.
+        await tx.serviceCatalog.update({ where: { id: existing.id }, data: { bookable: true } });
+        return existing;
+      }
       return (
-        existing ??
-        (await tx.serviceCatalog.create({
+        await tx.serviceCatalog.create({
           data: {
             tenantId,
             code,
@@ -275,7 +283,7 @@ async function main() {
             bookable: true,
           },
           select: { id: true },
-        }))
+        })
       );
     };
     const followUpService = await ensureService(FOLLOW_UP_SERVICE_CODE, FOLLOW_UP_SERVICE_NAME);
@@ -313,14 +321,18 @@ async function main() {
           clinicId,
           staffId: doctor.id,
           dayOfWeek,
-          // The whole day, in the CLINIC's wall clock. It used to be 00:00-12:00
-          // and the engine read it as UTC, so the two agreed by accident on a
-          // UTC runner. Now the engine converts through `Clinic.timezone`, and
-          // a half-day window would put the spec's slots in the clinic's
-          // morning — fine in Malaysia, and a coin toss for the past-slot
-          // filter depending on the hour CI happened to run.
-          startTime: new Date('1970-01-01T00:00:00.000Z'),
-          endTime: new Date('1970-01-01T23:00:00.000Z'),
+          // A REAL clinic day, in the CLINIC's wall clock. This used to be
+          // 00:00-12:00 read as UTC, which agreed with the engine only by
+          // accident on a UTC runner; the engine now converts through
+          // `Clinic.timezone`.
+          //
+          // 08:00, not 00:00. A midnight-to-midnight window is technically
+          // wider, and it makes the first slot the picker offers a MIDNIGHT
+          // appointment — which is what the spec then books and asserts on.
+          // A fixture that produces a booking no clinic would make is a
+          // fixture that tests the wrong thing.
+          startTime: new Date('1970-01-01T08:00:00.000Z'),
+          endTime: new Date('1970-01-01T20:00:00.000Z'),
           effectiveFrom: new Date('2020-01-01T00:00:00.000Z'),
         },
       });
