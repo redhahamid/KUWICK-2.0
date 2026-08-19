@@ -3966,8 +3966,12 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   gap: 10px;
 }
 
+/* §26 — a planning BOARD: it scrolls both ways inside its own box, so the
+   date header and the provider column genuinely stay put while the month
+   moves under them. */
 .kw-roster-scroll {
-  overflow-x: auto;
+  overflow: auto;
+  max-height: calc(100vh - 290px);
   border: 1px solid var(--kw-border, #dce4ea);
   border-radius: 12px;
   background: #fff;
@@ -3991,9 +3995,16 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #fff;
+  background: var(--kw-surface-2, #f8fafc);
   text-align: center;
   min-width: 62px;
+  border-bottom: 1px solid var(--kw-border-strong, #d0d5dd);
+}
+
+/* The corner cell sits over BOTH sticky rails. */
+.kw-roster-grid thead .kw-roster-provider-head {
+  z-index: 4;
+  background: var(--kw-surface-2, #f8fafc);
 }
 
 .kw-roster-grid thead th[data-closed] {
@@ -4022,9 +4033,12 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   font-weight: 600;
 }
 
+/* §26 — taller rows: a month cell is a planning surface, and a split shift
+   plus a leave chip need room to be read, not clipped. `height` on a table
+   cell behaves as a minimum. */
 .kw-roster-cell {
   cursor: pointer;
-  min-height: 44px;
+  height: 56px;
   transition: background 120ms ease;
 }
 
@@ -4032,9 +4046,10 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   background: #f8fafc;
 }
 
+/* §13 — teal is the selected state here too. */
 .kw-roster-cell[data-picked] {
-  background: #e6f4ff;
-  outline: 2px solid #184a6b;
+  background: var(--kw-clinical-bg, #eaf5f6);
+  outline: 2px solid var(--kw-teal, #0f766e);
   outline-offset: -2px;
 }
 
@@ -4056,11 +4071,13 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 
 .kw-roster-chip {
   display: inline-block;
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
   line-height: 1.5;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .kw-roster-closed {
@@ -4713,7 +4730,6 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 .kw-weekly-summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   padding: 10px 14px;
   border: 1px solid var(--kw-border-subtle, #f2f4f7);
@@ -4728,6 +4744,7 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   gap: 12px;
   min-width: 0;
   flex-wrap: wrap;
+  flex: 1;
 }
 
 /* §28 — the booking page's status, answered before any tab is opened:

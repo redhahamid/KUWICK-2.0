@@ -231,12 +231,13 @@ export function ServiceEditorDrawer({
                 children: (
                   <>
                     <Space size={16} wrap>
-                      <Form.Item name="durationMinutesDefault" label="How long it runs">
+                      {/* §30 — the words a clinic uses, not scheduler jargon. */}
+                      <Form.Item name="durationMinutesDefault" label="Appointment length">
                         <InputNumber min={5} max={720} step={5} addonAfter="min" />
                       </Form.Item>
                       <Form.Item
                         name="slotIntervalMinutes"
-                        label="How often a slot starts"
+                        label="New appointment may start every"
                         extra="Blank = back to back"
                       >
                         <InputNumber min={5} max={720} step={5} addonAfter="min" />
@@ -266,14 +267,14 @@ export function ServiceEditorDrawer({
                     <Space size={16} wrap>
                       <Form.Item
                         name="minimumNoticeMinutes"
-                        label="Least notice"
+                        label="Online booking notice"
                         extra="Blank = use the branch's"
                       >
                         <InputNumber min={0} max={129600} step={30} addonAfter="min" />
                       </Form.Item>
                       <Form.Item
                         name="maxAdvanceDays"
-                        label="Furthest ahead"
+                        label="Bookable up to"
                         extra="Blank = no limit"
                       >
                         <InputNumber min={1} max={730} addonAfter="days" />

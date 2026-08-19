@@ -1,10 +1,27 @@
 import { useEffect, useState } from 'react';
-import { Button, Card, Space, Switch, TimePicker, Typography, message } from 'antd';
+import { Avatar, Button, Card, Space, Switch, TimePicker, Typography, message } from 'antd';
 import dayjs from 'dayjs';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ApiError } from '../../core/api-client';
+import { getDoctorColor } from '../calendar/doctor-color';
 
 const { Text } = Typography;
+
+/** The same identity cue as the calendar: initials in the provider's colour. */
+function providerAvatar(staffId: string, name: string) {
+  const initials = name
+    .replace(/^Dr\.?\s+/i, '')
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .toUpperCase();
+  return (
+    <Avatar size={28} style={{ background: getDoctorColor(staffId), fontSize: 11, fontWeight: 700 }}>
+      {initials}
+    </Avatar>
+  );
+}
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -109,6 +126,7 @@ export function FixedWeeklyEditor({
   if (!editing) {
     return (
       <div className="kw-weekly-summary" data-testid={`weekly-${staffId}`}>
+        {providerAvatar(staffId, staffName)}
         <div className="kw-weekly-summary-text">
           <Text strong>{staffName}</Text>
           <Text type="secondary">{summary}</Text>
@@ -124,7 +142,12 @@ export function FixedWeeklyEditor({
     <Card
       size="small"
       style={{ marginTop: 12 }}
-      title={staffName}
+      title={
+        <Space size={8}>
+          {providerAvatar(staffId, staffName)}
+          {staffName}
+        </Space>
+      }
       data-testid={`weekly-${staffId}`}
       extra={
         <Space>
