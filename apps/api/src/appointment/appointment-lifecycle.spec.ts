@@ -161,6 +161,49 @@ describe('a cancellation names who as well as why', () => {
   });
 });
 
+describe('a no-show is recorded, and only from a state that could have shown up', () => {
+  it('12b. a confirmed appointment can be marked as a no-show', async () => {
+    const ctx = buildAppointmentHarness();
+
+    await ctx.run(() => ctx.service.noShow(APPT));
+
+    expect(ctx.updates[0]).toMatchObject({ status: AppointmentStatus.NO_SHOW });
+  });
+
+  it('12c. it goes into the history with the actor who marked it', async () => {
+    const ctx = buildAppointmentHarness();
+
+    await ctx.run(() => ctx.service.noShow(APPT));
+
+    expect(ctx.events).toContainEqual(
+      expect.objectContaining({
+        toStatus: AppointmentStatus.NO_SHOW,
+        actorLabel: 'Nurul at the counter',
+      }),
+    );
+  });
+
+  it.each([
+    AppointmentStatus.CHECKED_IN,
+    AppointmentStatus.COMPLETED,
+    AppointmentStatus.CANCELLED,
+    AppointmentStatus.NO_SHOW,
+  ])('12d. %s cannot become a no-show', async (status) => {
+    // Somebody who was checked in DID show up, and a completed consultation
+    // cannot be un-attended. A no-show is a claim about a person who was
+    // expected and never arrived.
+    const ctx = buildAppointmentHarness({ appointment: { status } });
+
+    await expect(ctx.run(() => ctx.service.noShow(APPT))).rejects.toThrow();
+  });
+
+  it('12e. a stock clerk cannot mark one', async () => {
+    const ctx = buildAppointmentHarness({ actor: { role: 'STOCK_STAFF' }, assignedRoles: [] });
+
+    await expect(ctx.run(() => ctx.service.noShow(APPT))).rejects.toThrow(ForbiddenException);
+  });
+});
+
 describe('rescheduling preserves history rather than replacing it', () => {
   const MOVE = {
     scheduledStart: '2026-09-02T01:00:00.000Z',
