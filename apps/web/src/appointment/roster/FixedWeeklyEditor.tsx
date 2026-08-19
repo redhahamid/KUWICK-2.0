@@ -43,6 +43,10 @@ export function FixedWeeklyEditor({
   const queryClient = useQueryClient();
   const [days, setDays] = useState<WeeklyDay[]>([]);
   const [saving, setSaving] = useState(false);
+  // §15 — collapsed by default. Six providers times seven day-rows is a wall
+  // of forty-two toggles; a clinic looks at ONE doctor's week at a time. The
+  // summary line says what matters at a glance, Edit opens the week.
+  const [editing, setEditing] = useState(false);
 
   const { data } = useQuery({
     queryKey: ['weekly-availability', staffId, clinicId],
@@ -86,6 +90,31 @@ export function FixedWeeklyEditor({
     }
   };
 
+  const summary = (() => {
+    const count = days.length;
+    if (count === 0) return 'No working days configured';
+    const sorted = [...days].sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+    const sameHours = sorted.every(
+      (day) => day.startTime === sorted[0].startTime && day.endTime === sorted[0].endTime,
+    );
+    const hours = sameHours ? ` · ${sorted[0].startTime}–${sorted[0].endTime}` : '';
+    return `${count} day${count === 1 ? '' : 's'} a week${hours}`;
+  })();
+
+  if (!editing) {
+    return (
+      <div className="kw-weekly-summary" data-testid={`weekly-${staffId}`}>
+        <div className="kw-weekly-summary-text">
+          <Text strong>{staffName}</Text>
+          <Text type="secondary">{summary}</Text>
+        </div>
+        <Button size="small" onClick={() => setEditing(true)}>
+          Edit
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <Card
       size="small"
@@ -96,6 +125,9 @@ export function FixedWeeklyEditor({
         <Space>
           <Button size="small" onClick={onSwitchToRoster}>
             Move to the monthly roster
+          </Button>
+          <Button size="small" onClick={() => setEditing(false)}>
+            Done
           </Button>
           <Button size="small" type="primary" loading={saving} onClick={save}>
             Save week

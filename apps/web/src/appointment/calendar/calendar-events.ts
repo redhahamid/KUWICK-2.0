@@ -43,6 +43,19 @@ export interface CardLabelInput {
  * readable one — so the card asks for the level of detail the space allows and
  * the rest lives in the drawer.
  */
+/**
+ * THE NARROW-COLUMN LINE. A week column on a laptop is ~150px; three lines of
+ * clipped text ("09:00 Ta…", "Exe…") read as noise, not information. When
+ * space is short the card carries the two facts a receptionist scans for —
+ * time and who — and the drawer carries everything else. First name only,
+ * deliberately: "Siti" places the patient; "Siti Aminah binti Yu…" places an
+ * ellipsis.
+ */
+export function compactLine(time: string, patientName: string): string {
+  const first = patientName.trim().split(/\s+/)[0] ?? patientName;
+  return `${time} ${first}`;
+}
+
 export function cardLines(input: CardLabelInput, minutes: number): string[] {
   // The time leads EVERY size — the grid's own 12-hour range label is hidden
   // (index.css) so this line is the chip's only clock, in the clinic format

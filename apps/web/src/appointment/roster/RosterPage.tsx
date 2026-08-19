@@ -337,9 +337,13 @@ function RosterCellContent({
       ) : null}
       {cell.shifts.map((shift) => {
         const tone = SHIFT_TONE[shift.shiftType] ?? SHIFT_TONE.WORKING;
+        // §14 — an overnight shift says so in words a roster reader uses:
+        // "23:00→09:00 +1", not a superscript nobody notices.
         const label =
           tone.label ??
-          `${shift.startTime}–${shift.endTime}${shift.crossesMidnight ? '⁺' : ''}`;
+          (shift.crossesMidnight
+            ? `${shift.startTime}→${shift.endTime} +1`
+            : `${shift.startTime}–${shift.endTime}`);
         return (
           <Tooltip
             key={shift.id}

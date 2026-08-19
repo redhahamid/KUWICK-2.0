@@ -1,20 +1,6 @@
 import { useMemo, useState } from 'react';
-import {
-  Avatar,
-  Button,
-  DatePicker,
-  Empty,
-  Input,
-  Popconfirm,
-  Segmented,
-  Select,
-  Space,
-  Table,
-  Tooltip,
-  Typography,
-  message,
-} from 'antd';
-import { WhatsAppOutlined } from '@ant-design/icons';
+import { Avatar, Button, DatePicker, Dropdown, Empty, Input, Modal, Segmented, Select, Space, Table, Tooltip, Typography, message } from 'antd';
+import { EllipsisOutlined, WhatsAppOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useQueryClient } from '@tanstack/react-query';
 import { AppointmentStatus } from '@kuwick/shared';
@@ -490,60 +476,92 @@ function AppointmentTable({
             render: (_, row) => <KuwickStatusTag {...statusChip(row.status)} />,
           },
           {
-            title: 'Actions',
-            width: 250,
-            render: (_, row) => (
-              <Space size={4} wrap onClick={(event) => event.stopPropagation()}>
-                {row.status === 'REQUESTED' ? (
-                  <Button
-                    size="small"
-                    onClick={() =>
-                      act(confirmAppointment.mutateAsync({ id: row.id }), 'Could not accept.')
-                    }
-                  >
-                    Accept
-                  </Button>
-                ) : null}
-                {CHECK_IN_FROM_STATUSES.includes(row.status as AppointmentStatus) ? (
-                  <Button
-                    size="small"
-                    type="primary"
-                    onClick={() =>
-                      act(checkInAppointment.mutateAsync({ id: row.id }), 'Could not check in.')
-                    }
-                  >
-                    Check in
-                  </Button>
-                ) : null}
-                {ARRIVABLE_FROM_STATUSES.includes(row.status as AppointmentStatus) ? (
-                  <Button
-                    size="small"
-                    onClick={() =>
-                      act(noShowAppointment.mutateAsync({ id: row.id }), 'Could not mark no-show.')
-                    }
-                  >
-                    No-show
-                  </Button>
-                ) : null}
-                {!NON_CANCELLABLE_STATUSES.includes(row.status as AppointmentStatus) ? (
-                  <Button size="small" onClick={() => setRescheduling(row)}>
-                    Reschedule
-                  </Button>
-                ) : null}
-                {!NON_CANCELLABLE_STATUSES.includes(row.status as AppointmentStatus) ? (
-                  <Popconfirm
-                    title="Cancel this appointment?"
-                    onConfirm={() =>
-                      act(cancelAppointment.mutateAsync({ id: row.id }), 'Could not cancel.')
-                    }
-                  >
-                    <Button size="small" danger>
-                      Cancel
+            // ONE button and a menu (§11). Four buttons per row times thirty
+            // rows was a hundred and twenty buttons on one screen — the
+            // reader stopped seeing any of them. The primary is the row's
+            // NEXT step; everything else waits behind the dots.
+            title: '',
+            width: 150,
+            render: (_, row) => {
+              const cancellable = !NON_CANCELLABLE_STATUSES.includes(row.status as AppointmentStatus);
+              const menuItems = [
+                cancellable ? { key: 'reschedule', label: 'Reschedule' } : null,
+                ARRIVABLE_FROM_STATUSES.includes(row.status as AppointmentStatus)
+                  ? { key: 'no-show', label: 'Mark as no-show' }
+                  : null,
+                cancellable ? { key: 'cancel', danger: true, label: 'Cancel appointment' } : null,
+              ].filter(Boolean) as { key: string; label: string }[];
+              return (
+                <Space size={4} onClick={(event) => event.stopPropagation()}>
+                  {row.status === 'REQUESTED' ? (
+                    <Button
+                      size="small"
+                      type="primary"
+                      onClick={() =>
+                        act(confirmAppointment.mutateAsync({ id: row.id }), 'Could not accept.')
+                      }
+                    >
+                      Accept
                     </Button>
-                  </Popconfirm>
-                ) : null}
-              </Space>
-            ),
+                  ) : CHECK_IN_FROM_STATUSES.includes(row.status as AppointmentStatus) ? (
+                    <Button
+                      size="small"
+                      type="primary"
+                      onClick={() =>
+                        act(checkInAppointment.mutateAsync({ id: row.id }), 'Could not check in.')
+                      }
+                    >
+                      Check in
+                    </Button>
+                  ) : (
+                    <Button size="small" onClick={() => onOpen(row.id)}>
+                      View
+                    </Button>
+                  )}
+                  {menuItems.length > 0 ? (
+                    <Dropdown
+                      trigger={['click']}
+                      menu={{
+                        items: menuItems,
+                        onClick: ({ key }) => {
+                          if (key === 'reschedule') setRescheduling(row);
+                          if (key === 'no-show') {
+                            Modal.confirm({
+                              title: 'Mark as a no-show?',
+                              okText: 'No-show',
+                              okButtonProps: { danger: true },
+                              onOk: () =>
+                                act(
+                                  noShowAppointment.mutateAsync({ id: row.id }),
+                                  'Could not mark no-show.',
+                                ),
+                            });
+                          }
+                          if (key === 'cancel') {
+                            Modal.confirm({
+                              title: 'Cancel this appointment?',
+                              content: 'The slot is released for somebody else to book.',
+                              okText: 'Cancel appointment',
+                              okButtonProps: { danger: true },
+                              cancelText: 'Keep it',
+                              onOk: () =>
+                                act(cancelAppointment.mutateAsync({ id: row.id }), 'Could not cancel.'),
+                            });
+                          }
+                        },
+                      }}
+                    >
+                      <Button
+                        size="small"
+                        type="text"
+                        icon={<EllipsisOutlined />}
+                        aria-label={`More actions for ${row.patient.name}`}
+                      />
+                    </Dropdown>
+                  ) : null}
+                </Space>
+              );
+            },
           },
           {
             title: '',

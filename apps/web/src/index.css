@@ -3507,9 +3507,11 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 }
 
 .kw-appt-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  padding: 4px 0 8px;
+  border-bottom: 1px solid var(--kw-border-subtle, #f2f4f7);
   transition: opacity 160ms ease;
 }
 
@@ -3520,15 +3522,13 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 .kw-appt-stat {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 16px 18px;
-  border-radius: 12px;
-  border: 1px solid var(--kw-border, #e4e7ec);
-  background: #fff;
-  box-shadow: 0 1px 2px rgb(16 24 40 / 5%);
-  /* A hairline of the figure's own colour, rather than a coloured card. Five
-     saturated tiles side by side is a dashboard nobody can scan. */
-  border-left-width: 3px;
+  gap: 1px;
+  /* §12 — a figure with a label, not a card with a figure inside it. The
+     numbers sit on the page; the hairline of their own colour is the only
+     chrome they carry, and the table below them starts a row sooner. */
+  padding: 6px 14px;
+  border-left: 3px solid transparent;
+  background: transparent;
 }
 
 .kw-appt-stat[data-tone='active'] { border-left-color: #1d4ed8; }
@@ -3546,7 +3546,7 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 }
 
 .kw-appt-stat-value {
-  font-size: 26px;
+  font-size: 21px;
   line-height: 1.15;
   font-weight: 600;
   color: var(--kw-text, #101828);
@@ -3699,16 +3699,19 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 }
 
 /* react-big-calendar's own chrome, brought into the Kuwick palette rather
-   than left as library defaults. */
+   than left as library defaults — and quieted: the information on this
+   screen is the appointments, so every line that is not an appointment is
+   drawn one notch fainter than the library ships it. */
 .rbc-header {
   padding: 8px 4px;
   font-weight: 600;
   font-size: 13px;
   border-bottom: 1px solid var(--kw-border, #dce4ea);
+  color: #344054;
 }
 
 .rbc-today {
-  background: #f0f7fc;
+  background: #f4f9fd;
 }
 
 .rbc-time-view,
@@ -3719,19 +3722,155 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   background: #fff;
 }
 
+/* Hairlines, not fences: hour lines whisper, half-hour lines barely exist. */
+.rbc-time-content > * + * > *,
+.rbc-day-bg + .rbc-day-bg,
+.rbc-header + .rbc-header {
+  border-left-color: #eef1f4;
+}
+
+.rbc-timeslot-group {
+  border-bottom: 1px solid #eef1f4;
+}
+
+.rbc-time-slot {
+  border-top: none;
+}
+
+.rbc-time-content {
+  border-top: 1px solid var(--kw-border, #dce4ea);
+}
+
+.rbc-time-gutter .rbc-timeslot-group {
+  border-bottom: none;
+}
+
+.rbc-time-gutter .rbc-label {
+  font-size: 11px;
+  color: #667085;
+  font-variant-numeric: tabular-nums;
+}
+
+/* WHERE NOW IS. A diary's most-read line: solid, warm, and dotted at the
+   gutter so the eye can carry it across provider columns. */
+.rbc-current-time-indicator {
+  height: 2px;
+  background: #d92d20;
+}
+
+.rbc-current-time-indicator::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d92d20;
+}
+
 .rbc-event {
   border: none;
-  border-radius: 6px;
-  padding: 2px 6px;
+  border-radius: 7px;
+  padding: 2px 7px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+  transition: box-shadow 120ms ease, transform 120ms ease;
+}
+
+.rbc-event:hover {
+  box-shadow: 0 3px 8px rgba(16, 24, 40, 0.14);
+}
+
+.rbc-event:focus {
+  outline: 2px solid #184a6b;
+  outline-offset: 1px;
 }
 
 .rbc-event.rbc-selected {
   outline: 2px solid #184a6b;
+  box-shadow: 0 4px 12px rgba(24, 74, 107, 0.25);
 }
 
 .rbc-show-more {
   color: #184a6b;
   font-weight: 500;
+  font-size: 12px;
+}
+
+/* Month cells are a plan, not a diary: one compact line per booking, room
+   for the date, and "+N more" doing the honest work. */
+.rbc-month-view .rbc-event {
+  padding: 0 5px;
+  box-shadow: none;
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.rbc-month-view .rbc-date-cell {
+  padding: 4px 6px 0;
+  font-size: 12px;
+}
+
+.rbc-month-view .rbc-date-cell.rbc-now {
+  font-weight: 700;
+  color: #184a6b;
+}
+
+.rbc-off-range-bg {
+  background: #fafbfc;
+}
+
+/* THE PROVIDER COLUMN HEADER — a person, not a string. The initial chip is
+   painted in the provider's calendar colour, the same cue as every card's
+   left edge, so a receptionist matches column to card without reading. */
+.kw-provider-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  max-width: 100%;
+}
+
+.kw-provider-avatar {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #667085;
+}
+
+.kw-provider-name {
+  font-weight: 600;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Six doctors do not share a laptop politely: past four columns the grid
+   keeps a real width per provider and scrolls sideways inside its own box,
+   with the hour gutter pinned so times never scroll away. */
+.kw-calendar-grid--wide {
+  overflow-x: auto;
+}
+
+.kw-calendar-grid--wide .rbc-time-view {
+  min-width: 1560px;
+}
+
+.kw-calendar-grid--wide .rbc-time-gutter,
+.kw-calendar-grid--wide .rbc-time-header-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 12;
+  background: #fff;
 }
 
 /* ---------------------------------------------------------------------------
@@ -3924,4 +4063,154 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   .kw-calendar-grid {
     height: clamp(420px, calc(100vh - 260px), 700px);
   }
+}
+
+/* ---------------------------------------------------------------------------
+   APPOINTMENT DRAWER — the premium pass (§10).
+
+   One person at the top, one appointment in the middle, one primary action
+   at the bottom. The queue banner outranks everything the moment the
+   patient is in the building, because "where are they now" is the question
+   the drawer is opened to answer at that point.
+   --------------------------------------------------------------------------- */
+
+.kw-apt-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.kw-apt-avatar.ant-avatar {
+  flex: none;
+  background: #184a6b;
+  font-weight: 700;
+}
+
+.kw-apt-head-text {
+  min-width: 0;
+}
+
+.kw-apt-head-name {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kw-apt-head-meta {
+  font-size: 12px;
+  font-weight: 400;
+  color: #667085;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kw-apt-queue {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #b3d4e8;
+  background: #eef6fb;
+  color: #123a54;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: box-shadow 120ms ease;
+}
+
+.kw-apt-queue:hover {
+  box-shadow: 0 2px 8px rgba(24, 74, 107, 0.18);
+}
+
+.kw-apt-queue:focus-visible {
+  outline: 2px solid #184a6b;
+  outline-offset: 1px;
+}
+
+.kw-apt-queue-number {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-apt-queue-state {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.kw-apt-queue--done {
+  border-color: #b7e1c3;
+  background: #f0faf3;
+  color: #1a5c33;
+}
+
+.kw-apt-summary {
+  border: 1px solid var(--kw-border-subtle, #f2f4f7);
+  background: #fafbfc;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kw-apt-date {
+  font-size: 15px;
+  font-weight: 600;
+  color: #17212b;
+}
+
+.kw-apt-time {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #17212b;
+  line-height: 1.2;
+}
+
+.kw-apt-service {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.kw-apt-provider {
+  font-size: 13px;
+  color: #475467;
+}
+
+.kw-apt-meta .ant-descriptions-item {
+  padding-bottom: 6px;
+}
+
+/* §15 — a provider's standing week, folded to one line until somebody is
+   actually editing it. */
+.kw-weekly-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--kw-border-subtle, #f2f4f7);
+  border-radius: 10px;
+  background: #fff;
+  margin-top: 10px;
+}
+
+.kw-weekly-summary-text {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  flex-wrap: wrap;
 }

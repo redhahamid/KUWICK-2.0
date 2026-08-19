@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
 import {
   Alert,
+  Avatar,
   Button,
   Descriptions,
   Divider,
   Drawer,
   Dropdown,
   Empty,
+  Modal,
   Popconfirm,
   Skeleton,
   Space,
@@ -18,6 +20,7 @@ import {
   CheckCircleOutlined,
   EllipsisOutlined,
   FileTextOutlined,
+  RightOutlined,
   SwapOutlined,
   WhatsAppOutlined,
 } from '@ant-design/icons';
@@ -103,6 +106,16 @@ export function AppointmentDrawer({
   const canCheckIn = status ? CHECK_IN_FROM_STATUSES.includes(status) : false;
   const canCancel = status ? !NON_CANCELLABLE_STATUSES.includes(status) : false;
   const isRequest = status === AppointmentStatus.REQUESTED;
+  const isInClinic = status === AppointmentStatus.CHECKED_IN;
+  const isCompleted = status === AppointmentStatus.COMPLETED;
+  const isReleased =
+    status === AppointmentStatus.CANCELLED || status === AppointmentStatus.NO_SHOW;
+  const initials = (appointment?.patient.name ?? '')
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .toUpperCase();
 
   const whatsapp = useMemo(() => {
     if (!appointment?.patient.phone) return null;
@@ -138,7 +151,8 @@ export function AppointmentDrawer({
     appointment?.visitId ? { key: 'record', label: 'Open clinical record' } : null,
     { key: 'patient', label: 'Open patient record' },
     { key: 'history', label: showHistory ? 'Hide history' : 'View history' },
-    canCancel ? { type: 'divider' as const, key: 'd1' } : null,
+    canCheckIn || canCancel ? { type: 'divider' as const, key: 'd1' } : null,
+    canCheckIn ? { key: 'no-show', danger: true, label: 'Mark as no-show' } : null,
     canCancel ? { key: 'cancel', danger: true, label: 'Cancel appointment' } : null,
   ].filter(Boolean) as { key: string; label: string }[];
 
@@ -179,6 +193,15 @@ export function AppointmentDrawer({
       case 'history':
         setShowHistory((previous) => !previous);
         break;
+      case 'no-show':
+        Modal.confirm({
+          title: 'Mark as a no-show?',
+          content: 'The slot is released and the miss is counted in the clinic’s no-show rate.',
+          okText: 'No-show',
+          okButtonProps: { danger: true },
+          onOk: () => run('Marked as no-show', () => noShow.mutateAsync({ id: appointment.id })),
+        });
+        break;
       case 'cancel':
         await run('Appointment cancelled', () =>
           cancel.mutateAsync({
@@ -195,9 +218,26 @@ export function AppointmentDrawer({
     <Drawer
       open={open}
       onClose={onClose}
-      width={420}
+      width={440}
       destroyOnHidden
-      title={appointment ? appointment.patient.name : 'Appointment'}
+      title={
+        appointment ? (
+          <div className="kw-apt-head">
+            <Avatar size={40} className="kw-apt-avatar">
+              {initials}
+            </Avatar>
+            <div className="kw-apt-head-text">
+              <div className="kw-apt-head-name">{appointment.patient.name}</div>
+              <div className="kw-apt-head-meta">
+                {appointment.patient.identifierValue}
+                {appointment.patient.phone ? ` · ${appointment.patient.phone}` : ''}
+              </div>
+            </div>
+          </div>
+        ) : (
+          'Appointment'
+        )
+      }
       extra={
         status ? <KuwickStatusTag {...statusChip(status)} /> : null
       }
@@ -228,11 +268,11 @@ export function AppointmentDrawer({
                     <Button>Decline</Button>
                   </Popconfirm>
                 </>
-              ) : (
+              ) : null}
+              {canCheckIn ? (
                 <Button
                   type="primary"
                   icon={<CheckCircleOutlined />}
-                  disabled={!canCheckIn}
                   loading={checkIn.isPending}
                   onClick={() =>
                     run('Patient checked in', () => checkIn.mutateAsync({ id: appointment.id }))
@@ -240,27 +280,28 @@ export function AppointmentDrawer({
                 >
                   Check in
                 </Button>
-              )}
-              <Button
-                icon={<SwapOutlined />}
-                disabled={!canCancel}
-                onClick={() => onReschedule(appointment.id)}
-              >
-                Reschedule
-              </Button>
+              ) : null}
+              {(isInClinic || isCompleted) && appointment.visitId ? (
+                <Button
+                  type="primary"
+                  icon={<RightOutlined />}
+                  onClick={() => navigate(`/clinical/canvas/${appointment.visitId}`)}
+                >
+                  Open visit
+                </Button>
+              ) : null}
+              {isReleased && onBookFollowUp ? (
+                <Button type="primary" onClick={() => onBookFollowUp(appointment.patientId)}>
+                  Book again
+                </Button>
+              ) : null}
+              {canCancel && !isInClinic ? (
+                <Button icon={<SwapOutlined />} onClick={() => onReschedule(appointment.id)}>
+                  Reschedule
+                </Button>
+              ) : null}
             </Space>
             <Space>
-              {canCheckIn ? (
-                <Popconfirm
-                  title="Mark as a no-show?"
-                  okText="No-show"
-                  onConfirm={() =>
-                    run('Marked as no-show', () => noShow.mutateAsync({ id: appointment.id }))
-                  }
-                >
-                  <Button>No-show</Button>
-                </Popconfirm>
-              ) : null}
               <Dropdown
                 menu={{ items: moreItems, onClick: ({ key }) => onMore(key) }}
                 trigger={['click']}
@@ -296,21 +337,69 @@ export function AppointmentDrawer({
             />
           ) : null}
 
-          <Descriptions column={1} size="small" colon={false} styles={{ label: { width: 130 } }}>
-            <Descriptions.Item label="When">
-              <Text strong>{formatClinicDate(appointment.scheduledStart)}</Text>
-              <br />
-              {formatClinicTime(appointment.scheduledStart)} –{' '}
-              {formatClinicTime(appointment.scheduledEnd)}
-            </Descriptions.Item>
-            <Descriptions.Item label="Service">{appointment.service.name}</Descriptions.Item>
-            <Descriptions.Item label="Provider">{appointment.staff.fullName}</Descriptions.Item>
-            <Descriptions.Item label="MRN / IC">
-              {appointment.patient.identifierValue}
-            </Descriptions.Item>
-            <Descriptions.Item label="Phone">
-              {appointment.patient.phone ?? <Text type="secondary">Not recorded</Text>}
-            </Descriptions.Item>
+          {/* Where the patient IS right now — the loudest thing in the
+              drawer once they are in the building. */}
+          {appointment.queueTicket && !isCompleted ? (
+            <button
+              type="button"
+              className="kw-apt-queue"
+              onClick={() =>
+                appointment.visitId
+                  ? navigate(`/clinical/canvas/${appointment.visitId}`)
+                  : undefined
+              }
+            >
+              <span className="kw-apt-queue-number">{appointment.queueTicket.displayNumber}</span>
+              <span className="kw-apt-queue-state">
+                {sentence(appointment.queueTicket.status)}
+                {appointment.visit ? ` · Visit #${appointment.visit.visitNumber}` : ''}
+              </span>
+              {appointment.visitId ? <RightOutlined aria-hidden /> : null}
+            </button>
+          ) : null}
+          {isCompleted && appointment.visit ? (
+            <button
+              type="button"
+              className="kw-apt-queue kw-apt-queue--done"
+              onClick={() =>
+                appointment.visitId
+                  ? navigate(`/clinical/canvas/${appointment.visitId}`)
+                  : undefined
+              }
+            >
+              <CheckCircleOutlined aria-hidden />
+              <span className="kw-apt-queue-state">
+                Visit #{appointment.visit.visitNumber} completed
+                {appointment.visit.checkOutAt
+                  ? ` · ${formatClinicTime(appointment.visit.checkOutAt)}`
+                  : ''}
+              </span>
+              <RightOutlined aria-hidden />
+            </button>
+          ) : null}
+
+          {/* THE APPOINTMENT, said once and said big: when, what, with whom. */}
+          <div className="kw-apt-summary">
+            <div className="kw-apt-when">
+              <div className="kw-apt-date">{formatClinicDate(appointment.scheduledStart)}</div>
+              <div className="kw-apt-time">
+                {formatClinicTime(appointment.scheduledStart)} –{' '}
+                {formatClinicTime(appointment.scheduledEnd)}
+              </div>
+            </div>
+            <div className="kw-apt-what">
+              <div className="kw-apt-service">{appointment.service.name}</div>
+              <div className="kw-apt-provider">{appointment.staff.fullName}</div>
+            </div>
+          </div>
+
+          <Descriptions
+            className="kw-apt-meta"
+            column={1}
+            size="small"
+            colon={false}
+            styles={{ label: { width: 110 } }}
+          >
             <Descriptions.Item label="Booked">
               {formatClinicDateTime(appointment.createdAt)} ·{' '}
               {SOURCE_LABELS[appointment.source as AppointmentSource] ?? appointment.source}
@@ -329,15 +418,6 @@ export function AppointmentDrawer({
                 <Text type="secondary">Not sent</Text>
               )}
             </Descriptions.Item>
-            {appointment.queueTicket ? (
-              <Descriptions.Item label="Queue">
-                <Text strong>{appointment.queueTicket.displayNumber}</Text> ·{' '}
-                {sentence(appointment.queueTicket.status)}
-              </Descriptions.Item>
-            ) : null}
-            {appointment.visit ? (
-              <Descriptions.Item label="Visit">#{appointment.visit.visitNumber}</Descriptions.Item>
-            ) : null}
           </Descriptions>
 
           {appointment.patientNote ? (

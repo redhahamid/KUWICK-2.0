@@ -105,13 +105,13 @@ describe('the drawer offers the action the counter actually needs', () => {
     expect(button).toBeEnabled();
   });
 
-  it('2. an already checked-in appointment cannot be checked in again', async () => {
-    // An enabled button that 400s is worse than a disabled one: the counter
-    // presses it three times before reading the toast.
+  it('2. an already checked-in appointment offers Open visit, not a dead Check in', async () => {
+    // §10 — the irrelevant primary is not disabled, it is GONE, and the
+    // button that replaces it is the one the counter actually needs next.
     open({ status: 'CHECKED_IN', visitId: 'visit-9' });
 
-    const button = await screen.findByRole('button', { name: /check in/i });
-    expect(button).toBeDisabled();
+    expect(await screen.findByRole('button', { name: /open visit/i })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /^check in$/i })).not.toBeInTheDocument();
   });
 
   it('3. a REQUEST offers Accept and Decline instead of Check in', async () => {
@@ -132,11 +132,14 @@ describe('the drawer offers the action the counter actually needs', () => {
     );
   });
 
-  it('5. a cancelled appointment can be neither checked in nor rescheduled', async () => {
+  it('5. a cancelled appointment shows neither Check in nor Reschedule at all', async () => {
     open({ status: 'CANCELLED' });
 
-    expect(await screen.findByRole('button', { name: /check in/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /reschedule/i })).toBeDisabled();
+    // The drawer still renders (More menu, history) — wait for it, then
+    // assert the dead controls are absent rather than merely disabled.
+    expect(await screen.findByRole('button', { name: /more actions/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^check in$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reschedule/i })).not.toBeInTheDocument();
   });
 });
 

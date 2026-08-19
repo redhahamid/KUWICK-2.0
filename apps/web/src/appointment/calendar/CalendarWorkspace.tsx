@@ -30,7 +30,7 @@ import { AppointmentDrawer } from './AppointmentDrawer';
 import { StaffBookingFlow } from '../StaffBookingFlow';
 import { CalendarMetrics } from './CalendarMetrics';
 import { CalendarViewMode, getCalendarRange, shiftAnchor, todayAnchor } from './calendar-range';
-import { cardLines, earliestRosteredHour, gridBounds, isReleased, scrollToHour } from './calendar-events';
+import { cardLines, earliestRosteredHour, gridBounds, isReleased, scrollToHour, compactLine } from './calendar-events';
 import { getDoctorColor } from './doctor-color';
 import { ApiError } from '../../core/api-client';
 
@@ -55,6 +55,8 @@ interface CalendarEvent {
   resourceId: string;
   appointment: Appointment;
   lines: string[];
+  /** "09:00 Siti" — the narrow-column rendering (week/month). */
+  compact: string;
   released: boolean;
 }
 
@@ -182,6 +184,10 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           resourceId: appointment.staffId,
           appointment,
           lines,
+          compact: compactLine(
+            formatClinicTime(appointment.scheduledStart),
+            patientName(appointment.patientId),
+          ),
           released: isReleased(appointment.status),
         };
       });
@@ -394,7 +400,12 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
         />
       ) : null}
 
-      <div className="kw-calendar-grid">
+      <div
+        className={
+          'kw-calendar-grid' +
+          (viewMode === 'providers' && (resources?.length ?? 0) > 4 ? ' kw-calendar-grid--wide' : '')
+        }
+      >
         {isLoading ? (
           <div style={{ padding: 48, textAlign: 'center' }}>
             <Spin />
@@ -410,6 +421,10 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             toolbar={false}
             selectable
             popup
+            // Overlapping bookings share the column side-by-side instead of
+            // stacking translucent fragments on top of each other — the
+            // difference between a busy 9 o'clock and an unreadable one.
+            dayLayoutAlgorithm="no-overlap"
             step={15}
             timeslots={2}
             min={anchor.hour(bounds.startHour).minute(0).toDate()}
@@ -430,17 +445,53 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             }}
             messages={{ showMore: (count: number) => `+ ${count} more` }}
             components={{
+              // A narrow week/month cell carries time + first name; the day
+              // and provider columns are wide enough for the full card. The
+              // whole story is always one click away in the drawer, and the
+              // tooltip carries it on hover for the impatient.
               event: ({ event }: { event: CalendarEvent }) => (
                 <Tooltip title={`${event.lines.join(' · ')} — double-click to move`}>
-                  <div className="kw-calendar-event">
-                    {event.lines.map((line, index) => (
-                      <div key={line + index} className={index === 0 ? 'kw-event-primary' : 'kw-event-secondary'}>
-                        {line}
-                      </div>
-                    ))}
-                  </div>
+                  {viewMode === 'week' || viewMode === 'month' ? (
+                    <div className="kw-calendar-event">
+                      <div className="kw-event-primary">{event.compact}</div>
+                    </div>
+                  ) : (
+                    <div className="kw-calendar-event">
+                      {event.lines.map((line, index) => (
+                        <div key={line + index} className={index === 0 ? 'kw-event-primary' : 'kw-event-secondary'}>
+                          {line}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </Tooltip>
               ),
+              // The provider column header is a person, not a string: the
+              // initial in the provider's own calendar colour is the same
+              // identity cue every card's left edge already carries.
+              resourceHeader: ({ label, resource }: { label: React.ReactNode; resource?: { resourceId?: string } }) => {
+                const id = resource?.resourceId ? String(resource.resourceId) : '';
+                const name = String(label ?? '');
+                const initials = name
+                  .replace(/^Dr\.?\s+/i, '')
+                  .split(/\s+/)
+                  .slice(0, 2)
+                  .map((part) => part[0] ?? '')
+                  .join('')
+                  .toUpperCase();
+                return (
+                  <div className="kw-provider-head">
+                    <span
+                      className="kw-provider-avatar"
+                      style={id ? { background: getDoctorColor(id) } : undefined}
+                      aria-hidden
+                    >
+                      {initials}
+                    </span>
+                    <span className="kw-provider-name">{name}</span>
+                  </div>
+                );
+              },
             }}
             eventPropGetter={(event: CalendarEvent) => {
               const colour = getDoctorColor(event.appointment.staffId);
