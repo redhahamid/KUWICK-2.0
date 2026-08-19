@@ -4552,6 +4552,162 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   padding-bottom: 6px;
 }
 
+/* ---------------------------------------------------------------------------
+   NEW APPOINTMENT — the progressive five-step flow (§22). The same section
+   language as the drawer: a quiet numbered label, then exactly one question.
+   --------------------------------------------------------------------------- */
+
+.kw-flow-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.kw-flow-progress {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--kw-text-secondary, #667085);
+}
+
+.kw-flow-step {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--kw-text-muted, #98a2b3);
+  margin: 18px 0 8px;
+}
+
+.kw-flow-step:first-child {
+  margin-top: 0;
+}
+
+/* The chosen patient stays a PERSON on screen — name, IC, phone — for the
+   whole booking, with one small way back. */
+.kw-flow-patient {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--kw-border, #dce4ea);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--kw-surface-2, #f8fafc);
+}
+
+.kw-flow-patient-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.kw-flow-patient-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.kw-flow-patient-meta {
+  font-size: 12px;
+  color: var(--kw-text-secondary, #667085);
+}
+
+.kw-flow-recent {
+  margin-top: 10px;
+}
+
+.kw-flow-recent-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* Service cards — a decision each, not an option row in a dropdown. */
+.kw-flow-services {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.kw-flow-service,
+.kw-flow-provider {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  border: 1px solid var(--kw-border, #dce4ea);
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px 12px;
+  cursor: pointer;
+  font: inherit;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.kw-flow-service:hover,
+.kw-flow-provider:hover {
+  border-color: var(--kw-teal, #0f766e);
+}
+
+.kw-flow-service--on,
+.kw-flow-provider--on {
+  border-color: var(--kw-teal, #0f766e);
+  background: var(--kw-clinical-bg, #eaf5f6);
+  box-shadow: inset 0 0 0 1px var(--kw-teal, #0f766e);
+}
+
+.kw-flow-service-name,
+.kw-flow-provider-name {
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.kw-flow-service-meta,
+.kw-flow-provider-meta {
+  font-size: 12px;
+  color: var(--kw-text-secondary, #667085);
+}
+
+.kw-flow-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* The review card — the same shape the public confirmation uses, because it
+   is the same promise. */
+.kw-flow-review {
+  display: flex;
+  gap: 16px;
+  border: 1px solid var(--kw-border, #dce4ea);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--kw-surface-2, #f8fafc);
+}
+
+.kw-flow-review-date {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.kw-flow-review-time {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-flow-review-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  .kw-flow-services {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* §15 — a provider's standing week, folded to one line until somebody is
    actually editing it. */
 .kw-weekly-summary {

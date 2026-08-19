@@ -1,30 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Avatar,
   Button,
   Collapse,
   DatePicker,
   Drawer,
   Empty,
   Input,
-  Radio,
   Segmented,
   Select,
   Space,
   Spin,
-  Tag,
   Typography,
   message,
 } from 'antd';
+import { ThunderboltOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, ApiError } from '../core/api-client';
-import { usePatientSearch } from '../core/hooks/usePatients';
+import { usePatient, usePatients, usePatientSearch } from '../core/hooks/usePatients';
 import { clinicDayjs, formatClinicDate, formatClinicTime } from '../clinical/clinicTime';
 import { useCreateAppointment } from './hooks/useAppointments';
 import { useAppointmentServices } from './hooks/useServiceConfig';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 interface AvailabilityAnswer {
   staffId: string;
@@ -48,18 +48,25 @@ const REASON_WORDS: Record<string, string> = {
   FULLY_BOOKED: 'There is no room left that day.',
 };
 
+const DAYPARTS = ['Morning', 'Afternoon', 'Evening', 'Late night'] as const;
+type Daypart = (typeof DAYPARTS)[number];
+
 /**
  * WHICH PART OF THE DAY A SLOT FALLS IN.
  *
- * A list of thirty times is a list nobody scans. Morning / Afternoon / Evening
- * is how a receptionist and a patient both already think, and it makes the
- * common request — "anything after four?" — answerable at a glance.
+ * A list of thirty times is a list nobody scans. Morning / Afternoon /
+ * Evening / Late night is how a receptionist and a patient both already
+ * think, and it makes the common request — "anything after four?" —
+ * answerable at a glance. Late night exists because the clinic does (§39):
+ * a 24-hour roster produces 23:00 slots, and calling those "Evening" buries
+ * them under twenty earlier chips.
  */
-function daypartOf(start: string): 'Morning' | 'Afternoon' | 'Evening' {
+function daypartOf(start: string): Daypart {
   const hour = clinicDayjs(start).hour();
   if (hour < 12) return 'Morning';
   if (hour < 17) return 'Afternoon';
-  return 'Evening';
+  if (hour < 22) return 'Evening';
+  return 'Late night';
 }
 
 interface StaffBookingFlowProps {
@@ -72,16 +79,16 @@ interface StaffBookingFlowProps {
 }
 
 /**
- * NEW APPOINTMENT — in the order a person asks the questions (§15).
+ * NEW APPOINTMENT — a progressive five-step flow (§22).
  *
- *   Patient → Service → Provider → Date → Time → Reason → Advanced
+ *   1 Patient → 2 Service → 3 Doctor → 4 Date & time → 5 Review
  *
- * The old form asked for a clinic, a staff id, a service id, a start instant
- * and an end instant, all at once, and left the person to work out which
- * combinations existed. This asks one thing at a time and only ever offers
- * times the SERVER says are free — the slot grid comes from the availability
- * engine, so a slot on this screen is a slot the booking will be allowed to
- * take.
+ * Each step appears when the one before it is answered, so the drawer is
+ * never a wall of empty controls — and never a giant empty drawer either:
+ * the first thing on screen is one search box and the patients most
+ * recently seen. Only times the SERVER says are free are ever offered —
+ * the slot grid comes from the availability engine, so a slot on this
+ * screen is a slot the booking will be allowed to take.
  *
  * Clicking an empty slot on the calendar prefills the provider, the date and
  * the time, so the only questions left are the patient and the service.
@@ -104,6 +111,9 @@ export function StaffBookingFlow({
   const [idempotencyKey] = useState(() => `staff-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
   const { data: patients, isFetching: searching } = usePatientSearch(patientSearch);
+  // "Recent patients" — the people most likely to be on the phone right now.
+  const { data: recentPatients } = usePatients();
+  const { data: selectedPatient } = usePatient(patientId);
   const { data: services } = useAppointmentServices({ bookableOnly: true });
   const create = useCreateAppointment();
 
@@ -134,7 +144,7 @@ export function StaffBookingFlow({
         );
         return [{ staffId, slots, reason: slots.length ? null : 'FULLY_BOOKED' }];
       }
-      // "Any available provider" asks the engine once per eligible provider,
+      // "Any available doctor" asks the engine once per eligible provider,
       // exactly as the server does — and keeps the real provider on each slot.
       const answers = await Promise.all(
         eligibleProviders.map(async (provider) => {
@@ -159,9 +169,9 @@ export function StaffBookingFlow({
     }
     const all = [...byStart.values()].sort((a, b) => a.start.localeCompare(b.start));
     return {
-      Morning: all.filter((entry) => daypartOf(entry.start) === 'Morning'),
-      Afternoon: all.filter((entry) => daypartOf(entry.start) === 'Afternoon'),
-      Evening: all.filter((entry) => daypartOf(entry.start) === 'Evening'),
+      parts: Object.fromEntries(
+        DAYPARTS.map((part) => [part, all.filter((entry) => daypartOf(entry.start) === part)]),
+      ) as Record<Daypart, { start: string; end: string; staffId: string }[]>,
       total: all.length,
     };
   }, [availability]);
@@ -207,13 +217,41 @@ export function StaffBookingFlow({
 
   const ready = Boolean(patientId && serviceId && slot);
 
+  // The compact progress line (§22) — the first unanswered question. The
+  // doctor step defaults to "Any available", which IS an answer, so once a
+  // service is chosen the open question is the time.
+  const step = !patientId ? 1 : !serviceId ? 2 : !slot ? 4 : 5;
+  const STEP_WORDS: Record<number, string> = {
+    1: 'Who is it for?',
+    2: 'What are they coming in for?',
+    4: 'Pick a day and a time',
+    5: 'Check it and book',
+  };
+
+  const patientInitials = (name: string) =>
+    name
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0] ?? '')
+      .join('')
+      .toUpperCase();
+
+  const money = (value: string) => `RM ${Number(value).toFixed(2)}`;
+
   return (
     <Drawer
       open={open}
       onClose={onClose}
       width={520}
       destroyOnHidden
-      title="New appointment"
+      title={
+        <div className="kw-flow-title">
+          <span>New appointment</span>
+          <span className="kw-flow-progress">
+            Step {step} of 5 · {STEP_WORDS[step]}
+          </span>
+        </div>
+      }
       footer={
         <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
           <Button onClick={onClose}>Cancel</Button>
@@ -229,68 +267,134 @@ export function StaffBookingFlow({
       }
     >
       <div data-testid="staff-booking-flow">
-        <Title level={5} style={{ marginTop: 0 }}>
-          1. Patient
-        </Title>
-        <Select
-          showSearch
-          allowClear
-          style={{ width: '100%' }}
-          placeholder="Search by name, IC or phone"
-          filterOption={false}
-          value={patientId}
-          onSearch={setPatientSearch}
-          onChange={setPatientId}
-          notFoundContent={searching ? <Spin size="small" /> : <Empty description="No match" />}
-          options={(patients ?? []).map((patient) => ({
-            value: patient.id,
-            label: `${patient.name} · ${patient.identifierValue}${patient.phone ? ` · ${patient.phone}` : ''}`,
-          }))}
-        />
-
-        <Title level={5}>2. Service</Title>
-        <Select
-          style={{ width: '100%' }}
-          placeholder="Which service?"
-          value={serviceId}
-          onChange={setServiceId}
-          options={(services ?? []).map((row) => ({
-            value: row.id,
-            label: `${row.name} · ${row.durationMinutesDefault} min`,
-          }))}
-          notFoundContent={
-            <Empty description="No service is set up for booking yet. Add one under Services." />
-          }
-        />
-
-        {serviceId ? (
+        {/* -------- 1 · PATIENT ------------------------------------------ */}
+        <div className="kw-flow-step">1 · Patient</div>
+        {selectedPatient ? (
+          // The chosen patient as a CARD, not a value lost inside a select:
+          // name, IC and phone stay in view for the rest of the booking.
+          <div className="kw-flow-patient" data-testid="flow-patient-card">
+            <Avatar size={36} className="kw-apt-avatar">
+              {patientInitials(selectedPatient.name)}
+            </Avatar>
+            <div className="kw-flow-patient-text">
+              <div className="kw-flow-patient-name">{selectedPatient.name}</div>
+              <div className="kw-flow-patient-meta">
+                {selectedPatient.identifierValue}
+                {selectedPatient.phone ? ` · ${selectedPatient.phone}` : ''}
+              </div>
+            </div>
+            <Button size="small" onClick={() => setPatientId(undefined)}>
+              Change
+            </Button>
+          </div>
+        ) : (
           <>
-            <Title level={5}>3. Provider</Title>
-            <Radio.Group
-              value={staffId}
-              onChange={(event) => setStaffId(event.target.value)}
-              optionType="button"
-              buttonStyle="solid"
-              style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}
-            >
-              <Radio.Button value="ANY">Any available</Radio.Button>
-              {eligibleProviders.map((provider) => (
-                <Radio.Button key={provider.id} value={provider.id}>
-                  {provider.fullName}
-                </Radio.Button>
-              ))}
-            </Radio.Group>
+            <Select
+              showSearch
+              allowClear
+              style={{ width: '100%' }}
+              placeholder="Search by name, IC or phone"
+              filterOption={false}
+              value={patientId}
+              onSearch={setPatientSearch}
+              onChange={setPatientId}
+              notFoundContent={searching ? <Spin size="small" /> : <Empty description="No match" />}
+              options={(patients ?? []).map((patient) => ({
+                value: patient.id,
+                label: `${patient.name} · ${patient.identifierValue}${patient.phone ? ` · ${patient.phone}` : ''}`,
+              }))}
+            />
+            {(recentPatients?.length ?? 0) > 0 ? (
+              <div className="kw-flow-recent">
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Recent patients
+                </Text>
+                <div className="kw-flow-recent-row">
+                  {(recentPatients ?? []).slice(0, 5).map((patient) => (
+                    <Button key={patient.id} size="small" onClick={() => setPatientId(patient.id)}>
+                      {patient.name}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </>
+        )}
+
+        {/* -------- 2 · SERVICE ------------------------------------------- */}
+        {patientId ? (
+          <>
+            <div className="kw-flow-step">2 · Service</div>
+            {(services?.length ?? 0) === 0 ? (
+              <Empty description="No service is set up for booking yet. Add one under Services." />
+            ) : (
+              <div className="kw-flow-services">
+                {(services ?? []).map((row) => (
+                  <button
+                    key={row.id}
+                    type="button"
+                    className={
+                      'kw-flow-service' + (serviceId === row.id ? ' kw-flow-service--on' : '')
+                    }
+                    onClick={() => setServiceId(row.id)}
+                  >
+                    <span className="kw-flow-service-name">{row.name}</span>
+                    <span className="kw-flow-service-meta">
+                      {row.durationMinutesDefault} min
+                      {row.priceDisplay !== 'HIDDEN' && Number(row.price) > 0
+                        ? ` · ${row.priceDisplay === 'FROM' ? 'from ' : ''}${money(row.price)}`
+                        : ''}
+                      {row.bookingPaymentRule === 'DEPOSIT' && Number(row.depositAmount) > 0
+                        ? ` · ${money(row.depositAmount)} deposit`
+                        : ''}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        ) : null}
+
+        {/* -------- 3 · DOCTOR -------------------------------------------- */}
+        {patientId && serviceId ? (
+          <>
+            <div className="kw-flow-step">3 · Doctor</div>
             {eligibleProviders.length === 0 ? (
               <Alert
-                style={{ marginTop: 8 }}
                 type="warning"
                 showIcon
                 message="No provider is set up for this service"
                 description="Add one under Services ▸ Providers before it can be booked."
               />
-            ) : null}
+            ) : (
+              <div className="kw-flow-providers">
+                <button
+                  type="button"
+                  className={'kw-flow-provider' + (staffId === 'ANY' ? ' kw-flow-provider--on' : '')}
+                  onClick={() => setStaffId('ANY')}
+                >
+                  <span className="kw-flow-provider-name">
+                    <ThunderboltOutlined aria-hidden /> Any available doctor
+                  </span>
+                  <span className="kw-flow-provider-meta">Fastest appointment</span>
+                </button>
+                {eligibleProviders.map((provider) => (
+                  <button
+                    key={provider.id}
+                    type="button"
+                    className={
+                      'kw-flow-provider' + (staffId === provider.id ? ' kw-flow-provider--on' : '')
+                    }
+                    onClick={() => setStaffId(provider.id)}
+                  >
+                    <span className="kw-flow-provider-name">{provider.fullName}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
-            <Title level={5}>4. Date</Title>
+            {/* -------- 4 · DATE & TIME ----------------------------------- */}
+            <div className="kw-flow-step">4 · Date &amp; time</div>
             <Space wrap>
               <DatePicker
                 value={date}
@@ -308,60 +412,84 @@ export function StaffBookingFlow({
               />
             </Space>
 
-            <Title level={5}>5. Available time</Title>
-            {loadingSlots ? <Spin /> : null}
-            {!loadingSlots && grouped.total === 0 ? (
-              <Alert
-                type="info"
-                showIcon
-                message="Nothing free that day"
-                description={
-                  REASON_WORDS[availability?.find((answer) => answer.reason)?.reason ?? ''] ??
-                  'Try another date, or another provider.'
-                }
-              />
-            ) : null}
-            {(['Morning', 'Afternoon', 'Evening'] as const).map((part) =>
-              grouped[part].length > 0 ? (
-                <div key={part} style={{ marginBottom: 12 }}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {part}
-                  </Text>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-                    {grouped[part].map((entry) => (
-                      <Button
-                        key={entry.start}
-                        size="small"
-                        type={slot?.start === entry.start ? 'primary' : 'default'}
-                        onClick={() => setSlot(entry)}
-                      >
-                        {formatClinicTime(entry.start)}
-                        {staffId === 'ANY' && providerName(entry.staffId) ? (
-                          <Text
-                            type={slot?.start === entry.start ? undefined : 'secondary'}
-                            style={{ fontSize: 11, marginLeft: 6 }}
-                          >
-                            {providerName(entry.staffId).replace(/^Dr\.?\s*/i, '')}
-                          </Text>
-                        ) : null}
-                      </Button>
-                    ))}
+            <div style={{ marginTop: 10 }}>
+              {loadingSlots ? <Spin /> : null}
+              {!loadingSlots && grouped.total === 0 ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  message="Nothing free that day"
+                  description={
+                    REASON_WORDS[availability?.find((answer) => answer.reason)?.reason ?? ''] ??
+                    'Try another date, or another provider.'
+                  }
+                />
+              ) : null}
+              {DAYPARTS.map((part) =>
+                grouped.parts[part].length > 0 ? (
+                  <div key={part} style={{ marginBottom: 12 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {part}
+                    </Text>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                      {grouped.parts[part].map((entry) => (
+                        <Button
+                          key={entry.start}
+                          size="small"
+                          type={slot?.start === entry.start ? 'primary' : 'default'}
+                          onClick={() => setSlot(entry)}
+                        >
+                          {formatClinicTime(entry.start)}
+                          {staffId === 'ANY' && providerName(entry.staffId) ? (
+                            <Text
+                              type={slot?.start === entry.start ? undefined : 'secondary'}
+                              style={{ fontSize: 11, marginLeft: 6 }}
+                            >
+                              {providerName(entry.staffId).replace(/^Dr\.?\s*/i, '')}
+                            </Text>
+                          ) : null}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ) : null,
-            )}
+                ) : null,
+              )}
+            </div>
+          </>
+        ) : null}
 
-            <Title level={5}>6. Reason or note</Title>
+        {/* -------- 5 · REVIEW -------------------------------------------- */}
+        {ready && slot ? (
+          <>
+            <div className="kw-flow-step">5 · Review</div>
+            <div className="kw-flow-review" data-testid="flow-review">
+              <div className="kw-flow-review-when">
+                <div className="kw-flow-review-date">{formatClinicDate(slot.start)}</div>
+                <div className="kw-flow-review-time">
+                  {formatClinicTime(slot.start)} – {formatClinicTime(slot.end)}
+                </div>
+              </div>
+              <div className="kw-flow-review-lines">
+                <Text strong>{service?.name}</Text>
+                <Text>{providerName(slot.staffId) || 'Provider'}</Text>
+                <Text type="secondary">For {selectedPatient?.name}</Text>
+                {service && Number(service.depositAmount) > 0 && service.bookingPaymentRule === 'DEPOSIT' ? (
+                  <Text type="secondary">Deposit {money(service.depositAmount)}</Text>
+                ) : null}
+              </div>
+            </div>
+
             <Input.TextArea
+              style={{ marginTop: 10 }}
               rows={2}
               value={note}
               onChange={(event) => setNote(event.target.value)}
-              placeholder="What is this appointment for? Seen by staff only."
+              placeholder="Reason or note — seen by staff only."
             />
 
             <Collapse
               ghost
-              style={{ marginTop: 12 }}
+              style={{ marginTop: 8 }}
               items={[
                 {
                   key: 'advanced',
@@ -385,21 +513,6 @@ export function StaffBookingFlow({
                 },
               ]}
             />
-
-            {slot ? (
-              <Alert
-                style={{ marginTop: 16 }}
-                type="success"
-                showIcon
-                message={`${formatClinicDate(slot.start)} · ${formatClinicTime(slot.start)}–${formatClinicTime(slot.end)}`}
-                description={
-                  <Space size={4} wrap>
-                    <Tag>{service?.name}</Tag>
-                    <Tag>{providerName(slot.staffId) || 'Provider'}</Tag>
-                  </Space>
-                }
-              />
-            ) : null}
           </>
         ) : null}
       </div>

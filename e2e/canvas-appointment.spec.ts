@@ -224,16 +224,12 @@ test.describe('an appointment booked in the module reaches the canvas', () => {
     // antd renders a Select's placeholder in a span, not on the input, so
     // `getByPlaceholder` finds nothing — the control is opened by clicking it
     // and the option list renders in a portal outside the drawer.
-    const openSelect = async (index: number) => {
-      await drawer.locator('.ant-select').nth(index).click();
-    };
-
-    await openSelect(0);
+    await drawer.locator('.ant-select').first().click();
     await page.keyboard.type(booking.patientName.slice(0, 12));
     await page.getByTitle(booking.patientName, { exact: false }).first().click();
 
-    await openSelect(1);
-    await page.getByTitle(booking.followUpService, { exact: false }).first().click();
+    // §22 — the service step is a card per service, not a dropdown.
+    await drawer.getByRole('button', { name: booking.followUpService }).click();
 
     // The date the fixture doctor is rostered on — every day, by design.
     // CLICKED IN THE PANEL, not typed. antd parses typed text through the
