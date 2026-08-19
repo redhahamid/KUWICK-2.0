@@ -63,10 +63,14 @@ export class QueueTicketService {
 
   // Resets daily per clinic *per queue type* (D-038) — same accepted
   // count-based-sequence gap as Visit.visitNumber.
-  private async nextTicketNumber(clinicId: string, queueType: QueueType): Promise<number> {
+  private async nextTicketNumber(
+    tx: { queueTicket: { count(args: object): Promise<number> } },
+    clinicId: string,
+    queueType: QueueType,
+  ): Promise<number> {
     const startOfDay = new Date();
     startOfDay.setUTCHours(0, 0, 0, 0);
-    const count = await this.prisma.queueTicket.count({
+    const count = await tx.queueTicket.count({
       where: { clinicId, queueType, createdAt: { gte: startOfDay } },
     });
     return count + 1;
@@ -135,18 +139,29 @@ export class QueueTicketService {
     // written from the RESOLVED visit, not from the request.
     const visit = await this.visits.create(visitInput);
 
-    const ticketNumber = await this.nextTicketNumber(visit.clinicId, queueType);
     try {
-      return await this.prisma.queueTicket.create({
-        data: {
-          tenantId: currentTenantId(),
-          clinicId: visit.clinicId,
-          visitId: visit.id,
-          ticketNumber,
-          queueType,
-          displayNumber: formatDisplayNumber(queueType, ticketNumber),
-        },
-        include: { visit: { include: { patient: true, staff: true } }, room: true, heldBy: true },
+      return await withTenantTx(this.rawPrisma, async (tx) => {
+        // Count-plus-one is only a number if nobody else is counting: two
+        // concurrent registrations both counted 6 and both became "A007",
+        // for two DIFFERENT patients — measured during the §5 hardening
+        // pass, not theorised. The advisory lock serialises the day's
+        // allocation per clinic and stream, inside the same transaction as
+        // the insert, exactly as the appointment diary locks do.
+        const day = new Date().toISOString().slice(0, 10);
+        const lockKey = `queue-ticket:${visit.clinicId}:${queueType}:${day}`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+        const ticketNumber = await this.nextTicketNumber(tx, visit.clinicId, queueType);
+        return tx.queueTicket.create({
+          data: {
+            tenantId: currentTenantId(),
+            clinicId: visit.clinicId,
+            visitId: visit.id,
+            ticketNumber,
+            queueType,
+            displayNumber: formatDisplayNumber(queueType, ticketNumber),
+          },
+          include: { visit: { include: { patient: true, staff: true } }, room: true, heldBy: true },
+        });
       });
     } catch (error) {
       // `visitId` is unique: one ticket represents the visit's CURRENT

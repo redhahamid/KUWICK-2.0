@@ -55,6 +55,10 @@ function createService(actor: Record<string, unknown> | null = FRONT_DESK) {
     queueTicket: {
       findUnique: jest.fn(),
       update: jest.fn(),
+      // §5 hardening — allocation moved INSIDE the transaction, behind the
+      // advisory lock, so count and create are tx members now.
+      count: jest.fn().mockResolvedValue(0),
+      create: jest.fn(),
       // KW2-C2 — hold and resume claim atomically (the D-087 pattern), so the
       // precondition lives in the WHERE clause and the mock reports how many
       // rows it would have moved. Default 1: the claim succeeded.
@@ -104,10 +108,10 @@ describe('formatDisplayNumber', () => {
 
 describe('QueueTicketService', () => {
   it('addToQueue creates a Visit first, then a ticket numbered from today\'s count of the same queue type', async () => {
-    const { service, prisma, visits } = createService();
+    const { service, tx, visits } = createService();
     (visits.create as jest.Mock).mockResolvedValue({ id: 'visit-1', clinicId: 'c1' });
-    (prisma.queueTicket.count as jest.Mock).mockResolvedValue(2);
-    (prisma.queueTicket.create as jest.Mock).mockResolvedValue({ id: 'ticket-1', ticketNumber: 3 });
+    (tx.queueTicket.count as jest.Mock).mockResolvedValue(2);
+    (tx.queueTicket.create as jest.Mock).mockResolvedValue({ id: 'ticket-1', ticketNumber: 3 });
 
     const result = await withTenant(() =>
       service.addToQueue({ clinicId: 'c1', patientId: 'p1', staffId: 's1', billingType: 'Self-pay' }),
@@ -116,10 +120,10 @@ describe('QueueTicketService', () => {
     expect(visits.create).toHaveBeenCalledWith(
       expect.objectContaining({ clinicId: 'c1', patientId: 'p1', staffId: 's1' }),
     );
-    expect(prisma.queueTicket.count).toHaveBeenCalledWith({
+    expect(tx.queueTicket.count).toHaveBeenCalledWith({
       where: { clinicId: 'c1', queueType: QueueType.WALK_IN, createdAt: { gte: expect.any(Date) } },
     });
-    expect(prisma.queueTicket.create).toHaveBeenCalledWith(
+    expect(tx.queueTicket.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           visitId: 'visit-1',
@@ -134,10 +138,10 @@ describe('QueueTicketService', () => {
 
   it('addToQueue numbers the EMERGENCY stream independently', async () => {
     const ctx = createService();
-    const { service, prisma, visits } = ctx;
+    const { service, tx, visits } = ctx;
     (visits.create as jest.Mock).mockResolvedValue({ id: 'visit-1', clinicId: 'c1' });
-    (prisma.queueTicket.count as jest.Mock).mockResolvedValue(0);
-    (prisma.queueTicket.create as jest.Mock).mockResolvedValue({ id: 'ticket-1' });
+    (tx.queueTicket.count as jest.Mock).mockResolvedValue(0);
+    (tx.queueTicket.create as jest.Mock).mockResolvedValue({ id: 'ticket-1' });
 
     await withTenant(() =>
       service.addToQueue({
@@ -149,10 +153,10 @@ describe('QueueTicketService', () => {
       }),
     );
 
-    expect(prisma.queueTicket.count).toHaveBeenCalledWith({
+    expect(tx.queueTicket.count).toHaveBeenCalledWith({
       where: { clinicId: 'c1', queueType: QueueType.EMERGENCY, createdAt: { gte: expect.any(Date) } },
     });
-    expect(prisma.queueTicket.create).toHaveBeenCalledWith(
+    expect(tx.queueTicket.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ queueType: QueueType.EMERGENCY, displayNumber: 'E001' }),
       }),

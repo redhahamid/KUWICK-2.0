@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -11,6 +12,7 @@ import {
   AppointmentEventType,
   AppointmentSource,
   AppointmentStatus,
+  QueueTicketStatus,
   QueueType,
 } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
@@ -363,10 +365,19 @@ export class AppointmentService {
       assertCanPerformAppointmentAction(actor, 'CHECK_IN');
       assertStatus(appointment.status, CHECK_IN_FROM, 'check in');
       if (appointment.status !== AppointmentStatus.ARRIVED) {
-        await tx.appointment.update({
-          where: { id },
+        // The CLAIM, not just a write. The assert above read a row from
+        // BEFORE this transaction; two counters clicking together both pass
+        // it. The precondition in the WHERE turns check-and-set into one
+        // atomic statement: the loser matches nothing, and is told so —
+        // instead of both proceeding to create a visit and a ticket each
+        // for one patient (the doctor-completion claim, D-087, same shape).
+        const claimed = await tx.appointment.updateMany({
+          where: { id, status: { in: [AppointmentStatus.CONFIRMED, AppointmentStatus.REMINDED] } },
           data: { status: AppointmentStatus.ARRIVED, arrivedAt: new Date() },
         });
+        if (claimed.count === 0) {
+          throw new ConflictException('This appointment is already being checked in at another counter.');
+        }
         await recordAppointmentEvent(tx, {
           appointmentId: id,
           eventType: AppointmentEventType.STATUS_CHANGED,
@@ -391,20 +402,29 @@ export class AppointmentService {
       queueType: QueueType.APPOINTMENT,
     });
 
-    return withTenantTx(this.rawPrisma, async (tx) => {
+    const outcome = await withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
       // THE LINK, written the moment it exists. `addToQueue` created a VISIT
       // to hang the ticket on, and without recording which one `completeVisit`
       // cannot find the appointment that started the consultation — so
       // appointments sat at ARRIVED forever and the Completed tab stayed empty.
-      const updated = await tx.appointment.update({
-        where: { id },
+      //
+      // `visitId: null` in the WHERE is the second claim, for the entry the
+      // first one cannot cover: an appointment ALREADY at ARRIVED when two
+      // counters click Check In together. The loser lands here holding a
+      // ticket it must not keep.
+      const linked = await tx.appointment.updateMany({
+        where: { id, visitId: null },
         data: {
           visitId: ticket.visitId,
           status: AppointmentStatus.CHECKED_IN,
           checkedInAt: new Date(),
         },
       });
+      if (linked.count === 0) {
+        return { lost: true as const };
+      }
+      const updated = await tx.appointment.findUniqueOrThrow({ where: { id } });
       await recordAppointmentEvent(tx, {
         appointmentId: id,
         eventType: AppointmentEventType.CHECKED_IN,
@@ -414,8 +434,26 @@ export class AppointmentService {
         actorStaffId: actor.id,
         actorLabel: actor.fullName,
       });
-      return updated;
+      return { lost: false as const, updated };
     });
+
+    if (outcome.lost) {
+      // In its OWN transaction, deliberately: the first version cancelled the
+      // duplicate and then threw inside the same tx — and the throw rolled
+      // the cancellation back, leaving the patient with two live tickets,
+      // which is precisely what this exists to prevent.
+      await withTenantTx(this.rawPrisma, (tx) =>
+        tx.queueTicket.update({
+          where: { id: ticket.id },
+          data: {
+            status: QueueTicketStatus.CANCELLED,
+            cancelReason: 'Duplicate check-in — already checked in at another counter',
+          },
+        }),
+      );
+      throw new ConflictException('This appointment was already checked in at another counter.');
+    }
+    return outcome.updated;
   }
 
   /**

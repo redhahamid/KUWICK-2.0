@@ -791,9 +791,35 @@ export class InvoiceService {
     if (invoice.status !== InvoiceStatus.UNPAID) {
       throw new BadRequestException(`Cannot cancel an invoice in status ${invoice.status}`);
     }
-    return this.prisma.invoice.update({
-      where: { id },
-      data: { status: InvoiceStatus.CANCELLED, cancelReason: dto.cancelReason },
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const cancelled = await tx.invoice.update({
+        where: { id },
+        data: { status: InvoiceStatus.CANCELLED, cancelReason: dto.cancelReason },
+      });
+      // §36 — a deposit applied to THIS invoice is released back to its
+      // appointment, in the same transaction. Without this the single-valued
+      // link stayed pointed at a CANCELLED invoice: the replacement invoice's
+      // reconciliation (which filters depositInvoiceId: null, precisely so a
+      // deposit is never applied twice) skipped it, and the counter asked the
+      // patient for money the clinic already held.
+      const deposits = await tx.appointment.findMany({
+        where: { depositInvoiceId: id },
+        select: { id: true, bookingFeeAmount: true },
+      });
+      for (const deposit of deposits) {
+        await tx.appointment.update({
+          where: { id: deposit.id },
+          data: { depositInvoiceId: null },
+        });
+        await recordAppointmentEvent(tx, {
+          appointmentId: deposit.id,
+          eventType: AppointmentEventType.PAYMENT_CHANGED,
+          before: { depositInvoiceId: id },
+          after: { depositInvoiceId: null, releasedAmount: String(deposit.bookingFeeAmount) },
+          reason: 'The invoice holding this deposit was cancelled; the deposit is available again',
+        });
+      }
+      return cancelled;
     });
   }
 

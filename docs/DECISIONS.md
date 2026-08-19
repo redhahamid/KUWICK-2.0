@@ -2263,6 +2263,20 @@ Documented as SAFE, deliberately, rather than changed: the old link after a resc
 
 ---
 
+## D-102 — Pre-merge hardening: money follows the live bill, and check-in cannot mint duplicates
+
+Three defects, all found by treating §4/§5 of the hardening pass as an adversary with two mice.
+
+**1. A cancelled invoice stranded the deposit.** The §36 single-application guard filters on `depositInvoiceId: null` — correct, and it is exactly what made the failure mode quiet: cancel the invoice the deposit was applied to, raise a replacement, and the replacement's reconciliation skips the deposit because the link still points at the corpse. The counter asks the patient for money the clinic is already holding. `InvoiceService.cancel()` now releases the link in the same transaction (PAYMENT_CHANGED event: applied → released → re-applied is three events; the history tells the story, the link tells the current truth). Not new accounting behaviour — the same single-application rule, corrected to bind against LIVE invoices.
+
+**2. Concurrent check-in created two visits and two tickets for one appointment.** `checkIn` asserted the status against a row read BEFORE its first transaction, so two counters clicking together both passed. Two atomic claims now (the D-087 `updateMany`-with-precondition shape): the status CAS covers the CONFIRMED/REMINDED entry; `visitId: null` in the link step covers the already-ARRIVED entry, with the loser cancelling its own duplicate ticket — in its OWN transaction, because the first attempt cancelled it inside the throwing transaction and the throw rolled the cancellation back, which the integration test caught by finding two WAITING tickets after a 409. The loser's visit remains as an inert shell; a cancelled ticket with 'Duplicate check-in' as its reason is the visible trace.
+
+**3. Two patients could hold the same queue number.** `nextTicketNumber` was count-plus-one on the pooled client with no lock and no unique index: two concurrent registrations both counted 6 and both printed "A007" — observed in the §5 test output, two different patients, same display number. Allocation now happens inside a transaction behind `pg_advisory_xact_lock` keyed per clinic, stream and day — the diary-lock pattern the appointment paths already use.
+
+`deposit-and-checkin.e2e-spec.ts` (10 tests) pins all three, plus the rest of the §4 lifecycle: applied exactly once with its event; a second invoice gets nothing; a reschedule carries the paid fee and the replacement reconciles once; cancel-before-invoice leaves the fee for a human; unpaid and zero-fee appointments write nothing. Kuwick has no payment gateway, so webhook retry / duplicate-callback scenarios are deliberately absent rather than simulated against infrastructure that does not exist.
+
+---
+
 ## Appendix — deletion-sensitive numbering still outstanding (report only)
 
 Recorded at the owner's request after G4c1. **Nothing here is changed.** Each derives its next number from `count(*) + 1`, which is the defect D-068 fixed for visits: the count falls behind the highest number in use as soon as any row is deleted.

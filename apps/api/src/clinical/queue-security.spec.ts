@@ -72,7 +72,7 @@ function createService(actor: Record<string, unknown> | null = FRONT_DESK) {
       findUnique: jest.fn().mockResolvedValue({ id: 'visit-1', clinicId: 'clinic-1', staffId: 'staff-1' }),
       update: jest.fn(),
     },
-    queueTicket: { findUnique: jest.fn(), update: jest.fn() },
+    queueTicket: { findUnique: jest.fn(), update: jest.fn(), count: jest.fn().mockResolvedValue(0), create: jest.fn() },
     visitWorkflowEvent: { create: jest.fn() },
   };
   const visitCompletion = { completeVisit: jest.fn().mockResolvedValue({ visitId: 'visit-1' }) } as unknown as VisitCompletionService;
@@ -231,8 +231,8 @@ describe('S3B — server-side reference resolution and non-disclosure', () => {
     const ctx = createService();
     // The browser asks for 'attacker-clinic'; VisitService resolves 'real-clinic'.
     (ctx.visits.create as jest.Mock).mockResolvedValue({ id: 'visit-1', clinicId: 'real-clinic' });
-    (ctx.prisma.queueTicket.count as jest.Mock).mockResolvedValue(0);
-    (ctx.prisma.queueTicket.create as jest.Mock).mockResolvedValue({ id: 'ticket-1' });
+    (ctx.tx.queueTicket.count as jest.Mock).mockResolvedValue(0);
+    (ctx.tx.queueTicket.create as jest.Mock).mockResolvedValue({ id: 'ticket-1' });
 
     await withTenant(() =>
       ctx.service.addToQueue({
@@ -243,10 +243,10 @@ describe('S3B — server-side reference resolution and non-disclosure', () => {
       }),
     );
 
-    expect(ctx.prisma.queueTicket.create).toHaveBeenCalledWith(
+    expect(ctx.tx.queueTicket.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ clinicId: 'real-clinic' }) }),
     );
-    expect(ctx.prisma.queueTicket.count).toHaveBeenCalledWith(
+    expect(ctx.tx.queueTicket.count).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ clinicId: 'real-clinic' }) }),
     );
   });
@@ -260,13 +260,13 @@ describe('S3B — server-side reference resolution and non-disclosure', () => {
         ctx.service.addToQueue({ clinicId: 'c1', patientId: 'p1', staffId: 's1', billingType: 'Self-pay' }),
       ),
     ).rejects.toThrow(ForbiddenException);
-    expect(ctx.prisma.queueTicket.create).not.toHaveBeenCalled();
+    expect(ctx.tx.queueTicket.create).not.toHaveBeenCalled();
   });
 
   it('a second ticket for one visit is refused in the product’s own words', async () => {
     const ctx = createService();
-    (ctx.prisma.queueTicket.count as jest.Mock).mockResolvedValue(0);
-    (ctx.prisma.queueTicket.create as jest.Mock).mockRejectedValue(
+    (ctx.tx.queueTicket.count as jest.Mock).mockResolvedValue(0);
+    (ctx.tx.queueTicket.create as jest.Mock).mockRejectedValue(
       Object.assign(new Error('Unique constraint failed on the fields: (`visitId`)'), { code: 'P2002' }),
     );
 
@@ -298,8 +298,8 @@ describe('S3B — server-side reference resolution and non-disclosure', () => {
 
   it('no refusal exposes database wording', async () => {
     const ctx = createService();
-    (ctx.prisma.queueTicket.count as jest.Mock).mockResolvedValue(0);
-    (ctx.prisma.queueTicket.create as jest.Mock).mockRejectedValue(
+    (ctx.tx.queueTicket.count as jest.Mock).mockResolvedValue(0);
+    (ctx.tx.queueTicket.create as jest.Mock).mockRejectedValue(
       Object.assign(new Error('Unique constraint failed on the fields: (`visitId`)'), { code: 'P2002' }),
     );
     const conflict = await withTenant(() =>

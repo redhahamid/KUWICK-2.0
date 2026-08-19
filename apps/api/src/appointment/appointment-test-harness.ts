@@ -135,6 +135,11 @@ export function buildAppointmentHarness(world: HarnessWorld = {}) {
     userClinicAccess: { findMany: jest.fn(async () => []) },
     appointment: {
       findUnique: jest.fn(async ({ where }: { where: { id: string } }) => byId[where.id] ?? null),
+      findUniqueOrThrow: jest.fn(async ({ where }: { where: { id: string } }) => {
+        const row = byId[where.id];
+        if (!row) throw new Error(`No appointment ${where.id} in harness`);
+        return row;
+      }),
       findFirst: jest.fn(async () => null),
       update: jest.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
         updates.push(data);
@@ -142,6 +147,23 @@ export function buildAppointmentHarness(world: HarnessWorld = {}) {
         byId[where.id] = merged;
         return merged;
       }),
+      // §5 hardening — checkIn claims with preconditions in the WHERE, the
+      // D-087 shape. The harness honours the two shapes checkIn uses:
+      // a status list, and visitId: null.
+      updateMany: jest.fn(
+        async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+          const row = byId[where.id as string];
+          if (!row) return { count: 0 };
+          const statusCond = where.status as { in?: string[] } | undefined;
+          if (statusCond?.in && !statusCond.in.includes(row.status as string)) return { count: 0 };
+          if ('visitId' in where && where.visitId === null && (row as { visitId?: unknown }).visitId != null) {
+            return { count: 0 };
+          }
+          updates.push(data);
+          byId[where.id as string] = { ...row, ...data };
+          return { count: 1 };
+        },
+      ),
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         creates.push(data);
         const created = { id: `appt-${creates.length + 1}`, ...data };

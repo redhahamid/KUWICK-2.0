@@ -130,6 +130,8 @@ function createService(role = 'FINANCE_STAFF', world: World = {}) {
     // this visit by default, which is the walk-in case and the common one.
     appointment: {
       findFirst: jest.fn().mockResolvedValue(null),
+      // §36 hardening — cancel() releases any deposit linked to the invoice.
+      findMany: jest.fn().mockResolvedValue([]),
       update: jest.fn(async ({ data }: { data: object }) => data),
     },
     appointmentEvent: { create: jest.fn(async ({ data }: { data: object }) => data) },
