@@ -130,7 +130,10 @@ function build(world: World = {}) {
     check: jest.fn(async (): Promise<BookingCheck> => world.check ?? { ok: true }),
   } as unknown as AppointmentBookingValidator;
 
-  const service = new PublicBookingService(prisma, availability, validator);
+  // The tenant-scoped client and the raw one are the same fake here: the
+  // distinction that matters in production — one sets `app.tenant_id`, the
+  // other does not — has no meaning against an in-memory double.
+  const service = new PublicBookingService(prisma, prisma as never, availability, validator);
   return { service, prisma, tx, availability, validator, created, events, updates, patients };
 }
 
@@ -375,7 +378,7 @@ describe('managing a booking by token reaches exactly one appointment', () => {
       appointment: { id: 'a1', status: 'CONFIRMED', scheduledStart: soon, clinicId: 'clinic-1', tenantId: 't1' },
     });
 
-    await expect(ctx.service.cancelByToken('tok', {})).rejects.toThrow(ForbiddenException);
+    await expect(ctx.service.cancelByToken(SLUG, 'tok', {})).rejects.toThrow(ForbiddenException);
   });
 
   it('20. a change inside the cutoff is refused with the number of hours', async () => {
@@ -390,7 +393,7 @@ describe('managing a booking by token reaches exactly one appointment', () => {
       },
     });
 
-    await expect(ctx.service.cancelByToken('tok', {})).rejects.toThrow(/4 hours/);
+    await expect(ctx.service.cancelByToken(SLUG, 'tok', {})).rejects.toThrow(/4 hours/);
   });
 
   it('21. a cancelled appointment cannot be cancelled again', async () => {
@@ -398,7 +401,7 @@ describe('managing a booking by token reaches exactly one appointment', () => {
       appointment: { id: 'a1', status: 'CANCELLED', scheduledStart: soon, clinicId: 'clinic-1', tenantId: 't1' },
     });
 
-    await expect(ctx.service.cancelByToken('tok', {})).rejects.toThrow(/no longer be changed/i);
+    await expect(ctx.service.cancelByToken(SLUG, 'tok', {})).rejects.toThrow(/no longer be changed/i);
   });
 
   it('22. a patient cancellation is recorded with its own reason and actor', async () => {
@@ -406,7 +409,7 @@ describe('managing a booking by token reaches exactly one appointment', () => {
       appointment: { id: 'a1', status: 'CONFIRMED', scheduledStart: soon, clinicId: 'clinic-1', tenantId: 't1' },
     });
 
-    await ctx.service.cancelByToken('tok', { reason: 'Feeling better' });
+    await ctx.service.cancelByToken(SLUG, 'tok', { reason: 'Feeling better' });
 
     expect(ctx.updates[0]).toMatchObject({
       status: 'CANCELLED',
@@ -435,7 +438,7 @@ describe('managing a booking by token reaches exactly one appointment', () => {
       },
     });
 
-    const result = await ctx.service.rescheduleByToken('old-token', {
+    const result = await ctx.service.rescheduleByToken(SLUG, 'old-token', {
       scheduledStart: new Date(soon.getTime() + 3600000).toISOString(),
       scheduledEnd: new Date(soon.getTime() + 5400000).toISOString(),
     });
@@ -458,7 +461,7 @@ describe('managing a booking by token reaches exactly one appointment', () => {
     });
 
     await expect(
-      ctx.service.rescheduleByToken('tok', {
+      ctx.service.rescheduleByToken(SLUG, 'tok', {
         scheduledStart: new Date(soon.getTime() + 3600000).toISOString(),
         scheduledEnd: new Date(soon.getTime() + 5400000).toISOString(),
       }),

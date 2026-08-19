@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  AppointmentEventType,
   AppointmentStatus,
   ClinicalNoteStatus,
   InvoiceStatus,
@@ -17,6 +18,7 @@ import { currentTenantId } from '../core/tenant-context';
 import { ClinicalTx, assertMayTouchVisit, requireActor, withTenantTx } from './clinical-actor';
 import { collectBillingWorklist, tariffReviewItems, unbilledReadyItems } from './billing-worklist';
 import { CompleteVisitDto } from './dto/complete-visit.dto';
+import { recordAppointmentEvent } from '../appointment/appointment-event.service';
 
 /**
  * Structured blockers. The CODE is for the UI to branch on; the MESSAGE is
@@ -218,13 +220,40 @@ export class VisitCompletionService {
       // pointing at it, which is the normal case and must not throw. The
       // status guard makes it idempotent and stops a re-completion dragging a
       // CANCELLED appointment back to COMPLETED.
-      await tx.appointment.updateMany({
+      const completedAppointments = await tx.appointment.findMany({
         where: {
           visitId,
-          status: { in: [AppointmentStatus.ARRIVED, AppointmentStatus.IN_QUEUE] },
+          status: {
+            in: [
+              AppointmentStatus.ARRIVED,
+              AppointmentStatus.CHECKED_IN,
+              AppointmentStatus.IN_QUEUE,
+            ],
+          },
         },
-        data: { status: AppointmentStatus.COMPLETED },
+        select: { id: true, status: true },
       });
+      if (completedAppointments.length > 0) {
+        await tx.appointment.updateMany({
+          where: { id: { in: completedAppointments.map((row) => row.id) } },
+          data: { status: AppointmentStatus.COMPLETED },
+        });
+        // The appointment's own history gets the entry too, in this same
+        // transaction. Without it the drawer shows a completed appointment
+        // whose history stops at check-in, and "who completed this" is
+        // answerable about the visit and not about the booking.
+        for (const appointment of completedAppointments) {
+          await recordAppointmentEvent(tx, {
+            appointmentId: appointment.id,
+            eventType: AppointmentEventType.STATUS_CHANGED,
+            fromStatus: appointment.status,
+            toStatus: AppointmentStatus.COMPLETED,
+            reason: 'The consultation was completed',
+            actorStaffId: actor.id,
+            actorLabel: actor.fullName,
+          });
+        }
+      }
 
       // G4.5d6 — the documentation is finalized HERE, inside the same
       // transaction that closed the visit. Either both happened or neither

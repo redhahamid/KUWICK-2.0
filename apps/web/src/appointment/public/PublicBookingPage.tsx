@@ -191,9 +191,7 @@ export function PublicBookingPage() {
                     Keep this link to change or cancel your appointment:
                   </Text>
                   <br />
-                  <a href={`/book${confirmation.manageUrl.replace(`/${slug}`, `/${slug}`)}`}>
-                    Manage my appointment
-                  </a>
+                  <a href={confirmation.manageUrl}>Manage my appointment</a>
                 </Paragraph>
               </Space>
             </Card>

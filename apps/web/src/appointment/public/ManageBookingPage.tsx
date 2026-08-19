@@ -42,15 +42,18 @@ const { Title, Text, Paragraph } = Typography;
  * move the appointment a second time.
  */
 export function ManageBookingPage() {
-  const { token = '' } = useParams<{ token: string }>();
+  // The SLUG is in the route and it is load-bearing: appointments are behind
+  // row-level security, so the server cannot look a token up without a tenant
+  // to scope by, and the slug is what resolves one. See the service.
+  const { slug = '', token = '' } = useParams<{ slug: string; token: string }>();
   const queryClient = useQueryClient();
   const [rescheduling, setRescheduling] = useState(false);
   const [date, setDate] = useState<Dayjs>(() => dayjs());
   const [newToken, setNewToken] = useState<string | null>(null);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['manage-booking', newToken ?? token],
-    queryFn: () => publicBooking.manage(newToken ?? token),
+    queryKey: ['manage-booking', slug, newToken ?? token],
+    queryFn: () => publicBooking.manage(slug, newToken ?? token),
     retry: false,
   });
 
@@ -59,7 +62,7 @@ export function ManageBookingPage() {
   }, [data]);
 
   const cancel = useMutation({
-    mutationFn: () => publicBooking.cancelByToken(newToken ?? token),
+    mutationFn: () => publicBooking.cancelByToken(slug, newToken ?? token),
     onSuccess: () => {
       message.success('Your appointment has been cancelled.');
       queryClient.invalidateQueries({ queryKey: ['manage-booking'] });
@@ -180,6 +183,7 @@ export function ManageBookingPage() {
 
       <RescheduleModal
         open={rescheduling}
+        slug={slug}
         token={newToken ?? token}
         onClose={() => setRescheduling(false)}
         onMoved={(issued) => {
@@ -196,6 +200,7 @@ export function ManageBookingPage() {
 
 function RescheduleModal({
   open,
+  slug,
   token,
   onClose,
   onMoved,
@@ -203,6 +208,7 @@ function RescheduleModal({
   setDate,
 }: {
   open: boolean;
+  slug: string;
   token: string;
   onClose: () => void;
   onMoved: (token: string) => void;
@@ -218,14 +224,14 @@ function RescheduleModal({
    * refuses, which is the failure the whole "one path" rule exists to prevent.
    */
   const { data: availability, isFetching } = useQuery({
-    queryKey: ['manage-availability', token, date.format('YYYY-MM-DD')],
-    queryFn: () => publicBooking.availabilityForToken(token, date.format('YYYY-MM-DD')),
+    queryKey: ['manage-availability', slug, token, date.format('YYYY-MM-DD')],
+    queryFn: () => publicBooking.availabilityForToken(slug, token, date.format('YYYY-MM-DD')),
     enabled: open,
   });
 
   const move = useMutation({
     mutationFn: (body: { scheduledStart: string; scheduledEnd: string }) =>
-      publicBooking.rescheduleByToken(token, body),
+      publicBooking.rescheduleByToken(slug, token, body),
     onSuccess: (result) => onMoved(result.manageToken),
     onError: (failure) =>
       message.error(

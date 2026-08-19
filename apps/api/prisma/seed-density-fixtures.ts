@@ -50,6 +50,10 @@ export const UNMAPPED_SERVICE_CODE = 'DENSITY-UNMAPPED';
 export const UNMAPPED_SERVICE_NAME = 'Density Unmapped Procedure';
 export const SLOT_LENGTH_MINUTES = 30;
 export const DAILY_CAPACITY = 20;
+/** The public booking page's URL segment: /book/uat-clinic. */
+export const PUBLIC_PAGE_SLUG = 'uat-clinic';
+/** And the service-specific one: /book/uat-clinic/follow-up. */
+export const PUBLIC_SERVICE_SLUG = 'follow-up';
 
 type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
@@ -360,6 +364,46 @@ async function main() {
       },
     });
 
+    // ---------------------------------------------------------------------
+    // THE PUBLIC BOOKING PAGE.
+    //
+    // ACTIVE, and with a slug nothing else can collide with. A page that is
+    // off returns "not available" for every request, which is right in
+    // production and would make the public-booking spec fail for a reason
+    // that has nothing to do with booking.
+    //
+    // The follow-up service gets its own link ending too, so the
+    // service-specific link (`/book/<clinic>/<service>`) has something real
+    // to preselect.
+    // ---------------------------------------------------------------------
+    await tx.serviceCatalog.update({
+      where: { id: followUpService.id },
+      data: { bookingSlug: PUBLIC_SERVICE_SLUG, bookingDescription: 'A follow-up appointment.' },
+    });
+    const existingPage = await tx.clinicBookingPage.findFirst({
+      where: { clinicId },
+      select: { id: true },
+    });
+    const pageData = {
+      slug: PUBLIC_PAGE_SLUG,
+      displayName: 'UAT Clinic',
+      language: 'en',
+      introText: 'Book an appointment with us.',
+      requirePhone: true,
+      requireEmail: false,
+      requireNric: false,
+      showReasonField: true,
+      active: true,
+      allowPatientReschedule: true,
+      allowPatientCancel: true,
+      patientChangeCutoffHours: 1,
+    };
+    if (existingPage) {
+      await tx.clinicBookingPage.update({ where: { id: existingPage.id }, data: pageData });
+    } else {
+      await tx.clinicBookingPage.create({ data: { ...pageData, tenantId, clinicId } });
+    }
+
     lines.push(
       `booking: ${FOLLOW_UP_SERVICE_NAME} mapped to ${doctor.id}, ` +
         `${SLOT_LENGTH_MINUTES}-min slots, capacity ${DAILY_CAPACITY}; ` +
@@ -400,6 +444,8 @@ async function main() {
             unmappedService: UNMAPPED_SERVICE_NAME,
             slotLengthMinutes: SLOT_LENGTH_MINUTES,
             dailyCapacity: DAILY_CAPACITY,
+            publicPageSlug: PUBLIC_PAGE_SLUG,
+            publicServiceSlug: PUBLIC_SERVICE_SLUG,
           },
         },
         null,

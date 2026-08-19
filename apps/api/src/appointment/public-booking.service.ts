@@ -13,7 +13,12 @@ import {
   PatientMatchConfidence,
 } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
+import { Inject } from '@nestjs/common';
 import { PrismaService } from '../core/prisma.service';
+import {
+  TENANT_SCOPED_PRISMA,
+  TenantScopedPrismaClient,
+} from '../core/tenant-scoped-prisma.provider';
 import { tenantContextStorage } from '../core/tenant-context';
 import { ClinicalTx } from '../clinical/clinical-actor';
 import { appointmentSnapshot, recordAppointmentEvent } from './appointment-event.service';
@@ -73,7 +78,26 @@ interface ResolvedPage {
 @Injectable()
 export class PublicBookingService {
   constructor(
+    /**
+     * The RAW client, used for exactly two things: the slug lookup that has
+     * no tenant to be scoped by yet, and opening the transactions the booking
+     * writes run inside.
+     */
     private readonly prisma: PrismaService,
+    /**
+     * Everything else. The tenant-scoped client sets `app.tenant_id` in the
+     * same transaction as each query, reading it from the async context that
+     * `inTenant` establishes — so every read on this path goes through
+     * row-level security exactly as a staff request does.
+     *
+     * Using the raw client here instead was a real defect and not a
+     * theoretical one: with no `app.tenant_id` set, `tenant_isolation`
+     * evaluates to NULL and every row is filtered out. The public page
+     * rendered a clinic with a working slug, a name, an intro — and ZERO
+     * services, which reads as "this clinic offers nothing" rather than as a
+     * permission failure.
+     */
+    @Inject(TENANT_SCOPED_PRISMA) private readonly scoped: TenantScopedPrismaClient,
     private readonly availability: SlotAvailabilityService,
     private readonly bookingValidator: AppointmentBookingValidator,
   ) {}
@@ -136,7 +160,7 @@ export class PublicBookingService {
     const page = await this.resolvePage(slug);
     return this.inTenant(page, async () => {
       const timeZone = await this.availability.clinicTimeZone(page.clinicId);
-      const services = await this.prisma.serviceCatalog.findMany({
+      const services = await this.scoped.serviceCatalog.findMany({
         where: { bookable: true, active: true },
         orderBy: { name: 'asc' },
         select: {
@@ -209,12 +233,12 @@ export class PublicBookingService {
   async providers(slug: string, serviceId: string) {
     const page = await this.resolvePage(slug);
     return this.inTenant(page, async () => {
-      const qualified = await this.prisma.doctorServiceQualification.findMany({
+      const qualified = await this.scoped.doctorServiceQualification.findMany({
         where: { serviceId },
         select: { staffId: true },
       });
       if (qualified.length === 0) return [];
-      const staff = await this.prisma.staff.findMany({
+      const staff = await this.scoped.staff.findMany({
         where: {
           id: { in: qualified.map((row) => row.staffId) },
           active: true,
@@ -288,7 +312,7 @@ export class PublicBookingService {
   async formFields(slug: string, serviceId: string) {
     const page = await this.resolvePage(slug);
     return this.inTenant(page, () =>
-      this.prisma.bookingFormField.findMany({
+      this.scoped.bookingFormField.findMany({
         where: {
           active: true,
           OR: [{ serviceId }, { serviceId: null, clinicId: page.clinicId }],
@@ -546,23 +570,26 @@ export class PublicBookingService {
   /**
    * §42 — MANAGE MY BOOKING.
    *
-   * The token identifies ONE appointment. Everything returned is about that
-   * appointment and the patient who made it; no query here can reach a second
-   * patient, which is why the token is looked up as the primary filter rather
-   * than being checked after a broader read.
+   * THE SLUG IS IN THE URL AND IT IS NOT DECORATION. Appointments are behind
+   * row-level security like every other table, so a bare token lookup with no
+   * tenant context returns NOTHING — `tenant_isolation` evaluates to NULL and
+   * filters the row out. The alternatives were a second RLS policy on
+   * `appointments` (which would have to permit reading any row carrying a
+   * token) or a lookup table mapping tokens to tenants, which is a second
+   * store of a fact. The slug already identifies the clinic, it is already in
+   * the link the patient was sent, and `clinic_booking_pages` is already
+   * readable without a tenant — so the bootstrap costs nothing and adds no
+   * policy.
+   *
+   * The token then identifies ONE appointment, under ordinary RLS. Everything
+   * returned is about that appointment and the patient who made it; no query
+   * here can reach a second patient, because the token is the primary filter
+   * rather than a check applied after a broader read.
    */
-  async manage(token: string) {
-    const rows = await this.prisma.$queryRaw<{ tenantId: string; clinicId: string }[]>`
-      SELECT a.tenant_id AS "tenantId", a.clinic_id AS "clinicId"
-      FROM appointments a
-      JOIN clinic_booking_pages p ON p.clinic_id = a.clinic_id AND p.active = true
-      WHERE a.manage_token = ${token}
-      LIMIT 1`;
-    if (rows.length === 0) throw new NotFoundException('This booking link is not valid.');
-
-    const page = await this.pageForClinic(rows[0].tenantId, rows[0].clinicId);
+  async manage(slug: string, token: string) {
+    const page = await this.resolvePage(slug);
     return this.inTenant(page, async () => {
-      const appointment = await this.prisma.appointment.findFirst({
+      const appointment = await this.scoped.appointment.findFirst({
         where: { manageToken: token },
         select: {
           id: true,
@@ -627,10 +654,10 @@ export class PublicBookingService {
    * itself from its own overlap check — without that, the 09:00 booking being
    * moved is the thing refusing the move.
    */
-  async availabilityForToken(token: string, dateKey: string) {
-    const context = await this.contextForToken(token);
-    return this.inTenant(context.page, async () => {
-      const appointment = await this.prisma.appointment.findFirst({
+  async availabilityForToken(slug: string, token: string, dateKey: string) {
+    const page = await this.resolvePage(slug);
+    return this.inTenant(page, async () => {
+      const appointment = await this.scoped.appointment.findFirst({
         where: { manageToken: token },
         select: {
           id: true,
@@ -659,16 +686,16 @@ export class PublicBookingService {
     });
   }
 
-  async rescheduleByToken(token: string, dto: PublicRescheduleDto) {
+  async rescheduleByToken(slug: string, token: string, dto: PublicRescheduleDto) {
     const start = new Date(dto.scheduledStart);
     const end = new Date(dto.scheduledEnd);
     if (!(end > start)) throw new BadRequestException('That appointment ends before it starts.');
 
-    const context = await this.contextForToken(token);
-    return this.tx(context.page, async (tx) => {
+    const page = await this.resolvePage(slug);
+    return this.tx(page, async (tx) => {
       const appointment = await tx.appointment.findFirst({ where: { manageToken: token } });
       if (!appointment) throw new NotFoundException('This booking link is not valid.');
-      this.assertPatientMayChange(context.page, appointment, 'reschedule');
+      this.assertPatientMayChange(page, appointment, 'reschedule');
 
       // THE SAME ENGINE. A patient moving their own appointment is checked
       // against exactly what the front desk is checked against.
@@ -739,12 +766,12 @@ export class PublicBookingService {
     });
   }
 
-  async cancelByToken(token: string, dto: PublicCancelDto) {
-    const context = await this.contextForToken(token);
-    return this.tx(context.page, async (tx) => {
+  async cancelByToken(slug: string, token: string, dto: PublicCancelDto) {
+    const page = await this.resolvePage(slug);
+    return this.tx(page, async (tx) => {
       const appointment = await tx.appointment.findFirst({ where: { manageToken: token } });
       if (!appointment) throw new NotFoundException('This booking link is not valid.');
-      this.assertPatientMayChange(context.page, appointment, 'cancel');
+      this.assertPatientMayChange(page, appointment, 'cancel');
 
       await tx.appointment.update({
         where: { id: appointment.id },
@@ -793,25 +820,6 @@ export class PublicBookingService {
     }
   }
 
-  private async contextForToken(token: string) {
-    const rows = await this.prisma.$queryRaw<{ tenantId: string; clinicId: string }[]>`
-      SELECT a.tenant_id AS "tenantId", a.clinic_id AS "clinicId"
-      FROM appointments a
-      JOIN clinic_booking_pages p ON p.clinic_id = a.clinic_id AND p.active = true
-      WHERE a.manage_token = ${token}
-      LIMIT 1`;
-    if (rows.length === 0) throw new NotFoundException('This booking link is not valid.');
-    return { page: await this.pageForClinic(rows[0].tenantId, rows[0].clinicId) };
-  }
-
-  private async pageForClinic(tenantId: string, clinicId: string): Promise<ResolvedPage> {
-    const rows = await this.prisma.$queryRaw<{ slug: string }[]>`
-      SELECT slug FROM clinic_booking_pages
-      WHERE tenant_id = ${tenantId} AND clinic_id = ${clinicId} AND active = true LIMIT 1`;
-    if (rows.length === 0) throw new NotFoundException('This booking link is not valid.');
-    return this.resolvePage(rows[0].slug);
-  }
-
   private confirmationOf(page: ResolvedPage, appointment: {
     id: string;
     status: AppointmentStatus;
@@ -824,7 +832,10 @@ export class PublicBookingService {
       scheduledStart: appointment.scheduledStart,
       scheduledEnd: appointment.scheduledEnd,
       manageToken: appointment.manageToken,
-      manageUrl: `/${page.slug}/manage/${appointment.manageToken}`,
+      // The path the WEB APP routes on, so a confirmation can link straight to
+      // it without the browser having to rebuild it. `/book` is the public
+      // prefix; the slug is what lets the server find the tenant again.
+      manageUrl: `/book/${page.slug}/manage/${appointment.manageToken}`,
       message:
         page.confirmationMessage ??
         (appointment.status === AppointmentStatus.REQUESTED

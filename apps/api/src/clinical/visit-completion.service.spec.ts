@@ -110,8 +110,12 @@ function build(actor: Record<string, unknown> | null, world: World = {}) {
     // transaction. `updateMany` because a walk-in visit has no appointment
     // pointing at it — the normal case, and it must not throw.
     appointment: {
+      // A WALK-IN visit has no appointment pointing at it, which is the normal
+      // case and must not throw.
+      findMany: jest.fn().mockResolvedValue([]),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
+    appointmentEvent: { create: jest.fn(async ({ data }: never) => data) },
     orderService: {
       count: jest.fn(async ({ where }: any) => (where?.status?.in ? openProcedures : services)),
       findMany: jest.fn(async () =>
@@ -527,29 +531,54 @@ describe('atomicity, idempotency and concurrency', () => {
 // ===========================================================================
 
 describe('the appointment the visit came from', () => {
-  it('40. is completed inside the SAME transaction that closed the visit', async () => {
-    // Not afterwards. A closed visit whose appointment still reads ARRIVED is
-    // a diary that disagrees with the clinical record — the same reasoning
+  it('40. is looked up and completed inside the SAME transaction that closed the visit', async () => {
+    // Not afterwards. A closed visit whose appointment still reads CHECKED_IN
+    // is a diary that disagrees with the clinical record — the same reasoning
     // that finalizes the documentation here rather than in a follow-up call.
     const ctx = build(FRONT_DESK);
 
     await run(ctx);
 
-    expect(ctx.tx.appointment.updateMany).toHaveBeenCalledWith(
+    expect(ctx.tx.appointment.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ visitId: 'visit-1' }) }),
     );
   });
 
   it('41. only moves an appointment that is mid-visit', async () => {
     // The status guard makes it idempotent and stops a re-completion dragging
-    // a CANCELLED appointment back to COMPLETED.
+    // a CANCELLED appointment back to COMPLETED. CHECKED_IN is the current
+    // spelling; ARRIVED and IN_QUEUE stay in the list for rows written before
+    // the lifecycle redesign.
     const ctx = build(FRONT_DESK);
 
     await run(ctx);
 
-    const call = (ctx.tx.appointment.updateMany as jest.Mock).mock.calls[0][0];
-    expect(call.where.status.in).toEqual(['ARRIVED', 'IN_QUEUE']);
-    expect(call.data).toEqual({ status: 'COMPLETED' });
+    const call = (ctx.tx.appointment.findMany as jest.Mock).mock.calls[0][0];
+    expect(call.where.status.in).toEqual(['ARRIVED', 'CHECKED_IN', 'IN_QUEUE']);
+  });
+
+  it('41b. the appointment gets a history entry, not just a status', async () => {
+    // A completed appointment whose history stops at check-in cannot answer
+    // "who completed this" about the booking, only about the visit.
+    const ctx = build(FRONT_DESK);
+    (ctx.tx.appointment.findMany as jest.Mock).mockResolvedValue([
+      { id: 'appt-1', status: 'CHECKED_IN' },
+    ]);
+
+    await run(ctx);
+
+    expect(ctx.tx.appointmentEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          appointmentId: 'appt-1',
+          toStatus: 'COMPLETED',
+          reason: 'The consultation was completed',
+        }),
+      }),
+    );
+    expect(ctx.tx.appointment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: 'COMPLETED' } }),
+    );
   });
 
   it('42. a WALK-IN visit completes normally with no appointment to close', async () => {

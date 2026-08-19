@@ -139,8 +139,11 @@ test.describe('booking a follow-up from the consultation', () => {
     // own list, for this patient, at the time that was picked in the canvas,
     // carrying the lifecycle actions that module owns. A canvas-side store
     // would fail here and nowhere else.
-    await page.goto('/appointments');
-    // The dashboard opens on Upcoming over the next 30 days, which covers a
+    // The LIST tab, explicitly: the module now opens on the Calendar, which is
+    // the right default for a receptionist and the wrong surface for asserting
+    // on a row.
+    await page.goto('/appointments/list');
+    // The list opens on Upcoming over the next 30 days, which covers a
     // follow-up three days out. Searching by name as well, because a busy
     // seeded clinic can put the row on a second page.
     await page.getByPlaceholder(/patient name or phone/i).fill(booking.patientName);
@@ -171,7 +174,10 @@ test.describe('booking a follow-up from the consultation', () => {
     // The module's own actions are on it — it is an ordinary appointment, not
     // a read-only echo of something the canvas keeps elsewhere.
     await expect(row.getByRole('button', { name: 'Reschedule' })).toBeVisible();
-    await expect(row.getByRole('button', { name: 'Arrived' })).toBeVisible();
+    // "Check in" and not "Arrived": the action creates the visit and the queue
+    // ticket, and naming it after the lesser half was part of why the two were
+    // ever conflated.
+    await expect(row.getByRole('button', { name: 'Check in' })).toBeVisible();
 
     await page.screenshot({ path: 'test-results/canvas-appointment-in-module.png', fullPage: false });
   });
@@ -201,33 +207,47 @@ test.describe('an appointment booked in the module reaches the canvas', () => {
     // is under test here is that the two SURFACES read one store — not the
     // mechanics of a particular grid widget.
     await login(page, ACCOUNTS.frontDesk);
-    await page.goto('/appointments');
-    await page.getByRole('button', { name: 'Book appointment' }).click();
+    await page.goto('/appointments/calendar');
+    await page.getByRole('button', { name: 'New appointment' }).click();
 
-    const drawer = page.getByRole('dialog').filter({ hasText: 'Book Appointment' });
+    const drawer = page.getByTestId('staff-booking-flow');
     await expect(drawer).toBeVisible();
 
-    // Each control is a label above an antd Select in the same wrapper. The
-    // option list renders in a portal outside the drawer, so the click on it
-    // is scoped to the page rather than to `drawer`.
-    const pick = async (label: string, option: string) => {
-      await drawer.getByText(label, { exact: true }).locator('..').locator('.ant-select').click();
-      await page.getByTitle(option, { exact: true }).first().click();
+    // THE ORDER THE FLOW ASKS IN: patient, then service, then provider, then
+    // the date, then a time from the engine. Each step only appears once the
+    // one before it is answered, which is the point of the redesign — the old
+    // form asked for five ids at once and left the person to work out which
+    // combinations existed.
+    // antd renders a Select's placeholder in a span, not on the input, so
+    // `getByPlaceholder` finds nothing — the control is opened by clicking it
+    // and the option list renders in a portal outside the drawer.
+    const openSelect = async (index: number) => {
+      await drawer.locator('.ant-select').nth(index).click();
     };
 
-    await pick('Patient', booking.patientName);
-    await pick('Doctor', booking.doctorName);
-    await pick('Service', booking.followUpService);
+    await openSelect(0);
+    await page.keyboard.type(booking.patientName.slice(0, 12));
+    await page.getByTitle(booking.patientName, { exact: false }).first().click();
+
+    await openSelect(1);
+    await page.getByTitle(booking.followUpService, { exact: false }).first().click();
 
     // The date the fixture doctor is rostered on — every day, by design.
+    // CLICKED IN THE PANEL, not typed. antd parses typed text through the
+    // component's own `format`, and `fill()` sets a value without the
+    // keystrokes it listens for — the field ends up showing the right date,
+    // marked invalid, with the state still on today. Every cell carries its
+    // ISO date as a title, so this is format-independent.
     const when = dayjs().add(FOLLOW_UP_DAYS_AHEAD, 'day');
-    await drawer.getByPlaceholder('Select date').fill(when.format('YYYY-MM-DD'));
-    await page.keyboard.press('Enter');
+    await drawer.getByPlaceholder(/select date/i).click();
+    await page.locator(`.ant-picker-cell[title="${when.format('YYYY-MM-DD')}"]`).first().click();
 
-    const slot = drawer.locator('button').filter({ hasText: /^\d{2}:\d{2}$/ }).first();
+    const slot = drawer.locator('button').filter({ hasText: /^\d{2}:\d{2}/ }).first();
     await expect(slot, 'the engine offered no slots for a rostered day').toBeVisible();
     await slot.click();
-    await drawer.getByRole('button', { name: 'Book Appointment' }).click();
+    // The footer button lives OUTSIDE the drawer's content element, which is
+    // where the test id is — antd renders a Drawer footer as a sibling.
+    await page.getByRole('button', { name: 'Book appointment' }).click();
     await expect(drawer).toBeHidden();
 
     // ---- AND THE CANVAS HAS IT --------------------------------------------

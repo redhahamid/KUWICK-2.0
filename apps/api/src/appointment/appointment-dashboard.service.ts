@@ -1,5 +1,5 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { AppointmentStatus, Prisma } from '@prisma/client';
+import { AppointmentCancellationReason, AppointmentStatus, Prisma } from '@prisma/client';
 import {
   TENANT_SCOPED_PRISMA,
   TenantScopedPrismaClient,
@@ -387,9 +387,19 @@ export class AppointmentDashboardService {
       // Two clauses because the fact moved: historical rows carry the
       // deprecated RESCHEDULED status, and new ones are CANCELLED with a
       // cancellation reason that says so.
-      NOT: [
-        { status: AppointmentStatus.RESCHEDULED },
-        { cancellationReason: 'RESCHEDULED' },
+      //
+      // ⚠ THE NULL BRANCH IS NOT OPTIONAL, and leaving it out emptied the
+      // whole dashboard. `NOT (cancellation_reason = 'RESCHEDULED')` is SQL
+      // three-valued logic: for a row where the column is NULL — which is
+      // every live appointment — the comparison is NULL, `NOT NULL` is NULL,
+      // and NULL is not TRUE, so the row is filtered out. The clinic's diary
+      // read zero upcoming appointments with a full week booked, and nothing
+      // errored. Found by the end-to-end guardrail, invisible to every unit
+      // test in this file, because a fake `where` object is not a database.
+      status: { not: AppointmentStatus.RESCHEDULED },
+      OR: [
+        { cancellationReason: null },
+        { cancellationReason: { not: AppointmentCancellationReason.RESCHEDULED } },
       ],
     };
   }

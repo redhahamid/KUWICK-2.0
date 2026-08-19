@@ -126,6 +126,13 @@ function createService(role = 'FINANCE_STAFF', world: World = {}) {
         return visitState;
       }),
     },
+    // §36 — the deposit lookup on invoice creation. No appointment produced
+    // this visit by default, which is the walk-in case and the common one.
+    appointment: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      update: jest.fn(async ({ data }: { data: object }) => data),
+    },
+    appointmentEvent: { create: jest.fn(async ({ data }: { data: object }) => data) },
     invoice: {
       count: jest.fn().mockResolvedValue(0),
       create: jest.fn(async ({ data }: { data: object }) => ({ ...invoiceState, ...data })),
@@ -1042,5 +1049,88 @@ describe('pay-time completeness', () => {
     await expect(withTenant(() => ctx.service.pay('inv-1', { paymentMethod: 'CASH' }))).resolves.toMatchObject({
       status: 'PAID',
     });
+  });
+});
+
+// ===========================================================================
+// §36 — A DEPOSIT TAKEN AT BOOKING IS NOT A SECOND SALE.
+//
+// If the visit came from an appointment whose booking fee was paid, that money
+// is already in the clinic's hands. Recorded here as an amount the PATIENT HAS
+// PAID, so the counter asks for the balance and not for the whole bill, and
+// the deposit is not counted twice — once as a booking fee, again as invoice
+// revenue.
+// ===========================================================================
+
+describe('the booking deposit is applied to the clinic invoice', () => {
+  const depositOn = (ctx: ReturnType<typeof createService>, appointment: unknown) => {
+    (ctx.tx.appointment.findFirst as jest.Mock).mockResolvedValue(appointment);
+    return ctx;
+  };
+
+  it('100. a paid deposit reduces what the patient still owes', async () => {
+    const ctx = depositOn(createService('FINANCE_STAFF'), {
+      id: 'appt-1',
+      bookingFeeAmount: 30,
+    });
+
+    await withTenant(() => ctx.service.create({ visitId: 'visit-1', createdByStaffId: 'staff-1' }));
+
+    expect(ctx.tx.invoice.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { patientPaidAmount: 30 } }),
+    );
+  });
+
+  it('101. the link is written on the APPOINTMENT, so it cannot be applied twice', async () => {
+    // The column is single valued and the lookup filters on it being null, so
+    // a second invoice for the same visit finds nothing to apply.
+    const ctx = depositOn(createService('FINANCE_STAFF'), {
+      id: 'appt-1',
+      bookingFeeAmount: 30,
+    });
+
+    await withTenant(() => ctx.service.create({ visitId: 'visit-1', createdByStaffId: 'staff-1' }));
+
+    expect(ctx.tx.appointment.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'appt-1' } }),
+    );
+    const lookup = (ctx.tx.appointment.findFirst as jest.Mock).mock.calls[0][0];
+    expect(lookup.where.depositInvoiceId).toBeNull();
+    expect(lookup.where.bookingFeePaidAt).toEqual({ not: null });
+  });
+
+  it('102. it is recorded in the appointment’s history', async () => {
+    const ctx = depositOn(createService('FINANCE_STAFF'), {
+      id: 'appt-1',
+      bookingFeeAmount: 30,
+    });
+
+    await withTenant(() => ctx.service.create({ visitId: 'visit-1', createdByStaffId: 'staff-1' }));
+
+    expect(ctx.tx.appointmentEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ eventType: 'PAYMENT_CHANGED' }),
+      }),
+    );
+  });
+
+  it('103. a ZERO deposit changes nothing — most consultations carry no fee', async () => {
+    const ctx = depositOn(createService('FINANCE_STAFF'), {
+      id: 'appt-1',
+      bookingFeeAmount: 0,
+    });
+
+    await withTenant(() => ctx.service.create({ visitId: 'visit-1', createdByStaffId: 'staff-1' }));
+
+    expect(ctx.tx.appointment.update).not.toHaveBeenCalled();
+  });
+
+  it('104. a WALK-IN visit has no appointment and bills normally', async () => {
+    const ctx = createService('FINANCE_STAFF');
+
+    await expect(
+      withTenant(() => ctx.service.create({ visitId: 'visit-1', createdByStaffId: 'staff-1' })),
+    ).resolves.toBeDefined();
+    expect(ctx.tx.appointment.update).not.toHaveBeenCalled();
   });
 });

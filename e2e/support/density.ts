@@ -51,6 +51,10 @@ export interface BookingFixture {
   unmappedService: string;
   slotLengthMinutes: number;
   dailyCapacity: number;
+  /** The public booking page's URL segment: /book/<slug>. */
+  publicPageSlug: string;
+  /** The follow-up service's own link ending, under that page. */
+  publicServiceSlug: string;
 }
 
 export interface DensityFixtures {

@@ -14,30 +14,45 @@ import { PublicBookDto, PublicCancelDto, PublicRescheduleDto } from './dto/publi
 export class PublicBookingController {
   constructor(private readonly booking: PublicBookingService) {}
 
-  /** The manage-booking routes come FIRST: `:slug` would swallow "manage". */
-  @Get('manage/:token')
-  manage(@Param('token') token: string) {
-    return this.booking.manage(token);
+  /**
+   * The manage-booking routes carry the SLUG as well as the token, and that is
+   * a requirement rather than a nicety: appointments are behind row-level
+   * security, so the token alone cannot be looked up without a tenant to scope
+   * by. The slug resolves the clinic through the one table that is readable
+   * without one. See the service.
+   *
+   * Three path segments, so these cannot collide with `:slug/:serviceSlug`.
+   */
+  @Get(':slug/manage/:token')
+  manage(@Param('slug') slug: string, @Param('token') token: string) {
+    return this.booking.manage(slug, token);
   }
 
-  @Get('manage/:token/availability')
-  availabilityForToken(@Param('token') token: string, @Query('date') date: string) {
-    return this.booking.availabilityForToken(token, date);
+  @Get(':slug/manage/:token/availability')
+  availabilityForToken(
+    @Param('slug') slug: string,
+    @Param('token') token: string,
+    @Query('date') date: string,
+  ) {
+    return this.booking.availabilityForToken(slug, token, date);
   }
 
-  @Patch('manage/:token/reschedule')
-  rescheduleByToken(@Param('token') token: string, @Body() dto: PublicRescheduleDto) {
-    return this.booking.rescheduleByToken(token, dto);
+  @Patch(':slug/manage/:token/reschedule')
+  rescheduleByToken(
+    @Param('slug') slug: string,
+    @Param('token') token: string,
+    @Body() dto: PublicRescheduleDto,
+  ) {
+    return this.booking.rescheduleByToken(slug, token, dto);
   }
 
-  @Patch('manage/:token/cancel')
-  cancelByToken(@Param('token') token: string, @Body() dto: PublicCancelDto) {
-    return this.booking.cancelByToken(token, dto);
-  }
-
-  @Get(':slug')
-  page(@Param('slug') slug: string, @Query('service') serviceSlug?: string) {
-    return this.booking.page(slug, serviceSlug);
+  @Patch(':slug/manage/:token/cancel')
+  cancelByToken(
+    @Param('slug') slug: string,
+    @Param('token') token: string,
+    @Body() dto: PublicCancelDto,
+  ) {
+    return this.booking.cancelByToken(slug, token, dto);
   }
 
   @Get(':slug/providers')
@@ -58,6 +73,11 @@ export class PublicBookingController {
   @Get(':slug/form-fields')
   formFields(@Param('slug') slug: string, @Query('serviceId') serviceId: string) {
     return this.booking.formFields(slug, serviceId);
+  }
+
+  @Get(':slug')
+  page(@Param('slug') slug: string, @Query('service') serviceSlug?: string) {
+    return this.booking.page(slug, serviceSlug);
   }
 
   @Post(':slug/book')

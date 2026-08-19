@@ -251,9 +251,16 @@ describe('a rescheduled row is not a lost booking', () => {
     // Two clauses, because the fact moved: historical rows carry the
     // deprecated RESCHEDULED status, and new ones are CANCELLED with a
     // cancellation reason that says so.
-    expect(where.NOT).toEqual([
-      { status: AppointmentStatus.RESCHEDULED },
-      { cancellationReason: 'RESCHEDULED' },
+    expect(where.status).toEqual({ not: AppointmentStatus.RESCHEDULED });
+    // AND THE NULL BRANCH. Without it, `NOT (cancellation_reason =
+    // 'RESCHEDULED')` is NULL for every live appointment — SQL's
+    // three-valued logic — and the whole dashboard reads zero with a full
+    // diary. This assertion exists because that shipped and the guardrail
+    // caught it; a fake `where` object cannot reproduce it, so the shape is
+    // pinned here instead.
+    expect(where.OR).toEqual([
+      { cancellationReason: null },
+      { cancellationReason: { not: 'RESCHEDULED' } },
     ]);
   });
 

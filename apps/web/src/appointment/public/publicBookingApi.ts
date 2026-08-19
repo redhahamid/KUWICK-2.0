@@ -115,7 +115,7 @@ export const publicBooking = {
       manageUrl: string;
       message: string;
     }>(`/${slug}/book`, { method: 'POST', body: JSON.stringify(body) }),
-  manage: (token: string) =>
+  manage: (slug: string, token: string) =>
     request<{
       clinic: { displayName: string; logoUrl: string | null; timeZone: string };
       appointment: {
@@ -135,18 +135,22 @@ export const publicBooking = {
       can: { reschedule: boolean; cancel: boolean };
       cutoffHours: number;
       confirmationMessage: string | null;
-    }>(`/manage/${token}`),
-  cancelByToken: (token: string, reason?: string) =>
-    request<{ cancelled: boolean }>(`/manage/${token}/cancel`, {
+    }>(`/${slug}/manage/${token}`),
+  cancelByToken: (slug: string, token: string, reason?: string) =>
+    request<{ cancelled: boolean }>(`/${slug}/manage/${token}/cancel`, {
       method: 'PATCH',
       body: JSON.stringify({ reason }),
     }),
-  availabilityForToken: (token: string, date: string) =>
+  availabilityForToken: (slug: string, token: string, date: string) =>
     request<{ timeZone: string; reason: string | null; slots: PublicSlot[] }>(
-      `/manage/${token}/availability?date=${date}`,
+      `/${slug}/manage/${token}/availability?date=${date}`,
     ),
-  rescheduleByToken: (token: string, body: { scheduledStart: string; scheduledEnd: string }) =>
-    request<{ manageToken: string }>(`/manage/${token}/reschedule`, {
+  rescheduleByToken: (
+    slug: string,
+    token: string,
+    body: { scheduledStart: string; scheduledEnd: string },
+  ) =>
+    request<{ manageToken: string }>(`/${slug}/manage/${token}/reschedule`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),

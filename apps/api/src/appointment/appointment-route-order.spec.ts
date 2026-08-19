@@ -37,21 +37,42 @@ describe('route registration order', () => {
     }
   });
 
-  it('2. the public booking page registers its literal manage/ routes before :slug', () => {
-    // Same trap, one level down. `@Get(':slug')` registered first reads
-    // /public/booking/manage/<token> as a clinic whose slug is "manage" — and
-    // the failure mode is a 404 on a link the clinic has already sent to a
-    // patient by SMS.
+  it('2. the public booking page registers its literal sub-paths before the bare :slug', () => {
+    // Same trap, one level down. `@Get(':slug')` registered first would read
+    // /public/booking/uat-clinic/providers as a clinic whose slug is
+    // "uat-clinic/providers" — or, worse, match the one-segment route and
+    // return the page for a request that asked for something else.
     const prototype = PublicBookingController.prototype as unknown as Record<string, unknown>;
     const paths = Reflect.ownKeys(prototype)
       .filter((key) => key !== 'constructor')
-      .map((key) => Reflect.getMetadata('path', prototype[key as string] as object));
+      .map((key) => String(Reflect.getMetadata('path', prototype[key as string] as object)));
 
-    const manage = paths.findIndex((path) => String(path).startsWith('manage'));
-    const slug = paths.findIndex((path) => String(path).startsWith(':slug'));
+    const bareSlug = paths.indexOf(':slug');
+    expect(bareSlug).toBeGreaterThan(-1);
+    for (const literal of [':slug/providers', ':slug/availability', ':slug/form-fields']) {
+      // Jest's `expect` takes no message argument — the assertion has to say
+      // which path it is about through the loop variable in the failure output.
+      const index = paths.indexOf(literal);
+      expect({ literal, index }).toMatchObject({ literal });
+      expect(index).toBeGreaterThan(-1);
+      expect(index).toBeLessThan(bareSlug);
+    }
+  });
 
-    expect(manage).toBeGreaterThan(-1);
-    expect(slug).toBeGreaterThan(-1);
-    expect(manage).toBeLessThan(slug);
+  it('3. every manage-booking route carries the clinic slug', () => {
+    // Not decoration: appointments are behind row-level security, so a token
+    // lookup with no tenant context returns nothing. The slug is what resolves
+    // the tenant, through the one table readable without one. A route added
+    // later as `manage/:token` would 404 every link the clinic has sent.
+    const prototype = PublicBookingController.prototype as unknown as Record<string, unknown>;
+    const managePaths = Reflect.ownKeys(prototype)
+      .filter((key) => key !== 'constructor')
+      .map((key) => String(Reflect.getMetadata('path', prototype[key as string] as object)))
+      .filter((path) => path.includes('manage'));
+
+    expect(managePaths.length).toBeGreaterThan(0);
+    for (const path of managePaths) {
+      expect(path).toMatch(/^:slug\/manage\//);
+    }
   });
 });

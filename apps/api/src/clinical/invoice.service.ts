@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  AppointmentEventType,
   InvoiceDiscountType,
   InvoiceLinePriceRule,
   InvoiceStatus,
@@ -16,6 +17,7 @@ import { ClinicalTx, assertMayTouchVisit, requireActor, withTenantTx } from './c
 import { BillingAction, assertCanPerformBilling } from './clinical-authorization';
 import { BenefitInput, calculateResponsibility } from './billing-calculation';
 import { resolveSourcedPrice } from './billing-pricing';
+import { recordAppointmentEvent } from '../appointment/appointment-event.service';
 import { collectBillingWorklist, tariffReviewItems, unbilledReadyItems } from './billing-worklist';
 import {
   ConsultationChargeState,
@@ -231,6 +233,43 @@ export class InvoiceService {
           invoiceNumber: await this.nextInvoiceNumber(tx),
         },
       });
+      // §36 — A DEPOSIT TAKEN AT BOOKING IS NOT A SECOND SALE.
+      //
+      // If this visit came from an appointment whose booking fee was paid, the
+      // money is already in the clinic's hands. Recording it here as an amount
+      // the PATIENT HAS PAID means the counter asks for the balance and not
+      // for the whole bill, and the deposit is not counted twice — once as a
+      // booking fee and again as invoice revenue.
+      //
+      // The link is written on the APPOINTMENT rather than the invoice, so an
+      // appointment can never be applied to two invoices: the column is single
+      // valued, and `depositInvoiceId: null` in the filter means an already
+      // reconciled deposit is skipped on a re-run.
+      const deposit = await tx.appointment.findFirst({
+        where: {
+          visitId: visit.id,
+          bookingFeePaidAt: { not: null },
+          depositInvoiceId: null,
+        },
+        select: { id: true, bookingFeeAmount: true },
+      });
+      if (deposit && Number(deposit.bookingFeeAmount) > 0) {
+        await tx.appointment.update({
+          where: { id: deposit.id },
+          data: { depositInvoiceId: invoice.id },
+        });
+        await tx.invoice.update({
+          where: { id: invoice.id },
+          data: { patientPaidAmount: deposit.bookingFeeAmount },
+        });
+        await recordAppointmentEvent(tx, {
+          appointmentId: deposit.id,
+          eventType: AppointmentEventType.PAYMENT_CHANGED,
+          after: { depositInvoiceId: invoice.id, appliedAmount: String(deposit.bookingFeeAmount) },
+          reason: 'The booking deposit was applied to the clinic invoice',
+        });
+      }
+
       // An empty cash invoice resolves to 0/0 immediately; an empty panel
       // invoice resolves or stays NULL according to the snapshot. Either way
       // the answer is WRITTEN at creation, not deferred to a later guess.
