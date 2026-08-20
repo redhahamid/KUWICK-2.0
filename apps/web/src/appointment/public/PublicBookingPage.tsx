@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
@@ -131,6 +131,22 @@ function PublicBookingPageInner() {
   // form and Confirm books exactly what was reviewed.
   const [details, setDetails] = useState<Record<string, string> | null>(null);
   const [extraAnswers, setExtraAnswers] = useState<Record<string, unknown>>({});
+  const daysStripRef = useRef<HTMLDivElement>(null);
+
+  // V3.1.1 — THE STRIP FOLLOWS THE SELECTION. A date picked anywhere (chip,
+  // calendar picker, "next free day") centres its own chip in the strip, so
+  // the strip can never sit on "Today" while Wednesday is what is being
+  // booked. Horizontal only, scrolled on the strip itself — never
+  // scrollIntoView, which would also drag the page vertically.
+  useEffect(() => {
+    if (step !== 2) return;
+    const strip = daysStripRef.current;
+    if (!strip) return;
+    const chip = strip.querySelector<HTMLElement>(`[data-date="${date.format('YYYY-MM-DD')}"]`);
+    if (!chip) return;
+    const target = chip.offsetLeft - (strip.clientWidth - chip.offsetWidth) / 2;
+    strip.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+  }, [date, step]);
 
   const { data: page, isLoading, error } = useQuery({
     queryKey: ['public-page', slug, serviceSlug],
@@ -586,7 +602,7 @@ function PublicBookingPageInner() {
               stops, and the wrapper's end-fade says so (V3.1 §1) — a chip at
               the edge is a signposted "more this way", never an accident. */}
           <div className="kw-public-days-wrap">
-            <div className="kw-public-days" role="group" aria-label="Pick a day">
+            <div className="kw-public-days" role="group" aria-label="Pick a day" ref={daysStripRef}>
               {Array.from({ length: 14 }, (_, offset) => {
                 const day = dayjs().add(offset, 'day');
                 const on = date.isSame(day, 'day');
@@ -594,6 +610,7 @@ function PublicBookingPageInner() {
                   <button
                     key={offset}
                     type="button"
+                    data-date={day.format('YYYY-MM-DD')}
                     className={`kw-public-day${on ? ' kw-public-day--on' : ''}`}
                     aria-pressed={on}
                     onClick={() => setDate(day)}
