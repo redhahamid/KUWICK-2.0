@@ -12,7 +12,7 @@
     "test:watch": "jest --watch",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "start": "node dist/main",
-    "start:prod": "node scripts/migrate-deploy.mjs && node dist/main",
+    "start:prod": "node scripts/migrate-deploy.mjs && node prisma/uat-remote-bootstrap.mjs && node dist/main",
     "seed:staging": "tsx prisma/seed-staging-uat.ts",
     "seed:catalogues": "tsx prisma/seed-clinic-catalogues.ts",
     "seed:reference": "tsx prisma/seed-reference-catalogs.ts",
