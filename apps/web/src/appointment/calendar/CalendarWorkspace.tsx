@@ -257,6 +257,32 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
 
   const gridRef = useRef<HTMLDivElement>(null);
 
+  // V3.1.2 — STABLE GRID INSTANTS, and the fix for the night-jump.
+  //
+  // react-big-calendar re-runs its own scroll positioning whenever the
+  // `scrollToTime` PROP IDENTITY changes (componentWillReceiveProps compares
+  // by reference), and its internal ratio measures the target from MIDNIGHT
+  // while dividing by the min→max span — off by the grid's start hour on any
+  // diary that does not begin at 00:00. Built inline, these Dates were new
+  // objects on EVERY parent re-render, so opening the booking drawer (or an
+  // iPad width change re-render) made the library re-apply that miscomputed
+  // scroll and throw the diary to the night rows. Memoised, their identity
+  // only changes when the DATE, VIEW-derived bounds or intended hour change —
+  // which is exactly the set of moments a re-scroll is wanted, and the
+  // deliberate effect below owns the actual position arithmetic.
+  const gridMin = useMemo(
+    () => anchor.hour(bounds.startHour).minute(0).toDate(),
+    [anchor, bounds.startHour],
+  );
+  const gridMax = useMemo(
+    () => anchor.hour(Math.min(23, bounds.endHour)).minute(59).toDate(),
+    [anchor, bounds.endHour],
+  );
+  const gridScrollTo = useMemo(
+    () => anchor.hour(scrollHour).minute(0).toDate(),
+    [anchor, scrollHour],
+  );
+
   // WORKING HOURS AS SHAPE. One sorted interval list per provider, read from
   // the same roster answer the grid bounds use; a slot is "on" when anybody
   // visible (or the column's own provider, in the Providers view) is rostered
@@ -563,9 +589,17 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             dayLayoutAlgorithm="no-overlap"
             step={15}
             timeslots={2}
-            min={anchor.hour(bounds.startHour).minute(0).toDate()}
-            max={anchor.hour(Math.min(23, bounds.endHour)).minute(59).toDate()}
-            scrollToTime={anchor.hour(scrollHour).minute(0).toDate()}
+            min={gridMin}
+            max={gridMax}
+            scrollToTime={gridScrollTo}
+            // V3.1.2 — the library is NOT a scroll writer here. rbc's own
+            // applyScroll() measures scrollToTime from MIDNIGHT but divides
+            // by the min→max span, so on a diary starting at 07:00 its ratio
+            // lands hours too deep (the reported "23:00 on drawer open").
+            // The deliberate effect above owns the viewport position with
+            // correct arithmetic; this keeps rbc's remount-time apply from
+            // ever competing with it.
+            enableAutoScroll={false}
             resources={resources}
             resourceIdAccessor="resourceId"
             resourceTitleAccessor="resourceTitle"

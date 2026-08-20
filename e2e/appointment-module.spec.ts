@@ -78,6 +78,59 @@ test.describe('the module opens on the calendar and holds its five surfaces', ()
       await expect(page, `${from} did not redirect`).toHaveURL(to);
     }
   });
+
+  test('the diary viewport holds still through drawer opens and resizes', async ({ page }) => {
+    // V3.1.2 regression pin. The defect: opening the New-appointment drawer
+    // (or an iPad width change) re-rendered the calendar's parent, rbc saw a
+    // fresh `scrollToTime` Date identity, and its own scroll-ratio arithmetic
+    // — measured from midnight but divided by the min→max span — threw the
+    // week grid to the ~23:00 rows. The viewport may move ONLY on view/date
+    // navigation; a drawer or a resize must leave it exactly where it was.
+    await login(page, ACCOUNTS.owner);
+    await page.goto('/appointments/calendar');
+    await expect(page.getByTestId('calendar-workspace')).toBeVisible();
+
+    await page
+      .locator('.kw-calendar-toolbar .ant-segmented')
+      .getByText('Week', { exact: true })
+      .click();
+    const content = page.locator('.kw-calendar-grid .rbc-time-content');
+    await expect(content).toBeVisible();
+    const readScroll = () => content.evaluate((el) => Math.round(el.scrollTop));
+
+    // Let the deliberate placement effect run, then take a SETTLED baseline:
+    // two consecutive readings that agree. The invariant below is a delta, so
+    // it holds whatever hour the diary legitimately opened on.
+    await page.waitForTimeout(400);
+    let baseline = await readScroll();
+    await expect
+      .poll(
+        async () => {
+          const next = await readScroll();
+          const still = next === baseline;
+          baseline = next;
+          return still;
+        },
+        { message: 'the week grid scroll never settled' },
+      )
+      .toBe(true);
+
+    // Opening the booking drawer must not move the diary…
+    await page.getByRole('button', { name: 'New appointment' }).click();
+    await expect(page.getByTestId('staff-booking-flow')).toBeVisible();
+    expect(Math.abs((await readScroll()) - baseline)).toBeLessThanOrEqual(2);
+
+    // …and neither must closing it…
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('staff-booking-flow')).toBeHidden();
+    expect(Math.abs((await readScroll()) - baseline)).toBeLessThanOrEqual(2);
+
+    // …nor a width-only viewport change (the iPad rotate). Height is kept so
+    // the browser has no legitimate clamping reason to touch scrollTop.
+    await page.setViewportSize({ width: 1024, height: 1000 });
+    await page.waitForTimeout(400);
+    expect(Math.abs((await readScroll()) - baseline)).toBeLessThanOrEqual(2);
+  });
 });
 
 test.describe('a patient books themselves in, and the clinic works the booking', () => {
