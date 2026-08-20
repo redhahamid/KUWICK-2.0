@@ -130,10 +130,20 @@ type Tx = Prisma.TransactionClient;
 /** Statuses that do NOT occupy a slot per `appointments_no_overlap`. */
 const NON_OCCUPYING: AppointmentStatus[] = ['CANCELLED', 'RESCHEDULED', 'NO_SHOW', 'WAITLIST'];
 
-/** Thrown to roll a completed dry-run transaction back. Never an error. */
+/**
+ * Thrown to roll a completed dry-run transaction back. Never an error.
+ *
+ * Written without a TypeScript parameter property on purpose: that is the one
+ * construct Node's native type-stripping refuses, and this file must stay
+ * runnable by a bare `node --experimental-strip-types` so the remote runner
+ * never has to fetch a TypeScript loader over the network to start.
+ */
 class Rollback extends Error {
-  constructor(readonly why: string) {
+  readonly why: string;
+
+  constructor(why: string) {
     super(why);
+    this.why = why;
   }
 }
 

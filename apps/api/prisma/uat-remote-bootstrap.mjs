@@ -39,9 +39,13 @@ import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-const MODE = process.env.UAT_SEED_ONCE?.trim().toLowerCase();
+// Mode comes from the command line first, so this is run deliberately:
+//   npm run uat:dry --workspace=apps/api
+//   npm run uat:write --workspace=apps/api
+// The environment variable is still honoured for a non-interactive caller.
+const MODE = (process.argv[2] ?? process.env.UAT_SEED_ONCE ?? '').trim().toLowerCase();
 
-// The normal state of the world: nothing set, nothing done, no log noise.
+// Nothing asked for, nothing done, no log noise.
 if (!MODE) process.exit(0);
 
 const line = (s = '') => console.log(s);
@@ -97,6 +101,8 @@ const provision = spawnSync(process.execPath, [provisioner, ownerUrl], {
   stdio: ['ignore', 'pipe', 'pipe'],
   env: process.env,
   encoding: 'utf8',
+  timeout: 120_000,
+  killSignal: 'SIGKILL',
 });
 const provisionOut = `${provision.stdout ?? ''}${provision.stderr ?? ''}`.trim();
 line(
@@ -117,8 +123,24 @@ if (provision.status !== 0 || !provisionOut.includes('kuwick_app ready (NOSUPERU
 const seed = join(process.cwd(), 'prisma', 'uat-remote-seed.ts');
 if (!existsSync(seed)) done(`seed not found at ${seed}. Nothing done.`);
 
+// HOW THE TYPESCRIPT SEED IS RUN, and why it is not `npx`.
+//
+// Node runs the seed itself via native type-stripping — no loader to install,
+// no registry round-trip, nothing to wait on. The first version of this file
+// reached for `npx -y tsx@4.19.2` when the image had no local tsx binary, and
+// an `npx` that has to fetch a package is an unbounded network wait in the
+// middle of a deploy. A local tsx is still preferred when one exists (older
+// Node), and every child carries a hard timeout so no branch can hang.
 const localTsx = join(process.cwd(), '..', '..', 'node_modules', '.bin', 'tsx');
-const runner = existsSync(localTsx) ? { cmd: localTsx, pre: [] } : { cmd: 'npx', pre: ['-y', 'tsx@4.19.2'] };
+const [major, minor] = process.versions.node.split('.').map(Number);
+const canStripTypes = major > 22 || (major === 22 && minor >= 6);
+const runner = canStripTypes
+  ? { cmd: process.execPath, pre: ['--experimental-strip-types', '--no-warnings'] }
+  : existsSync(localTsx)
+    ? { cmd: localTsx, pre: [] }
+    : null;
+
+if (!runner) done(`node ${process.versions.node} cannot run TypeScript and no local tsx exists. Nothing done.`);
 
 const runSeed = (write, label) => {
   line('');
@@ -126,7 +148,17 @@ const runSeed = (write, label) => {
   const childEnv = { ...process.env, DATABASE_URL: appUrl, ALLOW_REMOTE_UAT_SEED: 'true' };
   if (write) childEnv.UAT_SEED_WRITE = 'true';
   delete childEnv.APP_ROLE_PASSWORD;
-  const result = spawnSync(runner.cmd, [...runner.pre, seed], { stdio: 'inherit', env: childEnv });
+  const result = spawnSync(runner.cmd, [...runner.pre, seed], {
+    stdio: 'inherit',
+    env: childEnv,
+    timeout: 600_000,
+    killSignal: 'SIGKILL',
+  });
+  if (result.error?.code === 'ETIMEDOUT') {
+    line('  the seed exceeded its 10-minute ceiling and was killed. Nothing is left half-written:');
+    line('  every change it makes lives in one transaction, which the database rolls back.');
+    return false;
+  }
   return result.status === 0;
 };
 
