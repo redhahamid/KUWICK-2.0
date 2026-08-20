@@ -79,57 +79,148 @@ test.describe('the module opens on the calendar and holds its five surfaces', ()
     }
   });
 
-  test('the diary viewport holds still through drawer opens and resizes', async ({ page }) => {
+  test('the diary viewport holds still through drawers, flow steps, filters and iPad widths', async ({
+    page,
+  }) => {
     // V3.1.2 regression pin. The defect: opening the New-appointment drawer
     // (or an iPad width change) re-rendered the calendar's parent, rbc saw a
     // fresh `scrollToTime` Date identity, and its own scroll-ratio arithmetic
     // — measured from midnight but divided by the min→max span — threw the
-    // week grid to the ~23:00 rows. The viewport may move ONLY on view/date
-    // navigation; a drawer or a resize must leave it exactly where it was.
+    // grid to the ~23:00 rows. The viewport may move ONLY on a view or date
+    // change; nothing else here is allowed to touch it by so much as 3px.
+    //
+    // Day AND Week, because both are the same TimeGrid fed by the same three
+    // props, and a fix that only holds in the view the bug was reported from
+    // is not a fix.
     await login(page, ACCOUNTS.owner);
     await page.goto('/appointments/calendar');
     await expect(page.getByTestId('calendar-workspace')).toBeVisible();
 
-    await page
-      .locator('.kw-calendar-toolbar .ant-segmented')
-      .getByText('Week', { exact: true })
-      .click();
     const content = page.locator('.kw-calendar-grid .rbc-time-content');
-    await expect(content).toBeVisible();
-    const readScroll = () => content.evaluate((el) => Math.round(el.scrollTop));
+    const readScroll = () => content.evaluate((element) => Math.round(element.scrollTop));
 
-    // Let the deliberate placement effect run, then take a SETTLED baseline:
-    // two consecutive readings that agree. The invariant below is a delta, so
-    // it holds whatever hour the diary legitimately opened on.
-    await page.waitForTimeout(400);
-    let baseline = await readScroll();
-    await expect
-      .poll(
-        async () => {
-          const next = await readScroll();
-          const still = next === baseline;
-          baseline = next;
-          return still;
-        },
-        { message: 'the week grid scroll never settled' },
-      )
-      .toBe(true);
+    for (const view of ['Day', 'Week'] as const) {
+      await page
+        .locator('.kw-calendar-toolbar .ant-segmented')
+        .getByText(view, { exact: true })
+        .click();
+      await expect(content).toBeVisible();
 
-    // Opening the booking drawer must not move the diary…
-    await page.getByRole('button', { name: 'New appointment' }).click();
-    await expect(page.getByTestId('staff-booking-flow')).toBeVisible();
-    expect(Math.abs((await readScroll()) - baseline)).toBeLessThanOrEqual(2);
+      // A SETTLED baseline — two consecutive readings that agree, so the
+      // deliberate placement effect has finished. Every assertion below is a
+      // delta from it, which holds whatever hour the diary legitimately
+      // opened on for the seeded data of the day.
+      await page.waitForTimeout(400);
+      let baseline = await readScroll();
+      await expect
+        .poll(
+          async () => {
+            const next = await readScroll();
+            const settled = next === baseline;
+            baseline = next;
+            return settled;
+          },
+          { message: `the ${view} grid scroll never settled` },
+        )
+        .toBe(true);
 
-    // …and neither must closing it…
-    await page.keyboard.press('Escape');
-    await expect(page.getByTestId('staff-booking-flow')).toBeHidden();
-    expect(Math.abs((await readScroll()) - baseline)).toBeLessThanOrEqual(2);
+      const holds = async (what: string) => {
+        const now = await readScroll();
+        expect(Math.abs(now - baseline), `${view} view: ${what} moved the diary`).toBeLessThanOrEqual(
+          2,
+        );
+      };
 
-    // …nor a width-only viewport change (the iPad rotate). Height is kept so
-    // the browser has no legitimate clamping reason to touch scrollTop.
-    await page.setViewportSize({ width: 1024, height: 1000 });
-    await page.waitForTimeout(400);
-    expect(Math.abs((await readScroll()) - baseline)).toBeLessThanOrEqual(2);
+      // 1 — the booking drawer opens over the diary.
+      await page.getByRole('button', { name: 'New appointment' }).click();
+      await expect(page.getByTestId('staff-booking-flow')).toBeVisible();
+      await holds('opening the New appointment drawer');
+
+      // 2 — and its steps advance, each one re-rendering the module page that
+      // owns the calendar. Guarded on fixtures: the step only exists to walk
+      // if this clinic has a patient and a bookable service to pick.
+      const recent = page.locator('.kw-flow-recent-row button');
+      if ((await recent.count()) > 0) {
+        await recent.first().click();
+        await expect(page.getByTestId('flow-patient-card')).toBeVisible();
+        await holds('advancing the flow past Patient');
+
+        const services = page.locator('.kw-flow-service');
+        if ((await services.count()) > 0) {
+          await services.first().click();
+          await expect(services.first()).toBeHidden();
+          await holds('advancing the flow past Service');
+        }
+      }
+
+      // 3 — and it closes again.
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('staff-booking-flow')).toBeHidden();
+      await holds('closing the New appointment drawer');
+
+      // 4 — an existing booking's own drawer.
+      //
+      // The card is scrolled into view BY THIS TEST first, and the baseline
+      // retaken from where that left the diary. Two reasons, both load-
+      // bearing: Playwright scrolls a target into view before clicking it, so
+      // clicking an off-screen 23:00 card would move the diary by the test's
+      // own hand and then blame the product; and an operator's own scroll is
+      // itself a position the product must respect — if the diary snapped
+      // back to its opening hour here, that is the same defect wearing a
+      // different hat, so that is asserted before anything is clicked.
+      const events = content.locator('.rbc-event');
+      const eventCount = await events.count();
+      if (eventCount === 0) {
+        test.info().annotations.push({
+          type: 'branch-not-exercised',
+          description: `${view} view held no bookings, so the appointment drawer was not opened here`,
+        });
+      } else {
+        await content.evaluate((element) => {
+          const card = element.querySelector('.rbc-event') as HTMLElement;
+          const host = element.getBoundingClientRect();
+          const box = card.getBoundingClientRect();
+          element.scrollTop = Math.max(
+            0,
+            element.scrollTop + (box.top - host.top) - element.clientHeight / 2 + box.height / 2,
+          );
+        });
+        await page.waitForTimeout(300);
+        const scrolledTo = await readScroll();
+        await page.waitForTimeout(400);
+        expect(
+          Math.abs((await readScroll()) - scrolledTo),
+          `${view} view: the diary snapped back after the operator scrolled it by hand`,
+        ).toBeLessThanOrEqual(2);
+        baseline = scrolledTo;
+
+        await events.first().click();
+        const drawer = page.getByTestId('appointment-drawer');
+        await expect(drawer).toBeVisible();
+        await holds('opening an appointment drawer');
+        await page.keyboard.press('Escape');
+        await expect(drawer).toBeHidden();
+        await holds('closing an appointment drawer');
+      }
+
+      // 5 — a filter, which re-renders the grid with a different event set.
+      const find = page.getByPlaceholder('Find a patient');
+      await find.fill('zzz-nobody-by-this-name');
+      await page.waitForTimeout(400);
+      await holds('filtering the diary to nothing');
+      await find.fill('');
+      await page.waitForTimeout(400);
+      await holds('clearing the filter');
+
+      // 6 — width-only viewport changes: iPad Pro landscape, iPad portrait,
+      // iPad landscape, back to the desktop canvas. Height is held constant
+      // so the browser has no legitimate clamping reason to move scrollTop.
+      for (const width of [1194, 834, 1024, 1680]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await page.waitForTimeout(350);
+        await holds(`resizing the viewport to ${width}px`);
+      }
+    }
   });
 });
 
