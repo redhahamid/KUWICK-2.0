@@ -156,6 +156,7 @@ export function ServiceEditorDrawer({
       open={open}
       onClose={close}
       width={640}
+      rootClassName="kw-apt3-drawer"
       destroyOnHidden
       title={service?.name ?? 'Service'}
       footer={

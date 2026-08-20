@@ -28,6 +28,7 @@ import {
   CHECK_IN_FROM_STATUSES,
   NON_CANCELLABLE_STATUSES,
 } from '../appointment-status.constants';
+import { getDoctorColor } from '../calendar/doctor-color';
 import {
   useArrivedAppointment,
   useCancelAppointment,
@@ -174,9 +175,6 @@ export function AppointmentListView({ clinicId, clinicName, onBook }: Appointmen
             allowClear
             style={{ width: 220 }}
           />
-          <Button type="primary" onClick={onBook}>
-            New appointment
-          </Button>
         </Space>
       </div>
 
@@ -262,6 +260,7 @@ export function AppointmentListView({ clinicId, clinicName, onBook }: Appointmen
           tab={tab as DashboardTab}
           clinicName={clinicName}
           onOpen={setSelectedId}
+          onBook={onBook}
         />
       )}
 
@@ -334,12 +333,14 @@ function AppointmentTable({
   tab,
   clinicName,
   onOpen,
+  onBook,
 }: {
   rows: DashboardRow[];
   loading: boolean;
   tab: DashboardTab;
   clinicName: string;
   onOpen: (id: string) => void;
+  onBook: () => void;
 }) {
   const markReminder = useMarkReminderSent();
   const confirmAppointment = useConfirmAppointment();
@@ -394,10 +395,33 @@ function AppointmentTable({
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               description={EMPTY_TEXT[tab]}
               className="kw-appt-empty"
-            />
+            >
+              {/* An empty worklist offers the next move, not 500px of blank
+                  table. */}
+              {tab === 'UPCOMING' || tab === 'REQUESTS' ? (
+                <Button type="primary" onClick={onBook}>
+                  New appointment
+                </Button>
+              ) : null}
+            </Empty>
           ),
         }}
         columns={[
+          // V3 worklist priority: WHEN → PATIENT → SERVICE → PROVIDER →
+          // STATUS, then the quiet operational columns. Same facts as V2,
+          // re-weighted: the row is a work item, not a record dump.
+          {
+            title: 'When',
+            width: 150,
+            render: (_, row) => (
+              <div className="kw-appt-when">
+                <span className="kw-appt-when-time">
+                  {formatClinicTime(row.scheduledStart)}–{formatClinicTime(row.scheduledEnd)}
+                </span>
+                <span className="kw-appt-when-date">{formatClinicDate(row.scheduledStart)}</span>
+              </div>
+            ),
+          },
           {
             title: 'Patient',
             render: (_, row) => (
@@ -409,31 +433,36 @@ function AppointmentTable({
               </div>
             ),
           },
-          { title: 'Date', width: 120, render: (_, row) => formatClinicDate(row.scheduledStart) },
-          {
-            title: 'Time',
-            width: 110,
-            render: (_, row) =>
-              `${formatClinicTime(row.scheduledStart)}–${formatClinicTime(row.scheduledEnd)}`,
-          },
           { title: 'Service', render: (_, row) => row.service.name },
           {
             title: 'Provider',
             render: (_, row) => (
-              <Space size={8}>
-                <Avatar size={26} className="kw-appt-avatar">
+              <span className="kw-appt-provider-cell">
+                {/* A plain span, not antd's Avatar: Avatar re-measures string
+                    children against its own font and squeezes two initials
+                    into "A…" at this size. */}
+                <span
+                  className="kw-provider-avatar"
+                  style={{ width: 24, height: 24, fontSize: 10, background: getDoctorColor(row.staffId) }}
+                  aria-hidden
+                >
                   {initials(row.provider.fullName)}
-                </Avatar>
+                </span>
                 <span>{row.provider.fullName}</span>
-              </Space>
+              </span>
             ),
+          },
+          {
+            title: 'Status',
+            width: 120,
+            render: (_, row) => <KuwickStatusTag {...statusChip(row.status)} />,
           },
           {
             title: 'Payment',
             width: 120,
             render: (_, row) =>
               row.payment.state === 'NO_FEE' ? (
-                <Text type="secondary">No fee</Text>
+                <Text className="kw-appt-quiet">No fee</Text>
               ) : (
                 <KuwickStatusTag
                   {...paymentChip(row.payment.state === 'PAID' ? 'PAID' : 'PENDING')}
@@ -443,7 +472,7 @@ function AppointmentTable({
           },
           {
             title: 'Reminder',
-            width: 140,
+            width: 130,
             render: (_, row) =>
               row.reminder.sentAt ? (
                 // WHO and WHEN, not just a tick. "Reminded" with nobody's name
@@ -456,7 +485,7 @@ function AppointmentTable({
                   </span>
                 </Tooltip>
               ) : (
-                <Text type="secondary">Not sent</Text>
+                <Text className="kw-appt-quiet">Not sent</Text>
               ),
           },
           {
@@ -464,16 +493,11 @@ function AppointmentTable({
             width: 110,
             render: (_, row) => (
               <Tooltip title={row.sourceDetail ?? undefined}>
-                <Text type="secondary">
+                <Text className="kw-appt-quiet">
                   {SOURCE_LABELS[row.source as AppointmentSource] ?? sentence(row.source)}
                 </Text>
               </Tooltip>
             ),
-          },
-          {
-            title: 'Status',
-            width: 120,
-            render: (_, row) => <KuwickStatusTag {...statusChip(row.status)} />,
           },
           {
             // ONE button and a menu (§11). Four buttons per row times thirty

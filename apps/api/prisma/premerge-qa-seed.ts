@@ -18,7 +18,11 @@ config({ path: join(__dirname, '..', '.env') });
 // only. The application never runs this way (prisma.service.ts refuses).
 
 const TENANT = 'ffffffff-0000-4000-8000-000000000001';
-const CLINIC = '2448b688-573f-4db4-b865-e4e5dd4933b7';
+// The staging seed GENERATES the UAT clinic's id, so it differs per database.
+// Resolved at startup rather than hardcoded — a fixed uuid here is why this
+// script used to fail with a Staff FK violation on any machine that was not
+// the one it was written on.
+let CLINIC = '';
 
 // The busy day: Wednesday 26 August 2026, Asia/Kuala_Lumpur (UTC+8).
 const kl = (day: string, hhmm: string) => new Date(`${day}T${hhmm}:00.000+08:00`);
@@ -63,6 +67,12 @@ async function upsertService(
 }
 
 async function main() {
+  const uatClinic = await prisma.clinic.findFirst({ where: { tenantId: TENANT } });
+  if (!uatClinic) {
+    throw new Error('The UAT tenant has no clinic — run prisma/seed-staging-uat.ts first.');
+  }
+  CLINIC = uatClinic.id;
+
   // ── providers ─────────────────────────────────────────────────────────────
   const aisyah = await upsertDoctor('Dr. Nurul Aisyah binti Hamid', 'ROSTER_LINKED', '#4f9d69');
   const farid = await upsertDoctor('Dr. Farid Iskandar bin Zulkifli', 'FIXED_WEEKLY', '#5b7db1');
@@ -211,6 +221,9 @@ async function main() {
   // Priya covers weekends as a locum.
   await shift(priya.id, '2026-08-29', '09:00', '2026-08-29', '17:00', 'LOCUM', 'Weekend locum');
   await shift(priya.id, '2026-08-30', '09:00', '2026-08-30', '13:00', 'LOCUM');
+  // A BLOCKED band — in the building, not bookable (V3 §12 wants every shift
+  // state visible on the acceptance board).
+  await shift(priya.id, '2026-08-26', '09:00', '2026-08-26', '13:00', 'BLOCKED', 'CME morning');
 
   // Hafiz: approved leave ON the busy day (whole day).
   await prisma.scheduleException.deleteMany({ where: { tenantId: TENANT, staffId: hafiz.id } });
@@ -358,18 +371,39 @@ async function main() {
   }
 
   // ── the public page, rebranded ───────────────────────────────────────────
-  await prisma.clinicBookingPage.updateMany({
+  // UPSERT, not update: on a fresh database no page exists yet (the author's
+  // machine had one created through the UI, which is why updateMany was
+  // enough there and a silent no-op everywhere else — the public flow then
+  // 404'd on /book/uat-clinic).
+  const brandData = {
+    displayName: 'Klinik Hijraa Bangi',
+    introText:
+      'Selamat datang ke Klinik Hijraa Bangi. Tempah temujanji anda di bawah — welcome, book your appointment below.',
+    active: true,
+    allowPatientReschedule: true,
+    allowPatientCancel: true,
+    patientChangeCutoffHours: 4,
+  };
+  const existingPage = await prisma.clinicBookingPage.findFirst({
     where: { tenantId: TENANT, clinicId: CLINIC },
-    data: {
-      displayName: 'Klinik Hijraa Bangi',
-      introText:
-        'Selamat datang ke Klinik Hijraa Bangi. Tempah temujanji anda di bawah — welcome, book your appointment below.',
-      active: true,
-      allowPatientReschedule: true,
-      allowPatientCancel: true,
-      patientChangeCutoffHours: 4,
-    },
   });
+  if (existingPage) {
+    await prisma.clinicBookingPage.update({ where: { id: existingPage.id }, data: brandData });
+  } else {
+    await prisma.clinicBookingPage.create({
+      data: {
+        tenantId: TENANT,
+        clinicId: CLINIC,
+        slug: 'uat-clinic',
+        language: 'en',
+        requirePhone: true,
+        requireEmail: false,
+        requireNric: false,
+        showReasonField: true,
+        ...brandData,
+      },
+    });
+  }
 
   const counts = {
     doctors: doctors.length,

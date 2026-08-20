@@ -43,6 +43,7 @@ import {
   useNoShowAppointment,
 } from '../hooks/useAppointments';
 import { whatsappLink } from '../whatsappReminder';
+import { getDoctorColor } from './doctor-color';
 import { ApiError } from '../../core/api-client';
 
 const { Text, Paragraph } = Typography;
@@ -213,6 +214,7 @@ export function AppointmentDrawer({
       open={open}
       onClose={onClose}
       width={440}
+      rootClassName="kw-apt3-drawer"
       destroyOnHidden
       title={
         appointment ? (
@@ -411,7 +413,22 @@ export function AppointmentDrawer({
             </div>
             <div className="kw-apt-what">
               <div className="kw-apt-service">{appointment.service.name}</div>
-              <div className="kw-apt-provider">{appointment.staff.fullName}</div>
+              <div className="kw-apt-provider">
+                {/* The provider's identity dot — the same colour as their
+                    calendar edge and roster avatar. */}
+                <span
+                  aria-hidden
+                  style={{
+                    display: 'inline-block',
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    marginRight: 6,
+                    background: getDoctorColor(appointment.staffId),
+                  }}
+                />
+                {appointment.staff.fullName}
+              </div>
             </div>
           </div>
 

@@ -18,10 +18,93 @@ import {
 import { CopyOutlined, PrinterOutlined, DownloadOutlined } from '@ant-design/icons';
 import { ApiError } from '../../core/api-client';
 import { useBookingPage, useSaveBookingPage, useSaveReminderRules } from '../hooks/useBookingPage';
+import { useAppointmentServices } from '../hooks/useServiceConfig';
 import { qrSvg } from './qr';
 import { KuwickStatusTag } from '../../design-system/kuwick';
 
 const { Text, Paragraph } = Typography;
+
+/**
+ * THE LIVE PREVIEW — the patient's phone, drawn from the form's CURRENT
+ * values rather than the saved row, so "what will this look like?" is
+ * answered while typing and not after publishing. Purely presentational:
+ * nothing here persists, fetches, or bypasses what the real public page
+ * enforces server-side. The service list is the clinic's real bookable
+ * catalogue — the same rows the public page would offer.
+ */
+function BookingPagePreview({
+  active,
+  displayName,
+  introText,
+  logoUrl,
+  language,
+  services,
+}: {
+  active?: boolean;
+  displayName?: string;
+  introText?: string;
+  logoUrl?: string;
+  language?: string;
+  services: { id: string; name: string; durationMinutesDefault: number }[];
+}) {
+  const bm = language === 'ms';
+  const monogram = (displayName ?? '')
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((word) => word[0] ?? '')
+    .join('')
+    .toUpperCase();
+  return (
+    <aside className="kw-bp-preview" aria-hidden data-testid="booking-page-preview">
+      <div className="kw-bp-preview-label">Live preview — patient's phone</div>
+      <div className="kw-bp-phone" data-off={active ? undefined : 'true'}>
+        <div className="kw-bp-phone-notch" />
+        {!active ? (
+          <div className="kw-bp-phone-offline">
+            <span>Not published</span>
+          </div>
+        ) : null}
+        <div className="kw-bp-phone-screen">
+          <div className="kw-bp-mini-hero">
+            <span className="kw-bp-mini-mark">
+              {logoUrl ? <img src={logoUrl} alt="" /> : monogram || 'KH'}
+            </span>
+            <div style={{ minWidth: 0 }}>
+              <div className="kw-bp-mini-name">{displayName || 'Your clinic name'}</div>
+              {introText ? <div className="kw-bp-mini-intro">{introText}</div> : null}
+            </div>
+          </div>
+          <div>
+            <div className="kw-bp-mini-progress">
+              {bm ? 'Langkah 1 daripada 5 · Pilih perkhidmatan' : 'Step 1 of 5 · Choose a service'}
+            </div>
+            <div className="kw-bp-mini-bar">
+              <span />
+            </div>
+          </div>
+          <div className="kw-bp-mini-q">
+            {bm ? 'Apa yang anda ingin tempah?' : 'What would you like to book?'}
+          </div>
+          {services.length > 0 ? (
+            services.slice(0, 4).map((service) => (
+              <div key={service.id} className="kw-bp-mini-service">
+                <span>
+                  {service.name}
+                  <small>{service.durationMinutesDefault} min</small>
+                </span>
+                <span style={{ color: '#0f6b78' }}>→</span>
+              </div>
+            ))
+          ) : (
+            <div className="kw-bp-mini-empty">
+              Services marked bookable appear here — set them up under Services.
+            </div>
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+}
 
 const REMINDER_CHOICES = [
   { value: 2880, label: '2 days before' },
@@ -78,6 +161,14 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
   const publicOrigin = typeof window === 'undefined' ? '' : window.location.origin;
   const slug = Form.useWatch('slug', form) as string | undefined;
   const generalUrl = slug ? `${publicOrigin}/book/${slug}` : '';
+
+  // The preview mirrors the FORM, live — including edits not yet saved.
+  const watchActive = Form.useWatch('active', form) as boolean | undefined;
+  const watchDisplayName = Form.useWatch('displayName', form) as string | undefined;
+  const watchIntroText = Form.useWatch('introText', form) as string | undefined;
+  const watchLogoUrl = Form.useWatch('logoUrl', form) as string | undefined;
+  const watchLanguage = Form.useWatch('language', form) as string | undefined;
+  const { data: bookableServices } = useAppointmentServices({ bookableOnly: true });
 
   const qr = useMemo(() => (generalUrl ? qrSvg(generalUrl, 200) : null), [generalUrl]);
 
@@ -157,21 +248,28 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
         {data?.page ? (
           <div className="kw-bp-status">
             <div className="kw-bp-status-left">
-              <KuwickStatusTag
-                tone={data.page.active ? 'success' : 'neutral'}
-                label={data.page.active ? 'LIVE' : 'Not published'}
-              />
+              <span
+                className="kw-bp-live-dot"
+                style={{ color: data.page.active ? '#16a34a' : '#98a2b3' }}
+              >
+                {data.page.active ? 'LIVE' : 'OFFLINE'}
+              </span>
               <Text className="kw-bp-status-url" copyable={{ text: generalUrl }}>
                 {generalUrl}
               </Text>
             </div>
             <Space>
+              <Button size="small" onClick={() => copy(generalUrl)} icon={<CopyOutlined />}>
+                Copy link
+              </Button>
               <Button size="small" onClick={() => window.open(generalUrl, '_blank', 'noopener')}>
                 Open page
               </Button>
             </Space>
           </div>
         ) : null}
+        <div className="kw-bp-layout">
+          <div className="kw-bp-config">
         <Tabs
           items={[
             {
@@ -415,6 +513,17 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
             {dirty ? 'Unsaved changes' : 'Everything saved'}
           </Text>
         </Space>
+          </div>
+
+          <BookingPagePreview
+            active={watchActive}
+            displayName={watchDisplayName}
+            introText={watchIntroText}
+            logoUrl={watchLogoUrl}
+            language={watchLanguage}
+            services={bookableServices ?? []}
+          />
+        </div>
       </Form>
     </div>
   );

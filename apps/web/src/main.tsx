@@ -7,6 +7,11 @@ import { BrowserRouter } from 'react-router-dom';
 import { kuwickTheme } from './design-system/theme';
 import { App } from './App';
 import './index.css';
+// The appointment module's presentation layer (V3). Imported AFTER index.css
+// so its scoped rules sit later in the cascade; every selector in it is
+// namespaced to appointment-owned classes, so order only matters for the few
+// antd component overrides both files could plausibly touch.
+import './appointment/appointment-v3.css';
 
 const queryClient = createQueryClient();
 

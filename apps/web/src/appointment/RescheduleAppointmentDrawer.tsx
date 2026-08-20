@@ -57,6 +57,7 @@ export function RescheduleAppointmentDrawer({ appointment, onClose }: Reschedule
       onClose={handleClose}
       destroyOnHidden
       width={420}
+      rootClassName="kw-apt3-drawer"
     >
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
         <div>

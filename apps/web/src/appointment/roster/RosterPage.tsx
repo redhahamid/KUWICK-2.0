@@ -1,12 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Avatar,
   Button,
   DatePicker,
   Empty,
   Modal,
   Popconfirm,
-  Segmented,
   Space,
   Spin,
   Tooltip,
@@ -26,19 +26,20 @@ import {
 } from '../hooks/useRoster';
 import { ShiftEditorModal } from './ShiftEditorModal';
 import { FixedWeeklyEditor } from './FixedWeeklyEditor';
+import { getDoctorColor } from '../calendar/doctor-color';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 // §5 — planning states keep the same language as everywhere else: leave is
 // PLANNED (violet, an HR fact this screen reads), blocked is a dark neutral
 // (unavailable, not an error), and amber/red stay reserved for people
 // physically waiting and for released slots.
-const SHIFT_TONE: Record<string, { bg: string; fg: string; label?: string }> = {
-  WORKING: { bg: '#e6f4ff', fg: '#0958d9' },
-  LOCUM: { bg: '#f0f5ff', fg: '#2f54eb', label: 'Locum' },
-  OFF: { bg: '#f2f4f7', fg: '#667085', label: 'OFF' },
-  LEAVE: { bg: '#f4ebff', fg: '#6941c6', label: 'Leave' },
-  BLOCKED: { bg: '#e4e7ec', fg: '#344054', label: 'Blocked' },
+const SHIFT_TONE: Record<string, { bg: string; fg: string; edge: string; label?: string }> = {
+  WORKING: { bg: '#e9f1fd', fg: '#1d4ed8', edge: '#1d4ed8' },
+  LOCUM: { bg: '#eef2ff', fg: '#4338ca', edge: '#4338ca', label: 'Locum' },
+  OFF: { bg: '#f2f4f7', fg: '#667085', edge: '#98a2b3', label: 'OFF' },
+  LEAVE: { bg: '#f4ebff', fg: '#6941c6', edge: '#7f56d9', label: 'Leave' },
+  BLOCKED: { bg: '#e4e7ec', fg: '#344054', edge: '#475467', label: 'Blocked' },
 };
 
 interface RosterPageProps {
@@ -79,6 +80,35 @@ export function RosterPage({ clinicId }: RosterPageProps) {
   const removeShift = useRemoveShift();
   const copyMonth = useCopyRosterMonth();
   const setMode = useSetScheduleMode();
+  const boardRef = useRef<HTMLDivElement>(null);
+
+  const todayKey = dayjs().format('YYYY-MM-DD');
+
+  // The board OPENS on the meaningful part of the month: today's column when
+  // the month contains it, otherwise the first date that actually holds a
+  // shift — never thirty-one empty columns with the work off-screen right.
+  // Scroll position only; every date is still there.
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board || !data) return;
+    const target =
+      board.querySelector<HTMLElement>('th[data-today]') ??
+      board.querySelector<HTMLElement>('th[data-first-shift]');
+    if (!target) return;
+    const rail = board.querySelector<HTMLElement>('.kw-roster-provider-head');
+    const railWidth = rail?.offsetWidth ?? 0;
+    board.scrollLeft = Math.max(0, target.offsetLeft - railWidth);
+  }, [data, monthKey]);
+
+  // The first date in this month with any shift on it, for the initial
+  // scroll when today is in a different month.
+  const firstShiftDate = useMemo(() => {
+    if (!data) return null;
+    for (const date of data.dates) {
+      if (data.providers.some((row) => (row.cells[date]?.shifts.length ?? 0) > 0)) return date;
+    }
+    return null;
+  }, [data]);
 
   const rosterProviders = useMemo(
     () => (data?.providers ?? []).filter((row) => row.scheduleMode === 'ROSTER_LINKED'),
@@ -159,7 +189,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
             onChange={(value) => value && setMonth(value.startOf('month'))}
             allowClear={false}
           />
-          <Text strong>{month.format('MMMM YYYY')}</Text>
+          <span className="kw-roster-heading">{month.format('MMMM YYYY')}</span>
         </Space>
         <Space wrap>
           <Popconfirm
@@ -171,24 +201,28 @@ export function RosterPage({ clinicId }: RosterPageProps) {
               Copy last month
             </Button>
           </Popconfirm>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            disabled={!selection}
-            onClick={() => {
-              if (!selection) return;
-              const provider = rosterProviders.find((row) => row.staffId === selection.staffId);
-              setEditing({
-                staffId: selection.staffId,
-                staffName: provider?.fullName ?? '',
-                dates: selection.dates,
-              });
-            }}
+          <Tooltip
+            title={selection ? undefined : 'Click one or more dates on the board first.'}
           >
-            {selection
-              ? `Add shift to ${selection.dates.length} date${selection.dates.length === 1 ? '' : 's'}`
-              : 'Select dates to add a shift'}
-          </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              disabled={!selection}
+              onClick={() => {
+                if (!selection) return;
+                const provider = rosterProviders.find((row) => row.staffId === selection.staffId);
+                setEditing({
+                  staffId: selection.staffId,
+                  staffName: provider?.fullName ?? '',
+                  dates: selection.dates,
+                });
+              }}
+            >
+              {selection
+                ? `Add shift to ${selection.dates.length} date${selection.dates.length === 1 ? '' : 's'}`
+                : 'Add shift'}
+            </Button>
+          </Tooltip>
         </Space>
       </div>
 
@@ -205,16 +239,23 @@ export function RosterPage({ clinicId }: RosterPageProps) {
       ) : null}
 
       {rosterProviders.length > 0 ? (
-        <div className="kw-roster-scroll">
+        <div className="kw-roster-scroll" ref={boardRef}>
           <table className="kw-roster-grid">
             <thead>
               <tr>
                 <th className="kw-roster-provider-head">Provider</th>
                 {(data?.dates ?? []).map((date) => {
                   const day = dayjs(date);
+                  const weekday = day.day();
                   const closed = data?.closedDates?.[date] !== undefined;
                   return (
-                    <th key={date} data-closed={closed || undefined}>
+                    <th
+                      key={date}
+                      data-closed={closed || undefined}
+                      data-weekend={weekday === 0 || weekday === 6 || undefined}
+                      data-today={date === todayKey || undefined}
+                      data-first-shift={date === firstShiftDate || undefined}
+                    >
                       <div className="kw-roster-daynum">{day.format('D')}</div>
                       <div className="kw-roster-dayname">{day.format('dd')}</div>
                     </th>
@@ -226,19 +267,42 @@ export function RosterPage({ clinicId }: RosterPageProps) {
               {rosterProviders.map((provider) => (
                 <tr key={provider.staffId}>
                   <th className="kw-roster-provider">
-                    <div>{provider.fullName}</div>
-                    <Button
-                      size="small"
-                      type="link"
-                      style={{ padding: 0, height: 'auto', fontSize: 11 }}
-                      onClick={() =>
-                        setMode.mutate({ staffId: provider.staffId, mode: 'FIXED_WEEKLY' })
-                      }
-                    >
-                      Use a weekly pattern instead
-                    </Button>
+                    <div className="kw-roster-provider-cell">
+                      <Avatar
+                        size={28}
+                        style={{
+                          background: getDoctorColor(provider.staffId),
+                          fontSize: 11,
+                          fontWeight: 700,
+                          flex: 'none',
+                        }}
+                      >
+                        {provider.fullName
+                          .replace(/^Dr\.?\s+/i, '')
+                          .split(/\s+/)
+                          .slice(0, 2)
+                          .map((part) => part[0] ?? '')
+                          .join('')
+                          .toUpperCase()}
+                      </Avatar>
+                      <div className="kw-roster-provider-text">
+                        <span className="kw-roster-provider-name">{provider.fullName}</span>
+                        <Button
+                          size="small"
+                          type="link"
+                          style={{ padding: 0, height: 'auto', fontSize: 11, textAlign: 'left' }}
+                          onClick={() =>
+                            setMode.mutate({ staffId: provider.staffId, mode: 'FIXED_WEEKLY' })
+                          }
+                        >
+                          Use a weekly pattern instead
+                        </Button>
+                      </div>
+                    </div>
                   </th>
                   {(data?.dates ?? []).map((date) => {
+                    const day = dayjs(date);
+                    const weekday = day.day();
                     const cell = provider.cells[date];
                     const picked =
                       selection?.staffId === provider.staffId && selection.dates.includes(date);
@@ -250,6 +314,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
                         className="kw-roster-cell"
                         data-picked={picked || undefined}
                         data-closed={isClosed || undefined}
+                        data-weekend={weekday === 0 || weekday === 6 || undefined}
                         onClick={() => toggleDate(provider.staffId, date)}
                       >
                         {isClosed ? (
@@ -280,14 +345,14 @@ export function RosterPage({ clinicId }: RosterPageProps) {
       ) : null}
 
       {weeklyProviders.length > 0 ? (
-        <>
-          <Title level={5} style={{ marginTop: 24 }}>
-            Fixed weekly availability
-          </Title>
-          <Text type="secondary">
+        // Kept, but SECONDARY: the board answers "who is working, when"; the
+        // standing patterns live in a quiet panel underneath it.
+        <div className="kw-apt3-panel" style={{ marginTop: 16 }}>
+          <p className="kw-apt3-panel-title">Weekly templates</p>
+          <p className="kw-apt3-panel-sub">
             These providers work the same hours every week. Their pattern is edited below, and
             changing it end-dates the old one rather than deleting it.
-          </Text>
+          </p>
           {weeklyProviders.map((provider) => (
             <FixedWeeklyEditor
               key={provider.staffId}
@@ -299,7 +364,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
               }
             />
           ))}
-        </>
+        </div>
       ) : null}
 
       <ShiftEditorModal
@@ -334,7 +399,10 @@ function RosterCellContent({
         // Read from HR, and NOT editable here. Two records of the same absence
         // is how they come to disagree.
         <Tooltip title="Approved leave, recorded in HR">
-          <span className="kw-roster-chip" style={{ background: '#f4ebff', color: '#6941c6' }}>
+          <span
+            className="kw-roster-chip"
+            style={{ background: '#f4ebff', color: '#6941c6', borderLeftColor: '#7f56d9' }}
+          >
             Leave
           </span>
         </Tooltip>
@@ -364,7 +432,7 @@ function RosterCellContent({
           >
             <span
               className="kw-roster-chip"
-              style={{ background: tone.bg, color: tone.fg }}
+              style={{ background: tone.bg, color: tone.fg, borderLeftColor: tone.edge }}
               onClick={(event) => {
                 event.stopPropagation();
                 onEdit(shift);

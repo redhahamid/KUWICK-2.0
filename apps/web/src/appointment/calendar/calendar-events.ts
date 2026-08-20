@@ -58,6 +58,94 @@ export function compactLine(time: string, patientName: string): string {
   return `${time} ${first}`;
 }
 
+/**
+ * V3 — the STRUCTURED card, same density ladder as `cardLines` but with the
+ * parts kept apart so the card can weight them differently (time bold in ink,
+ * patient heavier than service, provider muted). `cardLines` stays as the
+ * single-string form the tooltip uses.
+ */
+export interface CardModel {
+  /** "09:00" or, on EXPANDED cards, "09:00 – 10:00". */
+  time: string;
+  /** First name only on the smallest card; full name from STANDARD up. */
+  patient: string;
+  service?: string;
+  provider?: string;
+  /** ≤15 minutes: about 22px of card — ONE line (dot · time · first name). */
+  compact?: boolean;
+}
+
+export function cardModel(input: CardLabelInput, minutes: number): CardModel {
+  // The tiers are measured against the grid, not aspiration: a 30-minute slot
+  // is ~44px tall, which holds exactly two lines — a third clips mid-glyph,
+  // and a clipped line is worse than a line the drawer carries instead.
+  if (minutes <= 15) {
+    return {
+      time: input.time,
+      patient: input.patientName.trim().split(/\s+/)[0] ?? input.patientName,
+      compact: true,
+    };
+  }
+  if (minutes <= 30) {
+    return { time: input.time, patient: input.patientName };
+  }
+  if (minutes <= 45) {
+    return { time: input.time, patient: input.patientName, service: input.serviceName };
+  }
+  return {
+    time: input.timeRange ?? input.time,
+    patient: input.patientName,
+    service: input.serviceName,
+    provider: input.providerName,
+  };
+}
+
+/**
+ * V3 — the status DOT on a calendar card.
+ *
+ * The provider is the card's left edge; the status is this dot (and the word
+ * in the drawer — colour never carries meaning alone, the dot is a preview of
+ * the chip, not a replacement for it). Mid-saturation hues, one per D-105
+ * tone, chosen to read at 7px.
+ */
+export function statusDotColor(status: AppointmentStatus): string {
+  switch (status) {
+    case AppointmentStatus.REQUESTED:
+      return '#7f56d9'; // planned
+    case AppointmentStatus.ARRIVED:
+      return '#d97706'; // attention — physically at the desk
+    case AppointmentStatus.CHECKED_IN:
+    case AppointmentStatus.IN_QUEUE:
+      return '#0f6b78'; // clinical — in the building
+    case AppointmentStatus.COMPLETED:
+      return '#16a34a'; // success
+    case AppointmentStatus.CANCELLED:
+    case AppointmentStatus.NO_SHOW:
+    case AppointmentStatus.RESCHEDULED:
+    case AppointmentStatus.WAITLIST:
+      return '#98a2b3'; // released
+    default:
+      return '#1d4ed8'; // active — confirmed and coming
+  }
+}
+
+/** The soft card tint a status earns; white when it has nothing to say. */
+export function statusCardBackground(status: AppointmentStatus): string {
+  switch (status) {
+    case AppointmentStatus.ARRIVED:
+      return '#fff8eb';
+    case AppointmentStatus.CHECKED_IN:
+    case AppointmentStatus.IN_QUEUE:
+      return '#eff8f8';
+    case AppointmentStatus.REQUESTED:
+      return '#faf7ff';
+    case AppointmentStatus.COMPLETED:
+      return '#f8fafc';
+    default:
+      return '#ffffff';
+  }
+}
+
 export function cardLines(input: CardLabelInput, minutes: number): string[] {
   // The time leads EVERY size — the grid's own 12-hour range label is hidden
   // (index.css) so this line is the chip's only clock, in the clinic format
@@ -94,9 +182,20 @@ export function scrollToHour(params: {
   anchor: Dayjs;
   now: Dayjs;
   earliestRosteredHour: number | null;
+  /**
+   * V3 — the first APPOINTMENT of the day being looked at, when there is one.
+   * On a 24-hour roster `earliestRosteredHour` is 0 (the night shift covers
+   * midnight), which opened the day on eight empty hours; the first booking
+   * is where the reading starts. Optional so every existing caller and test
+   * keeps its meaning.
+   */
+  earliestEventHour?: number | null;
 }): number {
   if (params.anchor.isSame(params.now, 'day')) {
     return Math.max(0, params.now.hour() - 1);
+  }
+  if (params.earliestEventHour != null) {
+    return Math.max(0, params.earliestEventHour - 1);
   }
   return params.earliestRosteredHour ?? 8;
 }

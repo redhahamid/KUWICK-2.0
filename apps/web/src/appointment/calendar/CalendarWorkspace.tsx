@@ -11,10 +11,9 @@ import {
   Space,
   Spin,
   Tooltip,
-  Typography,
   message,
 } from 'antd';
-import { LeftOutlined, PlusOutlined, RightOutlined } from '@ant-design/icons';
+import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
@@ -30,15 +29,23 @@ import { AppointmentDrawer } from './AppointmentDrawer';
 import { StaffBookingFlow } from '../StaffBookingFlow';
 import { CalendarMetrics } from './CalendarMetrics';
 import { CalendarViewMode, getCalendarRange, shiftAnchor, todayAnchor } from './calendar-range';
-import { cardLines, earliestRosteredHour, gridBounds, isReleased, scrollToHour, compactLine } from './calendar-events';
+import {
+  CardModel,
+  cardLines,
+  cardModel,
+  earliestRosteredHour,
+  gridBounds,
+  isReleased,
+  scrollToHour,
+  statusCardBackground,
+  statusDotColor,
+} from './calendar-events';
 import { getDoctorColor } from './doctor-color';
 import { ApiError } from '../../core/api-client';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 const localizer = dayjsLocalizer(dayjs);
-
-const { Text } = Typography;
 
 const VIEW_OPTIONS: { label: string; value: CalendarViewMode }[] = [
   { label: 'Day', value: 'day' },
@@ -54,7 +61,8 @@ interface CalendarEvent {
   end: Date;
   resourceId: string;
   appointment: Appointment;
-  lines: string[];
+  card: CardModel;
+  tooltip: string;
   /** "09:00 Siti" — the narrow-column rendering (week/month). */
   compact: string;
   released: boolean;
@@ -69,13 +77,39 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 }
 
+function initialsOf(name: string): string {
+  return name
+    .replace(/^Dr\.?\s+/i, '')
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .toUpperCase();
+}
+
 /**
- * THE CALENDAR — the module's default workspace (§7).
+ * THE CALENDAR — the module's default workspace (§7), and V3's hero surface.
  *
- * LAYOUT (§8). The grid takes the whole width. Selecting an appointment opens
- * a DRAWER over the right-hand edge rather than a panel that is permanently
- * reserved and empty most of the time: on a 13-inch laptop that panel was the
- * difference between five provider columns and three.
+ * LAYOUT. A command bar (navigate, the date said big, the view switcher), a
+ * quiet filter bar with the live counts at its end, and then the grid takes
+ * everything that is left. Selecting an appointment opens a DRAWER over the
+ * right-hand edge rather than a panel that is permanently reserved and empty
+ * most of the time.
+ *
+ * THE GRID WEARS KUWICK, NOT THE LIBRARY. react-big-calendar still does the
+ * geometry; headers, cards, the now-line, working-hours shading and the month
+ * cells are all custom components or scoped CSS (appointment-v3.css). Two
+ * V3-specific behaviours worth naming:
+ *
+ *   WORKING HOURS ARE SHAPE. `slotPropGetter` marks every half-hour nobody is
+ *   rostered (per column in the Providers view, merged elsewhere) so the
+ *   clinic's day is visible before a single booking is — presentation only,
+ *   derived from the same roster read the grid bounds already use.
+ *
+ *   THE VIEWPORT OPENS ON THE WORK. On a 24-hour roster the grid must RENDER
+ *   from midnight (the night half exists), but it should not OPEN there; the
+ *   scroll effect below places the first meaningful hour at the top, because
+ *   rbc's own scrollToTime prop is only honoured on mount.
  *
  * RESCHEDULING (§48) is pick-up-and-place, and that is a deliberate choice
  * rather than a missing feature. Drag-and-drop through `react-big-calendar`'s
@@ -167,16 +201,14 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
         const start = clinicWallDate(appointment.scheduledStart);
         const end = clinicWallDate(appointment.scheduledEnd);
         const minutes = (end.getTime() - start.getTime()) / 60000;
-        const lines = cardLines(
-          {
-            time: formatClinicTime(appointment.scheduledStart),
-            timeRange: `${formatClinicTime(appointment.scheduledStart)} – ${formatClinicTime(appointment.scheduledEnd)}`,
-            patientName: patientName(appointment.patientId),
-            serviceName: serviceName(appointment.serviceId),
-            providerName: staffName(appointment.staffId),
-          },
-          minutes,
-        );
+        const label = {
+          time: formatClinicTime(appointment.scheduledStart),
+          timeRange: `${formatClinicTime(appointment.scheduledStart)} – ${formatClinicTime(appointment.scheduledEnd)}`,
+          patientName: patientName(appointment.patientId),
+          serviceName: serviceName(appointment.serviceId),
+          providerName: staffName(appointment.staffId),
+        };
+        const lines = cardLines(label, minutes);
         return {
           id: appointment.id,
           title: lines.join(' · '),
@@ -184,11 +216,9 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           end,
           resourceId: appointment.staffId,
           appointment,
-          lines,
-          compact: compactLine(
-            formatClinicTime(appointment.scheduledStart),
-            patientName(appointment.patientId),
-          ),
+          card: cardModel(label, minutes),
+          tooltip: lines.join(' · '),
+          compact: `${label.time} ${label.patientName.trim().split(/\s+/)[0] ?? label.patientName}`,
           released: isReleased(appointment.status),
         };
       });
@@ -204,20 +234,64 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
   ]);
 
   const bounds = useMemo(() => gridBounds(shifts), [shifts]);
+
+  // The first booking of the day being looked at — where reading starts on a
+  // roster whose grid has to render from midnight.
+  const earliestEventHour = useMemo(() => {
+    const hours = events
+      .filter((event) => !event.released)
+      .map((event) => event.start.getHours());
+    return hours.length > 0 ? Math.min(...hours) : null;
+  }, [events]);
+
   const scrollHour = useMemo(
     () =>
       scrollToHour({
         anchor,
         now: clinicDayjs(new Date()),
         earliestRosteredHour: earliestRosteredHour(shifts),
+        earliestEventHour,
       }),
-    [anchor, shifts],
+    [anchor, shifts, earliestEventHour],
   );
 
   const gridRef = useRef<HTMLDivElement>(null);
 
+  // WORKING HOURS AS SHAPE. One sorted interval list per provider, read from
+  // the same roster answer the grid bounds use; a slot is "on" when anybody
+  // visible (or the column's own provider, in the Providers view) is rostered
+  // WORKING or LOCUM across it.
+  const workingIntervals = useMemo(() => {
+    const per = new Map<string, [number, number][]>();
+    for (const shift of shifts ?? []) {
+      if (shift.shiftType !== 'WORKING' && shift.shiftType !== 'LOCUM') continue;
+      const list = per.get(shift.staffId) ?? [];
+      list.push([new Date(shift.startsAt).getTime(), new Date(shift.endsAt).getTime()]);
+      per.set(shift.staffId, list);
+    }
+    return per;
+  }, [shifts]);
+
+  const slotPropGetter = useCallback(
+    (slot: Date, resourceId?: string | number) => {
+      if (workingIntervals.size === 0) return {};
+      const instant = fromClinicWallDate(slot).getTime();
+      const ids = resourceId != null ? [String(resourceId)] : [...visibleProviderIds];
+      const rostered = ids.some((id) =>
+        (workingIntervals.get(id) ?? []).some(([from, to]) => instant >= from && instant < to),
+      );
+      return rostered ? {} : { className: 'kw-slot-off' };
+    },
+    [workingIntervals, visibleProviderIds],
+  );
+
+  const dayPropGetter = useCallback((date: Date) => {
+    const day = date.getDay();
+    return day === 0 || day === 6 ? { className: 'kw-day-weekend' } : {};
+  }, []);
+
   // §12 — WHERE NOW IS, said in the gutter's own words. react-big-calendar
-  // draws the red line; this pins a small pill reading the clinic clock into
+  // draws the line; this pins a small pill reading the clinic clock into
   // the hour gutter at the same height, so "now" is a time you can read and
   // not only a line you can see. DOM-side on purpose: the indicator is
   // library-rendered, and re-applied on a slow tick because the grid
@@ -248,6 +322,22 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
     const timer = window.setInterval(paint, 30_000);
     return () => window.clearInterval(timer);
   }, [viewMode, anchor, events, isLoading]);
+
+  // THE VIEWPORT OPENS ON THE WORK. rbc honours `scrollToTime` only on the
+  // mount it happens to coincide with; this places the target hour at the top
+  // of the scroll box deterministically on every view/date change. Purely a
+  // scroll position — the grid still renders every rostered hour.
+  useEffect(() => {
+    if (isLoading) return;
+    const grid = gridRef.current;
+    if (!grid) return;
+    const content = grid.querySelector<HTMLElement>('.rbc-time-content');
+    const group = grid.querySelector<HTMLElement>('.rbc-timeslot-group');
+    if (!content || !group) return;
+    // A timeslot-group is `step × timeslots` minutes tall — 30 here.
+    const hourHeight = group.offsetHeight * 2;
+    content.scrollTop = Math.max(0, (scrollHour - bounds.startHour) * hourHeight);
+  }, [viewMode, anchor, isLoading, scrollHour, bounds.startHour]);
 
   // Keyboard: D / W / M / P and the arrows. A receptionist works the calendar
   // all day and reaching for the mouse to move one day is friction that adds up.
@@ -333,17 +423,20 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
     return anchor.format('dddd D MMMM YYYY');
   }, [viewMode, anchor, range]);
 
+  const todayWall = clinicWallDate(new Date());
+
   return (
     <div className="kw-calendar-workspace" data-testid="calendar-workspace">
+      {/* COMMAND BAR — navigate, the date said big, the view switcher. */}
       <div className="kw-calendar-toolbar">
-        <Space wrap size={8}>
+        <Space wrap size={10}>
           <Button.Group>
+            <Button onClick={() => setAnchor(todayAnchor())}>Today</Button>
             <Button
               icon={<LeftOutlined />}
               aria-label="Previous"
               onClick={() => setAnchor((current) => shiftAnchor(viewMode, current, -1))}
             />
-            <Button onClick={() => setAnchor(todayAnchor())}>Today</Button>
             <Button
               icon={<RightOutlined />}
               aria-label="Next"
@@ -356,81 +449,80 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             allowClear={false}
             format="D MMM YYYY"
           />
-          <Text strong style={{ fontSize: 15 }}>
-            {heading}
-          </Text>
-          <Segmented
-            value={viewMode}
-            options={VIEW_OPTIONS}
-            onChange={(value) => setViewMode(value as CalendarViewMode)}
-          />
+          <span className="kw-cal-heading">{heading}</span>
         </Space>
-
-        <Space wrap size={8}>
-          <Select
-            mode="multiple"
-            allowClear
-            maxTagCount={1}
-            style={{ minWidth: 160 }}
-            placeholder="All providers"
-            value={providerFilter}
-            onChange={setProviderFilter}
-            options={providers.map((provider) => ({
-              value: provider.id,
-              label: provider.fullName,
-            }))}
-          />
-          <Select
-            mode="multiple"
-            allowClear
-            maxTagCount={1}
-            style={{ minWidth: 150 }}
-            placeholder="All services"
-            value={serviceFilter}
-            onChange={setServiceFilter}
-            options={(services ?? []).map((service) => ({
-              value: service.id,
-              label: service.name,
-            }))}
-          />
-          <Select
-            mode="multiple"
-            allowClear
-            maxTagCount={1}
-            style={{ minWidth: 140 }}
-            placeholder="All statuses"
-            value={statusFilter}
-            onChange={setStatusFilter}
-            options={[
-              AppointmentStatus.REQUESTED,
-              AppointmentStatus.CONFIRMED,
-              AppointmentStatus.ARRIVED,
-              AppointmentStatus.CHECKED_IN,
-              AppointmentStatus.COMPLETED,
-              AppointmentStatus.NO_SHOW,
-              AppointmentStatus.CANCELLED,
-            ].map((status) => ({ value: status, label: status.replace(/_/g, ' ') }))}
-          />
-          <Input.Search
-            allowClear
-            placeholder="Find a patient"
-            style={{ width: 180 }}
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setBooking({})}>
-            New appointment
-          </Button>
-        </Space>
+        <Segmented
+          value={viewMode}
+          options={VIEW_OPTIONS}
+          onChange={(value) => setViewMode(value as CalendarViewMode)}
+        />
       </div>
 
-      <CalendarMetrics appointments={appointments ?? []} />
+      {/* FILTER BAR — dense and intentional; the live counts close the row. */}
+      <div className="kw-cal-filterbar">
+        <Select
+          mode="multiple"
+          allowClear
+          maxTagCount={1}
+          size="small"
+          style={{ minWidth: 158 }}
+          placeholder="All providers"
+          value={providerFilter}
+          onChange={setProviderFilter}
+          options={providers.map((provider) => ({
+            value: provider.id,
+            label: provider.fullName,
+          }))}
+        />
+        <Select
+          mode="multiple"
+          allowClear
+          maxTagCount={1}
+          size="small"
+          style={{ minWidth: 148 }}
+          placeholder="All services"
+          value={serviceFilter}
+          onChange={setServiceFilter}
+          options={(services ?? []).map((service) => ({
+            value: service.id,
+            label: service.name,
+          }))}
+        />
+        <Select
+          mode="multiple"
+          allowClear
+          maxTagCount={1}
+          size="small"
+          style={{ minWidth: 138 }}
+          placeholder="All statuses"
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={[
+            AppointmentStatus.REQUESTED,
+            AppointmentStatus.CONFIRMED,
+            AppointmentStatus.ARRIVED,
+            AppointmentStatus.CHECKED_IN,
+            AppointmentStatus.COMPLETED,
+            AppointmentStatus.NO_SHOW,
+            AppointmentStatus.CANCELLED,
+          ].map((status) => ({ value: status, label: status.replace(/_/g, ' ') }))}
+        />
+        <Input.Search
+          allowClear
+          size="small"
+          placeholder="Find a patient"
+          style={{ width: 170 }}
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+        <CalendarMetrics appointments={appointments ?? []} />
+      </div>
 
       {moving ? (
         <Alert
           type="info"
           showIcon
-          style={{ marginBottom: 8 }}
+          style={{ marginBottom: 10 }}
           message={`Moving ${patientName(moving.patientId)} — click an empty slot to place it, or press Escape to stop.`}
           action={<Button size="small" onClick={() => setMoving(null)}>Stop</Button>}
         />
@@ -481,41 +573,70 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
               setViewMode('day');
             }}
             messages={{ showMore: (count: number) => `+ ${count} more` }}
+            slotPropGetter={slotPropGetter}
+            dayPropGetter={dayPropGetter}
             components={{
-              // A narrow week/month cell carries time + first name; the day
-              // and provider columns are wide enough for the full card. The
-              // whole story is always one click away in the drawer, and the
-              // tooltip carries it on hover for the impatient.
-              event: ({ event }: { event: CalendarEvent }) => (
-                <Tooltip title={`${event.lines.join(' · ')} — double-click to move`}>
-                  {viewMode === 'week' || viewMode === 'month' ? (
-                    <div className="kw-calendar-event">
-                      <div className="kw-event-primary">{event.compact}</div>
+              // A narrow week/month cell carries a dot, the time and a first
+              // name; the day and provider columns carry the structured card.
+              // The whole story is always one click away in the drawer, and
+              // the tooltip carries it on hover for the impatient.
+              event: ({ event }: { event: CalendarEvent }) => {
+                const dot = (
+                  <span
+                    className="kw-event-dot"
+                    style={{ background: statusDotColor(event.appointment.status) }}
+                    aria-hidden
+                  />
+                );
+                return (
+                  <Tooltip title={`${event.tooltip} — double-click to move`}>
+                    {viewMode === 'week' || viewMode === 'month' || event.card.compact ? (
+                      // Narrow columns and 15-minute slots: one line, always
+                      // whole — dot · time · first name.
+                      <div className="kw-calendar-event">
+                        <span className="kw-event-compact">
+                          {dot}
+                          {event.compact}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="kw-calendar-event">
+                        <span className="kw-event-time">
+                          {dot}
+                          {event.card.time}
+                        </span>
+                        <div className="kw-event-patient">{event.card.patient}</div>
+                        {event.card.service ? (
+                          <div className="kw-event-secondary">{event.card.service}</div>
+                        ) : null}
+                        {event.card.provider && viewMode !== 'providers' ? (
+                          <div className="kw-event-secondary">{event.card.provider}</div>
+                        ) : null}
+                      </div>
+                    )}
+                  </Tooltip>
+                );
+              },
+              // Week headers: small-caps weekday over the date numeral, today
+              // in a filled ink circle.
+              week: {
+                header: ({ date }: { date: Date }) => {
+                  const day = dayjs(date);
+                  const isToday = day.isSame(dayjs(todayWall), 'day');
+                  return (
+                    <div className="kw-cal-dayhead" data-today={isToday || undefined}>
+                      <span className="kw-cal-dayhead-dow">{day.format('ddd')}</span>
+                      <span className="kw-cal-dayhead-num">{day.format('D')}</span>
                     </div>
-                  ) : (
-                    <div className="kw-calendar-event">
-                      {event.lines.map((line, index) => (
-                        <div key={line + index} className={index === 0 ? 'kw-event-primary' : 'kw-event-secondary'}>
-                          {line}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </Tooltip>
-              ),
+                  );
+                },
+              },
               // The provider column header is a person, not a string: the
               // initial in the provider's own calendar colour is the same
               // identity cue every card's left edge already carries.
               resourceHeader: ({ label, resource }: { label: React.ReactNode; resource?: { resourceId?: string } }) => {
                 const id = resource?.resourceId ? String(resource.resourceId) : '';
                 const name = String(label ?? '');
-                const initials = name
-                  .replace(/^Dr\.?\s+/i, '')
-                  .split(/\s+/)
-                  .slice(0, 2)
-                  .map((part) => part[0] ?? '')
-                  .join('')
-                  .toUpperCase();
                 return (
                   <div className="kw-provider-head">
                     <span
@@ -523,7 +644,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
                       style={id ? { background: getDoctorColor(id) } : undefined}
                       aria-hidden
                     >
-                      {initials}
+                      {initialsOf(name)}
                     </span>
                     <span className="kw-provider-name">{name}</span>
                   </div>
@@ -535,15 +656,17 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
               const picked = moving?.id === event.id;
               return {
                 style: {
-                  // The PROVIDER is the colour; the status is a chip in the
-                  // drawer and an opacity here. Colour never carries the
-                  // meaning on its own.
-                  backgroundColor: event.released ? '#f2f4f7' : `${colour}1a`,
+                  // The PROVIDER is the 3px edge; the STATUS is the dot on the
+                  // card and the word in the drawer. Released bookings stay on
+                  // the grid, struck through — never hidden.
+                  background: event.released
+                    ? '#f5f6f8'
+                    : statusCardBackground(event.appointment.status),
                   borderLeft: `3px solid ${event.released ? '#98a2b3' : colour}`,
-                  color: '#17212b',
-                  opacity: event.released ? 0.6 : 1,
+                  color: '#172033',
+                  opacity: event.released ? 0.62 : 1,
                   textDecoration: event.released ? 'line-through' : undefined,
-                  outline: picked ? '2px dashed #184a6b' : undefined,
+                  outline: picked ? '2px dashed #132447' : undefined,
                 },
               };
             }}

@@ -8,7 +8,6 @@ import {
   Drawer,
   Empty,
   Input,
-  Segmented,
   Select,
   Space,
   Spin,
@@ -23,6 +22,7 @@ import { usePatient, usePatients, usePatientSearch } from '../core/hooks/usePati
 import { clinicDayjs, formatClinicDate, formatClinicTime } from '../clinical/clinicTime';
 import { useCreateAppointment } from './hooks/useAppointments';
 import { useAppointmentServices } from './hooks/useServiceConfig';
+import { getDoctorColor } from './calendar/doctor-color';
 
 const { Text } = Typography;
 
@@ -69,6 +69,8 @@ function daypartOf(start: string): Daypart {
   return 'Late night';
 }
 
+const ROUTE = ['Patient', 'Service', 'Doctor', 'Time', 'Review'] as const;
+
 interface StaffBookingFlowProps {
   open: boolean;
   clinicId?: string;
@@ -78,20 +80,33 @@ interface StaffBookingFlowProps {
   onBooked?: (appointmentId: string) => void;
 }
 
+function initialsOf(name: string): string {
+  return name
+    .replace(/^Dr\.?\s+/i, '')
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .toUpperCase();
+}
+
 /**
- * NEW APPOINTMENT — a progressive five-step flow (§22).
+ * NEW APPOINTMENT — the command workflow (V3 recomposition of the §22 flow).
  *
- *   1 Patient → 2 Service → 3 Doctor → 4 Date & time → 5 Review
+ *   1 Patient → 2 Service → 3 Doctor → 4 Time → 5 Review
  *
- * Each step appears when the one before it is answered, so the drawer is
- * never a wall of empty controls — and never a giant empty drawer either:
- * the first thing on screen is one search box and the patients most
- * recently seen. Only times the SERVER says are free are ever offered —
- * the slot grid comes from the availability engine, so a slot on this
- * screen is a slot the booking will be allowed to take.
+ * The V3 rule: AN ANSWERED QUESTION COLLAPSES TO ONE LINE. Each completed
+ * step folds to a compact summary row — ✓, the answer, one [Change] — and the
+ * open question owns the drawer, so the panel reads like a booking being
+ * assembled rather than a long form being scrolled. The doctor step defaults
+ * to "Any available", which IS an answer, so once a service is chosen the
+ * open question is the time.
  *
- * Clicking an empty slot on the calendar prefills the provider, the date and
- * the time, so the only questions left are the patient and the service.
+ * Only times the SERVER says are free are ever offered — the slot grid comes
+ * from the availability engine, so a slot on this screen is a slot the
+ * booking will be allowed to take. Clicking an empty calendar slot prefills
+ * the provider, the date and the time, leaving only the patient and the
+ * service to answer.
  */
 export function StaffBookingFlow({
   open,
@@ -108,6 +123,8 @@ export function StaffBookingFlow({
   const [slot, setSlot] = useState<{ start: string; end: string; staffId: string } | null>(null);
   const [note, setNote] = useState('');
   const [overrideReason, setOverrideReason] = useState('');
+  // Which ANSWERED step is being re-opened via its [Change] link, if any.
+  const [editing, setEditing] = useState<number | null>(null);
   const [idempotencyKey] = useState(() => `staff-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
   const { data: patients, isFetching: searching } = usePatientSearch(patientSearch);
@@ -176,6 +193,17 @@ export function StaffBookingFlow({
     };
   }, [availability]);
 
+  // "Next: 09:00" on each doctor row — the first slot the engine already
+  // returned for the selected date under "Any available doctor". No extra
+  // requests: it is a re-reading of the answer the slot grid is built from.
+  const providerFirstSlot = useMemo(() => {
+    const byId: Record<string, string> = {};
+    for (const answer of availability ?? []) {
+      if (answer.slots.length > 0) byId[answer.staffId] = formatClinicTime(answer.slots[0].start);
+    }
+    return byId;
+  }, [availability]);
+
   const providerName = (id: string) =>
     eligibleProviders.find((provider) => provider.id === id)?.fullName ?? '';
 
@@ -213,68 +241,115 @@ export function StaffBookingFlow({
     setSlot(null);
     setNote('');
     setOverrideReason('');
+    setEditing(null);
   };
 
   const ready = Boolean(patientId && serviceId && slot);
 
-  // The compact progress line (§22) — the first unanswered question. The
-  // doctor step defaults to "Any available", which IS an answer, so once a
-  // service is chosen the open question is the time.
-  const step = !patientId ? 1 : !serviceId ? 2 : !slot ? 4 : 5;
+  // The first unanswered question — or the answered one being re-opened.
+  const naturalStep = !patientId ? 1 : !serviceId ? 2 : !slot ? 4 : 5;
+  const step = editing ?? naturalStep;
   const STEP_WORDS: Record<number, string> = {
     1: 'Who is it for?',
     2: 'What are they coming in for?',
+    3: 'Who should see them?',
     4: 'Pick a day and a time',
     5: 'Check it and book',
   };
 
-  const patientInitials = (name: string) =>
-    name
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((part) => part[0] ?? '')
-      .join('')
-      .toUpperCase();
-
   const money = (value: string) => `RM ${Number(value).toFixed(2)}`;
+  // Whole ringgit for the one-line summaries — "RM 120" fits where
+  // "RM 120.00" ellipsised mid-number; the exact figures stay on the cards
+  // and the review.
+  const moneyShort = (value: string) => `RM ${Number(value).toFixed(0)}`;
+
+  const serviceSummary = service
+    ? [
+        `${service.durationMinutesDefault} min`,
+        service.priceDisplay !== 'HIDDEN' && Number(service.price) > 0
+          ? `${service.priceDisplay === 'FROM' ? 'from ' : ''}${moneyShort(service.price)}`
+          : null,
+        service.bookingPaymentRule === 'DEPOSIT' && Number(service.depositAmount) > 0
+          ? `${moneyShort(service.depositAmount)} deposit`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : '';
+
+  /** A completed step, folded to one line with one way back. */
+  const doneRow = (label: string, value: React.ReactNode, target: number, testId?: string) => (
+    <div className="kw-flow-done" data-testid={testId}>
+      <span className="kw-flow-done-check" aria-hidden>
+        ✓
+      </span>
+      <span className="kw-flow-done-body">
+        <span className="kw-flow-done-label">{label}</span>
+        <span className="kw-flow-done-value">{value}</span>
+      </span>
+      <Button size="small" type="text" onClick={() => setEditing(target)}>
+        Change
+      </Button>
+    </div>
+  );
+
+  const routeIndex = step - 1;
 
   return (
     <Drawer
       open={open}
       onClose={onClose}
-      width={520}
+      width={560}
+      rootClassName="kw-apt3-drawer"
       destroyOnHidden
       title={
         <div className="kw-flow-title">
-          <span>New appointment</span>
-          <span className="kw-flow-progress">
-            Step {step} of 5 · {STEP_WORDS[step]}
+          <span className="kw-flow-heading">New appointment</span>
+          {/* The whole route in one quiet line: done in teal, the open
+              question in ink, the rest waiting. */}
+          <span className="kw-flow-route" aria-label={`Step ${step} of 5 · ${STEP_WORDS[step]}`}>
+            {ROUTE.map((word, index) => (
+              <span key={word} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {index > 0 ? (
+                  <span className="kw-flow-route-sep" aria-hidden>
+                    →
+                  </span>
+                ) : null}
+                <span
+                  data-state={
+                    index < routeIndex ? 'done' : index === routeIndex ? 'active' : undefined
+                  }
+                >
+                  {word}
+                </span>
+              </span>
+            ))}
           </span>
         </div>
       }
       footer={
-        <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
           <Button onClick={onClose}>Cancel</Button>
-          <Button
-            type="primary"
-            disabled={!ready}
-            loading={create.isPending}
-            onClick={() => submit(Boolean(overrideReason.trim()))}
-          >
-            Book appointment
-          </Button>
+          <Space>
+            {step > 1 ? <Button onClick={() => setEditing(step - 1)}>Back</Button> : null}
+            <Button
+              type="primary"
+              disabled={!ready}
+              loading={create.isPending}
+              onClick={() => submit(Boolean(overrideReason.trim()))}
+            >
+              Book appointment
+            </Button>
+          </Space>
         </Space>
       }
     >
       <div data-testid="staff-booking-flow">
         {/* -------- 1 · PATIENT ------------------------------------------ */}
-        <div className="kw-flow-step">1 · Patient</div>
-        {selectedPatient ? (
-          // The chosen patient as a CARD, not a value lost inside a select:
-          // name, IC and phone stay in view for the rest of the booking.
-          <div className="kw-flow-patient" data-testid="flow-patient-card">
+        {patientId && selectedPatient && step !== 1 ? (
+          <div className="kw-flow-patient" data-testid="flow-patient-card" style={{ marginBottom: 8 }}>
             <Avatar size={36} className="kw-apt-avatar">
-              {patientInitials(selectedPatient.name)}
+              {initialsOf(selectedPatient.name)}
             </Avatar>
             <div className="kw-flow-patient-text">
               <div className="kw-flow-patient-name">{selectedPatient.name}</div>
@@ -283,21 +358,27 @@ export function StaffBookingFlow({
                 {selectedPatient.phone ? ` · ${selectedPatient.phone}` : ''}
               </div>
             </div>
-            <Button size="small" onClick={() => setPatientId(undefined)}>
+            <Button size="small" onClick={() => setEditing(1)}>
               Change
             </Button>
           </div>
-        ) : (
+        ) : null}
+        {step === 1 ? (
           <>
+            <div className="kw-flow-step">1 · Patient</div>
             <Select
               showSearch
               allowClear
               style={{ width: '100%' }}
               placeholder="Search by name, IC or phone"
               filterOption={false}
-              value={patientId}
+              value={undefined}
               onSearch={setPatientSearch}
-              onChange={setPatientId}
+              onChange={(value) => {
+                if (!value) return;
+                setPatientId(value);
+                setEditing(null);
+              }}
               notFoundContent={searching ? <Spin size="small" /> : <Empty description="No match" />}
               options={(patients ?? []).map((patient) => ({
                 value: patient.id,
@@ -311,7 +392,14 @@ export function StaffBookingFlow({
                 </Text>
                 <div className="kw-flow-recent-row">
                   {(recentPatients ?? []).slice(0, 5).map((patient) => (
-                    <Button key={patient.id} size="small" onClick={() => setPatientId(patient.id)}>
+                    <Button
+                      key={patient.id}
+                      size="small"
+                      onClick={() => {
+                        setPatientId(patient.id);
+                        setEditing(null);
+                      }}
+                    >
                       {patient.name}
                     </Button>
                   ))}
@@ -319,10 +407,19 @@ export function StaffBookingFlow({
               </div>
             ) : null}
           </>
-        )}
+        ) : null}
 
         {/* -------- 2 · SERVICE ------------------------------------------- */}
-        {patientId ? (
+        {serviceId && step !== 2 ? (
+          doneRow(
+            'Service',
+            <>
+              {service?.name} <small>· {serviceSummary}</small>
+            </>,
+            2,
+          )
+        ) : null}
+        {patientId && step === 2 ? (
           <>
             <div className="kw-flow-step">2 · Service</div>
             {(services?.length ?? 0) === 0 ? (
@@ -336,7 +433,10 @@ export function StaffBookingFlow({
                     className={
                       'kw-flow-service' + (serviceId === row.id ? ' kw-flow-service--on' : '')
                     }
-                    onClick={() => setServiceId(row.id)}
+                    onClick={() => {
+                      setServiceId(row.id);
+                      setEditing(null);
+                    }}
                   >
                     <span className="kw-flow-service-name">{row.name}</span>
                     <span className="kw-flow-service-meta">
@@ -356,7 +456,21 @@ export function StaffBookingFlow({
         ) : null}
 
         {/* -------- 3 · DOCTOR -------------------------------------------- */}
-        {patientId && serviceId ? (
+        {serviceId && step !== 3 ? (
+          doneRow(
+            'Doctor',
+            staffId === 'ANY' ? (
+              <>
+                <ThunderboltOutlined aria-hidden /> Any available doctor{' '}
+                <small>· fastest appointment</small>
+              </>
+            ) : (
+              providerName(staffId) || 'Doctor'
+            ),
+            3,
+          )
+        ) : null}
+        {patientId && serviceId && step === 3 ? (
           <>
             <div className="kw-flow-step">3 · Doctor</div>
             {eligibleProviders.length === 0 ? (
@@ -371,12 +485,18 @@ export function StaffBookingFlow({
                 <button
                   type="button"
                   className={'kw-flow-provider' + (staffId === 'ANY' ? ' kw-flow-provider--on' : '')}
-                  onClick={() => setStaffId('ANY')}
+                  onClick={() => {
+                    setStaffId('ANY');
+                    setEditing(null);
+                  }}
                 >
-                  <span className="kw-flow-provider-name">
-                    <ThunderboltOutlined aria-hidden /> Any available doctor
+                  <span className="kw-flow-provider-avatar kw-flow-provider-avatar--any" aria-hidden>
+                    <ThunderboltOutlined />
                   </span>
-                  <span className="kw-flow-provider-meta">Fastest appointment</span>
+                  <span className="kw-flow-provider-body">
+                    <span className="kw-flow-provider-name">Any available doctor</span>
+                    <span className="kw-flow-provider-meta">Fastest appointment</span>
+                  </span>
                 </button>
                 {eligibleProviders.map((provider) => (
                   <button
@@ -385,15 +505,51 @@ export function StaffBookingFlow({
                     className={
                       'kw-flow-provider' + (staffId === provider.id ? ' kw-flow-provider--on' : '')
                     }
-                    onClick={() => setStaffId(provider.id)}
+                    onClick={() => {
+                      setStaffId(provider.id);
+                      setEditing(null);
+                    }}
                   >
-                    <span className="kw-flow-provider-name">{provider.fullName}</span>
+                    <span
+                      className="kw-flow-provider-avatar"
+                      style={{ background: getDoctorColor(provider.id) }}
+                      aria-hidden
+                    >
+                      {initialsOf(provider.fullName)}
+                    </span>
+                    <span className="kw-flow-provider-body">
+                      <span className="kw-flow-provider-name">{provider.fullName}</span>
+                      {providerFirstSlot[provider.id] ? (
+                        <span className="kw-flow-provider-meta">
+                          <span className="kw-flow-provider-hint">
+                            Next on {date.format('D MMM')} · {providerFirstSlot[provider.id]}
+                          </span>
+                        </span>
+                      ) : null}
+                    </span>
                   </button>
                 ))}
               </div>
             )}
+          </>
+        ) : null}
 
-            {/* -------- 4 · DATE & TIME ----------------------------------- */}
+        {/* -------- 4 · DATE & TIME ----------------------------------- */}
+        {slot && step !== 4 ? (
+          doneRow(
+            'Time',
+            <>
+              {formatClinicDate(slot.start)} · {formatClinicTime(slot.start)} –{' '}
+              {formatClinicTime(slot.end)}
+              {staffId === 'ANY' && providerName(slot.staffId) ? (
+                <small> · {providerName(slot.staffId)}</small>
+              ) : null}
+            </>,
+            4,
+          )
+        ) : null}
+        {patientId && serviceId && step === 4 ? (
+          <>
             <div className="kw-flow-step">4 · Date &amp; time</div>
             <Space wrap>
               <DatePicker
@@ -402,17 +558,25 @@ export function StaffBookingFlow({
                 allowClear={false}
                 format="ddd D MMM YYYY"
               />
-              <Segmented
-                options={[
-                  { label: 'Today', value: 0 },
-                  { label: 'Tomorrow', value: 1 },
-                  { label: 'Next week', value: 7 },
-                ]}
-                onChange={(value) => setDate(clinicDayjs(new Date()).add(Number(value), 'day'))}
-              />
+              {/* Plain quick-set buttons, not a Segmented: a Segmented always
+                  paints one option as selected, which lied whenever the date
+                  was picked from the calendar instead. */}
+              {[
+                { label: 'Today', days: 0 },
+                { label: 'Tomorrow', days: 1 },
+                { label: 'Next week', days: 7 },
+              ].map((quick) => (
+                <Button
+                  key={quick.label}
+                  size="small"
+                  onClick={() => setDate(clinicDayjs(new Date()).add(quick.days, 'day'))}
+                >
+                  {quick.label}
+                </Button>
+              ))}
             </Space>
 
-            <div style={{ marginTop: 10 }}>
+            <div style={{ marginTop: 12 }}>
               {loadingSlots ? <Spin /> : null}
               {!loadingSlots && grouped.total === 0 ? (
                 <Alert
@@ -427,26 +591,26 @@ export function StaffBookingFlow({
               ) : null}
               {DAYPARTS.map((part) =>
                 grouped.parts[part].length > 0 ? (
-                  <div key={part} style={{ marginBottom: 12 }}>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
+                  <div key={part} style={{ marginBottom: 14 }}>
+                    <Text type="secondary" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                       {part}
                     </Text>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                    <div className="kw-flow-slots">
                       {grouped.parts[part].map((entry) => (
                         <Button
                           key={entry.start}
-                          size="small"
-                          type={slot?.start === entry.start ? 'primary' : 'default'}
-                          onClick={() => setSlot(entry)}
+                          className="kw-flow-slot"
+                          data-on={slot?.start === entry.start ? 'true' : undefined}
+                          onClick={() => {
+                            setSlot(entry);
+                            setEditing(null);
+                          }}
                         >
-                          {formatClinicTime(entry.start)}
+                          <span>{formatClinicTime(entry.start)}</span>
                           {staffId === 'ANY' && providerName(entry.staffId) ? (
-                            <Text
-                              type={slot?.start === entry.start ? undefined : 'secondary'}
-                              style={{ fontSize: 11, marginLeft: 6 }}
-                            >
+                            <span className="kw-flow-slot-who">
                               {providerName(entry.staffId).replace(/^Dr\.?\s*/i, '')}
-                            </Text>
+                            </span>
                           ) : null}
                         </Button>
                       ))}
@@ -459,7 +623,7 @@ export function StaffBookingFlow({
         ) : null}
 
         {/* -------- 5 · REVIEW -------------------------------------------- */}
-        {ready && slot ? (
+        {ready && slot && step === 5 ? (
           <>
             <div className="kw-flow-step">5 · Review</div>
             <div className="kw-flow-review" data-testid="flow-review">
@@ -480,7 +644,7 @@ export function StaffBookingFlow({
             </div>
 
             <Input.TextArea
-              style={{ marginTop: 10 }}
+              style={{ marginTop: 12 }}
               rows={2}
               value={note}
               onChange={(event) => setNote(event.target.value)}

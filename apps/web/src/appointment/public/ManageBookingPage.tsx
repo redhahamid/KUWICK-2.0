@@ -4,9 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Button,
-  Card,
+  ConfigProvider,
   DatePicker,
-  Descriptions,
   Modal,
   Result,
   Skeleton,
@@ -24,6 +23,7 @@ import {
 } from '../../clinical/clinicTime';
 import { statusChip } from '../appointment-presentation';
 import { KuwickStatusTag } from '../../design-system/kuwick';
+import { publicBookingTheme } from '../appointment-theme';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -42,6 +42,15 @@ const { Title, Text, Paragraph } = Typography;
  * move the appointment a second time.
  */
 export function ManageBookingPage() {
+  // Same visual language as the confirmation the patient came from.
+  return (
+    <ConfigProvider theme={publicBookingTheme}>
+      <ManageBookingPageInner />
+    </ConfigProvider>
+  );
+}
+
+function ManageBookingPageInner() {
   // The SLUG is in the route and it is load-bearing: appointments are behind
   // row-level security, so the server cannot look a token up without a tenant
   // to scope by, and the slug is what resolves one. See the service.

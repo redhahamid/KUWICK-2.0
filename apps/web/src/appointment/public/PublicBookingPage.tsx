@@ -4,8 +4,8 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Alert,
   Button,
-  Card,
   Checkbox,
+  ConfigProvider,
   DatePicker,
   Form,
   Input,
@@ -23,6 +23,7 @@ import utc from 'dayjs/plugin/utc';
 dayjs.extend(utc);
 import { PublicBookingError, publicBooking, type PublicSlot } from './publicBookingApi';
 import { setClinicTimeZone, formatClinicDate, formatClinicTime, clinicDayjs } from '../../clinical/clinicTime';
+import { publicBookingTheme } from '../appointment-theme';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -81,6 +82,16 @@ const STEP_TITLES = [
  * WHY in the patient's words rather than showing an empty list.
  */
 export function PublicBookingPage() {
+  // The patient product wears its own theme — teal primary, 44px touch
+  // targets — without touching the staff console's.
+  return (
+    <ConfigProvider theme={publicBookingTheme}>
+      <PublicBookingPageInner />
+    </ConfigProvider>
+  );
+}
+
+function PublicBookingPageInner() {
   const { slug = '', serviceSlug } = useParams<{ slug: string; serviceSlug?: string }>();
   const [step, setStep] = useState(0);
   const [serviceId, setServiceId] = useState<string>();
@@ -420,9 +431,10 @@ export function PublicBookingPage() {
       {/* §35 — one quiet line and a sliver of progress, not a stepper that
           owns half a phone screen. */}
       <div className="kw-public-progress" data-testid="public-progress">
-        <Text type="secondary" style={{ fontSize: 13 }}>
-          Step {step + 1} of 5 · {STEP_TITLES[step]}
-        </Text>
+        <span className="kw-public-progress-text">
+          <small>Step {step + 1} of 5 · </small>
+          {STEP_TITLES[step]}
+        </span>
         <div className="kw-public-progress-bar" aria-hidden>
           <span style={{ width: `${((step + 1) / 5) * 100}%` }} />
         </div>
@@ -443,7 +455,7 @@ export function PublicBookingPage() {
 
       {step === 0 ? (
         <Space direction="vertical" size={8} style={{ width: '100%' }}>
-          <Title level={5} style={{ margin: 0 }}>
+          <Title level={5} className="kw-public-step-title" style={{ margin: 0 }}>
             What would you like to book?
           </Title>
           {page.services.length === 0 ? (
@@ -497,7 +509,7 @@ export function PublicBookingPage() {
 
       {step === 1 ? (
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
-          <Title level={5} style={{ margin: 0 }}>
+          <Title level={5} className="kw-public-step-title" style={{ margin: 0 }}>
             Choose a doctor
           </Title>
           <div className="kw-public-providers" role="radiogroup" aria-label="Choose a doctor">
@@ -640,9 +652,7 @@ export function PublicBookingPage() {
           {DAYPARTS.map((part) =>
             grouped[part].length > 0 ? (
               <div key={part}>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {part}
-                </Text>
+                <span className="kw-public-daypart">{part}</span>
                 <div className="kw-public-slots">
                   {grouped[part].map((entry) => (
                     <Button
@@ -672,7 +682,7 @@ export function PublicBookingPage() {
             message={`${formatClinicDate(slot?.start ?? '')} at ${formatClinicTime(slot?.start ?? '')}`}
             description={service?.name}
           />
-          <Title level={5} style={{ margin: '4px 0 0' }}>
+          <Title level={5} className="kw-public-step-title" style={{ margin: '4px 0 0' }}>
             Your details
           </Title>
           <Form
@@ -723,7 +733,7 @@ export function PublicBookingPage() {
 
           {fields?.length ? (
             <>
-              <Title level={5} style={{ margin: '4px 0 0' }}>
+              <Title level={5} className="kw-public-step-title" style={{ margin: '4px 0 0' }}>
                 Appointment questions
               </Title>
               <Form
@@ -775,7 +785,7 @@ export function PublicBookingPage() {
           to, on one card, before anything is sent. */}
       {step === 4 && slot ? (
         <Space direction="vertical" size={12} style={{ width: '100%' }} data-testid="public-review">
-          <Title level={5} style={{ margin: 0 }}>
+          <Title level={5} className="kw-public-step-title" style={{ margin: 0 }}>
             Check your booking
           </Title>
           <div className="kw-public-done-card" style={{ maxWidth: 'none' }}>

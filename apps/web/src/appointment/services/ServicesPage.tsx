@@ -1,10 +1,34 @@
-import { useMemo, useState } from 'react';
-import { Button, Empty, Input, Segmented, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { useState } from 'react';
+import { Button, Empty, Input, Segmented, Space, Table, Tooltip, Typography } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import { KuwickStatusTag } from '../../design-system/kuwick';
 import { useAppointmentServices, type ServiceListRow } from '../hooks/useServiceConfig';
 import { ServiceEditorDrawer } from './ServiceEditorDrawer';
+import { getDoctorColor } from '../calendar/doctor-color';
 
 const { Text } = Typography;
+
+function providerChip(provider: { id: string; fullName: string }) {
+  const short = provider.fullName.replace(/^Dr\.?\s*/i, '');
+  return (
+    <span key={provider.id} className="kw-svc-provider-chip">
+      <span
+        className="kw-svc-provider-dot"
+        style={{ background: getDoctorColor(provider.id) }}
+        aria-hidden
+      >
+        {short
+          .split(/\s+/)
+          .slice(0, 2)
+          .map((part) => part[0] ?? '')
+          .join('')
+          .toUpperCase()}
+      </span>
+      {short.split(/\s+/).slice(0, 2).join(' ')}
+    </span>
+  );
+}
 
 interface ServicesPageProps {
   clinicId?: string;
@@ -24,6 +48,7 @@ interface ServicesPageProps {
  * "who can do this one thing".
  */
 export function ServicesPage({ clinicId }: ServicesPageProps) {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [scope, setScope] = useState<'bookable' | 'all'>('bookable');
   const [editing, setEditing] = useState<string | null>(null);
@@ -33,13 +58,24 @@ export function ServicesPage({ clinicId }: ServicesPageProps) {
     search: search.trim() || undefined,
   });
 
-  const categories = useMemo(
-    () => [...new Set((data ?? []).map((row) => row.category).filter(Boolean))] as string[],
-    [data],
-  );
-
   return (
     <div className="kw-services-page" data-testid="services-page">
+      <div className="kw-svc-head">
+        <div>
+          <p className="kw-svc-title">Services</p>
+          <p className="kw-svc-sub">
+            Control what patients can book and how slots are generated.
+          </p>
+        </div>
+        {/* Creation lives in the clinic's ONE catalogue — this is a door to
+            it, not a second list that could drift from it. */}
+        <Tooltip title="Opens the clinic's service catalogue — services created there appear here.">
+          <Button icon={<PlusOutlined />} onClick={() => navigate('/settings/clinical/services')}>
+            New service
+          </Button>
+        </Tooltip>
+      </div>
+
       <div className="kw-appt-controls">
         <Segmented
           value={scope}
@@ -90,12 +126,8 @@ export function ServicesPage({ clinicId }: ServicesPageProps) {
             title: 'Service',
             render: (_, row) => (
               <Space direction="vertical" size={0}>
-                <Text strong>{row.name}</Text>
-                {row.category ? (
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {row.category}
-                  </Text>
-                ) : null}
+                <span className="kw-svc-name">{row.name}</span>
+                {row.category ? <span className="kw-svc-cat">{row.category}</span> : null}
               </Space>
             ),
           },
@@ -137,10 +169,10 @@ export function ServicesPage({ clinicId }: ServicesPageProps) {
                 </Tooltip>
               ) : (
                 <Space size={4} wrap>
-                  {row.providers.slice(0, 3).map((provider) => (
-                    <Tag key={provider.id}>{provider.fullName.replace(/^Dr\.?\s*/i, '')}</Tag>
-                  ))}
-                  {row.providers.length > 3 ? <Tag>+{row.providers.length - 3}</Tag> : null}
+                  {row.providers.slice(0, 3).map((provider) => providerChip(provider))}
+                  {row.providers.length > 3 ? (
+                    <span className="kw-svc-provider-chip">+{row.providers.length - 3}</span>
+                  ) : null}
                 </Space>
               ),
           },
@@ -149,14 +181,14 @@ export function ServicesPage({ clinicId }: ServicesPageProps) {
             width: 130,
             render: (_, row) => (
               <Space direction="vertical" size={0}>
-                <Text>RM {Number(row.price).toFixed(2)}</Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>
+                <span className="kw-svc-price">RM {Number(row.price).toFixed(2)}</span>
+                <span className="kw-svc-price-mode">
                   {row.priceDisplay === 'HIDDEN'
                     ? 'Hidden publicly'
                     : row.priceDisplay === 'FROM'
                       ? 'Shown as “from”'
                       : 'Shown exactly'}
-                </Text>
+                </span>
               </Space>
             ),
           },

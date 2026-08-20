@@ -53,24 +53,27 @@ export function CalendarMetrics({ appointments }: { appointments: Appointment[] 
     return tally;
   }, [appointments]);
 
-  const items: { label: string; value: number; tone?: string }[] = [
-    { label: 'Booked', value: counts.booked },
-    { label: 'Arrived', value: counts.arrived },
-    { label: 'Waiting', value: counts.waiting, tone: '#0f766e' },
-    { label: 'Completed', value: counts.completed, tone: '#166534' },
-    { label: 'No-show', value: counts.noShow, tone: counts.noShow > 0 ? '#b42318' : undefined },
+  // The dot previews the status tone; the word beside it carries the meaning
+  // (colour never alone). Muted dots for zero counts keep the row calm.
+  const items: { label: string; value: number; dot: string }[] = [
+    { label: 'Booked', value: counts.booked, dot: '#1d4ed8' },
+    { label: 'Arrived', value: counts.arrived, dot: '#d97706' },
+    { label: 'Waiting', value: counts.waiting, dot: '#0f6b78' },
+    { label: 'Completed', value: counts.completed, dot: '#16a34a' },
+    { label: 'No-show', value: counts.noShow, dot: '#b42318' },
   ];
 
   return (
     <div className="kw-calendar-metrics" data-testid="calendar-metrics">
       {items.map((item) => (
         <span key={item.label} className="kw-metric">
-          <Text strong style={{ color: item.tone }}>
-            {item.value}
-          </Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {item.label}
-          </Text>
+          <span
+            className="kw-metric-dot"
+            style={{ background: item.value > 0 ? item.dot : undefined }}
+            aria-hidden
+          />
+          <Text className="kw-metric-value">{item.value}</Text>
+          <Text className="kw-metric-label">{item.label}</Text>
         </span>
       ))}
     </div>
