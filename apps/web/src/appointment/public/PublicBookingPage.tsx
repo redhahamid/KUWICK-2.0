@@ -582,31 +582,38 @@ function PublicBookingPageInner() {
             </Text>
           </div>
           {/* §38 — date CHIPS that keep their words: "Wed 26" is never
-              squeezed into "W…"; the fortnight scrolls sideways instead. */}
-          <div className="kw-public-days" role="group" aria-label="Pick a day">
-            {Array.from({ length: 14 }, (_, offset) => {
-              const day = dayjs().add(offset, 'day');
-              const on = date.isSame(day, 'day');
-              return (
-                <button
-                  key={offset}
-                  type="button"
-                  className={`kw-public-day${on ? ' kw-public-day--on' : ''}`}
-                  aria-pressed={on}
-                  onClick={() => setDate(day)}
-                >
-                  <span className="kw-public-day-dow">
-                    {offset === 0 ? 'Today' : day.format('ddd')}
-                  </span>
-                  <span className="kw-public-day-num">{day.format('D MMM')}</span>
-                </button>
-              );
-            })}
+              squeezed into "W…". The fortnight scrolls sideways with snap
+              stops, and the wrapper's end-fade says so (V3.1 §1) — a chip at
+              the edge is a signposted "more this way", never an accident. */}
+          <div className="kw-public-days-wrap">
+            <div className="kw-public-days" role="group" aria-label="Pick a day">
+              {Array.from({ length: 14 }, (_, offset) => {
+                const day = dayjs().add(offset, 'day');
+                const on = date.isSame(day, 'day');
+                return (
+                  <button
+                    key={offset}
+                    type="button"
+                    className={`kw-public-day${on ? ' kw-public-day--on' : ''}`}
+                    aria-pressed={on}
+                    onClick={() => setDate(day)}
+                  >
+                    <span className="kw-public-day-dow">
+                      {offset === 0 ? 'Today' : day.format('ddd')}
+                    </span>
+                    <span className="kw-public-day-num">{day.format('D MMM')}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
+          {/* Patients read "Wed, 26 Aug 2026", never raw ISO — the array keeps
+              typed ISO parseable (and the wire format is untouched). */}
           <DatePicker
             value={date}
             onChange={(value) => value && setDate(value)}
             allowClear={false}
+            format={['ddd, D MMM YYYY', 'YYYY-MM-DD', 'D MMM YYYY']}
             style={{ width: '100%' }}
             disabledDate={(value) => value.isBefore(dayjs().startOf('day'))}
           />
@@ -800,6 +807,7 @@ function PublicBookingPageInner() {
               <Text>
                 {providers?.find((row) => row.id === slot.staffId)?.fullName ?? 'Your doctor'}
               </Text>
+              <Text type="secondary">{page.clinic.displayName}</Text>
               <Text type="secondary">For {details?.name}</Text>
               {details?.phone ? <Text type="secondary">{details.phone}</Text> : null}
             </div>
@@ -825,12 +833,30 @@ function PublicBookingPageInner() {
             </Paragraph>
           ) : null}
 
-          <Space>
+          <Space className="kw-public-cta">
             <Button onClick={() => setStep(3)}>Back</Button>
             <Button type="primary" loading={book.isPending} onClick={submit}>
               Confirm appointment
             </Button>
           </Space>
+
+          {/* V3.1 §2 — the page finishes with the clinic's own words, never
+              invented filler: the service's configured instructions, and
+              where the manage link will come from. */}
+          {service?.preInstructions ? (
+            <div className="kw-public-after">
+              <div className="kw-public-section">Before your appointment</div>
+              <div className="kw-public-instructions">{service.preInstructions}</div>
+            </div>
+          ) : null}
+          <div className="kw-public-after">
+            <div className="kw-public-section">What happens next</div>
+            <Paragraph type="secondary" style={{ margin: 0, fontSize: 13 }}>
+              {service?.requiresApproval
+                ? `${page.clinic.displayName} will confirm your request, and your booking page link for changes will be on the confirmation.`
+                : 'Your confirmation appears immediately, with a private link to change or cancel the booking.'}
+            </Paragraph>
+          </div>
         </Space>
       ) : null}
     </div>

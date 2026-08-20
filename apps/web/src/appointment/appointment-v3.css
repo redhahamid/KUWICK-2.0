@@ -415,14 +415,24 @@
 
    White cards with a 3px provider edge and a semantic status dot — no more
    10%-alpha washes. The provider is the EDGE, the status is the DOT plus the
-   word in the drawer, and the card itself stays legible at every size. */
+   word in the drawer, and the card itself stays legible at every size.
+
+   V3.1 — WIDTH-ADAPTIVE DENSITY. Overlapping bookings can squeeze a card to
+   a sliver; "09:0…" is an accident, not a design. Every card renders BOTH a
+   full body and a compact line, and a container query on the card's own
+   width decides which is visible — so a three-way 09:00 degrades to
+   "● 09:00 / Tan" and then to "● 09:00", never to a clipped fragment. The
+   drawer and the tooltip always carry the whole story. */
 
 .kw-calendar-grid .rbc-event {
   border: 1px solid var(--apt-border);
   border-radius: 6px;
-  padding: 2px 7px 2px 8px;
+  /* Padding lives on the CONTENT (.kw-calendar-event) so the width tiers can
+     tighten it — a container cannot restyle itself from its own query. */
+  padding: 0;
   box-shadow: var(--apt-shadow-xs);
   transition: box-shadow 120ms ease, border-color 120ms ease;
+  container-type: inline-size;
 }
 
 .kw-calendar-grid .rbc-event:hover {
@@ -451,6 +461,8 @@
   line-height: 1.35;
   overflow: hidden;
   color: var(--apt-text);
+  padding: 2px 7px 2px 8px;
+  height: 100%;
 }
 
 .kw-event-time {
@@ -495,19 +507,98 @@
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
+  max-width: 100%;
+}
+
+.kw-ec-time {
+  flex: none;
+}
+
+.kw-ec-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The two bodies a card carries; the container query picks one. */
+.kw-ev--full .kw-event-compact {
+  display: none;
+}
+
+.kw-ev--compact .kw-event-full {
+  display: none;
+}
+
+/* Squeezed full card: the quiet lines go first… */
+@container (max-width: 128px) {
+  .kw-ev--full .kw-event-secondary {
+    display: none;
+  }
+}
+
+/* …then the whole body folds to the compact line. */
+@container (max-width: 92px) {
+  .kw-ev--full .kw-event-full {
+    display: none;
+  }
+
+  .kw-ev--full .kw-event-compact {
+    display: inline-flex;
+  }
+}
+
+/* Very narrow: time above name, both whole. */
+@container (max-width: 84px) {
+  .kw-calendar-event {
+    padding: 2px 4px 2px 6px;
+  }
+
+  .kw-calendar-event .kw-event-compact {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    white-space: nowrap;
+    line-height: 1.3;
+    font-size: 11px;
+  }
+
+  .kw-calendar-event .kw-ec-time {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+}
+
+/* Sliver: the dot and the time, nothing half-written. */
+@container (max-width: 52px) {
+  .kw-calendar-event {
+    padding: 2px 3px 2px 4px;
+  }
+
+  .kw-calendar-event .kw-ec-name {
+    display: none;
+  }
+
+  .kw-calendar-event .kw-event-compact {
+    font-size: 10px;
+  }
 }
 
 /* --- Month view -------------------------------------------------------------- */
 
 .kw-calendar-grid .rbc-month-view .rbc-event {
-  padding: 1px 6px;
+  padding: 0;
   box-shadow: none;
   border-radius: 5px;
   font-size: 11px;
   line-height: 1.5;
   background: var(--apt-surface);
+}
+
+.kw-calendar-grid .rbc-month-view .kw-calendar-event {
+  padding: 1px 6px;
 }
 
 .kw-calendar-grid .rbc-month-row + .rbc-month-row {
@@ -587,12 +678,38 @@
   text-overflow: ellipsis;
 }
 
-.kw-calendar-grid--wide {
-  overflow-x: auto;
+/* The outer, non-scrolling frame around the grid — the right-edge fade that
+   signposts "more doctors this way" hangs off it, because the grid itself is
+   the scroll container and anything absolute inside one scrolls away. */
+.kw-cal-outer {
+  position: relative;
+  min-width: 0;
 }
 
+.kw-cal-outer[data-scroll]::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  bottom: 14px;
+  right: 1px;
+  width: 44px;
+  border-radius: 0 var(--apt-radius-lg) var(--apt-radius-lg) 0;
+  background: linear-gradient(to left, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0));
+  pointer-events: none;
+  z-index: 8;
+}
+
+.kw-calendar-grid--wide {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+/* A deliberate width per provider column, not one magic number: the grid is
+   as wide as its people, plus the hour gutter and an end spacer so the last
+   column never kisses the frame. */
 .kw-calendar-grid--wide .rbc-time-view {
-  min-width: 1560px;
+  min-width: calc(var(--cal-cols, 6) * 250px + 76px);
+  margin-right: 20px;
 }
 
 .kw-calendar-grid--wide .rbc-time-gutter {
@@ -1552,6 +1669,55 @@
 }
 
 /* ===========================================================================
+   8b · MODULE MODALS — the shift editor's restrained finish (V3.1 §9).
+   Stronger header, deliberate field rhythm, grouped helper copy. Same antd
+   Modal underneath; footer hierarchy (Cancel secondary, Save primary)
+   already comes from the module theme.
+   =========================================================================== */
+
+.kw-apt3-modal .ant-modal-content {
+  padding: 0;
+}
+
+.kw-apt3-modal .ant-modal-header {
+  background: var(--apt-surface-2);
+  border-bottom: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg) var(--apt-radius-lg) 0 0;
+  padding: 14px 20px;
+  margin-bottom: 0;
+}
+
+.kw-apt3-modal .ant-modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--apt-text);
+}
+
+.kw-apt3-modal .ant-modal-body {
+  padding: 18px 20px 6px;
+}
+
+.kw-apt3-modal .ant-modal-footer {
+  border-top: 1px solid var(--apt-hairline);
+  padding: 12px 20px;
+  margin-top: 0;
+}
+
+.kw-apt3-modal .ant-form-item {
+  margin-bottom: 14px;
+}
+
+.kw-apt3-modal .ant-form-item-label > label {
+  font-weight: 600;
+  color: #344054;
+}
+
+.kw-apt3-modal .ant-form-item-extra {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* ===========================================================================
    9 · SERVICES — the clinical service catalogue.
    =========================================================================== */
 
@@ -1636,8 +1802,27 @@
   text-transform: uppercase;
 }
 
+/* V3.1 §8 — tighter catalogue rhythm: less block padding, denser provider
+   chips, the action column pinned right. Still a table, on purpose. */
 .kw-services-page .ant-table-tbody > tr > td {
   border-bottom: 1px solid var(--apt-hairline);
+  padding-block: 9px;
+}
+
+.kw-services-page .ant-table-tbody > tr > td:last-child {
+  text-align: right;
+}
+
+.kw-services-page .kw-svc-provider-chip {
+  padding: 1px 7px 1px 2px;
+  gap: 4px;
+  font-size: 11.5px;
+}
+
+.kw-services-page .kw-svc-provider-chip .kw-svc-provider-dot {
+  width: 16px;
+  height: 16px;
+  font-size: 8px;
 }
 
 /* The editor drawer's booking-config affordances (kept from V2, restyled). */
@@ -2194,13 +2379,43 @@ body:has(.kw-public-booking) {
   box-shadow: var(--apt-shadow-xs);
 }
 
-/* Date chips — words intact, selected chip filled. */
+/* Date chips — words intact, selected chip filled. The strip scrolls with
+   SNAP stops and the wrapper's end-fade signposts that more dates exist
+   (V3.1 §1): a chip meeting the edge is an invitation, not a casualty. */
+.kw-public-days-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.kw-public-days-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 6px;
+  right: 0;
+  width: 36px;
+  background: linear-gradient(to left, var(--apt-page) 12%, rgba(245, 247, 250, 0));
+  pointer-events: none;
+}
+
 .kw-public-days {
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding-bottom: 4px;
-  scrollbar-width: thin;
+  padding-bottom: 6px;
+  padding-right: 44px;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  scroll-padding-left: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.kw-public-days::-webkit-scrollbar {
+  display: none;
+}
+
+.kw-public-day {
+  scroll-snap-align: start;
 }
 
 .kw-public-day {
@@ -2311,24 +2526,28 @@ body:has(.kw-public-booking) {
   color: #344054;
 }
 
+/* V3.1 §3 — a compact completion: hero, card and actions read as ONE block,
+   and the first viewport carries everything important. */
 .kw-public-done {
   text-align: center;
-  padding-top: 24px;
+  padding-top: 10px;
+  max-width: 440px;
+  margin: 0 auto;
 }
 
 .kw-public-done-badge {
-  width: 60px;
-  height: 60px;
+  width: 48px;
+  height: 48px;
   margin: 0 auto;
   border-radius: 50%;
   background: var(--apt-teal);
   color: #fff;
-  font-size: 28px;
+  font-size: 23px;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 6px 18px rgba(15, 107, 120, 0.28);
+  box-shadow: 0 4px 14px rgba(15, 107, 120, 0.26);
 }
 
 .kw-public-done-badge--wait {
@@ -2337,7 +2556,7 @@ body:has(.kw-public-booking) {
 }
 
 .kw-public-done-card {
-  margin: 18px auto 0;
+  margin: 14px auto 0;
   max-width: 420px;
   text-align: left;
   border: 1px solid var(--apt-border);
@@ -2377,8 +2596,12 @@ body:has(.kw-public-booking) {
 }
 
 .kw-public-done-actions {
-  margin-top: 18px;
+  margin-top: 12px;
   justify-content: center;
+}
+
+.kw-public-cta {
+  margin-top: 2px;
 }
 
 /* The 7-day strip inside antd Segmented keeps whole words. */

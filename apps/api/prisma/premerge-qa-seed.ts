@@ -370,6 +370,95 @@ async function main() {
     });
   }
 
+  // ── the rest of the month (V3.1 §7) ──────────────────────────────────────
+  // The busy Wednesday proves density; the MONTH view needs distribution —
+  // singles and pairs across the fortnight, all inside hours the seeded
+  // roster really works, so every one of these is bookable truth. Guarded by
+  // its own marker so re-runs on an existing database add it exactly once
+  // (the diary is append-only, test data included).
+  const priorMonthQa = await prisma.appointment.count({
+    where: { tenantId: TENANT, sourceDetail: 'premerge-qa-month' },
+  });
+  if (priorMonthQa === 0) {
+    const patientByIndex = async (i: number) => {
+      const identifier = `9001${String(10 + i)}14${String(5000 + i)}`;
+      const row = await prisma.patient.findFirst({
+        where: { tenantId: TENANT, identifierValue: identifier },
+      });
+      if (!row) throw new Error('QA patients missing — the busy-Wednesday block must seed first.');
+      return row;
+    };
+    let monthSeq = 0;
+    const bookOn = async (
+      day: string,
+      staffId: string,
+      serviceId: string,
+      start: string,
+      minutes: number,
+      status = 'CONFIRMED',
+    ) => {
+      const patient = await patientByIndex(monthSeq % 14);
+      monthSeq += 1;
+      const scheduledStart = kl(day, start);
+      await prisma.appointment.create({
+        data: {
+          tenantId: TENANT,
+          clinicId: CLINIC,
+          patientId: patient.id,
+          staffId,
+          serviceId,
+          source: monthSeq % 2 === 0 ? 'ONLINE_PORTAL' : 'FRONT_DESK',
+          sourceDetail: 'premerge-qa-month',
+          status: status as never,
+          scheduledStart,
+          scheduledEnd: new Date(scheduledStart.getTime() + minutes * 60_000),
+          manageToken: `qm${String(monthSeq).padStart(3, '0')}${'y'.repeat(38)}`,
+        } as never,
+      });
+    };
+    // Mon 24 — one booking (aisyah 08:00–13:00).
+    await bookOn('2026-08-24', aisyah.id, consult.id, '08:30', 15);
+    // Tue 25 — a pair in aisyah's evening block (14:00–19:00).
+    await bookOn('2026-08-25', aisyah.id, consult.id, '14:30', 15);
+    await bookOn('2026-08-25', aisyah.id, screening.id, '16:00', 60);
+    // Thu 27 — one with Alexandria (weekly Thu 08:30–12:30).
+    await bookOn('2026-08-27', alexandria.id, scaling.id, '09:00', 30);
+    // Fri 28 — a pair with Chong (weekly Fri 10:00–20:00).
+    await bookOn('2026-08-28', chong.id, consult.id, '11:00', 15);
+    await bookOn('2026-08-28', chong.id, scaling.id, '15:00', 30, 'REQUESTED');
+    // Sat 29 — aisyah's morning plus the weekend locum.
+    await bookOn('2026-08-29', aisyah.id, consult.id, '08:30', 15);
+    await bookOn('2026-08-29', priya.id, consult.id, '10:00', 15);
+    // Mon 31 — one booking.
+    await bookOn('2026-08-31', aisyah.id, consult.id, '09:00', 15);
+    // Into September, so the next month is not a cliff.
+    await bookOn('2026-09-01', aisyah.id, consult.id, '08:30', 15);
+    await bookOn('2026-09-02', aisyah.id, screening.id, '09:00', 60);
+  }
+
+  // ── QA hygiene: the e2e suite's throwaway names ──────────────────────────
+  // Playwright books patients named "Public 1755…" / "Manage 1755…"; their
+  // appointments are real and stay (append-only applies to test data too),
+  // but the NAMES read as debris in screenshots. Renamed — an UPDATE, nothing
+  // deleted — to realistic synthetic names. Each suite run mints fresh unique
+  // names, so this never collides with a future run's assertions.
+  const throwaway = await prisma.patient.findMany({
+    where: { tenantId: TENANT, OR: [{ name: { startsWith: 'Public ' } }, { name: { startsWith: 'Manage ' } }] },
+    select: { id: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  const REALISTIC = [
+    'Aina Sofea binti Roslan', 'Darren Loh Wei Jian', 'Meera a/p Sivakumar',
+    'Hakim bin Jamaludin', 'Grace Tan Li Ying', 'Arjun a/l Prakash',
+    'Nabila binti Shukri', 'Ethan Ng Kai Wen',
+  ];
+  for (let i = 0; i < throwaway.length; i += 1) {
+    await prisma.patient.update({
+      where: { id: throwaway[i].id },
+      data: { name: REALISTIC[i % REALISTIC.length] },
+    });
+  }
+
   // ── the public page, rebranded ───────────────────────────────────────────
   // UPSERT, not update: on a fresh database no page exists yet (the author's
   // machine had one created through the UI, which is why updateMany was
@@ -411,6 +500,7 @@ async function main() {
     shifts: await prisma.providerShift.count({ where: { tenantId: TENANT } }),
     weekly: await prisma.doctorSchedule.count({ where: { tenantId: TENANT } }),
     qaAppointments: await prisma.appointment.count({ where: { tenantId: TENANT, sourceDetail: 'premerge-qa' } }),
+    qaMonthSpread: await prisma.appointment.count({ where: { tenantId: TENANT, sourceDetail: 'premerge-qa-month' } }),
     waitlist: await prisma.waitlistEntry.count({ where: { tenantId: TENANT } }),
   };
   console.log('premerge-qa-seed:', JSON.stringify(counts));

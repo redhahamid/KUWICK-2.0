@@ -120,6 +120,7 @@ export function ShiftEditorModal({
       onCancel={onClose}
       onOk={submit}
       okText={shift ? 'Save shift' : 'Add shift'}
+      rootClassName="kw-apt3-modal"
       confirmLoading={create.isPending || update.isPending}
       title={
         shift

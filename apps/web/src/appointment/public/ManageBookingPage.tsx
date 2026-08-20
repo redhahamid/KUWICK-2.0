@@ -168,31 +168,39 @@ function ManageBookingPageInner() {
       ) : null}
 
       {can.reschedule || can.cancel ? (
-        <Space style={{ marginTop: 16 }} wrap>
-          {can.reschedule ? (
-            <Button type="primary" onClick={() => setRescheduling(true)}>
-              Change the time
-            </Button>
-          ) : null}
-          {can.cancel ? (
-            <Button
-              danger
-              loading={cancel.isPending}
-              onClick={() =>
-                Modal.confirm({
-                  title: 'Cancel this appointment?',
-                  content: 'The clinic will be told, and your slot is released to somebody else.',
-                  okText: 'Cancel appointment',
-                  okButtonProps: { danger: true },
-                  cancelText: 'Keep it',
-                  onOk: () => cancel.mutateAsync(),
-                })
-              }
-            >
-              Cancel
-            </Button>
-          ) : null}
-        </Space>
+        <>
+          <Space style={{ marginTop: 16 }} wrap>
+            {can.reschedule ? (
+              <Button type="primary" onClick={() => setRescheduling(true)}>
+                Change the time
+              </Button>
+            ) : null}
+            {can.cancel ? (
+              <Button
+                danger
+                loading={cancel.isPending}
+                onClick={() =>
+                  Modal.confirm({
+                    title: 'Cancel this appointment?',
+                    content: 'The clinic will be told, and your slot is released to somebody else.',
+                    okText: 'Cancel appointment',
+                    okButtonProps: { danger: true },
+                    cancelText: 'Keep it',
+                    onOk: () => cancel.mutateAsync(),
+                  })
+                }
+              >
+                Cancel
+              </Button>
+            ) : null}
+          </Space>
+          {/* The policy, stated while it still helps — not only after it has
+              already shut the door. */}
+          <Paragraph type="secondary" style={{ margin: '10px 0 0', fontSize: 12.5 }}>
+            Online changes close {data.cutoffHours} hour{data.cutoffHours === 1 ? '' : 's'} before
+            your appointment; after that, ring {data.clinic.displayName}.
+          </Paragraph>
+        </>
       ) : (
         // §27 — no dead buttons: when nothing can be changed the page SAYS
         // why in the patient's words, which is more useful than two grey
@@ -205,6 +213,55 @@ function ManageBookingPageInner() {
               : `Online changes close ${data.cutoffHours} hours before the appointment. Please ring the clinic and they will help.`}
         </Paragraph>
       )}
+
+      {/* V3.1 §4 — the rest of what THIS booking already carries, in the
+          confirmation's own section language. Nothing invented: the clinic's
+          configured message, the patient's own words and answers, and the
+          after-visit instructions once the visit has happened. */}
+      {data.confirmationMessage ? (
+        <div className="kw-public-after">
+          <div className="kw-public-section">From the clinic</div>
+          <div className="kw-public-instructions">{data.confirmationMessage}</div>
+        </div>
+      ) : null}
+
+      {appointment.note ? (
+        <div className="kw-public-after">
+          <div className="kw-public-section">Your message to the clinic</div>
+          <Paragraph style={{ margin: 0, fontSize: 13 }}>{appointment.note}</Paragraph>
+        </div>
+      ) : null}
+
+      {appointment.answers.length > 0 ? (
+        <div className="kw-public-after">
+          <div className="kw-public-section">Your answers</div>
+          <div className="kw-public-instructions">
+            {appointment.answers.map((entry) => (
+              <div key={entry.label} style={{ display: 'flex', gap: 8 }}>
+                <Text type="secondary" style={{ fontSize: 13 }}>
+                  {entry.label}:
+                </Text>
+                <Text style={{ fontSize: 13 }}>{entry.answer ?? '—'}</Text>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {appointment.status === 'COMPLETED' && appointment.postInstructions ? (
+        <div className="kw-public-after">
+          <div className="kw-public-section">After your appointment</div>
+          <div className="kw-public-instructions">{appointment.postInstructions}</div>
+        </div>
+      ) : null}
+
+      <div className="kw-public-after">
+        <div className="kw-public-section">Need help?</div>
+        <Paragraph type="secondary" style={{ margin: 0, fontSize: 13 }}>
+          This page is yours alone — keep the link safe. For anything it cannot do, ring{' '}
+          {data.clinic.displayName}.
+        </Paragraph>
+      </div>
 
       <RescheduleModal
         open={rescheduling}
@@ -288,6 +345,7 @@ function RescheduleModal({
           setSlot(null);
         }}
         allowClear={false}
+        format={['ddd, D MMM YYYY', 'YYYY-MM-DD', 'D MMM YYYY']}
         style={{ width: '100%' }}
         disabledDate={(value) => value.isBefore(dayjs().startOf('day'))}
       />

@@ -529,11 +529,18 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
       ) : null}
 
       <div
+        className="kw-cal-outer"
+        data-scroll={
+          viewMode === 'providers' && (resources?.length ?? 0) > 4 ? 'true' : undefined
+        }
+      >
+      <div
         ref={gridRef}
         className={
           'kw-calendar-grid' +
           (viewMode === 'providers' && (resources?.length ?? 0) > 4 ? ' kw-calendar-grid--wide' : '')
         }
+        style={{ ['--cal-cols' as string]: resources?.length ?? 0 }}
       >
         {isLoading ? (
           <div style={{ padding: 48, textAlign: 'center' }}>
@@ -588,32 +595,43 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
                     aria-hidden
                   />
                 );
+                // Every card carries BOTH bodies; the stylesheet's container
+                // query shows the one the card's real width can hold, so an
+                // overlap squeeze degrades by design instead of clipping
+                // (V3.1 §5). Week/month and 15-minute cards start compact.
+                const compactMode =
+                  viewMode === 'week' || viewMode === 'month' || event.card.compact;
+                const [timePart, ...nameParts] = event.compact.split(' ');
                 return (
                   <Tooltip title={`${event.tooltip} — double-click to move`}>
-                    {viewMode === 'week' || viewMode === 'month' || event.card.compact ? (
-                      // Narrow columns and 15-minute slots: one line, always
-                      // whole — dot · time · first name.
-                      <div className="kw-calendar-event">
-                        <span className="kw-event-compact">
+                    <div
+                      className={
+                        'kw-calendar-event ' + (compactMode ? 'kw-ev--compact' : 'kw-ev--full')
+                      }
+                    >
+                      <span className="kw-event-compact">
+                        <span className="kw-ec-time">
                           {dot}
-                          {event.compact}
+                          {timePart}
                         </span>
-                      </div>
-                    ) : (
-                      <div className="kw-calendar-event">
-                        <span className="kw-event-time">
-                          {dot}
-                          {event.card.time}
-                        </span>
-                        <div className="kw-event-patient">{event.card.patient}</div>
-                        {event.card.service ? (
-                          <div className="kw-event-secondary">{event.card.service}</div>
-                        ) : null}
-                        {event.card.provider && viewMode !== 'providers' ? (
-                          <div className="kw-event-secondary">{event.card.provider}</div>
-                        ) : null}
-                      </div>
-                    )}
+                        <span className="kw-ec-name">{nameParts.join(' ')}</span>
+                      </span>
+                      {!compactMode ? (
+                        <div className="kw-event-full">
+                          <span className="kw-event-time">
+                            {dot}
+                            {event.card.time}
+                          </span>
+                          <div className="kw-event-patient">{event.card.patient}</div>
+                          {event.card.service ? (
+                            <div className="kw-event-secondary">{event.card.service}</div>
+                          ) : null}
+                          {event.card.provider && viewMode !== 'providers' ? (
+                            <div className="kw-event-secondary">{event.card.provider}</div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
                   </Tooltip>
                 );
               },
@@ -646,7 +664,10 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
                     >
                       {initialsOf(name)}
                     </span>
-                    <span className="kw-provider-name">{name}</span>
+                    {/* Native title: the full name survives the ellipsis. */}
+                    <span className="kw-provider-name" title={name}>
+                      {name}
+                    </span>
                   </div>
                 );
               },
@@ -673,6 +694,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             style={{ height: '100%' }}
           />
         )}
+      </div>
       </div>
 
       <AppointmentDrawer
