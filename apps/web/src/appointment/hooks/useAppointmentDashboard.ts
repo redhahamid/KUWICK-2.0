@@ -66,15 +66,21 @@ export interface DashboardFilter {
   to: string;
   tab: DashboardTab;
   staffId?: string;
-  serviceId?: string;
+  /** Phase 3H — multi-select; sent comma-joined, empty means every service. */
+  serviceIds?: string[];
+  /** Phase 3H — booking-source multi-select. */
+  sources?: string[];
   search?: string;
 }
 
 function toQuery(filter: DashboardFilter): string {
   const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(filter)) {
+  const { serviceIds, sources, ...scalar } = filter;
+  for (const [key, value] of Object.entries(scalar)) {
     if (value) search.set(key, String(value));
   }
+  if (serviceIds?.length) search.set('serviceId', serviceIds.join(','));
+  if (sources?.length) search.set('source', sources.join(','));
   return search.toString();
 }
 

@@ -79,6 +79,47 @@ test.describe('the module opens on the calendar and holds its five surfaces', ()
     }
   });
 
+  test('the diary AXIS holds its shape across views, dates and filters', async ({ page }) => {
+    // Phase 3 pin. The axis is a branch display setting; the roster decides
+    // availability only. Before this, the hour bounds were derived from
+    // whoever was rostered, so an overnight shift wrapped the diary
+    // (23:00 → next-day 13:30 on live iPad UAT) and every date could have a
+    // different shape. Now: same branch, same axis — whatever the view, the
+    // date or the filters.
+    await login(page, ACCOUNTS.owner);
+    await page.goto('/appointments/calendar');
+    await expect(page.getByTestId('calendar-workspace')).toBeVisible();
+
+    const gutterShape = async () => {
+      const labels = page.locator('.kw-calendar-grid .rbc-time-gutter .rbc-label');
+      await expect(labels.first()).toBeVisible();
+      const texts = await labels.allTextContents();
+      return { first: texts[0], last: texts[texts.length - 1], count: texts.length };
+    };
+
+    const dayShape = await gutterShape();
+    expect(dayShape.count, 'an empty axis is no axis').toBeGreaterThan(0);
+
+    // Same bounds in Week — one TimeGrid, one axis policy.
+    await page
+      .locator('.kw-calendar-toolbar .ant-segmented')
+      .getByText('Week', { exact: true })
+      .click();
+    expect(await gutterShape()).toEqual(dayShape);
+
+    // A different date does not redefine the day's shape.
+    await page.locator('.kw-calendar-toolbar .ant-segmented').getByText('Day', { exact: true }).click();
+    await page.getByRole('button', { name: 'Next' }).click();
+    expect(await gutterShape()).toEqual(dayShape);
+    await page.getByRole('button', { name: 'Today' }).click();
+
+    // Filtering the diary to nothing does not reshape it either.
+    await page.getByPlaceholder('Find a patient').fill('zzz-nobody-by-this-name');
+    await page.waitForTimeout(350);
+    expect(await gutterShape()).toEqual(dayShape);
+    await page.getByPlaceholder('Find a patient').fill('');
+  });
+
   test('the diary viewport holds still through drawers, flow steps, filters and iPad widths', async ({
     page,
   }) => {

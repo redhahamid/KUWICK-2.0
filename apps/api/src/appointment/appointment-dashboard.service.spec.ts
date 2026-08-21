@@ -129,6 +129,49 @@ describe('the period is the CLINIC’s, not UTC’s', () => {
   });
 });
 
+describe('Phase 3 — the KPI band reacts to every active filter', () => {
+  it('3a. service, source and patient-search filters reach the STATS query, not only the rows', async () => {
+    // The owner's use case: filter to EAR ENDOSCOPIC SUCTION and read that
+    // service's own upcoming/no-show/booked-value figures. A stats query that
+    // ignored the filter would caption the whole clinic's numbers over a
+    // filtered worklist.
+    const ctx = build();
+
+    await ask(ctx, {
+      serviceIds: ['svc-ear', 'svc-ear-2'],
+      sources: ['ONLINE_PORTAL'],
+      search: 'Aminah',
+    });
+
+    const where = (ctx.prisma.appointment.groupBy as jest.Mock).mock.calls[0][0].where;
+    expect(where.serviceId).toEqual({ in: ['svc-ear', 'svc-ear-2'] });
+    expect(where.source).toEqual({ in: ['ONLINE_PORTAL'] });
+    expect(where.patient.OR[0].name.contains).toBe('Aminah');
+  });
+
+  it('3b. a source string Prisma does not know is dropped, not sent', async () => {
+    // Handing an unknown enum value to Prisma is a 500 nobody can act on; an
+    // unknown filter filters nothing instead.
+    const ctx = build();
+
+    await ask(ctx, { sources: ['CARRIER_PIGEON'] });
+
+    const where = (ctx.prisma.appointment.groupBy as jest.Mock).mock.calls[0][0].where;
+    expect(where.source).toBeUndefined();
+  });
+
+  it('3c. the row query carries the same service filter as the stats query', async () => {
+    const ctx = build();
+
+    await ask(ctx, { serviceIds: ['svc-ear'] });
+
+    const rowCall = ctx.findManyCalls.find(
+      (call) => !(call as { select?: unknown }).select,
+    ) as { where: { serviceId?: unknown } };
+    expect(rowCall.where.serviceId).toEqual({ in: ['svc-ear'] });
+  });
+});
+
 describe('the five figures', () => {
   const world: World = {
     grouped: [

@@ -15,11 +15,20 @@ const { Text } = Typography;
  *
  * Counted CLIENT-SIDE from the appointments already on screen, deliberately.
  * These describe exactly what the calendar is showing — including its filters
- * — so they can never disagree with it. The List view's figures come from the
- * server instead, because those describe a PERIOD rather than a view, and two
- * different questions deserve two different answers rather than one wrong one.
+ * — so they can never disagree with it. (Phase 3I closed the gap between that
+ * sentence and the code: the workspace now hands this the FILTERED set, and
+ * the strip says "Filtered" so a narrowed diary cannot pass for a quiet one.)
+ * The List view's figures come from the server instead, because those
+ * describe a PERIOD rather than a view, and two different questions deserve
+ * two different answers rather than one wrong one.
  */
-export function CalendarMetrics({ appointments }: { appointments: Appointment[] }) {
+export function CalendarMetrics({
+  appointments,
+  filtered = false,
+}: {
+  appointments: Appointment[];
+  filtered?: boolean;
+}) {
   const counts = useMemo(() => {
     const tally = {
       booked: 0,
@@ -65,6 +74,7 @@ export function CalendarMetrics({ appointments }: { appointments: Appointment[] 
 
   return (
     <div className="kw-calendar-metrics" data-testid="calendar-metrics">
+      {filtered ? <span className="kw-metric-filtered">Filtered</span> : null}
       {items.map((item) => (
         <span key={item.label} className="kw-metric">
           <span

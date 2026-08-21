@@ -49,13 +49,17 @@ export interface CardLabelInput {
  * THE NARROW-COLUMN LINE. A week column on a laptop is ~150px; three lines of
  * clipped text ("09:00 Ta…", "Exe…") read as noise, not information. When
  * space is short the card carries the two facts a receptionist scans for —
- * time and who — and the drawer carries everything else. First name only,
- * deliberately: "Siti" places the patient; "Siti Aminah binti Yu…" places an
- * ellipsis.
+ * time and who.
+ *
+ * Phase 3F — the WHOLE name, not just the first. The patient's name is the
+ * card's primary anchor ("10:30 Afiq Jonas"), and two patients called Siti on
+ * the same morning were indistinguishable under first-name-only. When the
+ * column genuinely cannot hold it, the stylesheet's container query trims with
+ * an ellipsis — a display concern, decided by real width rather than guessed
+ * here.
  */
 export function compactLine(time: string, patientName: string): string {
-  const first = patientName.trim().split(/\s+/)[0] ?? patientName;
-  return `${time} ${first}`;
+  return `${time} ${patientName.trim()}`;
 }
 
 /**
@@ -67,27 +71,37 @@ export function compactLine(time: string, patientName: string): string {
 export interface CardModel {
   /** "09:00" or, on EXPANDED cards, "09:00 – 10:00". */
   time: string;
-  /** First name only on the smallest card; full name from STANDARD up. */
+  /** The patient's full name at every tier — the card's visual anchor (3F). */
   patient: string;
   service?: string;
   provider?: string;
-  /** ≤15 minutes: about 22px of card — ONE line (dot · time · first name). */
+  /** ≤15 minutes: about 22px of card — ONE line (dot · time · name). */
   compact?: boolean;
+  /**
+   * ≤30 minutes: ~44px holds exactly two lines, so time and name share the
+   * first ("● 09:00 Tan Mei Chen") and the service takes the second. Three
+   * stacked lines here clip mid-glyph.
+   */
+  dense?: boolean;
 }
 
 export function cardModel(input: CardLabelInput, minutes: number): CardModel {
   // The tiers are measured against the grid, not aspiration: a 30-minute slot
   // is ~44px tall, which holds exactly two lines — a third clips mid-glyph,
   // and a clipped line is worse than a line the drawer carries instead.
+  //
+  // Phase 3F ladder — VERY SHORT "10:30 Afiq Jonas"; MEDIUM adds the service;
+  // LARGE has room for the full range and the provider. The patient's full
+  // name anchors every tier; ellipsis is the stylesheet's call, not this one's.
   if (minutes <= 15) {
     return {
       time: input.time,
-      patient: input.patientName.trim().split(/\s+/)[0] ?? input.patientName,
+      patient: input.patientName.trim(),
       compact: true,
     };
   }
   if (minutes <= 30) {
-    return { time: input.time, patient: input.patientName };
+    return { time: input.time, patient: input.patientName, service: input.serviceName, dense: true };
   }
   if (minutes <= 45) {
     return { time: input.time, patient: input.patientName, service: input.serviceName };
@@ -210,36 +224,70 @@ export function earliestRosteredHour(shifts: RangeShift[] | undefined): number |
 }
 
 /**
- * The hours the grid renders at all.
+ * PHASE 3 — THE DIARY AXIS IS A BRANCH SETTING, NEVER A ROSTER READING.
  *
- * A clinic rostered 23:00-09:00 needs the whole 24 hours; a 9-to-5 clinic
- * showing all 24 wastes two thirds of the screen on hours nobody works. So the
- * bounds follow the ROSTER, padded by an hour either side, and fall back to a
- * sensible working day when there is no roster to read.
+ * The roster decides AVAILABILITY. It is not allowed to decide what hours the
+ * diary renders: derived from shifts, the axis wrapped on live iPad UAT
+ * (23:00 → next-day 13:30 for an overnight roster) and changed shape from one
+ * date to the next. These bounds are a pure function of the branch's own
+ * calendar-display settings — no shifts, no appointments, no date — so the
+ * axis cannot move whatever is rostered, filtered or selected.
  */
-export function gridBounds(shifts: RangeShift[] | undefined): { startHour: number; endHour: number } {
-  const working = (shifts ?? []).filter(
-    (shift) => shift.shiftType === 'WORKING' || shift.shiftType === 'LOCUM',
-  );
-  if (working.length === 0) return { startHour: 7, endHour: 21 };
+export interface CalendarDisplayPrefs {
+  calendarDisplayMode: 'STANDARD_HOURS' | 'TWENTY_FOUR_HOURS';
+  /** "HH:MM" wall clock, or null when the branch never stated its hours. */
+  displayOpenTime: string | null;
+  displayCloseTime: string | null;
+  displayPaddingMinutes: number;
+}
 
-  let earliest = 24;
-  let latest = 0;
-  let crossesMidnight = false;
-  for (const shift of working) {
-    const start = clinicDayjs(shift.startsAt);
-    const end = clinicDayjs(shift.endsAt);
-    earliest = Math.min(earliest, start.hour());
-    // An end at exactly 17:00 needs the 17th hour drawn to show the line.
-    const endHour = end.hour() + (end.minute() > 0 ? 1 : 0);
-    latest = Math.max(latest, endHour);
-    if (!end.isSame(start, 'day')) crossesMidnight = true;
+/** The stable band an unconfigured standard-hours branch shows. */
+const DEFAULT_OPEN = '08:00';
+const DEFAULT_CLOSE = '20:00';
+
+function hourOf(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return h + m / 60;
+}
+
+export function displayBounds(
+  prefs: CalendarDisplayPrefs | undefined,
+  showFullDay = false,
+): { startHour: number; endHour: number } {
+  // A 24-hour branch's day is 00:00→24:00, always and in order — never
+  // 23:00 wrapping into tomorrow afternoon. The reveal toggle gives a
+  // standard-hours branch the same full day on demand, because an
+  // out-of-hours booking must be reachable, not merely believed in.
+  if (showFullDay || prefs?.calendarDisplayMode === 'TWENTY_FOUR_HOURS') {
+    return { startHour: 0, endHour: 24 };
   }
-  // A shift that runs into tomorrow means somebody works every hour between —
-  // the grid has to show all of them or the night half is invisible.
-  if (crossesMidnight) return { startHour: 0, endHour: 24 };
-  return {
-    startHour: Math.max(0, earliest - 1),
-    endHour: Math.min(24, Math.max(latest + 1, earliest + 2)),
-  };
+  const open = hourOf(prefs?.displayOpenTime || DEFAULT_OPEN);
+  const close = hourOf(prefs?.displayCloseTime || DEFAULT_CLOSE);
+  const padding = (prefs?.displayPaddingMinutes ?? 60) / 60;
+  const startHour = Math.max(0, Math.floor(open - padding));
+  const endHour = Math.min(24, Math.ceil(close + padding));
+  // A nonsense pair (close before open) still renders a usable day rather
+  // than a zero-height grid; the server refuses storing one, this is belt.
+  if (endHour <= startHour) return { startHour: 0, endHour: 24 };
+  return { startHour, endHour };
+}
+
+/**
+ * The bookings the fixed axis cannot show — counted so the diary can SAY so
+ * ("2 outside displayed hours") instead of silently hiding them. Released
+ * bookings are ignored: a cancelled 06:00 is not worth widening the day for.
+ */
+export function outsideDisplayCount(
+  events: { start: Date; end: Date; released: boolean }[],
+  bounds: { startHour: number; endHour: number },
+): number {
+  return events.filter((event) => {
+    if (event.released) return false;
+    const startsBefore =
+      event.start.getHours() + event.start.getMinutes() / 60 < bounds.startHour;
+    const endMinutes = event.end.getHours() * 60 + event.end.getMinutes();
+    // An event ending exactly at the close line is fully visible.
+    const endsAfter = (endMinutes === 0 ? 24 * 60 : endMinutes) > bounds.endHour * 60;
+    return startsBefore || endsAfter;
+  }).length;
 }

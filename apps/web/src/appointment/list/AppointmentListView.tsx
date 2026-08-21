@@ -93,7 +93,8 @@ export function AppointmentListView({ clinicId, clinicName, onBook }: Appointmen
   const [range, setRange] = useState<[Dayjs, Dayjs]>(defaultRangeFor('UPCOMING'));
   const [rangeChosen, setRangeChosen] = useState(false);
   const [staffId, setStaffId] = useState<string>();
-  const [serviceId, setServiceId] = useState<string>();
+  const [serviceIds, setServiceIds] = useState<string[]>([]);
+  const [sources, setSources] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -108,15 +109,28 @@ export function AppointmentListView({ clinicId, clinicName, onBook }: Appointmen
     to: range[1].format('YYYY-MM-DD'),
     tab: (tab === 'WAITLIST' ? 'UPCOMING' : tab) as DashboardTab,
     staffId,
-    serviceId,
+    serviceIds,
+    sources,
     search: search.trim() || undefined,
   });
   const { data: waitlist, isFetching: loadingWaitlist } = useWaitlist({
     clinicId,
     staffId,
-    serviceId,
+    // The endpoint reads a comma list; a waitlist entry has no source.
+    serviceId: serviceIds.length ? serviceIds.join(',') : undefined,
     search: search.trim() || undefined,
   });
+
+  // Phase 3I — the KPI band describes the FILTERED worklist, and says so.
+  const filtersActive =
+    Boolean(staffId) || serviceIds.length > 0 || sources.length > 0 || search.trim().length > 0;
+
+  const clearFilters = () => {
+    setStaffId(undefined);
+    setServiceIds([]);
+    setSources([]);
+    setSearch('');
+  };
 
   const doctors = useMemo(
     () =>
@@ -128,7 +142,7 @@ export function AppointmentListView({ clinicId, clinicName, onBook }: Appointmen
 
   return (
     <div className="kw-appt-list">
-      <StatsBar stats={data?.stats} loading={isFetching && !data} />
+      <StatsBar stats={data?.stats} loading={isFetching && !data} filtered={filtersActive} />
 
       <div className="kw-appt-controls">
         <Segmented
@@ -160,15 +174,30 @@ export function AppointmentListView({ clinicId, clinicName, onBook }: Appointmen
             style={{ minWidth: 170 }}
           />
           <Select
+            mode="multiple"
+            maxTagCount={1}
             placeholder="Any service"
-            value={serviceId}
-            onChange={setServiceId}
+            value={serviceIds}
+            onChange={setServiceIds}
             allowClear
             showSearch
             optionFilterProp="label"
             options={services?.map((service) => ({ value: service.id, label: service.name }))}
             style={{ minWidth: 190 }}
           />
+          {tab !== 'WAITLIST' ? (
+            <Select
+              mode="multiple"
+              maxTagCount={1}
+              placeholder="Any source"
+              value={sources}
+              onChange={setSources}
+              allowClear
+              optionFilterProp="label"
+              options={Object.entries(SOURCE_LABELS).map(([value, label]) => ({ value, label }))}
+              style={{ minWidth: 150 }}
+            />
+          ) : null}
           <Input.Search
             placeholder="Patient name or phone"
             value={search}
@@ -178,6 +207,55 @@ export function AppointmentListView({ clinicId, clinicName, onBook }: Appointmen
           />
         </Space>
       </div>
+
+      {/* Phase 3H — the active narrowing said out loud, one chip each. */}
+      {filtersActive ? (
+        <div className="kw-cal-active-filters" data-testid="list-active-filters">
+          {staffId ? (
+            <span className="kw-filter-chip">
+              {doctors.find((doctor) => doctor.id === staffId)?.fullName ?? 'Doctor'}
+              <button type="button" aria-label="Remove doctor filter" onClick={() => setStaffId(undefined)}>
+                ×
+              </button>
+            </span>
+          ) : null}
+          {serviceIds.map((id) => (
+            <span key={id} className="kw-filter-chip">
+              {services?.find((service) => service.id === id)?.name ?? 'Service'}
+              <button
+                type="button"
+                aria-label="Remove service filter"
+                onClick={() => setServiceIds((current) => current.filter((value) => value !== id))}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          {sources.map((value) => (
+            <span key={value} className="kw-filter-chip">
+              {SOURCE_LABELS[value as AppointmentSource] ?? value}
+              <button
+                type="button"
+                aria-label="Remove source filter"
+                onClick={() => setSources((current) => current.filter((item) => item !== value))}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          {search.trim() ? (
+            <span className="kw-filter-chip">
+              “{search.trim()}”
+              <button type="button" aria-label="Clear the patient search" onClick={() => setSearch('')}>
+                ×
+              </button>
+            </span>
+          ) : null}
+          <Button type="link" size="small" onClick={clearFilters}>
+            Clear all
+          </Button>
+        </div>
+      ) : null}
 
       {tab === 'WAITLIST' ? (
         <Table
@@ -288,7 +366,15 @@ function defaultRangeFor(tab: DashboardTab): [Dayjs, Dayjs] {
   return [dayjs().startOf('day'), dayjs().add(30, 'day').endOf('day')];
 }
 
-function StatsBar({ stats, loading }: { stats?: DashboardStats; loading: boolean }) {
+function StatsBar({
+  stats,
+  loading,
+  filtered = false,
+}: {
+  stats?: DashboardStats;
+  loading: boolean;
+  filtered?: boolean;
+}) {
   const cells = [
     { key: 'upcoming', label: 'Upcoming', value: stats?.upcoming, tone: 'active' as const },
     { key: 'requests', label: 'Requests', value: stats?.requests, tone: 'attention' as const },
@@ -310,6 +396,9 @@ function StatsBar({ stats, loading }: { stats?: DashboardStats; loading: boolean
 
   return (
     <div className="kw-appt-stats" data-testid="appointment-stats" data-loading={loading}>
+      {/* §3I — these figures describe the FILTERED worklist. Unlabelled, a
+          service-filtered "Upcoming 12" reads as the whole clinic's twelve. */}
+      {filtered ? <span className="kw-appt-stats-filtered">Filtered results</span> : null}
       {cells.map((cell) => (
         <div key={cell.key} className="kw-appt-stat" data-tone={cell.tone}>
           <span className="kw-appt-stat-label">{cell.label}</span>

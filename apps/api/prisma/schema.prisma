@@ -945,6 +945,16 @@ enum ProviderScheduleMode {
   FIXED_WEEKLY
 }
 
+/// How a branch's DIARY AXIS is drawn (§Phase-3). Display only: the roster
+/// decides availability, and the booking band narrows what may be booked —
+/// neither is allowed to decide what hours the calendar renders, because an
+/// axis that follows the roster wraps (23:00 → next-day 13:30) the moment an
+/// overnight shift exists.
+enum CalendarDisplayMode {
+  STANDARD_HOURS
+  TWENTY_FOUR_HOURS
+}
+
 /// What a roster cell MEANS. Only WORKING and LOCUM offer time; the rest are
 /// recorded so the matrix can say why a doctor is not there.
 enum ProviderShiftType {
@@ -1338,6 +1348,17 @@ model ClinicBookingSettings {
   /// one. A branch that does shut ticks this once instead of re-typing the
   /// national calendar as branch closed dates (§3).
   observePublicHolidays Boolean   @default(false) @map("observe_public_holidays")
+  /// THE DIARY AXIS (Phase 3). Display settings only — never availability.
+  /// The booking band above NARROWS what can be booked; these say what hours
+  /// the calendar RENDERS, which must hold still whatever the roster does.
+  calendarDisplayMode   CalendarDisplayMode @default(STANDARD_HOURS) @map("calendar_display_mode")
+  /// The branch's stated operating hours, wall clock. NULL = never stated;
+  /// the diary falls back to a stable default band rather than to the roster.
+  displayOpenTime       DateTime? @map("display_open_time") @db.Time
+  displayCloseTime      DateTime? @map("display_close_time") @db.Time
+  /// Breathing room drawn either side of the operating hours (09:00–17:00
+  /// with 60 → an 08:00–18:00 diary), clamped to the day.
+  displayPaddingMinutes Int       @default(60) @map("display_padding_minutes")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
 

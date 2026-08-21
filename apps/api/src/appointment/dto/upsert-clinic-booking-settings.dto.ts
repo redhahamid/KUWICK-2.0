@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class UpsertClinicBookingSettingsDto {
   /**
@@ -36,4 +36,29 @@ export class UpsertClinicBookingSettingsDto {
   @IsOptional()
   @IsBoolean()
   observePublicHolidays?: boolean;
+
+  /**
+   * PHASE 3 — the diary axis, display only. These fields MERGE: absent leaves
+   * the stored value alone (the booking-window card and the calendar-display
+   * card save independently), an empty time string clears it.
+   */
+  @IsOptional()
+  @IsIn(['STANDARD_HOURS', 'TWENTY_FOUR_HOURS'])
+  calendarDisplayMode?: 'STANDARD_HOURS' | 'TWENTY_FOUR_HOURS';
+
+  /** "HH:MM" wall clock — the branch's stated opening hour, for display. */
+  @IsOptional()
+  @IsString()
+  displayOpenTime?: string;
+
+  @IsOptional()
+  @IsString()
+  displayCloseTime?: string;
+
+  /** Breathing room either side of the stated hours, 0–240 minutes. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(240)
+  displayPaddingMinutes?: number;
 }
