@@ -107,9 +107,86 @@ describe('checking in turns an appointment into a visit', () => {
       expect.objectContaining({
         eventType: 'CHECKED_IN',
         toStatus: AppointmentStatus.CHECKED_IN,
-        afterValue: { visitId: 'visit-9', queueTicketId: 'ticket-1' },
+        afterValue: { visitId: 'visit-9', queueTicketId: 'ticket-1', billingType: 'Self-pay' },
       }),
     );
+  });
+
+  // ── PHASE 4 — check-in is a REGISTRATION, reviewed before it is committed ──
+
+  it('9. the payer the desk chose rides into the visit — panel patients are panel visits', async () => {
+    const ctx = buildAppointmentHarness();
+
+    await ctx.run(() =>
+      ctx.service.checkIn(APPT, { billingType: 'MediHelp Panel', panelClinicId: 'panel-3' }),
+    );
+
+    expect(ctx.queueTickets.addToQueue).toHaveBeenCalledWith(
+      expect.objectContaining({ billingType: 'MediHelp Panel', panelClinicId: 'panel-3' }),
+    );
+    expect(ctx.events).toContainEqual(
+      expect.objectContaining({
+        eventType: 'CHECKED_IN',
+        afterValue: expect.objectContaining({
+          billingType: 'MediHelp Panel',
+          panelClinicId: 'panel-3',
+        }),
+      }),
+    );
+  });
+
+  it('10. a desk-assigned attending clinician reaches the visit; the BOOKED provider stays on the appointment', async () => {
+    // Dr A called in sick and Dr B takes her list: the visit records who
+    // actually sees the patient, while the appointment keeps its history.
+    const ctx = buildAppointmentHarness();
+
+    await ctx.run(() => ctx.service.checkIn(APPT, { staffId: 'doc-2' }));
+
+    expect(ctx.queueTickets.addToQueue).toHaveBeenCalledWith(
+      expect.objectContaining({ staffId: 'doc-2' }),
+    );
+    // No update rewrote the appointment's own provider.
+    expect(ctx.updates.some((update) => 'staffId' in update)).toBe(false);
+    expect(ctx.events).toContainEqual(
+      expect.objectContaining({
+        eventType: 'CHECKED_IN',
+        afterValue: expect.objectContaining({ attendingStaffId: 'doc-2' }),
+      }),
+    );
+  });
+
+  it('11. registration remarks from the drawer override the booking note as the complaint', async () => {
+    const ctx = buildAppointmentHarness({
+      appointment: { patientNote: 'Ear blocked since Friday' },
+    });
+
+    await ctx.run(() =>
+      ctx.service.checkIn(APPT, { presentingComplaint: 'Ear blocked, now with pain' }),
+    );
+
+    expect(ctx.queueTickets.addToQueue).toHaveBeenCalledWith(
+      expect.objectContaining({ presentingComplaint: 'Ear blocked, now with pain' }),
+    );
+  });
+
+  it('12. an EMPTY registration is the old one-click check-in exactly', async () => {
+    // Self-pay, the booked doctor, the patient's own note — nothing that
+    // already worked changes shape when the drawer sends no overrides.
+    const ctx = buildAppointmentHarness();
+
+    await ctx.run(() => ctx.service.checkIn(APPT, {}));
+
+    expect(ctx.queueTickets.addToQueue).toHaveBeenCalledWith(
+      expect.objectContaining({ billingType: 'Self-pay', staffId: 'doc-1' }),
+    );
+  });
+
+  it('13. the response carries the ticket number, so the desk can say where the patient is', async () => {
+    const ctx = buildAppointmentHarness();
+
+    const result = await ctx.run(() => ctx.service.checkIn(APPT));
+
+    expect(result.queueTicket).toEqual({ id: 'ticket-1', displayNumber: 'A012' });
   });
 });
 

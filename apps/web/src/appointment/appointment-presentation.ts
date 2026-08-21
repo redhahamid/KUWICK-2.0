@@ -49,6 +49,16 @@ export function paymentChip(state: string): { tone: StatusTone; label: string } 
 }
 
 /** SCREAMING_CASE → "Screaming case". */
+/**
+ * THE BOOKING REFERENCE a person can read out loud — the appointment id's
+ * first eight characters, uppercased. One derivation for every surface
+ * (registration drawer, public confirmation), so the desk and the patient
+ * are always holding the same code.
+ */
+export function bookingReference(appointmentId: string): string {
+  return appointmentId.replace(/-/g, '').slice(0, 8).toUpperCase();
+}
+
 export function sentence(value: string): string {
   const words = value.toLowerCase().replace(/_/g, ' ');
   return words.charAt(0).toUpperCase() + words.slice(1);

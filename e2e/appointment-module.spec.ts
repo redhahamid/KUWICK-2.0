@@ -330,13 +330,24 @@ test.describe('a patient books themselves in, and the clinic works the booking',
     await expect(row).toContainText(/booking page/i);
     await expect(row).toContainText(chosenTime.slice(0, 5));
 
-    // ---- CHECK IN, AND THE QUEUE TICKET THAT RESULTS -----------------------
+    // ---- REGISTER / CHECK IN, AND THE QUEUE TICKET THAT RESULTS ------------
     // The composition this whole module exists for: an appointment that
     // arrives becomes a VISIT and joins the type-A queue, with both ids
-    // recorded on it. A status change with no ticket behind it would satisfy
-    // a unit test and leave the patient invisible to the doctor.
-    await row.getByRole('button', { name: /check in/i }).click();
-    await expect(row.getByRole('button', { name: /check in/i })).toBeHidden({ timeout: 20_000 });
+    // recorded on it. Phase 4 put a REGISTRATION REVIEW in front of that act:
+    // the click opens the drawer (patient, doctor, payer, remarks — nothing
+    // created yet), and only CONFIRM & ADD TO QUEUE commits.
+    await row.getByRole('button', { name: /register \/ check in/i }).click();
+    const registration = page.getByTestId('checkin-registration-drawer');
+    await expect(registration).toBeVisible();
+    // The review really is a review: the payer choice and the patient's
+    // on-file identity are in front of the desk before anything commits.
+    await expect(registration.getByText('Payer')).toBeVisible();
+    await expect(registration.getByText(patientName)).toBeVisible();
+    await page.getByTestId('confirm-add-to-queue').click();
+    await expect(registration).toBeHidden({ timeout: 20_000 });
+    await expect(row.getByRole('button', { name: /register \/ check in/i })).toBeHidden({
+      timeout: 20_000,
+    });
 
     await page.goto('/queue');
     await expect(
@@ -372,7 +383,7 @@ test.describe('a patient books themselves in, and the clinic works the booking',
     // not the drawer body: antd renders a Drawer's footer outside the
     // content element the test id is on.
     await expect(page.getByRole('button', { name: /open visit/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /^check in$/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /register \/ check in/i })).toHaveCount(0);
   });
 });
 

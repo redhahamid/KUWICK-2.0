@@ -97,3 +97,28 @@ export const useRescheduleAppointment = () =>
   useAppointmentAction<RescheduleAppointmentDto>('reschedule');
 /** "They're here" without creating the visit yet — see the service. */
 export const useMarkArrivedAppointment = () => useAppointmentAction('mark-arrived');
+
+/**
+ * PHASE 4 — check-in with the registration drawer's decisions attached.
+ * Same endpoint as `useArrivedAppointment` (an empty body is the old
+ * one-click behaviour); typed separately so the drawer's payload is explicit.
+ * The response carries the queue ticket so the toast can say "A012".
+ */
+export interface CheckInRegistrationInput {
+  staffId?: string;
+  billingType?: string;
+  panelClinicId?: string;
+  presentingComplaint?: string;
+}
+
+export function useCheckInAppointment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input?: CheckInRegistrationInput }) =>
+      apiClient.patch<Appointment & { queueTicket?: { id: string; displayNumber: string } }>(
+        `/appointments/${id}/arrived`,
+        input,
+      ),
+    onSuccess: () => invalidateDiary(queryClient),
+  });
+}

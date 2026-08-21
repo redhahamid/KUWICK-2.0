@@ -32,6 +32,7 @@ import { appointmentSnapshot, recordAppointmentEvent } from './appointment-event
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 import { CancelAppointmentDto } from './dto/cancel-appointment.dto';
+import { CheckInAppointmentDto } from './dto/check-in-appointment.dto';
 import { QueueTicketService } from '../clinical/queue-ticket.service';
 import { PrismaService } from '../core/prisma.service';
 import { ActingStaff, ClinicalTx, requireActor, withTenantTx } from '../clinical/clinical-actor';
@@ -358,7 +359,7 @@ export class AppointmentService {
    * ticket, which the counter can see and finish by hand — never a queue
    * ticket with no appointment pointing at it.
    */
-  async checkIn(id: string) {
+  async checkIn(id: string, dto: CheckInAppointmentDto = {}) {
     const appointment = await this.findById(id);
     await withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
@@ -389,15 +390,24 @@ export class AppointmentService {
       }
     });
 
+    // PHASE 4 — the registration drawer's decisions ride into the visit.
+    // Every override is optional; absent, this is the old one-click check-in
+    // exactly. The attending clinician may differ from the BOOKED provider
+    // (the appointment keeps its history; the visit records who actually
+    // sees the patient), and payer/panel reuse the walk-in flow's own
+    // vocabulary so VisitService derives billingType the same way for both.
     const ticket = await this.queueTickets.addToQueue({
       clinicId: appointment.clinicId,
       patientId: appointment.patientId,
-      staffId: appointment.staffId,
-      billingType: DEFAULT_ARRIVAL_BILLING_TYPE,
+      staffId: dto.staffId ?? appointment.staffId,
+      billingType: dto.billingType?.trim() || DEFAULT_ARRIVAL_BILLING_TYPE,
+      panelClinicId: dto.panelClinicId,
       // The appointment's context travels with the patient. Without it the
       // doctor opens a visit that says nothing about why the patient came,
       // and the receptionist re-types what the booking already recorded.
-      presentingComplaint: appointment.patientNote ?? appointment.notes ?? undefined,
+      presentingComplaint:
+        dto.presentingComplaint?.trim() ||
+        (appointment.patientNote ?? appointment.notes ?? undefined),
       // D-038 — appointment arrivals join the "A" queue stream.
       queueType: QueueType.APPOINTMENT,
     });
@@ -430,7 +440,17 @@ export class AppointmentService {
         eventType: AppointmentEventType.CHECKED_IN,
         fromStatus: AppointmentStatus.ARRIVED,
         toStatus: AppointmentStatus.CHECKED_IN,
-        after: { visitId: ticket.visitId, queueTicketId: ticket.id },
+        after: {
+          visitId: ticket.visitId,
+          queueTicketId: ticket.id,
+          // The registration facts, auditable: what payer the desk chose and
+          // whether the list was handed to a different clinician.
+          billingType: dto.billingType?.trim() || DEFAULT_ARRIVAL_BILLING_TYPE,
+          ...(dto.panelClinicId ? { panelClinicId: dto.panelClinicId } : {}),
+          ...(dto.staffId && dto.staffId !== appointment.staffId
+            ? { attendingStaffId: dto.staffId }
+            : {}),
+        },
         actorStaffId: actor.id,
         actorLabel: actor.fullName,
       });
@@ -453,7 +473,9 @@ export class AppointmentService {
       );
       throw new ConflictException('This appointment was already checked in at another counter.');
     }
-    return outcome.updated;
+    // The ticket number rides back so the desk can SAY where the patient is
+    // ("A012 — in the queue") without a second round trip.
+    return { ...outcome.updated, queueTicket: { id: ticket.id, displayNumber: ticket.displayNumber } };
   }
 
   /**

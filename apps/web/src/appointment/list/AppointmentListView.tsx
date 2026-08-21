@@ -31,11 +31,12 @@ import {
 } from '../appointment-status.constants';
 import { getDoctorColor } from '../calendar/doctor-color';
 import {
-  useArrivedAppointment,
   useCancelAppointment,
   useConfirmAppointment,
+  useMarkArrivedAppointment,
   useNoShowAppointment,
 } from '../hooks/useAppointments';
+import { CheckInRegistrationDrawer } from '../checkin/CheckInRegistrationDrawer';
 
 const { Text } = Typography;
 
@@ -434,7 +435,10 @@ function AppointmentTable({
 }) {
   const markReminder = useMarkReminderSent();
   const confirmAppointment = useConfirmAppointment();
-  const checkInAppointment = useArrivedAppointment();
+  const markArrived = useMarkArrivedAppointment();
+  // Phase 4 — the primary is REGISTER / CHECK IN, which opens the
+  // registration review; nothing is created until Confirm & add to queue.
+  const [checkingInId, setCheckingInId] = useState<string | null>(null);
   const permEdit = useCan('appointment.edit');
   const permCreate = useCan('appointment.create');
   const permCheckIn = useCan('appointment.check_in');
@@ -621,6 +625,19 @@ function AppointmentTable({
                       title: permReschedule ? undefined : permissionHint('move an appointment'),
                     }
                   : null,
+                // Phase 4D — "they're here" in one keystroke, WITHOUT creating
+                // the visit. Registration and the queue happen at Register /
+                // Check in.
+                ARRIVABLE_FROM_STATUSES.includes(row.status as AppointmentStatus)
+                  ? {
+                      key: 'arrived',
+                      label: 'Mark arrived',
+                      disabled: !permCheckIn,
+                      title: permCheckIn
+                        ? 'Records that the patient is at the desk — registration and the queue happen at Register / Check in'
+                        : permissionHint('mark a patient as arrived'),
+                    }
+                  : null,
                 ARRIVABLE_FROM_STATUSES.includes(row.status as AppointmentStatus)
                   ? {
                       key: 'no-show',
@@ -666,11 +683,9 @@ function AppointmentTable({
                         size="small"
                         type="primary"
                         disabled={!permCheckIn}
-                        onClick={() =>
-                          act(checkInAppointment.mutateAsync({ id: row.id }), 'Could not check in.')
-                        }
+                        onClick={() => setCheckingInId(row.id)}
                       >
-                        Check in
+                        Register / Check in
                       </Button>
                     </Tooltip>
                   ) : (
@@ -685,6 +700,9 @@ function AppointmentTable({
                         items: menuItems,
                         onClick: ({ key }) => {
                           if (key === 'reschedule') setRescheduling(row);
+                          if (key === 'arrived') {
+                            act(markArrived.mutateAsync({ id: row.id }), 'Could not mark arrived.');
+                          }
                           if (key === 'no-show') {
                             Modal.confirm({
                               title: 'Mark as a no-show?',
@@ -749,6 +767,15 @@ function AppointmentTable({
           },
         ]}
       />
+      {checkingInId ? (
+        <CheckInRegistrationDrawer
+          appointmentId={checkingInId}
+          onClose={() => setCheckingInId(null)}
+          onCheckedIn={() =>
+            queryClient.invalidateQueries({ queryKey: ['appointment-dashboard'] })
+          }
+        />
+      ) : null}
       <RescheduleAppointmentDrawer
         appointment={
           rescheduling

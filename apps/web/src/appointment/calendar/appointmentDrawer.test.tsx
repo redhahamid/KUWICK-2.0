@@ -131,6 +131,48 @@ describe('the drawer offers the action the counter actually needs', () => {
     expect(screen.queryByRole('button', { name: /^check in$/i })).not.toBeInTheDocument();
   });
 
+  it('3b. Register / Check in opens the registration REVIEW — the click itself creates nothing', async () => {
+    // Phase 4. One click used to mean visit + queue ticket, payer guessed.
+    // Now the click opens the review, and only Confirm & add to queue commits
+    // — with the payer and the attending doctor it reviewed.
+    patch.mockResolvedValue({});
+    get.mockImplementation((url: string) =>
+      url.startsWith('/clinics')
+        ? Promise.resolve(CLINICS)
+        : url.startsWith('/staff')
+          ? Promise.resolve([{ id: 'doc-1', fullName: 'Dr Redha', role: 'DOCTOR_RESIDENT' }])
+          : url.startsWith('/panel-clinics')
+            ? Promise.resolve([])
+            : Promise.resolve({ ...BASE }),
+    );
+    render(
+      <Harness>
+        <AppointmentDrawer
+          appointmentId="appt-1"
+          open
+          onClose={() => undefined}
+          onReschedule={() => undefined}
+        />
+      </Harness>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /register \/ check in/i }));
+    expect(await screen.findByTestId('checkin-registration-drawer')).toBeInTheDocument();
+    expect(patch).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByTestId('confirm-add-to-queue'));
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith(
+        '/appointments/appt-1/arrived',
+        expect.objectContaining({
+          billingType: 'Self-pay',
+          staffId: 'doc-1',
+          presentingComplaint: 'Sore throat since Friday',
+        }),
+      ),
+    );
+  });
+
   it('4. accepting a request calls the confirm endpoint', async () => {
     patch.mockResolvedValue({});
     open({ status: 'REQUESTED' });

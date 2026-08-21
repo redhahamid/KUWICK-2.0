@@ -194,7 +194,7 @@ export function buildAppointmentHarness(world: HarnessWorld = {}) {
   const queueTickets = {
     // What `addToQueue` really returns: the ticket, carrying the id of the
     // visit it created.
-    addToQueue: jest.fn(async () => ({ id: 'ticket-1', visitId: 'visit-9' })),
+    addToQueue: jest.fn(async () => ({ id: 'ticket-1', visitId: 'visit-9', displayNumber: 'A012' })),
   } as unknown as QueueTicketService;
 
   const bookingValidator = {

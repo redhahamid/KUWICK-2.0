@@ -37,7 +37,18 @@ export interface AppointmentDetail {
   reminderSentAt: string | null;
   overriddenRule: string | null;
   overrideReason: string | null;
-  patient: { id: string; name: string; phone: string | null; identifierValue: string };
+  patient: {
+    id: string;
+    name: string;
+    phone: string | null;
+    identifierType: string;
+    identifierValue: string;
+    // Phase 4 — the registration review reads what the record already holds;
+    // the server has always sent the full patient row.
+    dob: string | null;
+    gender: string | null;
+    address: string | null;
+  };
   staff: { id: string; fullName: string; calendarColor: string | null };
   service: { id: string; name: string; preInstructions: string | null; postInstructions: string | null };
   visit: { id: string; visitNumber: number; checkOutAt: string | null } | null;

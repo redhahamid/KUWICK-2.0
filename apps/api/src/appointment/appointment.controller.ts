@@ -4,6 +4,7 @@ import { AppointmentService } from './appointment.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 import { CancelAppointmentDto } from './dto/cancel-appointment.dto';
+import { CheckInAppointmentDto } from './dto/check-in-appointment.dto';
 
 @Controller('appointments')
 export class AppointmentController {
@@ -65,8 +66,8 @@ export class AppointmentController {
    * and the type-A queue ticket, link both, and move to CHECKED_IN.
    */
   @Patch(':id/arrived')
-  arrived(@Param('id') id: string) {
-    return this.appointments.checkIn(id);
+  arrived(@Param('id') id: string, @Body() dto: CheckInAppointmentDto) {
+    return this.appointments.checkIn(id, dto);
   }
 
   /** "They're here" without committing to a visit yet. */

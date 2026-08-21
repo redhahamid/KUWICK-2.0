@@ -31,18 +31,23 @@ import { KuwickStatusTag } from '../../design-system/kuwick';
 import { formatClinicDate, formatClinicDateTime, formatClinicTime } from '../../clinical/clinicTime';
 import { SOURCE_LABELS, type AppointmentSource } from '../types';
 import { paymentChip, sentence, statusChip } from '../appointment-presentation';
-import { CHECK_IN_FROM_STATUSES, NON_CANCELLABLE_STATUSES } from '../appointment-status.constants';
+import {
+  ARRIVABLE_FROM_STATUSES,
+  CHECK_IN_FROM_STATUSES,
+  NON_CANCELLABLE_STATUSES,
+} from '../appointment-status.constants';
 import {
   useAppointmentDetail,
   useLogCommunication,
   useRejectAppointment,
 } from '../hooks/useAppointmentDetail';
 import {
-  useArrivedAppointment,
   useCancelAppointment,
   useConfirmAppointment,
+  useMarkArrivedAppointment,
   useNoShowAppointment,
 } from '../hooks/useAppointments';
+import { CheckInRegistrationDrawer } from '../checkin/CheckInRegistrationDrawer';
 import { patientFacingClinicName, whatsappLink } from '../whatsappReminder';
 import { useClinics } from '../../core/hooks/useClinics';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
@@ -99,7 +104,10 @@ export function AppointmentDrawer({
   const { data: appointment, isLoading } = useAppointmentDetail(appointmentId ?? undefined);
   const [showHistory, setShowHistory] = useState(false);
 
-  const checkIn = useArrivedAppointment();
+  const markArrived = useMarkArrivedAppointment();
+  // Phase 4 — Check in opens the registration REVIEW; nothing is created
+  // until Confirm & add to queue inside it.
+  const [registering, setRegistering] = useState(false);
   const confirm = useConfirmAppointment();
   const noShow = useNoShowAppointment();
   const cancel = useCancelAppointment();
@@ -165,7 +173,18 @@ export function AppointmentDrawer({
   // Patient record, WhatsApp and Call are QUICK ACTIONS beside the header
   // (§21) — the three reaches a receptionist makes mid-phone-call — so the
   // ••• menu holds only the occasional and the destructive.
+  const canMarkArrived = status ? ARRIVABLE_FROM_STATUSES.includes(status) : false;
   const moreItems = [
+    canMarkArrived
+      ? {
+          key: 'mark-arrived',
+          label: 'Mark arrived',
+          disabled: !permCheckIn,
+          title: permCheckIn
+            ? 'Records that the patient is at the desk — registration and the queue happen at Register / Check in'
+            : permissionHint('mark a patient as arrived'),
+        }
+      : null,
     appointment?.patient.phone ? { key: 'reminder', label: 'Record a manual reminder' } : null,
     onBookFollowUp ? { key: 'follow-up', label: 'Book a follow-up' } : null,
     appointment?.visitId ? { key: 'record', label: 'Open clinical record' } : null,
@@ -211,6 +230,9 @@ export function AppointmentDrawer({
   const onMore = async (key: string) => {
     if (!appointment) return;
     switch (key) {
+      case 'mark-arrived':
+        await run('Marked as arrived', () => markArrived.mutateAsync({ id: appointment.id }));
+        break;
       case 'reminder':
         await run('Reminder recorded', () =>
           logCommunication.mutateAsync({
@@ -319,13 +341,10 @@ export function AppointmentDrawer({
                   <Button
                     type="primary"
                     icon={<CheckCircleOutlined />}
-                    loading={checkIn.isPending}
                     disabled={!permCheckIn}
-                    onClick={() =>
-                      run('Patient checked in', () => checkIn.mutateAsync({ id: appointment.id }))
-                    }
+                    onClick={() => setRegistering(true)}
                   >
-                    Check in
+                    Register / Check in
                   </Button>
                 </Tooltip>
               ) : null}
@@ -587,6 +606,15 @@ export function AppointmentDrawer({
                 }))}
               />
             </>
+          ) : null}
+
+          {/* Mounted only while open, so its data hooks (staff, panels) run
+              only when the desk actually starts a registration. */}
+          {registering ? (
+            <CheckInRegistrationDrawer
+              appointmentId={appointment.id}
+              onClose={() => setRegistering(false)}
+            />
           ) : null}
         </div>
       ) : null}

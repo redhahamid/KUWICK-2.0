@@ -299,6 +299,17 @@
   color: var(--apt-text);
 }
 
+/* Phase 4 — the registration drawer's labelled fields. */
+.kw-checkin-field {
+  margin-bottom: 12px;
+}
+
+.kw-checkin-field .kw-checkin-label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
 /* §3D — what the fixed axis cannot show is said, with the way to see it. */
 .kw-cal-outside {
   display: flex;
