@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { LeaveStatus, ProviderShiftType, Role } from '@prisma/client';
+import { LeaveStatus, ProviderScheduleMode, ProviderShiftType, Role } from '@prisma/client';
 import {
   TENANT_SCOPED_PRISMA,
   TenantScopedPrismaClient,
@@ -42,6 +42,10 @@ export interface RosterRow {
   scheduleMode: string;
   /** The next scheduled mode change on or after that day, so the board can say "Weekly from 01 Sep". */
   modeChange: { mode: string; effectiveFrom: string } | null;
+  /** The mode governing TODAY (clinic calendar), whatever month is on screen. */
+  modeToday: string;
+  /** Every change scheduled after today, in order — the plan the scheduling dialog edits. */
+  upcomingChanges: { mode: string; effectiveFrom: string }[];
   calendarColor: string | null;
   cells: Record<string, RosterCell>;
 }
@@ -137,26 +141,34 @@ export class ProviderShiftService {
     ]);
 
     // The board asks THE resolver, exactly as the availability engine does —
-    // a mode is a fact about a date, and the month's first day is this view's
-    // date. The legacy staff column is only the resolver's no-periods fallback.
-    const modes = await this.scheduleMode.resolveModesFor(
-      providers.map((provider) => provider.id),
-      first,
-    );
+    // a mode is a fact about a date. Twice, for two different questions: the
+    // month's first day decides which section of the board a provider renders
+    // in (a September view after a 1 Sep switch shows the new world), while
+    // TODAY anchors the planning data — the scheduling dialog always plans
+    // from now, whatever month is on screen. The legacy staff column is only
+    // the resolver's no-periods fallback.
+    const providerIds = providers.map((provider) => provider.id);
+    const today = parseDateOnly(clinicDateKey(new Date(), timeZone));
+    const [modes, modesToday] = await Promise.all([
+      this.scheduleMode.resolveModesFor(providerIds, first),
+      this.scheduleMode.resolveModesFor(providerIds, today),
+    ]);
 
+    const serialize = (change: { mode: string; effectiveFrom: Date }) => ({
+      mode: change.mode,
+      effectiveFrom: change.effectiveFrom.toISOString().slice(0, 10),
+    });
     const byStaff = new Map<string, RosterRow>();
     for (const provider of providers) {
       const resolved = modes.get(provider.id);
+      const planning = modesToday.get(provider.id);
       byStaff.set(provider.id, {
         staffId: provider.id,
         fullName: provider.fullName,
         scheduleMode: resolved?.mode ?? provider.appointmentScheduleMode,
-        modeChange: resolved?.nextChange
-          ? {
-              mode: resolved.nextChange.mode,
-              effectiveFrom: resolved.nextChange.effectiveFrom.toISOString().slice(0, 10),
-            }
-          : null,
+        modeChange: resolved?.upcoming[0] ? serialize(resolved.upcoming[0]) : null,
+        modeToday: planning?.mode ?? provider.appointmentScheduleMode,
+        upcomingChanges: (planning?.upcoming ?? []).map(serialize),
         calendarColor: provider.calendarColor,
         cells: Object.fromEntries(
           dates.map((date) => [date, { date, shifts: [], leave: null } as RosterCell]),
@@ -490,7 +502,7 @@ export class ProviderShiftService {
 
       const staff = await tx.staff.findUnique({
         where: { id: dto.staffId },
-        select: { id: true, fullName: true, clinicId: true },
+        select: { id: true, fullName: true, clinicId: true, appointmentScheduleMode: true },
       });
       if (!staff) throw new NotFoundException('Provider not found');
       if (!staff.clinicId) {
@@ -512,26 +524,67 @@ export class ProviderShiftService {
         );
       }
 
+      const uniqueKey = {
+        tenantId: currentTenantId(),
+        staffId: staff.id,
+        effectiveFrom: parseDateOnly(dto.effectiveFrom),
+      };
+      // Whether this call REPLACES a decision already scheduled for the same
+      // date — needed below to tell "withdrawn" apart from "nothing to do".
+      const priorSameDate = await tx.providerScheduleModePeriod.findUnique({
+        where: { tenantId_staffId_effectiveFrom: uniqueKey },
+        select: { mode: true },
+      });
+
       const period = await tx.providerScheduleModePeriod.upsert({
-        where: {
-          tenantId_staffId_effectiveFrom: {
-            tenantId: currentTenantId(),
-            staffId: staff.id,
-            effectiveFrom: parseDateOnly(dto.effectiveFrom),
-          },
-        },
+        where: { tenantId_staffId_effectiveFrom: uniqueKey },
         create: {
-          tenantId: currentTenantId(),
+          ...uniqueKey,
           clinicId: staff.clinicId,
-          staffId: staff.id,
           mode: dto.mode,
-          effectiveFrom: parseDateOnly(dto.effectiveFrom),
           createdByStaffId: currentStaffId() ?? null,
         },
         update: { mode: dto.mode, createdByStaffId: currentStaffId() ?? null },
         select: { mode: true, effectiveFrom: true },
       });
-      return { staff, today, period };
+
+      // CONSOLIDATION — a decision that decides nothing is not kept. Walk the
+      // timeline oldest-first carrying the mode in force (starting from the
+      // legacy fallback, exactly as the resolver does); any TODAY-OR-FUTURE
+      // period that repeats the mode already in force is removed — including,
+      // possibly, the row just written ("Weekly from 1 Oct" when Weekly
+      // already runs from 1 Sep decides nothing; re-deciding 1 Sep back to
+      // the current mode withdraws that change entirely). Past rows are never
+      // touched: they governed real days, and the trigger refuses anyway.
+      const timeline = await tx.providerScheduleModePeriod.findMany({
+        where: { staffId: staff.id },
+        orderBy: { effectiveFrom: 'asc' },
+        select: { id: true, mode: true, effectiveFrom: true },
+      });
+      let modeInForce: ProviderScheduleMode =
+        staff.appointmentScheduleMode ?? ProviderScheduleMode.FIXED_WEEKLY;
+      const removedRedundant: { mode: ProviderScheduleMode; effectiveFrom: string }[] = [];
+      for (const row of timeline) {
+        const key = row.effectiveFrom.toISOString().slice(0, 10);
+        if (row.mode === modeInForce && key >= today) {
+          await tx.providerScheduleModePeriod.delete({ where: { id: row.id } });
+          removedRedundant.push({ mode: row.mode, effectiveFrom: key });
+        } else {
+          modeInForce = row.mode;
+        }
+      }
+
+      const applied = !removedRedundant.some((row) => row.effectiveFrom === dto.effectiveFrom);
+      return {
+        staff,
+        today,
+        period,
+        applied,
+        // The write landed on a date that held a DIFFERENT scheduled decision
+        // and the result consolidated away: that change is now withdrawn.
+        withdrew: !applied && priorSameDate !== null && priorSameDate.mode !== dto.mode,
+        removedRedundant: removedRedundant.filter((row) => row.effectiveFrom !== dto.effectiveFrom),
+      };
     });
 
     // Answered OUTSIDE the transaction through the one resolver, so the
@@ -550,6 +603,9 @@ export class ProviderShiftService {
       fullName: written.staff.fullName,
       mode: written.period.mode,
       effectiveFrom: written.period.effectiveFrom.toISOString().slice(0, 10),
+      applied: written.applied,
+      withdrew: written.withdrew,
+      removedRedundant: written.removedRedundant,
       modeToday,
       upcoming: upcoming.map((row) => ({
         mode: row.mode,

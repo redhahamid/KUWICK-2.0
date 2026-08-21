@@ -158,7 +158,7 @@ export function FixedWeeklyEditor({
       extra={
         <Space>
           <Button size="small" disabled={!canManageRoster} onClick={onSwitchToRoster}>
-            Move to the monthly roster
+            Scheduling mode…
           </Button>
           <Button size="small" onClick={() => setEditing(false)}>
             Done

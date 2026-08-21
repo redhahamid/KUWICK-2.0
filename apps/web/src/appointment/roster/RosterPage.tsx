@@ -7,6 +7,7 @@ import {
   Empty,
   Modal,
   Popconfirm,
+  Radio,
   Space,
   Spin,
   Tooltip,
@@ -91,34 +92,44 @@ export function RosterPage({ clinicId }: RosterPageProps) {
   const setMode = useSetScheduleMode();
 
   // §18b — switching scheduling mode is a DECISION WITH A DATE, not a flag
-  // flip. The modal asks "effective from when" (today or later, never the
-  // past), spells out the before/after sequence, and previews any change
-  // already on the calendar — because the switch changes what patients can
-  // book from that day, and in UAT the one-click link made it feel accidental.
+  // flip. The dialog shows the provider's forward plan (current mode plus
+  // every change already scheduled), then takes a NEW decision: either mode,
+  // effective today or later, never the past. That is what lets an owner
+  // arrange "Monthly now → Weekly from 1 Sep → Monthly again from 1 Oct" in
+  // one sitting on 21 Aug, instead of waiting for September to come around.
   const [modeSwitch, setModeSwitch] = useState<ModeSwitchTarget | null>(null);
-  const confirmModeSwitch = (provider: RosterRow, mode: ProviderScheduleMode) => {
+  const confirmModeSwitch = (provider: RosterRow) => {
     setModeSwitch({
       staffId: provider.staffId,
       staffName: provider.fullName,
-      mode,
-      currentMode: provider.scheduleMode,
-      pendingChange: provider.modeChange,
+      modeToday: provider.modeToday,
+      upcomingChanges: provider.upcomingChanges,
     });
   };
-  const onConfirmModeSwitch = async (effectiveFrom: string) => {
+  const onConfirmModeSwitch = async (mode: ProviderScheduleMode, effectiveFrom: string) => {
     if (!modeSwitch) return;
     try {
-      const result = await setMode.mutateAsync({
-        staffId: modeSwitch.staffId,
-        mode: modeSwitch.mode,
-        effectiveFrom,
-      });
-      const label = modeLabel(modeSwitch.mode);
-      message.success(
-        result.effectiveFrom === dayjs().format('YYYY-MM-DD')
-          ? `${modeSwitch.staffName} now follows the ${label}.`
-          : `Scheduled: ${modeSwitch.staffName} moves to the ${label} on ${dayjs(result.effectiveFrom).format('D MMM YYYY')}.`,
-      );
+      const result = await setMode.mutateAsync({ staffId: modeSwitch.staffId, mode, effectiveFrom });
+      const label = modeLabel(mode);
+      const when = dayjs(result.effectiveFrom).format('D MMM YYYY');
+      if (!result.applied && result.withdrew) {
+        message.success(
+          `The change scheduled for ${when} is withdrawn — the ${modeLabel(result.modeToday)} simply continues.`,
+        );
+      } else if (!result.applied) {
+        message.info(`Nothing needed to change — the ${label} was already going to govern ${when}.`);
+      } else {
+        const removed = result.removedRedundant
+          .map((row) => dayjs(row.effectiveFrom).format('D MMM YYYY'))
+          .join(', ');
+        const base =
+          result.effectiveFrom === dayjs().format('YYYY-MM-DD')
+            ? `${modeSwitch.staffName} now follows the ${label}.`
+            : `Scheduled: ${modeSwitch.staffName} moves to the ${label} on ${when}.`;
+        message.success(
+          removed ? `${base} The now-redundant decision for ${removed} was removed.` : base,
+        );
+      }
       setModeSwitch(null);
     } catch (error) {
       message.error(
@@ -365,9 +376,9 @@ export function RosterPage({ clinicId }: RosterPageProps) {
                             type="link"
                             disabled={!canManageRoster}
                             style={{ padding: 0, height: 'auto', fontSize: 11, textAlign: 'left' }}
-                            onClick={() => confirmModeSwitch(provider, 'FIXED_WEEKLY')}
+                            onClick={() => confirmModeSwitch(provider)}
                           >
-                            Switch to a weekly schedule…
+                            Scheduling mode…
                           </Button>
                         </Tooltip>
                         {provider.modeChange ? (
@@ -449,7 +460,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
                 clinicId={clinicId}
                 staffId={provider.staffId}
                 staffName={provider.fullName}
-                onSwitchToRoster={() => confirmModeSwitch(provider, 'ROSTER_LINKED')}
+                onSwitchToRoster={() => confirmModeSwitch(provider)}
               />
             </div>
           ))}
@@ -482,12 +493,10 @@ export function RosterPage({ clinicId }: RosterPageProps) {
 interface ModeSwitchTarget {
   staffId: string;
   staffName: string;
-  /** The mode being switched TO. */
-  mode: ProviderScheduleMode;
-  /** The mode governing the viewed month today. */
-  currentMode: ProviderScheduleMode;
-  /** A change already scheduled for a later date, if any. */
-  pendingChange: { mode: ProviderScheduleMode; effectiveFrom: string } | null;
+  /** The mode governing today. */
+  modeToday: ProviderScheduleMode;
+  /** Every change already scheduled after today, in order. */
+  upcomingChanges: { mode: ProviderScheduleMode; effectiveFrom: string }[];
 }
 
 function modeLabel(mode: ProviderScheduleMode): string {
@@ -495,14 +504,16 @@ function modeLabel(mode: ProviderScheduleMode): string {
 }
 
 /**
- * §18b — the mode switch asks WHEN, not just whether.
+ * §18b — the scheduling-mode dialog edits a PLAN, not a flag.
  *
- * The date may be today or later, never earlier: a scheduling model applies
- * from a date forward, and re-deciding days that already happened would
- * change what every past availability answer meant (the server and the
- * database both refuse it independently of this picker). Choosing a future
- * date schedules the change — nothing needs to "arrive" on the day, and both
- * models' rows stay saved throughout.
+ * It shows the timeline as it stands — the mode in force today plus every
+ * change already scheduled — then takes one new dated decision: either mode,
+ * effective today or later, never earlier (the server and the database both
+ * refuse the past independently of this picker). Because the whole plan is
+ * visible and both modes stay offered, "Weekly from 1 Sep" and "Monthly
+ * again from 1 Oct" can both be arranged this afternoon; nothing waits for
+ * September. A decision that would change nothing is said so and blocked
+ * here — and consolidated away server-side if it arrives anyway.
  */
 function ModeSwitchModal({
   target,
@@ -513,85 +524,165 @@ function ModeSwitchModal({
   target: ModeSwitchTarget | null;
   saving: boolean;
   onClose: () => void;
-  onConfirm: (effectiveFrom: string) => void;
+  onConfirm: (mode: ProviderScheduleMode, effectiveFrom: string) => void;
 }) {
   const [effectiveFrom, setEffectiveFrom] = useState<Dayjs>(() => dayjs());
-  // A fresh opening always starts from today — the safe, most common answer.
+  const [mode, setMode] = useState<ProviderScheduleMode>('FIXED_WEEKLY');
+  // A fresh opening starts from today, suggesting the opposite of what runs
+  // now — the most common intent — with both modes a click away.
   useEffect(() => {
-    if (target) setEffectiveFrom(dayjs());
+    if (target) {
+      setEffectiveFrom(dayjs());
+      setMode(target.modeToday === 'ROSTER_LINKED' ? 'FIXED_WEEKLY' : 'ROSTER_LINKED');
+    }
   }, [target]);
 
   if (!target) return null;
 
-  const toWeekly = target.mode === 'FIXED_WEEKLY';
+  // What the CURRENT plan already answers for a date — the dialog's own copy
+  // of the resolver rule: latest decision on or before the date, else today's
+  // mode. Used to explain the sequence and to catch decisions that decide
+  // nothing before they are sent.
+  const governingOn = (day: Dayjs): ProviderScheduleMode => {
+    let governing = target.modeToday;
+    for (const change of target.upcomingChanges) {
+      if (!dayjs(change.effectiveFrom).isAfter(day, 'day')) governing = change.mode;
+    }
+    return governing;
+  };
+
   const isToday = effectiveFrom.isSame(dayjs(), 'day');
   const dateText = effectiveFrom.format('D MMM YYYY');
-  const pendingSameDay = Boolean(
-    target.pendingChange && dayjs(target.pendingChange.effectiveFrom).isSame(effectiveFrom, 'day'),
+  const toWeekly = mode === 'FIXED_WEEKLY';
+  const sameDayChange = target.upcomingChanges.find((change) =>
+    dayjs(change.effectiveFrom).isSame(effectiveFrom, 'day'),
   );
+  // Re-deciding a scheduled date back to the mode that PRECEDES it is a
+  // withdrawal of that change; the same mode again on any date is a no-op.
+  const withdraws = Boolean(
+    sameDayChange &&
+      sameDayChange.mode !== mode &&
+      governingOn(effectiveFrom.subtract(1, 'day')) === mode,
+  );
+  const blocked = !withdraws && governingOn(effectiveFrom) === mode;
+  // A later scheduled change this decision would make redundant.
+  const supersedes = blocked
+    ? []
+    : target.upcomingChanges.filter(
+        (change) => dayjs(change.effectiveFrom).isAfter(effectiveFrom, 'day') && change.mode === mode,
+      );
 
   return (
     <Modal
       open
-      title={
-        toWeekly
-          ? `Switch ${target.staffName} to a weekly schedule?`
-          : `Switch ${target.staffName} to the monthly roster?`
+      title={`Scheduling mode — ${target.staffName}`}
+      width={500}
+      okText={
+        withdraws
+          ? `Withdraw the ${dateText} change`
+          : isToday
+            ? `Switch to the ${modeLabel(mode)} from today`
+            : `Schedule for ${dateText}`
       }
-      width={480}
-      okText={isToday ? `Switch from today` : `Schedule switch for ${dateText}`}
+      okButtonProps={{ disabled: blocked }}
       confirmLoading={saving}
-      onOk={() => onConfirm(effectiveFrom.format('YYYY-MM-DD'))}
+      onOk={() => onConfirm(mode, effectiveFrom.format('YYYY-MM-DD'))}
       onCancel={onClose}
       data-testid="mode-switch-modal"
     >
       <div style={{ fontSize: 13, lineHeight: 1.6 }}>
-        <p style={{ marginBottom: 8 }}>
-          {toWeekly
-            ? 'Booking availability will follow the standing weekly pattern (edited below) instead of this month board.'
-            : 'Booking availability will follow the shifts on the month board instead of the weekly pattern.'}
-        </p>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '12px 0 10px' }}>
-          <Text strong style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-            Effective from
-          </Text>
-          <DatePicker
-            value={effectiveFrom}
-            onChange={(value) => value && setEffectiveFrom(value)}
-            allowClear={false}
-            format="DD MMM YYYY"
-            // Today or later. Retroactive mode changes are refused end to end.
-            disabledDate={(day) => day.isBefore(dayjs().startOf('day'))}
-          />
+        {/* The plan as it stands — the timeline a new decision is added to. */}
+        <div className="kw-mode-timeline">
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Current
+            </Text>
+            <div style={{ fontWeight: 600 }}>{modeLabel(target.modeToday)}</div>
+          </div>
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Upcoming
+            </Text>
+            {target.upcomingChanges.length === 0 ? (
+              <div>No changes scheduled.</div>
+            ) : (
+              target.upcomingChanges.map((change) => (
+                <div key={change.effectiveFrom}>
+                  {dayjs(change.effectiveFrom).format('D MMM YYYY')} →{' '}
+                  <strong>{modeLabel(change.mode)}</strong>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
-        <p style={{ marginBottom: 10 }}>
-          {isToday ? (
-            <>
-              From <strong>today</strong>, availability follows the {modeLabel(target.mode)}.
-            </>
-          ) : (
-            <>
-              Until <strong>{effectiveFrom.subtract(1, 'day').format('D MMM YYYY')}</strong>,
-              availability keeps following the {modeLabel(target.currentMode)}. From{' '}
-              <strong>{dateText}</strong>, it follows the {modeLabel(target.mode)}.
-            </>
-          )}
-        </p>
+        <p style={{ margin: '12px 0 6px', fontWeight: 600 }}>Schedule a change</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
+          <Radio.Group
+            value={mode}
+            onChange={(event) => setMode(event.target.value as ProviderScheduleMode)}
+            options={[
+              { label: 'Weekly schedule', value: 'FIXED_WEEKLY' },
+              { label: 'Monthly roster', value: 'ROSTER_LINKED' },
+            ]}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Text strong style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+              Effective from
+            </Text>
+            <DatePicker
+              value={effectiveFrom}
+              onChange={(value) => value && setEffectiveFrom(value)}
+              allowClear={false}
+              format="DD MMM YYYY"
+              // Today or later. Retroactive mode changes are refused end to end.
+              disabledDate={(day) => day.isBefore(dayjs().startOf('day'))}
+            />
+          </div>
+        </div>
 
-        {target.pendingChange ? (
+        {blocked ? (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 10 }}
+            message={`On ${dateText} the ${modeLabel(mode)} is already in effect under this plan — saving would change nothing. Pick the other mode or a different date.`}
+          />
+        ) : withdraws ? (
           <Alert
             type="warning"
             showIcon
             style={{ marginBottom: 10 }}
-            message={
-              pendingSameDay
-                ? `This replaces the change already scheduled for ${dayjs(target.pendingChange.effectiveFrom).format('D MMM YYYY')}.`
-                : `A switch to the ${modeLabel(target.pendingChange.mode)} is already scheduled for ${dayjs(target.pendingChange.effectiveFrom).format('D MMM YYYY')}. Both decisions are kept — on any date, the most recent decision on or before it governs.`
-            }
+            message={`This withdraws the change scheduled for ${dateText} — the ${modeLabel(governingOn(effectiveFrom.subtract(1, 'day')))} simply continues past it.`}
           />
-        ) : null}
+        ) : (
+          <>
+            <p style={{ marginBottom: 10 }}>
+              {isToday ? (
+                <>
+                  From <strong>today</strong>, availability follows the {modeLabel(mode)}.
+                </>
+              ) : (
+                <>
+                  Until <strong>{effectiveFrom.subtract(1, 'day').format('D MMM YYYY')}</strong>,
+                  availability keeps following the{' '}
+                  {modeLabel(governingOn(effectiveFrom.subtract(1, 'day')))}. From{' '}
+                  <strong>{dateText}</strong>, it follows the {modeLabel(mode)}.
+                </>
+              )}
+            </p>
+            {supersedes.length > 0 ? (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 10 }}
+                message={`The ${supersedes
+                  .map((change) => dayjs(change.effectiveFrom).format('D MMM YYYY'))
+                  .join(', ')} decision${supersedes.length === 1 ? '' : 's'} for the same mode becomes redundant and will be removed.`}
+              />
+            ) : null}
+          </>
+        )}
 
         <ul style={{ paddingLeft: 18, margin: 0 }}>
           <li>
@@ -599,8 +690,10 @@ function ModeSwitchModal({
             retroactively.
           </li>
           <li>
-            Nothing is deleted: {toWeekly ? 'monthly shifts' : 'the weekly pattern'} stay saved and
-            simply stop being read, so switching back restores them.
+            Nothing is deleted:{' '}
+            {toWeekly
+              ? 'monthly shifts stay saved and simply stop being read, so switching back restores them.'
+              : 'the weekly pattern stays saved and simply stops being read, so switching back restores it.'}
           </li>
           <li>Existing appointments are untouched.</li>
           <li>Approved HR leave keeps blocking booking in either mode.</li>

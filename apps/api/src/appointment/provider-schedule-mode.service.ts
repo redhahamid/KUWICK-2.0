@@ -49,18 +49,20 @@ export class ProviderScheduleModeService {
 
   /**
    * The board's batch question: every provider's mode as of one date, plus
-   * the next scheduled change at or after it (so the rail can say "Weekly
-   * from 01 Sep" instead of surprising everybody on the day).
+   * EVERY change scheduled after it, in order — the whole forward plan, so
+   * the rail can say "Weekly from 01 Sep" and the scheduling dialog can show
+   * the timeline the owner is adding a decision to (Monthly → Weekly from
+   * 1 Sep → Monthly from 1 Oct is three entries, all visible today).
    */
   async resolveModesFor(
     staffIds: string[],
     date: Date,
   ): Promise<
-    Map<string, { mode: ProviderScheduleMode; nextChange: { mode: ProviderScheduleMode; effectiveFrom: Date } | null }>
+    Map<string, { mode: ProviderScheduleMode; upcoming: { mode: ProviderScheduleMode; effectiveFrom: Date }[] }>
   > {
     const answer = new Map<
       string,
-      { mode: ProviderScheduleMode; nextChange: { mode: ProviderScheduleMode; effectiveFrom: Date } | null }
+      { mode: ProviderScheduleMode; upcoming: { mode: ProviderScheduleMode; effectiveFrom: Date }[] }
     >();
     if (staffIds.length === 0) return answer;
 
@@ -80,12 +82,11 @@ export class ProviderScheduleModeService {
     for (const staffId of staffIds) {
       const own = periods.filter((period) => period.staffId === staffId);
       const governing = [...own].reverse().find((period) => period.effectiveFrom <= date);
-      const upcoming = own.find((period) => period.effectiveFrom > date) ?? null;
       answer.set(staffId, {
         mode: governing?.mode ?? legacy.get(staffId) ?? ProviderScheduleMode.FIXED_WEEKLY,
-        nextChange: upcoming
-          ? { mode: upcoming.mode, effectiveFrom: upcoming.effectiveFrom }
-          : null,
+        upcoming: own
+          .filter((period) => period.effectiveFrom > date)
+          .map((period) => ({ mode: period.mode, effectiveFrom: period.effectiveFrom })),
       });
     }
     return answer;

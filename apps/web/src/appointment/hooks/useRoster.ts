@@ -21,13 +21,22 @@ export interface RosterCell {
   leave: { leaveType: string } | null;
 }
 
+export interface ScheduledModeChange {
+  mode: ProviderScheduleMode;
+  effectiveFrom: string;
+}
+
 export interface RosterRow {
   staffId: string;
   fullName: string;
   /** The mode governing the first day of the viewed month (§18b — effective-dated). */
   scheduleMode: ProviderScheduleMode;
   /** The next scheduled mode change on or after that day, if one exists. */
-  modeChange: { mode: ProviderScheduleMode; effectiveFrom: string } | null;
+  modeChange: ScheduledModeChange | null;
+  /** The mode governing TODAY, whatever month is on screen. */
+  modeToday: ProviderScheduleMode;
+  /** Every change scheduled after today, in order — the plan the dialog edits. */
+  upcomingChanges: ScheduledModeChange[];
   calendarColor: string | null;
   cells: Record<string, RosterCell>;
 }
@@ -140,6 +149,12 @@ export interface SetScheduleModeResult {
   fullName: string;
   mode: ProviderScheduleMode;
   effectiveFrom: string;
+  /** False when the decision decided nothing and was consolidated away. */
+  applied: boolean;
+  /** True when re-deciding a scheduled date back to the standing mode withdrew that change. */
+  withdrew: boolean;
+  /** Later scheduled decisions this one made redundant (removed, never past ones). */
+  removedRedundant: { mode: ProviderScheduleMode; effectiveFrom: string }[];
   /** What actually governs today, per the server's resolver. */
   modeToday: ProviderScheduleMode;
   /** Every scheduled change still ahead, in order. */

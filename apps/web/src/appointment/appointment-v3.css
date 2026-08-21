@@ -2090,6 +2090,17 @@
   max-width: 720px;
 }
 
+/* §18b — the scheduling dialog's plan-as-it-stands strip: Current | Upcoming. */
+.kw-mode-timeline {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--apt-surface-2, #f8fafc);
+  border: 1px solid var(--apt-border, #e4e7ec);
+}
+
 /* §18b — a SCHEDULED mode change ("Weekly from 01 Sep"). Violet, the planned
    tone leave already uses: a decision on the calendar, not an alarm. */
 .kw-roster-modechange {

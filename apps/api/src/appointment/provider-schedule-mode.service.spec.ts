@@ -86,14 +86,33 @@ describe('which model governs a provider on a date', () => {
 
     expect(await service.resolveMode(STAFF, day('2026-08-25'))).toBe('ROSTER_LINKED');
   });
+
+  it('5. the owner-UAT scenario: Monthly → Weekly from 1 Sep → Monthly from 1 Oct, all decided on 21 Aug', async () => {
+    // The plan the module must hold: three decisions on record at once, and
+    // every date answers from whichever one governs IT.
+    const { service } = build({
+      periods: [
+        { mode: 'ROSTER_LINKED', effectiveFrom: day('2026-08-21') },
+        { mode: 'FIXED_WEEKLY', effectiveFrom: day('2026-09-01') },
+        { mode: 'ROSTER_LINKED', effectiveFrom: day('2026-10-01') },
+      ],
+    });
+
+    expect(await service.resolveMode(STAFF, day('2026-08-31'))).toBe('ROSTER_LINKED');
+    expect(await service.resolveMode(STAFF, day('2026-09-01'))).toBe('FIXED_WEEKLY');
+    expect(await service.resolveMode(STAFF, day('2026-09-30'))).toBe('FIXED_WEEKLY');
+    expect(await service.resolveMode(STAFF, day('2026-10-01'))).toBe('ROSTER_LINKED');
+    expect(await service.resolveMode(STAFF, day('2026-10-15'))).toBe('ROSTER_LINKED');
+  });
 });
 
 describe('the batch answer the roster board draws from', () => {
-  it('5. each provider gets their governing mode AND the next scheduled change', async () => {
+  it('6. each provider gets their governing mode AND every scheduled change ahead, in order', async () => {
     const { service } = build({
       periods: [
         { mode: 'ROSTER_LINKED', effectiveFrom: day('2026-01-01') },
         { mode: 'FIXED_WEEKLY', effectiveFrom: day('2026-09-01') },
+        { mode: 'ROSTER_LINKED', effectiveFrom: day('2026-10-01') },
         { staffId: 'staff-2', mode: 'FIXED_WEEKLY', effectiveFrom: day('2026-03-01') },
       ],
     });
@@ -102,14 +121,17 @@ describe('the batch answer the roster board draws from', () => {
 
     expect(answer.get(STAFF)).toEqual({
       mode: 'ROSTER_LINKED',
-      nextChange: { mode: 'FIXED_WEEKLY', effectiveFrom: day('2026-09-01') },
+      upcoming: [
+        { mode: 'FIXED_WEEKLY', effectiveFrom: day('2026-09-01') },
+        { mode: 'ROSTER_LINKED', effectiveFrom: day('2026-10-01') },
+      ],
     });
-    expect(answer.get('staff-2')).toEqual({ mode: 'FIXED_WEEKLY', nextChange: null });
+    expect(answer.get('staff-2')).toEqual({ mode: 'FIXED_WEEKLY', upcoming: [] });
     // staff-3 never decided anything: legacy column, no change on the horizon.
-    expect(answer.get('staff-3')).toEqual({ mode: 'FIXED_WEEKLY', nextChange: null });
+    expect(answer.get('staff-3')).toEqual({ mode: 'FIXED_WEEKLY', upcoming: [] });
   });
 
-  it('6. an empty staff list asks the database nothing', async () => {
+  it('7. an empty staff list asks the database nothing', async () => {
     const { service, prisma } = build({});
 
     expect((await service.resolveModesFor([], day('2026-08-01'))).size).toBe(0);

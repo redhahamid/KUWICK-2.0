@@ -35,9 +35,10 @@ interface World {
 function build(world: World = {}) {
   const created: Record<string, unknown>[] = [];
   const deleted: Record<string, unknown>[] = [];
-  const periods: { staffId: string; mode: string; effectiveFrom: Date }[] = [
-    ...(world.modePeriods ?? []),
-  ];
+  let periodSeq = 0;
+  const periods: { id: string; staffId: string; mode: string; effectiveFrom: Date }[] = (
+    world.modePeriods ?? []
+  ).map((p) => ({ id: `seed-${(periodSeq += 1)}`, ...p }));
 
   const tables = {
     providerShift: {
@@ -101,6 +102,7 @@ function build(world: World = {}) {
             return { mode: existing.mode, effectiveFrom: existing.effectiveFrom };
           }
           const row = {
+            id: `p-${(periodSeq += 1)}`,
             staffId: create.staffId as unknown as string,
             mode: create.mode as unknown as string,
             effectiveFrom: create.effectiveFrom as unknown as Date,
@@ -109,6 +111,21 @@ function build(world: World = {}) {
           return { mode: row.mode, effectiveFrom: row.effectiveFrom };
         },
       ),
+      findUnique: jest.fn(async ({ where }: { where: Record<string, never> }) => {
+        const key = where.tenantId_staffId_effectiveFrom as unknown as {
+          staffId: string;
+          effectiveFrom: Date;
+        };
+        const existing = periods.find(
+          (p) => p.staffId === key.staffId && p.effectiveFrom.getTime() === key.effectiveFrom.getTime(),
+        );
+        return existing ? { mode: existing.mode } : null;
+      }),
+      delete: jest.fn(async ({ where }: { where: { id: string } }) => {
+        const index = periods.findIndex((p) => p.id === where.id);
+        const [row] = index >= 0 ? periods.splice(index, 1) : [];
+        return row ?? null;
+      }),
       findFirst: jest.fn(async ({ where }: { where: Record<string, never> }) => {
         const lte = (where.effectiveFrom as unknown as { lte: Date }).lte;
         const staffId = where.staffId as unknown as string;
@@ -126,7 +143,7 @@ function build(world: World = {}) {
         if (gt) rows = rows.filter((p) => p.effectiveFrom > gt);
         return rows
           .sort((a, b) => a.effectiveFrom.getTime() - b.effectiveFrom.getTime())
-          .map((p) => ({ staffId: p.staffId, mode: p.mode, effectiveFrom: p.effectiveFrom }));
+          .map((p) => ({ id: p.id, staffId: p.staffId, mode: p.mode, effectiveFrom: p.effectiveFrom }));
       }),
     },
     staffRoleAssignment: {
@@ -541,6 +558,7 @@ describe('the roster is not open to everybody who can log in', () => {
     expect(ctx.tables.providerScheduleModePeriod.upsert).toHaveBeenCalledTimes(1);
     expect(ctx.tables.staff.update).not.toHaveBeenCalled();
     expect(ctx.deleted).toHaveLength(0);
+    expect(result.applied).toBe(true);
     expect(result.effectiveFrom).toBe('2099-09-01');
     // Until the date arrives, the resolver still answers with what governs
     // today — the legacy column, since no period has started yet.
@@ -559,7 +577,7 @@ describe('the roster is not open to everybody who can log in', () => {
     expect(ctx.tables.providerScheduleModePeriod.upsert).not.toHaveBeenCalled();
   });
 
-  it('23. re-deciding the SAME future date replaces that decision instead of stacking a duplicate', async () => {
+  it('23. re-deciding a scheduled change back to the current mode WITHDRAWS it', async () => {
     const ctx = build();
 
     await ctx.run(() =>
@@ -569,26 +587,36 @@ describe('the roster is not open to everybody who can log in', () => {
       ctx.service.setScheduleMode({ staffId: DOC, mode: 'ROSTER_LINKED', effectiveFrom: '2099-09-01' }),
     );
 
-    expect(result.upcoming).toEqual([{ mode: 'ROSTER_LINKED', effectiveFrom: '2099-09-01' }]);
+    // "Monthly from 1 Sep" when Monthly already runs decides nothing — the
+    // net effect is that the 1 Sep change is gone and the plan reads clean,
+    // rather than the timeline accumulating a row that changes no answer.
+    expect(result.applied).toBe(false);
+    expect(result.withdrew).toBe(true);
+    expect(result.upcoming).toEqual([]);
+    expect(result.modeToday).toBe('ROSTER_LINKED');
   });
 
-  it('24. the board reports the mode governing the month AND the next scheduled change', async () => {
+  it('24. the board reports the month mode, the next change, and the from-today plan', async () => {
     const ctx = build({
       modePeriods: [
-        { staffId: DOC, mode: 'ROSTER_LINKED', effectiveFrom: iso('2026-01-01') },
-        { staffId: DOC, mode: 'FIXED_WEEKLY', effectiveFrom: iso('2026-09-01') },
+        { staffId: DOC, mode: 'ROSTER_LINKED', effectiveFrom: iso('2020-01-01') },
+        { staffId: DOC, mode: 'FIXED_WEEKLY', effectiveFrom: iso('2099-09-01') },
       ],
     });
 
     const row = (await ctx.service.month(CLINIC, '2026-08')).providers[0];
 
     expect(row.scheduleMode).toBe('ROSTER_LINKED');
-    expect(row.modeChange).toEqual({ mode: 'FIXED_WEEKLY', effectiveFrom: '2026-09-01' });
+    expect(row.modeChange).toEqual({ mode: 'FIXED_WEEKLY', effectiveFrom: '2099-09-01' });
+    // The planning view is anchored to TODAY, whatever month is on screen —
+    // the scheduling dialog always adds decisions from now.
+    expect(row.modeToday).toBe('ROSTER_LINKED');
+    expect(row.upcomingChanges).toEqual([{ mode: 'FIXED_WEEKLY', effectiveFrom: '2099-09-01' }]);
   });
 
-  it('25. a sequence of decisions stays on record — Monthly → Weekly → Monthly is three rows', async () => {
+  it('25. the whole plan is arrangeable TODAY — Monthly → Weekly from Sep → Monthly from Oct', async () => {
     const ctx = build({
-      modePeriods: [{ staffId: DOC, mode: 'ROSTER_LINKED', effectiveFrom: iso('2026-01-01') }],
+      modePeriods: [{ staffId: DOC, mode: 'ROSTER_LINKED', effectiveFrom: iso('2020-01-01') }],
     });
 
     await ctx.run(() =>
@@ -598,21 +626,77 @@ describe('the roster is not open to everybody who can log in', () => {
       ctx.service.setScheduleMode({ staffId: DOC, mode: 'ROSTER_LINKED', effectiveFrom: '2099-10-01' }),
     );
 
+    // Both future decisions stand — genuinely different periods are never
+    // consolidated — and nothing waited for 1 Sep to arrive.
+    expect(result.applied).toBe(true);
     expect(result.upcoming).toEqual([
       { mode: 'FIXED_WEEKLY', effectiveFrom: '2099-09-01' },
       { mode: 'ROSTER_LINKED', effectiveFrom: '2099-10-01' },
     ]);
+    expect(ctx.tables.providerScheduleModePeriod.delete).not.toHaveBeenCalled();
     expect(ctx.deleted).toHaveLength(0);
+  });
+
+  it('26. moving a switch EARLIER removes the later duplicate it makes redundant', async () => {
+    const ctx = build();
+
+    await ctx.run(() =>
+      ctx.service.setScheduleMode({ staffId: DOC, mode: 'FIXED_WEEKLY', effectiveFrom: '2099-09-01' }),
+    );
+    const result = await ctx.run(() =>
+      ctx.service.setScheduleMode({ staffId: DOC, mode: 'FIXED_WEEKLY', effectiveFrom: '2099-08-15' }),
+    );
+
+    // Weekly from 15 Aug followed by Weekly from 1 Sep is one decision told
+    // twice; the timeline keeps the one that decides something.
+    expect(result.applied).toBe(true);
+    expect(result.removedRedundant).toEqual([{ mode: 'FIXED_WEEKLY', effectiveFrom: '2099-09-01' }]);
+    expect(result.upcoming).toEqual([{ mode: 'FIXED_WEEKLY', effectiveFrom: '2099-08-15' }]);
+  });
+
+  it('27. scheduling a mode that would already govern that date is a stated no-op, not a stored row', async () => {
+    const ctx = build();
+
+    await ctx.run(() =>
+      ctx.service.setScheduleMode({ staffId: DOC, mode: 'FIXED_WEEKLY', effectiveFrom: '2099-09-01' }),
+    );
+    const result = await ctx.run(() =>
+      ctx.service.setScheduleMode({ staffId: DOC, mode: 'FIXED_WEEKLY', effectiveFrom: '2099-10-01' }),
+    );
+
+    expect(result.applied).toBe(false);
+    expect(result.withdrew).toBe(false);
+    expect(result.upcoming).toEqual([{ mode: 'FIXED_WEEKLY', effectiveFrom: '2099-09-01' }]);
+  });
+
+  it('28. consolidation never touches a decision that has governed real days', async () => {
+    // A past period identical to what preceded it stays on record — the
+    // trigger would refuse the delete, and the service does not try.
+    const ctx = build({
+      modePeriods: [{ staffId: DOC, mode: 'FIXED_WEEKLY', effectiveFrom: iso('2020-01-01') }],
+    });
+
+    const result = await ctx.run(() =>
+      ctx.service.setScheduleMode({ staffId: DOC, mode: 'FIXED_WEEKLY', effectiveFrom: '2099-09-01' }),
+    );
+
+    // The new row repeated the standing mode and was the redundant one; the
+    // 2020 decision is untouched and still governs.
+    expect(result.applied).toBe(false);
+    expect(result.modeToday).toBe('FIXED_WEEKLY');
+    const deleteCalls = ctx.tables.providerScheduleModePeriod.delete.mock
+      .calls as unknown as [{ where: { id: string } }][];
+    expect(deleteCalls.map((call) => call[0].where.id)).not.toContain('seed-1');
   });
 });
 
 describe('datesInMonth', () => {
-  it('26. February 2028 has 29 days', () => {
+  it('29. February 2028 has 29 days', () => {
     expect(datesInMonth('2028-02')).toHaveLength(29);
     expect(datesInMonth('2028-02')[28]).toBe('2028-02-29');
   });
 
-  it('27. February 2026 has 28', () => {
+  it('30. February 2026 has 28', () => {
     expect(datesInMonth('2026-02')).toHaveLength(28);
   });
 });
