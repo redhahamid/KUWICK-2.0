@@ -169,6 +169,17 @@ describe('the drawer speaks the patient-facing clinic identity', () => {
   });
 });
 
+describe('the drawer records communication honestly', () => {
+  it('a recorded WhatsApp open is described as OPENED, never as a reminder sent', async () => {
+    open({ reminderSentAt: '2026-08-21T09:11:00.000Z' });
+
+    // 17:11 KL. The row says what was observed — the window opened — and
+    // claims nothing about delivery a wa.me link cannot prove.
+    expect(await screen.findByText(/WhatsApp opened · 21 Aug 2026 · 17:11/)).toBeTruthy();
+    expect(screen.queryByText(/reminder sent/i)).toBeNull();
+  });
+});
+
 describe('the drawer says what happened to this booking', () => {
   it('6. an override is announced without anybody going looking for it', async () => {
     open({

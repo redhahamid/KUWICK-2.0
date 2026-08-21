@@ -510,11 +510,16 @@ export function AppointmentDrawer({
                 ? ` RM ${Number(appointment.bookingFeeAmount).toFixed(2)}`
                 : ''}
             </Descriptions.Item>
-            <Descriptions.Item label="Reminder">
+            {/* Worded as what was OBSERVED: WhatsApp was opened with the
+                message prefilled. A bare timestamp under "Reminder" read as
+                "reminder sent", which a wa.me open cannot prove. When a real
+                automated channel exists one day, IT may say Sent/Delivered —
+                this row, fed by the manual action, never will. */}
+            <Descriptions.Item label="Communication">
               {appointment.reminderSentAt ? (
-                formatClinicDateTime(appointment.reminderSentAt)
+                `WhatsApp opened · ${formatClinicDateTime(appointment.reminderSentAt)}`
               ) : (
-                <Text type="secondary">Not sent</Text>
+                <Text type="secondary">—</Text>
               )}
             </Descriptions.Item>
           </Descriptions>
