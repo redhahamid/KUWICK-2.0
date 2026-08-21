@@ -24,7 +24,10 @@ export interface RosterCell {
 export interface RosterRow {
   staffId: string;
   fullName: string;
+  /** The mode governing the first day of the viewed month (§18b — effective-dated). */
   scheduleMode: ProviderScheduleMode;
+  /** The next scheduled mode change on or after that day, if one exists. */
+  modeChange: { mode: ProviderScheduleMode; effectiveFrom: string } | null;
   calendarColor: string | null;
   cells: Record<string, RosterCell>;
 }
@@ -132,11 +135,24 @@ export function useCopyRosterMonth() {
   });
 }
 
+export interface SetScheduleModeResult {
+  staffId: string;
+  fullName: string;
+  mode: ProviderScheduleMode;
+  effectiveFrom: string;
+  /** What actually governs today, per the server's resolver. */
+  modeToday: ProviderScheduleMode;
+  /** Every scheduled change still ahead, in order. */
+  upcoming: { mode: ProviderScheduleMode; effectiveFrom: string }[];
+}
+
 export function useSetScheduleMode() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { staffId: string; mode: ProviderScheduleMode }) =>
-      apiClient.put('/provider-shifts/schedule-mode', input),
+    // A mode switch is a DECISION WITH A DATE (§18b): today or later, never
+    // the past. The server writes a period row; nothing flips on the day.
+    mutationFn: (input: { staffId: string; mode: ProviderScheduleMode; effectiveFrom: string }) =>
+      apiClient.put<SetScheduleModeResult>('/provider-shifts/schedule-mode', input),
     onSuccess: () => invalidateRoster(queryClient),
   });
 }

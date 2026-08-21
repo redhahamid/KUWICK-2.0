@@ -12,6 +12,7 @@ import { DoctorServiceQualificationController } from './doctor-service-qualifica
 import { DoctorServiceQualificationService } from './doctor-service-qualification.service';
 import { AvailabilityController } from './availability.controller';
 import { SlotAvailabilityService } from './slot-availability.service';
+import { ProviderScheduleModeService } from './provider-schedule-mode.service';
 import { AppointmentController } from './appointment.controller';
 import { AppointmentService } from './appointment.service';
 import { AppointmentBookingValidator } from './appointment-booking-validator.service';
@@ -80,6 +81,7 @@ import {
     ScheduleExceptionService,
     SlotCapacityConfigService,
     DoctorServiceQualificationService,
+    ProviderScheduleModeService,
     SlotAvailabilityService,
     AppointmentBookingValidator,
     AppointmentService,

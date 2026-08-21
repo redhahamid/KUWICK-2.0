@@ -220,6 +220,7 @@ model Tenant {
   doctorServiceQualifications DoctorServiceQualification[]
   appointments                Appointment[]
   providerShifts              ProviderShift[]
+  providerScheduleModePeriods ProviderScheduleModePeriod[]
   appointmentEvents           AppointmentEvent[]
   appointmentSeries           AppointmentSeries[]
   appointmentFormAnswers      AppointmentFormAnswer[]
@@ -316,39 +317,40 @@ model Clinic {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant                  Tenant                    @relation(fields: [tenantId], references: [id])
-  access                  UserClinicAccess[]
-  doctorSchedules         DoctorSchedule[]
-  scheduleExceptions      ScheduleException[]
-  slotCapacityConfigs     SlotCapacityConfig[]
-  bookingSettings         ClinicBookingSettings[]
-  closedDates             ClinicClosedDate[]
-  appointments            Appointment[]
-  providerShifts          ProviderShift[]
-  bookingPage             ClinicBookingPage?
-  bookingFormFields       BookingFormField[]
-  reminderRules           AppointmentReminderRule[]
-  appointmentSeries       AppointmentSeries[]
-  waitlistEntries         WaitlistEntry[]
-  stockLevels             StockLevel[]
-  stockBatches            StockBatch[]
-  stockMovements          StockMovement[]
-  procurementRequests     ProcurementRequest[]
-  purchaseOrders          PurchaseOrder[]
-  goodsReceivedNotes      GoodsReceivedNote[]
-  visits                  Visit[]
-  queueTickets            QueueTicket[]
-  visitWorkflowEvents     VisitWorkflowEvent[]
-  orderServices           OrderService[]
-  rooms                   Room[]
-  queueDisplayConfig      QueueDisplayConfig?
-  staff                   Staff[]
-  chatMessages            ChatMessage[]
-  chatChannels            ChatChannel[]
-  clinicalNotes           ClinicalNote[]
-  visitObservations       VisitObservation[]
-  consultationTariffRules ConsultationTariffRule[]
-  labelPrints             LabelPrint[]
+  tenant                      Tenant                       @relation(fields: [tenantId], references: [id])
+  access                      UserClinicAccess[]
+  doctorSchedules             DoctorSchedule[]
+  scheduleExceptions          ScheduleException[]
+  slotCapacityConfigs         SlotCapacityConfig[]
+  bookingSettings             ClinicBookingSettings[]
+  closedDates                 ClinicClosedDate[]
+  appointments                Appointment[]
+  providerShifts              ProviderShift[]
+  providerScheduleModePeriods ProviderScheduleModePeriod[]
+  bookingPage                 ClinicBookingPage?
+  bookingFormFields           BookingFormField[]
+  reminderRules               AppointmentReminderRule[]
+  appointmentSeries           AppointmentSeries[]
+  waitlistEntries             WaitlistEntry[]
+  stockLevels                 StockLevel[]
+  stockBatches                StockBatch[]
+  stockMovements              StockMovement[]
+  procurementRequests         ProcurementRequest[]
+  purchaseOrders              PurchaseOrder[]
+  goodsReceivedNotes          GoodsReceivedNote[]
+  visits                      Visit[]
+  queueTickets                QueueTicket[]
+  visitWorkflowEvents         VisitWorkflowEvent[]
+  orderServices               OrderService[]
+  rooms                       Room[]
+  queueDisplayConfig          QueueDisplayConfig?
+  staff                       Staff[]
+  chatMessages                ChatMessage[]
+  chatChannels                ChatChannel[]
+  clinicalNotes               ClinicalNote[]
+  visitObservations           VisitObservation[]
+  consultationTariffRules     ConsultationTariffRule[]
+  labelPrints                 LabelPrint[]
 
   @@index([tenantId])
   @@map("clinics")
@@ -732,6 +734,8 @@ model Staff {
   clinic                       Clinic?                      @relation(fields: [clinicId], references: [id])
   providerShifts               ProviderShift[]              @relation("ProviderShiftProvider")
   providerShiftsCreated        ProviderShift[]              @relation("ProviderShiftAuthor")
+  scheduleModePeriods          ProviderScheduleModePeriod[] @relation("ScheduleModePeriodProvider")
+  scheduleModePeriodsCreated   ProviderScheduleModePeriod[] @relation("ScheduleModePeriodAuthor")
   appointmentEvents            AppointmentEvent[]           @relation("AppointmentEventActor")
   appointmentsOverridden       Appointment[]                @relation("AppointmentOverrideAuthor")
   appointmentSeriesCreated     AppointmentSeries[]          @relation("AppointmentSeriesAuthor")
@@ -4132,6 +4136,45 @@ model ProviderShift {
   @@index([tenantId, staffId, shiftDate])
   @@index([tenantId, clinicId, startsAt])
   @@map("provider_shifts")
+}
+
+/// §18b — WHICH SCHEDULING MODEL governs a provider, effective-dated.
+///
+/// `Staff.appointmentScheduleMode` is a single value and therefore a single
+/// moment: flipping it re-interprets every date at once, and scheduling
+/// "weekly from 1 September" was impossible without a background job to flip
+/// the flag on the day. This table records mode DECISIONS instead — the mode
+/// for any date is the latest period whose `effectiveFrom` is on or before
+/// it, resolved by ProviderScheduleModeService (the one resolver everything
+/// consumes). A provider with no periods falls back to the legacy column,
+/// which nothing writes any more; no backfill was invented, because a
+/// fabricated decision date would misrepresent history.
+///
+/// Past periods are IMMUTABLE at the database (a trigger refuses UPDATE and
+/// DELETE once `effectiveFrom` is behind `CURRENT_DATE`); a today-or-future
+/// period may still be re-decided or withdrawn, which together with the
+/// unique key below keeps the timeline unambiguous without rewriting what
+/// already governed real days.
+model ProviderScheduleModePeriod {
+  id               String               @id @default(uuid())
+  tenantId         String               @map("tenant_id")
+  clinicId         String               @map("clinic_id")
+  staffId          String               @map("staff_id")
+  mode             ProviderScheduleMode
+  /// The first clinic calendar date this mode governs.
+  effectiveFrom    DateTime             @map("effective_from") @db.Date
+  createdByStaffId String?              @map("created_by_staff_id")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  tenant         Tenant @relation(fields: [tenantId], references: [id])
+  clinic         Clinic @relation(fields: [clinicId], references: [id])
+  staff          Staff  @relation("ScheduleModePeriodProvider", fields: [staffId], references: [id])
+  createdByStaff Staff? @relation("ScheduleModePeriodAuthor", fields: [createdByStaffId], references: [id])
+
+  @@unique([tenantId, staffId, effectiveFrom])
+  @@index([tenantId, staffId, effectiveFrom(sort: Desc)])
+  @@map("provider_schedule_mode_periods")
 }
 
 /// APPEND-ONLY. Everything that was done to an appointment, by whom, when and

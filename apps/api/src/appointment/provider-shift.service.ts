@@ -14,6 +14,7 @@ import {
   SetScheduleModeDto,
   UpdateProviderShiftDto,
 } from './dto/provider-shift.dto';
+import { ProviderScheduleModeService } from './provider-schedule-mode.service';
 import { clinicDateKey, parseDateOnly, parseTimeToDate, zonedWallClockToInstant } from './time.util';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -37,7 +38,10 @@ export interface RosterCell {
 export interface RosterRow {
   staffId: string;
   fullName: string;
+  /** The mode governing the FIRST day of the requested month — not a column read. */
   scheduleMode: string;
+  /** The next scheduled mode change on or after that day, so the board can say "Weekly from 01 Sep". */
+  modeChange: { mode: string; effectiveFrom: string } | null;
   calendarColor: string | null;
   cells: Record<string, RosterCell>;
 }
@@ -80,6 +84,7 @@ export class ProviderShiftService {
   constructor(
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly rawPrisma: PrismaService,
+    private readonly scheduleMode: ProviderScheduleModeService,
   ) {}
 
   /**
@@ -131,12 +136,27 @@ export class ProviderShiftService {
       }),
     ]);
 
+    // The board asks THE resolver, exactly as the availability engine does —
+    // a mode is a fact about a date, and the month's first day is this view's
+    // date. The legacy staff column is only the resolver's no-periods fallback.
+    const modes = await this.scheduleMode.resolveModesFor(
+      providers.map((provider) => provider.id),
+      first,
+    );
+
     const byStaff = new Map<string, RosterRow>();
     for (const provider of providers) {
+      const resolved = modes.get(provider.id);
       byStaff.set(provider.id, {
         staffId: provider.id,
         fullName: provider.fullName,
-        scheduleMode: provider.appointmentScheduleMode,
+        scheduleMode: resolved?.mode ?? provider.appointmentScheduleMode,
+        modeChange: resolved?.nextChange
+          ? {
+              mode: resolved.nextChange.mode,
+              effectiveFrom: resolved.nextChange.effectiveFrom.toISOString().slice(0, 10),
+            }
+          : null,
         calendarColor: provider.calendarColor,
         cells: Object.fromEntries(
           dates.map((date) => [date, { date, shifts: [], leave: null } as RosterCell]),
@@ -444,22 +464,98 @@ export class ProviderShiftService {
   }
 
   /**
-   * Which model this provider's availability comes from.
+   * Which model this provider's availability comes from — recorded as a
+   * DECISION WITH A DATE, not a flag flip.
+   *
+   * This writes one `ProviderScheduleModePeriod` row and NEVER touches
+   * `Staff.appointmentScheduleMode` again: two independently editable mode
+   * values is how they come to disagree, and nothing needs a background job
+   * on the effective day because the resolver simply starts matching the new
+   * period. Re-deciding a date that has not arrived yet (including today) is
+   * an upsert on the same effective date — a correction, not history. The
+   * past is refused here AND by a database trigger, because a retroactive
+   * mode change would silently re-mean every availability answer already
+   * given for those days.
    *
    * Switching is deliberately NOT destructive: the other model's rows stay
-   * where they are and simply stop being read. A clinic that tries the monthly
-   * roster for a month and goes back finds its weekly pattern intact.
+   * where they are and simply stop being read from the effective date. A
+   * clinic that tries the monthly roster for a month and goes back finds its
+   * weekly pattern intact — and the decisions themselves stay on record
+   * (Monthly → Weekly → Monthly is three rows, not an edit war).
    */
   async setScheduleMode(dto: SetScheduleModeDto) {
-    return withTenantTx(this.rawPrisma, async (tx) => {
+    const written = await withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
       assertCanPerformAppointmentAction(actor, 'MANAGE_ROSTER');
-      return tx.staff.update({
+
+      const staff = await tx.staff.findUnique({
         where: { id: dto.staffId },
-        data: { appointmentScheduleMode: dto.mode },
-        select: { id: true, fullName: true, appointmentScheduleMode: true },
+        select: { id: true, fullName: true, clinicId: true },
       });
+      if (!staff) throw new NotFoundException('Provider not found');
+      if (!staff.clinicId) {
+        throw new BadRequestException(
+          'This provider is not attached to a clinic, so no scheduling model can govern them yet.',
+        );
+      }
+
+      const clinic = await tx.clinic.findUnique({
+        where: { id: staff.clinicId },
+        select: { timezone: true },
+      });
+      const timeZone = clinic?.timezone ?? 'Asia/Kuala_Lumpur';
+      const today = clinicDateKey(new Date(), timeZone);
+      if (dto.effectiveFrom < today) {
+        throw new BadRequestException(
+          `The effective date has already passed at the clinic (today there is ${today}). ` +
+            'A scheduling model applies from a date forward — it cannot be changed for days that already happened.',
+        );
+      }
+
+      const period = await tx.providerScheduleModePeriod.upsert({
+        where: {
+          tenantId_staffId_effectiveFrom: {
+            tenantId: currentTenantId(),
+            staffId: staff.id,
+            effectiveFrom: parseDateOnly(dto.effectiveFrom),
+          },
+        },
+        create: {
+          tenantId: currentTenantId(),
+          clinicId: staff.clinicId,
+          staffId: staff.id,
+          mode: dto.mode,
+          effectiveFrom: parseDateOnly(dto.effectiveFrom),
+          createdByStaffId: currentStaffId() ?? null,
+        },
+        update: { mode: dto.mode, createdByStaffId: currentStaffId() ?? null },
+        select: { mode: true, effectiveFrom: true },
+      });
+      return { staff, today, period };
     });
+
+    // Answered OUTSIDE the transaction through the one resolver, so the
+    // response reports what the engine will actually do — not what this
+    // method believes it just arranged.
+    const [modeToday, upcoming] = await Promise.all([
+      this.scheduleMode.resolveMode(written.staff.id, parseDateOnly(written.today)),
+      this.prisma.providerScheduleModePeriod.findMany({
+        where: { staffId: written.staff.id, effectiveFrom: { gt: parseDateOnly(written.today) } },
+        orderBy: { effectiveFrom: 'asc' },
+        select: { mode: true, effectiveFrom: true },
+      }),
+    ]);
+    return {
+      staffId: written.staff.id,
+      fullName: written.staff.fullName,
+      mode: written.period.mode,
+      effectiveFrom: written.period.effectiveFrom.toISOString().slice(0, 10),
+      modeToday,
+      upcoming: upcoming.map((row) => ({
+        mode: row.mode,
+        effectiveFrom: row.effectiveFrom.toISOString().slice(0, 10),
+      })),
+    };
   }
 
   private async timeZoneOf(clinicId: string): Promise<string> {

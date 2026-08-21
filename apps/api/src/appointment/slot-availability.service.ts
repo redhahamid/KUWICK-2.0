@@ -4,6 +4,7 @@ import {
   TENANT_SCOPED_PRISMA,
   TenantScopedPrismaClient,
 } from '../core/tenant-scoped-prisma.provider';
+import { ProviderScheduleModeService } from './provider-schedule-mode.service';
 import { TERMINAL_APPOINTMENT_STATUSES } from './appointment-status.constants';
 import {
   clinicDateKey,
@@ -128,12 +129,14 @@ const WORKING_SHIFT_TYPES: ProviderShiftType[] = [
  * TWO SCHEDULING MODES, ONE ENGINE (§2). A provider is either ROSTER_LINKED —
  * their `ProviderShift` rows are the truth — or FIXED_WEEKLY, where a standing
  * `DoctorSchedule` pattern is. A clinic maintains one of the two, never both,
- * and the mode is on the staff row so the engine never has to guess.
+ * and which one governs A GIVEN DATE is answered by `ProviderScheduleModeService`
+ * (§18b) — an effective-dated decision, not a flag — so the engine never guesses.
  */
 @Injectable()
 export class SlotAvailabilityService {
   constructor(
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
+    private readonly scheduleMode: ProviderScheduleModeService,
   ) {}
 
   /**
@@ -488,12 +491,12 @@ export class SlotAvailabilityService {
     dayStart: Date,
     dayEnd: Date,
   ): Promise<{ windows: Window[]; refusal: UnavailableReason | null }> {
-    const provider = await this.prisma.staff.findUnique({
-      where: { id: query.staffId },
-      select: { appointmentScheduleMode: true },
-    });
-
-    if (provider?.appointmentScheduleMode === ProviderScheduleMode.ROSTER_LINKED) {
+    // §18b — the mode is resolved FOR THE DATE BEING QUERIED, through the
+    // one canonical resolver. "Weekly from 1 September" therefore answers a
+    // 5 Sep search with the weekly pattern while a 25 Aug search still reads
+    // the monthly roster — today's date plays no part.
+    const mode = await this.scheduleMode.resolveMode(query.staffId, query.date);
+    if (mode === ProviderScheduleMode.ROSTER_LINKED) {
       return this.rosterLinkedWindows(query, dayStart, dayEnd);
     }
     return this.fixedWeeklyWindows(query, timeZone, dayStart, dayEnd);

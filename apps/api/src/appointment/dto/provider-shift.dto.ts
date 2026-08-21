@@ -118,4 +118,13 @@ export class SetScheduleModeDto {
 
   @IsEnum(ProviderScheduleMode)
   mode!: ProviderScheduleMode;
+
+  /**
+   * The clinic-local date this mode starts governing. Today or later — the
+   * service refuses the past, because re-deciding history would change what
+   * every already-given availability answer meant (and the database trigger
+   * refuses it even if the service is bypassed).
+   */
+  @Matches(DATE, { message: 'Effective date must be written as YYYY-MM-DD.' })
+  effectiveFrom!: string;
 }

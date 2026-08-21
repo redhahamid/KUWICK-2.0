@@ -1,4 +1,5 @@
 import { SlotAvailabilityService, UnavailableReason } from './slot-availability.service';
+import { ProviderScheduleModeService } from './provider-schedule-mode.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { parseTimeToDate } from './time.util';
 
@@ -46,6 +47,12 @@ interface World {
   onLeave?: boolean;
   /** ROSTER_LINKED reads `shifts`; FIXED_WEEKLY reads `schedules`. */
   scheduleMode?: 'ROSTER_LINKED' | 'FIXED_WEEKLY';
+  /**
+   * Effective-dated mode DECISIONS (§18b). When any exist, the latest one on
+   * or before the queried date governs and `scheduleMode` above — the legacy
+   * staff column — is not consulted at all.
+   */
+  modePeriods?: { mode: 'ROSTER_LINKED' | 'FIXED_WEEKLY'; effectiveFrom: Date }[];
   shifts?: Shift[];
   service?: {
     bookable?: boolean;
@@ -95,6 +102,16 @@ function createService(world: World = {}) {
         .fn()
         .mockResolvedValue({ appointmentScheduleMode: world.scheduleMode ?? 'FIXED_WEEKLY' }),
       findMany: jest.fn().mockResolvedValue([{ id: STAFF_ID }]),
+    },
+    providerScheduleModePeriod: {
+      findFirst: jest.fn(async ({ where }: never) => {
+        const cutoff = (where as { effectiveFrom: { lte: Date } }).effectiveFrom.lte;
+        const governing = [...(world.modePeriods ?? [])]
+          .filter((period) => period.effectiveFrom <= cutoff)
+          .sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime())[0];
+        return governing ? { mode: governing.mode } : null;
+      }),
+      findMany: jest.fn(async () => world.modePeriods ?? []),
     },
     providerShift: {
       findMany: jest.fn(async ({ where }: never) => {
@@ -183,7 +200,9 @@ function createService(world: World = {}) {
     },
   } as unknown as TenantScopedPrismaClient;
 
-  const service = new SlotAvailabilityService(prisma);
+  // The REAL resolver over the same mocked world — the point of §18b is that
+  // the engine and the resolver are one path, so the tests walk that path.
+  const service = new SlotAvailabilityService(prisma, new ProviderScheduleModeService(prisma));
   const ask = (overrides: { date?: Date; excludeAppointmentId?: string } = {}) =>
     service.findAvailability({
       staffId: STAFF_ID,
@@ -821,5 +840,90 @@ describe('any available provider asks the same engine, once each', () => {
     expect(answers).toHaveLength(1);
     expect(answers[0].staffId).toBe(STAFF_ID);
     expect(answers[0].slots).toHaveLength(2);
+  });
+});
+
+// ===========================================================================
+// §18b — THE MODE IS A FACT ABOUT A DATE, NOT ABOUT TODAY.
+//
+// "Weekly from 1 September" must answer a 5 September search with the weekly
+// pattern while a 25 August search still reads the monthly roster — with no
+// background job flipping anything on the day. These walk the REAL resolver
+// (createService hands the engine a ProviderScheduleModeService over the same
+// mocked world). Every caller — staff flow, public page, reschedule — funnels
+// through the same findAvailability, so what these pin holds for all of them.
+// ===========================================================================
+describe('the effective-dated scheduling mode — resolved for the date being asked about', () => {
+  // 2026-09-02 is the Wednesday four weeks after DATE.
+  const SEP2 = new Date('2026-09-02T00:00:00.000Z');
+  const sep2 = (time: string) => `2026-09-02T${time}:00.000Z`;
+
+  it('47. BEFORE the effective date, the previous model still governs', async () => {
+    const { ask } = createService({
+      // Legacy column says FIXED_WEEKLY; the switch to the roster arrives 1 Sep.
+      modePeriods: [{ mode: 'ROSTER_LINKED', effectiveFrom: new Date('2026-09-01T00:00:00.000Z') }],
+      schedules: [{ dayOfWeek: 3, ...weekly('09:00', '10:00') }],
+      shifts: [{ startsAt: new Date(sep2('01:00')), endsAt: new Date(sep2('03:00')) }],
+    });
+
+    expect(starts(await ask())).toEqual([kl('01:00'), kl('01:30')]);
+  });
+
+  it('48. ON the effective date itself, the new model governs — nothing had to "arrive"', async () => {
+    const { ask } = createService({
+      modePeriods: [{ mode: 'ROSTER_LINKED', effectiveFrom: SEP2 }],
+      schedules: [{ dayOfWeek: 3, ...weekly('09:00', '10:00') }],
+      shifts: [{ startsAt: new Date(sep2('01:00')), endsAt: new Date(sep2('03:00')) }],
+    });
+
+    expect(starts(await ask({ date: SEP2 }))).toEqual([
+      sep2('01:00'),
+      sep2('01:30'),
+      sep2('02:00'),
+      sep2('02:30'),
+    ]);
+  });
+
+  it('49. a SECOND decision turns the answer over again, and both sides stay right', async () => {
+    // Monthly since January, weekly from September — one world, two questions.
+    const { ask } = createService({
+      modePeriods: [
+        { mode: 'ROSTER_LINKED', effectiveFrom: new Date('2026-01-01T00:00:00.000Z') },
+        { mode: 'FIXED_WEEKLY', effectiveFrom: new Date('2026-09-01T00:00:00.000Z') },
+      ],
+      schedules: [{ dayOfWeek: 3, ...weekly('09:00', '10:00') }],
+      shifts: [{ startsAt: new Date(kl('01:00')), endsAt: new Date(kl('03:00')) }],
+    });
+
+    expect(starts(await ask())).toEqual([kl('01:00'), kl('01:30'), kl('02:00'), kl('02:30')]);
+    expect(starts(await ask({ date: SEP2 }))).toEqual([sep2('01:00'), sep2('01:30')]);
+  });
+
+  it('50. approved HR leave blocks the day in WHICHEVER model governs it', async () => {
+    const roster = createService({
+      onLeave: true,
+      modePeriods: [{ mode: 'ROSTER_LINKED', effectiveFrom: new Date('2026-01-01T00:00:00.000Z') }],
+      shifts: [{ startsAt: new Date(kl('01:00')), endsAt: new Date(kl('03:00')) }],
+    });
+    const fixed = createService({ onLeave: true, schedules: [weekly('09:00', '10:00')] });
+
+    expect((await roster.ask()).reason).toBe('ON_LEAVE');
+    expect((await fixed.ask()).reason).toBe('ON_LEAVE');
+  });
+
+  it('51. a reschedule resolves the mode of its TARGET date, not of the original booking', async () => {
+    const { ask } = createService({
+      modePeriods: [
+        { mode: 'ROSTER_LINKED', effectiveFrom: new Date('2026-01-01T00:00:00.000Z') },
+        { mode: 'FIXED_WEEKLY', effectiveFrom: new Date('2026-09-01T00:00:00.000Z') },
+      ],
+      schedules: [{ dayOfWeek: 3, ...weekly('09:00', '10:00') }],
+      shifts: [{ startsAt: new Date(kl('01:00')), endsAt: new Date(kl('03:00')) }],
+    });
+
+    // The move originates in roster-governed August; the September target is
+    // answered by the weekly pattern.
+    const result = await ask({ date: SEP2, excludeAppointmentId: 'appt-1' });
+    expect(starts(result)).toEqual([sep2('01:00'), sep2('01:30')]);
   });
 });

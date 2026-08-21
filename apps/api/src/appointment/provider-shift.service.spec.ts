@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { SystemRole } from '@prisma/client';
 import { ProviderShiftService, datesInMonth } from './provider-shift.service';
+import { ProviderScheduleModeService } from './provider-schedule-mode.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { tenantContextStorage } from '../core/tenant-context';
@@ -23,6 +24,8 @@ interface World {
   leave?: Record<string, unknown>[];
   closed?: Record<string, unknown>[];
   providers?: Record<string, unknown>[];
+  /** Pre-existing effective-dated mode decisions (§18b). */
+  modePeriods?: { staffId: string; mode: string; effectiveFrom: Date }[];
   assignedRoles?: SystemRole[];
   actor?: Record<string, unknown>;
   appointmentCount?: number;
@@ -32,6 +35,9 @@ interface World {
 function build(world: World = {}) {
   const created: Record<string, unknown>[] = [];
   const deleted: Record<string, unknown>[] = [];
+  const periods: { staffId: string; mode: string; effectiveFrom: Date }[] = [
+    ...(world.modePeriods ?? []),
+  ];
 
   const tables = {
     providerShift: {
@@ -73,8 +79,55 @@ function build(world: World = {}) {
             },
           ],
       ),
-      findUnique: jest.fn(async () => staffRow(world.actor)),
+      findUnique: jest.fn(async ({ where }: { where: { id: string } }) =>
+        where.id === DOC
+          ? { id: DOC, fullName: 'Dr Redha', clinicId: CLINIC, appointmentScheduleMode: 'ROSTER_LINKED' }
+          : staffRow(world.actor),
+      ),
       update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => data),
+    },
+    providerScheduleModePeriod: {
+      upsert: jest.fn(
+        async ({ where, create, update }: { where: Record<string, never>; create: Record<string, never>; update: Record<string, never> }) => {
+          const key = where.tenantId_staffId_effectiveFrom as unknown as {
+            staffId: string;
+            effectiveFrom: Date;
+          };
+          const existing = periods.find(
+            (p) => p.staffId === key.staffId && p.effectiveFrom.getTime() === key.effectiveFrom.getTime(),
+          );
+          if (existing) {
+            existing.mode = update.mode as unknown as string;
+            return { mode: existing.mode, effectiveFrom: existing.effectiveFrom };
+          }
+          const row = {
+            staffId: create.staffId as unknown as string,
+            mode: create.mode as unknown as string,
+            effectiveFrom: create.effectiveFrom as unknown as Date,
+          };
+          periods.push(row);
+          return { mode: row.mode, effectiveFrom: row.effectiveFrom };
+        },
+      ),
+      findFirst: jest.fn(async ({ where }: { where: Record<string, never> }) => {
+        const lte = (where.effectiveFrom as unknown as { lte: Date }).lte;
+        const staffId = where.staffId as unknown as string;
+        const governing = periods
+          .filter((p) => p.staffId === staffId && p.effectiveFrom <= lte)
+          .sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime())[0];
+        return governing ? { mode: governing.mode } : null;
+      }),
+      findMany: jest.fn(async ({ where }: { where?: Record<string, never> } = {}) => {
+        let rows = [...periods];
+        const staffWhere = where?.staffId as unknown as { in?: string[] } | string | undefined;
+        if (typeof staffWhere === 'string') rows = rows.filter((p) => p.staffId === staffWhere);
+        else if (staffWhere?.in) rows = rows.filter((p) => staffWhere.in!.includes(p.staffId));
+        const gt = (where?.effectiveFrom as unknown as { gt?: Date } | undefined)?.gt;
+        if (gt) rows = rows.filter((p) => p.effectiveFrom > gt);
+        return rows
+          .sort((a, b) => a.effectiveFrom.getTime() - b.effectiveFrom.getTime())
+          .map((p) => ({ staffId: p.staffId, mode: p.mode, effectiveFrom: p.effectiveFrom }));
+      }),
     },
     staffRoleAssignment: {
       findMany: jest.fn(async () => (world.assignedRoles ?? ['OWNER']).map((role) => ({ role }))),
@@ -91,7 +144,7 @@ function build(world: World = {}) {
     $transaction: jest.fn(async (fn: (t: typeof tables) => Promise<unknown>) => fn(tables)),
   } as unknown as PrismaService;
 
-  const service = new ProviderShiftService(prisma, rawPrisma);
+  const service = new ProviderShiftService(prisma, rawPrisma, new ProviderScheduleModeService(prisma));
   const run = <T>(fn: () => Promise<T>) =>
     tenantContextStorage.run({ tenantId: 't1', staffId: 'staff-7', userId: 'u1' }, fn);
 
@@ -476,25 +529,90 @@ describe('the roster is not open to everybody who can log in', () => {
     ).resolves.toEqual({ created: 1 });
   });
 
-  it('21. switching scheduling mode is a roster act, and it destroys nothing', async () => {
+  it('21. switching scheduling mode writes a DATED DECISION, and destroys nothing', async () => {
     const ctx = build();
 
-    await ctx.run(() => ctx.service.setScheduleMode({ staffId: DOC, mode: 'FIXED_WEEKLY' }));
-
-    expect(ctx.tables.staff.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { appointmentScheduleMode: 'FIXED_WEEKLY' } }),
+    const result = await ctx.run(() =>
+      ctx.service.setScheduleMode({ staffId: DOC, mode: 'FIXED_WEEKLY', effectiveFrom: '2099-09-01' }),
     );
+
+    // A period row, never the legacy staff column — two independently
+    // editable mode values is how they come to disagree (§18b).
+    expect(ctx.tables.providerScheduleModePeriod.upsert).toHaveBeenCalledTimes(1);
+    expect(ctx.tables.staff.update).not.toHaveBeenCalled();
+    expect(ctx.deleted).toHaveLength(0);
+    expect(result.effectiveFrom).toBe('2099-09-01');
+    // Until the date arrives, the resolver still answers with what governs
+    // today — the legacy column, since no period has started yet.
+    expect(result.modeToday).toBe('ROSTER_LINKED');
+    expect(result.upcoming).toEqual([{ mode: 'FIXED_WEEKLY', effectiveFrom: '2099-09-01' }]);
+  });
+
+  it('22. a date already passed at the clinic is refused — history is not re-decided', async () => {
+    const ctx = build();
+
+    await expect(
+      ctx.run(() =>
+        ctx.service.setScheduleMode({ staffId: DOC, mode: 'FIXED_WEEKLY', effectiveFrom: '2000-01-01' }),
+      ),
+    ).rejects.toThrow(/already passed/i);
+    expect(ctx.tables.providerScheduleModePeriod.upsert).not.toHaveBeenCalled();
+  });
+
+  it('23. re-deciding the SAME future date replaces that decision instead of stacking a duplicate', async () => {
+    const ctx = build();
+
+    await ctx.run(() =>
+      ctx.service.setScheduleMode({ staffId: DOC, mode: 'FIXED_WEEKLY', effectiveFrom: '2099-09-01' }),
+    );
+    const result = await ctx.run(() =>
+      ctx.service.setScheduleMode({ staffId: DOC, mode: 'ROSTER_LINKED', effectiveFrom: '2099-09-01' }),
+    );
+
+    expect(result.upcoming).toEqual([{ mode: 'ROSTER_LINKED', effectiveFrom: '2099-09-01' }]);
+  });
+
+  it('24. the board reports the mode governing the month AND the next scheduled change', async () => {
+    const ctx = build({
+      modePeriods: [
+        { staffId: DOC, mode: 'ROSTER_LINKED', effectiveFrom: iso('2026-01-01') },
+        { staffId: DOC, mode: 'FIXED_WEEKLY', effectiveFrom: iso('2026-09-01') },
+      ],
+    });
+
+    const row = (await ctx.service.month(CLINIC, '2026-08')).providers[0];
+
+    expect(row.scheduleMode).toBe('ROSTER_LINKED');
+    expect(row.modeChange).toEqual({ mode: 'FIXED_WEEKLY', effectiveFrom: '2026-09-01' });
+  });
+
+  it('25. a sequence of decisions stays on record — Monthly → Weekly → Monthly is three rows', async () => {
+    const ctx = build({
+      modePeriods: [{ staffId: DOC, mode: 'ROSTER_LINKED', effectiveFrom: iso('2026-01-01') }],
+    });
+
+    await ctx.run(() =>
+      ctx.service.setScheduleMode({ staffId: DOC, mode: 'FIXED_WEEKLY', effectiveFrom: '2099-09-01' }),
+    );
+    const result = await ctx.run(() =>
+      ctx.service.setScheduleMode({ staffId: DOC, mode: 'ROSTER_LINKED', effectiveFrom: '2099-10-01' }),
+    );
+
+    expect(result.upcoming).toEqual([
+      { mode: 'FIXED_WEEKLY', effectiveFrom: '2099-09-01' },
+      { mode: 'ROSTER_LINKED', effectiveFrom: '2099-10-01' },
+    ]);
     expect(ctx.deleted).toHaveLength(0);
   });
 });
 
 describe('datesInMonth', () => {
-  it('22. February 2028 has 29 days', () => {
+  it('26. February 2028 has 29 days', () => {
     expect(datesInMonth('2028-02')).toHaveLength(29);
     expect(datesInMonth('2028-02')[28]).toBe('2028-02-29');
   });
 
-  it('23. February 2026 has 28', () => {
+  it('27. February 2026 has 28', () => {
     expect(datesInMonth('2026-02')).toHaveLength(28);
   });
 });
