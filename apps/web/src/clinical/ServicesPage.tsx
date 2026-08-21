@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button, Card, Drawer, Form, InputNumber, Input, Radio, Select, Space, Switch, Table, Typography, message } from 'antd';
 import { FileTextOutlined, PlusOutlined } from '@ant-design/icons';
 import { useServices, useCreateService, useUpdateService } from './hooks/useServices';
@@ -68,6 +69,7 @@ function ResultFormBuilder({ service }: { service: Service }) {
 }
 
 export function ServicesPage() {
+  const navigate = useNavigate();
   // The BOOKING half, on its own drawer — publishing a service to patients and
   // repricing it are two different acts by two different people.
   const [bookingFor, setBookingFor] = useState<Service | null>(null);
@@ -132,11 +134,15 @@ export function ServicesPage() {
     <>
       <PageHeader
         title="Services &amp; Procedures"
+        subtitle="The clinic's one service catalogue — identity, price and classification. Whether a service can be BOOKED online is configured in Appointments."
         extra={
           <>
+            <Button onClick={() => navigate('/appointments/services')}>
+              Online booking settings →
+            </Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          Add Service
-        </Button>
+              Add Service
+            </Button>
           </>
         }
       />

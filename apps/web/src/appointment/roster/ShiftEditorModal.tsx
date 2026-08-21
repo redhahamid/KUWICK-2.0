@@ -16,7 +16,7 @@ const SHIFT_TYPES: { value: ProviderShiftType; label: string }[] = [
   { value: 'LOCUM', label: 'Locum' },
   { value: 'OFF', label: 'Off' },
   { value: 'BLOCKED', label: 'Blocked (in the building, not bookable)' },
-  { value: 'LEAVE', label: 'Leave (not recorded in HR)' },
+  { value: 'LEAVE', label: 'Leave (ad-hoc — approved HR leave appears by itself)' },
 ];
 
 interface ShiftEditorModalProps {

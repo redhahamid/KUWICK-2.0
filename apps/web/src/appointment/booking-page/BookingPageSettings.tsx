@@ -87,15 +87,26 @@ function BookingPagePreview({
             {bm ? 'Apa yang anda ingin tempah?' : 'What would you like to book?'}
           </div>
           {services.length > 0 ? (
-            services.slice(0, 4).map((service) => (
-              <div key={service.id} className="kw-bp-mini-service">
-                <span>
-                  {service.name}
-                  <small>{service.durationMinutesDefault} min</small>
-                </span>
-                <span style={{ color: '#0f6b78' }}>→</span>
-              </div>
-            ))
+            <>
+              {services.slice(0, 4).map((service) => (
+                <div key={service.id} className="kw-bp-mini-service">
+                  <span>
+                    {service.name}
+                    <small>{service.durationMinutesDefault} min</small>
+                  </span>
+                  <span style={{ color: '#0f6b78' }}>→</span>
+                </div>
+              ))}
+              {services.length > 4 ? (
+                // Say the preview is a preview — UAT read the missing fifth
+                // service as missing DATA rather than a shortened mock-up.
+                <div className="kw-bp-mini-more">
+                  {bm
+                    ? `Pratonton — 4 daripada ${services.length} perkhidmatan`
+                    : `Preview — showing 4 of ${services.length} services`}
+                </div>
+              ) : null}
+            </>
           ) : (
             <div className="kw-bp-mini-empty">
               Services marked bookable appear here — set them up under Services.
@@ -374,8 +385,11 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
                   <Text strong>Reminders</Text>
                   <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
                     Choose as many as you want, or none. These build the counter's reminder
-                    worklist — Kuwick has no message gateway, so a person still presses send, and
-                    that is recorded honestly rather than as an automatic delivery.
+                    worklist for staff to work through — they do not send anything by
+                    themselves. The one channel today is manual WhatsApp: staff press Open
+                    WhatsApp and Kuwick records that it was opened, never that a message was
+                    delivered. Automatic sending will only appear here if a real messaging
+                    integration is connected.
                   </Paragraph>
                   <Select
                     mode="multiple"
@@ -393,7 +407,7 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
             },
             {
               key: 'policies',
-              label: 'What patients may change',
+              label: 'Appointment Changes',
               children: (
                 <>
                   <Form.Item
@@ -474,28 +488,42 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
                       </Card>
 
                       <Card size="small" title="Service links">
+                        {/* EVERY public bookable service, generated from the
+                            catalogue — never hand-maintained. A service
+                            without a link ending is listed too, saying how to
+                            get one, so this list can never read as "a service
+                            is missing" when it is merely link-less. */}
                         {data.links?.services.length ? (
                           <Space direction="vertical" style={{ width: '100%' }}>
                             {data.links.services.map((service) => (
                               <Space key={service.serviceId} wrap>
                                 <Tag>{service.name}</Tag>
-                                <Input
-                                  readOnly
-                                  value={`${publicOrigin}/book${service.path}`}
-                                  style={{ width: 320 }}
-                                />
-                                <Button
-                                  size="small"
-                                  icon={<CopyOutlined />}
-                                  onClick={() => copy(`${publicOrigin}/book${service.path}`)}
-                                />
+                                {service.path ? (
+                                  <>
+                                    <Input
+                                      readOnly
+                                      value={`${publicOrigin}/book${service.path}`}
+                                      style={{ width: 320 }}
+                                    />
+                                    <Button
+                                      size="small"
+                                      icon={<CopyOutlined />}
+                                      onClick={() => copy(`${publicOrigin}/book${service.path}`)}
+                                    />
+                                  </>
+                                ) : (
+                                  <Text type="secondary">
+                                    Bookable on the main page — add a link ending in its service
+                                    editor for a direct link.
+                                  </Text>
+                                )}
                               </Space>
                             ))}
                           </Space>
                         ) : (
                           <Text type="secondary">
-                            Give a service its own link ending on the Services tab to get a direct
-                            link that preselects it.
+                            No services are open for online booking yet — enable one under
+                            Appointments ▸ Services.
                           </Text>
                         )}
                       </Card>

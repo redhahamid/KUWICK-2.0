@@ -2077,6 +2077,27 @@
   text-align: center;
 }
 
+/* The truncation notice under the preview's service list — quiet, and
+   unmistakably part of the mock-up rather than the page being configured. */
+.kw-roster-explain {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--apt-teal, #0f6b78);
+  background: var(--apt-surface-2, #f8fafc);
+  border-radius: 0 8px 8px 0;
+  font-size: 12.5px;
+  color: var(--apt-text-2);
+  max-width: 720px;
+}
+
+.kw-bp-mini-more {
+  padding: 4px 2px 0;
+  font-size: 10.5px;
+  color: var(--apt-muted);
+  text-align: center;
+  font-style: italic;
+}
+
 @media (max-width: 1140px) {
   .kw-bp-layout {
     grid-template-columns: minmax(0, 1fr);

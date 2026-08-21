@@ -66,9 +66,14 @@ export function ServicesPage({ clinicId }: ServicesPageProps) {
     <div className="kw-services-page" data-testid="services-page">
       <div className="kw-svc-head">
         <div>
-          <p className="kw-svc-title">Services</p>
+          <p className="kw-svc-title">Online booking settings</p>
           <p className="kw-svc-sub">
-            Control what patients can book and how slots are generated.
+            Which services patients can book, and how their slots are generated. The services
+            themselves — name, code, category, price — are defined once in{' '}
+            <a onClick={() => navigate('/settings/clinical/services')}>
+              Settings ▸ Clinical ▸ Services &amp; Procedures
+            </a>
+            .
           </p>
         </div>
         {/* Creation lives in the clinic's ONE catalogue — this is a door to

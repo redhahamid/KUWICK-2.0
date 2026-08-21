@@ -49,13 +49,17 @@ export class BookingPageService {
       links: page
         ? {
             general: `/${page.slug}`,
-            services: services
-              .filter((service) => service.bookingSlug)
-              .map((service) => ({
-                serviceId: service.id,
-                name: service.name,
-                path: `/${page.slug}/${service.bookingSlug}`,
-              })),
+            // EVERY public bookable service, not only the ones with a link
+            // ending. Filtering the slug-less ones out made the Sharing tab
+            // show four links while the public page sold five services — read
+            // in UAT as missing data. A service without an ending now appears
+            // with path null, and the UI says how to give it one; the list
+            // stays computed from the one catalogue, never hand-maintained.
+            services: services.map((service) => ({
+              serviceId: service.id,
+              name: service.name,
+              path: service.bookingSlug ? `/${page.slug}/${service.bookingSlug}` : null,
+            })),
           }
         : null,
     };

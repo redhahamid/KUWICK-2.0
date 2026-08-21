@@ -25,7 +25,8 @@ export interface BookingPageResponse {
   reminderRules: { id: string; offsetMinutes: number; channel: string }[];
   links: {
     general: string;
-    services: { serviceId: string; name: string; path: string }[];
+    /** Every public bookable service; `path` is null until it has a link ending. */
+    services: { serviceId: string; name: string; path: string | null }[];
   } | null;
 }
 

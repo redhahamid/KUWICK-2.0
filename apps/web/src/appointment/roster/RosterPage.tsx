@@ -87,6 +87,40 @@ export function RosterPage({ clinicId }: RosterPageProps) {
   const removeShift = useRemoveShift();
   const copyMonth = useCopyRosterMonth();
   const setMode = useSetScheduleMode();
+
+  // Switching scheduling mode is safe by construction (the server keeps the
+  // other model's rows and simply stops reading them) — but it CHANGES WHAT
+  // PATIENTS CAN BOOK the moment it lands, and in UAT the one-click link made
+  // that feel accidental. So the click states the consequences and asks.
+  const confirmModeSwitch = (staffName: string, staffId: string, mode: 'FIXED_WEEKLY' | 'ROSTER_LINKED') => {
+    const toWeekly = mode === 'FIXED_WEEKLY';
+    Modal.confirm({
+      title: toWeekly
+        ? `Switch ${staffName} to a weekly schedule?`
+        : `Switch ${staffName} to the monthly roster?`,
+      width: 460,
+      content: (
+        <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+          <p style={{ marginBottom: 8 }}>
+            {toWeekly
+              ? 'Booking availability will follow the standing weekly pattern (edited below) instead of this month board.'
+              : 'Booking availability will follow the shifts on this month board instead of the weekly pattern.'}
+          </p>
+          <ul style={{ paddingLeft: 18, margin: 0 }}>
+            <li>Takes effect immediately for future bookings.</li>
+            <li>
+              Nothing is deleted: {toWeekly ? 'monthly shifts' : 'the weekly pattern'} stay saved
+              and simply stop being read, so switching back restores them.
+            </li>
+            <li>Existing appointments are untouched.</li>
+            <li>Approved HR leave keeps blocking booking in either mode.</li>
+          </ul>
+        </div>
+      ),
+      okText: toWeekly ? 'Switch to weekly schedule' : 'Switch to monthly roster',
+      onOk: () => setMode.mutateAsync({ staffId, mode }),
+    });
+  };
   const boardRef = useRef<HTMLDivElement>(null);
 
   const todayKey = dayjs().format('YYYY-MM-DD');
@@ -175,6 +209,11 @@ export function RosterPage({ clinicId }: RosterPageProps) {
 
   return (
     <div className="kw-roster" data-testid="roster-page">
+      <p className="kw-roster-explain">
+        <strong>How this board relates to HR:</strong> approved HR leave and clinic closures
+        appear here automatically and block booking — they are never re-entered. This board adds
+        the booking layer on top: working shifts, locums, blocks, and narrowed booking windows.
+      </p>
       <div className="kw-roster-toolbar">
         <Space wrap>
           <Button.Group>
@@ -322,10 +361,10 @@ export function RosterPage({ clinicId }: RosterPageProps) {
                             disabled={!canManageRoster}
                             style={{ padding: 0, height: 'auto', fontSize: 11, textAlign: 'left' }}
                             onClick={() =>
-                              setMode.mutate({ staffId: provider.staffId, mode: 'FIXED_WEEKLY' })
+                              confirmModeSwitch(provider.fullName, provider.staffId, 'FIXED_WEEKLY')
                             }
                           >
-                            Use a weekly pattern instead
+                            Switch to a weekly schedule…
                           </Button>
                         </Tooltip>
                       </div>
@@ -391,7 +430,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
               staffId={provider.staffId}
               staffName={provider.fullName}
               onSwitchToRoster={() =>
-                setMode.mutate({ staffId: provider.staffId, mode: 'ROSTER_LINKED' })
+                confirmModeSwitch(provider.fullName, provider.staffId, 'ROSTER_LINKED')
               }
             />
           ))}
