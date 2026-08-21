@@ -157,6 +157,28 @@ describe('an unpublished or unknown page gives the same answer', () => {
   });
 });
 
+describe('the shop window offers only services that can produce a slot', () => {
+  it('the public listing requires an ACTIVE qualified provider, not just the booking flag', async () => {
+    // The defect this pins: "Density Unmapped Procedure" — bookable, active,
+    // performed by nobody — was listed publicly and dead-ended every patient
+    // who picked it. The listing must carry the same eligibility providers()
+    // enforces one step later: at least one active staff qualification.
+    const ctx = build({});
+
+    await ctx.service.page('uat-clinic');
+
+    const scoped = ctx.prisma as unknown as {
+      serviceCatalog: { findMany: jest.Mock };
+    };
+    const where = scoped.serviceCatalog.findMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({
+      bookable: true,
+      active: true,
+      doctorServiceQualifications: { some: { staff: { active: true } } },
+    });
+  });
+});
+
 describe('patient identity matching never says who exists', () => {
   it('2. an exact IC match links the existing record', async () => {
     const ctx = build({

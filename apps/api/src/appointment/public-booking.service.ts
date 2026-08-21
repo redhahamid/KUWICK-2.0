@@ -161,7 +161,22 @@ export class PublicBookingService {
     return this.inTenant(page, async () => {
       const timeZone = await this.availability.clinicTimeZone(page.clinicId);
       const services = await this.scoped.serviceCatalog.findMany({
-        where: { bookable: true, active: true },
+        // A service is OFFERED to patients only when it can actually produce
+        // a slot — and the first thing slot generation needs is an active
+        // qualified provider. This is the same eligibility `providers()` and
+        // the availability engine enforce one step later (the
+        // doctor_service_qualifications junction), applied at the shop
+        // window instead of after the patient has already picked: a
+        // booking-enabled service nobody performs is a configuration in
+        // progress, not a product. It reappears here the moment the owner
+        // assigns a provider; the admin screens keep showing it throughout,
+        // marked "setup incomplete", so it can be fixed. Direct service
+        // links resolve from THIS list, so they go quiet at the same moment.
+        where: {
+          bookable: true,
+          active: true,
+          doctorServiceQualifications: { some: { staff: { active: true } } },
+        },
         orderBy: { name: 'asc' },
         select: {
           id: true,

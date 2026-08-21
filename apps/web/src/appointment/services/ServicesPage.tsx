@@ -85,7 +85,7 @@ export function ServicesPage({ clinicId }: ServicesPageProps) {
             title={canConfigure ? undefined : permissionHint('change how appointments and services are configured')}
             onClick={() => navigate('/settings/clinical/services')}
           >
-            New service
+            Create service in catalogue
           </Button>
         </Tooltip>
       </div>
@@ -178,7 +178,7 @@ export function ServicesPage({ clinicId }: ServicesPageProps) {
             title: 'Providers',
             render: (_, row) =>
               row.providers.length === 0 ? (
-                <Tooltip title="Nobody can perform this, so it can never be booked.">
+                <Tooltip title="Nobody is assigned to perform this, so patients cannot book it. Edit the service and assign a provider.">
                   <KuwickStatusTag tone="error" label="Nobody" />
                 </Tooltip>
               ) : (
@@ -218,12 +218,25 @@ export function ServicesPage({ clinicId }: ServicesPageProps) {
           },
           {
             title: 'Online',
-            width: 100,
+            width: 150,
+            // The FLAG says "booking enabled"; this column says whether a
+            // patient can actually book it. A service with no active
+            // provider can never produce a slot, so the public page hides it
+            // — and this cell says so, with the fix, instead of a green
+            // "Bookable" that is not true.
             render: (_, row) =>
-              row.bookable ? (
-                <KuwickStatusTag tone="success" label="Bookable" />
-              ) : (
+              !row.bookable ? (
                 <KuwickStatusTag tone="neutral" label="Off" />
+              ) : !row.active ? (
+                <Tooltip title="Retired services are never shown to patients, whatever the booking flag says.">
+                  <KuwickStatusTag tone="neutral" label="Retired — hidden" />
+                </Tooltip>
+              ) : row.providers.length === 0 ? (
+                <Tooltip title="Booking is enabled but nobody is assigned to perform it, so patients cannot see it yet. Edit the service and assign a provider.">
+                  <KuwickStatusTag tone="attention" label="Setup incomplete" />
+                </Tooltip>
+              ) : (
+                <KuwickStatusTag tone="success" label="Bookable" />
               ),
           },
           {
