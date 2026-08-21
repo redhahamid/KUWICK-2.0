@@ -18,6 +18,7 @@ import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import { PageHeader } from '../design-system/components/PageHeader';
+import { permissionHint, useCan } from '../core/hooks/useCan';
 import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { ApiError } from '../core/api-client';
 import {
@@ -63,6 +64,7 @@ export function BookingRulesPage() {
   const { data: settings, isLoading } = useBookingSettings(clinicId);
   const { data: closedDates, isLoading: loadingDates } = useClosedDates(clinicId);
   const saveSettings = useSaveBookingSettings(clinicId);
+  const canConfigure = useCan('appointment.configure');
   const addClosedDate = useAddClosedDate(clinicId);
   const removeClosedDate = useRemoveClosedDate(clinicId);
 
@@ -185,7 +187,17 @@ export function BookingRulesPage() {
               <InputNumber min={0} max={60 * 24 * 90} step={15} addonAfter="minutes" />
             </Form.Item>
 
-            <Button type="primary" htmlType="submit" loading={saveSettings.isPending}>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={saveSettings.isPending}
+              disabled={!canConfigure}
+              title={
+                canConfigure
+                  ? undefined
+                  : permissionHint('change how appointments and services are configured')
+              }
+            >
               Save booking rules
             </Button>
           </Form>

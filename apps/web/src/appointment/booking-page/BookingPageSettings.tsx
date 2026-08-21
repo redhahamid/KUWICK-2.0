@@ -18,6 +18,7 @@ import {
 import { CopyOutlined, PrinterOutlined, DownloadOutlined } from '@ant-design/icons';
 import { ApiError } from '../../core/api-client';
 import { useBookingPage, useSaveBookingPage, useSaveReminderRules } from '../hooks/useBookingPage';
+import { permissionHint, useCan } from '../../core/hooks/useCan';
 import { useAppointmentServices } from '../hooks/useServiceConfig';
 import { qrSvg } from './qr';
 import { KuwickStatusTag } from '../../design-system/kuwick';
@@ -134,6 +135,7 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
   const [dirty, setDirty] = useState(false);
   const { data, isFetching } = useBookingPage(clinicId);
   const save = useSaveBookingPage();
+  const canConfigure = useCan('appointment.configure');
   const saveReminders = useSaveReminderRules();
   const [reminderOffsets, setReminderOffsets] = useState<number[]>([]);
 
@@ -506,7 +508,17 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
         />
 
         <Space style={{ marginTop: 16 }}>
-          <Button type="primary" loading={save.isPending} onClick={submit}>
+          <Button
+            type="primary"
+            loading={save.isPending}
+            disabled={!canConfigure}
+            title={
+              canConfigure
+                ? undefined
+                : permissionHint('change how appointments and services are configured')
+            }
+            onClick={submit}
+          >
             Save booking page
           </Button>
           <Text type={dirty ? 'warning' : 'secondary'}>

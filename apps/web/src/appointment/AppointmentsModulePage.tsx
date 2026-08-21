@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Button, ConfigProvider, Select, Tabs, Typography } from 'antd';
+import { Button, ConfigProvider, Select, Tabs, Tooltip, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
+import { permissionHint, useCan } from '../core/hooks/useCan';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { CalendarWorkspace } from './calendar/CalendarWorkspace';
@@ -58,10 +59,15 @@ export function AppointmentsModulePage() {
     ? (tab as AppointmentTab)
     : 'calendar';
 
-  const clinicName = useMemo(
-    () => clinics?.find((clinic) => clinic.id === clinicId)?.name ?? 'the clinic',
-    [clinics, clinicId],
-  );
+  // The PATIENT-FACING name (booking-page displayName -> clinic name),
+  // resolved server-side on the clinics list. This is the name WhatsApp
+  // messages carry, so it must never be the internal environment label.
+  const clinicName = useMemo(() => {
+    const clinic = clinics?.find((row) => row.id === clinicId);
+    return clinic?.patientFacingName?.trim() || clinic?.name || 'the clinic';
+  }, [clinics, clinicId]);
+
+  const permCreate = useCan('appointment.create');
 
   return (
     <ConfigProvider theme={appointmentTheme}>
@@ -80,9 +86,16 @@ export function AppointmentsModulePage() {
               style={{ minWidth: 170 }}
             />
           ) : null}
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setBooking(true)}>
-            New appointment
-          </Button>
+          <Tooltip title={permCreate ? undefined : permissionHint('book an appointment')}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              disabled={!permCreate}
+              onClick={() => setBooking(true)}
+            >
+              New appointment
+            </Button>
+          </Tooltip>
         </div>
 
         <Tabs

@@ -1,5 +1,10 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { reminderMessage, toWhatsappNumber, whatsappLink } from './whatsappReminder';
+import {
+  patientFacingClinicName,
+  reminderMessage,
+  toWhatsappNumber,
+  whatsappLink,
+} from './whatsappReminder';
 import { setClinicTimeZone } from '../clinical/clinicTime';
 
 // 01:00Z is 09:00 in Kuala Lumpur.
@@ -55,6 +60,20 @@ describe('the message', () => {
     expect(text).toContain('20 Aug 2026 · 09:00');
   });
 
+  it('4b. NEVER renders "at on" — an empty clinic name drops the clause, not the grammar', () => {
+    // The exact defect the owner caught in live UAT: one caller passed '' and
+    // a real patient message read "your appointment at on 22 Aug 2026". The
+    // template itself now refuses to produce that sentence.
+    const text = reminderMessage({
+      patientName: 'Aminah',
+      scheduledStart: SLOT,
+      clinicName: '',
+    });
+
+    expect(text).not.toContain(' at on ');
+    expect(text).toContain('your appointment on 20 Aug 2026');
+  });
+
   it('5. carries NO clinical detail', () => {
     // A reminder travels unencrypted to a phone that may be shared.
     const text = reminderMessage({
@@ -96,5 +115,24 @@ describe('the link', () => {
 
     expect(link).not.toContain('&Sons');
     expect(decodeURIComponent(link.split('?text=')[1])).toContain('A/P Rajan & Sons');
+  });
+});
+
+describe('the patient-facing clinic name', () => {
+  it('9. prefers the booking page displayName over the internal clinic name', () => {
+    expect(
+      patientFacingClinicName({
+        name: 'Klinik UAT Staging (Synthetic)',
+        patientFacingName: 'Klinik Hijraa Bangi',
+      }),
+    ).toBe('Klinik Hijraa Bangi');
+  });
+
+  it('10. falls back to the clinic name, and to empty only when there is nothing', () => {
+    expect(patientFacingClinicName({ name: 'Klinik Utama' })).toBe('Klinik Utama');
+    expect(patientFacingClinicName({ name: 'Klinik Utama', patientFacingName: '  ' })).toBe(
+      'Klinik Utama',
+    );
+    expect(patientFacingClinicName(undefined)).toBe('');
   });
 });

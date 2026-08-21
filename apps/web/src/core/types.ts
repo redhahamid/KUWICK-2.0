@@ -6,6 +6,14 @@ export interface Clinic {
   phone: string | null;
   email: string | null;
   timezone: string;
+  /**
+   * What a PATIENT should read as this clinic's name: the booking page's
+   * displayName when one exists, the clinic name otherwise. Resolved by the
+   * server (clinic.service.ts) so every patient-facing message uses one
+   * answer. Optional only because a cached list from an older API build may
+   * not carry it — fall back to `name`.
+   */
+  patientFacingName?: string;
 }
 
 export interface CreateClinicDto {

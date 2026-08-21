@@ -19,6 +19,7 @@ import {
 } from '../hooks/useAppointmentDashboard';
 import { useWaitlist } from '../hooks/useWaitlist';
 import { whatsappLink } from '../whatsappReminder';
+import { permissionHint, useCan } from '../../core/hooks/useCan';
 import { RescheduleAppointmentDrawer } from '../RescheduleAppointmentDrawer';
 import { AppointmentDrawer } from '../calendar/AppointmentDrawer';
 import { paymentChip, sentence, statusChip } from '../appointment-presentation';
@@ -345,6 +346,12 @@ function AppointmentTable({
   const markReminder = useMarkReminderSent();
   const confirmAppointment = useConfirmAppointment();
   const checkInAppointment = useArrivedAppointment();
+  const permEdit = useCan('appointment.edit');
+  const permCreate = useCan('appointment.create');
+  const permCheckIn = useCan('appointment.check_in');
+  const permCancel = useCan('appointment.cancel');
+  const permNoShow = useCan('appointment.no_show');
+  const permReschedule = useCan('appointment.reschedule');
   const noShowAppointment = useNoShowAppointment();
   const cancelAppointment = useCancelAppointment();
   const [rescheduling, setRescheduling] = useState<DashboardRow | null>(null);
@@ -399,9 +406,13 @@ function AppointmentTable({
               {/* An empty worklist offers the next move, not 500px of blank
                   table. */}
               {tab === 'UPCOMING' || tab === 'REQUESTS' ? (
-                <Button type="primary" onClick={onBook}>
-                  New appointment
-                </Button>
+                <Tooltip
+                  title={permCreate ? undefined : permissionHint('book an appointment')}
+                >
+                  <Button type="primary" disabled={!permCreate} onClick={onBook}>
+                    New appointment
+                  </Button>
+                </Tooltip>
               ) : null}
             </Empty>
           ),
@@ -475,17 +486,21 @@ function AppointmentTable({
             width: 130,
             render: (_, row) =>
               row.reminder.sentAt ? (
-                // WHO and WHEN, not just a tick. "Reminded" with nobody's name
-                // on it is the thing this column exists to replace.
+                // WHO and WHEN, worded as what Kuwick actually observed:
+                // WhatsApp was OPENED with the message prefilled. Whether Send
+                // was pressed inside WhatsApp is not something this system can
+                // see, so this column never claims "sent" on its behalf.
                 <Tooltip
-                  title={row.reminder.sentBy ? `Sent by ${row.reminder.sentBy}` : undefined}
+                  title={
+                    row.reminder.sentBy ? `WhatsApp opened by ${row.reminder.sentBy}` : undefined
+                  }
                 >
                   <span className="kw-appt-reminded">
-                    Sent {formatClinicDate(row.reminder.sentAt)}
+                    Opened {formatClinicDate(row.reminder.sentAt)}
                   </span>
                 </Tooltip>
               ) : (
-                <Text className="kw-appt-quiet">Not sent</Text>
+                <Text className="kw-appt-quiet">—</Text>
               ),
           },
           {
@@ -509,34 +524,66 @@ function AppointmentTable({
             render: (_, row) => {
               const cancellable = !NON_CANCELLABLE_STATUSES.includes(row.status as AppointmentStatus);
               const menuItems = [
-                cancellable ? { key: 'reschedule', label: 'Reschedule' } : null,
-                ARRIVABLE_FROM_STATUSES.includes(row.status as AppointmentStatus)
-                  ? { key: 'no-show', label: 'Mark as no-show' }
+                cancellable
+                  ? {
+                      key: 'reschedule',
+                      label: 'Reschedule',
+                      disabled: !permReschedule,
+                      title: permReschedule ? undefined : permissionHint('move an appointment'),
+                    }
                   : null,
-                cancellable ? { key: 'cancel', danger: true, label: 'Cancel appointment' } : null,
+                ARRIVABLE_FROM_STATUSES.includes(row.status as AppointmentStatus)
+                  ? {
+                      key: 'no-show',
+                      label: 'Mark as no-show',
+                      disabled: !permNoShow,
+                      title: permNoShow
+                        ? undefined
+                        : permissionHint('mark an appointment as a no-show'),
+                    }
+                  : null,
+                cancellable
+                  ? {
+                      key: 'cancel',
+                      danger: true,
+                      label: 'Cancel appointment',
+                      disabled: !permCancel,
+                      title: permCancel ? undefined : permissionHint('cancel an appointment'),
+                    }
+                  : null,
               ].filter(Boolean) as { key: string; label: string }[];
               return (
                 <Space size={4} onClick={(event) => event.stopPropagation()}>
                   {row.status === 'REQUESTED' ? (
-                    <Button
-                      size="small"
-                      type="primary"
-                      onClick={() =>
-                        act(confirmAppointment.mutateAsync({ id: row.id }), 'Could not accept.')
-                      }
+                    <Tooltip
+                      title={permEdit ? undefined : permissionHint('accept a booking request')}
                     >
-                      Accept
-                    </Button>
+                      <Button
+                        size="small"
+                        type="primary"
+                        disabled={!permEdit}
+                        onClick={() =>
+                          act(confirmAppointment.mutateAsync({ id: row.id }), 'Could not accept.')
+                        }
+                      >
+                        Accept
+                      </Button>
+                    </Tooltip>
                   ) : CHECK_IN_FROM_STATUSES.includes(row.status as AppointmentStatus) ? (
-                    <Button
-                      size="small"
-                      type="primary"
-                      onClick={() =>
-                        act(checkInAppointment.mutateAsync({ id: row.id }), 'Could not check in.')
-                      }
+                    <Tooltip
+                      title={permCheckIn ? undefined : permissionHint('check a patient in')}
                     >
-                      Check in
-                    </Button>
+                      <Button
+                        size="small"
+                        type="primary"
+                        disabled={!permCheckIn}
+                        onClick={() =>
+                          act(checkInAppointment.mutateAsync({ id: row.id }), 'Could not check in.')
+                        }
+                      >
+                        Check in
+                      </Button>
+                    </Tooltip>
                   ) : (
                     <Button size="small" onClick={() => onOpen(row.id)}>
                       View
@@ -592,12 +639,16 @@ function AppointmentTable({
             width: 52,
             render: (_, row) => (
               <Tooltip
-                title={row.patient.phone ? 'Send a WhatsApp reminder' : 'No phone number on file'}
+                title={
+                  row.patient.phone
+                    ? 'Open WhatsApp with a reminder message'
+                    : 'No phone number on file'
+                }
               >
                 <Button
                   type="text"
                   icon={<WhatsAppOutlined />}
-                  aria-label={`Send a WhatsApp reminder to ${row.patient.name}`}
+                  aria-label={`Open WhatsApp with a reminder for ${row.patient.name}`}
                   disabled={!row.patient.phone}
                   onClick={(event) => {
                     event.stopPropagation();

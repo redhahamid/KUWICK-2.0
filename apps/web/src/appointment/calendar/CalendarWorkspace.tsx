@@ -41,6 +41,7 @@ import {
   statusDotColor,
 } from './calendar-events';
 import { getDoctorColor } from './doctor-color';
+import { useCan } from '../../core/hooks/useCan';
 import { ApiError } from '../../core/api-client';
 
 dayjs.extend(utc);
@@ -257,6 +258,12 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
 
   const gridRef = useRef<HTMLDivElement>(null);
 
+  // Phase 1 — account permissions, published by the server at login. An
+  // empty slot is a booking INVITATION, and a card drag is a reschedule;
+  // neither invitation is extended to an account the server would refuse.
+  const permCreate = useCan('appointment.create');
+  const permReschedule = useCan('appointment.reschedule');
+
   // V3.1.2 — STABLE GRID INSTANTS, and the fix for the night-jump.
   //
   // react-big-calendar re-runs its own scroll positioning whenever the
@@ -390,6 +397,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
    * booking prefilled with the provider, the date and the time.
    */
   const onSlot = async (slot: { start: Date; end: Date; resourceId?: string | number }) => {
+    if (moving ? !permReschedule : !permCreate) return;
     const staffId = slot.resourceId ? String(slot.resourceId) : moving?.staffId;
     // The grid speaks wall-clock pseudo-dates (see the events mapping);
     // convert back to a real instant the moment one leaves it.
@@ -606,7 +614,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             getNow={() => clinicWallDate(new Date())}
             onSelectSlot={onSlot}
             onSelectEvent={onSelectEvent}
-            onDoubleClickEvent={(event: CalendarEvent) => setMoving(event.appointment)}
+            onDoubleClickEvent={(event: CalendarEvent) => permReschedule && setMoving(event.appointment)}
             onDrillDown={(value: Date) => {
               // A month cell click opens that DAY, which is what "+3 more"
               // means to somebody who clicked it.

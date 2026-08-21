@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { KuwickStatusTag } from '../../design-system/kuwick';
 import { useAppointmentServices, type ServiceListRow } from '../hooks/useServiceConfig';
 import { ServiceEditorDrawer } from './ServiceEditorDrawer';
+import { permissionHint, useCan } from '../../core/hooks/useCan';
 import { getDoctorColor } from '../calendar/doctor-color';
 
 const { Text } = Typography;
@@ -52,6 +53,9 @@ export function ServicesPage({ clinicId }: ServicesPageProps) {
   const [search, setSearch] = useState('');
   const [scope, setScope] = useState<'bookable' | 'all'>('bookable');
   const [editing, setEditing] = useState<string | null>(null);
+  // Booking configuration is a policy action (appointment.configure). The
+  // catalogue stays readable; the doors into changing it disable and say why.
+  const canConfigure = useCan('appointment.configure');
 
   const { data, isFetching } = useAppointmentServices({
     bookableOnly: scope === 'bookable',
@@ -70,7 +74,12 @@ export function ServicesPage({ clinicId }: ServicesPageProps) {
         {/* Creation lives in the clinic's ONE catalogue — this is a door to
             it, not a second list that could drift from it. */}
         <Tooltip title="Opens the clinic's service catalogue — services created there appear here.">
-          <Button icon={<PlusOutlined />} onClick={() => navigate('/settings/clinical/services')}>
+          <Button
+            icon={<PlusOutlined />}
+            disabled={!canConfigure}
+            title={canConfigure ? undefined : permissionHint('change how appointments and services are configured')}
+            onClick={() => navigate('/settings/clinical/services')}
+          >
             New service
           </Button>
         </Tooltip>
@@ -107,7 +116,7 @@ export function ServicesPage({ clinicId }: ServicesPageProps) {
         rowKey="id"
         loading={isFetching}
         dataSource={data ?? []}
-        onRow={(row) => ({ onClick: () => setEditing(row.id), style: { cursor: 'pointer' } })}
+        onRow={(row) => ({ onClick: () => canConfigure && setEditing(row.id), style: { cursor: canConfigure ? 'pointer' : 'default' } })}
         pagination={{ pageSize: 25, hideOnSinglePage: true, showSizeChanger: false }}
         locale={{
           emptyText: (
@@ -218,6 +227,8 @@ export function ServicesPage({ clinicId }: ServicesPageProps) {
             render: (_, row) => (
               <Button
                 size="small"
+                disabled={!canConfigure}
+                title={canConfigure ? undefined : permissionHint('change how appointments and services are configured')}
                 onClick={(event) => {
                   event.stopPropagation();
                   setEditing(row.id);

@@ -12,6 +12,7 @@ import {
   Skeleton,
   Space,
   Timeline,
+  Tooltip,
   Typography,
   message,
 } from 'antd';
@@ -42,7 +43,9 @@ import {
   useConfirmAppointment,
   useNoShowAppointment,
 } from '../hooks/useAppointments';
-import { whatsappLink } from '../whatsappReminder';
+import { patientFacingClinicName, whatsappLink } from '../whatsappReminder';
+import { useClinics } from '../../core/hooks/useClinics';
+import { permissionHint, useCan } from '../../core/hooks/useCan';
 import { getDoctorColor } from './doctor-color';
 import { ApiError } from '../../core/api-client';
 
@@ -106,6 +109,16 @@ export function AppointmentDrawer({
   const status = appointment?.status as AppointmentStatus | undefined;
   const canCheckIn = status ? CHECK_IN_FROM_STATUSES.includes(status) : false;
   const canCancel = status ? !NON_CANCELLABLE_STATUSES.includes(status) : false;
+
+  // Phase 1 — what THIS ACCOUNT may do, from the server-published permission
+  // set. Status says whether the action makes sense; permission says whether
+  // this person may take it. A button that fails only after the click taught
+  // UAT nothing except distrust, so the ones below disable with the reason.
+  const permEdit = useCan('appointment.edit');
+  const permCheckIn = useCan('appointment.check_in');
+  const permCancel = useCan('appointment.cancel');
+  const permNoShow = useCan('appointment.no_show');
+  const permReschedule = useCan('appointment.reschedule');
   const isRequest = status === AppointmentStatus.REQUESTED;
   const isInClinic = status === AppointmentStatus.CHECKED_IN;
   const isCompleted = status === AppointmentStatus.COMPLETED;
@@ -118,15 +131,25 @@ export function AppointmentDrawer({
     .join('')
     .toUpperCase();
 
+  // The PATIENT-FACING clinic name, resolved by the server on the clinics
+  // list (booking-page displayName → clinic name). This used to be hardcoded
+  // to '' — the "your appointment at on 22 Aug" message the owner caught in
+  // UAT, and the reason the calendar and the list greeted the same patient
+  // with two different clinics.
+  const { data: clinics } = useClinics();
+  const clinicNameForPatient = patientFacingClinicName(
+    clinics?.find((clinic) => clinic.id === appointment?.clinicId),
+  );
+
   const whatsapp = useMemo(() => {
     if (!appointment?.patient.phone) return null;
     return whatsappLink({
       phone: appointment.patient.phone,
       patientName: appointment.patient.name,
-      clinicName: '',
+      clinicName: clinicNameForPatient,
       scheduledStart: appointment.scheduledStart,
     });
-  }, [appointment]);
+  }, [appointment, clinicNameForPatient]);
 
   const run = async (label: string, action: () => Promise<unknown>) => {
     try {
@@ -143,21 +166,39 @@ export function AppointmentDrawer({
   // (§21) — the three reaches a receptionist makes mid-phone-call — so the
   // ••• menu holds only the occasional and the destructive.
   const moreItems = [
-    appointment?.patient.phone ? { key: 'reminder', label: 'Record reminder sent' } : null,
+    appointment?.patient.phone ? { key: 'reminder', label: 'Record a manual reminder' } : null,
     onBookFollowUp ? { key: 'follow-up', label: 'Book a follow-up' } : null,
     appointment?.visitId ? { key: 'record', label: 'Open clinical record' } : null,
     { key: 'history', label: showHistory ? 'Hide history' : 'View history' },
     canCheckIn || canCancel ? { type: 'divider' as const, key: 'd1' } : null,
-    canCheckIn ? { key: 'no-show', danger: true, label: 'Mark as no-show' } : null,
-    canCancel ? { key: 'cancel', danger: true, label: 'Cancel appointment' } : null,
+    canCheckIn
+      ? {
+          key: 'no-show',
+          danger: true,
+          label: 'Mark as no-show',
+          disabled: !permNoShow,
+          title: permNoShow ? undefined : permissionHint('mark an appointment as a no-show'),
+        }
+      : null,
+    canCancel
+      ? {
+          key: 'cancel',
+          danger: true,
+          label: 'Cancel appointment',
+          disabled: !permCancel,
+          title: permCancel ? undefined : permissionHint('cancel an appointment'),
+        }
+      : null,
   ].filter(Boolean) as { key: string; label: string }[];
 
-  // Recorded as MANUAL: the receptionist sent it themselves, and calling
-  // that anything else would claim a gateway Kuwick does not have.
+  // Recorded as MANUAL, and worded as what actually happened: WhatsApp was
+  // OPENED with the message prefilled. Whether the staff member pressed Send
+  // inside WhatsApp is something Kuwick cannot see, so it never claims
+  // "reminder sent" on the strength of a window opening.
   const openWhatsApp = async () => {
     if (!appointment || !whatsapp) return;
     window.open(whatsapp, '_blank', 'noopener');
-    await run('Reminder recorded', () =>
+    await run('WhatsApp opened — noted in history', () =>
       logCommunication.mutateAsync({
         appointmentId: appointment.id,
         channel: 'WHATSAPP',
@@ -243,39 +284,50 @@ export function AppointmentDrawer({
             <Space wrap>
               {isRequest ? (
                 <>
-                  <Button
-                    type="primary"
-                    icon={<CheckCircleOutlined />}
-                    loading={confirm.isPending}
-                    onClick={() =>
-                      run('Request accepted', () => confirm.mutateAsync({ id: appointment.id }))
-                    }
-                  >
-                    Accept request
-                  </Button>
+                  <Tooltip title={permEdit ? undefined : permissionHint('accept a booking request')}>
+                    <Button
+                      type="primary"
+                      icon={<CheckCircleOutlined />}
+                      loading={confirm.isPending}
+                      disabled={!permEdit}
+                      onClick={() =>
+                        run('Request accepted', () => confirm.mutateAsync({ id: appointment.id }))
+                      }
+                    >
+                      Accept request
+                    </Button>
+                  </Tooltip>
                   <Popconfirm
                     title="Decline this request?"
                     description="The patient's slot is released and they are not booked in."
                     okText="Decline"
+                    disabled={!permEdit}
                     onConfirm={() =>
                       run('Request declined', () => reject.mutateAsync({ id: appointment.id }))
                     }
                   >
-                    <Button>Decline</Button>
+                    <Tooltip
+                      title={permEdit ? undefined : permissionHint('decline a booking request')}
+                    >
+                      <Button disabled={!permEdit}>Decline</Button>
+                    </Tooltip>
                   </Popconfirm>
                 </>
               ) : null}
               {canCheckIn ? (
-                <Button
-                  type="primary"
-                  icon={<CheckCircleOutlined />}
-                  loading={checkIn.isPending}
-                  onClick={() =>
-                    run('Patient checked in', () => checkIn.mutateAsync({ id: appointment.id }))
-                  }
-                >
-                  Check in
-                </Button>
+                <Tooltip title={permCheckIn ? undefined : permissionHint('check a patient in')}>
+                  <Button
+                    type="primary"
+                    icon={<CheckCircleOutlined />}
+                    loading={checkIn.isPending}
+                    disabled={!permCheckIn}
+                    onClick={() =>
+                      run('Patient checked in', () => checkIn.mutateAsync({ id: appointment.id }))
+                    }
+                  >
+                    Check in
+                  </Button>
+                </Tooltip>
               ) : null}
               {(isInClinic || isCompleted) && appointment.visitId ? (
                 <Button
@@ -292,9 +344,17 @@ export function AppointmentDrawer({
                 </Button>
               ) : null}
               {canCancel && !isInClinic ? (
-                <Button icon={<SwapOutlined />} onClick={() => onReschedule(appointment.id)}>
-                  Reschedule
-                </Button>
+                <Tooltip
+                  title={permReschedule ? undefined : permissionHint('move an appointment')}
+                >
+                  <Button
+                    icon={<SwapOutlined />}
+                    disabled={!permReschedule}
+                    onClick={() => onReschedule(appointment.id)}
+                  >
+                    Reschedule
+                  </Button>
+                </Tooltip>
               ) : null}
             </Space>
             <Space>
@@ -327,7 +387,7 @@ export function AppointmentDrawer({
             </Button>
             {whatsapp ? (
               <Button size="small" icon={<WhatsAppOutlined />} onClick={openWhatsApp}>
-                WhatsApp
+                Open WhatsApp
               </Button>
             ) : null}
             {appointment.patient.phone ? (

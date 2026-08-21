@@ -78,8 +78,18 @@ function Harness({ children }: { children: ReactNode }) {
   );
 }
 
+const CLINICS = [
+  // The internal name is deliberately the staging label and the patient-facing
+  // name the clinic's own: the drawer must always speak the second.
+  { id: 'clinic-1', name: 'Klinik UAT Staging (Synthetic)', patientFacingName: 'Klinik Hijraa Bangi' },
+];
+
 function open(overrides: Record<string, unknown> = {}) {
-  get.mockResolvedValue({ ...BASE, ...overrides });
+  get.mockImplementation((url: string) =>
+    url.startsWith('/clinics')
+      ? Promise.resolve(CLINICS)
+      : Promise.resolve({ ...BASE, ...overrides }),
+  );
   return render(
     <Harness>
       <AppointmentDrawer
@@ -140,6 +150,22 @@ describe('the drawer offers the action the counter actually needs', () => {
     expect(await screen.findByRole('button', { name: /more actions/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^check in$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /reschedule/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('the drawer speaks the patient-facing clinic identity', () => {
+  it('WhatsApp opens with the booking-page name, never the internal environment label', async () => {
+    const opened = vi.spyOn(window, 'open').mockReturnValue(null);
+    open();
+
+    const button = await screen.findByRole('button', { name: /open whatsapp/i });
+    await userEvent.click(button);
+
+    await waitFor(() => expect(opened).toHaveBeenCalled());
+    const url = decodeURIComponent(String(opened.mock.calls[0][0]));
+    expect(url).toContain('Klinik Hijraa Bangi');
+    expect(url).not.toContain('Synthetic');
+    opened.mockRestore();
   });
 });
 

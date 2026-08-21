@@ -27,6 +27,19 @@ export function toWhatsappNumber(phone: string | null | undefined): string | nul
   return digits;
 }
 
+/**
+ * What a PATIENT should read as the clinic's name. The server resolves it on
+ * the clinics list (`patientFacingName`: booking-page displayName → clinic
+ * name); this helper is the one fallback chain every caller shares, so the
+ * calendar drawer and the appointment list can never again greet the same
+ * patient with two different clinics — one of which was blank.
+ */
+export function patientFacingClinicName(
+  clinic: { name: string; patientFacingName?: string } | null | undefined,
+): string {
+  return clinic?.patientFacingName?.trim() || clinic?.name?.trim() || '';
+}
+
 export function reminderMessage(params: {
   patientName: string;
   scheduledStart: string | Date;
@@ -35,9 +48,16 @@ export function reminderMessage(params: {
   // Short, and it names the three things a patient needs: who it is for, when,
   // and where. No clinical detail — a reminder travels over an unencrypted
   // channel to a phone that may be shared.
+  //
+  // The clinic clause is OMITTED when no name is available, never rendered
+  // blank: "your appointment at on 22 Aug" reached a real UAT patient message
+  // because one caller passed ''. The template now refuses to produce that
+  // sentence whatever a caller does.
+  const clinicName = params.clinicName.trim();
+  const where = clinicName ? ` at ${clinicName}` : '';
   return (
-    `Hi ${params.patientName}, this is a reminder of your appointment at ` +
-    `${params.clinicName} on ${formatClinicDateTime(params.scheduledStart)}. ` +
+    `Hi ${params.patientName}, this is a reminder of your appointment${where} ` +
+    `on ${formatClinicDateTime(params.scheduledStart)}. ` +
     'Please reply if you need to change it.'
   );
 }

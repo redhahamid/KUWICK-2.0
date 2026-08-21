@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Avatar, Button, Card, Space, Switch, TimePicker, Typography, message } from 'antd';
+import { Avatar, Button, Card, Space, Switch, TimePicker, Tooltip, Typography, message } from 'antd';
+import { permissionHint, useCan } from '../../core/hooks/useCan';
 import dayjs from 'dayjs';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ApiError } from '../../core/api-client';
@@ -57,6 +58,7 @@ export function FixedWeeklyEditor({
   staffName,
   onSwitchToRoster,
 }: FixedWeeklyEditorProps) {
+  const canManageRoster = useCan('appointment.manage_roster');
   const queryClient = useQueryClient();
   const [days, setDays] = useState<WeeklyDay[]>([]);
   const [saving, setSaving] = useState(false);
@@ -131,9 +133,13 @@ export function FixedWeeklyEditor({
           <Text strong>{staffName}</Text>
           <Text type="secondary">{summary}</Text>
         </div>
-        <Button size="small" onClick={() => setEditing(true)}>
-          Edit
-        </Button>
+        <Tooltip
+          title={canManageRoster ? undefined : permissionHint('change the provider roster')}
+        >
+          <Button size="small" disabled={!canManageRoster} onClick={() => setEditing(true)}>
+            Edit
+          </Button>
+        </Tooltip>
       </div>
     );
   }
@@ -151,7 +157,7 @@ export function FixedWeeklyEditor({
       data-testid={`weekly-${staffId}`}
       extra={
         <Space>
-          <Button size="small" onClick={onSwitchToRoster}>
+          <Button size="small" disabled={!canManageRoster} onClick={onSwitchToRoster}>
             Move to the monthly roster
           </Button>
           <Button size="small" onClick={() => setEditing(false)}>

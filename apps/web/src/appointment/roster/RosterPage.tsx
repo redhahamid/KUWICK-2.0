@@ -25,6 +25,7 @@ import {
   useSetScheduleMode,
 } from '../hooks/useRoster';
 import { ShiftEditorModal } from './ShiftEditorModal';
+import { permissionHint, useCan } from '../../core/hooks/useCan';
 import { FixedWeeklyEditor } from './FixedWeeklyEditor';
 import { getDoctorColor } from '../calendar/doctor-color';
 
@@ -74,6 +75,12 @@ export function RosterPage({ clinicId }: RosterPageProps) {
     shift?: RosterShift;
   } | null>(null);
   const [selection, setSelection] = useState<{ staffId: string; dates: string[] } | null>(null);
+
+  // Phase 1 — writing the roster is a policy action (appointment.manage_roster,
+  // OWNER's alone by default). The board stays fully READABLE for everyone
+  // with diary access; what changes without the permission is that the
+  // writing controls disable and say why, instead of failing after the click.
+  const canManageRoster = useCan('appointment.manage_roster');
 
   const monthKey = month.format('YYYY-MM');
   const { data, isFetching } = useRosterMonth(clinicId, monthKey);
@@ -195,19 +202,34 @@ export function RosterPage({ clinicId }: RosterPageProps) {
           <Popconfirm
             title="Copy last month's roster?"
             description="Shifts are aligned by WEEKDAY, and this month's existing shifts for those providers are replaced."
+            disabled={!canManageRoster}
             onConfirm={onCopyPrevious}
           >
-            <Button icon={<CopyOutlined />} loading={copyMonth.isPending}>
-              Copy last month
-            </Button>
+            <Tooltip
+              title={canManageRoster ? undefined : permissionHint('change the provider roster')}
+            >
+              <Button
+                icon={<CopyOutlined />}
+                loading={copyMonth.isPending}
+                disabled={!canManageRoster}
+              >
+                Copy last month
+              </Button>
+            </Tooltip>
           </Popconfirm>
           <Tooltip
-            title={selection ? undefined : 'Click one or more dates on the board first.'}
+            title={
+              !canManageRoster
+                ? permissionHint('change the provider roster')
+                : selection
+                  ? undefined
+                  : 'Click one or more dates on the board first.'
+            }
           >
             <Button
               type="primary"
               icon={<PlusOutlined />}
-              disabled={!selection}
+              disabled={!selection || !canManageRoster}
               onClick={() => {
                 if (!selection) return;
                 const provider = rosterProviders.find((row) => row.staffId === selection.staffId);
@@ -287,16 +309,25 @@ export function RosterPage({ clinicId }: RosterPageProps) {
                       </Avatar>
                       <div className="kw-roster-provider-text">
                         <span className="kw-roster-provider-name">{provider.fullName}</span>
-                        <Button
-                          size="small"
-                          type="link"
-                          style={{ padding: 0, height: 'auto', fontSize: 11, textAlign: 'left' }}
-                          onClick={() =>
-                            setMode.mutate({ staffId: provider.staffId, mode: 'FIXED_WEEKLY' })
+                        <Tooltip
+                          title={
+                            canManageRoster
+                              ? undefined
+                              : permissionHint('change the provider roster')
                           }
                         >
-                          Use a weekly pattern instead
-                        </Button>
+                          <Button
+                            size="small"
+                            type="link"
+                            disabled={!canManageRoster}
+                            style={{ padding: 0, height: 'auto', fontSize: 11, textAlign: 'left' }}
+                            onClick={() =>
+                              setMode.mutate({ staffId: provider.staffId, mode: 'FIXED_WEEKLY' })
+                            }
+                          >
+                            Use a weekly pattern instead
+                          </Button>
+                        </Tooltip>
                       </div>
                     </div>
                   </th>
@@ -315,7 +346,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
                         data-picked={picked || undefined}
                         data-closed={isClosed || undefined}
                         data-weekend={weekday === 0 || weekday === 6 || undefined}
-                        onClick={() => toggleDate(provider.staffId, date)}
+                        onClick={() => canManageRoster && toggleDate(provider.staffId, date)}
                       >
                         {isClosed ? (
                           <Tooltip title={closedReason ?? 'The clinic is closed'}>
