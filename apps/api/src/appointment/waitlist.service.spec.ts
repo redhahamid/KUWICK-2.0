@@ -79,7 +79,8 @@ function build(world: World = {}) {
     clinicTimeZone: jest.fn(async () => 'Asia/Kuala_Lumpur'),
   } as unknown as SlotAvailabilityService;
 
-  const service = new WaitlistService(scoped, rawPrisma, availability);
+  const staffNotifications = { notify: jest.fn(async () => 0) } as never;
+  const service = new WaitlistService(scoped, rawPrisma, availability, staffNotifications);
   const run = <T>(fn: () => Promise<T>) =>
     tenantContextStorage.run({ tenantId: 't1', staffId: 'staff-7', userId: 'u1' }, fn);
 

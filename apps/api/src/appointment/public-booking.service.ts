@@ -22,6 +22,7 @@ import {
 import { tenantContextStorage } from '../core/tenant-context';
 import { ClinicalTx } from '../clinical/clinical-actor';
 import { appointmentSnapshot, recordAppointmentEvent } from './appointment-event.service';
+import { StaffNotificationService, notificationWhen } from './staff-notification.service';
 import { AppointmentBookingValidator } from './appointment-booking-validator.service';
 import { SlotAvailabilityService } from './slot-availability.service';
 import { PublicBookDto, PublicCancelDto, PublicRescheduleDto } from './dto/public-booking.dto';
@@ -100,6 +101,8 @@ export class PublicBookingService {
     @Inject(TENANT_SCOPED_PRISMA) private readonly scoped: TenantScopedPrismaClient,
     private readonly availability: SlotAvailabilityService,
     private readonly bookingValidator: AppointmentBookingValidator,
+    /** Phase 5 — the staff inbox fan-out for patient-initiated events. */
+    private readonly staffNotifications: StaffNotificationService,
   ) {}
 
   /**
@@ -379,13 +382,17 @@ export class PublicBookingService {
       throw new BadRequestException('An IC or passport number is needed.');
     }
 
-    return this.tx(page, async (tx) => {
+    // Phase 5 — the clinic is told AFTER the booking's own transaction has
+    // committed; an inbox write must never roll a patient's booking back.
+    let freshAppointmentId: string | null = null;
+    const confirmation = await this.tx(page, async (tx) => {
       if (dto.idempotencyKey) {
         const existing = await tx.appointment.findFirst({
           where: { tenantId: page.tenantId, idempotencyKey: dto.idempotencyKey },
         });
         if (existing) return this.confirmationOf(page, existing);
       }
+      freshAppointmentId = null; // set below once the row exists
 
       // The same advisory locks the staff path takes, for the same reason: a
       // patient on the public page and a receptionist at the counter are two
@@ -498,8 +505,64 @@ export class PublicBookingService {
         actorLabel: 'Patient (online booking)',
       });
 
+      freshAppointmentId = appointment.id;
       return this.confirmationOf(page, appointment);
     });
+    if (freshAppointmentId) {
+      await this.notifyClinic(
+        page,
+        freshAppointmentId,
+        // Auto-confirmed bookings land as work on the diary; requests land as
+        // a decision on the desk. Two different sentences.
+        (status) => (status === 'REQUESTED'
+          ? { type: 'BOOKING_REQUEST' as const, title: 'Booking request (online)' }
+          : { type: 'NEW_BOOKING' as const, title: 'New online booking' }),
+      );
+    }
+    return confirmation;
+  }
+
+  /**
+   * Phase 5 — re-read the names through the tenant-scoped client (RLS as
+   * usual) and fan out to the branch desk and the assigned provider. No
+   * actor: the patient is not a staff member and nobody is excluded.
+   */
+  private async notifyClinic(
+    page: ResolvedPage,
+    appointmentId: string,
+    describe: (status: string) => { type: 'NEW_BOOKING' | 'BOOKING_REQUEST' | 'PATIENT_CANCELLED' | 'PATIENT_RESCHEDULED'; title: string },
+  ): Promise<void> {
+    try {
+    await this.inTenant(page, async () => {
+      const row = await this.scoped.appointment.findUnique({
+        where: { id: appointmentId },
+        select: {
+          status: true,
+          clinicId: true,
+          staffId: true,
+          scheduledStart: true,
+          patient: { select: { name: true } },
+          service: { select: { name: true } },
+          staff: { select: { fullName: true } },
+          clinic: { select: { timezone: true } },
+        },
+      });
+      if (!row?.patient?.name || !row.service?.name || !row.staff?.fullName) return;
+      const { type, title } = describe(row.status);
+      await this.staffNotifications.notify({
+        clinicId: row.clinicId,
+        type,
+        title,
+        body: `${row.patient.name} · ${row.service.name} · ${notificationWhen(row.scheduledStart, row.clinic.timezone)} · ${row.staff.fullName}`,
+        appointmentId,
+        assignedStaffId: row.staffId,
+        includeDesk: true,
+      });
+    });
+    } catch {
+      // Best-effort by contract: the patient's booking already exists, and
+      // the inbox is a convenience that must never surface an error here.
+    }
   }
 
   /**
@@ -807,7 +870,13 @@ export class PublicBookingService {
         actorLabel: 'Patient (manage booking)',
       });
 
-      return { manageToken: replacement.manageToken };
+      return { manageToken: replacement.manageToken, replacementId: replacement.id };
+    }).then(async (result: { manageToken: string | null; replacementId: string }) => {
+      await this.notifyClinic(page, result.replacementId, () => ({
+        type: 'PATIENT_RESCHEDULED' as const,
+        title: 'Rescheduled by the patient',
+      }));
+      return { manageToken: result.manageToken };
     });
   }
 
@@ -835,7 +904,13 @@ export class PublicBookingService {
         reason: dto.reason?.trim() || 'Cancelled by the patient',
         actorLabel: 'Patient (manage booking)',
       });
-      return { cancelled: true };
+      return { cancelled: true, appointmentId: appointment.id };
+    }).then(async (result: { cancelled: boolean; appointmentId: string }) => {
+      await this.notifyClinic(page, result.appointmentId, () => ({
+        type: 'PATIENT_CANCELLED' as const,
+        title: 'Cancelled by the patient',
+      }));
+      return { cancelled: result.cancelled };
     });
   }
 

@@ -133,8 +133,15 @@ function build(world: World = {}) {
   // The tenant-scoped client and the raw one are the same fake here: the
   // distinction that matters in production — one sets `app.tenant_id`, the
   // other does not — has no meaning against an in-memory double.
-  const service = new PublicBookingService(prisma, prisma as never, availability, validator);
-  return { service, prisma, tx, availability, validator, created, events, updates, patients };
+  const staffNotifications = { notify: jest.fn(async () => 0) } as never;
+  const service = new PublicBookingService(
+    prisma,
+    prisma as never,
+    availability,
+    validator,
+    staffNotifications,
+  );
+  return { service, prisma, tx, availability, validator, staffNotifications, created, events, updates, patients };
 }
 
 const BOOK = {

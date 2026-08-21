@@ -221,6 +221,7 @@ model Tenant {
   appointments                Appointment[]
   providerShifts              ProviderShift[]
   providerScheduleModePeriods ProviderScheduleModePeriod[]
+  staffNotifications          StaffNotification[]
   appointmentEvents           AppointmentEvent[]
   appointmentSeries           AppointmentSeries[]
   appointmentFormAnswers      AppointmentFormAnswer[]
@@ -327,6 +328,7 @@ model Clinic {
   appointments                Appointment[]
   providerShifts              ProviderShift[]
   providerScheduleModePeriods ProviderScheduleModePeriod[]
+  staffNotifications          StaffNotification[]
   bookingPage                 ClinicBookingPage?
   bookingFormFields           BookingFormField[]
   reminderRules               AppointmentReminderRule[]
@@ -652,6 +654,39 @@ model NotificationLog {
   @@map("notification_logs")
 }
 
+/// PHASE 5 — a staff member's notification INBOX row.
+///
+/// NOT event history: `AppointmentEvent` stays the canonical record of what
+/// happened to a booking. This is the per-RECIPIENT copy that carries an
+/// unread state — "Aisyah has not seen the new online booking yet" is a fact
+/// about Aisyah, not about the booking. And NOT `NotificationLog`, which
+/// records outbound deliveries on external channels (a recipient string and
+/// a send status); a staff inbox needs a staff id, a clinic, a read marker
+/// and an appointment to open.
+model StaffNotification {
+  id               String    @id @default(uuid())
+  tenantId         String    @map("tenant_id")
+  clinicId         String    @map("clinic_id")
+  recipientStaffId String    @map("recipient_staff_id")
+  /// e.g. NEW_BOOKING / BOOKING_REQUEST / PATIENT_CANCELLED — worded by the
+  /// web's own dictionary, stored as a stable code.
+  type             String
+  title            String
+  body             String
+  appointmentId    String?   @map("appointment_id")
+  readAt           DateTime? @map("read_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  clinic      Clinic       @relation(fields: [clinicId], references: [id])
+  recipient   Staff        @relation(fields: [recipientStaffId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+
+  @@index([tenantId, recipientStaffId, createdAt(sort: Desc)])
+  @@index([tenantId, recipientStaffId, readAt])
+  @@map("staff_notifications")
+}
+
 // Append-only. No update/delete path is exposed at the application layer.
 model AuditLog {
   id          String   @id @default(uuid())
@@ -735,6 +770,7 @@ model Staff {
   providerShifts               ProviderShift[]              @relation("ProviderShiftProvider")
   providerShiftsCreated        ProviderShift[]              @relation("ProviderShiftAuthor")
   scheduleModePeriods          ProviderScheduleModePeriod[] @relation("ScheduleModePeriodProvider")
+  staffNotifications           StaffNotification[]
   scheduleModePeriodsCreated   ProviderScheduleModePeriod[] @relation("ScheduleModePeriodAuthor")
   appointmentEvents            AppointmentEvent[]           @relation("AppointmentEventActor")
   appointmentsOverridden       Appointment[]                @relation("AppointmentOverrideAuthor")
@@ -1545,10 +1581,11 @@ model Appointment {
   series          AppointmentSeries?         @relation(fields: [seriesId], references: [id])
   overriddenBy    Staff?                     @relation("AppointmentOverrideAuthor", fields: [overriddenByStaffId], references: [id])
   depositInvoice  Invoice?                   @relation("AppointmentDepositInvoice", fields: [depositInvoiceId], references: [id])
-  events          AppointmentEvent[]
-  formAnswers     AppointmentFormAnswer[]
-  communications  AppointmentCommunication[]
-  waitlistEntries WaitlistEntry[]            @relation("WaitlistBookedAppointment")
+  events             AppointmentEvent[]
+  formAnswers        AppointmentFormAnswer[]
+  communications     AppointmentCommunication[]
+  waitlistEntries    WaitlistEntry[]            @relation("WaitlistBookedAppointment")
+  staffNotifications StaffNotification[]
   reminderSentBy  Staff?                     @relation("AppointmentReminderAuthor", fields: [reminderSentByStaffId], references: [id])
   visit           Visit?                     @relation(fields: [visitId], references: [id])
   cancelledBy     Staff?                     @relation("AppointmentCancelAuthor", fields: [cancelledByStaffId], references: [id])

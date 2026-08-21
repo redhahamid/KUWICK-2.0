@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Avatar, Button, DatePicker, Dropdown, Empty, Input, Modal, Segmented, Select, Space, Table, Tooltip, Typography, message } from 'antd';
 import { EllipsisOutlined, WhatsAppOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
+import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { AppointmentStatus } from '@kuwick/shared';
 import { KuwickStatusTag } from '../../design-system/kuwick';
@@ -98,6 +99,18 @@ export function AppointmentListView({ clinicId, clinicName, onBook }: Appointmen
   const [sources, setSources] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Phase 5 — a notification's "View appointment" lands here with ?open=<id>;
+  // the drawer opens once and the param is consumed so refresh/back stay sane.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const open = searchParams.get('open');
+    if (!open) return;
+    setSelectedId(open);
+    const next = new URLSearchParams(searchParams);
+    next.delete('open');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const changeTab = (next: ListTab) => {
     setTab(next);

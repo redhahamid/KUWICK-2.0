@@ -4,7 +4,7 @@ import {
   TENANT_SCOPED_PRISMA,
   TenantScopedPrismaClient,
 } from '../core/tenant-scoped-prisma.provider';
-import { currentTenantId } from '../core/tenant-context';
+import { currentStaffId, currentTenantId } from '../core/tenant-context';
 import { PrismaService } from '../core/prisma.service';
 import { requireActor, withTenantTx } from '../clinical/clinical-actor';
 import {
@@ -13,6 +13,7 @@ import {
 } from './appointment-authorization';
 import { CreateWaitlistEntryDto, UpdateWaitlistEntryDto } from './dto/appointment-extras.dto';
 import { SlotAvailabilityService } from './slot-availability.service';
+import { StaffNotificationService } from './staff-notification.service';
 import { clinicDateKey, parseDateOnly } from './time.util';
 
 /**
@@ -37,10 +38,11 @@ export class WaitlistService {
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly rawPrisma: PrismaService,
     private readonly availability: SlotAvailabilityService,
+    private readonly staffNotifications: StaffNotificationService,
   ) {}
 
   async create(dto: CreateWaitlistEntryDto) {
-    return withTenantTx(this.rawPrisma, async (tx) => {
+    const entry = await withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
       assertCanPerformAppointmentAction(actor, 'CREATE');
 
@@ -75,6 +77,28 @@ export class WaitlistService {
         },
       });
     });
+
+    // Phase 5 — the desk keeps the waitlist, so the desk hears when a name
+    // joins it. Best-effort, after the write, actor excluded as ever.
+    try {
+      const [patient, service] = await Promise.all([
+        this.prisma.patient.findUnique({ where: { id: entry.patientId }, select: { name: true } }),
+        this.prisma.serviceCatalog.findUnique({ where: { id: entry.serviceId }, select: { name: true } }),
+      ]);
+      if (patient?.name && service?.name) {
+        await this.staffNotifications.notify({
+          clinicId: entry.clinicId,
+          type: 'WAITLIST_ADDED',
+          title: 'Added to the waitlist',
+          body: `${patient.name} · ${service.name}`,
+          includeDesk: true,
+          actorStaffId: currentStaffId(),
+        });
+      }
+    } catch {
+      // The entry exists; the inbox is a convenience.
+    }
+    return entry;
   }
 
   async update(id: string, dto: UpdateWaitlistEntryDto) {

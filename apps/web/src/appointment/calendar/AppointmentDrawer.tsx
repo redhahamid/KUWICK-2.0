@@ -188,7 +188,7 @@ export function AppointmentDrawer({
     appointment?.patient.phone ? { key: 'reminder', label: 'Record a manual reminder' } : null,
     onBookFollowUp ? { key: 'follow-up', label: 'Book a follow-up' } : null,
     appointment?.visitId ? { key: 'record', label: 'Open clinical record' } : null,
-    { key: 'history', label: showHistory ? 'Hide history' : 'View history' },
+    { key: 'history', label: showHistory ? 'Show recent activity only' : 'Show full history' },
     canCheckIn || canCancel ? { type: 'divider' as const, key: 'd1' } : null,
     canCheckIn
       ? {
@@ -581,11 +581,18 @@ export function AppointmentDrawer({
             </>
           ) : null}
 
-          {showHistory ? (
-            <>
-              <div className="kw-apt-section">History</div>
-              <Timeline
-                items={appointment.events.map((event) => ({
+          {/* PHASE 5E — the ACTIVITY is part of the record, not a hidden
+              tab: booked, reminded, requested, approved — chronological, in
+              plain words, with who. The last few are always visible; the
+              full history is one menu press away. Technical codes never
+              reach the screen (EVENT_WORDS, with a sentence-case fallback). */}
+          <div className="kw-apt-section">Activity</div>
+          <Timeline
+            className="kw-apt-activity"
+            items={(showHistory
+              ? [...appointment.events].reverse()
+              : [...appointment.events].slice(0, 5).reverse()
+            ).map((event) => ({
                   key: event.id,
                   children: (
                     <div>
@@ -603,9 +610,17 @@ export function AppointmentDrawer({
                       ) : null}
                     </div>
                   ),
-                }))}
-              />
-            </>
+            }))}
+          />
+          {!showHistory && appointment.events.length > 5 ? (
+            <Button
+              size="small"
+              type="link"
+              style={{ padding: 0 }}
+              onClick={() => setShowHistory(true)}
+            >
+              Show all {appointment.events.length} entries
+            </Button>
           ) : null}
 
           {/* Mounted only while open, so its data hooks (staff, panels) run
