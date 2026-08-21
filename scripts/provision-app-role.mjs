@@ -30,8 +30,27 @@ if (!connectionString) {
   process.exit(1);
 }
 // Defaults to the CI value, which unlocks nothing but a throwaway container
-// holding synthetic `.invalid` accounts.
+// holding synthetic `.invalid` accounts — and is therefore ONLY accepted for
+// a loopback database. On any remote host the default would set a role with
+// full table access to a publicly-known password (Railway exposes Postgres on
+// a public proxy), so a remote target must state a real password explicitly.
 const password = process.env.APP_ROLE_PASSWORD ?? 'apppass';
+if (!process.env.APP_ROLE_PASSWORD) {
+  let host = '';
+  try {
+    host = new URL(connectionString).hostname;
+  } catch {
+    // An unparseable URL fails at connect with pg's own error; no opinion here.
+  }
+  const loopback = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  if (host && !loopback) {
+    console.error(
+      `provision-app-role: refusing to set the default CI password on remote host "${host}". ` +
+        'Set APP_ROLE_PASSWORD explicitly.',
+    );
+    process.exit(1);
+  }
+}
 
 const client = new pg.Client({ connectionString });
 await client.connect();

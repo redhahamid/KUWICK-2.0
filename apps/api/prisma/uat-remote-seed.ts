@@ -45,9 +45,9 @@ import { PrismaPg } from '@prisma/adapter-pg';
 //     differ, so a second write run is a true no-op rather than a churn of
 //     identical writes.
 //
-//   DRY RUN:  ALLOW_REMOTE_UAT_SEED=true npx tsx prisma/uat-remote-seed.ts
+//   DRY RUN:  ALLOW_REMOTE_UAT_SEED=true node --experimental-strip-types prisma/uat-remote-seed.ts
 //   WRITE:    ALLOW_REMOTE_UAT_SEED=true UAT_SEED_WRITE=true \
-//               npx tsx prisma/uat-remote-seed.ts
+//               node --experimental-strip-types prisma/uat-remote-seed.ts
 // ═══════════════════════════════════════════════════════════════════════════
 
 const EXPECTED_TENANT = 'Kuwick UAT Staging (Synthetic)';
@@ -81,9 +81,9 @@ if (!ALLOW) {
       : 'REFUSED: this script touches a remote database and only runs when a\n' +
         'human states that intent explicitly.\n\n') +
       '  DRY RUN (writes nothing):\n' +
-      '    ALLOW_REMOTE_UAT_SEED=true npx tsx prisma/uat-remote-seed.ts\n\n' +
+      '    ALLOW_REMOTE_UAT_SEED=true node --experimental-strip-types prisma/uat-remote-seed.ts\n\n' +
       '  REAL WRITE (both keys):\n' +
-      '    ALLOW_REMOTE_UAT_SEED=true UAT_SEED_WRITE=true npx tsx prisma/uat-remote-seed.ts\n',
+      '    ALLOW_REMOTE_UAT_SEED=true UAT_SEED_WRITE=true node --experimental-strip-types prisma/uat-remote-seed.ts\n',
   );
   process.exit(1);
 }
@@ -900,7 +900,7 @@ async function main() {
         'The mutation transaction ran in full and was rolled back; the counts on the\n' +
         'right are what a write run would leave behind. To commit, re-run with the\n' +
         'second key:\n\n' +
-        '  ALLOW_REMOTE_UAT_SEED=true UAT_SEED_WRITE=true npx tsx prisma/uat-remote-seed.ts\n',
+        '  ALLOW_REMOTE_UAT_SEED=true UAT_SEED_WRITE=true node --experimental-strip-types prisma/uat-remote-seed.ts\n',
     );
   }
 }
