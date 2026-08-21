@@ -145,9 +145,43 @@ export const publicBooking = {
         answers: { label: string; answer: string | null }[];
       };
       can: { reschedule: boolean; cancel: boolean };
+      policy: {
+        reschedule: 'NOT_ALLOWED' | 'REQUEST_APPROVAL' | 'INSTANT';
+        cancel: 'NOT_ALLOWED' | 'REQUEST_APPROVAL' | 'INSTANT';
+        cutoffMinutes: number;
+        changeable: boolean;
+      };
+      pendingRequests: {
+        id: string;
+        type: 'RESCHEDULE' | 'CANCELLATION';
+        reason: string;
+        requestedStart: string | null;
+        requestedEnd: string | null;
+        createdAt: string;
+      }[];
+      lastDecision: {
+        type: 'RESCHEDULE' | 'CANCELLATION';
+        status: 'APPROVED' | 'DECLINED';
+        decisionNote: string | null;
+        decidedAt: string | null;
+      } | null;
       cutoffHours: number;
       confirmationMessage: string | null;
     }>(`/${slug}/manage/${token}`),
+  requestChange: (
+    slug: string,
+    token: string,
+    body: {
+      type: 'RESCHEDULE' | 'CANCELLATION';
+      reason: string;
+      scheduledStart?: string;
+      scheduledEnd?: string;
+    },
+  ) =>
+    request<{ requested: boolean; requestId: string }>(
+      `/${slug}/manage/${token}/request-change`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
   cancelByToken: (slug: string, token: string, reason?: string) =>
     request<{ cancelled: boolean }>(`/${slug}/manage/${token}/cancel`, {
       method: 'PATCH',

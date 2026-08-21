@@ -39,6 +39,9 @@ const PAGE = {
   allowPatientReschedule: true,
   allowPatientCancel: true,
   patientChangeCutoffHours: 4,
+  patientRescheduleMode: null as string | null,
+  patientCancelMode: null as string | null,
+  patientChangeCutoffMinutes: null as number | null,
   confirmationMessage: null,
 };
 
@@ -56,6 +59,8 @@ function build(world: World = {}) {
   const events: Record<string, unknown>[] = [];
   const updates: Record<string, unknown>[] = [];
   const patients: Record<string, unknown>[] = [];
+  const requestCreates: Record<string, unknown>[] = [];
+  const requestUpdates: { where: unknown; data: unknown }[] = [];
 
   const resolved = world.page === null ? [] : [{ ...PAGE, ...world.page }];
 
@@ -79,6 +84,16 @@ function build(world: World = {}) {
       }),
     },
     appointmentFormAnswer: { createMany: jest.fn(async () => ({ count: 0 })) },
+    appointmentChangeRequest: {
+      updateMany: jest.fn(async (args: { where: unknown; data: unknown }) => {
+        requestUpdates.push(args);
+        return { count: 0 };
+      }),
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        requestCreates.push(data);
+        return { id: 'req-1', ...data };
+      }),
+    },
     bookingFormField: { findMany: jest.fn(async () => []) },
     serviceCatalog: {
       findUnique: jest.fn(async () => ({
@@ -117,7 +132,22 @@ function build(world: World = {}) {
     doctorServiceQualification: { findMany: jest.fn(async () => [{ staffId: 'doc-1' }]) },
     staff: { findMany: jest.fn(async () => [{ id: 'doc-1', fullName: 'Dr Redha' }]) },
     bookingFormField: { findMany: jest.fn(async () => []) },
-    appointment: { findFirst: jest.fn(async () => world.appointment ?? null) },
+    appointment: {
+      findFirst: jest.fn(async () => world.appointment ?? null),
+      // Phase 7 — the notification fan-out re-reads names through the scoped
+      // client after the request transaction commits.
+      findUnique: jest.fn(async () => ({
+        status: 'CONFIRMED',
+        clinicId: 'clinic-1',
+        staffId: 'doc-1',
+        scheduledStart: new Date('2026-09-01T02:00:00.000Z'),
+        patient: { name: 'Nurul Izzah' },
+        service: { name: 'GP Consultation' },
+        staff: { fullName: 'Dr Redha' },
+        clinic: { timezone: 'Asia/Kuala_Lumpur' },
+      })),
+    },
+    appointmentChangeRequest: { findMany: jest.fn(async () => []) },
   } as unknown as PrismaService;
 
   const availability = {
@@ -141,7 +171,7 @@ function build(world: World = {}) {
     validator,
     staffNotifications,
   );
-  return { service, prisma, tx, availability, validator, staffNotifications, created, events, updates, patients };
+  return { service, prisma, tx, availability, validator, staffNotifications, created, events, updates, patients, requestCreates, requestUpdates };
 }
 
 const BOOK = {
@@ -495,5 +525,139 @@ describe('managing a booking by token reaches exactly one appointment', () => {
         scheduledEnd: new Date(soon.getTime() + 5400000).toISOString(),
       }),
     ).rejects.toThrow(/Nobody works then/);
+  });
+});
+
+// ===========================================================================
+// PHASE 7 — A PATIENT CHANGE IS A REQUEST UNTIL THE CLINIC DECIDES.
+// ===========================================================================
+
+const FUTURE_APPT = {
+  id: 'appt-1',
+  status: 'CONFIRMED',
+  clinicId: 'clinic-1',
+  staffId: 'doc-1',
+  serviceId: 'svc-1',
+  scheduledStart: new Date(Date.now() + 3 * 24 * 3600 * 1000),
+  scheduledEnd: new Date(Date.now() + 3 * 24 * 3600 * 1000 + 30 * 60000),
+};
+
+const APPROVAL_PAGE = {
+  patientRescheduleMode: 'REQUEST_APPROVAL',
+  patientCancelMode: 'REQUEST_APPROVAL',
+};
+
+describe('Phase 7 — the request workflow', () => {
+  it('26. on an approval-mode page the INSTANT endpoints refuse — a patient link can never mutate directly', async () => {
+    const ctx = build({ page: APPROVAL_PAGE, appointment: FUTURE_APPT });
+
+    await expect(
+      ctx.service.cancelByToken(SLUG, 'token-1', { reason: 'Outstation' }),
+    ).rejects.toThrow(/reviews changes first/i);
+    expect(ctx.updates).toHaveLength(0);
+  });
+
+  it('27. a cancellation request stores the reason, touches NOTHING on the appointment, and tells the desk', async () => {
+    const ctx = build({ page: APPROVAL_PAGE, appointment: FUTURE_APPT });
+
+    const result = await ctx.service.requestChangeByToken(SLUG, 'token-1', {
+      type: 'CANCELLATION',
+      reason: 'Outstation that week',
+    });
+
+    expect(result).toEqual({ requested: true, requestId: 'req-1' });
+    expect(ctx.requestCreates[0]).toMatchObject({
+      appointmentId: 'appt-1',
+      type: 'CANCELLATION',
+      reason: 'Outstation that week',
+    });
+    // The appointment row is untouched: same slot, same status.
+    expect(ctx.updates).toHaveLength(0);
+    expect(ctx.events).toContainEqual(
+      expect.objectContaining({ eventType: 'CHANGE_REQUESTED' }),
+    );
+    expect(
+      (ctx.staffNotifications as { notify: jest.Mock }).notify,
+    ).toHaveBeenCalledWith(expect.objectContaining({ type: 'CANCELLATION_REQUESTED' }));
+  });
+
+  it('28. a request without a reason is refused — nobody can decide "because"', async () => {
+    const ctx = build({ page: APPROVAL_PAGE, appointment: FUTURE_APPT });
+
+    await expect(
+      ctx.service.requestChangeByToken(SLUG, 'token-1', { type: 'CANCELLATION', reason: '   ' }),
+    ).rejects.toThrow(/tell the clinic why/i);
+    expect(ctx.requestCreates).toHaveLength(0);
+  });
+
+  it('29. a reschedule request runs the SAME validator, and a refused target never becomes a request', async () => {
+    const ctx = build({
+      page: APPROVAL_PAGE,
+      appointment: FUTURE_APPT,
+      check: { ok: false, reason: 'FULLY_BOOKED', message: 'Everything is taken that day.' },
+    });
+
+    await expect(
+      ctx.service.requestChangeByToken(SLUG, 'token-1', {
+        type: 'RESCHEDULE',
+        reason: 'Prefer the afternoon',
+        scheduledStart: new Date(Date.now() + 4 * 24 * 3600 * 1000).toISOString(),
+        scheduledEnd: new Date(Date.now() + 4 * 24 * 3600 * 1000 + 30 * 60000).toISOString(),
+      }),
+    ).rejects.toThrow(/everything is taken/i);
+    expect(ctx.requestCreates).toHaveLength(0);
+    // The engine was asked with the appointment excluding itself, exactly as
+    // a real move is checked.
+    expect(ctx.validator.check as unknown as jest.Mock).toHaveBeenCalledWith(
+      expect.objectContaining({ excludeAppointmentId: 'appt-1' }),
+    );
+  });
+
+  it('30. a newer request supersedes the older one — the clinic answers the CURRENT wish', async () => {
+    const ctx = build({ page: APPROVAL_PAGE, appointment: FUTURE_APPT });
+
+    await ctx.service.requestChangeByToken(SLUG, 'token-1', {
+      type: 'CANCELLATION',
+      reason: 'Second thoughts',
+    });
+
+    expect(ctx.requestUpdates[0]).toMatchObject({
+      where: { appointmentId: 'appt-1', type: 'CANCELLATION', status: 'PENDING' },
+      data: { status: 'SUPERSEDED' },
+    });
+  });
+
+  it('31. the cutoff speaks minutes when the clinic set minutes', async () => {
+    const soon = {
+      ...FUTURE_APPT,
+      scheduledStart: new Date(Date.now() + 60 * 60000),
+      scheduledEnd: new Date(Date.now() + 90 * 60000),
+    };
+    const ctx = build({
+      page: { ...APPROVAL_PAGE, patientChangeCutoffMinutes: 90 },
+      appointment: soon,
+    });
+
+    await expect(
+      ctx.service.requestChangeByToken(SLUG, 'token-1', {
+        type: 'CANCELLATION',
+        reason: 'Cannot make it',
+      }),
+    ).rejects.toThrow(/90 minutes/);
+  });
+
+  it('32. a page that never chose the new model keeps its old behaviour exactly', async () => {
+    // Booleans frozen: false was always "ring us" — for requests too.
+    const ctx = build({
+      page: { allowPatientCancel: false },
+      appointment: FUTURE_APPT,
+    });
+
+    await expect(
+      ctx.service.requestChangeByToken(SLUG, 'token-1', {
+        type: 'CANCELLATION',
+        reason: 'Trying anyway',
+      }),
+    ).rejects.toThrow(/ring them/i);
   });
 });

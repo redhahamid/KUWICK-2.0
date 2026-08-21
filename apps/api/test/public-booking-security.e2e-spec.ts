@@ -367,8 +367,12 @@ describe('Public booking surface security (e2e)', () => {
       .get(`/public/booking/${slugA}/manage/${booked.body.manageToken}`)
       .expect(200);
 
+    // Phase 7 added the change-request surface: the policy words, THIS
+    // appointment's own pending requests, and the clinic's last decision.
+    // Nothing about any other patient or booking joined the response.
     expect(Object.keys(res.body).sort()).toEqual([
       'appointment', 'can', 'clinic', 'confirmationMessage', 'cutoffHours',
+      'lastDecision', 'pendingRequests', 'policy',
     ]);
     expect(Object.keys(res.body.appointment).sort()).toEqual([
       'answers', 'bookingFeeAmount', 'note', 'patientName', 'paymentStatus',

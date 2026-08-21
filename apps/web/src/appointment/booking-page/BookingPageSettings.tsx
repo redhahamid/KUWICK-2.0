@@ -7,6 +7,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Radio,
   Select,
   Space,
   Switch,
@@ -155,8 +156,29 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
 
   useEffect(() => {
     if (!data) return;
-    form.setFieldsValue(
-      data.page ?? {
+    const page = data.page as (typeof data.page & {
+      patientRescheduleMode?: string | null;
+      patientCancelMode?: string | null;
+      patientChangeCutoffMinutes?: number | null;
+      allowPatientReschedule?: boolean;
+      allowPatientCancel?: boolean;
+      patientChangeCutoffHours?: number;
+    }) | null;
+    // Phase 7 — the tri-state, seeded from the stored policy or the frozen
+    // booleans (true was always instant, false was always "ring us"). A NEW
+    // page starts on the recommended workflow: request approval.
+    const modeOf = (stored: string | null | undefined, legacy: boolean | undefined) =>
+      stored ?? (legacy === undefined ? 'REQUEST_APPROVAL' : legacy ? 'INSTANT' : 'NOT_ALLOWED');
+    const cutoffMinutes =
+      page?.patientChangeCutoffMinutes ?? (page?.patientChangeCutoffHours ?? 4) * 60;
+    const cutoff =
+      cutoffMinutes % (24 * 60) === 0 && cutoffMinutes > 0
+        ? { cutoffValue: cutoffMinutes / (24 * 60), cutoffUnit: 'days' }
+        : cutoffMinutes % 60 === 0
+          ? { cutoffValue: cutoffMinutes / 60, cutoffUnit: 'hours' }
+          : { cutoffValue: cutoffMinutes, cutoffUnit: 'minutes' };
+    form.setFieldsValue({
+      ...(page ?? {
         slug: '',
         displayName: '',
         language: 'en',
@@ -165,11 +187,11 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
         requireNric: false,
         showReasonField: true,
         active: false,
-        allowPatientReschedule: true,
-        allowPatientCancel: true,
-        patientChangeCutoffHours: 4,
-      },
-    );
+      }),
+      patientRescheduleMode: modeOf(page?.patientRescheduleMode, page?.allowPatientReschedule),
+      patientCancelMode: modeOf(page?.patientCancelMode, page?.allowPatientCancel),
+      ...cutoff,
+    });
     setReminderOffsets(data.reminderRules.map((rule) => rule.offsetMinutes));
     setDirty(false);
   }, [data, form]);
@@ -191,8 +213,21 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
   const submit = async () => {
     if (!clinicId) return;
     const values = await form.validateFields();
+    // Phase 7 — value × unit → minutes; the legacy booleans ride along so an
+    // older reader of the row still sees a truthful coarse answer.
+    const unitMinutes =
+      values.cutoffUnit === 'days' ? 24 * 60 : values.cutoffUnit === 'hours' ? 60 : 1;
+    const cutoffMinutes = Math.round((values.cutoffValue ?? 0) * unitMinutes);
+    const { cutoffValue: _v, cutoffUnit: _u, ...rest } = values;
     try {
-      await save.mutateAsync({ ...values, clinicId });
+      await save.mutateAsync({
+        ...rest,
+        clinicId,
+        patientChangeCutoffMinutes: cutoffMinutes,
+        patientChangeCutoffHours: Math.max(0, Math.round(cutoffMinutes / 60)),
+        allowPatientReschedule: values.patientRescheduleMode !== 'NOT_ALLOWED',
+        allowPatientCancel: values.patientCancelMode !== 'NOT_ALLOWED',
+      });
       await saveReminders.mutateAsync({ clinicId, offsets: reminderOffsets });
       setDirty(false);
       message.success('Booking page saved');
@@ -416,26 +451,50 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
               label: 'Appointment Changes',
               children: (
                 <>
-                  <Form.Item
-                    name="allowPatientReschedule"
-                    valuePropName="checked"
-                    label="Patients may move their own appointment"
-                  >
-                    <Switch />
+                  {/* PHASE 7 — three answers, not two. "Request clinic
+                      approval" is the recommended clinic workflow: the
+                      patient asks, the booking stands until you decide. */}
+                  <Form.Item name="patientRescheduleMode" label="Patient rescheduling">
+                    <Radio.Group>
+                      <Space direction="vertical" size={4}>
+                        <Radio value="NOT_ALLOWED">Not allowed — the page says to ring you</Radio>
+                        <Radio value="REQUEST_APPROVAL">
+                          Request clinic approval (recommended) — you approve or decline each request
+                        </Radio>
+                        <Radio value="INSTANT">Allow instantly — the patient moves it themselves</Radio>
+                      </Space>
+                    </Radio.Group>
+                  </Form.Item>
+                  <Form.Item name="patientCancelMode" label="Patient cancellation">
+                    <Radio.Group>
+                      <Space direction="vertical" size={4}>
+                        <Radio value="NOT_ALLOWED">Not allowed — the page says to ring you</Radio>
+                        <Radio value="REQUEST_APPROVAL">
+                          Request clinic approval (recommended) — a reason is always required
+                        </Radio>
+                        <Radio value="INSTANT">Allow instantly</Radio>
+                      </Space>
+                    </Radio.Group>
                   </Form.Item>
                   <Form.Item
-                    name="allowPatientCancel"
-                    valuePropName="checked"
-                    label="Patients may cancel their own appointment"
-                  >
-                    <Switch />
-                  </Form.Item>
-                  <Form.Item
-                    name="patientChangeCutoffHours"
-                    label="Up to how many hours before"
+                    label="Changes and requests close before the appointment"
                     extra="After this, the manage-booking page asks them to ring you instead."
                   >
-                    <InputNumber min={0} max={720} addonAfter="hours" />
+                    <Space.Compact>
+                      <Form.Item name="cutoffValue" noStyle>
+                        <InputNumber min={0} max={720} style={{ width: 90 }} />
+                      </Form.Item>
+                      <Form.Item name="cutoffUnit" noStyle>
+                        <Select
+                          style={{ width: 110 }}
+                          options={[
+                            { value: 'minutes', label: 'minutes' },
+                            { value: 'hours', label: 'hours' },
+                            { value: 'days', label: 'days' },
+                          ]}
+                        />
+                      </Form.Item>
+                    </Space.Compact>
                   </Form.Item>
                 </>
               ),

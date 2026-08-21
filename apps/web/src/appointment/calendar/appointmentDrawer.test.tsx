@@ -88,7 +88,9 @@ function open(overrides: Record<string, unknown> = {}) {
   get.mockImplementation((url: string) =>
     url.startsWith('/clinics')
       ? Promise.resolve(CLINICS)
-      : Promise.resolve({ ...BASE, ...overrides }),
+      : url.includes('/change-requests')
+        ? Promise.resolve([])
+        : Promise.resolve({ ...BASE, ...overrides }),
   );
   return render(
     <Harness>
@@ -141,7 +143,7 @@ describe('the drawer offers the action the counter actually needs', () => {
         ? Promise.resolve(CLINICS)
         : url.startsWith('/staff')
           ? Promise.resolve([{ id: 'doc-1', fullName: 'Dr Redha', role: 'DOCTOR_RESIDENT' }])
-          : url.startsWith('/panel-clinics')
+          : url.startsWith('/panel-clinics') || url.includes('/change-requests')
             ? Promise.resolve([])
             : Promise.resolve({ ...BASE }),
     );

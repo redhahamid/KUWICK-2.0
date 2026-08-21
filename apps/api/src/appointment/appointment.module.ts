@@ -27,6 +27,8 @@ import { StaffNotificationService } from './staff-notification.service';
 import { StaffNotificationController } from './staff-notification.controller';
 import { MediaService } from './media.service';
 import { MediaController } from './media.controller';
+import { AppointmentChangeRequestService } from './appointment-change-request.service';
+import { AppointmentChangeRequestController } from './appointment-change-request.controller';
 import { ProviderShiftController } from './provider-shift.controller';
 import { ProviderShiftService } from './provider-shift.service';
 import { ServiceBookingConfigController } from './service-booking-config.controller';
@@ -71,6 +73,7 @@ import {
     AppointmentDashboardController,
     StaffNotificationController,
     MediaController,
+    AppointmentChangeRequestController,
     AppointmentReminderController,
     AppointmentController,
     ClinicBookingSettingsController,
@@ -95,6 +98,7 @@ import {
     AppointmentDashboardService,
     StaffNotificationService,
     MediaService,
+    AppointmentChangeRequestService,
   ],
 })
 export class AppointmentModule {}

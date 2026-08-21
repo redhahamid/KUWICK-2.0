@@ -105,3 +105,51 @@ export function useRejectAppointment() {
     },
   });
 }
+
+// ---------------------------------------------------------------------------
+// PHASE 7 — patient change requests, and the clinic's decision.
+// ---------------------------------------------------------------------------
+
+export interface AppointmentChangeRequestRow {
+  id: string;
+  type: 'RESCHEDULE' | 'CANCELLATION';
+  status: 'PENDING' | 'APPROVED' | 'DECLINED' | 'SUPERSEDED';
+  reason: string;
+  requestedStart: string | null;
+  requestedEnd: string | null;
+  decisionNote: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+}
+
+export function useChangeRequests(appointmentId: string | undefined) {
+  return useQuery({
+    queryKey: ['appointment-change-requests', appointmentId],
+    queryFn: () =>
+      apiClient.get<AppointmentChangeRequestRow[]>(`/appointments/${appointmentId}/change-requests`),
+    enabled: Boolean(appointmentId),
+  });
+}
+
+/**
+ * Approving goes through the canonical reschedule/cancel paths server-side;
+ * a slot taken while the request waited surfaces here as the server's own
+ * sentence and the request stays PENDING.
+ */
+export function useDecideChangeRequest(appointmentId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, decision, note }: { id: string; decision: 'approve' | 'decline'; note?: string }) =>
+      apiClient.post<AppointmentChangeRequestRow[]>(
+        `/appointment-change-requests/${id}/${decision}`,
+        decision === 'decline' ? { note } : {},
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['appointment-change-requests', appointmentId] });
+      queryClient.invalidateQueries({ queryKey: ['appointment-detail', appointmentId] });
+      queryClient.invalidateQueries({ queryKey: ['appointments'] });
+      queryClient.invalidateQueries({ queryKey: ['appointment-dashboard'] });
+    },
+  });
+}

@@ -7,6 +7,7 @@ import {
   Drawer,
   Dropdown,
   Empty,
+  Input,
   Modal,
   Popconfirm,
   Skeleton,
@@ -38,6 +39,8 @@ import {
 } from '../appointment-status.constants';
 import {
   useAppointmentDetail,
+  useChangeRequests,
+  useDecideChangeRequest,
   useLogCommunication,
   useRejectAppointment,
 } from '../hooks/useAppointmentDetail';
@@ -78,6 +81,9 @@ const EVENT_WORDS: Record<string, string> = {
   PATIENT_LINKED: 'Patient matched',
   COMMUNICATION_SENT: 'Message sent',
   NOTE_ADDED: 'Note added',
+  CHANGE_REQUESTED: 'Patient requested a change',
+  CHANGE_REQUEST_APPROVED: 'Request approved',
+  CHANGE_REQUEST_DECLINED: 'Request declined',
 };
 
 /**
@@ -105,6 +111,12 @@ export function AppointmentDrawer({
   const [showHistory, setShowHistory] = useState(false);
 
   const markArrived = useMarkArrivedAppointment();
+  // Phase 7 — the patient's pending question, and the clinic's answer.
+  const { data: changeRequests } = useChangeRequests(appointmentId ?? undefined);
+  const decideRequest = useDecideChangeRequest(appointmentId ?? undefined);
+  const [decliningId, setDecliningId] = useState<string | null>(null);
+  const [declineNote, setDeclineNote] = useState('');
+  const pendingRequests = (changeRequests ?? []).filter((row) => row.status === 'PENDING');
   // Phase 4 — Check in opens the registration REVIEW; nothing is created
   // until Confirm & add to queue inside it.
   const [registering, setRegistering] = useState(false);
@@ -479,6 +491,102 @@ export function AppointmentDrawer({
               <RightOutlined aria-hidden />
             </button>
           ) : null}
+
+          {/* PHASE 7 — a patient request is the loudest thing after the
+              queue: it is the one item on this booking waiting on a HUMAN. */}
+          {pendingRequests.map((request) => {
+            const permitted = request.type === 'RESCHEDULE' ? permReschedule : permCancel;
+            const permWord =
+              request.type === 'RESCHEDULE' ? 'move an appointment' : 'cancel an appointment';
+            return (
+              <Alert
+                key={request.id}
+                type="warning"
+                showIcon
+                style={{ marginBottom: 12 }}
+                data-testid="change-request-panel"
+                message={
+                  request.type === 'RESCHEDULE'
+                    ? 'The patient asks to reschedule'
+                    : 'The patient asks to cancel'
+                }
+                description={
+                  <div>
+                    {request.type === 'RESCHEDULE' && request.requestedStart ? (
+                      <div>
+                        {formatClinicDateTime(appointment.scheduledStart)} →{' '}
+                        <Text strong>{formatClinicDateTime(request.requestedStart)}</Text>
+                      </div>
+                    ) : null}
+                    <div>Reason: {request.reason}</div>
+                    <Space style={{ marginTop: 8 }}>
+                      <Tooltip title={permitted ? undefined : permissionHint(permWord)}>
+                        <Button
+                          size="small"
+                          type="primary"
+                          disabled={!permitted}
+                          loading={decideRequest.isPending}
+                          onClick={() =>
+                            run(
+                              request.type === 'RESCHEDULE'
+                                ? 'Request approved — appointment moved'
+                                : 'Request approved — appointment cancelled',
+                              () => decideRequest.mutateAsync({ id: request.id, decision: 'approve' }),
+                            )
+                          }
+                        >
+                          Approve
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title={permitted ? undefined : permissionHint(permWord)}>
+                        <Button
+                          size="small"
+                          disabled={!permitted}
+                          onClick={() => {
+                            setDeclineNote('');
+                            setDecliningId(request.id);
+                          }}
+                        >
+                          Decline…
+                        </Button>
+                      </Tooltip>
+                    </Space>
+                  </div>
+                }
+              />
+            );
+          })}
+
+          <Modal
+            open={Boolean(decliningId)}
+            onCancel={() => setDecliningId(null)}
+            title="Decline this request"
+            okText="Decline request"
+            confirmLoading={decideRequest.isPending}
+            onOk={() =>
+              decliningId &&
+              run('Request declined', async () => {
+                await decideRequest.mutateAsync({
+                  id: decliningId,
+                  decision: 'decline',
+                  note: declineNote.trim() || undefined,
+                });
+                setDecliningId(null);
+              })
+            }
+          >
+            <Paragraph type="secondary" style={{ fontSize: 13 }}>
+              The appointment stays exactly as booked. Your message reaches the patient on their
+              manage-booking page — offer an alternative here if you have one.
+            </Paragraph>
+            <Input.TextArea
+              rows={3}
+              value={declineNote}
+              onChange={(event) => setDeclineNote(event.target.value)}
+              placeholder="e.g. We could do 15:30 the same day — ring us and we will hold it."
+              maxLength={500}
+            />
+          </Modal>
 
           {/* THE APPOINTMENT, said once and said big: when, what, with whom. */}
           <div className="kw-apt-section">Booking</div>

@@ -45,8 +45,14 @@ interface ResolvedPage {
   allowPatientReschedule: boolean;
   allowPatientCancel: boolean;
   patientChangeCutoffHours: number;
+  patientRescheduleMode: string | null;
+  patientCancelMode: string | null;
+  patientChangeCutoffMinutes: number | null;
   confirmationMessage: string | null;
 }
+
+/** Phase 7 — what the patient may do, per action. */
+export type PatientChangeMode = 'NOT_ALLOWED' | 'REQUEST_APPROVAL' | 'INSTANT';
 
 /**
  * THE PUBLIC BOOKING PAGE — unauthenticated, and NOT unscoped.
@@ -128,6 +134,9 @@ export class PublicBookingService {
         allow_patient_reschedule AS "allowPatientReschedule",
         allow_patient_cancel AS "allowPatientCancel",
         patient_change_cutoff_hours AS "patientChangeCutoffHours",
+        patient_reschedule_mode AS "patientRescheduleMode",
+        patient_cancel_mode AS "patientCancelMode",
+        patient_change_cutoff_minutes AS "patientChangeCutoffMinutes",
         confirmation_message AS "confirmationMessage"
       FROM clinic_booking_pages
       WHERE slug = ${slug} AND active = true
@@ -167,6 +176,24 @@ export class PublicBookingService {
   private publicMediaUrl(slug: string, ref: string | null): string | null {
     const id = mediaIdOf(ref);
     return id ? `/public/booking/${slug}/media/${id}` : ref;
+  }
+
+  /**
+   * Phase 7 — the tri-state policy, with the frozen booleans as fallback for
+   * pages that have never been saved under the new model: true was always
+   * instant self-service, false was always "ring us".
+   */
+  private changeModeOf(page: ResolvedPage, action: 'reschedule' | 'cancel'): PatientChangeMode {
+    const stored = action === 'reschedule' ? page.patientRescheduleMode : page.patientCancelMode;
+    if (stored === 'NOT_ALLOWED' || stored === 'REQUEST_APPROVAL' || stored === 'INSTANT') {
+      return stored;
+    }
+    const allowed = action === 'reschedule' ? page.allowPatientReschedule : page.allowPatientCancel;
+    return allowed ? 'INSTANT' : 'NOT_ALLOWED';
+  }
+
+  private cutoffMinutesOf(page: ResolvedPage): number {
+    return page.patientChangeCutoffMinutes ?? page.patientChangeCutoffHours * 60;
   }
 
   /** What the page shows before anybody has chosen anything. */
@@ -541,7 +568,7 @@ export class PublicBookingService {
   private async notifyClinic(
     page: ResolvedPage,
     appointmentId: string,
-    describe: (status: string) => { type: 'NEW_BOOKING' | 'BOOKING_REQUEST' | 'PATIENT_CANCELLED' | 'PATIENT_RESCHEDULED'; title: string },
+    describe: (status: string) => { type: 'NEW_BOOKING' | 'BOOKING_REQUEST' | 'PATIENT_CANCELLED' | 'PATIENT_RESCHEDULED' | 'RESCHEDULE_REQUESTED' | 'CANCELLATION_REQUESTED'; title: string },
   ): Promise<void> {
     try {
     await this.inTenant(page, async () => {
@@ -740,12 +767,19 @@ export class PublicBookingService {
 
       const timeZone = await this.availability.clinicTimeZone(page.clinicId);
       const cutoff = new Date(
-        appointment.scheduledStart.getTime() - page.patientChangeCutoffHours * 3600 * 1000,
+        appointment.scheduledStart.getTime() - this.cutoffMinutesOf(page) * 60 * 1000,
       );
       const changeable =
         (appointment.status === AppointmentStatus.CONFIRMED ||
           appointment.status === AppointmentStatus.REQUESTED) &&
         Date.now() < cutoff.getTime();
+
+      // Phase 7 — the page tells the patient where their request stands.
+      const requests = await this.scoped.appointmentChangeRequest.findMany({
+        where: { appointmentId: appointment.id },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      });
 
       return {
         clinic: { displayName: page.displayName, logoUrl: this.publicMediaUrl(page.slug, page.logoUrl), timeZone },
@@ -764,9 +798,40 @@ export class PublicBookingService {
           answers: appointment.formAnswers,
         },
         can: {
-          reschedule: page.allowPatientReschedule && changeable,
-          cancel: page.allowPatientCancel && changeable,
+          reschedule: this.changeModeOf(page, 'reschedule') === 'INSTANT' && changeable,
+          cancel: this.changeModeOf(page, 'cancel') === 'INSTANT' && changeable,
         },
+        // Phase 7 — the policy said in full, so the page can offer the right
+        // verb: change it, request it, or ring us.
+        policy: {
+          reschedule: this.changeModeOf(page, 'reschedule'),
+          cancel: this.changeModeOf(page, 'cancel'),
+          cutoffMinutes: this.cutoffMinutesOf(page),
+          changeable,
+        },
+        pendingRequests: requests
+          .filter((row) => row.status === 'PENDING')
+          .map((row) => ({
+            id: row.id,
+            type: row.type,
+            reason: row.reason,
+            requestedStart: row.requestedStart,
+            requestedEnd: row.requestedEnd,
+            createdAt: row.createdAt,
+          })),
+        lastDecision: (() => {
+          const decided = requests.find(
+            (row) => row.status === 'APPROVED' || row.status === 'DECLINED',
+          );
+          return decided
+            ? {
+                type: decided.type,
+                status: decided.status,
+                decisionNote: decided.decisionNote,
+                decidedAt: decided.decidedAt,
+              }
+            : null;
+        })(),
         cutoffHours: page.patientChangeCutoffHours,
         confirmationMessage: page.confirmationMessage,
       };
@@ -946,15 +1011,133 @@ export class PublicBookingService {
     });
   }
 
+  /**
+   * PHASE 7 — the patient ASKS; nothing about the appointment moves.
+   *
+   * The request records what they want (a new time, or out entirely) and why,
+   * in their own words. The original booking keeps its slot and its status —
+   * only a staff decision (appointment-change-request.service) mutates
+   * anything, back through the same engine-checked paths as ever. A newer
+   * request of the same type supersedes the older one: the clinic answers the
+   * patient's CURRENT wish, not a stack of drafts.
+   */
+  async requestChangeByToken(
+    slug: string,
+    token: string,
+    dto: {
+      type: 'RESCHEDULE' | 'CANCELLATION';
+      reason: string;
+      scheduledStart?: string;
+      scheduledEnd?: string;
+    },
+  ) {
+    const page = await this.resolvePage(slug);
+    const reason = dto.reason?.trim();
+    if (!reason) {
+      throw new BadRequestException('Please tell the clinic why, so they can decide.');
+    }
+    let requestedStart: Date | null = null;
+    let requestedEnd: Date | null = null;
+    if (dto.type === 'RESCHEDULE') {
+      if (!dto.scheduledStart || !dto.scheduledEnd) {
+        throw new BadRequestException('Pick the time you would like instead.');
+      }
+      requestedStart = new Date(dto.scheduledStart);
+      requestedEnd = new Date(dto.scheduledEnd);
+      if (!(requestedEnd > requestedStart)) {
+        throw new BadRequestException('That time ends before it starts.');
+      }
+    }
+
+    const created = await this.tx(page, async (tx) => {
+      const appointment = await tx.appointment.findFirst({ where: { manageToken: token } });
+      if (!appointment) throw new NotFoundException('This booking link is not valid.');
+      this.assertPatientMayChange(
+        page,
+        appointment,
+        dto.type === 'CANCELLATION' ? 'cancel' : 'reschedule',
+        'REQUEST_APPROVAL',
+      );
+
+      if (dto.type === 'RESCHEDULE' && requestedStart && requestedEnd) {
+        // An early, honest answer — the same engine the desk uses. NOT a
+        // reservation: the slot can still be taken before the clinic
+        // approves, and approval re-checks (7E).
+        const check = await this.bookingValidator.check({
+          clinicId: appointment.clinicId,
+          staffId: appointment.staffId,
+          serviceId: appointment.serviceId,
+          scheduledStart: requestedStart,
+          scheduledEnd: requestedEnd,
+          excludeAppointmentId: appointment.id,
+        });
+        if (!check.ok) {
+          throw new BadRequestException(check.message);
+        }
+      }
+
+      // The patient's CURRENT wish replaces their earlier one.
+      await tx.appointmentChangeRequest.updateMany({
+        where: { appointmentId: appointment.id, type: dto.type, status: 'PENDING' },
+        data: { status: 'SUPERSEDED' },
+      });
+      const request = await tx.appointmentChangeRequest.create({
+        data: {
+          tenantId: page.tenantId,
+          clinicId: appointment.clinicId,
+          appointmentId: appointment.id,
+          type: dto.type,
+          reason,
+          requestedStart,
+          requestedEnd,
+        },
+      });
+      await recordAppointmentEvent(tx, {
+        appointmentId: appointment.id,
+        eventType: AppointmentEventType.CHANGE_REQUESTED,
+        reason,
+        after: {
+          changeRequestId: request.id,
+          type: dto.type,
+          ...(requestedStart ? { requestedStart, requestedEnd } : {}),
+        },
+        actorLabel: 'Patient (manage booking)',
+      });
+      return { request, appointmentId: appointment.id };
+    });
+
+    await this.notifyClinic(page, created.appointmentId, () => ({
+      type: dto.type === 'CANCELLATION' ? 'CANCELLATION_REQUESTED' : 'RESCHEDULE_REQUESTED',
+      title: dto.type === 'CANCELLATION' ? 'Cancellation request' : 'Reschedule request',
+    }));
+
+    return { requested: true, requestId: created.request.id };
+  }
+
+  /**
+   * Phase 7 — one guard, two strengths. `requiredMode` says what the caller
+   * is trying to do: the INSTANT endpoints demand INSTANT policy (a clinic
+   * on approval-mode must never be mutated directly from a patient link),
+   * the request endpoints demand REQUEST_APPROVAL. Status and cutoff apply
+   * to both — a request past the cutoff is the same phone call.
+   */
   private assertPatientMayChange(
     page: ResolvedPage,
     appointment: { status: AppointmentStatus; scheduledStart: Date },
     action: 'reschedule' | 'cancel',
+    requiredMode: PatientChangeMode = 'INSTANT',
   ): void {
-    const allowed = action === 'reschedule' ? page.allowPatientReschedule : page.allowPatientCancel;
-    if (!allowed) {
+    const mode = this.changeModeOf(page, action);
+    if (mode === 'NOT_ALLOWED') {
       throw new ForbiddenException(
         `This clinic asks you to ring them to ${action === 'cancel' ? 'cancel' : 'change'} an appointment.`,
+      );
+    }
+    if (mode !== requiredMode) {
+      throw new ForbiddenException(
+        mode === 'REQUEST_APPROVAL'
+          ? 'This clinic reviews changes first — please send a request instead.'
+          : 'This clinic lets you change the booking directly — no request is needed.',
       );
     }
     if (
@@ -963,11 +1146,11 @@ export class PublicBookingService {
     ) {
       throw new BadRequestException('This appointment can no longer be changed online.');
     }
-    const cutoff =
-      appointment.scheduledStart.getTime() - page.patientChangeCutoffHours * 3600 * 1000;
+    const cutoffMinutes = this.cutoffMinutesOf(page);
+    const cutoff = appointment.scheduledStart.getTime() - cutoffMinutes * 60 * 1000;
     if (Date.now() >= cutoff) {
       throw new BadRequestException(
-        `Changes have to be made at least ${page.patientChangeCutoffHours} hours before the appointment. Please ring the clinic.`,
+        `Changes have to be made at least ${describeCutoff(cutoffMinutes)} before the appointment. Please ring the clinic.`,
       );
     }
   }
@@ -995,4 +1178,17 @@ export class PublicBookingService {
           : 'Your appointment is confirmed. We look forward to seeing you.'),
     };
   }
+}
+
+/** "4 hours" / "90 minutes" / "2 days" — the cutoff in the patient's units. */
+function describeCutoff(minutes: number): string {
+  if (minutes % (24 * 60) === 0 && minutes > 0) {
+    const days = minutes / (24 * 60);
+    return `${days} day${days === 1 ? '' : 's'}`;
+  }
+  if (minutes % 60 === 0 && minutes > 0) {
+    const hours = minutes / 60;
+    return `${hours} hour${hours === 1 ? '' : 's'}`;
+  }
+  return `${minutes} minutes`;
 }

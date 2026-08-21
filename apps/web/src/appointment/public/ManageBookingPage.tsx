@@ -6,6 +6,7 @@ import {
   Button,
   ConfigProvider,
   DatePicker,
+  Input,
   Modal,
   Result,
   Skeleton,
@@ -70,6 +71,29 @@ function ManageBookingPageInner() {
     if (data?.clinic.timeZone) setClinicTimeZone(data.clinic.timeZone);
   }, [data]);
 
+  // Phase 7 — request-mode actions. The reason is the patient's case.
+  const [requestingCancel, setRequestingCancel] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const requestChange = useMutation({
+    mutationFn: (body: {
+      type: 'RESCHEDULE' | 'CANCELLATION';
+      reason: string;
+      scheduledStart?: string;
+      scheduledEnd?: string;
+    }) => publicBooking.requestChange(slug, newToken ?? token, body),
+    onSuccess: () => {
+      message.success('Your request has been sent to the clinic.');
+      setRequestingCancel(false);
+      setCancelReason('');
+      setRescheduling(false);
+      queryClient.invalidateQueries({ queryKey: ['manage-booking'] });
+    },
+    onError: (failure) =>
+      message.error(
+        failure instanceof PublicBookingError ? failure.message : 'That request could not be sent.',
+      ),
+  });
+
   const cancel = useMutation({
     mutationFn: () => publicBooking.cancelByToken(slug, newToken ?? token),
     onSuccess: () => {
@@ -103,6 +127,9 @@ function ManageBookingPageInner() {
   }
 
   const { appointment, can } = data;
+  const policy = data.policy;
+  const pending = data.pendingRequests ?? [];
+  const cutoffWords = describeCutoffMinutes(policy?.cutoffMinutes ?? data.cutoffHours * 60);
 
   return (
     <div className="kw-public-booking" data-testid="manage-booking">
@@ -167,6 +194,69 @@ function ManageBookingPageInner() {
         />
       ) : null}
 
+      {/* Phase 7 — where a request stands. The clinic answers; this shows it. */}
+      {pending.map((row) => (
+        <Alert
+          key={row.id}
+          style={{ marginTop: 12 }}
+          type="info"
+          showIcon
+          data-testid="pending-request"
+          message={
+            row.type === 'CANCELLATION'
+              ? 'Your cancellation request is with the clinic'
+              : 'Your reschedule request is with the clinic'
+          }
+          description={
+            <>
+              {row.type === 'RESCHEDULE' && row.requestedStart ? (
+                <div>
+                  Requested: {formatClinicDate(row.requestedStart)} ·{' '}
+                  {formatClinicTime(row.requestedStart)}
+                </div>
+              ) : null}
+              <div>Your reason: {row.reason}</div>
+              <div>Your appointment stays as booked until the clinic decides.</div>
+            </>
+          }
+        />
+      ))}
+      {data.lastDecision && pending.length === 0 ? (
+        <Alert
+          style={{ marginTop: 12 }}
+          type={data.lastDecision.status === 'APPROVED' ? 'success' : 'warning'}
+          showIcon
+          message={
+            data.lastDecision.status === 'APPROVED'
+              ? `The clinic approved your ${data.lastDecision.type === 'CANCELLATION' ? 'cancellation' : 'reschedule'} request`
+              : `The clinic could not ${data.lastDecision.type === 'CANCELLATION' ? 'cancel this appointment' : 'make that change'}`
+          }
+          description={data.lastDecision.decisionNote ?? undefined}
+        />
+      ) : null}
+
+      {policy?.changeable &&
+      (policy.reschedule === 'REQUEST_APPROVAL' || policy.cancel === 'REQUEST_APPROVAL') ? (
+        <>
+          <Space style={{ marginTop: 16 }} wrap>
+            {policy.reschedule === 'REQUEST_APPROVAL' ? (
+              <Button type="primary" onClick={() => setRescheduling(true)}>
+                Request a new time
+              </Button>
+            ) : null}
+            {policy.cancel === 'REQUEST_APPROVAL' ? (
+              <Button danger onClick={() => setRequestingCancel(true)}>
+                Request cancellation
+              </Button>
+            ) : null}
+          </Space>
+          <Paragraph type="secondary" style={{ margin: '10px 0 0', fontSize: 12.5 }}>
+            {data.clinic.displayName} reviews changes before they happen. Requests close{' '}
+            {cutoffWords} before your appointment.
+          </Paragraph>
+        </>
+      ) : null}
+
       {can.reschedule || can.cancel ? (
         <>
           <Space style={{ marginTop: 16 }} wrap>
@@ -201,7 +291,8 @@ function ManageBookingPageInner() {
             your appointment; after that, ring {data.clinic.displayName}.
           </Paragraph>
         </>
-      ) : (
+      ) : policy?.changeable &&
+        (policy.reschedule === 'REQUEST_APPROVAL' || policy.cancel === 'REQUEST_APPROVAL') ? null : (
         // §27 — no dead buttons: when nothing can be changed the page SAYS
         // why in the patient's words, which is more useful than two grey
         // controls that refuse to explain themselves.
@@ -210,9 +301,32 @@ function ManageBookingPageInner() {
             ? 'This appointment has been cancelled. Ring the clinic if you would like to book again.'
             : appointment.status === 'COMPLETED'
               ? 'This appointment has already taken place.'
-              : `Online changes close ${data.cutoffHours} hours before the appointment. Please ring the clinic and they will help.`}
+              : `Online changes close ${cutoffWords} before the appointment. Please ring the clinic and they will help.`}
         </Paragraph>
       )}
+
+      {/* Phase 7 — the cancellation REQUEST, reason required. */}
+      <Modal
+        open={requestingCancel}
+        onCancel={() => setRequestingCancel(false)}
+        title="Request cancellation"
+        okText="Send request"
+        okButtonProps={{ danger: true, disabled: cancelReason.trim().length < 3 }}
+        confirmLoading={requestChange.isPending}
+        onOk={() => requestChange.mutate({ type: 'CANCELLATION', reason: cancelReason.trim() })}
+        destroyOnHidden
+      >
+        <Paragraph type="secondary" style={{ fontSize: 13 }}>
+          Your appointment stays booked until {data.clinic.displayName} confirms the cancellation.
+        </Paragraph>
+        <Input.TextArea
+          rows={3}
+          value={cancelReason}
+          onChange={(event) => setCancelReason(event.target.value)}
+          placeholder="Tell the clinic why (required)"
+          maxLength={500}
+        />
+      </Modal>
 
       {/* V3.1 §4 — the rest of what THIS booking already carries, in the
           confirmation's own section language. Nothing invented: the clinic's
@@ -267,6 +381,9 @@ function ManageBookingPageInner() {
         open={rescheduling}
         slug={slug}
         token={newToken ?? token}
+        mode={policy?.reschedule === 'REQUEST_APPROVAL' ? 'request' : 'instant'}
+        onRequest={(body) => requestChange.mutate({ type: 'RESCHEDULE', ...body })}
+        requesting={requestChange.isPending}
         onClose={() => setRescheduling(false)}
         onMoved={(issued) => {
           setNewToken(issued);
@@ -284,6 +401,9 @@ function RescheduleModal({
   open,
   slug,
   token,
+  mode = 'instant',
+  onRequest,
+  requesting = false,
   onClose,
   onMoved,
   date,
@@ -292,12 +412,17 @@ function RescheduleModal({
   open: boolean;
   slug: string;
   token: string;
+  /** Phase 7 — 'request' collects a reason and sends a request; nothing moves. */
+  mode?: 'instant' | 'request';
+  onRequest?: (body: { scheduledStart: string; scheduledEnd: string; reason: string }) => void;
+  requesting?: boolean;
   onClose: () => void;
   onMoved: (token: string) => void;
   date: Dayjs;
   setDate: (value: Dayjs) => void;
 }) {
   const [slot, setSlot] = useState<{ scheduledStart: string; scheduledEnd: string } | null>(null);
+  const [reason, setReason] = useState('');
 
   /**
    * THE SAME ENGINE. The times offered here are the clinic's own slot grid,
@@ -327,15 +452,26 @@ function RescheduleModal({
     <Modal
       open={open}
       onCancel={onClose}
-      title="Choose a new time"
-      okText="Move my appointment"
-      okButtonProps={{ disabled: !slot }}
-      confirmLoading={move.isPending}
-      onOk={() => slot && move.mutate(slot)}
+      title={mode === 'request' ? 'Request a new time' : 'Choose a new time'}
+      okText={mode === 'request' ? 'Send request' : 'Move my appointment'}
+      okButtonProps={{
+        disabled: !slot || (mode === 'request' && reason.trim().length < 3),
+      }}
+      confirmLoading={mode === 'request' ? requesting : move.isPending}
+      onOk={() => {
+        if (!slot) return;
+        if (mode === 'request') {
+          onRequest?.({ ...slot, reason: reason.trim() });
+        } else {
+          move.mutate(slot);
+        }
+      }}
       destroyOnHidden
     >
       <Paragraph type="secondary" style={{ fontSize: 13 }}>
-        Pick a date and a time. Your appointment keeps the same doctor and the same service.
+        {mode === 'request'
+          ? 'Pick the time you would prefer and tell the clinic why. Your appointment stays as booked until they confirm.'
+          : 'Pick a date and a time. Your appointment keeps the same doctor and the same service.'}
       </Paragraph>
       <DatePicker
         value={date}
@@ -373,6 +509,30 @@ function RescheduleModal({
           </Button>
         ))}
       </div>
+
+      {mode === 'request' ? (
+        <Input.TextArea
+          style={{ marginTop: 12 }}
+          rows={2}
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          placeholder="Tell the clinic why (required)"
+          maxLength={500}
+        />
+      ) : null}
     </Modal>
   );
+}
+
+/** "4 hours" / "90 minutes" / "2 days" — the cutoff in the patient's units. */
+function describeCutoffMinutes(minutes: number): string {
+  if (minutes % (24 * 60) === 0 && minutes > 0) {
+    const days = minutes / (24 * 60);
+    return `${days} day${days === 1 ? '' : 's'}`;
+  }
+  if (minutes % 60 === 0 && minutes > 0) {
+    const hours = minutes / 60;
+    return `${hours} hour${hours === 1 ? '' : 's'}`;
+  }
+  return `${minutes} minutes`;
 }

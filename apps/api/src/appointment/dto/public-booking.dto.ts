@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsEmail,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -95,4 +96,24 @@ export class PublicCancelDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+}
+
+/** Phase 7 — the patient's request for the clinic to decide. */
+export class PublicChangeRequestDto {
+  @IsIn(['RESCHEDULE', 'CANCELLATION'])
+  type!: 'RESCHEDULE' | 'CANCELLATION';
+
+  /** Required — a request without a reason is a decision nobody can make. */
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
+
+  @IsOptional()
+  @IsString()
+  scheduledStart?: string;
+
+  @IsOptional()
+  @IsString()
+  scheduledEnd?: string;
 }

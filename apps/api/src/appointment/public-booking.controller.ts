@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { PublicBookingService } from './public-booking.service';
-import { PublicBookDto, PublicCancelDto, PublicRescheduleDto } from './dto/public-booking.dto';
+import { PublicBookDto, PublicCancelDto, PublicChangeRequestDto, PublicRescheduleDto } from './dto/public-booking.dto';
 
 /**
  * UNAUTHENTICATED, BY DESIGN — the `public/(.*)` prefix is excluded from the
@@ -83,6 +83,16 @@ export class PublicBookingController {
       'Cache-Control': 'public, max-age=31536000, immutable',
     });
     res.send(Buffer.from(row.data));
+  }
+
+  /** Phase 7 — the patient's request; the appointment itself stays put. */
+  @Post(':slug/manage/:token/request-change')
+  requestChange(
+    @Param('slug') slug: string,
+    @Param('token') token: string,
+    @Body() dto: PublicChangeRequestDto,
+  ) {
+    return this.booking.requestChangeByToken(slug, token, dto);
   }
 
   @Get(':slug/form-fields')

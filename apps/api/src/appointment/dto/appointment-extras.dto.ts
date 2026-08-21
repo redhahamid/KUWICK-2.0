@@ -2,6 +2,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -41,6 +42,13 @@ export class UpsertBookingPageDto {
   @IsOptional() @IsBoolean() allowPatientCancel?: boolean;
 
   @IsOptional() @IsInt() @Min(0) @Max(720) patientChangeCutoffHours?: number;
+  /** Phase 7 — tri-state policies; REQUEST_APPROVAL is the recommended clinic workflow. */
+  @IsOptional() @IsIn(['NOT_ALLOWED', 'REQUEST_APPROVAL', 'INSTANT'])
+  patientRescheduleMode?: 'NOT_ALLOWED' | 'REQUEST_APPROVAL' | 'INSTANT';
+  @IsOptional() @IsIn(['NOT_ALLOWED', 'REQUEST_APPROVAL', 'INSTANT'])
+  patientCancelMode?: 'NOT_ALLOWED' | 'REQUEST_APPROVAL' | 'INSTANT';
+  /** Cutoff with minute precision (value x minutes/hours/days in the UI). */
+  @IsOptional() @IsInt() @Min(0) @Max(43200) patientChangeCutoffMinutes?: number;
   @IsOptional() @IsString() @MaxLength(1000) confirmationMessage?: string;
 }
 
