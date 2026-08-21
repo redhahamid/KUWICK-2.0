@@ -25,6 +25,8 @@ import {
 import { AppointmentDashboardService } from './appointment-dashboard.service';
 import { StaffNotificationService } from './staff-notification.service';
 import { StaffNotificationController } from './staff-notification.controller';
+import { MediaService } from './media.service';
+import { MediaController } from './media.controller';
 import { ProviderShiftController } from './provider-shift.controller';
 import { ProviderShiftService } from './provider-shift.service';
 import { ServiceBookingConfigController } from './service-booking-config.controller';
@@ -68,6 +70,7 @@ import {
     // breaks the dashboard silently.
     AppointmentDashboardController,
     StaffNotificationController,
+    MediaController,
     AppointmentReminderController,
     AppointmentController,
     ClinicBookingSettingsController,
@@ -91,6 +94,7 @@ import {
     ClinicBookingSettingsService,
     AppointmentDashboardService,
     StaffNotificationService,
+    MediaService,
   ],
 })
 export class AppointmentModule {}

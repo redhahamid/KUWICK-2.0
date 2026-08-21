@@ -23,6 +23,16 @@ export class PublicBookingError extends Error {
   }
 }
 
+/**
+ * Phase 6 — an uploaded image comes back as a RELATIVE API path
+ * (`/public/booking/:slug/media/:id`); an <img> on the web origin needs the
+ * API origin in front of it. External http(s) URLs pass through untouched.
+ */
+export function publicMediaSrc(url: string | null): string | null {
+  if (!url) return null;
+  return url.startsWith('/') ? `${API_BASE_URL}${url}` : url;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}/public/booking${path}`, {
     ...init,
@@ -97,7 +107,9 @@ export const publicBooking = {
   page: (slug: string, serviceSlug?: string) =>
     request<PublicPage>(`/${slug}${serviceSlug ? `?service=${encodeURIComponent(serviceSlug)}` : ''}`),
   providers: (slug: string, serviceId: string) =>
-    request<{ id: string; fullName: string }[]>(`/${slug}/providers?serviceId=${serviceId}`),
+    request<{ id: string; fullName: string; professionalType?: string | null }[]>(
+      `/${slug}/providers?serviceId=${serviceId}`,
+    ),
   availability: (slug: string, params: { serviceId: string; date: string; staffId?: string }) =>
     request<{ timeZone: string; reason: string | null; slots: PublicSlot[] }>(
       `/${slug}/availability?serviceId=${params.serviceId}&date=${params.date}${

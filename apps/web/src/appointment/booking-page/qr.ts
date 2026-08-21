@@ -95,8 +95,11 @@ export function qrMatrix(text: string): boolean[][] | null {
 
   const size = 17 + version * 4;
   const totalData = DATA_CODEWORDS_M[version];
-  const ecPerBlock = EC_CODEWORDS_M[version];
   const blockCount = BLOCKS_M[version];
+  // EC_CODEWORDS_M is the VERSION total; each block carries its share. Used
+  // per-block it doubled (and worse) the EC stream, overflowing the symbol
+  // for every multi-block version — v4+ never scanned. Found by 6J's pin.
+  const ecPerBlock = EC_CODEWORDS_M[version] / blockCount;
 
   // --- bit stream ----------------------------------------------------------
   const bits: number[] = [];
@@ -172,7 +175,14 @@ export function qrMatrix(text: string): boolean[][] | null {
 
   for (const row of ALIGNMENT[version]) {
     for (const column of ALIGNMENT[version]) {
-      if (matrix[row][column] !== null) continue;
+      // Only the three centres that would land INSIDE a finder pattern are
+      // dropped (the spec's rule). The old guard skipped any centre whose
+      // cell was already reserved — which silently discarded every alignment
+      // pattern on the timing lines from version 2 up, and a scanner uses
+      // those to correct sampling. Found by the jsQR decode pin (6J).
+      const inFinder =
+        (row < 9 && column < 9) || (row < 9 && column > size - 9) || (row > size - 9 && column < 9);
+      if (inFinder) continue;
       for (let dr = -2; dr <= 2; dr += 1) {
         for (let dc = -2; dc <= 2; dc += 1) {
           matrix[row + dr][column + dc] =
@@ -184,10 +194,14 @@ export function qrMatrix(text: string): boolean[][] | null {
 
   matrix[size - 8][8] = true; // the always-dark module
 
-  // Format information, level M (01) with mask 0.
-  const formatBits = formatInformation(0b01, 0);
+  // Format information, level M with mask 0. The indicator for M is 0b00
+  // (L=01, M=00, Q=11, H=10) — this said 0b01, which ANNOUNCED level L over
+  // a symbol whose blocks were built at level M, so every real scanner
+  // sliced the codewords with the wrong structure and read noise. The
+  // structural pins could never see it; the jsQR decode pin (6J) did.
+  const formatBits = formatInformation(0b00, 0);
   for (let index = 0; index < 15; index += 1) {
-    const bit = ((formatBits >> index) & 1) === 1;
+    const bit = ((formatBits >> (14 - index)) & 1) === 1;
     if (index < 6) matrix[8][index] = bit;
     else if (index < 8) matrix[8][index + 1] = bit;
     else if (index === 8) matrix[7][8] = bit;

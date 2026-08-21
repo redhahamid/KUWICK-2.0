@@ -222,6 +222,7 @@ model Tenant {
   providerShifts              ProviderShift[]
   providerScheduleModePeriods ProviderScheduleModePeriod[]
   staffNotifications          StaffNotification[]
+  mediaAssets                 MediaAsset[]
   appointmentEvents           AppointmentEvent[]
   appointmentSeries           AppointmentSeries[]
   appointmentFormAnswers      AppointmentFormAnswer[]
@@ -654,6 +655,41 @@ model NotificationLog {
   @@map("notification_logs")
 }
 
+/// PHASE 6 — an uploaded image for the PUBLIC booking surface: a service
+/// photo or a booking-page logo.
+///
+/// THE BYTES LIVE IN POSTGRES, deliberately. Railway's container filesystem
+/// is ephemeral — a redeploy would silently blank every service photo — and
+/// adding a volume or an object store is deployment surgery this feature
+/// does not need for a handful of small images. In the database they survive
+/// redeploys, ride the backups, and sit under the same tenant RLS as
+/// everything else. Capped at 2 MB per image and image types only, enforced
+/// by magic bytes (attachment-validation.ts), so the table stays a shelf of
+/// small pictures rather than a file system.
+///
+/// NO second RLS policy: public serving goes through the booking page's own
+/// slug bootstrap (/public/booking/:slug/media/:id resolves the tenant the
+/// same way every other public read does), so `clinic_booking_pages` remains
+/// the only table with a public policy.
+model MediaAsset {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  /// SERVICE_PHOTO or CLINIC_LOGO — what the image is FOR, which bounds
+  /// where it may be rendered.
+  kind             String
+  contentType      String   @map("content_type")
+  byteSize         Int      @map("byte_size")
+  data             Bytes
+  createdByStaffId String?  @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant         Tenant @relation(fields: [tenantId], references: [id])
+  createdByStaff Staff? @relation(fields: [createdByStaffId], references: [id])
+
+  @@index([tenantId, kind])
+  @@map("media_assets")
+}
+
 /// PHASE 5 — a staff member's notification INBOX row.
 ///
 /// NOT event history: `AppointmentEvent` stays the canonical record of what
@@ -771,6 +807,7 @@ model Staff {
   providerShiftsCreated        ProviderShift[]              @relation("ProviderShiftAuthor")
   scheduleModePeriods          ProviderScheduleModePeriod[] @relation("ScheduleModePeriodProvider")
   staffNotifications           StaffNotification[]
+  mediaAssets                  MediaAsset[]
   scheduleModePeriodsCreated   ProviderScheduleModePeriod[] @relation("ScheduleModePeriodAuthor")
   appointmentEvents            AppointmentEvent[]           @relation("AppointmentEventActor")
   appointmentsOverridden       Appointment[]                @relation("AppointmentOverrideAuthor")

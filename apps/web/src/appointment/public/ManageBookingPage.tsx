@@ -14,7 +14,7 @@ import {
   message,
 } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
-import { PublicBookingError, publicBooking } from './publicBookingApi';
+import { PublicBookingError, publicBooking, publicMediaSrc } from './publicBookingApi';
 import {
   formatClinicDate,
   formatClinicDateTime,
@@ -108,7 +108,7 @@ function ManageBookingPageInner() {
     <div className="kw-public-booking" data-testid="manage-booking">
       <header className="kw-public-hero">
         {data.clinic.logoUrl ? (
-          <img src={data.clinic.logoUrl} alt="" className="kw-public-logo" />
+          <img src={publicMediaSrc(data.clinic.logoUrl) ?? undefined} alt="" className="kw-public-logo" />
         ) : (
           <span className="kw-public-mark" aria-hidden>
             {data.clinic.displayName

@@ -20,6 +20,7 @@ import {
 import dayjs from 'dayjs';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, ApiError } from '../../core/api-client';
+import { MediaUploadField } from '../media/MediaUploadField';
 import {
   BookingFieldType,
   useServiceDetail,
@@ -205,8 +206,16 @@ export function ServiceEditorDrawer({
                     >
                       <Input.TextArea rows={3} />
                     </Form.Item>
-                    <Form.Item name="bookingPhotoUrl" label="Photo URL">
-                      <Input placeholder="https://…" />
+                    <Form.Item
+                      name="bookingPhotoUrl"
+                      label="Photo"
+                      valuePropName="value"
+                      trigger="onChange"
+                    >
+                      <MediaUploadField
+                        kind="SERVICE_PHOTO"
+                        hint="Shown on the service card of the booking page. JPG, PNG or WebP, up to 2 MB."
+                      />
                     </Form.Item>
                     <Form.Item name="priceDisplay" label="Show the price">
                       <Radio.Group

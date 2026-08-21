@@ -23,6 +23,7 @@ import { tenantContextStorage } from '../core/tenant-context';
 import { ClinicalTx } from '../clinical/clinical-actor';
 import { appointmentSnapshot, recordAppointmentEvent } from './appointment-event.service';
 import { StaffNotificationService, notificationWhen } from './staff-notification.service';
+import { mediaIdOf } from './media.service';
 import { AppointmentBookingValidator } from './appointment-booking-validator.service';
 import { SlotAvailabilityService } from './slot-availability.service';
 import { PublicBookDto, PublicCancelDto, PublicRescheduleDto } from './dto/public-booking.dto';
@@ -158,6 +159,16 @@ export class PublicBookingService {
     );
   }
 
+  /**
+   * Phase 6 — a stored `media://<id>` reference becomes the slug-scoped
+   * public URL; an ordinary http(s) URL passes through untouched (the
+   * Advanced fallback). Relative, so the web prefixes its own API base.
+   */
+  private publicMediaUrl(slug: string, ref: string | null): string | null {
+    const id = mediaIdOf(ref);
+    return id ? `/public/booking/${slug}/media/${id}` : ref;
+  }
+
   /** What the page shows before anybody has chosen anything. */
   async page(slug: string, serviceSlug?: string) {
     const page = await this.resolvePage(slug);
@@ -210,7 +221,7 @@ export class PublicBookingService {
         clinic: {
           slug: page.slug,
           displayName: page.displayName,
-          logoUrl: page.logoUrl,
+          logoUrl: this.publicMediaUrl(page.slug, page.logoUrl),
           language: page.language,
           introText: page.introText,
           timeZone,
@@ -227,7 +238,7 @@ export class PublicBookingService {
           name: service.name,
           category: service.category,
           description: service.bookingDescription,
-          photoUrl: service.bookingPhotoUrl,
+          photoUrl: this.publicMediaUrl(page.slug, service.bookingPhotoUrl),
           durationMinutes: service.durationMinutesDefault,
           // §22 — the page shows what the clinic chose to show. HIDDEN means
           // HIDDEN: the number is not sent to the browser at all, because a
@@ -271,7 +282,7 @@ export class PublicBookingService {
           active: true,
           clinicId: page.clinicId,
         },
-        select: { id: true, fullName: true, calendarColor: true },
+        select: { id: true, fullName: true, calendarColor: true, professionalType: true },
         orderBy: { fullName: 'asc' },
       });
       return staff;
@@ -680,6 +691,27 @@ export class PublicBookingService {
    * here can reach a second patient, because the token is the primary filter
    * rather than a check applied after a broader read.
    */
+  /**
+   * Phase 6 — the public image bytes. The slug resolves the tenant exactly
+   * as every other public read does, then RLS scopes the asset lookup: an id
+   * from another tenant's page finds nothing here. Only booking-surface
+   * kinds are served — the table holds nothing else, and the kind check
+   * keeps that a contract rather than an accident.
+   */
+  async mediaBySlug(slug: string, id: string) {
+    const page = await this.resolvePage(slug);
+    return this.inTenant(page, async () => {
+      const row = await this.scoped.mediaAsset.findUnique({
+        where: { id },
+        select: { kind: true, contentType: true, data: true },
+      });
+      if (!row || !['SERVICE_PHOTO', 'CLINIC_LOGO'].includes(row.kind)) {
+        throw new NotFoundException('Image not found');
+      }
+      return { contentType: row.contentType, data: row.data };
+    });
+  }
+
   async manage(slug: string, token: string) {
     const page = await this.resolvePage(slug);
     return this.inTenant(page, async () => {
@@ -716,7 +748,7 @@ export class PublicBookingService {
         Date.now() < cutoff.getTime();
 
       return {
-        clinic: { displayName: page.displayName, logoUrl: page.logoUrl, timeZone },
+        clinic: { displayName: page.displayName, logoUrl: this.publicMediaUrl(page.slug, page.logoUrl), timeZone },
         appointment: {
           status: appointment.status,
           scheduledStart: appointment.scheduledStart,

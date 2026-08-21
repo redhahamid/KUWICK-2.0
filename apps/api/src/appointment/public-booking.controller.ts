@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { PublicBookingService } from './public-booking.service';
 import { PublicBookDto, PublicCancelDto, PublicRescheduleDto } from './dto/public-booking.dto';
 
@@ -68,6 +69,20 @@ export class PublicBookingController {
     @Query('staffId') staffId?: string,
   ) {
     return this.booking.availabilityFor(slug, { serviceId, date, staffId });
+  }
+
+  /**
+   * Phase 6 — the public image bytes, tenant-resolved through the slug like
+   * every other read on this controller. Cacheable hard: ids are immutable.
+   */
+  @Get(':slug/media/:id')
+  async media(@Param('slug') slug: string, @Param('id') id: string, @Res() res: Response) {
+    const row = await this.booking.mediaBySlug(slug, id);
+    res.set({
+      'Content-Type': row.contentType,
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    });
+    res.send(Buffer.from(row.data));
   }
 
   @Get(':slug/form-fields')

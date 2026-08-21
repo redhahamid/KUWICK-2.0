@@ -21,6 +21,7 @@ import { useBookingPage, useSaveBookingPage, useSaveReminderRules } from '../hoo
 import { permissionHint, useCan } from '../../core/hooks/useCan';
 import { useAppointmentServices } from '../hooks/useServiceConfig';
 import { qrSvg } from './qr';
+import { MediaUploadField, useMediaPreviewUrl } from '../media/MediaUploadField';
 import { KuwickStatusTag } from '../../design-system/kuwick';
 
 const { Text, Paragraph } = Typography;
@@ -49,6 +50,8 @@ function BookingPagePreview({
   services: { id: string; name: string; durationMinutesDefault: number }[];
 }) {
   const bm = language === 'ms';
+  // media:// refs need the authed blob route; plain URLs pass through.
+  const logoPreview = useMediaPreviewUrl(logoUrl ?? null);
   const monogram = (displayName ?? '')
     .split(/\s+/)
     .slice(0, 2)
@@ -68,7 +71,7 @@ function BookingPagePreview({
         <div className="kw-bp-phone-screen">
           <div className="kw-bp-mini-hero">
             <span className="kw-bp-mini-mark">
-              {logoUrl ? <img src={logoUrl} alt="" /> : monogram || 'KH'}
+              {logoPreview ? <img src={logoPreview} alt="" /> : monogram || 'KH'}
             </span>
             <div style={{ minWidth: 0 }}>
               <div className="kw-bp-mini-name">{displayName || 'Your clinic name'}</div>
@@ -318,8 +321,11 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
                   >
                     <Input addonBefore={`${publicOrigin}/book/`} placeholder="hijraa-bangi" />
                   </Form.Item>
-                  <Form.Item name="logoUrl" label="Logo URL">
-                    <Input placeholder="https://…" />
+                  <Form.Item name="logoUrl" label="Logo" valuePropName="value" trigger="onChange">
+                    <MediaUploadField
+                      kind="CLINIC_LOGO"
+                      hint="Shown at the top of the booking page. JPG, PNG or WebP, up to 2 MB."
+                    />
                   </Form.Item>
                   <Form.Item name="language" label="Language">
                     <Select

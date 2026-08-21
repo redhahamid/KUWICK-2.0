@@ -195,7 +195,14 @@ describe('Public booking surface security (e2e)', () => {
       .get(`/public/booking/${slugA}/providers?serviceId=${serviceA}`)
       .expect(200);
     expect(ok.body).toHaveLength(1);
-    expect(Object.keys(ok.body[0]).sort()).toEqual(['calendarColor', 'fullName', 'id']);
+    // Phase 6 added professionalType — the patient-facing "Doctor" word on
+    // the provider card. Deliberately public; nothing else joined it.
+    expect(Object.keys(ok.body[0]).sort()).toEqual([
+      'calendarColor',
+      'fullName',
+      'id',
+      'professionalType',
+    ]);
 
     await request(app.getHttpServer())
       .get(`/public/booking/${slugA}/providers?serviceId=${hiddenServiceA}`)
