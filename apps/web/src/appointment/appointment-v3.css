@@ -2976,15 +2976,18 @@ body:has(.kw-public-booking) {
 }
 
 /* The chosen chip is SELECTION blue — the same blue the availability
-   calendar's selected date wears (one language across the journey). */
+   calendar's selected date wears (one language across the journey).
+   !important: antd v6's variant-solid selector plus its runtime injection
+   order otherwise outranks a stylesheet override, and the theme would paint
+   the chip action-teal — a selected TIME is a selection, not an action. */
 .kw-public-slots .ant-btn-primary {
-  background: var(--apt-selected);
-  border-color: var(--apt-selected);
+  background: var(--apt-selected) !important;
+  border-color: var(--apt-selected) !important;
   box-shadow: 0 2px 8px rgba(29, 78, 216, 0.28);
 }
 .kw-public-slots .ant-btn-primary:hover {
-  background: #1e40af;
-  border-color: #1e40af;
+  background: #1e40af !important;
+  border-color: #1e40af !important;
 }
 
 /* Empty day — the page goes and FINDS the next free one. */
@@ -3614,14 +3617,14 @@ body:has(.kw-public-booking) {
    of the approved list. Scoped to table rows so the page-level primaries
    (New appointment) keep the app's own primary colour. */
 .kw-appt-list .ant-table-tbody .ant-btn-primary:not(:disabled) {
-  background: var(--apt-nav-navy);
-  border-color: var(--apt-nav-navy);
+  background: var(--apt-nav-navy) !important;
+  border-color: var(--apt-nav-navy) !important;
   border-radius: 8px;
   font-weight: 600;
 }
 .kw-appt-list .ant-table-tbody .ant-btn-primary:not(:disabled):hover {
-  background: var(--apt-navy-2);
-  border-color: var(--apt-navy-2);
+  background: var(--apt-navy-2) !important;
+  border-color: var(--apt-navy-2) !important;
 }
 
 /* Section headings that carry an action on their right (Edit details). */
@@ -3711,15 +3714,15 @@ body:has(.kw-public-booking) {
 
 /* The drawer's one primary action is INK, and visibly so (mockup 5). */
 .kw-apt3-drawer .ant-drawer-footer .ant-btn-primary:not(:disabled) {
-  background: var(--apt-nav-navy);
-  border-color: var(--apt-nav-navy);
+  background: var(--apt-nav-navy) !important;
+  border-color: var(--apt-nav-navy) !important;
   font-weight: 600;
   border-radius: 8px;
   padding-inline: 18px;
 }
 .kw-apt3-drawer .ant-drawer-footer .ant-btn-primary:not(:disabled):hover {
-  background: var(--apt-navy-2);
-  border-color: var(--apt-navy-2);
+  background: var(--apt-navy-2) !important;
+  border-color: var(--apt-navy-2) !important;
 }
 
 /* Narrow screens: the rail folds above the review column. */
