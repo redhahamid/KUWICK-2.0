@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { Typography } from 'antd';
-import dayjs from 'dayjs';
+import { Calendar, Typography } from 'antd';
+import dayjs, { Dayjs } from 'dayjs';
 import { AppointmentStatus } from '@kuwick/shared';
 import { Appointment } from '../types';
 import { RangeShift } from '../hooks/useRoster';
@@ -11,13 +11,18 @@ import { RELEASED_STATUSES } from '../appointment-status.constants';
 const { Text } = Typography;
 
 /**
- * THE PROVIDERS VIEW'S LEFT RAIL (final UAT redesign, target mockup 3).
+ * THE PROVIDERS VIEW'S SIDE FURNITURE (final UAT redesign, target mockup 3).
  *
  * The multi-doctor clinic's operational question is "how is each doctor's
- * day", so the Providers view gets a person list and a day summary beside the
- * grid — INSIDE the module's existing canvas, not an app-level sidebar.
+ * day", so the Providers view wears the mockup's three-column composition:
+ * a person rail on the LEFT, the day grid in the middle, and — where the
+ * screen is wide enough — a mini month calendar plus the day summary on the
+ * RIGHT. All of it lives INSIDE the module's existing canvas, never as an
+ * app-level sidebar.
+ *
  * Selecting a person drives the SAME provider filter the filter bar owns, so
- * the rail, the chips and the grid can never disagree.
+ * the rail, the chips and the grid can never disagree; picking a date on the
+ * mini calendar drives the same anchor the command bar owns.
  *
  * The numbers are honest about their sources: counts come from the events the
  * grid is showing; Booked value comes from the server's own stats endpoint
@@ -26,14 +31,9 @@ const { Text } = Typography;
  * selected and the roster actually has minutes for them.
  */
 export interface ProviderRailProps {
-  clinicId?: string;
   providers: { id: string; fullName: string }[];
   /** The day's appointments AFTER the workspace filters — what the grid shows. */
   appointments: Appointment[];
-  shifts: RangeShift[];
-  /** Clinic-date keys (YYYY-MM-DD) — the dashboard endpoint's own format. */
-  rangeFrom: string;
-  rangeTo: string;
   selection: string[];
   onSelect: (ids: string[]) => void;
 }
@@ -42,18 +42,7 @@ function minutesBetween(startIso: string, endIso: string): number {
   return Math.max(0, dayjs(endIso).diff(dayjs(startIso), 'minute'));
 }
 
-export function ProviderRail({
-  clinicId,
-  providers,
-  appointments,
-  shifts,
-  rangeFrom,
-  rangeTo,
-  selection,
-  onSelect,
-}: ProviderRailProps) {
-  const single = selection.length === 1 ? selection[0] : null;
-
+export function ProviderRail({ providers, appointments, selection, onSelect }: ProviderRailProps) {
   const countsByProvider = useMemo(() => {
     const map = new Map<string, number>();
     for (const appointment of appointments) {
@@ -61,6 +50,73 @@ export function ProviderRail({
     }
     return map;
   }, [appointments]);
+
+  return (
+    <aside className="kw-provider-rail" data-testid="provider-rail">
+      <div className="kw-provider-rail-list" role="listbox" aria-label="Providers">
+        <span className="kw-provider-rail-head">Providers</span>
+        <button
+          type="button"
+          className="kw-provider-rail-row"
+          data-active={selection.length === 0 || undefined}
+          onClick={() => onSelect([])}
+        >
+          <span className="kw-provider-rail-all" aria-hidden>
+            ⌂
+          </span>
+          <span className="kw-provider-rail-name">All providers</span>
+          <span className="kw-provider-rail-count">{appointments.length}</span>
+        </button>
+        {providers.map((provider) => (
+          <button
+            key={provider.id}
+            type="button"
+            className="kw-provider-rail-row"
+            data-active={selection.includes(provider.id) || undefined}
+            onClick={() =>
+              onSelect(selection.length === 1 && selection[0] === provider.id ? [] : [provider.id])
+            }
+          >
+            <PersonAvatar name={provider.fullName} colorSeed={provider.id} size="sm" />
+            <span className="kw-provider-rail-name" title={provider.fullName}>
+              {provider.fullName}
+            </span>
+            <span className="kw-provider-rail-count">
+              {countsByProvider.get(provider.id) ?? 0}
+            </span>
+          </button>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+export interface ProviderSidePanelProps {
+  clinicId?: string;
+  providers: { id: string; fullName: string }[];
+  appointments: Appointment[];
+  shifts: RangeShift[];
+  /** Clinic-date keys (YYYY-MM-DD) — the dashboard endpoint's own format. */
+  rangeFrom: string;
+  rangeTo: string;
+  selection: string[];
+  /** The workspace's anchor date — the mini calendar reads and writes it. */
+  anchor: Dayjs;
+  onPickDate: (day: Dayjs) => void;
+}
+
+export function ProviderSidePanel({
+  clinicId,
+  providers,
+  appointments,
+  shifts,
+  rangeFrom,
+  rangeTo,
+  selection,
+  anchor,
+  onPickDate,
+}: ProviderSidePanelProps) {
+  const single = selection.length === 1 ? selection[0] : null;
 
   const scoped = useMemo(
     () =>
@@ -119,42 +175,17 @@ export function ProviderRail({
       : 'All providers';
 
   return (
-    <aside className="kw-provider-rail" data-testid="provider-rail">
-      <div className="kw-provider-rail-list" role="listbox" aria-label="Providers">
-        <button
-          type="button"
-          className="kw-provider-rail-row"
-          data-active={selection.length === 0 || undefined}
-          onClick={() => onSelect([])}
-        >
-          <span className="kw-provider-rail-all" aria-hidden>
-            ⌂
-          </span>
-          <span className="kw-provider-rail-name">All providers</span>
-          <span className="kw-provider-rail-count">{appointments.length}</span>
-        </button>
-        {providers.map((provider) => (
-          <button
-            key={provider.id}
-            type="button"
-            className="kw-provider-rail-row"
-            data-active={selection.includes(provider.id) || undefined}
-            onClick={() =>
-              onSelect(selection.length === 1 && selection[0] === provider.id ? [] : [provider.id])
-            }
-          >
-            <PersonAvatar name={provider.fullName} colorSeed={provider.id} size="sm" />
-            <span className="kw-provider-rail-name" title={provider.fullName}>
-              {provider.fullName}
-            </span>
-            <span className="kw-provider-rail-count">
-              {countsByProvider.get(provider.id) ?? 0}
-            </span>
-          </button>
-        ))}
+    <aside className="kw-provider-side">
+      <div className="kw-provider-minical">
+        <Calendar
+          fullscreen={false}
+          value={anchor}
+          onSelect={(day) => onPickDate(day)}
+        />
       </div>
 
       <div className="kw-provider-summary" data-testid="provider-summary">
+        <Text className="kw-provider-summary-title">Provider summary</Text>
         <Text className="kw-provider-summary-scope" title={scopeName}>
           {scopeName}
         </Text>

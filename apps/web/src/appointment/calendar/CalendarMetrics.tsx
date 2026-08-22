@@ -26,9 +26,17 @@ const { Text } = Typography;
 export function CalendarMetrics({
   appointments,
   filtered = false,
+  bar = false,
 }: {
   appointments: Appointment[];
   filtered?: boolean;
+  /**
+   * Final visual pass — the same counts rendered a second time as the
+   * mockup's status-summary bar under the grid. Presentation only, and no
+   * testid on this instance: the filter-bar strip stays the one the tests
+   * (and the "Filtered" flag) address.
+   */
+  bar?: boolean;
 }) {
   const counts = useMemo(() => {
     const tally = {
@@ -74,7 +82,10 @@ export function CalendarMetrics({
   ];
 
   return (
-    <div className="kw-calendar-metrics" data-testid="calendar-metrics">
+    <div
+      className={'kw-calendar-metrics' + (bar ? ' kw-calendar-metrics--bar' : '')}
+      data-testid={bar ? undefined : 'calendar-metrics'}
+    >
       {filtered ? <span className="kw-metric-filtered">Filtered</span> : null}
       {items.map((item) => (
         <span key={item.label} className="kw-metric">

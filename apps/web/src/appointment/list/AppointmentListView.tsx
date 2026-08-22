@@ -148,17 +148,42 @@ export function AppointmentListView({ clinicId, onBook }: AppointmentListViewPro
     [staff],
   );
 
+  // Mockup 4 — the status counts live ON the tabs ("Upcoming 11"), so the
+  // worklist's shape is readable before a row is. Server figures, same as the
+  // old KPI band (`appointment-dashboard.service.ts`).
+  const tabCounts: Partial<Record<ListTab, number | undefined>> = {
+    UPCOMING: data?.stats.upcoming,
+    REQUESTS: data?.stats.requests,
+    ARRIVED: data?.stats.arrived,
+    COMPLETED: data?.stats.completed,
+    NO_SHOW: data?.stats.noShow,
+    CANCELLED: data?.stats.cancelled,
+  };
+
   return (
     <div className="kw-appt-list">
-      <StatsBar stats={data?.stats} loading={isFetching && !data} filtered={filtersActive} />
-
       <div className="kw-appt-controls">
         <Segmented
           className="kw-appt-tabs"
           value={tab}
           onChange={(value) => changeTab(value as ListTab)}
-          options={TABS.map((entry) => ({ value: entry.value, label: entry.label }))}
+          options={TABS.map((entry) => ({
+            value: entry.value,
+            label:
+              tabCounts[entry.value] != null ? (
+                <span className="kw-appt-tab">
+                  {entry.label}
+                  <span className="kw-appt-tab-count">{tabCounts[entry.value]}</span>
+                </span>
+              ) : (
+                entry.label
+              ),
+          }))}
         />
+        <StatsBar stats={data?.stats} loading={isFetching && !data} filtered={filtersActive} />
+      </div>
+
+      <div className="kw-appt-controls">
         <Space size={8} wrap className="kw-appt-filters">
           {tab !== 'WAITLIST' ? (
             <DatePicker.RangePicker
@@ -286,12 +311,15 @@ export function AppointmentListView({ clinicId, onBook }: AppointmentListViewPro
             {
               title: 'Patient',
               render: (_, row) => (
-                <div className="kw-appt-patient">
-                  <span className="kw-appt-patient-name">{row.patient.name}</span>
-                  {row.patient.phone ? (
-                    <span className="kw-appt-patient-phone">{row.patient.phone}</span>
-                  ) : null}
-                </div>
+                <span className="kw-appt-patient-cell">
+                  <PersonAvatar name={row.patient.name} size="md" />
+                  <span className="kw-appt-patient">
+                    <span className="kw-appt-patient-name">{row.patient.name}</span>
+                    {row.patient.phone ? (
+                      <span className="kw-appt-patient-phone">{row.patient.phone}</span>
+                    ) : null}
+                  </span>
+                </span>
               ),
             },
             { title: 'Service', render: (_, row) => row.service.name },
@@ -376,6 +404,12 @@ function defaultRangeFor(tab: DashboardTab): [Dayjs, Dayjs] {
   return [dayjs().startOf('day'), dayjs().add(30, 'day').endOf('day')];
 }
 
+/**
+ * Mockup 4 slimmed the old five-card KPI band down: the per-status counts now
+ * ride the tabs themselves, so what remains here is what only THIS strip can
+ * say — the §46 money (booked value vs realised revenue, two different
+ * meanings), the no-show rate an owner acts on, and the "Filtered" flag.
+ */
 function StatsBar({
   stats,
   loading,
@@ -385,44 +419,24 @@ function StatsBar({
   loading: boolean;
   filtered?: boolean;
 }) {
-  const cells = [
-    { key: 'upcoming', label: 'Upcoming', value: stats?.upcoming, tone: 'active' as const },
-    { key: 'requests', label: 'Requests', value: stats?.requests, tone: 'attention' as const },
-    { key: 'completed', label: 'Completed', value: stats?.completed, tone: 'success' as const },
-    { key: 'cancelled', label: 'Cancelled', value: stats?.cancelled, tone: 'neutral' as const },
-    {
-      key: 'noShow',
-      label: 'No-show',
-      value: stats?.noShow,
-      tone: 'error' as const,
-      // The rate is the number an owner acts on; the count alone means nothing
-      // without knowing how many could have turned up.
-      detail:
-        stats?.noShowRate == null
-          ? undefined
-          : `${Math.round(stats.noShowRate * 100)}% of attendable`,
-    },
-  ];
-
   return (
     <div className="kw-appt-stats" data-testid="appointment-stats" data-loading={loading}>
       {/* §3I — these figures describe the FILTERED worklist. Unlabelled, a
           service-filtered "Upcoming 12" reads as the whole clinic's twelve. */}
       {filtered ? <span className="kw-appt-stats-filtered">Filtered results</span> : null}
-      {cells.map((cell) => (
-        <div key={cell.key} className="kw-appt-stat" data-tone={cell.tone}>
-          <span className="kw-appt-stat-label">{cell.label}</span>
-          <span className="kw-appt-stat-value">{cell.value ?? '—'}</span>
-          {cell.detail ? <span className="kw-appt-stat-detail">{cell.detail}</span> : null}
-        </div>
-      ))}
-      <div className="kw-appt-stat kw-appt-stat-money" data-tone="primary">
-        <span className="kw-appt-stat-label">Booked value</span>
-        <span className="kw-appt-stat-value">{stats ? money(stats.bookedValue) : '—'}</span>
-        <span className="kw-appt-stat-detail">
+      {stats?.noShowRate != null ? (
+        <span className="kw-appt-stats-cell">
+          <span className="kw-appt-stats-label">No-show rate</span>
+          <span className="kw-appt-stats-value">{Math.round(stats.noShowRate * 100)}%</span>
+        </span>
+      ) : null}
+      <span className="kw-appt-stats-cell">
+        <span className="kw-appt-stats-label">Booked value</span>
+        <span className="kw-appt-stats-value">{stats ? money(stats.bookedValue) : '—'}</span>
+        <span className="kw-appt-stats-detail">
           {stats ? `${money(stats.realisedRevenue)} realised` : ''}
         </span>
-      </div>
+      </span>
     </div>
   );
 }
@@ -519,15 +533,28 @@ function AppointmentTable({
           {
             title: 'Patient',
             render: (_, row) => (
-              <div className="kw-appt-patient">
-                <span className="kw-appt-patient-name">{row.patient.name}</span>
-                {row.patient.phone ? (
-                  <span className="kw-appt-patient-phone">{row.patient.phone}</span>
-                ) : null}
-              </div>
+              // Mockup 4 — the patient is a PERSON in the row: the neutral
+              // slate avatar beside name-over-phone.
+              <span className="kw-appt-patient-cell">
+                <PersonAvatar name={row.patient.name} size="md" />
+                <span className="kw-appt-patient">
+                  <span className="kw-appt-patient-name">{row.patient.name}</span>
+                  {row.patient.phone ? (
+                    <span className="kw-appt-patient-phone">{row.patient.phone}</span>
+                  ) : null}
+                </span>
+              </span>
             ),
           },
-          { title: 'Service', render: (_, row) => row.service.name },
+          {
+            title: 'Service',
+            width: 180,
+            render: (_, row) => (
+              <span className="kw-appt-service" title={row.service.name}>
+                {row.service.name}
+              </span>
+            ),
+          },
           {
             title: 'Provider',
             render: (_, row) => (

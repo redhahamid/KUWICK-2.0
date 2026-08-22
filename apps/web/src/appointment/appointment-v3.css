@@ -17,11 +17,13 @@
      3  the WORKING CANVAS — a raised white operational surface on the tinted
         page, where the actual work (grid, worklist, board) lives.
 
-   Colour discipline is unchanged from D-105 and restated here because every
-   rule below leans on it: PROVIDER colour is identity only (a 3px edge, an
-   avatar ring, a dot — never a fill); STATUS colour is semantic and always
-   rendered beside its word; teal is the selected/clinical accent; ink navy
-   is the action colour; red stays reserved for danger.
+   Colour discipline, D-105 as amended by the FINAL VISUAL PASS (the owner's
+   approved mockups): PROVIDER colour is identity — a 3px edge, an avatar
+   ring, a dot, and (new, per mockup) a ≤13% soft WASH as the card ground in
+   the week and month grids; it is never a solid fill. STATUS colour is
+   semantic and always rendered beside its word; teal is the
+   selected/clinical accent; ink navy is the action colour; red stays
+   reserved for danger, rose for the now-line.
    =========================================================================== */
 
 :root {
@@ -435,7 +437,9 @@
    =========================================================================== */
 
 .kw-calendar-grid {
-  height: clamp(560px, calc(100vh - 330px), 960px);
+  /* 42px shorter than before: the status summary bar (final visual pass)
+     closes the canvas below the grid and both should share the fold. */
+  height: clamp(560px, calc(100vh - 372px), 960px);
   min-width: 0;
 }
 
@@ -466,14 +470,21 @@
   border-left: 1px solid var(--apt-hairline);
 }
 
-/* The day header cell: small-caps weekday over a real date numeral. */
+/* The day header cell (mockup 2): "Mon 17" as one horizontal token, and
+   today wearing a filled navy pill around the whole thing. */
 .kw-cal-dayhead {
   display: flex;
-  flex-direction: column;
+  justify-content: center;
+  padding: 8px 4px;
+}
+
+.kw-cal-dayhead-pill {
+  display: inline-flex;
   align-items: center;
-  gap: 0;
-  padding: 7px 4px 6px;
-  line-height: 1.25;
+  gap: 5px;
+  padding: 3px 11px;
+  border-radius: 999px;
+  line-height: 1.3;
 }
 
 .kw-cal-dayhead-dow {
@@ -485,27 +496,20 @@
 }
 
 .kw-cal-dayhead-num {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--apt-text);
   font-variant-numeric: tabular-nums;
 }
 
-/* Today is unmistakable: the numeral sits in a filled ink circle. */
-.kw-cal-dayhead[data-today] .kw-cal-dayhead-dow {
-  color: var(--apt-teal);
+.kw-cal-dayhead[data-today] .kw-cal-dayhead-pill {
+  background: var(--apt-nav-navy);
+  box-shadow: var(--apt-shadow-xs);
 }
 
+.kw-cal-dayhead[data-today] .kw-cal-dayhead-dow,
 .kw-cal-dayhead[data-today] .kw-cal-dayhead-num {
-  background: var(--apt-nav-navy);
   color: #fff;
-  min-width: 26px;
-  height: 26px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 5px;
 }
 
 /* --- Grid body ------------------------------------------------------------ */
@@ -530,7 +534,14 @@
 
 .kw-calendar-grid .rbc-timeslot-group {
   border-bottom: 1px solid var(--apt-hairline);
-  min-height: 44px;
+  min-height: 48px;
+}
+
+/* The event lane sits slightly inside its column, so cards never touch the
+   hairlines — part of mockup 2's separated-card composition. */
+.kw-calendar-grid .rbc-day-slot .rbc-events-container {
+  margin-right: 8px;
+  margin-left: 2px;
 }
 
 .kw-calendar-grid .rbc-time-slot {
@@ -544,7 +555,7 @@
 }
 
 .kw-calendar-grid .rbc-today {
-  background: #f6fbfb;
+  background: #f6f9ff;
 }
 
 .kw-calendar-grid .rbc-time-gutter .rbc-timeslot-group {
@@ -558,11 +569,14 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* --- Where NOW is ---------------------------------------------------------- */
+/* --- Where NOW is ----------------------------------------------------------
+   Rose, per the approved mockup — "now" is the one line on the grid that is
+   an alarm rather than an identity or a status, so it gets the one colour
+   nothing else on the grid uses. */
 
 .kw-calendar-grid .rbc-current-time-indicator {
   height: 2px;
-  background: var(--apt-teal);
+  background: #e11d48;
 }
 
 .kw-calendar-grid .rbc-current-time-indicator::before {
@@ -573,7 +587,8 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--apt-teal);
+  background: #e11d48;
+  box-shadow: 0 0 0 2px rgba(225, 29, 72, 0.18);
 }
 
 .kw-calendar-grid .rbc-time-gutter {
@@ -587,7 +602,7 @@
   z-index: 6;
   padding: 1px 7px;
   border-radius: 999px;
-  background: var(--apt-teal);
+  background: #e11d48;
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -599,41 +614,50 @@
 
 /* --- Event cards ------------------------------------------------------------
 
-   White cards with a 3px provider edge and a semantic status dot — no more
-   10%-alpha washes. The provider is the EDGE, the status is the DOT plus the
-   word in the drawer, and the card itself stays legible at every size.
+   FINAL VISUAL PASS (approved mockup 2). The outer .rbc-event is now only
+   the library's POSITIONING BOX — transparent and borderless, with the
+   breathing gap baked into its padding — and the VISIBLE card is the inner
+   .kw-calendar-event, painted from two custom properties the workspace sets
+   per booking:
 
-   V3.1 — WIDTH-ADAPTIVE DENSITY. Overlapping bookings can squeeze a card to
-   a sliver; "09:0…" is an accident, not a design. Every card renders BOTH a
-   full body and a compact line, and a container query on the card's own
-   width decides which is visible — so a three-way 09:00 degrades to
-   "● 09:00 / Tan" and then to "● 09:00", never to a clipped fragment. The
-   drawer and the tooltip always carry the whole story. */
+     --ev-edge   the provider's identity colour (the 3px left edge);
+     --ev-wash   the same colour at 13% — the card's ground in week + month.
+
+   Day and Providers columns keep WHITE cards (mockup 3's day schedule);
+   week and month wear the provider's soft wash (mockup 2's pastel cards).
+   That is a deliberate, owner-approved amendment to the old "provider colour
+   is never a fill" rule: a ≤13% wash is ground, not signal — STATUS remains
+   the semantic dot beside its word, and provider colour is never solid.
+
+   V3.1 — WIDTH-ADAPTIVE DENSITY (unchanged). Every card renders BOTH a full
+   body and a compact line, and a container query on the card's own width
+   decides which is visible — so a three-way 09:00 degrades to "● 09:00 /
+   Tan" and then to "● 09:00", never to a clipped fragment. The drawer and
+   the tooltip always carry the whole story. */
 
 .kw-calendar-grid .rbc-event {
-  border: 1px solid var(--apt-border);
-  border-radius: 6px;
-  /* Padding lives on the CONTENT (.kw-calendar-event) so the width tiers can
-     tighten it — a container cannot restyle itself from its own query. */
-  padding: 0;
-  box-shadow: var(--apt-shadow-xs);
-  transition: box-shadow 120ms ease, border-color 120ms ease;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  /* The gap between touching cards — right for side-by-side overlap, bottom
+     for back-to-back bookings. */
+  padding: 0 3px 3px 0;
+  box-shadow: none;
   container-type: inline-size;
 }
 
 .kw-calendar-grid .rbc-event:hover {
-  box-shadow: var(--apt-shadow-md);
-  border-color: var(--apt-border-strong);
+  z-index: 5;
 }
 
 .kw-calendar-grid .rbc-event:focus {
-  outline: 2px solid var(--apt-teal);
-  outline-offset: 1px;
+  outline: none;
 }
 
-.kw-calendar-grid .rbc-event.rbc-selected {
+.kw-calendar-grid .rbc-event:focus-visible .kw-calendar-event,
+.kw-calendar-grid .rbc-event.rbc-selected .kw-calendar-event {
   outline: 2px solid var(--apt-teal);
-  box-shadow: 0 4px 12px rgba(15, 107, 120, 0.25);
+  outline-offset: -1px;
 }
 
 /* The card renders its own clinic-clock time; the library's 12-hour label
@@ -647,8 +671,41 @@
   line-height: 1.35;
   overflow: hidden;
   color: var(--apt-text);
-  padding: 2px 7px 2px 8px;
+  padding: 3px 8px 3px 9px;
   height: 100%;
+  background: var(--apt-surface);
+  border: 1px solid var(--apt-border);
+  border-left: 3px solid var(--ev-edge, var(--apt-border-strong));
+  border-radius: 8px;
+  box-shadow: var(--apt-shadow-xs);
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.kw-calendar-grid .rbc-event:hover .kw-calendar-event {
+  box-shadow: var(--apt-shadow-hover);
+  transform: translateY(-1px);
+}
+
+/* Week columns wear the provider's wash; the outline quietens to let it. */
+.kw-calendar-grid[data-view='week'] .kw-calendar-event {
+  background: var(--ev-wash, var(--apt-surface));
+  border-color: rgba(11, 23, 54, 0.06);
+  border-left-color: var(--ev-edge, var(--apt-border-strong));
+}
+
+/* Released bookings stay on the grid, struck through — never hidden. */
+.kw-ev--released .kw-calendar-event {
+  background: #f5f6f8 !important;
+  opacity: 0.62;
+  text-decoration: line-through;
+}
+
+/* The booking picked up for moving (pick-up-and-place reschedule). */
+.kw-ev--picked .kw-calendar-event {
+  outline: 2px dashed var(--apt-navy-2);
+  outline-offset: -1px;
 }
 
 .kw-event-time {
@@ -786,19 +843,40 @@
   }
 }
 
-/* --- Month view -------------------------------------------------------------- */
+/* --- Month view --------------------------------------------------------------
+   Mockup 1: a calm white canvas, each booking a soft provider-wash chip with
+   a 3px identity bar, whitespace doing the separating — never a spreadsheet. */
+
+.kw-calendar-grid .rbc-month-view .rbc-header {
+  padding: 9px 0 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--apt-text-2);
+}
 
 .kw-calendar-grid .rbc-month-view .rbc-event {
-  padding: 0;
+  padding: 0 4px 2px;
   box-shadow: none;
-  border-radius: 5px;
+  border-radius: 0;
   font-size: 11px;
   line-height: 1.5;
-  background: var(--apt-surface);
+  background: transparent;
 }
 
 .kw-calendar-grid .rbc-month-view .kw-calendar-event {
-  padding: 1px 6px;
+  padding: 1px 7px 1px 8px;
+  background: var(--ev-wash, var(--apt-surface));
+  border: none;
+  border-left: 3px solid var(--ev-edge, var(--apt-border-strong));
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.kw-calendar-grid .rbc-month-view .rbc-event:hover .kw-calendar-event {
+  box-shadow: var(--apt-shadow-sm);
+  transform: none;
 }
 
 .kw-calendar-grid .rbc-month-row + .rbc-month-row {
@@ -806,7 +884,7 @@
 }
 
 .kw-calendar-grid .rbc-month-view .rbc-date-cell {
-  padding: 5px 7px 0;
+  padding: 6px 9px 2px;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--apt-text-2);
@@ -1152,12 +1230,43 @@
   color: var(--apt-muted);
 }
 
-.kw-flow-route [data-state='done'] {
+.kw-flow-route-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* The numbered chip (approved patient-mockup stepper, module edition). */
+.kw-flow-route-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--apt-surface-3);
+  color: var(--apt-text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-flow-route-item[data-state='done'] {
   color: var(--apt-teal);
 }
 
-.kw-flow-route [data-state='active'] {
+.kw-flow-route-item[data-state='done'] .kw-flow-route-dot {
+  background: var(--apt-teal);
+  color: #fff;
+}
+
+.kw-flow-route-item[data-state='active'] {
   color: var(--apt-nav-navy);
+}
+
+.kw-flow-route-item[data-state='active'] .kw-flow-route-dot {
+  background: var(--apt-nav-navy);
+  color: #fff;
 }
 
 .kw-flow-route-sep {
@@ -1240,11 +1349,13 @@
 .kw-flow-patient {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   border: 1px solid var(--apt-border);
+  border-left: 4px solid var(--apt-teal);
   border-radius: 10px;
   padding: 10px 12px;
   background: var(--apt-surface-2);
+  box-shadow: var(--apt-shadow-xs);
 }
 
 .kw-flow-patient-text {
@@ -1455,17 +1566,13 @@
   gap: 14px;
 }
 
-/* The operational summary: figures separated by hairlines, a semantic dot on
-   each label, money at the far end with its second truth underneath. */
+/* Mockup 4 — the per-status counts ride the TABS; what remains beside them
+   is the §46 money strip and the no-show rate, small and honest. */
 .kw-appt-stats {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: 0;
-  border: 1px solid var(--apt-border);
-  border-radius: var(--apt-radius-lg);
-  background: var(--apt-surface-2);
-  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  margin-left: auto;
   transition: opacity 160ms ease;
 }
 
@@ -1473,24 +1580,14 @@
   opacity: 0.6;
 }
 
-.kw-appt-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 12px 18px;
-  min-width: 118px;
-  border-right: 1px solid var(--apt-hairline);
-  background: transparent;
-}
-
-.kw-appt-stat:last-child {
-  border-right: none;
-}
-
-.kw-appt-stat-label {
+.kw-appt-stats-cell {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.kw-appt-stats-label {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -1498,52 +1595,54 @@
   color: var(--apt-text-2);
 }
 
-.kw-appt-stat-label::before {
-  content: '';
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--apt-muted);
-}
-
-.kw-appt-stat[data-tone='active'] .kw-appt-stat-label::before { background: var(--apt-active); }
-.kw-appt-stat[data-tone='attention'] .kw-appt-stat-label::before { background: #d97706; }
-.kw-appt-stat[data-tone='success'] .kw-appt-stat-label::before { background: var(--apt-success); }
-.kw-appt-stat[data-tone='error'] .kw-appt-stat-label::before { background: var(--apt-danger); }
-.kw-appt-stat[data-tone='neutral'] .kw-appt-stat-label::before { background: var(--apt-muted); }
-.kw-appt-stat[data-tone='primary'] .kw-appt-stat-label::before { background: var(--apt-teal); }
-
-.kw-appt-stat-value {
-  font-size: 24px;
-  line-height: 1.15;
+.kw-appt-stats-value {
+  font-size: 15px;
   font-weight: 750;
   color: var(--apt-nav-navy);
   font-variant-numeric: tabular-nums;
 }
 
-.kw-appt-stat-detail {
+.kw-appt-stats-detail {
   font-size: 12px;
   color: var(--apt-text-2);
-  min-height: 16px;
   font-variant-numeric: tabular-nums;
-}
-
-.kw-appt-stat-money {
-  margin-left: auto;
-  background: var(--apt-surface);
-  border-left: 1px solid var(--apt-border);
 }
 
 .kw-appt-controls {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .kw-appt-tabs {
-  align-self: flex-start;
   max-width: 100%;
   overflow-x: auto;
+}
+
+/* The count badge on a tab chip. */
+.kw-appt-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.kw-appt-tab-count {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: var(--apt-surface-3);
+  color: var(--apt-text-2);
+  border-radius: 999px;
+  min-width: 20px;
+  padding: 0 6px;
+  text-align: center;
+  line-height: 18px;
+}
+
+.kw-appt-tabs .ant-segmented-item-selected .kw-appt-tab-count {
+  background: var(--apt-nav-navy);
+  color: #fff;
 }
 
 .kw-appt-filters {
@@ -2338,7 +2437,7 @@
    =========================================================================== */
 
 .kw-public-booking {
-  max-width: 520px;
+  max-width: 600px;
   margin: 0 auto;
   padding: 20px 16px 64px;
   min-height: 100vh;
@@ -2403,15 +2502,78 @@ body:has(.kw-public-booking) {
   margin-bottom: 16px;
 }
 
-.kw-public-progress-text {
-  font-size: 12.5px;
-  font-weight: 650;
-  color: var(--apt-text);
+/* The mockup's numbered stepper chips. On narrow phones the words yield to
+   the dots so seven steps never wrap into two rows. */
+.kw-public-steps {
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 
-.kw-public-progress-text small {
-  font-weight: 500;
+.kw-public-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--apt-muted);
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.kw-public-step + .kw-public-step::before {
+  content: '→';
+  color: var(--apt-border-strong);
+  font-weight: 400;
+  margin-right: 4px;
+}
+
+.kw-public-step-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: var(--apt-surface-3);
   color: var(--apt-text-2);
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-public-step[data-state='done'] {
+  color: var(--apt-teal);
+}
+
+.kw-public-step[data-state='done'] .kw-public-step-dot {
+  background: var(--apt-teal);
+  color: #fff;
+}
+
+.kw-public-step[data-state='active'] {
+  color: var(--apt-nav-navy);
+}
+
+.kw-public-step[data-state='active'] .kw-public-step-dot {
+  background: var(--apt-nav-navy);
+  color: #fff;
+}
+
+@media (max-width: 560px) {
+  .kw-public-step-word {
+    display: none;
+  }
+
+  .kw-public-step[data-state='active'] .kw-public-step-word {
+    display: inline;
+  }
 }
 
 .kw-public-progress-bar {
@@ -2540,6 +2702,37 @@ body:has(.kw-public-booking) {
   font-size: 16px;
 }
 
+/* The mockup's fastest-appointment banner over the doctor list. */
+.kw-public-fastest {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border: 1px solid rgba(15, 107, 120, 0.25);
+  border-radius: 12px;
+  background: linear-gradient(90deg, var(--apt-teal-soft) 0%, #f2fbf7 100%);
+  color: var(--apt-teal);
+  font-size: 13px;
+}
+
+.kw-public-fastest strong {
+  color: var(--apt-teal);
+  font-weight: 700;
+}
+
+.kw-public-fastest-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--apt-teal);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
 /* Doctors as people; Any leads. */
 .kw-public-providers {
   display: flex;
@@ -2610,19 +2803,66 @@ body:has(.kw-public-booking) {
 
 .kw-public-provider-body {
   min-width: 0;
+  flex: 1;
 }
 
-/* The choice so far, restated above the times. */
-.kw-public-context {
+/* Right edge of the card: the doctor's next opening, then the chevron
+   (mockup: Calendly-style row). */
+.kw-public-provider-side {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.kw-public-provider-next {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: flex-end;
+  text-align: right;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--apt-teal);
+  line-height: 1.3;
+}
+
+.kw-public-provider-next-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--apt-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kw-public-provider-go {
+  color: var(--apt-muted);
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* The choice so far, restated above the times; an action (Change date)
+   rides the right edge rather than a full-width row (mockup). */
+.kw-public-context {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 2px;
   padding: 11px 14px;
   border: 1px solid var(--apt-border);
   border-left: 4px solid var(--apt-teal);
   background: var(--apt-surface);
   border-radius: 10px;
   box-shadow: var(--apt-shadow-xs);
+}
+.kw-public-context > .ant-typography {
+  grid-column: 1;
+}
+.kw-public-context > .ant-btn {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  justify-self: end;
 }
 
 /* Date chips — words intact, selected chip filled. The strip scrolls with
@@ -2733,6 +2973,18 @@ body:has(.kw-public-booking) {
   min-height: 46px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
+}
+
+/* The chosen chip is SELECTION blue — the same blue the availability
+   calendar's selected date wears (one language across the journey). */
+.kw-public-slots .ant-btn-primary {
+  background: var(--apt-selected);
+  border-color: var(--apt-selected);
+  box-shadow: 0 2px 8px rgba(29, 78, 216, 0.28);
+}
+.kw-public-slots .ant-btn-primary:hover {
+  background: #1e40af;
+  border-color: #1e40af;
 }
 
 /* Empty day — the page goes and FINDS the next free one. */
@@ -2942,6 +3194,11 @@ body:has(.kw-public-booking) {
   user-select: none;
   letter-spacing: 0.02em;
 }
+.kw-avatar[data-size='xs'] {
+  width: 16px;
+  height: 16px;
+  font-size: 8px;
+}
 .kw-avatar[data-size='sm'] {
   width: 22px;
   height: 22px;
@@ -2956,6 +3213,11 @@ body:has(.kw-public-booking) {
   width: 42px;
   height: 42px;
   font-size: 15px;
+}
+.kw-avatar[data-size='xl'] {
+  width: 56px;
+  height: 56px;
+  font-size: 19px;
 }
 
 /* The three-word availability legend (booking + reschedule calendars). */
@@ -2998,16 +3260,43 @@ body:has(.kw-public-booking) {
  * settled; this section is depth, hover behaviour, and the Providers rail.
  * =========================================================================== */
 
-/* The grid area holds the (Providers-only) rail beside the grid. */
+/* The grid area (mockup 3's three-column composition): the Providers-only
+   rail on the left, the grid column (grid + status bar) in the middle, and
+   the Providers-only mini-calendar/summary panel on the right. */
 .kw-cal-body {
   display: flex;
   gap: 12px;
   min-width: 0;
   align-items: stretch;
 }
-.kw-cal-body > .kw-cal-outer {
+.kw-cal-main {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.kw-cal-main > .kw-cal-outer {
+  min-width: 0;
+}
+
+/* The status summary bar that closes the calendar canvas (mockups 1-2). */
+.kw-cal-statusbar {
+  background: var(--apt-surface);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  box-shadow: var(--apt-shadow-xs);
+  padding: 9px 16px;
+  display: flex;
+  justify-content: center;
+}
+.kw-calendar-metrics--bar {
+  gap: 22px;
+  margin-left: 0;
+  padding-left: 0;
+}
+.kw-calendar-metrics--bar .kw-metric-value {
+  font-size: 13px;
 }
 
 /* --- The Providers rail ------------------------------------------------- */
@@ -3030,6 +3319,14 @@ body:has(.kw-public-booking) {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+.kw-provider-rail-head {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--apt-muted);
+  padding: 6px 8px 4px;
 }
 .kw-provider-rail-row {
   display: flex;
@@ -3085,6 +3382,45 @@ body:has(.kw-public-booking) {
   min-width: 22px;
   text-align: center;
   padding: 1px 6px;
+}
+
+/* --- The right-side panel: mini month + provider summary (mockup 3) ------ */
+.kw-provider-side {
+  width: 252px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-self: flex-start;
+  position: sticky;
+  top: 8px;
+}
+.kw-provider-minical {
+  background: var(--apt-surface);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  box-shadow: var(--apt-shadow-xs);
+  padding: 4px 6px 6px;
+}
+/* The mini calendar navigates the SAME anchor the command bar owns; its
+   month/year dropdowns suffice, so the year/month mode switch goes. */
+.kw-provider-minical .ant-picker-calendar-mode-switch {
+  display: none;
+}
+.kw-provider-minical .ant-picker-calendar-header {
+  padding: 8px 6px 4px;
+}
+.kw-provider-minical .ant-picker-cell-selected .ant-picker-cell-inner {
+  background: var(--apt-nav-navy);
+}
+.kw-provider-summary-title {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--apt-muted);
+  margin-bottom: 4px;
 }
 
 .kw-provider-summary {
@@ -3166,22 +3502,19 @@ body:has(.kw-public-booking) {
   min-width: 0;
 }
 
-/* --- Event cards: depth and hover ---------------------------------------- */
-.kw-calendar-grid .rbc-time-view .rbc-event,
-.kw-calendar-grid .rbc-day-slot .rbc-event {
-  border-radius: 6px;
-  box-shadow: var(--apt-shadow-xs);
-  transition:
-    box-shadow 0.15s ease,
-    transform 0.15s ease;
+/* --- The in-card doctor identity (mockup 2) ------------------------------- */
+.kw-event-provider {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--apt-text-2);
+  margin-top: 1px;
 }
-.kw-calendar-grid .rbc-time-view .rbc-event:hover {
-  box-shadow: var(--apt-shadow-hover);
-  transform: translateY(-1px);
-  z-index: 5;
-}
-.kw-calendar-event {
-  padding: 3px 8px 3px 9px;
+.kw-event-provider > span:last-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* --- Month view: calm cells, present today ------------------------------- */
@@ -3190,13 +3523,6 @@ body:has(.kw-public-booking) {
 }
 .kw-calendar-grid .rbc-month-view .rbc-day-bg:hover {
   background: var(--apt-surface-2);
-}
-.kw-calendar-grid .rbc-month-view .rbc-event {
-  border-radius: 5px;
-  margin-bottom: 1px;
-}
-.kw-calendar-grid .rbc-month-view .rbc-event:hover {
-  box-shadow: var(--apt-shadow-sm);
 }
 .kw-calendar-grid .rbc-show-more {
   color: var(--apt-teal);
@@ -3216,7 +3542,13 @@ body:has(.kw-public-booking) {
   row-gap: 8px;
 }
 
-/* The rail stacks above the grid on narrow screens rather than crushing it. */
+/* "Where screen width permits" (the owner's words): the right-side panel
+   yields first, then the rail stacks above the grid rather than crushing it. */
+@media (max-width: 1360px) {
+  .kw-provider-side {
+    display: none;
+  }
+}
 @media (max-width: 1100px) {
   .kw-cal-body {
     flex-direction: column;
@@ -3224,15 +3556,6 @@ body:has(.kw-public-booking) {
   .kw-provider-rail {
     width: 100%;
     position: static;
-    flex-direction: row;
-    align-items: flex-start;
-  }
-  .kw-provider-rail-list {
-    flex: 1;
-  }
-  .kw-provider-summary {
-    width: 260px;
-    flex: none;
   }
 }
 
@@ -3266,12 +3589,148 @@ body:has(.kw-public-booking) {
   min-width: 0;
 }
 
+/* Mockup 4 — the patient cell: avatar beside name-over-phone. */
+.kw-appt-patient-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.kw-appt-patient-cell .kw-appt-patient {
+  min-width: 0;
+}
+
+/* A service name is one calm line; the full name rides the native title. */
+.kw-appt-service {
+  display: inline-block;
+  max-width: 168px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+/* Mockup 4 — the row's primary action is INK: the dark navy Check-in button
+   of the approved list. Scoped to table rows so the page-level primaries
+   (New appointment) keep the app's own primary colour. */
+.kw-appt-list .ant-table-tbody .ant-btn-primary:not(:disabled) {
+  background: var(--apt-nav-navy);
+  border-color: var(--apt-nav-navy);
+  border-radius: 8px;
+  font-weight: 600;
+}
+.kw-appt-list .ant-table-tbody .ant-btn-primary:not(:disabled):hover {
+  background: var(--apt-navy-2);
+  border-color: var(--apt-navy-2);
+}
+
 /* Section headings that carry an action on their right (Edit details). */
 .kw-apt-section--actionable {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+/* --- The check-in drawer (target mockup 5): identity rail + review column --- */
+.kw-checkin-grid {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+.kw-checkin-content {
+  flex: 1;
+  min-width: 0;
+}
+.kw-checkin-identity {
+  width: 232px;
+  flex: none;
+  background: var(--apt-surface-2);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  padding: 18px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: sticky;
+  top: 0;
+}
+.kw-checkin-id-name {
+  margin-top: 10px;
+  font-size: 15.5px;
+  font-weight: 700;
+  color: var(--apt-nav-navy);
+  line-height: 1.3;
+}
+.kw-checkin-id-meta {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--apt-text-2);
+  font-variant-numeric: tabular-nums;
+}
+.kw-checkin-id-head {
+  margin: 16px 0 8px;
+  align-self: flex-start;
+}
+.kw-checkin-id-rows {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  text-align: left;
+  font-size: 12.5px;
+  color: var(--apt-text);
+}
+.kw-checkin-id-rows > span {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  line-height: 1.35;
+}
+.kw-checkin-id-rows .anticon {
+  color: var(--apt-teal);
+  font-size: 13px;
+  flex: none;
+  position: relative;
+  top: 1px;
+}
+.kw-checkin-id-foot {
+  align-self: stretch;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--apt-border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+.kw-checkin-id-foot .ant-typography {
+  font-size: 11.5px;
+}
+
+/* The drawer's one primary action is INK, and visibly so (mockup 5). */
+.kw-apt3-drawer .ant-drawer-footer .ant-btn-primary:not(:disabled) {
+  background: var(--apt-nav-navy);
+  border-color: var(--apt-nav-navy);
+  font-weight: 600;
+  border-radius: 8px;
+  padding-inline: 18px;
+}
+.kw-apt3-drawer .ant-drawer-footer .ant-btn-primary:not(:disabled):hover {
+  background: var(--apt-navy-2);
+  border-color: var(--apt-navy-2);
+}
+
+/* Narrow screens: the rail folds above the review column. */
+@media (max-width: 640px) {
+  .kw-checkin-grid {
+    flex-direction: column;
+  }
+  .kw-checkin-identity {
+    width: 100%;
+    position: static;
+  }
 }
 
 /* The in-drawer patient edit form: compact, calm, clearly a mode. */
@@ -3284,6 +3743,168 @@ body:has(.kw-public-booking) {
 }
 .kw-checkin-patient-form .ant-form-item {
   margin-bottom: 10px;
+}
+
+/* --- The Reminder Centre (target mockup 7) -------------------------------
+   Summary tiles over a real worklist table: time · patient · appointment ·
+   type · channel · action. Every tile is an honest derivation of the rows
+   below it — nothing the drawer cannot show is counted. */
+.kw-rem-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.kw-rem-tile {
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  background: var(--apt-surface);
+  box-shadow: var(--apt-shadow-xs);
+  padding: 12px 8px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+.kw-rem-tile:hover {
+  box-shadow: var(--apt-shadow-md);
+  transform: translateY(-1px);
+}
+.kw-rem-tile-value {
+  font-size: 22px;
+  font-weight: 750;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--apt-nav-navy);
+}
+.kw-rem-tile-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--apt-text-2);
+  white-space: nowrap;
+}
+.kw-rem-tile[data-tone='due'] .kw-rem-tile-value {
+  color: var(--apt-active);
+}
+.kw-rem-tile[data-tone='upcoming'] .kw-rem-tile-value {
+  color: var(--apt-limited);
+}
+.kw-rem-tile[data-tone='sent'] .kw-rem-tile-value {
+  color: var(--apt-avail);
+}
+
+.kw-rem-head,
+.kw-rem-row {
+  display: grid;
+  grid-template-columns: 74px minmax(150px, 1.1fr) minmax(180px, 1.5fr) 118px 34px minmax(96px, auto);
+  gap: 10px;
+  align-items: center;
+}
+.kw-rem-head {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--apt-text-2);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--apt-border);
+}
+.kw-rem-rows {
+  display: flex;
+  flex-direction: column;
+}
+.kw-rem-row {
+  padding: 10px;
+  border-bottom: 1px solid var(--apt-hairline);
+  transition: background 0.15s ease;
+}
+.kw-rem-row:hover {
+  background: var(--apt-surface-2);
+}
+.kw-rem-time {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--apt-nav-navy);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+.kw-rem-time-date {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--apt-text-2);
+  white-space: nowrap;
+}
+.kw-rem-patient {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.kw-rem-patient-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+.kw-rem-patient-name {
+  font-weight: 650;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kw-rem-patient-phone {
+  font-size: 11px;
+  color: var(--apt-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kw-rem-appt {
+  font-size: 12px;
+  color: var(--apt-text);
+  min-width: 0;
+  line-height: 1.35;
+}
+.kw-rem-appt-provider {
+  display: block;
+  font-size: 11px;
+  color: var(--apt-text-2);
+}
+.kw-rem-type.ant-tag {
+  margin-inline-end: 0;
+  font-size: 11px;
+}
+.kw-rem-wa {
+  color: #25d366;
+  font-size: 16px;
+}
+.kw-rem-action {
+  justify-self: end;
+}
+@media (max-width: 700px) {
+  .kw-rem-tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .kw-rem-head {
+    display: none;
+  }
+  .kw-rem-head + .kw-rem-rows {
+    border-top: 1px solid var(--apt-border);
+  }
+  .kw-rem-row {
+    grid-template-columns: 1fr auto;
+    row-gap: 6px;
+  }
+  .kw-rem-col-channel {
+    display: none;
+  }
 }
 
 /* Inline patient registration inside the booking flow (final-UAT). */
@@ -3408,12 +4029,11 @@ body:has(.kw-public-booking) {
   box-shadow: var(--apt-shadow-sm);
 }
 
-/* --- "You selected" ------------------------------------------------------- */
+/* --- "You selected" — the doctor revealed, with their face (mockup). ------ */
 .kw-public-selected {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   background: var(--apt-teal-soft);
   border: 1px solid var(--apt-teal);
   border-radius: var(--apt-radius-lg);
@@ -3424,6 +4044,7 @@ body:has(.kw-public-booking) {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  flex: 1;
 }
 
 /* --- Honest payment summary ---------------------------------------------- */
@@ -3445,24 +4066,75 @@ body:has(.kw-public-booking) {
   border-top: 1px dashed var(--apt-border);
 }
 
+/* The review step's labelled summary card (mockup: Review & Pay panel,
+   minus the payment methods Kuwick honestly does not have). */
+.kw-public-apptsummary {
+  background: var(--apt-surface);
+}
+.kw-public-apptsummary .kw-public-paysummary-row > span:first-child {
+  color: var(--apt-text-2);
+  flex: none;
+}
+.kw-public-apptsummary .kw-public-paysummary-row > span:last-child {
+  font-weight: 600;
+  text-align: right;
+  min-width: 0;
+}
+
 /* --- The wallet card ------------------------------------------------------ */
 .kw-public-wallet {
   width: 100%;
-  max-width: 400px;
+  max-width: 420px;
   border-radius: var(--apt-radius-xl);
   overflow: hidden;
-  box-shadow: var(--apt-shadow-md);
-  border: 1px solid var(--apt-border);
+  box-shadow: 0 14px 34px rgba(11, 23, 54, 0.28);
+  border: none;
   margin-top: 14px;
   text-align: left;
+  background: var(--apt-wallet-grad);
+  padding: 20px 16px 16px;
+}
+
+/* The headline ON the gradient (mockup: "Appointment Confirmed!"). */
+.kw-public-wallet-top {
+  text-align: center;
+  color: #fff;
+  margin-bottom: 14px;
+}
+.kw-public-wallet-top .kw-public-done-badge {
+  margin: 0 auto 8px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+/* An antd Title (a real h4 — the page's one headline, and what assistive
+   tech lands on) restyled white for the gradient. */
+h4.ant-typography.kw-public-wallet-title {
+  margin: 0;
+  color: #fff;
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+.kw-public-wallet-sub {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+/* The white ticket inside the gradient. */
+.kw-public-wallet-panel {
+  background: var(--apt-surface);
+  border-radius: var(--apt-radius-lg);
+  overflow: hidden;
+  box-shadow: var(--apt-shadow-md);
 }
 .kw-public-wallet-head {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--apt-wallet-grad);
-  color: #fff;
-  padding: 14px 16px;
+  color: var(--apt-nav-navy);
+  padding: 13px 16px 0;
 }
 .kw-public-wallet-head img {
   width: 30px;
@@ -3472,16 +4144,47 @@ body:has(.kw-public-booking) {
   background: #fff;
 }
 .kw-public-wallet-clinic {
-  font-weight: 650;
+  font-weight: 700;
   font-size: 15px;
   letter-spacing: 0.01em;
 }
 .kw-public-wallet-body {
   background: var(--apt-surface);
-  padding: 16px;
+  padding: 14px 16px 16px;
   display: flex;
   gap: 16px;
   align-items: flex-start;
+}
+
+/* The action grid, inside the gradient card (mockup's button row). */
+.kw-public-wallet-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+.kw-public-wallet-actions .ant-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 10px;
+  min-height: 38px;
+}
+.kw-public-wallet-actions .ant-btn:hover {
+  background: rgba(255, 255, 255, 0.22) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  color: #fff !important;
+}
+.kw-public-wallet-actions .ant-btn-primary {
+  background: #fff;
+  border-color: #fff;
+  color: var(--apt-nav-navy);
+}
+.kw-public-wallet-actions .ant-btn-primary:hover {
+  background: #f1f5f9 !important;
+  border-color: #f1f5f9 !important;
+  color: var(--apt-nav-navy) !important;
 }
 .kw-public-wallet-qr {
   flex: none;

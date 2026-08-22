@@ -14,8 +14,16 @@ import {
   Typography,
   message,
 } from 'antd';
-import { EditOutlined } from '@ant-design/icons';
+import {
+  CalendarOutlined,
+  ClockCircleOutlined,
+  EditOutlined,
+  MedicineBoxOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { KuwickStatusTag } from '../../design-system/kuwick';
+import { PersonAvatar } from '../shared/PersonAvatar';
 import { formatClinicDate, formatClinicDateTime, formatClinicTime } from '../../clinical/clinicTime';
 import { usePanelClinics, useUpdatePanelClinic } from '../../clinical/hooks/usePanelClinics';
 import { useStaff } from '../../hr/hooks/useStaff';
@@ -137,11 +145,18 @@ export function CheckInRegistrationDrawer({
     }
   };
 
+  // Real facts only on the identity header: the age comes from the recorded
+  // date of birth; there is no last-visit/returning field on this payload, so
+  // no "Returning patient" badge is invented (final-UAT honesty rule).
+  const age = appointment?.patient.dob
+    ? Math.max(0, dayjs().diff(dayjs(appointment.patient.dob), 'year'))
+    : null;
+
   return (
     <Drawer
       open={Boolean(appointmentId)}
       onClose={onClose}
-      width={470}
+      width="min(780px, 100vw)"
       rootClassName="kw-apt3-drawer"
       destroyOnHidden
       title="Register / Check in"
@@ -167,25 +182,48 @@ export function CheckInRegistrationDrawer({
       {isLoading ? <Skeleton active paragraph={{ rows: 10 }} /> : null}
 
       {appointment ? (
-        <div data-testid="checkin-registration-drawer">
-          {/* THE APPOINTMENT — what was booked, read-only. */}
-          <div className="kw-apt-section">Appointment</div>
-          <Descriptions column={1} size="small" colon={false} styles={{ label: { width: 110 } }}>
-            <Descriptions.Item label="Service">{appointment.service.name}</Descriptions.Item>
-            <Descriptions.Item label="Booked for">
-              {formatClinicDate(appointment.scheduledStart)} ·{' '}
-              {formatClinicTime(appointment.scheduledStart)} –{' '}
-              {formatClinicTime(appointment.scheduledEnd)}
-            </Descriptions.Item>
-            <Descriptions.Item label="Booked with">{appointment.staff.fullName}</Descriptions.Item>
-            <Descriptions.Item label="Source">
-              {SOURCE_LABELS[appointment.source as AppointmentSource] ?? sentence(appointment.source)}
-            </Descriptions.Item>
-            <Descriptions.Item label="Reference">
-              {bookingReference(appointment.id)}
-            </Descriptions.Item>
-          </Descriptions>
+        <div data-testid="checkin-registration-drawer" className="kw-checkin-grid">
+          {/* THE IDENTITY RAIL (target mockup 5) — who is standing at the
+              counter and what they came for, read at a glance: the avatar,
+              the name, the recorded phone and age, then the appointment as
+              icon rows. Same facts the old Appointment table carried;
+              recomposed, not reinvented. */}
+          <aside className="kw-checkin-identity">
+            <PersonAvatar name={appointment.patient.name} size="xl" />
+            <div className="kw-checkin-id-name">{appointment.patient.name}</div>
+            <div className="kw-checkin-id-meta">
+              {[appointment.patient.phone, age != null ? `${age} years old` : null]
+                .filter(Boolean)
+                .join(' · ') || '—'}
+            </div>
 
+            <div className="kw-apt3-eyebrow kw-checkin-id-head">Appointment</div>
+            <div className="kw-checkin-id-rows">
+              <span>
+                <MedicineBoxOutlined /> {appointment.service.name}
+              </span>
+              <span>
+                <UserOutlined /> {appointment.staff.fullName}
+              </span>
+              <span>
+                <CalendarOutlined /> {formatClinicDate(appointment.scheduledStart)}
+              </span>
+              <span>
+                <ClockCircleOutlined /> {formatClinicTime(appointment.scheduledStart)} –{' '}
+                {formatClinicTime(appointment.scheduledEnd)}
+              </span>
+            </div>
+
+            <div className="kw-checkin-id-foot">
+              <Text type="secondary">
+                {SOURCE_LABELS[appointment.source as AppointmentSource] ??
+                  sentence(appointment.source)}
+              </Text>
+              <Text type="secondary">Ref {bookingReference(appointment.id)}</Text>
+            </div>
+          </aside>
+
+          <div className="kw-checkin-content">
           {/* THE PATIENT — the record on file, editable in place for staff
               with the demographics permission (final-UAT). One canonical
               record: the save is the same PATCH every other surface uses. */}
@@ -331,6 +369,7 @@ export function CheckInRegistrationDrawer({
               </Descriptions.Item>
             </Descriptions>
           ) : null}
+          </div>
         </div>
       ) : null}
     </Drawer>

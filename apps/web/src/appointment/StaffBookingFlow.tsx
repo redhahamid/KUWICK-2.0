@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Avatar,
   Button,
   Collapse,
   DatePicker,
@@ -21,6 +20,7 @@ import { apiClient, ApiError } from '../core/api-client';
 import { usePatient, usePatients, usePatientSearch } from '../core/hooks/usePatients';
 import { useCan } from '../core/hooks/useCan';
 import { InlinePatientCreate } from './InlinePatientCreate';
+import { PersonAvatar } from './shared/PersonAvatar';
 import { clinicDayjs, formatClinicDate, formatClinicTime } from '../clinical/clinicTime';
 import { useCreateAppointment } from './hooks/useAppointments';
 import { useAppointmentServices } from './hooks/useServiceConfig';
@@ -311,8 +311,10 @@ export function StaffBookingFlow({
       title={
         <div className="kw-flow-title">
           <span className="kw-flow-heading">New appointment</span>
-          {/* The whole route in one quiet line: done in teal, the open
-              question in ink, the rest waiting. */}
+          {/* The whole route as the mockup's numbered chips: done wears a
+              teal tick, the open question a filled navy numeral, the rest
+              wait in grey. The same stepper language the patient booking
+              page speaks — one product, two operators. */}
           <span className="kw-flow-route" aria-label={`Step ${step} of 5 · ${STEP_WORDS[step]}`}>
             {ROUTE.map((word, index) => (
               <span key={word} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -322,10 +324,14 @@ export function StaffBookingFlow({
                   </span>
                 ) : null}
                 <span
+                  className="kw-flow-route-item"
                   data-state={
                     index < routeIndex ? 'done' : index === routeIndex ? 'active' : undefined
                   }
                 >
+                  <span className="kw-flow-route-dot" aria-hidden>
+                    {index < routeIndex ? '✓' : index + 1}
+                  </span>
                   {word}
                 </span>
               </span>
@@ -354,9 +360,7 @@ export function StaffBookingFlow({
         {/* -------- 1 · PATIENT ------------------------------------------ */}
         {patientId && selectedPatient && step !== 1 ? (
           <div className="kw-flow-patient" data-testid="flow-patient-card" style={{ marginBottom: 8 }}>
-            <Avatar size={36} className="kw-apt-avatar">
-              {initialsOf(selectedPatient.name)}
-            </Avatar>
+            <PersonAvatar name={selectedPatient.name} size="lg" />
             <div className="kw-flow-patient-text">
               <div className="kw-flow-patient-name">{selectedPatient.name}</div>
               <div className="kw-flow-patient-meta">

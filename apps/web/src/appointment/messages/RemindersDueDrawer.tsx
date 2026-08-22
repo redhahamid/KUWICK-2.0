@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Badge, Button, Drawer, Empty, List, Segmented, Tag, Typography } from 'antd';
+import { Badge, Button, Drawer, Empty, Segmented, Tag, Typography } from 'antd';
 import { BellOutlined, WhatsAppOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { apiClient } from '../../core/api-client';
-import { formatClinicDate, formatClinicDateTime, formatClinicTime } from '../../clinical/clinicTime';
+import { clinicDayjs, formatClinicDate, formatClinicDateTime, formatClinicTime } from '../../clinical/clinicTime';
+import { PersonAvatar } from '../shared/PersonAvatar';
 import { MessagePatientModal } from './MessagePatientModal';
 
 interface DueRow {
@@ -102,6 +103,15 @@ export function RemindersDueButton({ clinicId }: { clinicId: string | undefined 
     enabled: Boolean(clinicId) && open,
   });
 
+  // Of the scheduled reminders, the ones whose moment falls before the
+  // clinic's midnight — the "get ahead of this afternoon" tile.
+  const dueLaterToday = useMemo(() => {
+    const todayKey = clinicDayjs(new Date()).format('YYYY-MM-DD');
+    return (upcoming ?? []).filter(
+      (row) => clinicDayjs(row.dueAt).format('YYYY-MM-DD') === todayKey,
+    ).length;
+  }, [upcoming]);
+
   return (
     <>
       <Badge count={due?.length ?? 0} size="small" offset={[-4, 4]}>
@@ -114,14 +124,46 @@ export function RemindersDueButton({ clinicId }: { clinicId: string | undefined 
         open={open}
         onClose={() => setOpen(false)}
         title="Reminder Centre"
-        width={460}
+        width="min(760px, 100vw)"
         data-testid="reminders-due-drawer"
       >
-        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 12 }}>
           Built from this clinic&apos;s reminder rules. WhatsApp automation is not connected —
           reminders are sent by a person, from this list, and Kuwick records that the window was
           opened.
         </Typography.Paragraph>
+
+        {/* Mockup 7's summary tiles — each an HONEST derivation of the three
+            lists below (nothing this drawer cannot show is counted), and each
+            a shortcut to the tab it summarises. */}
+        <div className="kw-rem-tiles">
+          <button type="button" className="kw-rem-tile" data-tone="due" onClick={() => setTab('due')}>
+            <span className="kw-rem-tile-value">{due?.length ?? 0}</span>
+            <span className="kw-rem-tile-label">Due now</span>
+          </button>
+          <button
+            type="button"
+            className="kw-rem-tile"
+            data-tone="today"
+            onClick={() => setTab('upcoming')}
+          >
+            <span className="kw-rem-tile-value">{dueLaterToday}</span>
+            <span className="kw-rem-tile-label">Later today</span>
+          </button>
+          <button
+            type="button"
+            className="kw-rem-tile"
+            data-tone="upcoming"
+            onClick={() => setTab('upcoming')}
+          >
+            <span className="kw-rem-tile-value">{upcoming?.length ?? 0}</span>
+            <span className="kw-rem-tile-label">Next 7 days</span>
+          </button>
+          <button type="button" className="kw-rem-tile" data-tone="sent" onClick={() => setTab('sent')}>
+            <span className="kw-rem-tile-value">{sent?.length ?? 0}</span>
+            <span className="kw-rem-tile-label">Sent · 7 days</span>
+          </button>
+        </div>
 
         <Segmented
           block
@@ -135,16 +177,48 @@ export function RemindersDueButton({ clinicId }: { clinicId: string | undefined 
           style={{ marginBottom: 12 }}
         />
 
+        {/* Mockup 7's worklist columns: time · patient · appointment · type ·
+            channel · action. One header, shared by all three tabs. */}
+        {(tab === 'due' && due?.length) ||
+        (tab === 'upcoming' && upcoming?.length) ||
+        (tab === 'sent' && sent?.length) ? (
+          <div className="kw-rem-head" aria-hidden>
+            <span>Time</span>
+            <span>Patient</span>
+            <span>Appointment</span>
+            <span>Type</span>
+            <span className="kw-rem-col-channel">Via</span>
+            <span />
+          </div>
+        ) : null}
+
         {tab === 'due' ? (
           due?.length ? (
-            <List
-              dataSource={due}
-              rowKey={(row) => `${row.appointmentId}:${row.template}`}
-              renderItem={(row) => (
-                <List.Item
-                  actions={[
+            <div className="kw-rem-rows">
+              {due.map((row) => (
+                <div className="kw-rem-row" key={`${row.appointmentId}:${row.template}`}>
+                  <span className="kw-rem-time">{formatClinicTime(row.scheduledStart)}</span>
+                  <span className="kw-rem-patient">
+                    <PersonAvatar name={row.patient.name} size="sm" />
+                    <span className="kw-rem-patient-text">
+                      <span className="kw-rem-patient-name">{row.patient.name}</span>
+                      <span className="kw-rem-patient-phone">
+                        {row.patient.phone ?? 'no phone on file'}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="kw-rem-appt">
+                    {formatClinicDate(row.scheduledStart)} · {row.serviceName}
+                    <span className="kw-rem-appt-provider">{row.providerName}</span>
+                  </span>
+                  <span>
+                    <Tag className="kw-rem-type">{offsetWords(row.offsetMinutes)}</Tag>
+                  </span>
+                  <span className="kw-rem-col-channel">
+                    <WhatsAppOutlined className="kw-rem-wa" aria-label="WhatsApp, opened by hand" />
+                  </span>
+                  <span className="kw-rem-action">
                     <Button
-                      key="send"
                       size="small"
                       type="primary"
                       icon={<WhatsAppOutlined />}
@@ -152,24 +226,11 @@ export function RemindersDueButton({ clinicId }: { clinicId: string | undefined 
                       onClick={() => setSending(row)}
                     >
                       Send
-                    </Button>,
-                  ]}
-                >
-                  <List.Item.Meta
-                    title={
-                      <>
-                        {row.patient.name} <Tag>{offsetWords(row.offsetMinutes)}</Tag>
-                      </>
-                    }
-                    description={`${formatClinicDate(row.scheduledStart)} · ${formatClinicTime(
-                      row.scheduledStart,
-                    )} — ${row.serviceName} with ${row.providerName}${
-                      row.patient.phone ? '' : ' · no phone on file'
-                    }`}
-                  />
-                </List.Item>
-              )}
-            />
+                    </Button>
+                  </span>
+                </div>
+              ))}
+            </div>
           ) : (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nothing is due right now">
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -182,14 +243,37 @@ export function RemindersDueButton({ clinicId }: { clinicId: string | undefined 
 
         {tab === 'upcoming' ? (
           upcoming?.length ? (
-            <List
-              dataSource={upcoming}
-              rowKey={(row) => `${row.appointmentId}:${row.template}`}
-              renderItem={(row) => (
-                <List.Item
-                  actions={[
+            <div className="kw-rem-rows">
+              {upcoming.map((row) => (
+                <div className="kw-rem-row" key={`${row.appointmentId}:${row.template}`}>
+                  <span className="kw-rem-time">
+                    {formatClinicTime(row.dueAt)}
+                    <span className="kw-rem-time-date">{formatClinicDate(row.dueAt)}</span>
+                  </span>
+                  <span className="kw-rem-patient">
+                    <PersonAvatar name={row.patient.name} size="sm" />
+                    <span className="kw-rem-patient-text">
+                      <span className="kw-rem-patient-name">{row.patient.name}</span>
+                      <span className="kw-rem-patient-phone">
+                        {row.patient.phone ?? 'no phone on file'}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="kw-rem-appt">
+                    {formatClinicDate(row.scheduledStart)} · {formatClinicTime(row.scheduledStart)} ·{' '}
+                    {row.serviceName}
+                    <span className="kw-rem-appt-provider">{row.providerName}</span>
+                  </span>
+                  <span>
+                    <Tag className="kw-rem-type" color="blue">
+                      {offsetWords(row.offsetMinutes)}
+                    </Tag>
+                  </span>
+                  <span className="kw-rem-col-channel">
+                    <WhatsAppOutlined className="kw-rem-wa" aria-label="WhatsApp, opened by hand" />
+                  </span>
+                  <span className="kw-rem-action">
                     <Button
-                      key="early"
                       size="small"
                       icon={<WhatsAppOutlined />}
                       disabled={!row.patient.phone}
@@ -201,24 +285,11 @@ export function RemindersDueButton({ clinicId }: { clinicId: string | undefined 
                       }
                     >
                       Send early
-                    </Button>,
-                  ]}
-                >
-                  <List.Item.Meta
-                    title={
-                      <>
-                        {row.patient.name} <Tag color="blue">due {formatClinicDateTime(row.dueAt)}</Tag>
-                      </>
-                    }
-                    description={`${formatClinicDate(row.scheduledStart)} · ${formatClinicTime(
-                      row.scheduledStart,
-                    )} — ${row.serviceName} with ${row.providerName} · ${offsetWords(
-                      row.offsetMinutes,
-                    )}`}
-                  />
-                </List.Item>
-              )}
-            />
+                    </Button>
+                  </span>
+                </div>
+              ))}
+            </div>
           ) : (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -229,27 +300,44 @@ export function RemindersDueButton({ clinicId }: { clinicId: string | undefined 
 
         {tab === 'sent' ? (
           sent?.length ? (
-            <List
-              dataSource={sent}
-              rowKey={(row) => row.id}
-              renderItem={(row) => (
-                <List.Item>
-                  <List.Item.Meta
-                    title={
-                      <>
-                        {row.appointment.patient.name}{' '}
-                        <Tag color="green">{row.status === 'MANUAL' ? 'Sent by hand' : row.status}</Tag>
-                      </>
-                    }
-                    description={`${row.sentAt ? formatClinicDateTime(row.sentAt) : '—'} · ${
-                      row.appointment.service.name
-                    }${row.actor ? ` · by ${row.actor.fullName}` : ''}${
-                      row.destination ? ` · to ${row.destination}` : ''
-                    }`}
-                  />
-                </List.Item>
-              )}
-            />
+            <div className="kw-rem-rows">
+              {sent.map((row) => (
+                <div className="kw-rem-row" key={row.id}>
+                  <span className="kw-rem-time">
+                    {row.sentAt ? formatClinicTime(row.sentAt) : '—'}
+                    <span className="kw-rem-time-date">
+                      {row.sentAt ? formatClinicDate(row.sentAt) : ''}
+                    </span>
+                  </span>
+                  <span className="kw-rem-patient">
+                    <PersonAvatar name={row.appointment.patient.name} size="sm" />
+                    <span className="kw-rem-patient-text">
+                      <span className="kw-rem-patient-name">{row.appointment.patient.name}</span>
+                      <span className="kw-rem-patient-phone">{row.destination ?? ''}</span>
+                    </span>
+                  </span>
+                  <span className="kw-rem-appt">
+                    {formatClinicDate(row.appointment.scheduledStart)} · {row.appointment.service.name}
+                    <span className="kw-rem-appt-provider">{row.appointment.staff.fullName}</span>
+                  </span>
+                  <span>
+                    <Tag className="kw-rem-type" color="green">
+                      {row.status === 'MANUAL' ? 'Sent by hand' : row.status}
+                    </Tag>
+                  </span>
+                  <span className="kw-rem-col-channel">
+                    <WhatsAppOutlined className="kw-rem-wa" aria-label="WhatsApp" />
+                  </span>
+                  <span className="kw-rem-action">
+                    {row.actor ? (
+                      <Typography.Text type="secondary" style={{ fontSize: 11.5 }}>
+                        by {row.actor.fullName}
+                      </Typography.Text>
+                    ) : null}
+                  </span>
+                </div>
+              ))}
+            </div>
           ) : (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No reminders sent in the last 7 days" />
           )

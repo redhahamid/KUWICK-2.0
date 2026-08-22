@@ -1,4 +1,4 @@
-import { getDoctorColor } from '../calendar/doctor-color';
+import { getDoctorColor, softTint } from '../calendar/doctor-color';
 
 /**
  * THE avatar. Before the premium pass, four copies of `initialsOf` and three
@@ -15,15 +15,6 @@ export function initialsOf(name: string): string {
   return `${first}${second}`.toUpperCase() || '?';
 }
 
-/** 22% tint of a solid identity colour — enough ground for a 600-weight glyph. */
-function tintOf(hex: string): string {
-  const value = hex.replace('#', '');
-  const r = parseInt(value.slice(0, 2), 16);
-  const g = parseInt(value.slice(2, 4), 16);
-  const b = parseInt(value.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, 0.16)`;
-}
-
 export interface PersonAvatarProps {
   name: string;
   /**
@@ -32,7 +23,9 @@ export interface PersonAvatarProps {
    * patient, a guest) renders the neutral slate treatment.
    */
   colorSeed?: string | null;
-  size?: 'sm' | 'md' | 'lg';
+  /** 'xs' is the in-card size — a 16px identity dot beside a doctor's name;
+   *  'xl' is the drawer identity-header size. */
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
 }
 
@@ -42,7 +35,7 @@ export function PersonAvatar({ name, colorSeed, size = 'md', className }: Person
     <span
       className={`kw-avatar${className ? ` ${className}` : ''}`}
       data-size={size}
-      style={{ background: tintOf(solid), color: solid }}
+      style={{ background: softTint(solid), color: solid }}
       aria-hidden="true"
     >
       {initialsOf(name)}

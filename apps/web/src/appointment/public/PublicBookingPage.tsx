@@ -26,6 +26,7 @@ import { PublicBookingError, publicBooking, publicMediaSrc, type PublicSlot } fr
 import { setClinicTimeZone, formatClinicDate, formatClinicTime, clinicDayjs } from '../../clinical/clinicTime';
 import { publicBookingTheme } from '../appointment-theme';
 import { AvailabilityCalendar } from './AvailabilityCalendar';
+import { PersonAvatar } from '../shared/PersonAvatar';
 import { qrSvg } from '../booking-page/qr';
 import { bookingReference } from '../appointment-presentation';
 
@@ -75,6 +76,9 @@ const STEP_TITLES = [
   'Your details',
   'Review & confirm',
 ];
+
+/** The stepper-chip words (approved mockup): one word per numbered circle. */
+const STEP_WORDS = ['Service', 'Doctor', 'Date', 'Time', 'Details', 'Review'];
 
 /**
  * PUBLIC BOOKING — mobile first, and no account required (§31).
@@ -309,78 +313,90 @@ function PublicBookingPageInner() {
     return (
       <div className="kw-public-booking">
         <div className="kw-public-done" data-testid="public-confirmation">
-          <div className={`kw-public-done-badge${requested ? ' kw-public-done-badge--wait' : ''}`}>
-            {requested ? '…' : '✓'}
-          </div>
-          <Title level={4} style={{ margin: '8px 0 0' }}>
-            {requested ? 'Your request has been sent' : 'Appointment confirmed'}
-          </Title>
-          <Text type="secondary">{confirmation.message}</Text>
-
-          <div className="kw-public-wallet" data-testid="public-wallet-card">
-            <div className="kw-public-wallet-head">
-              {page.clinic.logoUrl ? (
-                <img src={publicMediaSrc(page.clinic.logoUrl) ?? undefined} alt="" />
-              ) : null}
-              <span className="kw-public-wallet-clinic">{page.clinic.displayName}</span>
+          {/* The mockup's Apple-Wallet-style confirmation: ONE dark-teal
+              gradient card carrying the headline, a white ticket panel (QR +
+              the booking's facts) and the action grid. No Apple Wallet
+              button — no pass-signing certificates exist, and a dead button
+              is a broken promise. */}
+          <div
+            className={`kw-public-wallet${requested ? ' kw-public-wallet--wait' : ''}`}
+            data-testid="public-wallet-card"
+          >
+            <div className="kw-public-wallet-top">
+              <div className={`kw-public-done-badge${requested ? ' kw-public-done-badge--wait' : ''}`}>
+                {requested ? '…' : '✓'}
+              </div>
+              <Title level={4} className="kw-public-wallet-title">
+                {requested ? 'Your request has been sent' : 'Appointment confirmed!'}
+              </Title>
+              <div className="kw-public-wallet-sub">{confirmation.message}</div>
             </div>
-            <div className="kw-public-wallet-body">
-              {walletQr ? (
-                <div
-                  className="kw-public-wallet-qr"
-                  aria-label="Scan to open your booking"
-                  dangerouslySetInnerHTML={{ __html: walletQr }}
-                />
-              ) : null}
-              <dl className="kw-public-wallet-rows">
-                {reference ? (
-                  <div>
-                    <dt>Booking ref</dt>
-                    <dd>{reference}</dd>
-                  </div>
+
+            <div className="kw-public-wallet-panel">
+              <div className="kw-public-wallet-head">
+                {page.clinic.logoUrl ? (
+                  <img src={publicMediaSrc(page.clinic.logoUrl) ?? undefined} alt="" />
                 ) : null}
-                <div>
-                  <dt>Service</dt>
-                  <dd>{service?.name}</dd>
-                </div>
-                {providerName ? (
-                  <div>
-                    <dt>Doctor</dt>
-                    <dd>{providerName}</dd>
-                  </div>
+                <span className="kw-public-wallet-clinic">{page.clinic.displayName}</span>
+              </div>
+              <div className="kw-public-wallet-body">
+                {walletQr ? (
+                  <div
+                    className="kw-public-wallet-qr"
+                    aria-label="Scan to open your booking"
+                    dangerouslySetInnerHTML={{ __html: walletQr }}
+                  />
                 ) : null}
-                <div>
-                  <dt>Date</dt>
-                  <dd>{formatClinicDate(confirmation.scheduledStart)}</dd>
-                </div>
-                <div>
-                  <dt>Time</dt>
-                  <dd>
-                    {formatClinicTime(confirmation.scheduledStart)} –{' '}
-                    {formatClinicTime(confirmation.scheduledEnd)}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Location</dt>
-                  <dd>{page.clinic.address ?? page.clinic.displayName}</dd>
-                </div>
-              </dl>
+                <dl className="kw-public-wallet-rows">
+                  {reference ? (
+                    <div>
+                      <dt>Booking ref</dt>
+                      <dd>{reference}</dd>
+                    </div>
+                  ) : null}
+                  <div>
+                    <dt>Service</dt>
+                    <dd>{service?.name}</dd>
+                  </div>
+                  {providerName ? (
+                    <div>
+                      <dt>Doctor</dt>
+                      <dd>{providerName}</dd>
+                    </div>
+                  ) : null}
+                  <div>
+                    <dt>Date</dt>
+                    <dd>{formatClinicDate(confirmation.scheduledStart)}</dd>
+                  </div>
+                  <div>
+                    <dt>Time</dt>
+                    <dd>
+                      {formatClinicTime(confirmation.scheduledStart)} –{' '}
+                      {formatClinicTime(confirmation.scheduledEnd)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Location</dt>
+                    <dd>{page.clinic.address ?? page.clinic.displayName}</dd>
+                  </div>
+                </dl>
+              </div>
+            </div>
+
+            <div className="kw-public-wallet-actions">
+              <Button type="primary" href={confirmation.manageUrl}>
+                Manage my appointment
+              </Button>
+              <Button
+                href={`data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`}
+                download="appointment.ics"
+              >
+                Add to calendar
+              </Button>
+              {directions ? <Button href={directions}>Directions</Button> : null}
+              {clinicWa ? <Button href={clinicWa}>WhatsApp us</Button> : null}
             </div>
           </div>
-
-          <Space wrap className="kw-public-done-actions">
-            <Button type="primary" href={confirmation.manageUrl}>
-              Manage my appointment
-            </Button>
-            <Button
-              href={`data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`}
-              download="appointment.ics"
-            >
-              Add to calendar
-            </Button>
-            {directions ? <Button href={directions}>Directions</Button> : null}
-            {clinicWa ? <Button href={clinicWa}>WhatsApp us</Button> : null}
-          </Space>
 
           {/* §43 — labelled sections, and ONLY when there is something true
               to put in them. No invented addresses, no placeholder phone. */}
@@ -464,13 +480,25 @@ function PublicBookingPageInner() {
         </div>
       </header>
 
-      {/* §35 — one quiet line and a sliver of progress, not a stepper that
-          owns half a phone screen. */}
+      {/* The approved mockup's stepper: numbered chips, done in teal ticks,
+          the open step filled navy. On a phone the words yield to the dots
+          (stylesheet) and the sliver bar underneath keeps the progress
+          readable at any width. */}
       <div className="kw-public-progress" data-testid="public-progress">
-        <span className="kw-public-progress-text">
-          <small>Step {step + 1} of {STEP_TITLES.length} · </small>
-          {STEP_TITLES[step]}
-        </span>
+        <ol className="kw-public-steps" aria-label={`Step ${step + 1} of ${STEP_TITLES.length} · ${STEP_TITLES[step]}`}>
+          {STEP_WORDS.map((word, index) => (
+            <li
+              key={word}
+              className="kw-public-step"
+              data-state={index < step ? 'done' : index === step ? 'active' : undefined}
+            >
+              <span className="kw-public-step-dot" aria-hidden>
+                {index < step ? '✓' : index + 1}
+              </span>
+              <span className="kw-public-step-word">{word}</span>
+            </li>
+          ))}
+        </ol>
         <div className="kw-public-progress-bar" aria-hidden>
           <span style={{ width: `${((step + 1) / STEP_TITLES.length) * 100}%` }} />
         </div>
@@ -568,6 +596,18 @@ function PublicBookingPageInner() {
           <Title level={5} className="kw-public-step-title" style={{ margin: 0 }}>
             Choose a doctor
           </Title>
+          {/* The mockup's fastest-appointment banner — the engine's own ANY
+              answer, said once above the people it summarises. */}
+          {hints.byId.ANY ? (
+            <div className="kw-public-fastest">
+              <span className="kw-public-fastest-icon" aria-hidden>
+                ⚡
+              </span>
+              <span>
+                <strong>Fastest appointment</strong> · {hints.byId.ANY}
+              </span>
+            </div>
+          ) : null}
           <div className="kw-public-providers" role="radiogroup" aria-label="Choose a doctor">
             <button
               type="button"
@@ -581,9 +621,14 @@ function PublicBookingPageInner() {
               </span>
               <span className="kw-public-provider-body">
                 <span className="kw-public-provider-name">Any available doctor</span>
-                <span className="kw-public-provider-sub">
-                  Fastest appointment
-                  {hints.byId.ANY ? ` · ${hints.byId.ANY}` : ''}
+                <span className="kw-public-provider-sub">Fastest appointment</span>
+              </span>
+              <span className="kw-public-provider-side">
+                {hints.byId.ANY ? (
+                  <span className="kw-public-provider-next">{hints.byId.ANY}</span>
+                ) : null}
+                <span className="kw-public-provider-go" aria-hidden>
+                  ›
                 </span>
               </span>
             </button>
@@ -596,26 +641,26 @@ function PublicBookingPageInner() {
                 className={`kw-public-provider${staffId === provider.id ? ' kw-public-provider--on' : ''}`}
                 onClick={() => setStaffId(provider.id)}
               >
-                <span className="kw-public-provider-avatar" aria-hidden>
-                  {provider.fullName
-                    .replace(/^Dr\.?\s+/i, '')
-                    .split(/\s+/)
-                    .slice(0, 2)
-                    .map((word) => word[0] ?? '')
-                    .join('')
-                    .toUpperCase()}
-                </span>
+                {/* The shared identity avatar — the SAME person, in the same
+                    colour, the clinic's own calendar shows (mockup: Calendly
+                    card, photo/avatar left, next slot right). */}
+                <PersonAvatar name={provider.fullName} colorSeed={provider.id} size="lg" />
                 <span className="kw-public-provider-body">
                   <span className="kw-public-provider-name">{provider.fullName}</span>
-                  {provider.professionalType === 'MEDICAL_DOCTOR' || hints.byId[provider.id] ? (
-                    <span className="kw-public-provider-sub">
-                      {provider.professionalType === 'MEDICAL_DOCTOR' ? 'Doctor' : null}
-                      {provider.professionalType === 'MEDICAL_DOCTOR' && hints.byId[provider.id]
-                        ? ' · '
-                        : null}
-                      {hints.byId[provider.id] ? `Next available · ${hints.byId[provider.id]}` : null}
+                  {provider.professionalType === 'MEDICAL_DOCTOR' ? (
+                    <span className="kw-public-provider-sub">Doctor</span>
+                  ) : null}
+                </span>
+                <span className="kw-public-provider-side">
+                  {hints.byId[provider.id] ? (
+                    <span className="kw-public-provider-next">
+                      <span className="kw-public-provider-next-label">Next available</span>
+                      {hints.byId[provider.id]}
                     </span>
                   ) : null}
+                  <span className="kw-public-provider-go" aria-hidden>
+                    ›
+                  </span>
                 </span>
               </button>
             ))}
@@ -716,6 +761,11 @@ function PublicBookingPageInner() {
               assignment HERE, before anything is confirmed. */}
           {slot ? (
             <div className="kw-public-selected" data-testid="selected-slot">
+              <PersonAvatar
+                name={providers?.find((row) => row.id === slot.staffId)?.fullName ?? 'Doctor'}
+                colorSeed={slot.staffId}
+                size="md"
+              />
               <div className="kw-public-selected-when">
                 <Text strong>
                   {formatClinicDate(slot.start)} · {formatClinicTime(slot.start)}
@@ -847,21 +897,48 @@ function PublicBookingPageInner() {
           <Title level={5} className="kw-public-step-title" style={{ margin: 0 }}>
             Check your booking
           </Title>
-          <div className="kw-public-done-card" style={{ maxWidth: 'none' }}>
-            <div className="kw-public-done-when">
-              <div className="kw-public-done-date">{formatClinicDate(slot.start)}</div>
-              <div className="kw-public-done-time">
-                {formatClinicTime(slot.start)} – {formatClinicTime(slot.end)}
-              </div>
+          {/* The mockup's labelled summary card: Service / Doctor / Date /
+              Time / Duration, each a quiet label with its answer. */}
+          <div className="kw-public-paysummary kw-public-apptsummary">
+            <div className="kw-public-section" style={{ marginBottom: 6 }}>
+              Appointment summary
             </div>
-            <div className="kw-public-done-lines">
-              <Text strong>{service?.name}</Text>
-              <Text>
+            <div className="kw-public-paysummary-row">
+              <span>Service</span>
+              <span>{service?.name}</span>
+            </div>
+            <div className="kw-public-paysummary-row">
+              <span>Doctor</span>
+              <span>
                 {providers?.find((row) => row.id === slot.staffId)?.fullName ?? 'Your doctor'}
-              </Text>
-              <Text type="secondary">{page.clinic.displayName}</Text>
-              <Text type="secondary">For {details?.name}</Text>
-              {details?.phone ? <Text type="secondary">{details.phone}</Text> : null}
+              </span>
+            </div>
+            <div className="kw-public-paysummary-row">
+              <span>Date</span>
+              <span>{formatClinicDate(slot.start)}</span>
+            </div>
+            <div className="kw-public-paysummary-row">
+              <span>Time</span>
+              <span>
+                {formatClinicTime(slot.start)} – {formatClinicTime(slot.end)}
+              </span>
+            </div>
+            {service?.durationMinutes ? (
+              <div className="kw-public-paysummary-row">
+                <span>Duration</span>
+                <span>{service.durationMinutes} min</span>
+              </div>
+            ) : null}
+            <div className="kw-public-paysummary-row">
+              <span>Clinic</span>
+              <span>{page.clinic.displayName}</span>
+            </div>
+            <div className="kw-public-paysummary-row">
+              <span>For</span>
+              <span>
+                {details?.name}
+                {details?.phone ? ` · ${details.phone}` : ''}
+              </span>
             </div>
           </div>
 

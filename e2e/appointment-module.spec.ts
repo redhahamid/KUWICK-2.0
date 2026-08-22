@@ -443,8 +443,10 @@ test.describe('a patient books themselves in, and the clinic works the booking',
     await expect(registration).toBeVisible();
     // The review really is a review: the payer choice and the patient's
     // on-file identity are in front of the desk before anything commits.
+    // (.first(): the final visual pass shows the name TWICE by design — the
+    // mockup's identity header and the record's own Name row.)
     await expect(registration.getByText('Payer')).toBeVisible();
-    await expect(registration.getByText(patientName)).toBeVisible();
+    await expect(registration.getByText(patientName).first()).toBeVisible();
     await page.getByTestId('confirm-add-to-queue').click();
     await expect(registration).toBeHidden({ timeout: 20_000 });
     await expect(row.getByRole('button', { name: /register \/ check in/i })).toBeHidden({
