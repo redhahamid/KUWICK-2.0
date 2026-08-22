@@ -1,5 +1,6 @@
 import { AppointmentStatus } from '@kuwick/shared';
 import { RELEASED_STATUSES } from '../appointment-status.constants';
+import { statusAccent, statusSoft } from '../shared/appointment-colors';
 
 /**
  * PURE HELPERS FOR THE CALENDAR.
@@ -116,45 +117,17 @@ export function cardModel(input: CardLabelInput, minutes: number): CardModel {
  *
  * The provider is the card's left edge; the status is this dot (and the word
  * in the drawer — colour never carries meaning alone, the dot is a preview of
- * the chip, not a replacement for it). Mid-saturation hues, one per D-105
- * tone, chosen to read at 7px.
+ * the chip, not a replacement for it). The hexes live in ONE place now —
+ * shared/appointment-colors.ts — because four independent copies of "what
+ * colour is ARRIVED" had already drifted before the premium pass.
  */
 export function statusDotColor(status: AppointmentStatus): string {
-  switch (status) {
-    case AppointmentStatus.REQUESTED:
-      return '#7f56d9'; // planned
-    case AppointmentStatus.ARRIVED:
-      return '#d97706'; // attention — physically at the desk
-    case AppointmentStatus.CHECKED_IN:
-    case AppointmentStatus.IN_QUEUE:
-      return '#0f6b78'; // clinical — in the building
-    case AppointmentStatus.COMPLETED:
-      return '#16a34a'; // success
-    case AppointmentStatus.CANCELLED:
-    case AppointmentStatus.NO_SHOW:
-    case AppointmentStatus.RESCHEDULED:
-    case AppointmentStatus.WAITLIST:
-      return '#98a2b3'; // released
-    default:
-      return '#1d4ed8'; // active — confirmed and coming
-  }
+  return statusAccent(status);
 }
 
 /** The soft card tint a status earns; white when it has nothing to say. */
 export function statusCardBackground(status: AppointmentStatus): string {
-  switch (status) {
-    case AppointmentStatus.ARRIVED:
-      return '#fff8eb';
-    case AppointmentStatus.CHECKED_IN:
-    case AppointmentStatus.IN_QUEUE:
-      return '#eff8f8';
-    case AppointmentStatus.REQUESTED:
-      return '#faf7ff';
-    case AppointmentStatus.COMPLETED:
-      return '#f8fafc';
-    default:
-      return '#ffffff';
-  }
+  return statusSoft(status);
 }
 
 export function cardLines(input: CardLabelInput, minutes: number): string[] {

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Typography } from 'antd';
 import { AppointmentStatus } from '@kuwick/shared';
 import { Appointment } from '../types';
+import { METRIC_COLORS } from '../shared/appointment-colors';
 
 const { Text } = Typography;
 
@@ -65,11 +66,11 @@ export function CalendarMetrics({
   // The dot previews the status tone; the word beside it carries the meaning
   // (colour never alone). Muted dots for zero counts keep the row calm.
   const items: { label: string; value: number; dot: string }[] = [
-    { label: 'Booked', value: counts.booked, dot: '#1d4ed8' },
-    { label: 'Arrived', value: counts.arrived, dot: '#d97706' },
-    { label: 'Waiting', value: counts.waiting, dot: '#0f6b78' },
-    { label: 'Completed', value: counts.completed, dot: '#16a34a' },
-    { label: 'No-show', value: counts.noShow, dot: '#b42318' },
+    { label: 'Booked', value: counts.booked, dot: METRIC_COLORS.booked },
+    { label: 'Arrived', value: counts.arrived, dot: METRIC_COLORS.arrived },
+    { label: 'Waiting', value: counts.waiting, dot: METRIC_COLORS.waiting },
+    { label: 'Completed', value: counts.completed, dot: METRIC_COLORS.completed },
+    { label: 'No-show', value: counts.noShow, dot: METRIC_COLORS.noShow },
   ];
 
   return (

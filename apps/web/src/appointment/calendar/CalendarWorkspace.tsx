@@ -47,6 +47,8 @@ import {
 import { useBookingSettings } from '../hooks/useBookingSettings';
 import { SOURCE_LABELS, type AppointmentSource } from '../types';
 import { getDoctorColor } from './doctor-color';
+import { PersonAvatar } from '../shared/PersonAvatar';
+import { ProviderRail } from './ProviderRail';
 import { useCan } from '../../core/hooks/useCan';
 import { ApiError } from '../../core/api-client';
 
@@ -83,16 +85,6 @@ interface CalendarWorkspaceProps {
 function isTypingTarget(target: EventTarget | null): boolean {
   const tag = (target as HTMLElement | null)?.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-}
-
-function initialsOf(name: string): string {
-  return name
-    .replace(/^Dr\.?\s+/i, '')
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0] ?? '')
-    .join('')
-    .toUpperCase();
 }
 
 /**
@@ -725,6 +717,22 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
         />
       ) : null}
 
+      <div className="kw-cal-body">
+      {/* Target mockup 3 — the Providers view carries a person rail and a day
+          summary INSIDE the module canvas. It drives the same providerFilter
+          the filter bar owns, so rail, chips and grid cannot disagree. */}
+      {viewMode === 'providers' && !isLoading ? (
+        <ProviderRail
+          clinicId={clinicId}
+          providers={providers}
+          appointments={events.map((event) => event.appointment)}
+          shifts={shifts ?? []}
+          rangeFrom={range.start.format('YYYY-MM-DD')}
+          rangeTo={range.end.format('YYYY-MM-DD')}
+          selection={providerFilter}
+          onSelect={setProviderFilter}
+        />
+      ) : null}
       <div
         className="kw-cal-outer"
         data-scroll={
@@ -874,24 +882,21 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
                 },
               },
               // The provider column header is a person, not a string: the
-              // initial in the provider's own calendar colour is the same
-              // identity cue every card's left edge already carries.
+              // shared avatar in the provider's own calendar colour is the
+              // same identity cue every card's left edge already carries, and
+              // the count says how heavy the column is before it is read.
               resourceHeader: ({ label, resource }: { label: React.ReactNode; resource?: { resourceId?: string } }) => {
                 const id = resource?.resourceId ? String(resource.resourceId) : '';
                 const name = String(label ?? '');
+                const count = events.filter((event) => event.resourceId === id).length;
                 return (
                   <div className="kw-provider-head">
-                    <span
-                      className="kw-provider-avatar"
-                      style={id ? { background: getDoctorColor(id) } : undefined}
-                      aria-hidden
-                    >
-                      {initialsOf(name)}
-                    </span>
+                    <PersonAvatar name={name} colorSeed={id || null} size="sm" />
                     {/* Native title: the full name survives the ellipsis. */}
                     <span className="kw-provider-name" title={name}>
                       {name}
                     </span>
+                    <span className="kw-provider-headcount">{count}</span>
                   </div>
                 );
               },
@@ -918,6 +923,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             style={{ height: '100%' }}
           />
         )}
+      </div>
       </div>
       </div>
 
