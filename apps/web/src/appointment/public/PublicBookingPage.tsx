@@ -489,6 +489,15 @@ function PublicBookingPageInner() {
         />
       ) : null}
 
+      {/* NO RATINGS, BY OWNER DECISION (final-UAT revision). The approved
+          mockup drew "4.9 (128)" stars on these cards; Kuwick has no patient
+          review system, and a seeded number is a lie a patient acts on. The
+          cards carry only recorded facts — duration, price, description,
+          professional type, the engine's own next-available answer. The
+          layout stays future-ready: a verified rating block slots into the
+          card body/sub-line WITHOUT redesign, and may only ever render
+          ratings from completed visits (one review per completed
+          appointment, moderated) once such a system exists. */}
       {step === 0 ? (
         <Space direction="vertical" size={8} style={{ width: '100%' }}>
           <Title level={5} className="kw-public-step-title" style={{ margin: 0 }}>

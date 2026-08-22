@@ -205,15 +205,30 @@ and each **Send** clears the row.
 
 ## Part C — What your patients see
 
-- Your public page walks them through **five steps** — service, provider (or
-  *Any available*), date & time (grouped Morning / Afternoon / Evening /
-  Late night), their details, review — with a progress marker, and finishes
-  with a confirmation: the when-and-where, any pre-visit instructions, an
-  add-to-calendar button and a **private manage link**.
+- Your public page walks them through **six steps** — service, provider (or
+  *Any available*), **date**, **time**, their details, review — with a
+  progress marker, and finishes with a **wallet-style confirmation card**:
+  a scannable QR of their manage link, the booking reference, the
+  when-and-where, add-to-calendar, directions (when your branch address is
+  set), a WhatsApp-us button (when your phone is set) and the **private
+  manage link**.
+- The **date step is a colour-coded month**: green days have room, amber
+  days have a few times left, grey days are full, closed days are simply
+  not offered — and a *Fastest available* banner names the first free slot
+  and its doctor. Nobody taps dates blind. The same calendar appears when a
+  patient reschedules, with their current appointment marked.
+- Picking a time always **names the real doctor** before anything is
+  confirmed — the *Any available* path included.
+- The review step says the price and any deposit plainly, and says that
+  **payment is collected at the clinic — nothing is charged online**.
 - Tapping a service's ⓘ shows its photo, price, deposit and description
   before they commit.
-- If a day has nothing free, the page offers the next available day rather
-  than a dead end.
+- **There are no star ratings or review counts anywhere on the page — by
+  decision, not omission.** Kuwick has no patient review system yet, and
+  the page will never show an invented number. If a review system is added
+  later it must only count **verified completed visits, one review per
+  completed appointment, moderated** — until then the cards carry facts:
+  duration, price, description, and each doctor's next available time.
 - The **manage link** shows their booking and — depending on your policy —
   lets them change or cancel it instantly, or send you a request with a
   reason. While a request is pending the page says plainly: *"Your
