@@ -19,6 +19,8 @@ import dayjs, { Dayjs } from 'dayjs';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, ApiError } from '../core/api-client';
 import { usePatient, usePatients, usePatientSearch } from '../core/hooks/usePatients';
+import { useCan } from '../core/hooks/useCan';
+import { InlinePatientCreate } from './InlinePatientCreate';
 import { clinicDayjs, formatClinicDate, formatClinicTime } from '../clinical/clinicTime';
 import { useCreateAppointment } from './hooks/useAppointments';
 import { useAppointmentServices } from './hooks/useServiceConfig';
@@ -125,9 +127,12 @@ export function StaffBookingFlow({
   const [overrideReason, setOverrideReason] = useState('');
   // Which ANSWERED step is being re-opened via its [Change] link, if any.
   const [editing, setEditing] = useState<number | null>(null);
+  // Final-UAT — the walk-in who isn't on file registers INSIDE the flow.
+  const [addingPatient, setAddingPatient] = useState(false);
   const [idempotencyKey] = useState(() => `staff-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
   const { data: patients, isFetching: searching } = usePatientSearch(patientSearch);
+  const canRegisterPatient = useCan('patient.demographics.write');
   // "Recent patients" — the people most likely to be on the phone right now.
   const { data: recentPatients } = usePatients();
   const { data: selectedPatient } = usePatient(patientId);
@@ -242,6 +247,7 @@ export function StaffBookingFlow({
     setNote('');
     setOverrideReason('');
     setEditing(null);
+    setAddingPatient(false);
   };
 
   const ready = Boolean(patientId && serviceId && slot);
@@ -363,7 +369,20 @@ export function StaffBookingFlow({
             </Button>
           </div>
         ) : null}
-        {step === 1 ? (
+        {step === 1 && addingPatient ? (
+          <InlinePatientCreate
+            initialName={patientSearch.trim() || undefined}
+            onCreated={(created) => {
+              // The flow continues exactly where it stood: patientId answers
+              // step 1 and naturalStep advances on its own.
+              setPatientId(created.id);
+              setAddingPatient(false);
+              setEditing(null);
+            }}
+            onCancel={() => setAddingPatient(false)}
+          />
+        ) : null}
+        {step === 1 && !addingPatient ? (
           <>
             <div className="kw-flow-step">1 · Patient</div>
             <Select
@@ -379,12 +398,44 @@ export function StaffBookingFlow({
                 setPatientId(value);
                 setEditing(null);
               }}
-              notFoundContent={searching ? <Spin size="small" /> : <Empty description="No match" />}
+              notFoundContent={
+                searching ? (
+                  <Spin size="small" />
+                ) : (
+                  <Empty
+                    description="No match"
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    style={{ margin: '8px 0' }}
+                  >
+                    {canRegisterPatient ? (
+                      <Button
+                        type="primary"
+                        size="small"
+                        onClick={() => setAddingPatient(true)}
+                        data-testid="add-new-patient-empty"
+                      >
+                        + Add new patient
+                      </Button>
+                    ) : null}
+                  </Empty>
+                )
+              }
               options={(patients ?? []).map((patient) => ({
                 value: patient.id,
                 label: `${patient.name} · ${patient.identifierValue}${patient.phone ? ` · ${patient.phone}` : ''}`,
               }))}
             />
+            {canRegisterPatient ? (
+              <Button
+                type="link"
+                size="small"
+                style={{ paddingLeft: 0, marginTop: 4 }}
+                onClick={() => setAddingPatient(true)}
+                data-testid="add-new-patient"
+              >
+                + Add new patient
+              </Button>
+            ) : null}
             {(recentPatients?.length ?? 0) > 0 ? (
               <div className="kw-flow-recent">
                 <Text type="secondary" style={{ fontSize: 12 }}>

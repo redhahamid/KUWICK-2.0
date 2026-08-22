@@ -3285,3 +3285,14 @@ body:has(.kw-public-booking) {
 .kw-checkin-patient-form .ant-form-item {
   margin-bottom: 10px;
 }
+
+/* Inline patient registration inside the booking flow (final-UAT). */
+.kw-flow-new-patient {
+  background: var(--apt-surface-2);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  padding: 12px 12px 10px;
+}
+.kw-flow-new-patient .ant-form-item {
+  margin-bottom: 10px;
+}
