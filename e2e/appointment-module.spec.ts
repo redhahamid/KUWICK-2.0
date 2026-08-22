@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { Page, expect, test } from '@playwright/test';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
@@ -24,6 +24,26 @@ const CLINIC_ZONE = 'Asia/Kuala_Lumpur';
  * it in produces a real queue ticket rather than a status somebody has to
  * chase.
  */
+
+
+/**
+ * Final-UAT — the DATE step is the colour-coded availability month. Picking a
+ * day means clicking its cell (navigating a month forward if the target sits
+ * in the next one); the cell is enabled only when the ENGINE says the day has
+ * room, which is itself part of what the walk asserts.
+ */
+async function pickAvailabilityDate(page: Page, when: dayjs.Dayjs): Promise<void> {
+  const calendar = page.getByTestId('availability-calendar');
+  await expect(calendar).toBeVisible();
+  if (when.format('YYYY-MM') !== dayjs().format('YYYY-MM')) {
+    await calendar.getByRole('button', { name: /next month/i }).click();
+  }
+  const cell = calendar.locator(`[data-date="${when.format('YYYY-MM-DD')}"]`);
+  await expect(cell, 'the availability month did not offer the fixture day').toBeEnabled({
+    timeout: 20_000,
+  });
+  await cell.click();
+}
 
 test.describe('the module opens on the calendar and holds its five surfaces', () => {
   test('every tab renders, and /appointments lands on the diary', async ({ page }) => {
@@ -346,13 +366,16 @@ test.describe('a patient books themselves in, and the clinic works the booking',
 
     // Two days out: inside the fixture roster, past any minimum notice.
     const when = dayjs().add(2, 'day');
-    await page.getByPlaceholder(/select date/i).fill(when.format('YYYY-MM-DD'));
-    await page.keyboard.press('Enter');
+    await pickAvailabilityDate(page, when);
 
     const slot = page.locator('.kw-public-slots button').first();
     await expect(slot, 'the public page offered no times for a rostered day').toBeVisible();
     const chosenTime = (await slot.textContent())?.trim() ?? '';
     await slot.click();
+    // The "you selected" reveal names the REAL doctor even on the any-doctor
+    // path, and Continue is the explicit step onward.
+    await expect(page.getByTestId('selected-slot')).toContainText(/with /i);
+    await page.getByTestId('continue-to-details').click();
 
     await page.getByLabel(/your full name/i).fill(patientName);
     await page.getByLabel(/mobile number/i).fill(phone);
@@ -483,9 +506,9 @@ test.describe('the patient can manage their own booking', () => {
     await page.getByRole('button', { name: /continue/i }).click();
 
     const when = dayjs().add(3, 'day');
-    await page.getByPlaceholder(/select date/i).fill(when.format('YYYY-MM-DD'));
-    await page.keyboard.press('Enter');
+    await pickAvailabilityDate(page, when);
     await page.locator('.kw-public-slots button').first().click();
+    await page.getByTestId('continue-to-details').click();
 
     await page.getByLabel(/your full name/i).fill(patientName);
     await page.getByLabel(/mobile number/i).fill(`0198${Date.now().toString().slice(-6)}`);

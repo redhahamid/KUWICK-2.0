@@ -25,6 +25,9 @@ dayjs.extend(utc);
 import { PublicBookingError, publicBooking, publicMediaSrc, type PublicSlot } from './publicBookingApi';
 import { setClinicTimeZone, formatClinicDate, formatClinicTime, clinicDayjs } from '../../clinical/clinicTime';
 import { publicBookingTheme } from '../appointment-theme';
+import { AvailabilityCalendar } from './AvailabilityCalendar';
+import { qrSvg } from '../booking-page/qr';
+import { bookingReference } from '../appointment-presentation';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -61,10 +64,14 @@ function hintLabel(dayOffset: number, start: string): string {
   return `${dayOffset === 0 ? 'Today' : 'Tomorrow'} · ${formatClinicTime(start)}`;
 }
 
+// Final-UAT — the hybrid target flow: service → doctor → DATE → TIME →
+// details → review, each its own question. Date and time were one screen;
+// splitting them is what makes the colour-coded month possible.
 const STEP_TITLES = [
   'Choose a service',
   'Choose a doctor',
-  'Pick a time',
+  'Choose a date',
+  'Choose a time',
   'Your details',
   'Review & confirm',
 ];
@@ -111,19 +118,16 @@ function PublicBookingPageInner() {
     status: string;
     scheduledStart: string;
     scheduledEnd: string;
+    appointmentId?: string;
     manageUrl: string;
     message: string;
   } | null>(null);
-  // §24 — when a day is empty the page goes LOOKING instead of shrugging:
-  // scan forward day by day (same engine, same endpoint) until something is
-  // free or a fortnight is exhausted. State keyed by what was scanned so a
-  // stale probe never labels a different service's day.
-  const [nextFree, setNextFree] = useState<{
-    key: string;
-    date: string;
-    slotCount: number;
-  } | null>(null);
-  const [probing, setProbing] = useState(false);
+  // Final-UAT — the DATE step shows a whole month of per-day availability at
+  // once (the server aggregates the same engine per day), which retired the
+  // old one-day-at-a-time forward probe entirely.
+  const [month, setMonth] = useState(() => dayjs().format('YYYY-MM'));
+  // A date is "selected" on the calendar only once the patient picks one.
+  const [dateChosen, setDateChosen] = useState(false);
   // §36–37 — "Today · 8:30 PM" on the doctor tiles. Keyed 'ANY' for the
   // any-doctor tile, staffId for each person; asked of the SAME engine, today
   // then tomorrow, and simply absent when neither day has anything.
@@ -135,22 +139,6 @@ function PublicBookingPageInner() {
   // form and Confirm books exactly what was reviewed.
   const [details, setDetails] = useState<Record<string, string> | null>(null);
   const [extraAnswers, setExtraAnswers] = useState<Record<string, unknown>>({});
-  const daysStripRef = useRef<HTMLDivElement>(null);
-
-  // V3.1.1 — THE STRIP FOLLOWS THE SELECTION. A date picked anywhere (chip,
-  // calendar picker, "next free day") centres its own chip in the strip, so
-  // the strip can never sit on "Today" while Wednesday is what is being
-  // booked. Horizontal only, scrolled on the strip itself — never
-  // scrollIntoView, which would also drag the page vertically.
-  useEffect(() => {
-    if (step !== 2) return;
-    const strip = daysStripRef.current;
-    if (!strip) return;
-    const chip = strip.querySelector<HTMLElement>(`[data-date="${date.format('YYYY-MM-DD')}"]`);
-    if (!chip) return;
-    const target = chip.offsetLeft - (strip.clientWidth - chip.offsetWidth) / 2;
-    strip.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
-  }, [date, step]);
 
   const { data: page, isLoading, error } = useQuery({
     queryKey: ['public-page', slug, serviceSlug],
@@ -188,13 +176,13 @@ function PublicBookingPageInner() {
         date: date.format('YYYY-MM-DD'),
         staffId,
       }),
-    enabled: Boolean(serviceId) && step >= 2,
+    enabled: Boolean(serviceId) && step >= 3,
   });
 
   const { data: fields } = useQuery({
     queryKey: ['public-fields', slug, serviceId],
     queryFn: () => publicBooking.formFields(slug, serviceId!),
-    enabled: Boolean(serviceId) && step >= 3,
+    enabled: Boolean(serviceId) && step >= 4,
   });
 
   const book = useMutation({
@@ -249,43 +237,14 @@ function PublicBookingPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, serviceId, providers, slug]);
 
-  const probeKey = `${serviceId ?? ''}:${staffId ?? 'ANY'}:${date.format('YYYY-MM-DD')}`;
-  useEffect(() => {
-    if (!serviceId || step !== 2) return;
-    if (loadingSlots || !availability || (availability.slots?.length ?? 0) > 0) return;
-    let cancelled = false;
-    setProbing(true);
-    setNextFree(null);
-    (async () => {
-      for (let ahead = 1; ahead <= 14; ahead += 1) {
-        const day = date.add(ahead, 'day');
-        try {
-          const answer = await publicBooking.availability(slug, {
-            serviceId,
-            date: day.format('YYYY-MM-DD'),
-            staffId,
-          });
-          if (cancelled) return;
-          if (answer.slots.length > 0) {
-            setNextFree({
-              key: probeKey,
-              date: day.format('YYYY-MM-DD'),
-              slotCount: answer.slots.length,
-            });
-            setProbing(false);
-            return;
-          }
-        } catch {
-          break;
-        }
-      }
-      if (!cancelled) setProbing(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [probeKey, step, loadingSlots, availability, slug]);
+  // The month heat map for the DATE step — the engine's own per-day answers,
+  // one request per month instead of the old fourteen-probe loop.
+  const { data: monthData, isFetching: loadingMonth } = useQuery({
+    queryKey: ['public-month', slug, serviceId, staffId ?? 'ANY', month],
+    queryFn: () => publicBooking.monthAvailability(slug, { serviceId: serviceId!, month, staffId }),
+    enabled: Boolean(serviceId) && step === 2,
+    placeholderData: (previous) => previous,
+  });
 
   if (isLoading) {
     return (
@@ -326,6 +285,27 @@ function PublicBookingPageInner() {
       'END:VEVENT',
       'END:VCALENDAR',
     ].join('\r\n');
+    // Final-UAT — the wallet-style card (target mockup step 7): the booking
+    // as a THING the patient keeps. Every element on it is a real fact — the
+    // QR encodes the actual manage link, the reference is the same code the
+    // clinic's own screens derive from the appointment id, Directions and
+    // WhatsApp only render when the clinic has published an address/phone.
+    // (No "Add to Apple Wallet": a signed .pkpass needs Apple certificates
+    // this deployment does not hold, and a dead button is a lie.)
+    const manageAbsolute = `${window.location.origin}${confirmation.manageUrl}`;
+    const walletQr = qrSvg(manageAbsolute, 132);
+    const reference = confirmation.appointmentId
+      ? bookingReference(confirmation.appointmentId)
+      : null;
+    const clinicWa = page.clinic.phone
+      ? `https://wa.me/${(() => {
+          const digits = page.clinic.phone.replace(/\D/g, '');
+          return digits.startsWith('0') ? `6${digits}` : digits;
+        })()}`
+      : null;
+    const directions = page.clinic.address
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(page.clinic.address)}`
+      : null;
     return (
       <div className="kw-public-booking">
         <div className="kw-public-done" data-testid="public-confirmation">
@@ -337,20 +317,54 @@ function PublicBookingPageInner() {
           </Title>
           <Text type="secondary">{confirmation.message}</Text>
 
-          <div className="kw-public-done-card">
-            <div className="kw-public-done-when">
-              <div className="kw-public-done-date">
-                {formatClinicDate(confirmation.scheduledStart)}
-              </div>
-              <div className="kw-public-done-time">
-                {formatClinicTime(confirmation.scheduledStart)} –{' '}
-                {formatClinicTime(confirmation.scheduledEnd)}
-              </div>
+          <div className="kw-public-wallet" data-testid="public-wallet-card">
+            <div className="kw-public-wallet-head">
+              {page.clinic.logoUrl ? (
+                <img src={publicMediaSrc(page.clinic.logoUrl) ?? undefined} alt="" />
+              ) : null}
+              <span className="kw-public-wallet-clinic">{page.clinic.displayName}</span>
             </div>
-            <div className="kw-public-done-lines">
-              <Text strong>{service?.name}</Text>
-              {providerName ? <Text>{providerName}</Text> : null}
-              <Text type="secondary">{page.clinic.displayName}</Text>
+            <div className="kw-public-wallet-body">
+              {walletQr ? (
+                <div
+                  className="kw-public-wallet-qr"
+                  aria-label="Scan to open your booking"
+                  dangerouslySetInnerHTML={{ __html: walletQr }}
+                />
+              ) : null}
+              <dl className="kw-public-wallet-rows">
+                {reference ? (
+                  <div>
+                    <dt>Booking ref</dt>
+                    <dd>{reference}</dd>
+                  </div>
+                ) : null}
+                <div>
+                  <dt>Service</dt>
+                  <dd>{service?.name}</dd>
+                </div>
+                {providerName ? (
+                  <div>
+                    <dt>Doctor</dt>
+                    <dd>{providerName}</dd>
+                  </div>
+                ) : null}
+                <div>
+                  <dt>Date</dt>
+                  <dd>{formatClinicDate(confirmation.scheduledStart)}</dd>
+                </div>
+                <div>
+                  <dt>Time</dt>
+                  <dd>
+                    {formatClinicTime(confirmation.scheduledStart)} –{' '}
+                    {formatClinicTime(confirmation.scheduledEnd)}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Location</dt>
+                  <dd>{page.clinic.address ?? page.clinic.displayName}</dd>
+                </div>
+              </dl>
             </div>
           </div>
 
@@ -364,6 +378,8 @@ function PublicBookingPageInner() {
             >
               Add to calendar
             </Button>
+            {directions ? <Button href={directions}>Directions</Button> : null}
+            {clinicWa ? <Button href={clinicWa}>WhatsApp us</Button> : null}
           </Space>
 
           {/* §43 — labelled sections, and ONLY when there is something true
@@ -393,7 +409,7 @@ function PublicBookingPageInner() {
     const extra = fields?.length ? await answers.validateFields() : {};
     setDetails(values);
     setExtraAnswers(extra);
-    setStep(4);
+    setStep(5);
   };
 
   const submit = async () => {
@@ -452,11 +468,11 @@ function PublicBookingPageInner() {
           owns half a phone screen. */}
       <div className="kw-public-progress" data-testid="public-progress">
         <span className="kw-public-progress-text">
-          <small>Step {step + 1} of 5 · </small>
+          <small>Step {step + 1} of {STEP_TITLES.length} · </small>
           {STEP_TITLES[step]}
         </span>
         <div className="kw-public-progress-bar" aria-hidden>
-          <span style={{ width: `${((step + 1) / 5) * 100}%` }} />
+          <span style={{ width: `${((step + 1) / STEP_TITLES.length) * 100}%` }} />
         </div>
       </div>
 
@@ -612,47 +628,42 @@ function PublicBookingPageInner() {
               {staffId
                 ? providers?.find((row) => row.id === staffId)?.fullName ?? 'Your doctor'
                 : 'Any available doctor'}
+            </Text>
+          </div>
+          {/* Final-UAT — the whole month, colour-coded from the engine's own
+              per-day answers. Green dates have room; nobody taps blind. */}
+          <AvailabilityCalendar
+            month={month}
+            onMonthChange={setMonth}
+            data={monthData}
+            loading={loadingMonth}
+            selectedDate={dateChosen ? date.format('YYYY-MM-DD') : null}
+            onSelectDate={(dateKey) => {
+              setDate(dayjs(dateKey));
+              setDateChosen(true);
+              setStep(3);
+            }}
+            fastestNames={(id) => providers?.find((row) => row.id === id)?.fullName ?? null}
+          />
+          <Button onClick={() => setStep(1)}>Back</Button>
+        </Space>
+      ) : null}
+
+      {step === 3 ? (
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <div className="kw-public-context">
+            <Text strong>{service?.name}</Text>
+            <Text type="secondary">
+              {staffId
+                ? providers?.find((row) => row.id === staffId)?.fullName ?? 'Your doctor'
+                : 'Any available doctor'}
               {' · '}
               {date.format('dddd, D MMM')}
             </Text>
+            <Button size="small" onClick={() => setStep(2)} data-testid="change-date">
+              Change date
+            </Button>
           </div>
-          {/* §38 — date CHIPS that keep their words: "Wed 26" is never
-              squeezed into "W…". The fortnight scrolls sideways with snap
-              stops, and the wrapper's end-fade says so (V3.1 §1) — a chip at
-              the edge is a signposted "more this way", never an accident. */}
-          <div className="kw-public-days-wrap">
-            <div className="kw-public-days" role="group" aria-label="Pick a day" ref={daysStripRef}>
-              {Array.from({ length: 14 }, (_, offset) => {
-                const day = dayjs().add(offset, 'day');
-                const on = date.isSame(day, 'day');
-                return (
-                  <button
-                    key={offset}
-                    type="button"
-                    data-date={day.format('YYYY-MM-DD')}
-                    className={`kw-public-day${on ? ' kw-public-day--on' : ''}`}
-                    aria-pressed={on}
-                    onClick={() => setDate(day)}
-                  >
-                    <span className="kw-public-day-dow">
-                      {offset === 0 ? 'Today' : day.format('ddd')}
-                    </span>
-                    <span className="kw-public-day-num">{day.format('D MMM')}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          {/* Patients read "Wed, 26 Aug 2026", never raw ISO — the array keeps
-              typed ISO parseable (and the wire format is untouched). */}
-          <DatePicker
-            value={date}
-            onChange={(value) => value && setDate(value)}
-            allowClear={false}
-            format={['ddd, D MMM YYYY', 'YYYY-MM-DD', 'D MMM YYYY']}
-            style={{ width: '100%' }}
-            disabledDate={(value) => value.isBefore(dayjs().startOf('day'))}
-          />
 
           {loadingSlots ? <Skeleton active paragraph={{ rows: 3 }} /> : null}
           {!loadingSlots && grouped.total === 0 ? (
@@ -661,34 +672,14 @@ function PublicBookingPageInner() {
               <Text type="secondary">
                 {REASON_WORDS[availability?.reason ?? ''] ?? 'Please try another day.'}
               </Text>
-              {probing ? (
-                <Text type="secondary">Looking for the next free day…</Text>
-              ) : nextFree && nextFree.key === probeKey ? (
-                <>
-                  <Text>
-                    Next available:{' '}
-                    <Text strong>{dayjs(nextFree.date).format('ddd, D MMM')}</Text>
-                    {` · ${nextFree.slotCount} time${nextFree.slotCount === 1 ? '' : 's'} free`}
-                  </Text>
-                  <Space wrap>
-                    <Button type="primary" onClick={() => setDate(dayjs(nextFree.date))}>
-                      See next available
-                    </Button>
-                    {staffId ? (
-                      <Button onClick={() => setStaffId(undefined)}>
-                        See any available doctor
-                      </Button>
-                    ) : null}
-                  </Space>
-                </>
-              ) : (
-                <Space wrap>
-                  {staffId ? (
-                    <Button onClick={() => setStaffId(undefined)}>See any available doctor</Button>
-                  ) : null}
-                  <Button onClick={() => setDate(date.add(1, 'day'))}>Try the next day</Button>
-                </Space>
-              )}
+              <Space wrap>
+                <Button type="primary" onClick={() => setStep(2)}>
+                  Pick another date
+                </Button>
+                {staffId ? (
+                  <Button onClick={() => setStaffId(undefined)}>See any available doctor</Button>
+                ) : null}
+              </Space>
             </div>
           ) : null}
 
@@ -701,10 +692,7 @@ function PublicBookingPageInner() {
                     <Button
                       key={entry.start}
                       type={slot?.start === entry.start ? 'primary' : 'default'}
-                      onClick={() => {
-                        setSlot(entry);
-                        setStep(3);
-                      }}
+                      onClick={() => setSlot(entry)}
                     >
                       {formatClinicTime(entry.start)}
                     </Button>
@@ -714,11 +702,30 @@ function PublicBookingPageInner() {
             ) : null,
           )}
 
-          <Button onClick={() => setStep(1)}>Back</Button>
+          {/* The "you selected" moment (target mockup 4): the chosen time AND
+              the real doctor it belongs to — the any-doctor path reveals its
+              assignment HERE, before anything is confirmed. */}
+          {slot ? (
+            <div className="kw-public-selected" data-testid="selected-slot">
+              <div className="kw-public-selected-when">
+                <Text strong>
+                  {formatClinicDate(slot.start)} · {formatClinicTime(slot.start)}
+                </Text>
+                <Text type="secondary">
+                  with {providers?.find((row) => row.id === slot.staffId)?.fullName ?? 'your doctor'}
+                </Text>
+              </div>
+              <Button type="primary" onClick={() => setStep(4)} data-testid="continue-to-details">
+                Continue
+              </Button>
+            </div>
+          ) : null}
+
+          <Button onClick={() => setStep(2)}>Back</Button>
         </Space>
       ) : null}
 
-      {step === 3 ? (
+      {step === 4 ? (
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
           <Alert
             type="success"
@@ -816,7 +823,7 @@ function PublicBookingPageInner() {
           ) : null}
 
           <Space>
-            <Button onClick={() => setStep(2)}>Back</Button>
+            <Button onClick={() => setStep(3)}>Back</Button>
             <Button type="primary" onClick={toReview}>
               Review booking
             </Button>
@@ -826,7 +833,7 @@ function PublicBookingPageInner() {
 
       {/* §42 — the review step: everything the patient is about to commit
           to, on one card, before anything is sent. */}
-      {step === 4 && slot ? (
+      {step === 5 && slot ? (
         <Space direction="vertical" size={12} style={{ width: '100%' }} data-testid="public-review">
           <Title level={5} className="kw-public-step-title" style={{ margin: 0 }}>
             Check your booking
@@ -849,17 +856,40 @@ function PublicBookingPageInner() {
             </div>
           </div>
 
-          {service && service.paymentRule !== 'NONE' ? (
-            <Alert
-              type="warning"
-              showIcon
-              message={
-                service.paymentRule === 'DEPOSIT'
-                  ? `A deposit of RM ${Number(service.depositAmount).toFixed(2)} is payable`
-                  : 'Full payment is taken for this service'
-              }
-              description="The clinic will take this when you arrive."
-            />
+          {/* Final-UAT — the price said plainly, and HONESTLY: no online
+              payment is connected, so there are no card/FPX/eWallet buttons
+              to press — the clinic collects at the counter, and the card
+              says exactly that instead of pretending otherwise. */}
+          {service && (service.price || service.paymentRule !== 'NONE') ? (
+            <div className="kw-public-paysummary" data-testid="payment-summary">
+              <div className="kw-public-section" style={{ marginBottom: 6 }}>
+                Payment summary
+              </div>
+              {service.price ? (
+                <div className="kw-public-paysummary-row">
+                  <span>
+                    {service.name}
+                    {service.price.display === 'FROM' ? ' (from)' : ''}
+                  </span>
+                  <span>RM {Number(service.price.amount).toFixed(2)}</span>
+                </div>
+              ) : null}
+              {service.paymentRule === 'DEPOSIT' ? (
+                <div className="kw-public-paysummary-row">
+                  <span>Deposit to secure this booking</span>
+                  <span>RM {Number(service.depositAmount).toFixed(2)}</span>
+                </div>
+              ) : null}
+              {service.paymentRule === 'FULL' ? (
+                <div className="kw-public-paysummary-row">
+                  <span>Payable for this service</span>
+                  <span>{service.price ? `RM ${Number(service.price.amount).toFixed(2)}` : '—'}</span>
+                </div>
+              ) : null}
+              <Text type="secondary" style={{ fontSize: 12.5 }}>
+                The clinic collects payment when you arrive — nothing is charged online.
+              </Text>
+            </div>
           ) : null}
 
           {service?.requiresApproval ? (
@@ -870,7 +900,7 @@ function PublicBookingPageInner() {
           ) : null}
 
           <Space className="kw-public-cta">
-            <Button onClick={() => setStep(3)}>Back</Button>
+            <Button onClick={() => setStep(4)}>Back</Button>
             <Button type="primary" loading={book.isPending} onClick={submit}>
               Confirm appointment
             </Button>

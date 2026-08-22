@@ -49,7 +49,7 @@ describe('route registration order', () => {
 
     const bareSlug = paths.indexOf(':slug');
     expect(bareSlug).toBeGreaterThan(-1);
-    for (const literal of [':slug/providers', ':slug/availability', ':slug/form-fields']) {
+    for (const literal of [':slug/providers', ':slug/availability', ':slug/month-availability', ':slug/form-fields']) {
       // Jest's `expect` takes no message argument — the assertion has to say
       // which path it is about through the loop variable in the failure output.
       const index = paths.indexOf(literal);

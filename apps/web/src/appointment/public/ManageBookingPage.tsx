@@ -5,7 +5,6 @@ import {
   Alert,
   Button,
   ConfigProvider,
-  DatePicker,
   Input,
   Modal,
   Result,
@@ -17,11 +16,13 @@ import {
 import dayjs, { Dayjs } from 'dayjs';
 import { PublicBookingError, publicBooking, publicMediaSrc } from './publicBookingApi';
 import {
+  clinicDayjs,
   formatClinicDate,
   formatClinicDateTime,
   formatClinicTime,
   setClinicTimeZone,
 } from '../../clinical/clinicTime';
+import { AvailabilityCalendar } from './AvailabilityCalendar';
 import { statusChip } from '../appointment-presentation';
 import { KuwickStatusTag } from '../../design-system/kuwick';
 import { publicBookingTheme } from '../appointment-theme';
@@ -392,6 +393,11 @@ function ManageBookingPageInner() {
         }}
         date={date}
         setDate={setDate}
+        currentDate={
+          appointment?.scheduledStart
+            ? clinicDayjs(appointment.scheduledStart).format('YYYY-MM-DD')
+            : undefined
+        }
       />
     </div>
   );
@@ -408,6 +414,7 @@ function RescheduleModal({
   onMoved,
   date,
   setDate,
+  currentDate,
 }: {
   open: boolean;
   slug: string;
@@ -420,9 +427,15 @@ function RescheduleModal({
   onMoved: (token: string) => void;
   date: Dayjs;
   setDate: (value: Dayjs) => void;
+  /** The appointment's CURRENT clinic-date, marked on the calendar. */
+  currentDate?: string;
 }) {
   const [slot, setSlot] = useState<{ scheduledStart: string; scheduledEnd: string } | null>(null);
   const [reason, setReason] = useState('');
+  const [month, setMonth] = useState(() => dayjs().format('YYYY-MM'));
+  // A date is "chosen" only once the patient taps one — opening the modal on
+  // today's month with today preselected invited booking the wrong day.
+  const [dateChosen, setDateChosen] = useState(false);
 
   /**
    * THE SAME ENGINE. The times offered here are the clinic's own slot grid,
@@ -433,7 +446,17 @@ function RescheduleModal({
   const { data: availability, isFetching } = useQuery({
     queryKey: ['manage-availability', slug, token, date.format('YYYY-MM-DD')],
     queryFn: () => publicBooking.availabilityForToken(slug, token, date.format('YYYY-MM-DD')),
+    enabled: open && dateChosen,
+  });
+
+  // Final-UAT — the same colour-coded month the booking flow uses, through
+  // the token (same doctor, same service, this appointment excluded from its
+  // own way).
+  const { data: monthData, isFetching: loadingMonth } = useQuery({
+    queryKey: ['manage-month', slug, token, month],
+    queryFn: () => publicBooking.monthAvailabilityForToken(slug, token, month),
     enabled: open,
+    placeholderData: (previous) => previous,
   });
 
   const move = useMutation({
@@ -473,42 +496,47 @@ function RescheduleModal({
           ? 'Pick the time you would prefer and tell the clinic why. Your appointment stays as booked until they confirm.'
           : 'Pick a date and a time. Your appointment keeps the same doctor and the same service.'}
       </Paragraph>
-      <DatePicker
-        value={date}
-        onChange={(value) => {
-          if (!value) return;
-          setDate(value);
+      <AvailabilityCalendar
+        month={month}
+        onMonthChange={setMonth}
+        data={monthData}
+        loading={loadingMonth}
+        selectedDate={dateChosen ? date.format('YYYY-MM-DD') : null}
+        markedDate={currentDate ?? null}
+        onSelectDate={(dateKey) => {
+          setDate(dayjs(dateKey));
+          setDateChosen(true);
           setSlot(null);
         }}
-        allowClear={false}
-        format={['ddd, D MMM YYYY', 'YYYY-MM-DD', 'D MMM YYYY']}
-        style={{ width: '100%' }}
-        disabledDate={(value) => value.isBefore(dayjs().startOf('day'))}
       />
 
-      {isFetching ? <Skeleton active paragraph={{ rows: 2 }} style={{ marginTop: 12 }} /> : null}
+      {dateChosen && isFetching ? (
+        <Skeleton active paragraph={{ rows: 2 }} style={{ marginTop: 12 }} />
+      ) : null}
 
-      {!isFetching && (availability?.slots.length ?? 0) === 0 ? (
+      {dateChosen && !isFetching && (availability?.slots.length ?? 0) === 0 ? (
         <Alert
           style={{ marginTop: 12 }}
           type="info"
           showIcon
           message="Nothing free that day"
-          description="Please try another day, or ring the clinic."
+          description="Please pick another date, or ring the clinic."
         />
       ) : null}
 
-      <div className="kw-public-slots" style={{ marginTop: 12 }}>
-        {(availability?.slots ?? []).map((entry) => (
-          <Button
-            key={entry.start}
-            type={slot?.scheduledStart === entry.start ? 'primary' : 'default'}
-            onClick={() => setSlot({ scheduledStart: entry.start, scheduledEnd: entry.end })}
-          >
-            {formatClinicTime(entry.start)}
-          </Button>
-        ))}
-      </div>
+      {dateChosen ? (
+        <div className="kw-public-slots" style={{ marginTop: 12 }}>
+          {(availability?.slots ?? []).map((entry) => (
+            <Button
+              key={entry.start}
+              type={slot?.scheduledStart === entry.start ? 'primary' : 'default'}
+              onClick={() => setSlot({ scheduledStart: entry.start, scheduledEnd: entry.end })}
+            >
+              {formatClinicTime(entry.start)}
+            </Button>
+          ))}
+        </div>
+      ) : null}
 
       {mode === 'request' ? (
         <Input.TextArea

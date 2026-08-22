@@ -28,6 +28,11 @@ import { AppointmentBookingValidator } from './appointment-booking-validator.ser
 import { SlotAvailabilityService } from './slot-availability.service';
 import { PublicBookDto, PublicCancelDto, PublicRescheduleDto } from './dto/public-booking.dto';
 import { clinicDateKey, parseDateOnly } from './time.util';
+import {
+  DayStatus,
+  mapWithConcurrency,
+  summariseAvailabilityDay,
+} from './availability-summary';
 
 interface ResolvedPage {
   tenantId: string;
@@ -244,6 +249,15 @@ export class PublicBookingService {
         throw new NotFoundException('This booking page is not available.');
       }
 
+      // Final-UAT — the confirmation card offers real Directions and
+      // call/WhatsApp actions, which need the branch's published contact
+      // facts. These are the same address and phone the clinic already
+      // prints on letterheads and speaks in message templates.
+      const contact = await this.scoped.clinic.findUnique({
+        where: { id: page.clinicId },
+        select: { address: true, phone: true },
+      });
+
       return {
         clinic: {
           slug: page.slug,
@@ -252,6 +266,8 @@ export class PublicBookingService {
           language: page.language,
           introText: page.introText,
           timeZone,
+          address: contact?.address ?? null,
+          phone: contact?.phone ?? null,
         },
         form: {
           requirePhone: page.requirePhone,
@@ -371,6 +387,158 @@ export class PublicBookingService {
         slots,
       };
     });
+  }
+
+  /**
+   * FINAL-UAT — one month of per-day availability, for the colour-coded
+   * booking calendar. STRICTLY an aggregation: each day is answered by the
+   * SAME findAvailability/findAvailabilityAcrossProviders call the slot grid
+   * makes, so this endpoint cannot disagree with the slots a tap then shows.
+   * No availability rule lives here.
+   *
+   * Cost is real (the engine runs a dozen queries per provider-day), so past
+   * days are never asked, days run through a small concurrency pool, and the
+   * controller marks the response cacheable for a minute — a heat map may be
+   * sixty seconds stale; the slot grid and the booking write stay exact.
+   */
+  async monthAvailability(
+    slug: string,
+    params: { serviceId: string; month: string; staffId?: string },
+  ) {
+    if (!/^\d{4}-\d{2}$/.test(params.month)) {
+      throw new BadRequestException('month must look like 2026-08.');
+    }
+    const page = await this.resolvePage(slug);
+    return this.inTenant(page, async () => {
+      // Same shop-window gate as providers()/formFields(): no uuid oracle.
+      const service = await this.scoped.serviceCatalog.findFirst({
+        where: { id: params.serviceId, bookable: true, active: true },
+        select: { id: true },
+      });
+      if (!service) throw new NotFoundException('That service is not available for booking.');
+
+      const timeZone = await this.availability.clinicTimeZone(page.clinicId);
+      const askDay = async (dateKey: string) => {
+        if (params.staffId) {
+          const result = await this.availability.findAvailability({
+            staffId: params.staffId,
+            clinicId: page.clinicId,
+            serviceId: params.serviceId,
+            date: parseDateOnly(dateKey),
+          });
+          return {
+            slots: result.slots.map((slot) => ({ start: slot.start, staffId: params.staffId! })),
+            reason: result.reason,
+          };
+        }
+        const answers = await this.availability.findAvailabilityAcrossProviders({
+          clinicId: page.clinicId,
+          serviceId: params.serviceId,
+          date: parseDateOnly(dateKey),
+        });
+        const starts = new Map<number, { start: Date; staffId: string }>();
+        for (const answer of answers) {
+          for (const slot of answer.slots) {
+            if (!starts.has(slot.start.getTime())) {
+              starts.set(slot.start.getTime(), { start: slot.start, staffId: answer.staffId });
+            }
+          }
+        }
+        return {
+          slots: [...starts.values()].sort((a, b) => a.start.getTime() - b.start.getTime()),
+          reason: answers.find((a) => a.reason)?.reason ?? null,
+        };
+      };
+      return this.summariseMonth(params.month, timeZone, askDay);
+    });
+  }
+
+  /** The reschedule calendar — same summary, scoped by the manage token. */
+  async monthAvailabilityForToken(slug: string, token: string, month: string) {
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      throw new BadRequestException('month must look like 2026-08.');
+    }
+    const page = await this.resolvePage(slug);
+    return this.inTenant(page, async () => {
+      const TOKEN_SELECT = {
+        id: true,
+        status: true,
+        cancellationReason: true,
+        clinicId: true,
+        staffId: true,
+        serviceId: true,
+      };
+      const found = await this.scoped.appointment.findFirst({
+        where: { manageToken: token },
+        select: TOKEN_SELECT,
+      });
+      if (!found) throw new NotFoundException('This booking link is not valid.');
+      const { live: appointment } = await this.followRescheduleChain(found, (fromId) =>
+        this.approvedMoveNext<typeof found>(this.scoped as never, fromId, TOKEN_SELECT),
+      );
+
+      const timeZone = await this.availability.clinicTimeZone(appointment.clinicId);
+      const askDay = async (dateKey: string) => {
+        const result = await this.availability.findAvailability({
+          staffId: appointment.staffId,
+          clinicId: appointment.clinicId,
+          serviceId: appointment.serviceId,
+          date: parseDateOnly(dateKey),
+          excludeAppointmentId: appointment.id,
+        });
+        return {
+          slots: result.slots.map((slot) => ({ start: slot.start, staffId: appointment.staffId })),
+          reason: result.reason,
+        };
+      };
+      return this.summariseMonth(month, timeZone, askDay);
+    });
+  }
+
+  /** The shared month walk: classify every day, name the fastest slot found. */
+  private async summariseMonth(
+    month: string,
+    timeZone: string,
+    askDay: (dateKey: string) => Promise<{
+      slots: { start: Date; staffId: string }[];
+      reason: import('./slot-availability.service').UnavailableReason | null;
+    }>,
+  ) {
+    const todayKey = clinicDateKey(new Date(), timeZone);
+    const [year, monthIndex] = month.split('-').map(Number);
+    const daysInMonth = new Date(Date.UTC(year, monthIndex, 0)).getUTCDate();
+    const dayKeys = Array.from(
+      { length: daysInMonth },
+      (_, index) => `${month}-${String(index + 1).padStart(2, '0')}`,
+    );
+
+    const days = await mapWithConcurrency(dayKeys, 5, async (dateKey) => {
+      const isPast = dateKey < todayKey;
+      if (isPast) {
+        return { date: dateKey, status: 'PAST' as DayStatus, slotCount: 0, firstSlot: null, firstSlotStaffId: null };
+      }
+      const answer = await askDay(dateKey);
+      const status = summariseAvailabilityDay({
+        slotCount: answer.slots.length,
+        reason: answer.reason,
+        isPast,
+      });
+      return {
+        date: dateKey,
+        status,
+        slotCount: answer.slots.length,
+        firstSlot: answer.slots[0]?.start.toISOString() ?? null,
+        firstSlotStaffId: answer.slots[0]?.staffId ?? null,
+      };
+    });
+
+    const fastest =
+      days
+        .filter((day) => day.slotCount > 0 && day.firstSlot)
+        .map((day) => ({ date: day.date, start: day.firstSlot!, staffId: day.firstSlotStaffId! }))
+        .sort((a, b) => (a.start < b.start ? -1 : 1))[0] ?? null;
+
+    return { timeZone, month, days, fastest };
   }
 
   /** The questions this service asks, clinic-wide ones included. */
@@ -1255,6 +1423,9 @@ export class PublicBookingService {
       status: appointment.status,
       scheduledStart: appointment.scheduledStart,
       scheduledEnd: appointment.scheduledEnd,
+      // Final-UAT — the wallet-style confirmation shows the same booking
+      // reference the clinic's own screens derive from this id.
+      appointmentId: appointment.id,
       manageToken: appointment.manageToken,
       // The path the WEB APP routes on, so a confirmation can link straight to
       // it without the browser having to rebuild it. `/book` is the public

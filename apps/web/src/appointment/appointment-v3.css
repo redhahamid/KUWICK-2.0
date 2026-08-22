@@ -3296,3 +3296,236 @@ body:has(.kw-public-booking) {
 .kw-flow-new-patient .ant-form-item {
   margin-bottom: 10px;
 }
+
+/* ===========================================================================
+ * 16 · PREMIUM PUBLIC FLOW (final UAT redesign, target mockup 1)
+ *
+ * The availability month, the "you selected" moment, the honest payment
+ * summary and the wallet-style confirmation. Everything else in §11 stands.
+ * =========================================================================== */
+
+/* --- The availability month ---------------------------------------------- */
+.kw-avcal {
+  background: var(--apt-surface);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  box-shadow: var(--apt-shadow-xs);
+  padding: 12px 14px 14px;
+}
+.kw-avcal-fastest {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid var(--apt-teal);
+  background: var(--apt-teal-soft);
+  color: var(--apt-text);
+  border-radius: var(--apt-radius);
+  padding: 9px 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+  transition: box-shadow 0.15s ease;
+}
+.kw-avcal-fastest:hover {
+  box-shadow: var(--apt-shadow-sm);
+}
+.kw-avcal-fastest .anticon {
+  color: var(--apt-teal);
+}
+.kw-avcal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.kw-avcal-title {
+  font-weight: 650;
+  font-size: 14px;
+}
+.kw-avcal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  justify-items: center;
+}
+.kw-avcal-dow {
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--apt-muted);
+  padding: 4px 0;
+}
+.kw-avcal-day {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--apt-text);
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.kw-avcal-day[data-status='AVAILABLE'] {
+  background: var(--apt-avail-bg);
+  color: var(--apt-avail);
+  font-weight: 650;
+}
+.kw-avcal-day[data-status='LIMITED'] {
+  background: var(--apt-limited-bg);
+  color: var(--apt-limited);
+  font-weight: 650;
+}
+.kw-avcal-day[data-status='FULL'] {
+  background: var(--apt-full-bg);
+  color: var(--apt-muted);
+  cursor: not-allowed;
+}
+.kw-avcal-day[data-status='CLOSED'],
+.kw-avcal-day[data-status='OUTSIDE'],
+.kw-avcal-day[data-status='PAST'],
+.kw-avcal-day[data-status='LOADING'] {
+  color: var(--apt-muted);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.kw-avcal-day[data-selected] {
+  background: var(--apt-selected);
+  color: #fff;
+  font-weight: 700;
+}
+.kw-avcal-day[data-marked] {
+  outline: 2px solid var(--apt-selected);
+  outline-offset: 1px;
+}
+.kw-avcal-day:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: var(--apt-shadow-sm);
+}
+
+/* --- "You selected" ------------------------------------------------------- */
+.kw-public-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--apt-teal-soft);
+  border: 1px solid var(--apt-teal);
+  border-radius: var(--apt-radius-lg);
+  padding: 12px 14px;
+}
+.kw-public-selected-when {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* --- Honest payment summary ---------------------------------------------- */
+.kw-public-paysummary {
+  background: var(--apt-surface-2);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  padding: 12px 14px;
+}
+.kw-public-paysummary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13.5px;
+  padding: 3px 0;
+  font-variant-numeric: tabular-nums;
+}
+.kw-public-paysummary-row + .kw-public-paysummary-row {
+  border-top: 1px dashed var(--apt-border);
+}
+
+/* --- The wallet card ------------------------------------------------------ */
+.kw-public-wallet {
+  width: 100%;
+  max-width: 400px;
+  border-radius: var(--apt-radius-xl);
+  overflow: hidden;
+  box-shadow: var(--apt-shadow-md);
+  border: 1px solid var(--apt-border);
+  margin-top: 14px;
+  text-align: left;
+}
+.kw-public-wallet-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--apt-wallet-grad);
+  color: #fff;
+  padding: 14px 16px;
+}
+.kw-public-wallet-head img {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #fff;
+}
+.kw-public-wallet-clinic {
+  font-weight: 650;
+  font-size: 15px;
+  letter-spacing: 0.01em;
+}
+.kw-public-wallet-body {
+  background: var(--apt-surface);
+  padding: 16px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.kw-public-wallet-qr {
+  flex: none;
+  border: 1px solid var(--apt-hairline);
+  border-radius: var(--apt-radius);
+  padding: 6px;
+  background: #fff;
+  line-height: 0;
+}
+.kw-public-wallet-qr svg {
+  display: block;
+}
+.kw-public-wallet-rows {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kw-public-wallet-rows > div {
+  display: flex;
+  flex-direction: column;
+}
+.kw-public-wallet-rows dt {
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--apt-muted);
+}
+.kw-public-wallet-rows dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 430px) {
+  .kw-public-wallet-body {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .kw-public-wallet-rows > div {
+    align-items: center;
+  }
+}
