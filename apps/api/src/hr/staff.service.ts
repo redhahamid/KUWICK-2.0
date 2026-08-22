@@ -7,6 +7,7 @@ import {
 } from '../core/tenant-scoped-prisma.provider';
 import { currentStaffId, currentTenantId } from '../core/tenant-context';
 import { normaliseRegistrationNo } from '../clinical/clinical-authorization';
+import { can } from '../core/permissions';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 
@@ -20,6 +21,11 @@ export class StaffService {
   ) {}
 
   async create(dto: CreateStaffDto) {
+    // FINAL-UAT hardening — creating an ACCOUNT is user management. This was
+    // open to any valid token; `users.manage` (owner) now gates it, with the
+    // legacy OWNER_ADMIN check kept as fallback for sessions predating
+    // capability roles.
+    await this.assertMayManageUsers();
     const { loginEmail, loginPassword, ...staffFields } = dto;
     const tenantId = currentTenantId();
 
@@ -66,6 +72,9 @@ export class StaffService {
   ] as const;
 
   async update(id: string, dto: UpdateStaffDto) {
+    // FINAL-UAT hardening — role, branch and active are access-control
+    // facts; editing anybody's staff record is user management.
+    await this.assertMayManageUsers();
     const existing = await this.findById(id);
     // professionalChangeReason is audit metadata, not a Staff column — it is
     // recorded on the audit rows and must never reach the Prisma update.
@@ -106,6 +115,30 @@ export class StaffService {
         'Only a clinic owner/administrator may change professional identity or clinical-signing permission',
       );
     }
+  }
+
+  // FINAL-UAT — permission-first with the legacy job title as fallback, so a
+  // capability-composed owner and a legacy OWNER_ADMIN both pass, and nobody
+  // loses an ability they had. Assignments are read here (not through
+  // requireActor) because this service runs on the scoped client.
+  private async assertMayManageUsers(): Promise<void> {
+    const actorId = currentStaffId();
+    if (!actorId) {
+      throw new ForbiddenException('No authenticated staff member on this session');
+    }
+    const actor = await this.prisma.staff.findUnique({ where: { id: actorId } });
+    if (!actor || !actor.active) {
+      throw new ForbiddenException('Your staff account is inactive');
+    }
+    const assignments = await this.prisma.staffRoleAssignment.findMany({
+      where: { staffId: actorId },
+      select: { role: true },
+    });
+    const roles = assignments
+      .map((row) => row.role)
+      .filter((role): role is NonNullable<typeof role> => role !== null);
+    if (can(actor, 'users.manage', roles) || actor.role === Role.OWNER_ADMIN) return;
+    throw new ForbiddenException('Only an owner may manage users and roles.');
   }
 
   // C0 (D-051) — professional verification and signing-enable are AUDITED

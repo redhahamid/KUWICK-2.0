@@ -178,4 +178,40 @@ describe('Row-Level Security enforcement (e2e, DB-level)', () => {
       tx.appointmentMessageTemplate.deleteMany({ where: { tenantId: tenantA } }),
     );
   });
+
+  it("FINAL-UAT: a clinic's custom roles are invisible without its tenant context", async () => {
+    // A custom role names a tenant's own permission bundle — one tenant's
+    // access design must never leak into another's role editor. Same
+    // ENABLE + FORCE + tenant_isolation policy as every access table.
+    await withTenantContext(prisma, tenantA, async (tx) => {
+      const holder = await tx.staff.create({
+        data: { tenantId: tenantA, role: Role.OWNER_ADMIN, fullName: 'RLS Role Author' },
+      });
+      await tx.clinicCustomRole.create({
+        data: {
+          tenantId: tenantA,
+          name: 'RLS Branch Manager',
+          permissions: ['appointment.view'],
+          createdByStaffId: holder.id,
+        },
+      });
+    });
+
+    expect(await prisma.clinicCustomRole.findMany({ where: { tenantId: tenantA } })).toEqual([]);
+    expect(
+      await withTenantContext(prisma, tenantB, (tx) =>
+        tx.clinicCustomRole.findMany({ where: { tenantId: tenantA } }),
+      ),
+    ).toEqual([]);
+    expect(
+      await withTenantContext(prisma, tenantA, (tx) =>
+        tx.clinicCustomRole.findMany({ where: { tenantId: tenantA } }),
+      ),
+    ).toHaveLength(1);
+
+    await withTenantContext(prisma, tenantA, async (tx) => {
+      await tx.clinicCustomRole.deleteMany({ where: { tenantId: tenantA } });
+      await tx.staff.deleteMany({ where: { tenantId: tenantA, fullName: 'RLS Role Author' } });
+    });
+  });
 });

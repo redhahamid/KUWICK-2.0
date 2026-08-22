@@ -58,21 +58,58 @@ enum SystemRole {
  * in the audit log, not in a tombstone here.
  */
 model StaffRoleAssignment {
-  id       String     @id @default(uuid())
-  tenantId String     @map("tenant_id")
-  staffId  String     @map("staff_id")
-  role     SystemRole
+  id       String      @id @default(uuid())
+  tenantId String      @map("tenant_id")
+  staffId  String      @map("staff_id")
+  /// Nullable since final-UAT: a row carries EITHER a built-in capability
+  /// role OR a tenant-defined custom role (CHECK-guarded in the migration).
+  role     SystemRole?
+
+  /// Final-UAT — the tenant-defined role this assignment hands out, when
+  /// `role` is null.
+  customRoleId String? @map("custom_role_id")
 
   assignedByStaffId String   @map("assigned_by_staff_id")
   assignedAt        DateTime @default(now()) @map("assigned_at")
 
-  tenant     Tenant @relation(fields: [tenantId], references: [id])
-  staff      Staff  @relation("StaffRoleHolder", fields: [staffId], references: [id], onDelete: Cascade)
-  assignedBy Staff  @relation("StaffRoleGrantedBy", fields: [assignedByStaffId], references: [id])
+  tenant     Tenant            @relation(fields: [tenantId], references: [id])
+  staff      Staff             @relation("StaffRoleHolder", fields: [staffId], references: [id], onDelete: Cascade)
+  assignedBy Staff             @relation("StaffRoleGrantedBy", fields: [assignedByStaffId], references: [id])
+  customRole ClinicCustomRole? @relation(fields: [customRoleId], references: [id], onDelete: Cascade)
 
   @@unique([staffId, role])
+  @@unique([staffId, customRoleId])
   @@index([tenantId, role])
   @@map("staff_role_assignments")
+}
+
+/**
+ * FINAL-UAT — a tenant-defined role: a REUSABLE permission bundle the owner
+ * names ("Branch Manager", "Inventory") and hands to staff through
+ * StaffRoleAssignment. Its permissions are validated against
+ * CUSTOM_ROLE_GRANTABLE (core/permissions.ts) on every write AND filtered
+ * through it on every read — nothing clinical, nothing owner-tier, so a
+ * custom role can never mint a doctor or an owner.
+ */
+model ClinicCustomRole {
+  id          String  @id @default(uuid())
+  tenantId    String  @map("tenant_id")
+  name        String
+  description String?
+  /// Permission strings from CUSTOM_ROLE_GRANTABLE.
+  permissions String[]
+
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant                @relation(fields: [tenantId], references: [id])
+  createdBy   Staff                 @relation("CustomRoleCreatedBy", fields: [createdByStaffId], references: [id])
+  assignments StaffRoleAssignment[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("clinic_custom_roles")
 }
 
 /**
@@ -210,6 +247,7 @@ model Tenant {
   auditLogs                   AuditLog[]
   visitWorkflowEvents         VisitWorkflowEvent[]
   staff                       Staff[]
+  customRoles                 ClinicCustomRole[]
   services                    ServiceCatalog[]
   doctorSchedules             DoctorSchedule[]
   scheduleExceptions          ScheduleException[]
@@ -886,6 +924,7 @@ model Staff {
   permissionGrants             StaffPermissionGrant[]       @relation("StaffPermissionHolder")
   permissionGrantsMade         StaffPermissionGrant[]       @relation("StaffPermissionGrantedBy")
   roleAssignmentsGranted       StaffRoleAssignment[]        @relation("StaffRoleGrantedBy")
+  customRolesCreated           ClinicCustomRole[]           @relation("CustomRoleCreatedBy")
   queueTicketsHeld             QueueTicket[]                @relation("QueueTicketHeldBy")
   orderServices                OrderService[]
   prescriptions                Prescription[]

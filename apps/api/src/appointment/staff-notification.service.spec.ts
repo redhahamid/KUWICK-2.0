@@ -29,16 +29,28 @@ function build(world: { staff?: StaffRow[]; notifications?: Record<string, unkno
   const prisma = {
     staff: {
       findMany: jest.fn(async ({ where }: never) => {
+        // Mirrors the final-UAT where shape: active AND [legacy-desk-role OR
+        // explicit ADMINISTRATOR/OWNER assignment] AND branch scope. Test
+        // rows may carry `assigned` (capability roles) to exercise the OR.
         const query = where as {
-          role: { in: string[] };
-          OR: { clinicId: string | null }[];
+          AND: [
+            { OR: [{ role: { in: string[] } }, { roleAssignments: { some: { role: { in: string[] } } } }] },
+            { OR: { clinicId: string | null }[] },
+          ];
         };
+        const roleClause = query.AND[0].OR[0].role.in;
+        const capabilityClause = query.AND[0].OR[1].roleAssignments.some.role.in;
+        const branchClause = query.AND[1].OR;
         return staff
           .filter((row) => row.active)
-          .filter((row) => query.role.in.includes(row.role))
-          .filter((row) =>
-            query.OR.some((clause) => clause.clinicId === row.clinicId),
+          .filter(
+            (row) =>
+              roleClause.includes(row.role) ||
+              ((row as { assigned?: string[] }).assigned ?? []).some((role) =>
+                capabilityClause.includes(role),
+              ),
           )
+          .filter((row) => branchClause.some((clause) => clause.clinicId === row.clinicId))
           .map((row) => ({ id: row.id }));
       }),
     },

@@ -3,7 +3,7 @@ import { Prisma, Staff, SystemRole } from '@prisma/client';
 import { PrismaService } from '../core/prisma.service';
 import { currentStaffId, currentTenantId } from '../core/tenant-context';
 import { assertBranchAccess, canAuthorNarrative, type BranchAccessContext } from './clinical-authorization';
-import { isIndividuallyGrantable, type Permission } from '../core/permissions';
+import { isCustomRoleGrantable, isIndividuallyGrantable, type Permission } from '../core/permissions';
 
 export type ClinicalTx = Prisma.TransactionClient;
 
@@ -39,7 +39,7 @@ export type ActingStaff = Staff & {
 
 /** Reads a staff member's capability roles. */
 export async function loadAssignedRoles(
-  db: { staffRoleAssignment?: { findMany(args: unknown): Promise<{ role: SystemRole }[]> } },
+  db: { staffRoleAssignment?: { findMany(args: unknown): Promise<{ role: SystemRole | null }[]> } },
   staffId: string,
 ): Promise<SystemRole[]> {
   // Optional on purpose. A caller whose client cannot read the table — an
@@ -53,7 +53,35 @@ export async function loadAssignedRoles(
     where: { staffId },
     select: { role: true },
   });
-  return rows.map((row) => row.role);
+  // Null role = a custom-role assignment (final-UAT); its permissions ride
+  // through loadCustomRolePermissions, not through the capability set.
+  return rows.map((row) => row.role).filter((role): role is SystemRole => role !== null);
+}
+
+/**
+ * FINAL-UAT — the permissions a staff member's CUSTOM roles carry.
+ *
+ * Filtered through `isCustomRoleGrantable` on the way out, exactly as direct
+ * grants are filtered through their own closed list: the column is free
+ * text, and a row naming a clinical or owner-tier permission must not become
+ * one just because somebody wrote it into the table.
+ */
+export async function loadCustomRolePermissions(
+  db: {
+    staffRoleAssignment?: {
+      findMany(args: unknown): Promise<{ customRole: { permissions: string[] } | null }[]>;
+    };
+  },
+  staffId: string,
+): Promise<Permission[]> {
+  if (!db.staffRoleAssignment) return [];
+  const rows = await db.staffRoleAssignment.findMany({
+    where: { staffId, customRoleId: { not: null } },
+    select: { customRole: { select: { permissions: true } } },
+  });
+  return rows
+    .flatMap((row) => row.customRole?.permissions ?? [])
+    .filter(isCustomRoleGrantable);
 }
 
 // G3a (D-062) — the actor/branch plumbing that C0's note service and G2a's
@@ -118,7 +146,13 @@ export async function requireActor(tx: ClinicalTx): Promise<ActingStaff> {
   return {
     ...staff,
     assignedRoles: await loadAssignedRoles(tx as never, staff.id),
-    directGrants: await loadDirectGrants(tx as never, staff.id),
+    // Direct grants and custom-role permissions travel the same channel:
+    // both are person-specific additions the policy engine unions in, each
+    // filtered through its own closed list at load.
+    directGrants: [
+      ...(await loadDirectGrants(tx as never, staff.id)),
+      ...(await loadCustomRolePermissions(tx as never, staff.id)),
+    ],
   };
 }
 
@@ -149,7 +183,7 @@ export async function loadDirectGrants(
 /** Anything with a tenant-scoped `staff.findUnique` — a tx or the scoped client. */
 type StaffReader = {
   staff: { findUnique(args: { where: { id: string } }): Promise<Staff | null> };
-  staffRoleAssignment: { findMany(args: unknown): Promise<{ role: SystemRole }[]> };
+  staffRoleAssignment: { findMany(args: unknown): Promise<{ role: SystemRole | null }[]> };
   staffPermissionGrant?: { findMany(args: unknown): Promise<{ permission: string }[]> };
 };
 

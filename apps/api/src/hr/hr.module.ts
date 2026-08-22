@@ -8,11 +8,13 @@ import { PublicHolidayService } from './public-holiday.service';
 import { PublicHolidayController } from './public-holiday.controller';
 import { AttendanceService } from './attendance.service';
 import { AttendanceController } from './attendance.controller';
+import { RoleAccessService } from './role-access.service';
+import { RoleAccessController } from './role-access.controller';
 
 @Module({
   imports: [CoreModule],
-  controllers: [StaffController, LeaveRequestController, PublicHolidayController, AttendanceController],
-  providers: [StaffService, LeaveRequestService, PublicHolidayService, AttendanceService],
+  controllers: [StaffController, LeaveRequestController, PublicHolidayController, AttendanceController, RoleAccessController],
+  providers: [StaffService, LeaveRequestService, PublicHolidayService, AttendanceService, RoleAccessService],
   exports: [StaffService],
 })
 export class HrModule {}

@@ -165,8 +165,13 @@ describe('Public booking surface security (e2e)', () => {
   it('the page exposes only display fields — no tenant id, no clinic id, no internal flags', async () => {
     const res = await request(app.getHttpServer()).get(`/public/booking/${slugA}`).expect(200);
     expect(Object.keys(res.body).sort()).toEqual(['clinic', 'form', 'selectedServiceId', 'services']);
+    // Final-UAT: `address` and `phone` are DELIBERATE additions — the
+    // confirmation card's Directions and WhatsApp-us buttons need the
+    // branch's published contact facts, the same ones the clinic already
+    // prints on letterheads and speaks in patient messages. Still no ids,
+    // no internal flags.
     expect(Object.keys(res.body.clinic).sort()).toEqual([
-      'displayName', 'introText', 'language', 'logoUrl', 'slug', 'timeZone',
+      'address', 'displayName', 'introText', 'language', 'logoUrl', 'phone', 'slug', 'timeZone',
     ]);
     const body = JSON.stringify(res.body);
     expect(body).not.toContain(tenantA);

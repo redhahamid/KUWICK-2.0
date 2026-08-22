@@ -619,3 +619,51 @@ export function wouldRemoveLastOwner(params: {
 export function canHoldDoctorRole(staff: Staff): boolean {
   return Boolean(staff.medicalRegistrationNo?.trim());
 }
+
+/**
+ * FINAL-UAT — what a tenant-defined CUSTOM ROLE may carry.
+ *
+ * A closed list, for the same reason INDIVIDUALLY_GRANTABLE is one — but a
+ * different list, because a custom role is a REUSABLE bundle an owner hands
+ * out ("Branch Manager", "Locum Coordinator", "Inventory"), not a one-person
+ * exception. Two exclusions are structural:
+ *
+ * - NOTHING CLINICAL. note.write in a custom role would let an owner mint
+ *   doctors by naming a role, which is exactly what "DOCTOR NEEDS A DOCTOR"
+ *   exists to prevent. Clinical authority comes only from the DOCTOR /
+ *   CLINICAL_STAFF capability roles, which carry their credential gates.
+ * - NOTHING OWNER-TIER. users.manage inside a custom role is a privilege
+ *   escalation loop (a role-holder granting themselves more role); the
+ *   owner's three stay the owner's.
+ */
+export const CUSTOM_ROLE_GRANTABLE: Permission[] = [
+  // The counter and the record's administrative face.
+  'patient.demographics.write',
+  'patient.identity.write',
+  'patient.lhdn.write',
+  'patient.alert.write',
+  'queue.manage',
+  'queue.consultationFlow',
+  'billing.counter',
+  'billing.corrections',
+  'document.print',
+  'document.issueAdministrative',
+  // Inventory — the same permission the individual grant hands out.
+  'dispense.perform',
+  // The whole appointments module, policy permissions included: a Branch
+  // Manager who runs the diary IS the use-case for custom roles.
+  'appointment.view',
+  'appointment.create',
+  'appointment.edit',
+  'appointment.reschedule',
+  'appointment.cancel',
+  'appointment.check_in',
+  'appointment.no_show',
+  'appointment.override',
+  'appointment.configure',
+  'appointment.manage_roster',
+];
+
+export function isCustomRoleGrantable(permission: string): permission is Permission {
+  return (CUSTOM_ROLE_GRANTABLE as string[]).includes(permission);
+}

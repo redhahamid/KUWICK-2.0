@@ -34,6 +34,7 @@ export interface AuthenticatedStaff {
    * "fall back", never "no".
    */
   permissions?: string[];
+  customRoles?: string[];
   /** The system roles this person holds. Empty for a legacy-fallback account. */
   roles?: string[];
 }

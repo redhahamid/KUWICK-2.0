@@ -8,6 +8,8 @@ import { useDefaultClinicId } from '../core/hooks/useClinicFilter';
 import { CreateStaffDto, Staff, UpdateStaffDto } from './types';
 import { ApiError } from '../core/api-client';
 import { PageHeader } from '../design-system/components/PageHeader';
+import { useCan } from '../core/hooks/useCan';
+import { StaffAccessDrawer } from './StaffAccessDrawer';
 
 const ROLE_OPTIONS = Object.values(Role).map((role) => ({ value: role, label: role }));
 
@@ -23,6 +25,9 @@ export function StaffPage() {
   const updateStaff = useUpdateStaff();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Staff | null>(null);
+  // Final-UAT — the Access drawer (capability roles, custom roles, grants).
+  const [accessFor, setAccessFor] = useState<Staff | null>(null);
+  const canManageUsers = useCan('users.manage');
   const [form] = Form.useForm<StaffFormValues>();
   const [editForm] = Form.useForm<UpdateStaffDto>();
   const setupLogin = Form.useWatch('setupLogin', form);
@@ -110,26 +115,38 @@ export function StaffPage() {
           {
             title: 'Actions',
             render: (_: unknown, record: Staff) => (
-              <Button
-                size="small"
-                icon={<EditOutlined />}
-                onClick={() => {
-                  setEditing(record);
-                  editForm.setFieldsValue({
-                    role: record.role,
-                    staffNumber: record.staffNumber ?? undefined,
-                    clinicId: record.clinicId ?? undefined,
-                    active: record.active,
-                    professionalType: record.professionalType,
-                    medicalRegistrationNo: record.medicalRegistrationNo ?? undefined,
-                    professionalActive: record.professionalActive,
-                    canSignClinicalNotes: record.canSignClinicalNotes,
-                  });
-                }}
-              />
+              <Space>
+                <Button
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={() => {
+                    setEditing(record);
+                    editForm.setFieldsValue({
+                      role: record.role,
+                      staffNumber: record.staffNumber ?? undefined,
+                      clinicId: record.clinicId ?? undefined,
+                      active: record.active,
+                      professionalType: record.professionalType,
+                      medicalRegistrationNo: record.medicalRegistrationNo ?? undefined,
+                      professionalActive: record.professionalActive,
+                      canSignClinicalNotes: record.canSignClinicalNotes,
+                    });
+                  }}
+                />
+                {canManageUsers ? (
+                  <Button size="small" onClick={() => setAccessFor(record)} data-testid="open-access">
+                    Access
+                  </Button>
+                ) : null}
+              </Space>
             ),
           },
         ]}
+      />
+      <StaffAccessDrawer
+        staffId={accessFor?.id ?? null}
+        staffName={accessFor?.fullName}
+        onClose={() => setAccessFor(null)}
       />
       <Drawer title="Add Staff" open={open} onClose={() => setOpen(false)} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ clinicId: defaultClinicId }}>
