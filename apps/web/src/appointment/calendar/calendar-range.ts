@@ -1,5 +1,5 @@
 import dayjs, { Dayjs } from 'dayjs';
-import { clinicDayjsAtWall } from '../../clinical/clinicTime';
+import { clinicDayjs, clinicDayjsAtWall } from '../../clinical/clinicTime';
 
 /**
  * FOUR VIEWS, and each answers a different question.
@@ -54,5 +54,9 @@ export function shiftAnchor(viewMode: CalendarViewMode, anchor: Dayjs, direction
 }
 
 export function todayAnchor(): Dayjs {
-  return dayjs();
+  // The CLINIC's current calendar date, carried as a plain local dayjs. An
+  // owner opening the diary from another timezone at the clinic's 07:00 must
+  // land on the clinic's today — the browser's date is a fact about the
+  // laptop (RC blocker: the grid anchors everything on this date key).
+  return dayjs(clinicDayjs(new Date()).format('YYYY-MM-DD'));
 }

@@ -79,45 +79,10 @@ test.describe('the module opens on the calendar and holds its five surfaces', ()
     }
   });
 
-  test('the diary AXIS holds its shape across views, dates and filters', async ({ page }) => {
-    // Phase 3 pin. The axis is a branch display setting; the roster decides
-    // availability only. Before this, the hour bounds were derived from
-    // whoever was rostered, so an overnight shift wrapped the diary
-    // (23:00 → next-day 13:30 on live iPad UAT) and every date could have a
-    // different shape. Now: same branch, same axis — whatever the view, the
-    // date or the filters.
-    await login(page, ACCOUNTS.owner);
-    await page.goto('/appointments/calendar');
-    await expect(page.getByTestId('calendar-workspace')).toBeVisible();
-
-    const gutterShape = async () => {
-      const labels = page.locator('.kw-calendar-grid .rbc-time-gutter .rbc-label');
-      await expect(labels.first()).toBeVisible();
-      const texts = await labels.allTextContents();
-      return { first: texts[0], last: texts[texts.length - 1], count: texts.length };
-    };
-
-    const dayShape = await gutterShape();
-    expect(dayShape.count, 'an empty axis is no axis').toBeGreaterThan(0);
-
-    // Same bounds in Week — one TimeGrid, one axis policy.
-    await page
-      .locator('.kw-calendar-toolbar .ant-segmented')
-      .getByText('Week', { exact: true })
-      .click();
-    expect(await gutterShape()).toEqual(dayShape);
-
-    // A different date does not redefine the day's shape.
-    await page.locator('.kw-calendar-toolbar .ant-segmented').getByText('Day', { exact: true }).click();
-    await page.getByRole('button', { name: 'Next' }).click();
-    expect(await gutterShape()).toEqual(dayShape);
-    await page.getByRole('button', { name: 'Today' }).click();
-
-    // Filtering the diary to nothing does not reshape it either.
-    await page.getByPlaceholder('Find a patient').fill('zzz-nobody-by-this-name');
-    await page.waitForTimeout(350);
-    expect(await gutterShape()).toEqual(dayShape);
-    await page.getByPlaceholder('Find a patient').fill('');
+  test('the diary AXIS holds its shape across views, dates, filters, drill-downs and arrows', async ({
+    page,
+  }) => {
+    await walkTheAxis(page);
   });
 
   test('the diary viewport holds still through drawers, flow steps, filters and iPad widths', async ({
@@ -264,6 +229,97 @@ test.describe('the module opens on the calendar and holds its five surfaces', ()
     }
   });
 });
+
+test.describe('the diary axis on a Malaysian device', () => {
+  // RC BLOCKER pin. The wrapped 11:00 PM → 12:00 AM → … diary only reproduced
+  // on a browser whose zone is NOT UTC: rbc's tz-aware dayjsLocalizer shifted
+  // every day-column's min/max by the UTC offset, so UTC-based CI could not
+  // see what every Malaysian iPad saw. This twin runs the same walk with the
+  // browser in the clinic's own zone.
+  test.use({ timezoneId: 'Asia/Kuala_Lumpur' });
+
+  test('the axis walk holds in Asia/Kuala_Lumpur exactly as in CI', async ({ page }) => {
+    await walkTheAxis(page);
+  });
+});
+
+/**
+ * THE AXIS WALK — one shape, everywhere it could break.
+ *
+ * Reads the gutter labels, requires them STRICTLY INCREASING through the day
+ * (a wrapped 11:00 PM → 12:00 AM sequence fails the monotonic check), then
+ * requires the identical shape across: Week, Providers, a different date via
+ * the arrows, a Month drill-down (the path that stored a timezone-mode
+ * anchor and white-screened the calendar), the arrows AFTER that drill-down,
+ * and a filter that empties the diary.
+ */
+async function walkTheAxis(page: import('@playwright/test').Page) {
+  await login(page, ACCOUNTS.owner);
+  await page.goto('/appointments/calendar');
+  await expect(page.getByTestId('calendar-workspace')).toBeVisible();
+
+  const minutesOf = (label: string) => {
+    const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(label.trim());
+    if (!match) throw new Error(`unreadable gutter label: "${label}"`);
+    const hour = (Number(match[1]) % 12) + (match[3].toUpperCase() === 'PM' ? 12 : 0);
+    return hour * 60 + Number(match[2]);
+  };
+
+  const gutterShape = async () => {
+    const labels = page.locator('.kw-calendar-grid .rbc-time-gutter .rbc-label');
+    await expect(labels.first()).toBeVisible();
+    const texts = await labels.allTextContents();
+    // CHRONOLOGICAL, WITHIN ONE DAY. This is the no-wrap pin: a diary that
+    // renders 11:00 PM and then 12:00 AM is showing two calendar dates on
+    // one canvas, which is specifically prohibited.
+    const minutes = texts.map(minutesOf);
+    for (let i = 1; i < minutes.length; i += 1) {
+      expect(
+        minutes[i],
+        `gutter wraps across midnight: ${texts[i - 1]} → ${texts[i]}`,
+      ).toBeGreaterThan(minutes[i - 1]);
+    }
+    return { first: texts[0], last: texts[texts.length - 1], count: texts.length };
+  };
+  const views = page.locator('.kw-calendar-toolbar .ant-segmented');
+
+  const dayShape = await gutterShape();
+  expect(dayShape.count, 'an empty axis is no axis').toBeGreaterThan(0);
+
+  // Same bounds in Week — one TimeGrid, one axis policy.
+  await views.getByText('Week', { exact: true }).click();
+  expect(await gutterShape()).toEqual(dayShape);
+
+  // PROVIDERS is the same grid and must wear the same axis; an overnight
+  // provider column must not reshape it.
+  await views.getByText('Providers', { exact: true }).click();
+  expect(await gutterShape()).toEqual(dayShape);
+
+  // A different date does not redefine the day's shape.
+  await views.getByText('Day', { exact: true }).click();
+  await page.getByRole('button', { name: 'Next' }).click();
+  expect(await gutterShape()).toEqual(dayShape);
+  await page.getByRole('button', { name: 'Today' }).click();
+
+  // The MONTH DRILL-DOWN — the navigation path that used to store a
+  // timezone-mode anchor: wrapped bounds on a Malaysian device, an
+  // Invalid-array-length white screen on a UTC one.
+  await views.getByText('Month', { exact: true }).click();
+  await page.locator('.rbc-date-cell.rbc-now button').first().click();
+  await expect(page.getByTestId('calendar-workspace')).toBeVisible();
+  expect(await gutterShape()).toEqual(dayShape);
+
+  // And the arrows AFTER a drill-down, because the poisoned anchor persisted.
+  await page.getByRole('button', { name: 'Next' }).click();
+  expect(await gutterShape()).toEqual(dayShape);
+  await page.getByRole('button', { name: 'Today' }).click();
+
+  // Filtering the diary to nothing does not reshape it either.
+  await page.getByPlaceholder('Find a patient').fill('zzz-nobody-by-this-name');
+  await page.waitForTimeout(350);
+  expect(await gutterShape()).toEqual(dayShape);
+  await page.getByPlaceholder('Find a patient').fill('');
+}
 
 test.describe('a patient books themselves in, and the clinic works the booking', () => {
   test('public page → appointment → check-in → visit → queue', async ({ page, context }) => {

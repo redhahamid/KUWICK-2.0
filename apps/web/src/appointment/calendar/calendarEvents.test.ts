@@ -5,30 +5,20 @@ import timezone from 'dayjs/plugin/timezone';
 import {
   cardLines,
   compactLine,
+  defaultScrollOpening,
   displayBounds,
-  earliestRosteredHour,
+  gridDateAt,
+  gridWindow,
   isReleased,
   outsideDisplayCount,
   scrollToHour,
 } from './calendar-events';
-import { setClinicTimeZone, clinicDayjs } from '../../clinical/clinicTime';
+import { setClinicTimeZone } from '../../clinical/clinicTime';
 import { AppointmentStatus } from '@kuwick/shared';
-import type { RangeShift } from '../hooks/useRoster';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 beforeEach(() => setClinicTimeZone('Asia/Kuala_Lumpur'));
-
-const shift = (startsAt: string, endsAt: string, shiftType = 'WORKING'): RangeShift => ({
-  id: startsAt,
-  staffId: 'doc-1',
-  shiftType: shiftType as RangeShift['shiftType'],
-  startsAt,
-  endsAt,
-  bookableStartsAt: null,
-  bookableEndsAt: null,
-  note: null,
-});
 
 describe('a card says as much as it has room for', () => {
   it('1. a 15-minute slot gets one line: the time and the name', () => {
@@ -103,31 +93,82 @@ describe('a released appointment is drawn, not hidden', () => {
   );
 });
 
-describe('the grid opens where the work is', () => {
-  it('6. today scrolls to an hour before now', () => {
-    const now = clinicDayjs('2026-08-19T06:00:00.000Z'); // 14:00 KL
-    expect(scrollToHour({ anchor: now, now, earliestRosteredHour: 8 })).toBe(13);
+describe('the grid opens where the work is — scroll only, roster never (RC blocker)', () => {
+  it("6. the clinic's today scrolls to an hour before the clinic's now", () => {
+    expect(
+      scrollToHour({ anchorKey: '2026-08-19', nowKey: '2026-08-19', nowHour: 14, openingHour: 8 }),
+    ).toBe(13);
   });
 
-  it('7. another day scrolls to the earliest rostered hour', () => {
-    // Nobody looking at next Tuesday wants it scrolled to 14:37.
-    const now = clinicDayjs('2026-08-19T06:00:00.000Z');
-    const anchor = now.add(5, 'day');
-    expect(scrollToHour({ anchor, now, earliestRosteredHour: 7 })).toBe(7);
+  it('7. another day with appointments opens at its first appointment', () => {
+    expect(
+      scrollToHour({
+        anchorKey: '2026-08-24',
+        nowKey: '2026-08-19',
+        nowHour: 14,
+        earliestEventHour: 10,
+        openingHour: 8,
+      }),
+    ).toBe(9);
   });
 
-  it('8. with no roster at all it opens at 08:00 rather than midnight', () => {
-    const now = clinicDayjs('2026-08-19T06:00:00.000Z');
-    expect(scrollToHour({ anchor: now.add(5, 'day'), now, earliestRosteredHour: null })).toBe(8);
+  it('8. an empty other day opens at the BRANCH opening hour — the roster is not an input at all', () => {
+    // The signature admits no shifts: provider rosters affect availability
+    // only, and this pin is the type-level guarantee outliving any refactor.
+    expect(
+      scrollToHour({ anchorKey: '2026-08-24', nowKey: '2026-08-19', nowHour: 14, openingHour: 9 }),
+    ).toBe(9);
   });
 
-  it('9. the earliest rostered hour ignores OFF and LEAVE rows', () => {
-    const shifts = [
-      shift('2026-08-19T00:00:00.000Z', '2026-08-19T12:00:00.000Z', 'OFF'),
-      shift('2026-08-19T01:00:00.000Z', '2026-08-19T09:00:00.000Z'),
-    ];
-    // 01:00Z is 09:00 KL.
-    expect(earliestRosteredHour(shifts)).toBe(9);
+  it('9. the opening hour comes from the branch: display open, else first session, else 08:00', () => {
+    const base = {
+      calendarDisplayMode: 'STANDARD_HOURS' as const,
+      displayOpenTime: null,
+      displayCloseTime: null,
+      displayPaddingMinutes: 60,
+    };
+    expect(defaultScrollOpening({ ...base, displayOpenTime: '09:00' })).toBe(9);
+    expect(defaultScrollOpening({ ...base, firstSessionTime: '10:30' })).toBe(10);
+    expect(defaultScrollOpening(base)).toBe(8);
+    // A 24-hour branch must NOT open on midnight's empty hours.
+    expect(
+      defaultScrollOpening({ ...base, calendarDisplayMode: 'TWENTY_FOUR_HOURS' }),
+    ).toBe(8);
+    expect(
+      defaultScrollOpening({
+        ...base,
+        calendarDisplayMode: 'TWENTY_FOUR_HOURS',
+        firstSessionTime: '07:00',
+      }),
+    ).toBe(7);
+  });
+});
+
+describe('RC blocker — the grid window is anchored to ONE calendar date', () => {
+  it("10. min, max and the grid date all share the key's calendar date, seconds zeroed", () => {
+    const { date, min, max } = gridWindow('2026-08-26', { startHour: 7, endHour: 21 });
+    for (const value of [date, min, max]) {
+      expect([value.getFullYear(), value.getMonth(), value.getDate()]).toEqual([2026, 7, 26]);
+      expect(value.getSeconds()).toBe(0);
+      expect(value.getMilliseconds()).toBe(0);
+    }
+    expect([min.getHours(), min.getMinutes()]).toEqual([7, 0]);
+    expect([max.getHours(), max.getMinutes()]).toEqual([20, 59]);
+    // 23:00 on the previous date followed by 12:59 on the selected one is the
+    // wrapped diary; same-date min<max makes it impossible.
+    expect(min.getTime()).toBeLessThan(max.getTime());
+  });
+
+  it('11. a 24-hour branch spans 00:00 → 23:59 of the SELECTED date — never into the next one', () => {
+    const { min, max } = gridWindow('2026-08-26', { startHour: 0, endHour: 24 });
+    expect([min.getHours(), min.getMinutes(), min.getDate()]).toEqual([0, 0, 26]);
+    expect([max.getHours(), max.getMinutes(), max.getDate()]).toEqual([23, 59, 26]);
+  });
+
+  it("12. gridDateAt never leaves the key's date, whatever hour it is asked for", () => {
+    expect(gridDateAt('2026-08-26', 23).getDate()).toBe(26);
+    expect(gridDateAt('2026-08-26', 0).getDate()).toBe(26);
+    expect(gridDateAt('2026-08-01', 12).getMonth()).toBe(7);
   });
 });
 

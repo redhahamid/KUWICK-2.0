@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Calendar as BigCalendar, dayjsLocalizer, Views } from 'react-big-calendar';
+import { Calendar as BigCalendar, Views } from 'react-big-calendar';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import {
   Alert,
@@ -15,8 +15,6 @@ import {
 } from 'antd';
 import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
-import utc from 'dayjs/plugin/utc';
-import timezone from 'dayjs/plugin/timezone';
 import { AppointmentStatus } from '@kuwick/shared';
 import { useAppointments, useRescheduleAppointment } from '../hooks/useAppointments';
 import { SetupChecklistCard } from '../SetupChecklistCard';
@@ -30,13 +28,16 @@ import { AppointmentDrawer } from './AppointmentDrawer';
 import { StaffBookingFlow } from '../StaffBookingFlow';
 import { CalendarMetrics } from './CalendarMetrics';
 import { CalendarViewMode, getCalendarRange, shiftAnchor, todayAnchor } from './calendar-range';
+import { calendarLocalizer as localizer } from './calendar-localizer';
 import {
   CardModel,
   cardLines,
   cardModel,
   compactLine,
+  defaultScrollOpening,
   displayBounds,
-  earliestRosteredHour,
+  gridDateAt,
+  gridWindow,
   isReleased,
   outsideDisplayCount,
   scrollToHour,
@@ -49,9 +50,10 @@ import { getDoctorColor } from './doctor-color';
 import { useCan } from '../../core/hooks/useCan';
 import { ApiError } from '../../core/api-client';
 
-dayjs.extend(utc);
-dayjs.extend(timezone);
-const localizer = dayjsLocalizer(dayjs);
+// RC BLOCKER FIX — the localizer lives in calendar-localizer.ts, built on a
+// dayjs FACADE without `.tz`. Handing rbc the timezone-extended dayjs made
+// its `merge()` shift every day-column's min/max by the browser's UTC offset
+// (23:00-previous-day wraps on any Malaysian device). See that module.
 
 const VIEW_OPTIONS: { label: string; value: CalendarViewMode }[] = [
   { label: 'Day', value: 'day' },
@@ -331,16 +333,21 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
     return hours.length > 0 ? Math.min(...hours) : null;
   }, [events]);
 
-  const scrollHour = useMemo(
-    () =>
-      scrollToHour({
-        anchor,
-        now: clinicDayjs(new Date()),
-        earliestRosteredHour: earliestRosteredHour(shifts),
-        earliestEventHour,
-      }),
-    [anchor, shifts, earliestEventHour],
-  );
+  // RC blocker — the scroll POLICY (owner-specified): today opens near the
+  // clinic's now, a day with appointments at its first appointment, an empty
+  // day at the branch's opening hour. The roster is not an input; date
+  // identity travels as YYYY-MM-DD keys so no dayjs mode can shift it.
+  const anchorKey = anchor.format('YYYY-MM-DD');
+  const scrollHour = useMemo(() => {
+    const now = clinicDayjs(new Date());
+    return scrollToHour({
+      anchorKey,
+      nowKey: now.format('YYYY-MM-DD'),
+      nowHour: now.hour(),
+      earliestEventHour,
+      openingHour: defaultScrollOpening(bookingSettings),
+    });
+  }, [anchorKey, earliestEventHour, bookingSettings]);
 
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -363,19 +370,16 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
   // only changes when the DATE, VIEW-derived bounds or intended hour change —
   // which is exactly the set of moments a re-scroll is wanted, and the
   // deliberate effect below owns the actual position arithmetic.
-  const gridMin = useMemo(
-    () => anchor.hour(bounds.startHour).minute(0).toDate(),
-    [anchor, bounds.startHour],
-  );
-  // endHour names the line the day CLOSES on (18 → the diary ends at 18:00),
-  // so the last rendered hour block is endHour-1:59.
-  const gridMax = useMemo(
-    () => anchor.hour(Math.max(bounds.startHour, Math.min(23, bounds.endHour - 1))).minute(59).toDate(),
-    [anchor, bounds.startHour, bounds.endHour],
-  );
+  // RC blocker — every Date the grid receives is built from the anchor's
+  // CALENDAR-DATE KEY with local-field construction (gridWindow): min, max,
+  // date and the scroll target all share one calendar date whatever mode the
+  // anchor dayjs happens to be in (the drill-down path used to store a
+  // timezone-mode dayjs, putting min on 23:00 of the previous date — the
+  // wrapped diary, and rbc's Invalid-array-length white screen).
+  const grid = useMemo(() => gridWindow(anchorKey, bounds), [anchorKey, bounds]);
   const gridScrollTo = useMemo(
-    () => anchor.hour(Math.max(bounds.startHour, Math.min(scrollHour, bounds.endHour - 1))).minute(0).toDate(),
-    [anchor, scrollHour, bounds.startHour, bounds.endHour],
+    () => gridDateAt(anchorKey, Math.max(bounds.startHour, Math.min(scrollHour, bounds.endHour - 1))),
+    [anchorKey, scrollHour, bounds.startHour, bounds.endHour],
   );
 
   // WORKING HOURS AS SHAPE. One sorted interval list per provider, read from
@@ -743,9 +747,13 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           <BigCalendar
             localizer={localizer}
             events={events}
-            date={anchor.toDate()}
+            date={grid.date}
             view={rbcView}
-            onNavigate={(value) => setAnchor(clinicDayjs(value))}
+            // The Dates rbc hands back are PSEUDO-dates (clinic wall clock in
+            // local fields) — their local Y-M-D IS the clinic date. A plain
+            // local dayjs keeps it; clinicDayjs() here would re-convert an
+            // already-converted value and store a timezone-mode anchor.
+            onNavigate={(value) => setAnchor(dayjs(value))}
             onView={() => undefined}
             toolbar={false}
             selectable
@@ -756,8 +764,8 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             dayLayoutAlgorithm="no-overlap"
             step={15}
             timeslots={2}
-            min={gridMin}
-            max={gridMax}
+            min={grid.min}
+            max={grid.max}
             scrollToTime={gridScrollTo}
             // V3.1.2 — the library is NOT a scroll writer here. rbc's own
             // applyScroll() measures scrollToTime from MIDNIGHT but divides
@@ -776,8 +784,8 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             onDoubleClickEvent={(event: CalendarEvent) => permReschedule && setMoving(event.appointment)}
             onDrillDown={(value: Date) => {
               // A month cell click opens that DAY, which is what "+3 more"
-              // means to somebody who clicked it.
-              setAnchor(clinicDayjs(value));
+              // means to somebody who clicked it. Plain dayjs — see onNavigate.
+              setAnchor(dayjs(value));
               setViewMode('day');
             }}
             messages={{ showMore: (count: number) => `+ ${count} more` }}

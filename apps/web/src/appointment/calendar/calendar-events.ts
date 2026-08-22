@@ -1,8 +1,5 @@
-import { Dayjs } from 'dayjs';
 import { AppointmentStatus } from '@kuwick/shared';
 import { RELEASED_STATUSES } from '../appointment-status.constants';
-import { clinicDayjs } from '../../clinical/clinicTime';
-import type { RangeShift } from '../hooks/useRoster';
 
 /**
  * PURE HELPERS FOR THE CALENDAR.
@@ -183,44 +180,85 @@ export function cardLines(input: CardLabelInput, minutes: number): string[] {
 }
 
 /**
- * WHERE THE GRID OPENS.
+ * WHERE THE GRID OPENS — a SCROLL policy, never an axis input (RC blocker).
  *
- * A 24-hour clinic's day starts at midnight, and a grid that opens at midnight
- * shows the quietest eight hours of the shift. Opening at "now" is right when
- * today is on screen and wrong when it is not — nobody looking at next Tuesday
- * wants it scrolled to 14:37 — so the rule is: today scrolls to an hour before
- * now; any other day scrolls to the earliest rostered start, and failing that
- * to 08:00.
+ * The rule, in the owner's words: today opens near the clinic's own "now";
+ * another day with appointments opens at its first appointment; an empty day
+ * opens at the branch's opening hour. The ROSTER is not consulted — provider
+ * shifts affect availability only, and this function's inputs make that
+ * structural: dates arrive as plain YYYY-MM-DD keys and hours as numbers, so
+ * no timezone-mode dayjs (the drill-down crash class) can reach it.
  */
 export function scrollToHour(params: {
-  anchor: Dayjs;
-  now: Dayjs;
-  earliestRosteredHour: number | null;
-  /**
-   * V3 — the first APPOINTMENT of the day being looked at, when there is one.
-   * On a 24-hour roster `earliestRosteredHour` is 0 (the night shift covers
-   * midnight), which opened the day on eight empty hours; the first booking
-   * is where the reading starts. Optional so every existing caller and test
-   * keeps its meaning.
-   */
+  /** The selected calendar date, as the clinic understands it. */
+  anchorKey: string;
+  /** The clinic's current date key and hour (from clinicDayjs(now)). */
+  nowKey: string;
+  nowHour: number;
+  /** The first APPOINTMENT of the day being looked at, when there is one. */
   earliestEventHour?: number | null;
+  /** The branch's opening hour — see defaultScrollOpening. */
+  openingHour: number;
 }): number {
-  if (params.anchor.isSame(params.now, 'day')) {
-    return Math.max(0, params.now.hour() - 1);
+  if (params.anchorKey === params.nowKey) {
+    return Math.max(0, params.nowHour - 1);
   }
   if (params.earliestEventHour != null) {
     return Math.max(0, params.earliestEventHour - 1);
   }
-  return params.earliestRosteredHour ?? 8;
+  return params.openingHour;
 }
 
-/** The earliest clinic-local hour anybody is rostered in the visible range. */
-export function earliestRosteredHour(shifts: RangeShift[] | undefined): number | null {
-  if (!shifts?.length) return null;
-  const hours = shifts
-    .filter((shift) => shift.shiftType === 'WORKING' || shift.shiftType === 'LOCUM')
-    .map((shift) => clinicDayjs(shift.startsAt).hour());
-  return hours.length > 0 ? Math.min(...hours) : null;
+/**
+ * The hour an EMPTY day opens on: the branch's stated opening. A standard
+ * branch opens at its display-open hour; a 24-hour branch (whose band top is
+ * midnight — the quietest hours of the shift) opens at its booking window's
+ * first session, and failing any stated hour at 08:00.
+ */
+export function defaultScrollOpening(prefs: CalendarDisplayPrefs | undefined): number {
+  if (prefs && prefs.calendarDisplayMode !== 'TWENTY_FOUR_HOURS' && prefs.displayOpenTime) {
+    return Math.floor(hourOf(prefs.displayOpenTime));
+  }
+  if (prefs?.firstSessionTime) return Math.floor(hourOf(prefs.firstSessionTime));
+  if (prefs && prefs.calendarDisplayMode !== 'TWENTY_FOUR_HOURS') return Math.floor(hourOf(DEFAULT_OPEN));
+  return 8;
+}
+
+/**
+ * RC BLOCKER FIX — THE GRID'S DATES, ANCHORED TO ONE CALENDAR DATE.
+ *
+ * react-big-calendar is handed three Dates (`date`, `min`, `max`) plus a
+ * scroll target, and the whole wrapped-axis defect class is those Dates
+ * disagreeing about which calendar date they are on: an anchor that had
+ * drifted into a timezone-mode dayjs put `min` on 25 Aug 23:00 and `max` on
+ * 26 Aug 12:59 in a UTC browser — a 23:00 → next-afternoon diary, and in
+ * rbc's slot arithmetic an "Invalid array length" white-screen.
+ *
+ * So the grid's Dates are built HERE, from a plain YYYY-MM-DD key and the
+ * branch bounds, with local-field construction only. Whatever mode the
+ * anchor dayjs is in, `anchor.format('YYYY-MM-DD')` names the same calendar
+ * date — and every Date this returns shares it. Seconds are zeroed; the
+ * grid `date` sits at noon so no library round-trip can nudge it across
+ * midnight.
+ */
+export function gridWindow(
+  dateKey: string,
+  bounds: { startHour: number; endHour: number },
+): { date: Date; min: Date; max: Date } {
+  const lastHour = Math.max(bounds.startHour, Math.min(23, bounds.endHour - 1));
+  return {
+    date: gridDateAt(dateKey, 12),
+    min: gridDateAt(dateKey, bounds.startHour),
+    // endHour names the line the day CLOSES on (18 → the diary ends at
+    // 18:00), so the last rendered hour block is endHour-1:59.
+    max: gridDateAt(dateKey, lastHour, 59),
+  };
+}
+
+/** A local-field Date on the key's calendar date — never any other. */
+export function gridDateAt(dateKey: string, hour: number, minute = 0): Date {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Date(year, month - 1, day, Math.floor(hour), minute, 0, 0);
 }
 
 /**
@@ -239,6 +277,8 @@ export interface CalendarDisplayPrefs {
   displayOpenTime: string | null;
   displayCloseTime: string | null;
   displayPaddingMinutes: number;
+  /** The booking window's first session — the empty-day scroll fallback. */
+  firstSessionTime?: string | null;
 }
 
 /** The stable band an unconfigured standard-hours branch shows. */

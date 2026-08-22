@@ -338,3 +338,11 @@ date/time steps also at iPad landscape).
 | 25 | Manage booking | `public-25-manage-booking.png` |
 | 26 | Reschedule request with reason | `public-26-reschedule-request.png` |
 | 27 | Cancellation request with reason | `public-27-cancellation-request.png` |
+
+### Axis acceptance (RC fix)
+
+`docs/rc-final-screenshots/axis-acceptance/` — captured on a browser set to
+Asia/Kuala_Lumpur after the diary-axis fix: the 24-hour axis (00:00 → 24:00,
+48 rows) on Day/Week/iPad with a 23:00 booking on its own date and the 00:30
+booking at the top of the NEXT date's canvas, and the standard 09:00–17:00
+branch rendering a stable 08:00 → 18:00 band on every date and view.
