@@ -100,6 +100,17 @@ export class AppointmentCommunicationController {
     return this.communications.due(clinicId);
   }
 
+  /** Final-UAT Reminder Centre — literals stay ABOVE :appointmentId. */
+  @Get('upcoming')
+  upcoming(@Query('clinicId') clinicId: string) {
+    return this.communications.upcoming(clinicId);
+  }
+
+  @Get('sent')
+  sent(@Query('clinicId') clinicId: string) {
+    return this.communications.sentHistory(clinicId);
+  }
+
   @Get(':appointmentId')
   list(@Param('appointmentId') appointmentId: string) {
     return this.communications.list(appointmentId);

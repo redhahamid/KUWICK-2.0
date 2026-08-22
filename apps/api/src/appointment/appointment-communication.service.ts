@@ -155,7 +155,7 @@ export class AppointmentCommunicationService {
       for (const rule of effective) {
         const template = `REMINDER_${rule.offsetMinutes}`;
         const dueAt = appointment.scheduledStart.getTime() - rule.offsetMinutes * 60 * 1000;
-        if (dueAt > now.getTime()) continue;
+        if (dueAt > now.getTime()) continue; // not yet due — upcoming() owns it
         // Cleared by the worklist's own send (exact template) OR by ANY
         // reminder sent once this one was already due — a receptionist who
         // messaged the patient from the drawer has reminded them, and the
@@ -186,5 +186,120 @@ export class AppointmentCommunicationService {
     }
 
     return dueRows;
+  }
+
+  /**
+   * Final-UAT (Reminder Centre) — what WILL come due in the next week, from
+   * the same rules and the same replace-not-add service scoping as due().
+   * A read for planning, never a send: each row names the moment it will
+   * appear on the worklist.
+   */
+  async upcoming(clinicId: string, now = new Date()) {
+    const rules = await this.prisma.appointmentReminderRule.findMany({
+      where: { clinicId, active: true },
+      orderBy: { offsetMinutes: 'desc' },
+    });
+    if (rules.length === 0) return [];
+
+    const horizon = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const appointments = await this.prisma.appointment.findMany({
+      where: {
+        clinicId,
+        status: { in: ['CONFIRMED', 'REMINDED'] },
+        scheduledStart: { gte: now, lte: horizon },
+      },
+      orderBy: { scheduledStart: 'asc' },
+      take: 200,
+      include: {
+        patient: { select: { id: true, name: true, phone: true } },
+        service: { select: { id: true, name: true } },
+        staff: { select: { fullName: true } },
+        communications: { select: { template: true, sentAt: true } },
+      },
+    });
+
+    const rows: {
+      appointmentId: string;
+      template: string;
+      offsetMinutes: number;
+      channel: string;
+      dueAt: Date;
+      patient: { id: string; name: string; phone: string | null };
+      scheduledStart: Date;
+      providerName: string;
+      serviceName: string;
+      manageToken: string | null;
+    }[] = [];
+
+    for (const appointment of appointments) {
+      const applicable = rules.filter(
+        (rule) => rule.serviceId === null || rule.serviceId === appointment.serviceId,
+      );
+      const specific = applicable.filter((rule) => rule.serviceId !== null);
+      const effective = specific.length > 0 ? specific : applicable;
+
+      for (const rule of effective) {
+        const template = `REMINDER_${rule.offsetMinutes}`;
+        const dueAt = appointment.scheduledStart.getTime() - rule.offsetMinutes * 60 * 1000;
+        if (dueAt <= now.getTime()) continue; // already due — due() owns it
+        // An early send clears the future occurrence too: the patient has
+        // been reminded, and a centre that re-asks anyway teaches the
+        // counter to ignore it (same reasoning as due()'s clearing).
+        const reminded = appointment.communications.some(
+          (row) => row.template === template || row.template.startsWith('REMINDER'),
+        );
+        if (reminded) continue;
+        rows.push({
+          appointmentId: appointment.id,
+          template,
+          offsetMinutes: rule.offsetMinutes,
+          channel: rule.channel,
+          dueAt: new Date(dueAt),
+          patient: appointment.patient,
+          scheduledStart: appointment.scheduledStart,
+          providerName: appointment.staff.fullName,
+          serviceName: appointment.service.name,
+          manageToken: appointment.manageToken,
+        });
+      }
+    }
+
+    return rows.sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
+  }
+
+  /**
+   * Final-UAT (Reminder Centre) — the reminders that DID go out, last seven
+   * days, with who sent each. Everything here is a recorded MANUAL send;
+   * the centre never invents a "Sent" a person did not perform.
+   */
+  sentHistory(clinicId: string, now = new Date()) {
+    const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    return this.prisma.appointmentCommunication.findMany({
+      where: {
+        template: { startsWith: 'REMINDER' },
+        sentAt: { gte: since },
+        appointment: { clinicId },
+      },
+      orderBy: { sentAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        template: true,
+        channel: true,
+        status: true,
+        sentAt: true,
+        destination: true,
+        actor: { select: { fullName: true } },
+        appointment: {
+          select: {
+            id: true,
+            scheduledStart: true,
+            patient: { select: { id: true, name: true } },
+            service: { select: { name: true } },
+            staff: { select: { fullName: true } },
+          },
+        },
+      },
+    });
   }
 }

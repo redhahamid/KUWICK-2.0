@@ -17,7 +17,6 @@ import {
   message,
 } from 'antd';
 import { CopyOutlined, PrinterOutlined, DownloadOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../core/api-client';
 import { useBookingPage, useSaveBookingPage } from '../hooks/useBookingPage';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
@@ -25,6 +24,7 @@ import { useAppointmentServices } from '../hooks/useServiceConfig';
 import { qrSvg } from './qr';
 import { MediaUploadField, useMediaPreviewUrl } from '../media/MediaUploadField';
 import { KuwickStatusTag } from '../../design-system/kuwick';
+import { CommunicationCentre } from '../communication/CommunicationCentre';
 
 const { Text, Paragraph } = Typography;
 
@@ -140,7 +140,6 @@ interface BookingPageSettingsProps {
  */
 export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
   const [form] = Form.useForm();
-  const navigate = useNavigate();
   const [dirty, setDirty] = useState(false);
   const { data, isFetching } = useBookingPage(clinicId);
   const save = useSaveBookingPage();
@@ -418,26 +417,11 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
                     />
                   </Form.Item>
 
-                  {/* PHASE 8 — one store. Templates and reminder timing moved
-                      to Clinic Settings; this tab links there instead of
-                      keeping a second editor that could disagree with it. */}
-                  <Text strong>Message templates &amp; reminders</Text>
-                  <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
-                    The wording of every WhatsApp message (in English and Bahasa Malaysia) and the
-                    reminder schedule
-                    {data?.reminderRules.length
-                      ? ` — currently ${data.reminderRules.length} reminder rule${
-                          data.reminderRules.length === 1 ? '' : 's'
-                        } —`
-                      : ' — currently no reminder rules —'}{' '}
-                    live in one place for the whole clinic.
-                  </Paragraph>
-                  <Button
-                    onClick={() => navigate('/settings/scheduling/communication')}
-                    data-testid="open-communication-settings"
-                  >
-                    Open Communication &amp; Reminders
-                  </Button>
+                  {/* FINAL-UAT — no more link-away: the FULL Communication
+                      Centre renders here, inside the module. It is the same
+                      shared component the Clinic Settings page mounts, so
+                      there is still exactly ONE store and ONE editor. */}
+                  <CommunicationCentre clinicId={clinicId} />
                 </>
               ),
             },
