@@ -36,11 +36,18 @@ export class ClinicService {
   async findAll() {
     const clinics = await this.prisma.clinic.findMany({
       orderBy: { name: 'asc' },
-      include: { bookingPage: { select: { displayName: true } } },
+      include: {
+        bookingPage: { select: { displayName: true, slug: true, language: true, active: true } },
+      },
     });
     return clinics.map(({ bookingPage, ...clinic }) => ({
       ...clinic,
       patientFacingName: bookingPage?.displayName?.trim() || clinic.name,
+      // PHASE 8 — what a patient MESSAGE may reference. The slug only while
+      // the page is live (a manage link into a switched-off page is a dead
+      // link), the language so templates default to the page's own.
+      bookingSlug: bookingPage?.active ? bookingPage.slug : null,
+      bookingLanguage: bookingPage?.language ?? 'en',
     }));
   }
 

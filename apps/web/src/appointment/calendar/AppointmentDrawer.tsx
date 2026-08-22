@@ -51,8 +51,7 @@ import {
   useNoShowAppointment,
 } from '../hooks/useAppointments';
 import { CheckInRegistrationDrawer } from '../checkin/CheckInRegistrationDrawer';
-import { patientFacingClinicName, whatsappLink } from '../whatsappReminder';
-import { useClinics } from '../../core/hooks/useClinics';
+import { MessagePatientModal } from '../messages/MessagePatientModal';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
 import { getDoctorColor } from './doctor-color';
 import { ApiError } from '../../core/api-client';
@@ -151,25 +150,17 @@ export function AppointmentDrawer({
     .join('')
     .toUpperCase();
 
-  // The PATIENT-FACING clinic name, resolved by the server on the clinics
-  // list (booking-page displayName → clinic name). This used to be hardcoded
-  // to '' — the "your appointment at on 22 Aug" message the owner caught in
-  // UAT, and the reason the calendar and the list greeted the same patient
-  // with two different clinics.
-  const { data: clinics } = useClinics();
-  const clinicNameForPatient = patientFacingClinicName(
-    clinics?.find((clinic) => clinic.id === appointment?.clinicId),
-  );
-
-  const whatsapp = useMemo(() => {
-    if (!appointment?.patient.phone) return null;
-    return whatsappLink({
-      phone: appointment.patient.phone,
-      patientName: appointment.patient.name,
-      clinicName: clinicNameForPatient,
-      scheduledStart: appointment.scheduledStart,
-    });
-  }, [appointment, clinicNameForPatient]);
+  // PHASE 8 — messaging goes through the template modal: the clinic's own
+  // wording (or the defaults), rendered by the ONE renderer against the
+  // patient-facing clinic identity. The drawer no longer composes any
+  // message text itself — that is how "appointment at on" happened.
+  const [messaging, setMessaging] = useState(false);
+  const messageDefaultTemplate =
+    status === AppointmentStatus.REQUESTED
+      ? 'BOOKING_REQUEST_RECEIVED'
+      : status === AppointmentStatus.CANCELLED
+        ? 'CANCELLATION_CONFIRMED'
+        : 'REMINDER';
 
   const run = async (label: string, action: () => Promise<unknown>) => {
     try {
@@ -221,23 +212,6 @@ export function AppointmentDrawer({
         }
       : null,
   ].filter(Boolean) as { key: string; label: string }[];
-
-  // Recorded as MANUAL, and worded as what actually happened: WhatsApp was
-  // OPENED with the message prefilled. Whether the staff member pressed Send
-  // inside WhatsApp is something Kuwick cannot see, so it never claims
-  // "reminder sent" on the strength of a window opening.
-  const openWhatsApp = async () => {
-    if (!appointment || !whatsapp) return;
-    window.open(whatsapp, '_blank', 'noopener');
-    await run('WhatsApp opened — noted in history', () =>
-      logCommunication.mutateAsync({
-        appointmentId: appointment.id,
-        channel: 'WHATSAPP',
-        template: 'REMINDER_MANUAL',
-        destination: appointment.patient.phone ?? undefined,
-      }),
-    );
-  };
 
   const onMore = async (key: string) => {
     if (!appointment) return;
@@ -416,9 +390,9 @@ export function AppointmentDrawer({
             >
               Patient record
             </Button>
-            {whatsapp ? (
-              <Button size="small" icon={<WhatsAppOutlined />} onClick={openWhatsApp}>
-                Open WhatsApp
+            {appointment.patient.phone ? (
+              <Button size="small" icon={<WhatsAppOutlined />} onClick={() => setMessaging(true)}>
+                WhatsApp patient
               </Button>
             ) : null}
             {appointment.patient.phone ? (
@@ -737,6 +711,17 @@ export function AppointmentDrawer({
             <CheckInRegistrationDrawer
               appointmentId={appointment.id}
               onClose={() => setRegistering(false)}
+            />
+          ) : null}
+
+          {/* Same rule: the template fetch runs only when messaging starts. */}
+          {messaging ? (
+            <MessagePatientModal
+              open
+              onClose={() => setMessaging(false)}
+              clinicId={appointment.clinicId}
+              appointment={appointment}
+              defaultTemplateKey={messageDefaultTemplate}
             />
           ) : null}
         </div>

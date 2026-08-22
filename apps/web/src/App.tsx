@@ -42,6 +42,7 @@ import { ProcedureQueuePage } from './clinical/ProcedureQueuePage';
 import { BillingVisitPage } from './clinical/BillingVisitPage';
 import { HistoricalVisitPage } from './clinical/history/HistoricalVisitPage';
 import { BookingRulesPage } from './appointment/BookingRulesPage';
+import { CommunicationSettingsPage } from './appointment/communication/CommunicationSettingsPage';
 import { ItemsPage } from './inventory/ItemsPage';
 import { SuppliersPage } from './inventory/SuppliersPage';
 import { StockTakePage } from './inventory/StockTakePage';
@@ -155,6 +156,12 @@ export function App() {
                 horizon, closed dates. Service-level rules live in the
                 Appointments module's Services tab. */}
             <Route path="/settings/scheduling/booking-rules" element={<BookingRulesPage />} />
+            {/* PHASE 8 — the one store for message templates and reminder
+                timing; the Booking Page tab links here. */}
+            <Route
+              path="/settings/scheduling/communication"
+              element={<CommunicationSettingsPage />}
+            />
             <Route path="/settings/clinical/services" element={<ServicesPage />} />
             <Route path="/settings/clinical/consultation-tariffs" element={<ConsultationTariffsPage />} />
             <Route path="/settings/clinical/diagnoses" element={<DiagnosesDirectoryPage />} />

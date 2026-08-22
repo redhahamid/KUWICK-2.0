@@ -16,10 +16,10 @@ import {
   DashboardTab,
   ListTab,
   useAppointmentDashboard,
-  useMarkReminderSent,
 } from '../hooks/useAppointmentDashboard';
 import { useWaitlist } from '../hooks/useWaitlist';
-import { whatsappLink } from '../whatsappReminder';
+import { MessagePatientModal } from '../messages/MessagePatientModal';
+import { RemindersDueButton } from '../messages/RemindersDueDrawer';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
 import { RescheduleAppointmentDrawer } from '../RescheduleAppointmentDrawer';
 import { AppointmentDrawer } from '../calendar/AppointmentDrawer';
@@ -84,7 +84,10 @@ interface AppointmentListViewProps {
  * linked invoices actually came to. Calling the first one "sales" implied a
  * forecast it was never entitled to make.
  */
-export function AppointmentListView({ clinicId, clinicName, onBook }: AppointmentListViewProps) {
+// clinicName stays on the props interface for the module page's sake, but the
+// list no longer builds any message text itself — the template modal resolves
+// the patient-facing identity on its own.
+export function AppointmentListView({ clinicId, onBook }: AppointmentListViewProps) {
   const { data: staff } = useStaff();
   const { data: services } = useServices();
 
@@ -219,6 +222,9 @@ export function AppointmentListView({ clinicId, clinicName, onBook }: Appointmen
             allowClear
             style={{ width: 220 }}
           />
+          {/* PHASE 8 — the reminder rules' worklist, where the counter works
+              it: beside the list it reminds from. */}
+          <RemindersDueButton clinicId={clinicId} />
         </Space>
       </div>
 
@@ -351,7 +357,6 @@ export function AppointmentListView({ clinicId, clinicName, onBook }: Appointmen
           rows={data?.rows ?? []}
           loading={isFetching}
           tab={tab as DashboardTab}
-          clinicName={clinicName}
           onOpen={setSelectedId}
           onBook={onBook}
         />
@@ -435,18 +440,15 @@ function AppointmentTable({
   rows,
   loading,
   tab,
-  clinicName,
   onOpen,
   onBook,
 }: {
   rows: DashboardRow[];
   loading: boolean;
   tab: DashboardTab;
-  clinicName: string;
   onOpen: (id: string) => void;
   onBook: () => void;
 }) {
-  const markReminder = useMarkReminderSent();
   const confirmAppointment = useConfirmAppointment();
   const markArrived = useMarkArrivedAppointment();
   // Phase 4 — the primary is REGISTER / CHECK IN, which opens the
@@ -472,27 +474,11 @@ function AppointmentTable({
     }
   };
 
-  const sendReminder = async (row: DashboardRow) => {
-    const link = whatsappLink({
-      phone: row.patient.phone,
-      patientName: row.patient.name,
-      scheduledStart: row.scheduledStart,
-      clinicName,
-    });
-    if (!link) {
-      message.warning('This patient has no usable phone number on file.');
-      return;
-    }
-    // Opened FIRST. If the popup is blocked or the staff member changes their
-    // mind, nothing has been recorded — a "reminder sent" mark for a message
-    // that never opened is worse than no mark at all.
-    window.open(link, '_blank', 'noopener,noreferrer');
-    try {
-      await markReminder.mutateAsync(row.id);
-    } catch {
-      message.error('WhatsApp opened, but the reminder could not be recorded.');
-    }
-  };
+  // PHASE 8 — the Remind button opens the SAME template modal as the drawer:
+  // the message comes from the clinic's own wording through the one renderer,
+  // in either language, previewed before anything opens. The modal's log
+  // stamps reminderSentAt server-side, so the Reminder column stays fed.
+  const [messagingRow, setMessagingRow] = useState<DashboardRow | null>(null);
 
   return (
     <>
@@ -772,7 +758,7 @@ function AppointmentTable({
                   disabled={!row.patient.phone}
                   onClick={(event) => {
                     event.stopPropagation();
-                    sendReminder(row);
+                    setMessagingRow(row);
                   }}
                 />
               </Tooltip>
@@ -787,6 +773,22 @@ function AppointmentTable({
           onCheckedIn={() =>
             queryClient.invalidateQueries({ queryKey: ['appointment-dashboard'] })
           }
+        />
+      ) : null}
+      {messagingRow ? (
+        <MessagePatientModal
+          open
+          onClose={() => setMessagingRow(null)}
+          clinicId={messagingRow.clinicId}
+          appointment={{
+            id: messagingRow.id,
+            scheduledStart: messagingRow.scheduledStart,
+            manageToken: messagingRow.manageToken ?? null,
+            patient: messagingRow.patient,
+            staff: { fullName: messagingRow.provider.fullName },
+            service: { name: messagingRow.service.name },
+          }}
+          defaultTemplateKey="REMINDER"
         />
       ) : null}
       <RescheduleAppointmentDrawer

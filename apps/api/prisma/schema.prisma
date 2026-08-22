@@ -229,6 +229,7 @@ model Tenant {
   appointmentFormAnswers      AppointmentFormAnswer[]
   appointmentCommunications   AppointmentCommunication[]
   appointmentReminderRules    AppointmentReminderRule[]
+  appointmentMessageTemplates AppointmentMessageTemplate[]
   bookingFormFields           BookingFormField[]
   clinicBookingPages          ClinicBookingPage[]
   serviceBookableHours        ServiceBookableHour[]
@@ -335,6 +336,7 @@ model Clinic {
   bookingPage                 ClinicBookingPage?
   bookingFormFields           BookingFormField[]
   reminderRules               AppointmentReminderRule[]
+  messageTemplates            AppointmentMessageTemplate[]
   appointmentSeries           AppointmentSeries[]
   waitlistEntries             WaitlistEntry[]
   stockLevels                 StockLevel[]
@@ -4511,6 +4513,34 @@ model AppointmentReminderRule {
 
   @@index([tenantId, clinicId])
   @@map("appointment_reminder_rules")
+}
+
+/// PHASE 8 — the clinic's own words, one row per customised (type, language).
+///
+/// A row exists ONLY where a clinic rewrote a template. Every absent pair
+/// renders the built-in default (message-template.service), so "reset to
+/// default" is a DELETE and improving a default in a later release reaches
+/// every clinic that never customised it — without a migration rewriting
+/// anybody's own words.
+model AppointmentMessageTemplate {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  clinicId    String   @map("clinic_id")
+  /// One of the canonical message types (MESSAGE_TEMPLATE_KEYS). A string,
+  /// not an enum: adding a message type is content, not a migration.
+  templateKey String   @map("template_key")
+  /// 'en' or 'ms' — the same convention as ClinicBookingPage.language.
+  language    String
+  body        String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, templateKey, language])
+  @@index([tenantId, clinicId])
+  @@map("appointment_message_templates")
 }
 
 /// §39/§40 — the public booking page for one branch, and the settings that

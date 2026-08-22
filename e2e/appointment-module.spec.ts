@@ -330,6 +330,25 @@ test.describe('a patient books themselves in, and the clinic works the booking',
     await expect(row).toContainText(/booking page/i);
     await expect(row).toContainText(chosenTime.slice(0, 5));
 
+    // ---- PHASE 8: THE MESSAGE COMES FROM THE TEMPLATES, PREVIEWED ---------
+    // The row's WhatsApp button opens the template modal, and the preview is
+    // the rendered message: this patient, the PATIENT-FACING clinic name, the
+    // clinic-clock time — no fragment concatenation anywhere.
+    await row.getByRole('button', { name: /open whatsapp with a reminder/i }).click();
+    // getByRole('dialog'), not the testid: antd mounts the testid on a
+    // zero-size wrapper Playwright reports as hidden.
+    const messageModal = page.getByRole('dialog').filter({ hasText: 'Message' });
+    await expect(messageModal).toBeVisible();
+    const preview = messageModal.getByTestId('message-preview');
+    await expect(preview).toHaveValue(new RegExp(patientName.split(' ')[0]));
+    await expect(preview).toHaveValue(/Klinik Hijraa Bangi/);
+    await expect(preview).toHaveValue(new RegExp(chosenTime.slice(0, 5)));
+    // Bahasa Malaysia is one tap away, from the same template store.
+    await messageModal.locator('.ant-segmented').getByText('Bahasa Malaysia').click();
+    await expect(preview).toHaveValue(/temujanji/);
+    await messageModal.getByRole('button', { name: /^cancel$/i }).click();
+    await expect(page.getByTestId('message-preview')).toHaveCount(0);
+
     // ---- REGISTER / CHECK IN, AND THE QUEUE TICKET THAT RESULTS ------------
     // The composition this whole module exists for: an appointment that
     // arrives becomes a VISIT and joins the type-A queue, with both ids
@@ -426,5 +445,40 @@ test.describe('the patient can manage their own booking', () => {
     await page.getByRole('button', { name: /^cancel$/i }).click();
     await page.getByRole('button', { name: /cancel appointment/i }).click();
     await expect(page.getByText(/cancelled/i).first()).toBeVisible({ timeout: 20_000 });
+  });
+});
+
+test.describe('the clinic writes its own messages', () => {
+  test('templates render a live preview in both languages, and the reminder rules live beside them', async ({
+    page,
+  }) => {
+    await login(page, ACCOUNTS.owner);
+    await page.goto('/settings/scheduling/communication');
+    await expect(page.getByTestId('communication-settings')).toBeVisible();
+
+    // The editor holds the default wording — placeholders visible, because
+    // the template IS the contract.
+    const body = page.getByTestId('template-body');
+    await expect(body).toHaveValue(/\{patient_name\}/);
+
+    // The preview is the ONE renderer working on this clinic's real
+    // identity: sample patient, patient-facing clinic name, filled dates.
+    const preview = page.getByTestId('template-preview');
+    await expect(preview).toContainText('Aisyah binti Rahman');
+    await expect(preview).toContainText('Klinik Hijraa Bangi');
+    await expect(preview).not.toContainText('{patient_name}');
+
+    // One tap to Bahasa Malaysia, same store, same renderer.
+    await page
+      .getByTestId('message-templates-card')
+      .locator('.ant-segmented')
+      .getByText('Bahasa Malaysia')
+      .click();
+    await expect(preview).toContainText(/temujanji/);
+
+    // The reminder rules — the honest automation — live on the same screen,
+    // and the screen says out loud that no gateway is connected.
+    await expect(page.getByTestId('reminder-rules-card')).toBeVisible();
+    await expect(page.getByText('WhatsApp automation is not connected')).toBeVisible();
   });
 });

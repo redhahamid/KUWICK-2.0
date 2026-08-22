@@ -26,6 +26,8 @@ export interface DashboardRow {
   scheduledStart: string;
   scheduledEnd: string;
   notes: string | null;
+  /** Phase 8 — so a reminder sent from the list can carry the manage link. */
+  manageToken?: string | null;
   patient: { id: string; name: string; phone: string | null };
   provider: { id: string; fullName: string };
   service: { id: string; name: string; price: string };

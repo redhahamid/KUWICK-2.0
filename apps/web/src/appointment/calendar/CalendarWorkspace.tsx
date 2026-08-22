@@ -19,6 +19,7 @@ import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import { AppointmentStatus } from '@kuwick/shared';
 import { useAppointments, useRescheduleAppointment } from '../hooks/useAppointments';
+import { SetupChecklistCard } from '../SetupChecklistCard';
 import { useRosterRange } from '../hooks/useRoster';
 import { useStaff } from '../../hr/hooks/useStaff';
 import { useServices } from '../../clinical/hooks/useServices';
@@ -551,6 +552,9 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
 
   return (
     <div className="kw-calendar-workspace" data-testid="calendar-workspace">
+      {/* PHASE 8 — renders nothing once the core setup is done. */}
+      <SetupChecklistCard clinicId={clinicId} />
+
       {/* COMMAND BAR — navigate, the date said big, the view switcher. */}
       <div className="kw-calendar-toolbar">
         <Space wrap size={10}>

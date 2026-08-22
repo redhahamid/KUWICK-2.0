@@ -57,6 +57,16 @@ export class AppointmentDashboardController {
   }
 
   /**
+   * PHASE 8 — the setup checklist. Computed from what is actually configured,
+   * so it can never disagree with the screens it links to.
+   */
+  @Get('setup-checklist')
+  setupChecklist(@Query('clinicId') clinicId: string) {
+    if (!clinicId) throw new BadRequestException('clinicId is required');
+    return this.dashboard.setupChecklist(clinicId);
+  }
+
+  /**
    * The WAITLIST tab, which reads its own table. Not a `tab` value on the
    * query above, because a waitlist entry has no scheduled time and the date
    * range that bounds every other tab means nothing to it.

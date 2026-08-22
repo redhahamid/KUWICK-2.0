@@ -17,8 +17,9 @@ import {
   message,
 } from 'antd';
 import { CopyOutlined, PrinterOutlined, DownloadOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../core/api-client';
-import { useBookingPage, useSaveBookingPage, useSaveReminderRules } from '../hooks/useBookingPage';
+import { useBookingPage, useSaveBookingPage } from '../hooks/useBookingPage';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
 import { useAppointmentServices } from '../hooks/useServiceConfig';
 import { qrSvg } from './qr';
@@ -122,14 +123,6 @@ function BookingPagePreview({
   );
 }
 
-const REMINDER_CHOICES = [
-  { value: 2880, label: '2 days before' },
-  { value: 1440, label: '1 day before' },
-  { value: 240, label: '4 hours before' },
-  { value: 120, label: '2 hours before' },
-  { value: 60, label: '1 hour before' },
-];
-
 interface BookingPageSettingsProps {
   clinicId?: string;
 }
@@ -147,12 +140,11 @@ interface BookingPageSettingsProps {
  */
 export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
   const [form] = Form.useForm();
+  const navigate = useNavigate();
   const [dirty, setDirty] = useState(false);
   const { data, isFetching } = useBookingPage(clinicId);
   const save = useSaveBookingPage();
   const canConfigure = useCan('appointment.configure');
-  const saveReminders = useSaveReminderRules();
-  const [reminderOffsets, setReminderOffsets] = useState<number[]>([]);
 
   useEffect(() => {
     if (!data) return;
@@ -192,7 +184,6 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
       patientCancelMode: modeOf(page?.patientCancelMode, page?.allowPatientCancel),
       ...cutoff,
     });
-    setReminderOffsets(data.reminderRules.map((rule) => rule.offsetMinutes));
     setDirty(false);
   }, [data, form]);
 
@@ -228,7 +219,6 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
         allowPatientReschedule: values.patientRescheduleMode !== 'NOT_ALLOWED',
         allowPatientCancel: values.patientCancelMode !== 'NOT_ALLOWED',
       });
-      await saveReminders.mutateAsync({ clinicId, offsets: reminderOffsets });
       setDirty(false);
       message.success('Booking page saved');
     } catch (error) {
@@ -417,32 +407,37 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
               label: 'Communication',
               children: (
                 <>
-                  <Form.Item name="confirmationMessage" label="Confirmation message">
+                  <Form.Item
+                    name="confirmationMessage"
+                    label="Confirmation message"
+                    tooltip="Shown on the booking page's own confirmation screen, right after a patient books."
+                  >
                     <Input.TextArea
                       rows={3}
                       placeholder="Your appointment is confirmed. Please arrive 10 minutes early."
                     />
                   </Form.Item>
-                  <Text strong>Reminders</Text>
+
+                  {/* PHASE 8 — one store. Templates and reminder timing moved
+                      to Clinic Settings; this tab links there instead of
+                      keeping a second editor that could disagree with it. */}
+                  <Text strong>Message templates &amp; reminders</Text>
                   <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
-                    Choose as many as you want, or none. These build the counter's reminder
-                    worklist for staff to work through — they do not send anything by
-                    themselves. The one channel today is manual WhatsApp: staff press Open
-                    WhatsApp and Kuwick records that it was opened, never that a message was
-                    delivered. Automatic sending will only appear here if a real messaging
-                    integration is connected.
+                    The wording of every WhatsApp message (in English and Bahasa Malaysia) and the
+                    reminder schedule
+                    {data?.reminderRules.length
+                      ? ` — currently ${data.reminderRules.length} reminder rule${
+                          data.reminderRules.length === 1 ? '' : 's'
+                        } —`
+                      : ' — currently no reminder rules —'}{' '}
+                    live in one place for the whole clinic.
                   </Paragraph>
-                  <Select
-                    mode="multiple"
-                    style={{ width: '100%', maxWidth: 420 }}
-                    value={reminderOffsets}
-                    onChange={(value) => {
-                      setReminderOffsets(value);
-                      setDirty(true);
-                    }}
-                    options={REMINDER_CHOICES}
-                    placeholder="No reminders"
-                  />
+                  <Button
+                    onClick={() => navigate('/settings/scheduling/communication')}
+                    data-testid="open-communication-settings"
+                  >
+                    Open Communication &amp; Reminders
+                  </Button>
                 </>
               ),
             },

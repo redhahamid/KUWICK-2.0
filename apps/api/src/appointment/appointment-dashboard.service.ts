@@ -250,6 +250,10 @@ export class AppointmentDashboardService {
       scheduledStart: row.scheduledStart,
       scheduledEnd: row.scheduledEnd,
       notes: row.notes,
+      // PHASE 8 — so a reminder sent FROM THE LIST can carry the patient's
+      // own manage link. Staff-side response; the token was always readable
+      // through the detail endpoint.
+      manageToken: row.manageToken,
       patient: row.patient,
       provider: row.staff,
       service: { id: row.service.id, name: row.service.name, price: String(row.service.price) },
@@ -341,6 +345,68 @@ export class AppointmentDashboardService {
       data: { reminderSentAt: new Date(), reminderSentByStaffId: currentStaffId() ?? null },
       select: { id: true, reminderSentAt: true, reminderSentByStaffId: true },
     });
+  }
+
+  /**
+   * PHASE 8 — the setup checklist, computed, never stored.
+   *
+   * Six READS of what the clinic has actually configured, so the card can
+   * never disagree with reality and never needs "mark as done". Four are CORE
+   * — a booking page cannot work without them — and two are RECOMMENDED
+   * (reminders, change policy), because a clinic may deliberately want
+   * neither and must not carry a nag forever for a choice it made.
+   */
+  async setupChecklist(clinicId: string) {
+    const now = new Date();
+    const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const [settings, bookableServices, weeklyRoster, datedShifts, page, reminderRules] =
+      await Promise.all([
+        this.prisma.clinicBookingSettings.findFirst({
+          where: { clinicId },
+          select: { id: true },
+        }),
+        this.prisma.serviceCatalog.count({ where: { active: true, bookable: true } }),
+        // Effective TODAY — a plan that ended last month is not a roster.
+        this.prisma.doctorSchedule.count({
+          where: {
+            clinicId,
+            effectiveFrom: { lte: now },
+            OR: [{ effectiveTo: null }, { effectiveTo: { gte: now } }],
+          },
+        }),
+        this.prisma.providerShift.count({
+          where: { clinicId, shiftDate: { gte: now, lte: weekAhead } },
+        }),
+        this.prisma.clinicBookingPage.findFirst({
+          where: { clinicId },
+          select: { active: true, patientRescheduleMode: true, patientCancelMode: true },
+        }),
+        this.prisma.appointmentReminderRule.count({ where: { clinicId, active: true } }),
+      ]);
+
+    const items = [
+      { key: 'BOOKING_RULES', done: Boolean(settings), core: true },
+      { key: 'SERVICES', done: bookableServices > 0, core: true, count: bookableServices },
+      {
+        key: 'ROSTER',
+        done: weeklyRoster > 0 || datedShifts > 0,
+        core: true,
+        count: weeklyRoster + datedShifts,
+      },
+      { key: 'BOOKING_PAGE', done: Boolean(page?.active), core: true },
+      { key: 'REMINDERS', done: reminderRules > 0, core: false, count: reminderRules },
+      {
+        key: 'CHANGE_POLICY',
+        done: Boolean(page?.patientRescheduleMode && page?.patientCancelMode),
+        core: false,
+      },
+    ];
+
+    return {
+      clinicId,
+      items,
+      complete: items.filter((item) => item.core).every((item) => item.done),
+    };
   }
 
   /** Clinic-local dates → the UTC instants bounding them. */

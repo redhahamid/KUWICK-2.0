@@ -1,12 +1,8 @@
-import { formatClinicDateTime } from '../clinical/clinicTime';
-
 /**
- * The reminder message, and the link that opens it.
- *
- * NO WHATSAPP API. This builds a `wa.me` deep link and the staff member's own
- * WhatsApp sends it from their own phone. Kuwick therefore claims nothing
- * about delivery — pressing the button records that somebody sent a message,
- * which is the only part the clinic can honestly assert.
+ * NO WHATSAPP API. Messages travel as `wa.me` deep links the staff member's
+ * own WhatsApp sends, so Kuwick claims nothing about delivery — pressing the
+ * button records that somebody opened a message, which is the only part the
+ * clinic can honestly assert.
  */
 
 /**
@@ -40,35 +36,9 @@ export function patientFacingClinicName(
   return clinic?.patientFacingName?.trim() || clinic?.name?.trim() || '';
 }
 
-export function reminderMessage(params: {
-  patientName: string;
-  scheduledStart: string | Date;
-  clinicName: string;
-}): string {
-  // Short, and it names the three things a patient needs: who it is for, when,
-  // and where. No clinical detail — a reminder travels over an unencrypted
-  // channel to a phone that may be shared.
-  //
-  // The clinic clause is OMITTED when no name is available, never rendered
-  // blank: "your appointment at on 22 Aug" reached a real UAT patient message
-  // because one caller passed ''. The template now refuses to produce that
-  // sentence whatever a caller does.
-  const clinicName = params.clinicName.trim();
-  const where = clinicName ? ` at ${clinicName}` : '';
-  return (
-    `Hi ${params.patientName}, this is a reminder of your appointment${where} ` +
-    `on ${formatClinicDateTime(params.scheduledStart)}. ` +
-    'Please reply if you need to change it.'
-  );
-}
-
-export function whatsappLink(params: {
-  phone: string | null | undefined;
-  patientName: string;
-  scheduledStart: string | Date;
-  clinicName: string;
-}): string | null {
-  const number = toWhatsappNumber(params.phone);
-  if (!number) return null;
-  return `https://wa.me/${number}?text=${encodeURIComponent(reminderMessage(params))}`;
-}
+// PHASE 8 — the hardcoded reminder sentence that used to live here became the
+// REMINDER default template (message-template.service.ts, both languages),
+// and every message now goes through the ONE renderer in
+// messages/appointmentMessages.ts. What stays in this module are the two
+// contracts every message still leans on: the phone-number normalisation
+// above and the patient-facing-name chain below.
