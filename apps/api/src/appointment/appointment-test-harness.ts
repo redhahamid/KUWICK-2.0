@@ -5,6 +5,7 @@ import {
   BookingCheck,
 } from './appointment-booking-validator.service';
 import { QueueTicketService } from '../clinical/queue-ticket.service';
+import { StaffNotificationService } from './staff-notification.service';
 import { PrismaService } from '../core/prisma.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { tenantContextStorage } from '../core/tenant-context';
@@ -194,7 +195,7 @@ export function buildAppointmentHarness(world: HarnessWorld = {}) {
   const queueTickets = {
     // What `addToQueue` really returns: the ticket, carrying the id of the
     // visit it created.
-    addToQueue: jest.fn(async () => ({ id: 'ticket-1', visitId: 'visit-9' })),
+    addToQueue: jest.fn(async () => ({ id: 'ticket-1', visitId: 'visit-9', displayNumber: 'A012' })),
   } as unknown as QueueTicketService;
 
   const bookingValidator = {
@@ -202,10 +203,23 @@ export function buildAppointmentHarness(world: HarnessWorld = {}) {
     availability: { clinicTimeZone: jest.fn(async () => 'Asia/Kuala_Lumpur') },
   } as unknown as AppointmentBookingValidator;
 
-  const service = new AppointmentService(scoped, bookingValidator, queueTickets, rawPrisma);
+  // Phase 5 — the inbox fan-out, observable but inert: what each lifecycle
+  // method CHOOSES to announce is behaviour worth pinning, the writing is
+  // StaffNotificationService's own spec's job.
+  const staffNotifications = {
+    notify: jest.fn(async () => 0),
+  } as unknown as StaffNotificationService;
+
+  const service = new AppointmentService(
+    scoped,
+    bookingValidator,
+    queueTickets,
+    rawPrisma,
+    staffNotifications,
+  );
 
   const run = <T>(fn: () => Promise<T>) =>
     tenantContextStorage.run({ tenantId: 't1', staffId: ACTOR, userId: 'u1' }, fn);
 
-  return { service, tx, scoped, queueTickets, bookingValidator, updates, creates, events, locks, run, byId };
+  return { service, tx, scoped, queueTickets, bookingValidator, staffNotifications, updates, creates, events, locks, run, byId };
 }

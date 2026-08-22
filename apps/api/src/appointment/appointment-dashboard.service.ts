@@ -1,5 +1,10 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { AppointmentCancellationReason, AppointmentStatus, Prisma } from '@prisma/client';
+import {
+  AppointmentCancellationReason,
+  AppointmentSource,
+  AppointmentStatus,
+  Prisma,
+} from '@prisma/client';
 import {
   TENANT_SCOPED_PRISMA,
   TenantScopedPrismaClient,
@@ -59,7 +64,10 @@ export interface DashboardQuery {
   to: string;
   tab: DashboardTab;
   staffId?: string;
-  serviceId?: string;
+  /** Phase 3H — multi-select. Empty/absent means "every service". */
+  serviceIds?: string[];
+  /** Phase 3H — booking source multi-select ("show me the online ones"). */
+  sources?: string[];
   search?: string;
   now?: Date;
 }
@@ -106,7 +114,7 @@ export class AppointmentDashboardService {
    * would make the bar say zero for every period but this one.
    */
   async stats(
-    query: Pick<DashboardQuery, 'clinicId' | 'staffId' | 'serviceId'>,
+    query: Pick<DashboardQuery, 'clinicId' | 'staffId' | 'serviceIds' | 'sources' | 'search'>,
     range: { start: Date; end: Date },
     timeZone: string,
   ) {
@@ -204,16 +212,6 @@ export class AppointmentDashboardService {
       // both real and useful today. Piece 4's call-back requests may replace
       // it; see HANDOFF.
       ...(query.tab === 'TO_BE_SCHEDULED' ? { scheduledEnd: { lt: now } } : {}),
-      ...(query.search?.trim()
-        ? {
-            patient: {
-              OR: [
-                { name: { contains: query.search.trim(), mode: 'insensitive' } },
-                { phone: { contains: query.search.trim(), mode: 'insensitive' } },
-              ],
-            },
-          }
-        : {}),
     };
 
     const rows = await this.prisma.appointment.findMany({
@@ -252,6 +250,10 @@ export class AppointmentDashboardService {
       scheduledStart: row.scheduledStart,
       scheduledEnd: row.scheduledEnd,
       notes: row.notes,
+      // PHASE 8 — so a reminder sent FROM THE LIST can carry the patient's
+      // own manage link. Staff-side response; the token was always readable
+      // through the detail endpoint.
+      manageToken: row.manageToken,
       patient: row.patient,
       provider: row.staff,
       service: { id: row.service.id, name: row.service.name, price: String(row.service.price) },
@@ -273,12 +275,12 @@ export class AppointmentDashboardService {
    * invented for it — and inventing one is how a waitlist entry ends up
    * occupying a slot nobody agreed to.
    */
-  async waitlist(query: Pick<DashboardQuery, 'clinicId' | 'staffId' | 'serviceId' | 'search'>) {
+  async waitlist(query: Pick<DashboardQuery, 'clinicId' | 'staffId' | 'serviceIds' | 'search'>) {
     const rows = await this.prisma.waitlistEntry.findMany({
       where: {
         clinicId: query.clinicId,
         status: { in: ['ACTIVE', 'OFFERED'] },
-        ...(query.serviceId ? { serviceId: query.serviceId } : {}),
+        ...(query.serviceIds?.length ? { serviceId: { in: query.serviceIds } } : {}),
         ...(query.staffId ? { preferredStaffId: query.staffId } : {}),
         ...(query.search?.trim()
           ? {
@@ -345,6 +347,68 @@ export class AppointmentDashboardService {
     });
   }
 
+  /**
+   * PHASE 8 — the setup checklist, computed, never stored.
+   *
+   * Six READS of what the clinic has actually configured, so the card can
+   * never disagree with reality and never needs "mark as done". Four are CORE
+   * — a booking page cannot work without them — and two are RECOMMENDED
+   * (reminders, change policy), because a clinic may deliberately want
+   * neither and must not carry a nag forever for a choice it made.
+   */
+  async setupChecklist(clinicId: string) {
+    const now = new Date();
+    const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const [settings, bookableServices, weeklyRoster, datedShifts, page, reminderRules] =
+      await Promise.all([
+        this.prisma.clinicBookingSettings.findFirst({
+          where: { clinicId },
+          select: { id: true },
+        }),
+        this.prisma.serviceCatalog.count({ where: { active: true, bookable: true } }),
+        // Effective TODAY — a plan that ended last month is not a roster.
+        this.prisma.doctorSchedule.count({
+          where: {
+            clinicId,
+            effectiveFrom: { lte: now },
+            OR: [{ effectiveTo: null }, { effectiveTo: { gte: now } }],
+          },
+        }),
+        this.prisma.providerShift.count({
+          where: { clinicId, shiftDate: { gte: now, lte: weekAhead } },
+        }),
+        this.prisma.clinicBookingPage.findFirst({
+          where: { clinicId },
+          select: { active: true, patientRescheduleMode: true, patientCancelMode: true },
+        }),
+        this.prisma.appointmentReminderRule.count({ where: { clinicId, active: true } }),
+      ]);
+
+    const items = [
+      { key: 'BOOKING_RULES', done: Boolean(settings), core: true },
+      { key: 'SERVICES', done: bookableServices > 0, core: true, count: bookableServices },
+      {
+        key: 'ROSTER',
+        done: weeklyRoster > 0 || datedShifts > 0,
+        core: true,
+        count: weeklyRoster + datedShifts,
+      },
+      { key: 'BOOKING_PAGE', done: Boolean(page?.active), core: true },
+      { key: 'REMINDERS', done: reminderRules > 0, core: false, count: reminderRules },
+      {
+        key: 'CHANGE_POLICY',
+        done: Boolean(page?.patientRescheduleMode && page?.patientCancelMode),
+        core: false,
+      },
+    ];
+
+    return {
+      clinicId,
+      items,
+      complete: items.filter((item) => item.core).every((item) => item.done),
+    };
+  }
+
   /** Clinic-local dates → the UTC instants bounding them. */
   private rangeOf(from: string, to: string, timeZone: string) {
     const start = parseDateOnly(from);
@@ -374,15 +438,37 @@ export class AppointmentDashboardService {
     };
   }
 
+  /**
+   * ONE filter definition for the rows AND the stats bar. The bar's whole
+   * point (§3I) is to describe the filtered worklist — "Ear Suction: 12
+   * upcoming, 3 no-shows" — and two filter implementations is how the counts
+   * stop matching the rows beneath them.
+   */
   private scope(
-    query: Pick<DashboardQuery, 'clinicId' | 'staffId' | 'serviceId'>,
+    query: Pick<DashboardQuery, 'clinicId' | 'staffId' | 'serviceIds' | 'sources' | 'search'>,
     range: { start: Date; end: Date },
   ): Prisma.AppointmentWhereInput {
+    // Unknown source strings are dropped rather than handed to Prisma, which
+    // refuses enum values it does not know with a 500 nobody can act on.
+    const sources = (query.sources ?? []).filter((value): value is AppointmentSource =>
+      Object.values(AppointmentSource).includes(value as AppointmentSource),
+    );
     return {
       clinicId: query.clinicId,
       scheduledStart: { gte: range.start, lt: range.end },
       ...(query.staffId ? { staffId: query.staffId } : {}),
-      ...(query.serviceId ? { serviceId: query.serviceId } : {}),
+      ...(query.serviceIds?.length ? { serviceId: { in: query.serviceIds } } : {}),
+      ...(sources.length ? { source: { in: sources } } : {}),
+      ...(query.search?.trim()
+        ? {
+            patient: {
+              OR: [
+                { name: { contains: query.search.trim(), mode: 'insensitive' } },
+                { phone: { contains: query.search.trim(), mode: 'insensitive' } },
+              ],
+            },
+          }
+        : {}),
       // The old half of a move is not a booking anybody has — see TAB_STATUSES.
       // Two clauses because the fact moved: historical rows carry the
       // deprecated RESCHEDULED status, and new ones are CANCELLED with a

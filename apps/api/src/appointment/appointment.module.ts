@@ -23,6 +23,14 @@ import {
   AppointmentReminderController,
 } from './appointment-dashboard.controller';
 import { AppointmentDashboardService } from './appointment-dashboard.service';
+import { StaffNotificationService } from './staff-notification.service';
+import { StaffNotificationController } from './staff-notification.controller';
+import { MediaService } from './media.service';
+import { MediaController } from './media.controller';
+import { AppointmentChangeRequestService } from './appointment-change-request.service';
+import { AppointmentChangeRequestController } from './appointment-change-request.controller';
+import { MessageTemplateService } from './message-template.service';
+import { MessageTemplateController } from './message-template.controller';
 import { ProviderShiftController } from './provider-shift.controller';
 import { ProviderShiftService } from './provider-shift.service';
 import { ServiceBookingConfigController } from './service-booking-config.controller';
@@ -65,6 +73,10 @@ import {
     // Pinned by `appointment-route-order.spec.ts` — reordering this list
     // breaks the dashboard silently.
     AppointmentDashboardController,
+    StaffNotificationController,
+    MediaController,
+    AppointmentChangeRequestController,
+    MessageTemplateController,
     AppointmentReminderController,
     AppointmentController,
     ClinicBookingSettingsController,
@@ -87,6 +99,10 @@ import {
     AppointmentService,
     ClinicBookingSettingsService,
     AppointmentDashboardService,
+    StaffNotificationService,
+    MediaService,
+    AppointmentChangeRequestService,
+    MessageTemplateService,
   ],
 })
 export class AppointmentModule {}

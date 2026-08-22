@@ -27,6 +27,9 @@ const SETTINGS_CATEGORIES: HubCategory[] = [
       // No data was deleted; the junction tables are untouched, and every old
       // URL redirects.
       { path: '/settings/scheduling/booking-rules', label: 'Branch Booking Rules' },
+      // PHASE 8 — the canonical home of message templates and reminder
+      // rules. The Booking Page tab links here instead of keeping a copy.
+      { path: '/settings/scheduling/communication', label: 'Communication & Reminders' },
       { path: '/appointments/roster', label: 'Roster & Availability →' },
       { path: '/appointments/services', label: 'Services & Booking →' },
       { path: '/appointments/booking-page', label: 'Public Booking Page →' },

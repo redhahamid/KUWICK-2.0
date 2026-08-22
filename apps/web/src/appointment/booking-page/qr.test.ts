@@ -165,3 +165,56 @@ describe('what goes in comes back out', () => {
     expect(readBack(matrix)).toBe(text);
   });
 });
+
+// ===========================================================================
+// PHASE 6J — THE CODE ACTUALLY SCANS.
+//
+// Structural pins above prove the symbol is well-formed; this proves the one
+// thing a printed poster depends on: an independent DECODER (jsQR — a real
+// scanner implementation, not this encoder's inverse) reads back exactly the
+// URL that went in, with the quiet zone the print/download paths draw.
+// ===========================================================================
+import jsQR from 'jsqr';
+
+function rasterise(matrix: boolean[][], scale = 8, quiet = 4): {
+  data: Uint8ClampedArray;
+  width: number;
+  height: number;
+} {
+  const modules = matrix.length + quiet * 2;
+  const size = modules * scale;
+  const data = new Uint8ClampedArray(size * size * 4).fill(255);
+  for (let row = 0; row < matrix.length; row += 1) {
+    for (let col = 0; col < matrix.length; col += 1) {
+      if (!matrix[row][col]) continue;
+      for (let y = 0; y < scale; y += 1) {
+        for (let x = 0; x < scale; x += 1) {
+          const px = ((row + quiet) * scale + y) * size + (col + quiet) * scale + x;
+          data[px * 4] = 0;
+          data[px * 4 + 1] = 0;
+          data[px * 4 + 2] = 0;
+        }
+      }
+    }
+  }
+  return { data, width: size, height: size };
+}
+
+describe('an independent scanner reads the code back', () => {
+  it('7. a real booking URL round-trips through jsQR exactly', () => {
+    const url = 'https://kuwick.up.railway.app/book/klinik-hijraa-bangi';
+    const matrix = qrMatrix(url);
+    expect(matrix).not.toBeNull();
+
+    const image = rasterise(matrix!);
+    const decoded = jsQR(image.data, image.width, image.height);
+    expect(decoded?.data).toBe(url);
+  });
+
+  it('8. a service-specific link decodes too — the deepest URL a poster carries', () => {
+    const url = 'https://kuwick.up.railway.app/book/klinik-hijraa-bangi/dental-scaling';
+    const matrix = qrMatrix(url);
+    const image = rasterise(matrix!);
+    expect(jsQR(image.data, image.width, image.height)?.data).toBe(url);
+  });
+});

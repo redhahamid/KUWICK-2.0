@@ -1,4 +1,5 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { CalendarDisplayMode } from '@prisma/client';
 import {
   TENANT_SCOPED_PRISMA,
   TenantScopedPrismaClient,
@@ -29,6 +30,12 @@ export const DEFAULT_BOOKING_SETTINGS = {
   minimumNoticeMinutes: 0,
   maxAdvanceDays: null as number | null,
   observePublicHolidays: false,
+  // PHASE 3 — the diary axis. Standard hours with nothing stated: the
+  // calendar falls back to a stable default band, never to the roster.
+  calendarDisplayMode: CalendarDisplayMode.STANDARD_HOURS as CalendarDisplayMode,
+  displayOpenTime: null as string | null,
+  displayCloseTime: null as string | null,
+  displayPaddingMinutes: 60,
 };
 
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -56,6 +63,10 @@ export class ClinicBookingSettingsService {
       minimumNoticeMinutes: row.minimumNoticeMinutes,
       maxAdvanceDays: row.maxAdvanceDays,
       observePublicHolidays: row.observePublicHolidays,
+      calendarDisplayMode: row.calendarDisplayMode,
+      displayOpenTime: row.displayOpenTime ? formatTime(row.displayOpenTime) : null,
+      displayCloseTime: row.displayCloseTime ? formatTime(row.displayCloseTime) : null,
+      displayPaddingMinutes: row.displayPaddingMinutes,
       configured: true,
     };
   }
@@ -90,8 +101,47 @@ export class ClinicBookingSettingsService {
     const tenantId = currentTenantId();
     const existing = await this.prisma.clinicBookingSettings.findFirst({
       where: { clinicId },
-      select: { id: true },
+      select: {
+        id: true,
+        calendarDisplayMode: true,
+        displayOpenTime: true,
+        displayCloseTime: true,
+        displayPaddingMinutes: true,
+      },
     });
+
+    // PHASE 3 — the diary-axis fields MERGE rather than overwrite: absent
+    // means "leave what is set", empty string means "clear it". The booking
+    // window and the calendar display are two different decisions on two
+    // different cards, and saving one must not silently reset the other.
+    const openRaw = dto.displayOpenTime === undefined ? undefined : dto.displayOpenTime.trim() || null;
+    const closeRaw =
+      dto.displayCloseTime === undefined ? undefined : dto.displayCloseTime.trim() || null;
+    if ((openRaw && !HHMM.test(openRaw)) || (closeRaw && !HHMM.test(closeRaw))) {
+      throw new BadRequestException('Calendar hours must be written as HH:MM, e.g. 09:00.');
+    }
+    const displayOpenTime =
+      openRaw === undefined ? (existing?.displayOpenTime ?? null) : openRaw ? parseTimeToDate(openRaw) : null;
+    const displayCloseTime =
+      closeRaw === undefined
+        ? (existing?.displayCloseTime ?? null)
+        : closeRaw
+          ? parseTimeToDate(closeRaw)
+          : null;
+    if (
+      displayOpenTime &&
+      displayCloseTime &&
+      timeToMinutesOfDay(displayCloseTime) <= timeToMinutesOfDay(displayOpenTime)
+    ) {
+      throw new BadRequestException(
+        'The calendar closing time must be after the opening time. A branch that works through midnight should use the 24-hour display instead.',
+      );
+    }
+    const displayPaddingMinutes =
+      dto.displayPaddingMinutes ?? existing?.displayPaddingMinutes ?? 60;
+    if (displayPaddingMinutes < 0 || displayPaddingMinutes > 240) {
+      throw new BadRequestException('Calendar padding must be between 0 and 240 minutes.');
+    }
 
     const data = {
       firstSessionTime: first,
@@ -99,6 +149,13 @@ export class ClinicBookingSettingsService {
       minimumNoticeMinutes: dto.minimumNoticeMinutes,
       maxAdvanceDays: dto.maxAdvanceDays ?? null,
       observePublicHolidays: dto.observePublicHolidays ?? false,
+      calendarDisplayMode:
+        dto.calendarDisplayMode ??
+        existing?.calendarDisplayMode ??
+        CalendarDisplayMode.STANDARD_HOURS,
+      displayOpenTime,
+      displayCloseTime,
+      displayPaddingMinutes,
     };
 
     if (existing) {

@@ -7,6 +7,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Radio,
   Select,
   Space,
   Switch,
@@ -16,11 +17,13 @@ import {
   message,
 } from 'antd';
 import { CopyOutlined, PrinterOutlined, DownloadOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../../core/api-client';
-import { useBookingPage, useSaveBookingPage, useSaveReminderRules } from '../hooks/useBookingPage';
+import { useBookingPage, useSaveBookingPage } from '../hooks/useBookingPage';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
 import { useAppointmentServices } from '../hooks/useServiceConfig';
 import { qrSvg } from './qr';
+import { MediaUploadField, useMediaPreviewUrl } from '../media/MediaUploadField';
 import { KuwickStatusTag } from '../../design-system/kuwick';
 
 const { Text, Paragraph } = Typography;
@@ -49,6 +52,8 @@ function BookingPagePreview({
   services: { id: string; name: string; durationMinutesDefault: number }[];
 }) {
   const bm = language === 'ms';
+  // media:// refs need the authed blob route; plain URLs pass through.
+  const logoPreview = useMediaPreviewUrl(logoUrl ?? null);
   const monogram = (displayName ?? '')
     .split(/\s+/)
     .slice(0, 2)
@@ -68,7 +73,7 @@ function BookingPagePreview({
         <div className="kw-bp-phone-screen">
           <div className="kw-bp-mini-hero">
             <span className="kw-bp-mini-mark">
-              {logoUrl ? <img src={logoUrl} alt="" /> : monogram || 'KH'}
+              {logoPreview ? <img src={logoPreview} alt="" /> : monogram || 'KH'}
             </span>
             <div style={{ minWidth: 0 }}>
               <div className="kw-bp-mini-name">{displayName || 'Your clinic name'}</div>
@@ -118,14 +123,6 @@ function BookingPagePreview({
   );
 }
 
-const REMINDER_CHOICES = [
-  { value: 2880, label: '2 days before' },
-  { value: 1440, label: '1 day before' },
-  { value: 240, label: '4 hours before' },
-  { value: 120, label: '2 hours before' },
-  { value: 60, label: '1 hour before' },
-];
-
 interface BookingPageSettingsProps {
   clinicId?: string;
 }
@@ -143,17 +140,37 @@ interface BookingPageSettingsProps {
  */
 export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
   const [form] = Form.useForm();
+  const navigate = useNavigate();
   const [dirty, setDirty] = useState(false);
   const { data, isFetching } = useBookingPage(clinicId);
   const save = useSaveBookingPage();
   const canConfigure = useCan('appointment.configure');
-  const saveReminders = useSaveReminderRules();
-  const [reminderOffsets, setReminderOffsets] = useState<number[]>([]);
 
   useEffect(() => {
     if (!data) return;
-    form.setFieldsValue(
-      data.page ?? {
+    const page = data.page as (typeof data.page & {
+      patientRescheduleMode?: string | null;
+      patientCancelMode?: string | null;
+      patientChangeCutoffMinutes?: number | null;
+      allowPatientReschedule?: boolean;
+      allowPatientCancel?: boolean;
+      patientChangeCutoffHours?: number;
+    }) | null;
+    // Phase 7 — the tri-state, seeded from the stored policy or the frozen
+    // booleans (true was always instant, false was always "ring us"). A NEW
+    // page starts on the recommended workflow: request approval.
+    const modeOf = (stored: string | null | undefined, legacy: boolean | undefined) =>
+      stored ?? (legacy === undefined ? 'REQUEST_APPROVAL' : legacy ? 'INSTANT' : 'NOT_ALLOWED');
+    const cutoffMinutes =
+      page?.patientChangeCutoffMinutes ?? (page?.patientChangeCutoffHours ?? 4) * 60;
+    const cutoff =
+      cutoffMinutes % (24 * 60) === 0 && cutoffMinutes > 0
+        ? { cutoffValue: cutoffMinutes / (24 * 60), cutoffUnit: 'days' }
+        : cutoffMinutes % 60 === 0
+          ? { cutoffValue: cutoffMinutes / 60, cutoffUnit: 'hours' }
+          : { cutoffValue: cutoffMinutes, cutoffUnit: 'minutes' };
+    form.setFieldsValue({
+      ...(page ?? {
         slug: '',
         displayName: '',
         language: 'en',
@@ -162,12 +179,11 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
         requireNric: false,
         showReasonField: true,
         active: false,
-        allowPatientReschedule: true,
-        allowPatientCancel: true,
-        patientChangeCutoffHours: 4,
-      },
-    );
-    setReminderOffsets(data.reminderRules.map((rule) => rule.offsetMinutes));
+      }),
+      patientRescheduleMode: modeOf(page?.patientRescheduleMode, page?.allowPatientReschedule),
+      patientCancelMode: modeOf(page?.patientCancelMode, page?.allowPatientCancel),
+      ...cutoff,
+    });
     setDirty(false);
   }, [data, form]);
 
@@ -188,9 +204,21 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
   const submit = async () => {
     if (!clinicId) return;
     const values = await form.validateFields();
+    // Phase 7 — value × unit → minutes; the legacy booleans ride along so an
+    // older reader of the row still sees a truthful coarse answer.
+    const unitMinutes =
+      values.cutoffUnit === 'days' ? 24 * 60 : values.cutoffUnit === 'hours' ? 60 : 1;
+    const cutoffMinutes = Math.round((values.cutoffValue ?? 0) * unitMinutes);
+    const { cutoffValue: _v, cutoffUnit: _u, ...rest } = values;
     try {
-      await save.mutateAsync({ ...values, clinicId });
-      await saveReminders.mutateAsync({ clinicId, offsets: reminderOffsets });
+      await save.mutateAsync({
+        ...rest,
+        clinicId,
+        patientChangeCutoffMinutes: cutoffMinutes,
+        patientChangeCutoffHours: Math.max(0, Math.round(cutoffMinutes / 60)),
+        allowPatientReschedule: values.patientRescheduleMode !== 'NOT_ALLOWED',
+        allowPatientCancel: values.patientCancelMode !== 'NOT_ALLOWED',
+      });
       setDirty(false);
       message.success('Booking page saved');
     } catch (error) {
@@ -318,8 +346,11 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
                   >
                     <Input addonBefore={`${publicOrigin}/book/`} placeholder="hijraa-bangi" />
                   </Form.Item>
-                  <Form.Item name="logoUrl" label="Logo URL">
-                    <Input placeholder="https://…" />
+                  <Form.Item name="logoUrl" label="Logo" valuePropName="value" trigger="onChange">
+                    <MediaUploadField
+                      kind="CLINIC_LOGO"
+                      hint="Shown at the top of the booking page. JPG, PNG or WebP, up to 2 MB."
+                    />
                   </Form.Item>
                   <Form.Item name="language" label="Language">
                     <Select
@@ -376,32 +407,37 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
               label: 'Communication',
               children: (
                 <>
-                  <Form.Item name="confirmationMessage" label="Confirmation message">
+                  <Form.Item
+                    name="confirmationMessage"
+                    label="Confirmation message"
+                    tooltip="Shown on the booking page's own confirmation screen, right after a patient books."
+                  >
                     <Input.TextArea
                       rows={3}
                       placeholder="Your appointment is confirmed. Please arrive 10 minutes early."
                     />
                   </Form.Item>
-                  <Text strong>Reminders</Text>
+
+                  {/* PHASE 8 — one store. Templates and reminder timing moved
+                      to Clinic Settings; this tab links there instead of
+                      keeping a second editor that could disagree with it. */}
+                  <Text strong>Message templates &amp; reminders</Text>
                   <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
-                    Choose as many as you want, or none. These build the counter's reminder
-                    worklist for staff to work through — they do not send anything by
-                    themselves. The one channel today is manual WhatsApp: staff press Open
-                    WhatsApp and Kuwick records that it was opened, never that a message was
-                    delivered. Automatic sending will only appear here if a real messaging
-                    integration is connected.
+                    The wording of every WhatsApp message (in English and Bahasa Malaysia) and the
+                    reminder schedule
+                    {data?.reminderRules.length
+                      ? ` — currently ${data.reminderRules.length} reminder rule${
+                          data.reminderRules.length === 1 ? '' : 's'
+                        } —`
+                      : ' — currently no reminder rules —'}{' '}
+                    live in one place for the whole clinic.
                   </Paragraph>
-                  <Select
-                    mode="multiple"
-                    style={{ width: '100%', maxWidth: 420 }}
-                    value={reminderOffsets}
-                    onChange={(value) => {
-                      setReminderOffsets(value);
-                      setDirty(true);
-                    }}
-                    options={REMINDER_CHOICES}
-                    placeholder="No reminders"
-                  />
+                  <Button
+                    onClick={() => navigate('/settings/scheduling/communication')}
+                    data-testid="open-communication-settings"
+                  >
+                    Open Communication &amp; Reminders
+                  </Button>
                 </>
               ),
             },
@@ -410,26 +446,50 @@ export function BookingPageSettings({ clinicId }: BookingPageSettingsProps) {
               label: 'Appointment Changes',
               children: (
                 <>
-                  <Form.Item
-                    name="allowPatientReschedule"
-                    valuePropName="checked"
-                    label="Patients may move their own appointment"
-                  >
-                    <Switch />
+                  {/* PHASE 7 — three answers, not two. "Request clinic
+                      approval" is the recommended clinic workflow: the
+                      patient asks, the booking stands until you decide. */}
+                  <Form.Item name="patientRescheduleMode" label="Patient rescheduling">
+                    <Radio.Group>
+                      <Space direction="vertical" size={4}>
+                        <Radio value="NOT_ALLOWED">Not allowed — the page says to ring you</Radio>
+                        <Radio value="REQUEST_APPROVAL">
+                          Request clinic approval (recommended) — you approve or decline each request
+                        </Radio>
+                        <Radio value="INSTANT">Allow instantly — the patient moves it themselves</Radio>
+                      </Space>
+                    </Radio.Group>
+                  </Form.Item>
+                  <Form.Item name="patientCancelMode" label="Patient cancellation">
+                    <Radio.Group>
+                      <Space direction="vertical" size={4}>
+                        <Radio value="NOT_ALLOWED">Not allowed — the page says to ring you</Radio>
+                        <Radio value="REQUEST_APPROVAL">
+                          Request clinic approval (recommended) — a reason is always required
+                        </Radio>
+                        <Radio value="INSTANT">Allow instantly</Radio>
+                      </Space>
+                    </Radio.Group>
                   </Form.Item>
                   <Form.Item
-                    name="allowPatientCancel"
-                    valuePropName="checked"
-                    label="Patients may cancel their own appointment"
-                  >
-                    <Switch />
-                  </Form.Item>
-                  <Form.Item
-                    name="patientChangeCutoffHours"
-                    label="Up to how many hours before"
+                    label="Changes and requests close before the appointment"
                     extra="After this, the manage-booking page asks them to ring you instead."
                   >
-                    <InputNumber min={0} max={720} addonAfter="hours" />
+                    <Space.Compact>
+                      <Form.Item name="cutoffValue" noStyle>
+                        <InputNumber min={0} max={720} style={{ width: 90 }} />
+                      </Form.Item>
+                      <Form.Item name="cutoffUnit" noStyle>
+                        <Select
+                          style={{ width: 110 }}
+                          options={[
+                            { value: 'minutes', label: 'minutes' },
+                            { value: 'hours', label: 'hours' },
+                            { value: 'days', label: 'days' },
+                          ]}
+                        />
+                      </Form.Item>
+                    </Space.Compact>
                   </Form.Item>
                 </>
               ),

@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Avatar, Button, DatePicker, Dropdown, Empty, Input, Modal, Segmented, Select, Space, Table, Tooltip, Typography, message } from 'antd';
 import { EllipsisOutlined, WhatsAppOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
+import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { AppointmentStatus } from '@kuwick/shared';
 import { KuwickStatusTag } from '../../design-system/kuwick';
@@ -15,10 +16,10 @@ import {
   DashboardTab,
   ListTab,
   useAppointmentDashboard,
-  useMarkReminderSent,
 } from '../hooks/useAppointmentDashboard';
 import { useWaitlist } from '../hooks/useWaitlist';
-import { whatsappLink } from '../whatsappReminder';
+import { MessagePatientModal } from '../messages/MessagePatientModal';
+import { RemindersDueButton } from '../messages/RemindersDueDrawer';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
 import { RescheduleAppointmentDrawer } from '../RescheduleAppointmentDrawer';
 import { AppointmentDrawer } from '../calendar/AppointmentDrawer';
@@ -31,11 +32,12 @@ import {
 } from '../appointment-status.constants';
 import { getDoctorColor } from '../calendar/doctor-color';
 import {
-  useArrivedAppointment,
   useCancelAppointment,
   useConfirmAppointment,
+  useMarkArrivedAppointment,
   useNoShowAppointment,
 } from '../hooks/useAppointments';
+import { CheckInRegistrationDrawer } from '../checkin/CheckInRegistrationDrawer';
 
 const { Text } = Typography;
 
@@ -82,7 +84,10 @@ interface AppointmentListViewProps {
  * linked invoices actually came to. Calling the first one "sales" implied a
  * forecast it was never entitled to make.
  */
-export function AppointmentListView({ clinicId, clinicName, onBook }: AppointmentListViewProps) {
+// clinicName stays on the props interface for the module page's sake, but the
+// list no longer builds any message text itself — the template modal resolves
+// the patient-facing identity on its own.
+export function AppointmentListView({ clinicId, onBook }: AppointmentListViewProps) {
   const { data: staff } = useStaff();
   const { data: services } = useServices();
 
@@ -93,9 +98,22 @@ export function AppointmentListView({ clinicId, clinicName, onBook }: Appointmen
   const [range, setRange] = useState<[Dayjs, Dayjs]>(defaultRangeFor('UPCOMING'));
   const [rangeChosen, setRangeChosen] = useState(false);
   const [staffId, setStaffId] = useState<string>();
-  const [serviceId, setServiceId] = useState<string>();
+  const [serviceIds, setServiceIds] = useState<string[]>([]);
+  const [sources, setSources] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Phase 5 — a notification's "View appointment" lands here with ?open=<id>;
+  // the drawer opens once and the param is consumed so refresh/back stay sane.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const open = searchParams.get('open');
+    if (!open) return;
+    setSelectedId(open);
+    const next = new URLSearchParams(searchParams);
+    next.delete('open');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const changeTab = (next: ListTab) => {
     setTab(next);
@@ -108,15 +126,28 @@ export function AppointmentListView({ clinicId, clinicName, onBook }: Appointmen
     to: range[1].format('YYYY-MM-DD'),
     tab: (tab === 'WAITLIST' ? 'UPCOMING' : tab) as DashboardTab,
     staffId,
-    serviceId,
+    serviceIds,
+    sources,
     search: search.trim() || undefined,
   });
   const { data: waitlist, isFetching: loadingWaitlist } = useWaitlist({
     clinicId,
     staffId,
-    serviceId,
+    // The endpoint reads a comma list; a waitlist entry has no source.
+    serviceId: serviceIds.length ? serviceIds.join(',') : undefined,
     search: search.trim() || undefined,
   });
+
+  // Phase 3I — the KPI band describes the FILTERED worklist, and says so.
+  const filtersActive =
+    Boolean(staffId) || serviceIds.length > 0 || sources.length > 0 || search.trim().length > 0;
+
+  const clearFilters = () => {
+    setStaffId(undefined);
+    setServiceIds([]);
+    setSources([]);
+    setSearch('');
+  };
 
   const doctors = useMemo(
     () =>
@@ -128,7 +159,7 @@ export function AppointmentListView({ clinicId, clinicName, onBook }: Appointmen
 
   return (
     <div className="kw-appt-list">
-      <StatsBar stats={data?.stats} loading={isFetching && !data} />
+      <StatsBar stats={data?.stats} loading={isFetching && !data} filtered={filtersActive} />
 
       <div className="kw-appt-controls">
         <Segmented
@@ -160,15 +191,30 @@ export function AppointmentListView({ clinicId, clinicName, onBook }: Appointmen
             style={{ minWidth: 170 }}
           />
           <Select
+            mode="multiple"
+            maxTagCount={1}
             placeholder="Any service"
-            value={serviceId}
-            onChange={setServiceId}
+            value={serviceIds}
+            onChange={setServiceIds}
             allowClear
             showSearch
             optionFilterProp="label"
             options={services?.map((service) => ({ value: service.id, label: service.name }))}
             style={{ minWidth: 190 }}
           />
+          {tab !== 'WAITLIST' ? (
+            <Select
+              mode="multiple"
+              maxTagCount={1}
+              placeholder="Any source"
+              value={sources}
+              onChange={setSources}
+              allowClear
+              optionFilterProp="label"
+              options={Object.entries(SOURCE_LABELS).map(([value, label]) => ({ value, label }))}
+              style={{ minWidth: 150 }}
+            />
+          ) : null}
           <Input.Search
             placeholder="Patient name or phone"
             value={search}
@@ -176,8 +222,60 @@ export function AppointmentListView({ clinicId, clinicName, onBook }: Appointmen
             allowClear
             style={{ width: 220 }}
           />
+          {/* PHASE 8 — the reminder rules' worklist, where the counter works
+              it: beside the list it reminds from. */}
+          <RemindersDueButton clinicId={clinicId} />
         </Space>
       </div>
+
+      {/* Phase 3H — the active narrowing said out loud, one chip each. */}
+      {filtersActive ? (
+        <div className="kw-cal-active-filters" data-testid="list-active-filters">
+          {staffId ? (
+            <span className="kw-filter-chip">
+              {doctors.find((doctor) => doctor.id === staffId)?.fullName ?? 'Doctor'}
+              <button type="button" aria-label="Remove doctor filter" onClick={() => setStaffId(undefined)}>
+                ×
+              </button>
+            </span>
+          ) : null}
+          {serviceIds.map((id) => (
+            <span key={id} className="kw-filter-chip">
+              {services?.find((service) => service.id === id)?.name ?? 'Service'}
+              <button
+                type="button"
+                aria-label="Remove service filter"
+                onClick={() => setServiceIds((current) => current.filter((value) => value !== id))}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          {sources.map((value) => (
+            <span key={value} className="kw-filter-chip">
+              {SOURCE_LABELS[value as AppointmentSource] ?? value}
+              <button
+                type="button"
+                aria-label="Remove source filter"
+                onClick={() => setSources((current) => current.filter((item) => item !== value))}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          {search.trim() ? (
+            <span className="kw-filter-chip">
+              “{search.trim()}”
+              <button type="button" aria-label="Clear the patient search" onClick={() => setSearch('')}>
+                ×
+              </button>
+            </span>
+          ) : null}
+          <Button type="link" size="small" onClick={clearFilters}>
+            Clear all
+          </Button>
+        </div>
+      ) : null}
 
       {tab === 'WAITLIST' ? (
         <Table
@@ -259,7 +357,6 @@ export function AppointmentListView({ clinicId, clinicName, onBook }: Appointmen
           rows={data?.rows ?? []}
           loading={isFetching}
           tab={tab as DashboardTab}
-          clinicName={clinicName}
           onOpen={setSelectedId}
           onBook={onBook}
         />
@@ -288,7 +385,15 @@ function defaultRangeFor(tab: DashboardTab): [Dayjs, Dayjs] {
   return [dayjs().startOf('day'), dayjs().add(30, 'day').endOf('day')];
 }
 
-function StatsBar({ stats, loading }: { stats?: DashboardStats; loading: boolean }) {
+function StatsBar({
+  stats,
+  loading,
+  filtered = false,
+}: {
+  stats?: DashboardStats;
+  loading: boolean;
+  filtered?: boolean;
+}) {
   const cells = [
     { key: 'upcoming', label: 'Upcoming', value: stats?.upcoming, tone: 'active' as const },
     { key: 'requests', label: 'Requests', value: stats?.requests, tone: 'attention' as const },
@@ -310,6 +415,9 @@ function StatsBar({ stats, loading }: { stats?: DashboardStats; loading: boolean
 
   return (
     <div className="kw-appt-stats" data-testid="appointment-stats" data-loading={loading}>
+      {/* §3I — these figures describe the FILTERED worklist. Unlabelled, a
+          service-filtered "Upcoming 12" reads as the whole clinic's twelve. */}
+      {filtered ? <span className="kw-appt-stats-filtered">Filtered results</span> : null}
       {cells.map((cell) => (
         <div key={cell.key} className="kw-appt-stat" data-tone={cell.tone}>
           <span className="kw-appt-stat-label">{cell.label}</span>
@@ -332,20 +440,20 @@ function AppointmentTable({
   rows,
   loading,
   tab,
-  clinicName,
   onOpen,
   onBook,
 }: {
   rows: DashboardRow[];
   loading: boolean;
   tab: DashboardTab;
-  clinicName: string;
   onOpen: (id: string) => void;
   onBook: () => void;
 }) {
-  const markReminder = useMarkReminderSent();
   const confirmAppointment = useConfirmAppointment();
-  const checkInAppointment = useArrivedAppointment();
+  const markArrived = useMarkArrivedAppointment();
+  // Phase 4 — the primary is REGISTER / CHECK IN, which opens the
+  // registration review; nothing is created until Confirm & add to queue.
+  const [checkingInId, setCheckingInId] = useState<string | null>(null);
   const permEdit = useCan('appointment.edit');
   const permCreate = useCan('appointment.create');
   const permCheckIn = useCan('appointment.check_in');
@@ -366,27 +474,11 @@ function AppointmentTable({
     }
   };
 
-  const sendReminder = async (row: DashboardRow) => {
-    const link = whatsappLink({
-      phone: row.patient.phone,
-      patientName: row.patient.name,
-      scheduledStart: row.scheduledStart,
-      clinicName,
-    });
-    if (!link) {
-      message.warning('This patient has no usable phone number on file.');
-      return;
-    }
-    // Opened FIRST. If the popup is blocked or the staff member changes their
-    // mind, nothing has been recorded — a "reminder sent" mark for a message
-    // that never opened is worse than no mark at all.
-    window.open(link, '_blank', 'noopener,noreferrer');
-    try {
-      await markReminder.mutateAsync(row.id);
-    } catch {
-      message.error('WhatsApp opened, but the reminder could not be recorded.');
-    }
-  };
+  // PHASE 8 — the Remind button opens the SAME template modal as the drawer:
+  // the message comes from the clinic's own wording through the one renderer,
+  // in either language, previewed before anything opens. The modal's log
+  // stamps reminderSentAt server-side, so the Reminder column stays fed.
+  const [messagingRow, setMessagingRow] = useState<DashboardRow | null>(null);
 
   return (
     <>
@@ -532,6 +624,19 @@ function AppointmentTable({
                       title: permReschedule ? undefined : permissionHint('move an appointment'),
                     }
                   : null,
+                // Phase 4D — "they're here" in one keystroke, WITHOUT creating
+                // the visit. Registration and the queue happen at Register /
+                // Check in.
+                ARRIVABLE_FROM_STATUSES.includes(row.status as AppointmentStatus)
+                  ? {
+                      key: 'arrived',
+                      label: 'Mark arrived',
+                      disabled: !permCheckIn,
+                      title: permCheckIn
+                        ? 'Records that the patient is at the desk — registration and the queue happen at Register / Check in'
+                        : permissionHint('mark a patient as arrived'),
+                    }
+                  : null,
                 ARRIVABLE_FROM_STATUSES.includes(row.status as AppointmentStatus)
                   ? {
                       key: 'no-show',
@@ -577,11 +682,9 @@ function AppointmentTable({
                         size="small"
                         type="primary"
                         disabled={!permCheckIn}
-                        onClick={() =>
-                          act(checkInAppointment.mutateAsync({ id: row.id }), 'Could not check in.')
-                        }
+                        onClick={() => setCheckingInId(row.id)}
                       >
-                        Check in
+                        Register / Check in
                       </Button>
                     </Tooltip>
                   ) : (
@@ -596,6 +699,9 @@ function AppointmentTable({
                         items: menuItems,
                         onClick: ({ key }) => {
                           if (key === 'reschedule') setRescheduling(row);
+                          if (key === 'arrived') {
+                            act(markArrived.mutateAsync({ id: row.id }), 'Could not mark arrived.');
+                          }
                           if (key === 'no-show') {
                             Modal.confirm({
                               title: 'Mark as a no-show?',
@@ -652,7 +758,7 @@ function AppointmentTable({
                   disabled={!row.patient.phone}
                   onClick={(event) => {
                     event.stopPropagation();
-                    sendReminder(row);
+                    setMessagingRow(row);
                   }}
                 />
               </Tooltip>
@@ -660,6 +766,31 @@ function AppointmentTable({
           },
         ]}
       />
+      {checkingInId ? (
+        <CheckInRegistrationDrawer
+          appointmentId={checkingInId}
+          onClose={() => setCheckingInId(null)}
+          onCheckedIn={() =>
+            queryClient.invalidateQueries({ queryKey: ['appointment-dashboard'] })
+          }
+        />
+      ) : null}
+      {messagingRow ? (
+        <MessagePatientModal
+          open
+          onClose={() => setMessagingRow(null)}
+          clinicId={messagingRow.clinicId}
+          appointment={{
+            id: messagingRow.id,
+            scheduledStart: messagingRow.scheduledStart,
+            manageToken: messagingRow.manageToken ?? null,
+            patient: messagingRow.patient,
+            staff: { fullName: messagingRow.provider.fullName },
+            service: { name: messagingRow.service.name },
+          }}
+          defaultTemplateKey="REMINDER"
+        />
+      ) : null}
       <RescheduleAppointmentDrawer
         appointment={
           rescheduling

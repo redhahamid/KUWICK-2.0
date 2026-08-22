@@ -8,6 +8,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Radio,
   Select,
   Space,
   TimePicker,
@@ -22,6 +23,7 @@ import { permissionHint, useCan } from '../core/hooks/useCan';
 import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { ApiError } from '../core/api-client';
 import {
+  CalendarDisplayMode,
   useAddClosedDate,
   useBookingSettings,
   useClosedDates,
@@ -72,14 +74,59 @@ export function BookingRulesPage() {
   const [holidayDate, setHolidayDate] = useState<Dayjs | null>(null);
   const [holidayReason, setHolidayReason] = useState('');
 
+  // PHASE 3 — the diary axis card's own state. Not part of the booking-window
+  // form: display hours and booking hours are two different decisions, and a
+  // clinic changing how its diary LOOKS must not be forced to re-assert when
+  // it BOOKS.
+  const [displayMode, setDisplayMode] = useState<CalendarDisplayMode>('STANDARD_HOURS');
+  const [displayOpen, setDisplayOpen] = useState<Dayjs | undefined>();
+  const [displayClose, setDisplayClose] = useState<Dayjs | undefined>();
+  const [displayPadding, setDisplayPadding] = useState<number>(60);
+  // Synced once per CLINIC, not on every refetch: a background refetch that
+  // re-runs this while somebody is mid-edit silently reverts their choice
+  // just before they press Save.
+  const [syncedClinicId, setSyncedClinicId] = useState<string>();
+
   useEffect(() => {
     if (!settings) return;
     form.setFieldsValue({
-      firstSessionTime: toPicker(settings.firstSessionTime),
-      lastSessionTime: toPicker(settings.lastSessionTime),
+      firstSessionTime: toPicker(settings.firstSessionTime ?? undefined),
+      lastSessionTime: toPicker(settings.lastSessionTime ?? undefined),
       minimumNoticeMinutes: settings.minimumNoticeMinutes,
     });
-  }, [settings, form]);
+    if (settings.clinicId === syncedClinicId) return;
+    setSyncedClinicId(settings.clinicId);
+    setDisplayMode(settings.calendarDisplayMode);
+    setDisplayOpen(toPicker(settings.displayOpenTime ?? undefined));
+    setDisplayClose(toPicker(settings.displayCloseTime ?? undefined));
+    setDisplayPadding(settings.displayPaddingMinutes);
+  }, [settings, form, syncedClinicId]);
+
+  const saveDisplay = async () => {
+    if (!settings) return;
+    if (displayMode === 'STANDARD_HOURS' && displayOpen && displayClose && !displayClose.isAfter(displayOpen)) {
+      message.error('The closing time must be after the opening time. A branch working through midnight should choose 24 hours.');
+      return;
+    }
+    try {
+      // The FULL document: the server treats absent session times as "clear",
+      // so the card re-sends the stored booking window untouched.
+      await saveSettings.mutateAsync({
+        firstSessionTime: settings.firstSessionTime ?? '',
+        lastSessionTime: settings.lastSessionTime ?? '',
+        minimumNoticeMinutes: settings.minimumNoticeMinutes,
+        maxAdvanceDays: settings.maxAdvanceDays ?? undefined,
+        observePublicHolidays: settings.observePublicHolidays,
+        calendarDisplayMode: displayMode,
+        displayOpenTime: displayOpen ? fromPicker(displayOpen) : '',
+        displayCloseTime: displayClose ? fromPicker(displayClose) : '',
+        displayPaddingMinutes: displayPadding,
+      });
+      message.success('Calendar display saved. The diary keeps this shape whoever is rostered.');
+    } catch (error) {
+      message.error(error instanceof ApiError ? error.message : 'Could not save the calendar display.');
+    }
+  };
 
   const saveWindow = async (values: WindowFormValues) => {
     try {
@@ -87,6 +134,10 @@ export function BookingRulesPage() {
         firstSessionTime: fromPicker(values.firstSessionTime),
         lastSessionTime: fromPicker(values.lastSessionTime),
         minimumNoticeMinutes: values.minimumNoticeMinutes ?? 0,
+        // Not on this form, but overwrite-semantics fields: re-send what is
+        // stored so saving the window cannot silently reset them.
+        maxAdvanceDays: settings?.maxAdvanceDays ?? undefined,
+        observePublicHolidays: settings?.observePublicHolidays ?? false,
       });
       message.success('Booking rules saved.');
     } catch (error) {
@@ -131,7 +182,7 @@ export function BookingRulesPage() {
           showIcon
           className="kw-settings-alert"
           message="These are the defaults"
-          description="Nobody has set this clinic's booking rules yet, so it books 09:00–17:00 with no minimum notice. Save to make it the clinic's own."
+          description="Nobody has set this clinic's booking rules yet: the booking window narrows nothing, there is no minimum notice, and the calendar draws a standard 07:00–21:00 day. Save to make them the clinic's own."
         />
       )}
 
@@ -201,6 +252,101 @@ export function BookingRulesPage() {
               Save booking rules
             </Button>
           </Form>
+        </Card>
+
+        <Card
+          title="Calendar display"
+          className="kw-settings-card"
+          loading={isLoading}
+          data-testid="calendar-display-card"
+          extra={<Typography.Text type="secondary">Display only</Typography.Text>}
+        >
+          <Typography.Paragraph type="secondary" className="kw-settings-note">
+            The hours the staff diary draws. Availability comes from the roster and the booking
+            window — this only decides the calendar&apos;s shape, so it holds still whoever is
+            rostered.
+          </Typography.Paragraph>
+
+          <Space direction="vertical" size={14} style={{ width: '100%' }}>
+            <Radio.Group
+              value={displayMode}
+              onChange={(event) => setDisplayMode(event.target.value as CalendarDisplayMode)}
+            >
+              <Space direction="vertical" size={6}>
+                <Radio value="STANDARD_HOURS">
+                  Standard hours — the diary shows the branch&apos;s hours with breathing room
+                </Radio>
+                <Radio value="TWENTY_FOUR_HOURS">
+                  24 hours — the diary always runs 00:00 to 24:00
+                </Radio>
+              </Space>
+            </Radio.Group>
+
+            {displayMode === 'STANDARD_HOURS' ? (
+              <Space size={16} wrap>
+                <div>
+                  <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+                    Opens
+                  </Typography.Text>
+                  <TimePicker
+                    format={TIME_FORMAT}
+                    minuteStep={15}
+                    needConfirm={false}
+                    value={displayOpen}
+                    onChange={(value) => setDisplayOpen(value ?? undefined)}
+                    placeholder="08:00"
+                  />
+                </div>
+                <div>
+                  <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+                    Closes
+                  </Typography.Text>
+                  <TimePicker
+                    format={TIME_FORMAT}
+                    minuteStep={15}
+                    needConfirm={false}
+                    value={displayClose}
+                    onChange={(value) => setDisplayClose(value ?? undefined)}
+                    placeholder="20:00"
+                  />
+                </div>
+                <div>
+                  <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+                    Padding
+                  </Typography.Text>
+                  <InputNumber
+                    min={0}
+                    max={240}
+                    step={30}
+                    value={displayPadding}
+                    onChange={(value) => setDisplayPadding(value ?? 60)}
+                    addonAfter="min"
+                    style={{ width: 130 }}
+                  />
+                </div>
+              </Space>
+            ) : null}
+
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {displayMode === 'TWENTY_FOUR_HOURS'
+                ? 'The whole day stays scrollable; the diary opens near the work.'
+                : 'Bookings outside these hours stay visible through a notice on the calendar, with a one-tap full-day view.'}
+            </Typography.Text>
+
+            <Button
+              type="primary"
+              onClick={saveDisplay}
+              loading={saveSettings.isPending}
+              disabled={!canConfigure}
+              title={
+                canConfigure
+                  ? undefined
+                  : permissionHint('change how appointments and services are configured')
+              }
+            >
+              Save calendar display
+            </Button>
+          </Space>
         </Card>
 
         <Card title="Closed dates" className="kw-settings-card" loading={loadingDates}>

@@ -195,7 +195,14 @@ describe('Public booking surface security (e2e)', () => {
       .get(`/public/booking/${slugA}/providers?serviceId=${serviceA}`)
       .expect(200);
     expect(ok.body).toHaveLength(1);
-    expect(Object.keys(ok.body[0]).sort()).toEqual(['calendarColor', 'fullName', 'id']);
+    // Phase 6 added professionalType — the patient-facing "Doctor" word on
+    // the provider card. Deliberately public; nothing else joined it.
+    expect(Object.keys(ok.body[0]).sort()).toEqual([
+      'calendarColor',
+      'fullName',
+      'id',
+      'professionalType',
+    ]);
 
     await request(app.getHttpServer())
       .get(`/public/booking/${slugA}/providers?serviceId=${hiddenServiceA}`)
@@ -360,8 +367,12 @@ describe('Public booking surface security (e2e)', () => {
       .get(`/public/booking/${slugA}/manage/${booked.body.manageToken}`)
       .expect(200);
 
+    // Phase 7 added the change-request surface: the policy words, THIS
+    // appointment's own pending requests, and the clinic's last decision.
+    // Nothing about any other patient or booking joined the response.
     expect(Object.keys(res.body).sort()).toEqual([
       'appointment', 'can', 'clinic', 'confirmationMessage', 'cutoffHours',
+      'lastDecision', 'pendingRequests', 'policy',
     ]);
     expect(Object.keys(res.body.appointment).sort()).toEqual([
       'answers', 'bookingFeeAmount', 'note', 'patientName', 'paymentStatus',

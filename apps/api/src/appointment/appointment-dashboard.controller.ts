@@ -7,6 +7,15 @@ import {
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** "a,b" → ['a','b']; empty/absent → undefined, meaning "no filter". */
+function listOf(value?: string): string[] | undefined {
+  const items = (value ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return items.length > 0 ? items : undefined;
+}
+
 @Controller('appointments/dashboard')
 export class AppointmentDashboardController {
   constructor(private readonly dashboard: AppointmentDashboardService) {}
@@ -19,6 +28,7 @@ export class AppointmentDashboardController {
     @Query('tab') tab?: string,
     @Query('staffId') staffId?: string,
     @Query('serviceId') serviceId?: string,
+    @Query('source') source?: string,
     @Query('search') search?: string,
   ) {
     if (!clinicId) throw new BadRequestException('clinicId is required');
@@ -38,9 +48,22 @@ export class AppointmentDashboardController {
       to,
       tab: resolved as DashboardTab,
       staffId,
-      serviceId,
+      // Comma-separated multi-select (Phase 3H): "Ear Suction, and only Ear
+      // Suction" is one value; "these two related services" is two.
+      serviceIds: listOf(serviceId),
+      sources: listOf(source),
       search,
     });
+  }
+
+  /**
+   * PHASE 8 — the setup checklist. Computed from what is actually configured,
+   * so it can never disagree with the screens it links to.
+   */
+  @Get('setup-checklist')
+  setupChecklist(@Query('clinicId') clinicId: string) {
+    if (!clinicId) throw new BadRequestException('clinicId is required');
+    return this.dashboard.setupChecklist(clinicId);
   }
 
   /**
@@ -56,7 +79,7 @@ export class AppointmentDashboardController {
     @Query('search') search?: string,
   ) {
     if (!clinicId) throw new BadRequestException('clinicId is required');
-    return this.dashboard.waitlist({ clinicId, staffId, serviceId, search });
+    return this.dashboard.waitlist({ clinicId, staffId, serviceIds: listOf(serviceId), search });
   }
 }
 

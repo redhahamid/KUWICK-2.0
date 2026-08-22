@@ -141,4 +141,41 @@ describe('Row-Level Security enforcement (e2e, DB-level)', () => {
     );
     expect(rows).toEqual([]);
   });
+
+  it("PHASE 8: a clinic's message templates are invisible without its tenant context", async () => {
+    // The templates carry the clinic's own patient-facing words — one
+    // tenant's wording must never leak into another's editor. Same
+    // ENABLE + FORCE + tenant_isolation policy as every appointment table.
+    await withTenantContext(prisma, tenantA, async (tx) => {
+      const clinic = await tx.clinic.create({ data: { tenantId: tenantA, name: 'RLS Template Clinic' } });
+      await tx.appointmentMessageTemplate.create({
+        data: {
+          tenantId: tenantA,
+          clinicId: clinic.id,
+          templateKey: 'REMINDER',
+          language: 'en',
+          body: 'Hi {patient_name}, private wording of tenant A.',
+        },
+      });
+    });
+
+    // No context at all: zero rows.
+    expect(await prisma.appointmentMessageTemplate.findMany({ where: { tenantId: tenantA } })).toEqual([]);
+    // Tenant B's session: zero rows.
+    expect(
+      await withTenantContext(prisma, tenantB, (tx) =>
+        tx.appointmentMessageTemplate.findMany({ where: { tenantId: tenantA } }),
+      ),
+    ).toEqual([]);
+    // Its own session: the row is there.
+    expect(
+      await withTenantContext(prisma, tenantA, (tx) =>
+        tx.appointmentMessageTemplate.findMany({ where: { tenantId: tenantA } }),
+      ),
+    ).toHaveLength(1);
+
+    await withTenantContext(prisma, tenantA, (tx) =>
+      tx.appointmentMessageTemplate.deleteMany({ where: { tenantId: tenantA } }),
+    );
+  });
 });

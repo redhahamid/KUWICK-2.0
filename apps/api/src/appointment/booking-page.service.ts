@@ -103,6 +103,18 @@ export class BookingPageService {
         allowPatientReschedule: dto.allowPatientReschedule ?? true,
         allowPatientCancel: dto.allowPatientCancel ?? true,
         patientChangeCutoffHours: dto.patientChangeCutoffHours ?? 4,
+        // Phase 7 — the tri-state policies. undefined keeps what is stored
+        // (an older client must not reset a decided policy); the settings
+        // screen always sends them.
+        ...(dto.patientRescheduleMode !== undefined
+          ? { patientRescheduleMode: dto.patientRescheduleMode }
+          : {}),
+        ...(dto.patientCancelMode !== undefined
+          ? { patientCancelMode: dto.patientCancelMode }
+          : {}),
+        ...(dto.patientChangeCutoffMinutes !== undefined
+          ? { patientChangeCutoffMinutes: dto.patientChangeCutoffMinutes }
+          : {}),
         confirmationMessage: dto.confirmationMessage?.trim() || null,
       };
 

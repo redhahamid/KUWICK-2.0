@@ -88,7 +88,9 @@ function open(overrides: Record<string, unknown> = {}) {
   get.mockImplementation((url: string) =>
     url.startsWith('/clinics')
       ? Promise.resolve(CLINICS)
-      : Promise.resolve({ ...BASE, ...overrides }),
+      : url.includes('/change-requests')
+        ? Promise.resolve([])
+        : Promise.resolve({ ...BASE, ...overrides }),
   );
   return render(
     <Harness>
@@ -131,6 +133,48 @@ describe('the drawer offers the action the counter actually needs', () => {
     expect(screen.queryByRole('button', { name: /^check in$/i })).not.toBeInTheDocument();
   });
 
+  it('3b. Register / Check in opens the registration REVIEW — the click itself creates nothing', async () => {
+    // Phase 4. One click used to mean visit + queue ticket, payer guessed.
+    // Now the click opens the review, and only Confirm & add to queue commits
+    // — with the payer and the attending doctor it reviewed.
+    patch.mockResolvedValue({});
+    get.mockImplementation((url: string) =>
+      url.startsWith('/clinics')
+        ? Promise.resolve(CLINICS)
+        : url.startsWith('/staff')
+          ? Promise.resolve([{ id: 'doc-1', fullName: 'Dr Redha', role: 'DOCTOR_RESIDENT' }])
+          : url.startsWith('/panel-clinics') || url.includes('/change-requests')
+            ? Promise.resolve([])
+            : Promise.resolve({ ...BASE }),
+    );
+    render(
+      <Harness>
+        <AppointmentDrawer
+          appointmentId="appt-1"
+          open
+          onClose={() => undefined}
+          onReschedule={() => undefined}
+        />
+      </Harness>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /register \/ check in/i }));
+    expect(await screen.findByTestId('checkin-registration-drawer')).toBeInTheDocument();
+    expect(patch).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByTestId('confirm-add-to-queue'));
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith(
+        '/appointments/appt-1/arrived',
+        expect.objectContaining({
+          billingType: 'Self-pay',
+          staffId: 'doc-1',
+          presentingComplaint: 'Sore throat since Friday',
+        }),
+      ),
+    );
+  });
+
   it('4. accepting a request calls the confirm endpoint', async () => {
     patch.mockResolvedValue({});
     open({ status: 'REQUESTED' });
@@ -154,17 +198,65 @@ describe('the drawer offers the action the counter actually needs', () => {
 });
 
 describe('the drawer speaks the patient-facing clinic identity', () => {
-  it('WhatsApp opens with the booking-page name, never the internal environment label', async () => {
+  it('WhatsApp goes through the template modal and carries the booking-page name, never the internal label', async () => {
+    // PHASE 8 — the drawer composes no message text itself. The modal fetches
+    // the clinic's templates (defaults here), the ONE renderer fills them,
+    // and the preview is what wa.me receives.
     const opened = vi.spyOn(window, 'open').mockReturnValue(null);
-    open();
+    post.mockResolvedValue({});
+    get.mockImplementation((url: string) =>
+      url.startsWith('/clinics')
+        ? Promise.resolve(CLINICS)
+        : url.includes('/appointment-message-templates')
+          ? Promise.resolve({
+              clinicId: 'clinic-1',
+              placeholders: ['patient_name', 'clinic_name', 'appointment_date', 'appointment_time'],
+              templates: [
+                {
+                  templateKey: 'REMINDER',
+                  language: 'en',
+                  body: 'Hi {patient_name}, reminder of your appointment at {clinic_name} on {appointment_date} at {appointment_time}.',
+                  isCustom: false,
+                  updatedAt: null,
+                },
+              ],
+            })
+          : url.includes('/change-requests')
+            ? Promise.resolve([])
+            : Promise.resolve({ ...BASE }),
+    );
+    render(
+      <Harness>
+        <AppointmentDrawer
+          appointmentId="appt-1"
+          open
+          onClose={() => undefined}
+          onReschedule={() => undefined}
+        />
+      </Harness>,
+    );
 
-    const button = await screen.findByRole('button', { name: /open whatsapp/i });
-    await userEvent.click(button);
+    await userEvent.click(await screen.findByRole('button', { name: /whatsapp patient/i }));
+
+    // The preview shows the rendered message — clinic clock, patient-facing
+    // name — before anything opens.
+    const preview = await screen.findByTestId('message-preview');
+    await waitFor(() => expect((preview as HTMLTextAreaElement).value).toContain('Klinik Hijraa Bangi'));
+    expect((preview as HTMLTextAreaElement).value).toContain('09:00');
+
+    await userEvent.click(screen.getByRole('button', { name: /open whatsapp/i }));
 
     await waitFor(() => expect(opened).toHaveBeenCalled());
     const url = decodeURIComponent(String(opened.mock.calls[0][0]));
     expect(url).toContain('Klinik Hijraa Bangi');
     expect(url).not.toContain('Synthetic');
+    // And the log records the TEMPLATE that was sent, for the due worklist.
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        '/appointment-communications/appt-1',
+        expect.objectContaining({ channel: 'WHATSAPP', template: 'REMINDER' }),
+      ),
+    );
     opened.mockRestore();
   });
 });

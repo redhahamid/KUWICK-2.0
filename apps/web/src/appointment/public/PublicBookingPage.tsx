@@ -7,6 +7,7 @@ import {
   Checkbox,
   ConfigProvider,
   DatePicker,
+  Drawer,
   Form,
   Input,
   InputNumber,
@@ -21,7 +22,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 
 dayjs.extend(utc);
-import { PublicBookingError, publicBooking, type PublicSlot } from './publicBookingApi';
+import { PublicBookingError, publicBooking, publicMediaSrc, type PublicSlot } from './publicBookingApi';
 import { setClinicTimeZone, formatClinicDate, formatClinicTime, clinicDayjs } from '../../clinical/clinicTime';
 import { publicBookingTheme } from '../appointment-theme';
 
@@ -103,6 +104,9 @@ function PublicBookingPageInner() {
   const [idempotencyKey] = useState(
     () => `public-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
+  // Phase 6B — the service DETAIL sheet: more than the card, without making
+  // the card itself any harder to tap.
+  const [detailServiceId, setDetailServiceId] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<{
     status: string;
     scheduledStart: string;
@@ -421,7 +425,7 @@ function PublicBookingPageInner() {
     <div className="kw-public-booking" data-testid="public-booking">
       <header className="kw-public-hero">
         {page.clinic.logoUrl ? (
-          <img src={page.clinic.logoUrl} alt="" className="kw-public-logo" />
+          <img src={publicMediaSrc(page.clinic.logoUrl) ?? undefined} alt="" className="kw-public-logo" />
         ) : (
           <span className="kw-public-mark" aria-hidden>
             {page.clinic.displayName
@@ -482,8 +486,18 @@ function PublicBookingPageInner() {
             />
           ) : null}
           {page.services.map((row) => (
+            <div key={row.id} className="kw-public-service-wrap">
+              {row.description || row.preInstructions || row.photoUrl ? (
+                <button
+                  type="button"
+                  className="kw-public-service-info"
+                  aria-label={`About ${row.name}`}
+                  onClick={() => setDetailServiceId(row.id)}
+                >
+                  i
+                </button>
+              ) : null}
             <button
-              key={row.id}
               type="button"
               className="kw-public-service"
               onClick={() => {
@@ -492,7 +506,7 @@ function PublicBookingPageInner() {
               }}
             >
               {row.photoUrl ? (
-                <img src={row.photoUrl} alt="" className="kw-public-service-photo" />
+                <img src={publicMediaSrc(row.photoUrl) ?? undefined} alt="" className="kw-public-service-photo" loading="lazy" />
               ) : null}
               <span className="kw-public-service-body">
                 <span className="kw-public-service-name">{row.name}</span>
@@ -519,6 +533,7 @@ function PublicBookingPageInner() {
                 </span>
               </span>
             </button>
+            </div>
           ))}
         </Space>
       ) : null}
@@ -567,9 +582,13 @@ function PublicBookingPageInner() {
                 </span>
                 <span className="kw-public-provider-body">
                   <span className="kw-public-provider-name">{provider.fullName}</span>
-                  {hints.byId[provider.id] ? (
+                  {provider.professionalType === 'MEDICAL_DOCTOR' || hints.byId[provider.id] ? (
                     <span className="kw-public-provider-sub">
-                      Next available · {hints.byId[provider.id]}
+                      {provider.professionalType === 'MEDICAL_DOCTOR' ? 'Doctor' : null}
+                      {provider.professionalType === 'MEDICAL_DOCTOR' && hints.byId[provider.id]
+                        ? ' · '
+                        : null}
+                      {hints.byId[provider.id] ? `Next available · ${hints.byId[provider.id]}` : null}
                     </span>
                   ) : null}
                 </span>
@@ -876,6 +895,67 @@ function PublicBookingPageInner() {
           </div>
         </Space>
       ) : null}
+      {/* Phase 6B — the service DETAIL sheet: the larger image, the whole
+          description and the preparation notes, with its own Book CTA. A
+          bottom sheet on the phone it is designed for. */}
+      <Drawer
+        open={Boolean(detailServiceId)}
+        onClose={() => setDetailServiceId(null)}
+        placement="bottom"
+        height="auto"
+        rootClassName="kw-public-detail"
+        title={null}
+        closable
+        destroyOnHidden
+      >
+        {(() => {
+          const row = page.services.find((item) => item.id === detailServiceId);
+          if (!row) return null;
+          const photo = publicMediaSrc(row.photoUrl);
+          return (
+            <div data-testid="public-service-detail">
+              {photo ? <img src={photo} alt="" className="kw-public-detail-photo" /> : null}
+              <Title level={4} style={{ margin: '10px 0 4px' }}>
+                {row.name}
+              </Title>
+              <Space size={6} wrap style={{ marginBottom: 8 }}>
+                <Tag>{row.durationMinutes} min</Tag>
+                {row.price ? (
+                  <Tag color="green">
+                    {row.price.display === 'FROM' ? 'from ' : ''}RM {Number(row.price.amount).toFixed(2)}
+                  </Tag>
+                ) : null}
+                {row.paymentRule === 'DEPOSIT' ? (
+                  <Tag color="blue">RM {Number(row.depositAmount).toFixed(0)} deposit</Tag>
+                ) : null}
+                {row.requiresApproval ? <Tag color="orange">Confirmed by the clinic</Tag> : null}
+              </Space>
+              {row.description ? (
+                <Paragraph style={{ marginBottom: 10 }}>{row.description}</Paragraph>
+              ) : null}
+              {row.preInstructions ? (
+                <>
+                  <div className="kw-public-section">Before you come</div>
+                  <div className="kw-public-instructions">{row.preInstructions}</div>
+                </>
+              ) : null}
+              <Button
+                type="primary"
+                block
+                size="large"
+                style={{ marginTop: 14 }}
+                onClick={() => {
+                  setServiceId(row.id);
+                  setDetailServiceId(null);
+                  setStep(1);
+                }}
+              >
+                Book this service
+              </Button>
+            </div>
+          );
+        })()}
+      </Drawer>
     </div>
   );
 }

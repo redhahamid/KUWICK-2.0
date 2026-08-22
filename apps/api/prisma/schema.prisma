@@ -221,11 +221,15 @@ model Tenant {
   appointments                Appointment[]
   providerShifts              ProviderShift[]
   providerScheduleModePeriods ProviderScheduleModePeriod[]
+  staffNotifications          StaffNotification[]
+  mediaAssets                 MediaAsset[]
+  appointmentChangeRequests   AppointmentChangeRequest[]
   appointmentEvents           AppointmentEvent[]
   appointmentSeries           AppointmentSeries[]
   appointmentFormAnswers      AppointmentFormAnswer[]
   appointmentCommunications   AppointmentCommunication[]
   appointmentReminderRules    AppointmentReminderRule[]
+  appointmentMessageTemplates AppointmentMessageTemplate[]
   bookingFormFields           BookingFormField[]
   clinicBookingPages          ClinicBookingPage[]
   serviceBookableHours        ServiceBookableHour[]
@@ -327,9 +331,12 @@ model Clinic {
   appointments                Appointment[]
   providerShifts              ProviderShift[]
   providerScheduleModePeriods ProviderScheduleModePeriod[]
+  staffNotifications          StaffNotification[]
+  appointmentChangeRequests   AppointmentChangeRequest[]
   bookingPage                 ClinicBookingPage?
   bookingFormFields           BookingFormField[]
   reminderRules               AppointmentReminderRule[]
+  messageTemplates            AppointmentMessageTemplate[]
   appointmentSeries           AppointmentSeries[]
   waitlistEntries             WaitlistEntry[]
   stockLevels                 StockLevel[]
@@ -652,6 +659,115 @@ model NotificationLog {
   @@map("notification_logs")
 }
 
+/// PHASE 7 — a patient's request to change their own booking, awaiting a
+/// staff decision.
+///
+/// A REQUEST OBJECT, deliberately not a status on the appointment: the
+/// original booking must stand untouched (same slot, same status, still
+/// occupying its time) until somebody with authority decides — and a decision
+/// needs its own record of who asked, for what, who answered, and with what
+/// words. Overloading AppointmentStatus.REQUESTED would have conflated "the
+/// clinic has not accepted this booking yet" with "the patient wants to move
+/// an accepted one", which are different facts about different things.
+model AppointmentChangeRequest {
+  id             String                         @id @default(uuid())
+  tenantId       String                         @map("tenant_id")
+  clinicId       String                         @map("clinic_id")
+  appointmentId  String                         @map("appointment_id")
+  type           AppointmentChangeRequestType
+  status         AppointmentChangeRequestStatus @default(PENDING)
+  /// The patient's own words — required; a request without a reason is a
+  /// decision nobody can make.
+  reason         String
+  /// RESCHEDULE only: where the patient wants to move to. NOT a reservation —
+  /// availability is re-checked by the canonical engine at approval time.
+  requestedStart DateTime?                      @map("requested_start")
+  requestedEnd   DateTime?                      @map("requested_end")
+  decidedByStaffId String?                      @map("decided_by_staff_id")
+  decidedAt      DateTime?                      @map("decided_at")
+  /// The clinic's words back to the patient — a decline explanation or an
+  /// offered alternative ("we could do 15:30 instead — ring us").
+  decisionNote   String?                        @map("decision_note")
+  createdAt      DateTime                       @default(now()) @map("created_at")
+
+  tenant         Tenant      @relation(fields: [tenantId], references: [id])
+  clinic         Clinic      @relation(fields: [clinicId], references: [id])
+  appointment    Appointment @relation(fields: [appointmentId], references: [id])
+  decidedByStaff Staff?      @relation(fields: [decidedByStaffId], references: [id])
+
+  @@index([tenantId, clinicId, status])
+  @@index([tenantId, appointmentId])
+  @@map("appointment_change_requests")
+}
+
+/// PHASE 6 — an uploaded image for the PUBLIC booking surface: a service
+/// photo or a booking-page logo.
+///
+/// THE BYTES LIVE IN POSTGRES, deliberately. Railway's container filesystem
+/// is ephemeral — a redeploy would silently blank every service photo — and
+/// adding a volume or an object store is deployment surgery this feature
+/// does not need for a handful of small images. In the database they survive
+/// redeploys, ride the backups, and sit under the same tenant RLS as
+/// everything else. Capped at 2 MB per image and image types only, enforced
+/// by magic bytes (attachment-validation.ts), so the table stays a shelf of
+/// small pictures rather than a file system.
+///
+/// NO second RLS policy: public serving goes through the booking page's own
+/// slug bootstrap (/public/booking/:slug/media/:id resolves the tenant the
+/// same way every other public read does), so `clinic_booking_pages` remains
+/// the only table with a public policy.
+model MediaAsset {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  /// SERVICE_PHOTO or CLINIC_LOGO — what the image is FOR, which bounds
+  /// where it may be rendered.
+  kind             String
+  contentType      String   @map("content_type")
+  byteSize         Int      @map("byte_size")
+  data             Bytes
+  createdByStaffId String?  @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant         Tenant @relation(fields: [tenantId], references: [id])
+  createdByStaff Staff? @relation(fields: [createdByStaffId], references: [id])
+
+  @@index([tenantId, kind])
+  @@map("media_assets")
+}
+
+/// PHASE 5 — a staff member's notification INBOX row.
+///
+/// NOT event history: `AppointmentEvent` stays the canonical record of what
+/// happened to a booking. This is the per-RECIPIENT copy that carries an
+/// unread state — "Aisyah has not seen the new online booking yet" is a fact
+/// about Aisyah, not about the booking. And NOT `NotificationLog`, which
+/// records outbound deliveries on external channels (a recipient string and
+/// a send status); a staff inbox needs a staff id, a clinic, a read marker
+/// and an appointment to open.
+model StaffNotification {
+  id               String    @id @default(uuid())
+  tenantId         String    @map("tenant_id")
+  clinicId         String    @map("clinic_id")
+  recipientStaffId String    @map("recipient_staff_id")
+  /// e.g. NEW_BOOKING / BOOKING_REQUEST / PATIENT_CANCELLED — worded by the
+  /// web's own dictionary, stored as a stable code.
+  type             String
+  title            String
+  body             String
+  appointmentId    String?   @map("appointment_id")
+  readAt           DateTime? @map("read_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  clinic      Clinic       @relation(fields: [clinicId], references: [id])
+  recipient   Staff        @relation(fields: [recipientStaffId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+
+  @@index([tenantId, recipientStaffId, createdAt(sort: Desc)])
+  @@index([tenantId, recipientStaffId, readAt])
+  @@map("staff_notifications")
+}
+
 // Append-only. No update/delete path is exposed at the application layer.
 model AuditLog {
   id          String   @id @default(uuid())
@@ -735,6 +851,9 @@ model Staff {
   providerShifts               ProviderShift[]              @relation("ProviderShiftProvider")
   providerShiftsCreated        ProviderShift[]              @relation("ProviderShiftAuthor")
   scheduleModePeriods          ProviderScheduleModePeriod[] @relation("ScheduleModePeriodProvider")
+  staffNotifications           StaffNotification[]
+  changeRequestsDecided        AppointmentChangeRequest[]
+  mediaAssets                  MediaAsset[]
   scheduleModePeriodsCreated   ProviderScheduleModePeriod[] @relation("ScheduleModePeriodAuthor")
   appointmentEvents            AppointmentEvent[]           @relation("AppointmentEventActor")
   appointmentsOverridden       Appointment[]                @relation("AppointmentOverrideAuthor")
@@ -945,6 +1064,16 @@ enum ProviderScheduleMode {
   FIXED_WEEKLY
 }
 
+/// How a branch's DIARY AXIS is drawn (§Phase-3). Display only: the roster
+/// decides availability, and the booking band narrows what may be booked —
+/// neither is allowed to decide what hours the calendar renders, because an
+/// axis that follows the roster wraps (23:00 → next-day 13:30) the moment an
+/// overnight shift exists.
+enum CalendarDisplayMode {
+  STANDARD_HOURS
+  TWENTY_FOUR_HOURS
+}
+
 /// What a roster cell MEANS. Only WORKING and LOCUM offer time; the rest are
 /// recorded so the matrix can say why a doctor is not there.
 enum ProviderShiftType {
@@ -972,6 +1101,33 @@ enum AppointmentEventType {
   PATIENT_LINKED
   COMMUNICATION_SENT
   NOTE_ADDED
+  // Phase 7 — the request lifecycle, on the appointment's own history.
+  CHANGE_REQUESTED
+  CHANGE_REQUEST_APPROVED
+  CHANGE_REQUEST_DECLINED
+}
+
+/// PHASE 7 — what a PATIENT may do to their own booking through the manage
+/// link. Per booking page, per action. REQUEST_APPROVAL is the recommended
+/// clinic workflow: the patient asks, the original appointment stands
+/// untouched, and a staff decision is what changes anything.
+enum PatientChangePolicy {
+  NOT_ALLOWED
+  REQUEST_APPROVAL
+  INSTANT
+}
+
+enum AppointmentChangeRequestType {
+  RESCHEDULE
+  CANCELLATION
+}
+
+enum AppointmentChangeRequestStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  /// Replaced by a newer request from the same patient before any decision.
+  SUPERSEDED
 }
 
 /// How confident the server is that a public booking belongs to the patient it
@@ -1338,6 +1494,17 @@ model ClinicBookingSettings {
   /// one. A branch that does shut ticks this once instead of re-typing the
   /// national calendar as branch closed dates (§3).
   observePublicHolidays Boolean   @default(false) @map("observe_public_holidays")
+  /// THE DIARY AXIS (Phase 3). Display settings only — never availability.
+  /// The booking band above NARROWS what can be booked; these say what hours
+  /// the calendar RENDERS, which must hold still whatever the roster does.
+  calendarDisplayMode   CalendarDisplayMode @default(STANDARD_HOURS) @map("calendar_display_mode")
+  /// The branch's stated operating hours, wall clock. NULL = never stated;
+  /// the diary falls back to a stable default band rather than to the roster.
+  displayOpenTime       DateTime? @map("display_open_time") @db.Time
+  displayCloseTime      DateTime? @map("display_close_time") @db.Time
+  /// Breathing room drawn either side of the operating hours (09:00–17:00
+  /// with 60 → an 08:00–18:00 diary), clamped to the day.
+  displayPaddingMinutes Int       @default(60) @map("display_padding_minutes")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
 
@@ -1524,10 +1691,12 @@ model Appointment {
   series          AppointmentSeries?         @relation(fields: [seriesId], references: [id])
   overriddenBy    Staff?                     @relation("AppointmentOverrideAuthor", fields: [overriddenByStaffId], references: [id])
   depositInvoice  Invoice?                   @relation("AppointmentDepositInvoice", fields: [depositInvoiceId], references: [id])
-  events          AppointmentEvent[]
-  formAnswers     AppointmentFormAnswer[]
-  communications  AppointmentCommunication[]
-  waitlistEntries WaitlistEntry[]            @relation("WaitlistBookedAppointment")
+  events             AppointmentEvent[]
+  formAnswers        AppointmentFormAnswer[]
+  communications     AppointmentCommunication[]
+  waitlistEntries    WaitlistEntry[]            @relation("WaitlistBookedAppointment")
+  staffNotifications StaffNotification[]
+  changeRequests     AppointmentChangeRequest[]
   reminderSentBy  Staff?                     @relation("AppointmentReminderAuthor", fields: [reminderSentByStaffId], references: [id])
   visit           Visit?                     @relation(fields: [visitId], references: [id])
   cancelledBy     Staff?                     @relation("AppointmentCancelAuthor", fields: [cancelledByStaffId], references: [id])
@@ -4346,6 +4515,34 @@ model AppointmentReminderRule {
   @@map("appointment_reminder_rules")
 }
 
+/// PHASE 8 — the clinic's own words, one row per customised (type, language).
+///
+/// A row exists ONLY where a clinic rewrote a template. Every absent pair
+/// renders the built-in default (message-template.service), so "reset to
+/// default" is a DELETE and improving a default in a later release reaches
+/// every clinic that never customised it — without a migration rewriting
+/// anybody's own words.
+model AppointmentMessageTemplate {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  clinicId    String   @map("clinic_id")
+  /// One of the canonical message types (MESSAGE_TEMPLATE_KEYS). A string,
+  /// not an enum: adding a message type is content, not a migration.
+  templateKey String   @map("template_key")
+  /// 'en' or 'ms' — the same convention as ClinicBookingPage.language.
+  language    String
+  body        String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, templateKey, language])
+  @@index([tenantId, clinicId])
+  @@map("appointment_message_templates")
+}
+
 /// §39/§40 — the public booking page for one branch, and the settings that
 /// belong to it. One row per clinic, so there is one place these live rather
 /// than four technical screens.
@@ -4376,6 +4573,15 @@ model ClinicBookingPage {
   /// Hours before the appointment after which the patient can no longer
   /// change it themselves. 0 = right up to the start.
   patientChangeCutoffHours Int      @default(4) @map("patient_change_cutoff_hours")
+  /// PHASE 7 — the tri-state policies. NULL means "never decided under the
+  /// new model": behaviour then falls back to the frozen booleans above
+  /// (true → INSTANT, false → NOT_ALLOWED), so no existing page changes
+  /// behaviour by migration. The settings screen writes these from now on.
+  patientRescheduleMode    PatientChangePolicy? @map("patient_reschedule_mode")
+  patientCancelMode        PatientChangePolicy? @map("patient_cancel_mode")
+  /// Cutoff with minute precision (owner: value + minutes/hours/days). NULL
+  /// falls back to patientChangeCutoffHours × 60.
+  patientChangeCutoffMinutes Int?   @map("patient_change_cutoff_minutes")
   confirmationMessage      String?  @map("confirmation_message")
   createdAt                DateTime @default(now()) @map("created_at")
   updatedAt                DateTime @updatedAt @map("updated_at")

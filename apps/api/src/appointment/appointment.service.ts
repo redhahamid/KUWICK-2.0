@@ -32,7 +32,9 @@ import { appointmentSnapshot, recordAppointmentEvent } from './appointment-event
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 import { CancelAppointmentDto } from './dto/cancel-appointment.dto';
+import { CheckInAppointmentDto } from './dto/check-in-appointment.dto';
 import { QueueTicketService } from '../clinical/queue-ticket.service';
+import { StaffNotificationService, notificationWhen } from './staff-notification.service';
 import { PrismaService } from '../core/prisma.service';
 import { ActingStaff, ClinicalTx, requireActor, withTenantTx } from '../clinical/clinical-actor';
 import {
@@ -105,14 +107,60 @@ export class AppointmentService {
     private readonly bookingValidator: AppointmentBookingValidator,
     private readonly queueTickets: QueueTicketService,
     private readonly rawPrisma: PrismaService,
+    private readonly staffNotifications: StaffNotificationService,
   ) {}
+
+  /**
+   * PHASE 5 — tell the people whose worklist just changed. Re-reads the
+   * names it needs through the tenant-scoped client, AFTER the write's own
+   * transaction: a notification failure must never roll back the booking it
+   * describes, and StaffNotificationService.notify() catches for the same
+   * reason.
+   */
+  private async notifyAboutAppointment(
+    appointmentId: string,
+    type: Parameters<StaffNotificationService['notify']>[0]['type'],
+    title: string,
+    includeDesk: boolean,
+  ): Promise<void> {
+    const row = await this.prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      select: {
+        clinicId: true,
+        staffId: true,
+        scheduledStart: true,
+        patient: { select: { name: true } },
+        service: { select: { name: true } },
+        staff: { select: { fullName: true } },
+        clinic: { select: { timezone: true } },
+      },
+    });
+    // Best-effort by contract: without every name the line needs, say
+    // nothing rather than crash the booking that already succeeded.
+    if (!row?.patient?.name || !row.service?.name || !row.staff?.fullName || !row.clinic?.timezone) {
+      return;
+    }
+    await this.staffNotifications.notify({
+      clinicId: row.clinicId,
+      type,
+      title,
+      body: `${row.patient.name} · ${row.service.name} · ${notificationWhen(row.scheduledStart, row.clinic.timezone)} · ${row.staff.fullName}`,
+      appointmentId,
+      assignedStaffId: row.staffId,
+      includeDesk,
+      actorStaffId: currentStaffId(),
+    });
+  }
 
   async create(dto: CreateAppointmentDto): Promise<Appointment> {
     const scheduledStart = new Date(dto.scheduledStart);
     const scheduledEnd = new Date(dto.scheduledEnd);
     assertValidWindow(scheduledStart, scheduledEnd);
 
-    return withTenantTx(this.rawPrisma, async (tx) => {
+    // Freshness matters to the INBOX only: an idempotent replay returns the
+    // same appointment and must not tell the clinic about it twice.
+    let fresh = false;
+    const created = await withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
       assertCanPerformAppointmentAction(actor, 'CREATE');
 
@@ -127,6 +175,7 @@ export class AppointmentService {
         });
         if (existing) return existing;
       }
+      fresh = true;
 
       // S1 (D-070) — resolve every browser-supplied relationship under the
       // authenticated tenant BEFORE anything is written or any side effect
@@ -211,6 +260,23 @@ export class AppointmentService {
 
       return appointment;
     });
+
+    if (fresh) {
+      // A request needs an approver's eyes whoever typed it in; a confirmed
+      // booking only surprises the desk when the desk did not make it. The
+      // assigned doctor hears either way; the actor never hears themselves.
+      if (created.status === AppointmentStatus.REQUESTED) {
+        await this.notifyAboutAppointment(created.id, 'BOOKING_REQUEST', 'Booking request', true);
+      } else {
+        await this.notifyAboutAppointment(
+          created.id,
+          'NEW_BOOKING',
+          'New appointment',
+          dto.source !== AppointmentSource.FRONT_DESK,
+        );
+      }
+    }
+    return created;
   }
 
   /**
@@ -280,10 +346,14 @@ export class AppointmentService {
   }
 
   async confirm(id: string) {
-    return this.transition(id, 'EDIT', (appointment) => {
+    const updated = await this.transition(id, 'EDIT', (appointment) => {
       assertStatus(appointment.status, [AppointmentStatus.REQUESTED], 'confirm');
       return { status: AppointmentStatus.CONFIRMED };
     });
+    // The provider's diary just gained a real booking; the desk (who pressed
+    // Accept, or can see the Requests tab drain) is not re-told.
+    await this.notifyAboutAppointment(id, 'REQUEST_ACCEPTED', 'Request accepted', false);
+    return updated;
   }
 
   /**
@@ -293,6 +363,12 @@ export class AppointmentService {
    * cancellation.
    */
   async reject(id: string, reason?: string) {
+    const updated = await this.rejectInner(id, reason);
+    await this.notifyAboutAppointment(id, 'REQUEST_DECLINED', 'Request declined', false);
+    return updated;
+  }
+
+  private async rejectInner(id: string, reason?: string) {
     return this.transition(id, 'CANCEL', (appointment) => {
       assertStatus(appointment.status, [AppointmentStatus.REQUESTED], 'reject');
       return {
@@ -358,7 +434,7 @@ export class AppointmentService {
    * ticket, which the counter can see and finish by hand — never a queue
    * ticket with no appointment pointing at it.
    */
-  async checkIn(id: string) {
+  async checkIn(id: string, dto: CheckInAppointmentDto = {}) {
     const appointment = await this.findById(id);
     await withTenantTx(this.rawPrisma, async (tx) => {
       const actor = await requireActor(tx);
@@ -389,15 +465,24 @@ export class AppointmentService {
       }
     });
 
+    // PHASE 4 — the registration drawer's decisions ride into the visit.
+    // Every override is optional; absent, this is the old one-click check-in
+    // exactly. The attending clinician may differ from the BOOKED provider
+    // (the appointment keeps its history; the visit records who actually
+    // sees the patient), and payer/panel reuse the walk-in flow's own
+    // vocabulary so VisitService derives billingType the same way for both.
     const ticket = await this.queueTickets.addToQueue({
       clinicId: appointment.clinicId,
       patientId: appointment.patientId,
-      staffId: appointment.staffId,
-      billingType: DEFAULT_ARRIVAL_BILLING_TYPE,
+      staffId: dto.staffId ?? appointment.staffId,
+      billingType: dto.billingType?.trim() || DEFAULT_ARRIVAL_BILLING_TYPE,
+      panelClinicId: dto.panelClinicId,
       // The appointment's context travels with the patient. Without it the
       // doctor opens a visit that says nothing about why the patient came,
       // and the receptionist re-types what the booking already recorded.
-      presentingComplaint: appointment.patientNote ?? appointment.notes ?? undefined,
+      presentingComplaint:
+        dto.presentingComplaint?.trim() ||
+        (appointment.patientNote ?? appointment.notes ?? undefined),
       // D-038 — appointment arrivals join the "A" queue stream.
       queueType: QueueType.APPOINTMENT,
     });
@@ -430,7 +515,17 @@ export class AppointmentService {
         eventType: AppointmentEventType.CHECKED_IN,
         fromStatus: AppointmentStatus.ARRIVED,
         toStatus: AppointmentStatus.CHECKED_IN,
-        after: { visitId: ticket.visitId, queueTicketId: ticket.id },
+        after: {
+          visitId: ticket.visitId,
+          queueTicketId: ticket.id,
+          // The registration facts, auditable: what payer the desk chose and
+          // whether the list was handed to a different clinician.
+          billingType: dto.billingType?.trim() || DEFAULT_ARRIVAL_BILLING_TYPE,
+          ...(dto.panelClinicId ? { panelClinicId: dto.panelClinicId } : {}),
+          ...(dto.staffId && dto.staffId !== appointment.staffId
+            ? { attendingStaffId: dto.staffId }
+            : {}),
+        },
         actorStaffId: actor.id,
         actorLabel: actor.fullName,
       });
@@ -453,7 +548,9 @@ export class AppointmentService {
       );
       throw new ConflictException('This appointment was already checked in at another counter.');
     }
-    return outcome.updated;
+    // The ticket number rides back so the desk can SAY where the patient is
+    // ("A012 — in the queue") without a second round trip.
+    return { ...outcome.updated, queueTicket: { id: ticket.id, displayNumber: ticket.displayNumber } };
   }
 
   /**

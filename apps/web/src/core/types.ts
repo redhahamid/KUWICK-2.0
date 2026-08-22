@@ -14,6 +14,13 @@ export interface Clinic {
    * not carry it — fall back to `name`.
    */
   patientFacingName?: string;
+  /**
+   * PHASE 8 — what a patient MESSAGE may reference: the public booking slug
+   * (null when the page is off or absent — a manage link into a dead page is
+   * a dead link) and the page's language, which templates default to.
+   */
+  bookingSlug?: string | null;
+  bookingLanguage?: string;
 }
 
 export interface CreateClinicDto {

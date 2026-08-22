@@ -129,6 +129,49 @@ describe('the period is the CLINIC’s, not UTC’s', () => {
   });
 });
 
+describe('Phase 3 — the KPI band reacts to every active filter', () => {
+  it('3a. service, source and patient-search filters reach the STATS query, not only the rows', async () => {
+    // The owner's use case: filter to EAR ENDOSCOPIC SUCTION and read that
+    // service's own upcoming/no-show/booked-value figures. A stats query that
+    // ignored the filter would caption the whole clinic's numbers over a
+    // filtered worklist.
+    const ctx = build();
+
+    await ask(ctx, {
+      serviceIds: ['svc-ear', 'svc-ear-2'],
+      sources: ['ONLINE_PORTAL'],
+      search: 'Aminah',
+    });
+
+    const where = (ctx.prisma.appointment.groupBy as jest.Mock).mock.calls[0][0].where;
+    expect(where.serviceId).toEqual({ in: ['svc-ear', 'svc-ear-2'] });
+    expect(where.source).toEqual({ in: ['ONLINE_PORTAL'] });
+    expect(where.patient.OR[0].name.contains).toBe('Aminah');
+  });
+
+  it('3b. a source string Prisma does not know is dropped, not sent', async () => {
+    // Handing an unknown enum value to Prisma is a 500 nobody can act on; an
+    // unknown filter filters nothing instead.
+    const ctx = build();
+
+    await ask(ctx, { sources: ['CARRIER_PIGEON'] });
+
+    const where = (ctx.prisma.appointment.groupBy as jest.Mock).mock.calls[0][0].where;
+    expect(where.source).toBeUndefined();
+  });
+
+  it('3c. the row query carries the same service filter as the stats query', async () => {
+    const ctx = build();
+
+    await ask(ctx, { serviceIds: ['svc-ear'] });
+
+    const rowCall = ctx.findManyCalls.find(
+      (call) => !(call as { select?: unknown }).select,
+    ) as { where: { serviceId?: unknown } };
+    expect(rowCall.where.serviceId).toEqual({ in: ['svc-ear'] });
+  });
+});
+
 describe('the five figures', () => {
   const world: World = {
     grouped: [
@@ -378,5 +421,99 @@ describe('a reminder is a thing somebody did', () => {
     (ctx.prisma.appointment.findUnique as jest.Mock).mockResolvedValueOnce(null);
 
     await expect(ctx.run(() => ctx.service.markReminderSent('nope'))).rejects.toThrow(/not found/i);
+  });
+});
+
+// ===========================================================================
+// PHASE 8 — the setup checklist is COMPUTED, so it cannot lie.
+// ===========================================================================
+
+function buildChecklist(world: {
+  settings?: boolean;
+  services?: number;
+  weekly?: number;
+  shifts?: number;
+  page?: { active: boolean; patientRescheduleMode?: string | null; patientCancelMode?: string | null } | null;
+  reminders?: number;
+}) {
+  const prisma = {
+    clinicBookingSettings: {
+      findFirst: jest.fn(async () => (world.settings ? { id: 's1' } : null)),
+    },
+    serviceCatalog: { count: jest.fn(async () => world.services ?? 0) },
+    doctorSchedule: { count: jest.fn(async () => world.weekly ?? 0) },
+    providerShift: { count: jest.fn(async () => world.shifts ?? 0) },
+    clinicBookingPage: {
+      findFirst: jest.fn(async () =>
+        world.page === undefined
+          ? null
+          : world.page === null
+            ? null
+            : {
+                active: world.page.active,
+                patientRescheduleMode: world.page.patientRescheduleMode ?? null,
+                patientCancelMode: world.page.patientCancelMode ?? null,
+              },
+      ),
+    },
+    appointmentReminderRule: { count: jest.fn(async () => world.reminders ?? 0) },
+  } as unknown as TenantScopedPrismaClient;
+
+  const availability = {
+    clinicTimeZone: jest.fn(async () => 'Asia/Kuala_Lumpur'),
+  } as unknown as SlotAvailabilityService;
+
+  const service = new AppointmentDashboardService(prisma, availability);
+  const run = <T>(fn: () => Promise<T>) =>
+    tenantContextStorage.run({ tenantId: 't1', staffId: 'staff-7', userId: 'u1' }, fn);
+  return { service, run };
+}
+
+describe('the setup checklist reads reality', () => {
+  it('24. a bare clinic fails every core item and is not complete', async () => {
+    const ctx = buildChecklist({});
+
+    const result = await ctx.run(() => ctx.service.setupChecklist(CLINIC));
+
+    expect(result.complete).toBe(false);
+    const byKey = Object.fromEntries(result.items.map((item) => [item.key, item]));
+    expect(byKey.BOOKING_RULES.done).toBe(false);
+    expect(byKey.SERVICES.done).toBe(false);
+    expect(byKey.ROSTER.done).toBe(false);
+    expect(byKey.BOOKING_PAGE.done).toBe(false);
+  });
+
+  it('25. either roster model counts — a shifts-mode branch with no weekly plan is still rostered', async () => {
+    const ctx = buildChecklist({ weekly: 0, shifts: 3 });
+
+    const result = await ctx.run(() => ctx.service.setupChecklist(CLINIC));
+
+    expect(result.items.find((item) => item.key === 'ROSTER')?.done).toBe(true);
+  });
+
+  it('26. complete needs only the CORE four — a clinic that wants no reminders is not nagged forever', async () => {
+    const ctx = buildChecklist({
+      settings: true,
+      services: 5,
+      weekly: 2,
+      page: { active: true },
+      reminders: 0,
+    });
+
+    const result = await ctx.run(() => ctx.service.setupChecklist(CLINIC));
+
+    expect(result.complete).toBe(true);
+    // The recommended items still report honestly.
+    expect(result.items.find((item) => item.key === 'REMINDERS')?.done).toBe(false);
+    expect(result.items.find((item) => item.key === 'CHANGE_POLICY')?.done).toBe(false);
+  });
+
+  it('27. an inactive booking page is NOT a done item — the link being dead is the fact that matters', async () => {
+    const ctx = buildChecklist({ settings: true, services: 1, weekly: 1, page: { active: false } });
+
+    const result = await ctx.run(() => ctx.service.setupChecklist(CLINIC));
+
+    expect(result.items.find((item) => item.key === 'BOOKING_PAGE')?.done).toBe(false);
+    expect(result.complete).toBe(false);
   });
 });

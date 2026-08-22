@@ -7,6 +7,7 @@ import {
   Drawer,
   Dropdown,
   Empty,
+  Input,
   Modal,
   Popconfirm,
   Skeleton,
@@ -31,20 +32,26 @@ import { KuwickStatusTag } from '../../design-system/kuwick';
 import { formatClinicDate, formatClinicDateTime, formatClinicTime } from '../../clinical/clinicTime';
 import { SOURCE_LABELS, type AppointmentSource } from '../types';
 import { paymentChip, sentence, statusChip } from '../appointment-presentation';
-import { CHECK_IN_FROM_STATUSES, NON_CANCELLABLE_STATUSES } from '../appointment-status.constants';
+import {
+  ARRIVABLE_FROM_STATUSES,
+  CHECK_IN_FROM_STATUSES,
+  NON_CANCELLABLE_STATUSES,
+} from '../appointment-status.constants';
 import {
   useAppointmentDetail,
+  useChangeRequests,
+  useDecideChangeRequest,
   useLogCommunication,
   useRejectAppointment,
 } from '../hooks/useAppointmentDetail';
 import {
-  useArrivedAppointment,
   useCancelAppointment,
   useConfirmAppointment,
+  useMarkArrivedAppointment,
   useNoShowAppointment,
 } from '../hooks/useAppointments';
-import { patientFacingClinicName, whatsappLink } from '../whatsappReminder';
-import { useClinics } from '../../core/hooks/useClinics';
+import { CheckInRegistrationDrawer } from '../checkin/CheckInRegistrationDrawer';
+import { MessagePatientModal } from '../messages/MessagePatientModal';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
 import { getDoctorColor } from './doctor-color';
 import { ApiError } from '../../core/api-client';
@@ -73,6 +80,9 @@ const EVENT_WORDS: Record<string, string> = {
   PATIENT_LINKED: 'Patient matched',
   COMMUNICATION_SENT: 'Message sent',
   NOTE_ADDED: 'Note added',
+  CHANGE_REQUESTED: 'Patient requested a change',
+  CHANGE_REQUEST_APPROVED: 'Request approved',
+  CHANGE_REQUEST_DECLINED: 'Request declined',
 };
 
 /**
@@ -99,7 +109,16 @@ export function AppointmentDrawer({
   const { data: appointment, isLoading } = useAppointmentDetail(appointmentId ?? undefined);
   const [showHistory, setShowHistory] = useState(false);
 
-  const checkIn = useArrivedAppointment();
+  const markArrived = useMarkArrivedAppointment();
+  // Phase 7 — the patient's pending question, and the clinic's answer.
+  const { data: changeRequests } = useChangeRequests(appointmentId ?? undefined);
+  const decideRequest = useDecideChangeRequest(appointmentId ?? undefined);
+  const [decliningId, setDecliningId] = useState<string | null>(null);
+  const [declineNote, setDeclineNote] = useState('');
+  const pendingRequests = (changeRequests ?? []).filter((row) => row.status === 'PENDING');
+  // Phase 4 — Check in opens the registration REVIEW; nothing is created
+  // until Confirm & add to queue inside it.
+  const [registering, setRegistering] = useState(false);
   const confirm = useConfirmAppointment();
   const noShow = useNoShowAppointment();
   const cancel = useCancelAppointment();
@@ -131,25 +150,17 @@ export function AppointmentDrawer({
     .join('')
     .toUpperCase();
 
-  // The PATIENT-FACING clinic name, resolved by the server on the clinics
-  // list (booking-page displayName → clinic name). This used to be hardcoded
-  // to '' — the "your appointment at on 22 Aug" message the owner caught in
-  // UAT, and the reason the calendar and the list greeted the same patient
-  // with two different clinics.
-  const { data: clinics } = useClinics();
-  const clinicNameForPatient = patientFacingClinicName(
-    clinics?.find((clinic) => clinic.id === appointment?.clinicId),
-  );
-
-  const whatsapp = useMemo(() => {
-    if (!appointment?.patient.phone) return null;
-    return whatsappLink({
-      phone: appointment.patient.phone,
-      patientName: appointment.patient.name,
-      clinicName: clinicNameForPatient,
-      scheduledStart: appointment.scheduledStart,
-    });
-  }, [appointment, clinicNameForPatient]);
+  // PHASE 8 — messaging goes through the template modal: the clinic's own
+  // wording (or the defaults), rendered by the ONE renderer against the
+  // patient-facing clinic identity. The drawer no longer composes any
+  // message text itself — that is how "appointment at on" happened.
+  const [messaging, setMessaging] = useState(false);
+  const messageDefaultTemplate =
+    status === AppointmentStatus.REQUESTED
+      ? 'BOOKING_REQUEST_RECEIVED'
+      : status === AppointmentStatus.CANCELLED
+        ? 'CANCELLATION_CONFIRMED'
+        : 'REMINDER';
 
   const run = async (label: string, action: () => Promise<unknown>) => {
     try {
@@ -165,11 +176,22 @@ export function AppointmentDrawer({
   // Patient record, WhatsApp and Call are QUICK ACTIONS beside the header
   // (§21) — the three reaches a receptionist makes mid-phone-call — so the
   // ••• menu holds only the occasional and the destructive.
+  const canMarkArrived = status ? ARRIVABLE_FROM_STATUSES.includes(status) : false;
   const moreItems = [
+    canMarkArrived
+      ? {
+          key: 'mark-arrived',
+          label: 'Mark arrived',
+          disabled: !permCheckIn,
+          title: permCheckIn
+            ? 'Records that the patient is at the desk — registration and the queue happen at Register / Check in'
+            : permissionHint('mark a patient as arrived'),
+        }
+      : null,
     appointment?.patient.phone ? { key: 'reminder', label: 'Record a manual reminder' } : null,
     onBookFollowUp ? { key: 'follow-up', label: 'Book a follow-up' } : null,
     appointment?.visitId ? { key: 'record', label: 'Open clinical record' } : null,
-    { key: 'history', label: showHistory ? 'Hide history' : 'View history' },
+    { key: 'history', label: showHistory ? 'Show recent activity only' : 'Show full history' },
     canCheckIn || canCancel ? { type: 'divider' as const, key: 'd1' } : null,
     canCheckIn
       ? {
@@ -191,26 +213,12 @@ export function AppointmentDrawer({
       : null,
   ].filter(Boolean) as { key: string; label: string }[];
 
-  // Recorded as MANUAL, and worded as what actually happened: WhatsApp was
-  // OPENED with the message prefilled. Whether the staff member pressed Send
-  // inside WhatsApp is something Kuwick cannot see, so it never claims
-  // "reminder sent" on the strength of a window opening.
-  const openWhatsApp = async () => {
-    if (!appointment || !whatsapp) return;
-    window.open(whatsapp, '_blank', 'noopener');
-    await run('WhatsApp opened — noted in history', () =>
-      logCommunication.mutateAsync({
-        appointmentId: appointment.id,
-        channel: 'WHATSAPP',
-        template: 'REMINDER_MANUAL',
-        destination: appointment.patient.phone ?? undefined,
-      }),
-    );
-  };
-
   const onMore = async (key: string) => {
     if (!appointment) return;
     switch (key) {
+      case 'mark-arrived':
+        await run('Marked as arrived', () => markArrived.mutateAsync({ id: appointment.id }));
+        break;
       case 'reminder':
         await run('Reminder recorded', () =>
           logCommunication.mutateAsync({
@@ -319,13 +327,10 @@ export function AppointmentDrawer({
                   <Button
                     type="primary"
                     icon={<CheckCircleOutlined />}
-                    loading={checkIn.isPending}
                     disabled={!permCheckIn}
-                    onClick={() =>
-                      run('Patient checked in', () => checkIn.mutateAsync({ id: appointment.id }))
-                    }
+                    onClick={() => setRegistering(true)}
                   >
-                    Check in
+                    Register / Check in
                   </Button>
                 </Tooltip>
               ) : null}
@@ -385,9 +390,9 @@ export function AppointmentDrawer({
             >
               Patient record
             </Button>
-            {whatsapp ? (
-              <Button size="small" icon={<WhatsAppOutlined />} onClick={openWhatsApp}>
-                Open WhatsApp
+            {appointment.patient.phone ? (
+              <Button size="small" icon={<WhatsAppOutlined />} onClick={() => setMessaging(true)}>
+                WhatsApp patient
               </Button>
             ) : null}
             {appointment.patient.phone ? (
@@ -460,6 +465,102 @@ export function AppointmentDrawer({
               <RightOutlined aria-hidden />
             </button>
           ) : null}
+
+          {/* PHASE 7 — a patient request is the loudest thing after the
+              queue: it is the one item on this booking waiting on a HUMAN. */}
+          {pendingRequests.map((request) => {
+            const permitted = request.type === 'RESCHEDULE' ? permReschedule : permCancel;
+            const permWord =
+              request.type === 'RESCHEDULE' ? 'move an appointment' : 'cancel an appointment';
+            return (
+              <Alert
+                key={request.id}
+                type="warning"
+                showIcon
+                style={{ marginBottom: 12 }}
+                data-testid="change-request-panel"
+                message={
+                  request.type === 'RESCHEDULE'
+                    ? 'The patient asks to reschedule'
+                    : 'The patient asks to cancel'
+                }
+                description={
+                  <div>
+                    {request.type === 'RESCHEDULE' && request.requestedStart ? (
+                      <div>
+                        {formatClinicDateTime(appointment.scheduledStart)} →{' '}
+                        <Text strong>{formatClinicDateTime(request.requestedStart)}</Text>
+                      </div>
+                    ) : null}
+                    <div>Reason: {request.reason}</div>
+                    <Space style={{ marginTop: 8 }}>
+                      <Tooltip title={permitted ? undefined : permissionHint(permWord)}>
+                        <Button
+                          size="small"
+                          type="primary"
+                          disabled={!permitted}
+                          loading={decideRequest.isPending}
+                          onClick={() =>
+                            run(
+                              request.type === 'RESCHEDULE'
+                                ? 'Request approved — appointment moved'
+                                : 'Request approved — appointment cancelled',
+                              () => decideRequest.mutateAsync({ id: request.id, decision: 'approve' }),
+                            )
+                          }
+                        >
+                          Approve
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title={permitted ? undefined : permissionHint(permWord)}>
+                        <Button
+                          size="small"
+                          disabled={!permitted}
+                          onClick={() => {
+                            setDeclineNote('');
+                            setDecliningId(request.id);
+                          }}
+                        >
+                          Decline…
+                        </Button>
+                      </Tooltip>
+                    </Space>
+                  </div>
+                }
+              />
+            );
+          })}
+
+          <Modal
+            open={Boolean(decliningId)}
+            onCancel={() => setDecliningId(null)}
+            title="Decline this request"
+            okText="Decline request"
+            confirmLoading={decideRequest.isPending}
+            onOk={() =>
+              decliningId &&
+              run('Request declined', async () => {
+                await decideRequest.mutateAsync({
+                  id: decliningId,
+                  decision: 'decline',
+                  note: declineNote.trim() || undefined,
+                });
+                setDecliningId(null);
+              })
+            }
+          >
+            <Paragraph type="secondary" style={{ fontSize: 13 }}>
+              The appointment stays exactly as booked. Your message reaches the patient on their
+              manage-booking page — offer an alternative here if you have one.
+            </Paragraph>
+            <Input.TextArea
+              rows={3}
+              value={declineNote}
+              onChange={(event) => setDeclineNote(event.target.value)}
+              placeholder="e.g. We could do 15:30 the same day — ring us and we will hold it."
+              maxLength={500}
+            />
+          </Modal>
 
           {/* THE APPOINTMENT, said once and said big: when, what, with whom. */}
           <div className="kw-apt-section">Booking</div>
@@ -562,11 +663,18 @@ export function AppointmentDrawer({
             </>
           ) : null}
 
-          {showHistory ? (
-            <>
-              <div className="kw-apt-section">History</div>
-              <Timeline
-                items={appointment.events.map((event) => ({
+          {/* PHASE 5E — the ACTIVITY is part of the record, not a hidden
+              tab: booked, reminded, requested, approved — chronological, in
+              plain words, with who. The last few are always visible; the
+              full history is one menu press away. Technical codes never
+              reach the screen (EVENT_WORDS, with a sentence-case fallback). */}
+          <div className="kw-apt-section">Activity</div>
+          <Timeline
+            className="kw-apt-activity"
+            items={(showHistory
+              ? [...appointment.events].reverse()
+              : [...appointment.events].slice(0, 5).reverse()
+            ).map((event) => ({
                   key: event.id,
                   children: (
                     <div>
@@ -584,9 +692,37 @@ export function AppointmentDrawer({
                       ) : null}
                     </div>
                   ),
-                }))}
-              />
-            </>
+            }))}
+          />
+          {!showHistory && appointment.events.length > 5 ? (
+            <Button
+              size="small"
+              type="link"
+              style={{ padding: 0 }}
+              onClick={() => setShowHistory(true)}
+            >
+              Show all {appointment.events.length} entries
+            </Button>
+          ) : null}
+
+          {/* Mounted only while open, so its data hooks (staff, panels) run
+              only when the desk actually starts a registration. */}
+          {registering ? (
+            <CheckInRegistrationDrawer
+              appointmentId={appointment.id}
+              onClose={() => setRegistering(false)}
+            />
+          ) : null}
+
+          {/* Same rule: the template fetch runs only when messaging starts. */}
+          {messaging ? (
+            <MessagePatientModal
+              open
+              onClose={() => setMessaging(false)}
+              clinicId={appointment.clinicId}
+              appointment={appointment}
+              defaultTemplateKey={messageDefaultTemplate}
+            />
           ) : null}
         </div>
       ) : null}

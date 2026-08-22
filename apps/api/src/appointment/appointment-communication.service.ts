@@ -125,7 +125,7 @@ export class AppointmentCommunicationService {
         patient: { select: { id: true, name: true, phone: true } },
         service: { select: { id: true, name: true, preInstructions: true } },
         staff: { select: { fullName: true } },
-        communications: { select: { template: true } },
+        communications: { select: { template: true, sentAt: true } },
       },
     });
 
@@ -139,6 +139,7 @@ export class AppointmentCommunicationService {
       providerName: string;
       serviceName: string;
       preInstructions: string | null;
+      manageToken: string | null;
     }[] = [];
 
     for (const appointment of appointments) {
@@ -155,7 +156,20 @@ export class AppointmentCommunicationService {
         const template = `REMINDER_${rule.offsetMinutes}`;
         const dueAt = appointment.scheduledStart.getTime() - rule.offsetMinutes * 60 * 1000;
         if (dueAt > now.getTime()) continue;
-        if (appointment.communications.some((row) => row.template === template)) continue;
+        // Cleared by the worklist's own send (exact template) OR by ANY
+        // reminder sent once this one was already due — a receptionist who
+        // messaged the patient from the drawer has reminded them, and the
+        // worklist showing that patient anyway teaches the counter to ignore
+        // it. A reminder sent long BEFORE this rule's window does not count:
+        // the rule wants a nudge NEAR the time.
+        const reminded = appointment.communications.some(
+          (row) =>
+            row.template === template ||
+            (row.template.startsWith('REMINDER') &&
+              row.sentAt !== null &&
+              row.sentAt.getTime() >= dueAt),
+        );
+        if (reminded) continue;
         dueRows.push({
           appointmentId: appointment.id,
           template,
@@ -166,6 +180,7 @@ export class AppointmentCommunicationService {
           providerName: appointment.staff.fullName,
           serviceName: appointment.service.name,
           preInstructions: appointment.service.preInstructions,
+          manageToken: appointment.manageToken,
         });
       }
     }

@@ -1,16 +1,5 @@
-import { describe, expect, it, beforeEach } from 'vitest';
-import {
-  patientFacingClinicName,
-  reminderMessage,
-  toWhatsappNumber,
-  whatsappLink,
-} from './whatsappReminder';
-import { setClinicTimeZone } from '../clinical/clinicTime';
-
-// 01:00Z is 09:00 in Kuala Lumpur.
-const SLOT = '2026-08-20T01:00:00.000Z';
-
-beforeEach(() => setClinicTimeZone('Asia/Kuala_Lumpur'));
+import { describe, expect, it } from 'vitest';
+import { patientFacingClinicName, toWhatsappNumber } from './whatsappReminder';
 
 // ===========================================================================
 // NO WHATSAPP API.
@@ -43,78 +32,6 @@ describe('Malaysian numbers, as people actually write them', () => {
     // patient's appointment time.
     expect(toWhatsappNumber('+65 9123 4567')).toBe('6591234567');
     expect(toWhatsappNumber('+44 7700 900123')).toBe('447700900123');
-  });
-});
-
-describe('the message', () => {
-  it('4. names the patient, the clinic and the time in the CLINIC’s clock', () => {
-    const text = reminderMessage({
-      patientName: 'Aminah binti Yusof',
-      scheduledStart: SLOT,
-      clinicName: 'Klinik Utama',
-    });
-
-    expect(text).toContain('Aminah binti Yusof');
-    expect(text).toContain('Klinik Utama');
-    // 09:00, not 01:00 — the patient is told the hour they should arrive.
-    expect(text).toContain('20 Aug 2026 · 09:00');
-  });
-
-  it('4b. NEVER renders "at on" — an empty clinic name drops the clause, not the grammar', () => {
-    // The exact defect the owner caught in live UAT: one caller passed '' and
-    // a real patient message read "your appointment at on 22 Aug 2026". The
-    // template itself now refuses to produce that sentence.
-    const text = reminderMessage({
-      patientName: 'Aminah',
-      scheduledStart: SLOT,
-      clinicName: '',
-    });
-
-    expect(text).not.toContain(' at on ');
-    expect(text).toContain('your appointment on 20 Aug 2026');
-  });
-
-  it('5. carries NO clinical detail', () => {
-    // A reminder travels unencrypted to a phone that may be shared.
-    const text = reminderMessage({
-      patientName: 'Aminah',
-      scheduledStart: SLOT,
-      clinicName: 'Klinik Utama',
-    });
-
-    expect(text).not.toMatch(/diagnos|medicat|consultation for|complaint/i);
-  });
-});
-
-describe('the link', () => {
-  it('6. is a wa.me link with the message url-encoded', () => {
-    const link = whatsappLink({
-      phone: '012-345 6789',
-      patientName: 'Aminah',
-      scheduledStart: SLOT,
-      clinicName: 'Klinik Utama',
-    })!;
-
-    expect(link.startsWith('https://wa.me/60123456789?text=')).toBe(true);
-    expect(decodeURIComponent(link.split('?text=')[1])).toContain('Klinik Utama');
-  });
-
-  it('7. is null when there is no usable number, so the caller can disable the button', () => {
-    expect(
-      whatsappLink({ phone: null, patientName: 'A', scheduledStart: SLOT, clinicName: 'K' }),
-    ).toBeNull();
-  });
-
-  it('8. survives a name with characters that would break a url', () => {
-    const link = whatsappLink({
-      phone: '0123456789',
-      patientName: 'A/P Rajan & Sons',
-      scheduledStart: SLOT,
-      clinicName: 'Klinik 100% Sihat',
-    })!;
-
-    expect(link).not.toContain('&Sons');
-    expect(decodeURIComponent(link.split('?text=')[1])).toContain('A/P Rajan & Sons');
   });
 });
 

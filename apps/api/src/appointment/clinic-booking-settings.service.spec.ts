@@ -183,6 +183,118 @@ describe('the window has to be a window', () => {
   });
 });
 
+describe('Phase 3 — the calendar display is its own decision', () => {
+  it('15. an unconfigured clinic defaults to standard hours with an hour of padding', async () => {
+    expect(DEFAULT_BOOKING_SETTINGS.calendarDisplayMode).toBe('STANDARD_HOURS');
+    expect(DEFAULT_BOOKING_SETTINGS.displayPaddingMinutes).toBe(60);
+    expect(DEFAULT_BOOKING_SETTINGS.displayOpenTime).toBeNull();
+  });
+
+  it('16. a 24-hour branch stores its choice and reads it back', async () => {
+    const ctx = build();
+
+    const saved = await ctx.run(() =>
+      ctx.service.upsert(CLINIC, {
+        firstSessionTime: '',
+        lastSessionTime: '',
+        minimumNoticeMinutes: 0,
+        calendarDisplayMode: 'TWENTY_FOUR_HOURS',
+      }),
+    );
+
+    expect(saved.calendarDisplayMode).toBe('TWENTY_FOUR_HOURS');
+  });
+
+  it('17. display hours that close before they open are refused, in words', async () => {
+    const ctx = build();
+
+    await expect(
+      ctx.run(() =>
+        ctx.service.upsert(CLINIC, {
+          firstSessionTime: '',
+          lastSessionTime: '',
+          minimumNoticeMinutes: 0,
+          displayOpenTime: '18:00',
+          displayCloseTime: '09:00',
+        }),
+      ),
+    ).rejects.toThrow(/closing time must be after the opening time/i);
+  });
+
+  it('18. saving the BOOKING WINDOW leaves the calendar display alone — two cards, two decisions', async () => {
+    // The regression this pin exists for: the booking-window form PUTs the
+    // full document, and an overwrite-semantics upsert would silently reset a
+    // configured 24-hour diary back to standard hours.
+    const ctx = build({
+      settings: {
+        id: 'row-1',
+        firstSessionTime: null,
+        lastSessionTime: null,
+        minimumNoticeMinutes: 0,
+        calendarDisplayMode: 'TWENTY_FOUR_HOURS',
+        displayOpenTime: parseTimeToDate('09:00'),
+        displayCloseTime: parseTimeToDate('17:00'),
+        displayPaddingMinutes: 30,
+      },
+    });
+
+    const saved = await ctx.run(() =>
+      ctx.service.upsert(CLINIC, {
+        firstSessionTime: '08:00',
+        lastSessionTime: '20:00',
+        minimumNoticeMinutes: 15,
+      }),
+    );
+
+    expect(saved.calendarDisplayMode).toBe('TWENTY_FOUR_HOURS');
+    expect(saved.displayOpenTime).toBe('09:00');
+    expect(saved.displayPaddingMinutes).toBe(30);
+  });
+
+  it('19. an empty display time CLEARS it, back to the stable default band', async () => {
+    const ctx = build({
+      settings: {
+        id: 'row-1',
+        firstSessionTime: null,
+        lastSessionTime: null,
+        minimumNoticeMinutes: 0,
+        calendarDisplayMode: 'STANDARD_HOURS',
+        displayOpenTime: parseTimeToDate('09:00'),
+        displayCloseTime: parseTimeToDate('17:00'),
+        displayPaddingMinutes: 60,
+      },
+    });
+
+    const saved = await ctx.run(() =>
+      ctx.service.upsert(CLINIC, {
+        firstSessionTime: '',
+        lastSessionTime: '',
+        minimumNoticeMinutes: 0,
+        displayOpenTime: '',
+        displayCloseTime: '',
+      }),
+    );
+
+    expect(saved.displayOpenTime).toBeNull();
+    expect(saved.displayCloseTime).toBeNull();
+  });
+
+  it('20. padding beyond four hours is refused — that is a different diary, not padding', async () => {
+    const ctx = build();
+
+    await expect(
+      ctx.run(() =>
+        ctx.service.upsert(CLINIC, {
+          firstSessionTime: '',
+          lastSessionTime: '',
+          minimumNoticeMinutes: 0,
+          displayPaddingMinutes: 600,
+        }),
+      ),
+    ).rejects.toThrow(/between 0 and 240/i);
+  });
+});
+
 describe('closed dates', () => {
   it('9. a date is recorded with its author', async () => {
     const ctx = build();

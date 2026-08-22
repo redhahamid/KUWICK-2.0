@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Calendar as BigCalendar, dayjsLocalizer, Views } from 'react-big-calendar';
+import { Calendar as BigCalendar, Views } from 'react-big-calendar';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import {
   Alert,
@@ -15,10 +15,9 @@ import {
 } from 'antd';
 import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
-import utc from 'dayjs/plugin/utc';
-import timezone from 'dayjs/plugin/timezone';
 import { AppointmentStatus } from '@kuwick/shared';
 import { useAppointments, useRescheduleAppointment } from '../hooks/useAppointments';
+import { SetupChecklistCard } from '../SetupChecklistCard';
 import { useRosterRange } from '../hooks/useRoster';
 import { useStaff } from '../../hr/hooks/useStaff';
 import { useServices } from '../../clinical/hooks/useServices';
@@ -29,24 +28,32 @@ import { AppointmentDrawer } from './AppointmentDrawer';
 import { StaffBookingFlow } from '../StaffBookingFlow';
 import { CalendarMetrics } from './CalendarMetrics';
 import { CalendarViewMode, getCalendarRange, shiftAnchor, todayAnchor } from './calendar-range';
+import { calendarLocalizer as localizer } from './calendar-localizer';
 import {
   CardModel,
   cardLines,
   cardModel,
-  earliestRosteredHour,
-  gridBounds,
+  compactLine,
+  defaultScrollOpening,
+  displayBounds,
+  gridDateAt,
+  gridWindow,
   isReleased,
+  outsideDisplayCount,
   scrollToHour,
   statusCardBackground,
   statusDotColor,
 } from './calendar-events';
+import { useBookingSettings } from '../hooks/useBookingSettings';
+import { SOURCE_LABELS, type AppointmentSource } from '../types';
 import { getDoctorColor } from './doctor-color';
 import { useCan } from '../../core/hooks/useCan';
 import { ApiError } from '../../core/api-client';
 
-dayjs.extend(utc);
-dayjs.extend(timezone);
-const localizer = dayjsLocalizer(dayjs);
+// RC BLOCKER FIX — the localizer lives in calendar-localizer.ts, built on a
+// dayjs FACADE without `.tz`. Handing rbc the timezone-extended dayjs made
+// its `merge()` shift every day-column's min/max by the browser's UTC offset
+// (23:00-previous-day wraps on any Malaysian device). See that module.
 
 const VIEW_OPTIONS: { label: string; value: CalendarViewMode }[] = [
   { label: 'Day', value: 'day' },
@@ -128,7 +135,11 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
   const [providerFilter, setProviderFilter] = useState<string[]>([]);
   const [serviceFilter, setServiceFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [sourceFilter, setSourceFilter] = useState<string[]>([]);
   const [search, setSearch] = useState('');
+  // Phase 3D — a standard-hours branch can reveal the whole day on demand;
+  // scroll position only, never a new axis shape per date.
+  const [showFullDay, setShowFullDay] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [booking, setBooking] = useState<{ staffId?: string; start?: Dayjs } | null>(null);
   // The appointment picked up for moving. Two-step rather than a drag — see
@@ -139,6 +150,10 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
   const { data: staff } = useStaff();
   const { data: services } = useServices();
   const { data: patients } = usePatients();
+  // Phase 3B/3C — the branch's own calendar-display settings, the diary
+  // axis's ONLY source. The roster below shades availability; it no longer
+  // shapes the grid.
+  const { data: bookingSettings } = useBookingSettings(clinicId);
 
   const range = useMemo(() => getCalendarRange(viewMode, anchor), [viewMode, anchor]);
 
@@ -191,6 +206,9 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
       .filter(
         (appointment) => statusFilter.length === 0 || statusFilter.includes(appointment.status),
       )
+      .filter(
+        (appointment) => sourceFilter.length === 0 || sourceFilter.includes(appointment.source),
+      )
       .filter((appointment) =>
         term ? patientName(appointment.patientId).toLowerCase().includes(term) : true,
       )
@@ -219,7 +237,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           appointment,
           card: cardModel(label, minutes),
           tooltip: lines.join(' · '),
-          compact: `${label.time} ${label.patientName.trim().split(/\s+/)[0] ?? label.patientName}`,
+          compact: compactLine(label.time, label.patientName),
           released: isReleased(appointment.status),
         };
       });
@@ -228,13 +246,83 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
     visibleProviderIds,
     serviceFilter,
     statusFilter,
+    sourceFilter,
     search,
     patientName,
     serviceName,
     staffName,
   ]);
 
-  const bounds = useMemo(() => gridBounds(shifts), [shifts]);
+  // THE AXIS (Phase 3). A pure function of the branch's display settings and
+  // the reveal toggle — shifts, dates and filters have no way in, so the
+  // diary's shape holds still whatever the day contains.
+  const bounds = useMemo(
+    () => displayBounds(bookingSettings, showFullDay),
+    [bookingSettings, showFullDay],
+  );
+  const is24hBranch = bookingSettings?.calendarDisplayMode === 'TWENTY_FOUR_HOURS';
+
+  // Phase 3D — what the fixed band cannot show is SAID, never hidden: the
+  // notice counts live bookings outside the displayed hours and offers the
+  // full day. Month view positions by date, not hour, so it is exempt.
+  const outsideCount = useMemo(
+    () => (viewMode === 'month' ? 0 : outsideDisplayCount(events, bounds)),
+    [events, bounds, viewMode],
+  );
+
+  // Phase 3H — active filters, worn on the sleeve. A diary quietly filtered
+  // to one doctor looks exactly like a quiet day, which is how the other
+  // doctors get double-booked.
+  const filtersActive =
+    providerFilter.length > 0 ||
+    serviceFilter.length > 0 ||
+    statusFilter.length > 0 ||
+    sourceFilter.length > 0 ||
+    search.trim().length > 0;
+
+  const activeFilterChips = useMemo(() => {
+    const chips: { key: string; label: string; remove: () => void }[] = [];
+    for (const id of providerFilter) {
+      chips.push({
+        key: `provider-${id}`,
+        label: staffName(id) || 'Provider',
+        remove: () => setProviderFilter((current) => current.filter((value) => value !== id)),
+      });
+    }
+    for (const id of serviceFilter) {
+      chips.push({
+        key: `service-${id}`,
+        label: serviceName(id) || 'Service',
+        remove: () => setServiceFilter((current) => current.filter((value) => value !== id)),
+      });
+    }
+    for (const status of statusFilter) {
+      chips.push({
+        key: `status-${status}`,
+        label: status.replace(/_/g, ' ').toLowerCase(),
+        remove: () => setStatusFilter((current) => current.filter((value) => value !== status)),
+      });
+    }
+    for (const source of sourceFilter) {
+      chips.push({
+        key: `source-${source}`,
+        label: SOURCE_LABELS[source as AppointmentSource] ?? source,
+        remove: () => setSourceFilter((current) => current.filter((value) => value !== source)),
+      });
+    }
+    if (search.trim()) {
+      chips.push({ key: 'search', label: `“${search.trim()}”`, remove: () => setSearch('') });
+    }
+    return chips;
+  }, [providerFilter, serviceFilter, statusFilter, sourceFilter, search, staffName, serviceName]);
+
+  const clearFilters = useCallback(() => {
+    setProviderFilter([]);
+    setServiceFilter([]);
+    setStatusFilter([]);
+    setSourceFilter([]);
+    setSearch('');
+  }, []);
 
   // The first booking of the day being looked at — where reading starts on a
   // roster whose grid has to render from midnight.
@@ -245,16 +333,21 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
     return hours.length > 0 ? Math.min(...hours) : null;
   }, [events]);
 
-  const scrollHour = useMemo(
-    () =>
-      scrollToHour({
-        anchor,
-        now: clinicDayjs(new Date()),
-        earliestRosteredHour: earliestRosteredHour(shifts),
-        earliestEventHour,
-      }),
-    [anchor, shifts, earliestEventHour],
-  );
+  // RC blocker — the scroll POLICY (owner-specified): today opens near the
+  // clinic's now, a day with appointments at its first appointment, an empty
+  // day at the branch's opening hour. The roster is not an input; date
+  // identity travels as YYYY-MM-DD keys so no dayjs mode can shift it.
+  const anchorKey = anchor.format('YYYY-MM-DD');
+  const scrollHour = useMemo(() => {
+    const now = clinicDayjs(new Date());
+    return scrollToHour({
+      anchorKey,
+      nowKey: now.format('YYYY-MM-DD'),
+      nowHour: now.hour(),
+      earliestEventHour,
+      openingHour: defaultScrollOpening(bookingSettings),
+    });
+  }, [anchorKey, earliestEventHour, bookingSettings]);
 
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -277,17 +370,16 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
   // only changes when the DATE, VIEW-derived bounds or intended hour change —
   // which is exactly the set of moments a re-scroll is wanted, and the
   // deliberate effect below owns the actual position arithmetic.
-  const gridMin = useMemo(
-    () => anchor.hour(bounds.startHour).minute(0).toDate(),
-    [anchor, bounds.startHour],
-  );
-  const gridMax = useMemo(
-    () => anchor.hour(Math.min(23, bounds.endHour)).minute(59).toDate(),
-    [anchor, bounds.endHour],
-  );
+  // RC blocker — every Date the grid receives is built from the anchor's
+  // CALENDAR-DATE KEY with local-field construction (gridWindow): min, max,
+  // date and the scroll target all share one calendar date whatever mode the
+  // anchor dayjs happens to be in (the drill-down path used to store a
+  // timezone-mode dayjs, putting min on 23:00 of the previous date — the
+  // wrapped diary, and rbc's Invalid-array-length white screen).
+  const grid = useMemo(() => gridWindow(anchorKey, bounds), [anchorKey, bounds]);
   const gridScrollTo = useMemo(
-    () => anchor.hour(scrollHour).minute(0).toDate(),
-    [anchor, scrollHour],
+    () => gridDateAt(anchorKey, Math.max(bounds.startHour, Math.min(scrollHour, bounds.endHour - 1))),
+    [anchorKey, scrollHour, bounds.startHour, bounds.endHour],
   );
 
   // WORKING HOURS AS SHAPE. One sorted interval list per provider, read from
@@ -369,8 +461,11 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
     if (!content || !group) return;
     // A timeslot-group is `step × timeslots` minutes tall — 30 here.
     const hourHeight = group.offsetHeight * 2;
-    content.scrollTop = Math.max(0, (scrollHour - bounds.startHour) * hourHeight);
-  }, [viewMode, anchor, isLoading, scrollHour, bounds.startHour]);
+    // INITIAL SCROLL IS NOT THE AXIS (Phase 3C): the target hour is clamped
+    // into the fixed band; the band itself never moves to meet it.
+    const target = Math.max(bounds.startHour, Math.min(scrollHour, bounds.endHour - 1));
+    content.scrollTop = Math.max(0, (target - bounds.startHour) * hourHeight);
+  }, [viewMode, anchor, isLoading, scrollHour, bounds.startHour, bounds.endHour]);
 
   // Keyboard: D / W / M / P and the arrows. A receptionist works the calendar
   // all day and reaching for the mouse to move one day is friction that adds up.
@@ -461,6 +556,9 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
 
   return (
     <div className="kw-calendar-workspace" data-testid="calendar-workspace">
+      {/* PHASE 8 — renders nothing once the core setup is done. */}
+      <SetupChecklistCard clinicId={clinicId} />
+
       {/* COMMAND BAR — navigate, the date said big, the view switcher. */}
       <div className="kw-calendar-toolbar">
         <Space wrap size={10}>
@@ -499,6 +597,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           allowClear
           maxTagCount={1}
           size="small"
+          optionFilterProp="label"
           style={{ minWidth: 158 }}
           placeholder="All providers"
           value={providerFilter}
@@ -513,6 +612,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           allowClear
           maxTagCount={1}
           size="small"
+          optionFilterProp="label"
           style={{ minWidth: 148 }}
           placeholder="All services"
           value={serviceFilter}
@@ -527,6 +627,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           allowClear
           maxTagCount={1}
           size="small"
+          optionFilterProp="label"
           style={{ minWidth: 138 }}
           placeholder="All statuses"
           value={statusFilter}
@@ -541,6 +642,18 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             AppointmentStatus.CANCELLED,
           ].map((status) => ({ value: status, label: status.replace(/_/g, ' ') }))}
         />
+        <Select
+          mode="multiple"
+          allowClear
+          maxTagCount={1}
+          size="small"
+          optionFilterProp="label"
+          style={{ minWidth: 128 }}
+          placeholder="All sources"
+          value={sourceFilter}
+          onChange={setSourceFilter}
+          options={Object.entries(SOURCE_LABELS).map(([value, label]) => ({ value, label }))}
+        />
         <Input.Search
           allowClear
           size="small"
@@ -549,8 +662,58 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
-        <CalendarMetrics appointments={appointments ?? []} />
+        <CalendarMetrics
+          appointments={events.map((event) => event.appointment)}
+          filtered={filtersActive}
+        />
       </div>
+
+      {/* ACTIVE FILTERS SAID OUT LOUD (Phase 3H) — a diary quietly showing a
+          tenth of the day is how a receptionist double-books the other nine
+          tenths. Each chip removes itself; Clear all removes the lot. */}
+      {filtersActive ? (
+        <div className="kw-cal-active-filters" data-testid="calendar-active-filters">
+          {activeFilterChips.map((chip) => (
+            <span key={chip.key} className="kw-filter-chip">
+              {chip.label}
+              <button
+                type="button"
+                aria-label={`Remove filter ${chip.label}`}
+                onClick={chip.remove}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          <Button type="link" size="small" onClick={clearFilters}>
+            Clear all
+          </Button>
+        </div>
+      ) : null}
+
+      {/* WHAT THE BAND CANNOT SHOW IS SAID (Phase 3D). Out-of-hours bookings
+          stay real: the strip counts them and opens the full day. */}
+      {!is24hBranch && (outsideCount > 0 || showFullDay) ? (
+        <div className="kw-cal-outside" data-testid="calendar-outside-hours">
+          {showFullDay ? (
+            <>
+              <span>Showing the full 24 hours.</span>
+              <Button size="small" onClick={() => setShowFullDay(false)}>
+                Back to clinic hours
+              </Button>
+            </>
+          ) : (
+            <>
+              <span>
+                {outsideCount} booking{outsideCount === 1 ? '' : 's'} outside the displayed hours.
+              </span>
+              <Button size="small" onClick={() => setShowFullDay(true)}>
+                Show full 24 hours
+              </Button>
+            </>
+          )}
+        </div>
+      ) : null}
 
       {moving ? (
         <Alert
@@ -584,9 +747,13 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           <BigCalendar
             localizer={localizer}
             events={events}
-            date={anchor.toDate()}
+            date={grid.date}
             view={rbcView}
-            onNavigate={(value) => setAnchor(clinicDayjs(value))}
+            // The Dates rbc hands back are PSEUDO-dates (clinic wall clock in
+            // local fields) — their local Y-M-D IS the clinic date. A plain
+            // local dayjs keeps it; clinicDayjs() here would re-convert an
+            // already-converted value and store a timezone-mode anchor.
+            onNavigate={(value) => setAnchor(dayjs(value))}
             onView={() => undefined}
             toolbar={false}
             selectable
@@ -597,8 +764,8 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             dayLayoutAlgorithm="no-overlap"
             step={15}
             timeslots={2}
-            min={gridMin}
-            max={gridMax}
+            min={grid.min}
+            max={grid.max}
             scrollToTime={gridScrollTo}
             // V3.1.2 — the library is NOT a scroll writer here. rbc's own
             // applyScroll() measures scrollToTime from MIDNIGHT but divides
@@ -617,8 +784,8 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             onDoubleClickEvent={(event: CalendarEvent) => permReschedule && setMoving(event.appointment)}
             onDrillDown={(value: Date) => {
               // A month cell click opens that DAY, which is what "+3 more"
-              // means to somebody who clicked it.
-              setAnchor(clinicDayjs(value));
+              // means to somebody who clicked it. Plain dayjs — see onNavigate.
+              setAnchor(dayjs(value));
               setViewMode('day');
             }}
             messages={{ showMore: (count: number) => `+ ${count} more` }}
@@ -660,11 +827,26 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
                       </span>
                       {!compactMode ? (
                         <div className="kw-event-full">
-                          <span className="kw-event-time">
-                            {dot}
-                            {event.card.time}
-                          </span>
-                          <div className="kw-event-patient">{event.card.patient}</div>
+                          {/* 3F — a 30-minute card holds exactly two lines,
+                              so time and name share the first (dense) while
+                              taller cards give each its own. */}
+                          {event.card.dense ? (
+                            <div className="kw-event-lead">
+                              <span className="kw-event-time">
+                                {dot}
+                                {event.card.time}
+                              </span>
+                              <span className="kw-event-patient">{event.card.patient}</span>
+                            </div>
+                          ) : (
+                            <>
+                              <span className="kw-event-time">
+                                {dot}
+                                {event.card.time}
+                              </span>
+                              <div className="kw-event-patient">{event.card.patient}</div>
+                            </>
+                          )}
                           {event.card.service ? (
                             <div className="kw-event-secondary">{event.card.service}</div>
                           ) : null}

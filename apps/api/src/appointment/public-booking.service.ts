@@ -22,6 +22,8 @@ import {
 import { tenantContextStorage } from '../core/tenant-context';
 import { ClinicalTx } from '../clinical/clinical-actor';
 import { appointmentSnapshot, recordAppointmentEvent } from './appointment-event.service';
+import { StaffNotificationService, notificationWhen } from './staff-notification.service';
+import { mediaIdOf } from './media.service';
 import { AppointmentBookingValidator } from './appointment-booking-validator.service';
 import { SlotAvailabilityService } from './slot-availability.service';
 import { PublicBookDto, PublicCancelDto, PublicRescheduleDto } from './dto/public-booking.dto';
@@ -43,8 +45,14 @@ interface ResolvedPage {
   allowPatientReschedule: boolean;
   allowPatientCancel: boolean;
   patientChangeCutoffHours: number;
+  patientRescheduleMode: string | null;
+  patientCancelMode: string | null;
+  patientChangeCutoffMinutes: number | null;
   confirmationMessage: string | null;
 }
+
+/** Phase 7 — what the patient may do, per action. */
+export type PatientChangeMode = 'NOT_ALLOWED' | 'REQUEST_APPROVAL' | 'INSTANT';
 
 /**
  * THE PUBLIC BOOKING PAGE — unauthenticated, and NOT unscoped.
@@ -100,6 +108,8 @@ export class PublicBookingService {
     @Inject(TENANT_SCOPED_PRISMA) private readonly scoped: TenantScopedPrismaClient,
     private readonly availability: SlotAvailabilityService,
     private readonly bookingValidator: AppointmentBookingValidator,
+    /** Phase 5 — the staff inbox fan-out for patient-initiated events. */
+    private readonly staffNotifications: StaffNotificationService,
   ) {}
 
   /**
@@ -124,6 +134,9 @@ export class PublicBookingService {
         allow_patient_reschedule AS "allowPatientReschedule",
         allow_patient_cancel AS "allowPatientCancel",
         patient_change_cutoff_hours AS "patientChangeCutoffHours",
+        patient_reschedule_mode AS "patientRescheduleMode",
+        patient_cancel_mode AS "patientCancelMode",
+        patient_change_cutoff_minutes AS "patientChangeCutoffMinutes",
         confirmation_message AS "confirmationMessage"
       FROM clinic_booking_pages
       WHERE slug = ${slug} AND active = true
@@ -153,6 +166,34 @@ export class PublicBookingService {
         return fn(tx);
       }),
     );
+  }
+
+  /**
+   * Phase 6 — a stored `media://<id>` reference becomes the slug-scoped
+   * public URL; an ordinary http(s) URL passes through untouched (the
+   * Advanced fallback). Relative, so the web prefixes its own API base.
+   */
+  private publicMediaUrl(slug: string, ref: string | null): string | null {
+    const id = mediaIdOf(ref);
+    return id ? `/public/booking/${slug}/media/${id}` : ref;
+  }
+
+  /**
+   * Phase 7 — the tri-state policy, with the frozen booleans as fallback for
+   * pages that have never been saved under the new model: true was always
+   * instant self-service, false was always "ring us".
+   */
+  private changeModeOf(page: ResolvedPage, action: 'reschedule' | 'cancel'): PatientChangeMode {
+    const stored = action === 'reschedule' ? page.patientRescheduleMode : page.patientCancelMode;
+    if (stored === 'NOT_ALLOWED' || stored === 'REQUEST_APPROVAL' || stored === 'INSTANT') {
+      return stored;
+    }
+    const allowed = action === 'reschedule' ? page.allowPatientReschedule : page.allowPatientCancel;
+    return allowed ? 'INSTANT' : 'NOT_ALLOWED';
+  }
+
+  private cutoffMinutesOf(page: ResolvedPage): number {
+    return page.patientChangeCutoffMinutes ?? page.patientChangeCutoffHours * 60;
   }
 
   /** What the page shows before anybody has chosen anything. */
@@ -207,7 +248,7 @@ export class PublicBookingService {
         clinic: {
           slug: page.slug,
           displayName: page.displayName,
-          logoUrl: page.logoUrl,
+          logoUrl: this.publicMediaUrl(page.slug, page.logoUrl),
           language: page.language,
           introText: page.introText,
           timeZone,
@@ -224,7 +265,7 @@ export class PublicBookingService {
           name: service.name,
           category: service.category,
           description: service.bookingDescription,
-          photoUrl: service.bookingPhotoUrl,
+          photoUrl: this.publicMediaUrl(page.slug, service.bookingPhotoUrl),
           durationMinutes: service.durationMinutesDefault,
           // §22 — the page shows what the clinic chose to show. HIDDEN means
           // HIDDEN: the number is not sent to the browser at all, because a
@@ -268,7 +309,7 @@ export class PublicBookingService {
           active: true,
           clinicId: page.clinicId,
         },
-        select: { id: true, fullName: true, calendarColor: true },
+        select: { id: true, fullName: true, calendarColor: true, professionalType: true },
         orderBy: { fullName: 'asc' },
       });
       return staff;
@@ -379,13 +420,17 @@ export class PublicBookingService {
       throw new BadRequestException('An IC or passport number is needed.');
     }
 
-    return this.tx(page, async (tx) => {
+    // Phase 5 — the clinic is told AFTER the booking's own transaction has
+    // committed; an inbox write must never roll a patient's booking back.
+    let freshAppointmentId: string | null = null;
+    const confirmation = await this.tx(page, async (tx) => {
       if (dto.idempotencyKey) {
         const existing = await tx.appointment.findFirst({
           where: { tenantId: page.tenantId, idempotencyKey: dto.idempotencyKey },
         });
         if (existing) return this.confirmationOf(page, existing);
       }
+      freshAppointmentId = null; // set below once the row exists
 
       // The same advisory locks the staff path takes, for the same reason: a
       // patient on the public page and a receptionist at the counter are two
@@ -498,8 +543,64 @@ export class PublicBookingService {
         actorLabel: 'Patient (online booking)',
       });
 
+      freshAppointmentId = appointment.id;
       return this.confirmationOf(page, appointment);
     });
+    if (freshAppointmentId) {
+      await this.notifyClinic(
+        page,
+        freshAppointmentId,
+        // Auto-confirmed bookings land as work on the diary; requests land as
+        // a decision on the desk. Two different sentences.
+        (status) => (status === 'REQUESTED'
+          ? { type: 'BOOKING_REQUEST' as const, title: 'Booking request (online)' }
+          : { type: 'NEW_BOOKING' as const, title: 'New online booking' }),
+      );
+    }
+    return confirmation;
+  }
+
+  /**
+   * Phase 5 — re-read the names through the tenant-scoped client (RLS as
+   * usual) and fan out to the branch desk and the assigned provider. No
+   * actor: the patient is not a staff member and nobody is excluded.
+   */
+  private async notifyClinic(
+    page: ResolvedPage,
+    appointmentId: string,
+    describe: (status: string) => { type: 'NEW_BOOKING' | 'BOOKING_REQUEST' | 'PATIENT_CANCELLED' | 'PATIENT_RESCHEDULED' | 'RESCHEDULE_REQUESTED' | 'CANCELLATION_REQUESTED'; title: string },
+  ): Promise<void> {
+    try {
+    await this.inTenant(page, async () => {
+      const row = await this.scoped.appointment.findUnique({
+        where: { id: appointmentId },
+        select: {
+          status: true,
+          clinicId: true,
+          staffId: true,
+          scheduledStart: true,
+          patient: { select: { name: true } },
+          service: { select: { name: true } },
+          staff: { select: { fullName: true } },
+          clinic: { select: { timezone: true } },
+        },
+      });
+      if (!row?.patient?.name || !row.service?.name || !row.staff?.fullName) return;
+      const { type, title } = describe(row.status);
+      await this.staffNotifications.notify({
+        clinicId: row.clinicId,
+        type,
+        title,
+        body: `${row.patient.name} · ${row.service.name} · ${notificationWhen(row.scheduledStart, row.clinic.timezone)} · ${row.staff.fullName}`,
+        appointmentId,
+        assignedStaffId: row.staffId,
+        includeDesk: true,
+      });
+    });
+    } catch {
+      // Best-effort by contract: the patient's booking already exists, and
+      // the inbox is a convenience that must never surface an error here.
+    }
   }
 
   /**
@@ -617,43 +718,83 @@ export class PublicBookingService {
    * here can reach a second patient, because the token is the primary filter
    * rather than a check applied after a broader read.
    */
+  /**
+   * Phase 6 — the public image bytes. The slug resolves the tenant exactly
+   * as every other public read does, then RLS scopes the asset lookup: an id
+   * from another tenant's page finds nothing here. Only booking-surface
+   * kinds are served — the table holds nothing else, and the kind check
+   * keeps that a contract rather than an accident.
+   */
+  async mediaBySlug(slug: string, id: string) {
+    const page = await this.resolvePage(slug);
+    return this.inTenant(page, async () => {
+      const row = await this.scoped.mediaAsset.findUnique({
+        where: { id },
+        select: { kind: true, contentType: true, data: true },
+      });
+      if (!row || !['SERVICE_PHOTO', 'CLINIC_LOGO'].includes(row.kind)) {
+        throw new NotFoundException('Image not found');
+      }
+      return { contentType: row.contentType, data: row.data };
+    });
+  }
+
   async manage(slug: string, token: string) {
     const page = await this.resolvePage(slug);
     return this.inTenant(page, async () => {
-      const appointment = await this.scoped.appointment.findFirst({
-        where: { manageToken: token },
-        select: {
-          id: true,
-          status: true,
-          scheduledStart: true,
-          scheduledEnd: true,
-          patientNote: true,
-          paymentStatus: true,
-          bookingFeeAmount: true,
-          serviceId: true,
-          // The PATIENT'S OWN name only. Nothing about anybody else, and no
-          // clinical record: this link is shared by SMS and forwarded.
-          patient: { select: { name: true } },
-          staff: { select: { fullName: true } },
-          service: {
-            select: { name: true, durationMinutesDefault: true, preInstructions: true, postInstructions: true },
-          },
-          formAnswers: { orderBy: { sortOrder: 'asc' }, select: { label: true, answer: true } },
+      const MANAGE_SELECT = {
+        id: true,
+        status: true,
+        cancellationReason: true,
+        scheduledStart: true,
+        scheduledEnd: true,
+        patientNote: true,
+        paymentStatus: true,
+        bookingFeeAmount: true,
+        serviceId: true,
+        // The PATIENT'S OWN name only. Nothing about anybody else, and no
+        // clinical record: this link is shared by SMS and forwarded.
+        patient: { select: { name: true } },
+        staff: { select: { fullName: true } },
+        service: {
+          select: { name: true, durationMinutesDefault: true, preInstructions: true, postInstructions: true },
         },
+        formAnswers: {
+          orderBy: { sortOrder: 'asc' as const },
+          select: { label: true, answer: true },
+        },
+      };
+
+      const found = await this.scoped.appointment.findFirst({
+        where: { manageToken: token },
+        select: MANAGE_SELECT,
       });
-      if (!appointment) throw new NotFoundException('This booking link is not valid.');
+      if (!found) throw new NotFoundException('This booking link is not valid.');
+
+      const { live: appointment, chainIds } = await this.followRescheduleChain(found, (fromId) =>
+        this.approvedMoveNext<typeof found>(this.scoped as never, fromId, MANAGE_SELECT),
+      );
 
       const timeZone = await this.availability.clinicTimeZone(page.clinicId);
       const cutoff = new Date(
-        appointment.scheduledStart.getTime() - page.patientChangeCutoffHours * 3600 * 1000,
+        appointment.scheduledStart.getTime() - this.cutoffMinutesOf(page) * 60 * 1000,
       );
       const changeable =
         (appointment.status === AppointmentStatus.CONFIRMED ||
           appointment.status === AppointmentStatus.REQUESTED) &&
         Date.now() < cutoff.getTime();
 
+      // Phase 7 — the page tells the patient where their request stands.
+      // Across the WHOLE chain: the request that moved the booking points at
+      // the old row, and "approved" must not vanish the moment it succeeds.
+      const requests = await this.scoped.appointmentChangeRequest.findMany({
+        where: { appointmentId: { in: chainIds } },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      });
+
       return {
-        clinic: { displayName: page.displayName, logoUrl: page.logoUrl, timeZone },
+        clinic: { displayName: page.displayName, logoUrl: this.publicMediaUrl(page.slug, page.logoUrl), timeZone },
         appointment: {
           status: appointment.status,
           scheduledStart: appointment.scheduledStart,
@@ -669,9 +810,40 @@ export class PublicBookingService {
           answers: appointment.formAnswers,
         },
         can: {
-          reschedule: page.allowPatientReschedule && changeable,
-          cancel: page.allowPatientCancel && changeable,
+          reschedule: this.changeModeOf(page, 'reschedule') === 'INSTANT' && changeable,
+          cancel: this.changeModeOf(page, 'cancel') === 'INSTANT' && changeable,
         },
+        // Phase 7 — the policy said in full, so the page can offer the right
+        // verb: change it, request it, or ring us.
+        policy: {
+          reschedule: this.changeModeOf(page, 'reschedule'),
+          cancel: this.changeModeOf(page, 'cancel'),
+          cutoffMinutes: this.cutoffMinutesOf(page),
+          changeable,
+        },
+        pendingRequests: requests
+          .filter((row) => row.status === 'PENDING')
+          .map((row) => ({
+            id: row.id,
+            type: row.type,
+            reason: row.reason,
+            requestedStart: row.requestedStart,
+            requestedEnd: row.requestedEnd,
+            createdAt: row.createdAt,
+          })),
+        lastDecision: (() => {
+          const decided = requests.find(
+            (row) => row.status === 'APPROVED' || row.status === 'DECLINED',
+          );
+          return decided
+            ? {
+                type: decided.type,
+                status: decided.status,
+                decisionNote: decided.decisionNote,
+                decidedAt: decided.decidedAt,
+              }
+            : null;
+        })(),
         cutoffHours: page.patientChangeCutoffHours,
         confirmationMessage: page.confirmationMessage,
       };
@@ -688,18 +860,24 @@ export class PublicBookingService {
   async availabilityForToken(slug: string, token: string, dateKey: string) {
     const page = await this.resolvePage(slug);
     return this.inTenant(page, async () => {
-      const appointment = await this.scoped.appointment.findFirst({
+      const TOKEN_SELECT = {
+        id: true,
+        status: true,
+        cancellationReason: true,
+        clinicId: true,
+        staffId: true,
+        serviceId: true,
+        scheduledStart: true,
+        scheduledEnd: true,
+      };
+      const found = await this.scoped.appointment.findFirst({
         where: { manageToken: token },
-        select: {
-          id: true,
-          clinicId: true,
-          staffId: true,
-          serviceId: true,
-          scheduledStart: true,
-          scheduledEnd: true,
-        },
+        select: TOKEN_SELECT,
       });
-      if (!appointment) throw new NotFoundException('This booking link is not valid.');
+      if (!found) throw new NotFoundException('This booking link is not valid.');
+      const { live: appointment } = await this.followRescheduleChain(found, (fromId) =>
+        this.approvedMoveNext<typeof found>(this.scoped as never, fromId, TOKEN_SELECT),
+      );
 
       const timeZone = await this.availability.clinicTimeZone(appointment.clinicId);
       const result = await this.availability.findAvailability({
@@ -724,8 +902,11 @@ export class PublicBookingService {
 
     const page = await this.resolvePage(slug);
     return this.tx(page, async (tx) => {
-      const appointment = await tx.appointment.findFirst({ where: { manageToken: token } });
-      if (!appointment) throw new NotFoundException('This booking link is not valid.');
+      const found = await tx.appointment.findFirst({ where: { manageToken: token } });
+      if (!found) throw new NotFoundException('This booking link is not valid.');
+      const { live: appointment } = await this.followRescheduleChain(found, (fromId) =>
+        this.approvedMoveNext<typeof found>(tx as never, fromId),
+      );
       this.assertPatientMayChange(page, appointment, 'reschedule');
 
       // THE SAME LOCKS. book() and the staff paths serialise racers for a
@@ -807,15 +988,24 @@ export class PublicBookingService {
         actorLabel: 'Patient (manage booking)',
       });
 
-      return { manageToken: replacement.manageToken };
+      return { manageToken: replacement.manageToken, replacementId: replacement.id };
+    }).then(async (result: { manageToken: string | null; replacementId: string }) => {
+      await this.notifyClinic(page, result.replacementId, () => ({
+        type: 'PATIENT_RESCHEDULED' as const,
+        title: 'Rescheduled by the patient',
+      }));
+      return { manageToken: result.manageToken };
     });
   }
 
   async cancelByToken(slug: string, token: string, dto: PublicCancelDto) {
     const page = await this.resolvePage(slug);
     return this.tx(page, async (tx) => {
-      const appointment = await tx.appointment.findFirst({ where: { manageToken: token } });
-      if (!appointment) throw new NotFoundException('This booking link is not valid.');
+      const found = await tx.appointment.findFirst({ where: { manageToken: token } });
+      if (!found) throw new NotFoundException('This booking link is not valid.');
+      const { live: appointment } = await this.followRescheduleChain(found, (fromId) =>
+        this.approvedMoveNext<typeof found>(tx as never, fromId),
+      );
       this.assertPatientMayChange(page, appointment, 'cancel');
 
       await tx.appointment.update({
@@ -835,7 +1025,188 @@ export class PublicBookingService {
         reason: dto.reason?.trim() || 'Cancelled by the patient',
         actorLabel: 'Patient (manage booking)',
       });
-      return { cancelled: true };
+      return { cancelled: true, appointmentId: appointment.id };
+    }).then(async (result: { cancelled: boolean; appointmentId: string }) => {
+      await this.notifyClinic(page, result.appointmentId, () => ({
+        type: 'PATIENT_CANCELLED' as const,
+        title: 'Cancelled by the patient',
+      }));
+      return { cancelled: result.cancelled };
+    });
+  }
+
+  /**
+   * PHASE 7 — the patient ASKS; nothing about the appointment moves.
+   *
+   * The request records what they want (a new time, or out entirely) and why,
+   * in their own words. The original booking keeps its slot and its status —
+   * only a staff decision (appointment-change-request.service) mutates
+   * anything, back through the same engine-checked paths as ever. A newer
+   * request of the same type supersedes the older one: the clinic answers the
+   * patient's CURRENT wish, not a stack of drafts.
+   */
+  async requestChangeByToken(
+    slug: string,
+    token: string,
+    dto: {
+      type: 'RESCHEDULE' | 'CANCELLATION';
+      reason: string;
+      scheduledStart?: string;
+      scheduledEnd?: string;
+    },
+  ) {
+    const page = await this.resolvePage(slug);
+    const reason = dto.reason?.trim();
+    if (!reason) {
+      throw new BadRequestException('Please tell the clinic why, so they can decide.');
+    }
+    let requestedStart: Date | null = null;
+    let requestedEnd: Date | null = null;
+    if (dto.type === 'RESCHEDULE') {
+      if (!dto.scheduledStart || !dto.scheduledEnd) {
+        throw new BadRequestException('Pick the time you would like instead.');
+      }
+      requestedStart = new Date(dto.scheduledStart);
+      requestedEnd = new Date(dto.scheduledEnd);
+      if (!(requestedEnd > requestedStart)) {
+        throw new BadRequestException('That time ends before it starts.');
+      }
+    }
+
+    const created = await this.tx(page, async (tx) => {
+      const found = await tx.appointment.findFirst({ where: { manageToken: token } });
+      if (!found) throw new NotFoundException('This booking link is not valid.');
+      const { live: appointment } = await this.followRescheduleChain(found, (fromId) =>
+        this.approvedMoveNext<typeof found>(tx as never, fromId),
+      );
+      this.assertPatientMayChange(
+        page,
+        appointment,
+        dto.type === 'CANCELLATION' ? 'cancel' : 'reschedule',
+        'REQUEST_APPROVAL',
+      );
+
+      if (dto.type === 'RESCHEDULE' && requestedStart && requestedEnd) {
+        // An early, honest answer — the same engine the desk uses. NOT a
+        // reservation: the slot can still be taken before the clinic
+        // approves, and approval re-checks (7E).
+        const check = await this.bookingValidator.check({
+          clinicId: appointment.clinicId,
+          staffId: appointment.staffId,
+          serviceId: appointment.serviceId,
+          scheduledStart: requestedStart,
+          scheduledEnd: requestedEnd,
+          excludeAppointmentId: appointment.id,
+        });
+        if (!check.ok) {
+          throw new BadRequestException(check.message);
+        }
+      }
+
+      // The patient's CURRENT wish replaces their earlier one.
+      await tx.appointmentChangeRequest.updateMany({
+        where: { appointmentId: appointment.id, type: dto.type, status: 'PENDING' },
+        data: { status: 'SUPERSEDED' },
+      });
+      const request = await tx.appointmentChangeRequest.create({
+        data: {
+          tenantId: page.tenantId,
+          clinicId: appointment.clinicId,
+          appointmentId: appointment.id,
+          type: dto.type,
+          reason,
+          requestedStart,
+          requestedEnd,
+        },
+      });
+      await recordAppointmentEvent(tx, {
+        appointmentId: appointment.id,
+        eventType: AppointmentEventType.CHANGE_REQUESTED,
+        reason,
+        after: {
+          changeRequestId: request.id,
+          type: dto.type,
+          ...(requestedStart ? { requestedStart, requestedEnd } : {}),
+        },
+        actorLabel: 'Patient (manage booking)',
+      });
+      return { request, appointmentId: appointment.id };
+    });
+
+    await this.notifyClinic(page, created.appointmentId, () => ({
+      type: dto.type === 'CANCELLATION' ? 'CANCELLATION_REQUESTED' : 'RESCHEDULE_REQUESTED',
+      title: dto.type === 'CANCELLATION' ? 'Cancellation request' : 'Reschedule request',
+    }));
+
+    return { requested: true, requestId: created.request.id };
+  }
+
+  /**
+   * Phase 7 — one guard, two strengths. `requiredMode` says what the caller
+   * is trying to do: the INSTANT endpoints demand INSTANT policy (a clinic
+   * on approval-mode must never be mutated directly from a patient link),
+   * the request endpoints demand REQUEST_APPROVAL. Status and cutoff apply
+   * to both — a request past the cutoff is the same phone call.
+   */
+  /**
+   * The appointment a manage token CURRENTLY means.
+   *
+   * TWO kinds of move, two behaviours — both deliberate:
+   *
+   * - the patient's OWN instant reschedule rotates the token: the browser is
+   *   handed the new link and the old one goes dead on purpose (a forwarded
+   *   old link must not keep steering the booking — pinned in the security
+   *   suite). The old token shows the cancelled shell, follows NOTHING.
+   * - a STAFF-APPROVED request (Phase 7) also replaces the row, but the
+   *   patient was never handed the new token — their original link is their
+   *   only handle on "my booking". THAT hop is followed, because an APPROVED
+   *   RESCHEDULE request on the old row is the patient's own signed wish.
+   *
+   * So the chain advances exactly one way: across hops a patient-approved
+   * request explains. Bounded, because a cycle in data must not become an
+   * infinite loop here.
+   */
+  private async followRescheduleChain<
+    T extends { id: string; status: AppointmentStatus; cancellationReason: AppointmentCancellationReason | null },
+  >(first: T, fetchNext: (fromId: string) => Promise<T | null>): Promise<{ live: T; chainIds: string[] }> {
+    let live = first;
+    const chainIds = [first.id];
+    while (
+      live.status === AppointmentStatus.CANCELLED &&
+      live.cancellationReason === AppointmentCancellationReason.RESCHEDULED &&
+      chainIds.length < 10
+    ) {
+      const next = await fetchNext(live.id);
+      if (!next) break;
+      live = next;
+      chainIds.push(next.id);
+    }
+    return { live, chainIds };
+  }
+
+  /**
+   * The next hop of the chain — ONLY when an approved patient request
+   * explains it. A rotation the patient performed themselves returns null,
+   * which is what keeps the old link dead in that flow.
+   */
+  private async approvedMoveNext<T>(
+    client: {
+      appointment: { findFirst: (args: Record<string, unknown>) => Promise<T | null> };
+      appointmentChangeRequest: {
+        findFirst: (args: Record<string, unknown>) => Promise<{ id: string } | null>;
+      };
+    },
+    fromId: string,
+    select?: Record<string, unknown>,
+  ): Promise<T | null> {
+    const approved = await client.appointmentChangeRequest.findFirst({
+      where: { appointmentId: fromId, type: 'RESCHEDULE', status: 'APPROVED' },
+      select: { id: true },
+    });
+    if (!approved) return null;
+    return client.appointment.findFirst({
+      where: { rescheduledFromId: fromId },
+      ...(select ? { select } : {}),
     });
   }
 
@@ -843,11 +1214,19 @@ export class PublicBookingService {
     page: ResolvedPage,
     appointment: { status: AppointmentStatus; scheduledStart: Date },
     action: 'reschedule' | 'cancel',
+    requiredMode: PatientChangeMode = 'INSTANT',
   ): void {
-    const allowed = action === 'reschedule' ? page.allowPatientReschedule : page.allowPatientCancel;
-    if (!allowed) {
+    const mode = this.changeModeOf(page, action);
+    if (mode === 'NOT_ALLOWED') {
       throw new ForbiddenException(
         `This clinic asks you to ring them to ${action === 'cancel' ? 'cancel' : 'change'} an appointment.`,
+      );
+    }
+    if (mode !== requiredMode) {
+      throw new ForbiddenException(
+        mode === 'REQUEST_APPROVAL'
+          ? 'This clinic reviews changes first — please send a request instead.'
+          : 'This clinic lets you change the booking directly — no request is needed.',
       );
     }
     if (
@@ -856,11 +1235,11 @@ export class PublicBookingService {
     ) {
       throw new BadRequestException('This appointment can no longer be changed online.');
     }
-    const cutoff =
-      appointment.scheduledStart.getTime() - page.patientChangeCutoffHours * 3600 * 1000;
+    const cutoffMinutes = this.cutoffMinutesOf(page);
+    const cutoff = appointment.scheduledStart.getTime() - cutoffMinutes * 60 * 1000;
     if (Date.now() >= cutoff) {
       throw new BadRequestException(
-        `Changes have to be made at least ${page.patientChangeCutoffHours} hours before the appointment. Please ring the clinic.`,
+        `Changes have to be made at least ${describeCutoff(cutoffMinutes)} before the appointment. Please ring the clinic.`,
       );
     }
   }
@@ -888,4 +1267,17 @@ export class PublicBookingService {
           : 'Your appointment is confirmed. We look forward to seeing you.'),
     };
   }
+}
+
+/** "4 hours" / "90 minutes" / "2 days" — the cutoff in the patient's units. */
+function describeCutoff(minutes: number): string {
+  if (minutes % (24 * 60) === 0 && minutes > 0) {
+    const days = minutes / (24 * 60);
+    return `${days} day${days === 1 ? '' : 's'}`;
+  }
+  if (minutes % 60 === 0 && minutes > 0) {
+    const hours = minutes / 60;
+    return `${hours} hour${hours === 1 ? '' : 's'}`;
+  }
+  return `${minutes} minutes`;
 }
