@@ -5,8 +5,9 @@ desk and the doctors. It explains how to set the appointment system up, how to
 run it every day, and what your patients see. It is not a technical document —
 nothing here needs a developer.*
 
-*A screenshot tour of every screen named here is added as an appendix with the
-release build (see `docs/screenshots/`).*
+*A screenshot tour of every screen named here lives in
+[`docs/rc-final-screenshots/`](rc-final-screenshots/) — see the appendix at
+the end of this guide.*
 
 ---
 
@@ -291,3 +292,49 @@ decided.
 automation, no SMS or email sending, and no online payment collection. What
 it does instead is keep every message, every decision and every change in
 one place, in your clinic's own words.*
+
+---
+
+## Appendix — screenshot tour
+
+Captured from the release-candidate build over a populated staging clinic
+(`docs/rc-final-screenshots/`). Admin screens at desktop width (the diary also
+at iPad landscape); the patient pages at mobile 390 px (the first and the
+date/time steps also at iPad landscape).
+
+**The clinic side**
+
+| # | Screen | File |
+|---|--------|------|
+| 1 | Calendar — Day | `admin-01-calendar-day.png` (iPad: `admin-01b-calendar-day-ipad.png`) |
+| 2 | Calendar — Week | `admin-02-calendar-week.png` |
+| 3 | Calendar — Providers | `admin-03-calendar-providers.png` |
+| 4 | One service filtered, chips + filtered KPIs | `admin-04-service-filter.png` |
+| 5 | Appointment List with its stats bar | `admin-05-list.png` |
+| 6 | Appointment drawer (checked-in, queue ticket) | `admin-06-appointment-drawer.png` |
+| 7 | Activity timeline — request → approve → move → arrive | `admin-07-activity-timeline.png` |
+| 8 | Register / Check-in review | `admin-08-register-checkin.png` |
+| 9 | Payer — Panel with the panel catalogue | `admin-09-payer-panel.png` |
+| 10 | Confirm & add to queue (ticket toast) | `admin-10-added-to-queue.png` |
+| 11 | Notification Centre | `admin-11-notification-centre.png` |
+| 12 | A new online booking toasting live | `admin-12-new-booking-toast.png` |
+| 13 | Roster | `admin-13-roster.png` |
+| 14 | Scheduling-mode timeline | `admin-14-scheduling-mode-timeline.png` |
+| 15 | Online booking settings | `admin-15-online-booking-settings.png` |
+| 16 | Communication & Reminders | `admin-16-communication-settings.png` |
+| 17 | Setup checklist | `admin-17-setup-checklist.png` |
+
+**The patient side**
+
+| # | Step | File |
+|---|------|------|
+| 18 | Service selection | `public-18-service-selection.png` (iPad: `public-18b-service-selection-ipad.png`) |
+| 19 | Service detail | `public-19-service-detail.png` |
+| 20 | Doctor selection | `public-20-doctor-selection.png` |
+| 21 | Date & time, grouped | `public-21-date-time.png` (iPad: `public-21b-date-time-ipad.png`) |
+| 22 | Patient details | `public-22-patient-details.png` |
+| 23 | Review | `public-23-review.png` |
+| 24 | Confirmation with the manage link | `public-24-confirmation.png` |
+| 25 | Manage booking | `public-25-manage-booking.png` |
+| 26 | Reschedule request with reason | `public-26-reschedule-request.png` |
+| 27 | Cancellation request with reason | `public-27-cancellation-request.png` |

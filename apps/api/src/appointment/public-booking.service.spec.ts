@@ -661,3 +661,106 @@ describe('Phase 7 — the request workflow', () => {
     ).rejects.toThrow(/ring them/i);
   });
 });
+
+describe('RC — the patient’s link survives an approved move', () => {
+  it('33. every token path follows the replacement chain to the LIVE appointment', async () => {
+    // A staff-approved reschedule (Phase 7) replaces the row; the patient
+    // still holds the ORIGINAL link. manage() must show the moved booking —
+    // and the request that moved it — and an action through the old token
+    // must land on the live row, never the cancelled shell.
+    const OLD = {
+      id: 'appt-old',
+      status: 'CANCELLED',
+      cancellationReason: 'RESCHEDULED',
+      clinicId: 'clinic-1',
+      staffId: 'doc-1',
+      serviceId: 'svc-1',
+      scheduledStart: new Date('2026-09-01T01:00:00.000Z'),
+      scheduledEnd: new Date('2026-09-01T01:30:00.000Z'),
+      patientNote: null,
+      paymentStatus: 'NOT_REQUIRED',
+      bookingFeeAmount: 0,
+      patient: { name: 'Nurul Izzah' },
+      staff: { fullName: 'Dr Redha' },
+      service: { name: 'GP Consultation', durationMinutesDefault: 30, preInstructions: null, postInstructions: null },
+      formAnswers: [],
+    };
+    const LIVE = {
+      ...OLD,
+      id: 'appt-live',
+      status: 'CONFIRMED',
+      cancellationReason: null,
+      scheduledStart: new Date('2026-09-02T06:00:00.000Z'),
+      scheduledEnd: new Date('2026-09-02T06:30:00.000Z'),
+    };
+    const byWhere = async ({ where }: { where: Record<string, unknown> }) => {
+      if (where.manageToken) return { ...OLD };
+      if (where.rescheduledFromId === 'appt-old') return { ...LIVE };
+      return null;
+    };
+    // The hop is followed ONLY because an APPROVED request explains it.
+    const approvedRequest = jest.fn(async ({ where }: { where: Record<string, unknown> }) =>
+      where.appointmentId === 'appt-old' && where.status === 'APPROVED' ? { id: 'req-9' } : null,
+    );
+
+    const ctx = build({ page: { allowPatientCancel: true, allowPatientReschedule: true } });
+    (ctx.prisma.appointment.findFirst as jest.Mock).mockImplementation(byWhere as never);
+    (ctx.tx.appointment.findFirst as jest.Mock).mockImplementation(byWhere as never);
+    (ctx.prisma.appointmentChangeRequest as unknown as Record<string, unknown>).findFirst =
+      approvedRequest;
+    (ctx.tx.appointmentChangeRequest as unknown as Record<string, unknown>).findFirst =
+      approvedRequest;
+    const requestsQuery = ctx.prisma.appointmentChangeRequest.findMany as jest.Mock;
+
+    const managed = await ctx.service.manage(SLUG, 'token-old');
+    expect(managed.appointment.status).toBe('CONFIRMED');
+    expect(new Date(managed.appointment.scheduledStart).toISOString()).toBe(
+      '2026-09-02T06:00:00.000Z',
+    );
+    // The APPROVED request lives on the old id — the history must not vanish
+    // the moment it succeeds.
+    expect(requestsQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { appointmentId: { in: ['appt-old', 'appt-live'] } },
+      }),
+    );
+
+    // An action through the old token mutates the LIVE row.
+    await ctx.service.cancelByToken(SLUG, 'token-old', { reason: 'Cannot make the new time' });
+    const updateCall = (ctx.tx.appointment.update as jest.Mock).mock.calls[0][0] as {
+      where: { id: string };
+    };
+    expect(updateCall.where.id).toBe('appt-live');
+  });
+
+  it('34. a rotation the patient made THEMSELVES is not followed — the old link stays dead', async () => {
+    // Pin 23 and the security suite promise the self-service reschedule kills
+    // the old link (the browser got the new token). No change request exists
+    // for that hop, so the chain must not advance: the old token keeps
+    // showing the cancelled shell and can move nothing.
+    const OLD = {
+      id: 'appt-old',
+      status: 'CANCELLED',
+      cancellationReason: 'RESCHEDULED',
+      scheduledStart: new Date('2026-09-01T01:00:00.000Z'),
+      scheduledEnd: new Date('2026-09-01T01:30:00.000Z'),
+      patientNote: null,
+      paymentStatus: 'NOT_REQUIRED',
+      bookingFeeAmount: 0,
+      serviceId: 'svc-1',
+      patient: { name: 'Nurul Izzah' },
+      staff: { fullName: 'Dr Redha' },
+      service: { name: 'GP Consultation', durationMinutesDefault: 30, preInstructions: null, postInstructions: null },
+      formAnswers: [],
+    };
+    const ctx = build({ page: { allowPatientCancel: true, allowPatientReschedule: true } });
+    (ctx.prisma.appointment.findFirst as jest.Mock).mockResolvedValue({ ...OLD } as never);
+    (ctx.prisma.appointmentChangeRequest as unknown as Record<string, unknown>).findFirst =
+      jest.fn(async () => null);
+
+    const managed = await ctx.service.manage(SLUG, 'token-old');
+
+    expect(managed.appointment.status).toBe('CANCELLED');
+    expect(managed.can).toEqual({ reschedule: false, cancel: false });
+  });
+});

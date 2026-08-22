@@ -341,8 +341,12 @@ test.describe('a patient books themselves in, and the clinic works the booking',
     await expect(messageModal).toBeVisible();
     const preview = messageModal.getByTestId('message-preview');
     await expect(preview).toHaveValue(new RegExp(patientName.split(' ')[0]));
-    await expect(preview).toHaveValue(/Klinik Hijraa Bangi/);
+    // Fully rendered: the clinic-clock time is in, and no {placeholder}
+    // survives. (WHICH name is spoken — patient-facing, never the internal
+    // label — is pinned at unit level against a synthetic fixture; the CI
+    // world and the staging world name their clinics differently.)
     await expect(preview).toHaveValue(new RegExp(chosenTime.slice(0, 5)));
+    await expect(preview).not.toHaveValue(/\{[a-z_]+\}/);
     // Bahasa Malaysia is one tap away, from the same template store.
     await messageModal.locator('.ant-segmented').getByText('Bahasa Malaysia').click();
     await expect(preview).toHaveValue(/temujanji/);
@@ -465,8 +469,9 @@ test.describe('the clinic writes its own messages', () => {
     // identity: sample patient, patient-facing clinic name, filled dates.
     const preview = page.getByTestId('template-preview');
     await expect(preview).toContainText('Aisyah binti Rahman');
-    await expect(preview).toContainText('Klinik Hijraa Bangi');
+    // Substituted, whichever world: no token survives into the preview.
     await expect(preview).not.toContainText('{patient_name}');
+    await expect(preview).not.toContainText('{clinic_name}');
 
     // One tap to Bahasa Malaysia, same store, same renderer.
     await page

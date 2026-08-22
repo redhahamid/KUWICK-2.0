@@ -742,28 +742,38 @@ export class PublicBookingService {
   async manage(slug: string, token: string) {
     const page = await this.resolvePage(slug);
     return this.inTenant(page, async () => {
-      const appointment = await this.scoped.appointment.findFirst({
-        where: { manageToken: token },
-        select: {
-          id: true,
-          status: true,
-          scheduledStart: true,
-          scheduledEnd: true,
-          patientNote: true,
-          paymentStatus: true,
-          bookingFeeAmount: true,
-          serviceId: true,
-          // The PATIENT'S OWN name only. Nothing about anybody else, and no
-          // clinical record: this link is shared by SMS and forwarded.
-          patient: { select: { name: true } },
-          staff: { select: { fullName: true } },
-          service: {
-            select: { name: true, durationMinutesDefault: true, preInstructions: true, postInstructions: true },
-          },
-          formAnswers: { orderBy: { sortOrder: 'asc' }, select: { label: true, answer: true } },
+      const MANAGE_SELECT = {
+        id: true,
+        status: true,
+        cancellationReason: true,
+        scheduledStart: true,
+        scheduledEnd: true,
+        patientNote: true,
+        paymentStatus: true,
+        bookingFeeAmount: true,
+        serviceId: true,
+        // The PATIENT'S OWN name only. Nothing about anybody else, and no
+        // clinical record: this link is shared by SMS and forwarded.
+        patient: { select: { name: true } },
+        staff: { select: { fullName: true } },
+        service: {
+          select: { name: true, durationMinutesDefault: true, preInstructions: true, postInstructions: true },
         },
+        formAnswers: {
+          orderBy: { sortOrder: 'asc' as const },
+          select: { label: true, answer: true },
+        },
+      };
+
+      const found = await this.scoped.appointment.findFirst({
+        where: { manageToken: token },
+        select: MANAGE_SELECT,
       });
-      if (!appointment) throw new NotFoundException('This booking link is not valid.');
+      if (!found) throw new NotFoundException('This booking link is not valid.');
+
+      const { live: appointment, chainIds } = await this.followRescheduleChain(found, (fromId) =>
+        this.approvedMoveNext<typeof found>(this.scoped as never, fromId, MANAGE_SELECT),
+      );
 
       const timeZone = await this.availability.clinicTimeZone(page.clinicId);
       const cutoff = new Date(
@@ -775,8 +785,10 @@ export class PublicBookingService {
         Date.now() < cutoff.getTime();
 
       // Phase 7 — the page tells the patient where their request stands.
+      // Across the WHOLE chain: the request that moved the booking points at
+      // the old row, and "approved" must not vanish the moment it succeeds.
       const requests = await this.scoped.appointmentChangeRequest.findMany({
-        where: { appointmentId: appointment.id },
+        where: { appointmentId: { in: chainIds } },
         orderBy: { createdAt: 'desc' },
         take: 5,
       });
@@ -848,18 +860,24 @@ export class PublicBookingService {
   async availabilityForToken(slug: string, token: string, dateKey: string) {
     const page = await this.resolvePage(slug);
     return this.inTenant(page, async () => {
-      const appointment = await this.scoped.appointment.findFirst({
+      const TOKEN_SELECT = {
+        id: true,
+        status: true,
+        cancellationReason: true,
+        clinicId: true,
+        staffId: true,
+        serviceId: true,
+        scheduledStart: true,
+        scheduledEnd: true,
+      };
+      const found = await this.scoped.appointment.findFirst({
         where: { manageToken: token },
-        select: {
-          id: true,
-          clinicId: true,
-          staffId: true,
-          serviceId: true,
-          scheduledStart: true,
-          scheduledEnd: true,
-        },
+        select: TOKEN_SELECT,
       });
-      if (!appointment) throw new NotFoundException('This booking link is not valid.');
+      if (!found) throw new NotFoundException('This booking link is not valid.');
+      const { live: appointment } = await this.followRescheduleChain(found, (fromId) =>
+        this.approvedMoveNext<typeof found>(this.scoped as never, fromId, TOKEN_SELECT),
+      );
 
       const timeZone = await this.availability.clinicTimeZone(appointment.clinicId);
       const result = await this.availability.findAvailability({
@@ -884,8 +902,11 @@ export class PublicBookingService {
 
     const page = await this.resolvePage(slug);
     return this.tx(page, async (tx) => {
-      const appointment = await tx.appointment.findFirst({ where: { manageToken: token } });
-      if (!appointment) throw new NotFoundException('This booking link is not valid.');
+      const found = await tx.appointment.findFirst({ where: { manageToken: token } });
+      if (!found) throw new NotFoundException('This booking link is not valid.');
+      const { live: appointment } = await this.followRescheduleChain(found, (fromId) =>
+        this.approvedMoveNext<typeof found>(tx as never, fromId),
+      );
       this.assertPatientMayChange(page, appointment, 'reschedule');
 
       // THE SAME LOCKS. book() and the staff paths serialise racers for a
@@ -980,8 +1001,11 @@ export class PublicBookingService {
   async cancelByToken(slug: string, token: string, dto: PublicCancelDto) {
     const page = await this.resolvePage(slug);
     return this.tx(page, async (tx) => {
-      const appointment = await tx.appointment.findFirst({ where: { manageToken: token } });
-      if (!appointment) throw new NotFoundException('This booking link is not valid.');
+      const found = await tx.appointment.findFirst({ where: { manageToken: token } });
+      if (!found) throw new NotFoundException('This booking link is not valid.');
+      const { live: appointment } = await this.followRescheduleChain(found, (fromId) =>
+        this.approvedMoveNext<typeof found>(tx as never, fromId),
+      );
       this.assertPatientMayChange(page, appointment, 'cancel');
 
       await tx.appointment.update({
@@ -1050,8 +1074,11 @@ export class PublicBookingService {
     }
 
     const created = await this.tx(page, async (tx) => {
-      const appointment = await tx.appointment.findFirst({ where: { manageToken: token } });
-      if (!appointment) throw new NotFoundException('This booking link is not valid.');
+      const found = await tx.appointment.findFirst({ where: { manageToken: token } });
+      if (!found) throw new NotFoundException('This booking link is not valid.');
+      const { live: appointment } = await this.followRescheduleChain(found, (fromId) =>
+        this.approvedMoveNext<typeof found>(tx as never, fromId),
+      );
       this.assertPatientMayChange(
         page,
         appointment,
@@ -1121,6 +1148,68 @@ export class PublicBookingService {
    * the request endpoints demand REQUEST_APPROVAL. Status and cutoff apply
    * to both — a request past the cutoff is the same phone call.
    */
+  /**
+   * The appointment a manage token CURRENTLY means.
+   *
+   * TWO kinds of move, two behaviours — both deliberate:
+   *
+   * - the patient's OWN instant reschedule rotates the token: the browser is
+   *   handed the new link and the old one goes dead on purpose (a forwarded
+   *   old link must not keep steering the booking — pinned in the security
+   *   suite). The old token shows the cancelled shell, follows NOTHING.
+   * - a STAFF-APPROVED request (Phase 7) also replaces the row, but the
+   *   patient was never handed the new token — their original link is their
+   *   only handle on "my booking". THAT hop is followed, because an APPROVED
+   *   RESCHEDULE request on the old row is the patient's own signed wish.
+   *
+   * So the chain advances exactly one way: across hops a patient-approved
+   * request explains. Bounded, because a cycle in data must not become an
+   * infinite loop here.
+   */
+  private async followRescheduleChain<
+    T extends { id: string; status: AppointmentStatus; cancellationReason: AppointmentCancellationReason | null },
+  >(first: T, fetchNext: (fromId: string) => Promise<T | null>): Promise<{ live: T; chainIds: string[] }> {
+    let live = first;
+    const chainIds = [first.id];
+    while (
+      live.status === AppointmentStatus.CANCELLED &&
+      live.cancellationReason === AppointmentCancellationReason.RESCHEDULED &&
+      chainIds.length < 10
+    ) {
+      const next = await fetchNext(live.id);
+      if (!next) break;
+      live = next;
+      chainIds.push(next.id);
+    }
+    return { live, chainIds };
+  }
+
+  /**
+   * The next hop of the chain — ONLY when an approved patient request
+   * explains it. A rotation the patient performed themselves returns null,
+   * which is what keeps the old link dead in that flow.
+   */
+  private async approvedMoveNext<T>(
+    client: {
+      appointment: { findFirst: (args: Record<string, unknown>) => Promise<T | null> };
+      appointmentChangeRequest: {
+        findFirst: (args: Record<string, unknown>) => Promise<{ id: string } | null>;
+      };
+    },
+    fromId: string,
+    select?: Record<string, unknown>,
+  ): Promise<T | null> {
+    const approved = await client.appointmentChangeRequest.findFirst({
+      where: { appointmentId: fromId, type: 'RESCHEDULE', status: 'APPROVED' },
+      select: { id: true },
+    });
+    if (!approved) return null;
+    return client.appointment.findFirst({
+      where: { rescheduledFromId: fromId },
+      ...(select ? { select } : {}),
+    });
+  }
+
   private assertPatientMayChange(
     page: ResolvedPage,
     appointment: { status: AppointmentStatus; scheduledStart: Date },
