@@ -4,7 +4,6 @@ import {
   TENANT_SCOPED_PRISMA,
   TenantScopedPrismaClient,
 } from './tenant-scoped-prisma.provider';
-import { currentTenantId } from './tenant-context';
 import { PrismaService } from './prisma.service';
 import { assertCan } from './permissions';
 import { ClinicalTx, requireActor, withTenantTx } from '../clinical/clinical-actor';
@@ -23,20 +22,31 @@ export class PatientService {
   ) {}
 
   create(dto: CreatePatientDto) {
-    return this.prisma.patient.create({
-      data: {
-        tenantId: currentTenantId(),
-        identifierType: dto.identifierType,
-        identifierValue: dto.identifierValue,
-        name: dto.name,
-        dob: dto.dob ? new Date(dto.dob) : undefined,
-        gender: dto.gender,
-        race: dto.race,
-        phone: dto.phone,
-        address: dto.address,
-        emergencyContactName: dto.emergencyContactName,
-        emergencyContactPhone: dto.emergencyContactPhone,
-      },
+    // Final-UAT hardening, two changes with one shape:
+    // - the demographics permission is REAL now — registration is for people
+    //   who see patients, not for every login with a token;
+    // - the duplicate-IC refusal speaks HERE too. The DB unique constraint
+    //   already refused a second record under one identifier, but as a 500;
+    //   the counter deserves the same sentence the correction path gives.
+    return withTenantTx(this.raw, async (tx) => {
+      const actor = await requireActor(tx);
+      assertCan(actor, 'patient.demographics.write', actor.assignedRoles);
+      await assertNoOtherPatientHolds(tx, 'about-to-register', dto.identifierType, dto.identifierValue);
+      return tx.patient.create({
+        data: {
+          tenantId: actor.tenantId,
+          identifierType: dto.identifierType,
+          identifierValue: dto.identifierValue,
+          name: dto.name,
+          dob: dto.dob ? new Date(dto.dob) : undefined,
+          gender: dto.gender,
+          race: dto.race,
+          phone: dto.phone,
+          address: dto.address,
+          emergencyContactName: dto.emergencyContactName,
+          emergencyContactPhone: dto.emergencyContactPhone,
+        },
+      });
     });
   }
 
@@ -99,13 +109,20 @@ export class PatientService {
     const before = await this.findById(id);
     const changes = identityDelta(before, dto);
 
-    // A phone number, an address, an emergency contact: unchanged path, no
-    // actor lookup, no permission, no record. Only the identifier and the date
-    // of birth carry the weight that earns all three.
+    // A phone number, an address, an emergency contact: no identity record —
+    // but no longer no permission either. Final-UAT hardening: the check-in
+    // drawer lets the counter edit these, so the server must say who MAY;
+    // `patient.demographics.write` is held by everyone who sees patients
+    // (owner, doctor, clinical, administrator) and by no back-office login.
+    // Only the identifier and the date of birth still earn the audit record.
     if (changes.length === 0) {
-      return this.prisma.patient.update({
-        where: { id },
-        data: { ...dto, dob: dto.dob ? new Date(dto.dob) : undefined },
+      return withTenantTx(this.raw, async (tx) => {
+        const actor = await requireActor(tx);
+        assertCan(actor, 'patient.demographics.write', actor.assignedRoles);
+        return tx.patient.update({
+          where: { id },
+          data: { ...dto, dob: dto.dob ? new Date(dto.dob) : undefined },
+        });
       });
     }
 

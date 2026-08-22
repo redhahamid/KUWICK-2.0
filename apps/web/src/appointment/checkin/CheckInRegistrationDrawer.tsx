@@ -26,6 +26,7 @@ import { useAppointmentDetail } from '../hooks/useAppointmentDetail';
 import { useCheckInAppointment } from '../hooks/useAppointments';
 import { bookingReference, paymentChip, sentence } from '../appointment-presentation';
 import { SOURCE_LABELS, type AppointmentSource } from '../types';
+import { PatientDetailsSection } from './PatientDetailsSection';
 
 const { Text } = Typography;
 
@@ -185,37 +186,10 @@ export function CheckInRegistrationDrawer({
             </Descriptions.Item>
           </Descriptions>
 
-          {/* THE PATIENT — matched to the record on file; nothing re-typed. */}
-          <div className="kw-apt-section">Patient</div>
-          <Descriptions column={1} size="small" colon={false} styles={{ label: { width: 110 } }}>
-            <Descriptions.Item label="Name">
-              {appointment.patient.name}{' '}
-              <KuwickStatusTag tone="success" label="On file" />
-            </Descriptions.Item>
-            <Descriptions.Item label={sentence(appointment.patient.identifierType ?? 'ID')}>
-              {appointment.patient.identifierValue || <Text type="secondary">—</Text>}
-            </Descriptions.Item>
-            <Descriptions.Item label="Mobile">
-              {appointment.patient.phone ?? <Text type="secondary">—</Text>}
-            </Descriptions.Item>
-            <Descriptions.Item label="Date of birth">
-              {appointment.patient.dob ? (
-                formatClinicDate(appointment.patient.dob)
-              ) : (
-                <Text type="secondary">—</Text>
-              )}
-            </Descriptions.Item>
-            <Descriptions.Item label="Sex">
-              {appointment.patient.gender ? (
-                sentence(appointment.patient.gender)
-              ) : (
-                <Text type="secondary">—</Text>
-              )}
-            </Descriptions.Item>
-            <Descriptions.Item label="Address">
-              {appointment.patient.address ?? <Text type="secondary">—</Text>}
-            </Descriptions.Item>
-          </Descriptions>
+          {/* THE PATIENT — the record on file, editable in place for staff
+              with the demographics permission (final-UAT). One canonical
+              record: the save is the same PATCH every other surface uses. */}
+          <PatientDetailsSection patient={appointment.patient} />
 
           {/* THE VISIT — the decisions the desk makes at the counter. */}
           <div className="kw-apt-section">Visit</div>

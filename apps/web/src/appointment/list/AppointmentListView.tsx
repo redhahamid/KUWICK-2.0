@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Avatar, Button, DatePicker, Dropdown, Empty, Input, Modal, Segmented, Select, Space, Table, Tooltip, Typography, message } from 'antd';
+import { Button, DatePicker, Dropdown, Empty, Input, Modal, Segmented, Select, Space, Table, Tooltip, Typography, message } from 'antd';
 import { EllipsisOutlined, WhatsAppOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useSearchParams } from 'react-router-dom';
@@ -30,7 +30,7 @@ import {
   CHECK_IN_FROM_STATUSES,
   NON_CANCELLABLE_STATUSES,
 } from '../appointment-status.constants';
-import { getDoctorColor } from '../calendar/doctor-color';
+import { PersonAvatar } from '../shared/PersonAvatar';
 import {
   useCancelAppointment,
   useConfirmAppointment,
@@ -54,15 +54,6 @@ const TABS: { value: ListTab; label: string }[] = [
 
 const money = (value: number) =>
   `RM ${value.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-function initials(name: string): string {
-  return name
-    .replace(/^Dr\.?\s+/i, '')
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('');
-}
 
 interface AppointmentListViewProps {
   clinicId?: string;
@@ -541,16 +532,7 @@ function AppointmentTable({
             title: 'Provider',
             render: (_, row) => (
               <span className="kw-appt-provider-cell">
-                {/* A plain span, not antd's Avatar: Avatar re-measures string
-                    children against its own font and squeezes two initials
-                    into "A…" at this size. */}
-                <span
-                  className="kw-provider-avatar"
-                  style={{ width: 24, height: 24, fontSize: 10, background: getDoctorColor(row.staffId) }}
-                  aria-hidden
-                >
-                  {initials(row.provider.fullName)}
-                </span>
+                <PersonAvatar name={row.provider.fullName} colorSeed={row.staffId} size="sm" />
                 <span>{row.provider.fullName}</span>
               </span>
             ),

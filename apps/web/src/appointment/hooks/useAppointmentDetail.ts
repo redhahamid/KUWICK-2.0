@@ -48,6 +48,11 @@ export interface AppointmentDetail {
     dob: string | null;
     gender: string | null;
     address: string | null;
+    // Final-UAT — the check-in drawer EDITS the record now, so the fields it
+    // can edit are declared (the wire always carried them).
+    race?: string | null;
+    emergencyContactName?: string | null;
+    emergencyContactPhone?: string | null;
   };
   staff: { id: string; fullName: string; calendarColor: string | null };
   service: { id: string; name: string; preInstructions: string | null; postInstructions: string | null };

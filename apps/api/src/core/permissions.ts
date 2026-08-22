@@ -156,6 +156,10 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     // Standing facts about the patient, every type including MEDICAL.
     'patient.alert.write',
     'patient.alert.medical.write',
+    // Final-UAT hardening: ordinary demographics (name, phone, address) are
+    // now permission-gated server-side, and everyone who sees patients holds
+    // it — the gate exists to shut out back-office logins, not clinicians.
+    'patient.demographics.write',
     // A doctor who spots a transposed digit fixes it. In a small clinic they
     // are frequently the only person on shift, and the alternative is a second
     // patient record for the same human being.
@@ -207,6 +211,9 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     // a nurse recording "Pregnant" or "On Warfarin" is exactly the workflow.
     'patient.alert.write',
     'patient.alert.medical.write',
+    // Final-UAT hardening: see the doctor's entry — the demographics gate
+    // shuts out back-office logins, never the people at the counter.
+    'patient.demographics.write',
     // Same reasoning as the doctor's: whoever is looking at the IC card when
     // the typo is spotted is who should be able to correct it.
     'patient.identity.write',
@@ -268,6 +275,7 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     'discount.approve',
     'users.manage',
     'billing.corrections',
+    'patient.demographics.write',
     'patient.identity.write',
     // The diary is administration, not a clinical record, so the whole module
     // sits comfortably here without breaching "owner alone is not clinical" —

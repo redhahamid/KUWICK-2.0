@@ -79,6 +79,7 @@ function createService(actor: Actor, options: { clash?: { id: string; name: stri
     patient: {
       findFirst: jest.fn().mockResolvedValue(options.clash ?? null),
       update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...STORED, ...data })),
+      create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'p-new', ...data })),
     },
     patientIdentityChange: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
   };
@@ -142,25 +143,72 @@ describe('who may correct an identifier', () => {
     ).rejects.toThrow(/do not create a second record/i);
   });
 
-  it('an ordinary demographics save takes no identity permission at all', async () => {
-    // The whole profile form posts on every save. If any save went down the
-    // identity path it would be confirmed and recorded, which would make the
-    // ordinary case slower and noisier for nothing.
-    const { service, scoped, tx } = createService(finance);
-    await asActor(finance, () => service.update('p1', { phone: '0111111111' }));
-    expect(scoped.patient.update).toHaveBeenCalled();
+  it('an ordinary demographics save takes the DEMOGRAPHICS permission, not the identity one', async () => {
+    // Final-UAT hardening: the check-in drawer edits phone/address/name in
+    // place, so the server says who may — everyone who sees patients holds
+    // `patient.demographics.write`. The save still skips the identity
+    // confirmation and the identity record; only IC and DOB earn those.
+    const { service, tx } = createService(counter);
+    await asActor(counter, () => service.update('p1', { phone: '0111111111' }));
+    expect(tx.patient.update).toHaveBeenCalled();
+    expect(tx.patientIdentityChange.createMany).not.toHaveBeenCalled();
+  });
+
+  it('a back-office login can no longer edit demographics — the ungated hole is closed', async () => {
+    // Before this hardening any valid token could PATCH a patient's name.
+    // Finance holds billing permissions, not patient ones.
+    const { service, tx } = createService(finance);
+    await expect(
+      asActor(finance, () => service.update('p1', { phone: '0111111111' })),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(tx.patient.update).not.toHaveBeenCalled();
   });
 
-  it('re-submitting the SAME IC is not a correction and needs no permission', async () => {
+  it('re-submitting the SAME IC is not a correction — demographics permission suffices', async () => {
     // The form submits every field it holds, so "the IC is in the payload"
     // says nothing about whether it moved.
-    const { service, scoped, tx } = createService(finance);
-    await asActor(finance, () =>
+    const { service, tx } = createService(counter);
+    await asActor(counter, () =>
       service.update('p1', { identifierValue: '12345678901', dob: '2026-05-05', phone: '0111111111' }),
     );
-    expect(scoped.patient.update).toHaveBeenCalled();
+    expect(tx.patient.update).toHaveBeenCalled();
     expect(tx.patientIdentityChange.createMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('registration is a permission and a sentence (final-UAT hardening)', () => {
+  it('the counter registers a patient — with the actor tenant stamped on', async () => {
+    const { service, tx } = createService(counter);
+    const created = await asActor(counter, () =>
+      service.create({ identifierType: 'NRIC', identifierValue: '990101086622', name: 'Baru Daftar' } as never),
+    );
+    expect(tx.patient.create).toHaveBeenCalled();
+    expect((created as { tenantId: string }).tenantId).toBe('t1');
+  });
+
+  it('a back-office login cannot register a patient', async () => {
+    const { service, tx } = createService(finance);
+    await expect(
+      asActor(finance, () =>
+        service.create({ identifierType: 'NRIC', identifierValue: '990101086622', name: 'Baru' } as never),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tx.patient.create).not.toHaveBeenCalled();
+  });
+
+  it('registering an IC somebody already holds is refused with the SAME sentence as a correction', async () => {
+    // The DB unique constraint refused this before too — as a 500. The
+    // counter deserves the sentence, and the invitation to look for the
+    // existing record instead of trying a different spelling.
+    const { service, tx } = createService(counter, {
+      clash: { id: 'p2', name: 'Aisyah binti Ujian', deletedAt: null },
+    });
+    await expect(
+      asActor(counter, () =>
+        service.create({ identifierType: 'NRIC', identifierValue: '12345678901', name: 'Aisyah' } as never),
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.patient.create).not.toHaveBeenCalled();
   });
 });
 

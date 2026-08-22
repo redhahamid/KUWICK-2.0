@@ -43,6 +43,10 @@ export function useUpdatePatient() {
       // the whole namespace is refetched rather than guessing which visits
       // carry this patient.
       queryClient.invalidateQueries({ queryKey: ['visits'] });
+      // The check-in drawer edits demographics in place (final-UAT); the
+      // appointment detail embeds its own patient copy, so it is stale the
+      // moment the save lands.
+      queryClient.invalidateQueries({ queryKey: ['appointment-detail'] });
     },
   });
 }

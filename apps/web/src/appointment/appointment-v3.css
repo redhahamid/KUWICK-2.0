@@ -3235,3 +3235,53 @@ body:has(.kw-public-booking) {
     flex: none;
   }
 }
+
+/* ===========================================================================
+ * 15 · PREMIUM LIST + REGISTRATION TUNE (final UAT redesign, target mockups
+ *      4-5). Structure unchanged; hierarchy, hover and the editable patient
+ *      block in the check-in drawer.
+ * =========================================================================== */
+
+.kw-appt-list .ant-table-thead > tr > th {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--apt-text-2);
+  background: var(--apt-surface-2);
+}
+.kw-appt-list .ant-table-tbody > tr > td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.kw-appt-list .ant-table-tbody > tr {
+  transition: background 0.15s ease;
+}
+.kw-appt-list .ant-table-tbody > tr:hover > td {
+  background: var(--apt-teal-soft) !important;
+}
+.kw-appt-provider-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Section headings that carry an action on their right (Edit details). */
+.kw-apt-section--actionable {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* The in-drawer patient edit form: compact, calm, clearly a mode. */
+.kw-checkin-patient-form {
+  background: var(--apt-surface-2);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  padding: 12px 12px 10px;
+  margin-bottom: 4px;
+}
+.kw-checkin-patient-form .ant-form-item {
+  margin-bottom: 10px;
+}
