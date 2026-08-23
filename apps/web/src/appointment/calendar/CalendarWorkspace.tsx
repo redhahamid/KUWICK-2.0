@@ -38,7 +38,6 @@ import {
   compactLine,
   dateKeyOf,
   monthDayComposition,
-  presentationRoom,
   defaultScrollOpening,
   displayBounds,
   gridDateAt,
@@ -70,18 +69,6 @@ import { ApiError } from '../../core/api-client';
  * composition stops being ours.
  */
 const MONTH_ROW_BUDGET = 3;
-
-/**
- * THE MINIMUM READABLE CARD, IN MINUTES OF GRID.
- *
- * A half-hour slot is 54px, so a 15-minute booking is 27px — a strip, and a
- * receptionist should not have to hover a strip to learn whose it is. 25
- * minutes of grid is ~45px, which holds the headline comfortably. A card only
- * ever borrows EMPTY space beneath itself: its top is the true start and does
- * not move, and where the next booking begins sooner the card stays its real
- * size and the concurrency cap handles the crowd.
- */
-const READABLE_CARD_MINUTES = 25;
 
 const VIEW_OPTIONS: { label: string; value: CalendarViewMode }[] = [
   { label: 'Day', value: 'day' },
@@ -330,7 +317,11 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
       return composed;
     }
     const limit = viewMode === 'week' ? 2 : 3;
-    const { visible, overflow } = capConcurrency(events, limit);
+    // Only the Providers view gives each doctor a column of their own; Day
+    // and Week draw them all into one. The cap has to be counted against the
+    // column a receptionist is actually looking at, or six doctors put
+    // eighteen cards in one band.
+    const { visible, overflow } = capConcurrency(events, limit, viewMode === 'providers');
     if (overflow.length === 0) return events;
     const tiles: CalendarEvent[] = overflow.map((bundle) => ({
       id: bundle.id,
@@ -351,18 +342,6 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
     }));
     return [...visible, ...tiles];
   }, [events, viewMode, monthDays]);
-
-  // How much EMPTY grid each card may borrow to stay readable. Nothing here
-  // changes a start, an end, a duration or a collision — only how tall an
-  // otherwise unreadable strip is allowed to draw itself into space that was
-  // already blank.
-  const cardRoom = useMemo(
-    () =>
-      viewMode === 'month'
-        ? null
-        : presentationRoom(displayEvents, READABLE_CARD_MINUTES),
-    [displayEvents, viewMode],
-  );
 
   // The bookings behind a "+N more" tile, once somebody asks for them.
   const [overflowGroup, setOverflowGroup] = useState<CalendarEvent[] | null>(null);
@@ -729,11 +708,41 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           />
           <span className="kw-cal-heading">{heading}</span>
         </Space>
-        <Segmented
-          value={viewMode}
-          options={VIEW_OPTIONS}
-          onChange={(value) => setViewMode(value as CalendarViewMode)}
-        />
+        <Space size={8}>
+          {/* THE HOURS CONTROL — secondary, and quiet by design.
+              This used to be a full-width yellow banner on every load, because
+              the axis is a pure function of the branch's stated hours (an
+              appointment-derived axis is the RC-blocker defect: it wrapped to
+              23:00 → next afternoon on Malaysian devices, and the axis test
+              pins its purity). A clinic whose seed puts a booking at 06:45 is
+              therefore permanently "out of hours" — which is worth a control,
+              not a warning. Nothing here changes booking, availability or
+              timezone logic; it moves the same reveal toggle out of the way. */}
+          {!is24hBranch && viewMode !== 'month' && (outsideCount > 0 || showFullDay) ? (
+            <Tooltip
+              title={
+                showFullDay
+                  ? 'Back to the clinic’s stated hours'
+                  : `${outsideCount} booking${outsideCount === 1 ? '' : 's'} sit outside ${String(bounds.startHour).padStart(2, '0')}:00–${String(bounds.endHour).padStart(2, '0')}:00. Show the full day to reach them.`
+              }
+            >
+              <Button
+                size="small"
+                className="kw-cal-hours"
+                data-testid="calendar-outside-hours"
+                data-on={showFullDay || undefined}
+                onClick={() => setShowFullDay((current) => !current)}
+              >
+                {showFullDay ? 'Clinic hours' : `+${outsideCount} outside hours`}
+              </Button>
+            </Tooltip>
+          ) : null}
+          <Segmented
+            value={viewMode}
+            options={VIEW_OPTIONS}
+            onChange={(value) => setViewMode(value as CalendarViewMode)}
+          />
+        </Space>
       </div>
 
       {/* FILTER BAR — dense and intentional; the live counts close the row. */}
@@ -830,30 +839,6 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           <Button type="link" size="small" onClick={clearFilters}>
             Clear all
           </Button>
-        </div>
-      ) : null}
-
-      {/* WHAT THE BAND CANNOT SHOW IS SAID (Phase 3D). Out-of-hours bookings
-          stay real: the strip counts them and opens the full day. */}
-      {!is24hBranch && (outsideCount > 0 || showFullDay) ? (
-        <div className="kw-cal-outside" data-testid="calendar-outside-hours">
-          {showFullDay ? (
-            <>
-              <span>Showing the full 24 hours.</span>
-              <Button size="small" onClick={() => setShowFullDay(false)}>
-                Back to clinic hours
-              </Button>
-            </>
-          ) : (
-            <>
-              <span>
-                {outsideCount} booking{outsideCount === 1 ? '' : 's'} outside the displayed hours.
-              </span>
-              <Button size="small" onClick={() => setShowFullDay(true)}>
-                Show full 24 hours
-              </Button>
-            </>
-          )}
         </div>
       ) : null}
 
@@ -1108,33 +1093,16 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
               }
               const identity = providerColor(event.appointment.staffId);
               const picked = moving?.id === event.id;
-              // Minutes of vertical room → pixels, at the grid's own scale of
-              // one half-hour slot per 54px. rbc keeps writing the true
-              // `top` and `height`; a min-height only stops a short card
-              // collapsing below what a name needs.
-              const roomMinutes = cardRoom?.get(event.id);
-              const minHeight =
-                roomMinutes != null ? `${Math.round((roomMinutes / 30) * 54)}px` : undefined;
-              // ROOMY = this card was granted more height than its duration
-              // bought it, because the grid beneath it was empty. It now has
-              // two lines to spend, so the patient's name stops sharing a
-              // line with the time and gets the card's full width — which is
-              // the whole point of borrowing the space.
-              const ownMinutes = (event.end.getTime() - event.start.getTime()) / 60000;
-              const roomy = roomMinutes != null && roomMinutes > ownMinutes + 4;
-              // Three lines need ~54px, which is 30 minutes of grid. A card
-              // with that much room can name the service under the patient;
-              // below it, the two lines go to TIME and PATIENT and the
-              // service waits in the tooltip and the drawer.
-              const threeLines = (roomMinutes ?? ownMinutes) >= 29;
+              // NO MIN-HEIGHT. A card's height is its DURATION, and nothing
+              // else: the calendar is a time instrument first, and borrowing
+              // empty grid to fit another line makes a 15-minute booking read
+              // as 25. A truncated short card is the honest answer; the
+              // tooltip, the drawer and the "+N more" list carry the rest.
               return {
                 className:
                   (event.released ? ' kw-ev--released' : '') +
-                  (picked ? ' kw-ev--picked' : '') +
-                  (roomy ? ' kw-ev--roomy' : '') +
-                  (threeLines ? ' kw-ev--3line' : ''),
+                  (picked ? ' kw-ev--picked' : ''),
                 style: {
-                  ...(minHeight ? { minHeight } : {}),
                   ['--ev-edge' as string]: event.released ? '#98a2b3' : identity.accent,
                   // The provider's pastel — a GUTTER and a month chip ground,
                   // never a body fill. Which of the three the view actually
@@ -1195,7 +1163,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
         onCancel={() => setOverflowGroup(null)}
         footer={null}
         width={420}
-        title={`${overflowGroup?.length ?? 0} more at this time`}
+        title={`${overflowGroup?.length ?? 0} more in this time band`}
       >
         <div className="kw-ev-more-list">
           {(overflowGroup ?? []).map((row) => (
@@ -1213,7 +1181,14 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
                 style={{ background: providerColor(row.appointment.staffId).accent }}
                 aria-hidden
               />
-              <span className="kw-ev-more-time">{row.card.time}</span>
+              {/* The TRUE time, both ends of it. This list is where a
+                  receptionist goes when the band could not draw everything,
+                  so it is the one place a start on its own is not enough. */}
+              <span className="kw-ev-more-time">
+                {formatClinicTime(row.appointment.scheduledStart)}
+                <span aria-hidden> – </span>
+                {formatClinicTime(row.appointment.scheduledEnd)}
+              </span>
               <span className="kw-ev-more-body">
                 <span className="kw-ev-more-name">{row.card.patient}</span>
                 <span className="kw-ev-more-meta">

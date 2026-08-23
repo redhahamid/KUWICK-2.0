@@ -66,6 +66,22 @@ await page.locator('.kw-provider-rail-row',{hasText:'Nurul Aisyah'}).first().cli
 await page.waitForTimeout(2000); await toMorning(); await shot('04-calendar-providers');
 await view('Week');   await toMorning(); await shot('11c-busy-week');
 
+// The "+N more" cluster, opened.
+await view('Day');
+await toMorning();
+const more = page.locator('.kw-ev-more').first();
+if (await more.count()) {
+  const mb = await more.boundingBox();
+  if (mb) {
+    await page.mouse.click(mb.x + mb.width / 2, mb.y + mb.height / 2);
+    await page.waitForSelector('.ant-modal-wrap', { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(1200);
+    await shot('12-overflow-cluster');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(800);
+  }
+}
+
 await page.goto(`${BASE}/appointments/list`);
 await page.waitForTimeout(2600); await shot('05-appointment-list');
 
