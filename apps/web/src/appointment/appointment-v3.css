@@ -534,7 +534,7 @@
 
 .kw-calendar-grid .rbc-timeslot-group {
   border-bottom: 1px solid var(--apt-hairline);
-  min-height: 48px;
+  min-height: 54px;
 }
 
 /* The event lane sits slightly inside its column, so cards never touch the
@@ -666,7 +666,10 @@
   display: none;
 }
 
-.kw-calendar-event {
+/* The legacy card body. The premium card (.kw-evcard) and the month chip
+   (.kw-evchip) carry their own painting and simply borrow this class as the
+   grid's stable hook, so they opt out of it here. */
+.kw-calendar-event:not(.kw-evcard):not(.kw-evchip) {
   font-size: 12px;
   line-height: 1.35;
   overflow: hidden;
@@ -678,9 +681,6 @@
   border-left: 3px solid var(--ev-edge, var(--apt-border-strong));
   border-radius: 8px;
   box-shadow: var(--apt-shadow-xs);
-  transition:
-    box-shadow 0.15s ease,
-    transform 0.15s ease;
 }
 
 .kw-calendar-grid .rbc-event:hover .kw-calendar-event {
@@ -858,6 +858,240 @@
   }
 }
 
+/* --- The grid's own scaffolding, quietened (mockup panels 1-3) -----------
+   The mockup shows hour lines and almost nothing else: no half-hour rules, no
+   heavy column borders, a wide calm gutter. Everything below removes the
+   library's furniture rather than restyling it. */
+
+/* Only the HOUR is labelled; the half-hour keeps its line, not its number. */
+.kw-calendar-grid .rbc-time-gutter .rbc-timeslot-group:nth-child(even) .rbc-label {
+  visibility: hidden;
+}
+.kw-calendar-grid .rbc-time-gutter {
+  width: 68px;
+}
+.kw-calendar-grid .rbc-time-gutter .rbc-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--apt-muted);
+  padding-right: 10px;
+}
+/* The hour line is a hairline; the half-hour is barely there. */
+.kw-calendar-grid .rbc-day-slot .rbc-timeslot-group {
+  border-bottom: 1px solid #f1f3f7;
+}
+.kw-calendar-grid .rbc-day-slot .rbc-time-slot + .rbc-time-slot {
+  border-top: 1px dashed transparent;
+}
+.kw-calendar-grid .rbc-time-content > * + * > * {
+  border-left: 1px solid #f2f4f8;
+}
+.kw-calendar-grid .rbc-time-header-content,
+.kw-calendar-grid .rbc-time-header.rbc-overflowing {
+  border-left: 1px solid var(--apt-border);
+  border-right: none;
+}
+
+/* THE NOW-LINE NEVER STRIKES THROUGH A CARD. rbc paints the indicator above
+   its column; the mockup shows it behind the day's work. Cards are lifted
+   over it and the line itself is lowered, so "now" is context, not damage. */
+.kw-calendar-grid .rbc-current-time-indicator {
+  z-index: 1;
+  opacity: 0.85;
+}
+/* The whole event LAYER is lifted over the indicator in one move — the two
+   live in different parents, so raising the cards alone would not have done
+   it, and a line drawn THROUGH a patient's name is the defect being fixed. */
+.kw-calendar-grid .rbc-day-slot .rbc-events-container {
+  /* z-index ONLY — the container is already absolutely positioned by the
+     library, and overriding its position collapsed it to zero, taking every
+     card off the grid (measured). */
+  z-index: 3;
+}
+
+/* ===========================================================================
+ * 17 · THE APPOINTMENT CARD (approved mockup, clinic panels 2 and 3)
+ *
+ * The mockup does not draw scheduler rows; it draws CARDS floating in a
+ * column. So the library's event box becomes pure geometry — transparent,
+ * with the gap baked into its padding — and everything visible is the card
+ * below: the provider's pastel ground, their colour on the time, the
+ * patient's name loudest, the service under it, and the doctor and status
+ * when the card is wide enough to earn them.
+ * =========================================================================== */
+
+.kw-calendar-grid .rbc-time-view .rbc-event,
+.kw-calendar-grid .rbc-day-slot .rbc-event {
+  padding: 1px 5px 4px 2px;
+  background: transparent;
+  border: none;
+}
+
+.kw-evcard {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 4px 9px 4px 9px;
+  border-radius: 10px;
+  background: var(--ev-wash, var(--apt-surface));
+  border-left: 3px solid var(--ev-edge, var(--apt-border-strong));
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 0 0 1px rgba(16, 24, 40, 0.035);
+  overflow: hidden;
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+  color: var(--apt-text);
+}
+.kw-calendar-grid .rbc-event:hover .kw-evcard {
+  box-shadow: var(--apt-shadow-hover);
+  transform: translateY(-1px);
+}
+.kw-calendar-grid .rbc-event.rbc-selected .kw-evcard,
+.kw-calendar-grid .rbc-event:focus-visible .kw-evcard {
+  outline: 2px solid var(--apt-teal);
+  outline-offset: -1px;
+}
+
+.kw-evcard-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  line-height: 1.15;
+}
+.kw-evcard-time {
+  font-size: 11.5px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  color: var(--ev-edge, var(--apt-nav-navy));
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+/* The state, said quietly on the card and in full in the drawer. */
+.kw-evcard-status {
+  margin-left: auto;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 6px;
+  line-height: 15px;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.72);
+}
+.kw-evcard-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--apt-text);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kw-evcard-service,
+.kw-evcard-doctor {
+  font-size: 11px;
+  color: var(--apt-text-2);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kw-evcard-doctor {
+  color: var(--apt-muted);
+}
+
+/* DENSITY BY REAL WIDTH — lines retire from the bottom up, never clip. */
+@container (max-width: 300px) {
+  .kw-evcard-doctor {
+    display: none;
+  }
+}
+@container (max-width: 200px) {
+  .kw-evcard-status {
+    display: none;
+  }
+}
+@container (max-width: 150px) {
+  .kw-evcard {
+    padding: 5px 7px 5px 8px;
+  }
+}
+@container (max-width: 118px) {
+  .kw-evcard-service {
+    display: none;
+  }
+  .kw-evcard .kw-avatar {
+    display: none;
+  }
+}
+@container (max-width: 70px) {
+  .kw-evcard-name {
+    display: none;
+  }
+}
+/* DENSITY BY DURATION — a 30-minute card holds two lines, a 15-minute card
+   holds one and takes it side by side rather than clipping a name in half.
+   Driven by the card model's own minutes rather than a height query: a
+   `size` container implies `contain: size`, which took rbc's
+   percentage-height events to zero and emptied the grid (measured). */
+/* 30 minutes ≈ 54px: time, patient and SERVICE all fit — which is what the
+   mockup's cards show — so only the doctor line retires. 15 minutes keeps
+   the time and the name and nothing else. */
+.kw-evcard[data-density='dense'] .kw-evcard-doctor,
+.kw-evcard[data-density='tight'] .kw-evcard-service,
+.kw-evcard[data-density='tight'] .kw-evcard-doctor {
+  display: none;
+}
+.kw-evcard[data-density='dense'] {
+  padding-block: 3px;
+}
+.kw-evcard[data-density='dense'] .kw-evcard-service {
+  font-size: 10.5px;
+  line-height: 1.25;
+}
+.kw-evcard[data-density='tight'] {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding-block: 2px;
+}
+.kw-evcard[data-density='tight'] .kw-evcard-name {
+  font-size: 11.5px;
+}
+
+/* --- The month chip (mockup panel 1) ------------------------------------- */
+.kw-evchip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 1px 8px 1px 9px;
+  border-radius: 6px;
+  background: var(--ev-wash, var(--apt-surface));
+  border-left: 3px solid var(--ev-edge, var(--apt-border-strong));
+  font-size: 11px;
+  line-height: 1.55;
+  overflow: hidden;
+}
+.kw-evchip-time {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ev-edge, var(--apt-nav-navy));
+  flex: none;
+}
+.kw-evchip-name {
+  font-weight: 600;
+  color: var(--apt-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 /* --- Overflow tile + its list (readable dense bands) ---------------------- */
 .kw-ev--overflow .kw-calendar-event,
 .kw-ev-more {
@@ -1006,8 +1240,13 @@
 
 /* Month density (approved mockup 1): a row that breathes, a chip that reads
    at a glance, and today unmistakable. */
+/* Six rows have to fit the canvas without the last one being cut — the
+   month is a planning view and a clipped final week is a week nobody sees. */
+.kw-calendar-grid[data-view='month'] {
+  height: clamp(560px, calc(100vh - 330px), 1000px);
+}
 .kw-calendar-grid .rbc-month-view .rbc-month-row {
-  min-height: 104px;
+  min-height: 92px;
 }
 .kw-calendar-grid .rbc-month-view .kw-calendar-event {
   min-height: 20px;
@@ -3453,7 +3692,7 @@ body:has(.kw-public-booking) {
 .kw-cal-body:has(.kw-provider-rail) .kw-provider-rail {
   border-right: 1px solid var(--apt-border);
   background: var(--apt-surface-2);
-  width: 228px;
+  width: 246px;
 }
 .kw-cal-body:has(.kw-provider-rail) .kw-provider-side {
   border-left: 1px solid var(--apt-border);
@@ -3583,13 +3822,19 @@ body:has(.kw-public-booking) {
   font-size: 11px;
   flex: none;
 }
+/* A real Malaysian doctor's name is long — "Dr. Nurul Aisyah binti Hamid" —
+   and a rail that renders it as "Dr UAT Doctor (Sy…" is a rail that failed.
+   Two lines are allowed; the ellipsis is the third line's problem. */
 .kw-provider-rail-name {
   flex: 1;
   min-width: 0;
   font-size: 12.5px;
-  white-space: nowrap;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .kw-provider-rail-count {
   flex: none;

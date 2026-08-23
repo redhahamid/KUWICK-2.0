@@ -279,10 +279,14 @@ async function walkTheAxis(page: import('@playwright/test').Page) {
   await expect(page.getByTestId('calendar-workspace')).toBeVisible();
 
   const minutesOf = (label: string) => {
-    const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(label.trim());
+    // The gutter now writes the hour rows as "8 AM" (the approved mockup's
+    // own wording) and the half-hour rows as "8:30 AM". Both are read here,
+    // and every label the DOM carries is still parsed and ordered — the pin
+    // is exactly as strong as it was, it simply understands both spellings.
+    const match = /^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i.exec(label.trim());
     if (!match) throw new Error(`unreadable gutter label: "${label}"`);
     const hour = (Number(match[1]) % 12) + (match[3].toUpperCase() === 'PM' ? 12 : 0);
-    return hour * 60 + Number(match[2]);
+    return hour * 60 + Number(match[2] ?? 0);
   };
 
   const gutterShape = async () => {

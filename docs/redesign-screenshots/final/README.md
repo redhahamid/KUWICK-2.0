@@ -82,3 +82,63 @@ that shares a band also unstacks its first line, so a narrowed card reads
 | **Appointment detail** | Reference header + status chip, identity block, patient-record shortcut, **Service / Doctor / Date / Time / Duration / Source / Created / Created by / Payment / Reminder**, activity column with a minimum height so a one-entry booking still reads composed, action bar | "Created by" is the earliest recorded event's actor — the only true source for it |
 | **Communication Centre** | **Workspace, not a settings page**: compact header with wording state + Save, three columns (controls · composer · preview), variable chips, Template/Preview switch, **realistic WhatsApp phone preview**, character count, honesty as one line rather than a banner | No delivery ticks in the preview — nothing observes delivery |
 | **Reminder Centre** | Five stat tiles including a **truthful Overdue** (still unsent more than a day after its moment, derived from the same rows), structured worklist, WhatsApp action visible | No "Failed" tile and no bulk send: nothing in Kuwick observes delivery, and each send is a person pressing Send |
+
+
+---
+
+# Convergence pass 3 — the calendar stops being a styled library
+
+The owner's verdict on pass 2: still visibly the underlying calendar library
+with styling on top. This pass replaces the PRESENTATION layer rather than
+restyling it. The engine is untouched: availability, booking/conflict, roster
+rules, the timezone/axis correctness, appointment lifecycle, reschedule rules,
+schema, RBAC, clinical ownership and the message stores are all unchanged, and
+no API contract moved.
+
+## What was actually replaced
+
+| Was | Is |
+|---|---|
+| rbc's event box painted with our CSS | **`CalendarEventCard.tsx`** — a Kuwick component. The library keeps only geometry (where a card sits, how tall, which column); everything inside the box is ours |
+| Card = time + name, borders, white | Card = provider avatar · time in the doctor's own colour · **patient name as the loudest element** · service · doctor · status chip, on the provider's pastel ground with a 3px identity edge, rounded, soft-shadowed |
+| Half-hour gutter labels ("7:00 AM", "7:30 AM") | **Hour-only display** ("8 AM", "9 AM") — every label stays fully qualified in the DOM so the axis pin still reads and orders all of them |
+| Heavy grid rules everywhere | Hairline hour lines, invisible half-hour rules, quiet column separators |
+| Now-line drawn over the cards, striking through names | The whole event layer is lifted above the indicator — **"now" is context, never damage** |
+| Density guessed | Density from the booking's own **duration**: 15 min = one line side by side, 30 min = time+name+service, longer = all lines |
+| Month rows = coloured strips | Pastel chips with identity edge, time + name, 92px rows so six weeks fit uncut, navy today |
+| Provider rail truncating "Dr UAT Doctor (Sy…" | 246px rail, names wrap to two lines |
+
+## The ten surfaces, and the mockup panel each answers to
+
+| # | Screenshot | Mockup panel |
+|---|---|---|
+| 1 | `01-calendar-month.png` | Clinic **Panel 1** — Month |
+| 2 | `02-calendar-week.png` | Clinic **Panel 2** — Week |
+| 3 | `03-calendar-day.png` | Clinic **Panel 3** (centre column card style, single-provider day) |
+| 4 | `04-calendar-providers.png` | Clinic **Panel 3** — Provider view |
+| 5 | `05-appointment-list.png` | Clinic **Panel 4** — Appointment list |
+| 6 | `06-checkin-patient-details.png` | Clinic **Panel 5** — Check-in, Patient Details tab |
+| 7 | `07-checkin-visit-info.png` | Clinic **Panel 5** — Check-in, Visit Info tab |
+| 8 | `08-appointment-detail.png` | Clinic **Panel 8** — Appointment detail |
+| 9 | `09-communication-centre.png` | Clinic **Panel 6** — Communication Centre |
+| 10 | `10-reminder-centre.png` | Clinic **Panel 7** — Reminder Centre |
+
+Patient-journey shots (`patient-*.png`) answer to the patient mockup's panels
+1–7 and its reschedule strip, unchanged in this pass.
+
+## Remaining visual differences, and why
+
+- **Overlap** — the mockup never draws six concurrent bookings. Where the real
+  world does, concurrency is capped and the rest becomes a designed "+N more"
+  tile that opens the hidden bookings with their true times.
+- **Month is Sunday-first** — the owner's decision; the mockup's own month
+  panel is Sunday-first too.
+- **Card photos are initials** — no provider photograph exists in the record;
+  the avatar is the shared tinted-initials component used everywhere else.
+- **Cancelled bookings stay on the grid struck through** — a deliberate
+  standing rule (an appointment is never silently removed) that the mockup has
+  no example of.
+- **No delivery ticks, no "Failed" tile, no bulk send, no ratings, no
+  specialty/experience/languages, no payment methods, no Apple Wallet** — the
+  standing honesty rules; each keeps its place in the layout for the day the
+  capability is real.

@@ -50,6 +50,7 @@ import { SOURCE_LABELS, type AppointmentSource } from '../types';
 import { getDoctorColor, softTint } from './doctor-color';
 import { PersonAvatar } from '../shared/PersonAvatar';
 import { ProviderRail, ProviderSidePanel } from './ProviderRail';
+import { CalendarEventCard } from './CalendarEventCard';
 import { useCan } from '../../core/hooks/useCan';
 import { ApiError } from '../../core/api-client';
 
@@ -875,6 +876,17 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
               setViewMode('day');
             }}
             messages={{ showMore: (count: number) => `+ ${count} more` }}
+            // The mockup's gutter reads "8 AM", not "08:00 AM" every half
+            // hour. The half-hour labels are hidden in CSS; this is the
+            // wording of the ones that remain. Clinic clock, as everywhere.
+            formats={{
+              // Every label stays FULLY QUALIFIED (meridiem included) so the
+              // axis walk can still read and order all of them; the half-hour
+              // rows are hidden visually in CSS, which is a display decision,
+              // not a data one.
+              timeGutterFormat: (date: Date) =>
+                dayjs(date).format(dayjs(date).minute() === 0 ? 'h A' : 'h:mm A'),
+            }}
             slotPropGetter={slotPropGetter}
             dayPropGetter={dayPropGetter}
             components={{
@@ -888,85 +900,26 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
                 if (event.overflow) {
                   return (
                     <Tooltip title={`${event.tooltip} — click to open`}>
-                      <div className="kw-calendar-event kw-ev-more">
+                      <div className="kw-ev-more">
                         <span className="kw-ev-more-count">+{event.overflow.length}</span>
                         <span className="kw-ev-more-word">more</span>
                       </div>
                     </Tooltip>
                   );
                 }
-                const dot = (
-                  <span
-                    className="kw-event-dot"
-                    style={{ background: statusDotColor(event.appointment.status) }}
-                    aria-hidden
-                  />
-                );
-                // Every card carries BOTH bodies; the stylesheet's container
-                // query shows the one the card's real width can hold, so an
-                // overlap squeeze degrades by design instead of clipping
-                // (V3.1 §5). Month chips and 15-minute cards start compact;
-                // the WEEK view now renders the structured body too (final
-                // visual pass, target mockup 2) — separated cards that say
-                // time, patient, service and doctor, never plain strips.
-                const compactMode = viewMode === 'month' || event.card.compact;
-                const [timePart, ...nameParts] = event.compact.split(' ');
+                // The CARD is a Kuwick component (CalendarEventCard); the
+                // library keeps only the geometry. Month cells are dates
+                // rather than hours, so they take the one-line chip.
                 return (
-                  <Tooltip title={`${event.tooltip} — double-click to move`}>
-                    <div
-                      className={
-                        'kw-calendar-event ' + (compactMode ? 'kw-ev--compact' : 'kw-ev--full')
-                      }
-                    >
-                      <span className="kw-event-compact">
-                        <span className="kw-ec-time">
-                          {dot}
-                          {timePart}
-                        </span>
-                        <span className="kw-ec-name">{nameParts.join(' ')}</span>
-                      </span>
-                      {!compactMode ? (
-                        <div className="kw-event-full">
-                          {/* 3F — a 30-minute card holds exactly two lines,
-                              so time and name share the first (dense) while
-                              taller cards give each its own. */}
-                          {event.card.dense ? (
-                            <div className="kw-event-lead">
-                              <span className="kw-event-time">
-                                {dot}
-                                {event.card.time}
-                              </span>
-                              <span className="kw-event-patient">{event.card.patient}</span>
-                            </div>
-                          ) : (
-                            <>
-                              <span className="kw-event-time">
-                                {dot}
-                                {event.card.time}
-                              </span>
-                              <div className="kw-event-patient">{event.card.patient}</div>
-                            </>
-                          )}
-                          {event.card.service ? (
-                            <div className="kw-event-secondary">{event.card.service}</div>
-                          ) : null}
-                          {event.card.provider && viewMode !== 'providers' ? (
-                            // Mockup 2 — the doctor is a PERSON on the card:
-                            // the 16px identity avatar beside the name, in the
-                            // same colour as the card's edge and wash.
-                            <div className="kw-event-provider">
-                              <PersonAvatar
-                                name={event.card.provider}
-                                colorSeed={event.appointment.staffId}
-                                size="xs"
-                              />
-                              <span>{event.card.provider}</span>
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  </Tooltip>
+                  <CalendarEventCard
+                    card={event.card}
+                    status={event.appointment.status}
+                    staffId={event.appointment.staffId}
+                    providerName={staffName(event.appointment.staffId)}
+                    compact={viewMode === 'month'}
+                    compactLine={event.compact}
+                    tooltip={event.tooltip}
+                  />
                 );
               },
               // Week headers: small-caps weekday over the date numeral, today
@@ -1031,7 +984,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
                   ['--ev-edge' as string]: event.released ? '#98a2b3' : colour,
                   ['--ev-wash' as string]: event.released
                     ? '#f5f6f8'
-                    : softTint(colour, 0.13),
+                    : softTint(colour, 0.17),
                 },
               };
             }}
