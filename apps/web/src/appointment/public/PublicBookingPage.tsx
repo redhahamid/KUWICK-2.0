@@ -613,16 +613,6 @@ function PublicBookingPageInner() {
           ) : null}
           {page.services.map((row) => (
             <div key={row.id} className="kw-public-service-wrap">
-              {row.description || row.preInstructions || row.photoUrl ? (
-                <button
-                  type="button"
-                  className="kw-public-service-info"
-                  aria-label={`About ${row.name}`}
-                  onClick={() => setDetailServiceId(row.id)}
-                >
-                  i
-                </button>
-              ) : null}
             <button
               type="button"
               className="kw-public-service"
@@ -686,6 +676,22 @@ function PublicBookingPageInner() {
                 ) : null}
               </span>
             </button>
+              {/* THE CARD COMES FIRST FOR A KEYBOARD TOO. This button is drawn
+                  in the card's top-right corner but written AFTER it, because
+                  in DOM order it used to come first: a patient tabbing down
+                  the list reached "About Dental Scaling" before "Dental
+                  Scaling", once per service. Position is presentation; tab
+                  order is the actual sequence of the page. */}
+              {row.description || row.preInstructions || row.photoUrl ? (
+                <button
+                  type="button"
+                  className="kw-public-service-info"
+                  aria-label={`About ${row.name}`}
+                  onClick={() => setDetailServiceId(row.id)}
+                >
+                  i
+                </button>
+              ) : null}
             </div>
           ))}
         </Space>
@@ -781,6 +787,9 @@ function PublicBookingPageInner() {
 
       {step === 2 ? (
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <Title level={5} className="kw-public-step-title" style={{ margin: 0 }}>
+            {STEP_TITLES[2]}
+          </Title>
           <div className="kw-public-context">
             <Text strong>{service?.name}</Text>
             <Text type="secondary">
@@ -802,7 +811,14 @@ function PublicBookingPageInner() {
               setDateChosen(true);
               setStep(3);
             }}
-            fastestNames={(id) => providers?.find((row) => row.id === id)?.fullName ?? null}
+            fastestNames={
+              // Named only on the any-doctor path, where the name is the
+              // news. Once the patient has chosen Dr X it would be the third
+              // printing of a name the context card states directly above.
+              staffId
+                ? undefined
+                : (id) => providers?.find((row) => row.id === id)?.fullName ?? null
+            }
           />
           <StepActions
             back={() => setStep(soleProvider ? 0 : 1)}
@@ -813,6 +829,9 @@ function PublicBookingPageInner() {
 
       {step === 3 ? (
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <Title level={5} className="kw-public-step-title" style={{ margin: 0 }}>
+            {STEP_TITLES[3]}
+          </Title>
           <div className="kw-public-context">
             <Text strong>{service?.name}</Text>
             <Text type="secondary">
@@ -1071,6 +1090,33 @@ function PublicBookingPageInner() {
                 {details?.phone ? ` · ${details.phone}` : ''}
               </span>
             </div>
+            {/* WHAT THEY WROTE, BACK TO THEM. A step called "Check your
+                booking" that omits the only free text the patient typed is
+                checking the clinic's half of it. This is also the last place
+                a typo can be fixed before the clinic reads it. */}
+            {details?.reason ? (
+              <div className="kw-public-paysummary-row">
+                <span>About</span>
+                <span>{details.reason}</span>
+              </div>
+            ) : null}
+            {(fields ?? [])
+              .map((field) => ({ field, value: extraAnswers[field.id] }))
+              .filter(({ value }) => value !== undefined && value !== null && value !== '')
+              .map(({ field, value }) => (
+                <div className="kw-public-paysummary-row" key={field.id}>
+                  <span>{field.label}</span>
+                  <span>
+                    {typeof value === 'boolean'
+                      ? value
+                        ? 'Yes'
+                        : 'No'
+                      : Array.isArray(value)
+                        ? value.join(', ')
+                        : String(value)}
+                  </span>
+                </div>
+              ))}
           </div>
 
           {/* Final-UAT — the price said plainly, and HONESTLY: no online
@@ -1116,15 +1162,12 @@ function PublicBookingPageInner() {
             </Paragraph>
           ) : null}
 
-          <StepActions back={() => setStep(4)}>
-            <Button type="primary" block loading={book.isPending} onClick={submit}>
-              Confirm appointment
-            </Button>
-          </StepActions>
-
           {/* V3.1 §2 — the page finishes with the clinic's own words, never
               invented filler: the service's configured instructions, and
-              where the manage link will come from. */}
+              where the manage link will come from. These stay ABOVE the
+              action bar: the bar is pinned to the bottom of the phone, so
+              anything written after it spends the whole step hidden
+              underneath the button. */}
           {service?.preInstructions ? (
             <div className="kw-public-after">
               <div className="kw-public-section">Before your appointment</div>
@@ -1139,6 +1182,12 @@ function PublicBookingPageInner() {
                 : 'Your confirmation appears immediately, with a private link to change or cancel the booking.'}
             </Paragraph>
           </div>
+
+          <StepActions back={() => setStep(4)}>
+            <Button type="primary" block loading={book.isPending} onClick={submit}>
+              Confirm appointment
+            </Button>
+          </StepActions>
         </Space>
       ) : null}
       {/* Phase 6B — the service DETAIL sheet: the larger image, the whole

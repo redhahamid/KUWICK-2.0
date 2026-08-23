@@ -220,7 +220,13 @@ test.describe('the module opens on the calendar and holds its five surfaces', ()
         ).toBeLessThanOrEqual(2);
         baseline = scrolledTo;
 
-        await events.first().click();
+        // A REAL appointment, not a cluster marker. `.rbc-event` covers both,
+        // and on a busy band the first one is the "+N more" summary — which
+        // opens the cluster list, not the drawer. CI starts from a clean
+        // database and rarely hits that; a machine that has run the suite a
+        // few times hits it every time, and the failure looks like a drawer
+        // regression rather than the test picking the wrong box.
+        await events.filter({ hasNot: page.locator('.kw-ev-more') }).first().click();
         const drawer = page.getByTestId('appointment-drawer');
         await expect(drawer).toBeVisible();
         await holds('opening an appointment drawer');
