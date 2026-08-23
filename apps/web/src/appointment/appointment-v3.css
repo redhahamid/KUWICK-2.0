@@ -1415,33 +1415,51 @@
 }
 
 /* --- Overflow tile + its list (readable dense bands) ---------------------- */
+/* THE OVERFLOW CLUSTER — a quiet marker, not a card.
+   It has to be findable and obviously clickable, and it must never compete
+   with the patient cards beside it: the appointments are the work, this is
+   a pointer to more of it. One line, sentence case, hairline dashes, no
+   fill of its own. */
 .kw-ev--overflow .kw-calendar-event,
 .kw-ev-more {
-  background: var(--apt-surface-2);
-  border: 1px dashed var(--apt-border-strong);
-  border-left: 1px dashed var(--apt-border-strong);
-  border-radius: 8px;
+  background: transparent;
+  border: 1px dashed var(--apt-border);
+  border-left: 1px dashed var(--apt-border);
+  border-radius: 6px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 0;
-  color: var(--apt-teal);
+  gap: 4px;
+  color: var(--apt-text-2);
   text-align: center;
   box-shadow: none;
+  cursor: pointer;
+  transition:
+    border-color 0.14s ease,
+    color 0.14s ease,
+    background 0.14s ease;
 }
 .kw-ev-more-count {
-  font-size: 13px;
-  font-weight: 750;
-  line-height: 1.1;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
 .kw-ev-more-word {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--apt-text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: inherit;
+}
+/* The affordance arrives on approach rather than shouting from rest. */
+.kw-calendar-grid .rbc-event:hover .kw-ev-more,
+.kw-ev-more:focus-visible {
+  background: var(--apt-teal-soft);
+  border-color: var(--apt-teal);
+  color: var(--apt-teal);
+  outline: none;
 }
 .kw-calendar-grid .rbc-event:hover .kw-ev-more {
   border-color: var(--apt-teal);
@@ -1750,15 +1768,20 @@
   min-width: 0;
 }
 
+/* MORE DOCTORS THIS WAY. The previous cue faded white into white and was
+   therefore invisible; this is a faint ink shade at the right edge — the
+   same signal a pinned table column gives — so the schedule reads as
+   continuing rather than ending. Non-interactive, and only present when
+   there are genuinely more providers than the canvas shows. */
 .kw-cal-outer[data-scroll]::after {
   content: '';
   position: absolute;
   top: 1px;
   bottom: 14px;
   right: 1px;
-  width: 44px;
+  width: 26px;
   border-radius: 0 var(--apt-radius-lg) var(--apt-radius-lg) 0;
-  background: linear-gradient(to left, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0));
+  background: linear-gradient(to left, rgba(11, 23, 54, 0.09), rgba(11, 23, 54, 0));
   pointer-events: none;
   z-index: 8;
 }
@@ -5917,22 +5940,38 @@ h4.ant-typography.kw-public-wallet-title {
    Small, neutral and beside the view switcher — never a banner across the
    working area. It only appears when the branch's stated hours genuinely
    hide something, and it says how many rather than warning about them. */
+/* THE HOURS CONTROL — a view option, in the neutral register.
+   Slate, not amber: the clinic's stated hours hiding a 06:45 booking is a
+   fact about the settings, not an incident, and a receptionist should read
+   it the way they read the view switcher beside it. */
 .kw-cal-hours.ant-btn {
-  border-color: var(--apt-border-strong);
+  border-color: var(--apt-border);
   color: var(--apt-text-2);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   background: var(--apt-surface);
+}
+.kw-cal-hours.ant-btn .anticon {
+  color: var(--apt-muted);
+  font-size: 12px;
 }
 .kw-cal-hours.ant-btn:hover,
 .kw-cal-hours.ant-btn:focus-visible {
-  color: var(--apt-teal) !important;
-  border-color: var(--apt-teal) !important;
+  color: var(--apt-text) !important;
+  border-color: var(--apt-border-strong) !important;
 }
+.kw-cal-hours.ant-btn:hover .anticon {
+  color: var(--apt-text-2);
+}
+/* Engaged reads as a pressed view option — still neutral, never an alert. */
 .kw-cal-hours.ant-btn[data-on] {
-  background: var(--apt-teal-soft);
-  border-color: var(--apt-teal);
-  color: var(--apt-teal);
+  background: var(--apt-surface-3);
+  border-color: var(--apt-border-strong);
+  color: var(--apt-text);
+  font-weight: 600;
+}
+.kw-cal-hours.ant-btn[data-on] .anticon {
+  color: var(--apt-text-2);
 }
 
 /* The overflow list's time column widens for a full range. */

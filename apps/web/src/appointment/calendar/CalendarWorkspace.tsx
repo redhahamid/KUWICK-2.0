@@ -14,7 +14,7 @@ import {
   Tooltip,
   message,
 } from 'antd';
-import { LeftOutlined, RightOutlined } from '@ant-design/icons';
+import { ClockCircleOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { AppointmentStatus } from '@kuwick/shared';
 import { useAppointments, useRescheduleAppointment } from '../hooks/useAppointments';
@@ -728,12 +728,15 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             >
               <Button
                 size="small"
+                icon={<ClockCircleOutlined />}
                 className="kw-cal-hours"
                 data-testid="calendar-outside-hours"
                 data-on={showFullDay || undefined}
                 onClick={() => setShowFullDay((current) => !current)}
               >
-                {showFullDay ? 'Clinic hours' : `+${outsideCount} outside hours`}
+                {showFullDay
+                  ? 'Clinic hours'
+                  : `${outsideCount} outside hour${outsideCount === 1 ? '' : 's'}`}
               </Button>
             </Tooltip>
           ) : null}
@@ -974,7 +977,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
                   }
                   return (
                     <Tooltip title={`${event.tooltip} — click to open`}>
-                      <div className="kw-ev-more">
+                      <div className="kw-ev-more" role="button" tabIndex={0}>
                         <span className="kw-ev-more-count">+{event.overflow.length}</span>
                         <span className="kw-ev-more-word">more</span>
                       </div>
