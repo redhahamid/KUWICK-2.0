@@ -3292,6 +3292,37 @@ body:has(.kw-public-booking) {
   min-width: 0;
 }
 
+/* PAST THE FIRST QUESTION THE GREETING BECOMES AN IDENTITY STRIP.
+   The clinic name stays — it is the patient's proof they are booking the
+   right place — but the intro paragraph and the full-size mark have already
+   been read, and on a 390px phone they were spending a third of every
+   subsequent fold restating it. */
+.kw-public-hero[data-compact] {
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 9px 14px;
+  border-radius: 12px;
+}
+
+.kw-public-hero[data-compact] .kw-public-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+
+.kw-public-hero[data-compact] .kw-public-logo {
+  max-height: 32px;
+  max-width: 118px;
+}
+
+.kw-public-hero[data-compact] .kw-public-clinic-name {
+  font-size: 15px !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .kw-public-mark {
   flex: none;
   width: 46px;
@@ -3393,13 +3424,41 @@ body:has(.kw-public-booking) {
   color: #fff;
 }
 
+/* ONE PROGRESS INDICATOR AT A TIME. The chip row is the desktop reading; the
+   single line is the phone's. They are never both on screen, so this is not a
+   duplicated affordance — it is the same fact at two widths. */
+.kw-public-progress-line {
+  display: none;
+  margin: 0 0 2px;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--apt-muted);
+}
+
+.kw-public-progress-word {
+  color: var(--apt-nav-navy);
+}
+
+.kw-public-progress-word::before {
+  content: '·';
+  margin-right: 7px;
+  color: var(--apt-border-strong);
+}
+
 @media (max-width: 560px) {
-  .kw-public-step-word {
+  .kw-public-steps {
     display: none;
   }
 
-  .kw-public-step[data-state='active'] .kw-public-step-word {
-    display: inline;
+  .kw-public-progress-line {
+    display: flex;
+  }
+
+  .kw-public-progress-bar {
+    margin-top: 5px;
+    height: 5px;
   }
 }
 
@@ -3423,6 +3482,60 @@ body:has(.kw-public-booking) {
   font-size: 17px !important;
   font-weight: 700 !important;
   letter-spacing: -0.01em;
+}
+
+/* ---------------------------------------------------------------------------
+   THE STEP ACTION BAR — pinned on a phone, in the flow on a laptop.
+   On a 390px screen the way forward has to be where the thumb already is,
+   not wherever the content happens to stop. On a wide screen there is no
+   fold to fall off, so the same bar simply sits at the end of the step.
+   --------------------------------------------------------------------------- */
+.kw-public-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.kw-public-actions-back {
+  flex: none;
+}
+
+.kw-public-actions-hint {
+  font-size: 12.5px;
+  color: var(--apt-muted);
+  min-width: 0;
+}
+
+.kw-public-actions .ant-btn-primary {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  /* The pinned bar IS the page's bottom chrome, so the page stops reserving
+     its own 64px runway — otherwise the bar would come to rest that far above
+     the bottom of the screen at full scroll. */
+  .kw-public-booking {
+    padding-bottom: 20px;
+  }
+
+  /* The pinned bar spans the viewport, not the 600px column, and clears the
+     iOS home indicator. */
+  .kw-public-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin: 8px -16px 0;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    background: var(--apt-surface);
+    border-top: 1px solid var(--apt-border);
+    box-shadow: 0 -4px 16px rgba(15, 27, 45, 0.06);
+  }
+
+  .kw-public-actions .ant-btn {
+    height: 44px;
+  }
 }
 
 /* Service decision cards. */
@@ -3489,10 +3602,20 @@ body:has(.kw-public-booking) {
   color: var(--apt-text);
 }
 
+/* TWO LINES, THEN THE SHEET. A clinic that writes a paragraph about its
+   dental scaling should not push the third service below the fold — and it
+   loses nothing, because the "i" opens the full text with the photo and the
+   preparation instructions. The clamp is what turns a list of services into
+   a list a patient can compare. */
 .kw-public-service-desc {
   font-size: 13px;
   color: var(--apt-text-2);
   line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .kw-public-service-chips {
@@ -3538,40 +3661,28 @@ body:has(.kw-public-booking) {
   color: var(--apt-text);
 }
 
-.kw-public-service-go {
-  color: var(--apt-teal);
-  font-size: 16px;
-}
+/* Phones get the tighter card: the photo is still recognisable at 48px, and
+   the 6px it gives back per card is a whole extra service in the fold. */
+@media (max-width: 560px) {
+  .kw-public-service {
+    gap: 11px;
+    padding: 11px 13px;
+    border-radius: 13px;
+  }
 
-/* The mockup's fastest-appointment banner over the doctor list. */
-.kw-public-fastest {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 14px;
-  border: 1px solid rgba(15, 107, 120, 0.25);
-  border-radius: 12px;
-  background: linear-gradient(90deg, var(--apt-teal-soft) 0%, #f2fbf7 100%);
-  color: var(--apt-teal);
-  font-size: 13px;
-}
+  .kw-public-service-photo {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+  }
 
-.kw-public-fastest strong {
-  color: var(--apt-teal);
-  font-weight: 700;
-}
+  .kw-public-service-name {
+    font-size: 15px;
+  }
 
-.kw-public-fastest-icon {
-  flex: none;
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  background: var(--apt-teal);
-  color: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
+  .kw-public-service-desc {
+    font-size: 12.5px;
+  }
 }
 
 /* Doctors as people; Any leads. */
@@ -3657,23 +3768,39 @@ body:has(.kw-public-booking) {
   margin-left: auto;
 }
 
+/* THE NAME OUTRANKS THE HINT. A doctor's next opening is useful; which
+   doctor it belongs to is the point of the row — so the time stays on one
+   line and yields its width before the name is allowed to wrap. */
 .kw-public-provider-next {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  display: block;
   text-align: right;
   font-size: 12.5px;
   font-weight: 650;
   color: var(--apt-teal);
   line-height: 1.3;
+  white-space: nowrap;
 }
 
-.kw-public-provider-next-label {
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--apt-text-2);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+@media (max-width: 420px) {
+  .kw-public-provider {
+    gap: 10px;
+    padding: 11px 12px;
+  }
+
+  .kw-public-provider-avatar,
+  .kw-public-provider .kw-avatar[data-size='lg'] {
+    width: 36px;
+    height: 36px;
+    font-size: 12px;
+  }
+
+  .kw-public-provider-next {
+    font-size: 12px;
+  }
+
+  .kw-public-provider-go {
+    display: none;
+  }
 }
 
 .kw-public-provider-go {
@@ -3803,6 +3930,19 @@ body:has(.kw-public-booking) {
   color: var(--apt-muted);
 }
 
+@media (max-width: 560px) {
+  /* The controls keep their 44px touch height — it is the 24px of air between
+     every field that was pushing a four-question form onto three screens. */
+  .kw-public-booking .ant-form-item {
+    margin-bottom: 14px;
+  }
+
+  .kw-public-booking .ant-form-item-explain,
+  .kw-public-booking .ant-form-item-extra {
+    font-size: 12px;
+  }
+}
+
 .kw-public-slots {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
@@ -3824,7 +3964,7 @@ body:has(.kw-public-booking) {
 .kw-public-slots .ant-btn-primary {
   background: var(--apt-selected) !important;
   border-color: var(--apt-selected) !important;
-  box-shadow: 0 2px 8px rgba(29, 78, 216, 0.28);
+  box-shadow: none;
 }
 .kw-public-slots .ant-btn-primary:hover {
   background: #1e40af !important;
@@ -3940,10 +4080,6 @@ body:has(.kw-public-booking) {
 .kw-public-done-actions {
   margin-top: 12px;
   justify-content: center;
-}
-
-.kw-public-cta {
-  margin-top: 2px;
 }
 
 /* The 7-day strip inside antd Segmented keeps whole words. */
@@ -5642,6 +5778,43 @@ body:has(.kw-public-booking) {
   box-shadow: var(--apt-shadow-sm);
 }
 
+/* Today is the patient's anchor in a month whose first rows may be gone —
+   a ring, not a fill, so it never competes with the day they choose. */
+.kw-avcal-day[data-today]:not([data-selected]) {
+  box-shadow: inset 0 0 0 1.5px var(--apt-text-2);
+}
+
+.kw-avcal-legend {
+  margin: 0 0 8px;
+}
+
+.kw-avcal-note {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: var(--apt-muted);
+  text-align: center;
+}
+
+/* The grid is the one thing on this step a thumb has to hit accurately, so
+   on a phone the cells take the width back that the collapsed weeks freed. */
+@media (max-width: 560px) {
+  .kw-avcal {
+    padding: 10px 10px 12px;
+  }
+
+  .kw-avcal-day {
+    width: 100%;
+    max-width: 44px;
+    height: 42px;
+    border-radius: 12px;
+    font-size: 14px;
+  }
+
+  .kw-avcal-grid {
+    gap: 3px;
+  }
+}
+
 /* --- "You selected" — the doctor revealed, with their face (mockup). ------ */
 .kw-public-selected {
   display: flex;
@@ -5658,6 +5831,12 @@ body:has(.kw-public-booking) {
   gap: 2px;
   min-width: 0;
   flex: 1;
+}
+
+@media (max-width: 560px) {
+  .kw-public-selected {
+    padding: 10px 12px;
+  }
 }
 
 /* --- Honest payment summary ---------------------------------------------- */
@@ -5696,6 +5875,9 @@ body:has(.kw-public-booking) {
 
 /* --- The wallet card ------------------------------------------------------ */
 .kw-public-wallet {
+  /* width:100% + 16px of side padding overflowed the phone by exactly those
+     32px — the ticket's right edge was being clipped off a 390px screen. */
+  box-sizing: border-box;
   width: 100%;
   max-width: 420px;
   border-radius: var(--apt-radius-xl);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
@@ -29,6 +29,7 @@ import { AvailabilityCalendar } from './AvailabilityCalendar';
 import { PersonAvatar } from '../shared/PersonAvatar';
 import { qrSvg } from '../booking-page/qr';
 import { bookingReference } from '../appointment-presentation';
+import { personName } from './booking-composition';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -79,6 +80,44 @@ const STEP_TITLES = [
 
 /** The stepper-chip words (approved mockup): one word per numbered circle. */
 const STEP_WORDS = ['Service', 'Doctor', 'Date', 'Time', 'Details', 'Review'];
+
+/**
+ * THE STEP'S ACTIONS, ALWAYS IN THE SAME PLACE.
+ *
+ * On a phone the way forward used to be wherever the content happened to
+ * end: below eleven service cards, below a month grid, below thirty time
+ * chips — and on the time step it was inside a confirmation panel that sat
+ * under the whole slot list, so choosing 9:00 AM scrolled the button that
+ * accepts it off the bottom of the screen. So every step now finishes in the
+ * same bar, and on a phone that bar is pinned to the bottom of the viewport.
+ *
+ * `hint` is what a step says when there IS no forward action yet: choosing a
+ * date or a service IS the action, and a greyed-out "Continue" next to it
+ * would be a button whose only job is to look unavailable. The bar still
+ * holds Back, so no step ever ends in a lone button that reads like a dead
+ * end.
+ */
+function StepActions({
+  back,
+  hint,
+  children,
+}: {
+  back?: () => void;
+  hint?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="kw-public-actions" data-testid="step-actions">
+      {back ? (
+        <Button className="kw-public-actions-back" onClick={back}>
+          Back
+        </Button>
+      ) : null}
+      {hint && !children ? <span className="kw-public-actions-hint">{hint}</span> : null}
+      {children}
+    </div>
+  );
+}
 
 /**
  * PUBLIC BOOKING — mobile first, and no account required (§31).
@@ -171,6 +210,26 @@ function PublicBookingPageInner() {
     queryFn: () => publicBooking.providers(slug, serviceId!),
     enabled: Boolean(serviceId),
   });
+
+  /**
+   * A STEP THAT ASKS NOTHING IS FRICTION.
+   *
+   * "Any available doctor" and "Dr X" are the same appointment when Dr X is
+   * the only person who performs this service — so the clinic's own
+   * configuration has already answered the question and the patient should
+   * not be made to answer it again. The engine is untouched: booking with an
+   * explicit staffId is the same call the tile would have made, and any
+   * clinic with two qualified providers still gets the choice.
+   *
+   * Only ever skips FORWARD from the doctor step; Back from Date lands on the
+   * service list rather than bouncing the patient off an auto-skipped screen.
+   */
+  const soleProvider = providers && providers.length === 1 ? providers[0] : null;
+  useEffect(() => {
+    if (step !== 1 || !soleProvider) return;
+    setStaffId(soleProvider.id);
+    setStep(2);
+  }, [step, soleProvider]);
 
   const { data: availability, isFetching: loadingSlots } = useQuery({
     queryKey: ['public-availability', slug, serviceId, staffId, date.format('YYYY-MM-DD')],
@@ -455,7 +514,12 @@ function PublicBookingPageInner() {
 
   return (
     <div className="kw-public-booking" data-testid="public-booking">
-      <header className="kw-public-hero">
+      {/* THE CLINIC'S NAME IS THE PATIENT'S PROOF THEY ARE IN THE RIGHT PLACE
+          — so it never leaves the page. What leaves is everything the patient
+          has already read: past the service step the greeting shrinks to an
+          identity strip, because on a 390px phone the intro paragraph was
+          costing a third of the fold on every subsequent screen. */}
+      <header className="kw-public-hero" data-compact={step > 0 ? 'true' : undefined}>
         {page.clinic.logoUrl ? (
           <img src={publicMediaSrc(page.clinic.logoUrl) ?? undefined} alt="" className="kw-public-logo" />
         ) : (
@@ -472,7 +536,7 @@ function PublicBookingPageInner() {
           <Title level={4} className="kw-public-clinic-name">
             {page.clinic.displayName}
           </Title>
-          {page.clinic.introText ? (
+          {page.clinic.introText && step === 0 ? (
             <Text type="secondary" className="kw-public-intro">
               {page.clinic.introText}
             </Text>
@@ -481,10 +545,19 @@ function PublicBookingPageInner() {
       </header>
 
       {/* The approved mockup's stepper: numbered chips, done in teal ticks,
-          the open step filled navy. On a phone the words yield to the dots
-          (stylesheet) and the sliver bar underneath keeps the progress
-          readable at any width. */}
+          the open step filled navy. That row is right on a laptop and wrong
+          on a phone, where six circles plus their arrows bought a patient
+          nothing they could act on. So below 560px the circles give way to
+          the same fact in one line — "Step 3 of 6 · Date" — over the bar that
+          was already carrying the progress. Neither is decoration the other
+          duplicates: exactly one is on screen at a time. */}
       <div className="kw-public-progress" data-testid="public-progress">
+        <p className="kw-public-progress-line">
+          <span className="kw-public-progress-count">
+            Step {step + 1} of {STEP_TITLES.length}
+          </span>
+          <span className="kw-public-progress-word">{STEP_WORDS[step]}</span>
+        </p>
         <ol className="kw-public-steps" aria-label={`Step ${step + 1} of ${STEP_TITLES.length} · ${STEP_TITLES[step]}`}>
           {STEP_WORDS.map((word, index) => (
             <li
@@ -595,6 +668,15 @@ function PublicBookingPageInner() {
                   ) : null}
                 </span>
               </span>
+              {/* ONE AFFORDANCE PER EDGE. This card used to carry three
+                  things down its right side — the "i", the price, and a "→"
+                  — and the two glyphs read as two competing controls when
+                  only one of them does anything the whole card does not
+                  already do. The card IS the button; the price is what the
+                  patient came to the right edge to read; the "i" is the one
+                  genuinely separate action. The arrow was the decoration, so
+                  the arrow went. Provider rows keep theirs: there, it is the
+                  only glyph on the edge. */}
               <span className="kw-public-service-side">
                 {row.price ? (
                   <span className="kw-public-service-price">
@@ -602,9 +684,6 @@ function PublicBookingPageInner() {
                     {Number(row.price.amount).toFixed(2)}
                   </span>
                 ) : null}
-                <span className="kw-public-service-go" aria-hidden>
-                  →
-                </span>
               </span>
             </button>
             </div>
@@ -617,18 +696,11 @@ function PublicBookingPageInner() {
           <Title level={5} className="kw-public-step-title" style={{ margin: 0 }}>
             Choose a doctor
           </Title>
-          {/* The mockup's fastest-appointment banner — the engine's own ANY
-              answer, said once above the people it summarises. */}
-          {hints.byId.ANY ? (
-            <div className="kw-public-fastest">
-              <span className="kw-public-fastest-icon" aria-hidden>
-                ⚡
-              </span>
-              <span>
-                <strong>Fastest appointment</strong> · {hints.byId.ANY}
-              </span>
-            </div>
-          ) : null}
+          {/* The fastest-appointment banner used to sit here and say
+              "Fastest appointment · Tomorrow · 08:00" directly above a tile
+              reading "Any available doctor / Fastest appointment / Tomorrow ·
+              08:00". Two renderings of one fact, stacked. The tile won: it is
+              the one you can tap. */}
           <div className="kw-public-providers" role="radiogroup" aria-label="Choose a doctor">
             <button
               type="button"
@@ -665,19 +737,32 @@ function PublicBookingPageInner() {
                 {/* The shared identity avatar — the SAME person, in the same
                     colour, the clinic's own calendar shows (mockup: Calendly
                     card, photo/avatar left, next slot right). */}
-                <PersonAvatar name={provider.fullName} colorSeed={provider.id} size="lg" />
+                <PersonAvatar
+                  name={personName(provider.fullName)}
+                  colorSeed={provider.id}
+                  size="lg"
+                />
+                {/* The name, and only the name. Every row here used to carry
+                    the word "Doctor" under it — six times, on a step titled
+                    "Choose a doctor" — and it was the sub-line that squeezed
+                    the name column until "Dr. Chong Wei Ling" wrapped onto
+                    two rows. A professional type that is NOT doctor is worth
+                    saying; the expected one is not. */}
                 <span className="kw-public-provider-body">
                   <span className="kw-public-provider-name">{provider.fullName}</span>
-                  {provider.professionalType === 'MEDICAL_DOCTOR' ? (
-                    <span className="kw-public-provider-sub">Doctor</span>
+                  {provider.professionalType !== 'MEDICAL_DOCTOR' ? (
+                    <span className="kw-public-provider-sub">Clinic staff</span>
                   ) : null}
                 </span>
                 <span className="kw-public-provider-side">
+                  {/* The caption is gone, the answer stays. "NEXT AVAILABLE"
+                      set in caps above every value was a column header
+                      reprinted six times — and it made the rows the engine
+                      had no near answer for look like a field that failed to
+                      load rather than a doctor whose next opening is simply
+                      further out than the two days this probe asks about. */}
                   {hints.byId[provider.id] ? (
-                    <span className="kw-public-provider-next">
-                      <span className="kw-public-provider-next-label">Next available</span>
-                      {hints.byId[provider.id]}
-                    </span>
+                    <span className="kw-public-provider-next">{hints.byId[provider.id]}</span>
                   ) : null}
                   <span className="kw-public-provider-go" aria-hidden>
                     ›
@@ -686,12 +771,11 @@ function PublicBookingPageInner() {
               </button>
             ))}
           </div>
-          <Space>
-            <Button onClick={() => setStep(0)}>Back</Button>
-            <Button type="primary" onClick={() => setStep(2)}>
+          <StepActions back={() => setStep(0)}>
+            <Button type="primary" block onClick={() => setStep(2)}>
               Continue
             </Button>
-          </Space>
+          </StepActions>
         </Space>
       ) : null}
 
@@ -720,7 +804,10 @@ function PublicBookingPageInner() {
             }}
             fastestNames={(id) => providers?.find((row) => row.id === id)?.fullName ?? null}
           />
-          <Button onClick={() => setStep(1)}>Back</Button>
+          <StepActions
+            back={() => setStep(soleProvider ? 0 : 1)}
+            hint="Tap an available date to see times"
+          />
         </Space>
       ) : null}
 
@@ -783,7 +870,9 @@ function PublicBookingPageInner() {
           {slot ? (
             <div className="kw-public-selected" data-testid="selected-slot">
               <PersonAvatar
-                name={providers?.find((row) => row.id === slot.staffId)?.fullName ?? 'Doctor'}
+                name={personName(
+                  providers?.find((row) => row.id === slot.staffId)?.fullName ?? 'Doctor',
+                )}
                 colorSeed={slot.staffId}
                 size="md"
               />
@@ -795,23 +884,45 @@ function PublicBookingPageInner() {
                   with {providers?.find((row) => row.id === slot.staffId)?.fullName ?? 'your doctor'}
                 </Text>
               </div>
-              <Button type="primary" onClick={() => setStep(4)} data-testid="continue-to-details">
-                Continue
-              </Button>
             </div>
           ) : null}
 
-          <Button onClick={() => setStep(2)}>Back</Button>
+          <StepActions back={() => setStep(2)} hint="Choose a time to continue">
+            {slot ? (
+              <Button
+                type="primary"
+                block
+                onClick={() => setStep(4)}
+                data-testid="continue-to-details"
+              >
+                Continue · {formatClinicTime(slot.start)}
+              </Button>
+            ) : null}
+          </StepActions>
         </Space>
       ) : null}
 
       {step === 4 ? (
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
-          <Alert
-            type="success"
-            message={`${formatClinicDate(slot?.start ?? '')} at ${formatClinicTime(slot?.start ?? '')}`}
-            description={service?.name}
-          />
+          {/* THE SAME CONTEXT CARD AS EVERY OTHER STEP. This was a green
+              "success" alert, which said congratulations for a booking that
+              has not happened yet and looked nothing like the identical
+              summary two steps earlier. It is a reminder of what is being
+              booked, so it is the reminder card — and it now carries the way
+              to change it, which previously meant guessing that Back twice
+              would get you there. */}
+          <div className="kw-public-context">
+            <Text strong>
+              {formatClinicDate(slot?.start ?? '')} · {formatClinicTime(slot?.start ?? '')}
+            </Text>
+            <Text type="secondary">
+              {service?.name}
+              {slot ? ` · ${providers?.find((row) => row.id === slot.staffId)?.fullName ?? 'Your doctor'}` : ''}
+            </Text>
+            <Button size="small" onClick={() => setStep(3)} data-testid="change-time">
+              Change time
+            </Button>
+          </div>
           <Title level={5} className="kw-public-step-title" style={{ margin: '4px 0 0' }}>
             Your details
           </Title>
@@ -902,12 +1013,11 @@ function PublicBookingPageInner() {
             </>
           ) : null}
 
-          <Space>
-            <Button onClick={() => setStep(3)}>Back</Button>
-            <Button type="primary" onClick={toReview}>
+          <StepActions back={() => setStep(3)}>
+            <Button type="primary" block onClick={toReview}>
               Review booking
             </Button>
-          </Space>
+          </StepActions>
         </Space>
       ) : null}
 
@@ -1006,12 +1116,11 @@ function PublicBookingPageInner() {
             </Paragraph>
           ) : null}
 
-          <Space className="kw-public-cta">
-            <Button onClick={() => setStep(4)}>Back</Button>
-            <Button type="primary" loading={book.isPending} onClick={submit}>
+          <StepActions back={() => setStep(4)}>
+            <Button type="primary" block loading={book.isPending} onClick={submit}>
               Confirm appointment
             </Button>
-          </Space>
+          </StepActions>
 
           {/* V3.1 §2 — the page finishes with the clinic's own words, never
               invented filler: the service's configured instructions, and

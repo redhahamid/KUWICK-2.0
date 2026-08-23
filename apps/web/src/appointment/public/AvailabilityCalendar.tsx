@@ -3,6 +3,7 @@ import { LeftOutlined, RightOutlined, ThunderboltOutlined } from '@ant-design/ic
 import dayjs from 'dayjs';
 import { formatClinicTime } from '../../clinical/clinicTime';
 import type { PublicMonthAvailability } from './publicBookingApi';
+import { composeMonth } from './booking-composition';
 
 const { Text } = Typography;
 
@@ -51,6 +52,18 @@ export function AvailabilityCalendar({
   const fastest = data?.fastest ?? null;
   const fastestDoctor = fastest && fastestNames ? fastestNames(fastest.staffId) : null;
 
+  const today = dayjs().format('YYYY-MM-DD');
+  // Which weeks are worth drawing — see `composeMonth`. Pure, and unit-tested
+  // there rather than through a rendered month.
+  const { weeks: visibleWeeks, hiddenDays } = composeMonth({
+    month,
+    padding,
+    daysInMonth,
+    today,
+    selectedDate,
+    markedDate,
+  });
+
   return (
     <div className="kw-avcal" data-testid="availability-calendar">
       {fastest ? (
@@ -88,17 +101,35 @@ export function AvailabilityCalendar({
         />
       </div>
 
+      {/* THE KEY GOES BEFORE THE THING IT UNLOCKS. It used to sit under the
+          grid, which on a phone meant scrolling past the colours to find out
+          what they meant. */}
+      <div className="kw-avail-legend kw-avcal-legend">
+        <span>
+          <span className="kw-avail-dot" data-kind="available" /> Available
+        </span>
+        <span>
+          <span className="kw-avail-dot" data-kind="limited" /> Limited
+        </span>
+        <span>
+          <span className="kw-avail-dot" data-kind="full" /> Full
+        </span>
+        {markedDate ? (
+          <span>
+            <span className="kw-avail-dot" data-kind="selected" /> Current appointment
+          </span>
+        ) : null}
+      </div>
+
       <div className="kw-avcal-grid" role="grid" aria-label="Choose a date">
         {WEEKDAYS.map((label) => (
           <span key={label} className="kw-avcal-dow">
             {label}
           </span>
         ))}
-        {Array.from({ length: padding }, (_, index) => (
-          <span key={`pad-${index}`} aria-hidden />
-        ))}
-        {Array.from({ length: daysInMonth }, (_, index) => {
-          const dateKey = `${month}-${String(index + 1).padStart(2, '0')}`;
+        {visibleWeeks.flat().map((cell) => {
+          if (!cell.date) return <span key={cell.key} aria-hidden />;
+          const dateKey = cell.date;
           const day = byDate.get(dateKey);
           const status = day?.status ?? (loading ? 'LOADING' : 'PAST');
           const selectable = status === 'AVAILABLE' || status === 'LIMITED';
@@ -111,6 +142,7 @@ export function AvailabilityCalendar({
               className="kw-avcal-day"
               data-date={dateKey}
               data-status={status}
+              data-today={dateKey === today || undefined}
               data-selected={selected || undefined}
               data-marked={marked || undefined}
               disabled={!selectable}
@@ -120,29 +152,21 @@ export function AvailabilityCalendar({
               }`}
               title={marked ? 'Your current appointment' : undefined}
             >
-              {index + 1}
+              {Number(dateKey.slice(8))}
             </button>
           );
         })}
       </div>
 
-      {loading && !data ? <Skeleton.Button active block style={{ marginTop: 6 }} /> : null}
+      {/* Said, not silently done: a month that starts on the 15th would
+          otherwise look like a clinic that lost a fortnight. */}
+      {hiddenDays > 0 ? (
+        <p className="kw-avcal-note">
+          {`${first.format('MMMM')} 1–${hiddenDays} ${hiddenDays === 1 ? 'has' : 'have'} already passed.`}
+        </p>
+      ) : null}
 
-      <div className="kw-avail-legend" style={{ marginTop: 8 }}>
-        <span>
-          <span className="kw-avail-dot" data-kind="available" /> Available
-        </span>
-        <span>
-          <span className="kw-avail-dot" data-kind="limited" /> Limited
-        </span>
-        <span>
-          <span className="kw-avail-dot" data-kind="full" /> Full
-        </span>
-        <span>
-          <span className="kw-avail-dot" data-kind="selected" /> Selected
-        </span>
-        {markedDate ? <span>◦ Current appointment</span> : null}
-      </div>
+      {loading && !data ? <Skeleton.Button active block style={{ marginTop: 6 }} /> : null}
     </div>
   );
 }

@@ -364,9 +364,14 @@ test.describe('a patient books themselves in, and the clinic works the booking',
     // The service the fixture made bookable and mapped to a doctor.
     await page.getByText(booking.followUpService, { exact: false }).first().click();
 
-    // Any available doctor — the path that has to persist a REAL provider.
-    await page.getByRole('radio', { name: /any available doctor/i }).click();
-    await page.getByRole('button', { name: /continue/i }).click();
+    // THE DOCTOR STEP ANSWERS ITSELF HERE. Exactly one provider is qualified
+    // for this fixture service, so the page skips a question whose only
+    // possible answer it already has and lands on the date — with that
+    // provider chosen. The booking still has to persist a REAL provider,
+    // which the "you selected" reveal and the confirmation both check below.
+    await expect(page.getByTestId('availability-calendar')).toBeVisible();
+    await expect(page.getByTestId('public-progress')).toContainText(/date/i);
+    await expect(page.getByRole('radio', { name: /any available doctor/i })).toHaveCount(0);
 
     // Two days out: inside the fixture roster, past any minimum notice.
     const when = dayjs().add(2, 'day');
@@ -510,11 +515,12 @@ test.describe('the patient can manage their own booking', () => {
     await page.evaluate(() => window.localStorage.clear());
     await page.reload();
 
-    // The service-specific link PRESELECTS the service, so the flow opens on
-    // the doctor step rather than making the patient pick what they already
-    // clicked.
-    await expect(page.getByRole('radio', { name: /any available doctor/i })).toBeVisible();
-    await page.getByRole('button', { name: /continue/i }).click();
+    // The service-specific link PRESELECTS the service; with a single
+    // qualified provider the doctor step then answers itself too, so the flow
+    // opens straight on the date rather than making the patient confirm two
+    // things they already said.
+    await expect(page.getByTestId('availability-calendar')).toBeVisible();
+    await expect(page.getByTestId('public-progress')).toContainText(/date/i);
 
     const when = dayjs().add(3, 'day');
     await pickAvailabilityDate(page, when);
