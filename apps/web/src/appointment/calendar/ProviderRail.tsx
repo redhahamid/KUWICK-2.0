@@ -6,6 +6,7 @@ import { Appointment } from '../types';
 import { RangeShift } from '../hooks/useRoster';
 import { useAppointmentDashboard } from '../hooks/useAppointmentDashboard';
 import { PersonAvatar } from '../shared/PersonAvatar';
+import { useProviderColors } from '../hooks/useProviderColors';
 import { RELEASED_STATUSES } from '../appointment-status.constants';
 
 const { Text } = Typography;
@@ -43,6 +44,10 @@ function minutesBetween(startIso: string, endIso: string): number {
 }
 
 export function ProviderRail({ providers, appointments, selection, onSelect }: ProviderRailProps) {
+  // Identity travels rail → column header → card edge. Same resolver, same
+  // stored colour: if the rail says Dr Chong is rose, the grid cannot say
+  // otherwise.
+  const providerColor = useProviderColors();
   const countsByProvider = useMemo(() => {
     const map = new Map<string, number>();
     for (const appointment of appointments) {
@@ -77,7 +82,19 @@ export function ProviderRail({ providers, appointments, selection, onSelect }: P
               onSelect(selection.length === 1 && selection[0] === provider.id ? [] : [provider.id])
             }
           >
-            <PersonAvatar name={provider.fullName} colorSeed={provider.id} size="sm" />
+            <span
+              className="kw-provider-rail-edge"
+              style={{ background: providerColor(provider.id).accent }}
+              aria-hidden
+            />
+            <PersonAvatar
+              name={provider.fullName}
+              color={providerColor(provider.id)}
+              size="sm"
+            />
+            {/* Two lines rather than an ellipsis: "Dr. Priyadarshini a/p
+                Raghavan" is a person, and a name cut mid-word is a name
+                nobody can check. The full string stays in `title`. */}
             <span className="kw-provider-rail-name" title={provider.fullName}>
               {provider.fullName}
             </span>

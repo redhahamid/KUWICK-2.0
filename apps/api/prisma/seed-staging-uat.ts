@@ -161,6 +161,11 @@ async function main() {
         fullName: account.fullName,
         active: true,
         clinicId,
+        // A provider's calendar identity colour, from the curated palette.
+        // Seeded rather than left null so the UAT diary demonstrates the real
+        // system — a provider whose colour is stored — instead of the
+        // deterministic fallback that only exists for pre-existing rows.
+        ...(isDoctor ? { calendarColor: '#4A57C4' } : {}),
         // A doctor must be able to sign a note, or the Documentation Pending
         // scenario below can never be cleared during UAT.
         //

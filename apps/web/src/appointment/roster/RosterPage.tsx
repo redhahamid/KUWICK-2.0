@@ -30,7 +30,7 @@ import {
 import { ShiftEditorModal } from './ShiftEditorModal';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
 import { FixedWeeklyEditor } from './FixedWeeklyEditor';
-import { getDoctorColor } from '../calendar/doctor-color';
+import { providerColorFor } from '../calendar/doctor-color';
 
 const { Text } = Typography;
 
@@ -348,7 +348,7 @@ export function RosterPage({ clinicId }: RosterPageProps) {
                       <Avatar
                         size={28}
                         style={{
-                          background: getDoctorColor(provider.staffId),
+                          background: providerColorFor(provider.calendarColor, provider.staffId).accent,
                           fontSize: 11,
                           fontWeight: 700,
                           flex: 'none',

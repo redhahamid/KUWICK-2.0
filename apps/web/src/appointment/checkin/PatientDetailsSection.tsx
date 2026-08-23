@@ -184,7 +184,15 @@ export function PatientDetailsSection({ patient }: { patient: DetailPatient }) {
             {patient.name} <KuwickStatusTag tone="success" label="On file" />
           </Descriptions.Item>
           <Descriptions.Item label={sentence(patient.identifierType ?? 'ID')}>
-            {patient.identifierValue || <Text type="secondary">—</Text>}
+            {/* One token, tabular, never broken across two lines: half an
+                identity number on each line cannot be checked against a card. */}
+            {patient.identifierValue ? (
+              <span className="kw-nric-value" title={patient.identifierValue}>
+                {patient.identifierValue}
+              </span>
+            ) : (
+              <Text type="secondary">—</Text>
+            )}
           </Descriptions.Item>
           <Descriptions.Item label="Mobile">
             {patient.phone ?? <Text type="secondary">—</Text>}

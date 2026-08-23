@@ -36,6 +36,8 @@ import {
   cardLines,
   cardModel,
   compactLine,
+  dateKeyOf,
+  monthDayComposition,
   defaultScrollOpening,
   displayBounds,
   gridDateAt,
@@ -47,7 +49,8 @@ import {
 } from './calendar-events';
 import { useBookingSettings } from '../hooks/useBookingSettings';
 import { SOURCE_LABELS, type AppointmentSource } from '../types';
-import { getDoctorColor, softTint } from './doctor-color';
+import { softTint } from './doctor-color';
+import { useProviderColors } from '../hooks/useProviderColors';
 import { PersonAvatar } from '../shared/PersonAvatar';
 import { ProviderRail, ProviderSidePanel } from './ProviderRail';
 import { CalendarEventCard } from './CalendarEventCard';
@@ -58,6 +61,14 @@ import { ApiError } from '../../core/api-client';
 // dayjs FACADE without `.tz`. Handing rbc the timezone-extended dayjs made
 // its `merge()` shift every day-column's min/max by the browser's UTC offset
 // (23:00-previous-day wraps on any Malaysian device). See that module.
+
+/**
+ * How many LINES a month cell may draw — chips plus the overflow summary.
+ * Three is what a ~100px row holds under the date header; a fourth is where
+ * react-big-calendar starts truncating with its own "+N more" and the
+ * composition stops being ours.
+ */
+const MONTH_ROW_BUDGET = 3;
 
 const VIEW_OPTIONS: { label: string; value: CalendarViewMode }[] = [
   { label: 'Day', value: 'day' },
@@ -148,6 +159,11 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
 
   const reschedule = useRescheduleAppointment();
   const { data: staff } = useStaff();
+  // WHO IS THIS DOCTOR, IN COLOUR — the provider's own stored calendar
+  // colour where they have one, a stable curated fallback where they do not.
+  // One resolver for the whole workspace so a card's edge, its avatar, the
+  // rail and the column header can never disagree.
+  const providerColor = useProviderColors();
   const { data: services } = useServices();
   const { data: patients } = usePatients();
   // Phase 3B/3C — the branch's own calendar-display settings, the diary
@@ -259,8 +275,47 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
   // "+N more" tile — the same overflow the approved mockup draws — carrying
   // the hidden bookings for the click. Month positions by DATE, not hour, and
   // rbc's own popup already handles it there.
+  // MONTH — composed, not truncated (approved decision 6). Three
+  // representative bookings, live ones ranked ahead of cancelled, and the
+  // rest behind one honest overflow chip that says how many and how many of
+  // those were cancelled. Held separately from displayEvents because the
+  // date cell's own header reads the same composition for its count.
+  const monthDays = useMemo(
+    () => (viewMode === 'month' ? monthDayComposition(events, MONTH_ROW_BUDGET) : null),
+    [events, viewMode],
+  );
+
   const displayEvents: CalendarEvent[] = useMemo(() => {
-    if (viewMode === 'month') return events;
+    if (viewMode === 'month') {
+      if (!monthDays) return events;
+      const composed: CalendarEvent[] = [];
+      for (const day of monthDays.values()) {
+        composed.push(...day.shown);
+        if (day.hidden.length === 0) continue;
+        // The overflow chip takes the day's LAST start so the library's own
+        // chronological ordering puts it under the chips rather than among
+        // them — its text carries no time, so nothing is misstated.
+        const last = day.hidden.reduce(
+          (latest, row) => (row.start > latest ? row.start : latest),
+          day.hidden[0].start,
+        );
+        const releasedWord =
+          day.hiddenReleased > 0 ? ` · ${day.hiddenReleased} cancelled` : '';
+        composed.push({
+          ...day.hidden[0],
+          id: `month-overflow:${day.dateKey}`,
+          start: last,
+          end: last,
+          compact: `+${day.hidden.length} more${releasedWord}`,
+          tooltip: day.hidden
+            .map((row) => `${row.card.time} ${row.card.patient}`)
+            .join(' · '),
+          released: false,
+          overflow: day.hidden,
+        });
+      }
+      return composed;
+    }
     const limit = viewMode === 'week' ? 2 : 3;
     const { visible, overflow } = capConcurrency(events, limit);
     if (overflow.length === 0) return events;
@@ -282,7 +337,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
       overflow: bundle.hidden,
     }));
     return [...visible, ...tiles];
-  }, [events, viewMode]);
+  }, [events, viewMode, monthDays]);
 
   // The bookings behind a "+N more" tile, once somebody asks for them.
   const [overflowGroup, setOverflowGroup] = useState<CalendarEvent[] | null>(null);
@@ -898,6 +953,19 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
                 // The overflow tile — the mockup's "+ 2 more", carrying the
                 // bookings that would otherwise have been slivers.
                 if (event.overflow) {
+                  // In MONTH the overflow is a line of type under the chips —
+                  // "+21 more · 2 cancelled" — because the cell's job is to
+                  // say how heavy the day is, and a stacked tile would eat a
+                  // chip's worth of height to say less.
+                  if (viewMode === 'month') {
+                    return (
+                      <Tooltip title={`${event.tooltip} — click to open`}>
+                        <div className="kw-calendar-event kw-evchip kw-evchip--more">
+                          {event.compact}
+                        </div>
+                      </Tooltip>
+                    );
+                  }
                   return (
                     <Tooltip title={`${event.tooltip} — click to open`}>
                       <div className="kw-ev-more">
@@ -914,13 +982,56 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
                   <CalendarEventCard
                     card={event.card}
                     status={event.appointment.status}
-                    staffId={event.appointment.staffId}
+                    color={providerColor(event.appointment.staffId)}
                     providerName={staffName(event.appointment.staffId)}
                     compact={viewMode === 'month'}
                     compactLine={event.compact}
                     tooltip={event.tooltip}
+                    // Day and the single-provider workspace give a card the
+                    // full width of the column; the card composes ACROSS
+                    // there instead of stacking, so a 30-minute booking reads
+                    // as a row and not as a banner.
+                    wide={viewMode === 'day' || viewMode === 'providers'}
+                    showProvider={viewMode !== 'providers'}
                   />
                 );
+              },
+              // THE MONTH DATE CELL (approved decision 6). The date, and the
+              // day's real appointment count beside it — counted from the
+              // appointments already on screen, never modelled. A day with
+              // nothing booked says nothing rather than "0".
+              month: {
+                dateHeader: ({
+                  date,
+                  label,
+                  onDrillDown,
+                }: {
+                  date: Date;
+                  label: React.ReactNode;
+                  onDrillDown?: (event: React.MouseEvent) => void;
+                }) => {
+                  const day = monthDays?.get(dateKeyOf(date));
+                  const total = day?.total ?? 0;
+                  return (
+                    <div className="kw-month-datehead">
+                      {/* Still the library's drill-down link: clicking a date
+                          opens that day. Replacing the header must not cost
+                          the navigation it carried. */}
+                      <button
+                        type="button"
+                        className="rbc-button-link kw-month-date"
+                        onClick={onDrillDown}
+                      >
+                        {label}
+                      </button>
+                      {total > 0 ? (
+                        <span className="kw-month-load">
+                          {total} appointment{total === 1 ? '' : 's'}
+                        </span>
+                      ) : null}
+                    </div>
+                  );
+                },
               },
               // Week headers: small-caps weekday over the date numeral, today
               // in a filled ink circle.
@@ -950,7 +1061,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
                 const count = events.filter((event) => event.resourceId === id).length;
                 return (
                   <div className="kw-provider-head">
-                    <PersonAvatar name={name} colorSeed={id || null} size="sm" />
+                    <PersonAvatar name={name} color={providerColor(id)} size="sm" />
                     {/* Native title: the full name survives the ellipsis. */}
                     <span className="kw-provider-name" title={name}>
                       {name}
@@ -974,17 +1085,24 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
               if (event.overflow) {
                 return { className: ' kw-ev--overflow', style: {} };
               }
-              const colour = getDoctorColor(event.appointment.staffId);
+              const identity = providerColor(event.appointment.staffId);
               const picked = moving?.id === event.id;
               return {
                 className:
                   (event.released ? ' kw-ev--released' : '') +
                   (picked ? ' kw-ev--picked' : ''),
                 style: {
-                  ['--ev-edge' as string]: event.released ? '#98a2b3' : colour,
+                  ['--ev-edge' as string]: event.released ? '#98a2b3' : identity.accent,
+                  // The provider's pastel — a GUTTER and a month chip ground,
+                  // never a body fill. Which of the three the view actually
+                  // spends is the stylesheet's decision.
+                  ['--ev-pastel' as string]: event.released ? '#f2f4f7' : identity.pastel,
+                  // The week's whisper: the same hue at ~4%, deliberately
+                  // weaker than the pastel so a full column stays neutral.
                   ['--ev-wash' as string]: event.released
-                    ? '#f5f6f8'
-                    : softTint(colour, 0.17),
+                    ? '#fafbfc'
+                    : softTint(identity.accent, 0.045),
+                  ['--ev-text' as string]: event.released ? '#667085' : identity.text,
                 },
               };
             }}
@@ -1043,7 +1161,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             >
               <span
                 className="kw-ev-more-edge"
-                style={{ background: getDoctorColor(row.appointment.staffId) }}
+                style={{ background: providerColor(row.appointment.staffId).accent }}
                 aria-hidden
               />
               <span className="kw-ev-more-time">{row.card.time}</span>

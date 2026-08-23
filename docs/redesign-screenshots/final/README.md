@@ -142,3 +142,94 @@ Patient-journey shots (`patient-*.png`) answer to the patient mockup's panels
   specialty/experience/languages, no payment methods, no Apple Wallet** — the
   standing honesty rules; each keeps its place in the layout for the day the
   capability is real.
+
+---
+
+# PREMIUM CLINICAL OPERATIONS PASS — the approved design decisions, implemented
+
+Captured from the production build over the seeded QA world after the owner
+approved the design audit and issued fourteen locked decisions on 2026-08-23.
+Green on this exact code: web typecheck, **1600/1600** web unit tests, API
+typecheck, **2014/2014** API unit tests, **73/73** API integration tests, and
+the appointment **e2e 8/8** including both axis walks and the
+Asia/Kuala_Lumpur timezone twin.
+
+## The wall of blue: what it actually was
+
+Three compounding causes, all in the presentation layer, all fixed:
+
+1. **`.kw-evcard { background: var(--ev-wash) }` with no per-view override.**
+   The provider's wash was painted full-bleed in every view. A week column is
+   ~180px, so it read as a tint; a Day card is ~1,300px, so the identical rule
+   became a 1,300px band of colour.
+2. **A six-entry hash palette, of which three were blue-family.** Six doctors
+   into six slots land all-distinct about 1.5% of the time, so in a real
+   clinic two or three providers shared a colour — and roughly half of all
+   providers landed in blue before any collision.
+3. **`Staff.calendarColor` was fetched and thrown away.** The column existed,
+   was migrated, and was seeded with curated colours; the web app overrode
+   every one of them with the hash.
+
+## Per-view colour budget (decision 2)
+
+| View | Provider colour spends |
+|---|---|
+| Day / Providers | 3px identity edge + 26px pastel gutter holding the avatar. **White body, always.** |
+| Week | The same, plus a ~4.5% wash on the body. Predominantly neutral. |
+| Month | The 20px chip may take the pastel outright — there is no body to flood. |
+
+## The shots
+
+| # | Shot | Mockup panel | What it demonstrates |
+|---|---|---|---|
+| 1 | `01-calendar-month.png` | Clinic 1 | Capacity view, not a compressed week: navy today pill, **“24 appointments”** per cell from real data, two representative chips with **live bookings ranked ahead of cancelled**, and **“+22 more · 9 cancelled”**. Six weeks fit. Sunday-first. |
+| 2 | `02-calendar-week.png` | Clinic 2 | Monday→Sunday. Patient name is the strongest text and is never truncated for a badge; time · service beneath; provider edge + faint tint; status is a dot at this width. |
+| 3 | `03-calendar-day.png` | Clinic 3 (day schedule) | The execution workspace. Reads left to right: gutter avatar → time → **patient** → service → doctor → state. White bodies. A 30-minute booking is a row, not a banner. |
+| 4 | `04-calendar-providers.png` | Clinic 3 | Single-provider workspace: rail (six doctors, each on their own persisted colour), emerald column, mini month, Provider summary **with the utilisation bar** (31%) from the unchanged calculation. |
+| 5 | `05-appointment-list.png` | Clinic 4 | Structure unchanged. No-show demoted to secondary type and shown with its denominator: **“NO-SHOW 60% · 3 of 5 attendable”**. |
+| 6 | `06-checkin-patient-details.png` | Clinic 5 | Compacted reception rail: name + returning line, **NRIC / Mobile / DOB · age / Sex**, a SAFETY block (allergies + standing alerts, visible from both tabs), APPOINTMENT, and VISIT mirrored live from the form. |
+| 7 | `07-checkin-visit-info.png` | Clinic 5 | Visit Info tab; the rail stays put, so safety is never behind a tab. |
+| 8 | `08-appointment-detail.png` | Clinic 8 | Three grouped fact lists — Appointment / Booking / Payment & reminder — laid out two-up, with the Activity timeline beside them. Grouping and alignment, no cards added to fill space. |
+| 9 | `09-communication-centre.png` | Clinic 6 | Unchanged IA, as instructed. Honesty banner intact. |
+| 10 | `10-reminder-centre.png` | Clinic 7 | Unchanged IA. No invented “Failed” state. |
+| 11 | `11-busy-day.png` | — | **The deliberately busy state.** Wednesday 26 August, twenty bookings, six providers: indigo, emerald, sky, rose, teal, violet — all distinguishable, all white-bodied. Long Malay, Chinese and Indian names render whole. |
+| 11b | `11b-busy-providers.png` | — | The same day across six provider columns. Rail → column header → card edge all carry the same persisted colour. |
+| 11c | `11c-busy-week.png` | — | The busy week, showing the ~4.5% tint holding up across a mixed-provider column. |
+
+## Provider identity colour — persisted, not hashed
+
+`Staff.calendarColor` (already migrated, no schema change) is now the
+authority. Resolution order: **stored colour → curated deterministic fallback
+for rows written before the column was filled in.** Creating a provider
+assigns the tenant's next unused curated colour and persists it, so a clinic's
+first seven providers are guaranteed distinct — which a hash cannot promise.
+The colour is editable from the existing Staff editor through an eight-swatch
+picker (no colour well), and the server validates writes against the same
+eight values, so the rule survives any client.
+
+| Colour | Accent | Pastel | Text |
+|---|---|---|---|
+| Teal | `#0F6B78` | `#E7F3F4` | `#0B535D` |
+| Emerald | `#2F8B57` | `#E8F4ED` | `#24693F` |
+| Sky *(the only blue)* | `#2E7BC4` | `#E8F1FA` | `#235F99` |
+| Indigo | `#4A57C4` | `#ECEEFB` | `#3A45A5` |
+| Violet | `#7A4FBF` | `#F2ECFB` | `#62409A` |
+| Rose | `#B4506B` | `#FBECEF` | `#8F3F55` |
+| Amber | `#A96A12` | `#FBF1E2` | `#8A560F` |
+| Slate *(neutral / locum)* | `#55627A` | `#EEF0F4` | `#414D63` |
+
+## Honest deviations from the brief
+
+- **The booking reference stays `#6F18AB6D`.** The mockup's
+  `APT-240826-0012` needs a stored dated sequence and a per-clinic counter.
+  Inventing one client-side would be a number that means nothing.
+- **The status word appears only when the card is ≥260px wide.** A ~90px
+  badge inside a 178px week column is 90px the patient's name does not get.
+  The dot, the tooltip, the List and the drawer all still carry the state.
+- **No capacity or “busy” band in Month.** The clinic has never stated a
+  daily capacity, so the appointment count is the only truthful workload
+  figure available. It is enough.
+- **Six or more provider columns still scroll horizontally** (hour gutter
+  pinned, right edge faded). Columns dropped from 250px to 220px so a
+  five-doctor clinic fits at 1440–1600px; squeezing six into the viewport
+  would cost the readability this pass exists to protect.

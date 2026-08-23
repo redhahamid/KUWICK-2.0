@@ -52,7 +52,7 @@ import {
 import { CheckInRegistrationDrawer } from '../checkin/CheckInRegistrationDrawer';
 import { MessagePatientModal } from '../messages/MessagePatientModal';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
-import { getDoctorColor } from './doctor-color';
+import { providerColorFor } from './doctor-color';
 import { PersonAvatar } from '../shared/PersonAvatar';
 import { ApiError } from '../../core/api-client';
 
@@ -590,65 +590,105 @@ export function AppointmentDrawer({
             />
           </Modal>
 
-          {/* THE APPOINTMENT, said once and said big: when, what, with whom. */}
-          <div className="kw-apt-section">Appointment</div>
-          {/* Approved mockup 8 — the booking as labelled fact rows: Service,
-              Doctor, Date, Time, Duration, Source, Created, Created by. Every
-              row is a fact this appointment already carries; a row whose fact
-              is missing is not rendered rather than filled. */}
-          <Descriptions
-            className="kw-apt-facts"
-            column={1}
-            size="small"
-            colon={false}
-            styles={{ label: { width: 96 } }}
-          >
-            <Descriptions.Item label="Service">{appointment.service.name}</Descriptions.Item>
-            <Descriptions.Item label="Doctor">
-              <span className="kw-apt-facts-person">
-                <span
-                  aria-hidden
-                  className="kw-apt-facts-dot"
-                  style={{ background: getDoctorColor(appointment.staffId) }}
-                />
-                {appointment.staff.fullName}
-              </span>
-            </Descriptions.Item>
-            <Descriptions.Item label="Date">
-              {formatClinicDate(appointment.scheduledStart)}
-            </Descriptions.Item>
-            <Descriptions.Item label="Time">
-              {formatClinicTime(appointment.scheduledStart)} –{' '}
-              {formatClinicTime(appointment.scheduledEnd)}
-            </Descriptions.Item>
-            <Descriptions.Item label="Duration">{durationWords}</Descriptions.Item>
-            <Descriptions.Item label="Source">
-              {SOURCE_LABELS[appointment.source as AppointmentSource] ?? appointment.source}
-              {appointment.sourceDetail ? ` · ${appointment.sourceDetail}` : ''}
-            </Descriptions.Item>
-            <Descriptions.Item label="Created">
-              {formatClinicDateTime(appointment.createdAt)}
-            </Descriptions.Item>
-            {createdBy ? (
-              <Descriptions.Item label="Created by">{createdBy}</Descriptions.Item>
-            ) : null}
-            <Descriptions.Item label="Payment">
-              <KuwickStatusTag {...paymentChip(appointment.paymentStatus)} />
-              {Number(appointment.bookingFeeAmount) > 0
-                ? ` RM ${Number(appointment.bookingFeeAmount).toFixed(2)}`
-                : ''}
-            </Descriptions.Item>
-            {/* Worded as what was OBSERVED: WhatsApp was opened with the
-                message prefilled. A bare timestamp under "Reminder" read as
-                "reminder sent", which a wa.me open cannot prove. */}
-            <Descriptions.Item label="Reminder">
-              {appointment.reminderSentAt ? (
-                `WhatsApp opened · ${formatClinicDateTime(appointment.reminderSentAt)}`
-              ) : (
-                <Text type="secondary">Not sent yet</Text>
-              )}
-            </Descriptions.Item>
-          </Descriptions>
+          {/* THE BOOKING, GROUPED (approved decision 11).
+              Three short lists rather than one ten-row column: what the
+              appointment IS, where the booking came FROM, and what money and
+              messaging it carries. Grouping and typography do the separating
+              — no extra cards, because a card drawn to fill whitespace is
+              whitespace with a border. */}
+          <div className="kw-apt-groups">
+            <section className="kw-apt-group">
+              <div className="kw-apt-section">Appointment</div>
+              <Descriptions
+                className="kw-apt-facts"
+                column={1}
+                size="small"
+                colon={false}
+                styles={{ label: { width: 88 } }}
+              >
+                <Descriptions.Item label="Service">{appointment.service.name}</Descriptions.Item>
+                <Descriptions.Item label="Doctor">
+                  <span className="kw-apt-facts-person">
+                    <span
+                      aria-hidden
+                      className="kw-apt-facts-dot"
+                      style={{
+                        background: providerColorFor(
+                          appointment.staff.calendarColor,
+                          appointment.staffId,
+                        ).accent,
+                      }}
+                    />
+                    {appointment.staff.fullName}
+                  </span>
+                </Descriptions.Item>
+                <Descriptions.Item label="Date">
+                  {formatClinicDate(appointment.scheduledStart)}
+                </Descriptions.Item>
+                <Descriptions.Item label="Time">
+                  {formatClinicTime(appointment.scheduledStart)} –{' '}
+                  {formatClinicTime(appointment.scheduledEnd)}
+                </Descriptions.Item>
+                <Descriptions.Item label="Duration">{durationWords}</Descriptions.Item>
+                <Descriptions.Item label="Source">
+                  {SOURCE_LABELS[appointment.source as AppointmentSource] ?? appointment.source}
+                  {appointment.sourceDetail ? ` · ${appointment.sourceDetail}` : ''}
+                </Descriptions.Item>
+              </Descriptions>
+            </section>
+
+            <section className="kw-apt-group">
+              <div className="kw-apt-section">Booking</div>
+              <Descriptions
+                className="kw-apt-facts"
+                column={1}
+                size="small"
+                colon={false}
+                styles={{ label: { width: 88 } }}
+              >
+                {/* Derived from the appointment id — Kuwick has no dated
+                    booking sequence, and inventing one would be a number that
+                    means nothing. */}
+                <Descriptions.Item label="Reference">
+                  #{bookingReference(appointment.id)}
+                </Descriptions.Item>
+                <Descriptions.Item label="Created">
+                  {formatClinicDateTime(appointment.createdAt)}
+                </Descriptions.Item>
+                {createdBy ? (
+                  <Descriptions.Item label="Created by">{createdBy}</Descriptions.Item>
+                ) : null}
+              </Descriptions>
+            </section>
+
+            <section className="kw-apt-group">
+              <div className="kw-apt-section">Payment &amp; reminder</div>
+              <Descriptions
+                className="kw-apt-facts"
+                column={1}
+                size="small"
+                colon={false}
+                styles={{ label: { width: 88 } }}
+              >
+                <Descriptions.Item label="Payment">
+                  <KuwickStatusTag {...paymentChip(appointment.paymentStatus)} />
+                  {Number(appointment.bookingFeeAmount) > 0
+                    ? ` RM ${Number(appointment.bookingFeeAmount).toFixed(2)}`
+                    : ''}
+                </Descriptions.Item>
+                {/* Worded as what was OBSERVED: WhatsApp was opened with the
+                    message prefilled. A bare timestamp under "Reminder" read
+                    as "reminder sent", which a wa.me open cannot prove. */}
+                <Descriptions.Item label="Reminder">
+                  {appointment.reminderSentAt ? (
+                    `WhatsApp opened · ${formatClinicDateTime(appointment.reminderSentAt)}`
+                  ) : (
+                    <Text type="secondary">Not sent yet</Text>
+                  )}
+                </Descriptions.Item>
+              </Descriptions>
+            </section>
+          </div>
 
           {/* §21 — labelled sections instead of dividers: a quiet uppercase
               word above each block, so the drawer scans like a record card. */}

@@ -463,6 +463,9 @@
   padding: 0;
   border-bottom: 1px solid var(--apt-border);
   font-weight: 600;
+  /* The library sets nowrap; a provider column header must be allowed to
+     wrap so a real Malaysian name is not cut mid-word (decision 9). */
+  white-space: normal;
 }
 
 .kw-calendar-grid .rbc-header + .rbc-header,
@@ -620,14 +623,17 @@
    .kw-calendar-event, painted from two custom properties the workspace sets
    per booking:
 
-     --ev-edge   the provider's identity colour (the 3px left edge);
-     --ev-wash   the same colour at 13% — the card's ground in week + month.
+     --ev-edge     the provider's identity colour (the 3px left edge);
+     --ev-pastel   their pastel — the GUTTER band, and the month chip's ground;
+     --ev-wash     the same hue at ~4.5% — the week body's whisper, no more;
+     --ev-text     the accent darkened until it reads as text on white.
 
-   Day and Providers columns keep WHITE cards (mockup 3's day schedule);
-   week and month wear the provider's soft wash (mockup 2's pastel cards).
-   That is a deliberate, owner-approved amendment to the old "provider colour
-   is never a fill" rule: a ≤13% wash is ground, not signal — STATUS remains
-   the semantic dot beside its word, and provider colour is never solid.
+   THE PER-VIEW COLOUR BUDGET (approved decision 2). Day and Providers keep
+   WHITE bodies: edge and gutter only. Week adds the ~4.5% wash and stays
+   predominantly neutral. Month may take the pastel outright, because a 20px
+   chip has no body to flood. Provider colour is never a full-strength fill
+   in any view — that is what produced the wall of blue — and STATUS stays a
+   separate system: a dot, or a compact badge where somebody must act.
 
    V3.1 — WIDTH-ADAPTIVE DENSITY (unchanged). Every card renders BOTH a full
    body and a compact line, and a container query on the card's own width
@@ -688,11 +694,12 @@
   transform: translateY(-1px);
 }
 
-/* Week columns wear the provider's wash; the outline quietens to let it. */
-.kw-calendar-grid[data-view='week'] .kw-calendar-event {
+/* WEEK — the one view whose card body carries any hue at all, and only a
+   whisper of it (~4.5%). Enough that five providers in one week read as five
+   people; far too weak to become a wall when they are all the same person.
+   The hairline stays: it is what separates two touching bookings. */
+.kw-calendar-grid[data-view='week'] .kw-evcard {
   background: var(--ev-wash, var(--apt-surface));
-  border-color: rgba(11, 23, 54, 0.06);
-  border-left-color: var(--ev-edge, var(--apt-border-strong));
 }
 
 /* Released bookings stay on the grid, struck through — never hidden. */
@@ -927,25 +934,44 @@
   border: none;
 }
 
+/* THE CARD — ONE SKELETON, THREE VIEW BUDGETS.
+ *
+ * The body is WHITE in every view. The provider's colour reaches the card as
+ * three small, bounded things: a 3px identity edge, a pastel gutter holding
+ * their face, and (on cards long enough to name them) their own text colour.
+ * It is never allowed to flood the body: a full-width pastel behind every
+ * booking is exactly how a busy single-doctor day rendered as one wall of
+ * colour, and no amount of lowering the alpha fixes that — a 1,300px band of
+ * anything is a band.
+ *
+ * The three budgets, in ascending order of how much hue a view may spend:
+ *   day / providers  edge + gutter only. White body, always.
+ *   week             the same, plus a ~4.5% tint of the hue on the body.
+ *   month            the chip is small enough to take the pastel outright.
+ */
 .kw-evcard {
   height: 100%;
   display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding: 4px 9px 4px 9px;
-  border-radius: 10px;
-  background: var(--ev-wash, var(--apt-surface));
+  align-items: stretch;
+  padding: 0;
+  border-radius: 7px;
+  background: var(--apt-surface);
+  border: 1px solid var(--apt-border);
   border-left: 3px solid var(--ev-edge, var(--apt-border-strong));
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 0 0 1px rgba(16, 24, 40, 0.035);
+  /* No drop shadow at rest (approved: "reduce unnecessary shadow and
+     roundness"). The hairline is what separates two touching bookings; the
+     shadow is reserved for hover, where it means "this one". */
+  box-shadow: none;
   overflow: hidden;
   transition:
     box-shadow 0.15s ease,
-    transform 0.15s ease;
+    border-color 0.15s ease;
   color: var(--apt-text);
 }
 .kw-calendar-grid .rbc-event:hover .kw-evcard {
-  box-shadow: var(--apt-shadow-hover);
-  transform: translateY(-1px);
+  box-shadow: var(--apt-shadow-sm);
+  border-color: var(--apt-border-strong);
+  border-left-color: var(--ev-edge, var(--apt-border-strong));
 }
 .kw-calendar-grid .rbc-event.rbc-selected .kw-evcard,
 .kw-calendar-grid .rbc-event:focus-visible .kw-evcard {
@@ -953,55 +979,288 @@
   outline-offset: -1px;
 }
 
-.kw-evcard-top {
+/* The provider's band: their pastel, their face. 26px is enough for a 16px
+   avatar and no more — identity, not decoration. */
+.kw-evcard-gutter {
+  flex: none;
+  width: 26px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  background: var(--ev-pastel, var(--apt-surface-2));
+}
+
+.kw-evcard-body {
+  flex: 1 1 auto;
   min-width: 0;
-  line-height: 1.15;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 2px 4px 2px 8px;
 }
-.kw-evcard-time {
-  font-size: 11.5px;
-  font-weight: 750;
-  font-variant-numeric: tabular-nums;
-  color: var(--ev-edge, var(--apt-nav-navy));
-  white-space: nowrap;
-  letter-spacing: -0.01em;
-}
-/* The state, said quietly on the card and in full in the drawer. */
-.kw-evcard-status {
-  margin-left: auto;
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  padding: 0 6px;
-  line-height: 15px;
-  white-space: nowrap;
-  background: rgba(255, 255, 255, 0.72);
-}
+
+/* PATIENT FIRST, at every density. The name is the strongest text on the
+   card and is never the line that retires. */
 .kw-evcard-name {
   font-size: 12.5px;
   font-weight: 700;
+  letter-spacing: -0.005em;
   color: var(--apt-text);
   line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.kw-evcard-service,
-.kw-evcard-doctor {
+
+.kw-evcard-line {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+.kw-evcard-time {
+  font-size: 11px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  /* Ink, not the provider's hue: the time is a fact about the booking, and
+     giving it the identity colour made it compete with the patient's name. */
+  color: var(--apt-text-2);
+  white-space: nowrap;
+  flex: none;
+}
+.kw-evcard-service {
   font-size: 11px;
   color: var(--apt-text-2);
-  line-height: 1.35;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+/* The separator belongs to the STACKED layout only — in a wide day row the
+   two become separate columns and a dangling middot would be noise. */
+.kw-evcard-line .kw-evcard-service::before {
+  content: '· ';
+  color: var(--apt-border-strong);
+}
+.kw-evcard-doctor {
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.kw-evcard-doctor {
-  color: var(--apt-muted);
+
+/* THE STATE. A dot is the whole treatment for the expected case. The word
+   joins it only where somebody has to act — and the word, not the colour, is
+   what carries the meaning. */
+.kw-evcard-state {
+  flex: none;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px 0 3px;
+}
+.kw-evcard-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--st-tone, var(--apt-border-strong));
+  flex: none;
+}
+.kw-evcard-word {
+  /* HIDDEN BY DEFAULT. A ~90px badge inside a 178px week column is 90px the
+     patient's name does not get, and "Nabil…" beside a perfectly legible
+     CHECKED IN is the wrong trade every time. The word returns the moment
+     the card is wide enough to carry both — and the dot, the tooltip, the
+     List and the drawer carry the state meanwhile. */
+  display: none;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.005em;
+  color: var(--st-tone, var(--apt-text-2));
+  white-space: nowrap;
+}
+@container (min-width: 260px) {
+  .kw-evcard-word {
+    display: inline;
+  }
+}
+
+/* Operationally prominent: the patient is HERE, or somebody must approve
+   something. A compact filled badge — no border, no caps, no capsule tax. */
+@container (min-width: 260px) {
+  .kw-evcard[data-prominence='operational'] .kw-evcard-state,
+  .kw-evcard[data-prominence='action'] .kw-evcard-state,
+  .kw-evcard[data-prominence='warning'] .kw-evcard-state {
+    background: color-mix(in srgb, var(--st-tone) 11%, #ffffff);
+    border-radius: 999px;
+    padding: 1px 8px 1px 6px;
+    margin-right: 6px;
+  }
+}
+.kw-evcard[data-prominence='operational'] .kw-evcard-word,
+.kw-evcard[data-prominence='action'] .kw-evcard-word,
+.kw-evcard[data-prominence='warning'] .kw-evcard-word {
+  font-weight: 700;
+}
+/* Requested needs a decision, so it also marks the card itself. */
+.kw-evcard[data-prominence='action'] {
+  border-color: color-mix(in srgb, var(--st-tone) 35%, var(--apt-border));
+}
+/* Completed recedes: present, deliberately unemphatic. */
+.kw-evcard[data-prominence='receded'] .kw-evcard-name {
+  font-weight: 600;
+  color: var(--apt-text-2);
+}
+.kw-evcard[data-prominence='receded'] .kw-evcard-gutter {
+  opacity: 0.55;
+}
+
+/* THE DENSITY LADDER (approved decision 5), driven by the booking's real
+   duration rather than a height query — a `size` container implies
+   `contain: size`, which took rbc's percentage-height events to zero and
+   emptied the grid (measured). */
+.kw-evcard[data-tier='micro'] .kw-evcard-body {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.kw-evcard[data-tier='micro'] .kw-evcard-name {
+  order: 2;
+  font-size: 11.5px;
+}
+.kw-evcard[data-tier='micro'] .kw-evcard-line {
+  order: 1;
+  flex: none;
+}
+/* Stacked, the ladder holds: a 15-minute card is one line, a 30-minute card
+   is two. The model carries more than that; these rules are what decides it
+   does not fit HERE. */
+.kw-evcard:not([data-wide='true'])[data-tier='micro'] .kw-evcard-service,
+.kw-evcard:not([data-wide='true'])[data-tier='micro'] .kw-evcard-doctor,
+.kw-evcard:not([data-wide='true'])[data-tier='compact'] .kw-evcard-doctor {
+  display: none;
+}
+.kw-evcard[data-tier='micro'] .kw-evcard-gutter {
+  width: 18px;
+}
+.kw-evcard[data-tier='micro'] .kw-evcard-gutter .kw-avatar {
+  display: none;
+}
+
+/* WIDE COMPOSITION — the day and single-provider columns give a card the
+   whole width, so it composes ACROSS instead of stacking. A 30-minute
+   booking becomes a ROW that reads left to right — when, who, what, which
+   doctor, what state — instead of a banner with three lines of text pinned
+   to its left edge and a status marooned a thousand pixels away. */
+.kw-evcard[data-wide='true'] .kw-evcard-body {
+  flex-direction: row;
+  align-items: center;
+  /* The stacked card centres its lines vertically; in a row that same
+     declaration centres them HORIZONTALLY and leaves the whole booking
+     floating in the middle of a 1,300px card. The row starts at the left. */
+  justify-content: flex-start;
+  gap: 0;
+  padding-right: 8px;
+}
+.kw-evcard[data-wide='true'] .kw-evcard-line {
+  display: contents;
+}
+.kw-evcard[data-wide='true'] .kw-evcard-time {
+  order: 1;
+  /* min-width, not width: the ≥60-minute tier carries a RANGE
+     ("10:00 – 11:00"), and a fixed 58px column put it straight through the
+     patient's name. The column holds its shape for the common case and
+     grows for the long one. */
+  min-width: 58px;
+  padding-right: 10px;
+  font-weight: 700;
+  color: var(--apt-text);
+}
+.kw-evcard[data-wide='true'] .kw-evcard-name {
+  order: 2;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 300px;
+  font-size: 13px;
+  padding-right: 16px;
+}
+.kw-evcard[data-wide='true'] .kw-evcard-service {
+  order: 3;
+  flex: 0 1 auto;
+  max-width: 320px;
+}
+/* The doctor takes the slack so the row does not leave a lake of white
+   between the service and the state. */
+.kw-evcard[data-wide='true'] .kw-evcard-doctor {
+  flex: 1 1 auto;
+}
+.kw-evcard[data-wide='true'] .kw-evcard-service::before {
+  content: none;
+}
+.kw-evcard[data-wide='true'] .kw-evcard-doctor {
+  order: 4;
+  flex: 0 1 auto;
+  padding-left: 16px;
+  display: block;
+}
+/* A wide card has room for the doctor at every tier above micro — the
+   stacked ladder retires that line for height, which a row does not spend. */
+.kw-evcard[data-wide='true'][data-tier='compact'] .kw-evcard-doctor,
+.kw-evcard[data-wide='true'][data-tier='standard'] .kw-evcard-doctor {
+  display: block;
+}
+.kw-evcard[data-wide='true'][data-tier='micro'] .kw-evcard-service {
+  display: block;
+}
+
+/* A WIDE CARD THAT IS NOT ACTUALLY WIDE. Three concurrent bookings split the
+   day column three ways, and a row layout in ~430px produces "M…", "Dens…",
+   "Dr U…" — the fragment problem the whole overlap treatment exists to
+   prevent. Below the width a row needs, the card stacks again. */
+@container (max-width: 560px) {
+  .kw-evcard[data-wide='true'] .kw-evcard-body {
+    flex-direction: column;
+    align-items: stretch;
+    padding-right: 4px;
+  }
+  .kw-evcard[data-wide='true'] .kw-evcard-line {
+    display: flex;
+  }
+  .kw-evcard[data-wide='true'] .kw-evcard-time {
+    order: 0;
+    min-width: 0;
+    padding-right: 0;
+    font-weight: 650;
+    color: var(--apt-text-2);
+  }
+  .kw-evcard[data-wide='true'] .kw-evcard-name {
+    order: 0;
+    max-width: none;
+    padding-right: 0;
+    font-size: 12.5px;
+  }
+  .kw-evcard[data-wide='true'] .kw-evcard-service {
+    order: 0;
+    max-width: none;
+  }
+  .kw-evcard[data-wide='true'] .kw-evcard-service::before {
+    content: '· ';
+  }
+  .kw-evcard[data-wide='true'] .kw-evcard-doctor {
+    order: 0;
+    flex: none;
+    padding-left: 0;
+  }
+  .kw-evcard[data-wide='true'][data-tier='micro'] .kw-evcard-service,
+  .kw-evcard[data-wide='true'][data-tier='micro'] .kw-evcard-doctor,
+  .kw-evcard[data-wide='true'][data-tier='compact'] .kw-evcard-doctor {
+    display: none;
+  }
 }
 
 /* DENSITY BY REAL WIDTH — lines retire from the bottom up, never clip. */
@@ -1010,69 +1269,41 @@
     display: none;
   }
 }
-@container (max-width: 200px) {
-  .kw-evcard-status {
+@container (max-width: 210px) {
+  .kw-evcard-gutter {
+    width: 20px;
+  }
+  .kw-evcard-body {
+    padding-left: 7px;
+  }
+}
+@container (max-width: 132px) {
+  .kw-evcard-gutter {
+    width: 8px;
+  }
+  .kw-evcard-gutter .kw-avatar {
     display: none;
   }
-}
-@container (max-width: 150px) {
-  .kw-evcard {
-    padding: 5px 7px 5px 8px;
+  .kw-evcard-body {
+    padding-left: 6px;
   }
 }
-@container (max-width: 118px) {
+@container (max-width: 104px) {
   .kw-evcard-service {
     display: none;
   }
-  .kw-evcard .kw-avatar {
-    display: none;
-  }
-}
-@container (max-width: 70px) {
-  .kw-evcard-name {
-    display: none;
-  }
-}
-/* DENSITY BY DURATION — a 30-minute card holds two lines, a 15-minute card
-   holds one and takes it side by side rather than clipping a name in half.
-   Driven by the card model's own minutes rather than a height query: a
-   `size` container implies `contain: size`, which took rbc's
-   percentage-height events to zero and emptied the grid (measured). */
-/* 30 minutes ≈ 54px: time, patient and SERVICE all fit — which is what the
-   mockup's cards show — so only the doctor line retires. 15 minutes keeps
-   the time and the name and nothing else. */
-.kw-evcard[data-density='dense'] .kw-evcard-doctor,
-.kw-evcard[data-density='tight'] .kw-evcard-service,
-.kw-evcard[data-density='tight'] .kw-evcard-doctor {
-  display: none;
-}
-.kw-evcard[data-density='dense'] {
-  padding-block: 3px;
-}
-.kw-evcard[data-density='dense'] .kw-evcard-service {
-  font-size: 10.5px;
-  line-height: 1.25;
-}
-.kw-evcard[data-density='tight'] {
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
-  padding-block: 2px;
-}
-.kw-evcard[data-density='tight'] .kw-evcard-name {
-  font-size: 11.5px;
 }
 
-/* --- The month chip (mockup panel 1) ------------------------------------- */
+/* --- The month chip (approved decision 2: month may wear the pastel) ------ */
 .kw-evchip {
   display: flex;
   align-items: center;
   gap: 6px;
   height: 100%;
-  padding: 1px 8px 1px 9px;
-  border-radius: 6px;
-  background: var(--ev-wash, var(--apt-surface));
-  border-left: 3px solid var(--ev-edge, var(--apt-border-strong));
+  padding: 1px 8px 1px 7px;
+  border-radius: 5px;
+  background: var(--ev-pastel, var(--apt-surface-2));
+  border-left: 2px solid var(--ev-edge, var(--apt-border-strong));
   font-size: 11px;
   line-height: 1.55;
   overflow: hidden;
@@ -1080,7 +1311,7 @@
 .kw-evchip-time {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: var(--ev-edge, var(--apt-nav-navy));
+  color: var(--ev-text, var(--apt-nav-navy));
   flex: none;
 }
 .kw-evchip-name {
@@ -1090,6 +1321,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+.kw-evchip[data-prominence='muted'] {
+  background: var(--apt-surface-2);
+  border-left-color: var(--apt-border-strong);
 }
 
 /* --- Overflow tile + its list (readable dense bands) ---------------------- */
@@ -1221,11 +1456,12 @@
 }
 
 .kw-calendar-grid .rbc-month-view .kw-calendar-event {
-  padding: 1px 7px 1px 8px;
-  background: var(--ev-wash, var(--apt-surface));
+  padding: 1px 7px 1px 7px;
   border: none;
-  border-left: 3px solid var(--ev-edge, var(--apt-border-strong));
-  border-radius: 6px;
+  /* The chip's own ground and edge come from .kw-evchip — one source, so a
+     month chip and a week card can never disagree about a provider's hue. */
+  border-left: 2px solid var(--ev-edge, var(--apt-border-strong));
+  border-radius: 5px;
   box-shadow: none;
 }
 
@@ -1269,11 +1505,77 @@
 }
 
 .kw-calendar-grid .rbc-month-view .rbc-date-cell {
-  padding: 6px 9px 2px;
+  padding: 5px 8px 3px;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--apt-text-2);
   font-variant-numeric: tabular-nums;
+}
+
+/* THE MONTH CELL HEADER — the date, and how heavy the day is.
+   The count is the day's real number of appointments, counted from the
+   bookings already on screen. There is deliberately no "busy" band and no
+   percentage: the clinic has never stated a daily capacity, so any such
+   label would be a number we invented. A day with nothing booked says
+   nothing, which is quieter and just as true as "0". */
+.kw-month-datehead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.kw-month-date {
+  flex: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+/* Today keeps its filled ink pill now the header is ours rather than the
+   library's default button. */
+.kw-calendar-grid .rbc-month-view .rbc-date-cell.rbc-now .kw-month-date {
+  background: var(--apt-nav-navy);
+  color: #fff;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+}
+.kw-month-load {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: var(--apt-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rbc-date-cell.rbc-now .kw-month-load {
+  color: var(--apt-nav-navy);
+}
+
+/* The overflow line: what the cell could not spend a chip on, and how many
+   of those were cancelled. A count without that breakdown reads as "21 more
+   patients coming" when some of them are not coming at all. */
+.kw-evchip--more {
+  background: none;
+  border-left: none;
+  padding-left: 9px;
+  font-size: 10.5px;
+  font-weight: 650;
+  color: var(--apt-teal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  text-align: left;
+  line-height: 18px;
 }
 
 .kw-calendar-grid .rbc-month-view .rbc-date-cell.rbc-now .rbc-button-link {
@@ -1312,6 +1614,7 @@
 .kw-provider-head {
   display: inline-flex;
   align-items: center;
+  width: 100%;
   gap: 8px;
   padding: 8px 8px;
   max-width: 100%;
@@ -1332,13 +1635,21 @@
   box-shadow: 0 0 0 2px #fff;
 }
 
+/* THE PROVIDER COLUMN HEADER'S NAME (approved decision 9: do not aggressively
+   truncate doctor names). Two lines, broken at spaces, with the full string
+   in `title`. "Dr. Priyadarshini a/p Raghavan" rendered as "Dr. Priyadar…"
+   is a name nobody can check against a roster. */
 .kw-provider-name {
   font-weight: 650;
   font-size: 12.5px;
+  line-height: 1.25;
   color: var(--apt-text);
-  white-space: nowrap;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: break-word;
 }
 
 /* The outer, non-scrolling frame around the grid — the right-edge fade that
@@ -1371,7 +1682,13 @@
    as wide as its people, plus the hour gutter and an end spacer so the last
    column never kisses the frame. */
 .kw-calendar-grid--wide .rbc-time-view {
-  min-width: calc(var(--cal-cols, 6) * 250px + 76px);
+  /* 220px, down from 250: a card is comfortably readable here (a week column
+     is 178px and holds a full name), and the narrower column lets a
+     five-doctor clinic fit without scrolling at 1440–1600px. Past that the
+     grid scrolls, with the hour gutter pinned and the right edge faded — a
+     six-doctor Wednesday is a real thing and squeezing it into the viewport
+     would cost the readability this pass exists to protect. */
+  min-width: calc(var(--cal-cols, 6) * 220px + 76px);
   margin-right: 20px;
 }
 
@@ -1985,6 +2302,18 @@
   font-weight: 750;
   color: var(--apt-nav-navy);
   font-variant-numeric: tabular-nums;
+}
+
+/* The no-show cell is deliberately quieter than the money it sits beside:
+   it is a follow-up prompt, not the headline of the page. Under a meaningful
+   sample it steps down again — the number is still shown, never hidden. */
+.kw-appt-stats-cell--quiet .kw-appt-stats-value {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--apt-text-2);
+}
+.kw-appt-stats-cell--quiet[data-thin] .kw-appt-stats-value {
+  color: var(--apt-muted);
 }
 
 .kw-appt-stats-detail {
@@ -3834,8 +4163,20 @@ body:has(.kw-public-booking) {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  overflow-wrap: anywhere;
+  /* `break-word`, not `anywhere`: a word is only broken when it genuinely
+     cannot fit, so "Priyadarshini" never splits across two lines while there
+     is a space to break at. */
+  overflow-wrap: break-word;
 }
+.kw-provider-rail-edge {
+  flex: none;
+  width: 3px;
+  align-self: stretch;
+  border-radius: 2px;
+  margin-right: 2px;
+  opacity: 0.9;
+}
+
 .kw-provider-rail-count {
   flex: none;
   font-size: 11px;
@@ -4109,24 +4450,42 @@ body:has(.kw-public-booking) {
   flex: 1;
   min-width: 0;
 }
+/* THE RECEPTION RAIL (approved decision 10).
+ *
+ * Left-aligned and dense rather than centred and airy: the previous rail
+ * centred an XL monogram over ~380px of empty space and, for all that room,
+ * never showed the NRIC, the date of birth or what the visit was about —
+ * which are the four things a receptionist actually reads off the screen
+ * while the patient is standing there. Four labelled groups now: who they
+ * are, what is dangerous, what they booked, what is about to be committed.
+ */
 .kw-checkin-identity {
-  width: 236px;
+  width: 268px;
   flex: none;
   background: var(--apt-surface-2);
   border: 1px solid var(--apt-border);
   border-radius: var(--apt-radius-lg);
-  padding: 18px 16px 14px;
+  padding: 14px 14px 12px;
   display: flex;
   flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+.kw-checkin-id-head-row {
+  display: flex;
   align-items: center;
-  text-align: center;
+  gap: 10px;
+  min-width: 0;
+}
+.kw-checkin-id-head-text {
+  min-width: 0;
 }
 .kw-checkin-id-name {
-  margin-top: 10px;
-  font-size: 15.5px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--apt-nav-navy);
-  line-height: 1.3;
+  line-height: 1.25;
+  overflow-wrap: break-word;
 }
 .kw-checkin-id-meta {
   margin-top: 2px;
@@ -4135,14 +4494,74 @@ body:has(.kw-public-booking) {
   font-variant-numeric: tabular-nums;
 }
 .kw-checkin-id-head {
-  margin: 16px 0 8px;
-  align-self: flex-start;
+  margin: 0 0 6px;
 }
-.kw-checkin-id-rows {
-  align-self: stretch;
+
+/* Label/value pairs, label narrow and quiet. */
+.kw-checkin-id-facts {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 6px;
+  margin: 0;
+}
+.kw-checkin-id-facts > div {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+.kw-checkin-id-facts dt {
+  font-size: 11px;
+  color: var(--apt-muted);
+  font-weight: 500;
+}
+.kw-checkin-id-facts dd {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--apt-text);
+  overflow-wrap: break-word;
+}
+/* An identity number is read against a card. It is tabular, it is one
+   token, and it does NOT wrap: half an NRIC on each of two lines is
+   unreadable at a counter. */
+.kw-checkin-id-nric {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kw-checkin-id-safety {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: var(--apt-radius);
+  background: var(--apt-surface);
+  border: 1px solid var(--apt-border);
+}
+.kw-checkin-id-alerts {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: var(--apt-text);
+  line-height: 1.4;
+}
+.kw-checkin-id-none {
+  font-size: 11.5px;
+  color: var(--apt-muted);
+}
+.kw-checkin-id-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kw-checkin-id-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   text-align: left;
   font-size: 12.5px;
   color: var(--apt-text);
@@ -4160,9 +4579,11 @@ body:has(.kw-public-booking) {
   position: relative;
   top: 1px;
 }
+.kw-checkin-id-reason {
+  color: var(--apt-text-2);
+}
 .kw-checkin-id-foot {
-  align-self: stretch;
-  margin-top: 14px;
+  margin-top: auto;
   padding-top: 10px;
   border-top: 1px solid var(--apt-border);
   display: flex;
@@ -4225,7 +4646,28 @@ body:has(.kw-public-booking) {
 /* The activity column keeps its shape when the booking has one entry — the
    panel should look composed on a quiet appointment, not half-drawn. */
 .kw-apt-detail-side {
-  min-height: 260px;
+  min-height: 200px;
+}
+
+/* THE GROUPED FACT LISTS (approved decision 11).
+   Two columns on a wide drawer so the three short lists sit side by side
+   instead of stacking into 500px of column with a lake of white beneath —
+   which is the "reduce empty space" the owner asked for, achieved by
+   alignment rather than by inventing cards to fill it. */
+.kw-apt-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 4px 28px;
+  align-items: start;
+}
+.kw-apt-group {
+  min-width: 0;
+}
+.kw-apt-group .kw-apt-section {
+  margin-top: 14px;
+}
+.kw-apt-groups .kw-apt-facts .ant-descriptions-item {
+  padding-bottom: 7px !important;
 }
 
 /* --- Communication Centre console (approved mockup 6) --------------------
@@ -5289,4 +5731,60 @@ h4.ant-typography.kw-public-wallet-title {
   .kw-public-wallet-rows > div {
     align-items: center;
   }
+}
+
+/* An identity number is read against a card and never wraps — in the rail or
+   in the Patient Details list. */
+.kw-checkin-content .ant-descriptions-item-content .kw-nric-value,
+.kw-nric-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: bottom;
+}
+
+/* --- The curated provider colour picker (Staff management) ----------------
+   Eight swatches, no colour well. `data-taken` marks a colour another
+   provider already holds — a warning, not a lock: a locum covering a
+   colleague's list is a fair reason to want it. */
+.kw-colorpick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.kw-colorpick-swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1.5px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.kw-colorpick-swatch > span {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: block;
+}
+.kw-colorpick-swatch:hover {
+  transform: translateY(-1px);
+}
+.kw-colorpick-swatch[data-selected] {
+  box-shadow: 0 0 0 2px #fff inset, 0 0 0 2px currentColor;
+  border-width: 2px;
+}
+.kw-colorpick-swatch[data-selected] > span {
+  width: 20px;
+  height: 20px;
+}
+.kw-colorpick-swatch[data-taken] > span {
+  opacity: 0.4;
 }

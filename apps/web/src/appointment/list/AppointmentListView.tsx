@@ -405,6 +405,12 @@ function defaultRangeFor(tab: DashboardTab): [Dayjs, Dayjs] {
 }
 
 /**
+ * How many attendable appointments a no-show rate needs before it is worth
+ * reading as a rate rather than as three individual patients.
+ */
+const NO_SHOW_MEANINGFUL_SAMPLE = 20;
+
+/**
  * Mockup 4 slimmed the old five-card KPI band down: the per-status counts now
  * ride the tabs themselves, so what remains here is what only THIS strip can
  * say — the §46 money (booked value vs realised revenue, two different
@@ -425,9 +431,25 @@ function StatsBar({
           service-filtered "Upcoming 12" reads as the whole clinic's twelve. */}
       {filtered ? <span className="kw-appt-stats-filtered">Filtered results</span> : null}
       {stats?.noShowRate != null ? (
-        <span className="kw-appt-stats-cell">
-          <span className="kw-appt-stats-label">No-show rate</span>
+        // DEMOTED, AND SAID WITH ITS DENOMINATOR (approved decision 12).
+        //
+        // "60%" on its own is true and useless: the server divides no-shows
+        // by the appointments a patient COULD have turned up to — completed
+        // plus no-show, cancellations excluded — over whatever range and
+        // filters are on screen, and three of five reads very differently
+        // from three hundred of five hundred. The calculation is untouched;
+        // the denominator is simply recomposed from the same two counts the
+        // endpoint already returns, and the figure steps down to secondary
+        // type while the sample is too small to act on.
+        <span
+          className="kw-appt-stats-cell kw-appt-stats-cell--quiet"
+          data-thin={stats.completed + stats.noShow < NO_SHOW_MEANINGFUL_SAMPLE || undefined}
+        >
+          <span className="kw-appt-stats-label">No-show</span>
           <span className="kw-appt-stats-value">{Math.round(stats.noShowRate * 100)}%</span>
+          <span className="kw-appt-stats-detail">
+            {stats.noShow} of {stats.completed + stats.noShow} attendable
+          </span>
         </span>
       ) : null}
       <span className="kw-appt-stats-cell">

@@ -74,15 +74,15 @@ async function main() {
   CLINIC = uatClinic.id;
 
   // ── providers ─────────────────────────────────────────────────────────────
-  const aisyah = await upsertDoctor('Dr. Nurul Aisyah binti Hamid', 'ROSTER_LINKED', '#4f9d69');
-  const farid = await upsertDoctor('Dr. Farid Iskandar bin Zulkifli', 'FIXED_WEEKLY', '#5b7db1');
-  const chong = await upsertDoctor('Dr. Chong Wei Ling', 'FIXED_WEEKLY', '#b1665b');
-  const priya = await upsertDoctor('Dr. Priyadarshini a/p Raghavan', 'ROSTER_LINKED', '#8a5bb1');
-  const hafiz = await upsertDoctor('Dr. Hafiz Danial bin Roslan', 'FIXED_WEEKLY', '#b19a5b');
+  const aisyah = await upsertDoctor('Dr. Nurul Aisyah binti Hamid', 'ROSTER_LINKED', '#2F8B57');
+  const farid = await upsertDoctor('Dr. Farid Iskandar bin Zulkifli', 'FIXED_WEEKLY', '#2E7BC4');
+  const chong = await upsertDoctor('Dr. Chong Wei Ling', 'FIXED_WEEKLY', '#B4506B');
+  const priya = await upsertDoctor('Dr. Priyadarshini a/p Raghavan', 'ROSTER_LINKED', '#7A4FBF');
+  const hafiz = await upsertDoctor('Dr. Hafiz Danial bin Roslan', 'FIXED_WEEKLY', '#A96A12');
   const alexandria = await upsertDoctor(
     'Dr. Alexandria Wong Mei Xuan-Constantinopoulos',
     'FIXED_WEEKLY',
-    '#5bb1a4',
+    '#0F6B78',
   );
   const doctors = [aisyah, farid, chong, priya, hafiz, alexandria];
 

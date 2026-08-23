@@ -18,7 +18,10 @@ import {
 import {
   CalendarOutlined,
   ClockCircleOutlined,
+  CreditCardOutlined,
   EditOutlined,
+  FileTextOutlined,
+  HomeOutlined,
   MedicineBoxOutlined,
   UserOutlined,
 } from '@ant-design/icons';
@@ -231,37 +234,113 @@ export function CheckInRegistrationDrawer({
               icon rows. Same facts the old Appointment table carried;
               recomposed, not reinvented. */}
           <aside className="kw-checkin-identity">
-            <PersonAvatar name={appointment.patient.name} size="xl" />
-            <div className="kw-checkin-id-name">{appointment.patient.name}</div>
-            <div className="kw-checkin-id-meta">
-              {[appointment.patient.phone, age != null ? `${age} years old` : null]
-                .filter(Boolean)
-                .join(' · ') || '—'}
+            {/* THE RECEPTION HEADER — who is at the counter, and whether the
+                clinic has seen them before. Compact by design: the old rail
+                spent an XL monogram and ~380px of empty space saying less. */}
+            <div className="kw-checkin-id-head-row">
+              <PersonAvatar name={appointment.patient.name} size="lg" />
+              <div className="kw-checkin-id-head-text">
+                <div className="kw-checkin-id-name">{appointment.patient.name}</div>
+                <VisitHistoryLine context={context} />
+              </div>
             </div>
 
-            {/* Returning / first visit and the allergy line ride the identity
-                rail so they are visible from BOTH tabs — an allergy behind a
-                tab is an allergy nobody read. */}
-            <div className="kw-checkin-id-flags">
-              <VisitHistoryLine context={context} />
+            {/* PATIENT — the identifiers reception verifies against a card.
+                NRIC is tabular and never wraps: half an identity number on
+                one line and half on the next is unreadable at a counter. */}
+            <dl className="kw-checkin-id-facts">
+              <div>
+                <dt>{appointment.patient.identifierType === 'PASSPORT' ? 'Passport' : 'NRIC'}</dt>
+                <dd className="kw-checkin-id-nric">{appointment.patient.identifierValue || '—'}</dd>
+              </div>
+              <div>
+                <dt>Mobile</dt>
+                <dd>{appointment.patient.phone || '—'}</dd>
+              </div>
+              <div>
+                <dt>Date of birth</dt>
+                <dd>
+                  {appointment.patient.dob
+                    ? `${formatClinicDate(appointment.patient.dob)}${age != null ? ` · ${age}y` : ''}`
+                    : age != null
+                      ? `${age} years old`
+                      : '—'}
+                </dd>
+              </div>
+              {/* Recorded sex, shown as plain metadata where it is useful and
+                  unambiguous (decision 1). Never inferred, never a colour,
+                  never a silhouette — and absent when the record is silent. */}
+              {appointment.patient.gender ? (
+                <div>
+                  <dt>Sex</dt>
+                  <dd>{sentence(appointment.patient.gender)}</dd>
+                </div>
+              ) : null}
+            </dl>
+
+            {/* SAFETY — allergies and standing alerts, above the fold and
+                visible from BOTH tabs. An allergy behind a tab is an allergy
+                nobody read. Ownership is unchanged: these are read from the
+                patient's canonical alert store, never copied into it. */}
+            <div className="kw-checkin-id-safety">
+              <div className="kw-apt3-eyebrow">Safety</div>
               <AllergyBadge context={context} />
+              {context.important.length > 0 ? (
+                <ul className="kw-checkin-id-alerts">
+                  {context.important.map((alert) => (
+                    <li key={alert.id}>{alert.label}</li>
+                  ))}
+                </ul>
+              ) : (
+                <span className="kw-checkin-id-none">No standing alerts recorded</span>
+              )}
             </div>
 
-            <div className="kw-apt3-eyebrow kw-checkin-id-head">Appointment</div>
-            <div className="kw-checkin-id-rows">
-              <span>
-                <MedicineBoxOutlined /> {appointment.service.name}
-              </span>
-              <span>
-                <UserOutlined /> {appointment.staff.fullName}
-              </span>
-              <span>
-                <CalendarOutlined /> {formatClinicDate(appointment.scheduledStart)}
-              </span>
-              <span>
-                <ClockCircleOutlined /> {formatClinicTime(appointment.scheduledStart)} –{' '}
-                {formatClinicTime(appointment.scheduledEnd)}
-              </span>
+            <div className="kw-checkin-id-block">
+              <div className="kw-apt3-eyebrow">Appointment</div>
+              <div className="kw-checkin-id-rows">
+                <span>
+                  <MedicineBoxOutlined /> {appointment.service.name}
+                </span>
+                <span>
+                  <UserOutlined /> {appointment.staff.fullName}
+                </span>
+                <span>
+                  <CalendarOutlined /> {formatClinicDate(appointment.scheduledStart)}
+                </span>
+                <span>
+                  <ClockCircleOutlined /> {formatClinicTime(appointment.scheduledStart)} –{' '}
+                  {formatClinicTime(appointment.scheduledEnd)}
+                </span>
+              </div>
+            </div>
+
+            {/* VISIT — what THIS registration is about to commit, mirrored
+                live from the form so the rail and the Visit Info tab can
+                never disagree about what Confirm will do. */}
+            <div className="kw-checkin-id-block">
+              <div className="kw-apt3-eyebrow">Visit</div>
+              <div className="kw-checkin-id-rows">
+                <span>
+                  <UserOutlined />{' '}
+                  {doctors.find((member) => member.id === attendingStaffId)?.fullName ??
+                    appointment.staff.fullName}
+                </span>
+                {clinicName ? (
+                  <span>
+                    <HomeOutlined /> {clinicName}
+                  </span>
+                ) : null}
+                <span>
+                  <CreditCardOutlined />{' '}
+                  {payerKind === 'panel' ? (selectedPanel?.name ?? 'Panel — not named yet') : 'Self-pay'}
+                </span>
+                {remarks.trim() ? (
+                  <span className="kw-checkin-id-reason">
+                    <FileTextOutlined /> {remarks.trim()}
+                  </span>
+                ) : null}
+              </div>
             </div>
 
             <div className="kw-checkin-id-foot">

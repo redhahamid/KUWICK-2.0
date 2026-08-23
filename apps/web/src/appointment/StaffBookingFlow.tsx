@@ -24,7 +24,7 @@ import { PersonAvatar } from './shared/PersonAvatar';
 import { clinicDayjs, formatClinicDate, formatClinicTime } from '../clinical/clinicTime';
 import { useCreateAppointment } from './hooks/useAppointments';
 import { useAppointmentServices } from './hooks/useServiceConfig';
-import { getDoctorColor } from './calendar/doctor-color';
+import { useProviderColors } from './hooks/useProviderColors';
 
 const { Text } = Typography;
 
@@ -117,6 +117,7 @@ export function StaffBookingFlow({
   prefill,
   onBooked,
 }: StaffBookingFlowProps) {
+  const providerColor = useProviderColors();
   const [patientSearch, setPatientSearch] = useState('');
   const [patientId, setPatientId] = useState<string>();
   const [serviceId, setServiceId] = useState<string>();
@@ -567,7 +568,7 @@ export function StaffBookingFlow({
                   >
                     <span
                       className="kw-flow-provider-avatar"
-                      style={{ background: getDoctorColor(provider.id) }}
+                      style={{ background: providerColor(provider.id).accent }}
                       aria-hidden
                     >
                       {initialsOf(provider.fullName)}

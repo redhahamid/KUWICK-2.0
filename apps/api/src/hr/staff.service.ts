@@ -10,6 +10,7 @@ import { normaliseRegistrationNo } from '../clinical/clinical-authorization';
 import { can } from '../core/permissions';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
+import { nextProviderColor } from './provider-colors';
 
 const DOCTOR_ROLES: Role[] = [Role.DOCTOR_RESIDENT, Role.DOCTOR_LOCUM];
 const PASSWORD_HASH_ROUNDS = 10;
@@ -28,9 +29,10 @@ export class StaffService {
     await this.assertMayManageUsers();
     const { loginEmail, loginPassword, ...staffFields } = dto;
     const tenantId = currentTenantId();
+    const calendarColor = await this.calendarColorFor(staffFields);
 
     if (!loginEmail || !loginPassword) {
-      return this.prisma.staff.create({ data: { ...staffFields, tenantId } });
+      return this.prisma.staff.create({ data: { ...staffFields, calendarColor, tenantId } });
     }
 
     let userId: string;
@@ -47,7 +49,34 @@ export class StaffService {
       throw error;
     }
 
-    return this.prisma.staff.create({ data: { ...staffFields, userId, tenantId } });
+    return this.prisma.staff.create({
+      data: { ...staffFields, calendarColor, userId, tenantId },
+    });
+  }
+
+  /**
+   * THE PROVIDER'S CALENDAR IDENTITY COLOUR, decided once at creation.
+   *
+   * A doctor without a stored colour falls back to a hash, and a hash cannot
+   * promise two doctors in the same clinic look different — six ids into six
+   * slots land all-distinct about 1.5% of the time. So a provider is given
+   * the tenant's next unused curated colour at the moment they are created
+   * and it is PERSISTED, which makes the identity stable for that profile
+   * across every branch and every later hire.
+   *
+   * Non-providers get nothing: a finance clerk has no column on the diary,
+   * and handing them a colour would spend one of eight on somebody invisible.
+   */
+  private async calendarColorFor(
+    fields: Pick<CreateStaffDto, 'role' | 'calendarColor'>,
+  ): Promise<string | undefined> {
+    if (fields.calendarColor) return fields.calendarColor;
+    if (!DOCTOR_ROLES.includes(fields.role)) return undefined;
+    const existing = await this.prisma.staff.findMany({
+      where: { role: { in: DOCTOR_ROLES } },
+      select: { calendarColor: true },
+    });
+    return nextProviderColor(existing.map((row) => row.calendarColor));
   }
 
   findAll() {

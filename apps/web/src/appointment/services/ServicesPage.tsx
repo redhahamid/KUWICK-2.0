@@ -6,17 +6,20 @@ import { KuwickStatusTag } from '../../design-system/kuwick';
 import { useAppointmentServices, type ServiceListRow } from '../hooks/useServiceConfig';
 import { ServiceEditorDrawer } from './ServiceEditorDrawer';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
-import { getDoctorColor } from '../calendar/doctor-color';
+import { useProviderColors, type ProviderColorResolver } from '../hooks/useProviderColors';
 
 const { Text } = Typography;
 
-function providerChip(provider: { id: string; fullName: string }) {
+function providerChip(
+  provider: { id: string; fullName: string },
+  providerColor: ProviderColorResolver,
+) {
   const short = provider.fullName.replace(/^Dr\.?\s*/i, '');
   return (
     <span key={provider.id} className="kw-svc-provider-chip">
       <span
         className="kw-svc-provider-dot"
-        style={{ background: getDoctorColor(provider.id) }}
+        style={{ background: providerColor(provider.id).accent }}
         aria-hidden
       >
         {short
@@ -49,6 +52,7 @@ interface ServicesPageProps {
  * "who can do this one thing".
  */
 export function ServicesPage({ clinicId }: ServicesPageProps) {
+  const providerColor = useProviderColors();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [scope, setScope] = useState<'bookable' | 'all'>('bookable');
@@ -183,7 +187,7 @@ export function ServicesPage({ clinicId }: ServicesPageProps) {
                 </Tooltip>
               ) : (
                 <Space size={4} wrap>
-                  {row.providers.slice(0, 3).map((provider) => providerChip(provider))}
+                  {row.providers.slice(0, 3).map((provider) => providerChip(provider, providerColor))}
                   {row.providers.length > 3 ? (
                     <span className="kw-svc-provider-chip">+{row.providers.length - 3}</span>
                   ) : null}
