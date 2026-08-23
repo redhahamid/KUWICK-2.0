@@ -103,6 +103,20 @@ export function RemindersDueButton({ clinicId }: { clinicId: string | undefined 
     enabled: Boolean(clinicId) && open,
   });
 
+  // OVERDUE, truthfully: a reminder still on the due list whose moment passed
+  // more than a day ago. Derived from the same rows below — no delivery
+  // tracking is implied, and none exists. (There is deliberately no "Failed"
+  // tile: nothing in Kuwick can observe a failure, because nothing observes
+  // delivery at all.)
+  const overdue = useMemo(
+    () =>
+      (due ?? []).filter((row) => {
+        const dueAt = clinicDayjs(row.scheduledStart).subtract(row.offsetMinutes, 'minute');
+        return clinicDayjs(new Date()).diff(dueAt, 'hour') >= 24;
+      }).length,
+    [due],
+  );
+
   // Of the scheduled reminders, the ones whose moment falls before the
   // clinic's midnight — the "get ahead of this afternoon" tile.
   const dueLaterToday = useMemo(() => {
@@ -140,6 +154,16 @@ export function RemindersDueButton({ clinicId }: { clinicId: string | undefined 
           <button type="button" className="kw-rem-tile" data-tone="due" onClick={() => setTab('due')}>
             <span className="kw-rem-tile-value">{due?.length ?? 0}</span>
             <span className="kw-rem-tile-label">Due now</span>
+          </button>
+          <button
+            type="button"
+            className="kw-rem-tile"
+            data-tone="overdue"
+            onClick={() => setTab('due')}
+            title="Still unsent more than a day after its moment"
+          >
+            <span className="kw-rem-tile-value">{overdue}</span>
+            <span className="kw-rem-tile-label">Overdue</span>
           </button>
           <button
             type="button"

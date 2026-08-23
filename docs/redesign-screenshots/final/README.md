@@ -48,3 +48,37 @@ redesign.
   facts + timeline + action footer.
 - **Communication Centre** wrapped in the mockup's console shell around the
   existing editor, mutations and stores.
+
+
+---
+
+# Convergence pass 2 — what changed, and what still differs
+
+Second convergence pass on the owner's visual-specification review. Presentation
+only; the API, schema, RBAC, availability engine, booking/reschedule logic,
+timezone handling, clinical data ownership and the message stores are untouched.
+
+## The blocker: unreadable slivers — solved
+
+react-big-calendar divides a column between everything that overlaps, so a
+09:00 with six concurrent bookings became six ~25px fragments. Concurrency is
+now CAPPED per column — 2 cards in a week column, 3 in the wider day and
+provider columns — and everything past the cap becomes the mockup's own
+**"+N more"** tile, which opens a list of the hidden bookings with their real
+times, one click from each to its appointment. Every appointment keeps its true
+start and end; availability, booking and conflict rules never see this
+function (`capConcurrency` in `calendar-events.ts` is pure geometry). A card
+that shares a band also unstacks its first line, so a narrowed card reads
+"08:00 / Hakim bin Jamaludin" over two lines instead of "08:00 Hak…".
+
+## Surface by surface
+
+| Surface | Now matching the mockup | Remaining difference & why |
+|---|---|---|
+| **Week** | Monday–Sunday, calm canvas, subtle grid, time gutter, navy today pill, rose now-line, separated pastel cards with time / patient / service / doctor, whitespace between cards, **empty columns say "No appointments"**, capped overlap, status footer | Column widths are the browser's, not the mockup's fixed canvas, so a 2-up band shows time over name rather than side by side |
+| **Month** | White canvas, compact chips with doctor colour + left edge, time + patient, "+ N more", right-aligned dates, navy today, taller rows (104px) | Sunday-first by the owner's decision |
+| **Providers** | **One integrated canvas** — rail, schedule and right panel divided by hairlines inside a single frame, not three floating boxes; avatar + name + count; clean day cards; mini month; provider summary with real metrics | Utilisation shows only when that provider has rostered WORKING minutes; the QA world has one provider |
+| **Check-in drawer** | Larger identity area, name/age/phone hierarchy, returning + last visit, allergy visibility, appointment icon rows with dividers, **two-column patient record**, rail runs the drawer's full height | Fewer fields than the mockup's form because the demographic model has fewer; allergies stay read-only from the clinical store |
+| **Appointment detail** | Reference header + status chip, identity block, patient-record shortcut, **Service / Doctor / Date / Time / Duration / Source / Created / Created by / Payment / Reminder**, activity column with a minimum height so a one-entry booking still reads composed, action bar | "Created by" is the earliest recorded event's actor — the only true source for it |
+| **Communication Centre** | **Workspace, not a settings page**: compact header with wording state + Save, three columns (controls · composer · preview), variable chips, Template/Preview switch, **realistic WhatsApp phone preview**, character count, honesty as one line rather than a banner | No delivery ticks in the preview — nothing observes delivery |
+| **Reminder Centre** | Five stat tiles including a **truthful Overdue** (still unsent more than a day after its moment, derived from the same rows), structured worklist, WhatsApp action visible | No "Failed" tile and no bulk send: nothing in Kuwick observes delivery, and each send is a person pressing Send |

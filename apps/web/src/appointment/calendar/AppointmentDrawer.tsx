@@ -143,6 +143,35 @@ export function AppointmentDrawer({
   const isCompleted = status === AppointmentStatus.COMPLETED;
   const isReleased =
     status === AppointmentStatus.CANCELLED || status === AppointmentStatus.NO_SHOW;
+  // Real, derived facts — not new data: the booked length in minutes, and
+  // whoever the FIRST recorded event names as having made the booking.
+  const durationWords = (() => {
+    if (!appointment) return '';
+    const minutes = Math.max(
+      0,
+      Math.round(
+        (new Date(appointment.scheduledEnd).getTime() -
+          new Date(appointment.scheduledStart).getTime()) /
+          60000,
+      ),
+    );
+    if (minutes < 60) return `${minutes} mins`;
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return rest === 0 ? `${hours} hr${hours === 1 ? '' : 's'}` : `${hours} hr ${rest} mins`;
+  })();
+  // The EARLIEST recorded event is the booking itself, whatever order the
+  // list arrives in — so "Created by" names the person who actually made it,
+  // never whoever happened to touch it last.
+  const createdBy = (() => {
+    const events = appointment?.events ?? [];
+    if (events.length === 0) return null;
+    const first = [...events].sort(
+      (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
+    )[0];
+    return first?.actorLabel ?? null;
+  })();
+
   // PHASE 8 — messaging goes through the template modal: the clinic's own
   // wording (or the defaults), rendered by the ONE renderer against the
   // patient-facing clinic identity. The drawer no longer composes any
@@ -562,48 +591,47 @@ export function AppointmentDrawer({
           </Modal>
 
           {/* THE APPOINTMENT, said once and said big: when, what, with whom. */}
-          <div className="kw-apt-section">Booking</div>
-          <div className="kw-apt-summary">
-            <div className="kw-apt-when">
-              <div className="kw-apt-date">{formatClinicDate(appointment.scheduledStart)}</div>
-              <div className="kw-apt-time">
-                {formatClinicTime(appointment.scheduledStart)} –{' '}
-                {formatClinicTime(appointment.scheduledEnd)}
-              </div>
-            </div>
-            <div className="kw-apt-what">
-              <div className="kw-apt-service">{appointment.service.name}</div>
-              <div className="kw-apt-provider">
-                {/* The provider's identity dot — the same colour as their
-                    calendar edge and roster avatar. */}
-                <span
-                  aria-hidden
-                  style={{
-                    display: 'inline-block',
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    marginRight: 6,
-                    background: getDoctorColor(appointment.staffId),
-                  }}
-                />
-                {appointment.staff.fullName}
-              </div>
-            </div>
-          </div>
-
+          <div className="kw-apt-section">Appointment</div>
+          {/* Approved mockup 8 — the booking as labelled fact rows: Service,
+              Doctor, Date, Time, Duration, Source, Created, Created by. Every
+              row is a fact this appointment already carries; a row whose fact
+              is missing is not rendered rather than filled. */}
           <Descriptions
-            className="kw-apt-meta"
+            className="kw-apt-facts"
             column={1}
             size="small"
             colon={false}
-            styles={{ label: { width: 110 } }}
+            styles={{ label: { width: 96 } }}
           >
-            <Descriptions.Item label="Booked">
-              {formatClinicDateTime(appointment.createdAt)} ·{' '}
-              {SOURCE_LABELS[appointment.source as AppointmentSource] ?? appointment.source}
-              {appointment.sourceDetail ? ` (${appointment.sourceDetail})` : ''}
+            <Descriptions.Item label="Service">{appointment.service.name}</Descriptions.Item>
+            <Descriptions.Item label="Doctor">
+              <span className="kw-apt-facts-person">
+                <span
+                  aria-hidden
+                  className="kw-apt-facts-dot"
+                  style={{ background: getDoctorColor(appointment.staffId) }}
+                />
+                {appointment.staff.fullName}
+              </span>
             </Descriptions.Item>
+            <Descriptions.Item label="Date">
+              {formatClinicDate(appointment.scheduledStart)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Time">
+              {formatClinicTime(appointment.scheduledStart)} –{' '}
+              {formatClinicTime(appointment.scheduledEnd)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Duration">{durationWords}</Descriptions.Item>
+            <Descriptions.Item label="Source">
+              {SOURCE_LABELS[appointment.source as AppointmentSource] ?? appointment.source}
+              {appointment.sourceDetail ? ` · ${appointment.sourceDetail}` : ''}
+            </Descriptions.Item>
+            <Descriptions.Item label="Created">
+              {formatClinicDateTime(appointment.createdAt)}
+            </Descriptions.Item>
+            {createdBy ? (
+              <Descriptions.Item label="Created by">{createdBy}</Descriptions.Item>
+            ) : null}
             <Descriptions.Item label="Payment">
               <KuwickStatusTag {...paymentChip(appointment.paymentStatus)} />
               {Number(appointment.bookingFeeAmount) > 0
@@ -612,14 +640,12 @@ export function AppointmentDrawer({
             </Descriptions.Item>
             {/* Worded as what was OBSERVED: WhatsApp was opened with the
                 message prefilled. A bare timestamp under "Reminder" read as
-                "reminder sent", which a wa.me open cannot prove. When a real
-                automated channel exists one day, IT may say Sent/Delivered —
-                this row, fed by the manual action, never will. */}
-            <Descriptions.Item label="Communication">
+                "reminder sent", which a wa.me open cannot prove. */}
+            <Descriptions.Item label="Reminder">
               {appointment.reminderSentAt ? (
                 `WhatsApp opened · ${formatClinicDateTime(appointment.reminderSentAt)}`
               ) : (
-                <Text type="secondary">—</Text>
+                <Text type="secondary">Not sent yet</Text>
               )}
             </Descriptions.Item>
           </Descriptions>

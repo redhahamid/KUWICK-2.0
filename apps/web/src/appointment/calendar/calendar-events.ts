@@ -304,3 +304,95 @@ export function outsideDisplayCount(
     return startsBefore || endsAfter;
   }).length;
 }
+
+/**
+ * OVERLAP THAT STAYS READABLE — the owner's blocker, solved as presentation.
+ *
+ * react-big-calendar divides a column between everything that overlaps, so a
+ * 09:00 with six concurrent bookings became six ~25px slivers reading
+ * "● 09:0…". The times were right and the data was right; the SCREEN was
+ * useless, which is the same as being wrong at a front counter.
+ *
+ * This caps how many cards may share a band and hands the remainder to a
+ * "+N more" tile — exactly the overflow the approved mockup draws in its own
+ * week panel. Nothing about the appointments changes: every one keeps its
+ * true start and end, the hidden ones are carried ON the tile so one click
+ * lists them, and availability, booking and conflict rules never see this
+ * function. It is a pure geometry decision about a fixed number of pixels.
+ *
+ * Clusters are per COLUMN (a day, or a provider's day in the resource view),
+ * found by the standard sweep: sorted by start, a booking joins the running
+ * cluster while it begins before the cluster's furthest end.
+ */
+export interface ConcurrencyInput {
+  id: string;
+  start: Date;
+  end: Date;
+  resourceId?: string;
+}
+
+export interface OverflowBundle<T> {
+  /** Stable id so React and rbc can key the synthetic tile. */
+  id: string;
+  start: Date;
+  end: Date;
+  resourceId?: string;
+  hidden: T[];
+}
+
+export function capConcurrency<T extends ConcurrencyInput>(
+  events: T[],
+  limit: number,
+): { visible: T[]; overflow: OverflowBundle<T>[] } {
+  if (limit < 1 || events.length === 0) return { visible: events, overflow: [] };
+
+  const columns = new Map<string, T[]>();
+  for (const event of events) {
+    // One bucket per provider column per calendar date — the two things that
+    // actually decide whether two cards must share horizontal space.
+    const key = `${event.resourceId ?? ''}|${event.start.getFullYear()}-${event.start.getMonth()}-${event.start.getDate()}`;
+    const bucket = columns.get(key);
+    if (bucket) bucket.push(event);
+    else columns.set(key, [event]);
+  }
+
+  const visible: T[] = [];
+  const overflow: OverflowBundle<T>[] = [];
+
+  for (const bucket of columns.values()) {
+    const sorted = [...bucket].sort((a, b) => a.start.getTime() - b.start.getTime());
+    let cluster: T[] = [];
+    let clusterEnd = -Infinity;
+
+    const flush = () => {
+      if (cluster.length === 0) return;
+      if (cluster.length <= limit) {
+        visible.push(...cluster);
+      } else {
+        // Keep the earliest (limit - 1) cards whole; the rest become one tile
+        // spanning the band they actually occupy.
+        const kept = cluster.slice(0, limit - 1);
+        const hidden = cluster.slice(limit - 1);
+        visible.push(...kept);
+        overflow.push({
+          id: `overflow:${hidden[0].id}:${hidden.length}`,
+          start: hidden.reduce((min, row) => (row.start < min ? row.start : min), hidden[0].start),
+          end: hidden.reduce((max, row) => (row.end > max ? row.end : max), hidden[0].end),
+          resourceId: hidden[0].resourceId,
+          hidden,
+        });
+      }
+      cluster = [];
+      clusterEnd = -Infinity;
+    };
+
+    for (const event of sorted) {
+      if (cluster.length > 0 && event.start.getTime() >= clusterEnd) flush();
+      cluster.push(event);
+      clusterEnd = Math.max(clusterEnd, event.end.getTime());
+    }
+    flush();
+  }
+
+  return { visible, overflow };
+}

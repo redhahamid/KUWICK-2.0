@@ -65,6 +65,19 @@ function offsetLabel(minutes: number): string {
  *   Broadcast — "Soon" in the mockup, and disabled here, because no
  *               broadcast capability exists.
  */
+/** One honest line per moment: when this wording is used, in the desk's words. */
+const TEMPLATE_HINTS: Record<string, string> = {
+  BOOKING_CONFIRMATION: 'Offered right after a booking is made.',
+  BOOKING_REQUEST_RECEIVED: 'Offered when a patient asks for a slot the clinic must approve.',
+  BOOKING_APPROVED: 'Offered when the clinic accepts a request.',
+  REMINDER: 'Put on the Reminder Centre worklist by the timing rules below.',
+  RESCHEDULE_REQUEST_RECEIVED: 'Offered when a patient asks to move an appointment.',
+  RESCHEDULE_APPROVED: 'Offered when the clinic agrees to move it.',
+  RESCHEDULE_DECLINED: 'Offered when the clinic cannot move it.',
+  CANCELLATION_REQUEST_RECEIVED: 'Offered when a patient asks to cancel.',
+  CANCELLATION_CONFIRMED: 'Offered once the cancellation is recorded.',
+};
+
 const NAV_TEMPLATES: { key: string; label: string; templateKey?: string }[] = [
   { key: 'tpl:BOOKING_CONFIRMATION', label: 'Confirmation', templateKey: 'BOOKING_CONFIRMATION' },
   { key: 'tpl:REMINDER', label: 'Reminder', templateKey: 'REMINDER' },
@@ -95,6 +108,9 @@ export function CommunicationCentre({ clinicId }: { clinicId?: string }) {
   // Which room of the console is open. 'templates' is the front door, so the
   // editor is on screen the moment the page opens.
   const [section, setSection] = useState<string>('templates');
+  // Template | Preview, the mockup's own pair: the stored wording, or the
+  // message as the patient will read it.
+  const [pane, setPane] = useState<'preview' | 'template'>('preview');
 
   // ---- template editor state ----------------------------------------------
   const [templateKey, setTemplateKey] = useState('BOOKING_CONFIRMATION');
@@ -266,15 +282,14 @@ export function CommunicationCentre({ clinicId }: { clinicId?: string }) {
       </nav>
 
       <div className="kw-comms-main">
-      <Alert
-        type="info"
-        showIcon
-        className="kw-settings-alert"
-        style={{ marginBottom: 14 }}
-        message="WhatsApp automation is not connected"
-        description="Messages are sent by your team from Kuwick — the calendar, the list and the Reminder Centre — through WhatsApp on their own device, prefilled from these templates. Kuwick records that a message window was opened; it will only ever claim Sent or Delivered if a messaging provider that confirms delivery is connected."
-      />
-
+      {/* The transport truth, kept as a LINE rather than the banner that used
+          to dominate the screen — and in the shell, because it is true of
+          every section, not only the one being edited. */}
+      <div className="kw-comms-honesty">
+        <strong>WhatsApp automation is not connected</strong> — your team sends these from Kuwick
+        through WhatsApp on their own device. Kuwick records that a message window was opened,
+        never that it was delivered.
+      </div>
       {section === 'overview' ? (
         <div className="kw-settings-grid" data-testid="communication-overview">
           <Card title="What this clinic says, and when" className="kw-settings-card">
@@ -315,101 +330,22 @@ export function CommunicationCentre({ clinicId }: { clinicId?: string }) {
         </div>
       ) : null}
 
-      <div
-        className="kw-settings-grid"
-        hidden={!showEditor && section !== 'reminders' && section !== 'overview'}
-      >
-        <Card
-          hidden={!showEditor}
-          title="Message templates"
-          className="kw-settings-card"
-          loading={isLoading}
-          data-testid="message-templates-card"
-          extra={current?.isCustom ? <Tag color="blue">Customised</Tag> : <Tag>Default</Tag>}
-        >
-          <Paragraph type="secondary" className="kw-settings-note">
-            Nine moments, two languages, one wording each. Every message anybody sends from Kuwick
-            is filled from these — change a template here and the whole clinic speaks the new
-            words.
-          </Paragraph>
-
-          <Space direction="vertical" size={12} style={{ width: '100%' }}>
-            <Space wrap>
-              <Select
-                value={templateKey}
-                onChange={setTemplateKey}
-                style={{ minWidth: 260 }}
-                options={Object.entries(TEMPLATE_KEY_WORDS).map(([value, label]) => ({
-                  value,
-                  label,
-                }))}
-              />
-              <Segmented
-                value={language}
-                onChange={(value) => setLanguage(String(value))}
-                options={[
-                  { value: 'en', label: 'English' },
-                  { value: 'ms', label: 'Bahasa Malaysia' },
-                ]}
-              />
-            </Space>
-
-            <Input.TextArea
-              value={body}
-              onChange={(event) => setBody(event.target.value)}
-              autoSize={{ minRows: 5, maxRows: 12 }}
-              maxLength={1000}
-              showCount
-              data-testid="template-body"
-            />
-
-            <div>
-              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-                Tap to insert — a line whose fact is missing (no phone on file, no booking link) is
-                left out of the message entirely:
-              </Text>
-              <Space size={[4, 6]} wrap>
-                {(templatesDoc?.placeholders ?? []).map((token) => (
-                  <Tag
-                    key={token}
-                    style={{ cursor: 'pointer', fontFamily: 'monospace' }}
-                    onClick={() => insertPlaceholder(token)}
-                  >
-                    {`{${token}}`}
-                  </Tag>
-                ))}
-              </Space>
+      {showEditor ? (
+        <div className="kw-comms-workspace" data-testid="message-templates-card">
+          {/* Compact workspace header (approved mockup 6): what is being
+              written, whether it is this clinic's own wording, and the one
+              action that matters — not a page of explanation. */}
+          <header className="kw-comms-head">
+            <div className="kw-comms-head-text">
+              <h3>{TEMPLATE_KEY_WORDS[templateKey] ?? 'Message'}</h3>
+              <span>{TEMPLATE_HINTS[templateKey] ?? 'Sent by a person, from this wording.'}</span>
             </div>
-
-            {/* Mockup 6 draws the preview as the message will actually be
-                READ — a WhatsApp-style bubble, not a grey text box. Same one
-                renderer, same clinic identity; only the frame is new. */}
-            <Card
-              size="small"
-              title="Preview"
-              data-testid="template-preview"
-              className="kw-comms-preview"
-            >
-              <div className="kw-comms-bubble">
-                <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>
-                  {preview || <Text type="secondary">Nothing to preview yet.</Text>}
-                </Paragraph>
-              </div>
-              <Text type="secondary" className="kw-comms-preview-note">
-                How it looks to the patient. A person still presses Send in WhatsApp.
-              </Text>
-            </Card>
-
-            <Space>
-              <Button
-                type="primary"
-                loading={saveTemplate.isPending}
-                disabled={!canConfigure || !clinicId}
-                title={canConfigure ? undefined : permissionHint('change how appointments and services are configured')}
-                onClick={() => save(body)}
-              >
-                Save template
-              </Button>
+            <div className="kw-comms-head-actions">
+              {current?.isCustom ? (
+                <Tag color="blue">Customised</Tag>
+              ) : (
+                <Tag>Built-in wording</Tag>
+              )}
               {current?.isCustom ? (
                 <Popconfirm
                   title="Back to the built-in wording?"
@@ -418,15 +354,161 @@ export function CommunicationCentre({ clinicId }: { clinicId?: string }) {
                   onConfirm={() => save(null)}
                   disabled={!canConfigure}
                 >
-                  <Button disabled={!canConfigure}>Reset to default</Button>
+                  <Button size="small" disabled={!canConfigure}>
+                    Reset
+                  </Button>
                 </Popconfirm>
               ) : null}
-            </Space>
-          </Space>
-        </Card>
+              <Button
+                type="primary"
+                loading={saveTemplate.isPending}
+                disabled={!canConfigure || !clinicId}
+                title={
+                  canConfigure
+                    ? undefined
+                    : permissionHint('change how appointments and services are configured')
+                }
+                onClick={() => save(body)}
+              >
+                Save template
+              </Button>
+            </div>
+          </header>
 
+          <div className="kw-comms-body">
+            {/* Controls, in the mockup's own order and width. */}
+            <aside className="kw-comms-controls">
+              <label className="kw-comms-label">Message</label>
+              <Select
+                value={templateKey}
+                onChange={setTemplateKey}
+                style={{ width: '100%' }}
+                options={Object.entries(TEMPLATE_KEY_WORDS).map(([value, label]) => ({
+                  value,
+                  label,
+                }))}
+              />
+
+              <label className="kw-comms-label">Channel</label>
+              {/* One real channel, so one option and no pretending. */}
+              <Select
+                value="whatsapp"
+                disabled
+                style={{ width: '100%' }}
+                options={[{ value: 'whatsapp', label: 'WhatsApp — opened by a person' }]}
+              />
+
+              <label className="kw-comms-label">Language</label>
+              <Segmented
+                block
+                value={language}
+                onChange={(value) => setLanguage(String(value))}
+                options={[
+                  { value: 'en', label: 'English' },
+                  { value: 'ms', label: 'Bahasa Malaysia' },
+                ]}
+              />
+
+              {templateKey === 'REMINDER' ? (
+                <>
+                  <label className="kw-comms-label">Timing</label>
+                  <div className="kw-comms-timing">
+                    {offsets.length > 0 ? (
+                      offsets
+                        .slice()
+                        .sort((a, b) => b - a)
+                        .map((value) => (
+                          <Tag key={value} className="kw-comms-timing-tag">
+                            {offsetLabel(value)}
+                          </Tag>
+                        ))
+                    ) : (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        No reminder rules yet.
+                      </Text>
+                    )}
+                    <Button size="small" type="link" onClick={() => setSection('reminders')}>
+                      Edit timing
+                    </Button>
+                  </div>
+                </>
+              ) : null}
+
+              <label className="kw-comms-label">Variables</label>
+              <div className="kw-comms-vars">
+                {(templatesDoc?.placeholders ?? []).map((token) => (
+                  <button
+                    key={token}
+                    type="button"
+                    className="kw-comms-var"
+                    onClick={() => insertPlaceholder(token)}
+                  >
+                    {`{${token}}`}
+                  </button>
+                ))}
+              </div>
+              <Text type="secondary" className="kw-comms-varnote">
+                Tap to insert. A line whose fact is missing — no phone on file, no booking
+                link — is left out of the message entirely.
+              </Text>
+            </aside>
+
+            {/* The composer is the centre of the workspace. */}
+            <section className="kw-comms-composer">
+              <label className="kw-comms-label">Message</label>
+              <Input.TextArea
+                value={body}
+                onChange={(event) => setBody(event.target.value)}
+                className="kw-comms-textarea"
+                maxLength={1000}
+                data-testid="template-body"
+              />
+              <div className="kw-comms-count">Characters: {body.length}</div>
+            </section>
+
+            {/* Template | Preview, and a preview that looks like the thing
+                the patient will actually receive. */}
+            <aside className="kw-comms-previewpane">
+              <Segmented
+                block
+                value={pane}
+                onChange={(value) => setPane(value as 'preview' | 'template')}
+                options={[
+                  { value: 'template', label: 'Template' },
+                  { value: 'preview', label: 'Preview' },
+                ]}
+              />
+              <div className="kw-comms-phone" data-testid="template-preview">
+                <div className="kw-comms-phone-head">
+                  <span className="kw-comms-phone-avatar" aria-hidden>
+                    {(clinic?.patientFacingName ?? clinic?.name ?? 'K').slice(0, 1)}
+                  </span>
+                  <span className="kw-comms-phone-name">
+                    {clinic?.patientFacingName ?? clinic?.name ?? 'Your clinic'}
+                  </span>
+                </div>
+                <div className="kw-comms-phone-body">
+                  <div className="kw-comms-bubble" data-raw={pane === 'template' || undefined}>
+                    {pane === 'preview'
+                      ? preview || 'Nothing to preview yet.'
+                      : body || 'Nothing written yet.'}
+                  </div>
+                </div>
+              </div>
+              <Text type="secondary" className="kw-comms-previewnote">
+                {pane === 'preview'
+                  ? 'Filled with this clinic’s real identity and a sample appointment.'
+                  : 'The stored wording, placeholders and all.'}
+              </Text>
+            </aside>
+          </div>
+
+        </div>
+      ) : null}
+
+      <div className="kw-settings-grid" hidden={section !== 'reminders' && section !== 'overview'}>
         <Card
-          hidden={section !== 'reminders' && section !== 'tpl:REMINDER'}
+          hidden={section !== 'reminders'}
           title="Reminder rules"
           className="kw-settings-card"
           data-testid="reminder-rules-card"
@@ -491,7 +573,7 @@ export function CommunicationCentre({ clinicId }: { clinicId?: string }) {
         </Card>
 
         <Card
-          hidden={section !== 'overview' && section !== 'templates'}
+          hidden={section !== 'overview'}
           title="Where messages are sent from"
           className="kw-settings-card"
         >

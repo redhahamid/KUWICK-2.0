@@ -168,8 +168,18 @@ export function PatientDetailsSection({ patient }: { patient: DetailPatient }) {
         ) : null}
       </div>
 
+      {/* TWO COLUMNS (approved mockup 5): the record reads as a compact
+          registration form rather than a tall list with the drawer's right
+          half empty. Address and emergency contact keep the full width
+          because their values are long. */}
       {!editing ? (
-        <Descriptions column={1} size="small" colon={false} styles={{ label: { width: 110 } }}>
+        <Descriptions
+          className="kw-checkin-record"
+          column={2}
+          size="small"
+          colon={false}
+          styles={{ label: { width: 96 } }}
+        >
           <Descriptions.Item label="Name">
             {patient.name} <KuwickStatusTag tone="success" label="On file" />
           </Descriptions.Item>
@@ -185,11 +195,11 @@ export function PatientDetailsSection({ patient }: { patient: DetailPatient }) {
           <Descriptions.Item label="Sex">
             {patient.gender ? sentence(patient.gender) : <Text type="secondary">—</Text>}
           </Descriptions.Item>
-          <Descriptions.Item label="Address">
+          <Descriptions.Item label="Address" span={2}>
             {patient.address ?? <Text type="secondary">—</Text>}
           </Descriptions.Item>
           {patient.emergencyContactName || patient.emergencyContactPhone ? (
-            <Descriptions.Item label="Emergency">
+            <Descriptions.Item label="Emergency" span={2}>
               {[patient.emergencyContactName, patient.emergencyContactPhone]
                 .filter(Boolean)
                 .join(' · ')}

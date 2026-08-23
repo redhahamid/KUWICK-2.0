@@ -788,9 +788,21 @@
 }
 
 /* Squeezed full card: the quiet lines go first… */
-@container (max-width: 128px) {
-  .kw-ev--full .kw-event-secondary {
+@container (max-width: 150px) {
+  .kw-ev--full .kw-event-secondary,
+  .kw-ev--full .kw-event-provider {
     display: none;
+  }
+
+  /* …and the dense card's shared first line UNSTACKS, so a narrowed card
+     reads "● 08:00 / Hakim bin Jamaludin" over two lines instead of
+     "08:00 Hak…" over one. A truncated name is the defect the overflow tile
+     exists to prevent; it must not come back one card later. */
+  .kw-ev--full .kw-event-lead {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    line-height: 1.3;
   }
 }
 
@@ -805,8 +817,10 @@
   }
 }
 
-/* Very narrow: time above name, both whole. */
-@container (max-width: 84px) {
+/* Narrow (a card sharing its band with an overflow tile): time ABOVE name,
+   so the name gets the card's whole width instead of the half a shared line
+   left it. "08:00 Hak…" is the defect the overflow tile exists to prevent. */
+@container (max-width: 124px) {
   .kw-calendar-event {
     padding: 2px 4px 2px 6px;
   }
@@ -828,7 +842,8 @@
   }
 }
 
-/* Sliver: the dot and the time, nothing half-written. */
+/* Sliver: the dot and the time, nothing half-written. (With concurrency
+   capped this is now a floor that should never be reached in practice.) */
 @container (max-width: 52px) {
   .kw-calendar-event {
     padding: 2px 3px 2px 4px;
@@ -841,6 +856,112 @@
   .kw-calendar-event .kw-event-compact {
     font-size: 10px;
   }
+}
+
+/* --- Overflow tile + its list (readable dense bands) ---------------------- */
+.kw-ev--overflow .kw-calendar-event,
+.kw-ev-more {
+  background: var(--apt-surface-2);
+  border: 1px dashed var(--apt-border-strong);
+  border-left: 1px dashed var(--apt-border-strong);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  color: var(--apt-teal);
+  text-align: center;
+  box-shadow: none;
+}
+.kw-ev-more-count {
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.kw-ev-more-word {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--apt-text-2);
+}
+.kw-calendar-grid .rbc-event:hover .kw-ev-more {
+  border-color: var(--apt-teal);
+  background: var(--apt-teal-soft);
+}
+
+.kw-ev-more-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kw-ev-more-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius);
+  background: var(--apt-surface);
+  padding: 9px 12px 9px 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.kw-ev-more-row:hover {
+  border-color: var(--apt-teal);
+  box-shadow: var(--apt-shadow-sm);
+}
+.kw-ev-more-edge {
+  width: 4px;
+  align-self: stretch;
+  flex: none;
+}
+.kw-ev-more-time {
+  font-weight: 700;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--apt-nav-navy);
+  flex: none;
+  min-width: 44px;
+}
+.kw-ev-more-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.35;
+}
+.kw-ev-more-name {
+  font-weight: 650;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kw-ev-more-meta {
+  font-size: 11.5px;
+  color: var(--apt-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A quiet column says so, rather than reading as a loading failure. */
+.kw-col-empty {
+  position: absolute;
+  top: 34%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--apt-muted);
+  pointer-events: none;
+  user-select: none;
 }
 
 /* --- Month view --------------------------------------------------------------
@@ -881,6 +1002,31 @@
 
 .kw-calendar-grid .rbc-month-row + .rbc-month-row {
   border-top: 1px solid var(--apt-hairline);
+}
+
+/* Month density (approved mockup 1): a row that breathes, a chip that reads
+   at a glance, and today unmistakable. */
+.kw-calendar-grid .rbc-month-view .rbc-month-row {
+  min-height: 104px;
+}
+.kw-calendar-grid .rbc-month-view .kw-calendar-event {
+  min-height: 20px;
+  line-height: 1.5;
+}
+.kw-calendar-grid .rbc-month-view .kw-event-compact {
+  font-size: 11px;
+  gap: 6px;
+}
+.kw-calendar-grid .rbc-month-view .rbc-row-segment {
+  padding: 0 1px;
+}
+.kw-calendar-grid .rbc-month-view .rbc-date-cell.rbc-now {
+  font-weight: 700;
+}
+.kw-calendar-grid .rbc-month-view .rbc-show-more {
+  margin-top: 1px;
+  padding-left: 8px;
+  font-size: 11px;
 }
 
 .kw-calendar-grid .rbc-month-view .rbc-date-cell {
@@ -3279,12 +3425,68 @@ body:has(.kw-public-booking) {
 
 /* The grid area (mockup 3's three-column composition): the Providers-only
    rail on the left, the grid column (grid + status bar) in the middle, and
-   the Providers-only mini-calendar/summary panel on the right. */
+   the Providers-only mini-calendar/summary panel on the right.
+
+   In the Providers view the three columns read as ONE workspace — a single
+   framed canvas divided by hairlines — rather than three separate cards
+   floating on the page, which is what the mockup draws and what the owner
+   asked for. */
 .kw-cal-body {
   display: flex;
   gap: 12px;
   min-width: 0;
   align-items: stretch;
+}
+.kw-cal-body:has(.kw-provider-rail) {
+  gap: 0;
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  background: var(--apt-surface);
+  box-shadow: var(--apt-shadow-sm);
+  overflow: hidden;
+}
+.kw-cal-body:has(.kw-provider-rail) .kw-provider-rail,
+.kw-cal-body:has(.kw-provider-rail) .kw-provider-side {
+  position: static;
+  padding: 12px;
+}
+.kw-cal-body:has(.kw-provider-rail) .kw-provider-rail {
+  border-right: 1px solid var(--apt-border);
+  background: var(--apt-surface-2);
+  width: 228px;
+}
+.kw-cal-body:has(.kw-provider-rail) .kw-provider-side {
+  border-left: 1px solid var(--apt-border);
+  background: var(--apt-surface-2);
+}
+/* Inside one canvas the inner cards drop their own frames — the hairlines
+   already do the dividing. */
+.kw-cal-body:has(.kw-provider-rail) .kw-provider-rail-list,
+.kw-cal-body:has(.kw-provider-rail) .kw-provider-minical,
+.kw-cal-body:has(.kw-provider-rail) .kw-provider-summary {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  padding-inline: 0;
+}
+.kw-cal-body:has(.kw-provider-rail) .kw-provider-summary {
+  border-top: 1px solid var(--apt-border);
+  padding-top: 12px;
+  margin-top: 4px;
+}
+.kw-cal-body:has(.kw-provider-rail) .kw-cal-main {
+  padding: 12px;
+}
+.kw-cal-body:has(.kw-provider-rail) .kw-calendar-grid .rbc-time-view {
+  border: none;
+  border-radius: 0;
+}
+.kw-cal-body:has(.kw-provider-rail) .kw-cal-statusbar {
+  border: none;
+  border-top: 1px solid var(--apt-border);
+  border-radius: 0;
+  box-shadow: none;
+  padding-bottom: 0;
 }
 .kw-cal-main {
   flex: 1;
@@ -3653,14 +3855,17 @@ body:has(.kw-public-booking) {
 .kw-checkin-grid {
   display: flex;
   gap: 20px;
-  align-items: flex-start;
+  align-items: stretch;
+  /* The rail runs the height of the drawer so the counter reads a workspace
+     with a left column, not a short card floating over white space. */
+  min-height: 100%;
 }
 .kw-checkin-content {
   flex: 1;
   min-width: 0;
 }
 .kw-checkin-identity {
-  width: 232px;
+  width: 236px;
   flex: none;
   background: var(--apt-surface-2);
   border: 1px solid var(--apt-border);
@@ -3670,8 +3875,6 @@ body:has(.kw-public-booking) {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  position: sticky;
-  top: 0;
 }
 .kw-checkin-id-name {
   margin-top: 10px;
@@ -3748,6 +3951,36 @@ body:has(.kw-public-booking) {
     width: 100%;
     position: static;
   }
+}
+
+/* Detail panel fact rows: label quiet and narrow, value doing the talking. */
+.kw-apt-facts .ant-descriptions-item {
+  padding-bottom: 9px !important;
+}
+.kw-apt-facts .ant-descriptions-item-label {
+  font-size: 11.5px;
+  color: var(--apt-muted);
+}
+.kw-apt-facts .ant-descriptions-item-content {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--apt-text);
+}
+.kw-apt-facts-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.kw-apt-facts-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+/* The activity column keeps its shape when the booking has one entry — the
+   panel should look composed on a quiet appointment, not half-drawn. */
+.kw-apt-detail-side {
+  min-height: 260px;
 }
 
 /* --- Communication Centre console (approved mockup 6) --------------------
@@ -3837,30 +4070,234 @@ body:has(.kw-public-booking) {
   border-radius: 999px;
   padding: 1px 7px;
 }
-/* The preview reads like the message will: a chat ground and a sent bubble. */
-.kw-comms-preview .ant-card-body {
+/* --- The Communication workspace (approved mockup 6) ---------------------
+   Compact header, three columns — controls, composer, preview — and the
+   honesty line as a line. Proportions follow the mockup: a narrow control
+   rail, the message taking the centre, the phone preview on the right. */
+.kw-comms-workspace {
+  background: var(--apt-surface);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  box-shadow: var(--apt-shadow-xs);
+  overflow: hidden;
+}
+.kw-comms-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--apt-border);
+  background: var(--apt-surface-2);
+}
+.kw-comms-head-text {
+  min-width: 0;
+  flex: 1;
+}
+.kw-comms-head-text h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--apt-nav-navy);
+  letter-spacing: -0.01em;
+}
+.kw-comms-head-text span {
+  font-size: 12.5px;
+  color: var(--apt-text-2);
+}
+.kw-comms-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.kw-comms-head-actions .ant-tag {
+  margin-inline-end: 0;
+}
+
+.kw-comms-body {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr) 300px;
+  gap: 0;
+  align-items: stretch;
+}
+.kw-comms-controls {
+  padding: 16px;
+  border-right: 1px solid var(--apt-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--apt-surface);
+}
+.kw-comms-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--apt-muted);
+  margin-top: 8px;
+}
+.kw-comms-controls > .kw-comms-label:first-child {
+  margin-top: 0;
+}
+.kw-comms-timing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.kw-comms-timing-tag.ant-tag {
+  margin-inline-end: 0;
+  border-radius: 999px;
+  font-size: 11.5px;
+}
+.kw-comms-vars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.kw-comms-var {
+  border: 1px solid var(--apt-border);
+  background: var(--apt-surface-2);
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--apt-text-2);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.kw-comms-var:hover {
+  border-color: var(--apt-teal);
+  color: var(--apt-teal);
+}
+.kw-comms-varnote {
+  font-size: 11px;
+  line-height: 1.45;
+  margin-top: 2px;
+}
+
+.kw-comms-composer {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.kw-comms-textarea.ant-input {
+  flex: 1;
+  min-height: 300px;
+  resize: none;
+  font-size: 13.5px;
+  line-height: 1.6;
+  border-radius: var(--apt-radius);
+}
+.kw-comms-count {
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--apt-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-comms-previewpane {
+  padding: 16px;
+  border-left: 1px solid var(--apt-border);
+  background: var(--apt-surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+/* The phone: a chat ground, the clinic's own name at the top, one sent
+   bubble. Nothing here claims delivery — there are no ticks. */
+.kw-comms-phone {
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  overflow: hidden;
   background: #eae6df;
-  background-image: radial-gradient(rgba(0, 0, 0, 0.035) 1px, transparent 1px);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 260px;
+}
+.kw-comms-phone-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #075e54;
+  color: #fff;
+  padding: 8px 12px;
+}
+.kw-comms-phone-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+.kw-comms-phone-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kw-comms-phone-body {
+  flex: 1;
+  padding: 12px;
+  background-image: radial-gradient(rgba(0, 0, 0, 0.04) 1px, transparent 1px);
   background-size: 14px 14px;
-  padding: 14px;
+  overflow: auto;
 }
 .kw-comms-bubble {
   background: #dcf8c6;
-  border-radius: 12px 12px 2px 12px;
-  padding: 10px 12px;
-  max-width: 88%;
-  margin-left: auto;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
-  font-size: 13.5px;
+  border-radius: 10px 10px 2px 10px;
+  padding: 9px 11px;
+  font-size: 12.5px;
   line-height: 1.5;
   color: #111b21;
+  white-space: pre-wrap;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+  margin-left: 12%;
 }
-.kw-comms-preview-note {
-  display: block;
-  margin-top: 8px;
+/* The raw template reads as source, not as a message. */
+.kw-comms-bubble[data-raw] {
+  background: var(--apt-surface);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11.5px;
-  text-align: right;
+  margin-left: 0;
+  border-radius: var(--apt-radius);
 }
+.kw-comms-previewnote {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.kw-comms-honesty {
+  padding: 9px 14px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(29, 78, 216, 0.18);
+  border-radius: var(--apt-radius);
+  background: var(--apt-active-bg);
+  color: var(--apt-navy-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1180px) {
+  .kw-comms-body {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+  .kw-comms-previewpane {
+    grid-column: 1 / -1;
+    border-left: none;
+    border-top: 1px solid var(--apt-border);
+  }
+}
+
 .kw-comms-stats {
   display: flex;
   gap: 26px;
@@ -3947,6 +4384,10 @@ body:has(.kw-public-booking) {
 }
 
 /* --- Check-in: tabs, clinical context, completeness footer -------------- */
+.kw-apt3-drawer .ant-drawer-body:has(.kw-checkin-grid) {
+  display: flex;
+  flex-direction: column;
+}
 .kw-checkin-tabs .ant-tabs-nav {
   margin-bottom: 14px;
 }
@@ -4065,6 +4506,40 @@ body:has(.kw-public-booking) {
   color: var(--apt-attention);
 }
 
+/* The record grid: tighter rows, labels quiet, values doing the talking. */
+.kw-checkin-record .ant-descriptions-item {
+  padding-bottom: 10px !important;
+}
+.kw-checkin-record .ant-descriptions-item-label {
+  font-size: 11.5px;
+  color: var(--apt-muted);
+}
+.kw-checkin-record .ant-descriptions-item-content {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* A stronger identity panel: the mockup's larger avatar area and a name that
+   leads, with the counter's facts under it. */
+.kw-checkin-identity {
+  padding: 20px 16px 16px;
+}
+.kw-checkin-id-name {
+  font-size: 16.5px;
+}
+.kw-checkin-identity .kw-avatar[data-size='xl'] {
+  width: 64px;
+  height: 64px;
+  font-size: 21px;
+}
+.kw-checkin-id-rows > span {
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--apt-border);
+}
+.kw-checkin-id-rows > span:last-child {
+  border-bottom: none;
+}
+
 /* The in-drawer patient edit form: compact, calm, clearly a mode. */
 .kw-checkin-patient-form {
   background: var(--apt-surface-2);
@@ -4083,7 +4558,7 @@ body:has(.kw-public-booking) {
    below it — nothing the drawer cannot show is counted. */
 .kw-rem-tiles {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -4127,6 +4602,9 @@ body:has(.kw-public-booking) {
 }
 .kw-rem-tile[data-tone='sent'] .kw-rem-tile-value {
   color: var(--apt-avail);
+}
+.kw-rem-tile[data-tone='overdue'] .kw-rem-tile-value {
+  color: var(--apt-danger);
 }
 
 .kw-rem-head,
@@ -4223,6 +4701,9 @@ body:has(.kw-public-booking) {
 @media (max-width: 700px) {
   .kw-rem-tiles {
     grid-template-columns: repeat(2, 1fr);
+  }
+  .kw-rem-tile[data-tone='overdue'] {
+    grid-column: span 2;
   }
   .kw-rem-head {
     display: none;

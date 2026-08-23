@@ -6,6 +6,7 @@ import {
   Button,
   DatePicker,
   Input,
+  Modal,
   Segmented,
   Select,
   Space,
@@ -31,6 +32,7 @@ import { CalendarViewMode, getCalendarRange, shiftAnchor, todayAnchor } from './
 import { calendarLocalizer as localizer, weekCalendarLocalizer } from './calendar-localizer';
 import {
   CardModel,
+  capConcurrency,
   cardLines,
   cardModel,
   compactLine,
@@ -75,6 +77,12 @@ interface CalendarEvent {
   /** "09:00 Siti" — the narrow-column rendering (week/month). */
   compact: string;
   released: boolean;
+  /**
+   * Set only on the synthetic "+N more" tile: the bookings this band could
+   * not show at a readable width. They keep their real times and open from
+   * the tile — nothing is hidden from the desk, only from the pixels.
+   */
+  overflow?: CalendarEvent[];
 }
 
 interface CalendarWorkspaceProps {
@@ -243,6 +251,40 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
     serviceName,
     staffName,
   ]);
+
+  // READABLE OVERLAP (owner blocker). A week column is ~150px and a provider
+  // column ~250px, so the number of cards that can share a band before the
+  // text stops being text is small and known. Everything past it becomes one
+  // "+N more" tile — the same overflow the approved mockup draws — carrying
+  // the hidden bookings for the click. Month positions by DATE, not hour, and
+  // rbc's own popup already handles it there.
+  const displayEvents: CalendarEvent[] = useMemo(() => {
+    if (viewMode === 'month') return events;
+    const limit = viewMode === 'week' ? 2 : 3;
+    const { visible, overflow } = capConcurrency(events, limit);
+    if (overflow.length === 0) return events;
+    const tiles: CalendarEvent[] = overflow.map((bundle) => ({
+      id: bundle.id,
+      title: `${bundle.hidden.length} more`,
+      start: bundle.start,
+      end: bundle.end,
+      resourceId: bundle.resourceId ?? '',
+      // The tile borrows the first hidden booking's appointment so every
+      // accessor on the event stays defined; nothing reads it for display.
+      appointment: bundle.hidden[0].appointment,
+      card: bundle.hidden[0].card,
+      tooltip: bundle.hidden
+        .map((row) => `${row.card.time} ${row.card.patient}`)
+        .join(' · '),
+      compact: `+${bundle.hidden.length} more`,
+      released: false,
+      overflow: bundle.hidden,
+    }));
+    return [...visible, ...tiles];
+  }, [events, viewMode]);
+
+  // The bookings behind a "+N more" tile, once somebody asks for them.
+  const [overflowGroup, setOverflowGroup] = useState<CalendarEvent[] | null>(null);
 
   // THE AXIS (Phase 3). A pure function of the branch's display settings and
   // the reveal toggle — shifts, dates and filters have no way in, so the
@@ -439,6 +481,34 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
     return () => window.clearInterval(timer);
   }, [viewMode, anchor, events, isLoading]);
 
+  // EMPTY COLUMNS SAY SO (approved mockup 2: "No appointments" down the quiet
+  // weekend columns). react-big-calendar has no per-column empty state, so
+  // this is applied DOM-side after render — the same technique the now-pill
+  // uses, and for the same reason: the caption belongs to a column the
+  // library owns. Presentation only; it reads what is on screen and adds a
+  // label, never a booking.
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || viewMode !== 'week' || isLoading) return;
+    const columns = grid.querySelectorAll<HTMLElement>('.rbc-time-content .rbc-day-slot');
+    const added: HTMLElement[] = [];
+    columns.forEach((column) => {
+      const existing = column.querySelector('.kw-col-empty');
+      if (column.querySelector('.rbc-event')) {
+        existing?.remove();
+        return;
+      }
+      if (existing) return;
+      const caption = document.createElement('span');
+      caption.className = 'kw-col-empty';
+      caption.textContent = 'No appointments';
+      caption.setAttribute('aria-hidden', 'true');
+      column.appendChild(caption);
+      added.push(caption);
+    });
+    return () => added.forEach((node) => node.remove());
+  }, [viewMode, isLoading, displayEvents, anchor]);
+
   // THE VIEWPORT OPENS ON THE WORK. rbc honours `scrollToTime` only on the
   // mount it happens to coincide with; this places the target hour at the top
   // of the scroll box deterministically on every view/date change. Purely a
@@ -518,6 +588,10 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
   };
 
   const onSelectEvent = (event: CalendarEvent) => {
+    if (event.overflow) {
+      setOverflowGroup(event.overflow);
+      return;
+    }
     if (moving?.id === event.id) {
       setMoving(null);
       return;
@@ -756,7 +830,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             // calendar-localizer.ts for why this is a second instance rather
             // than a global dayjs locale change.
             localizer={viewMode === 'week' ? weekCalendarLocalizer : localizer}
-            events={events}
+            events={displayEvents}
             date={grid.date}
             view={rbcView}
             // The Dates rbc hands back are PSEUDO-dates (clinic wall clock in
@@ -791,7 +865,9 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             getNow={() => clinicWallDate(new Date())}
             onSelectSlot={onSlot}
             onSelectEvent={onSelectEvent}
-            onDoubleClickEvent={(event: CalendarEvent) => permReschedule && setMoving(event.appointment)}
+            onDoubleClickEvent={(event: CalendarEvent) =>
+              !event.overflow && permReschedule && setMoving(event.appointment)
+            }
             onDrillDown={(value: Date) => {
               // A month cell click opens that DAY, which is what "+3 more"
               // means to somebody who clicked it. Plain dayjs — see onNavigate.
@@ -807,6 +883,18 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
               // The whole story is always one click away in the drawer, and
               // the tooltip carries it on hover for the impatient.
               event: ({ event }: { event: CalendarEvent }) => {
+                // The overflow tile — the mockup's "+ 2 more", carrying the
+                // bookings that would otherwise have been slivers.
+                if (event.overflow) {
+                  return (
+                    <Tooltip title={`${event.tooltip} — click to open`}>
+                      <div className="kw-calendar-event kw-ev-more">
+                        <span className="kw-ev-more-count">+{event.overflow.length}</span>
+                        <span className="kw-ev-more-word">more</span>
+                      </div>
+                    </Tooltip>
+                  );
+                }
                 const dot = (
                   <span
                     className="kw-event-dot"
@@ -930,6 +1018,9 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
               // the edge and the wash; the STATUS stays the dot beside its
               // word. Released bookings stay on the grid, struck through —
               // never hidden.
+              if (event.overflow) {
+                return { className: ' kw-ev--overflow', style: {} };
+              }
               const colour = getDoctorColor(event.appointment.staffId);
               const picked = moving?.id === event.id;
               return {
@@ -976,6 +1067,50 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
         />
       ) : null}
       </div>
+
+      {/* What the band could not show, in full: real times, real people, one
+          click to the booking itself. */}
+      <Modal
+        open={Boolean(overflowGroup)}
+        onCancel={() => setOverflowGroup(null)}
+        footer={null}
+        width={420}
+        title={`${overflowGroup?.length ?? 0} more at this time`}
+      >
+        <div className="kw-ev-more-list">
+          {(overflowGroup ?? []).map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              className="kw-ev-more-row"
+              onClick={() => {
+                setOverflowGroup(null);
+                setSelectedId(row.id);
+              }}
+            >
+              <span
+                className="kw-ev-more-edge"
+                style={{ background: getDoctorColor(row.appointment.staffId) }}
+                aria-hidden
+              />
+              <span className="kw-ev-more-time">{row.card.time}</span>
+              <span className="kw-ev-more-body">
+                <span className="kw-ev-more-name">{row.card.patient}</span>
+                <span className="kw-ev-more-meta">
+                  {[row.card.service, staffName(row.appointment.staffId)]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              </span>
+              <span
+                className="kw-event-dot"
+                style={{ background: statusDotColor(row.appointment.status) }}
+                aria-hidden
+              />
+            </button>
+          ))}
+        </div>
+      </Modal>
 
       <AppointmentDrawer
         appointmentId={selectedId}
