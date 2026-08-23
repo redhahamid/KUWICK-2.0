@@ -11,7 +11,9 @@ function createService() {
   const prisma = {
     staff: {
       create: jest.fn(),
-      findMany: jest.fn(),
+      // Creating a provider reads the tenant's existing calendar colours to
+      // pick the next unused one; an empty clinic is the sensible default.
+      findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn(),
       update: jest.fn(),
     },
@@ -22,6 +24,8 @@ function createService() {
       createMany: jest.fn(),
       findMany: jest.fn(),
     },
+    // Final-UAT — assertMayManageUsers reads the actor's capability roles.
+    staffRoleAssignment: { findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as TenantScopedPrismaClient;
   return { service: new StaffService(prisma), prisma };
 }
@@ -38,8 +42,9 @@ describe('StaffService', () => {
   it('create with no login fields creates a bare Staff record', async () => {
     const { service, prisma } = createService();
     (prisma.staff.create as jest.Mock).mockResolvedValue({ id: 'staff-1' });
+    (prisma.staff.findUnique as jest.Mock).mockResolvedValue({ id: 'staff-owner', role: Role.OWNER_ADMIN, active: true });
 
-    await withTenant(() => service.create({ role: Role.FRONT_DESK_CLINICAL_STAFF, fullName: 'Nurse Amy' }));
+    await asStaff('staff-owner', () => service.create({ role: Role.FRONT_DESK_CLINICAL_STAFF, fullName: 'Nurse Amy' }));
 
     expect(prisma.user.create).not.toHaveBeenCalled();
     expect(prisma.staff.create).toHaveBeenCalledWith({
@@ -52,8 +57,9 @@ describe('StaffService', () => {
     (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-password');
     (prisma.user.create as jest.Mock).mockResolvedValue({ id: 'user-1' });
     (prisma.staff.create as jest.Mock).mockResolvedValue({ id: 'staff-1', userId: 'user-1' });
+    (prisma.staff.findUnique as jest.Mock).mockResolvedValue({ id: 'staff-owner', role: Role.OWNER_ADMIN, active: true });
 
-    await withTenant(() =>
+    await asStaff('staff-owner', () =>
       service.create({
         role: Role.DOCTOR_RESIDENT,
         fullName: 'Dr. Amira Rahman',
@@ -67,8 +73,82 @@ describe('StaffService', () => {
       data: { tenantId: 'test-tenant', email: 'amira@clinic.test', passwordHash: 'hashed-password' },
     });
     expect(prisma.staff.create).toHaveBeenCalledWith({
-      data: { role: Role.DOCTOR_RESIDENT, fullName: 'Dr. Amira Rahman', userId: 'user-1', tenantId: 'test-tenant' },
+      data: {
+        role: Role.DOCTOR_RESIDENT,
+        fullName: 'Dr. Amira Rahman',
+        // First provider in an empty clinic gets the first curated colour.
+        calendarColor: '#0F6B78',
+        userId: 'user-1',
+        tenantId: 'test-tenant',
+      },
     });
+  });
+
+  it('creating a provider assigns the next UNUSED curated calendar colour and persists it', async () => {
+    const { service, prisma } = createService();
+    (prisma.staff.findUnique as jest.Mock).mockResolvedValue({ id: 'staff-owner', role: Role.OWNER_ADMIN, active: true });
+    // Teal and Emerald are already spoken for in this clinic.
+    (prisma.staff.findMany as jest.Mock).mockResolvedValue([
+      { calendarColor: '#0F6B78' },
+      { calendarColor: '#2F8B57' },
+    ]);
+    (prisma.staff.create as jest.Mock).mockResolvedValue({ id: 'staff-3' });
+
+    await asStaff('staff-owner', () =>
+      service.create({ role: Role.DOCTOR_LOCUM, fullName: 'Dr. Chong Wei Ling' }),
+    );
+
+    expect(prisma.staff.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ calendarColor: '#2E7BC4' }),
+    });
+  });
+
+  it('an explicitly chosen calendar colour wins over the auto-assignment', async () => {
+    const { service, prisma } = createService();
+    (prisma.staff.findUnique as jest.Mock).mockResolvedValue({ id: 'staff-owner', role: Role.OWNER_ADMIN, active: true });
+    (prisma.staff.create as jest.Mock).mockResolvedValue({ id: 'staff-4' });
+
+    await asStaff('staff-owner', () =>
+      service.create({ role: Role.DOCTOR_RESIDENT, fullName: 'Dr. Farid', calendarColor: '#B4506B' }),
+    );
+
+    expect(prisma.staff.findMany).not.toHaveBeenCalled();
+    expect(prisma.staff.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ calendarColor: '#B4506B' }),
+    });
+  });
+
+  it('a non-provider is not given a calendar colour — the diary has no column for them', async () => {
+    const { service, prisma } = createService();
+    (prisma.staff.findUnique as jest.Mock).mockResolvedValue({ id: 'staff-owner', role: Role.OWNER_ADMIN, active: true });
+    (prisma.staff.create as jest.Mock).mockResolvedValue({ id: 'staff-5' });
+
+    await asStaff('staff-owner', () =>
+      service.create({ role: Role.FINANCE_STAFF, fullName: 'Encik Rahim' }),
+    );
+
+    const data = (prisma.staff.create as jest.Mock).mock.calls[0][0].data;
+    expect(data.calendarColor).toBeUndefined();
+  });
+
+  it('recolouring a provider is presentation, not clinical identity — no professional audit row', async () => {
+    const { service, prisma } = createService();
+    (prisma.staff.findUnique as jest.Mock).mockResolvedValue({
+      id: 'staff-owner',
+      role: Role.OWNER_ADMIN,
+      active: true,
+      professionalType: 'MEDICAL_DOCTOR',
+      canSignClinicalNotes: true,
+    });
+    (prisma.staff.update as jest.Mock).mockResolvedValue({ id: 'doc-1', calendarColor: '#7A4FBF' });
+
+    await asStaff('staff-owner', () => service.update('doc-1', { calendarColor: '#7A4FBF' }));
+
+    expect(prisma.staff.update).toHaveBeenCalledWith({
+      where: { id: 'doc-1' },
+      data: expect.objectContaining({ calendarColor: '#7A4FBF' }),
+    });
+    expect(prisma.staffProfessionalAudit.createMany).not.toHaveBeenCalled();
   });
 
   it('create throws ConflictException when the login email is already used in this tenant', async () => {
@@ -80,9 +160,10 @@ describe('StaffService', () => {
         clientVersion: '5.0.0',
       }),
     );
+    (prisma.staff.findUnique as jest.Mock).mockResolvedValue({ id: 'staff-owner', role: Role.OWNER_ADMIN, active: true });
 
     await expect(
-      withTenant(() =>
+      asStaff('staff-owner', () =>
         service.create({
           role: Role.FRONT_DESK_CLINICAL_STAFF,
           fullName: 'Nurse Amy',
@@ -91,6 +172,15 @@ describe('StaffService', () => {
         }),
       ),
     ).rejects.toThrow(ConflictException);
+    expect(prisma.staff.create).not.toHaveBeenCalled();
+  });
+
+  it('FINAL-UAT: a non-owner cannot create staff accounts any more — the ungated hole is closed', async () => {
+    const { service, prisma } = createService();
+    (prisma.staff.findUnique as jest.Mock).mockResolvedValue({ id: 'staff-fd', role: Role.FRONT_DESK_CLINICAL_STAFF, active: true });
+    await expect(
+      asStaff('staff-fd', () => service.create({ role: Role.FRONT_DESK_CLINICAL_STAFF, fullName: 'Self Made' })),
+    ).rejects.toThrow(ForbiddenException);
     expect(prisma.staff.create).not.toHaveBeenCalled();
   });
 
@@ -266,7 +356,9 @@ describe('StaffService — professional identity permission + audit (C0 closure)
 
   it('writes no audit rows when a non-professional field changes', async () => {
     const { service, prisma } = createService();
-    (prisma.staff.findUnique as jest.Mock).mockResolvedValue({ ...subjectBefore, ...DOCTOR });
+    (prisma.staff.findUnique as jest.Mock).mockImplementation(({ where }: { where: { id: string } }) =>
+      Promise.resolve(where.id === 'staff-owner' ? OWNER : { ...subjectBefore, ...DOCTOR }),
+    );
     (prisma.staff.update as jest.Mock).mockImplementation(({ data }) =>
       Promise.resolve({ ...subjectBefore, ...DOCTOR, ...data }),
     );

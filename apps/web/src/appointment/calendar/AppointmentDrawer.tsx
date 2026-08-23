@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
   Alert,
-  Avatar,
   Button,
   Descriptions,
   Drawer,
@@ -31,7 +30,7 @@ import { AppointmentStatus } from '@kuwick/shared';
 import { KuwickStatusTag } from '../../design-system/kuwick';
 import { formatClinicDate, formatClinicDateTime, formatClinicTime } from '../../clinical/clinicTime';
 import { SOURCE_LABELS, type AppointmentSource } from '../types';
-import { paymentChip, sentence, statusChip } from '../appointment-presentation';
+import { bookingReference, paymentChip, sentence, statusChip } from '../appointment-presentation';
 import {
   ARRIVABLE_FROM_STATUSES,
   CHECK_IN_FROM_STATUSES,
@@ -53,7 +52,8 @@ import {
 import { CheckInRegistrationDrawer } from '../checkin/CheckInRegistrationDrawer';
 import { MessagePatientModal } from '../messages/MessagePatientModal';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
-import { getDoctorColor } from './doctor-color';
+import { providerColorFor } from './doctor-color';
+import { PersonAvatar } from '../shared/PersonAvatar';
 import { ApiError } from '../../core/api-client';
 
 const { Text, Paragraph } = Typography;
@@ -143,12 +143,34 @@ export function AppointmentDrawer({
   const isCompleted = status === AppointmentStatus.COMPLETED;
   const isReleased =
     status === AppointmentStatus.CANCELLED || status === AppointmentStatus.NO_SHOW;
-  const initials = (appointment?.patient.name ?? '')
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0] ?? '')
-    .join('')
-    .toUpperCase();
+  // Real, derived facts — not new data: the booked length in minutes, and
+  // whoever the FIRST recorded event names as having made the booking.
+  const durationWords = (() => {
+    if (!appointment) return '';
+    const minutes = Math.max(
+      0,
+      Math.round(
+        (new Date(appointment.scheduledEnd).getTime() -
+          new Date(appointment.scheduledStart).getTime()) /
+          60000,
+      ),
+    );
+    if (minutes < 60) return `${minutes} mins`;
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return rest === 0 ? `${hours} hr${hours === 1 ? '' : 's'}` : `${hours} hr ${rest} mins`;
+  })();
+  // The EARLIEST recorded event is the booking itself, whatever order the
+  // list arrives in — so "Created by" names the person who actually made it,
+  // never whoever happened to touch it last.
+  const createdBy = (() => {
+    const events = appointment?.events ?? [];
+    if (events.length === 0) return null;
+    const first = [...events].sort(
+      (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
+    )[0];
+    return first?.actorLabel ?? null;
+  })();
 
   // PHASE 8 — messaging goes through the template modal: the clinic's own
   // wording (or the defaults), rendered by the ONE renderer against the
@@ -262,23 +284,16 @@ export function AppointmentDrawer({
     <Drawer
       open={open}
       onClose={onClose}
-      width={440}
+      width="min(880px, 100vw)"
       rootClassName="kw-apt3-drawer"
       destroyOnHidden
       title={
         appointment ? (
-          <div className="kw-apt-head">
-            <Avatar size={40} className="kw-apt-avatar">
-              {initials}
-            </Avatar>
-            <div className="kw-apt-head-text">
-              <div className="kw-apt-head-name">{appointment.patient.name}</div>
-              <div className="kw-apt-head-meta">
-                {appointment.patient.identifierValue}
-                {appointment.patient.phone ? ` · ${appointment.patient.phone}` : ''}
-              </div>
-            </div>
-          </div>
+          // Approved mockup 8 — the BOOKING is the subject of this panel, so
+          // it is named first: the reference the clinic and the patient both
+          // quote, with the status beside it. The person moves into the
+          // identity block below, where the mockup puts them.
+          <span className="kw-apt-ref">Appointment #{bookingReference(appointment.id)}</span>
         ) : (
           'Appointment'
         )
@@ -378,7 +393,20 @@ export function AppointmentDrawer({
       {!isLoading && !appointment ? <Empty description="Appointment not found" /> : null}
 
       {appointment ? (
-        <div data-testid="appointment-drawer">
+        <div data-testid="appointment-drawer" className="kw-apt-detail">
+          {/* THE PATIENT — the identity block the mockup opens with. */}
+          <div className="kw-apt-head">
+            <PersonAvatar name={appointment.patient.name} size="lg" />
+            <div className="kw-apt-head-text">
+              <div className="kw-apt-head-name">{appointment.patient.name}</div>
+              <div className="kw-apt-head-meta">
+                {appointment.patient.identifierValue}
+                {appointment.patient.phone ? ` · ${appointment.patient.phone}` : ''}
+              </div>
+            </div>
+          </div>
+          <div className="kw-apt-detail-grid">
+          <div className="kw-apt-detail-main">
           {/* §21 — the three reaches a receptionist makes while the patient
               is still on the phone, one press from the header. Call only
               renders when there is a number to dial. */}
@@ -562,68 +590,105 @@ export function AppointmentDrawer({
             />
           </Modal>
 
-          {/* THE APPOINTMENT, said once and said big: when, what, with whom. */}
-          <div className="kw-apt-section">Booking</div>
-          <div className="kw-apt-summary">
-            <div className="kw-apt-when">
-              <div className="kw-apt-date">{formatClinicDate(appointment.scheduledStart)}</div>
-              <div className="kw-apt-time">
-                {formatClinicTime(appointment.scheduledStart)} –{' '}
-                {formatClinicTime(appointment.scheduledEnd)}
-              </div>
-            </div>
-            <div className="kw-apt-what">
-              <div className="kw-apt-service">{appointment.service.name}</div>
-              <div className="kw-apt-provider">
-                {/* The provider's identity dot — the same colour as their
-                    calendar edge and roster avatar. */}
-                <span
-                  aria-hidden
-                  style={{
-                    display: 'inline-block',
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    marginRight: 6,
-                    background: getDoctorColor(appointment.staffId),
-                  }}
-                />
-                {appointment.staff.fullName}
-              </div>
-            </div>
-          </div>
+          {/* THE BOOKING, GROUPED (approved decision 11).
+              Three short lists rather than one ten-row column: what the
+              appointment IS, where the booking came FROM, and what money and
+              messaging it carries. Grouping and typography do the separating
+              — no extra cards, because a card drawn to fill whitespace is
+              whitespace with a border. */}
+          <div className="kw-apt-groups">
+            <section className="kw-apt-group">
+              <div className="kw-apt-section">Appointment</div>
+              <Descriptions
+                className="kw-apt-facts"
+                column={1}
+                size="small"
+                colon={false}
+                styles={{ label: { width: 88 } }}
+              >
+                <Descriptions.Item label="Service">{appointment.service.name}</Descriptions.Item>
+                <Descriptions.Item label="Doctor">
+                  <span className="kw-apt-facts-person">
+                    <span
+                      aria-hidden
+                      className="kw-apt-facts-dot"
+                      style={{
+                        background: providerColorFor(
+                          appointment.staff.calendarColor,
+                          appointment.staffId,
+                        ).accent,
+                      }}
+                    />
+                    {appointment.staff.fullName}
+                  </span>
+                </Descriptions.Item>
+                <Descriptions.Item label="Date">
+                  {formatClinicDate(appointment.scheduledStart)}
+                </Descriptions.Item>
+                <Descriptions.Item label="Time">
+                  {formatClinicTime(appointment.scheduledStart)} –{' '}
+                  {formatClinicTime(appointment.scheduledEnd)}
+                </Descriptions.Item>
+                <Descriptions.Item label="Duration">{durationWords}</Descriptions.Item>
+                <Descriptions.Item label="Source">
+                  {SOURCE_LABELS[appointment.source as AppointmentSource] ?? appointment.source}
+                  {appointment.sourceDetail ? ` · ${appointment.sourceDetail}` : ''}
+                </Descriptions.Item>
+              </Descriptions>
+            </section>
 
-          <Descriptions
-            className="kw-apt-meta"
-            column={1}
-            size="small"
-            colon={false}
-            styles={{ label: { width: 110 } }}
-          >
-            <Descriptions.Item label="Booked">
-              {formatClinicDateTime(appointment.createdAt)} ·{' '}
-              {SOURCE_LABELS[appointment.source as AppointmentSource] ?? appointment.source}
-              {appointment.sourceDetail ? ` (${appointment.sourceDetail})` : ''}
-            </Descriptions.Item>
-            <Descriptions.Item label="Payment">
-              <KuwickStatusTag {...paymentChip(appointment.paymentStatus)} />
-              {Number(appointment.bookingFeeAmount) > 0
-                ? ` RM ${Number(appointment.bookingFeeAmount).toFixed(2)}`
-                : ''}
-            </Descriptions.Item>
-            {/* Worded as what was OBSERVED: WhatsApp was opened with the
-                message prefilled. A bare timestamp under "Reminder" read as
-                "reminder sent", which a wa.me open cannot prove. When a real
-                automated channel exists one day, IT may say Sent/Delivered —
-                this row, fed by the manual action, never will. */}
-            <Descriptions.Item label="Communication">
-              {appointment.reminderSentAt ? (
-                `WhatsApp opened · ${formatClinicDateTime(appointment.reminderSentAt)}`
-              ) : (
-                <Text type="secondary">—</Text>
-              )}
-            </Descriptions.Item>
-          </Descriptions>
+            <section className="kw-apt-group">
+              <div className="kw-apt-section">Booking</div>
+              <Descriptions
+                className="kw-apt-facts"
+                column={1}
+                size="small"
+                colon={false}
+                styles={{ label: { width: 88 } }}
+              >
+                {/* Derived from the appointment id — Kuwick has no dated
+                    booking sequence, and inventing one would be a number that
+                    means nothing. */}
+                <Descriptions.Item label="Reference">
+                  #{bookingReference(appointment.id)}
+                </Descriptions.Item>
+                <Descriptions.Item label="Created">
+                  {formatClinicDateTime(appointment.createdAt)}
+                </Descriptions.Item>
+                {createdBy ? (
+                  <Descriptions.Item label="Created by">{createdBy}</Descriptions.Item>
+                ) : null}
+              </Descriptions>
+            </section>
+
+            <section className="kw-apt-group">
+              <div className="kw-apt-section">Payment &amp; reminder</div>
+              <Descriptions
+                className="kw-apt-facts"
+                column={1}
+                size="small"
+                colon={false}
+                styles={{ label: { width: 88 } }}
+              >
+                <Descriptions.Item label="Payment">
+                  <KuwickStatusTag {...paymentChip(appointment.paymentStatus)} />
+                  {Number(appointment.bookingFeeAmount) > 0
+                    ? ` RM ${Number(appointment.bookingFeeAmount).toFixed(2)}`
+                    : ''}
+                </Descriptions.Item>
+                {/* Worded as what was OBSERVED: WhatsApp was opened with the
+                    message prefilled. A bare timestamp under "Reminder" read
+                    as "reminder sent", which a wa.me open cannot prove. */}
+                <Descriptions.Item label="Reminder">
+                  {appointment.reminderSentAt ? (
+                    `WhatsApp opened · ${formatClinicDateTime(appointment.reminderSentAt)}`
+                  ) : (
+                    <Text type="secondary">Not sent yet</Text>
+                  )}
+                </Descriptions.Item>
+              </Descriptions>
+            </section>
+          </div>
 
           {/* §21 — labelled sections instead of dividers: a quiet uppercase
               word above each block, so the drawer scans like a record card. */}
@@ -663,11 +728,16 @@ export function AppointmentDrawer({
             </>
           ) : null}
 
+          </div>
+
           {/* PHASE 5E — the ACTIVITY is part of the record, not a hidden
               tab: booked, reminded, requested, approved — chronological, in
               plain words, with who. The last few are always visible; the
               full history is one menu press away. Technical codes never
-              reach the screen (EVENT_WORDS, with a sentence-case fallback). */}
+              reach the screen (EVENT_WORDS, with a sentence-case fallback).
+              Mockup 8 gives it the panel's right-hand column, where it reads
+              as the booking's story beside the booking's facts. */}
+          <aside className="kw-apt-detail-side">
           <div className="kw-apt-section">Activity</div>
           <Timeline
             className="kw-apt-activity"
@@ -704,6 +774,9 @@ export function AppointmentDrawer({
               Show all {appointment.events.length} entries
             </Button>
           ) : null}
+
+          </aside>
+          </div>
 
           {/* Mounted only while open, so its data hooks (staff, panels) run
               only when the desk actually starts a registration. */}

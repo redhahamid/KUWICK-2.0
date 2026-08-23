@@ -8,8 +8,14 @@ import { useDefaultClinicId } from '../core/hooks/useClinicFilter';
 import { CreateStaffDto, Staff, UpdateStaffDto } from './types';
 import { ApiError } from '../core/api-client';
 import { PageHeader } from '../design-system/components/PageHeader';
+import { useCan } from '../core/hooks/useCan';
+import { StaffAccessDrawer } from './StaffAccessDrawer';
+import { ProviderColorPicker } from './ProviderColorPicker';
 
 const ROLE_OPTIONS = Object.values(Role).map((role) => ({ value: role, label: role }));
+
+/** The roles that get a column on the diary, and therefore a colour. */
+const PROVIDER_ROLES: Role[] = [Role.DOCTOR_RESIDENT, Role.DOCTOR_LOCUM];
 
 interface StaffFormValues extends CreateStaffDto {
   setupLogin?: boolean;
@@ -23,9 +29,26 @@ export function StaffPage() {
   const updateStaff = useUpdateStaff();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Staff | null>(null);
+  // Final-UAT — the Access drawer (capability roles, custom roles, grants).
+  const [accessFor, setAccessFor] = useState<Staff | null>(null);
+  const canManageUsers = useCan('users.manage');
   const [form] = Form.useForm<StaffFormValues>();
   const [editForm] = Form.useForm<UpdateStaffDto>();
   const setupLogin = Form.useWatch('setupLogin', form);
+  // The colour picker only appears for people who appear on the diary.
+  const newRole = Form.useWatch('role', form);
+  const editRole = Form.useWatch('role', editForm);
+
+  /** Which curated colours this clinic's other providers already hold. */
+  const colorsTaken = (exceptStaffId?: string): Record<string, string> => {
+    const map: Record<string, string> = {};
+    for (const member of staff ?? []) {
+      if (!member.calendarColor || member.id === exceptStaffId) continue;
+      if (!PROVIDER_ROLES.includes(member.role)) continue;
+      map[member.calendarColor.toUpperCase()] = member.fullName;
+    }
+    return map;
+  };
 
   // D-045 — only worth showing when there's actually more than one branch
   // to pick between; a single-clinic tenant has nothing to choose.
@@ -110,26 +133,39 @@ export function StaffPage() {
           {
             title: 'Actions',
             render: (_: unknown, record: Staff) => (
-              <Button
-                size="small"
-                icon={<EditOutlined />}
-                onClick={() => {
-                  setEditing(record);
-                  editForm.setFieldsValue({
-                    role: record.role,
-                    staffNumber: record.staffNumber ?? undefined,
-                    clinicId: record.clinicId ?? undefined,
-                    active: record.active,
-                    professionalType: record.professionalType,
-                    medicalRegistrationNo: record.medicalRegistrationNo ?? undefined,
-                    professionalActive: record.professionalActive,
-                    canSignClinicalNotes: record.canSignClinicalNotes,
-                  });
-                }}
-              />
+              <Space>
+                <Button
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={() => {
+                    setEditing(record);
+                    editForm.setFieldsValue({
+                      role: record.role,
+                      staffNumber: record.staffNumber ?? undefined,
+                      clinicId: record.clinicId ?? undefined,
+                      active: record.active,
+                      professionalType: record.professionalType,
+                      medicalRegistrationNo: record.medicalRegistrationNo ?? undefined,
+                      professionalActive: record.professionalActive,
+                      canSignClinicalNotes: record.canSignClinicalNotes,
+                      calendarColor: record.calendarColor ?? undefined,
+                    });
+                  }}
+                />
+                {canManageUsers ? (
+                  <Button size="small" onClick={() => setAccessFor(record)} data-testid="open-access">
+                    Access
+                  </Button>
+                ) : null}
+              </Space>
             ),
           },
         ]}
+      />
+      <StaffAccessDrawer
+        staffId={accessFor?.id ?? null}
+        staffName={accessFor?.fullName}
+        onClose={() => setAccessFor(null)}
       />
       <Drawer title="Add Staff" open={open} onClose={() => setOpen(false)} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ clinicId: defaultClinicId }}>
@@ -155,6 +191,15 @@ export function StaffPage() {
           <Form.Item name="staffNumber" label="Staff Number">
             <Input />
           </Form.Item>
+          {newRole && PROVIDER_ROLES.includes(newRole) ? (
+            <Form.Item
+              name="calendarColor"
+              label="Calendar colour"
+              tooltip="How this provider is identified on the diary — the edge on their appointment cards, their avatar and their column header. Leave it and Kuwick assigns the clinic's next unused colour."
+            >
+              <ProviderColorPicker taken={colorsTaken()} />
+            </Form.Item>
+          ) : null}
           <Form.Item name="setupLogin" valuePropName="checked" style={{ marginBottom: setupLogin ? 12 : 24 }}>
             <Checkbox>Set up login for this staff member</Checkbox>
           </Form.Item>
@@ -205,6 +250,15 @@ export function StaffPage() {
           <Form.Item name="active" label="Active" valuePropName="checked">
             <Switch />
           </Form.Item>
+          {editRole && PROVIDER_ROLES.includes(editRole) ? (
+            <Form.Item
+              name="calendarColor"
+              label="Calendar colour"
+              tooltip="How this provider is identified on the diary — the edge on their appointment cards, their avatar and their column header."
+            >
+              <ProviderColorPicker taken={colorsTaken(editing?.id)} />
+            </Form.Item>
+          ) : null}
 
           {/* C0 (D-051) — professional identity, separate from Role above.
               Clinical-note signing is derived from ALL of these, never from

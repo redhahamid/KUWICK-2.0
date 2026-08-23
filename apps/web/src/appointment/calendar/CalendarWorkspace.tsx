@@ -6,6 +6,7 @@ import {
   Button,
   DatePicker,
   Input,
+  Modal,
   Segmented,
   Select,
   Space,
@@ -13,7 +14,7 @@ import {
   Tooltip,
   message,
 } from 'antd';
-import { LeftOutlined, RightOutlined } from '@ant-design/icons';
+import { ClockCircleOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { AppointmentStatus } from '@kuwick/shared';
 import { useAppointments, useRescheduleAppointment } from '../hooks/useAppointments';
@@ -28,12 +29,15 @@ import { AppointmentDrawer } from './AppointmentDrawer';
 import { StaffBookingFlow } from '../StaffBookingFlow';
 import { CalendarMetrics } from './CalendarMetrics';
 import { CalendarViewMode, getCalendarRange, shiftAnchor, todayAnchor } from './calendar-range';
-import { calendarLocalizer as localizer } from './calendar-localizer';
+import { calendarLocalizer as localizer, weekCalendarLocalizer } from './calendar-localizer';
 import {
   CardModel,
+  capConcurrency,
   cardLines,
   cardModel,
   compactLine,
+  dateKeyOf,
+  monthDayComposition,
   defaultScrollOpening,
   displayBounds,
   gridDateAt,
@@ -41,12 +45,15 @@ import {
   isReleased,
   outsideDisplayCount,
   scrollToHour,
-  statusCardBackground,
   statusDotColor,
 } from './calendar-events';
 import { useBookingSettings } from '../hooks/useBookingSettings';
 import { SOURCE_LABELS, type AppointmentSource } from '../types';
-import { getDoctorColor } from './doctor-color';
+import { softTint } from './doctor-color';
+import { useProviderColors } from '../hooks/useProviderColors';
+import { PersonAvatar } from '../shared/PersonAvatar';
+import { ProviderRail, ProviderSidePanel } from './ProviderRail';
+import { CalendarEventCard } from './CalendarEventCard';
 import { useCan } from '../../core/hooks/useCan';
 import { ApiError } from '../../core/api-client';
 
@@ -54,6 +61,14 @@ import { ApiError } from '../../core/api-client';
 // dayjs FACADE without `.tz`. Handing rbc the timezone-extended dayjs made
 // its `merge()` shift every day-column's min/max by the browser's UTC offset
 // (23:00-previous-day wraps on any Malaysian device). See that module.
+
+/**
+ * How many LINES a month cell may draw — chips plus the overflow summary.
+ * Three is what a ~100px row holds under the date header; a fourth is where
+ * react-big-calendar starts truncating with its own "+N more" and the
+ * composition stops being ours.
+ */
+const MONTH_ROW_BUDGET = 3;
 
 const VIEW_OPTIONS: { label: string; value: CalendarViewMode }[] = [
   { label: 'Day', value: 'day' },
@@ -74,6 +89,12 @@ interface CalendarEvent {
   /** "09:00 Siti" — the narrow-column rendering (week/month). */
   compact: string;
   released: boolean;
+  /**
+   * Set only on the synthetic "+N more" tile: the bookings this band could
+   * not show at a readable width. They keep their real times and open from
+   * the tile — nothing is hidden from the desk, only from the pixels.
+   */
+  overflow?: CalendarEvent[];
 }
 
 interface CalendarWorkspaceProps {
@@ -83,16 +104,6 @@ interface CalendarWorkspaceProps {
 function isTypingTarget(target: EventTarget | null): boolean {
   const tag = (target as HTMLElement | null)?.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-}
-
-function initialsOf(name: string): string {
-  return name
-    .replace(/^Dr\.?\s+/i, '')
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0] ?? '')
-    .join('')
-    .toUpperCase();
 }
 
 /**
@@ -148,6 +159,11 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
 
   const reschedule = useRescheduleAppointment();
   const { data: staff } = useStaff();
+  // WHO IS THIS DOCTOR, IN COLOUR — the provider's own stored calendar
+  // colour where they have one, a stable curated fallback where they do not.
+  // One resolver for the whole workspace so a card's edge, its avatar, the
+  // rail and the column header can never disagree.
+  const providerColor = useProviderColors();
   const { data: services } = useServices();
   const { data: patients } = usePatients();
   // Phase 3B/3C — the branch's own calendar-display settings, the diary
@@ -252,6 +268,83 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
     serviceName,
     staffName,
   ]);
+
+  // READABLE OVERLAP (owner blocker). A week column is ~150px and a provider
+  // column ~250px, so the number of cards that can share a band before the
+  // text stops being text is small and known. Everything past it becomes one
+  // "+N more" tile — the same overflow the approved mockup draws — carrying
+  // the hidden bookings for the click. Month positions by DATE, not hour, and
+  // rbc's own popup already handles it there.
+  // MONTH — composed, not truncated (approved decision 6). Three
+  // representative bookings, live ones ranked ahead of cancelled, and the
+  // rest behind one honest overflow chip that says how many and how many of
+  // those were cancelled. Held separately from displayEvents because the
+  // date cell's own header reads the same composition for its count.
+  const monthDays = useMemo(
+    () => (viewMode === 'month' ? monthDayComposition(events, MONTH_ROW_BUDGET) : null),
+    [events, viewMode],
+  );
+
+  const displayEvents: CalendarEvent[] = useMemo(() => {
+    if (viewMode === 'month') {
+      if (!monthDays) return events;
+      const composed: CalendarEvent[] = [];
+      for (const day of monthDays.values()) {
+        composed.push(...day.shown);
+        if (day.hidden.length === 0) continue;
+        // The overflow chip takes the day's LAST start so the library's own
+        // chronological ordering puts it under the chips rather than among
+        // them — its text carries no time, so nothing is misstated.
+        const last = day.hidden.reduce(
+          (latest, row) => (row.start > latest ? row.start : latest),
+          day.hidden[0].start,
+        );
+        const releasedWord =
+          day.hiddenReleased > 0 ? ` · ${day.hiddenReleased} cancelled` : '';
+        composed.push({
+          ...day.hidden[0],
+          id: `month-overflow:${day.dateKey}`,
+          start: last,
+          end: last,
+          compact: `+${day.hidden.length} more${releasedWord}`,
+          tooltip: day.hidden
+            .map((row) => `${row.card.time} ${row.card.patient}`)
+            .join(' · '),
+          released: false,
+          overflow: day.hidden,
+        });
+      }
+      return composed;
+    }
+    const limit = viewMode === 'week' ? 2 : 3;
+    // Only the Providers view gives each doctor a column of their own; Day
+    // and Week draw them all into one. The cap has to be counted against the
+    // column a receptionist is actually looking at, or six doctors put
+    // eighteen cards in one band.
+    const { visible, overflow } = capConcurrency(events, limit, viewMode === 'providers');
+    if (overflow.length === 0) return events;
+    const tiles: CalendarEvent[] = overflow.map((bundle) => ({
+      id: bundle.id,
+      title: `${bundle.hidden.length} more`,
+      start: bundle.start,
+      end: bundle.end,
+      resourceId: bundle.resourceId ?? '',
+      // The tile borrows the first hidden booking's appointment so every
+      // accessor on the event stays defined; nothing reads it for display.
+      appointment: bundle.hidden[0].appointment,
+      card: bundle.hidden[0].card,
+      tooltip: bundle.hidden
+        .map((row) => `${row.card.time} ${row.card.patient}`)
+        .join(' · '),
+      compact: `+${bundle.hidden.length} more`,
+      released: false,
+      overflow: bundle.hidden,
+    }));
+    return [...visible, ...tiles];
+  }, [events, viewMode, monthDays]);
+
+  // The bookings behind a "+N more" tile, once somebody asks for them.
+  const [overflowGroup, setOverflowGroup] = useState<CalendarEvent[] | null>(null);
 
   // THE AXIS (Phase 3). A pure function of the branch's display settings and
   // the reveal toggle — shifts, dates and filters have no way in, so the
@@ -448,6 +541,34 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
     return () => window.clearInterval(timer);
   }, [viewMode, anchor, events, isLoading]);
 
+  // EMPTY COLUMNS SAY SO (approved mockup 2: "No appointments" down the quiet
+  // weekend columns). react-big-calendar has no per-column empty state, so
+  // this is applied DOM-side after render — the same technique the now-pill
+  // uses, and for the same reason: the caption belongs to a column the
+  // library owns. Presentation only; it reads what is on screen and adds a
+  // label, never a booking.
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || viewMode !== 'week' || isLoading) return;
+    const columns = grid.querySelectorAll<HTMLElement>('.rbc-time-content .rbc-day-slot');
+    const added: HTMLElement[] = [];
+    columns.forEach((column) => {
+      const existing = column.querySelector('.kw-col-empty');
+      if (column.querySelector('.rbc-event')) {
+        existing?.remove();
+        return;
+      }
+      if (existing) return;
+      const caption = document.createElement('span');
+      caption.className = 'kw-col-empty';
+      caption.textContent = 'No appointments';
+      caption.setAttribute('aria-hidden', 'true');
+      column.appendChild(caption);
+      added.push(caption);
+    });
+    return () => added.forEach((node) => node.remove());
+  }, [viewMode, isLoading, displayEvents, anchor]);
+
   // THE VIEWPORT OPENS ON THE WORK. rbc honours `scrollToTime` only on the
   // mount it happens to coincide with; this places the target hour at the top
   // of the scroll box deterministically on every view/date change. Purely a
@@ -527,6 +648,10 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
   };
 
   const onSelectEvent = (event: CalendarEvent) => {
+    if (event.overflow) {
+      setOverflowGroup(event.overflow);
+      return;
+    }
     if (moving?.id === event.id) {
       setMoving(null);
       return;
@@ -583,11 +708,44 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           />
           <span className="kw-cal-heading">{heading}</span>
         </Space>
-        <Segmented
-          value={viewMode}
-          options={VIEW_OPTIONS}
-          onChange={(value) => setViewMode(value as CalendarViewMode)}
-        />
+        <Space size={8}>
+          {/* THE HOURS CONTROL — secondary, and quiet by design.
+              This used to be a full-width yellow banner on every load, because
+              the axis is a pure function of the branch's stated hours (an
+              appointment-derived axis is the RC-blocker defect: it wrapped to
+              23:00 → next afternoon on Malaysian devices, and the axis test
+              pins its purity). A clinic whose seed puts a booking at 06:45 is
+              therefore permanently "out of hours" — which is worth a control,
+              not a warning. Nothing here changes booking, availability or
+              timezone logic; it moves the same reveal toggle out of the way. */}
+          {!is24hBranch && viewMode !== 'month' && (outsideCount > 0 || showFullDay) ? (
+            <Tooltip
+              title={
+                showFullDay
+                  ? 'Back to the clinic’s stated hours'
+                  : `${outsideCount} booking${outsideCount === 1 ? '' : 's'} sit outside ${String(bounds.startHour).padStart(2, '0')}:00–${String(bounds.endHour).padStart(2, '0')}:00. Show the full day to reach them.`
+              }
+            >
+              <Button
+                size="small"
+                icon={<ClockCircleOutlined />}
+                className="kw-cal-hours"
+                data-testid="calendar-outside-hours"
+                data-on={showFullDay || undefined}
+                onClick={() => setShowFullDay((current) => !current)}
+              >
+                {showFullDay
+                  ? 'Clinic hours'
+                  : `${outsideCount} outside hour${outsideCount === 1 ? '' : 's'}`}
+              </Button>
+            </Tooltip>
+          ) : null}
+          <Segmented
+            value={viewMode}
+            options={VIEW_OPTIONS}
+            onChange={(value) => setViewMode(value as CalendarViewMode)}
+          />
+        </Space>
       </div>
 
       {/* FILTER BAR — dense and intentional; the live counts close the row. */}
@@ -662,10 +820,6 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
-        <CalendarMetrics
-          appointments={events.map((event) => event.appointment)}
-          filtered={filtersActive}
-        />
       </div>
 
       {/* ACTIVE FILTERS SAID OUT LOUD (Phase 3H) — a diary quietly showing a
@@ -691,30 +845,6 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
         </div>
       ) : null}
 
-      {/* WHAT THE BAND CANNOT SHOW IS SAID (Phase 3D). Out-of-hours bookings
-          stay real: the strip counts them and opens the full day. */}
-      {!is24hBranch && (outsideCount > 0 || showFullDay) ? (
-        <div className="kw-cal-outside" data-testid="calendar-outside-hours">
-          {showFullDay ? (
-            <>
-              <span>Showing the full 24 hours.</span>
-              <Button size="small" onClick={() => setShowFullDay(false)}>
-                Back to clinic hours
-              </Button>
-            </>
-          ) : (
-            <>
-              <span>
-                {outsideCount} booking{outsideCount === 1 ? '' : 's'} outside the displayed hours.
-              </span>
-              <Button size="small" onClick={() => setShowFullDay(true)}>
-                Show full 24 hours
-              </Button>
-            </>
-          )}
-        </div>
-      ) : null}
-
       {moving ? (
         <Alert
           type="info"
@@ -725,6 +855,20 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
         />
       ) : null}
 
+      <div className="kw-cal-body">
+      {/* Target mockup 3 — the Providers view carries a person rail on the
+          left and a mini-calendar + day summary on the right, INSIDE the
+          module canvas. The rail drives the same providerFilter the filter
+          bar owns, so rail, chips and grid cannot disagree. */}
+      {viewMode === 'providers' && !isLoading ? (
+        <ProviderRail
+          providers={providers}
+          appointments={events.map((event) => event.appointment)}
+          selection={providerFilter}
+          onSelect={setProviderFilter}
+        />
+      ) : null}
+      <div className="kw-cal-main">
       <div
         className="kw-cal-outer"
         data-scroll={
@@ -737,6 +881,7 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           'kw-calendar-grid' +
           (viewMode === 'providers' && (resources?.length ?? 0) > 4 ? ' kw-calendar-grid--wide' : '')
         }
+        data-view={viewMode}
         style={{ ['--cal-cols' as string]: resources?.length ?? 0 }}
       >
         {isLoading ? (
@@ -745,8 +890,12 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           </div>
         ) : (
           <BigCalendar
-            localizer={localizer}
-            events={events}
+            // The WEEK view alone runs Monday → Sunday (approved mockup); the
+            // other views keep the Sunday-first localizer. See
+            // calendar-localizer.ts for why this is a second instance rather
+            // than a global dayjs locale change.
+            localizer={viewMode === 'week' ? weekCalendarLocalizer : localizer}
+            events={displayEvents}
             date={grid.date}
             view={rbcView}
             // The Dates rbc hands back are PSEUDO-dates (clinic wall clock in
@@ -781,7 +930,9 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
             getNow={() => clinicWallDate(new Date())}
             onSelectSlot={onSlot}
             onSelectEvent={onSelectEvent}
-            onDoubleClickEvent={(event: CalendarEvent) => permReschedule && setMoving(event.appointment)}
+            onDoubleClickEvent={(event: CalendarEvent) =>
+              !event.overflow && permReschedule && setMoving(event.appointment)
+            }
             onDrillDown={(value: Date) => {
               // A month cell click opens that DAY, which is what "+3 more"
               // means to somebody who clicked it. Plain dayjs — see onNavigate.
@@ -789,6 +940,17 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
               setViewMode('day');
             }}
             messages={{ showMore: (count: number) => `+ ${count} more` }}
+            // The mockup's gutter reads "8 AM", not "08:00 AM" every half
+            // hour. The half-hour labels are hidden in CSS; this is the
+            // wording of the ones that remain. Clinic clock, as everywhere.
+            formats={{
+              // Every label stays FULLY QUALIFIED (meridiem included) so the
+              // axis walk can still read and order all of them; the half-hour
+              // rows are hidden visually in CSS, which is a display decision,
+              // not a data one.
+              timeGutterFormat: (date: Date) =>
+                dayjs(date).format(dayjs(date).minute() === 0 ? 'h A' : 'h:mm A'),
+            }}
             slotPropGetter={slotPropGetter}
             dayPropGetter={dayPropGetter}
             components={{
@@ -797,121 +959,164 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
               // The whole story is always one click away in the drawer, and
               // the tooltip carries it on hover for the impatient.
               event: ({ event }: { event: CalendarEvent }) => {
-                const dot = (
-                  <span
-                    className="kw-event-dot"
-                    style={{ background: statusDotColor(event.appointment.status) }}
-                    aria-hidden
+                // The overflow tile — the mockup's "+ 2 more", carrying the
+                // bookings that would otherwise have been slivers.
+                if (event.overflow) {
+                  // In MONTH the overflow is a line of type under the chips —
+                  // "+21 more · 2 cancelled" — because the cell's job is to
+                  // say how heavy the day is, and a stacked tile would eat a
+                  // chip's worth of height to say less.
+                  if (viewMode === 'month') {
+                    return (
+                      <Tooltip title={`${event.tooltip} — click to open`}>
+                        <div className="kw-calendar-event kw-evchip kw-evchip--more">
+                          {event.compact}
+                        </div>
+                      </Tooltip>
+                    );
+                  }
+                  return (
+                    <Tooltip title={`${event.tooltip} — click to open`}>
+                      <div className="kw-ev-more" role="button" tabIndex={0}>
+                        <span className="kw-ev-more-count">+{event.overflow.length}</span>
+                        <span className="kw-ev-more-word">more</span>
+                      </div>
+                    </Tooltip>
+                  );
+                }
+                // The CARD is a Kuwick component (CalendarEventCard); the
+                // library keeps only the geometry. Month cells are dates
+                // rather than hours, so they take the one-line chip.
+                return (
+                  <CalendarEventCard
+                    card={event.card}
+                    status={event.appointment.status}
+                    color={providerColor(event.appointment.staffId)}
+                    providerName={staffName(event.appointment.staffId)}
+                    compact={viewMode === 'month'}
+                    compactLine={event.compact}
+                    tooltip={event.tooltip}
+                    // Day and the single-provider workspace give a card the
+                    // full width of the column; the card composes ACROSS
+                    // there instead of stacking, so a 30-minute booking reads
+                    // as a row and not as a banner.
+                    wide={viewMode === 'day' || viewMode === 'providers'}
+                    showProvider={viewMode !== 'providers'}
                   />
                 );
-                // Every card carries BOTH bodies; the stylesheet's container
-                // query shows the one the card's real width can hold, so an
-                // overlap squeeze degrades by design instead of clipping
-                // (V3.1 §5). Week/month and 15-minute cards start compact.
-                const compactMode =
-                  viewMode === 'week' || viewMode === 'month' || event.card.compact;
-                const [timePart, ...nameParts] = event.compact.split(' ');
-                return (
-                  <Tooltip title={`${event.tooltip} — double-click to move`}>
-                    <div
-                      className={
-                        'kw-calendar-event ' + (compactMode ? 'kw-ev--compact' : 'kw-ev--full')
-                      }
-                    >
-                      <span className="kw-event-compact">
-                        <span className="kw-ec-time">
-                          {dot}
-                          {timePart}
+              },
+              // THE MONTH DATE CELL (approved decision 6). The date, and the
+              // day's real appointment count beside it — counted from the
+              // appointments already on screen, never modelled. A day with
+              // nothing booked says nothing rather than "0".
+              month: {
+                dateHeader: ({
+                  date,
+                  label,
+                  onDrillDown,
+                }: {
+                  date: Date;
+                  label: React.ReactNode;
+                  onDrillDown?: (event: React.MouseEvent) => void;
+                }) => {
+                  const day = monthDays?.get(dateKeyOf(date));
+                  const total = day?.total ?? 0;
+                  return (
+                    <div className="kw-month-datehead">
+                      {/* Still the library's drill-down link: clicking a date
+                          opens that day. Replacing the header must not cost
+                          the navigation it carried. */}
+                      <button
+                        type="button"
+                        className="rbc-button-link kw-month-date"
+                        onClick={onDrillDown}
+                      >
+                        {label}
+                      </button>
+                      {total > 0 ? (
+                        <span className="kw-month-load">
+                          {total} appointment{total === 1 ? '' : 's'}
                         </span>
-                        <span className="kw-ec-name">{nameParts.join(' ')}</span>
-                      </span>
-                      {!compactMode ? (
-                        <div className="kw-event-full">
-                          {/* 3F — a 30-minute card holds exactly two lines,
-                              so time and name share the first (dense) while
-                              taller cards give each its own. */}
-                          {event.card.dense ? (
-                            <div className="kw-event-lead">
-                              <span className="kw-event-time">
-                                {dot}
-                                {event.card.time}
-                              </span>
-                              <span className="kw-event-patient">{event.card.patient}</span>
-                            </div>
-                          ) : (
-                            <>
-                              <span className="kw-event-time">
-                                {dot}
-                                {event.card.time}
-                              </span>
-                              <div className="kw-event-patient">{event.card.patient}</div>
-                            </>
-                          )}
-                          {event.card.service ? (
-                            <div className="kw-event-secondary">{event.card.service}</div>
-                          ) : null}
-                          {event.card.provider && viewMode !== 'providers' ? (
-                            <div className="kw-event-secondary">{event.card.provider}</div>
-                          ) : null}
-                        </div>
                       ) : null}
                     </div>
-                  </Tooltip>
-                );
+                  );
+                },
               },
               // Week headers: small-caps weekday over the date numeral, today
               // in a filled ink circle.
               week: {
                 header: ({ date }: { date: Date }) => {
+                  // Mockup 2 — "Mon 17" reads as one horizontal token, and
+                  // today wears a filled navy pill around the whole thing.
                   const day = dayjs(date);
                   const isToday = day.isSame(dayjs(todayWall), 'day');
                   return (
                     <div className="kw-cal-dayhead" data-today={isToday || undefined}>
-                      <span className="kw-cal-dayhead-dow">{day.format('ddd')}</span>
-                      <span className="kw-cal-dayhead-num">{day.format('D')}</span>
+                      <span className="kw-cal-dayhead-pill">
+                        <span className="kw-cal-dayhead-dow">{day.format('ddd')}</span>
+                        <span className="kw-cal-dayhead-num">{day.format('D')}</span>
+                      </span>
                     </div>
                   );
                 },
               },
               // The provider column header is a person, not a string: the
-              // initial in the provider's own calendar colour is the same
-              // identity cue every card's left edge already carries.
+              // shared avatar in the provider's own calendar colour is the
+              // same identity cue every card's left edge already carries, and
+              // the count says how heavy the column is before it is read.
               resourceHeader: ({ label, resource }: { label: React.ReactNode; resource?: { resourceId?: string } }) => {
                 const id = resource?.resourceId ? String(resource.resourceId) : '';
                 const name = String(label ?? '');
+                const count = events.filter((event) => event.resourceId === id).length;
                 return (
                   <div className="kw-provider-head">
-                    <span
-                      className="kw-provider-avatar"
-                      style={id ? { background: getDoctorColor(id) } : undefined}
-                      aria-hidden
-                    >
-                      {initialsOf(name)}
-                    </span>
+                    <PersonAvatar name={name} color={providerColor(id)} size="sm" />
                     {/* Native title: the full name survives the ellipsis. */}
                     <span className="kw-provider-name" title={name}>
                       {name}
                     </span>
+                    <span className="kw-provider-headcount">{count}</span>
                   </div>
                 );
               },
             }}
             eventPropGetter={(event: CalendarEvent) => {
-              const colour = getDoctorColor(event.appointment.staffId);
+              // Final visual pass — the outer rbc-event is now only the
+              // POSITIONING box; the visible card is the inner
+              // .kw-calendar-event, which is what lets consecutive bookings
+              // breathe apart (mockup 2's separated cards) instead of
+              // touching. Colour travels as CSS variables so the stylesheet
+              // can decide per view: white cards in the day/provider columns,
+              // the provider's soft wash in week and month. The PROVIDER is
+              // the edge and the wash; the STATUS stays the dot beside its
+              // word. Released bookings stay on the grid, struck through —
+              // never hidden.
+              if (event.overflow) {
+                return { className: ' kw-ev--overflow', style: {} };
+              }
+              const identity = providerColor(event.appointment.staffId);
               const picked = moving?.id === event.id;
+              // NO MIN-HEIGHT. A card's height is its DURATION, and nothing
+              // else: the calendar is a time instrument first, and borrowing
+              // empty grid to fit another line makes a 15-minute booking read
+              // as 25. A truncated short card is the honest answer; the
+              // tooltip, the drawer and the "+N more" list carry the rest.
               return {
+                className:
+                  (event.released ? ' kw-ev--released' : '') +
+                  (picked ? ' kw-ev--picked' : ''),
                 style: {
-                  // The PROVIDER is the 3px edge; the STATUS is the dot on the
-                  // card and the word in the drawer. Released bookings stay on
-                  // the grid, struck through — never hidden.
-                  background: event.released
-                    ? '#f5f6f8'
-                    : statusCardBackground(event.appointment.status),
-                  borderLeft: `3px solid ${event.released ? '#98a2b3' : colour}`,
-                  color: '#172033',
-                  opacity: event.released ? 0.62 : 1,
-                  textDecoration: event.released ? 'line-through' : undefined,
-                  outline: picked ? '2px dashed #132447' : undefined,
+                  ['--ev-edge' as string]: event.released ? '#98a2b3' : identity.accent,
+                  // The provider's pastel — a GUTTER and a month chip ground,
+                  // never a body fill. Which of the three the view actually
+                  // spends is the stylesheet's decision.
+                  ['--ev-pastel' as string]: event.released ? '#f2f4f7' : identity.pastel,
+                  // The week's whisper: the same hue at ~4%, deliberately
+                  // weaker than the pastel so a full column stays neutral.
+                  ['--ev-wash' as string]: event.released
+                    ? '#fafbfc'
+                    : softTint(identity.accent, 0.045),
+                  ['--ev-text' as string]: event.released ? '#667085' : identity.text,
                 },
               };
             }}
@@ -920,6 +1125,90 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
         )}
       </div>
       </div>
+      {/* Mockup 1/2 — the status summary bar closes the calendar canvas: the
+          same live counts as the filter-bar strip, said once more where the
+          eye rests after reading the grid. */}
+      {!isLoading ? (
+        <div className="kw-cal-statusbar">
+          {/* THE THIRD LEVEL of the toolbar hierarchy, and deliberately not
+              in the toolbar. Primary navigation and the filters compete for
+              the top of the screen; the operational summary does not need to
+              join that fight, and the approved mockup puts it exactly here —
+              closing the canvas, where the eye rests after reading the grid.
+              Said once now, rather than twice. */}
+          <CalendarMetrics
+            appointments={events.map((event) => event.appointment)}
+            filtered={filtersActive}
+            bar
+          />
+        </div>
+      ) : null}
+      </div>
+      {viewMode === 'providers' && !isLoading ? (
+        <ProviderSidePanel
+          clinicId={clinicId}
+          providers={providers}
+          appointments={events.map((event) => event.appointment)}
+          shifts={shifts ?? []}
+          rangeFrom={range.start.format('YYYY-MM-DD')}
+          rangeTo={range.end.format('YYYY-MM-DD')}
+          selection={providerFilter}
+          anchor={anchor}
+          onPickDate={setAnchor}
+        />
+      ) : null}
+      </div>
+
+      {/* What the band could not show, in full: real times, real people, one
+          click to the booking itself. */}
+      <Modal
+        open={Boolean(overflowGroup)}
+        onCancel={() => setOverflowGroup(null)}
+        footer={null}
+        width={420}
+        title={`${overflowGroup?.length ?? 0} more in this time band`}
+      >
+        <div className="kw-ev-more-list">
+          {(overflowGroup ?? []).map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              className="kw-ev-more-row"
+              onClick={() => {
+                setOverflowGroup(null);
+                setSelectedId(row.id);
+              }}
+            >
+              <span
+                className="kw-ev-more-edge"
+                style={{ background: providerColor(row.appointment.staffId).accent }}
+                aria-hidden
+              />
+              {/* The TRUE time, both ends of it. This list is where a
+                  receptionist goes when the band could not draw everything,
+                  so it is the one place a start on its own is not enough. */}
+              <span className="kw-ev-more-time">
+                {formatClinicTime(row.appointment.scheduledStart)}
+                <span aria-hidden> – </span>
+                {formatClinicTime(row.appointment.scheduledEnd)}
+              </span>
+              <span className="kw-ev-more-body">
+                <span className="kw-ev-more-name">{row.card.patient}</span>
+                <span className="kw-ev-more-meta">
+                  {[row.card.service, staffName(row.appointment.staffId)]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              </span>
+              <span
+                className="kw-event-dot"
+                style={{ background: statusDotColor(row.appointment.status) }}
+                aria-hidden
+              />
+            </button>
+          ))}
+        </div>
+      </Modal>
 
       <AppointmentDrawer
         appointmentId={selectedId}

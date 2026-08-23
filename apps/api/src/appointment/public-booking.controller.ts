@@ -38,6 +38,22 @@ export class PublicBookingController {
     return this.booking.availabilityForToken(slug, token, date);
   }
 
+  /**
+   * Final-UAT — the reschedule calendar's month heat map, scoped by the
+   * manage token. Cacheable for a minute: a heat map may be sixty seconds
+   * stale; the slot grid and the write stay exact.
+   */
+  @Get(':slug/manage/:token/month-availability')
+  async monthAvailabilityForToken(
+    @Param('slug') slug: string,
+    @Param('token') token: string,
+    @Query('month') month: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    res.set('Cache-Control', 'public, max-age=60');
+    return this.booking.monthAvailabilityForToken(slug, token, month);
+  }
+
   @Patch(':slug/manage/:token/reschedule')
   rescheduleByToken(
     @Param('slug') slug: string,
@@ -69,6 +85,23 @@ export class PublicBookingController {
     @Query('staffId') staffId?: string,
   ) {
     return this.booking.availabilityFor(slug, { serviceId, date, staffId });
+  }
+
+  /**
+   * Final-UAT — one month of per-day availability for the colour-coded date
+   * step, aggregated from the same engine the slot grid asks. See the
+   * token variant above for the cache rationale.
+   */
+  @Get(':slug/month-availability')
+  async monthAvailability(
+    @Param('slug') slug: string,
+    @Query('serviceId') serviceId: string,
+    @Query('month') month: string,
+    @Res({ passthrough: true }) res: Response,
+    @Query('staffId') staffId?: string,
+  ) {
+    res.set('Cache-Control', 'public, max-age=60');
+    return this.booking.monthAvailability(slug, { serviceId, month, staffId });
   }
 
   /**

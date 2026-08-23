@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Typography } from 'antd';
 import { AppointmentStatus } from '@kuwick/shared';
 import { Appointment } from '../types';
+import { METRIC_COLORS } from '../shared/appointment-colors';
 
 const { Text } = Typography;
 
@@ -25,9 +26,15 @@ const { Text } = Typography;
 export function CalendarMetrics({
   appointments,
   filtered = false,
+  bar = false,
 }: {
   appointments: Appointment[];
   filtered?: boolean;
+  /**
+   * The mockup's status-summary bar under the grid — now the ONLY place
+   * these counts are rendered. Presentation only.
+   */
+  bar?: boolean;
 }) {
   const counts = useMemo(() => {
     const tally = {
@@ -65,15 +72,24 @@ export function CalendarMetrics({
   // The dot previews the status tone; the word beside it carries the meaning
   // (colour never alone). Muted dots for zero counts keep the row calm.
   const items: { label: string; value: number; dot: string }[] = [
-    { label: 'Booked', value: counts.booked, dot: '#1d4ed8' },
-    { label: 'Arrived', value: counts.arrived, dot: '#d97706' },
-    { label: 'Waiting', value: counts.waiting, dot: '#0f6b78' },
-    { label: 'Completed', value: counts.completed, dot: '#16a34a' },
-    { label: 'No-show', value: counts.noShow, dot: '#b42318' },
+    { label: 'Booked', value: counts.booked, dot: METRIC_COLORS.booked },
+    { label: 'Arrived', value: counts.arrived, dot: METRIC_COLORS.arrived },
+    { label: 'Waiting', value: counts.waiting, dot: METRIC_COLORS.waiting },
+    { label: 'Completed', value: counts.completed, dot: METRIC_COLORS.completed },
+    { label: 'No-show', value: counts.noShow, dot: METRIC_COLORS.noShow },
   ];
 
   return (
-    <div className="kw-calendar-metrics" data-testid="calendar-metrics">
+    <div
+      className={'kw-calendar-metrics' + (bar ? ' kw-calendar-metrics--bar' : '')}
+      // ONE instance now — the summary bar under the grid. The filter row
+      // used to carry a second copy of these counts and they competed with the
+      // controls beside them; the operational summary does not need to fight
+      // the filters for the top of the screen. The testid travels with the
+      // strip that survived, so what the walk asserts is still what the
+      // receptionist reads.
+      data-testid="calendar-metrics"
+    >
       {filtered ? <span className="kw-metric-filtered">Filtered</span> : null}
       {items.map((item) => (
         <span key={item.label} className="kw-metric">

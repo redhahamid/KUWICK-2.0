@@ -10,12 +10,24 @@ import {
   Select,
   Skeleton,
   Space,
+  Tabs,
   Tooltip,
   Typography,
   message,
 } from 'antd';
-import { EditOutlined } from '@ant-design/icons';
+import {
+  CalendarOutlined,
+  ClockCircleOutlined,
+  CreditCardOutlined,
+  EditOutlined,
+  FileTextOutlined,
+  HomeOutlined,
+  MedicineBoxOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { KuwickStatusTag } from '../../design-system/kuwick';
+import { PersonAvatar } from '../shared/PersonAvatar';
 import { formatClinicDate, formatClinicDateTime, formatClinicTime } from '../../clinical/clinicTime';
 import { usePanelClinics, useUpdatePanelClinic } from '../../clinical/hooks/usePanelClinics';
 import { useStaff } from '../../hr/hooks/useStaff';
@@ -26,6 +38,13 @@ import { useAppointmentDetail } from '../hooks/useAppointmentDetail';
 import { useCheckInAppointment } from '../hooks/useAppointments';
 import { bookingReference, paymentChip, sentence } from '../appointment-presentation';
 import { SOURCE_LABELS, type AppointmentSource } from '../types';
+import { PatientDetailsSection } from './PatientDetailsSection';
+import {
+  AllergyBadge,
+  ClinicalContextPanel,
+  VisitHistoryLine,
+  useCheckInContext,
+} from './CheckInClinicalContext';
 
 const { Text } = Typography;
 
@@ -73,6 +92,8 @@ export function CheckInRegistrationDrawer({
   // Which appointment the form state describes — a drawer reopened on a
   // different booking must not carry the previous patient's payer choice.
   const [seededFor, setSeededFor] = useState<string>();
+  // Approved mockup 5 — Patient Details | Visit Info, Patient Details first.
+  const [tab, setTab] = useState<'patient' | 'visit'>('patient');
 
   useEffect(() => {
     if (!appointment || appointment.id === seededFor) return;
@@ -82,6 +103,7 @@ export function CheckInRegistrationDrawer({
     setPanelId(undefined);
     setRemarks(appointment.patientNote ?? appointment.notes ?? '');
     setEditingLimit(false);
+    setTab('patient');
   }, [appointment, seededFor]);
 
   const selectedPanel = panels?.find((panel) => panel.id === panelId);
@@ -136,19 +158,57 @@ export function CheckInRegistrationDrawer({
     }
   };
 
+  // Real facts only on the identity header: the age comes from the recorded
+  // date of birth.
+  const age = appointment?.patient.dob
+    ? Math.max(0, dayjs().diff(dayjs(appointment.patient.dob), 'year'))
+    : null;
+
+  // READ-ONLY clinical context — allergies, standing alerts, and whether this
+  // person has been here before. Every value comes from the canonical stores
+  // that already own it (the b1.5 alert table and the visit history); nothing
+  // is copied into the demographic record. See CheckInClinicalContext.tsx.
+  const context = useCheckInContext(appointment?.patient.id);
+
+  // TABS MUST NOT HIDE AN UNANSWERED QUESTION (owner's instruction). The
+  // check-in rule is unchanged — a panel payer needs its panel named — but
+  // now that the payer lives behind a tab, an incomplete Visit Info is SAID
+  // on whichever tab the desk is looking at, with the way to it, and the
+  // primary action stays refused until it is answered.
+  const visitIncomplete = payerKind === 'panel' && !panelId;
+
   return (
     <Drawer
       open={Boolean(appointmentId)}
       onClose={onClose}
-      width={470}
+      width="min(780px, 100vw)"
       rootClassName="kw-apt3-drawer"
       destroyOnHidden
       title="Register / Check in"
       footer={
         appointment ? (
-          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+          <div className="kw-checkin-footer">
+            {visitIncomplete ? (
+              <span className="kw-checkin-missing" data-testid="checkin-incomplete">
+                Panel payer selected — name the panel under Visit Info.
+                <Button size="small" type="link" onClick={() => setTab('visit')}>
+                  Go to Visit Info
+                </Button>
+              </span>
+            ) : (
+              <span />
+            )}
+          <Space>
             <Button onClick={onClose}>Cancel</Button>
-            <Tooltip title={permCheckIn ? undefined : permissionHint('check a patient in')}>
+            <Tooltip
+              title={
+                !permCheckIn
+                  ? permissionHint('check a patient in')
+                  : visitIncomplete
+                    ? 'Name the panel under Visit Info first.'
+                    : undefined
+              }
+            >
               <Button
                 type="primary"
                 loading={checkIn.isPending}
@@ -160,63 +220,171 @@ export function CheckInRegistrationDrawer({
               </Button>
             </Tooltip>
           </Space>
+          </div>
         ) : null
       }
     >
       {isLoading ? <Skeleton active paragraph={{ rows: 10 }} /> : null}
 
       {appointment ? (
-        <div data-testid="checkin-registration-drawer">
-          {/* THE APPOINTMENT — what was booked, read-only. */}
-          <div className="kw-apt-section">Appointment</div>
-          <Descriptions column={1} size="small" colon={false} styles={{ label: { width: 110 } }}>
-            <Descriptions.Item label="Service">{appointment.service.name}</Descriptions.Item>
-            <Descriptions.Item label="Booked for">
-              {formatClinicDate(appointment.scheduledStart)} ·{' '}
-              {formatClinicTime(appointment.scheduledStart)} –{' '}
-              {formatClinicTime(appointment.scheduledEnd)}
-            </Descriptions.Item>
-            <Descriptions.Item label="Booked with">{appointment.staff.fullName}</Descriptions.Item>
-            <Descriptions.Item label="Source">
-              {SOURCE_LABELS[appointment.source as AppointmentSource] ?? sentence(appointment.source)}
-            </Descriptions.Item>
-            <Descriptions.Item label="Reference">
-              {bookingReference(appointment.id)}
-            </Descriptions.Item>
-          </Descriptions>
+        <div data-testid="checkin-registration-drawer" className="kw-checkin-grid">
+          {/* THE IDENTITY RAIL (target mockup 5) — who is standing at the
+              counter and what they came for, read at a glance: the avatar,
+              the name, the recorded phone and age, then the appointment as
+              icon rows. Same facts the old Appointment table carried;
+              recomposed, not reinvented. */}
+          <aside className="kw-checkin-identity">
+            {/* THE RECEPTION HEADER — who is at the counter, and whether the
+                clinic has seen them before. Compact by design: the old rail
+                spent an XL monogram and ~380px of empty space saying less. */}
+            <div className="kw-checkin-id-head-row">
+              <PersonAvatar name={appointment.patient.name} size="lg" />
+              <div className="kw-checkin-id-head-text">
+                <div className="kw-checkin-id-name">{appointment.patient.name}</div>
+                <VisitHistoryLine context={context} />
+              </div>
+            </div>
 
-          {/* THE PATIENT — matched to the record on file; nothing re-typed. */}
-          <div className="kw-apt-section">Patient</div>
-          <Descriptions column={1} size="small" colon={false} styles={{ label: { width: 110 } }}>
-            <Descriptions.Item label="Name">
-              {appointment.patient.name}{' '}
-              <KuwickStatusTag tone="success" label="On file" />
-            </Descriptions.Item>
-            <Descriptions.Item label={sentence(appointment.patient.identifierType ?? 'ID')}>
-              {appointment.patient.identifierValue || <Text type="secondary">—</Text>}
-            </Descriptions.Item>
-            <Descriptions.Item label="Mobile">
-              {appointment.patient.phone ?? <Text type="secondary">—</Text>}
-            </Descriptions.Item>
-            <Descriptions.Item label="Date of birth">
-              {appointment.patient.dob ? (
-                formatClinicDate(appointment.patient.dob)
-              ) : (
-                <Text type="secondary">—</Text>
-              )}
-            </Descriptions.Item>
-            <Descriptions.Item label="Sex">
+            {/* PATIENT — the identifiers reception verifies against a card.
+                NRIC is tabular and never wraps: half an identity number on
+                one line and half on the next is unreadable at a counter. */}
+            <dl className="kw-checkin-id-facts">
+              <div>
+                <dt>{appointment.patient.identifierType === 'PASSPORT' ? 'Passport' : 'NRIC'}</dt>
+                <dd className="kw-checkin-id-nric">{appointment.patient.identifierValue || '—'}</dd>
+              </div>
+              <div>
+                <dt>Mobile</dt>
+                <dd>{appointment.patient.phone || '—'}</dd>
+              </div>
+              <div>
+                <dt>Date of birth</dt>
+                <dd>
+                  {appointment.patient.dob
+                    ? `${formatClinicDate(appointment.patient.dob)}${age != null ? ` · ${age}y` : ''}`
+                    : age != null
+                      ? `${age} years old`
+                      : '—'}
+                </dd>
+              </div>
+              {/* Recorded sex, shown as plain metadata where it is useful and
+                  unambiguous (decision 1). Never inferred, never a colour,
+                  never a silhouette — and absent when the record is silent. */}
               {appointment.patient.gender ? (
-                sentence(appointment.patient.gender)
-              ) : (
-                <Text type="secondary">—</Text>
-              )}
-            </Descriptions.Item>
-            <Descriptions.Item label="Address">
-              {appointment.patient.address ?? <Text type="secondary">—</Text>}
-            </Descriptions.Item>
-          </Descriptions>
+                <div>
+                  <dt>Sex</dt>
+                  <dd>{sentence(appointment.patient.gender)}</dd>
+                </div>
+              ) : null}
+            </dl>
 
+            {/* SAFETY — allergies and standing alerts, above the fold and
+                visible from BOTH tabs. An allergy behind a tab is an allergy
+                nobody read. Ownership is unchanged: these are read from the
+                patient's canonical alert store, never copied into it. */}
+            <div className="kw-checkin-id-safety">
+              <div className="kw-apt3-eyebrow">Safety</div>
+              <AllergyBadge context={context} />
+              {context.important.length > 0 ? (
+                <ul className="kw-checkin-id-alerts">
+                  {context.important.map((alert) => (
+                    <li key={alert.id}>{alert.label}</li>
+                  ))}
+                </ul>
+              ) : (
+                <span className="kw-checkin-id-none">No standing alerts recorded</span>
+              )}
+            </div>
+
+            <div className="kw-checkin-id-block">
+              <div className="kw-apt3-eyebrow">Appointment</div>
+              <div className="kw-checkin-id-rows">
+                <span>
+                  <MedicineBoxOutlined /> {appointment.service.name}
+                </span>
+                <span>
+                  <UserOutlined /> {appointment.staff.fullName}
+                </span>
+                <span>
+                  <CalendarOutlined /> {formatClinicDate(appointment.scheduledStart)}
+                </span>
+                <span>
+                  <ClockCircleOutlined /> {formatClinicTime(appointment.scheduledStart)} –{' '}
+                  {formatClinicTime(appointment.scheduledEnd)}
+                </span>
+              </div>
+            </div>
+
+            {/* VISIT — what THIS registration is about to commit, mirrored
+                live from the form so the rail and the Visit Info tab can
+                never disagree about what Confirm will do. */}
+            <div className="kw-checkin-id-block">
+              <div className="kw-apt3-eyebrow">Visit</div>
+              <div className="kw-checkin-id-rows">
+                <span>
+                  <UserOutlined />{' '}
+                  {doctors.find((member) => member.id === attendingStaffId)?.fullName ??
+                    appointment.staff.fullName}
+                </span>
+                {clinicName ? (
+                  <span>
+                    <HomeOutlined /> {clinicName}
+                  </span>
+                ) : null}
+                <span>
+                  <CreditCardOutlined />{' '}
+                  {payerKind === 'panel' ? (selectedPanel?.name ?? 'Panel — not named yet') : 'Self-pay'}
+                </span>
+                {remarks.trim() ? (
+                  <span className="kw-checkin-id-reason">
+                    <FileTextOutlined /> {remarks.trim()}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="kw-checkin-id-foot">
+              <Text type="secondary">
+                {SOURCE_LABELS[appointment.source as AppointmentSource] ??
+                  sentence(appointment.source)}
+              </Text>
+              <Text type="secondary">Ref {bookingReference(appointment.id)}</Text>
+            </div>
+          </aside>
+
+          <div className="kw-checkin-content">
+          {/* Approved mockup 5 — Patient Details | Visit Info, Patient
+              Details open first. The tabs SPLIT the reading, never the
+              validation: Confirm still commits both halves at once. */}
+          <Tabs
+            activeKey={tab}
+            onChange={(key) => setTab(key as 'patient' | 'visit')}
+            className="kw-checkin-tabs"
+            items={[
+              {
+                key: 'patient',
+                label: 'Patient Details',
+                children: (
+                  <>
+                    {/* THE PATIENT — the record on file, editable in place
+                        for staff with the demographics permission. One
+                        canonical record: the save is the same PATCH every
+                        other surface uses. */}
+                    <PatientDetailsSection patient={appointment.patient} />
+                    <ClinicalContextPanel context={context} />
+                  </>
+                ),
+              },
+              {
+                key: 'visit',
+                label: (
+                  <span className="kw-checkin-tablabel">
+                    Visit Info
+                    {visitIncomplete ? <span className="kw-checkin-tabdot" aria-hidden /> : null}
+                  </span>
+                ),
+                children: (
+                  <>
           {/* THE VISIT — the decisions the desk makes at the counter. */}
           <div className="kw-apt-section">Visit</div>
           <div className="kw-checkin-field">
@@ -357,6 +525,12 @@ export function CheckInRegistrationDrawer({
               </Descriptions.Item>
             </Descriptions>
           ) : null}
+                  </>
+                ),
+              },
+            ]}
+          />
+          </div>
         </div>
       ) : null}
     </Drawer>

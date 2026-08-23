@@ -17,11 +17,13 @@
      3  the WORKING CANVAS — a raised white operational surface on the tinted
         page, where the actual work (grid, worklist, board) lives.
 
-   Colour discipline is unchanged from D-105 and restated here because every
-   rule below leans on it: PROVIDER colour is identity only (a 3px edge, an
-   avatar ring, a dot — never a fill); STATUS colour is semantic and always
-   rendered beside its word; teal is the selected/clinical accent; ink navy
-   is the action colour; red stays reserved for danger.
+   Colour discipline, D-105 as amended by the FINAL VISUAL PASS (the owner's
+   approved mockups): PROVIDER colour is identity — a 3px edge, an avatar
+   ring, a dot, and (new, per mockup) a ≤13% soft WASH as the card ground in
+   the week and month grids; it is never a solid fill. STATUS colour is
+   semantic and always rendered beside its word; teal is the
+   selected/clinical accent; ink navy is the action colour; red stays
+   reserved for danger, rose for the now-line.
    =========================================================================== */
 
 :root {
@@ -65,6 +67,25 @@
 
   --apt-radius: 8px;
   --apt-radius-lg: 12px;
+  --apt-radius-xl: 16px;
+
+  /* --- Premium pass (final UAT redesign) ---------------------------------
+   * Availability trio for the booking/reschedule calendars (legend words:
+   * Available / Limited / Full), interaction tokens, and the wallet-card
+   * gradient for the public confirmation. Hexes match
+   * shared/appointment-colors.ts AVAILABILITY_COLORS — change both together.
+   */
+  --apt-avail: #16a34a;
+  --apt-avail-bg: #e7f6ec;
+  --apt-limited: #d97706;
+  --apt-limited-bg: #fdf1dc;
+  --apt-full: #98a2b3;
+  --apt-full-bg: #f2f4f7;
+  --apt-selected: #1d4ed8;
+  --apt-selected-bg: #dbeafe;
+  --apt-focus-ring: 0 0 0 3px rgba(29, 78, 216, 0.18);
+  --apt-shadow-hover: 0 8px 24px rgba(11, 23, 54, 0.1), 0 2px 6px rgba(11, 23, 54, 0.06);
+  --apt-wallet-grad: linear-gradient(135deg, #0b1736 0%, #123a58 55%, #0f6b78 100%);
 }
 
 /* ===========================================================================
@@ -416,7 +437,9 @@
    =========================================================================== */
 
 .kw-calendar-grid {
-  height: clamp(560px, calc(100vh - 330px), 960px);
+  /* 42px shorter than before: the status summary bar (final visual pass)
+     closes the canvas below the grid and both should share the fold. */
+  height: clamp(560px, calc(100vh - 372px), 960px);
   min-width: 0;
 }
 
@@ -440,6 +463,9 @@
   padding: 0;
   border-bottom: 1px solid var(--apt-border);
   font-weight: 600;
+  /* The library sets nowrap; a provider column header must be allowed to
+     wrap so a real Malaysian name is not cut mid-word (decision 9). */
+  white-space: normal;
 }
 
 .kw-calendar-grid .rbc-header + .rbc-header,
@@ -447,14 +473,21 @@
   border-left: 1px solid var(--apt-hairline);
 }
 
-/* The day header cell: small-caps weekday over a real date numeral. */
+/* The day header cell (mockup 2): "Mon 17" as one horizontal token, and
+   today wearing a filled navy pill around the whole thing. */
 .kw-cal-dayhead {
   display: flex;
-  flex-direction: column;
+  justify-content: center;
+  padding: 8px 4px;
+}
+
+.kw-cal-dayhead-pill {
+  display: inline-flex;
   align-items: center;
-  gap: 0;
-  padding: 7px 4px 6px;
-  line-height: 1.25;
+  gap: 5px;
+  padding: 3px 11px;
+  border-radius: 999px;
+  line-height: 1.3;
 }
 
 .kw-cal-dayhead-dow {
@@ -466,27 +499,20 @@
 }
 
 .kw-cal-dayhead-num {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--apt-text);
   font-variant-numeric: tabular-nums;
 }
 
-/* Today is unmistakable: the numeral sits in a filled ink circle. */
-.kw-cal-dayhead[data-today] .kw-cal-dayhead-dow {
-  color: var(--apt-teal);
+.kw-cal-dayhead[data-today] .kw-cal-dayhead-pill {
+  background: var(--apt-nav-navy);
+  box-shadow: var(--apt-shadow-xs);
 }
 
+.kw-cal-dayhead[data-today] .kw-cal-dayhead-dow,
 .kw-cal-dayhead[data-today] .kw-cal-dayhead-num {
-  background: var(--apt-nav-navy);
   color: #fff;
-  min-width: 26px;
-  height: 26px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 5px;
 }
 
 /* --- Grid body ------------------------------------------------------------ */
@@ -511,7 +537,14 @@
 
 .kw-calendar-grid .rbc-timeslot-group {
   border-bottom: 1px solid var(--apt-hairline);
-  min-height: 44px;
+  min-height: 54px;
+}
+
+/* The event lane sits slightly inside its column, so cards never touch the
+   hairlines — part of mockup 2's separated-card composition. */
+.kw-calendar-grid .rbc-day-slot .rbc-events-container {
+  margin-right: 8px;
+  margin-left: 2px;
 }
 
 .kw-calendar-grid .rbc-time-slot {
@@ -525,7 +558,7 @@
 }
 
 .kw-calendar-grid .rbc-today {
-  background: #f6fbfb;
+  background: #f6f9ff;
 }
 
 .kw-calendar-grid .rbc-time-gutter .rbc-timeslot-group {
@@ -539,22 +572,29 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* --- Where NOW is ---------------------------------------------------------- */
+/* --- Where NOW is ----------------------------------------------------------
+   Rose, per the approved mockup — "now" is the one line on the grid that is
+   an alarm rather than an identity or a status, so it gets the one colour
+   nothing else on the grid uses. */
 
+/* NOW, said finely. A 2px saturated rule across a 1,400px grid cuts the
+   product in half; the receptionist only needs to find their place in
+   today's column. One hairline, one small dot, one small label in the
+   gutter. */
 .kw-calendar-grid .rbc-current-time-indicator {
-  height: 2px;
-  background: var(--apt-teal);
+  height: 1px;
+  background: #e11d48;
 }
 
 .kw-calendar-grid .rbc-current-time-indicator::before {
   content: '';
   position: absolute;
-  left: -4px;
-  top: -3px;
-  width: 8px;
-  height: 8px;
+  left: -3px;
+  top: -2px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: var(--apt-teal);
+  background: #e11d48;
 }
 
 .kw-calendar-grid .rbc-time-gutter {
@@ -566,13 +606,13 @@
   right: 4px;
   transform: translateY(-50%);
   z-index: 6;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--apt-teal);
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #e11d48;
   color: #fff;
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
-  line-height: 1.5;
+  line-height: 15px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   pointer-events: none;
@@ -580,41 +620,53 @@
 
 /* --- Event cards ------------------------------------------------------------
 
-   White cards with a 3px provider edge and a semantic status dot — no more
-   10%-alpha washes. The provider is the EDGE, the status is the DOT plus the
-   word in the drawer, and the card itself stays legible at every size.
+   FINAL VISUAL PASS (approved mockup 2). The outer .rbc-event is now only
+   the library's POSITIONING BOX — transparent and borderless, with the
+   breathing gap baked into its padding — and the VISIBLE card is the inner
+   .kw-calendar-event, painted from two custom properties the workspace sets
+   per booking:
 
-   V3.1 — WIDTH-ADAPTIVE DENSITY. Overlapping bookings can squeeze a card to
-   a sliver; "09:0…" is an accident, not a design. Every card renders BOTH a
-   full body and a compact line, and a container query on the card's own
-   width decides which is visible — so a three-way 09:00 degrades to
-   "● 09:00 / Tan" and then to "● 09:00", never to a clipped fragment. The
-   drawer and the tooltip always carry the whole story. */
+     --ev-edge     the provider's identity colour (the 3px left edge);
+     --ev-pastel   their pastel — the GUTTER band, and the month chip's ground;
+     --ev-wash     the same hue at ~4.5% — the week body's whisper, no more;
+     --ev-text     the accent darkened until it reads as text on white.
+
+   THE PER-VIEW COLOUR BUDGET (approved decision 2). Day and Providers keep
+   WHITE bodies: edge and gutter only. Week adds the ~4.5% wash and stays
+   predominantly neutral. Month may take the pastel outright, because a 20px
+   chip has no body to flood. Provider colour is never a full-strength fill
+   in any view — that is what produced the wall of blue — and STATUS stays a
+   separate system: a dot, or a compact badge where somebody must act.
+
+   V3.1 — WIDTH-ADAPTIVE DENSITY (unchanged). Every card renders BOTH a full
+   body and a compact line, and a container query on the card's own width
+   decides which is visible — so a three-way 09:00 degrades to "● 09:00 /
+   Tan" and then to "● 09:00", never to a clipped fragment. The drawer and
+   the tooltip always carry the whole story. */
 
 .kw-calendar-grid .rbc-event {
-  border: 1px solid var(--apt-border);
-  border-radius: 6px;
-  /* Padding lives on the CONTENT (.kw-calendar-event) so the width tiers can
-     tighten it — a container cannot restyle itself from its own query. */
-  padding: 0;
-  box-shadow: var(--apt-shadow-xs);
-  transition: box-shadow 120ms ease, border-color 120ms ease;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  /* The gap between touching cards — right for side-by-side overlap, bottom
+     for back-to-back bookings. */
+  padding: 0 3px 3px 0;
+  box-shadow: none;
   container-type: inline-size;
 }
 
 .kw-calendar-grid .rbc-event:hover {
-  box-shadow: var(--apt-shadow-md);
-  border-color: var(--apt-border-strong);
+  z-index: 5;
 }
 
 .kw-calendar-grid .rbc-event:focus {
-  outline: 2px solid var(--apt-teal);
-  outline-offset: 1px;
+  outline: none;
 }
 
-.kw-calendar-grid .rbc-event.rbc-selected {
+.kw-calendar-grid .rbc-event:focus-visible .kw-calendar-event,
+.kw-calendar-grid .rbc-event.rbc-selected .kw-calendar-event {
   outline: 2px solid var(--apt-teal);
-  box-shadow: 0 4px 12px rgba(15, 107, 120, 0.25);
+  outline-offset: -1px;
 }
 
 /* The card renders its own clinic-clock time; the library's 12-hour label
@@ -623,13 +675,41 @@
   display: none;
 }
 
-.kw-calendar-event {
+/* The legacy card body. The premium card (.kw-evcard) and the month chip
+   (.kw-evchip) carry their own painting and simply borrow this class as the
+   grid's stable hook, so they opt out of it here. */
+.kw-calendar-event:not(.kw-evcard):not(.kw-evchip) {
   font-size: 12px;
   line-height: 1.35;
   overflow: hidden;
   color: var(--apt-text);
-  padding: 2px 7px 2px 8px;
+  padding: 3px 8px 3px 9px;
   height: 100%;
+  background: var(--apt-surface);
+  border: 1px solid var(--apt-border);
+  border-left: 3px solid var(--ev-edge, var(--apt-border-strong));
+  border-radius: 8px;
+  box-shadow: var(--apt-shadow-xs);
+}
+
+.kw-calendar-grid .rbc-event:hover .kw-calendar-event {
+  box-shadow: var(--apt-shadow-hover);
+  transform: translateY(-1px);
+}
+
+
+
+/* Released bookings stay on the grid, struck through — never hidden. */
+.kw-ev--released .kw-calendar-event {
+  background: #f5f6f8 !important;
+  opacity: 0.62;
+  text-decoration: line-through;
+}
+
+/* The booking picked up for moving (pick-up-and-place reschedule). */
+.kw-ev--picked .kw-calendar-event {
+  outline: 2px dashed var(--apt-navy-2);
+  outline-offset: -1px;
 }
 
 .kw-event-time {
@@ -712,9 +792,21 @@
 }
 
 /* Squeezed full card: the quiet lines go first… */
-@container (max-width: 128px) {
-  .kw-ev--full .kw-event-secondary {
+@container (max-width: 150px) {
+  .kw-ev--full .kw-event-secondary,
+  .kw-ev--full .kw-event-provider {
     display: none;
+  }
+
+  /* …and the dense card's shared first line UNSTACKS, so a narrowed card
+     reads "● 08:00 / Hakim bin Jamaludin" over two lines instead of
+     "08:00 Hak…" over one. A truncated name is the defect the overflow tile
+     exists to prevent; it must not come back one card later. */
+  .kw-ev--full .kw-event-lead {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    line-height: 1.3;
   }
 }
 
@@ -729,8 +821,10 @@
   }
 }
 
-/* Very narrow: time above name, both whole. */
-@container (max-width: 84px) {
+/* Narrow (a card sharing its band with an overflow tile): time ABOVE name,
+   so the name gets the card's whole width instead of the half a shared line
+   left it. "08:00 Hak…" is the defect the overflow tile exists to prevent. */
+@container (max-width: 124px) {
   .kw-calendar-event {
     padding: 2px 4px 2px 6px;
   }
@@ -752,7 +846,8 @@
   }
 }
 
-/* Sliver: the dot and the time, nothing half-written. */
+/* Sliver: the dot and the time, nothing half-written. (With concurrency
+   capped this is now a floor that should never be reached in practice.) */
 @container (max-width: 52px) {
   .kw-calendar-event {
     padding: 2px 3px 2px 4px;
@@ -767,31 +862,825 @@
   }
 }
 
-/* --- Month view -------------------------------------------------------------- */
+/* --- The grid's own scaffolding, quietened (mockup panels 1-3) -----------
+   The mockup shows hour lines and almost nothing else: no half-hour rules, no
+   heavy column borders, a wide calm gutter. Everything below removes the
+   library's furniture rather than restyling it. */
+
+/* Only the HOUR is labelled; the half-hour keeps its line, not its number. */
+.kw-calendar-grid .rbc-time-gutter .rbc-timeslot-group:nth-child(even) .rbc-label {
+  visibility: hidden;
+}
+.kw-calendar-grid .rbc-time-gutter {
+  width: 68px;
+}
+.kw-calendar-grid .rbc-time-gutter .rbc-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--apt-muted);
+  padding-right: 10px;
+}
+/* The hour line is a hairline; the half-hour is barely there. */
+.kw-calendar-grid .rbc-day-slot .rbc-timeslot-group {
+  border-bottom: 1px solid #f1f3f7;
+}
+.kw-calendar-grid .rbc-day-slot .rbc-time-slot + .rbc-time-slot {
+  border-top: 1px dashed transparent;
+}
+.kw-calendar-grid .rbc-time-content > * + * > * {
+  border-left: 1px solid #f2f4f8;
+}
+.kw-calendar-grid .rbc-time-header-content,
+.kw-calendar-grid .rbc-time-header.rbc-overflowing {
+  border-left: 1px solid var(--apt-border);
+  border-right: none;
+}
+
+/* THE NOW-LINE NEVER STRIKES THROUGH A CARD. rbc paints the indicator above
+   its column; the mockup shows it behind the day's work. Cards are lifted
+   over it and the line itself is lowered, so "now" is context, not damage. */
+.kw-calendar-grid .rbc-current-time-indicator {
+  z-index: 1;
+  opacity: 0.7;
+}
+/* The whole event LAYER is lifted over the indicator in one move — the two
+   live in different parents, so raising the cards alone would not have done
+   it, and a line drawn THROUGH a patient's name is the defect being fixed. */
+.kw-calendar-grid .rbc-day-slot .rbc-events-container {
+  /* z-index ONLY — the container is already absolutely positioned by the
+     library, and overriding its position collapsed it to zero, taking every
+     card off the grid (measured). */
+  z-index: 3;
+}
+
+/* ===========================================================================
+ * 17 · THE APPOINTMENT CARD (approved mockup, clinic panels 2 and 3)
+ *
+ * The mockup does not draw scheduler rows; it draws CARDS floating in a
+ * column. So the library's event box becomes pure geometry — transparent,
+ * with the gap baked into its padding — and everything visible is the card
+ * below: the provider's pastel ground, their colour on the time, the
+ * patient's name loudest, the service under it, and the doctor and status
+ * when the card is wide enough to earn them.
+ * =========================================================================== */
+
+.kw-calendar-grid .rbc-time-view .rbc-event,
+.kw-calendar-grid .rbc-day-slot .rbc-event {
+  padding: 1px 5px 4px 2px;
+  background: transparent;
+  border: none;
+}
+
+/* THE CARD — ONE SKELETON, FOUR VIEW BUDGETS.
+ *
+ * The reading order is the receptionist's: TIME and PATIENT share the
+ * headline (the two anchors, patient carrying the weight), the service
+ * follows, the provider follows that, and the state speaks only when it is
+ * asking for something.
+ *
+ * How much PROVIDER colour each view may spend, in ascending order:
+ *   day / providers  edge + pastel gutter. White body, always — a 1,300px
+ *                    band of anything is a band, and lowering the alpha does
+ *                    not change that.
+ *   week             a light provider pastel BODY, as the premium mockup
+ *                    draws it. A ~180px card is small enough to wear the hue
+ *                    without the screen turning into a wall.
+ *   month            the 20px chip takes the pastel outright.
+ *   list             a dot and an avatar; the row stays white.
+ */
+.kw-evcard {
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+  border-radius: 7px;
+  background: var(--apt-surface);
+  border: 1px solid var(--apt-border);
+  border-left: 3px solid var(--ev-edge, var(--apt-border-strong));
+  /* No resting shadow. The hairline separates two touching bookings; the
+     shadow is reserved for hover, where it means "this one". */
+  box-shadow: none;
+  overflow: hidden;
+  transition:
+    box-shadow 0.14s ease,
+    border-color 0.14s ease;
+  color: var(--apt-text);
+  cursor: pointer;
+}
+.kw-calendar-grid .rbc-event:hover .kw-evcard {
+  box-shadow: var(--apt-shadow-sm);
+  border-color: var(--apt-border-strong);
+  border-left-color: var(--ev-edge, var(--apt-border-strong));
+}
+.kw-calendar-grid .rbc-event.rbc-selected .kw-evcard,
+.kw-calendar-grid .rbc-event:focus-visible .kw-evcard {
+  outline: 2px solid var(--apt-teal);
+  outline-offset: -1px;
+}
+
+/* The PATIENT's face, in the position the premium mockup gives it. Neutral —
+   never a provider hue, never a gendered silhouette. */
+.kw-evcard-gutter {
+  flex: none;
+  width: 34px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 5px;
+}
+
+.kw-evcard-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 4px 4px 4px 0;
+}
+
+/* THE HEADLINE — the two anchors on one line. */
+.kw-evcard-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.kw-evcard-time {
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: var(--apt-text-2);
+  white-space: nowrap;
+  flex: none;
+}
+/* PATIENT FIRST, at every density. The name is the strongest text on the
+   card and is never the line that retires to keep a doctor or a service. */
+.kw-evcard-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--apt-text);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.kw-evcard-service {
+  font-size: 11px;
+  color: var(--apt-text-2);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.kw-evcard-doctor {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  min-width: 0;
+}
+/* The provider, recognisable by BOTH text and colour — never by colour
+   alone, and never in a hue a status could be mistaken for. */
+.kw-evcard-pdot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+.kw-evcard-doctor > :last-child,
+.kw-evcard-doctor {
+  text-overflow: ellipsis;
+}
+
+/* THE STATE. A dot is the whole treatment for the expected case; the word
+   joins it only where somebody has to act — and the word, not the colour, is
+   what carries the meaning. */
+.kw-evcard-state {
+  flex: none;
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 8px 0 3px;
+}
+.kw-evcard-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--st-tone, var(--apt-border-strong));
+  flex: none;
+}
+.kw-evcard-word {
+  /* HIDDEN BY DEFAULT. A ~90px badge inside a 178px week column is 90px the
+     patient's name does not get, and "Nabil…" beside a perfectly legible
+     CHECKED IN is the wrong trade every time. The word returns the moment
+     the card is wide enough to carry both — meanwhile the dot, the tooltip,
+     the List and the drawer all still say it. */
+  display: none;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.005em;
+  color: var(--st-tone, var(--apt-text-2));
+  white-space: nowrap;
+}
+@container (min-width: 300px) {
+  .kw-evcard-word {
+    display: inline;
+  }
+  .kw-evcard[data-prominence='operational'] .kw-evcard-state,
+  .kw-evcard[data-prominence='action'] .kw-evcard-state,
+  .kw-evcard[data-prominence='warning'] .kw-evcard-state {
+    background: color-mix(in srgb, var(--st-tone) 11%, #ffffff);
+    border-radius: 999px;
+    padding: 1px 8px 1px 6px;
+    margin: 6px 8px 0 0;
+    align-self: flex-start;
+  }
+  .kw-evcard[data-prominence='operational'] .kw-evcard-word,
+  .kw-evcard[data-prominence='action'] .kw-evcard-word,
+  .kw-evcard[data-prominence='warning'] .kw-evcard-word {
+    font-weight: 700;
+  }
+}
+/* Requested needs a decision, so it marks the card itself too. */
+.kw-evcard[data-prominence='action'] {
+  border-color: color-mix(in srgb, var(--st-tone) 35%, var(--apt-border));
+}
+/* Completed recedes: present, deliberately unemphatic. */
+.kw-evcard[data-prominence='receded'] .kw-evcard-name {
+  font-weight: 600;
+  color: var(--apt-text-2);
+}
+.kw-evcard[data-prominence='receded'] .kw-evcard-gutter {
+  opacity: 0.6;
+}
+
+/* WEEK — the premium mockup's card: a light provider pastel body, a
+   restrained edge, breathing room inside. Small enough to wear the hue. */
+.kw-calendar-grid[data-view='week'] .kw-evcard {
+  background: var(--ev-pastel, var(--apt-surface));
+  border-color: color-mix(in srgb, var(--ev-edge, #98a2b3) 16%, #ffffff);
+}
+.kw-calendar-grid[data-view='week'] .kw-evcard[data-prominence='muted'],
+.kw-calendar-grid[data-view='week'] .kw-ev--released .kw-evcard {
+  background: var(--apt-surface-2);
+}
+
+/* THE DENSITY LADDER (approved decision 5), driven by the booking's real
+   duration rather than a height query — a `size` container implies
+   `contain: size`, which took rbc's percentage-height events to zero and
+   emptied the grid (measured). */
+.kw-evcard[data-tier='micro'] .kw-evcard-body {
+  justify-content: center;
+  padding-block: 2px;
+}
+.kw-evcard[data-tier='micro'] .kw-evcard-gutter {
+  align-items: center;
+  padding-top: 0;
+  width: 26px;
+}
+.kw-evcard[data-tier='micro'] .kw-evcard-state {
+  align-self: center;
+  padding-top: 0;
+}
+.kw-evcard:not([data-wide='true'])[data-tier='micro'] .kw-evcard-service,
+.kw-evcard:not([data-wide='true'])[data-tier='micro'] .kw-evcard-doctor,
+.kw-evcard:not([data-wide='true'])[data-tier='compact'] .kw-evcard-doctor {
+  display: none;
+}
+
+/* WIDE COMPOSITION — the day and single-provider columns hand a card the
+   whole width, so it composes ACROSS instead of stacking. The zones are
+   PROPORTIONAL, not a table: the patient takes the space, the service and
+   the doctor take what they need, and the state holds the right edge as a
+   scan column. A 30-minute booking reads as one object, left to right —
+   never three lines pinned to the left of 1,300px of white. */
+.kw-evcard[data-wide='true'] {
+  align-items: center;
+}
+.kw-evcard[data-wide='true'] .kw-evcard-gutter {
+  align-items: center;
+  padding-top: 0;
+  width: 42px;
+}
+.kw-evcard[data-wide='true'] .kw-evcard-body {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 4px 0;
+}
+.kw-evcard[data-wide='true'] .kw-evcard-headline {
+  /* 40% of the row: the two anchors, together, taking the space they are
+     worth. */
+  flex: 0 1 40%;
+  min-width: 0;
+  gap: 10px;
+}
+.kw-evcard[data-wide='true'] .kw-evcard-time {
+  min-width: 54px;
+  font-size: 12.5px;
+  color: var(--apt-text);
+}
+.kw-evcard[data-wide='true'] .kw-evcard-name {
+  font-size: 13.5px;
+}
+.kw-evcard[data-wide='true'] .kw-evcard-service {
+  flex: 0 1 30%;
+  min-width: 0;
+  padding-right: 16px;
+  font-size: 12px;
+}
+.kw-evcard[data-wide='true'] .kw-evcard-doctor {
+  flex: 0 1 30%;
+  min-width: 0;
+  font-size: 12px;
+}
+.kw-evcard[data-wide='true'] .kw-evcard-state {
+  align-self: center;
+  padding-top: 0;
+}
+@container (min-width: 300px) {
+  .kw-evcard[data-wide='true'][data-prominence='operational'] .kw-evcard-state,
+  .kw-evcard[data-wide='true'][data-prominence='action'] .kw-evcard-state,
+  .kw-evcard[data-wide='true'][data-prominence='warning'] .kw-evcard-state {
+    margin-top: 0;
+    align-self: center;
+  }
+}
+/* A wide row has horizontal room the stacked ladder does not, so every tier
+   above micro keeps its service and doctor. */
+.kw-evcard[data-wide='true'] .kw-evcard-service,
+.kw-evcard[data-wide='true'] .kw-evcard-doctor {
+  display: flex;
+}
+.kw-evcard[data-wide='true'] .kw-evcard-service {
+  display: block;
+}
+
+/* A WIDE CARD THAT IS NOT ACTUALLY WIDE. Three concurrent bookings split the
+   day column three ways, and a row layout in ~430px produces "M…", "Dens…",
+   "Dr U…" — the fragment problem the overlap treatment exists to prevent.
+   Below the width a row needs, the card stacks again. */
+@container (max-width: 560px) {
+  .kw-evcard[data-wide='true'] {
+    align-items: stretch;
+  }
+  .kw-evcard[data-wide='true'] .kw-evcard-gutter {
+    width: 34px;
+    align-items: flex-start;
+    padding-top: 5px;
+  }
+  .kw-evcard[data-wide='true'][data-tier='micro'] .kw-evcard-gutter {
+    align-items: center;
+    padding-top: 0;
+  }
+  .kw-evcard[data-wide='true'] .kw-evcard-body {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1px;
+    padding: 4px 4px 4px 0;
+  }
+  .kw-evcard[data-wide='true'] .kw-evcard-headline {
+    flex: none;
+    gap: 6px;
+  }
+  .kw-evcard[data-wide='true'] .kw-evcard-time {
+    min-width: 0;
+    font-size: 11.5px;
+    color: var(--apt-text-2);
+  }
+  .kw-evcard[data-wide='true'] .kw-evcard-name {
+    font-size: 12.5px;
+  }
+  .kw-evcard[data-wide='true'] .kw-evcard-service,
+  .kw-evcard[data-wide='true'] .kw-evcard-doctor {
+    flex: none;
+    padding-right: 0;
+    font-size: 11px;
+  }
+  .kw-evcard[data-wide='true'] .kw-evcard-state {
+    align-self: flex-start;
+    padding-top: 7px;
+  }
+  .kw-evcard[data-wide='true'][data-tier='micro'] .kw-evcard-service,
+  .kw-evcard[data-wide='true'][data-tier='micro'] .kw-evcard-doctor,
+  .kw-evcard[data-wide='true'][data-tier='compact'] .kw-evcard-doctor {
+    display: none;
+  }
+}
+
+/* RESPONSIVE PRIORITY (section 3): what survives as the card narrows.
+   1. TIME + PATIENT   2. SERVICE   3. PROVIDER
+   Secondary metadata leaves first, and patient identity never pays for
+   doctor or service text. */
+@container (max-width: 300px) {
+  .kw-evcard-doctor {
+    display: none;
+  }
+}
+@container (max-width: 210px) {
+  .kw-evcard-gutter {
+    width: 28px;
+  }
+  .kw-evcard[data-tier='micro'] .kw-evcard-gutter {
+    width: 22px;
+  }
+}
+/* A NARROW COLUMN GIVES THE NAME ITS OWN LINE.
+   A week column is ~190px. With the avatar and the state dot taken out of it
+   the headline has ~140px, and "Siti Aminah binti Yusof" is 23 characters —
+   so keeping TIME and PATIENT on one line there does not compress the name,
+   it amputates it ("Siti Aminah b…"). The time drops to its own short line
+   instead and the patient takes the card's full width, wrapping to a second
+   line where the booking is tall enough to hold one. Priority 1 is TIME +
+   PATIENT; this is what honouring it looks like when the pixels are real. */
+@container (max-width: 240px) {
+  .kw-evcard-headline {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+  }
+  .kw-evcard-time {
+    font-size: 10.5px;
+    line-height: 1.35;
+    color: var(--apt-muted);
+  }
+  .kw-evcard[data-tier='standard'] .kw-evcard-name,
+  .kw-evcard[data-tier='full'] .kw-evcard-name {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow-wrap: break-word;
+    line-height: 1.2;
+  }
+  /* A 15-minute card is one line of pixels; time and name share it again
+     rather than stacking into a box that is not there. UNLESS the grid under
+     it was empty and it borrowed the room to be readable — then it has two
+     lines like everything else, and the name takes the full width. */
+  .kw-evcard[data-tier='micro'] .kw-evcard-headline {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 5px;
+  }
+
+  /* ...and it spends its width on the NAME. On a 22px card the avatar is
+     26px of decoration standing where four more characters of a Malaysian
+     name would go. */
+  .kw-evcard[data-tier='micro'] .kw-evcard-gutter {
+    width: 6px;
+  }
+  .kw-evcard[data-tier='micro'] .kw-evcard-gutter .kw-avatar {
+    display: none;
+  }
+  /* A 30-minute card is 54px of REAL grid, which holds three tight lines:
+     the time, the patient, and the service. Nothing is borrowed to make
+     that true — the height is the duration. Line-heights tighten so the
+     third line lands inside the box rather than being clipped through its
+     own letters, and the patient stays on one line so it fits. */
+  .kw-evcard:not([data-wide='true'])[data-tier='compact'] .kw-evcard-service {
+    display: block;
+    font-size: 10.5px;
+    line-height: 1.25;
+  }
+  .kw-evcard:not([data-wide='true'])[data-tier='compact'] .kw-evcard-time {
+    line-height: 1.25;
+  }
+  .kw-evcard:not([data-wide='true'])[data-tier='compact'] .kw-evcard-name {
+    line-height: 1.2;
+  }
+  .kw-evcard:not([data-wide='true'])[data-tier='compact'] .kw-evcard-body {
+    padding-block: 3px;
+  }
+}
+@container (max-width: 150px) {
+  .kw-evcard-gutter {
+    width: 8px;
+    padding-top: 0;
+  }
+  .kw-evcard-gutter .kw-avatar {
+    display: none;
+  }
+  .kw-evcard-body {
+    padding-left: 6px;
+  }
+}
+@container (max-width: 112px) {
+  .kw-evcard-service {
+    display: none;
+  }
+}
+
+/* --- The month chip (approved decision 2: month may wear the pastel) ------ */
+.kw-evchip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 1px 8px 1px 7px;
+  border-radius: 5px;
+  background: var(--ev-pastel, var(--apt-surface-2));
+  border-left: 2px solid var(--ev-edge, var(--apt-border-strong));
+  font-size: 11px;
+  line-height: 1.55;
+  overflow: hidden;
+}
+.kw-evchip-time {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ev-text, var(--apt-nav-navy));
+  flex: none;
+}
+.kw-evchip-name {
+  font-weight: 600;
+  color: var(--apt-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.kw-evchip[data-prominence='muted'] {
+  background: var(--apt-surface-2);
+  border-left-color: var(--apt-border-strong);
+}
+
+/* --- Overflow tile + its list (readable dense bands) ---------------------- */
+/* THE OVERFLOW CLUSTER — a quiet marker, not a card.
+   It has to be findable and obviously clickable, and it must never compete
+   with the patient cards beside it: the appointments are the work, this is
+   a pointer to more of it. One line, sentence case, hairline dashes, no
+   fill of its own. */
+.kw-ev--overflow .kw-calendar-event,
+.kw-ev-more {
+  background: transparent;
+  border: 1px dashed var(--apt-border);
+  border-left: 1px dashed var(--apt-border);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--apt-text-2);
+  text-align: center;
+  box-shadow: none;
+  cursor: pointer;
+  transition:
+    border-color 0.14s ease,
+    color 0.14s ease,
+    background 0.14s ease;
+}
+.kw-ev-more-count {
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.kw-ev-more-word {
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: inherit;
+}
+/* The affordance arrives on approach rather than shouting from rest. */
+.kw-calendar-grid .rbc-event:hover .kw-ev-more,
+.kw-ev-more:focus-visible {
+  background: var(--apt-teal-soft);
+  border-color: var(--apt-teal);
+  color: var(--apt-teal);
+  outline: none;
+}
+.kw-calendar-grid .rbc-event:hover .kw-ev-more {
+  border-color: var(--apt-teal);
+  background: var(--apt-teal-soft);
+}
+
+.kw-ev-more-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kw-ev-more-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius);
+  background: var(--apt-surface);
+  padding: 9px 12px 9px 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.kw-ev-more-row:hover {
+  border-color: var(--apt-teal);
+  box-shadow: var(--apt-shadow-sm);
+}
+.kw-ev-more-edge {
+  width: 4px;
+  align-self: stretch;
+  flex: none;
+}
+.kw-ev-more-time {
+  font-weight: 700;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--apt-nav-navy);
+  flex: none;
+  min-width: 44px;
+}
+.kw-ev-more-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.35;
+}
+.kw-ev-more-name {
+  font-weight: 650;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kw-ev-more-meta {
+  font-size: 11.5px;
+  color: var(--apt-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A quiet column says so, rather than reading as a loading failure. */
+.kw-col-empty {
+  position: absolute;
+  top: 34%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--apt-muted);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* --- Month view --------------------------------------------------------------
+   Mockup 1: a calm white canvas, each booking a soft provider-wash chip with
+   a 3px identity bar, whitespace doing the separating — never a spreadsheet. */
+
+.kw-calendar-grid .rbc-month-view .rbc-header {
+  padding: 9px 0 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--apt-text-2);
+}
 
 .kw-calendar-grid .rbc-month-view .rbc-event {
-  padding: 0;
+  padding: 0 4px 2px;
   box-shadow: none;
-  border-radius: 5px;
+  border-radius: 0;
   font-size: 11px;
   line-height: 1.5;
-  background: var(--apt-surface);
+  background: transparent;
 }
 
 .kw-calendar-grid .rbc-month-view .kw-calendar-event {
-  padding: 1px 6px;
+  padding: 1px 7px 1px 7px;
+  border: none;
+  /* The chip's own ground and edge come from .kw-evchip — one source, so a
+     month chip and a week card can never disagree about a provider's hue. */
+  border-left: 2px solid var(--ev-edge, var(--apt-border-strong));
+  border-radius: 5px;
+  box-shadow: none;
+}
+
+.kw-calendar-grid .rbc-month-view .rbc-event:hover .kw-calendar-event {
+  box-shadow: var(--apt-shadow-sm);
+  transform: none;
 }
 
 .kw-calendar-grid .rbc-month-row + .rbc-month-row {
   border-top: 1px solid var(--apt-hairline);
 }
 
+/* Month density (approved mockup 1): a row that breathes, a chip that reads
+   at a glance, and today unmistakable. */
+/* Six rows have to fit the canvas without the last one being cut — the
+   month is a planning view and a clipped final week is a week nobody sees. */
+.kw-calendar-grid[data-view='month'] {
+  height: clamp(560px, calc(100vh - 330px), 1000px);
+}
+.kw-calendar-grid .rbc-month-view .rbc-month-row {
+  min-height: 92px;
+}
+.kw-calendar-grid .rbc-month-view .kw-calendar-event {
+  min-height: 20px;
+  line-height: 1.5;
+}
+.kw-calendar-grid .rbc-month-view .kw-event-compact {
+  font-size: 11px;
+  gap: 6px;
+}
+.kw-calendar-grid .rbc-month-view .rbc-row-segment {
+  padding: 0 1px;
+}
+.kw-calendar-grid .rbc-month-view .rbc-date-cell.rbc-now {
+  font-weight: 700;
+}
+.kw-calendar-grid .rbc-month-view .rbc-show-more {
+  margin-top: 1px;
+  padding-left: 8px;
+  font-size: 11px;
+}
+
 .kw-calendar-grid .rbc-month-view .rbc-date-cell {
-  padding: 5px 7px 0;
+  padding: 5px 8px 3px;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--apt-text-2);
   font-variant-numeric: tabular-nums;
+}
+
+/* THE MONTH CELL HEADER — the date, and how heavy the day is.
+   The count is the day's real number of appointments, counted from the
+   bookings already on screen. There is deliberately no "busy" band and no
+   percentage: the clinic has never stated a daily capacity, so any such
+   label would be a number we invented. A day with nothing booked says
+   nothing, which is quieter and just as true as "0". */
+.kw-month-datehead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.kw-month-date {
+  flex: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+/* Today keeps its filled ink pill now the header is ours rather than the
+   library's default button. */
+.kw-calendar-grid .rbc-month-view .rbc-date-cell.rbc-now .kw-month-date {
+  background: var(--apt-nav-navy);
+  color: #fff;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+}
+.kw-month-load {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: var(--apt-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rbc-date-cell.rbc-now .kw-month-load {
+  color: var(--apt-nav-navy);
+}
+
+/* The overflow line: what the cell could not spend a chip on, and how many
+   of those were cancelled. A count without that breakdown reads as "21 more
+   patients coming" when some of them are not coming at all. */
+.kw-evchip--more {
+  background: none;
+  border-left: none;
+  padding-left: 9px;
+  font-size: 10.5px;
+  font-weight: 650;
+  color: var(--apt-teal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  text-align: left;
+  line-height: 18px;
 }
 
 .kw-calendar-grid .rbc-month-view .rbc-date-cell.rbc-now .rbc-button-link {
@@ -830,6 +1719,10 @@
 .kw-provider-head {
   display: inline-flex;
   align-items: center;
+  width: 100%;
+  /* A two-line name wraps INSIDE its column; it never spills across the
+     hairline into the next doctor's. */
+  overflow: hidden;
   gap: 8px;
   padding: 8px 8px;
   max-width: 100%;
@@ -850,13 +1743,21 @@
   box-shadow: 0 0 0 2px #fff;
 }
 
+/* THE PROVIDER COLUMN HEADER'S NAME (approved decision 9: do not aggressively
+   truncate doctor names). Two lines, broken at spaces, with the full string
+   in `title`. "Dr. Priyadarshini a/p Raghavan" rendered as "Dr. Priyadar…"
+   is a name nobody can check against a roster. */
 .kw-provider-name {
   font-weight: 650;
   font-size: 12.5px;
+  line-height: 1.25;
   color: var(--apt-text);
-  white-space: nowrap;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: break-word;
 }
 
 /* The outer, non-scrolling frame around the grid — the right-edge fade that
@@ -867,15 +1768,20 @@
   min-width: 0;
 }
 
+/* MORE DOCTORS THIS WAY. The previous cue faded white into white and was
+   therefore invisible; this is a faint ink shade at the right edge — the
+   same signal a pinned table column gives — so the schedule reads as
+   continuing rather than ending. Non-interactive, and only present when
+   there are genuinely more providers than the canvas shows. */
 .kw-cal-outer[data-scroll]::after {
   content: '';
   position: absolute;
   top: 1px;
   bottom: 14px;
   right: 1px;
-  width: 44px;
+  width: 26px;
   border-radius: 0 var(--apt-radius-lg) var(--apt-radius-lg) 0;
-  background: linear-gradient(to left, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0));
+  background: linear-gradient(to left, rgba(11, 23, 54, 0.09), rgba(11, 23, 54, 0));
   pointer-events: none;
   z-index: 8;
 }
@@ -889,7 +1795,13 @@
    as wide as its people, plus the hour gutter and an end spacer so the last
    column never kisses the frame. */
 .kw-calendar-grid--wide .rbc-time-view {
-  min-width: calc(var(--cal-cols, 6) * 250px + 76px);
+  /* 230px per provider: FOUR columns read comfortably in the space left
+     beside the rail and the summary at 1440–1600px, which is the target.
+     Past four the SCHEDULE scrolls horizontally — the rail, the summary and
+     the page itself hold still — with the hour gutter pinned and the right
+     edge faded. Squeezing six doctors into the viewport would cost exactly
+     the readability this pass exists to protect. */
+  min-width: calc(var(--cal-cols, 6) * 230px + 76px);
   margin-right: 20px;
 }
 
@@ -1133,12 +2045,43 @@
   color: var(--apt-muted);
 }
 
-.kw-flow-route [data-state='done'] {
+.kw-flow-route-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* The numbered chip (approved patient-mockup stepper, module edition). */
+.kw-flow-route-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--apt-surface-3);
+  color: var(--apt-text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-flow-route-item[data-state='done'] {
   color: var(--apt-teal);
 }
 
-.kw-flow-route [data-state='active'] {
+.kw-flow-route-item[data-state='done'] .kw-flow-route-dot {
+  background: var(--apt-teal);
+  color: #fff;
+}
+
+.kw-flow-route-item[data-state='active'] {
   color: var(--apt-nav-navy);
+}
+
+.kw-flow-route-item[data-state='active'] .kw-flow-route-dot {
+  background: var(--apt-nav-navy);
+  color: #fff;
 }
 
 .kw-flow-route-sep {
@@ -1221,11 +2164,13 @@
 .kw-flow-patient {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   border: 1px solid var(--apt-border);
+  border-left: 4px solid var(--apt-teal);
   border-radius: 10px;
   padding: 10px 12px;
   background: var(--apt-surface-2);
+  box-shadow: var(--apt-shadow-xs);
 }
 
 .kw-flow-patient-text {
@@ -1436,17 +2381,13 @@
   gap: 14px;
 }
 
-/* The operational summary: figures separated by hairlines, a semantic dot on
-   each label, money at the far end with its second truth underneath. */
+/* Mockup 4 — the per-status counts ride the TABS; what remains beside them
+   is the §46 money strip and the no-show rate, small and honest. */
 .kw-appt-stats {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: 0;
-  border: 1px solid var(--apt-border);
-  border-radius: var(--apt-radius-lg);
-  background: var(--apt-surface-2);
-  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  margin-left: auto;
   transition: opacity 160ms ease;
 }
 
@@ -1454,24 +2395,14 @@
   opacity: 0.6;
 }
 
-.kw-appt-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 12px 18px;
-  min-width: 118px;
-  border-right: 1px solid var(--apt-hairline);
-  background: transparent;
-}
-
-.kw-appt-stat:last-child {
-  border-right: none;
-}
-
-.kw-appt-stat-label {
+.kw-appt-stats-cell {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.kw-appt-stats-label {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -1479,52 +2410,66 @@
   color: var(--apt-text-2);
 }
 
-.kw-appt-stat-label::before {
-  content: '';
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--apt-muted);
-}
-
-.kw-appt-stat[data-tone='active'] .kw-appt-stat-label::before { background: var(--apt-active); }
-.kw-appt-stat[data-tone='attention'] .kw-appt-stat-label::before { background: #d97706; }
-.kw-appt-stat[data-tone='success'] .kw-appt-stat-label::before { background: var(--apt-success); }
-.kw-appt-stat[data-tone='error'] .kw-appt-stat-label::before { background: var(--apt-danger); }
-.kw-appt-stat[data-tone='neutral'] .kw-appt-stat-label::before { background: var(--apt-muted); }
-.kw-appt-stat[data-tone='primary'] .kw-appt-stat-label::before { background: var(--apt-teal); }
-
-.kw-appt-stat-value {
-  font-size: 24px;
-  line-height: 1.15;
+.kw-appt-stats-value {
+  font-size: 15px;
   font-weight: 750;
   color: var(--apt-nav-navy);
   font-variant-numeric: tabular-nums;
 }
 
-.kw-appt-stat-detail {
-  font-size: 12px;
+/* The no-show cell is deliberately quieter than the money it sits beside:
+   it is a follow-up prompt, not the headline of the page. Under a meaningful
+   sample it steps down again — the number is still shown, never hidden. */
+.kw-appt-stats-cell--quiet .kw-appt-stats-value {
+  font-size: 15px;
+  font-weight: 650;
   color: var(--apt-text-2);
-  min-height: 16px;
-  font-variant-numeric: tabular-nums;
+}
+.kw-appt-stats-cell--quiet[data-thin] .kw-appt-stats-value {
+  color: var(--apt-muted);
 }
 
-.kw-appt-stat-money {
-  margin-left: auto;
-  background: var(--apt-surface);
-  border-left: 1px solid var(--apt-border);
+.kw-appt-stats-detail {
+  font-size: 12px;
+  color: var(--apt-text-2);
+  font-variant-numeric: tabular-nums;
 }
 
 .kw-appt-controls {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .kw-appt-tabs {
-  align-self: flex-start;
   max-width: 100%;
   overflow-x: auto;
+}
+
+/* The count badge on a tab chip. */
+.kw-appt-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.kw-appt-tab-count {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: var(--apt-surface-3);
+  color: var(--apt-text-2);
+  border-radius: 999px;
+  min-width: 20px;
+  padding: 0 6px;
+  text-align: center;
+  line-height: 18px;
+}
+
+.kw-appt-tabs .ant-segmented-item-selected .kw-appt-tab-count {
+  background: var(--apt-nav-navy);
+  color: #fff;
 }
 
 .kw-appt-filters {
@@ -2319,7 +3264,7 @@
    =========================================================================== */
 
 .kw-public-booking {
-  max-width: 520px;
+  max-width: 600px;
   margin: 0 auto;
   padding: 20px 16px 64px;
   min-height: 100vh;
@@ -2384,15 +3329,78 @@ body:has(.kw-public-booking) {
   margin-bottom: 16px;
 }
 
-.kw-public-progress-text {
-  font-size: 12.5px;
-  font-weight: 650;
-  color: var(--apt-text);
+/* The mockup's numbered stepper chips. On narrow phones the words yield to
+   the dots so seven steps never wrap into two rows. */
+.kw-public-steps {
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 
-.kw-public-progress-text small {
-  font-weight: 500;
+.kw-public-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--apt-muted);
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.kw-public-step + .kw-public-step::before {
+  content: '→';
+  color: var(--apt-border-strong);
+  font-weight: 400;
+  margin-right: 4px;
+}
+
+.kw-public-step-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: var(--apt-surface-3);
   color: var(--apt-text-2);
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-public-step[data-state='done'] {
+  color: var(--apt-teal);
+}
+
+.kw-public-step[data-state='done'] .kw-public-step-dot {
+  background: var(--apt-teal);
+  color: #fff;
+}
+
+.kw-public-step[data-state='active'] {
+  color: var(--apt-nav-navy);
+}
+
+.kw-public-step[data-state='active'] .kw-public-step-dot {
+  background: var(--apt-nav-navy);
+  color: #fff;
+}
+
+@media (max-width: 560px) {
+  .kw-public-step-word {
+    display: none;
+  }
+
+  .kw-public-step[data-state='active'] .kw-public-step-word {
+    display: inline;
+  }
 }
 
 .kw-public-progress-bar {
@@ -2446,11 +3454,25 @@ body:has(.kw-public-booking) {
 }
 
 .kw-public-service-photo {
-  width: 52px;
-  height: 52px;
-  border-radius: 10px;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
   object-fit: cover;
   flex: none;
+}
+
+/* The image-less state: same footprint, same rhythm, a calm monogram tile —
+   the card is photo-READY without a stock photo standing in for one. */
+.kw-public-service-photo--blank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--apt-teal-soft) 0%, #eef2f7 100%);
+  color: var(--apt-teal);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--apt-border);
 }
 
 .kw-public-service-body {
@@ -2519,6 +3541,37 @@ body:has(.kw-public-booking) {
 .kw-public-service-go {
   color: var(--apt-teal);
   font-size: 16px;
+}
+
+/* The mockup's fastest-appointment banner over the doctor list. */
+.kw-public-fastest {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border: 1px solid rgba(15, 107, 120, 0.25);
+  border-radius: 12px;
+  background: linear-gradient(90deg, var(--apt-teal-soft) 0%, #f2fbf7 100%);
+  color: var(--apt-teal);
+  font-size: 13px;
+}
+
+.kw-public-fastest strong {
+  color: var(--apt-teal);
+  font-weight: 700;
+}
+
+.kw-public-fastest-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--apt-teal);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
 }
 
 /* Doctors as people; Any leads. */
@@ -2591,19 +3644,66 @@ body:has(.kw-public-booking) {
 
 .kw-public-provider-body {
   min-width: 0;
+  flex: 1;
 }
 
-/* The choice so far, restated above the times. */
-.kw-public-context {
+/* Right edge of the card: the doctor's next opening, then the chevron
+   (mockup: Calendly-style row). */
+.kw-public-provider-side {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.kw-public-provider-next {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: flex-end;
+  text-align: right;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--apt-teal);
+  line-height: 1.3;
+}
+
+.kw-public-provider-next-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--apt-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kw-public-provider-go {
+  color: var(--apt-muted);
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* The choice so far, restated above the times; an action (Change date)
+   rides the right edge rather than a full-width row (mockup). */
+.kw-public-context {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 2px;
   padding: 11px 14px;
   border: 1px solid var(--apt-border);
   border-left: 4px solid var(--apt-teal);
   background: var(--apt-surface);
   border-radius: 10px;
   box-shadow: var(--apt-shadow-xs);
+}
+.kw-public-context > .ant-typography {
+  grid-column: 1;
+}
+.kw-public-context > .ant-btn {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  justify-self: end;
 }
 
 /* Date chips — words intact, selected chip filled. The strip scrolls with
@@ -2714,6 +3814,21 @@ body:has(.kw-public-booking) {
   min-height: 46px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
+}
+
+/* The chosen chip is SELECTION blue — the same blue the availability
+   calendar's selected date wears (one language across the journey).
+   !important: antd v6's variant-solid selector plus its runtime injection
+   order otherwise outranks a stylesheet override, and the theme would paint
+   the chip action-teal — a selected TIME is a selection, not an action. */
+.kw-public-slots .ant-btn-primary {
+  background: var(--apt-selected) !important;
+  border-color: var(--apt-selected) !important;
+  box-shadow: 0 2px 8px rgba(29, 78, 216, 0.28);
+}
+.kw-public-slots .ant-btn-primary:hover {
+  background: #1e40af !important;
+  border-color: #1e40af !important;
 }
 
 /* Empty day — the page goes and FINDS the next free one. */
@@ -2903,4 +4018,1965 @@ body:has(.kw-public-booking) {
     border-left: none;
     min-width: 100%;
   }
+}
+
+/* ===========================================================================
+ * 13 · SHARED PREMIUM PRIMITIVES (final UAT redesign)
+ *
+ * The one avatar (shared/PersonAvatar.tsx) and the availability legend the
+ * booking + reschedule calendars share. Everything else the premium pass
+ * touches restyles classes that already exist in their own sections above.
+ * =========================================================================== */
+
+.kw-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-weight: 600;
+  flex: none;
+  user-select: none;
+  letter-spacing: 0.02em;
+}
+.kw-avatar[data-size='xs'] {
+  width: 16px;
+  height: 16px;
+  font-size: 8px;
+}
+.kw-avatar[data-size='sm'] {
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+}
+.kw-avatar[data-size='md'] {
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
+}
+.kw-avatar[data-size='lg'] {
+  width: 42px;
+  height: 42px;
+  font-size: 15px;
+}
+.kw-avatar[data-size='xl'] {
+  width: 56px;
+  height: 56px;
+  font-size: 19px;
+}
+
+/* The three-word availability legend (booking + reschedule calendars). */
+.kw-avail-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--apt-text-2);
+}
+.kw-avail-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.kw-avail-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  flex: none;
+}
+.kw-avail-dot[data-kind='available'] {
+  background: var(--apt-avail);
+}
+.kw-avail-dot[data-kind='limited'] {
+  background: var(--apt-limited);
+}
+.kw-avail-dot[data-kind='full'] {
+  background: var(--apt-full);
+}
+.kw-avail-dot[data-kind='selected'] {
+  background: var(--apt-selected);
+}
+
+/* ===========================================================================
+ * 14 · PREMIUM CALENDAR TUNE (final UAT redesign, target mockups 1-3)
+ *
+ * Layered over §3/§4 deliberately: the geometry and the D-105 language are
+ * settled; this section is depth, hover behaviour, and the Providers rail.
+ * =========================================================================== */
+
+/* The grid area (mockup 3's three-column composition): the Providers-only
+   rail on the left, the grid column (grid + status bar) in the middle, and
+   the Providers-only mini-calendar/summary panel on the right.
+
+   In the Providers view the three columns read as ONE workspace — a single
+   framed canvas divided by hairlines — rather than three separate cards
+   floating on the page, which is what the mockup draws and what the owner
+   asked for. */
+.kw-cal-body {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  align-items: stretch;
+}
+.kw-cal-body:has(.kw-provider-rail) {
+  gap: 0;
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  background: var(--apt-surface);
+  box-shadow: var(--apt-shadow-sm);
+  overflow: hidden;
+}
+.kw-cal-body:has(.kw-provider-rail) .kw-provider-rail,
+.kw-cal-body:has(.kw-provider-rail) .kw-provider-side {
+  position: static;
+  padding: 12px;
+}
+.kw-cal-body:has(.kw-provider-rail) .kw-provider-rail {
+  border-right: 1px solid var(--apt-border);
+  background: var(--apt-surface-2);
+  width: 246px;
+}
+.kw-cal-body:has(.kw-provider-rail) .kw-provider-side {
+  border-left: 1px solid var(--apt-border);
+  background: var(--apt-surface-2);
+}
+/* Inside one canvas the inner cards drop their own frames — the hairlines
+   already do the dividing. */
+.kw-cal-body:has(.kw-provider-rail) .kw-provider-rail-list,
+.kw-cal-body:has(.kw-provider-rail) .kw-provider-minical,
+.kw-cal-body:has(.kw-provider-rail) .kw-provider-summary {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  padding-inline: 0;
+}
+.kw-cal-body:has(.kw-provider-rail) .kw-provider-summary {
+  border-top: 1px solid var(--apt-border);
+  padding-top: 12px;
+  margin-top: 4px;
+}
+.kw-cal-body:has(.kw-provider-rail) .kw-cal-main {
+  padding: 12px;
+}
+.kw-cal-body:has(.kw-provider-rail) .kw-calendar-grid .rbc-time-view {
+  border: none;
+  border-radius: 0;
+}
+.kw-cal-body:has(.kw-provider-rail) .kw-cal-statusbar {
+  border: none;
+  border-top: 1px solid var(--apt-border);
+  border-radius: 0;
+  box-shadow: none;
+  padding-bottom: 0;
+}
+.kw-cal-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.kw-cal-main > .kw-cal-outer {
+  min-width: 0;
+}
+
+/* The status summary bar that closes the calendar canvas (mockups 1-2). */
+.kw-cal-statusbar {
+  background: var(--apt-surface);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  box-shadow: var(--apt-shadow-xs);
+  padding: 9px 16px;
+  display: flex;
+  justify-content: center;
+}
+.kw-calendar-metrics--bar {
+  gap: 22px;
+  margin-left: 0;
+  padding-left: 0;
+}
+.kw-calendar-metrics--bar .kw-metric-value {
+  font-size: 13px;
+}
+
+/* --- The Providers rail ------------------------------------------------- */
+.kw-provider-rail {
+  width: 216px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-self: flex-start;
+  position: sticky;
+  top: 8px;
+}
+.kw-provider-rail-list {
+  background: var(--apt-surface);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  box-shadow: var(--apt-shadow-xs);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.kw-provider-rail-head {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--apt-muted);
+  padding: 6px 8px 4px;
+}
+.kw-provider-rail-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  border-radius: var(--apt-radius);
+  padding: 7px 8px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--apt-text);
+  transition: background 0.15s ease;
+}
+.kw-provider-rail-row:hover {
+  background: var(--apt-surface-2);
+}
+.kw-provider-rail-row[data-active] {
+  background: var(--apt-teal-soft);
+}
+.kw-provider-rail-row[data-active] .kw-provider-rail-name {
+  font-weight: 650;
+  color: var(--apt-teal);
+}
+.kw-provider-rail-all {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--apt-surface-3);
+  color: var(--apt-text-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  flex: none;
+}
+/* A real Malaysian doctor's name is long — "Dr. Nurul Aisyah binti Hamid" —
+   and a rail that renders it as "Dr UAT Doctor (Sy…" is a rail that failed.
+   Two lines are allowed; the ellipsis is the third line's problem. */
+.kw-provider-rail-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* `break-word`, not `anywhere`: a word is only broken when it genuinely
+     cannot fit, so "Priyadarshini" never splits across two lines while there
+     is a space to break at. */
+  overflow-wrap: break-word;
+}
+.kw-provider-rail-edge {
+  flex: none;
+  width: 3px;
+  align-self: stretch;
+  border-radius: 2px;
+  margin-right: 2px;
+  opacity: 0.9;
+}
+
+.kw-provider-rail-count {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--apt-text-2);
+  background: var(--apt-surface-3);
+  border-radius: 999px;
+  min-width: 22px;
+  text-align: center;
+  padding: 1px 6px;
+}
+
+/* --- The right-side panel: mini month + provider summary (mockup 3) ------ */
+.kw-provider-side {
+  width: 252px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-self: flex-start;
+  position: sticky;
+  top: 8px;
+}
+.kw-provider-minical {
+  background: var(--apt-surface);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  box-shadow: var(--apt-shadow-xs);
+  padding: 4px 6px 6px;
+}
+/* The mini calendar navigates the SAME anchor the command bar owns; its
+   month/year dropdowns suffice, so the year/month mode switch goes. */
+.kw-provider-minical .ant-picker-calendar-mode-switch {
+  display: none;
+}
+.kw-provider-minical .ant-picker-calendar-header {
+  padding: 8px 6px 4px;
+}
+.kw-provider-minical .ant-picker-cell-selected .ant-picker-cell-inner {
+  background: var(--apt-nav-navy);
+}
+.kw-provider-summary-title {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--apt-muted);
+  margin-bottom: 4px;
+}
+
+.kw-provider-summary {
+  background: var(--apt-surface);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  box-shadow: var(--apt-shadow-xs);
+  padding: 12px 14px;
+}
+.kw-provider-summary-scope {
+  display: block;
+  font-weight: 650;
+  font-size: 12.5px;
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kw-provider-summary dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kw-provider-summary dl > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.kw-provider-summary dt {
+  color: var(--apt-text-2);
+  font-size: 12px;
+}
+.kw-provider-summary dd {
+  margin: 0;
+  font-weight: 650;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.kw-provider-utilisation {
+  margin-top: 10px;
+}
+.kw-provider-utilisation-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.kw-provider-utilisation-track {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--apt-surface-3);
+  overflow: hidden;
+}
+.kw-provider-utilisation-track > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--apt-teal);
+  transition: width 0.3s ease;
+}
+
+/* Provider column header gains the day-count chip. */
+.kw-provider-headcount {
+  flex: none;
+  margin-left: auto;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--apt-text-2);
+  background: var(--apt-surface-3);
+  border-radius: 999px;
+  min-width: 20px;
+  text-align: center;
+  padding: 0 6px;
+}
+.kw-provider-head {
+  min-width: 0;
+}
+
+/* --- The in-card doctor identity (mockup 2) ------------------------------- */
+.kw-event-provider {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--apt-text-2);
+  margin-top: 1px;
+}
+.kw-event-provider > span:last-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Month view: calm cells, present today ------------------------------- */
+.kw-calendar-grid .rbc-month-view .rbc-day-bg {
+  transition: background 0.15s ease;
+}
+.kw-calendar-grid .rbc-month-view .rbc-day-bg:hover {
+  background: var(--apt-surface-2);
+}
+.kw-calendar-grid .rbc-show-more {
+  color: var(--apt-teal);
+  font-weight: 600;
+}
+.kw-calendar-grid .rbc-show-more:hover {
+  color: var(--apt-teal-hover);
+  text-decoration: none;
+}
+
+/* --- Command + filter bars: a touch more presence ------------------------ */
+.kw-cal-heading {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.kw-cal-filterbar {
+  row-gap: 8px;
+}
+
+/* "Where screen width permits" (the owner's words): the right-side panel
+   yields first, then the rail stacks above the grid rather than crushing it. */
+@media (max-width: 1360px) {
+  .kw-provider-side {
+    display: none;
+  }
+}
+@media (max-width: 1100px) {
+  .kw-cal-body {
+    flex-direction: column;
+  }
+  .kw-provider-rail {
+    width: 100%;
+    position: static;
+  }
+}
+
+/* ===========================================================================
+ * 15 · PREMIUM LIST + REGISTRATION TUNE (final UAT redesign, target mockups
+ *      4-5). Structure unchanged; hierarchy, hover and the editable patient
+ *      block in the check-in drawer.
+ * =========================================================================== */
+
+.kw-appt-list .ant-table-thead > tr > th {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--apt-text-2);
+  background: var(--apt-surface-2);
+}
+.kw-appt-list .ant-table-tbody > tr > td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.kw-appt-list .ant-table-tbody > tr {
+  transition: background 0.15s ease;
+}
+.kw-appt-list .ant-table-tbody > tr:hover > td {
+  background: var(--apt-teal-soft) !important;
+}
+.kw-appt-provider-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Mockup 4 — the patient cell: avatar beside name-over-phone. */
+.kw-appt-patient-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.kw-appt-patient-cell .kw-appt-patient {
+  min-width: 0;
+}
+
+/* A service name is one calm line; the full name rides the native title. */
+.kw-appt-service {
+  display: inline-block;
+  max-width: 168px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+/* Mockup 4 — the row's primary action is INK: the dark navy Check-in button
+   of the approved list. Scoped to table rows so the page-level primaries
+   (New appointment) keep the app's own primary colour. */
+.kw-appt-list .ant-table-tbody .ant-btn-primary:not(:disabled) {
+  background: var(--apt-nav-navy) !important;
+  border-color: var(--apt-nav-navy) !important;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.kw-appt-list .ant-table-tbody .ant-btn-primary:not(:disabled):hover {
+  background: var(--apt-navy-2) !important;
+  border-color: var(--apt-navy-2) !important;
+}
+
+/* Section headings that carry an action on their right (Edit details). */
+.kw-apt-section--actionable {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* --- The check-in drawer (target mockup 5): identity rail + review column --- */
+.kw-checkin-grid {
+  display: flex;
+  gap: 20px;
+  align-items: stretch;
+  /* The rail runs the height of the drawer so the counter reads a workspace
+     with a left column, not a short card floating over white space. */
+  min-height: 100%;
+}
+.kw-checkin-content {
+  flex: 1;
+  min-width: 0;
+}
+/* THE RECEPTION RAIL (approved decision 10).
+ *
+ * Left-aligned and dense rather than centred and airy: the previous rail
+ * centred an XL monogram over ~380px of empty space and, for all that room,
+ * never showed the NRIC, the date of birth or what the visit was about —
+ * which are the four things a receptionist actually reads off the screen
+ * while the patient is standing there. Four labelled groups now: who they
+ * are, what is dangerous, what they booked, what is about to be committed.
+ */
+.kw-checkin-identity {
+  width: 268px;
+  flex: none;
+  background: var(--apt-surface-2);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  padding: 14px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+.kw-checkin-id-head-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.kw-checkin-id-head-text {
+  min-width: 0;
+}
+.kw-checkin-id-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--apt-nav-navy);
+  line-height: 1.25;
+  overflow-wrap: break-word;
+}
+.kw-checkin-id-meta {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--apt-text-2);
+  font-variant-numeric: tabular-nums;
+}
+.kw-checkin-id-head {
+  margin: 0 0 6px;
+}
+
+/* Label/value pairs, label narrow and quiet. */
+.kw-checkin-id-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+.kw-checkin-id-facts > div {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+.kw-checkin-id-facts dt {
+  font-size: 11px;
+  color: var(--apt-muted);
+  font-weight: 500;
+}
+.kw-checkin-id-facts dd {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--apt-text);
+  overflow-wrap: break-word;
+}
+/* An identity number is read against a card. It is tabular, it is one
+   token, and it does NOT wrap: half an NRIC on each of two lines is
+   unreadable at a counter. */
+.kw-checkin-id-nric {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kw-checkin-id-safety {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: var(--apt-radius);
+  background: var(--apt-surface);
+  border: 1px solid var(--apt-border);
+}
+.kw-checkin-id-alerts {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: var(--apt-text);
+  line-height: 1.4;
+}
+.kw-checkin-id-none {
+  font-size: 11.5px;
+  color: var(--apt-muted);
+}
+.kw-checkin-id-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kw-checkin-id-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  font-size: 12.5px;
+  color: var(--apt-text);
+}
+.kw-checkin-id-rows > span {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  line-height: 1.35;
+}
+.kw-checkin-id-rows .anticon {
+  color: var(--apt-teal);
+  font-size: 13px;
+  flex: none;
+  position: relative;
+  top: 1px;
+}
+.kw-checkin-id-reason {
+  color: var(--apt-text-2);
+}
+.kw-checkin-id-foot {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--apt-border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+.kw-checkin-id-foot .ant-typography {
+  font-size: 11.5px;
+}
+
+/* The drawer's one primary action is INK, and visibly so (mockup 5). */
+.kw-apt3-drawer .ant-drawer-footer .ant-btn-primary:not(:disabled) {
+  background: var(--apt-nav-navy) !important;
+  border-color: var(--apt-nav-navy) !important;
+  font-weight: 600;
+  border-radius: 8px;
+  padding-inline: 18px;
+}
+.kw-apt3-drawer .ant-drawer-footer .ant-btn-primary:not(:disabled):hover {
+  background: var(--apt-navy-2) !important;
+  border-color: var(--apt-navy-2) !important;
+}
+
+/* Narrow screens: the rail folds above the review column. */
+@media (max-width: 640px) {
+  .kw-checkin-grid {
+    flex-direction: column;
+  }
+  .kw-checkin-identity {
+    width: 100%;
+    position: static;
+  }
+}
+
+/* Detail panel fact rows: label quiet and narrow, value doing the talking. */
+.kw-apt-facts .ant-descriptions-item {
+  padding-bottom: 9px !important;
+}
+.kw-apt-facts .ant-descriptions-item-label {
+  font-size: 11.5px;
+  color: var(--apt-muted);
+}
+.kw-apt-facts .ant-descriptions-item-content {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--apt-text);
+}
+.kw-apt-facts-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.kw-apt-facts-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+/* The activity column keeps its shape when the booking has one entry — the
+   panel should look composed on a quiet appointment, not half-drawn. */
+.kw-apt-detail-side {
+  min-height: 200px;
+}
+
+/* THE GROUPED FACT LISTS (approved decision 11).
+   Two columns on a wide drawer so the three short lists sit side by side
+   instead of stacking into 500px of column with a lake of white beneath —
+   which is the "reduce empty space" the owner asked for, achieved by
+   alignment rather than by inventing cards to fill it. */
+.kw-apt-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 4px 28px;
+  align-items: start;
+}
+.kw-apt-group {
+  min-width: 0;
+}
+.kw-apt-group .kw-apt-section {
+  margin-top: 14px;
+}
+.kw-apt-groups .kw-apt-facts .ant-descriptions-item {
+  padding-bottom: 7px !important;
+}
+
+/* --- Communication Centre console (approved mockup 6) --------------------
+   A dark sub-navigation down the left, the working area beside it. This is
+   INTERNAL to the Communication Centre — the product's top navigation and the
+   Appointment tabs are untouched, and this never becomes a global sidebar. */
+.kw-comms {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.kw-comms-main {
+  flex: 1;
+  min-width: 0;
+}
+.kw-comms-nav {
+  width: 208px;
+  flex: none;
+  background: var(--apt-nav-navy);
+  border-radius: var(--apt-radius-lg);
+  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: sticky;
+  top: 8px;
+  box-shadow: var(--apt-shadow-sm);
+}
+.kw-comms-nav-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  padding: 2px 10px 10px;
+}
+.kw-comms-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.82);
+  border-radius: var(--apt-radius);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.kw-comms-nav-item:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.kw-comms-nav-item[data-active] {
+  background: var(--apt-teal);
+  color: #fff;
+}
+.kw-comms-nav-item:disabled {
+  color: rgba(255, 255, 255, 0.38);
+  cursor: default;
+}
+.kw-comms-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 2px 10px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+}
+.kw-comms-nav-item--child {
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 6px 10px;
+}
+.kw-comms-soon {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+/* --- The Communication workspace (approved mockup 6) ---------------------
+   Compact header, three columns — controls, composer, preview — and the
+   honesty line as a line. Proportions follow the mockup: a narrow control
+   rail, the message taking the centre, the phone preview on the right. */
+.kw-comms-workspace {
+  background: var(--apt-surface);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  box-shadow: var(--apt-shadow-xs);
+  overflow: hidden;
+}
+.kw-comms-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--apt-border);
+  background: var(--apt-surface-2);
+}
+.kw-comms-head-text {
+  min-width: 0;
+  flex: 1;
+}
+.kw-comms-head-text h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--apt-nav-navy);
+  letter-spacing: -0.01em;
+}
+.kw-comms-head-text span {
+  font-size: 12.5px;
+  color: var(--apt-text-2);
+}
+.kw-comms-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.kw-comms-head-actions .ant-tag {
+  margin-inline-end: 0;
+}
+
+.kw-comms-body {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr) 300px;
+  gap: 0;
+  align-items: stretch;
+}
+.kw-comms-controls {
+  padding: 16px;
+  border-right: 1px solid var(--apt-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--apt-surface);
+}
+.kw-comms-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--apt-muted);
+  margin-top: 8px;
+}
+.kw-comms-controls > .kw-comms-label:first-child {
+  margin-top: 0;
+}
+.kw-comms-timing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.kw-comms-timing-tag.ant-tag {
+  margin-inline-end: 0;
+  border-radius: 999px;
+  font-size: 11.5px;
+}
+.kw-comms-vars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.kw-comms-var {
+  border: 1px solid var(--apt-border);
+  background: var(--apt-surface-2);
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--apt-text-2);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.kw-comms-var:hover {
+  border-color: var(--apt-teal);
+  color: var(--apt-teal);
+}
+.kw-comms-varnote {
+  font-size: 11px;
+  line-height: 1.45;
+  margin-top: 2px;
+}
+
+.kw-comms-composer {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.kw-comms-textarea.ant-input {
+  flex: 1;
+  min-height: 300px;
+  resize: none;
+  font-size: 13.5px;
+  line-height: 1.6;
+  border-radius: var(--apt-radius);
+}
+.kw-comms-count {
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--apt-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-comms-previewpane {
+  padding: 16px;
+  border-left: 1px solid var(--apt-border);
+  background: var(--apt-surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+/* The phone: a chat ground, the clinic's own name at the top, one sent
+   bubble. Nothing here claims delivery — there are no ticks. */
+.kw-comms-phone {
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  overflow: hidden;
+  background: #eae6df;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 260px;
+}
+.kw-comms-phone-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #075e54;
+  color: #fff;
+  padding: 8px 12px;
+}
+.kw-comms-phone-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+.kw-comms-phone-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kw-comms-phone-body {
+  flex: 1;
+  padding: 12px;
+  background-image: radial-gradient(rgba(0, 0, 0, 0.04) 1px, transparent 1px);
+  background-size: 14px 14px;
+  overflow: auto;
+}
+.kw-comms-bubble {
+  background: #dcf8c6;
+  border-radius: 10px 10px 2px 10px;
+  padding: 9px 11px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #111b21;
+  white-space: pre-wrap;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+  margin-left: 12%;
+}
+/* The raw template reads as source, not as a message. */
+.kw-comms-bubble[data-raw] {
+  background: var(--apt-surface);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  margin-left: 0;
+  border-radius: var(--apt-radius);
+}
+.kw-comms-previewnote {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.kw-comms-honesty {
+  padding: 9px 14px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(29, 78, 216, 0.18);
+  border-radius: var(--apt-radius);
+  background: var(--apt-active-bg);
+  color: var(--apt-navy-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1180px) {
+  .kw-comms-body {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+  .kw-comms-previewpane {
+    grid-column: 1 / -1;
+    border-left: none;
+    border-top: 1px solid var(--apt-border);
+  }
+}
+
+.kw-comms-stats {
+  display: flex;
+  gap: 26px;
+  flex-wrap: wrap;
+}
+.kw-comms-stats > span {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  color: var(--apt-text-2);
+}
+.kw-comms-stats strong {
+  font-size: 22px;
+  font-weight: 750;
+  color: var(--apt-nav-navy);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+@media (max-width: 900px) {
+  .kw-comms {
+    flex-direction: column;
+  }
+  .kw-comms-nav {
+    width: 100%;
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .kw-comms-nav-title,
+  .kw-comms-nav-group {
+    display: none;
+  }
+}
+
+/* --- Appointment detail panel (approved mockup 8) ------------------------
+   The booking named in the title, the person in an identity block, the facts
+   on the left and the story on the right. */
+.kw-apt-ref {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--apt-nav-navy);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.kw-apt-detail-grid {
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+  margin-top: 14px;
+}
+.kw-apt-detail-main {
+  flex: 1;
+  min-width: 0;
+}
+.kw-apt-detail-side {
+  width: 268px;
+  flex: none;
+  border-left: 1px solid var(--apt-border);
+  padding-left: 18px;
+  align-self: stretch;
+}
+.kw-apt-detail-side .kw-apt-section:first-child {
+  margin-top: 0;
+}
+/* The identity block sits above both columns — one person, one statement. */
+.kw-apt-detail > .kw-apt-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--apt-border);
+}
+@media (max-width: 720px) {
+  .kw-apt-detail-grid {
+    flex-direction: column;
+  }
+  .kw-apt-detail-side {
+    width: 100%;
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid var(--apt-border);
+    padding-top: 12px;
+  }
+}
+
+/* --- Check-in: tabs, clinical context, completeness footer -------------- */
+.kw-apt3-drawer .ant-drawer-body:has(.kw-checkin-grid) {
+  display: flex;
+  flex-direction: column;
+}
+.kw-checkin-tabs .ant-tabs-nav {
+  margin-bottom: 14px;
+}
+.kw-checkin-tabs .ant-tabs-tab {
+  font-weight: 600;
+  padding: 8px 2px 10px;
+}
+.kw-checkin-tabs .ant-tabs-ink-bar {
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+}
+.kw-checkin-tablabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* The unanswered-question dot on the tab — colour plus the footer sentence,
+   never colour alone. */
+.kw-checkin-tabdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--apt-limited);
+}
+
+.kw-checkin-id-flags {
+  align-self: stretch;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.kw-checkin-chip,
+.kw-checkin-allergy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kw-checkin-chip[data-tone='returning'] {
+  background: var(--apt-active-bg);
+  color: var(--apt-active);
+}
+.kw-checkin-chip[data-tone='new'] {
+  background: var(--apt-neutral-bg);
+  color: var(--apt-neutral);
+}
+.kw-checkin-chip[data-tone='info'] {
+  background: var(--apt-clinical-bg);
+  color: var(--apt-clinical);
+  white-space: normal;
+}
+/* Allergy has three honest states: recorded, confirmed-none, and unknown. */
+.kw-checkin-allergy[data-tone='danger'] {
+  background: var(--apt-danger-bg);
+  color: var(--apt-danger);
+  white-space: normal;
+}
+.kw-checkin-allergy[data-tone='clear'] {
+  background: var(--apt-success-bg);
+  color: var(--apt-success);
+}
+.kw-checkin-allergy[data-tone='unknown'] {
+  background: var(--apt-neutral-bg);
+  color: var(--apt-text-2);
+}
+
+.kw-checkin-clinical {
+  margin-top: 14px;
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  background: var(--apt-surface-2);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.kw-checkin-clinical-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.kw-checkin-clinical-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.kw-checkin-clinical-note {
+  font-size: 11.5px;
+}
+
+/* The footer carries the missing answer on the left, the actions on the
+   right — the tab split must never hide an unanswered question. */
+.kw-checkin-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+.kw-checkin-missing {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12.5px;
+  color: var(--apt-attention);
+}
+
+/* The record grid: tighter rows, labels quiet, values doing the talking. */
+.kw-checkin-record .ant-descriptions-item {
+  padding-bottom: 10px !important;
+}
+.kw-checkin-record .ant-descriptions-item-label {
+  font-size: 11.5px;
+  color: var(--apt-muted);
+}
+.kw-checkin-record .ant-descriptions-item-content {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* A stronger identity panel: the mockup's larger avatar area and a name that
+   leads, with the counter's facts under it. */
+.kw-checkin-identity {
+  padding: 20px 16px 16px;
+}
+.kw-checkin-id-name {
+  font-size: 16.5px;
+}
+.kw-checkin-identity .kw-avatar[data-size='xl'] {
+  width: 64px;
+  height: 64px;
+  font-size: 21px;
+}
+.kw-checkin-id-rows > span {
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--apt-border);
+}
+.kw-checkin-id-rows > span:last-child {
+  border-bottom: none;
+}
+
+/* The in-drawer patient edit form: compact, calm, clearly a mode. */
+.kw-checkin-patient-form {
+  background: var(--apt-surface-2);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  padding: 12px 12px 10px;
+  margin-bottom: 4px;
+}
+.kw-checkin-patient-form .ant-form-item {
+  margin-bottom: 10px;
+}
+
+/* --- The Reminder Centre (target mockup 7) -------------------------------
+   Summary tiles over a real worklist table: time · patient · appointment ·
+   type · channel · action. Every tile is an honest derivation of the rows
+   below it — nothing the drawer cannot show is counted. */
+.kw-rem-tiles {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.kw-rem-tile {
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  background: var(--apt-surface);
+  box-shadow: var(--apt-shadow-xs);
+  padding: 12px 8px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+.kw-rem-tile:hover {
+  box-shadow: var(--apt-shadow-md);
+  transform: translateY(-1px);
+}
+.kw-rem-tile-value {
+  font-size: 22px;
+  font-weight: 750;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--apt-nav-navy);
+}
+.kw-rem-tile-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--apt-text-2);
+  white-space: nowrap;
+}
+.kw-rem-tile[data-tone='due'] .kw-rem-tile-value {
+  color: var(--apt-active);
+}
+.kw-rem-tile[data-tone='upcoming'] .kw-rem-tile-value {
+  color: var(--apt-limited);
+}
+.kw-rem-tile[data-tone='sent'] .kw-rem-tile-value {
+  color: var(--apt-avail);
+}
+.kw-rem-tile[data-tone='overdue'] .kw-rem-tile-value {
+  color: var(--apt-danger);
+}
+
+.kw-rem-head,
+.kw-rem-row {
+  display: grid;
+  grid-template-columns: 74px minmax(150px, 1.1fr) minmax(180px, 1.5fr) 118px 34px minmax(96px, auto);
+  gap: 10px;
+  align-items: center;
+}
+.kw-rem-head {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--apt-text-2);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--apt-border);
+}
+.kw-rem-rows {
+  display: flex;
+  flex-direction: column;
+}
+.kw-rem-row {
+  padding: 10px;
+  border-bottom: 1px solid var(--apt-hairline);
+  transition: background 0.15s ease;
+}
+.kw-rem-row:hover {
+  background: var(--apt-surface-2);
+}
+.kw-rem-time {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--apt-nav-navy);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+.kw-rem-time-date {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--apt-text-2);
+  white-space: nowrap;
+}
+.kw-rem-patient {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.kw-rem-patient-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+.kw-rem-patient-name {
+  font-weight: 650;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kw-rem-patient-phone {
+  font-size: 11px;
+  color: var(--apt-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kw-rem-appt {
+  font-size: 12px;
+  color: var(--apt-text);
+  min-width: 0;
+  line-height: 1.35;
+}
+.kw-rem-appt-provider {
+  display: block;
+  font-size: 11px;
+  color: var(--apt-text-2);
+}
+.kw-rem-type.ant-tag {
+  margin-inline-end: 0;
+  font-size: 11px;
+}
+.kw-rem-wa {
+  color: #25d366;
+  font-size: 16px;
+}
+.kw-rem-action {
+  justify-self: end;
+}
+@media (max-width: 700px) {
+  .kw-rem-tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .kw-rem-tile[data-tone='overdue'] {
+    grid-column: span 2;
+  }
+  .kw-rem-head {
+    display: none;
+  }
+  .kw-rem-head + .kw-rem-rows {
+    border-top: 1px solid var(--apt-border);
+  }
+  .kw-rem-row {
+    grid-template-columns: 1fr auto;
+    row-gap: 6px;
+  }
+  .kw-rem-col-channel {
+    display: none;
+  }
+}
+
+/* Inline patient registration inside the booking flow (final-UAT). */
+.kw-flow-new-patient {
+  background: var(--apt-surface-2);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  padding: 12px 12px 10px;
+}
+.kw-flow-new-patient .ant-form-item {
+  margin-bottom: 10px;
+}
+
+/* ===========================================================================
+ * 16 · PREMIUM PUBLIC FLOW (final UAT redesign, target mockup 1)
+ *
+ * The availability month, the "you selected" moment, the honest payment
+ * summary and the wallet-style confirmation. Everything else in §11 stands.
+ * =========================================================================== */
+
+/* --- The availability month ---------------------------------------------- */
+.kw-avcal {
+  background: var(--apt-surface);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  box-shadow: var(--apt-shadow-xs);
+  padding: 12px 14px 14px;
+}
+.kw-avcal-fastest {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid var(--apt-teal);
+  background: var(--apt-teal-soft);
+  color: var(--apt-text);
+  border-radius: var(--apt-radius);
+  padding: 9px 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+  transition: box-shadow 0.15s ease;
+}
+.kw-avcal-fastest:hover {
+  box-shadow: var(--apt-shadow-sm);
+}
+.kw-avcal-fastest .anticon {
+  color: var(--apt-teal);
+}
+.kw-avcal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.kw-avcal-title {
+  font-weight: 650;
+  font-size: 14px;
+}
+.kw-avcal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  justify-items: center;
+}
+.kw-avcal-dow {
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--apt-muted);
+  padding: 4px 0;
+}
+.kw-avcal-day {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--apt-text);
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.kw-avcal-day[data-status='AVAILABLE'] {
+  background: var(--apt-avail-bg);
+  color: var(--apt-avail);
+  font-weight: 650;
+}
+.kw-avcal-day[data-status='LIMITED'] {
+  background: var(--apt-limited-bg);
+  color: var(--apt-limited);
+  font-weight: 650;
+}
+.kw-avcal-day[data-status='FULL'] {
+  background: var(--apt-full-bg);
+  color: var(--apt-muted);
+  cursor: not-allowed;
+}
+.kw-avcal-day[data-status='CLOSED'],
+.kw-avcal-day[data-status='OUTSIDE'],
+.kw-avcal-day[data-status='PAST'],
+.kw-avcal-day[data-status='LOADING'] {
+  color: var(--apt-muted);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.kw-avcal-day[data-selected] {
+  background: var(--apt-selected);
+  color: #fff;
+  font-weight: 700;
+}
+.kw-avcal-day[data-marked] {
+  outline: 2px solid var(--apt-selected);
+  outline-offset: 1px;
+}
+.kw-avcal-day:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: var(--apt-shadow-sm);
+}
+
+/* --- "You selected" — the doctor revealed, with their face (mockup). ------ */
+.kw-public-selected {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--apt-teal-soft);
+  border: 1px solid var(--apt-teal);
+  border-radius: var(--apt-radius-lg);
+  padding: 12px 14px;
+}
+.kw-public-selected-when {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+/* --- Honest payment summary ---------------------------------------------- */
+.kw-public-paysummary {
+  background: var(--apt-surface-2);
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  padding: 12px 14px;
+}
+.kw-public-paysummary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13.5px;
+  padding: 3px 0;
+  font-variant-numeric: tabular-nums;
+}
+.kw-public-paysummary-row + .kw-public-paysummary-row {
+  border-top: 1px dashed var(--apt-border);
+}
+
+/* The review step's labelled summary card (mockup: Review & Pay panel,
+   minus the payment methods Kuwick honestly does not have). */
+.kw-public-apptsummary {
+  background: var(--apt-surface);
+}
+.kw-public-apptsummary .kw-public-paysummary-row > span:first-child {
+  color: var(--apt-text-2);
+  flex: none;
+}
+.kw-public-apptsummary .kw-public-paysummary-row > span:last-child {
+  font-weight: 600;
+  text-align: right;
+  min-width: 0;
+}
+
+/* --- The wallet card ------------------------------------------------------ */
+.kw-public-wallet {
+  width: 100%;
+  max-width: 420px;
+  border-radius: var(--apt-radius-xl);
+  overflow: hidden;
+  box-shadow: 0 14px 34px rgba(11, 23, 54, 0.28);
+  border: none;
+  margin-top: 14px;
+  text-align: left;
+  background: var(--apt-wallet-grad);
+  padding: 20px 16px 16px;
+}
+
+/* The headline ON the gradient (mockup: "Appointment Confirmed!"). */
+.kw-public-wallet-top {
+  text-align: center;
+  color: #fff;
+  margin-bottom: 14px;
+}
+.kw-public-wallet-top .kw-public-done-badge {
+  margin: 0 auto 8px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+/* An antd Title (a real h4 — the page's one headline, and what assistive
+   tech lands on) restyled white for the gradient. */
+h4.ant-typography.kw-public-wallet-title {
+  margin: 0;
+  color: #fff;
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+.kw-public-wallet-sub {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+/* The white ticket inside the gradient. */
+.kw-public-wallet-panel {
+  background: var(--apt-surface);
+  border-radius: var(--apt-radius-lg);
+  overflow: hidden;
+  box-shadow: var(--apt-shadow-md);
+}
+.kw-public-wallet-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--apt-nav-navy);
+  padding: 13px 16px 0;
+}
+.kw-public-wallet-head img {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #fff;
+}
+.kw-public-wallet-clinic {
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.01em;
+}
+.kw-public-wallet-body {
+  background: var(--apt-surface);
+  padding: 14px 16px 16px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+/* The action grid, inside the gradient card (mockup's button row). */
+.kw-public-wallet-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+.kw-public-wallet-actions .ant-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 10px;
+  min-height: 38px;
+}
+.kw-public-wallet-actions .ant-btn:hover {
+  background: rgba(255, 255, 255, 0.22) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  color: #fff !important;
+}
+.kw-public-wallet-actions .ant-btn-primary {
+  background: #fff;
+  border-color: #fff;
+  color: var(--apt-nav-navy);
+}
+.kw-public-wallet-actions .ant-btn-primary:hover {
+  background: #f1f5f9 !important;
+  border-color: #f1f5f9 !important;
+  color: var(--apt-nav-navy) !important;
+}
+.kw-public-wallet-qr {
+  flex: none;
+  border: 1px solid var(--apt-hairline);
+  border-radius: var(--apt-radius);
+  padding: 6px;
+  background: #fff;
+  line-height: 0;
+}
+.kw-public-wallet-qr svg {
+  display: block;
+}
+.kw-public-wallet-rows {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kw-public-wallet-rows > div {
+  display: flex;
+  flex-direction: column;
+}
+.kw-public-wallet-rows dt {
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--apt-muted);
+}
+.kw-public-wallet-rows dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 430px) {
+  .kw-public-wallet-body {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .kw-public-wallet-rows > div {
+    align-items: center;
+  }
+}
+
+/* An identity number is read against a card and never wraps — in the rail or
+   in the Patient Details list. */
+.kw-checkin-content .ant-descriptions-item-content .kw-nric-value,
+.kw-nric-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: bottom;
+}
+
+/* --- The curated provider colour picker (Staff management) ----------------
+   Eight swatches, no colour well. `data-taken` marks a colour another
+   provider already holds — a warning, not a lock: a locum covering a
+   colleague's list is a fair reason to want it. */
+.kw-colorpick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.kw-colorpick-swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1.5px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.kw-colorpick-swatch > span {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: block;
+}
+.kw-colorpick-swatch:hover {
+  transform: translateY(-1px);
+}
+.kw-colorpick-swatch[data-selected] {
+  box-shadow: 0 0 0 2px #fff inset, 0 0 0 2px currentColor;
+  border-width: 2px;
+}
+.kw-colorpick-swatch[data-selected] > span {
+  width: 20px;
+  height: 20px;
+}
+.kw-colorpick-swatch[data-taken] > span {
+  opacity: 0.4;
+}
+
+/* --- The List's repeated row action ---------------------------------------
+   Present on every row, dominant on none. It carries the teal so it is
+   findable, gains its fill when the row is approached, and never competes
+   with the patient's name for the first glance. */
+.kw-appt-list .kw-row-action.ant-btn {
+  border-color: var(--apt-border-strong);
+  color: var(--apt-teal);
+  font-weight: 600;
+  background: var(--apt-surface);
+}
+.kw-appt-list tbody tr:hover .kw-row-action.ant-btn,
+.kw-appt-list .kw-row-action.ant-btn:hover,
+.kw-appt-list .kw-row-action.ant-btn:focus-visible {
+  background: var(--apt-teal) !important;
+  border-color: var(--apt-teal) !important;
+  color: #fff !important;
+}
+.kw-appt-list .kw-row-action.ant-btn[disabled] {
+  color: var(--apt-muted);
+  border-color: var(--apt-border);
+}
+
+/* --- Month: workload above the chips --------------------------------------
+   The cell answers "how busy is this day?" before "who is on it". The count
+   therefore reads stronger than the representative bookings beneath it. */
+.kw-month-load {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--apt-text-2);
+}
+.rbc-date-cell.rbc-now .kw-month-load {
+  color: var(--apt-nav-navy);
+}
+
+/* --- The hours control (secondary, in the primary nav row) ----------------
+   Small, neutral and beside the view switcher — never a banner across the
+   working area. It only appears when the branch's stated hours genuinely
+   hide something, and it says how many rather than warning about them. */
+/* THE HOURS CONTROL — a view option, in the neutral register.
+   Slate, not amber: the clinic's stated hours hiding a 06:45 booking is a
+   fact about the settings, not an incident, and a receptionist should read
+   it the way they read the view switcher beside it. */
+.kw-cal-hours.ant-btn {
+  border-color: var(--apt-border);
+  color: var(--apt-text-2);
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--apt-surface);
+}
+.kw-cal-hours.ant-btn .anticon {
+  color: var(--apt-muted);
+  font-size: 12px;
+}
+.kw-cal-hours.ant-btn:hover,
+.kw-cal-hours.ant-btn:focus-visible {
+  color: var(--apt-text) !important;
+  border-color: var(--apt-border-strong) !important;
+}
+.kw-cal-hours.ant-btn:hover .anticon {
+  color: var(--apt-text-2);
+}
+/* Engaged reads as a pressed view option — still neutral, never an alert. */
+.kw-cal-hours.ant-btn[data-on] {
+  background: var(--apt-surface-3);
+  border-color: var(--apt-border-strong);
+  color: var(--apt-text);
+  font-weight: 600;
+}
+.kw-cal-hours.ant-btn[data-on] .anticon {
+  color: var(--apt-text-2);
+}
+
+/* The overflow list's time column widens for a full range. */
+.kw-ev-more-row .kw-ev-more-time {
+  min-width: 92px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }

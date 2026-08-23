@@ -13,10 +13,11 @@ describe('getCalendarRange', () => {
     expect(end.hour()).toBe(23);
   });
 
-  it('week view runs Sunday through Saturday and contains the anchor', () => {
+  // Approved mockup: the week panel reads "Mon 17 … Sun 23".
+  it('week view runs Monday through Sunday and contains the anchor', () => {
     const { start, end } = getCalendarRange('week', anchor);
-    expect(start.day()).toBe(0);
-    expect(end.day()).toBe(6);
+    expect(start.day()).toBe(1);
+    expect(end.day()).toBe(0);
     expect(start.isAfter(anchor, 'day')).toBe(false);
     expect(end.isBefore(anchor, 'day')).toBe(false);
   });

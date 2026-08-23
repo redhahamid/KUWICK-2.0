@@ -49,3 +49,81 @@ const localizerDayjs = new Proxy(
 export { localizerDayjs };
 
 export const calendarLocalizer = dayjsLocalizer(localizerDayjs);
+
+/**
+ * THE WEEK VIEW'S OWN LOCALIZER — Monday → Sunday (approved mockup).
+ *
+ * react-big-calendar decides a week's span in `Week.range` via
+ * `localizer.startOf(date, 'week', localizer.startOfWeek())`, and the dayjs
+ * localizer's `startOf` IGNORES that third argument — it delegates straight
+ * to `dayjs(date).startOf('week')`, i.e. the GLOBAL dayjs locale. So there
+ * are only two ways to move the week boundary: move the global locale, or
+ * give the week view a localizer of its own.
+ *
+ * Moving the global locale was refused: dayjs's week start is read all over
+ * this product (reports, roster, payroll periods), and silently shifting all
+ * of them to satisfy a calendar heading is exactly the kind of blast radius
+ * a presentation pass must not have. So the WEEK view — and nothing else —
+ * gets this instance. Month keeps its Sunday-first grid (its own mockup
+ * panel draws it that way) because rbc's month path calls `firstVisibleDay`,
+ * which never consults `startOfWeek` at all.
+ *
+ * The arithmetic is local-field only, exactly like gridWindow/gridDateAt: the
+ * Dates rbc handles are pseudo-dates whose LOCAL fields are the clinic wall
+ * clock (D-103), so a Monday computed with getDay()/getDate() is the clinic's
+ * Monday in every browser zone. Nothing here touches the timezone facade
+ * above, the grid bounds, or the axis policy.
+ */
+const MONDAY = 1;
+
+function mondayStartOfWeek(value: Date): Date {
+  const date = new Date(value);
+  const backToMonday = (date.getDay() + 6) % 7; // Mon → 0 … Sun → 6
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate() - backToMonday,
+    0,
+    0,
+    0,
+    0,
+  );
+}
+
+function mondayEndOfWeek(value: Date): Date {
+  const start = mondayStartOfWeek(value);
+  return new Date(
+    start.getFullYear(),
+    start.getMonth(),
+    start.getDate() + 6,
+    23,
+    59,
+    59,
+    999,
+  );
+}
+
+export const weekCalendarLocalizer = (() => {
+  const localizer = dayjsLocalizer(localizerDayjs);
+  const baseStartOf = localizer.startOf;
+  const baseEndOf = localizer.endOf;
+  localizer.startOfWeek = () => MONDAY;
+  // The library types `startOf`/`endOf` as OVERLOADS — one accepting 'week'
+  // with a first-day argument, one accepting the other units — which no
+  // single wrapper signature satisfies. So the wrapper takes the union and
+  // the deferral is cast once, here, rather than at every call site:
+  // behaviour is unchanged for every unit except 'week'.
+  type DateUnit = 'week' | 'day' | 'month' | 'year' | 'hours' | 'minutes' | 'seconds';
+  type AnyUnitFn = (date: Date, unit: DateUnit, firstOfWeek?: number) => Date;
+  const deferStartOf = baseStartOf as unknown as AnyUnitFn;
+  const deferEndOf = baseEndOf as unknown as AnyUnitFn;
+  localizer.startOf = ((date: Date, unit: DateUnit, firstOfWeek?: number) =>
+    unit === 'week' && date
+      ? mondayStartOfWeek(date)
+      : deferStartOf(date, unit, firstOfWeek)) as typeof localizer.startOf;
+  localizer.endOf = ((date: Date, unit: DateUnit, firstOfWeek?: number) =>
+    unit === 'week' && date
+      ? mondayEndOfWeek(date)
+      : deferEndOf(date, unit, firstOfWeek)) as typeof localizer.endOf;
+  return localizer;
+})();

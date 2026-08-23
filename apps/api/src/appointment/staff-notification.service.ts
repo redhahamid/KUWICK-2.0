@@ -103,11 +103,23 @@ export class StaffNotificationService {
   private async resolveRecipients(input: NotifyInput): Promise<string[]> {
     const ids = new Set<string>();
     if (input.includeDesk) {
+      // FINAL-UAT — capability-composed staff hear the desk too: a person
+      // whose access says ADMINISTRATOR/OWNER through staff_role_assignments
+      // is the desk, whatever their legacy job title reads. (Custom roles
+      // stay out of the audience on purpose: notification routing follows
+      // the desk CAPABILITY, not an arbitrary permission bundle.)
       const desk = await this.prisma.staff.findMany({
         where: {
           active: true,
-          role: { in: DESK_ROLES },
-          OR: [{ clinicId: input.clinicId }, { clinicId: null }],
+          AND: [
+            {
+              OR: [
+                { role: { in: DESK_ROLES } },
+                { roleAssignments: { some: { role: { in: ['ADMINISTRATOR', 'OWNER'] } } } },
+              ],
+            },
+            { OR: [{ clinicId: input.clinicId }, { clinicId: null }] },
+          ],
         },
         select: { id: true },
       });

@@ -76,6 +76,9 @@ export interface PublicPage {
     language: string;
     introText: string | null;
     timeZone: string;
+    /** Final-UAT — real Directions / call actions on the confirmation card. */
+    address: string | null;
+    phone: string | null;
   };
   form: {
     requirePhone: boolean;
@@ -91,6 +94,22 @@ export interface PublicSlot {
   start: string;
   end: string;
   staffId: string;
+}
+
+/** Final-UAT — one day of the colour-coded booking calendar. */
+export interface PublicDaySummary {
+  date: string;
+  status: 'AVAILABLE' | 'LIMITED' | 'FULL' | 'CLOSED' | 'OUTSIDE' | 'PAST';
+  slotCount: number;
+  firstSlot: string | null;
+  firstSlotStaffId: string | null;
+}
+
+export interface PublicMonthAvailability {
+  timeZone: string;
+  month: string;
+  days: PublicDaySummary[];
+  fastest: { date: string; start: string; staffId: string } | null;
 }
 
 export interface PublicFormField {
@@ -118,11 +137,18 @@ export const publicBooking = {
     ),
   formFields: (slug: string, serviceId: string) =>
     request<PublicFormField[]>(`/${slug}/form-fields?serviceId=${serviceId}`),
+  monthAvailability: (slug: string, params: { serviceId: string; month: string; staffId?: string }) =>
+    request<PublicMonthAvailability>(
+      `/${slug}/month-availability?serviceId=${params.serviceId}&month=${params.month}${
+        params.staffId ? `&staffId=${params.staffId}` : ''
+      }`,
+    ),
   book: (slug: string, body: Record<string, unknown>) =>
     request<{
       status: string;
       scheduledStart: string;
       scheduledEnd: string;
+      appointmentId: string;
       manageToken: string;
       manageUrl: string;
       message: string;
@@ -191,6 +217,8 @@ export const publicBooking = {
     request<{ timeZone: string; reason: string | null; slots: PublicSlot[] }>(
       `/${slug}/manage/${token}/availability?date=${date}`,
     ),
+  monthAvailabilityForToken: (slug: string, token: string, month: string) =>
+    request<PublicMonthAvailability>(`/${slug}/manage/${token}/month-availability?month=${month}`),
   rescheduleByToken: (
     slug: string,
     token: string,

@@ -1,5 +1,15 @@
-import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsEmail,
+  IsEnum,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MinLength,
+} from 'class-validator';
 import { ProfessionalType, Role } from '@prisma/client';
+import { PROVIDER_COLOR_VALUES } from '../provider-colors';
 
 export class CreateStaffDto {
   @IsOptional()
@@ -54,4 +64,13 @@ export class CreateStaffDto {
   @IsOptional()
   @IsBoolean()
   canSignClinicalNotes?: boolean;
+
+  // The provider's calendar identity colour. `@IsIn` against the curated
+  // palette rather than a hex pattern on purpose: "any valid hex" would be a
+  // free-form colour picker with extra steps, and the approved design rules
+  // one out. Omit it and the service assigns the clinic's next unused
+  // curated colour, so a provider is never left without an identity.
+  @IsOptional()
+  @IsIn(PROVIDER_COLOR_VALUES)
+  calendarColor?: string;
 }

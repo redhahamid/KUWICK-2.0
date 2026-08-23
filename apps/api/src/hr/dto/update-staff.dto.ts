@@ -1,5 +1,14 @@
-import { IsBoolean, IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MinLength,
+} from 'class-validator';
 import { ProfessionalType, Role } from '@prisma/client';
+import { PROVIDER_COLOR_VALUES } from '../provider-colors';
 
 export class UpdateStaffDto {
   @IsOptional()
@@ -51,4 +60,14 @@ export class UpdateStaffDto {
   @IsOptional()
   @IsString()
   professionalChangeReason?: string;
+
+  // The provider's calendar identity colour — one of the curated palette
+  // accents, enforced here so the rule survives any client. Changing it is
+  // presentation, not access control or clinical identity: it is deliberately
+  // NOT in PROFESSIONAL_FIELDS, so recolouring a doctor writes no
+  // professional-audit row. It still needs `users.manage`, because
+  // StaffService.update gates every edit to a staff record on it.
+  @IsOptional()
+  @IsIn(PROVIDER_COLOR_VALUES)
+  calendarColor?: string;
 }

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Avatar,
   Button,
   Collapse,
   DatePicker,
@@ -19,10 +18,13 @@ import dayjs, { Dayjs } from 'dayjs';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient, ApiError } from '../core/api-client';
 import { usePatient, usePatients, usePatientSearch } from '../core/hooks/usePatients';
+import { useCan } from '../core/hooks/useCan';
+import { InlinePatientCreate } from './InlinePatientCreate';
+import { PersonAvatar } from './shared/PersonAvatar';
 import { clinicDayjs, formatClinicDate, formatClinicTime } from '../clinical/clinicTime';
 import { useCreateAppointment } from './hooks/useAppointments';
 import { useAppointmentServices } from './hooks/useServiceConfig';
-import { getDoctorColor } from './calendar/doctor-color';
+import { useProviderColors } from './hooks/useProviderColors';
 
 const { Text } = Typography;
 
@@ -115,6 +117,7 @@ export function StaffBookingFlow({
   prefill,
   onBooked,
 }: StaffBookingFlowProps) {
+  const providerColor = useProviderColors();
   const [patientSearch, setPatientSearch] = useState('');
   const [patientId, setPatientId] = useState<string>();
   const [serviceId, setServiceId] = useState<string>();
@@ -125,9 +128,12 @@ export function StaffBookingFlow({
   const [overrideReason, setOverrideReason] = useState('');
   // Which ANSWERED step is being re-opened via its [Change] link, if any.
   const [editing, setEditing] = useState<number | null>(null);
+  // Final-UAT — the walk-in who isn't on file registers INSIDE the flow.
+  const [addingPatient, setAddingPatient] = useState(false);
   const [idempotencyKey] = useState(() => `staff-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
   const { data: patients, isFetching: searching } = usePatientSearch(patientSearch);
+  const canRegisterPatient = useCan('patient.demographics.write');
   // "Recent patients" — the people most likely to be on the phone right now.
   const { data: recentPatients } = usePatients();
   const { data: selectedPatient } = usePatient(patientId);
@@ -242,6 +248,7 @@ export function StaffBookingFlow({
     setNote('');
     setOverrideReason('');
     setEditing(null);
+    setAddingPatient(false);
   };
 
   const ready = Boolean(patientId && serviceId && slot);
@@ -305,8 +312,10 @@ export function StaffBookingFlow({
       title={
         <div className="kw-flow-title">
           <span className="kw-flow-heading">New appointment</span>
-          {/* The whole route in one quiet line: done in teal, the open
-              question in ink, the rest waiting. */}
+          {/* The whole route as the mockup's numbered chips: done wears a
+              teal tick, the open question a filled navy numeral, the rest
+              wait in grey. The same stepper language the patient booking
+              page speaks — one product, two operators. */}
           <span className="kw-flow-route" aria-label={`Step ${step} of 5 · ${STEP_WORDS[step]}`}>
             {ROUTE.map((word, index) => (
               <span key={word} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -316,10 +325,14 @@ export function StaffBookingFlow({
                   </span>
                 ) : null}
                 <span
+                  className="kw-flow-route-item"
                   data-state={
                     index < routeIndex ? 'done' : index === routeIndex ? 'active' : undefined
                   }
                 >
+                  <span className="kw-flow-route-dot" aria-hidden>
+                    {index < routeIndex ? '✓' : index + 1}
+                  </span>
                   {word}
                 </span>
               </span>
@@ -348,9 +361,7 @@ export function StaffBookingFlow({
         {/* -------- 1 · PATIENT ------------------------------------------ */}
         {patientId && selectedPatient && step !== 1 ? (
           <div className="kw-flow-patient" data-testid="flow-patient-card" style={{ marginBottom: 8 }}>
-            <Avatar size={36} className="kw-apt-avatar">
-              {initialsOf(selectedPatient.name)}
-            </Avatar>
+            <PersonAvatar name={selectedPatient.name} size="lg" />
             <div className="kw-flow-patient-text">
               <div className="kw-flow-patient-name">{selectedPatient.name}</div>
               <div className="kw-flow-patient-meta">
@@ -363,7 +374,20 @@ export function StaffBookingFlow({
             </Button>
           </div>
         ) : null}
-        {step === 1 ? (
+        {step === 1 && addingPatient ? (
+          <InlinePatientCreate
+            initialName={patientSearch.trim() || undefined}
+            onCreated={(created) => {
+              // The flow continues exactly where it stood: patientId answers
+              // step 1 and naturalStep advances on its own.
+              setPatientId(created.id);
+              setAddingPatient(false);
+              setEditing(null);
+            }}
+            onCancel={() => setAddingPatient(false)}
+          />
+        ) : null}
+        {step === 1 && !addingPatient ? (
           <>
             <div className="kw-flow-step">1 · Patient</div>
             <Select
@@ -379,12 +403,44 @@ export function StaffBookingFlow({
                 setPatientId(value);
                 setEditing(null);
               }}
-              notFoundContent={searching ? <Spin size="small" /> : <Empty description="No match" />}
+              notFoundContent={
+                searching ? (
+                  <Spin size="small" />
+                ) : (
+                  <Empty
+                    description="No match"
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    style={{ margin: '8px 0' }}
+                  >
+                    {canRegisterPatient ? (
+                      <Button
+                        type="primary"
+                        size="small"
+                        onClick={() => setAddingPatient(true)}
+                        data-testid="add-new-patient-empty"
+                      >
+                        + Add new patient
+                      </Button>
+                    ) : null}
+                  </Empty>
+                )
+              }
               options={(patients ?? []).map((patient) => ({
                 value: patient.id,
                 label: `${patient.name} · ${patient.identifierValue}${patient.phone ? ` · ${patient.phone}` : ''}`,
               }))}
             />
+            {canRegisterPatient ? (
+              <Button
+                type="link"
+                size="small"
+                style={{ paddingLeft: 0, marginTop: 4 }}
+                onClick={() => setAddingPatient(true)}
+                data-testid="add-new-patient"
+              >
+                + Add new patient
+              </Button>
+            ) : null}
             {(recentPatients?.length ?? 0) > 0 ? (
               <div className="kw-flow-recent">
                 <Text type="secondary" style={{ fontSize: 12 }}>
@@ -512,7 +568,7 @@ export function StaffBookingFlow({
                   >
                     <span
                       className="kw-flow-provider-avatar"
-                      style={{ background: getDoctorColor(provider.id) }}
+                      style={{ background: providerColor(provider.id).accent }}
                       aria-hidden
                     >
                       {initialsOf(provider.fullName)}

@@ -1,5 +1,6 @@
 import { AppointmentStatus } from '@kuwick/shared';
 import { RELEASED_STATUSES } from '../appointment-status.constants';
+import { statusAccent, statusSoft } from '../shared/appointment-colors';
 
 /**
  * PURE HELPERS FOR THE CALENDAR.
@@ -65,49 +66,76 @@ export function compactLine(time: string, patientName: string): string {
  * patient heavier than service, provider muted). `cardLines` stays as the
  * single-string form the tooltip uses.
  */
+/**
+ * THE APPROVED DENSITY LADDER (design decision 5).
+ *
+ * micro    ≤15 min   TIME · PATIENT, on one line
+ * compact  16–30     PATIENT / TIME · SERVICE
+ * standard 31–45     PATIENT / TIME · SERVICE / PROVIDER
+ * full     ≥46       PATIENT / TIME · SERVICE / PROVIDER / STATUS where useful
+ *
+ * Measured against the grid rather than aspired to: a 30-minute slot is ~44px,
+ * which holds exactly two lines — a third clips mid-glyph, and a clipped line
+ * is worse than a line the drawer carries instead. The PATIENT NAME is the
+ * anchor at every tier and is never the thing that gets dropped; where a
+ * column is genuinely too narrow the stylesheet ellipsises, which is a
+ * measurement the browser can make and this function cannot.
+ */
+export type CardTier = 'micro' | 'compact' | 'standard' | 'full';
+
 export interface CardModel {
-  /** "09:00" or, on EXPANDED cards, "09:00 – 10:00". */
+  /** "09:00" or, on the full tier, "09:00 – 10:00". */
   time: string;
   /** The patient's full name at every tier — the card's visual anchor (3F). */
   patient: string;
   service?: string;
   provider?: string;
-  /** ≤15 minutes: about 22px of card — ONE line (dot · time · name). */
+  tier: CardTier;
+  /** ≤15 minutes: about 22px of card — ONE line (time · name). */
   compact?: boolean;
-  /**
-   * ≤30 minutes: ~44px holds exactly two lines, so time and name share the
-   * first ("● 09:00 Tan Mei Chen") and the service takes the second. Three
-   * stacked lines here clip mid-glyph.
-   */
+  /** ≤30 minutes: ~44px holds exactly two lines. */
   dense?: boolean;
 }
 
 export function cardModel(input: CardLabelInput, minutes: number): CardModel {
-  // The tiers are measured against the grid, not aspiration: a 30-minute slot
-  // is ~44px tall, which holds exactly two lines — a third clips mid-glyph,
-  // and a clipped line is worse than a line the drawer carries instead.
-  //
-  // Phase 3F ladder — VERY SHORT "10:30 Afiq Jonas"; MEDIUM adds the service;
-  // LARGE has room for the full range and the provider. The patient's full
-  // name anchors every tier; ellipsis is the stylesheet's call, not this one's.
   if (minutes <= 15) {
     return {
       time: input.time,
       patient: input.patientName.trim(),
+      // The MODEL carries the fact; the stylesheet decides whether it fits.
+      // A 15-minute booking has no room for the service when it is stacked in
+      // a week column, and plenty of room when it is a row across a day.
+      service: input.serviceName,
+      provider: input.providerName,
+      tier: 'micro',
       compact: true,
     };
   }
   if (minutes <= 30) {
-    return { time: input.time, patient: input.patientName, service: input.serviceName, dense: true };
+    return {
+      time: input.time,
+      patient: input.patientName,
+      service: input.serviceName,
+      provider: input.providerName,
+      tier: 'compact',
+      dense: true,
+    };
   }
   if (minutes <= 45) {
-    return { time: input.time, patient: input.patientName, service: input.serviceName };
+    return {
+      time: input.time,
+      patient: input.patientName,
+      service: input.serviceName,
+      provider: input.providerName,
+      tier: 'standard',
+    };
   }
   return {
     time: input.timeRange ?? input.time,
     patient: input.patientName,
     service: input.serviceName,
     provider: input.providerName,
+    tier: 'full',
   };
 }
 
@@ -116,45 +144,17 @@ export function cardModel(input: CardLabelInput, minutes: number): CardModel {
  *
  * The provider is the card's left edge; the status is this dot (and the word
  * in the drawer — colour never carries meaning alone, the dot is a preview of
- * the chip, not a replacement for it). Mid-saturation hues, one per D-105
- * tone, chosen to read at 7px.
+ * the chip, not a replacement for it). The hexes live in ONE place now —
+ * shared/appointment-colors.ts — because four independent copies of "what
+ * colour is ARRIVED" had already drifted before the premium pass.
  */
 export function statusDotColor(status: AppointmentStatus): string {
-  switch (status) {
-    case AppointmentStatus.REQUESTED:
-      return '#7f56d9'; // planned
-    case AppointmentStatus.ARRIVED:
-      return '#d97706'; // attention — physically at the desk
-    case AppointmentStatus.CHECKED_IN:
-    case AppointmentStatus.IN_QUEUE:
-      return '#0f6b78'; // clinical — in the building
-    case AppointmentStatus.COMPLETED:
-      return '#16a34a'; // success
-    case AppointmentStatus.CANCELLED:
-    case AppointmentStatus.NO_SHOW:
-    case AppointmentStatus.RESCHEDULED:
-    case AppointmentStatus.WAITLIST:
-      return '#98a2b3'; // released
-    default:
-      return '#1d4ed8'; // active — confirmed and coming
-  }
+  return statusAccent(status);
 }
 
 /** The soft card tint a status earns; white when it has nothing to say. */
 export function statusCardBackground(status: AppointmentStatus): string {
-  switch (status) {
-    case AppointmentStatus.ARRIVED:
-      return '#fff8eb';
-    case AppointmentStatus.CHECKED_IN:
-    case AppointmentStatus.IN_QUEUE:
-      return '#eff8f8';
-    case AppointmentStatus.REQUESTED:
-      return '#faf7ff';
-    case AppointmentStatus.COMPLETED:
-      return '#f8fafc';
-    default:
-      return '#ffffff';
-  }
+  return statusSoft(status);
 }
 
 export function cardLines(input: CardLabelInput, minutes: number): string[] {
@@ -330,4 +330,188 @@ export function outsideDisplayCount(
     const endsAfter = (endMinutes === 0 ? 24 * 60 : endMinutes) > bounds.endHour * 60;
     return startsBefore || endsAfter;
   }).length;
+}
+
+/**
+ * OVERLAP THAT STAYS READABLE — the owner's blocker, solved as presentation.
+ *
+ * react-big-calendar divides a column between everything that overlaps, so a
+ * 09:00 with six concurrent bookings became six ~25px slivers reading
+ * "● 09:0…". The times were right and the data was right; the SCREEN was
+ * useless, which is the same as being wrong at a front counter.
+ *
+ * This caps how many cards may share a band and hands the remainder to a
+ * "+N more" tile — exactly the overflow the approved mockup draws in its own
+ * week panel. Nothing about the appointments changes: every one keeps its
+ * true start and end, the hidden ones are carried ON the tile so one click
+ * lists them, and availability, booking and conflict rules never see this
+ * function. It is a pure geometry decision about a fixed number of pixels.
+ *
+ * Clusters are per COLUMN (a day, or a provider's day in the resource view),
+ * found by the standard sweep: sorted by start, a booking joins the running
+ * cluster while it begins before the cluster's furthest end.
+ */
+export interface ConcurrencyInput {
+  id: string;
+  start: Date;
+  end: Date;
+  resourceId?: string;
+}
+
+export interface OverflowBundle<T> {
+  /** Stable id so React and rbc can key the synthetic tile. */
+  id: string;
+  start: Date;
+  end: Date;
+  resourceId?: string;
+  hidden: T[];
+}
+
+export function capConcurrency<T extends ConcurrencyInput>(
+  events: T[],
+  limit: number,
+  /**
+   * Does the VIEW actually give each provider its own column?
+   *
+   * This is the whole correctness of the cap. Every event carries a
+   * resourceId, but react-big-calendar is only handed `resources` in the
+   * Providers view — Day and Week draw every provider into ONE shared
+   * column per date. Bucketing by provider there applied the cap per
+   * doctor, so six doctors could put eighteen cards into a single band:
+   * measured at five boxes of 264px in the 08:30 band of a busy Wednesday.
+   * The bucket has to be the column the reader actually sees.
+   */
+  byResource = true,
+): { visible: T[]; overflow: OverflowBundle<T>[] } {
+  if (limit < 1 || events.length === 0) return { visible: events, overflow: [] };
+
+  const columns = new Map<string, T[]>();
+  for (const event of events) {
+    const column = byResource ? (event.resourceId ?? '') : '';
+    const key = `${column}|${event.start.getFullYear()}-${event.start.getMonth()}-${event.start.getDate()}`;
+    const bucket = columns.get(key);
+    if (bucket) bucket.push(event);
+    else columns.set(key, [event]);
+  }
+
+  const visible: T[] = [];
+  const overflow: OverflowBundle<T>[] = [];
+
+  for (const bucket of columns.values()) {
+    const sorted = [...bucket].sort((a, b) => a.start.getTime() - b.start.getTime());
+    let cluster: T[] = [];
+    let clusterEnd = -Infinity;
+
+    const flush = () => {
+      if (cluster.length === 0) return;
+      if (cluster.length <= limit) {
+        visible.push(...cluster);
+      } else {
+        // Keep the earliest (limit - 1) cards whole; the rest become one tile
+        // spanning the band they actually occupy.
+        const kept = cluster.slice(0, limit - 1);
+        const hidden = cluster.slice(limit - 1);
+        visible.push(...kept);
+        overflow.push({
+          id: `overflow:${hidden[0].id}:${hidden.length}`,
+          start: hidden.reduce((min, row) => (row.start < min ? row.start : min), hidden[0].start),
+          end: hidden.reduce((max, row) => (row.end > max ? row.end : max), hidden[0].end),
+          resourceId: hidden[0].resourceId,
+          hidden,
+        });
+      }
+      cluster = [];
+      clusterEnd = -Infinity;
+    };
+
+    for (const event of sorted) {
+      if (cluster.length > 0 && event.start.getTime() >= clusterEnd) flush();
+      cluster.push(event);
+      clusterEnd = Math.max(clusterEnd, event.end.getTime());
+    }
+    flush();
+  }
+
+  return { visible, overflow };
+}
+
+/**
+ * THE MONTH IS A CAPACITY VIEW, NOT A COMPRESSED WEEK (approved decision 6).
+ *
+ * A month cell cannot show a clinic's whole day, and pretending otherwise is
+ * what produced the current defect: the two chips that happened to be
+ * earliest were both CANCELLED, so a day with thirty-three live bookings
+ * showed two struck-through ones and a "+33 more" link. The two least useful
+ * facts, in the only two places available.
+ *
+ * So the cell is composed rather than truncated: the day's REAL count, two or
+ * three representative bookings — live ones first, then chronological — and
+ * an overflow line that says how many are behind it and how many of those are
+ * cancelled. Every number here is counted from the appointments already
+ * fetched. Nothing is modelled, forecast or scored: there is no capacity
+ * algorithm, because the clinic never told us what its capacity is.
+ */
+export interface MonthDayComposition<T> {
+  dateKey: string;
+  /** Every booking on the day, cancelled ones included. */
+  total: number;
+  /** The chips the cell will actually draw. */
+  shown: T[];
+  /** The rest, carried so one click can list them. */
+  hidden: T[];
+  /** How many of the hidden ones are released (cancelled / no-show). */
+  hiddenReleased: number;
+}
+
+/** A local-field date key — the same convention gridDateAt reads. */
+export function dateKeyOf(value: Date): string {
+  const month = `${value.getMonth() + 1}`.padStart(2, '0');
+  const day = `${value.getDate()}`.padStart(2, '0');
+  return `${value.getFullYear()}-${month}-${day}`;
+}
+
+/**
+ * @param maxRows how many LINES the cell can draw in total — chips plus the
+ *   overflow line. Passing the row budget rather than a chip count is what
+ *   lets a three-booking day show all three (no overflow line is needed) while
+ *   a thirty-four-booking day shows two and summarises. Overshoot it and
+ *   react-big-calendar quietly truncates with its own "+N more", which is the
+ *   composition this function exists to replace.
+ */
+export function monthDayComposition<T extends { start: Date; released: boolean }>(
+  events: T[],
+  maxRows: number,
+): Map<string, MonthDayComposition<T>> {
+  const byDay = new Map<string, T[]>();
+  for (const event of events) {
+    const key = dateKeyOf(event.start);
+    const bucket = byDay.get(key);
+    if (bucket) bucket.push(event);
+    else byDay.set(key, [event]);
+  }
+
+  const composed = new Map<string, MonthDayComposition<T>>();
+  for (const [dateKey, bucket] of byDay) {
+    const chronological = (rows: T[]) =>
+      [...rows].sort((a, b) => a.start.getTime() - b.start.getTime());
+    // Live bookings rank ahead of released ones; inside each group, the day
+    // runs in order. A cancelled 08:00 is real and still reachable — it is
+    // simply not one of the three things worth spending the cell on.
+    const ranked = [
+      ...chronological(bucket.filter((row) => !row.released)),
+      ...chronological(bucket.filter((row) => row.released)),
+    ];
+    // Everything fits, or it does not and one row goes to the summary.
+    const chipLimit = ranked.length <= maxRows ? maxRows : Math.max(1, maxRows - 1);
+    const shown = ranked.slice(0, chipLimit);
+    const hidden = ranked.slice(chipLimit);
+    composed.set(dateKey, {
+      dateKey,
+      total: bucket.length,
+      shown,
+      hidden,
+      hiddenReleased: hidden.filter((row) => row.released).length,
+    });
+  }
+  return composed;
 }

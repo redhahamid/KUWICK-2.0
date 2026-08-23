@@ -156,6 +156,10 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     // Standing facts about the patient, every type including MEDICAL.
     'patient.alert.write',
     'patient.alert.medical.write',
+    // Final-UAT hardening: ordinary demographics (name, phone, address) are
+    // now permission-gated server-side, and everyone who sees patients holds
+    // it — the gate exists to shut out back-office logins, not clinicians.
+    'patient.demographics.write',
     // A doctor who spots a transposed digit fixes it. In a small clinic they
     // are frequently the only person on shift, and the alternative is a second
     // patient record for the same human being.
@@ -207,6 +211,9 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     // a nurse recording "Pregnant" or "On Warfarin" is exactly the workflow.
     'patient.alert.write',
     'patient.alert.medical.write',
+    // Final-UAT hardening: see the doctor's entry — the demographics gate
+    // shuts out back-office logins, never the people at the counter.
+    'patient.demographics.write',
     // Same reasoning as the doctor's: whoever is looking at the IC card when
     // the typo is spotted is who should be able to correct it.
     'patient.identity.write',
@@ -268,6 +275,7 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     'discount.approve',
     'users.manage',
     'billing.corrections',
+    'patient.demographics.write',
     'patient.identity.write',
     // The diary is administration, not a clinical record, so the whole module
     // sits comfortably here without breaching "owner alone is not clinical" —
@@ -610,4 +618,52 @@ export function wouldRemoveLastOwner(params: {
 /** DOCTOR may not be assigned to somebody with no professional identity. */
 export function canHoldDoctorRole(staff: Staff): boolean {
   return Boolean(staff.medicalRegistrationNo?.trim());
+}
+
+/**
+ * FINAL-UAT — what a tenant-defined CUSTOM ROLE may carry.
+ *
+ * A closed list, for the same reason INDIVIDUALLY_GRANTABLE is one — but a
+ * different list, because a custom role is a REUSABLE bundle an owner hands
+ * out ("Branch Manager", "Locum Coordinator", "Inventory"), not a one-person
+ * exception. Two exclusions are structural:
+ *
+ * - NOTHING CLINICAL. note.write in a custom role would let an owner mint
+ *   doctors by naming a role, which is exactly what "DOCTOR NEEDS A DOCTOR"
+ *   exists to prevent. Clinical authority comes only from the DOCTOR /
+ *   CLINICAL_STAFF capability roles, which carry their credential gates.
+ * - NOTHING OWNER-TIER. users.manage inside a custom role is a privilege
+ *   escalation loop (a role-holder granting themselves more role); the
+ *   owner's three stay the owner's.
+ */
+export const CUSTOM_ROLE_GRANTABLE: Permission[] = [
+  // The counter and the record's administrative face.
+  'patient.demographics.write',
+  'patient.identity.write',
+  'patient.lhdn.write',
+  'patient.alert.write',
+  'queue.manage',
+  'queue.consultationFlow',
+  'billing.counter',
+  'billing.corrections',
+  'document.print',
+  'document.issueAdministrative',
+  // Inventory — the same permission the individual grant hands out.
+  'dispense.perform',
+  // The whole appointments module, policy permissions included: a Branch
+  // Manager who runs the diary IS the use-case for custom roles.
+  'appointment.view',
+  'appointment.create',
+  'appointment.edit',
+  'appointment.reschedule',
+  'appointment.cancel',
+  'appointment.check_in',
+  'appointment.no_show',
+  'appointment.override',
+  'appointment.configure',
+  'appointment.manage_roster',
+];
+
+export function isCustomRoleGrantable(permission: string): permission is Permission {
+  return (CUSTOM_ROLE_GRANTABLE as string[]).includes(permission);
 }

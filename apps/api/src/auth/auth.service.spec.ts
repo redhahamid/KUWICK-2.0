@@ -14,6 +14,7 @@ function createService() {
     // back to the legacy role's mapping, which is exactly the state every
     // existing account is in until somebody assigns roles explicitly.
     staffRoleAssignment: { findMany: jest.fn().mockResolvedValue([]) },
+    staffPermissionGrant: { findMany: jest.fn().mockResolvedValue([]) },
     $executeRaw: jest.fn(),
   } as unknown as PrismaService;
   // login/refresh wrap their tenant/user lookups in $transaction to set the
@@ -121,6 +122,8 @@ describe('AuthService', () => {
         role: 'DOCTOR_RESIDENT',
         clinicId: 'clinic-1',
         clinicName: 'Main Branch',
+        // Final-UAT — the session names any custom roles; none assigned here.
+        customRoles: [],
         // D1 — the session now publishes the AUTHORING CAPABILITY, decided by
         // the same function the write path uses. The Canvas renders this
         // instead of re-deriving it from the role, which is how a
@@ -167,6 +170,9 @@ describe('AuthService', () => {
           // A2 — standing patient alerts, every type including MEDICAL.
           'patient.alert.medical.write',
           'patient.alert.write',
+          // Final-UAT — ordinary demographics became permission-gated and
+          // everyone who sees patients holds it.
+          'patient.demographics.write',
           // Correcting an IC or date of birth. Held by every staff role that
           // sees patients — a doctor who spots a transposed digit and cannot
           // fix it is a doctor who ends up with two files for one person.

@@ -1,5 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { Role, Staff } from '@prisma/client';
+import { ROLE_PERMISSIONS, attachedGrants, attachedRoles } from '../core/permissions';
 
 /**
  * G4.5d5b-2 — who may do what at the dispensary counter.
@@ -55,7 +56,23 @@ const ACTION_WORDS: Record<DispensaryAction, string> = {
 };
 
 export function canPerformDispensary(staff: Staff, action: DispensaryAction): boolean {
-  return staff.active && DISPENSARY_MATRIX[action].includes(staff.role);
+  if (!staff.active) return false;
+  if (DISPENSARY_MATRIX[action].includes(staff.role)) return true;
+  // FINAL-UAT — the audit's holdout closed: this matrix ignored the
+  // `dispense.perform` capability entirely, so an Inventory custom role or
+  // an individual grant was refused at the very door it exists to open.
+  //
+  // EXPLICIT holdings only, deliberately. The legacy fallback also hands
+  // STOCK_STAFF `dispense.perform`, but this matrix REFUSES stock staff the
+  // hand-over by design (a label is a clinical instruction) — so the widening
+  // honours only what an owner explicitly composed: an individual grant, a
+  // custom role, or an assigned capability role. An explicit
+  // `dispense.perform` opens all four actions; that is the owner's call.
+  const explicit = new Set<string>(attachedGrants(staff) ?? []);
+  for (const role of attachedRoles(staff) ?? []) {
+    for (const permission of ROLE_PERMISSIONS[role]) explicit.add(permission);
+  }
+  return explicit.has('dispense.perform');
 }
 
 /**

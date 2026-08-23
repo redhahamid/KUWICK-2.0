@@ -43,6 +43,7 @@ import { BillingVisitPage } from './clinical/BillingVisitPage';
 import { HistoricalVisitPage } from './clinical/history/HistoricalVisitPage';
 import { BookingRulesPage } from './appointment/BookingRulesPage';
 import { CommunicationSettingsPage } from './appointment/communication/CommunicationSettingsPage';
+import { RolesSettingsPage } from './hr/RolesSettingsPage';
 import { ItemsPage } from './inventory/ItemsPage';
 import { SuppliersPage } from './inventory/SuppliersPage';
 import { StockTakePage } from './inventory/StockTakePage';
@@ -150,6 +151,7 @@ export function App() {
           <Route path="/settings" element={<Navigate to="/settings/organisation/branches" replace />} />
           <Route element={<SettingsLayout />}>
             <Route path="/settings/organisation/branches" element={<ClinicsPage />} />
+            <Route path="/settings/organisation/roles" element={<RolesSettingsPage />} />
             <Route path="/settings/queue/rooms" element={<RoomsPage />} />
             <Route path="/settings/queue/display" element={<QueueDisplaySettingsPage />} />
             {/* The branch's own booking defaults — first/last session, notice,

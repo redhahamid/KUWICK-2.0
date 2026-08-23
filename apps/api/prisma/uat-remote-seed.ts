@@ -426,15 +426,15 @@ async function main() {
             data: { tenantId: TENANT, role: 'DOCTOR_RESIDENT', fullName, ...desired },
           });
         };
-        const aisyah = await upsertDoctor('Dr. Nurul Aisyah binti Hamid', 'ROSTER_LINKED', '#4f9d69');
-        const farid = await upsertDoctor('Dr. Farid Iskandar bin Zulkifli', 'FIXED_WEEKLY', '#5b7db1');
-        const chong = await upsertDoctor('Dr. Chong Wei Ling', 'FIXED_WEEKLY', '#b1665b');
+        const aisyah = await upsertDoctor('Dr. Nurul Aisyah binti Hamid', 'ROSTER_LINKED', '#2F8B57');
+        const farid = await upsertDoctor('Dr. Farid Iskandar bin Zulkifli', 'FIXED_WEEKLY', '#2E7BC4');
+        const chong = await upsertDoctor('Dr. Chong Wei Ling', 'FIXED_WEEKLY', '#B4506B');
         const alexandria = await upsertDoctor(
           'Dr. Alexandria Wong Mei Xuan-Constantinopoulos',
           'FIXED_WEEKLY',
-          '#5bb1a4',
+          '#0F6B78',
         );
-        const priya = await upsertDoctor('Dr. Priyadarshini a/p Raghavan', 'ROSTER_LINKED', '#8a5bb1');
+        const priya = await upsertDoctor('Dr. Priyadarshini a/p Raghavan', 'ROSTER_LINKED', '#7A4FBF');
 
         // ── services: matched by name, updated only where values differ ────
         const upsertService = async (name: string, desired: Record<string, unknown>) => {

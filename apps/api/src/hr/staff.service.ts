@@ -7,8 +7,10 @@ import {
 } from '../core/tenant-scoped-prisma.provider';
 import { currentStaffId, currentTenantId } from '../core/tenant-context';
 import { normaliseRegistrationNo } from '../clinical/clinical-authorization';
+import { can } from '../core/permissions';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
+import { nextProviderColor } from './provider-colors';
 
 const DOCTOR_ROLES: Role[] = [Role.DOCTOR_RESIDENT, Role.DOCTOR_LOCUM];
 const PASSWORD_HASH_ROUNDS = 10;
@@ -20,11 +22,17 @@ export class StaffService {
   ) {}
 
   async create(dto: CreateStaffDto) {
+    // FINAL-UAT hardening — creating an ACCOUNT is user management. This was
+    // open to any valid token; `users.manage` (owner) now gates it, with the
+    // legacy OWNER_ADMIN check kept as fallback for sessions predating
+    // capability roles.
+    await this.assertMayManageUsers();
     const { loginEmail, loginPassword, ...staffFields } = dto;
     const tenantId = currentTenantId();
+    const calendarColor = await this.calendarColorFor(staffFields);
 
     if (!loginEmail || !loginPassword) {
-      return this.prisma.staff.create({ data: { ...staffFields, tenantId } });
+      return this.prisma.staff.create({ data: { ...staffFields, calendarColor, tenantId } });
     }
 
     let userId: string;
@@ -41,7 +49,34 @@ export class StaffService {
       throw error;
     }
 
-    return this.prisma.staff.create({ data: { ...staffFields, userId, tenantId } });
+    return this.prisma.staff.create({
+      data: { ...staffFields, calendarColor, userId, tenantId },
+    });
+  }
+
+  /**
+   * THE PROVIDER'S CALENDAR IDENTITY COLOUR, decided once at creation.
+   *
+   * A doctor without a stored colour falls back to a hash, and a hash cannot
+   * promise two doctors in the same clinic look different — six ids into six
+   * slots land all-distinct about 1.5% of the time. So a provider is given
+   * the tenant's next unused curated colour at the moment they are created
+   * and it is PERSISTED, which makes the identity stable for that profile
+   * across every branch and every later hire.
+   *
+   * Non-providers get nothing: a finance clerk has no column on the diary,
+   * and handing them a colour would spend one of eight on somebody invisible.
+   */
+  private async calendarColorFor(
+    fields: Pick<CreateStaffDto, 'role' | 'calendarColor'>,
+  ): Promise<string | undefined> {
+    if (fields.calendarColor) return fields.calendarColor;
+    if (!DOCTOR_ROLES.includes(fields.role)) return undefined;
+    const existing = await this.prisma.staff.findMany({
+      where: { role: { in: DOCTOR_ROLES } },
+      select: { calendarColor: true },
+    });
+    return nextProviderColor(existing.map((row) => row.calendarColor));
   }
 
   findAll() {
@@ -66,6 +101,9 @@ export class StaffService {
   ] as const;
 
   async update(id: string, dto: UpdateStaffDto) {
+    // FINAL-UAT hardening — role, branch and active are access-control
+    // facts; editing anybody's staff record is user management.
+    await this.assertMayManageUsers();
     const existing = await this.findById(id);
     // professionalChangeReason is audit metadata, not a Staff column — it is
     // recorded on the audit rows and must never reach the Prisma update.
@@ -106,6 +144,30 @@ export class StaffService {
         'Only a clinic owner/administrator may change professional identity or clinical-signing permission',
       );
     }
+  }
+
+  // FINAL-UAT — permission-first with the legacy job title as fallback, so a
+  // capability-composed owner and a legacy OWNER_ADMIN both pass, and nobody
+  // loses an ability they had. Assignments are read here (not through
+  // requireActor) because this service runs on the scoped client.
+  private async assertMayManageUsers(): Promise<void> {
+    const actorId = currentStaffId();
+    if (!actorId) {
+      throw new ForbiddenException('No authenticated staff member on this session');
+    }
+    const actor = await this.prisma.staff.findUnique({ where: { id: actorId } });
+    if (!actor || !actor.active) {
+      throw new ForbiddenException('Your staff account is inactive');
+    }
+    const assignments = await this.prisma.staffRoleAssignment.findMany({
+      where: { staffId: actorId },
+      select: { role: true },
+    });
+    const roles = assignments
+      .map((row) => row.role)
+      .filter((role): role is NonNullable<typeof role> => role !== null);
+    if (can(actor, 'users.manage', roles) || actor.role === Role.OWNER_ADMIN) return;
+    throw new ForbiddenException('Only an owner may manage users and roles.');
   }
 
   // C0 (D-051) — professional verification and signing-enable are AUDITED

@@ -108,3 +108,32 @@ describe('what the worklist clears on', () => {
     expect(rows[0].template).toBe('REMINDER_60');
   });
 });
+
+describe('the Reminder Centre planning read (final-UAT)', () => {
+  it('7. a rule not yet due appears as UPCOMING with the moment it will come due', async () => {
+    const ctx = build({ rules: [{ offsetMinutes: 30 }] });
+
+    const rows = await ctx.service.upcoming('clinic-1', NOW);
+
+    expect(rows).toHaveLength(1);
+    // 30 minutes before a 02:00Z start = 01:30Z.
+    expect(rows[0]).toMatchObject({ appointmentId: 'appt-1', template: 'REMINDER_30' });
+    expect(rows[0].dueAt.toISOString()).toBe('2026-09-01T01:30:00.000Z');
+  });
+
+  it('8. an ALREADY-due rule belongs to due(), never to upcoming()', async () => {
+    const ctx = build({ rules: [{ offsetMinutes: 120 }] });
+
+    expect(await ctx.service.upcoming('clinic-1', NOW)).toHaveLength(0);
+    expect(await ctx.service.due('clinic-1', NOW)).toHaveLength(1);
+  });
+
+  it('9. any reminder already sent clears the upcoming occurrence — the patient HAS been reminded', async () => {
+    const ctx = build({
+      rules: [{ offsetMinutes: 30 }],
+      communications: [{ template: 'REMINDER_MANUAL', sentAt: new Date('2026-09-01T00:00:00.000Z') }],
+    });
+
+    expect(await ctx.service.upcoming('clinic-1', NOW)).toHaveLength(0);
+  });
+});

@@ -23,6 +23,13 @@ export interface Staff {
   professionalVerifiedByStaffId: string | null;
   clinicalSigningEnabledAt: string | null;
   clinicalSigningEnabledByStaffId: string | null;
+
+  // The provider's stored calendar identity colour — one of the curated
+  // PROVIDER_COLORS accents, or null on records written before the column
+  // was filled in (those fall back to a deterministic curated colour). The
+  // API has always sent this on /staff; declaring it here is what let the
+  // calendar stop overriding it with a hash.
+  calendarColor: string | null;
 }
 
 export interface CreateStaffDto {
@@ -39,6 +46,8 @@ export interface CreateStaffDto {
   medicalRegistrationNo?: string;
   professionalActive?: boolean;
   canSignClinicalNotes?: boolean;
+  /** One of the curated PROVIDER_COLORS accents; the server rejects any other. */
+  calendarColor?: string;
 }
 
 export type UpdateStaffDto = Partial<CreateStaffDto> & { active?: boolean; clinicId?: string | null };

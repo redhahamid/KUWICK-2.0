@@ -129,6 +129,8 @@ function build(world: World = {}) {
     $queryRaw: jest.fn(async () => resolved),
     $transaction: jest.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx)),
     serviceCatalog: { findMany: jest.fn(async () => []) },
+    // Final-UAT — page() publishes the branch's contact facts.
+    clinic: { findUnique: jest.fn(async () => ({ address: null, phone: null })) },
     doctorServiceQualification: { findMany: jest.fn(async () => [{ staffId: 'doc-1' }]) },
     staff: { findMany: jest.fn(async () => [{ id: 'doc-1', fullName: 'Dr Redha' }]) },
     bookingFormField: { findMany: jest.fn(async () => []) },

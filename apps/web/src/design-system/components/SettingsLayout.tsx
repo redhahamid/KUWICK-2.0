@@ -9,7 +9,13 @@ const SETTINGS_CATEGORIES: HubCategory[] = [
   {
     key: 'organisation',
     label: 'Organisation & Branches',
-    items: [{ path: '/settings/organisation/branches', label: 'Branches' }],
+    items: [
+      { path: '/settings/organisation/branches', label: 'Branches' },
+      // FINAL-UAT — tenant-defined roles; assignment happens on the Staff
+      // page's Access drawer.
+      { path: '/settings/organisation/roles', label: 'Roles & Permissions' },
+      { path: '/management/hr/staff', label: 'Users & Staff →' },
+    ],
   },
   {
     key: 'scheduling',

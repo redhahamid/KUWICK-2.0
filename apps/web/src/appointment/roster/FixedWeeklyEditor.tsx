@@ -4,12 +4,12 @@ import { permissionHint, useCan } from '../../core/hooks/useCan';
 import dayjs from 'dayjs';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ApiError } from '../../core/api-client';
-import { getDoctorColor } from '../calendar/doctor-color';
+import { useProviderColors } from '../hooks/useProviderColors';
 
 const { Text } = Typography;
 
 /** The same identity cue as the calendar: initials in the provider's colour. */
-function providerAvatar(staffId: string, name: string) {
+function providerAvatar(name: string, accent: string) {
   const initials = name
     .replace(/^Dr\.?\s+/i, '')
     .split(/\s+/)
@@ -18,7 +18,7 @@ function providerAvatar(staffId: string, name: string) {
     .join('')
     .toUpperCase();
   return (
-    <Avatar size={28} style={{ background: getDoctorColor(staffId), fontSize: 11, fontWeight: 700 }}>
+    <Avatar size={28} style={{ background: accent, fontSize: 11, fontWeight: 700 }}>
       {initials}
     </Avatar>
   );
@@ -58,6 +58,8 @@ export function FixedWeeklyEditor({
   staffName,
   onSwitchToRoster,
 }: FixedWeeklyEditorProps) {
+  // The same identity colour the diary uses — the provider's stored one.
+  const providerColor = useProviderColors();
   const canManageRoster = useCan('appointment.manage_roster');
   const queryClient = useQueryClient();
   const [days, setDays] = useState<WeeklyDay[]>([]);
@@ -128,7 +130,7 @@ export function FixedWeeklyEditor({
   if (!editing) {
     return (
       <div className="kw-weekly-summary" data-testid={`weekly-${staffId}`}>
-        {providerAvatar(staffId, staffName)}
+        {providerAvatar(staffName, providerColor(staffId).accent)}
         <div className="kw-weekly-summary-text">
           <Text strong>{staffName}</Text>
           <Text type="secondary">{summary}</Text>
@@ -150,7 +152,7 @@ export function FixedWeeklyEditor({
       style={{ marginTop: 12 }}
       title={
         <Space size={8}>
-          {providerAvatar(staffId, staffName)}
+          {providerAvatar(staffName, providerColor(staffId).accent)}
           {staffName}
         </Space>
       }

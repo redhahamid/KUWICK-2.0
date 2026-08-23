@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Avatar, Button, DatePicker, Dropdown, Empty, Input, Modal, Segmented, Select, Space, Table, Tooltip, Typography, message } from 'antd';
+import { Button, DatePicker, Dropdown, Empty, Input, Modal, Segmented, Select, Space, Table, Tooltip, Typography, message } from 'antd';
 import { EllipsisOutlined, WhatsAppOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { useSearchParams } from 'react-router-dom';
@@ -30,7 +30,7 @@ import {
   CHECK_IN_FROM_STATUSES,
   NON_CANCELLABLE_STATUSES,
 } from '../appointment-status.constants';
-import { getDoctorColor } from '../calendar/doctor-color';
+import { PersonAvatar } from '../shared/PersonAvatar';
 import {
   useCancelAppointment,
   useConfirmAppointment,
@@ -54,15 +54,6 @@ const TABS: { value: ListTab; label: string }[] = [
 
 const money = (value: number) =>
   `RM ${value.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-function initials(name: string): string {
-  return name
-    .replace(/^Dr\.?\s+/i, '')
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('');
-}
 
 interface AppointmentListViewProps {
   clinicId?: string;
@@ -157,17 +148,42 @@ export function AppointmentListView({ clinicId, onBook }: AppointmentListViewPro
     [staff],
   );
 
+  // Mockup 4 — the status counts live ON the tabs ("Upcoming 11"), so the
+  // worklist's shape is readable before a row is. Server figures, same as the
+  // old KPI band (`appointment-dashboard.service.ts`).
+  const tabCounts: Partial<Record<ListTab, number | undefined>> = {
+    UPCOMING: data?.stats.upcoming,
+    REQUESTS: data?.stats.requests,
+    ARRIVED: data?.stats.arrived,
+    COMPLETED: data?.stats.completed,
+    NO_SHOW: data?.stats.noShow,
+    CANCELLED: data?.stats.cancelled,
+  };
+
   return (
     <div className="kw-appt-list">
-      <StatsBar stats={data?.stats} loading={isFetching && !data} filtered={filtersActive} />
-
       <div className="kw-appt-controls">
         <Segmented
           className="kw-appt-tabs"
           value={tab}
           onChange={(value) => changeTab(value as ListTab)}
-          options={TABS.map((entry) => ({ value: entry.value, label: entry.label }))}
+          options={TABS.map((entry) => ({
+            value: entry.value,
+            label:
+              tabCounts[entry.value] != null ? (
+                <span className="kw-appt-tab">
+                  {entry.label}
+                  <span className="kw-appt-tab-count">{tabCounts[entry.value]}</span>
+                </span>
+              ) : (
+                entry.label
+              ),
+          }))}
         />
+        <StatsBar stats={data?.stats} loading={isFetching && !data} filtered={filtersActive} />
+      </div>
+
+      <div className="kw-appt-controls">
         <Space size={8} wrap className="kw-appt-filters">
           {tab !== 'WAITLIST' ? (
             <DatePicker.RangePicker
@@ -295,12 +311,15 @@ export function AppointmentListView({ clinicId, onBook }: AppointmentListViewPro
             {
               title: 'Patient',
               render: (_, row) => (
-                <div className="kw-appt-patient">
-                  <span className="kw-appt-patient-name">{row.patient.name}</span>
-                  {row.patient.phone ? (
-                    <span className="kw-appt-patient-phone">{row.patient.phone}</span>
-                  ) : null}
-                </div>
+                <span className="kw-appt-patient-cell">
+                  <PersonAvatar name={row.patient.name} size="md" />
+                  <span className="kw-appt-patient">
+                    <span className="kw-appt-patient-name">{row.patient.name}</span>
+                    {row.patient.phone ? (
+                      <span className="kw-appt-patient-phone">{row.patient.phone}</span>
+                    ) : null}
+                  </span>
+                </span>
               ),
             },
             { title: 'Service', render: (_, row) => row.service.name },
@@ -385,6 +404,18 @@ function defaultRangeFor(tab: DashboardTab): [Dayjs, Dayjs] {
   return [dayjs().startOf('day'), dayjs().add(30, 'day').endOf('day')];
 }
 
+/**
+ * How many attendable appointments a no-show rate needs before it is worth
+ * reading as a rate rather than as three individual patients.
+ */
+const NO_SHOW_MEANINGFUL_SAMPLE = 20;
+
+/**
+ * Mockup 4 slimmed the old five-card KPI band down: the per-status counts now
+ * ride the tabs themselves, so what remains here is what only THIS strip can
+ * say — the §46 money (booked value vs realised revenue, two different
+ * meanings), the no-show rate an owner acts on, and the "Filtered" flag.
+ */
 function StatsBar({
   stats,
   loading,
@@ -394,44 +425,40 @@ function StatsBar({
   loading: boolean;
   filtered?: boolean;
 }) {
-  const cells = [
-    { key: 'upcoming', label: 'Upcoming', value: stats?.upcoming, tone: 'active' as const },
-    { key: 'requests', label: 'Requests', value: stats?.requests, tone: 'attention' as const },
-    { key: 'completed', label: 'Completed', value: stats?.completed, tone: 'success' as const },
-    { key: 'cancelled', label: 'Cancelled', value: stats?.cancelled, tone: 'neutral' as const },
-    {
-      key: 'noShow',
-      label: 'No-show',
-      value: stats?.noShow,
-      tone: 'error' as const,
-      // The rate is the number an owner acts on; the count alone means nothing
-      // without knowing how many could have turned up.
-      detail:
-        stats?.noShowRate == null
-          ? undefined
-          : `${Math.round(stats.noShowRate * 100)}% of attendable`,
-    },
-  ];
-
   return (
     <div className="kw-appt-stats" data-testid="appointment-stats" data-loading={loading}>
       {/* §3I — these figures describe the FILTERED worklist. Unlabelled, a
           service-filtered "Upcoming 12" reads as the whole clinic's twelve. */}
       {filtered ? <span className="kw-appt-stats-filtered">Filtered results</span> : null}
-      {cells.map((cell) => (
-        <div key={cell.key} className="kw-appt-stat" data-tone={cell.tone}>
-          <span className="kw-appt-stat-label">{cell.label}</span>
-          <span className="kw-appt-stat-value">{cell.value ?? '—'}</span>
-          {cell.detail ? <span className="kw-appt-stat-detail">{cell.detail}</span> : null}
-        </div>
-      ))}
-      <div className="kw-appt-stat kw-appt-stat-money" data-tone="primary">
-        <span className="kw-appt-stat-label">Booked value</span>
-        <span className="kw-appt-stat-value">{stats ? money(stats.bookedValue) : '—'}</span>
-        <span className="kw-appt-stat-detail">
+      {stats?.noShowRate != null ? (
+        // DEMOTED, AND SAID WITH ITS DENOMINATOR (approved decision 12).
+        //
+        // "60%" on its own is true and useless: the server divides no-shows
+        // by the appointments a patient COULD have turned up to — completed
+        // plus no-show, cancellations excluded — over whatever range and
+        // filters are on screen, and three of five reads very differently
+        // from three hundred of five hundred. The calculation is untouched;
+        // the denominator is simply recomposed from the same two counts the
+        // endpoint already returns, and the figure steps down to secondary
+        // type while the sample is too small to act on.
+        <span
+          className="kw-appt-stats-cell kw-appt-stats-cell--quiet"
+          data-thin={stats.completed + stats.noShow < NO_SHOW_MEANINGFUL_SAMPLE || undefined}
+        >
+          <span className="kw-appt-stats-label">No-show</span>
+          <span className="kw-appt-stats-value">{Math.round(stats.noShowRate * 100)}%</span>
+          <span className="kw-appt-stats-detail">
+            {stats.noShow} of {stats.completed + stats.noShow} attendable
+          </span>
+        </span>
+      ) : null}
+      <span className="kw-appt-stats-cell">
+        <span className="kw-appt-stats-label">Booked value</span>
+        <span className="kw-appt-stats-value">{stats ? money(stats.bookedValue) : '—'}</span>
+        <span className="kw-appt-stats-detail">
           {stats ? `${money(stats.realisedRevenue)} realised` : ''}
         </span>
-      </div>
+      </span>
     </div>
   );
 }
@@ -528,29 +555,33 @@ function AppointmentTable({
           {
             title: 'Patient',
             render: (_, row) => (
-              <div className="kw-appt-patient">
-                <span className="kw-appt-patient-name">{row.patient.name}</span>
-                {row.patient.phone ? (
-                  <span className="kw-appt-patient-phone">{row.patient.phone}</span>
-                ) : null}
-              </div>
+              // Mockup 4 — the patient is a PERSON in the row: the neutral
+              // slate avatar beside name-over-phone.
+              <span className="kw-appt-patient-cell">
+                <PersonAvatar name={row.patient.name} size="md" />
+                <span className="kw-appt-patient">
+                  <span className="kw-appt-patient-name">{row.patient.name}</span>
+                  {row.patient.phone ? (
+                    <span className="kw-appt-patient-phone">{row.patient.phone}</span>
+                  ) : null}
+                </span>
+              </span>
             ),
           },
-          { title: 'Service', render: (_, row) => row.service.name },
+          {
+            title: 'Service',
+            width: 180,
+            render: (_, row) => (
+              <span className="kw-appt-service" title={row.service.name}>
+                {row.service.name}
+              </span>
+            ),
+          },
           {
             title: 'Provider',
             render: (_, row) => (
               <span className="kw-appt-provider-cell">
-                {/* A plain span, not antd's Avatar: Avatar re-measures string
-                    children against its own font and squeezes two initials
-                    into "A…" at this size. */}
-                <span
-                  className="kw-provider-avatar"
-                  style={{ width: 24, height: 24, fontSize: 10, background: getDoctorColor(row.staffId) }}
-                  aria-hidden
-                >
-                  {initials(row.provider.fullName)}
-                </span>
+                <PersonAvatar name={row.provider.fullName} colorSeed={row.staffId} size="sm" />
                 <span>{row.provider.fullName}</span>
               </span>
             ),
@@ -678,9 +709,15 @@ function AppointmentTable({
                     <Tooltip
                       title={permCheckIn ? undefined : permissionHint('check a patient in')}
                     >
+                      {/* QUIET BY DEFAULT, LOUD ON APPROACH. Forty rows each
+                          carrying a filled navy button is forty things
+                          shouting at equal volume, and the patient's name —
+                          the thing the receptionist is actually looking for —
+                          loses to a control that says the same word forty
+                          times. The row's own hover promotes it. */}
                       <Button
                         size="small"
-                        type="primary"
+                        className="kw-row-action"
                         disabled={!permCheckIn}
                         onClick={() => setCheckingInId(row.id)}
                       >

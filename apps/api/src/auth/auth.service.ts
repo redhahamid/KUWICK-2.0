@@ -6,9 +6,9 @@ import { CatalogueHealth, assessCatalogue } from '../core/catalogue-health';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { PlatformLoginDto } from './dto/platform-login.dto';
-import { Staff } from '@prisma/client';
+import { Staff, SystemRole } from '@prisma/client';
 import { canAuthorNarrative } from '../clinical/clinical-authorization';
-import { permissionPayload } from '../core/permissions';
+import { isCustomRoleGrantable, isIndividuallyGrantable, permissionPayload } from '../core/permissions';
 
 const ACCESS_TOKEN_TTL = '15m';
 const REFRESH_TOKEN_TTL = '7d';
@@ -196,9 +196,26 @@ export class AuthService {
       await tx.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
       const rows = await tx.staffRoleAssignment.findMany({
         where: { staffId: staff.id },
-        select: { role: true },
+        select: { role: true, customRole: { select: { name: true, permissions: true } } },
       });
-      return rows.map((row) => row.role);
+      const grants = await tx.staffPermissionGrant.findMany({
+        where: { staffId: staff.id },
+        select: { permission: true },
+      });
+      return {
+        roles: rows.map((row) => row.role).filter((role): role is SystemRole => role !== null),
+        customRoleNames: rows
+          .map((row) => row.customRole?.name)
+          .filter((name): name is string => Boolean(name)),
+        // Person-specific additions, each filtered through its own closed
+        // list — the session publishes exactly what the policy engine unions.
+        extraPermissions: [
+          ...grants.map((row) => row.permission).filter(isIndividuallyGrantable),
+          ...rows
+            .flatMap((row) => row.customRole?.permissions ?? [])
+            .filter(isCustomRoleGrantable),
+        ],
+      };
     });
 
     const tokens = this.issueTenantTokens({
@@ -232,8 +249,9 @@ export class AuthService {
         // implemented twice is one that will eventually be implemented
         // differently, and the disagreement is silent until a doctor cannot
         // type.
-        permissions: permissionPayload(staff, assignedRoles),
-        roles: assignedRoles,
+        permissions: permissionPayload(staff, assignedRoles.roles, assignedRoles.extraPermissions),
+        roles: assignedRoles.roles,
+        customRoles: assignedRoles.customRoleNames,
       },
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
       // PHASE 0 — the per-CLINIC catalogue answer, on the first authenticated
@@ -320,9 +338,26 @@ export class AuthService {
       await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
       const rows = await tx.staffRoleAssignment.findMany({
         where: { staffId: staff.id },
-        select: { role: true },
+        select: { role: true, customRole: { select: { name: true, permissions: true } } },
       });
-      return rows.map((row) => row.role);
+      const grants = await tx.staffPermissionGrant.findMany({
+        where: { staffId: staff.id },
+        select: { permission: true },
+      });
+      return {
+        roles: rows.map((row) => row.role).filter((role): role is SystemRole => role !== null),
+        customRoleNames: rows
+          .map((row) => row.customRole?.name)
+          .filter((name): name is string => Boolean(name)),
+        // Person-specific additions, each filtered through its own closed
+        // list — the session publishes exactly what the policy engine unions.
+        extraPermissions: [
+          ...grants.map((row) => row.permission).filter(isIndividuallyGrantable),
+          ...rows
+            .flatMap((row) => row.customRole?.permissions ?? [])
+            .filter(isCustomRoleGrantable),
+        ],
+      };
     });
 
     const tokens = this.issueTenantTokens({
@@ -355,8 +390,9 @@ export class AuthService {
         // implemented twice is one that will eventually be implemented
         // differently, and the disagreement is silent until a doctor cannot
         // type.
-        permissions: permissionPayload(staff, assignedRoles),
-        roles: assignedRoles,
+        permissions: permissionPayload(staff, assignedRoles.roles, assignedRoles.extraPermissions),
+        roles: assignedRoles.roles,
+        customRoles: assignedRoles.customRoleNames,
       },
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
     };
