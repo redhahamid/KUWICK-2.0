@@ -28,7 +28,7 @@ import { AppointmentDrawer } from './AppointmentDrawer';
 import { StaffBookingFlow } from '../StaffBookingFlow';
 import { CalendarMetrics } from './CalendarMetrics';
 import { CalendarViewMode, getCalendarRange, shiftAnchor, todayAnchor } from './calendar-range';
-import { calendarLocalizer as localizer } from './calendar-localizer';
+import { calendarLocalizer as localizer, weekCalendarLocalizer } from './calendar-localizer';
 import {
   CardModel,
   cardLines,
@@ -751,7 +751,11 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           </div>
         ) : (
           <BigCalendar
-            localizer={localizer}
+            // The WEEK view alone runs Monday → Sunday (approved mockup); the
+            // other views keep the Sunday-first localizer. See
+            // calendar-localizer.ts for why this is a second instance rather
+            // than a global dayjs locale change.
+            localizer={viewMode === 'week' ? weekCalendarLocalizer : localizer}
             events={events}
             date={grid.date}
             view={rbcView}

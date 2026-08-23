@@ -47,6 +47,33 @@ function offsetLabel(minutes: number): string {
 }
 
 /**
+ * THE CONSOLE'S OWN NAVIGATION (approved mockup 6).
+ *
+ * The mockup draws a dark sub-navigation down the left of the Communication
+ * Centre: Overview, Templates, Reminders with the message types nested under
+ * it, and a Broadcast entry marked "Soon". Every entry below points at
+ * something that ALREADY EXISTS in the one message store — the nested items
+ * are the real template keys, "Reminders" is the real reminder-rule set. No
+ * second configuration store was created to satisfy a picture: selecting
+ * "Confirmation" simply preselects BOOKING_CONFIRMATION in the same editor,
+ * writing through the same endpoint, as the Select above it always did.
+ *
+ * Two entries are deliberately honest rather than decorative:
+ *   No-show   — the message store has no NO_SHOW template. The entry says
+ *               so and offers the nearest real thing, instead of opening an
+ *               editor that would write to nothing.
+ *   Broadcast — "Soon" in the mockup, and disabled here, because no
+ *               broadcast capability exists.
+ */
+const NAV_TEMPLATES: { key: string; label: string; templateKey?: string }[] = [
+  { key: 'tpl:BOOKING_CONFIRMATION', label: 'Confirmation', templateKey: 'BOOKING_CONFIRMATION' },
+  { key: 'tpl:REMINDER', label: 'Reminder', templateKey: 'REMINDER' },
+  { key: 'tpl:RESCHEDULE_APPROVED', label: 'Reschedule', templateKey: 'RESCHEDULE_APPROVED' },
+  { key: 'tpl:CANCELLATION_CONFIRMED', label: 'Cancellation', templateKey: 'CANCELLATION_CONFIRMED' },
+  { key: 'no-show', label: 'No-show' },
+];
+
+/**
  * THE COMMUNICATION CENTRE — one component, two doors.
  *
  * Final-UAT: "keep everything inside the Appointment module; avoid
@@ -64,6 +91,10 @@ export function CommunicationCentre({ clinicId }: { clinicId?: string }) {
   const { data: templatesDoc, isLoading } = useMessageTemplates(clinicId);
   const { data: bookingPage } = useBookingPage(clinicId);
   const queryClient = useQueryClient();
+
+  // Which room of the console is open. 'templates' is the front door, so the
+  // editor is on screen the moment the page opens.
+  const [section, setSection] = useState<string>('templates');
 
   // ---- template editor state ----------------------------------------------
   const [templateKey, setTemplateKey] = useState('BOOKING_CONFIRMATION');
@@ -134,6 +165,16 @@ export function CommunicationCentre({ clinicId }: { clinicId?: string }) {
     );
   }, [body, clinic]);
 
+  const openSection = (key: string) => {
+    setSection(key);
+    const entry = NAV_TEMPLATES.find((row) => row.key === key);
+    // A nested entry is a shortcut INTO the editor, not a second editor.
+    if (entry?.templateKey) setTemplateKey(entry.templateKey);
+  };
+
+  const showEditor = section === 'templates' || section.startsWith('tpl:');
+  const customisedCount = (templatesDoc?.templates ?? []).filter((row) => row.isCustom).length;
+
   const insertPlaceholder = (token: string) => {
     setBody((previous) => `${previous}${previous.endsWith(' ') || previous === '' ? '' : ' '}{${token}}`);
   };
@@ -174,7 +215,57 @@ export function CommunicationCentre({ clinicId }: { clinicId?: string }) {
   };
 
   return (
-    <div data-testid="communication-centre">
+    <div data-testid="communication-centre" className="kw-comms">
+      {/* THE DARK SUB-NAVIGATION (approved mockup 6). It is INTERNAL to this
+          console — the app's own top navigation and the Appointment tabs are
+          untouched, and nothing here becomes a permanent global sidebar. */}
+      <nav className="kw-comms-nav" aria-label="Communication Centre">
+        <span className="kw-comms-nav-title">Communication Centre</span>
+        <button
+          type="button"
+          className="kw-comms-nav-item"
+          data-active={section === 'overview' || undefined}
+          onClick={() => setSection('overview')}
+        >
+          Overview
+        </button>
+        <button
+          type="button"
+          className="kw-comms-nav-item"
+          data-active={section === 'templates' || undefined}
+          onClick={() => setSection('templates')}
+        >
+          Templates
+        </button>
+        <button
+          type="button"
+          className="kw-comms-nav-item"
+          data-active={section === 'reminders' || undefined}
+          onClick={() => setSection('reminders')}
+        >
+          Reminders
+        </button>
+        <div className="kw-comms-nav-group">
+          {NAV_TEMPLATES.map((entry) => (
+            <button
+              key={entry.key}
+              type="button"
+              className="kw-comms-nav-item kw-comms-nav-item--child"
+              data-active={section === entry.key || undefined}
+              onClick={() => openSection(entry.key)}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+        {/* "Soon" in the mockup, and genuinely not built — so it is visible
+            and unusable rather than a button that lies. */}
+        <button type="button" className="kw-comms-nav-item" disabled>
+          Broadcast <span className="kw-comms-soon">Soon</span>
+        </button>
+      </nav>
+
+      <div className="kw-comms-main">
       <Alert
         type="info"
         showIcon
@@ -184,8 +275,52 @@ export function CommunicationCentre({ clinicId }: { clinicId?: string }) {
         description="Messages are sent by your team from Kuwick — the calendar, the list and the Reminder Centre — through WhatsApp on their own device, prefilled from these templates. Kuwick records that a message window was opened; it will only ever claim Sent or Delivered if a messaging provider that confirms delivery is connected."
       />
 
-      <div className="kw-settings-grid">
+      {section === 'overview' ? (
+        <div className="kw-settings-grid" data-testid="communication-overview">
+          <Card title="What this clinic says, and when" className="kw-settings-card">
+            <div className="kw-comms-stats">
+              <span>
+                <strong>{Object.keys(TEMPLATE_KEY_WORDS).length}</strong>
+                Message moments
+              </span>
+              <span>
+                <strong>{customisedCount}</strong>
+                Customised wordings
+              </span>
+              <span>
+                <strong>{offsets.length}</strong>
+                Reminder rules
+              </span>
+            </div>
+            <Paragraph type="secondary" className="kw-settings-note" style={{ marginTop: 12 }}>
+              Every figure above is read from the one message store this console writes to.
+              A moment with no custom wording uses Kuwick&apos;s built-in text, in the
+              patient&apos;s language.
+            </Paragraph>
+          </Card>
+        </div>
+      ) : null}
+
+      {section === 'no-show' ? (
+        <div className="kw-settings-grid">
+          <Card title="No-show message" className="kw-settings-card">
+            <Paragraph type="secondary" className="kw-settings-note">
+              There is no no-show template in the message store, so there is nothing here to
+              edit — and Kuwick will not open an editor that writes nowhere. A missed
+              appointment is marked on the appointment List (Mark as no-show), which records the
+              status and the actor; to say something to the patient afterwards, use any of the
+              nine templates from the appointment&apos;s own drawer.
+            </Paragraph>
+          </Card>
+        </div>
+      ) : null}
+
+      <div
+        className="kw-settings-grid"
+        hidden={!showEditor && section !== 'reminders' && section !== 'overview'}
+      >
         <Card
+          hidden={!showEditor}
           title="Message templates"
           className="kw-settings-card"
           loading={isLoading}
@@ -246,10 +381,23 @@ export function CommunicationCentre({ clinicId }: { clinicId?: string }) {
               </Space>
             </div>
 
-            <Card size="small" title="Preview" data-testid="template-preview">
-              <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>
-                {preview || <Text type="secondary">Nothing to preview yet.</Text>}
-              </Paragraph>
+            {/* Mockup 6 draws the preview as the message will actually be
+                READ — a WhatsApp-style bubble, not a grey text box. Same one
+                renderer, same clinic identity; only the frame is new. */}
+            <Card
+              size="small"
+              title="Preview"
+              data-testid="template-preview"
+              className="kw-comms-preview"
+            >
+              <div className="kw-comms-bubble">
+                <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>
+                  {preview || <Text type="secondary">Nothing to preview yet.</Text>}
+                </Paragraph>
+              </div>
+              <Text type="secondary" className="kw-comms-preview-note">
+                How it looks to the patient. A person still presses Send in WhatsApp.
+              </Text>
             </Card>
 
             <Space>
@@ -278,6 +426,7 @@ export function CommunicationCentre({ clinicId }: { clinicId?: string }) {
         </Card>
 
         <Card
+          hidden={section !== 'reminders' && section !== 'tpl:REMINDER'}
           title="Reminder rules"
           className="kw-settings-card"
           data-testid="reminder-rules-card"
@@ -341,7 +490,11 @@ export function CommunicationCentre({ clinicId }: { clinicId?: string }) {
           </Space>
         </Card>
 
-        <Card title="Where messages are sent from" className="kw-settings-card">
+        <Card
+          hidden={section !== 'overview' && section !== 'templates'}
+          title="Where messages are sent from"
+          className="kw-settings-card"
+        >
           <Paragraph type="secondary" className="kw-settings-note" style={{ marginBottom: 8 }}>
             Today, three places — all by a person, all through these templates:
           </Paragraph>
@@ -365,6 +518,7 @@ export function CommunicationCentre({ clinicId }: { clinicId?: string }) {
             </li>
           </ul>
         </Card>
+      </div>
       </div>
     </div>
   );

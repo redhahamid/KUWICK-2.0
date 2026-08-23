@@ -558,9 +558,30 @@ function PublicBookingPageInner() {
                 setStep(1);
               }}
             >
+              {/* The approved mockup shows photo-led service cards. A photo
+                  renders when the clinic has genuinely uploaded one; where
+                  there is none the card keeps the same shape with a quiet
+                  monogram tile — never a stock clinical photograph, which
+                  would be a picture of a treatment this clinic never took.
+                  The two states are the same card, so a clinic that adds
+                  photos later changes nothing but the artwork. */}
               {row.photoUrl ? (
-                <img src={publicMediaSrc(row.photoUrl) ?? undefined} alt="" className="kw-public-service-photo" loading="lazy" />
-              ) : null}
+                <img
+                  src={publicMediaSrc(row.photoUrl) ?? undefined}
+                  alt=""
+                  className="kw-public-service-photo"
+                  loading="lazy"
+                />
+              ) : (
+                <span className="kw-public-service-photo kw-public-service-photo--blank" aria-hidden>
+                  {row.name
+                    .split(/\s+/)
+                    .slice(0, 2)
+                    .map((word) => word[0] ?? '')
+                    .join('')
+                    .toUpperCase()}
+                </span>
+              )}
               <span className="kw-public-service-body">
                 <span className="kw-public-service-name">{row.name}</span>
                 {row.description ? (

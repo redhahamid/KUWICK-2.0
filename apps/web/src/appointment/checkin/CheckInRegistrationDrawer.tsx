@@ -10,6 +10,7 @@ import {
   Select,
   Skeleton,
   Space,
+  Tabs,
   Tooltip,
   Typography,
   message,
@@ -35,6 +36,12 @@ import { useCheckInAppointment } from '../hooks/useAppointments';
 import { bookingReference, paymentChip, sentence } from '../appointment-presentation';
 import { SOURCE_LABELS, type AppointmentSource } from '../types';
 import { PatientDetailsSection } from './PatientDetailsSection';
+import {
+  AllergyBadge,
+  ClinicalContextPanel,
+  VisitHistoryLine,
+  useCheckInContext,
+} from './CheckInClinicalContext';
 
 const { Text } = Typography;
 
@@ -82,6 +89,8 @@ export function CheckInRegistrationDrawer({
   // Which appointment the form state describes — a drawer reopened on a
   // different booking must not carry the previous patient's payer choice.
   const [seededFor, setSeededFor] = useState<string>();
+  // Approved mockup 5 — Patient Details | Visit Info, Patient Details first.
+  const [tab, setTab] = useState<'patient' | 'visit'>('patient');
 
   useEffect(() => {
     if (!appointment || appointment.id === seededFor) return;
@@ -91,6 +100,7 @@ export function CheckInRegistrationDrawer({
     setPanelId(undefined);
     setRemarks(appointment.patientNote ?? appointment.notes ?? '');
     setEditingLimit(false);
+    setTab('patient');
   }, [appointment, seededFor]);
 
   const selectedPanel = panels?.find((panel) => panel.id === panelId);
@@ -146,11 +156,23 @@ export function CheckInRegistrationDrawer({
   };
 
   // Real facts only on the identity header: the age comes from the recorded
-  // date of birth; there is no last-visit/returning field on this payload, so
-  // no "Returning patient" badge is invented (final-UAT honesty rule).
+  // date of birth.
   const age = appointment?.patient.dob
     ? Math.max(0, dayjs().diff(dayjs(appointment.patient.dob), 'year'))
     : null;
+
+  // READ-ONLY clinical context — allergies, standing alerts, and whether this
+  // person has been here before. Every value comes from the canonical stores
+  // that already own it (the b1.5 alert table and the visit history); nothing
+  // is copied into the demographic record. See CheckInClinicalContext.tsx.
+  const context = useCheckInContext(appointment?.patient.id);
+
+  // TABS MUST NOT HIDE AN UNANSWERED QUESTION (owner's instruction). The
+  // check-in rule is unchanged — a panel payer needs its panel named — but
+  // now that the payer lives behind a tab, an incomplete Visit Info is SAID
+  // on whichever tab the desk is looking at, with the way to it, and the
+  // primary action stays refused until it is answered.
+  const visitIncomplete = payerKind === 'panel' && !panelId;
 
   return (
     <Drawer
@@ -162,9 +184,28 @@ export function CheckInRegistrationDrawer({
       title="Register / Check in"
       footer={
         appointment ? (
-          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+          <div className="kw-checkin-footer">
+            {visitIncomplete ? (
+              <span className="kw-checkin-missing" data-testid="checkin-incomplete">
+                Panel payer selected — name the panel under Visit Info.
+                <Button size="small" type="link" onClick={() => setTab('visit')}>
+                  Go to Visit Info
+                </Button>
+              </span>
+            ) : (
+              <span />
+            )}
+          <Space>
             <Button onClick={onClose}>Cancel</Button>
-            <Tooltip title={permCheckIn ? undefined : permissionHint('check a patient in')}>
+            <Tooltip
+              title={
+                !permCheckIn
+                  ? permissionHint('check a patient in')
+                  : visitIncomplete
+                    ? 'Name the panel under Visit Info first.'
+                    : undefined
+              }
+            >
               <Button
                 type="primary"
                 loading={checkIn.isPending}
@@ -176,6 +217,7 @@ export function CheckInRegistrationDrawer({
               </Button>
             </Tooltip>
           </Space>
+          </div>
         ) : null
       }
     >
@@ -195,6 +237,14 @@ export function CheckInRegistrationDrawer({
               {[appointment.patient.phone, age != null ? `${age} years old` : null]
                 .filter(Boolean)
                 .join(' · ') || '—'}
+            </div>
+
+            {/* Returning / first visit and the allergy line ride the identity
+                rail so they are visible from BOTH tabs — an allergy behind a
+                tab is an allergy nobody read. */}
+            <div className="kw-checkin-id-flags">
+              <VisitHistoryLine context={context} />
+              <AllergyBadge context={context} />
             </div>
 
             <div className="kw-apt3-eyebrow kw-checkin-id-head">Appointment</div>
@@ -224,11 +274,38 @@ export function CheckInRegistrationDrawer({
           </aside>
 
           <div className="kw-checkin-content">
-          {/* THE PATIENT — the record on file, editable in place for staff
-              with the demographics permission (final-UAT). One canonical
-              record: the save is the same PATCH every other surface uses. */}
-          <PatientDetailsSection patient={appointment.patient} />
-
+          {/* Approved mockup 5 — Patient Details | Visit Info, Patient
+              Details open first. The tabs SPLIT the reading, never the
+              validation: Confirm still commits both halves at once. */}
+          <Tabs
+            activeKey={tab}
+            onChange={(key) => setTab(key as 'patient' | 'visit')}
+            className="kw-checkin-tabs"
+            items={[
+              {
+                key: 'patient',
+                label: 'Patient Details',
+                children: (
+                  <>
+                    {/* THE PATIENT — the record on file, editable in place
+                        for staff with the demographics permission. One
+                        canonical record: the save is the same PATCH every
+                        other surface uses. */}
+                    <PatientDetailsSection patient={appointment.patient} />
+                    <ClinicalContextPanel context={context} />
+                  </>
+                ),
+              },
+              {
+                key: 'visit',
+                label: (
+                  <span className="kw-checkin-tablabel">
+                    Visit Info
+                    {visitIncomplete ? <span className="kw-checkin-tabdot" aria-hidden /> : null}
+                  </span>
+                ),
+                children: (
+                  <>
           {/* THE VISIT — the decisions the desk makes at the counter. */}
           <div className="kw-apt-section">Visit</div>
           <div className="kw-checkin-field">
@@ -369,6 +446,11 @@ export function CheckInRegistrationDrawer({
               </Descriptions.Item>
             </Descriptions>
           ) : null}
+                  </>
+                ),
+              },
+            ]}
+          />
           </div>
         </div>
       ) : null}

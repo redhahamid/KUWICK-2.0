@@ -441,12 +441,17 @@ test.describe('a patient books themselves in, and the clinic works the booking',
     await row.getByRole('button', { name: /register \/ check in/i }).click();
     const registration = page.getByTestId('checkin-registration-drawer');
     await expect(registration).toBeVisible();
-    // The review really is a review: the payer choice and the patient's
-    // on-file identity are in front of the desk before anything commits.
-    // (.first(): the final visual pass shows the name TWICE by design — the
-    // mockup's identity header and the record's own Name row.)
-    await expect(registration.getByText('Payer')).toBeVisible();
+    // The review really is a review: the patient's on-file identity is in
+    // front of the desk on opening, and the payer choice is one tab away.
+    // The approved mockup splits the drawer into Patient Details | Visit
+    // Info; the SPLIT is presentational — Confirm still commits both halves,
+    // and an unanswered payer still refuses the button — so the walk now
+    // reads both tabs, exactly as the counter does.
+    // (.first(): the name appears twice by design — the identity header and
+    // the record's own Name row.)
     await expect(registration.getByText(patientName).first()).toBeVisible();
+    await registration.getByRole('tab', { name: 'Visit Info' }).click();
+    await expect(registration.getByText('Payer')).toBeVisible();
     await page.getByTestId('confirm-add-to-queue').click();
     await expect(registration).toBeHidden({ timeout: 20_000 });
     await expect(row.getByRole('button', { name: /register \/ check in/i })).toBeHidden({
@@ -562,8 +567,11 @@ test.describe('the clinic writes its own messages', () => {
       .click();
     await expect(preview).toContainText(/temujanji/);
 
-    // The reminder rules — the honest automation — live on the same screen,
-    // and the screen says out loud that no gateway is connected.
+    // The reminder rules — the honest automation — live one click away in the
+    // console's own sub-navigation (approved mockup 6), on the same screen and
+    // against the same store; the screen says out loud, from every section,
+    // that no gateway is connected.
+    await page.locator('.kw-comms-nav-item', { hasText: 'Reminders' }).first().click();
     await expect(page.getByTestId('reminder-rules-card')).toBeVisible();
     await expect(page.getByText('WhatsApp automation is not connected')).toBeVisible();
   });

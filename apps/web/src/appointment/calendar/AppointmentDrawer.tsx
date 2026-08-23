@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
   Alert,
-  Avatar,
   Button,
   Descriptions,
   Drawer,
@@ -31,7 +30,7 @@ import { AppointmentStatus } from '@kuwick/shared';
 import { KuwickStatusTag } from '../../design-system/kuwick';
 import { formatClinicDate, formatClinicDateTime, formatClinicTime } from '../../clinical/clinicTime';
 import { SOURCE_LABELS, type AppointmentSource } from '../types';
-import { paymentChip, sentence, statusChip } from '../appointment-presentation';
+import { bookingReference, paymentChip, sentence, statusChip } from '../appointment-presentation';
 import {
   ARRIVABLE_FROM_STATUSES,
   CHECK_IN_FROM_STATUSES,
@@ -54,6 +53,7 @@ import { CheckInRegistrationDrawer } from '../checkin/CheckInRegistrationDrawer'
 import { MessagePatientModal } from '../messages/MessagePatientModal';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
 import { getDoctorColor } from './doctor-color';
+import { PersonAvatar } from '../shared/PersonAvatar';
 import { ApiError } from '../../core/api-client';
 
 const { Text, Paragraph } = Typography;
@@ -143,13 +143,6 @@ export function AppointmentDrawer({
   const isCompleted = status === AppointmentStatus.COMPLETED;
   const isReleased =
     status === AppointmentStatus.CANCELLED || status === AppointmentStatus.NO_SHOW;
-  const initials = (appointment?.patient.name ?? '')
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0] ?? '')
-    .join('')
-    .toUpperCase();
-
   // PHASE 8 — messaging goes through the template modal: the clinic's own
   // wording (or the defaults), rendered by the ONE renderer against the
   // patient-facing clinic identity. The drawer no longer composes any
@@ -262,23 +255,16 @@ export function AppointmentDrawer({
     <Drawer
       open={open}
       onClose={onClose}
-      width={440}
+      width="min(880px, 100vw)"
       rootClassName="kw-apt3-drawer"
       destroyOnHidden
       title={
         appointment ? (
-          <div className="kw-apt-head">
-            <Avatar size={40} className="kw-apt-avatar">
-              {initials}
-            </Avatar>
-            <div className="kw-apt-head-text">
-              <div className="kw-apt-head-name">{appointment.patient.name}</div>
-              <div className="kw-apt-head-meta">
-                {appointment.patient.identifierValue}
-                {appointment.patient.phone ? ` · ${appointment.patient.phone}` : ''}
-              </div>
-            </div>
-          </div>
+          // Approved mockup 8 — the BOOKING is the subject of this panel, so
+          // it is named first: the reference the clinic and the patient both
+          // quote, with the status beside it. The person moves into the
+          // identity block below, where the mockup puts them.
+          <span className="kw-apt-ref">Appointment #{bookingReference(appointment.id)}</span>
         ) : (
           'Appointment'
         )
@@ -378,7 +364,20 @@ export function AppointmentDrawer({
       {!isLoading && !appointment ? <Empty description="Appointment not found" /> : null}
 
       {appointment ? (
-        <div data-testid="appointment-drawer">
+        <div data-testid="appointment-drawer" className="kw-apt-detail">
+          {/* THE PATIENT — the identity block the mockup opens with. */}
+          <div className="kw-apt-head">
+            <PersonAvatar name={appointment.patient.name} size="lg" />
+            <div className="kw-apt-head-text">
+              <div className="kw-apt-head-name">{appointment.patient.name}</div>
+              <div className="kw-apt-head-meta">
+                {appointment.patient.identifierValue}
+                {appointment.patient.phone ? ` · ${appointment.patient.phone}` : ''}
+              </div>
+            </div>
+          </div>
+          <div className="kw-apt-detail-grid">
+          <div className="kw-apt-detail-main">
           {/* §21 — the three reaches a receptionist makes while the patient
               is still on the phone, one press from the header. Call only
               renders when there is a number to dial. */}
@@ -663,11 +662,16 @@ export function AppointmentDrawer({
             </>
           ) : null}
 
+          </div>
+
           {/* PHASE 5E — the ACTIVITY is part of the record, not a hidden
               tab: booked, reminded, requested, approved — chronological, in
               plain words, with who. The last few are always visible; the
               full history is one menu press away. Technical codes never
-              reach the screen (EVENT_WORDS, with a sentence-case fallback). */}
+              reach the screen (EVENT_WORDS, with a sentence-case fallback).
+              Mockup 8 gives it the panel's right-hand column, where it reads
+              as the booking's story beside the booking's facts. */}
+          <aside className="kw-apt-detail-side">
           <div className="kw-apt-section">Activity</div>
           <Timeline
             className="kw-apt-activity"
@@ -704,6 +708,9 @@ export function AppointmentDrawer({
               Show all {appointment.events.length} entries
             </Button>
           ) : null}
+
+          </aside>
+          </div>
 
           {/* Mounted only while open, so its data hooks (staff, panels) run
               only when the desk actually starts a registration. */}

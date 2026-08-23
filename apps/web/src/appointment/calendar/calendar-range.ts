@@ -31,11 +31,17 @@ export function getCalendarRange(viewMode: CalendarViewMode, anchor: Dayjs): Cal
     case 'day':
     case 'providers':
       return { start: wall.startOf('day'), end: wall.endOf('day') };
-    case 'week':
-      // Sunday-Saturday, matching the audited Yezza patient calendar
-      // (docs/PROPOSED_ADDENDUM_2026-07-30_appointment-yezza-gaps.md source)
-      // and dayjs's default English-locale week start.
-      return { start: wall.startOf('week'), end: wall.endOf('week') };
+    case 'week': {
+      // MONDAY → SUNDAY (approved mockup, week panel: "Mon 17 … Sun 23").
+      // Computed EXPLICITLY rather than by moving dayjs's global week start:
+      // that locale switch would silently redraw every other week boundary in
+      // the product (reports, roster, payroll) to chase a calendar heading.
+      // Month view deliberately keeps its Sunday-first grid, as the mockup's
+      // own month panel draws it.
+      const backToMonday = (wall.day() + 6) % 7;
+      const start = wall.subtract(backToMonday, 'day').startOf('day');
+      return { start, end: start.add(6, 'day').endOf('day') };
+    }
     case 'month':
       return { start: wall.startOf('month'), end: wall.endOf('month') };
   }

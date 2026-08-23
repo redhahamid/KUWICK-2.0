@@ -2627,11 +2627,25 @@ body:has(.kw-public-booking) {
 }
 
 .kw-public-service-photo {
-  width: 52px;
-  height: 52px;
-  border-radius: 10px;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
   object-fit: cover;
   flex: none;
+}
+
+/* The image-less state: same footprint, same rhythm, a calm monogram tile —
+   the card is photo-READY without a stock photo standing in for one. */
+.kw-public-service-photo--blank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--apt-teal-soft) 0%, #eef2f7 100%);
+  color: var(--apt-teal);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--apt-border);
 }
 
 .kw-public-service-body {
@@ -3734,6 +3748,321 @@ body:has(.kw-public-booking) {
     width: 100%;
     position: static;
   }
+}
+
+/* --- Communication Centre console (approved mockup 6) --------------------
+   A dark sub-navigation down the left, the working area beside it. This is
+   INTERNAL to the Communication Centre — the product's top navigation and the
+   Appointment tabs are untouched, and this never becomes a global sidebar. */
+.kw-comms {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.kw-comms-main {
+  flex: 1;
+  min-width: 0;
+}
+.kw-comms-nav {
+  width: 208px;
+  flex: none;
+  background: var(--apt-nav-navy);
+  border-radius: var(--apt-radius-lg);
+  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: sticky;
+  top: 8px;
+  box-shadow: var(--apt-shadow-sm);
+}
+.kw-comms-nav-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  padding: 2px 10px 10px;
+}
+.kw-comms-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.82);
+  border-radius: var(--apt-radius);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.kw-comms-nav-item:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.kw-comms-nav-item[data-active] {
+  background: var(--apt-teal);
+  color: #fff;
+}
+.kw-comms-nav-item:disabled {
+  color: rgba(255, 255, 255, 0.38);
+  cursor: default;
+}
+.kw-comms-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 2px 10px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+}
+.kw-comms-nav-item--child {
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 6px 10px;
+}
+.kw-comms-soon {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+/* The preview reads like the message will: a chat ground and a sent bubble. */
+.kw-comms-preview .ant-card-body {
+  background: #eae6df;
+  background-image: radial-gradient(rgba(0, 0, 0, 0.035) 1px, transparent 1px);
+  background-size: 14px 14px;
+  padding: 14px;
+}
+.kw-comms-bubble {
+  background: #dcf8c6;
+  border-radius: 12px 12px 2px 12px;
+  padding: 10px 12px;
+  max-width: 88%;
+  margin-left: auto;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #111b21;
+}
+.kw-comms-preview-note {
+  display: block;
+  margin-top: 8px;
+  font-size: 11.5px;
+  text-align: right;
+}
+.kw-comms-stats {
+  display: flex;
+  gap: 26px;
+  flex-wrap: wrap;
+}
+.kw-comms-stats > span {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  color: var(--apt-text-2);
+}
+.kw-comms-stats strong {
+  font-size: 22px;
+  font-weight: 750;
+  color: var(--apt-nav-navy);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+@media (max-width: 900px) {
+  .kw-comms {
+    flex-direction: column;
+  }
+  .kw-comms-nav {
+    width: 100%;
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .kw-comms-nav-title,
+  .kw-comms-nav-group {
+    display: none;
+  }
+}
+
+/* --- Appointment detail panel (approved mockup 8) ------------------------
+   The booking named in the title, the person in an identity block, the facts
+   on the left and the story on the right. */
+.kw-apt-ref {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--apt-nav-navy);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.kw-apt-detail-grid {
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+  margin-top: 14px;
+}
+.kw-apt-detail-main {
+  flex: 1;
+  min-width: 0;
+}
+.kw-apt-detail-side {
+  width: 268px;
+  flex: none;
+  border-left: 1px solid var(--apt-border);
+  padding-left: 18px;
+  align-self: stretch;
+}
+.kw-apt-detail-side .kw-apt-section:first-child {
+  margin-top: 0;
+}
+/* The identity block sits above both columns — one person, one statement. */
+.kw-apt-detail > .kw-apt-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--apt-border);
+}
+@media (max-width: 720px) {
+  .kw-apt-detail-grid {
+    flex-direction: column;
+  }
+  .kw-apt-detail-side {
+    width: 100%;
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid var(--apt-border);
+    padding-top: 12px;
+  }
+}
+
+/* --- Check-in: tabs, clinical context, completeness footer -------------- */
+.kw-checkin-tabs .ant-tabs-nav {
+  margin-bottom: 14px;
+}
+.kw-checkin-tabs .ant-tabs-tab {
+  font-weight: 600;
+  padding: 8px 2px 10px;
+}
+.kw-checkin-tabs .ant-tabs-ink-bar {
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+}
+.kw-checkin-tablabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* The unanswered-question dot on the tab — colour plus the footer sentence,
+   never colour alone. */
+.kw-checkin-tabdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--apt-limited);
+}
+
+.kw-checkin-id-flags {
+  align-self: stretch;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.kw-checkin-chip,
+.kw-checkin-allergy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kw-checkin-chip[data-tone='returning'] {
+  background: var(--apt-active-bg);
+  color: var(--apt-active);
+}
+.kw-checkin-chip[data-tone='new'] {
+  background: var(--apt-neutral-bg);
+  color: var(--apt-neutral);
+}
+.kw-checkin-chip[data-tone='info'] {
+  background: var(--apt-clinical-bg);
+  color: var(--apt-clinical);
+  white-space: normal;
+}
+/* Allergy has three honest states: recorded, confirmed-none, and unknown. */
+.kw-checkin-allergy[data-tone='danger'] {
+  background: var(--apt-danger-bg);
+  color: var(--apt-danger);
+  white-space: normal;
+}
+.kw-checkin-allergy[data-tone='clear'] {
+  background: var(--apt-success-bg);
+  color: var(--apt-success);
+}
+.kw-checkin-allergy[data-tone='unknown'] {
+  background: var(--apt-neutral-bg);
+  color: var(--apt-text-2);
+}
+
+.kw-checkin-clinical {
+  margin-top: 14px;
+  border: 1px solid var(--apt-border);
+  border-radius: var(--apt-radius-lg);
+  background: var(--apt-surface-2);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.kw-checkin-clinical-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.kw-checkin-clinical-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.kw-checkin-clinical-note {
+  font-size: 11.5px;
+}
+
+/* The footer carries the missing answer on the left, the actions on the
+   right — the tab split must never hide an unanswered question. */
+.kw-checkin-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+.kw-checkin-missing {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12.5px;
+  color: var(--apt-attention);
 }
 
 /* The in-drawer patient edit form: compact, calm, clearly a mode. */
