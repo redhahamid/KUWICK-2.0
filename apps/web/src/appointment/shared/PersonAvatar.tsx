@@ -45,6 +45,14 @@ export interface PersonAvatarProps {
    *  'xl' is the drawer identity-header size. */
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
+  /**
+   * THE SEAM FOR A REAL PHOTOGRAPH. Nothing in Kuwick stores patient or staff
+   * photographs today, so nothing passes this — and no placeholder face is
+   * invented to fill the space. It exists so that the day a photo model does
+   * arrive, every avatar on every surface picks it up without a single card
+   * being redrawn: the monogram is the fallback, not the design.
+   */
+  photoUrl?: string | null;
 }
 
 export function PersonAvatar({
@@ -53,16 +61,18 @@ export function PersonAvatar({
   colorSeed,
   size = 'md',
   className,
+  photoUrl,
 }: PersonAvatarProps) {
   const identity = color ?? (colorSeed ? providerColorFor(null, colorSeed) : NEUTRAL_PROVIDER_COLOR);
   return (
     <span
       className={`kw-avatar${className ? ` ${className}` : ''}`}
       data-size={size}
+      data-photo={photoUrl ? 'true' : undefined}
       style={{ background: identity.pastel, color: identity.text }}
       aria-hidden="true"
     >
-      {initialsOf(name)}
+      {photoUrl ? <img src={photoUrl} alt="" /> : initialsOf(name)}
     </span>
   );
 }

@@ -783,10 +783,6 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
-        <CalendarMetrics
-          appointments={events.map((event) => event.appointment)}
-          filtered={filtersActive}
-        />
       </div>
 
       {/* ACTIVE FILTERS SAID OUT LOUD (Phase 3H) — a diary quietly showing a
@@ -1116,6 +1112,12 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
           eye rests after reading the grid. */}
       {!isLoading ? (
         <div className="kw-cal-statusbar">
+          {/* THE THIRD LEVEL of the toolbar hierarchy, and deliberately not
+              in the toolbar. Primary navigation and the filters compete for
+              the top of the screen; the operational summary does not need to
+              join that fight, and the approved mockup puts it exactly here —
+              closing the canvas, where the eye rests after reading the grid.
+              Said once now, rather than twice. */}
           <CalendarMetrics
             appointments={events.map((event) => event.appointment)}
             filtered={filtersActive}

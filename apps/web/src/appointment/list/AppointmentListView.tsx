@@ -709,9 +709,15 @@ function AppointmentTable({
                     <Tooltip
                       title={permCheckIn ? undefined : permissionHint('check a patient in')}
                     >
+                      {/* QUIET BY DEFAULT, LOUD ON APPROACH. Forty rows each
+                          carrying a filled navy button is forty things
+                          shouting at equal volume, and the patient's name —
+                          the thing the receptionist is actually looking for —
+                          loses to a control that says the same word forty
+                          times. The row's own hover promotes it. */}
                       <Button
                         size="small"
-                        type="primary"
+                        className="kw-row-action"
                         disabled={!permCheckIn}
                         onClick={() => setCheckingInId(row.id)}
                       >

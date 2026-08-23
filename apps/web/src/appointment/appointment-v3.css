@@ -577,21 +577,24 @@
    an alarm rather than an identity or a status, so it gets the one colour
    nothing else on the grid uses. */
 
+/* NOW, said finely. A 2px saturated rule across a 1,400px grid cuts the
+   product in half; the receptionist only needs to find their place in
+   today's column. One hairline, one small dot, one small label in the
+   gutter. */
 .kw-calendar-grid .rbc-current-time-indicator {
-  height: 2px;
+  height: 1px;
   background: #e11d48;
 }
 
 .kw-calendar-grid .rbc-current-time-indicator::before {
   content: '';
   position: absolute;
-  left: -4px;
-  top: -3px;
-  width: 8px;
-  height: 8px;
+  left: -3px;
+  top: -2px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: #e11d48;
-  box-shadow: 0 0 0 2px rgba(225, 29, 72, 0.18);
 }
 
 .kw-calendar-grid .rbc-time-gutter {
@@ -603,13 +606,13 @@
   right: 4px;
   transform: translateY(-50%);
   z-index: 6;
-  padding: 1px 7px;
-  border-radius: 999px;
+  padding: 0 5px;
+  border-radius: 4px;
   background: #e11d48;
   color: #fff;
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
-  line-height: 1.5;
+  line-height: 15px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   pointer-events: none;
@@ -694,13 +697,7 @@
   transform: translateY(-1px);
 }
 
-/* WEEK — the one view whose card body carries any hue at all, and only a
-   whisper of it (~4.5%). Enough that five providers in one week read as five
-   people; far too weak to become a wall when they are all the same person.
-   The hairline stays: it is what separates two touching bookings. */
-.kw-calendar-grid[data-view='week'] .kw-evcard {
-  background: var(--ev-wash, var(--apt-surface));
-}
+
 
 /* Released bookings stay on the grid, struck through — never hidden. */
 .kw-ev--released .kw-calendar-event {
@@ -904,7 +901,7 @@
    over it and the line itself is lowered, so "now" is context, not damage. */
 .kw-calendar-grid .rbc-current-time-indicator {
   z-index: 1;
-  opacity: 0.85;
+  opacity: 0.7;
 }
 /* The whole event LAYER is lifted over the indicator in one move — the two
    live in different parents, so raising the cards alone would not have done
@@ -934,20 +931,22 @@
   border: none;
 }
 
-/* THE CARD — ONE SKELETON, THREE VIEW BUDGETS.
+/* THE CARD — ONE SKELETON, FOUR VIEW BUDGETS.
  *
- * The body is WHITE in every view. The provider's colour reaches the card as
- * three small, bounded things: a 3px identity edge, a pastel gutter holding
- * their face, and (on cards long enough to name them) their own text colour.
- * It is never allowed to flood the body: a full-width pastel behind every
- * booking is exactly how a busy single-doctor day rendered as one wall of
- * colour, and no amount of lowering the alpha fixes that — a 1,300px band of
- * anything is a band.
+ * The reading order is the receptionist's: TIME and PATIENT share the
+ * headline (the two anchors, patient carrying the weight), the service
+ * follows, the provider follows that, and the state speaks only when it is
+ * asking for something.
  *
- * The three budgets, in ascending order of how much hue a view may spend:
- *   day / providers  edge + gutter only. White body, always.
- *   week             the same, plus a ~4.5% tint of the hue on the body.
- *   month            the chip is small enough to take the pastel outright.
+ * How much PROVIDER colour each view may spend, in ascending order:
+ *   day / providers  edge + pastel gutter. White body, always — a 1,300px
+ *                    band of anything is a band, and lowering the alpha does
+ *                    not change that.
+ *   week             a light provider pastel BODY, as the premium mockup
+ *                    draws it. A ~180px card is small enough to wear the hue
+ *                    without the screen turning into a wall.
+ *   month            the 20px chip takes the pastel outright.
+ *   list             a dot and an avatar; the row stays white.
  */
 .kw-evcard {
   height: 100%;
@@ -958,15 +957,15 @@
   background: var(--apt-surface);
   border: 1px solid var(--apt-border);
   border-left: 3px solid var(--ev-edge, var(--apt-border-strong));
-  /* No drop shadow at rest (approved: "reduce unnecessary shadow and
-     roundness"). The hairline is what separates two touching bookings; the
+  /* No resting shadow. The hairline separates two touching bookings; the
      shadow is reserved for hover, where it means "this one". */
   box-shadow: none;
   overflow: hidden;
   transition:
-    box-shadow 0.15s ease,
-    border-color 0.15s ease;
+    box-shadow 0.14s ease,
+    border-color 0.14s ease;
   color: var(--apt-text);
+  cursor: pointer;
 }
 .kw-calendar-grid .rbc-event:hover .kw-evcard {
   box-shadow: var(--apt-shadow-sm);
@@ -979,15 +978,15 @@
   outline-offset: -1px;
 }
 
-/* The provider's band: their pastel, their face. 26px is enough for a 16px
-   avatar and no more — identity, not decoration. */
+/* The PATIENT's face, in the position the premium mockup gives it. Neutral —
+   never a provider hue, never a gendered silhouette. */
 .kw-evcard-gutter {
   flex: none;
-  width: 26px;
+  width: 34px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  background: var(--ev-pastel, var(--apt-surface-2));
+  padding-top: 5px;
 }
 
 .kw-evcard-body {
@@ -997,11 +996,27 @@
   flex-direction: column;
   justify-content: center;
   gap: 1px;
-  padding: 2px 4px 2px 8px;
+  padding: 4px 4px 4px 0;
 }
 
+/* THE HEADLINE — the two anchors on one line. */
+.kw-evcard-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.kw-evcard-time {
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: var(--apt-text-2);
+  white-space: nowrap;
+  flex: none;
+}
 /* PATIENT FIRST, at every density. The name is the strongest text on the
-   card and is never the line that retires. */
+   card and is never the line that retires to keep a doctor or a service. */
 .kw-evcard-name {
   font-size: 12.5px;
   font-weight: 700;
@@ -1011,23 +1026,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.kw-evcard-line {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
   min-width: 0;
-}
-.kw-evcard-time {
-  font-size: 11px;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-  /* Ink, not the provider's hue: the time is a fact about the booking, and
-     giving it the identity colour made it compete with the patient's name. */
-  color: var(--apt-text-2);
-  white-space: nowrap;
-  flex: none;
 }
 .kw-evcard-service {
   font-size: 11px;
@@ -1038,31 +1037,40 @@
   text-overflow: ellipsis;
   min-width: 0;
 }
-/* The separator belongs to the STACKED layout only — in a wide day row the
-   two become separate columns and a dangling middot would be noise. */
-.kw-evcard-line .kw-evcard-service::before {
-  content: '· ';
-  color: var(--apt-border-strong);
-}
 .kw-evcard-doctor {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 10.5px;
   font-weight: 600;
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
+  min-width: 0;
+}
+/* The provider, recognisable by BOTH text and colour — never by colour
+   alone, and never in a hue a status could be mistaken for. */
+.kw-evcard-pdot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+.kw-evcard-doctor > :last-child,
+.kw-evcard-doctor {
   text-overflow: ellipsis;
 }
 
-/* THE STATE. A dot is the whole treatment for the expected case. The word
+/* THE STATE. A dot is the whole treatment for the expected case; the word
    joins it only where somebody has to act — and the word, not the colour, is
    what carries the meaning. */
 .kw-evcard-state {
   flex: none;
-  align-self: center;
+  align-self: flex-start;
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 0 7px 0 3px;
+  padding: 7px 8px 0 3px;
 }
 .kw-evcard-dot {
   width: 6px;
@@ -1075,8 +1083,8 @@
   /* HIDDEN BY DEFAULT. A ~90px badge inside a 178px week column is 90px the
      patient's name does not get, and "Nabil…" beside a perfectly legible
      CHECKED IN is the wrong trade every time. The word returns the moment
-     the card is wide enough to carry both — and the dot, the tooltip, the
-     List and the drawer carry the state meanwhile. */
+     the card is wide enough to carry both — meanwhile the dot, the tooltip,
+     the List and the drawer all still say it. */
   display: none;
   font-size: 10px;
   font-weight: 650;
@@ -1084,30 +1092,26 @@
   color: var(--st-tone, var(--apt-text-2));
   white-space: nowrap;
 }
-@container (min-width: 260px) {
+@container (min-width: 300px) {
   .kw-evcard-word {
     display: inline;
   }
-}
-
-/* Operationally prominent: the patient is HERE, or somebody must approve
-   something. A compact filled badge — no border, no caps, no capsule tax. */
-@container (min-width: 260px) {
   .kw-evcard[data-prominence='operational'] .kw-evcard-state,
   .kw-evcard[data-prominence='action'] .kw-evcard-state,
   .kw-evcard[data-prominence='warning'] .kw-evcard-state {
     background: color-mix(in srgb, var(--st-tone) 11%, #ffffff);
     border-radius: 999px;
     padding: 1px 8px 1px 6px;
-    margin-right: 6px;
+    margin: 6px 8px 0 0;
+    align-self: flex-start;
+  }
+  .kw-evcard[data-prominence='operational'] .kw-evcard-word,
+  .kw-evcard[data-prominence='action'] .kw-evcard-word,
+  .kw-evcard[data-prominence='warning'] .kw-evcard-word {
+    font-weight: 700;
   }
 }
-.kw-evcard[data-prominence='operational'] .kw-evcard-word,
-.kw-evcard[data-prominence='action'] .kw-evcard-word,
-.kw-evcard[data-prominence='warning'] .kw-evcard-word {
-  font-weight: 700;
-}
-/* Requested needs a decision, so it also marks the card itself. */
+/* Requested needs a decision, so it marks the card itself too. */
 .kw-evcard[data-prominence='action'] {
   border-color: color-mix(in srgb, var(--st-tone) 35%, var(--apt-border));
 }
@@ -1117,7 +1121,18 @@
   color: var(--apt-text-2);
 }
 .kw-evcard[data-prominence='receded'] .kw-evcard-gutter {
-  opacity: 0.55;
+  opacity: 0.6;
+}
+
+/* WEEK — the premium mockup's card: a light provider pastel body, a
+   restrained edge, breathing room inside. Small enough to wear the hue. */
+.kw-calendar-grid[data-view='week'] .kw-evcard {
+  background: var(--ev-pastel, var(--apt-surface));
+  border-color: color-mix(in srgb, var(--ev-edge, #98a2b3) 16%, #ffffff);
+}
+.kw-calendar-grid[data-view='week'] .kw-evcard[data-prominence='muted'],
+.kw-calendar-grid[data-view='week'] .kw-ev--released .kw-evcard {
+  background: var(--apt-surface-2);
 }
 
 /* THE DENSITY LADDER (approved decision 5), driven by the booking's real
@@ -1125,136 +1140,137 @@
    `contain: size`, which took rbc's percentage-height events to zero and
    emptied the grid (measured). */
 .kw-evcard[data-tier='micro'] .kw-evcard-body {
-  flex-direction: row;
+  justify-content: center;
+  padding-block: 2px;
+}
+.kw-evcard[data-tier='micro'] .kw-evcard-gutter {
   align-items: center;
-  gap: 6px;
+  padding-top: 0;
+  width: 26px;
 }
-.kw-evcard[data-tier='micro'] .kw-evcard-name {
-  order: 2;
-  font-size: 11.5px;
+.kw-evcard[data-tier='micro'] .kw-evcard-state {
+  align-self: center;
+  padding-top: 0;
 }
-.kw-evcard[data-tier='micro'] .kw-evcard-line {
-  order: 1;
-  flex: none;
-}
-/* Stacked, the ladder holds: a 15-minute card is one line, a 30-minute card
-   is two. The model carries more than that; these rules are what decides it
-   does not fit HERE. */
 .kw-evcard:not([data-wide='true'])[data-tier='micro'] .kw-evcard-service,
 .kw-evcard:not([data-wide='true'])[data-tier='micro'] .kw-evcard-doctor,
 .kw-evcard:not([data-wide='true'])[data-tier='compact'] .kw-evcard-doctor {
   display: none;
 }
-.kw-evcard[data-tier='micro'] .kw-evcard-gutter {
-  width: 18px;
-}
-.kw-evcard[data-tier='micro'] .kw-evcard-gutter .kw-avatar {
-  display: none;
-}
 
-/* WIDE COMPOSITION — the day and single-provider columns give a card the
-   whole width, so it composes ACROSS instead of stacking. A 30-minute
-   booking becomes a ROW that reads left to right — when, who, what, which
-   doctor, what state — instead of a banner with three lines of text pinned
-   to its left edge and a status marooned a thousand pixels away. */
+/* WIDE COMPOSITION — the day and single-provider columns hand a card the
+   whole width, so it composes ACROSS instead of stacking. The zones are
+   PROPORTIONAL, not a table: the patient takes the space, the service and
+   the doctor take what they need, and the state holds the right edge as a
+   scan column. A 30-minute booking reads as one object, left to right —
+   never three lines pinned to the left of 1,300px of white. */
+.kw-evcard[data-wide='true'] {
+  align-items: center;
+}
+.kw-evcard[data-wide='true'] .kw-evcard-gutter {
+  align-items: center;
+  padding-top: 0;
+  width: 42px;
+}
 .kw-evcard[data-wide='true'] .kw-evcard-body {
   flex-direction: row;
   align-items: center;
-  /* The stacked card centres its lines vertically; in a row that same
-     declaration centres them HORIZONTALLY and leaves the whole booking
-     floating in the middle of a 1,300px card. The row starts at the left. */
   justify-content: flex-start;
   gap: 0;
-  padding-right: 8px;
+  padding: 4px 0;
 }
-.kw-evcard[data-wide='true'] .kw-evcard-line {
-  display: contents;
+.kw-evcard[data-wide='true'] .kw-evcard-headline {
+  /* 40% of the row: the two anchors, together, taking the space they are
+     worth. */
+  flex: 0 1 40%;
+  min-width: 0;
+  gap: 10px;
 }
 .kw-evcard[data-wide='true'] .kw-evcard-time {
-  order: 1;
-  /* min-width, not width: the ≥60-minute tier carries a RANGE
-     ("10:00 – 11:00"), and a fixed 58px column put it straight through the
-     patient's name. The column holds its shape for the common case and
-     grows for the long one. */
-  min-width: 58px;
-  padding-right: 10px;
-  font-weight: 700;
+  min-width: 54px;
+  font-size: 12.5px;
   color: var(--apt-text);
 }
 .kw-evcard[data-wide='true'] .kw-evcard-name {
-  order: 2;
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 300px;
-  font-size: 13px;
-  padding-right: 16px;
+  font-size: 13.5px;
 }
 .kw-evcard[data-wide='true'] .kw-evcard-service {
-  order: 3;
-  flex: 0 1 auto;
-  max-width: 320px;
-}
-/* The doctor takes the slack so the row does not leave a lake of white
-   between the service and the state. */
-.kw-evcard[data-wide='true'] .kw-evcard-doctor {
-  flex: 1 1 auto;
-}
-.kw-evcard[data-wide='true'] .kw-evcard-service::before {
-  content: none;
+  flex: 0 1 30%;
+  min-width: 0;
+  padding-right: 16px;
+  font-size: 12px;
 }
 .kw-evcard[data-wide='true'] .kw-evcard-doctor {
-  order: 4;
-  flex: 0 1 auto;
-  padding-left: 16px;
-  display: block;
+  flex: 0 1 30%;
+  min-width: 0;
+  font-size: 12px;
 }
-/* A wide card has room for the doctor at every tier above micro — the
-   stacked ladder retires that line for height, which a row does not spend. */
-.kw-evcard[data-wide='true'][data-tier='compact'] .kw-evcard-doctor,
-.kw-evcard[data-wide='true'][data-tier='standard'] .kw-evcard-doctor {
-  display: block;
+.kw-evcard[data-wide='true'] .kw-evcard-state {
+  align-self: center;
+  padding-top: 0;
 }
-.kw-evcard[data-wide='true'][data-tier='micro'] .kw-evcard-service {
+@container (min-width: 300px) {
+  .kw-evcard[data-wide='true'][data-prominence='operational'] .kw-evcard-state,
+  .kw-evcard[data-wide='true'][data-prominence='action'] .kw-evcard-state,
+  .kw-evcard[data-wide='true'][data-prominence='warning'] .kw-evcard-state {
+    margin-top: 0;
+    align-self: center;
+  }
+}
+/* A wide row has horizontal room the stacked ladder does not, so every tier
+   above micro keeps its service and doctor. */
+.kw-evcard[data-wide='true'] .kw-evcard-service,
+.kw-evcard[data-wide='true'] .kw-evcard-doctor {
+  display: flex;
+}
+.kw-evcard[data-wide='true'] .kw-evcard-service {
   display: block;
 }
 
 /* A WIDE CARD THAT IS NOT ACTUALLY WIDE. Three concurrent bookings split the
    day column three ways, and a row layout in ~430px produces "M…", "Dens…",
-   "Dr U…" — the fragment problem the whole overlap treatment exists to
-   prevent. Below the width a row needs, the card stacks again. */
+   "Dr U…" — the fragment problem the overlap treatment exists to prevent.
+   Below the width a row needs, the card stacks again. */
 @container (max-width: 560px) {
+  .kw-evcard[data-wide='true'] {
+    align-items: stretch;
+  }
+  .kw-evcard[data-wide='true'] .kw-evcard-gutter {
+    width: 34px;
+    align-items: flex-start;
+    padding-top: 5px;
+  }
+  .kw-evcard[data-wide='true'][data-tier='micro'] .kw-evcard-gutter {
+    align-items: center;
+    padding-top: 0;
+  }
   .kw-evcard[data-wide='true'] .kw-evcard-body {
     flex-direction: column;
     align-items: stretch;
-    padding-right: 4px;
+    gap: 1px;
+    padding: 4px 4px 4px 0;
   }
-  .kw-evcard[data-wide='true'] .kw-evcard-line {
-    display: flex;
+  .kw-evcard[data-wide='true'] .kw-evcard-headline {
+    flex: none;
+    gap: 6px;
   }
   .kw-evcard[data-wide='true'] .kw-evcard-time {
-    order: 0;
     min-width: 0;
-    padding-right: 0;
-    font-weight: 650;
+    font-size: 11.5px;
     color: var(--apt-text-2);
   }
   .kw-evcard[data-wide='true'] .kw-evcard-name {
-    order: 0;
-    max-width: none;
-    padding-right: 0;
     font-size: 12.5px;
   }
-  .kw-evcard[data-wide='true'] .kw-evcard-service {
-    order: 0;
-    max-width: none;
-  }
-  .kw-evcard[data-wide='true'] .kw-evcard-service::before {
-    content: '· ';
-  }
+  .kw-evcard[data-wide='true'] .kw-evcard-service,
   .kw-evcard[data-wide='true'] .kw-evcard-doctor {
-    order: 0;
     flex: none;
-    padding-left: 0;
+    padding-right: 0;
+    font-size: 11px;
+  }
+  .kw-evcard[data-wide='true'] .kw-evcard-state {
+    align-self: flex-start;
+    padding-top: 7px;
   }
   .kw-evcard[data-wide='true'][data-tier='micro'] .kw-evcard-service,
   .kw-evcard[data-wide='true'][data-tier='micro'] .kw-evcard-doctor,
@@ -1263,7 +1279,10 @@
   }
 }
 
-/* DENSITY BY REAL WIDTH — lines retire from the bottom up, never clip. */
+/* RESPONSIVE PRIORITY (section 3): what survives as the card narrows.
+   1. TIME + PATIENT   2. SERVICE   3. PROVIDER
+   Secondary metadata leaves first, and patient identity never pays for
+   doctor or service text. */
 @container (max-width: 300px) {
   .kw-evcard-doctor {
     display: none;
@@ -1271,15 +1290,68 @@
 }
 @container (max-width: 210px) {
   .kw-evcard-gutter {
-    width: 20px;
+    width: 28px;
   }
-  .kw-evcard-body {
-    padding-left: 7px;
+  .kw-evcard[data-tier='micro'] .kw-evcard-gutter {
+    width: 22px;
   }
 }
-@container (max-width: 132px) {
+/* A NARROW COLUMN GIVES THE NAME ITS OWN LINE.
+   A week column is ~190px. With the avatar and the state dot taken out of it
+   the headline has ~140px, and "Siti Aminah binti Yusof" is 23 characters —
+   so keeping TIME and PATIENT on one line there does not compress the name,
+   it amputates it ("Siti Aminah b…"). The time drops to its own short line
+   instead and the patient takes the card's full width, wrapping to a second
+   line where the booking is tall enough to hold one. Priority 1 is TIME +
+   PATIENT; this is what honouring it looks like when the pixels are real. */
+@container (max-width: 240px) {
+  .kw-evcard-headline {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+  }
+  .kw-evcard-time {
+    font-size: 10.5px;
+    line-height: 1.35;
+    color: var(--apt-muted);
+  }
+  .kw-evcard[data-tier='standard'] .kw-evcard-name,
+  .kw-evcard[data-tier='full'] .kw-evcard-name {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow-wrap: break-word;
+    line-height: 1.2;
+  }
+  /* A 15-minute card is one line of pixels; time and name share it again
+     rather than stacking into a box that is not there. */
+  .kw-evcard[data-tier='micro'] .kw-evcard-headline {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 5px;
+  }
+  /* ...and it spends its width on the NAME. On a 22px card the avatar is
+     26px of decoration standing where four more characters of a Malaysian
+     name would go. */
+  .kw-evcard[data-tier='micro'] .kw-evcard-gutter {
+    width: 6px;
+  }
+  .kw-evcard[data-tier='micro'] .kw-evcard-gutter .kw-avatar {
+    display: none;
+  }
+  /* A 30-minute card is ~44px: two lines. The stacked headline has just
+     spent both of them on TIME and PATIENT, which is the priority order —
+     so the service goes rather than being clipped through the middle of its
+     own letters. It is still on the tooltip, the drawer and the List. */
+  .kw-evcard:not([data-wide='true'])[data-tier='compact'] .kw-evcard-service {
+    display: none;
+  }
+}
+@container (max-width: 150px) {
   .kw-evcard-gutter {
     width: 8px;
+    padding-top: 0;
   }
   .kw-evcard-gutter .kw-avatar {
     display: none;
@@ -1288,7 +1360,7 @@
     padding-left: 6px;
   }
 }
-@container (max-width: 104px) {
+@container (max-width: 112px) {
   .kw-evcard-service {
     display: none;
   }
@@ -1615,6 +1687,9 @@
   display: inline-flex;
   align-items: center;
   width: 100%;
+  /* A two-line name wraps INSIDE its column; it never spills across the
+     hairline into the next doctor's. */
+  overflow: hidden;
   gap: 8px;
   padding: 8px 8px;
   max-width: 100%;
@@ -1682,13 +1757,13 @@
    as wide as its people, plus the hour gutter and an end spacer so the last
    column never kisses the frame. */
 .kw-calendar-grid--wide .rbc-time-view {
-  /* 220px, down from 250: a card is comfortably readable here (a week column
-     is 178px and holds a full name), and the narrower column lets a
-     five-doctor clinic fit without scrolling at 1440–1600px. Past that the
-     grid scrolls, with the hour gutter pinned and the right edge faded — a
-     six-doctor Wednesday is a real thing and squeezing it into the viewport
-     would cost the readability this pass exists to protect. */
-  min-width: calc(var(--cal-cols, 6) * 220px + 76px);
+  /* 230px per provider: FOUR columns read comfortably in the space left
+     beside the rail and the summary at 1440–1600px, which is the target.
+     Past four the SCHEDULE scrolls horizontally — the rail, the summary and
+     the page itself hold still — with the hour gutter pinned and the right
+     edge faded. Squeezing six doctors into the viewport would cost exactly
+     the readability this pass exists to protect. */
+  min-width: calc(var(--cal-cols, 6) * 230px + 76px);
   margin-right: 20px;
 }
 
@@ -5787,4 +5862,38 @@ h4.ant-typography.kw-public-wallet-title {
 }
 .kw-colorpick-swatch[data-taken] > span {
   opacity: 0.4;
+}
+
+/* --- The List's repeated row action ---------------------------------------
+   Present on every row, dominant on none. It carries the teal so it is
+   findable, gains its fill when the row is approached, and never competes
+   with the patient's name for the first glance. */
+.kw-appt-list .kw-row-action.ant-btn {
+  border-color: var(--apt-border-strong);
+  color: var(--apt-teal);
+  font-weight: 600;
+  background: var(--apt-surface);
+}
+.kw-appt-list tbody tr:hover .kw-row-action.ant-btn,
+.kw-appt-list .kw-row-action.ant-btn:hover,
+.kw-appt-list .kw-row-action.ant-btn:focus-visible {
+  background: var(--apt-teal) !important;
+  border-color: var(--apt-teal) !important;
+  color: #fff !important;
+}
+.kw-appt-list .kw-row-action.ant-btn[disabled] {
+  color: var(--apt-muted);
+  border-color: var(--apt-border);
+}
+
+/* --- Month: workload above the chips --------------------------------------
+   The cell answers "how busy is this day?" before "who is on it". The count
+   therefore reads stronger than the representative bookings beneath it. */
+.kw-month-load {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--apt-text-2);
+}
+.rbc-date-cell.rbc-now .kw-month-load {
+  color: var(--apt-nav-navy);
 }

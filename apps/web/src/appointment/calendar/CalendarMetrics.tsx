@@ -31,10 +31,8 @@ export function CalendarMetrics({
   appointments: Appointment[];
   filtered?: boolean;
   /**
-   * Final visual pass — the same counts rendered a second time as the
-   * mockup's status-summary bar under the grid. Presentation only, and no
-   * testid on this instance: the filter-bar strip stays the one the tests
-   * (and the "Filtered" flag) address.
+   * The mockup's status-summary bar under the grid — now the ONLY place
+   * these counts are rendered. Presentation only.
    */
   bar?: boolean;
 }) {
@@ -84,7 +82,13 @@ export function CalendarMetrics({
   return (
     <div
       className={'kw-calendar-metrics' + (bar ? ' kw-calendar-metrics--bar' : '')}
-      data-testid={bar ? undefined : 'calendar-metrics'}
+      // ONE instance now — the summary bar under the grid. The filter row
+      // used to carry a second copy of these counts and they competed with the
+      // controls beside them; the operational summary does not need to fight
+      // the filters for the top of the screen. The testid travels with the
+      // strip that survived, so what the walk asserts is still what the
+      // receptionist reads.
+      data-testid="calendar-metrics"
     >
       {filtered ? <span className="kw-metric-filtered">Filtered</span> : null}
       {items.map((item) => (

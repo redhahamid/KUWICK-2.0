@@ -11,20 +11,27 @@ import { CardModel } from './calendar-events';
  * it is, which column it belongs to); everything inside the box is this
  * file's, which is why the grid no longer looks like the library.
  *
- * THREE SEPARATE SYSTEMS MEET HERE AND NEVER MIX (approved decisions 1, 2, 4):
- *   PATIENT  — the subject. The name is the strongest text on the card at
- *              every density, in ink, never abbreviated, never dropped.
- *   PROVIDER — identity. It reaches the card as the left edge, the gutter
- *              band and the avatar ring, and NEVER as a body fill: a
- *              full-width pastel behind every booking is how a busy single-
- *              doctor day turned into a wall of one colour.
- *   STATUS   — workflow state. A dot for the expected case; a compact badge
- *              only for the three states somebody must act on. The word
- *              always travels with the colour.
+ * THE READING ORDER IS THE RECEPTIONIST'S, NOT THE DESIGNER'S. A person at a
+ * counter answers six questions off this card in about two seconds: who, when,
+ * what for, which doctor, what state, and does anybody need to do something.
+ * So TIME and PATIENT share the headline — the two anchors — with the patient
+ * carrying the weight; the service and the provider follow as supporting
+ * lines; and the state speaks up only when it is asking for something.
  *
- * The colour arrives as CSS custom properties rather than inline paint so the
- * stylesheet can decide how much of it each VIEW is allowed to use — a
- * decision that belongs to the view, not to the card.
+ * THREE COLOUR SYSTEMS MEET HERE AND NEVER MIX (approved decisions 1, 2, 4):
+ *   PATIENT  — the subject. A NEUTRAL monogram, never a provider hue, never
+ *              a gendered silhouette. `photoUrl` is the seam a real patient
+ *              photograph drops into later without redrawing the card.
+ *   PROVIDER — identity. The left edge, the card's pastel in week, the dot
+ *              before their name. Never a strong fill: a full-width pastel
+ *              behind every booking is how a busy single-doctor day turned
+ *              into a wall of one colour.
+ *   STATUS   — workflow state. A dot for the expected case; a compact badge
+ *              only where somebody must act. The word travels with the colour.
+ *
+ * Colour arrives as CSS custom properties rather than inline paint so the
+ * stylesheet can decide how much each VIEW spends — a decision that belongs
+ * to the view, not to the card.
  */
 
 export interface CalendarEventCardProps {
@@ -41,8 +48,8 @@ export interface CalendarEventCardProps {
   wide?: boolean;
   /**
    * Whether the card names the doctor. False in the Providers view, where
-   * the COLUMN is the doctor and repeating them on every card would be
-   * twenty-four restatements of the column header.
+   * the COLUMN is the doctor and repeating them on every card costs the
+   * patient's name the space it needs.
    */
   showProvider?: boolean;
 }
@@ -61,10 +68,9 @@ export function CalendarEventCard({
   const state = statusPresentation(status);
 
   if (compact) {
-    // THE MONTH CHIP. One line, one job: which patient, at what time. The
-    // provider is the 2px edge and the faint ground — month is the only view
-    // where the pastel touches the whole chip, because a chip is 20px tall
-    // and there is no body for it to flood.
+    // THE MONTH CHIP. One line, one job: which patient, at what time. Month
+    // is the only view where the provider's pastel touches the whole chip —
+    // a 20px chip has no body for it to flood.
     const [time, ...rest] = compactLine.split(' ');
     return (
       <Tooltip title={tooltip}>
@@ -77,6 +83,7 @@ export function CalendarEventCard({
   }
 
   const wordOnCard = showsStatusWord(status) || card.tier === 'full';
+  const namesProvider = Boolean(providerName) && showProvider && (card.provider || wide);
 
   return (
     <Tooltip title={`${tooltip} — double-click to move`}>
@@ -91,34 +98,34 @@ export function CalendarEventCard({
         data-prominence={state.prominence}
         data-wide={wide ? 'true' : undefined}
       >
-        {/* The provider's band: colour and face, kept to the card's left so
-            the body can stay white however wide the column gets. */}
+        {/* The PATIENT's face, in the position the approved mockup gives it.
+            Neutral by design; a real photograph would slot in here. */}
         <span className="kw-evcard-gutter">
-          <PersonAvatar name={providerName || 'Provider'} color={color} size="xs" />
+          <PersonAvatar name={card.patient} size="xs" />
         </span>
 
         <span className="kw-evcard-body">
-          <span className="kw-evcard-name">{card.patient}</span>
-          {/* Time and service travel together when the card stacks, and
-              become independent columns when it composes across a wide day
-              row — `display: contents` in the stylesheet, so one DOM serves
-              both without a second rendering path. */}
-          <span className="kw-evcard-line">
+          {/* THE HEADLINE — the two anchors, together. Time first so the
+              column scans vertically; the patient carries the weight. */}
+          <span className="kw-evcard-headline">
             <span className="kw-evcard-time">{card.time}</span>
-            {card.service ? <span className="kw-evcard-service">{card.service}</span> : null}
+            <span className="kw-evcard-name">{card.patient}</span>
           </span>
-          {/* A wide day row has horizontal room the stacked ladder does not,
-              so it names the doctor at every tier — "which doctor" is one of
-              the five things the front desk must read in seconds. */}
-          {providerName && showProvider && (card.provider || wide) ? (
+          {card.service ? <span className="kw-evcard-service">{card.service}</span> : null}
+          {namesProvider ? (
             <span className="kw-evcard-doctor" style={{ color: color.text }}>
+              <span
+                className="kw-evcard-pdot"
+                style={{ background: color.accent }}
+                aria-hidden="true"
+              />
               {providerName}
             </span>
           ) : null}
         </span>
 
         {/* The state. A dot is the whole treatment for the expected case; the
-            word joins it when somebody has to act, and on a card long enough
+            word joins it where somebody has to act, and on a card long enough
             to spell it out anyway. */}
         <span className="kw-evcard-state" style={{ ['--st-tone' as string]: state.tone }}>
           <span className="kw-evcard-dot" aria-hidden="true" />
