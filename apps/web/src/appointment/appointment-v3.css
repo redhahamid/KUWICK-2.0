@@ -1325,11 +1325,29 @@
     line-height: 1.2;
   }
   /* A 15-minute card is one line of pixels; time and name share it again
-     rather than stacking into a box that is not there. */
+     rather than stacking into a box that is not there. UNLESS the grid under
+     it was empty and it borrowed the room to be readable — then it has two
+     lines like everything else, and the name takes the full width. */
   .kw-evcard[data-tier='micro'] .kw-evcard-headline {
     flex-direction: row;
     align-items: baseline;
     gap: 5px;
+  }
+  .kw-ev--roomy .kw-evcard[data-tier='micro'] .kw-evcard-headline {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+  }
+  .kw-ev--roomy .kw-evcard[data-tier='micro'] .kw-evcard-body {
+    justify-content: center;
+  }
+  .kw-ev--roomy .kw-evcard[data-tier='micro'] .kw-evcard-name {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow-wrap: break-word;
+    line-height: 1.2;
   }
   /* ...and it spends its width on the NAME. On a 22px card the avatar is
      26px of decoration standing where four more characters of a Malaysian
@@ -1346,6 +1364,25 @@
      own letters. It is still on the tooltip, the drawer and the List. */
   .kw-evcard:not([data-wide='true'])[data-tier='compact'] .kw-evcard-service {
     display: none;
+  }
+  /* ...unless the card has three lines' worth of grid under it, in which
+     case the service joins the patient rather than waiting in a tooltip.
+     Line-heights tighten so the third line lands inside the box instead of
+     being clipped through its own letters. */
+  .kw-ev--3line .kw-evcard:not([data-wide='true'])[data-tier='compact'] .kw-evcard-service,
+  .kw-ev--3line .kw-evcard:not([data-wide='true'])[data-tier='micro'] .kw-evcard-service {
+    display: block;
+    font-size: 10.5px;
+    line-height: 1.25;
+  }
+  .kw-ev--3line .kw-evcard-time {
+    line-height: 1.25;
+  }
+  .kw-ev--3line .kw-evcard-name {
+    line-height: 1.2;
+  }
+  .kw-ev--3line .kw-evcard-body {
+    padding-block: 3px;
   }
 }
 @container (max-width: 150px) {

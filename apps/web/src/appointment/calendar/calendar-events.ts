@@ -504,3 +504,60 @@ export function monthDayComposition<T extends { start: Date; released: boolean }
   }
   return composed;
 }
+
+/**
+ * A MINIMUM READABLE CARD, WITHOUT LYING ABOUT THE CLOCK.
+ *
+ * A 15-minute booking is 27px of grid. That is a strip, and a receptionist
+ * should not have to hover a strip to find out whose it is. But the fix is
+ * NOT to draw the appointment longer than it is: the card's TOP is the true
+ * start and must not move, and nothing here touches an appointment's start,
+ * end, duration or collision maths — those belong to the engine.
+ *
+ * What this computes is how much EMPTY grid sits under a booking before the
+ * next one begins in the same column. That space is already blank; letting a
+ * short card borrow a little of it costs nobody a slot and makes the patient's
+ * name legible. Where the next booking starts immediately there is no room to
+ * borrow, the card stays its true size, and the concurrency cap and its
+ * "+N more" tile carry the crowded case as they already do.
+ *
+ * Returns MINUTES of vertical room per event id — the stylesheet converts
+ * that to pixels, because how many pixels an hour is worth is a stylesheet's
+ * business and not this function's.
+ */
+export function presentationRoom<T extends ConcurrencyInput>(
+  events: T[],
+  /** Never borrow more than this — a short booking must not look like a long one. */
+  capMinutes: number,
+): Map<string, number> {
+  const columns = new Map<string, T[]>();
+  for (const event of events) {
+    const key = `${event.resourceId ?? ''}|${dateKeyOf(event.start)}`;
+    const bucket = columns.get(key);
+    if (bucket) bucket.push(event);
+    else columns.set(key, [event]);
+  }
+
+  const room = new Map<string, number>();
+  for (const bucket of columns.values()) {
+    const sorted = [...bucket].sort((a, b) => a.start.getTime() - b.start.getTime());
+    for (let i = 0; i < sorted.length; i++) {
+      const event = sorted[i];
+      const own = (event.end.getTime() - event.start.getTime()) / 60000;
+      // The next booking that starts LATER than this one — an exact-tie start
+      // is a true overlap and rbc splits the column for it, so it takes no
+      // vertical room away.
+      let nextStart: number | null = null;
+      for (let j = i + 1; j < sorted.length; j++) {
+        if (sorted[j].start.getTime() > event.start.getTime()) {
+          nextStart = sorted[j].start.getTime();
+          break;
+        }
+      }
+      const available =
+        nextStart === null ? capMinutes : (nextStart - event.start.getTime()) / 60000;
+      room.set(event.id, Math.max(own, Math.min(capMinutes, available)));
+    }
+  }
+  return room;
+}

@@ -38,6 +38,7 @@ import {
   compactLine,
   dateKeyOf,
   monthDayComposition,
+  presentationRoom,
   defaultScrollOpening,
   displayBounds,
   gridDateAt,
@@ -69,6 +70,18 @@ import { ApiError } from '../../core/api-client';
  * composition stops being ours.
  */
 const MONTH_ROW_BUDGET = 3;
+
+/**
+ * THE MINIMUM READABLE CARD, IN MINUTES OF GRID.
+ *
+ * A half-hour slot is 54px, so a 15-minute booking is 27px — a strip, and a
+ * receptionist should not have to hover a strip to learn whose it is. 25
+ * minutes of grid is ~45px, which holds the headline comfortably. A card only
+ * ever borrows EMPTY space beneath itself: its top is the true start and does
+ * not move, and where the next booking begins sooner the card stays its real
+ * size and the concurrency cap handles the crowd.
+ */
+const READABLE_CARD_MINUTES = 25;
 
 const VIEW_OPTIONS: { label: string; value: CalendarViewMode }[] = [
   { label: 'Day', value: 'day' },
@@ -338,6 +351,18 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
     }));
     return [...visible, ...tiles];
   }, [events, viewMode, monthDays]);
+
+  // How much EMPTY grid each card may borrow to stay readable. Nothing here
+  // changes a start, an end, a duration or a collision — only how tall an
+  // otherwise unreadable strip is allowed to draw itself into space that was
+  // already blank.
+  const cardRoom = useMemo(
+    () =>
+      viewMode === 'month'
+        ? null
+        : presentationRoom(displayEvents, READABLE_CARD_MINUTES),
+    [displayEvents, viewMode],
+  );
 
   // The bookings behind a "+N more" tile, once somebody asks for them.
   const [overflowGroup, setOverflowGroup] = useState<CalendarEvent[] | null>(null);
@@ -1083,11 +1108,33 @@ export function CalendarWorkspace({ clinicId }: CalendarWorkspaceProps) {
               }
               const identity = providerColor(event.appointment.staffId);
               const picked = moving?.id === event.id;
+              // Minutes of vertical room → pixels, at the grid's own scale of
+              // one half-hour slot per 54px. rbc keeps writing the true
+              // `top` and `height`; a min-height only stops a short card
+              // collapsing below what a name needs.
+              const roomMinutes = cardRoom?.get(event.id);
+              const minHeight =
+                roomMinutes != null ? `${Math.round((roomMinutes / 30) * 54)}px` : undefined;
+              // ROOMY = this card was granted more height than its duration
+              // bought it, because the grid beneath it was empty. It now has
+              // two lines to spend, so the patient's name stops sharing a
+              // line with the time and gets the card's full width — which is
+              // the whole point of borrowing the space.
+              const ownMinutes = (event.end.getTime() - event.start.getTime()) / 60000;
+              const roomy = roomMinutes != null && roomMinutes > ownMinutes + 4;
+              // Three lines need ~54px, which is 30 minutes of grid. A card
+              // with that much room can name the service under the patient;
+              // below it, the two lines go to TIME and PATIENT and the
+              // service waits in the tooltip and the drawer.
+              const threeLines = (roomMinutes ?? ownMinutes) >= 29;
               return {
                 className:
                   (event.released ? ' kw-ev--released' : '') +
-                  (picked ? ' kw-ev--picked' : ''),
+                  (picked ? ' kw-ev--picked' : '') +
+                  (roomy ? ' kw-ev--roomy' : '') +
+                  (threeLines ? ' kw-ev--3line' : ''),
                 style: {
+                  ...(minHeight ? { minHeight } : {}),
                   ['--ev-edge' as string]: event.released ? '#98a2b3' : identity.accent,
                   // The provider's pastel — a GUTTER and a month chip ground,
                   // never a body fill. Which of the three the view actually

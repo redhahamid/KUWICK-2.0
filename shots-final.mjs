@@ -30,6 +30,16 @@ const view = async (v) => {
   await page.locator('.kw-calendar-toolbar .ant-segmented-item-label',{hasText:v}).click();
   await page.waitForTimeout(2000);
 };
+// The diary opens near the clinic's own "now" — correct behaviour, and a poor
+// screenshot when "now" is 3 PM and the clinic worked all morning. Park the
+// grid on the working hours so the pack shows the populated day.
+const toMorning = async () => {
+  await page.evaluate(() => {
+    const el = document.querySelector('.kw-calendar-grid .rbc-time-content');
+    if (el) el.scrollTop = 0;
+  });
+  await page.waitForTimeout(700);
+};
 const goDate = async (iso) => {
   const picker = page.locator('.kw-calendar-toolbar input[placeholder]').first();
   await picker.click(); await picker.fill(iso); await page.keyboard.press('Enter');
@@ -41,20 +51,20 @@ await page.waitForSelector('[data-testid="calendar-workspace"]');
 await page.waitForTimeout(1800);
 
 await view('Month');  await shot('01-calendar-month');
-await view('Week');   await shot('02-calendar-week');
-await view('Day');    await shot('03-calendar-day');
-await view('Providers'); await page.waitForSelector('[data-testid="provider-rail"]'); await shot('04-calendar-providers');
+await view('Week');   await toMorning(); await shot('02-calendar-week');
+await view('Day');    await toMorning(); await shot('03-calendar-day');
+await view('Providers'); await page.waitForSelector('[data-testid="provider-rail"]'); await toMorning(); await shot('04-calendar-providers');
 
 // 11 — the deliberately BUSY state: the QA world's heavy Wednesday, six
 // providers, each on their own persisted colour.
 await goDate('26 Aug 2026');
-await view('Day');    await shot('11-busy-day');
-await view('Providers'); await page.waitForTimeout(1500); await shot('11b-busy-providers');
+await view('Day');    await toMorning(); await shot('11-busy-day');
+await view('Providers'); await page.waitForTimeout(1500); await toMorning(); await shot('11b-busy-providers');
 // The mockup's provider WORKSPACE: one doctor selected, rail + grid + mini
 // calendar + summary (utilisation included where the roster has minutes).
 await page.locator('.kw-provider-rail-row',{hasText:'Nurul Aisyah'}).first().click();
-await page.waitForTimeout(2000); await shot('04-calendar-providers');
-await view('Week');   await shot('11c-busy-week');
+await page.waitForTimeout(2000); await toMorning(); await shot('04-calendar-providers');
+await view('Week');   await toMorning(); await shot('11c-busy-week');
 
 await page.goto(`${BASE}/appointments/list`);
 await page.waitForTimeout(2600); await shot('05-appointment-list');
