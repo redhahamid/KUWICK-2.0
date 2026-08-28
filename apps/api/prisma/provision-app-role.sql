@@ -93,7 +93,10 @@ BEGIN
     'payments',
     -- Wave-2 stock: the movement ledger. StockLevel is derived from exactly
     -- these rows, so a rewritable movement is a rewritable stock balance.
-    'stock_movements'
+    'stock_movements',
+    -- Wave-3 panel: a claim's own timeline, which is what an argument with an
+    -- outside party months later is conducted from.
+    'claim_events'
   ] LOOP
     IF to_regclass('public.' || t) IS NOT NULL THEN
       IF t = 'payments' THEN

@@ -10,6 +10,7 @@ import { ClinicalModule } from './clinical/clinical.module';
 import { ReportsModule } from './reports/reports.module';
 import { FinanceModule } from './finance/finance.module';
 import { StockAdminModule } from './stock/stock-admin.module';
+import { PanelModule } from './panel/panel.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { StockAdminModule } from './stock/stock-admin.module';
     ReportsModule,
     FinanceModule,
     StockAdminModule,
+    PanelModule,
   ],
 })
 export class AppModule implements NestModule {

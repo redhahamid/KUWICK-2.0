@@ -1,0 +1,87 @@
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { ClaimWorkspaceService } from './claim-workspace.service';
+import { PanelConfigService } from './panel-config.service';
+import { AdjudicateClaimDto } from './dto/adjudicate-claim.dto';
+import { SubmitBatchDto } from './dto/submit-batch.dto';
+import { WriteOffClaimDto } from './dto/write-off-claim.dto';
+import { ResubmitClaimDto } from './dto/resubmit-claim.dto';
+import { RecordRemittanceDto } from './dto/record-remittance.dto';
+import { UpsertPanelConfigDto } from './dto/upsert-panel-config.dto';
+
+@Controller('panel-workspace')
+export class PanelWorkspaceController {
+  constructor(
+    private readonly claims: ClaimWorkspaceService,
+    private readonly config: PanelConfigService,
+  ) {}
+
+  // --- What has not been submitted -----------------------------------------
+
+  @Get('submission-queue')
+  submissionQueue(@Query('panelClinicId') panelClinicId?: string) {
+    return this.claims.submissionQueue(panelClinicId);
+  }
+
+  @Patch('batches/:id/submitted')
+  markSubmitted(@Param('id') id: string, @Body() dto: SubmitBatchDto) {
+    return this.claims.markBatchSubmitted(id, dto);
+  }
+
+  // --- What the panel said --------------------------------------------------
+
+  @Patch('claims/:id/adjudicate')
+  adjudicate(@Param('id') id: string, @Body() dto: AdjudicateClaimDto) {
+    return this.claims.adjudicate(id, dto);
+  }
+
+  @Post('claims/:id/resubmit')
+  resubmit(@Param('id') id: string, @Body() dto: ResubmitClaimDto) {
+    return this.claims.resubmit(id, dto);
+  }
+
+  @Patch('claims/:id/write-off')
+  writeOff(@Param('id') id: string, @Body() dto: WriteOffClaimDto) {
+    return this.claims.writeOff(id, dto);
+  }
+
+  @Get('claims/:id/timeline')
+  timeline(@Param('id') id: string) {
+    return this.claims.timeline(id);
+  }
+
+  // --- Where the money is ---------------------------------------------------
+
+  @Post('remittances')
+  recordRemittance(@Body() dto: RecordRemittanceDto) {
+    return this.claims.recordRemittance(dto);
+  }
+
+  // --- Does it reconcile ----------------------------------------------------
+
+  @Get('reconciliation')
+  reconciliation(
+    @Query('panelClinicId') panelClinicId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('asOf') asOf?: string,
+  ) {
+    return this.claims.reconciliation({ panelClinicId, from, to, asOf });
+  }
+
+  @Get('work-queue')
+  workQueue(@Query('panelClinicId') panelClinicId?: string, @Query('includeResolved') includeResolved?: string) {
+    return this.claims.workQueue({ panelClinicId, includeResolved: includeResolved === 'true' });
+  }
+
+  // --- Configuration --------------------------------------------------------
+
+  @Get('panels')
+  panels() {
+    return this.config.list();
+  }
+
+  @Patch('panels/:id')
+  updatePanel(@Param('id') id: string, @Body() dto: UpsertPanelConfigDto) {
+    return this.config.update(id, dto);
+  }
+}

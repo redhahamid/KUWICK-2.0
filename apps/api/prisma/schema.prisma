@@ -316,21 +316,24 @@ model Tenant {
   visitNumberCounter          VisitNumberCounter?
   consultationTariffRules     ConsultationTariffRule[]
 
-  labelPrints           LabelPrint[]
-  staffRoleAssignments  StaffRoleAssignment[]
-  payments              Payment[]
-  creditNotes           CreditNote[]
-  creditNoteLines       CreditNoteLine[]
-  taxCodes              TaxCode[]
-  taxRates              TaxRate[]
-  stockTransfers        StockTransfer[]
-  stockTransferLines    StockTransferLine[]
-  stockTakes            StockTake[]
-  stockTakeLines        StockTakeLine[]
-  stockTakeAssignments  StockTakeAssignment[]
-  procurementBudgets    ProcurementBudget[]
-  dayEndClosings        DayEndClosing[]
-  staffPermissionGrants StaffPermissionGrant[]
+  labelPrints                LabelPrint[]
+  staffRoleAssignments       StaffRoleAssignment[]
+  payments                   Payment[]
+  creditNotes                CreditNote[]
+  creditNoteLines            CreditNoteLine[]
+  taxCodes                   TaxCode[]
+  taxRates                   TaxRate[]
+  stockTransfers             StockTransfer[]
+  stockTransferLines         StockTransferLine[]
+  stockTakes                 StockTake[]
+  stockTakeLines             StockTakeLine[]
+  stockTakeAssignments       StockTakeAssignment[]
+  panelRemittances           PanelRemittance[]
+  panelRemittanceAllocations PanelRemittanceAllocation[]
+  claimEvents                ClaimEvent[]
+  procurementBudgets         ProcurementBudget[]
+  dayEndClosings             DayEndClosing[]
+  staffPermissionGrants      StaffPermissionGrant[]
 
   @@map("tenants")
 }
@@ -987,6 +990,10 @@ model Staff {
   stockTakeAssignments         StockTakeAssignment[]        @relation("StockTakeCounter")
   stockTakeLinesCounted        StockTakeLine[]              @relation("StockTakeLineCounter")
   procurementBudgetsCreated    ProcurementBudget[]          @relation("ProcurementBudgetCreatedBy")
+  panelRemittancesRecorded     PanelRemittance[]            @relation("PanelRemittanceRecordedBy")
+  claimsResponsibleFor         ClaimBatchLine[]             @relation("ClaimResponsibleStaff")
+  claimsWrittenOff             ClaimBatchLine[]             @relation("ClaimWrittenOffBy")
+  claimEvents                  ClaimEvent[]                 @relation("ClaimEventActor")
   stockMovementsMade           StockMovement[]              @relation("StockMovementActor")
   dayEndsReopened              DayEndClosing[]              @relation("DayEndReopenedBy")
   prescriptionsReviewed        Prescription[]               @relation("PrescriptionReviewer")
@@ -2376,32 +2383,63 @@ model GoodsReceivedNoteLine {
 // Claims" menu), since that's an external workflow on the panel's own
 // website today.
 model PanelClinic {
-  id                    String             @id @default(uuid())
-  tenantId              String             @map("tenant_id")
+  id                    String                 @id @default(uuid())
+  tenantId              String                 @map("tenant_id")
   name                  String
   code                  String?
-  limitAmount           Decimal?           @map("limit_amount") @db.Decimal(10, 2)
+  limitAmount           Decimal?               @map("limit_amount") @db.Decimal(10, 2)
   // Panel workbook upgrade (D-041) — the panel's own payment term; a
   // claim is overdue when days since submission exceed this, so aging is
   // judged per panel rather than against fixed buckets.
-  paymentTermDays       Int?               @map("payment_term_days")
+  paymentTermDays       Int?                   @map("payment_term_days")
   // D-041 (owner refinement) — per-panel claim fee: some panels carry an
   // admin fee per claim, as a % of the claimed amount or a flat RM value;
   // most (e.g. AIA) have none. Applied automatically at batch creation
   // from this configuration — never a manual per-batch entry.
-  claimFeeType          PanelClaimFeeType? @map("claim_fee_type")
-  claimFeeValue         Decimal?           @map("claim_fee_value") @db.Decimal(10, 2)
+  claimFeeType          PanelClaimFeeType?     @map("claim_fee_type")
+  claimFeeValue         Decimal?               @map("claim_fee_value") @db.Decimal(10, 2)
   // G4.5d3c-3b1 (D-093) — panel-wide FIXED MARKUPS in RM, added to the clinic
   // cash price (owner rule). NOT absolute prices, and never stacked with a
   // specific PanelPriceOverride: a specific price REPLACES the markup-derived
   // one. NULL or 0 means no markup — the cash price stands.
-  inventoryMarkupAmount Decimal?           @map("inventory_markup_amount") @db.Decimal(10, 2)
-  serviceMarkupAmount   Decimal?           @map("service_markup_amount") @db.Decimal(10, 2)
-  active                Boolean            @default(true)
-  createdAt             DateTime           @default(now()) @map("created_at")
-  updatedAt             DateTime           @updatedAt @map("updated_at")
+  inventoryMarkupAmount Decimal?               @map("inventory_markup_amount") @db.Decimal(10, 2)
+  serviceMarkupAmount   Decimal?               @map("service_markup_amount") @db.Decimal(10, 2)
+  // WAVE 3 — the operational configuration a claim workspace needs. Every
+  // field here answers a question staff currently answer from memory or from a
+  // note stuck to a monitor.
+  //
+  // `payerName` matters because the panel a patient names and the company that
+  // actually pays are frequently different (a TPA administering an insurer's
+  // scheme), and the cheque arrives from the second one.
+  payerName             String?                @map("payer_name")
+  portalUrl             String?                @map("portal_url")
+  submissionMethod      PanelSubmissionMethod? @map("submission_method")
+  /// What staff must have in hand before this panel's claim can go out —
+  /// free-text lines, because every panel's list is different and encoding
+  /// them as columns would mean a migration per panel.
+  documentRequirements  String[]               @default([]) @map("document_requirements")
+  /// Whether this panel wants an itemised bill rather than a total.
+  requiresItemisation   Boolean                @default(false) @map("requires_itemisation")
+  /// Whether a rejected claim is re-claimed under a NEW number (the owner's
+  /// "buat claim baru untuk excess claim") or corrected in place.
+  resubmitAsNewClaim    Boolean                @default(true) @map("resubmit_as_new_claim")
+  claimNumberFormat     String?                @map("claim_number_format")
+  contactName           String?                @map("contact_name")
+  contactPhone          String?                @map("contact_phone")
+  contactEmail          String?                @map("contact_email")
+  accountReference      String?                @map("account_reference")
+  notes                 String?
+  /// Whether this panel's share is subject to service tax. NULL means nobody
+  /// has decided, and the tax engine treats that as "do not tax" rather than
+  /// guessing — see finance/invoice-tax.ts.
+  panelShareTaxable     Boolean?               @map("panel_share_taxable")
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   tenant         Tenant               @relation(fields: [tenantId], references: [id])
+  remittances    PanelRemittance[]
   visits         Visit[]
   priceOverrides PanelPriceOverride[]
   exclusions     PanelExclusion[]
@@ -4074,12 +4112,61 @@ model ClaimBatchLine {
   paidAmount      Decimal?        @map("paid_amount") @db.Decimal(10, 2)
   deductionReason String?         @map("deduction_reason")
   remarks         String?
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
 
-  tenant     Tenant     @relation(fields: [tenantId], references: [id])
-  claimBatch ClaimBatch @relation(fields: [claimBatchId], references: [id])
-  invoice    Invoice    @relation(fields: [invoiceId], references: [id])
+  // WAVE 3 — the lifecycle and the money, kept apart.
+  //
+  // `ClaimLineStatus` (PENDING/ACCEPTED/REJECTED/DEDUCTED/PAID) stays exactly
+  // as it is, because existing code reads it. `claimStatus` is the richer
+  // lifecycle the workspace drives, and the two are kept in step by
+  // ClaimWorkspaceService — one writer, so they cannot disagree.
+  claimStatus PanelClaimStatus @default(BATCHED) @map("claim_status")
+
+  /// The panel's own claim number, as keyed into their portal. This is the
+  /// reference an argument six months later is conducted in.
+  panelClaimNo        String?   @map("panel_claim_no")
+  /// When the claim was actually sent. Distinct from the batch's date: a claim
+  /// can be pulled from a batch, re-keyed and sent a day later.
+  submittedAt         DateTime? @map("submitted_at")
+  acknowledgedAt      DateTime? @map("acknowledged_at")
+  /// When the panel told us what they would pay.
+  adjudicatedAt       DateTime? @map("adjudicated_at")
+  /// What the panel agreed to pay. NULL means they have not said — which is
+  /// NOT zero, and the receivable calculation depends on the difference
+  /// (see finance/financial-invariants.computeClaimBalance).
+  approvedAmount      Decimal?  @map("approved_amount") @db.Decimal(10, 2)
+  /// What they refused.
+  rejectedAmount      Decimal?  @map("rejected_amount") @db.Decimal(10, 2)
+  rejectionReason     String?   @map("rejection_reason")
+  /// Abandoned as uncollectable, with a reason and an actor.
+  writtenOffAmount    Decimal?  @map("written_off_amount") @db.Decimal(10, 2)
+  writtenOffAt        DateTime? @map("written_off_at")
+  writtenOffByStaffId String?   @map("written_off_by_staff_id")
+  writeOffReason      String?   @map("write_off_reason")
+
+  /// THE EXCESS/RESUBMISSION CHAIN. The owner's real workflow: a rejected
+  /// claim is re-claimed under a NEW claim, and the two are linked so the
+  /// original is not chased twice and the replacement is not counted as new
+  /// revenue.
+  supersedesLineId String? @map("supersedes_line_id")
+
+  /// The work-item fields the Google Sheet carries today.
+  dueDate            DateTime? @map("due_date") @db.Date
+  responsibleStaffId String?   @map("responsible_staff_id")
+  resolvedAt         DateTime? @map("resolved_at")
+  resolutionNote     String?   @map("resolution_note")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant                      @relation(fields: [tenantId], references: [id])
+  claimBatch   ClaimBatch                  @relation(fields: [claimBatchId], references: [id])
+  invoice      Invoice                     @relation(fields: [invoiceId], references: [id])
+  supersedes   ClaimBatchLine?             @relation("ClaimSupersession", fields: [supersedesLineId], references: [id])
+  supersededBy ClaimBatchLine[]            @relation("ClaimSupersession")
+  responsible  Staff?                      @relation("ClaimResponsibleStaff", fields: [responsibleStaffId], references: [id])
+  writtenOffBy Staff?                      @relation("ClaimWrittenOffBy", fields: [writtenOffByStaffId], references: [id])
+  allocations  PanelRemittanceAllocation[]
+  events       ClaimEvent[]
 
   @@index([tenantId, claimBatchId])
   @@index([tenantId, invoiceId])
@@ -5394,4 +5481,144 @@ model ProcurementBudget {
   @@unique([tenantId, clinicId, period, category])
   @@index([tenantId, clinicId, period])
   @@map("procurement_budgets")
+}
+
+// ===========================================================================
+// ADMIN PROGRAMME — WAVE 3: THE PANEL CLAIM WORKSPACE
+//
+// What existed: a `ClaimBatch` with five statuses and a `ClaimBatchLine` with
+// `claimedAmount`, `feeAmount`, `paidAmount` and a status. Enough to record
+// that a batch went out and some money came back. Not enough to run the
+// workflow the clinic actually runs, which today lives in a Google Sheet:
+// rejected claims that must be re-claimed under a NEW claim number, partial
+// approvals, per-panel portals with different submission rules, aging against
+// each panel's own payment terms, and a receivable that reconciles.
+//
+// WHAT THIS DOES NOT DO, and says so everywhere it appears: submit to a
+// panel's portal. No panel in the owner's list exposes an API to Kuwick
+// (D-031). Staff still open the portal and key the claim in. The system's job
+// is to make sure they know WHICH claims, that the claims are complete before
+// they start, and that what came back reconciles — not to pretend the keying
+// happened by itself.
+// ===========================================================================
+
+/// The lifecycle a real claim goes through. Deliberately NOT collapsed:
+/// "we sent it" and "they said yes" and "the money arrived" are three
+/// different facts, and a clinic that cannot tell them apart cannot tell
+/// which of its receivables is actually collectable.
+enum PanelClaimStatus {
+  /// Everything needed is on the invoice; it can go in the next batch.
+  READY
+  /// Something required by this panel is missing — an IC, a diagnosis, an MC
+  /// count. It is not submittable and the reason says what is absent.
+  NEEDS_INFORMATION
+  /// Batched but not yet sent.
+  BATCHED
+  SUBMITTED
+  /// The portal acknowledged receipt. Not the same as approval.
+  ACKNOWLEDGED
+  APPROVED
+  PARTIALLY_APPROVED
+  REJECTED
+  /// Rejected with a route back: re-claim under a new number.
+  RESUBMISSION_REQUIRED
+  RESUBMITTED
+  PAID
+  PARTIALLY_PAID
+  WRITTEN_OFF
+  CLOSED
+}
+
+/// How a panel wants claims delivered. Recorded so the workspace can show the
+/// right checklist and the right link — never so that Kuwick can claim to have
+/// delivered anything itself.
+enum PanelSubmissionMethod {
+  PORTAL
+  EMAIL
+  COURIER
+  IN_PERSON
+  OTHER
+}
+
+/// Money arriving from a panel, against one or more claims.
+///
+/// A panel pays in BATCHES that rarely line up with the batches the clinic
+/// submitted: one bank transfer settles fourteen claims from three different
+/// submissions, minus a deduction on two of them. So a remittance is its own
+/// document, and its allocation to claims is explicit.
+model PanelRemittance {
+  id             String   @id @default(uuid())
+  tenantId       String   @map("tenant_id")
+  panelClinicId  String   @map("panel_clinic_id")
+  remittanceRef  String?  @map("remittance_ref")
+  /// When the money reached the clinic's account.
+  receivedAt     DateTime @map("received_at") @db.Date
+  /// The gross amount the panel says it paid.
+  grossAmount    Decimal  @map("gross_amount") @db.Decimal(12, 2)
+  /// What the panel withheld across the whole remittance — its admin fee, or
+  /// tax. Kept apart from per-claim deductions, which are adjudication.
+  withheldAmount Decimal  @default(0) @map("withheld_amount") @db.Decimal(12, 2)
+  /// grossAmount − withheldAmount. Stored rather than derived so a remittance
+  /// that does not add up is visible instead of quietly recomputed.
+  netAmount      Decimal  @map("net_amount") @db.Decimal(12, 2)
+  notes          String?
+
+  recordedByStaffId String   @map("recorded_by_staff_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant                      @relation(fields: [tenantId], references: [id])
+  panelClinic PanelClinic                 @relation(fields: [panelClinicId], references: [id])
+  recordedBy  Staff                       @relation("PanelRemittanceRecordedBy", fields: [recordedByStaffId], references: [id])
+  allocations PanelRemittanceAllocation[]
+
+  @@index([tenantId, panelClinicId, receivedAt])
+  @@map("panel_remittances")
+}
+
+/// How much of a remittance settled which claim. The join that makes
+/// "received" a number derived from records rather than typed on a claim.
+model PanelRemittanceAllocation {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  remittanceId     String   @map("remittance_id")
+  claimBatchLineId String   @map("claim_batch_line_id")
+  amount           Decimal  @db.Decimal(10, 2)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id])
+  remittance PanelRemittance @relation(fields: [remittanceId], references: [id], onDelete: Cascade)
+  claimLine  ClaimBatchLine  @relation(fields: [claimBatchLineId], references: [id])
+
+  @@unique([remittanceId, claimBatchLineId])
+  @@index([tenantId, claimBatchLineId])
+  @@map("panel_remittance_allocations")
+}
+
+/// Every status change and financial edit on a claim, in order.
+///
+/// Panel claims are the part of this system most likely to be argued about
+/// with an outside party months later, and "who marked this rejected and when"
+/// is exactly the question that gets asked. `AuditLog` records it too; this
+/// table is the CLAIM'S OWN timeline, readable in one query beside the claim
+/// rather than filtered out of a tenant-wide audit stream.
+model ClaimEvent {
+  id               String            @id @default(uuid())
+  tenantId         String            @map("tenant_id")
+  claimBatchLineId String            @map("claim_batch_line_id")
+  eventType        String            @map("event_type")
+  fromStatus       PanelClaimStatus? @map("from_status")
+  toStatus         PanelClaimStatus? @map("to_status")
+  amount           Decimal?          @db.Decimal(10, 2)
+  reason           String?
+  reference        String?
+  actorStaffId     String?           @map("actor_staff_id")
+  createdAt        DateTime          @default(now()) @map("created_at")
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id])
+  claimLine ClaimBatchLine @relation(fields: [claimBatchLineId], references: [id], onDelete: Cascade)
+  actor     Staff?         @relation("ClaimEventActor", fields: [actorStaffId], references: [id])
+
+  @@index([tenantId, claimBatchLineId, createdAt])
+  @@map("claim_events")
 }
