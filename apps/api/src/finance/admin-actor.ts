@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { ActingStaff, requireActor, withTenantTx } from '../clinical/clinical-actor';
-import { Permission, assertCan } from '../core/permissions';
+import { Permission, assertCan, can } from '../core/permissions';
 
 export type AdminTx = Prisma.TransactionClient;
 
@@ -39,6 +39,20 @@ export async function requirePermission(prisma: PrismaService, permission: Permi
     assertCan(actor, permission, actor.assignedRoles, actor.directGrants);
     return actor;
   });
+}
+
+/**
+ * Does this actor hold a permission?
+ *
+ * ALWAYS through this, never by inspecting `assignedRoles` directly. A staff
+ * member with no explicit role assignment resolves through the LEGACY FALLBACK
+ * (`permissions.rolesOf`), so `assignedRoles.includes('OWNER')` is false for a
+ * legacy OWNER_ADMIN who is, in every sense that matters, the owner. Reading
+ * the array is the second implementation of a rule that already has one — the
+ * exact divergence `permissions.ts` exists to prevent.
+ */
+export function actorCan(actor: ActingStaff, permission: Permission): boolean {
+  return can(actor, permission, actor.assignedRoles, actor.directGrants);
 }
 
 /**

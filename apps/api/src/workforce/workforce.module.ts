@@ -1,0 +1,28 @@
+import { Module } from '@nestjs/common';
+import { CoreModule } from '../core/core.module';
+import { WorkforceController } from './workforce.controller';
+import { EmployeeService } from './employee.service';
+import { AttendanceRecordService } from './attendance-record.service';
+import { LeaveService } from './leave.service';
+import { IncentiveService } from './incentive.service';
+import { PayrollService } from './payroll.service';
+
+/**
+ * WAVE 4 of the admin programme.
+ *
+ * Owns employment, attendance, leave entitlement, incentives and payroll. It
+ * does NOT own:
+ *   - the STAFF row itself, which stays with `HrModule` (identity, roles,
+ *     professional credential)
+ *   - the ROSTER, which stays with `AppointmentModule` (D-090: one roster, one
+ *     engine, one history). Attendance READS shifts and never writes them.
+ *   - LEAVE REQUESTS, which stay with `HrModule` — this module supplies the
+ *     entitlement they are measured against.
+ */
+@Module({
+  imports: [CoreModule],
+  controllers: [WorkforceController],
+  providers: [EmployeeService, AttendanceRecordService, LeaveService, IncentiveService, PayrollService],
+  exports: [EmployeeService, AttendanceRecordService, LeaveService, IncentiveService, PayrollService],
+})
+export class WorkforceModule {}

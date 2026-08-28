@@ -96,7 +96,10 @@ BEGIN
     'stock_movements',
     -- Wave-3 panel: a claim's own timeline, which is what an argument with an
     -- outside party months later is conducted from.
-    'claim_events'
+    'claim_events',
+    -- Wave-4 payroll: the correction mechanism for a locked run. Reversing an
+    -- adjustment is another adjustment.
+    'payroll_adjustments'
   ] LOOP
     IF to_regclass('public.' || t) IS NOT NULL THEN
       IF t = 'payments' THEN

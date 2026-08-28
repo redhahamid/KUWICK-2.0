@@ -333,6 +333,21 @@ model Tenant {
   claimEvents                ClaimEvent[]
   procurementBudgets         ProcurementBudget[]
   dayEndClosings             DayEndClosing[]
+  employeeProfiles           EmployeeProfile[]
+  attendanceRecords          AttendanceRecord[]
+  leavePolicies              LeavePolicy[]
+  leavePolicyEntitlements    LeavePolicyEntitlement[]
+  leaveBalances              LeaveBalance[]
+  incentiveRules             IncentiveRule[]
+  incentiveRuns              IncentiveRun[]
+  incentiveResults           IncentiveResult[]
+  staffBenefitAccounts       StaffBenefitAccount[]
+  staffBenefitMembers        StaffBenefitMember[]
+  staffBenefitUsages         StaffBenefitUsage[]
+  statutoryRuleSets          StatutoryRuleSet[]
+  payrollRuns                PayrollRun[]
+  payrollLines               PayrollLine[]
+  payrollAdjustments         PayrollAdjustment[]
   staffPermissionGrants      StaffPermissionGrant[]
 
   @@map("tenants")
@@ -414,6 +429,10 @@ model Clinic {
   creditNotes                 CreditNote[]
   stockTransfersOut           StockTransfer[]              @relation("StockTransferFrom")
   stockTransfersIn            StockTransfer[]              @relation("StockTransferTo")
+  attendanceRecords           AttendanceRecord[]
+  incentiveRules              IncentiveRule[]
+  incentiveRuns               IncentiveRun[]
+  payrollRuns                 PayrollRun[]
   stockTakes                  StockTake[]
   procurementBudgets          ProcurementBudget[]
   dayEndClosings              DayEndClosing[]
@@ -587,13 +606,14 @@ model Patient {
   createdAt             DateTime              @default(now()) @map("created_at")
   updatedAt             DateTime              @updatedAt @map("updated_at")
 
-  tenant            Tenant                  @relation(fields: [tenantId], references: [id])
-  appointments      Appointment[]
-  appointmentSeries AppointmentSeries[]
-  waitlistEntries   WaitlistEntry[]
-  visits            Visit[]
-  alerts            PatientAlert[]
-  identityChanges   PatientIdentityChange[]
+  tenant             Tenant                  @relation(fields: [tenantId], references: [id])
+  appointments       Appointment[]
+  appointmentSeries  AppointmentSeries[]
+  waitlistEntries    WaitlistEntry[]
+  visits             Visit[]
+  benefitMemberships StaffBenefitMember[]
+  alerts             PatientAlert[]
+  identityChanges    PatientIdentityChange[]
 
   @@unique([tenantId, identifierType, identifierValue])
   @@index([tenantId])
@@ -996,6 +1016,26 @@ model Staff {
   claimEvents                  ClaimEvent[]                 @relation("ClaimEventActor")
   stockMovementsMade           StockMovement[]              @relation("StockMovementActor")
   dayEndsReopened              DayEndClosing[]              @relation("DayEndReopenedBy")
+  employeeProfile              EmployeeProfile?             @relation("StaffEmployeeProfile")
+  directReports                EmployeeProfile[]            @relation("EmployeeManager")
+  attendanceRecords            AttendanceRecord[]           @relation("AttendanceStaff")
+  attendanceCorrections        AttendanceRecord[]           @relation("AttendanceCorrectedBy")
+  overtimeApprovals            AttendanceRecord[]           @relation("AttendanceOvertimeApprover")
+  leaveBalances                LeaveBalance[]               @relation("LeaveBalanceStaff")
+  incentiveRulesTargeting      IncentiveRule[]              @relation("IncentiveRuleTarget")
+  incentiveRulesAuthored       IncentiveRule[]              @relation("IncentiveRuleAuthor")
+  incentiveRunsAuthored        IncentiveRun[]               @relation("IncentiveRunAuthor")
+  incentiveRunsApproved        IncentiveRun[]               @relation("IncentiveRunApprover")
+  incentiveResults             IncentiveResult[]            @relation("IncentiveResultStaff")
+  benefitAccounts              StaffBenefitAccount[]        @relation("StaffBenefitAccountStaff")
+  benefitUsagesRecorded        StaffBenefitUsage[]          @relation("StaffBenefitUsageRecorder")
+  statutoryRuleSetsAuthored    StatutoryRuleSet[]           @relation("StatutoryRuleSetAuthor")
+  statutoryRuleSetsVerified    StatutoryRuleSet[]           @relation("StatutoryRuleSetVerifier")
+  payrollRunsAuthored          PayrollRun[]                 @relation("PayrollRunAuthor")
+  payrollRunsApproved          PayrollRun[]                 @relation("PayrollRunApprover")
+  payrollLines                 PayrollLine[]                @relation("PayrollLineStaff")
+  payrollAdjustments           PayrollAdjustment[]          @relation("PayrollAdjustmentStaff")
+  payrollAdjustmentsAuthored   PayrollAdjustment[]          @relation("PayrollAdjustmentAuthor")
   prescriptionsReviewed        Prescription[]               @relation("PrescriptionReviewer")
 
   @@index([tenantId])
@@ -4012,16 +4052,17 @@ model Invoice {
   createdAt                 DateTime             @default(now()) @map("created_at")
   updatedAt                 DateTime             @updatedAt @map("updated_at")
 
-  tenant              Tenant           @relation(fields: [tenantId], references: [id])
-  visit               Visit            @relation(fields: [visitId], references: [id])
-  createdBy           Staff            @relation(fields: [createdByStaffId], references: [id])
+  tenant              Tenant              @relation(fields: [tenantId], references: [id])
+  visit               Visit               @relation(fields: [visitId], references: [id])
+  createdBy           Staff               @relation(fields: [createdByStaffId], references: [id])
   lines               InvoiceLine[]
+  staffBenefitUsages  StaffBenefitUsage[]
   claimBatchLines     ClaimBatchLine[]
   /// Bookings whose deposit was applied to this invoice, so a deposit taken at
   /// booking is reconciled against the clinic bill rather than counted twice.
   payments            Payment[]
   creditNotes         CreditNote[]
-  depositAppointments Appointment[]    @relation("AppointmentDepositInvoice")
+  depositAppointments Appointment[]       @relation("AppointmentDepositInvoice")
 
   @@unique([tenantId, invoiceNumber])
   @@index([tenantId, visitId])
@@ -5621,4 +5662,696 @@ model ClaimEvent {
 
   @@index([tenantId, claimBatchLineId, createdAt])
   @@map("claim_events")
+}
+
+// ===========================================================================
+// ADMIN PROGRAMME — WAVE 4: HR, WORKFORCE AND PAYROLL
+//
+// THE IDENTITY RULE, which shapes everything here (owner brief §5A):
+//
+//   USER ACCOUNT        — how somebody signs in                    (User)
+//   EMPLOYEE PROFILE    — their employment with this clinic group  (EmployeeProfile)
+//   CLINICAL PROVIDER   — their professional identity              (Staff.professionalType…)
+//
+// A person may be all three at once: an owner who is also a doctor and also on
+// the payroll. `Staff` is the single hub they all hang off, and none of them is
+// forced into another. `EmployeeProfile` is 1:1 with `Staff` — it EXTENDS the
+// staff row, it does not become a second answer to "who is this person".
+//
+// THE ROSTER IS NOT DUPLICATED. `ProviderShift` / `DoctorSchedule` /
+// `ScheduleException` remain the one scheduling domain (D-090). Attendance
+// records what happened; the roster records what was planned; approved leave
+// feeds the roster rather than forking it.
+//
+// THE STATUTORY RULE, which is the reason payroll is built the way it is:
+// Malaysian EPF, SOCSO, EIS and PCB rates are NOT hardcoded anywhere in this
+// system. They live in `StatutoryRuleSet` as effective-dated, tenant-owned
+// configuration, and a payroll run computed without one is marked
+// NOT_CONFIGURED and refuses to present a statutory figure at all — rather
+// than presenting a plausible wrong one. See PayrollRun.statutoryStatus.
+// ===========================================================================
+
+enum EmploymentType {
+  PERMANENT
+  CONTRACT
+  LOCUM
+  PART_TIME
+  INTERN
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  PROBATION
+  NOTICE
+  SUSPENDED
+  RESIGNED
+  TERMINATED
+}
+
+/// The employment half of a person. 1:1 with `Staff`, never a second identity.
+///
+/// SENSITIVE BY CONSTRUCTION: salary, bank details and statutory identifiers
+/// live here rather than on `Staff`, so that the ordinary staff read — which
+/// half the application performs — cannot accidentally return them. Access is
+/// gated on `hr.employee.manage` / `hr.payroll.view`, not on being logged in.
+model EmployeeProfile {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  staffId  String @unique @map("staff_id")
+
+  employeeNo      String?   @map("employee_no")
+  legalName       String?   @map("legal_name")
+  /// IC or passport. Stored because payroll and statutory filing need it;
+  /// never returned by any endpoint that is not payroll- or HR-gated.
+  identifierType  String?   @map("identifier_type")
+  identifierValue String?   @map("identifier_value")
+  dateOfBirth     DateTime? @map("date_of_birth") @db.Date
+  gender          String?
+  nationality     String?
+  maritalStatus   String?   @map("marital_status")
+
+  phone   String?
+  email   String?
+  address String?
+
+  emergencyContactName     String? @map("emergency_contact_name")
+  emergencyContactPhone    String? @map("emergency_contact_phone")
+  emergencyContactRelation String? @map("emergency_contact_relation")
+
+  employmentType   EmploymentType   @default(PERMANENT) @map("employment_type")
+  employmentStatus EmploymentStatus @default(ACTIVE) @map("employment_status")
+  department       String?
+  position         String?
+  managerStaffId   String?          @map("manager_staff_id")
+  startDate        DateTime?        @map("start_date") @db.Date
+  confirmedDate    DateTime?        @map("confirmed_date") @db.Date
+  endDate          DateTime?        @map("end_date") @db.Date
+  endReason        String?          @map("end_reason")
+
+  /// Monthly basic. NULL means "not set", which is why a payroll run over an
+  /// employee with no salary is an EXCEPTION rather than a zero payslip.
+  basicSalary Decimal? @map("basic_salary") @db.Decimal(12, 2)
+  /// For hourly/locum staff, where basic salary does not apply.
+  hourlyRate  Decimal? @map("hourly_rate") @db.Decimal(10, 2)
+
+  bankName        String? @map("bank_name")
+  bankAccountNo   String? @map("bank_account_no")
+  bankAccountName String? @map("bank_account_name")
+
+  /// Statutory identifiers. Stored, never used to derive a RATE — rates come
+  /// only from StatutoryRuleSet.
+  epfNumber       String? @map("epf_number")
+  socsoNumber     String? @map("socso_number")
+  taxNumber       String? @map("tax_number")
+  /// PCB category ("S", "TP1"…). Free text: the categories are the tenant's
+  /// configuration, not this schema's opinion.
+  taxCategory     String? @map("tax_category")
+  /// Whether statutory contributions apply at all. A foreign locum on a
+  /// service contract may be outside EPF/SOCSO entirely.
+  epfApplicable   Boolean @default(true) @map("epf_applicable")
+  socsoApplicable Boolean @default(true) @map("socso_applicable")
+  eisApplicable   Boolean @default(true) @map("eis_applicable")
+  pcbApplicable   Boolean @default(true) @map("pcb_applicable")
+
+  leavePolicyId String? @map("leave_policy_id")
+  notes         String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  staff       Staff        @relation("StaffEmployeeProfile", fields: [staffId], references: [id], onDelete: Cascade)
+  manager     Staff?       @relation("EmployeeManager", fields: [managerStaffId], references: [id])
+  leavePolicy LeavePolicy? @relation(fields: [leavePolicyId], references: [id])
+
+  @@unique([tenantId, employeeNo])
+  @@index([tenantId, employmentStatus])
+  @@map("employee_profiles")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+  ON_LEAVE
+  HOLIDAY
+  REST_DAY
+  /// Clocked in and never clocked out, or the reverse.
+  MISSING_PUNCH
+}
+
+/// One person, one day, at one branch.
+///
+/// SEPARATE FROM THE ROSTER, deliberately. The roster says what was planned;
+/// this says what happened. And it is NOT derived from `Visit.checkInAt`,
+/// which is what the old attendance report did: a doctor who saw no patients
+/// was absent by that measure, and a receptionist who sees none ever was
+/// permanently absent.
+model AttendanceRecord {
+  id       String   @id @default(uuid())
+  tenantId String   @map("tenant_id")
+  staffId  String   @map("staff_id")
+  clinicId String?  @map("clinic_id")
+  workDate DateTime @map("work_date") @db.Date
+
+  clockInAt      DateTime? @map("clock_in_at")
+  clockOutAt     DateTime? @map("clock_out_at")
+  /// The shift this was measured against, when there was one. Read from the
+  /// roster; never written back to it.
+  scheduledStart DateTime? @map("scheduled_start")
+  scheduledEnd   DateTime? @map("scheduled_end")
+
+  status                    AttendanceStatus @default(PRESENT)
+  /// Minutes late against the scheduled start. NULL when there was no shift to
+  /// be late for.
+  lateMinutes               Int?             @map("late_minutes")
+  earlyOutMinutes           Int?             @map("early_out_minutes")
+  /// Worked minutes, computed from the punches. NULL until both exist.
+  workedMinutes             Int?             @map("worked_minutes")
+  /// Overtime minutes, APPROVED separately — a long day is not automatically
+  /// overtime, which is the assumption that turns a payroll into a dispute.
+  overtimeMinutes           Int              @default(0) @map("overtime_minutes")
+  overtimeApproved          Boolean          @default(false) @map("overtime_approved")
+  overtimeApprovedByStaffId String?          @map("overtime_approved_by_staff_id")
+
+  /// A correction to a punch. The ORIGINAL values survive alongside, because
+  /// "the manager changed my clock-in" is exactly the thing an employee
+  /// disputes.
+  correctedAt        DateTime? @map("corrected_at")
+  correctedByStaffId String?   @map("corrected_by_staff_id")
+  correctionReason   String?   @map("correction_reason")
+  originalClockInAt  DateTime? @map("original_clock_in_at")
+  originalClockOutAt DateTime? @map("original_clock_out_at")
+
+  notes String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant             Tenant  @relation(fields: [tenantId], references: [id])
+  staff              Staff   @relation("AttendanceStaff", fields: [staffId], references: [id], onDelete: Cascade)
+  clinic             Clinic? @relation(fields: [clinicId], references: [id])
+  correctedBy        Staff?  @relation("AttendanceCorrectedBy", fields: [correctedByStaffId], references: [id])
+  overtimeApprovedBy Staff?  @relation("AttendanceOvertimeApprover", fields: [overtimeApprovedByStaffId], references: [id])
+
+  @@unique([tenantId, staffId, workDate])
+  @@index([tenantId, clinicId, workDate])
+  @@map("attendance_records")
+}
+
+/// A named bundle of leave entitlements. Employees point at one, so changing
+/// "annual leave for permanent staff" is one edit rather than forty.
+model LeavePolicy {
+  id               String  @id @default(uuid())
+  tenantId         String  @map("tenant_id")
+  name             String
+  active           Boolean @default(true)
+  /// Whether unused annual leave carries into the next year, and how much.
+  carryForwardDays Int?    @map("carry_forward_days")
+  /// Whether entitlement is pro-rated for a mid-year joiner.
+  proRateOnJoin    Boolean @default(true) @map("pro_rate_on_join")
+  notes            String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id])
+  entitlements LeavePolicyEntitlement[]
+  employees    EmployeeProfile[]
+
+  @@unique([tenantId, name])
+  @@map("leave_policies")
+}
+
+model LeavePolicyEntitlement {
+  id                 String    @id @default(uuid())
+  tenantId           String    @map("tenant_id")
+  leavePolicyId      String    @map("leave_policy_id")
+  leaveType          LeaveType @map("leave_type")
+  /// Days per benefit year. Zero means the type exists but carries no
+  /// entitlement (unpaid leave), which is different from the type being absent.
+  daysPerYear        Decimal   @map("days_per_year") @db.Decimal(5, 1)
+  /// Whether taking it reduces pay.
+  paid               Boolean   @default(true)
+  requiresAttachment Boolean   @default(false) @map("requires_attachment")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  leavePolicy LeavePolicy @relation(fields: [leavePolicyId], references: [id], onDelete: Cascade)
+
+  @@unique([leavePolicyId, leaveType])
+  @@map("leave_policy_entitlements")
+}
+
+/// One employee's balance for one leave type in one benefit year.
+///
+/// `taken` is DERIVED from approved LeaveRequests by the service, never
+/// incremented on approval — so a balance and the requests behind it cannot
+/// disagree, and a cancelled leave returns its days without a compensating
+/// edit.
+model LeaveBalance {
+  id               String    @id @default(uuid())
+  tenantId         String    @map("tenant_id")
+  staffId          String    @map("staff_id")
+  leaveType        LeaveType @map("leave_type")
+  /// The calendar year the entitlement belongs to.
+  benefitYear      Int       @map("benefit_year")
+  entitledDays     Decimal   @map("entitled_days") @db.Decimal(5, 1)
+  carriedInDays    Decimal   @default(0) @map("carried_in_days") @db.Decimal(5, 1)
+  adjustmentDays   Decimal   @default(0) @map("adjustment_days") @db.Decimal(5, 1)
+  adjustmentReason String?   @map("adjustment_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  staff  Staff  @relation("LeaveBalanceStaff", fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, staffId, leaveType, benefitYear])
+  @@index([tenantId, benefitYear])
+  @@map("leave_balances")
+}
+
+// ---------------------------------------------------------------------------
+// DOCTOR INCENTIVES
+//
+// Parked since Phase 1c on Open Question #2 ("the exact formula semantics need
+// a worked numeric example before this can be built correctly, since it's a
+// compensation calculation"). Built now with the answer the brief gives, and
+// with the property that answer implies: RULES ARE VERSIONED AND
+// EFFECTIVE-DATED, and a paid incentive is NEVER recalculated with today's
+// rules. `IncentiveResult` snapshots the rule version it was computed under.
+// ---------------------------------------------------------------------------
+
+enum IncentiveRuleType {
+  /// Threshold + flat amount + percentage of everything above the threshold.
+  SALES_COMMISSION
+  /// A rate per qualifying procedure or item.
+  PROCEDURE
+}
+
+model IncentiveRule {
+  id             String            @id @default(uuid())
+  tenantId       String            @map("tenant_id")
+  name           String
+  ruleType       IncentiveRuleType @map("rule_type")
+  /// NULL means every branch.
+  clinicId       String?           @map("clinic_id")
+  /// NULL means every eligible doctor; set targets one person.
+  staffId        String?           @map("staff_id")
+  /// NULL means every employment type; set narrows to (say) LOCUM, which is
+  /// how the "different rate for resident vs locum" requirement is expressed
+  /// without a second rule table.
+  employmentType EmploymentType?   @map("employment_type")
+
+  /// SALES_COMMISSION: monthly sales the doctor must exceed before anything is
+  /// earned.
+  thresholdAmount Decimal? @map("threshold_amount") @db.Decimal(12, 2)
+  /// Paid once on reaching the threshold.
+  flatAmount      Decimal? @map("flat_amount") @db.Decimal(12, 2)
+  /// Percentage of the amount ABOVE the threshold.
+  percentAbove    Decimal? @map("percent_above") @db.Decimal(6, 3)
+
+  /// PROCEDURE: which services qualify, and what each pays.
+  serviceCatalogIds   String[] @default([]) @map("service_catalog_ids")
+  perProcedureAmount  Decimal? @map("per_procedure_amount") @db.Decimal(10, 2)
+  perProcedurePercent Decimal? @map("per_procedure_percent") @db.Decimal(6, 3)
+
+  /// Services or items this rule never pays on, whatever else it says.
+  excludedServiceCatalogIds String[] @default([]) @map("excluded_service_catalog_ids")
+
+  /// EFFECTIVE DATING AND VERSIONING. A change is a NEW ROW with a new
+  /// `version` and a new `effectiveFrom`; the old row is closed with
+  /// `effectiveTo`. Nothing is ever edited in place, because a rule edited in
+  /// place makes every historic payment unreproducible.
+  version       Int       @default(1)
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+  active        Boolean   @default(true)
+  notes         String?
+
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id])
+  clinic    Clinic?           @relation(fields: [clinicId], references: [id])
+  staff     Staff?            @relation("IncentiveRuleTarget", fields: [staffId], references: [id])
+  createdBy Staff             @relation("IncentiveRuleAuthor", fields: [createdByStaffId], references: [id])
+  results   IncentiveResult[]
+
+  @@index([tenantId, effectiveFrom])
+  @@map("incentive_rules")
+}
+
+enum IncentiveRunStatus {
+  DRAFT
+  CALCULATED
+  APPROVED
+  /// Carried into a payroll run. Terminal — the figures can no longer move.
+  PAID
+  CANCELLED
+}
+
+model IncentiveRun {
+  id       String             @id @default(uuid())
+  tenantId String             @map("tenant_id")
+  clinicId String?            @map("clinic_id")
+  /// First day of the month being paid.
+  period   DateTime           @map("period") @db.Date
+  status   IncentiveRunStatus @default(DRAFT)
+  notes    String?
+
+  calculatedAt      DateTime? @map("calculated_at")
+  approvedByStaffId String?   @map("approved_by_staff_id")
+  approvedAt        DateTime? @map("approved_at")
+  totalAmount       Decimal   @default(0) @map("total_amount") @db.Decimal(12, 2)
+
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id])
+  clinic     Clinic?           @relation(fields: [clinicId], references: [id])
+  createdBy  Staff             @relation("IncentiveRunAuthor", fields: [createdByStaffId], references: [id])
+  approvedBy Staff?            @relation("IncentiveRunApprover", fields: [approvedByStaffId], references: [id])
+  results    IncentiveResult[]
+
+  @@unique([tenantId, clinicId, period])
+  @@index([tenantId, period])
+  @@map("incentive_runs")
+}
+
+/// One doctor's incentive for one period under one rule VERSION.
+///
+/// `ruleVersion` and `ruleSnapshot` are frozen at calculation. Re-running a
+/// closed period with today's rules would produce a different number for a
+/// payment already made, and "the system now says I was owed less" is not a
+/// conversation any clinic should have to have.
+model IncentiveResult {
+  id              String @id @default(uuid())
+  tenantId        String @map("tenant_id")
+  incentiveRunId  String @map("incentive_run_id")
+  staffId         String @map("staff_id")
+  incentiveRuleId String @map("incentive_rule_id")
+  ruleVersion     Int    @map("rule_version")
+  ruleSnapshot    Json   @map("rule_snapshot")
+
+  /// What the rule measured: sales in the period, or procedures counted.
+  basisAmount Decimal @default(0) @map("basis_amount") @db.Decimal(12, 2)
+  basisCount  Int     @default(0) @map("basis_count")
+  /// What it pays.
+  amount      Decimal @default(0) @db.Decimal(12, 2)
+  /// The workings, so a doctor asking "why this number" gets an answer rather
+  /// than a total.
+  calculation Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  incentiveRun IncentiveRun  @relation(fields: [incentiveRunId], references: [id], onDelete: Cascade)
+  staff        Staff         @relation("IncentiveResultStaff", fields: [staffId], references: [id])
+  rule         IncentiveRule @relation(fields: [incentiveRuleId], references: [id])
+
+  @@index([tenantId, incentiveRunId])
+  @@index([tenantId, staffId])
+  @@map("incentive_results")
+}
+
+// ---------------------------------------------------------------------------
+// STAFF MEDICAL BENEFIT
+// ---------------------------------------------------------------------------
+
+/// An employee's medical allowance for a benefit year, shared with dependants.
+model StaffBenefitAccount {
+  id          String  @id @default(uuid())
+  tenantId    String  @map("tenant_id")
+  staffId     String  @map("staff_id")
+  benefitYear Int     @map("benefit_year")
+  /// The allowance for the employee AND their dependants together, unless a
+  /// member carries an override.
+  allowance   Decimal @db.Decimal(10, 2)
+  notes       String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant  Tenant               @relation(fields: [tenantId], references: [id])
+  staff   Staff                @relation("StaffBenefitAccountStaff", fields: [staffId], references: [id], onDelete: Cascade)
+  members StaffBenefitMember[]
+  usages  StaffBenefitUsage[]
+
+  @@unique([tenantId, staffId, benefitYear])
+  @@map("staff_benefit_accounts")
+}
+
+model StaffBenefitMember {
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  accountId         String   @map("account_id")
+  name              String
+  relationship      String
+  /// The patient record this family member corresponds to, when they have one.
+  /// This is what links a benefit to a real visit rather than to a name.
+  patientId         String?  @map("patient_id")
+  /// A personal cap inside the family allowance, when one is agreed.
+  allowanceOverride Decimal? @map("allowance_override") @db.Decimal(10, 2)
+  active            Boolean  @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant  Tenant              @relation(fields: [tenantId], references: [id])
+  account StaffBenefitAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  patient Patient?            @relation(fields: [patientId], references: [id])
+  usages  StaffBenefitUsage[]
+
+  @@index([tenantId, accountId])
+  @@map("staff_benefit_members")
+}
+
+/// One use of the benefit, against a real invoice. Derived totals only —
+/// "remaining balance" is allowance minus the sum of these, never a stored
+/// number that can drift.
+model StaffBenefitUsage {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  accountId String   @map("account_id")
+  memberId  String?  @map("member_id")
+  invoiceId String?  @map("invoice_id")
+  usedAt    DateTime @map("used_at") @db.Date
+  amount    Decimal  @db.Decimal(10, 2)
+  notes     String?
+
+  recordedByStaffId String   @map("recorded_by_staff_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id])
+  account    StaffBenefitAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  member     StaffBenefitMember? @relation(fields: [memberId], references: [id])
+  invoice    Invoice?            @relation(fields: [invoiceId], references: [id])
+  recordedBy Staff               @relation("StaffBenefitUsageRecorder", fields: [recordedByStaffId], references: [id])
+
+  @@index([tenantId, accountId, usedAt])
+  @@map("staff_benefit_usages")
+}
+
+// ---------------------------------------------------------------------------
+// PAYROLL
+// ---------------------------------------------------------------------------
+
+/// Whether a run's statutory figures can be trusted, stated on the run itself.
+///
+/// THE POINT OF THIS ENUM: the brief forbids calculating Malaysian statutory
+/// figures "with unverified hard-coded assumptions". So the system does not.
+/// A run with no configured rule set for its period is NOT_CONFIGURED, its
+/// statutory lines are absent rather than zero, and every payslip and export
+/// carries the fact. A wrong EPF number that looks right is worse than no EPF
+/// number at all.
+enum StatutoryStatus {
+  /// A tenant-owned, effective-dated rule set was in force and was applied.
+  CONFIGURED
+  /// No rule set covers this period. Statutory amounts are NOT computed.
+  NOT_CONFIGURED
+  /// A rule set exists but the tenant has marked it provisional — figures are
+  /// computed and labelled as unverified everywhere they appear.
+  PROVISIONAL
+}
+
+/// Effective-dated statutory rate tables, owned by the tenant.
+///
+/// The tables themselves are JSON because their SHAPE differs per scheme (EPF
+/// is a percentage pair with a wage ceiling; SOCSO is a bracket table; PCB is a
+/// schedule with reliefs) and because they change by law on dates nobody can
+/// predict. Encoding them as columns would mean a migration every budget.
+///
+/// NOTHING IS SEEDED. A fresh tenant has no rule set, and payroll says so.
+model StatutoryRuleSet {
+  id            String    @id @default(uuid())
+  tenantId      String    @map("tenant_id")
+  name          String
+  /// "MY" today. Present so a second jurisdiction is a row rather than a fork.
+  jurisdiction  String    @default("MY")
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+
+  /// Marked by the tenant when the figures have been checked against the
+  /// authority's published tables. Until then the run is PROVISIONAL and every
+  /// payslip says so.
+  verifiedAt        DateTime? @map("verified_at")
+  verifiedByStaffId String?   @map("verified_by_staff_id")
+  verificationNote  String?   @map("verification_note")
+
+  /// { employeeRate, employerRate, wageCeiling, ageBands: [...] }
+  epfRules   Json? @map("epf_rules")
+  /// { brackets: [{ from, to, employee, employer }] }
+  socsoRules Json? @map("socso_rules")
+  eisRules   Json? @map("eis_rules")
+  /// { brackets: [...], reliefs: {...} } — or absent, which is the honest
+  /// state for a clinic that files PCB through its accountant.
+  pcbRules   Json? @map("pcb_rules")
+
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id])
+  createdBy  Staff  @relation("StatutoryRuleSetAuthor", fields: [createdByStaffId], references: [id])
+  verifiedBy Staff? @relation("StatutoryRuleSetVerifier", fields: [verifiedByStaffId], references: [id])
+
+  @@index([tenantId, effectiveFrom])
+  @@map("statutory_rule_sets")
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  CALCULATED
+  /// Approved and LOCKED. Immutable except through a controlled adjustment.
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+model PayrollRun {
+  id       String           @id @default(uuid())
+  tenantId String           @map("tenant_id")
+  clinicId String?          @map("clinic_id")
+  /// First day of the month.
+  period   DateTime         @map("period") @db.Date
+  status   PayrollRunStatus @default(DRAFT)
+
+  statutoryStatus    StatutoryStatus @default(NOT_CONFIGURED) @map("statutory_status")
+  statutoryRuleSetId String?         @map("statutory_rule_set_id")
+  /// The rules AS APPLIED, frozen. A later correction to the rule set cannot
+  /// change what an already-approved run computed.
+  statutorySnapshot  Json?           @map("statutory_snapshot")
+
+  grossTotal        Decimal @default(0) @map("gross_total") @db.Decimal(14, 2)
+  deductionTotal    Decimal @default(0) @map("deduction_total") @db.Decimal(14, 2)
+  netTotal          Decimal @default(0) @map("net_total") @db.Decimal(14, 2)
+  employerCostTotal Decimal @default(0) @map("employer_cost_total") @db.Decimal(14, 2)
+  employeeCount     Int     @default(0) @map("employee_count")
+
+  /// Employees the run could not compute — no salary set, no attendance, an
+  /// unapproved overtime claim. Surfaced BEFORE approval, never silently
+  /// dropped or zeroed.
+  exceptions Json?
+
+  calculatedAt      DateTime? @map("calculated_at")
+  approvedByStaffId String?   @map("approved_by_staff_id")
+  approvedAt        DateTime? @map("approved_at")
+  paidAt            DateTime? @map("paid_at")
+  notes             String?
+
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant              @relation(fields: [tenantId], references: [id])
+  clinic      Clinic?             @relation(fields: [clinicId], references: [id])
+  createdBy   Staff               @relation("PayrollRunAuthor", fields: [createdByStaffId], references: [id])
+  approvedBy  Staff?              @relation("PayrollRunApprover", fields: [approvedByStaffId], references: [id])
+  lines       PayrollLine[]
+  adjustments PayrollAdjustment[]
+
+  @@unique([tenantId, clinicId, period])
+  @@index([tenantId, period])
+  @@map("payroll_runs")
+}
+
+model PayrollLine {
+  id           String @id @default(uuid())
+  tenantId     String @map("tenant_id")
+  payrollRunId String @map("payroll_run_id")
+  staffId      String @map("staff_id")
+
+  /// The employee's details AS AT the run, frozen: a payslip must keep saying
+  /// what it said even after somebody's position or bank account changes.
+  employeeSnapshot Json @map("employee_snapshot")
+
+  basicSalary Decimal @default(0) @map("basic_salary") @db.Decimal(12, 2)
+  allowances  Decimal @default(0) @db.Decimal(12, 2)
+  overtimePay Decimal @default(0) @map("overtime_pay") @db.Decimal(12, 2)
+  incentives  Decimal @default(0) @db.Decimal(12, 2)
+  bonus       Decimal @default(0) @db.Decimal(12, 2)
+  grossPay    Decimal @default(0) @map("gross_pay") @db.Decimal(12, 2)
+
+  unpaidLeaveDeduction Decimal @default(0) @map("unpaid_leave_deduction") @db.Decimal(12, 2)
+  otherDeductions      Decimal @default(0) @map("other_deductions") @db.Decimal(12, 2)
+
+  /// NULL — not zero — when the run is NOT_CONFIGURED. The difference is the
+  /// whole reason `StatutoryStatus` exists.
+  epfEmployee   Decimal? @map("epf_employee") @db.Decimal(12, 2)
+  epfEmployer   Decimal? @map("epf_employer") @db.Decimal(12, 2)
+  socsoEmployee Decimal? @map("socso_employee") @db.Decimal(12, 2)
+  socsoEmployer Decimal? @map("socso_employer") @db.Decimal(12, 2)
+  eisEmployee   Decimal? @map("eis_employee") @db.Decimal(12, 2)
+  eisEmployer   Decimal? @map("eis_employer") @db.Decimal(12, 2)
+  pcb           Decimal? @db.Decimal(12, 2)
+
+  netPay       Decimal @default(0) @map("net_pay") @db.Decimal(12, 2)
+  employerCost Decimal @default(0) @map("employer_cost") @db.Decimal(12, 2)
+
+  /// Worked/absent/OT inputs, so a payslip can explain itself.
+  workedDays    Decimal? @map("worked_days") @db.Decimal(5, 1)
+  unpaidDays    Decimal? @map("unpaid_days") @db.Decimal(5, 1)
+  overtimeHours Decimal? @map("overtime_hours") @db.Decimal(6, 2)
+  breakdown     Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  staff      Staff      @relation("PayrollLineStaff", fields: [staffId], references: [id])
+
+  @@unique([payrollRunId, staffId])
+  @@index([tenantId, payrollRunId])
+  @@map("payroll_lines")
+}
+
+/// The ONLY way an approved run changes.
+///
+/// A locked payroll is immutable; a correction is an adjustment ROW against it,
+/// with an actor and a reason, which appears on the next payslip. Editing the
+/// locked line instead would make "what did we actually pay in March" a
+/// question with no answer.
+model PayrollAdjustment {
+  id           String  @id @default(uuid())
+  tenantId     String  @map("tenant_id")
+  payrollRunId String  @map("payroll_run_id")
+  staffId      String  @map("staff_id")
+  description  String
+  /// Signed: negative is a deduction.
+  amount       Decimal @db.Decimal(12, 2)
+  reason       String
+
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id])
+  staff      Staff      @relation("PayrollAdjustmentStaff", fields: [staffId], references: [id])
+  createdBy  Staff      @relation("PayrollAdjustmentAuthor", fields: [createdByStaffId], references: [id])
+
+  @@index([tenantId, payrollRunId])
+  @@map("payroll_adjustments")
 }
