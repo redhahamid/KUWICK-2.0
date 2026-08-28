@@ -7,6 +7,8 @@ import { WriteOffClaimDto } from './dto/write-off-claim.dto';
 import { ResubmitClaimDto } from './dto/resubmit-claim.dto';
 import { RecordRemittanceDto } from './dto/record-remittance.dto';
 import { UpsertPanelConfigDto } from './dto/upsert-panel-config.dto';
+import { OptionalDateParam, RequiredDateParam } from '../core/date-param.pipe';
+import { assertDateOrder } from '../core/query-dates';
 
 @Controller('panel-workspace')
 export class PanelWorkspaceController {
@@ -61,10 +63,11 @@ export class PanelWorkspaceController {
   @Get('reconciliation')
   reconciliation(
     @Query('panelClinicId') panelClinicId?: string,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-    @Query('asOf') asOf?: string,
+    @Query('from', OptionalDateParam) from?: string,
+    @Query('to', OptionalDateParam) to?: string,
+    @Query('asOf', OptionalDateParam) asOf?: string,
   ) {
+    assertDateOrder(from, to);
     return this.claims.reconciliation({ panelClinicId, from, to, asOf });
   }
 

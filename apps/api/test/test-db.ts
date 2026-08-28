@@ -27,3 +27,30 @@ export async function withTenantContext<T>(
 export function randomId(): string {
   return randomUUID();
 }
+
+/**
+ * A BOOKING DATE THAT DOES NOT ROT.
+ *
+ * The appointment suites book slots, and the booking rules refuse the past.
+ * They used to hardcode a Wednesday in August 2026 — which passed every run
+ * until that Wednesday arrived, after which every booking in three suites
+ * started coming back 422 for a reason that had nothing to do with the code
+ * under test.
+ *
+ * So the date moves with the clock instead: the next occurrence of a fixed
+ * weekday, at least a week out. Far enough ahead that no minimum-notice or
+ * advance-booking rule rejects it, and always the SAME weekday, so a roster
+ * row keyed on `dayOfWeek` still lines up with the slot being booked.
+ *
+ * Returns 'YYYY-MM-DD' in UTC, which is what these suites interpolate into
+ * their scheduledStart/scheduledEnd strings.
+ */
+export function upcomingWeekday(dayOfWeek: number, minDaysAhead = 7): string {
+  const day = new Date();
+  day.setUTCHours(0, 0, 0, 0);
+  day.setUTCDate(day.getUTCDate() + minDaysAhead);
+  while (day.getUTCDay() !== dayOfWeek) {
+    day.setUTCDate(day.getUTCDate() + 1);
+  }
+  return day.toISOString().slice(0, 10);
+}

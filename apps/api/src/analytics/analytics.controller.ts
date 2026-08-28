@@ -9,6 +9,8 @@ import { EnrolPatientDto } from './dto/enrol-patient.dto';
 import { BuildAudienceDto } from './dto/build-audience.dto';
 import { UpsertTemplateDto } from './dto/upsert-template.dto';
 import { PrepareDispatchDto } from './dto/prepare-dispatch.dto';
+import { OptionalDateParam, RequiredDateParam } from '../core/date-param.pipe';
+import { assertDateOrder } from '../core/query-dates';
 
 @Controller('operations')
 export class OperationsController {
@@ -23,9 +25,10 @@ export class OperationsController {
   overview(
     @Query('clinicId') clinicId?: string,
     @Query('preset') preset?: PeriodPreset,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
+    @Query('from', OptionalDateParam) from?: string,
+    @Query('to', OptionalDateParam) to?: string,
   ) {
+    assertDateOrder(from, to);
     return this.operations.overview({ clinicId, preset, from, to });
   }
 
@@ -42,17 +45,19 @@ export class OperationsController {
   }
 
   @Get('segments/profit-and-loss')
-  segmentPl(@Query('from') from: string, @Query('to') to: string, @Query('clinicId') clinicId?: string) {
+  segmentPl(@Query('from', RequiredDateParam) from: string, @Query('to', RequiredDateParam) to: string, @Query('clinicId') clinicId?: string) {
+    assertDateOrder(from, to);
     return this.segments.profitAndLoss({ from, to, clinicId });
   }
 
   @Get('segments/:id/lines')
   segmentLines(
     @Param('id') id: string,
-    @Query('from') from: string,
-    @Query('to') to: string,
+    @Query('from', RequiredDateParam) from: string,
+    @Query('to', RequiredDateParam) to: string,
     @Query('clinicId') clinicId?: string,
   ) {
+    assertDateOrder(from, to);
     return this.segments.segmentDetail(id, { from, to, clinicId });
   }
 
@@ -76,10 +81,11 @@ export class OperationsController {
   @Get('programmes/:id/dashboard')
   programmeDashboard(
     @Param('id') id: string,
-    @Query('from') from: string,
-    @Query('to') to: string,
+    @Query('from', RequiredDateParam) from: string,
+    @Query('to', RequiredDateParam) to: string,
     @Query('clinicId') clinicId?: string,
   ) {
+    assertDateOrder(from, to);
     return this.programmes.dashboard(id, { from, to, clinicId });
   }
 
@@ -111,7 +117,8 @@ export class OperationsController {
   }
 
   @Get('marketing/history')
-  history(@Query('from') from?: string, @Query('to') to?: string) {
+  history(@Query('from', OptionalDateParam) from?: string, @Query('to', OptionalDateParam) to?: string) {
+    assertDateOrder(from, to);
     return this.marketing.history({ from, to });
   }
 }

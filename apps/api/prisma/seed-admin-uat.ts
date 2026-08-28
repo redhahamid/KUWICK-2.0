@@ -475,28 +475,43 @@ declare function buildIdsType(): Promise<{
 // STOCK: opening balances, a purchase order, a transfer with a discrepancy,
 // near-expiry stock, a negative balance and a slow mover.
 // ---------------------------------------------------------------------------
+/**
+ * One writer for stock movements, shared by the stock and dispensing seeds.
+ *
+ * A movement without the level it justifies is a ledger that does not add up,
+ * and `verify()` re-derives every level from these rows — so both halves have
+ * to be written together, everywhere, including from the clinical seed where
+ * dispensing consumes stock.
+ */
+async function postMove(
+  tx: Tx,
+  tenantId: string,
+  staffId: string,
+  clinicId: string,
+  itemId: string,
+  delta: number,
+  type: string,
+  extra: Record<string, unknown> = {},
+) {
+  await tx.stockMovement.create({
+    data: {
+      tenantId, clinicId, itemId, quantityDelta: delta,
+      movementType: type as never, createdByStaffId: staffId, ...extra,
+    },
+  });
+  await tx.stockLevel.upsert({
+    where: { tenantId_clinicId_itemId: { tenantId, clinicId, itemId } },
+    create: { tenantId, clinicId, itemId, quantityOnHand: delta, minThreshold: 20 },
+    update: { quantityOnHand: { increment: delta } },
+  });
+}
+
 async function seedStock(ids: Ids) {
   await withTenant(async (tx) => {
     const { tenant, central, branch, staff, items, suppliers } = ids;
 
-    async function move(clinicId: string, itemId: string, delta: number, type: string, extra: Record<string, unknown> = {}) {
-      await tx.stockMovement.create({
-        data: {
-          tenantId: tenant.id,
-          clinicId,
-          itemId,
-          quantityDelta: delta,
-          movementType: type as never,
-          createdByStaffId: staff.stock,
-          ...extra,
-        },
-      });
-      await tx.stockLevel.upsert({
-        where: { tenantId_clinicId_itemId: { tenantId: tenant.id, clinicId, itemId } },
-        create: { tenantId: tenant.id, clinicId, itemId, quantityOnHand: delta, minThreshold: 20 },
-        update: { quantityOnHand: { increment: delta } },
-      });
-    }
+    const move = (clinicId: string, itemId: string, delta: number, type: string, extra: Record<string, unknown> = {}) =>
+      postMove(tx, tenant.id, staff.stock, clinicId, itemId, delta, type, extra);
 
     // Opening balances at both branches.
     for (const [code, quantity] of Object.entries({ AMOX500: 120, MET500: 90, AML5: 80, SEMA025: 14, FOL5: 60, DRESS1: 45, PARA500: 200, OLDSYR: 30 })) {
@@ -730,6 +745,68 @@ async function seedClinicalAndFinance(ids: Ids) {
         },
       });
       for (const line of opts.lines) {
+        // A BILLED LINE POINTS AT WHAT PRODUCED IT.
+        //
+        // Kuwick derives a line's COST, its business SEGMENT and its
+        // PROGRAMME attribution by walking back from the invoice line to the
+        // prescription or the ordered service behind it — there is no cost
+        // column on the line itself, deliberately, because a snapshot that can
+        // drift from the catalogue is a second source of truth.
+        //
+        // A seed that writes bare descriptions therefore produces screens that
+        // are technically correct and completely uninformative: every margin
+        // reads 100%, every segment lands in "Not classified", and every
+        // programme dashboard reports nothing dispensed. So the fixtures write
+        // the real chain — prescription, dispensing movement, ordered service —
+        // and the reports have something true to compute from.
+        let sourcePrescriptionId: string | null = null;
+        let sourceOrderServiceId: string | null = null;
+
+        if (line.itemCode) {
+          const item = items[line.itemCode];
+          const prescription = await tx.prescription.create({
+            data: {
+              tenantId: tenant.id,
+              visitId: visit.id,
+              itemId: item.id,
+              quantity: 1,
+              amount: line.amount,
+              frequency: 'TDS',
+              durationDays: 5,
+              status: 'DISPENSED',
+              prescribedByStaffId: staff[opts.doctorKey],
+              prescribedAt: at(opts.dayOffset, 3),
+              dispensedByStaffId: staff.counter,
+              dispensedAt: at(opts.dayOffset, 4),
+            },
+          });
+          sourcePrescriptionId = prescription.id;
+          // Dispensing moves stock. Written through the one movement writer so
+          // the level and the ledger stay equal — verify() checks that they do.
+          await postMove(tx, tenant.id, staff.counter, opts.clinicId, item.id, -1, 'DISPENSED', {
+            referenceType: 'Prescription',
+            referenceId: prescription.id,
+          });
+        } else if (line.serviceIndex !== undefined) {
+          const service = services[line.serviceIndex];
+          const ordered = await tx.orderService.create({
+            data: {
+              tenantId: tenant.id,
+              clinicId: opts.clinicId,
+              visitId: visit.id,
+              serviceCatalogId: service.id,
+              procedureName: service.name,
+              orderType: 'STANDARD_SERVICE',
+              quantity: 1,
+              status: 'COMPLETED',
+              requestedByStaffId: staff[opts.doctorKey],
+              requestedAt: at(opts.dayOffset, 3),
+              completedAt: at(opts.dayOffset, 4),
+            },
+          });
+          sourceOrderServiceId = ordered.id;
+        }
+
         await tx.invoiceLine.create({
           data: {
             tenantId: tenant.id,
@@ -738,6 +815,8 @@ async function seedClinicalAndFinance(ids: Ids) {
             quantity: 1,
             unitPrice: line.amount,
             amount: line.amount,
+            sourcePrescriptionId,
+            sourceOrderServiceId,
             taxCodeId: line.taxable === false ? ids.exempt.id : ids.sst.id,
             taxTreatment: line.taxable === false ? 'EXEMPT' : 'STANDARD_RATED',
             taxRatePercent: line.taxable === false ? null : 6,
@@ -802,27 +881,27 @@ async function seedClinicalAndFinance(ids: Ids) {
     });
 
     // --- Two days ago at Bandar: NOT closed. The finance work queue. ------
-    const b1 = await makeVisit({ patientIndex: 3, clinicId: branch.id, doctorKey: 'locum', dayOffset: -2, lines: [{ description: 'General Consultation', amount: CONSULT }] });
+    const b1 = await makeVisit({ patientIndex: 3, clinicId: branch.id, doctorKey: 'locum', dayOffset: -2, lines: [{ description: 'General Consultation', amount: CONSULT, serviceIndex: 0 }] });
     await pay(b1.invoice.id, branch.id, b1.patientShare, 'CASH', -2, 4);
     await tx.invoice.update({ where: { id: b1.invoice.id }, data: { status: 'PAID', paidAt: at(-2, 4), paymentMethod: 'Cash', patientPaidAmount: b1.patientShare } });
 
-    const b2 = await makeVisit({ patientIndex: 4, clinicId: branch.id, doctorKey: 'locum', dayOffset: -2, lines: [{ description: 'Wound Dressing', amount: DRESSING }] });
+    const b2 = await makeVisit({ patientIndex: 4, clinicId: branch.id, doctorKey: 'locum', dayOffset: -2, lines: [{ description: 'Wound Dressing', amount: DRESSING, serviceIndex: 1 }] });
     await pay(b2.invoice.id, branch.id, b2.patientShare, 'QR', -2, 6);
     await tx.invoice.update({ where: { id: b2.invoice.id }, data: { status: 'PAID', paidAt: at(-2, 6), paymentMethod: 'DuitNow QR', patientPaidAmount: b2.patientShare } });
 
     // --- A PARTIAL payment, still outstanding -----------------------------
-    const partial = await makeVisit({ patientIndex: 5, clinicId: central.id, doctorKey: 'owner', dayOffset: -8, lines: [{ description: 'Weight Management Review', amount: WEIGHT }, { description: 'Semaglutide 0.25mg pen', amount: Number(items.SEMA025.sellPrice), taxable: false }] });
+    const partial = await makeVisit({ patientIndex: 5, clinicId: central.id, doctorKey: 'owner', dayOffset: -8, lines: [{ description: 'Weight Management Review', amount: WEIGHT, serviceIndex: 5 }, { description: 'Semaglutide 0.25mg pen', amount: Number(items.SEMA025.sellPrice), itemCode: 'SEMA025', taxable: false }] });
     await pay(partial.invoice.id, central.id, 200, 'CASH', -8, 5);
     await tx.invoice.update({ where: { id: partial.invoice.id }, data: { patientPaidAmount: 200 } });
 
     // --- A REFUND that reopened a balance ---------------------------------
-    const refunded = await makeVisit({ patientIndex: 6, clinicId: central.id, doctorKey: 'resident', dayOffset: -14, lines: [{ description: 'Suturing (minor)', amount: SUTURE }] });
+    const refunded = await makeVisit({ patientIndex: 6, clinicId: central.id, doctorKey: 'resident', dayOffset: -14, lines: [{ description: 'Suturing (minor)', amount: SUTURE, serviceIndex: 2 }] });
     await pay(refunded.invoice.id, central.id, refunded.patientShare, 'CARD', -14, 5);
     await pay(refunded.invoice.id, central.id, 60, 'CARD', -12, 9, 'REFUND', { notes: 'Procedure abandoned; portion returned' });
     await tx.invoice.update({ where: { id: refunded.invoice.id }, data: { patientPaidAmount: refunded.patientShare - 60 } });
 
     // --- A REVERSED payment (recorded in error) ---------------------------
-    const reversedInvoice = await makeVisit({ patientIndex: 7, clinicId: central.id, doctorKey: 'owner', dayOffset: -20, lines: [{ description: 'General Consultation', amount: CONSULT }] });
+    const reversedInvoice = await makeVisit({ patientIndex: 7, clinicId: central.id, doctorKey: 'owner', dayOffset: -20, lines: [{ description: 'General Consultation', amount: CONSULT, serviceIndex: 0 }] });
     const wrong = await pay(reversedInvoice.invoice.id, central.id, reversedInvoice.patientShare, 'CASH', -20, 5);
     await tx.payment.create({
       data: {
@@ -841,12 +920,12 @@ async function seedClinicalAndFinance(ids: Ids) {
         clinicId: index % 2 === 0 ? central.id : branch.id,
         doctorKey: index % 2 === 0 ? 'owner' : 'locum',
         dayOffset: offset,
-        lines: [{ description: 'General Consultation', amount: CONSULT }, { description: 'Wound Dressing', amount: DRESSING }],
+        lines: [{ description: 'General Consultation', amount: CONSULT, serviceIndex: 0 }, { description: 'Wound Dressing', amount: DRESSING, serviceIndex: 1 }],
       });
     }
 
     // --- A CREDIT NOTE, issued --------------------------------------------
-    const credited = await makeVisit({ patientIndex: 2, clinicId: central.id, doctorKey: 'owner', dayOffset: -10, lines: [{ description: 'Antenatal Review', amount: ANTENATAL }, { description: 'Folic Acid 5mg', amount: Number(items.FOL5.sellPrice), taxable: false }] });
+    const credited = await makeVisit({ patientIndex: 2, clinicId: central.id, doctorKey: 'owner', dayOffset: -10, lines: [{ description: 'Antenatal Review', amount: ANTENATAL, serviceIndex: 3 }, { description: 'Folic Acid 5mg', amount: Number(items.FOL5.sellPrice), itemCode: 'FOL5', taxable: false }] });
     await pay(credited.invoice.id, central.id, credited.patientShare, 'CASH', -10, 5);
     const creditLine = await tx.invoiceLine.findFirst({ where: { invoiceId: credited.invoice.id } });
     const note = await tx.creditNote.create({
@@ -914,9 +993,48 @@ async function seedPanelClaims(ids: Ids) {
           createdAt: at(dayOffset, 3),
         },
       });
-      await tx.invoiceLine.create({
-        data: { tenantId: tenant.id, invoiceId: invoice.id, description: 'Consultation and medication', quantity: 1, unitPrice: amount, amount },
+      // Two lines, both traceable — a panel claim that MediCover would reject
+      // for want of itemisation is one of the cases the workspace has to show,
+      // but the rest of the panel visits bill a real consultation and a real
+      // medicine so the segment and drug-margin reports see panel work too.
+      const consult = ids.services[0];
+      const consultOrder = await tx.orderService.create({
+        data: {
+          tenantId: tenant.id, clinicId, visitId: visit.id, serviceCatalogId: consult.id,
+          procedureName: consult.name, orderType: 'STANDARD_SERVICE', quantity: 1, status: 'COMPLETED',
+          requestedByStaffId: staff[doctorKey], requestedAt: at(dayOffset, 2, 30), completedAt: at(dayOffset, 3),
+        },
       });
+      const consultPrice = Math.min(Number(consult.price), amount);
+      await tx.invoiceLine.create({
+        data: {
+          tenantId: tenant.id, invoiceId: invoice.id, description: consult.name, quantity: 1,
+          unitPrice: consultPrice, amount: consultPrice, sourceOrderServiceId: consultOrder.id,
+          createdAt: at(dayOffset, 3),
+        },
+      });
+      const medicineAmount = Math.round((amount - consultPrice) * 100) / 100;
+      if (medicineAmount > 0) {
+        const medicine = ids.items.AML5;
+        const prescription = await tx.prescription.create({
+          data: {
+            tenantId: tenant.id, visitId: visit.id, itemId: medicine.id, quantity: 1,
+            amount: medicineAmount, frequency: 'OD', durationDays: 30, status: 'DISPENSED',
+            prescribedByStaffId: staff[doctorKey], prescribedAt: at(dayOffset, 3),
+            dispensedByStaffId: staff.counter, dispensedAt: at(dayOffset, 3, 30),
+          },
+        });
+        await postMove(tx, tenant.id, staff.counter, clinicId, medicine.id, -1, 'DISPENSED', {
+          referenceType: 'Prescription', referenceId: prescription.id,
+        });
+        await tx.invoiceLine.create({
+          data: {
+            tenantId: tenant.id, invoiceId: invoice.id, description: medicine.name, quantity: 1,
+            unitPrice: medicineAmount, amount: medicineAmount, sourcePrescriptionId: prescription.id,
+            createdAt: at(dayOffset, 3),
+          },
+        });
+      }
       return { visit, invoice, panel };
     }
 
@@ -1165,6 +1283,46 @@ async function seedWorkforce(ids: Ids) {
           },
         });
       }
+    }
+
+    // TODAY, so the "who is working right now" screen has a today to show.
+    //
+    // The loop above stops at yesterday, which left every figure on the HR
+    // landing page reading zero — a screen whose whole job is answering "who
+    // is here?" cannot be reviewed when the honest answer is "nobody, ever".
+    // Three people in: two still on the floor (clocked in, no clock-out), one
+    // who has gone home, and one of the two arrived late.
+    await tx.attendanceRecord.create({
+      data: {
+        tenantId: tenant.id, staffId: staff.counter, clinicId: central.id, workDate: day(0),
+        clockInAt: at(0, 1), clockOutAt: null, status: 'PRESENT',
+        scheduledStart: at(0, 1), scheduledEnd: at(0, 9), lateMinutes: 0,
+      },
+    });
+    await tx.attendanceRecord.create({
+      data: {
+        tenantId: tenant.id, staffId: staff.stock, clinicId: central.id, workDate: day(0),
+        clockInAt: at(0, 1, 24), clockOutAt: null, status: 'LATE',
+        scheduledStart: at(0, 1), scheduledEnd: at(0, 9), lateMinutes: 24,
+      },
+    });
+    await tx.attendanceRecord.create({
+      data: {
+        tenantId: tenant.id, staffId: staff.finance, clinicId: central.id, workDate: day(0),
+        clockInAt: at(0, 0, 30), clockOutAt: at(0, 8, 30), workedMinutes: 480, status: 'PRESENT',
+        scheduledStart: at(0, 1), scheduledEnd: at(0, 9),
+      },
+    });
+
+    // Rostered today — read from the canonical provider roster, not a second
+    // HR-only schedule. The HR screen says as much and links back to it.
+    for (const [index, key] of ['owner', 'resident'].entries()) {
+      await tx.providerShift.create({
+        data: {
+          tenantId: tenant.id, clinicId: central.id, staffId: staff[key],
+          shiftDate: day(0), startsAt: at(0, 1 + index), endsAt: at(0, 9 + index),
+        },
+      });
     }
 
     // A MISSING PUNCH, and a CORRECTED record.

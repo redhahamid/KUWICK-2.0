@@ -14,6 +14,8 @@ import { UpsertIncentiveRuleDto } from './dto/upsert-incentive-rule.dto';
 import { CreatePayrollRunDto } from './dto/create-payroll-run.dto';
 import { PayrollAdjustmentDto } from './dto/payroll-adjustment.dto';
 import { UpsertStatutoryRulesDto } from './dto/upsert-statutory-rules.dto';
+import { OptionalDateParam, RequiredDateParam } from '../core/date-param.pipe';
+import { assertDateOrder } from '../core/query-dates';
 
 @Controller('workforce')
 export class WorkforceController {
@@ -77,11 +79,12 @@ export class WorkforceController {
 
   @Get('attendance/timesheet')
   timesheet(
-    @Query('from') from: string,
-    @Query('to') to: string,
+    @Query('from', RequiredDateParam) from: string,
+    @Query('to', RequiredDateParam) to: string,
     @Query('clinicId') clinicId?: string,
     @Query('staffId') staffId?: string,
   ) {
+    assertDateOrder(from, to);
     return this.attendance.timesheet({ from, to, clinicId, staffId });
   }
 

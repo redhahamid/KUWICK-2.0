@@ -3,7 +3,13 @@ import { Test } from '@nestjs/testing';
 import { PrismaClient, Role } from '@prisma/client';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
-import { createTestPrismaClient, randomId, withTenantContext } from './test-db';
+import { createTestPrismaClient, randomId, upcomingWeekday, withTenantContext } from './test-db';
+
+// The suites below book appointments, and booking refuses the past. A fixed
+// Wednesday works right up until that Wednesday arrives; this one is always
+// the next Wednesday at least a week out. See upcomingWeekday in ./test-db.
+const BOOKING_DAY = upcomingWeekday(3);
+
 
 // §2–§3 of the pre-merge hardening pass: the UNAUTHENTICATED surface, tested
 // the way an attacker would use it — wrong slugs, other tenants' uuids,
@@ -38,9 +44,9 @@ describe('Public booking surface security (e2e)', () => {
   // A Wednesday well inside the booking window; the seeded roster covers
   // Wednesdays 09:00–17:00 clinic time (Asia/Kuala_Lumpur, the default), so
   // 01:30Z = 09:30 local is a real grid slot.
-  const DAY = '2026-08-26';
-  const SLOT_START = '2026-08-26T01:30:00.000Z';
-  const SLOT_END = '2026-08-26T02:00:00.000Z';
+  const DAY = BOOKING_DAY;
+  const SLOT_START = `${BOOKING_DAY}T01:30:00.000Z`;
+  const SLOT_END = `${BOOKING_DAY}T02:00:00.000Z`;
 
   async function seedTenant(name: string): Promise<{
     tenantId: string;
@@ -261,8 +267,8 @@ describe('Public booking surface security (e2e)', () => {
     const fresh = await book(slugA, {
       identifier: '990909105432',
       name: 'Brand New Patient',
-      scheduledStart: '2026-08-26T02:00:00.000Z',
-      scheduledEnd: '2026-08-26T02:30:00.000Z',
+      scheduledStart: `${BOOKING_DAY}T02:00:00.000Z`,
+      scheduledEnd: `${BOOKING_DAY}T02:30:00.000Z`,
     }).expect(201);
 
     expect(Object.keys(matched.body).sort()).toEqual(Object.keys(fresh.body).sort());
@@ -297,14 +303,14 @@ describe('Public booking surface security (e2e)', () => {
 
   it('an off-grid time and a wrong-length booking are both refused', async () => {
     const offGrid = await book(slugA, {
-      scheduledStart: '2026-08-26T01:37:00.000Z',
-      scheduledEnd: '2026-08-26T02:07:00.000Z',
+      scheduledStart: `${BOOKING_DAY}T01:37:00.000Z`,
+      scheduledEnd: `${BOOKING_DAY}T02:07:00.000Z`,
     });
     expect(offGrid.status).toBe(400);
 
     const tooLong = await book(slugA, {
-      scheduledStart: '2026-08-26T02:30:00.000Z',
-      scheduledEnd: '2026-08-26T09:00:00.000Z',
+      scheduledStart: `${BOOKING_DAY}T02:30:00.000Z`,
+      scheduledEnd: `${BOOKING_DAY}T09:00:00.000Z`,
     });
     expect(tooLong.status).toBe(400);
   });
@@ -314,8 +320,8 @@ describe('Public booking surface security (e2e)', () => {
   it('the manage token is 32 bytes of crypto randomness, not an id: the appointment uuid does not work as one', async () => {
     const booked = await book(slugA, {
       name: 'Token Test Patient',
-      scheduledStart: '2026-08-26T03:00:00.000Z',
-      scheduledEnd: '2026-08-26T03:30:00.000Z',
+      scheduledStart: `${BOOKING_DAY}T03:00:00.000Z`,
+      scheduledEnd: `${BOOKING_DAY}T03:30:00.000Z`,
     }).expect(201);
     const token: string = booked.body.manageToken;
     // 32 random bytes base64url-encoded = 43 chars, no padding.
@@ -332,8 +338,8 @@ describe('Public booking surface security (e2e)', () => {
   it('a forged token 404s, and a real token under the WRONG clinic slug 404s the same way', async () => {
     const booked = await book(slugA, {
       name: 'Cross Slug Patient',
-      scheduledStart: '2026-08-26T03:30:00.000Z',
-      scheduledEnd: '2026-08-26T04:00:00.000Z',
+      scheduledStart: `${BOOKING_DAY}T03:30:00.000Z`,
+      scheduledEnd: `${BOOKING_DAY}T04:00:00.000Z`,
     }).expect(201);
     const token: string = booked.body.manageToken;
 
@@ -349,8 +355,8 @@ describe('Public booking surface security (e2e)', () => {
   it('a bare token with no tenant context reaches NOTHING at the database level', async () => {
     const booked = await book(slugA, {
       name: 'RLS Token Patient',
-      scheduledStart: '2026-08-26T04:00:00.000Z',
-      scheduledEnd: '2026-08-26T04:30:00.000Z',
+      scheduledStart: `${BOOKING_DAY}T04:00:00.000Z`,
+      scheduledEnd: `${BOOKING_DAY}T04:30:00.000Z`,
     }).expect(201);
     // The raw client with app.tenant_id never set — what a hypothetical
     // slug-less lookup would run as. RLS filters the row out entirely.
@@ -364,8 +370,8 @@ describe('Public booking surface security (e2e)', () => {
       name: 'Manage View Patient',
       identifier: nric,
       phone: '0198887777',
-      scheduledStart: '2026-08-26T04:30:00.000Z',
-      scheduledEnd: '2026-08-26T05:00:00.000Z',
+      scheduledStart: `${BOOKING_DAY}T04:30:00.000Z`,
+      scheduledEnd: `${BOOKING_DAY}T05:00:00.000Z`,
     }).expect(201);
 
     const res = await request(app.getHttpServer())
@@ -394,14 +400,14 @@ describe('Public booking surface security (e2e)', () => {
   it('rescheduling rotates the token: the old link can never move the appointment again', async () => {
     const booked = await book(slugA, {
       name: 'Reschedule Patient',
-      scheduledStart: '2026-08-26T05:00:00.000Z',
-      scheduledEnd: '2026-08-26T05:30:00.000Z',
+      scheduledStart: `${BOOKING_DAY}T05:00:00.000Z`,
+      scheduledEnd: `${BOOKING_DAY}T05:30:00.000Z`,
     }).expect(201);
     const oldToken: string = booked.body.manageToken;
 
     const moved = await request(app.getHttpServer())
       .patch(`/public/booking/${slugA}/manage/${oldToken}/reschedule`)
-      .send({ scheduledStart: '2026-08-26T05:30:00.000Z', scheduledEnd: '2026-08-26T06:00:00.000Z' })
+      .send({ scheduledStart: `${BOOKING_DAY}T05:30:00.000Z`, scheduledEnd: `${BOOKING_DAY}T06:00:00.000Z` })
       .expect(200);
     const newToken: string = moved.body.manageToken;
     expect(newToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -417,7 +423,7 @@ describe('Public booking surface security (e2e)', () => {
 
     await request(app.getHttpServer())
       .patch(`/public/booking/${slugA}/manage/${oldToken}/reschedule`)
-      .send({ scheduledStart: '2026-08-26T06:00:00.000Z', scheduledEnd: '2026-08-26T06:30:00.000Z' })
+      .send({ scheduledStart: `${BOOKING_DAY}T06:00:00.000Z`, scheduledEnd: `${BOOKING_DAY}T06:30:00.000Z` })
       .expect(400);
     await request(app.getHttpServer())
       .patch(`/public/booking/${slugA}/manage/${oldToken}/cancel`)
@@ -434,8 +440,8 @@ describe('Public booking surface security (e2e)', () => {
   it('when the clinic disallows online cancellation, a valid token is still refused with 403', async () => {
     const booked = await book(slugA, {
       name: 'No Cancel Patient',
-      scheduledStart: '2026-08-26T06:30:00.000Z',
-      scheduledEnd: '2026-08-26T07:00:00.000Z',
+      scheduledStart: `${BOOKING_DAY}T06:30:00.000Z`,
+      scheduledEnd: `${BOOKING_DAY}T07:00:00.000Z`,
     }).expect(201);
 
     await withTenantContext(prisma, tenantA, (tx) =>

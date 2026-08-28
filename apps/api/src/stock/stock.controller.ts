@@ -10,6 +10,8 @@ import { CancelStockTransferDto } from './dto/cancel-stock-transfer.dto';
 import { CreateStockTakeDto } from './dto/create-stock-take.dto';
 import { RecordCountDto } from './dto/record-count.dto';
 import { ReviewStockTakeDto } from './dto/review-stock-take.dto';
+import { OptionalDateParam, RequiredDateParam } from '../core/date-param.pipe';
+import { assertDateOrder } from '../core/query-dates';
 
 @Controller('stock-admin')
 export class StockAdminController {
@@ -40,10 +42,11 @@ export class StockAdminController {
   movements(
     @Query('clinicId') clinicId?: string,
     @Query('itemId') itemId?: string,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
+    @Query('from', OptionalDateParam) from?: string,
+    @Query('to', OptionalDateParam) to?: string,
     @Query('limit') limit?: string,
   ) {
+    assertDateOrder(from, to);
     return this.admin.movements({ clinicId, itemId, from, to, limit: limit ? Number(limit) : undefined });
   }
 

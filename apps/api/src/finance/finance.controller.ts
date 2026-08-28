@@ -14,6 +14,8 @@ import { CreateCreditNoteDto } from './dto/create-credit-note.dto';
 import { VoidCreditNoteDto } from './dto/void-credit-note.dto';
 import { UpsertTaxCodeDto } from './dto/upsert-tax-code.dto';
 import { AddTaxRateDto } from './dto/add-tax-rate.dto';
+import { OptionalDateParam, RequiredDateParam } from '../core/date-param.pipe';
+import { assertDateOrder } from '../core/query-dates';
 
 /**
  * Every route here is authorised INSIDE the service, against a named
@@ -49,7 +51,8 @@ export class FinanceController {
   }
 
   @Get('payments')
-  paymentReport(@Query('from') from: string, @Query('to') to: string, @Query('clinicId') clinicId?: string) {
+  paymentReport(@Query('from', RequiredDateParam) from: string, @Query('to', RequiredDateParam) to: string, @Query('clinicId') clinicId?: string) {
+    assertDateOrder(from, to);
     return this.receivables.paymentReport({ from, to, clinicId });
   }
 
@@ -58,7 +61,7 @@ export class FinanceController {
   @Get('receivables/patients')
   patientReceivables(
     @Query('clinicId') clinicId?: string,
-    @Query('asOf') asOf?: string,
+    @Query('asOf', OptionalDateParam) asOf?: string,
     @Query('includeSettled') includeSettled?: string,
   ) {
     return this.receivables.patientReceivables({ clinicId, asOf, includeSettled: includeSettled === 'true' });
@@ -67,12 +70,13 @@ export class FinanceController {
   // --- Day end --------------------------------------------------------------
 
   @Get('day-end')
-  dayEndView(@Query('date') date: string, @Query('clinicId') clinicId?: string) {
+  dayEndView(@Query('date', RequiredDateParam) date: string, @Query('clinicId') clinicId?: string) {
     return this.dayEnd.view(clinicId, date);
   }
 
   @Get('day-end/range')
-  dayEndRange(@Query('from') from: string, @Query('to') to: string, @Query('clinicId') clinicId?: string) {
+  dayEndRange(@Query('from', RequiredDateParam) from: string, @Query('to', RequiredDateParam) to: string, @Query('clinicId') clinicId?: string) {
+    assertDateOrder(from, to);
     return this.dayEnd.listRange(clinicId, from, to);
   }
 
@@ -82,17 +86,17 @@ export class FinanceController {
   }
 
   @Post('day-end/count')
-  count(@Query('date') date: string, @Body() dto: CountDayEndDto, @Query('clinicId') clinicId?: string) {
+  count(@Query('date', RequiredDateParam) date: string, @Body() dto: CountDayEndDto, @Query('clinicId') clinicId?: string) {
     return this.dayEnd.count(clinicId, date, dto);
   }
 
   @Post('day-end/close')
-  close(@Query('date') date: string, @Body() dto: CloseDayEndDto, @Query('clinicId') clinicId?: string) {
+  close(@Query('date', RequiredDateParam) date: string, @Body() dto: CloseDayEndDto, @Query('clinicId') clinicId?: string) {
     return this.dayEnd.close(clinicId, date, dto);
   }
 
   @Post('day-end/reopen')
-  reopen(@Query('date') date: string, @Body() dto: ReopenDayEndDto, @Query('clinicId') clinicId?: string) {
+  reopen(@Query('date', RequiredDateParam) date: string, @Body() dto: ReopenDayEndDto, @Query('clinicId') clinicId?: string) {
     return this.dayEnd.reopen(clinicId, date, dto);
   }
 
@@ -102,9 +106,10 @@ export class FinanceController {
   listCreditNotes(
     @Query('clinicId') clinicId?: string,
     @Query('status') status?: CreditNoteStatus,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
+    @Query('from', OptionalDateParam) from?: string,
+    @Query('to', OptionalDateParam) to?: string,
   ) {
+    assertDateOrder(from, to);
     return this.creditNotes.list({ clinicId, status, from, to });
   }
 
@@ -141,7 +146,8 @@ export class FinanceController {
   }
 
   @Get('tax/report')
-  taxReport(@Query('from') from: string, @Query('to') to: string, @Query('clinicId') clinicId?: string) {
+  taxReport(@Query('from', RequiredDateParam) from: string, @Query('to', RequiredDateParam) to: string, @Query('clinicId') clinicId?: string) {
+    assertDateOrder(from, to);
     return this.tax.report({ from, to, clinicId });
   }
 }

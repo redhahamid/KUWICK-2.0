@@ -3,8 +3,14 @@ import { Test } from '@nestjs/testing';
 import { PrismaClient, Role } from '@prisma/client';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
-import { createTestPrismaClient, randomId, withTenantContext } from './test-db';
+import { createTestPrismaClient, randomId, upcomingWeekday, withTenantContext } from './test-db';
 import { bearerFor, createOwnerAndBearer } from './auth';
+
+// The suites below book appointments, and booking refuses the past. A fixed
+// Wednesday works right up until that Wednesday arrives; this one is always
+// the next Wednesday at least a week out. See upcomingWeekday in ./test-db.
+const BOOKING_DAY = upcomingWeekday(3);
+
 
 // Full HTTP-level proof that a caller can never see another tenant's data
 // through the real API — complements rls-enforcement.e2e-spec.ts, which
@@ -108,8 +114,8 @@ describe('Tenant isolation (e2e)', () => {
         staffId: fixture.staffId,
         serviceId: fixture.serviceId,
         source: 'FRONT_DESK',
-        scheduledStart: '2026-08-26T01:30:00.000Z',
-        scheduledEnd: '2026-08-26T02:00:00.000Z',
+        scheduledStart: `${BOOKING_DAY}T01:30:00.000Z`,
+        scheduledEnd: `${BOOKING_DAY}T02:00:00.000Z`,
       })
       .expect(201);
 
@@ -189,7 +195,7 @@ async function seedBookableDoctor(prisma: PrismaClient, tenantId: string): Promi
         tenantId,
         clinicId: clinic.id,
         staffId: staff.id,
-        dayOfWeek: new Date('2026-08-26T00:00:00.000Z').getUTCDay(),
+        dayOfWeek: new Date(`${BOOKING_DAY}T00:00:00.000Z`).getUTCDay(),
         startTime: new Date('1970-01-01T09:00:00.000Z'),
         endTime: new Date('1970-01-01T12:00:00.000Z'),
         effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
