@@ -145,16 +145,20 @@ function build(
     },
     stockLevel: {
       findUnique: jest.fn(async () => ({ quantityOnHand: stock })),
+      // WAVE 2 — every stock write goes through `postMovement`, which
+      // INCREMENTS by a signed delta rather than decrementing by a magnitude,
+      // and reads the post-state back. The mock mirrors that so the running
+      // balance below stays the real arithmetic.
       upsert: jest.fn(async ({ update }: any) => {
-        stock -= update.quantityOnHand.decrement;
+        stock += update.quantityOnHand.increment;
         stockUpdates.push(update);
-        return {};
+        return { quantityOnHand: stock };
       }),
     },
     stockMovement: {
       create: jest.fn(async ({ data }: any) => {
         movements.push(data);
-        return data;
+        return { id: `move-${movements.length}`, ...data };
       }),
     },
     queueTicket: {
@@ -369,7 +373,10 @@ describe('stock warnings', () => {
   it('23. sufficient stock records no shortage note', async () => {
     const ctx = build(staff());
     await ctx.dispense(['rx-1']);
-    expect(ctx.movements[0].notes).toBeUndefined();
+    // NULL rather than undefined since wave 2: `postMovement` writes every
+    // column explicitly, so "no note" is a stored NULL instead of a key the
+    // insert happened to omit.
+    expect(ctx.movements[0].notes).toBeNull();
   });
 });
 

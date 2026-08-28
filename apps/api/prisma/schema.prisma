@@ -323,6 +323,12 @@ model Tenant {
   creditNoteLines       CreditNoteLine[]
   taxCodes              TaxCode[]
   taxRates              TaxRate[]
+  stockTransfers        StockTransfer[]
+  stockTransferLines    StockTransferLine[]
+  stockTakes            StockTake[]
+  stockTakeLines        StockTakeLine[]
+  stockTakeAssignments  StockTakeAssignment[]
+  procurementBudgets    ProcurementBudget[]
   dayEndClosings        DayEndClosing[]
   staffPermissionGrants StaffPermissionGrant[]
 
@@ -403,6 +409,10 @@ model Clinic {
   consultationTariffRules     ConsultationTariffRule[]
   payments                    Payment[]
   creditNotes                 CreditNote[]
+  stockTransfersOut           StockTransfer[]              @relation("StockTransferFrom")
+  stockTransfersIn            StockTransfer[]              @relation("StockTransferTo")
+  stockTakes                  StockTake[]
+  procurementBudgets          ProcurementBudget[]
   dayEndClosings              DayEndClosing[]
   labelPrints                 LabelPrint[]
 
@@ -967,6 +977,17 @@ model Staff {
   creditNotesVoided            CreditNote[]                 @relation("CreditNoteVoidedBy")
   dayEndsCounted               DayEndClosing[]              @relation("DayEndCountedBy")
   dayEndsClosed                DayEndClosing[]              @relation("DayEndClosedBy")
+  stockTransfersCreated        StockTransfer[]              @relation("StockTransferCreatedBy")
+  stockTransfersSent           StockTransfer[]              @relation("StockTransferSentBy")
+  stockTransfersReceived       StockTransfer[]              @relation("StockTransferReceivedBy")
+  stockTransfersCancelled      StockTransfer[]              @relation("StockTransferCancelledBy")
+  stockTakesCreated            StockTake[]                  @relation("StockTakeCreatedBy")
+  stockTakesSubmitted          StockTake[]                  @relation("StockTakeSubmittedBy")
+  stockTakesReviewed           StockTake[]                  @relation("StockTakeReviewedBy")
+  stockTakeAssignments         StockTakeAssignment[]        @relation("StockTakeCounter")
+  stockTakeLinesCounted        StockTakeLine[]              @relation("StockTakeLineCounter")
+  procurementBudgetsCreated    ProcurementBudget[]          @relation("ProcurementBudgetCreatedBy")
+  stockMovementsMade           StockMovement[]              @relation("StockMovementActor")
   dayEndsReopened              DayEndClosing[]              @relation("DayEndReopenedBy")
   prescriptionsReviewed        Prescription[]               @relation("PrescriptionReviewer")
 
@@ -1775,12 +1796,33 @@ model Appointment {
 // docs/DEVELOPMENT_ROADMAP.md 1d). Stock take/variance and inter-branch
 // transfer are Phase 2 and not modeled here.
 
+// WAVE 2 — the movement types a two-branch clinic actually produces. Before
+// this, everything that was not a receipt or a dispense arrived as a bare
+// ADJUSTMENT, and an unexplained adjustment is indistinguishable from a
+// mistake. Existing rows keep their existing types; nothing is re-labelled.
 enum StockMovementType {
   GOODS_RECEIVED
   ADJUSTMENT
   // D-028 (docs/DECISIONS.md): stock deducts when a Prescription is marked
   // DISPENSED, not when it's written — this is that ledger entry.
   DISPENSED
+  /// Stock leaving a branch on a transfer. Paired with a TRANSFER_IN at the
+  /// receiving branch when the box is opened — never one movement for both,
+  /// because goods in transit belong to neither shelf.
+  TRANSFER_OUT
+  TRANSFER_IN
+  /// The posted correction from an approved stock take. Never written by the
+  /// act of counting.
+  STOCK_TAKE
+  /// Used by the clinic rather than sold: a dressing pack opened for a
+  /// procedure, alcohol swabs at the vaccination bench.
+  INTERNAL_USE
+  WASTAGE
+  EXPIRY
+  RETURN_TO_SUPPLIER
+  RETURN_FROM_PATIENT
+  /// The count a branch starts with, when stock control begins mid-life.
+  OPENING_BALANCE
 }
 
 // Mirrors packages/shared's ProcurementRequestStatus and PurchaseOrderStatus
@@ -1997,6 +2039,8 @@ model Item {
   ageDosages               ItemAgeDosage[]
   prescriptions            Prescription[]
   taxCode                  TaxCode?                @relation(fields: [taxCodeId], references: [id])
+  stockTransferLines       StockTransferLine[]
+  stockTakeLines           StockTakeLine[]
   panelPriceOverrides      PanelPriceOverride[]
   panelExclusions          PanelExclusion[]
 
@@ -2172,6 +2216,16 @@ model StockMovement {
   createdByUserId  String?  @map("created_by_user_id")
   createdAt        DateTime @default(now()) @map("created_at")
 
+  /// WAVE 2 — the structured reason, for every movement where "a prescription
+  /// was dispensed" is not the answer. Free text (`notes`) stays for the
+  /// human sentence; this is the column a report groups by.
+  adjustmentReason StockAdjustmentReason? @map("adjustment_reason")
+
+  /// The staff member who performed it. `createdByUserId` records the login;
+  /// this records the PERSON, which is what an audit of a stock correction is
+  /// actually asking about, and is set even where a staff row has no account.
+  createdByStaffId String? @map("created_by_staff_id")
+
   /// G4.5d5b-2 — why this movement happened, when it needs saying.
   ///
   /// Added for one specific fact the approved dispensing policy produces: a
@@ -2181,10 +2235,11 @@ model StockMovement {
   /// to find later. Nullable and free text; nothing branches on it.
   notes String? @map("notes")
 
-  tenant Tenant      @relation(fields: [tenantId], references: [id])
-  clinic Clinic      @relation(fields: [clinicId], references: [id])
-  item   Item        @relation(fields: [itemId], references: [id])
-  batch  StockBatch? @relation(fields: [batchId], references: [id])
+  createdByStaff Staff?      @relation("StockMovementActor", fields: [createdByStaffId], references: [id])
+  tenant         Tenant      @relation(fields: [tenantId], references: [id])
+  clinic         Clinic      @relation(fields: [clinicId], references: [id])
+  item           Item        @relation(fields: [itemId], references: [id])
+  batch          StockBatch? @relation(fields: [batchId], references: [id])
 
   @@index([tenantId, clinicId])
   @@index([tenantId, itemId])
@@ -5055,4 +5110,288 @@ model DayEndClosing {
   @@unique([tenantId, clinicId, businessDate])
   @@index([tenantId, clinicId, businessDate])
   @@map("day_end_closings")
+}
+
+// ===========================================================================
+// ADMIN PROGRAMME — WAVE 2: THE STOCK LEDGER
+//
+// `StockMovement` was already an append-only ledger with `StockLevel` as its
+// derived cache — the right shape. What it could not express was most of what
+// actually moves stock in a two-branch clinic: a transfer, a stock take, an
+// expiry write-off, a wastage, an internal consumption, an opening balance.
+// Three movement types (GOODS_RECEIVED, ADJUSTMENT, DISPENSED) meant every one
+// of those arrived as an unexplained ADJUSTMENT, and an unexplained adjustment
+// is indistinguishable from a mistake.
+//
+// This wave adds the movement types, a REASON on every non-routine movement,
+// and the two workflows that must never write stock directly: transfers, where
+// the sender cannot decide what the receiver counted, and stock takes, where
+// nothing changes until a second person approves the variance.
+// ===========================================================================
+
+/// Why a stock quantity changed, on the movements where "because a
+/// prescription was dispensed" is not the answer.
+///
+/// Free text was the alternative and it is not searchable, not reportable, and
+/// not comparable across branches. A clinic asking "how much did we lose to
+/// expiry last quarter" needs this to be a column.
+enum StockAdjustmentReason {
+  OPENING_BALANCE
+  COUNT_CORRECTION
+  DAMAGED
+  EXPIRED
+  WASTAGE
+  RETURN_TO_SUPPLIER
+  RETURN_FROM_PATIENT
+  INTERNAL_USE
+  DATA_ENTRY_ERROR
+  OTHER
+}
+
+enum StockTransferStatus {
+  DRAFT
+  SENT
+  /// Received with every line matching what was sent.
+  RECEIVED
+  /// Received, but at least one line's count differed from the sender's.
+  RECEIVED_WITH_DISCREPANCY
+  CANCELLED
+}
+
+/// Stock moving between two branches, as a document with two ends.
+///
+/// THE RULE THIS MODEL EXISTS TO ENFORCE (owner brief §3D): the sender cannot
+/// silently alter a receiver-confirmed quantity. `quantitySent` is written when
+/// the transfer is SENT and never again; `quantityReceived` is written by the
+/// receiving branch and never by the sender. A difference between them is a
+/// discrepancy that has to be explained, not a number somebody edits until the
+/// two ends agree.
+///
+/// Stock leaves the sending branch at SENT and arrives at the receiving branch
+/// at RECEIVED — two movements, both on the ledger, with the goods legitimately
+/// "in transit" and belonging to neither in between. Deducting and adding in
+/// one step would make a lorry-load of medicine appear at a branch that has not
+/// opened the box.
+model StockTransfer {
+  id             String              @id @default(uuid())
+  tenantId       String              @map("tenant_id")
+  transferNumber String              @map("transfer_number")
+  fromClinicId   String              @map("from_clinic_id")
+  toClinicId     String              @map("to_clinic_id")
+  status         StockTransferStatus @default(DRAFT)
+  notes          String?
+
+  createdByStaffId   String    @map("created_by_staff_id")
+  sentByStaffId      String?   @map("sent_by_staff_id")
+  sentAt             DateTime? @map("sent_at")
+  receivedByStaffId  String?   @map("received_by_staff_id")
+  receivedAt         DateTime? @map("received_at")
+  cancelledByStaffId String?   @map("cancelled_by_staff_id")
+  cancelledAt        DateTime? @map("cancelled_at")
+  cancelReason       String?   @map("cancel_reason")
+
+  /// PHYSICAL MOVEMENT AND ACCOUNTING SETTLEMENT ARE NOT THE SAME EVENT
+  /// (owner brief §3E). Where two branches belong to different companies, the
+  /// stock moves here and the money is settled by a separate document. This
+  /// field records that such a document exists and its reference; it does NOT
+  /// make this row an invoice.
+  interCompany          Boolean @default(false) @map("inter_company")
+  interCompanyReference String? @map("inter_company_reference")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant              @relation(fields: [tenantId], references: [id])
+  fromClinic  Clinic              @relation("StockTransferFrom", fields: [fromClinicId], references: [id])
+  toClinic    Clinic              @relation("StockTransferTo", fields: [toClinicId], references: [id])
+  createdBy   Staff               @relation("StockTransferCreatedBy", fields: [createdByStaffId], references: [id])
+  sentBy      Staff?              @relation("StockTransferSentBy", fields: [sentByStaffId], references: [id])
+  receivedBy  Staff?              @relation("StockTransferReceivedBy", fields: [receivedByStaffId], references: [id])
+  cancelledBy Staff?              @relation("StockTransferCancelledBy", fields: [cancelledByStaffId], references: [id])
+  lines       StockTransferLine[]
+
+  @@unique([tenantId, transferNumber])
+  @@index([tenantId, fromClinicId, status])
+  @@index([tenantId, toClinicId, status])
+  @@map("stock_transfers")
+}
+
+model StockTransferLine {
+  id         String @id @default(uuid())
+  tenantId   String @map("tenant_id")
+  transferId String @map("transfer_id")
+  itemId     String @map("item_id")
+
+  /// STOCK UNITS, the same unit `StockLevel` counts and a person counting the
+  /// shelf counts. Never dose units — see `StockMovement.quantityDelta`.
+  quantitySent      Int     @map("quantity_sent")
+  /// NULL until the receiving branch confirms. NULL is not zero: "not yet
+  /// received" and "received nothing" are different, and only one of them is a
+  /// discrepancy.
+  quantityReceived  Int?    @map("quantity_received")
+  discrepancyReason String? @map("discrepancy_reason")
+
+  /// The sending branch's unit cost at the time, snapshotted so an
+  /// inter-company settlement and a stock valuation both have a number that
+  /// does not move when the catalogue price does.
+  unitCost Decimal? @map("unit_cost") @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id])
+  transfer StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  item     Item          @relation(fields: [itemId], references: [id])
+
+  @@unique([transferId, itemId])
+  @@index([tenantId, transferId])
+  @@map("stock_transfer_lines")
+}
+
+enum StockTakeStatus {
+  DRAFT
+  COUNTING
+  /// Counted and submitted; variances await a reviewer.
+  IN_REVIEW
+  /// Approved and POSTED to the ledger. Terminal.
+  POSTED
+  CANCELLED
+}
+
+/// A stock take, as a cycle rather than as a spreadsheet.
+///
+/// THE RULE (owner brief §3G): "Do NOT change live stock simply because
+/// someone typed a count before approval." Counting writes to
+/// `StockTakeLine.countedQuantity` and nowhere else. Live stock changes once,
+/// at POST, as ordinary `StockMovement` rows with a STOCK_TAKE type and this
+/// take as their reference — so the correction is on the same ledger as every
+/// other movement and can be read back the same way.
+model StockTake {
+  id         String          @id @default(uuid())
+  tenantId   String          @map("tenant_id")
+  clinicId   String          @map("clinic_id")
+  takeNumber String          @map("take_number")
+  status     StockTakeStatus @default(DRAFT)
+  name       String
+  notes      String?
+  /// Free text: "Cold room", "Front dispensary shelf 3". A location model of
+  /// its own would be a fifth source of truth about where things are; the
+  /// clinic's own words are enough to split a count between two people.
+  location   String?
+
+  createdByStaffId   String    @map("created_by_staff_id")
+  submittedAt        DateTime? @map("submitted_at")
+  submittedByStaffId String?   @map("submitted_by_staff_id")
+  reviewedByStaffId  String?   @map("reviewed_by_staff_id")
+  reviewedAt         DateTime? @map("reviewed_at")
+  postedAt           DateTime? @map("posted_at")
+  cancelledAt        DateTime? @map("cancelled_at")
+  cancelReason       String?   @map("cancel_reason")
+
+  /// Frozen at POST: the variance and its value, so the historic take answers
+  /// "what did this cost us" without re-deriving it from stock that has moved
+  /// on since.
+  varianceValue Decimal? @map("variance_value") @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant                @relation(fields: [tenantId], references: [id])
+  clinic      Clinic                @relation(fields: [clinicId], references: [id])
+  createdBy   Staff                 @relation("StockTakeCreatedBy", fields: [createdByStaffId], references: [id])
+  submittedBy Staff?                @relation("StockTakeSubmittedBy", fields: [submittedByStaffId], references: [id])
+  reviewedBy  Staff?                @relation("StockTakeReviewedBy", fields: [reviewedByStaffId], references: [id])
+  lines       StockTakeLine[]
+  counters    StockTakeAssignment[]
+
+  @@unique([tenantId, takeNumber])
+  @@index([tenantId, clinicId, status])
+  @@map("stock_takes")
+}
+
+/// Who is counting what. A take split between two people needs to know which
+/// of them has finished.
+model StockTakeAssignment {
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  stockTakeId String    @map("stock_take_id")
+  staffId     String    @map("staff_id")
+  location    String?
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  stockTake StockTake @relation(fields: [stockTakeId], references: [id], onDelete: Cascade)
+  staff     Staff     @relation("StockTakeCounter", fields: [staffId], references: [id])
+
+  @@unique([stockTakeId, staffId, location])
+  @@index([tenantId, stockTakeId])
+  @@map("stock_take_assignments")
+}
+
+model StockTakeLine {
+  id          String @id @default(uuid())
+  tenantId    String @map("tenant_id")
+  stockTakeId String @map("stock_take_id")
+  itemId      String @map("item_id")
+
+  /// What the system believed when the sheet was generated. Frozen: the
+  /// variance is measured against what the counter was told, not against a
+  /// number that moved while they were counting.
+  systemQuantity   Int       @map("system_quantity")
+  /// What a person counted. NULL means not counted — which is not zero, and a
+  /// take with uncounted lines is not a take that can be posted.
+  countedQuantity  Int?      @map("counted_quantity")
+  /// Loose units found outside a full pack, recorded separately so a counter
+  /// does not have to do the division on the shelf.
+  looseUnits       Int?      @map("loose_units")
+  countedByStaffId String?   @map("counted_by_staff_id")
+  countedAt        DateTime? @map("counted_at")
+  /// A second count of a line whose first count looked wrong.
+  recountQuantity  Int?      @map("recount_quantity")
+  recountAt        DateTime? @map("recount_at")
+  varianceReason   String?   @map("variance_reason")
+  /// Excluded from the posted adjustment by a reviewer, with the reason kept.
+  excluded         Boolean   @default(false)
+  unitCost         Decimal?  @map("unit_cost") @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  stockTake StockTake @relation(fields: [stockTakeId], references: [id], onDelete: Cascade)
+  item      Item      @relation(fields: [itemId], references: [id])
+  countedBy Staff?    @relation("StockTakeLineCounter", fields: [countedByStaffId], references: [id])
+
+  @@unique([stockTakeId, itemId])
+  @@index([tenantId, stockTakeId])
+  @@map("stock_take_lines")
+}
+
+/// A monthly purchasing budget, by branch and optionally by category.
+///
+/// Actual spend is never stored here — it is summed from purchase orders, so
+/// the budget cannot drift away from what was really committed.
+model ProcurementBudget {
+  id       String   @id @default(uuid())
+  tenantId String   @map("tenant_id")
+  clinicId String   @map("clinic_id")
+  /// First day of the month the budget applies to.
+  period   DateTime @map("period") @db.Date
+  /// NULL means the whole branch. Set means this category's own allowance.
+  category String?
+  amount   Decimal  @db.Decimal(12, 2)
+  notes    String?
+
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  clinic    Clinic @relation(fields: [clinicId], references: [id])
+  createdBy Staff  @relation("ProcurementBudgetCreatedBy", fields: [createdByStaffId], references: [id])
+
+  @@unique([tenantId, clinicId, period, category])
+  @@index([tenantId, clinicId, period])
+  @@map("procurement_budgets")
 }

@@ -1,0 +1,423 @@
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, StockTransferStatus } from '@prisma/client';
+import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
+import { PrismaService } from '../core/prisma.service';
+import { currentTenantId } from '../core/tenant-context';
+import { requirePermission, resolveClinicId, withAdminTx } from '../finance/admin-actor';
+import { recordAudit } from '../finance/admin-audit';
+import { fromCents, toCents } from '../finance/money';
+import { movementTypeForReason, postMovement } from './stock-ledger';
+import { AdjustStockDto } from './dto/adjust-stock.dto';
+
+/** How many days without a movement makes an item "slow moving". Stated, not hidden. */
+export const SLOW_MOVING_DAYS = 90;
+/** How many days ahead counts as "near expiry". */
+export const NEAR_EXPIRY_DAYS = 90;
+
+/**
+ * THE STOCK MODULE'S FIRST QUESTION: "What requires attention today?"
+ *
+ * Owner brief §10. Not "here is every field of every item" — a stock homepage
+ * that lists 4,000 rows answers nothing. This service produces the EXCEPTIONS,
+ * each with a stated threshold rather than a magic number buried in a query,
+ * and each linking to the record that needs the work.
+ */
+@Injectable()
+export class StockAdminService {
+  constructor(
+    @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
+    private readonly rawPrisma: PrismaService,
+  ) {}
+
+  /**
+   * Correct a stock quantity, with a reason and an audit record.
+   *
+   * The one path by which a human may change a level directly, and the reason
+   * `stock.adjust` is a permission of its own rather than part of `stock.view`.
+   * There is deliberately no browser `prompt()` password anywhere near it: the
+   * gate is a server-side permission check, which is the only kind that works.
+   */
+  async adjust(dto: AdjustStockDto) {
+    return withAdminTx(this.rawPrisma, 'stock.adjust', async (tx, actor) => {
+      const clinicId = resolveClinicId(actor, dto.clinicId);
+      const item = await tx.item.findUnique({ where: { id: dto.itemId }, select: { id: true, name: true, cost: true } });
+      if (!item) throw new NotFoundException('Item not found');
+      if (dto.quantityDelta === 0) {
+        throw new BadRequestException('An adjustment of zero changes nothing.');
+      }
+
+      const result = await postMovement(tx, {
+        tenantId: currentTenantId(),
+        clinicId,
+        itemId: dto.itemId,
+        quantityDelta: dto.quantityDelta,
+        movementType: movementTypeForReason(dto.reason),
+        adjustmentReason: dto.reason,
+        batchId: dto.batchId ?? null,
+        referenceType: 'ManualAdjustment',
+        createdByStaffId: actor.id,
+        createdByUserId: actor.userId,
+        notes: dto.notes ?? null,
+      });
+
+      await recordAudit(tx, actor, {
+        action: 'stock.adjusted',
+        entityType: 'StockLevel',
+        entityId: `${clinicId}:${dto.itemId}`,
+        before: { quantityOnHand: result.quantityBefore },
+        after: {
+          quantityOnHand: result.quantityAfter,
+          delta: dto.quantityDelta,
+          reason: dto.reason,
+          itemName: item.name,
+          movementId: result.movementId,
+          valueImpact: fromCents(dto.quantityDelta * toCents(item.cost ?? 0)),
+        },
+        reason: dto.notes ?? dto.reason,
+        source: 'stock.adjustments',
+      });
+
+      return { ...result, itemName: item.name };
+    });
+  }
+
+  /**
+   * THE EXCEPTION DASHBOARD.
+   *
+   * Every count here is a piece of work somebody has to do. Nothing is
+   * included because it is interesting.
+   */
+  async exceptions(clinicIdInput?: string) {
+    const actor = await requirePermission(this.rawPrisma, 'stock.view');
+    const clinicId = clinicIdInput ?? actor.clinicId ?? undefined;
+    const now = new Date();
+    const nearExpiryCutoff = new Date(now.getTime() + NEAR_EXPIRY_DAYS * 86400000);
+    const slowCutoff = new Date(now.getTime() - SLOW_MOVING_DAYS * 86400000);
+    const clinicFilter = clinicId ? { clinicId } : {};
+
+    const [negative, belowMinimum, expired, nearExpiry, unconfirmedTransfers, discrepancyTransfers, openTakes, pendingRequests] =
+      await Promise.all([
+        this.prisma.stockLevel.count({ where: { ...clinicFilter, quantityOnHand: { lt: 0 } } }),
+        this.prisma.$queryRaw<{ count: bigint }[]>`
+          SELECT COUNT(*) AS count FROM "stock_levels" sl
+          WHERE sl."quantity_on_hand" >= 0
+            AND sl."min_threshold" > 0
+            AND sl."quantity_on_hand" < sl."min_threshold"
+            ${clinicId ? Prisma.sql`AND sl."clinic_id" = ${clinicId}` : Prisma.empty}
+        `,
+        this.prisma.stockBatch.count({
+          where: { ...clinicFilter, quantity: { gt: 0 }, expiryDate: { lt: now } },
+        }),
+        this.prisma.stockBatch.count({
+          where: { ...clinicFilter, quantity: { gt: 0 }, expiryDate: { gte: now, lte: nearExpiryCutoff } },
+        }),
+        this.prisma.stockTransfer.count({
+          where: {
+            status: StockTransferStatus.SENT,
+            ...(clinicId ? { OR: [{ fromClinicId: clinicId }, { toClinicId: clinicId }] } : {}),
+          },
+        }),
+        this.prisma.stockTransfer.count({
+          where: {
+            status: StockTransferStatus.RECEIVED_WITH_DISCREPANCY,
+            ...(clinicId ? { OR: [{ fromClinicId: clinicId }, { toClinicId: clinicId }] } : {}),
+          },
+        }),
+        this.prisma.stockTake.count({
+          where: { ...clinicFilter, status: { in: ['COUNTING', 'IN_REVIEW'] } },
+        }),
+        this.prisma.procurementRequest.count({ where: { ...clinicFilter, status: 'PENDING' } }),
+      ]);
+
+    // Slow movers: stocked, valuable, and untouched for the stated window.
+    const slowMovers = await this.prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*) AS count FROM "stock_levels" sl
+      WHERE sl."quantity_on_hand" > 0
+        ${clinicId ? Prisma.sql`AND sl."clinic_id" = ${clinicId}` : Prisma.empty}
+        AND NOT EXISTS (
+          SELECT 1 FROM "stock_movements" sm
+          WHERE sm."item_id" = sl."item_id"
+            AND sm."clinic_id" = sl."clinic_id"
+            AND sm."movement_type" = 'DISPENSED'
+            AND sm."created_at" >= ${slowCutoff}
+        )
+    `;
+
+    return {
+      clinicId: clinicId ?? null,
+      thresholds: { slowMovingDays: SLOW_MOVING_DAYS, nearExpiryDays: NEAR_EXPIRY_DAYS },
+      negativeStock: negative,
+      belowMinimum: Number(belowMinimum[0]?.count ?? 0),
+      expired,
+      nearExpiry,
+      unconfirmedTransfers,
+      transferDiscrepancies: discrepancyTransfers,
+      openStockTakes: openTakes,
+      pendingRequests,
+      slowMovers: Number(slowMovers[0]?.count ?? 0),
+    };
+  }
+
+  /** The rows behind one exception tile. */
+  async exceptionRows(kind: string, clinicIdInput?: string) {
+    const actor = await requirePermission(this.rawPrisma, 'stock.view');
+    const clinicId = clinicIdInput ?? actor.clinicId ?? undefined;
+    const now = new Date();
+    const clinicFilter = clinicId ? { clinicId } : {};
+
+    const itemSelect = { select: { id: true, name: true, code: true, category: true, unitOfMeasure: true, cost: true, sellPrice: true } };
+    const clinicSelect = { select: { name: true } };
+
+    switch (kind) {
+      case 'negative': {
+        const rows = await this.prisma.stockLevel.findMany({
+          where: { ...clinicFilter, quantityOnHand: { lt: 0 } },
+          include: { item: itemSelect, clinic: clinicSelect },
+          orderBy: { quantityOnHand: 'asc' },
+        });
+        return rows.map((row) => ({
+          itemId: row.itemId,
+          itemName: row.item.name,
+          itemCode: row.item.code,
+          category: row.item.category,
+          clinicId: row.clinicId,
+          clinicName: row.clinic.name,
+          quantityOnHand: row.quantityOnHand,
+          minThreshold: row.minThreshold,
+          unit: row.item.unitOfMeasure,
+        }));
+      }
+      case 'below-minimum': {
+        const rows = await this.prisma.stockLevel.findMany({
+          where: { ...clinicFilter, quantityOnHand: { gte: 0 }, minThreshold: { gt: 0 } },
+          include: { item: itemSelect, clinic: clinicSelect },
+        });
+        return rows
+          .filter((row) => row.quantityOnHand < row.minThreshold)
+          .map((row) => ({
+            itemId: row.itemId,
+            itemName: row.item.name,
+            itemCode: row.item.code,
+            category: row.item.category,
+            clinicId: row.clinicId,
+            clinicName: row.clinic.name,
+            quantityOnHand: row.quantityOnHand,
+            minThreshold: row.minThreshold,
+            shortfall: row.minThreshold - row.quantityOnHand,
+            unit: row.item.unitOfMeasure,
+          }))
+          .sort((a, b) => b.shortfall - a.shortfall);
+      }
+      case 'expired':
+      case 'near-expiry': {
+        const cutoff = new Date(now.getTime() + NEAR_EXPIRY_DAYS * 86400000);
+        const rows = await this.prisma.stockBatch.findMany({
+          where: {
+            ...clinicFilter,
+            quantity: { gt: 0 },
+            ...(kind === 'expired'
+              ? { expiryDate: { lt: now } }
+              : { expiryDate: { gte: now, lte: cutoff } }),
+          },
+          include: { item: itemSelect, clinic: clinicSelect },
+          orderBy: { expiryDate: 'asc' },
+        });
+        return rows.map((row) => ({
+          batchId: row.id,
+          itemId: row.itemId,
+          itemName: row.item.name,
+          itemCode: row.item.code,
+          clinicId: row.clinicId,
+          clinicName: row.clinic.name,
+          batchNumber: row.batchNumber,
+          quantity: row.quantity,
+          expiryDate: row.expiryDate,
+          daysToExpiry:
+            row.expiryDate === null
+              ? null
+              : Math.round((row.expiryDate.getTime() - now.getTime()) / 86400000),
+          valueAtCost: Number(row.item.cost ?? 0) * row.quantity,
+        }));
+      }
+      case 'slow-moving': {
+        const cutoff = new Date(now.getTime() - SLOW_MOVING_DAYS * 86400000);
+        const rows = await this.prisma.$queryRaw<
+          { item_id: string; clinic_id: string; quantity_on_hand: number; name: string; code: string | null; cost: string | null; last_dispensed: Date | null }[]
+        >`
+          SELECT sl."item_id", sl."clinic_id", sl."quantity_on_hand",
+                 i."name", i."code", i."cost",
+                 (SELECT MAX(sm."created_at") FROM "stock_movements" sm
+                   WHERE sm."item_id" = sl."item_id" AND sm."clinic_id" = sl."clinic_id"
+                     AND sm."movement_type" = 'DISPENSED') AS last_dispensed
+          FROM "stock_levels" sl
+          JOIN "items" i ON i."id" = sl."item_id"
+          WHERE sl."quantity_on_hand" > 0
+            ${clinicId ? Prisma.sql`AND sl."clinic_id" = ${clinicId}` : Prisma.empty}
+            AND NOT EXISTS (
+              SELECT 1 FROM "stock_movements" sm
+              WHERE sm."item_id" = sl."item_id" AND sm."clinic_id" = sl."clinic_id"
+                AND sm."movement_type" = 'DISPENSED' AND sm."created_at" >= ${cutoff}
+            )
+          ORDER BY sl."quantity_on_hand" * COALESCE(i."cost", 0) DESC
+          LIMIT 500
+        `;
+        return rows.map((row) => ({
+          itemId: row.item_id,
+          clinicId: row.clinic_id,
+          itemName: row.name,
+          itemCode: row.code,
+          quantityOnHand: Number(row.quantity_on_hand),
+          lastDispensedAt: row.last_dispensed,
+          daysSinceDispense:
+            row.last_dispensed === null
+              ? null
+              : Math.round((now.getTime() - new Date(row.last_dispensed).getTime()) / 86400000),
+          valueAtCost: Number(row.cost ?? 0) * Number(row.quantity_on_hand),
+        }));
+      }
+      default:
+        throw new BadRequestException(`Unknown exception view: ${kind}`);
+    }
+  }
+
+  /**
+   * STOCK VALUE.
+   *
+   * Two numbers, and the second one is labelled honestly. Cost value is what
+   * the stock cost. "Potential self-pay value" is what it would fetch if every
+   * unit sold at the cash price — which is NOT profit, NOT revenue, and NOT a
+   * forecast, and the field name says so everywhere it appears.
+   *
+   * COSTING METHODOLOGY: the item's CURRENT `cost` field, applied to the
+   * quantity on hand. This is a simple standard-cost valuation. It is NOT
+   * weighted average and NOT FIFO — neither is implemented, and reporting a
+   * FIFO number computed from a standard cost would be a fabricated precision.
+   */
+  async valuation(clinicIdInput?: string) {
+    const actor = await requirePermission(this.rawPrisma, 'stock.view');
+    const clinicId = clinicIdInput ?? actor.clinicId ?? undefined;
+
+    const levels = await this.prisma.stockLevel.findMany({
+      where: {
+        ...(clinicId ? { clinicId } : {}),
+        quantityOnHand: { gt: 0 },
+      },
+      include: {
+        item: { select: { id: true, name: true, code: true, category: true, cost: true, sellPrice: true } },
+        clinic: { select: { id: true, name: true } },
+      },
+    });
+
+    let costCents = 0;
+    let retailCents = 0;
+    let unpricedItems = 0;
+    const byCategory = new Map<string, { costCents: number; retailCents: number; items: number; units: number }>();
+    const byClinic = new Map<string, { name: string; costCents: number; retailCents: number; items: number }>();
+
+    for (const level of levels) {
+      const lineCost = level.quantityOnHand * toCents(level.item.cost ?? 0);
+      const lineRetail = level.quantityOnHand * toCents(level.item.sellPrice);
+      if (level.item.cost === null) unpricedItems += 1;
+      costCents += lineCost;
+      retailCents += lineRetail;
+
+      const category = level.item.category ?? 'Uncategorised';
+      const categoryBucket = byCategory.get(category) ?? { costCents: 0, retailCents: 0, items: 0, units: 0 };
+      categoryBucket.costCents += lineCost;
+      categoryBucket.retailCents += lineRetail;
+      categoryBucket.items += 1;
+      categoryBucket.units += level.quantityOnHand;
+      byCategory.set(category, categoryBucket);
+
+      const clinicBucket = byClinic.get(level.clinicId) ?? {
+        name: level.clinic.name,
+        costCents: 0,
+        retailCents: 0,
+        items: 0,
+      };
+      clinicBucket.costCents += lineCost;
+      clinicBucket.retailCents += lineRetail;
+      clinicBucket.items += 1;
+      byClinic.set(level.clinicId, clinicBucket);
+    }
+
+    return {
+      costingMethod: 'STANDARD_COST',
+      costingNote:
+        'Valued at each item’s current cost price × quantity on hand. Weighted-average and FIFO costing are not implemented; this figure does not claim to be either.',
+      totalCostValue: fromCents(costCents),
+      totalPotentialSelfPayValue: fromCents(retailCents),
+      potentialValueNote:
+        'Potential self-pay value is what this stock would fetch if every unit sold at the cash price. It is not profit and not a forecast.',
+      itemsValued: levels.length,
+      itemsWithoutCost: unpricedItems,
+      byCategory: [...byCategory.entries()]
+        .map(([category, bucket]) => ({
+          category,
+          costValue: fromCents(bucket.costCents),
+          potentialSelfPayValue: fromCents(bucket.retailCents),
+          items: bucket.items,
+          units: bucket.units,
+        }))
+        .sort((a, b) => b.costValue - a.costValue),
+      byClinic: [...byClinic.entries()]
+        .map(([id, bucket]) => ({
+          clinicId: id,
+          clinicName: bucket.name,
+          costValue: fromCents(bucket.costCents),
+          potentialSelfPayValue: fromCents(bucket.retailCents),
+          items: bucket.items,
+        }))
+        .sort((a, b) => b.costValue - a.costValue),
+    };
+  }
+
+  /** The movement ledger for one item at one branch — the drill-down. */
+  async movements(params: { clinicId?: string; itemId?: string; from?: string; to?: string; limit?: number }) {
+    const actor = await requirePermission(this.rawPrisma, 'stock.view');
+    const clinicId = params.clinicId ?? actor.clinicId ?? undefined;
+
+    const movements = await this.prisma.stockMovement.findMany({
+      where: {
+        ...(clinicId ? { clinicId } : {}),
+        ...(params.itemId ? { itemId: params.itemId } : {}),
+        ...(params.from || params.to
+          ? {
+              createdAt: {
+                ...(params.from ? { gte: new Date(`${params.from}T00:00:00.000Z`) } : {}),
+                ...(params.to ? { lt: new Date(new Date(`${params.to}T00:00:00.000Z`).getTime() + 86400000) } : {}),
+              },
+            }
+          : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(params.limit ?? 200, 1000),
+      include: {
+        item: { select: { name: true, code: true, unitOfMeasure: true } },
+        clinic: { select: { name: true } },
+        createdByStaff: { select: { fullName: true } },
+        batch: { select: { batchNumber: true, expiryDate: true } },
+      },
+    });
+
+    return movements.map((movement) => ({
+      id: movement.id,
+      createdAt: movement.createdAt,
+      clinicId: movement.clinicId,
+      clinicName: movement.clinic.name,
+      itemId: movement.itemId,
+      itemName: movement.item.name,
+      itemCode: movement.item.code,
+      unit: movement.item.unitOfMeasure,
+      movementType: movement.movementType,
+      adjustmentReason: movement.adjustmentReason,
+      quantityDelta: movement.quantityDelta,
+      clinicalQuantity: movement.clinicalQuantity,
+      referenceType: movement.referenceType,
+      referenceId: movement.referenceId,
+      batchNumber: movement.batch?.batchNumber ?? null,
+      by: movement.createdByStaff?.fullName ?? null,
+      notes: movement.notes,
+    }));
+  }
+}

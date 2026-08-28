@@ -3,6 +3,7 @@ import { DosageCalcMethod, PrescriptionStatus, PrescriptionSupplyMode, StockMove
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
+import { postMovement } from '../stock/stock-ledger';
 import { assertMayTouchVisit, requireActor, requireClinicalAuthor, withTenantTx } from './clinical-actor';
 import { VisitService } from './visit.service';
 import { CreatePrescriptionDto } from './dto/create-prescription.dto';
@@ -461,33 +462,23 @@ export class PrescriptionService {
       }
 
       const tenantId = currentTenantId();
-      await tx.stockMovement.create({
-        data: {
-          tenantId,
-          clinicId: visit.clinicId,
-          itemId: prescription.itemId,
-          movementType: StockMovementType.DISPENSED,
-          // Stock units out, dose units beside them. Both, so the row explains
-          // itself without a join to an item whose divisor may move later.
-          quantityDelta: -dispense.dispenseQuantity,
-          clinicalQuantity: dispense.clinicalQuantity,
-          referenceType: 'Prescription',
-          referenceId: prescription.id,
-          // The ACTOR, not a blank: the ledger says who moved the stock.
-          createdByUserId: actor.userId,
-        },
-      });
-      await tx.stockLevel.upsert({
-        where: {
-          tenantId_clinicId_itemId: { tenantId, clinicId: visit.clinicId, itemId: prescription.itemId },
-        },
-        create: {
-          tenantId,
-          clinicId: visit.clinicId,
-          itemId: prescription.itemId,
-          quantityOnHand: -dispense.dispenseQuantity,
-        },
-        update: { quantityOnHand: { decrement: dispense.dispenseQuantity } },
+      // WAVE 2 — through the ONE ledger writer, so a dispense reaches a stock
+      // level exactly the way a receipt, a transfer and a stock-take
+      // correction do.
+      await postMovement(tx, {
+        tenantId,
+        clinicId: visit.clinicId,
+        itemId: prescription.itemId,
+        movementType: StockMovementType.DISPENSED,
+        // Stock units out, dose units beside them. Both, so the row explains
+        // itself without a join to an item whose divisor may move later.
+        quantityDelta: -dispense.dispenseQuantity,
+        clinicalQuantity: dispense.clinicalQuantity,
+        referenceType: 'Prescription',
+        referenceId: prescription.id,
+        // The ACTOR, not a blank: the ledger says who moved the stock.
+        createdByUserId: actor.userId,
+        createdByStaffId: actor.id,
       });
 
       return tx.prescription.findUnique({ where: { id }, include: { item: true, prescribedBy: true } });

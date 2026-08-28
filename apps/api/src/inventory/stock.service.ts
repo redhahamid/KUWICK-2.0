@@ -6,6 +6,7 @@ import { currentTenantId } from '../core/tenant-context';
 import { SetStockMinThresholdDto } from './dto/set-stock-min-threshold.dto';
 import { QuickAddStockDto } from './dto/quick-add-stock.dto';
 import { StockTakeDto } from './dto/stock-take.dto';
+import { LedgerTx, postMovement } from '../stock/stock-ledger';
 
 @Injectable()
 export class StockService {
@@ -96,40 +97,36 @@ export class StockService {
       const item = level?.item ?? (await this.prisma.item.findUnique({ where: { id: count.itemId } }));
       if (!item) continue;
       const systemQuantity = level?.quantityOnHand ?? 0;
-      const variance = count.countedQuantity - systemQuantity;
 
-      if (variance !== 0) {
-        await this.prisma.stockMovement.create({
-          data: {
-            tenantId,
-            clinicId: dto.clinicId,
-            itemId: count.itemId,
-            movementType: StockMovementType.ADJUSTMENT,
-            quantityDelta: variance,
-            referenceType: 'StockTake',
-            createdByUserId: dto.countedByStaffId,
-          },
-        });
-        await this.prisma.stockLevel.upsert({
-          where: { tenantId_clinicId_itemId: { tenantId, clinicId: dto.clinicId, itemId: count.itemId } },
-          create: { tenantId, clinicId: dto.clinicId, itemId: count.itemId, quantityOnHand: count.countedQuantity },
-          update: { quantityOnHand: count.countedQuantity },
-        });
-      }
-
+      // WAVE 2 — THIS NO LONGER WRITES STOCK.
+      //
+      // It used to adjust the live level the instant somebody typed a count,
+      // which is precisely what the owner brief forbids: "Do NOT change live
+      // stock simply because someone typed a count before approval." A count
+      // is now recorded against a StockTake and posted to the ledger only when
+      // a SECOND person approves the variance (see StockTakeService).
+      //
+      // The endpoint survives as a read-only variance PREVIEW so that any
+      // client still calling it gets an honest answer — the variances it would
+      // produce — rather than a silent 404 or, worse, a silent write.
       results.push({
         itemId: count.itemId,
         itemName: item.name,
         systemQuantity,
         countedQuantity: count.countedQuantity,
-        variance,
+        variance: count.countedQuantity - systemQuantity,
       });
     }
 
     return {
       clinicId: dto.clinicId,
       countedItems: results.length,
-      adjustedItems: results.filter((row) => row.variance !== 0).length,
+      // Nothing is adjusted here any more — kept in the response shape so an
+      // existing client does not break, and always zero so it cannot be
+      // mistaken for work that happened.
+      adjustedItems: 0,
+      posted: false,
+      note: 'Preview only. A stock take is posted to the ledger through Stock ▸ Stock Take, after a second person approves the variance.',
       results,
     };
   }
@@ -170,29 +167,21 @@ export class StockService {
     const item = await this.prisma.item.findUnique({ where: { id: dto.itemId }, select: { id: true } });
     if (!item) throw new NotFoundException('Item not found');
 
-    return this.prisma.$transaction(async (tx) => {
-      await tx.stockMovement.create({
-        data: {
-          tenantId,
-          clinicId: dto.clinicId,
-          itemId: dto.itemId,
-          movementType: StockMovementType.ADJUSTMENT,
-          quantityDelta: dto.quantityDelta,
-          referenceType: 'InventoryQuickAdjust',
-          notes: dto.reason,
-        },
-      });
+    // WAVE 2 — through the ONE ledger writer. `postMovement` locks the level
+    // row before it reads, so two concurrent adjustments cannot both see 10 and
+    // both write 9; the old read-then-upsert could.
+    await postMovement(this.prisma as never as LedgerTx, {
+      tenantId,
+      clinicId: dto.clinicId,
+      itemId: dto.itemId,
+      quantityDelta: dto.quantityDelta,
+      movementType: StockMovementType.ADJUSTMENT,
+      referenceType: 'InventoryQuickAdjust',
+      notes: dto.reason,
+    });
 
-      return tx.stockLevel.upsert({
-        where: { tenantId_clinicId_itemId: { tenantId, clinicId: dto.clinicId, itemId: dto.itemId } },
-        create: {
-          tenantId,
-          clinicId: dto.clinicId,
-          itemId: dto.itemId,
-          quantityOnHand: dto.quantityDelta,
-        },
-        update: { quantityOnHand: { increment: dto.quantityDelta } },
-      });
+    return this.prisma.stockLevel.findUnique({
+      where: { tenantId_clinicId_itemId: { tenantId, clinicId: dto.clinicId, itemId: dto.itemId } },
     });
   }
 
@@ -213,30 +202,16 @@ export class StockService {
       },
     });
 
-    await this.prisma.stockMovement.create({
-      data: {
-        tenantId,
-        clinicId: dto.clinicId,
-        itemId: dto.itemId,
-        batchId: batch.id,
-        movementType: StockMovementType.GOODS_RECEIVED,
-        quantityDelta: dto.quantity,
-        referenceType: 'QuickStockIn',
-        referenceId: batch.id,
-      },
-    });
-
-    await this.prisma.stockLevel.upsert({
-      where: {
-        tenantId_clinicId_itemId: { tenantId, clinicId: dto.clinicId, itemId: dto.itemId },
-      },
-      create: {
-        tenantId,
-        clinicId: dto.clinicId,
-        itemId: dto.itemId,
-        quantityOnHand: dto.quantity,
-      },
-      update: { quantityOnHand: { increment: dto.quantity } },
+    await postMovement(this.prisma as never as LedgerTx, {
+      tenantId,
+      clinicId: dto.clinicId,
+      itemId: dto.itemId,
+      batchId: batch.id,
+      quantityDelta: dto.quantity,
+      movementType: StockMovementType.GOODS_RECEIVED,
+      referenceType: 'QuickStockIn',
+      referenceId: batch.id,
+      createdByStaffId: dto.addedByStaffId ?? null,
     });
 
     return batch;

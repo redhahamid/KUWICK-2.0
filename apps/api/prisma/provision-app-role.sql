@@ -90,7 +90,10 @@ BEGIN
     -- Wave-1 finance: money received is a historical fact. UPDATE stays
     -- granted (the append-only TRIGGER allows exactly two stamped columns and
     -- refuses everything else); DELETE does not, at any level.
-    'payments'
+    'payments',
+    -- Wave-2 stock: the movement ledger. StockLevel is derived from exactly
+    -- these rows, so a rewritable movement is a rewritable stock balance.
+    'stock_movements'
   ] LOOP
     IF to_regclass('public.' || t) IS NOT NULL THEN
       IF t = 'payments' THEN

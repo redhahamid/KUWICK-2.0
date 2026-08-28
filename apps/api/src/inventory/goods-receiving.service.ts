@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from '@nes
 import { PurchaseOrderLine, PurchaseOrderStatus, StockMovementType } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { currentTenantId } from '../core/tenant-context';
+import { LedgerTx, postMovement } from '../stock/stock-ledger';
 import { ReceivePurchaseOrderDto } from './dto/receive-purchase-order.dto';
 
 const CLOSED_STATUSES: PurchaseOrderStatus[] = [PurchaseOrderStatus.CLOSED, PurchaseOrderStatus.CANCELLED];
@@ -66,30 +67,19 @@ export class GoodsReceivingService {
         },
       });
 
-      await this.prisma.stockMovement.create({
-        data: {
-          tenantId,
-          clinicId: dto.clinicId,
-          itemId: orderLine.itemId,
-          batchId: batch.id,
-          movementType: StockMovementType.GOODS_RECEIVED,
-          quantityDelta: receiveLine.quantityReceived,
-          referenceType: 'GoodsReceivedNote',
-          referenceId: goodsReceivedNote.id,
-        },
-      });
-
-      await this.prisma.stockLevel.upsert({
-        where: {
-          tenantId_clinicId_itemId: { tenantId, clinicId: dto.clinicId, itemId: orderLine.itemId },
-        },
-        create: {
-          tenantId,
-          clinicId: dto.clinicId,
-          itemId: orderLine.itemId,
-          quantityOnHand: receiveLine.quantityReceived,
-        },
-        update: { quantityOnHand: { increment: receiveLine.quantityReceived } },
+      // WAVE 2 — through the ONE ledger writer, so a receipt, a dispense, a
+      // transfer and a stock-take correction all reach a stock level the same
+      // way and under the same row lock.
+      await postMovement(this.prisma as never as LedgerTx, {
+        tenantId,
+        clinicId: dto.clinicId,
+        itemId: orderLine.itemId,
+        batchId: batch.id,
+        quantityDelta: receiveLine.quantityReceived,
+        movementType: StockMovementType.GOODS_RECEIVED,
+        referenceType: 'GoodsReceivedNote',
+        referenceId: goodsReceivedNote.id,
+        createdByUserId: null,
       });
 
       await this.prisma.purchaseOrderLine.update({

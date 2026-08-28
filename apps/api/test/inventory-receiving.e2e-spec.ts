@@ -45,23 +45,12 @@ describe('Inventory: goods-received receiving and stock rules (e2e)', () => {
     clinicId = clinic.body.id;
   });
 
-  afterEach(async () => {
-    await withTenantContext(prisma, tenantId, async (tx) => {
-      await tx.goodsReceivedNoteLine.deleteMany({ where: { tenantId } });
-      await tx.goodsReceivedNote.deleteMany({ where: { tenantId } });
-      await tx.purchaseOrderLine.deleteMany({ where: { tenantId } });
-      await tx.purchaseOrder.deleteMany({ where: { tenantId } });
-      await tx.procurementRequest.deleteMany({ where: { tenantId } });
-      await tx.stockMovement.deleteMany({ where: { tenantId } });
-      await tx.stockBatch.deleteMany({ where: { tenantId } });
-      await tx.stockLevel.deleteMany({ where: { tenantId } });
-      await tx.item.deleteMany({ where: { tenantId } });
-      await tx.supplier.deleteMany({ where: { tenantId } });
-      await tx.clinic.deleteMany({ where: { tenantId } });
-      await tx.staff.deleteMany({ where: { tenantId } });
-      await tx.tenant.deleteMany({ where: { id: tenantId } });
-    });
-  });
+  // NO afterEach cleanup since wave 2 — `stock_movements` is append-only and
+  // enforced by a trigger (a movement is corrected by a compensating movement,
+  // never by deletion), so its parents cannot be deleted either. Same
+  // convention as clinical-visit-queue.e2e-spec.ts: kuwick_test is disposable
+  // (CODING_STANDARDS.md §5) and every test uses a fresh random tenant, so
+  // leftover rows collide with nothing.
 
   async function createItemAndSupplier() {
     const item = await request(app.getHttpServer())

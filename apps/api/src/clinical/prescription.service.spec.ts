@@ -192,8 +192,11 @@ describe('PrescriptionService', () => {
           updateMany: jest.fn().mockResolvedValue({ count: claimCount }),
         },
         visit: { findUnique: jest.fn().mockResolvedValue({ clinicId: 'clinic-1' }) },
-        stockMovement: { create: jest.fn() },
-        stockLevel: { upsert: jest.fn() },
+        // WAVE 2 — `postMovement` reads the created movement's id back and
+        // the level's post-state, so both mocks return a row rather than
+        // undefined.
+        stockMovement: { create: jest.fn().mockResolvedValue({ id: 'move-1' }) },
+        stockLevel: { upsert: jest.fn().mockResolvedValue({ quantityOnHand: 7 }) },
       };
       const rawPrisma = { $transaction: jest.fn((fn: any) => fn(tx)) } as never;
       const service = new PrescriptionService({} as never, { findById: jest.fn() } as never, rawPrisma);
@@ -226,9 +229,10 @@ describe('PrescriptionService', () => {
           // 34b. The ledger names who moved the stock.
           createdByUserId: 'user-disp',
         }),
+        select: { id: true },
       });
       expect(ctx.tx.stockLevel.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({ update: { quantityOnHand: { decrement: 3 } } }),
+        expect.objectContaining({ update: { quantityOnHand: { increment: -3 } } }),
       );
     });
 
@@ -284,9 +288,10 @@ describe('PrescriptionService', () => {
 
       expect(ctx.tx.stockMovement.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ quantityDelta: -3, clinicalQuantity: 30 }),
+        select: { id: true },
       });
       expect(ctx.tx.stockLevel.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({ update: { quantityOnHand: { decrement: 3 } } }),
+        expect.objectContaining({ update: { quantityOnHand: { increment: -3 } } }),
       );
     });
 
@@ -296,6 +301,7 @@ describe('PrescriptionService', () => {
 
       expect(ctx.tx.stockMovement.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ quantityDelta: -3 }),
+        select: { id: true },
       });
     });
 
@@ -305,6 +311,7 @@ describe('PrescriptionService', () => {
 
       expect(ctx.tx.stockMovement.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ quantityDelta: -2, clinicalQuantity: 12 }),
+        select: { id: true },
       });
     });
 
@@ -314,6 +321,7 @@ describe('PrescriptionService', () => {
 
       expect(ctx.tx.stockMovement.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ quantityDelta: -2, clinicalQuantity: 2 }),
+        select: { id: true },
       });
     });
 
@@ -338,6 +346,7 @@ describe('PrescriptionService', () => {
 
       expect(ctx.tx.stockMovement.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ quantityDelta: -3 }),
+        select: { id: true },
       });
     });
   });

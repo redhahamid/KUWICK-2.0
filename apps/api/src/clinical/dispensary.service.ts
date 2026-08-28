@@ -9,6 +9,7 @@ import {
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
+import { postMovement } from '../stock/stock-ledger';
 import {
   ClinicalTx,
   assertMayTouchVisit,
@@ -272,39 +273,27 @@ export class DispensaryService {
         }
 
         const tenantId = currentTenantId();
-        await tx.stockMovement.create({
-          data: {
-            tenantId,
-            clinicId: visit.clinicId,
-            itemId: prescription.itemId,
-            movementType: StockMovementType.DISPENSED,
-            // The SERVER's quantity, from the prescription the doctor wrote,
-            // converted to the stock units the shelf is counted in. No
-            // caller-supplied number reaches this line, which is what makes
-            // partial dispensing impossible rather than merely unimplemented.
-            quantityDelta: -dispense.dispenseQuantity,
-            // The dose units beside them, so "why did three strips leave" is
-            // answerable from the row.
-            clinicalQuantity: dispense.clinicalQuantity,
-            referenceType: 'Prescription',
-            referenceId: prescription.id,
-            createdByUserId: actor.userId,
-            ...(insufficient
-              ? { notes: `Dispensed with an acknowledged stock shortage (${onHand} on hand).` }
-              : {}),
-          },
-        });
-        await tx.stockLevel.upsert({
-          where: {
-            tenantId_clinicId_itemId: { tenantId, clinicId: visit.clinicId, itemId: prescription.itemId },
-          },
-          create: {
-            tenantId,
-            clinicId: visit.clinicId,
-            itemId: prescription.itemId,
-            quantityOnHand: -dispense.dispenseQuantity,
-          },
-          update: { quantityOnHand: { decrement: dispense.dispenseQuantity } },
+        // WAVE 2 — through the ONE ledger writer.
+        await postMovement(tx, {
+          tenantId,
+          clinicId: visit.clinicId,
+          itemId: prescription.itemId,
+          movementType: StockMovementType.DISPENSED,
+          // The SERVER's quantity, from the prescription the doctor wrote,
+          // converted to the stock units the shelf is counted in. No
+          // caller-supplied number reaches this line, which is what makes
+          // partial dispensing impossible rather than merely unimplemented.
+          quantityDelta: -dispense.dispenseQuantity,
+          // The dose units beside them, so "why did three strips leave" is
+          // answerable from the row.
+          clinicalQuantity: dispense.clinicalQuantity,
+          referenceType: 'Prescription',
+          referenceId: prescription.id,
+          createdByUserId: actor.userId,
+          createdByStaffId: actor.id,
+          notes: insufficient
+            ? `Dispensed with an acknowledged stock shortage (${onHand} on hand).`
+            : null,
         });
 
         return {

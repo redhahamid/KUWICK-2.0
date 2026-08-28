@@ -28,7 +28,7 @@ describe('StockService.quickAdd', () => {
     const { service, prisma } = createService();
     (prisma.stockBatch.create as jest.Mock).mockResolvedValue({ id: 'batch-1' });
     (prisma.stockMovement.create as jest.Mock).mockResolvedValue({ id: 'move-1' });
-    (prisma.stockLevel.upsert as jest.Mock).mockResolvedValue({ id: 'level-1' });
+    (prisma.stockLevel.upsert as jest.Mock).mockResolvedValue({ id: 'level-1', quantityOnHand: 20 });
 
     await withTenant(() =>
       service.quickAdd({
@@ -55,8 +55,11 @@ describe('StockService.quickAdd', () => {
         addedByStaffId: 'staff-1',
       },
     });
+    // WAVE 2 — every stock write now goes through `postMovement`, which
+    // records the structured reason and the acting STAFF member alongside the
+    // login, and selects only the id it needs back.
     expect(prisma.stockMovement.create).toHaveBeenCalledWith({
-      data: {
+      data: expect.objectContaining({
         tenantId: 'test-tenant',
         clinicId: 'clinic-1',
         itemId: 'item-1',
@@ -65,12 +68,15 @@ describe('StockService.quickAdd', () => {
         quantityDelta: 20,
         referenceType: 'QuickStockIn',
         referenceId: 'batch-1',
-      },
+        createdByStaffId: 'staff-1',
+      }),
+      select: { id: true },
     });
     expect(prisma.stockLevel.upsert).toHaveBeenCalledWith({
       where: { tenantId_clinicId_itemId: { tenantId: 'test-tenant', clinicId: 'clinic-1', itemId: 'item-1' } },
       create: { tenantId: 'test-tenant', clinicId: 'clinic-1', itemId: 'item-1', quantityOnHand: 20 },
       update: { quantityOnHand: { increment: 20 } },
+      select: { quantityOnHand: true },
     });
   });
 
@@ -78,7 +84,7 @@ describe('StockService.quickAdd', () => {
     const { service, prisma } = createService();
     (prisma.stockBatch.create as jest.Mock).mockResolvedValue({ id: 'batch-2' });
     (prisma.stockMovement.create as jest.Mock).mockResolvedValue({ id: 'move-2' });
-    (prisma.stockLevel.upsert as jest.Mock).mockResolvedValue({ id: 'level-2' });
+    (prisma.stockLevel.upsert as jest.Mock).mockResolvedValue({ id: 'level-2', quantityOnHand: 5 });
 
     await withTenant(() => service.quickAdd({ clinicId: 'clinic-1', itemId: 'item-1', quantity: 5 }));
 
@@ -118,15 +124,18 @@ describe('StockService.listNearExpiry', () => {
   });
 });
 
-describe('StockService.performStockTake', () => {
-  it('writes an ADJUSTMENT movement and updates the level when counted differs from system', async () => {
+describe('StockService.performStockTake — a PREVIEW since wave 2, not a write', () => {
+  it('reports the variance and changes NO stock', async () => {
+    // The owner brief is explicit: "Do NOT change live stock simply because
+    // someone typed a count before approval." This endpoint used to adjust the
+    // live level the instant a count arrived. It now computes the variance and
+    // writes nothing; the real cycle (count → submit → a SECOND person
+    // approves → post) lives in StockTakeService.
     const { service, prisma } = createService();
     (prisma.stockLevel.findUnique as jest.Mock).mockResolvedValue({
       quantityOnHand: 20,
       item: { name: 'Paracetamol' },
     });
-    (prisma.stockMovement.create as jest.Mock).mockResolvedValue({ id: 'move-1' });
-    (prisma.stockLevel.upsert as jest.Mock).mockResolvedValue({ id: 'level-1' });
 
     const result = await withTenant(() =>
       service.performStockTake({
@@ -136,71 +145,35 @@ describe('StockService.performStockTake', () => {
       }),
     );
 
-    expect(prisma.stockMovement.create).toHaveBeenCalledWith({
-      data: {
-        tenantId: 'test-tenant',
-        clinicId: 'clinic-1',
-        itemId: 'item-1',
-        movementType: StockMovementType.ADJUSTMENT,
-        quantityDelta: -2,
-        referenceType: 'StockTake',
-        createdByUserId: 'staff-1',
-      },
-    });
-    expect(prisma.stockLevel.upsert).toHaveBeenCalledWith({
-      where: { tenantId_clinicId_itemId: { tenantId: 'test-tenant', clinicId: 'clinic-1', itemId: 'item-1' } },
-      create: { tenantId: 'test-tenant', clinicId: 'clinic-1', itemId: 'item-1', quantityOnHand: 18 },
-      update: { quantityOnHand: 18 },
-    });
-    expect(result).toEqual({
+    expect(prisma.stockMovement.create).not.toHaveBeenCalled();
+    expect(prisma.stockLevel.upsert).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
       clinicId: 'clinic-1',
       countedItems: 1,
-      adjustedItems: 1,
+      adjustedItems: 0,
+      posted: false,
       results: [{ itemId: 'item-1', itemName: 'Paracetamol', systemQuantity: 20, countedQuantity: 18, variance: -2 }],
     });
+    expect(result.note).toMatch(/approves the variance/);
   });
 
-  it('writes nothing when the counted quantity matches the system quantity', async () => {
+  it('reports a zero variance when the count matches', async () => {
     const { service, prisma } = createService();
     (prisma.stockLevel.findUnique as jest.Mock).mockResolvedValue({
-      quantityOnHand: 10,
-      item: { name: 'Bandage' },
+      quantityOnHand: 20,
+      item: { name: 'Paracetamol' },
     });
 
     const result = await withTenant(() =>
       service.performStockTake({
         clinicId: 'clinic-1',
-        counts: [{ itemId: 'item-2', countedQuantity: 10 }],
+        countedByStaffId: 'staff-1',
+        counts: [{ itemId: 'item-1', countedQuantity: 20 }],
       }),
     );
 
     expect(prisma.stockMovement.create).not.toHaveBeenCalled();
-    expect(prisma.stockLevel.upsert).not.toHaveBeenCalled();
-    expect(result.adjustedItems).toBe(0);
     expect(result.results[0].variance).toBe(0);
-  });
-
-  it('falls back to the Item table and treats a missing StockLevel as zero on hand', async () => {
-    const { service, prisma } = createService();
-    (prisma.stockLevel.findUnique as jest.Mock).mockResolvedValue(null);
-    (prisma.item.findUnique as jest.Mock).mockResolvedValue({ name: 'New Item' });
-    (prisma.stockMovement.create as jest.Mock).mockResolvedValue({ id: 'move-2' });
-    (prisma.stockLevel.upsert as jest.Mock).mockResolvedValue({ id: 'level-2' });
-
-    const result = await withTenant(() =>
-      service.performStockTake({
-        clinicId: 'clinic-1',
-        counts: [{ itemId: 'item-3', countedQuantity: 5 }],
-      }),
-    );
-
-    expect(result.results[0]).toEqual({
-      itemId: 'item-3',
-      itemName: 'New Item',
-      systemQuantity: 0,
-      countedQuantity: 5,
-      variance: 5,
-    });
   });
 });
 
@@ -211,7 +184,8 @@ describe('StockService.adjust — the quick +/- on the inventory list', () => {
     // the near-expiry screen. A person correcting 40 to 41 received nothing.
     const { service, prisma } = createService();
     (prisma.item.findUnique as jest.Mock).mockResolvedValue({ id: 'item-1' });
-    (prisma.stockLevel.upsert as jest.Mock).mockResolvedValue({ id: 'level-1' });
+    (prisma.stockMovement.create as jest.Mock).mockResolvedValue({ id: 'move-1' });
+    (prisma.stockLevel.upsert as jest.Mock).mockResolvedValue({ id: 'level-1', quantityOnHand: 41 });
 
     await withTenant(() =>
       service.adjust({ clinicId: 'clinic-1', itemId: 'item-1', quantityDelta: 1, reason: 'Shelf count' }),
@@ -219,7 +193,7 @@ describe('StockService.adjust — the quick +/- on the inventory list', () => {
 
     expect(prisma.stockBatch.create).not.toHaveBeenCalled();
     expect(prisma.stockMovement.create).toHaveBeenCalledWith({
-      data: {
+      data: expect.objectContaining({
         tenantId: 'test-tenant',
         clinicId: 'clinic-1',
         itemId: 'item-1',
@@ -227,7 +201,8 @@ describe('StockService.adjust — the quick +/- on the inventory list', () => {
         quantityDelta: 1,
         referenceType: 'InventoryQuickAdjust',
         notes: 'Shelf count',
-      },
+      }),
+      select: { id: true },
     });
   });
 
@@ -236,7 +211,8 @@ describe('StockService.adjust — the quick +/- on the inventory list', () => {
     // not caught up, and admin reconciles from GET /stock/negative-stock.
     const { service, prisma } = createService();
     (prisma.item.findUnique as jest.Mock).mockResolvedValue({ id: 'item-1' });
-    (prisma.stockLevel.upsert as jest.Mock).mockResolvedValue({ id: 'level-1' });
+    (prisma.stockMovement.create as jest.Mock).mockResolvedValue({ id: 'move-1' });
+    (prisma.stockLevel.upsert as jest.Mock).mockResolvedValue({ id: 'level-1', quantityOnHand: 41 });
 
     await withTenant(() =>
       service.adjust({ clinicId: 'clinic-1', itemId: 'item-1', quantityDelta: -3, reason: 'Broken vial' }),
