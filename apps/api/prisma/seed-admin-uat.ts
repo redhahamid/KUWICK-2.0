@@ -84,7 +84,7 @@ async function main() {
 
   const ids = await withTenant(async (tx) => {
     const tenant = await tx.tenant.create({
-      data: { id: TENANT_ID, name: 'Klinik Contoh Group (Synthetic UAT)' },
+      data: { id: TENANT_ID, name: 'Klinik Contoh (UAT)' },
     });
 
     // --- Branches ---------------------------------------------------------
@@ -269,7 +269,7 @@ async function main() {
   await verify();
 
   console.log('\nAdmin UAT seed complete.');
-  console.log(`  tenant   : Klinik Contoh Group (Synthetic UAT)`);
+  console.log(`  tenant   : Klinik Contoh (UAT)`);
   console.log(`  branches : Contoh Central, Contoh Bandar`);
   console.log(`  sign in  : owner@${DOMAIN} / ${PASSWORD}`);
   console.log(`             finance@${DOMAIN}, stock@${DOMAIN}, panel@${DOMAIN} (same password)`);

@@ -86,6 +86,22 @@ test.describe('HR', () => {
     // The exception count is a person who cannot be paid yet, not a warning.
     await expect(page.getByRole('row', { name: /2026-07/ })).toContainText(/1/);
 
+    // --- DETAIL, the fourth step of the hierarchy -------------------------
+    // Summary → exceptions → work queue → detail. A run whose lines cannot be
+    // opened is a total nobody can check. It expands in place rather than in a
+    // modal, because the person reading it is comparing it to the row above.
+    await page.getByRole('row', { name: /2026-07/ }).click();
+    const detail = page.locator('.kw-adminSection', { hasText: 'Contoh Central' }).last();
+    await expect(detail.getByRole('heading', { name: /2026-07 · Contoh Central/ })).toBeVisible();
+
+    // The person who cannot be paid is NAMED, not counted — an exception count
+    // with no name attached is a number somebody approves past.
+    await expect(detail.locator('.ant-table-tbody tr.ant-table-row').first()).toBeVisible();
+
+    // And approving is gated on resolving them, not merely warned about.
+    const approve = page.getByRole('button', { name: /Approve/ });
+    if (await approve.count() > 0) await expect(approve.first()).toBeDisabled();
+
     expect(errors).toEqual([]);
   });
 

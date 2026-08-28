@@ -103,6 +103,9 @@ export interface ReceivablesReport {
   invoiceCount: number;
   unresolvedCount: number;
   aging: { current: number; d31_60: number; d61_90: number; d90_plus: number };
+  /** How many invoices sit in each bucket — the amount is what gets chased,
+   *  the count is what decides whether the bucket is clean. */
+  agingCounts: { current: number; d31_60: number; d61_90: number; d90_plus: number };
   rows: {
     invoiceId: string;
     invoiceNumber: string;

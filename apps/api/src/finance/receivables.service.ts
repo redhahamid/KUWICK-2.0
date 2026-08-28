@@ -70,6 +70,11 @@ export class ReceivablesService {
     });
 
     const aging: Record<AgingBucket, number> = emptyAging();
+    // How MANY invoices sit in each bucket, alongside how much. The dashboard
+    // needs both: the amount is what gets chased, the count is what decides
+    // whether a bucket is clean. Counted here rather than re-derived on the
+    // client, so there is one bucket rule and not two.
+    const agingCounts: Record<AgingBucket, number> = emptyAging();
     const rows = [];
     let unresolvedCount = 0;
 
@@ -99,6 +104,7 @@ export class ReceivablesService {
 
       const ageDays = daysBetween(invoice.createdAt, asOf);
       accumulateAging(aging, ageDays, balance.balanceCents);
+      accumulateAging(agingCounts, ageDays, 1);
 
       const lastPayment = invoice.payments
         .filter((payment) => !payment.reversedAt)
@@ -136,6 +142,12 @@ export class ReceivablesService {
         d31_60: fromCents(aging.D31_60),
         d61_90: fromCents(aging.D61_90),
         d90_plus: fromCents(aging.D90_PLUS),
+      },
+      agingCounts: {
+        current: agingCounts.CURRENT,
+        d31_60: agingCounts.D31_60,
+        d61_90: agingCounts.D61_90,
+        d90_plus: agingCounts.D90_PLUS,
       },
       rows: rows.sort((a, b) => b.ageDays - a.ageDays),
     };

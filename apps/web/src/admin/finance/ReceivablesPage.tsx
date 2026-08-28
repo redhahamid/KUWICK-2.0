@@ -22,6 +22,7 @@ export function ReceivablesPage() {
   const panel = usePanelReconciliation({});
 
   const aging = patients.data?.aging;
+  const counts = patients.data?.agingCounts ?? { current: 0, d31_60: 0, d61_90: 0, d90_plus: 0 };
 
   return (
     <AdminShell
@@ -69,10 +70,14 @@ export function ReceivablesPage() {
       <AdminSection title="Patient receivables by age" description="Aged from the invoice date, as at the selected day.">
         <ExceptionTiles
           tiles={[
-            { key: 'c', label: `0–30 days · ${money(aging?.current ?? 0)}`, count: 0, tone: 'info' },
-            { key: 'a', label: `31–60 days · ${money(aging?.d31_60 ?? 0)}`, count: 0, tone: 'warn' },
-            { key: 'b', label: `61–90 days · ${money(aging?.d61_90 ?? 0)}`, count: 0, tone: 'warn' },
-            { key: 'd', label: `Over 90 · ${money(aging?.d90_plus ?? 0)}`, count: 0, tone: 'bad' },
+            // Same shape as the Finance overview's, deliberately: the amount
+            // above, how many invoices make it up below. A bare `0` over every
+            // bucket, which is what this used to draw, is a number that means
+            // nothing on a screen whose whole job is what is owed.
+            { key: 'c', label: `0–30 days · ${counts.current} invoice(s)`, count: counts.current, display: money(aging?.current ?? 0), tone: 'info' },
+            { key: 'a', label: `31–60 days · ${counts.d31_60} invoice(s)`, count: counts.d31_60, display: money(aging?.d31_60 ?? 0), tone: 'warn' },
+            { key: 'b', label: `61–90 days · ${counts.d61_90} invoice(s)`, count: counts.d61_90, display: money(aging?.d61_90 ?? 0), tone: 'warn' },
+            { key: 'd', label: `Over 90 · ${counts.d90_plus} invoice(s)`, count: counts.d90_plus, display: money(aging?.d90_plus ?? 0), tone: 'bad' },
           ]}
         />
       </AdminSection>

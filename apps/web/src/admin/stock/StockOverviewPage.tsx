@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Tag } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
@@ -33,6 +33,31 @@ export function StockOverviewPage() {
   const valuation = useStockValuation(clinicId);
 
   const t = exceptions.data;
+
+  /**
+   * WHICH COLUMNS THIS VIEW ACTUALLY REPORTS.
+   *
+   * The seven exception views share one table, and each returns a different
+   * subset of fields — below-minimum has no batch and no cost, near-expiry has
+   * no shortfall. Rendering the full column set filled the gaps with em-dashes,
+   * which on a stock screen reads as a fact: "value at cost —" says this item
+   * has no cost on record, three lines under a panel reporting that none are
+   * missing one. Worse, "Last dispensed: Never" appeared against an item that
+   * had 185 strips dispensed out of it.
+   *
+   * So a column appears when at least one row carries the key at all. A key
+   * present and NULL still shows — that is the view saying "genuinely never" —
+   * and a key the view does not report simply is not a column.
+   */
+  const reportedKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const row of rows.data ?? []) {
+      for (const [key, value] of Object.entries(row as Record<string, unknown>)) {
+        if (value !== undefined) keys.add(key);
+      }
+    }
+    return keys;
+  }, [rows.data]);
 
   return (
     <AdminShell error={firstError(exceptions, rows, valuation)} title="Stock" subtitle="What requires attention today, and what the shelves are worth.">
@@ -160,7 +185,7 @@ export function StockOverviewPage() {
               className: 'kw-num',
               render: (value: number | undefined) => (value === undefined ? '—' : money(value)),
             },
-          ]}
+          ].filter((column) => reportedKeys.size === 0 || reportedKeys.has(column.dataIndex as string))}
         />
       </AdminSection>
 

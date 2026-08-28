@@ -53,7 +53,19 @@ export function StatStrip({ stats }: { stats: Stat[] }) {
 export interface ExceptionTile {
   key: string;
   label: string;
+  /**
+   * How many things need attention. A tile reading `0` is CLEAN and renders
+   * quiet — which is why an amount must never be passed here: `RM569.10`
+   * rounded into this slot reads as 569 invoices, and an amount that happens
+   * to be zero would paint a tile green while somebody is owed nothing yet.
+   */
   count: number;
+  /**
+   * What the tile SHOWS, when that is not the count — a money total on an
+   * aging bucket. `count` still decides the tone, so a bucket holding
+   * RM84.80 across one invoice is styled as one thing to chase.
+   */
+  display?: string;
   tone?: 'bad' | 'warn' | 'info';
   hint?: string;
   onSelect?: () => void;
@@ -79,7 +91,7 @@ export function ExceptionTiles({ tiles, selected }: { tiles: ExceptionTile[]; se
             disabled={!tile.onSelect}
             title={tile.hint}
           >
-            <span className="kw-exceptionTile__count">{tile.count}</span>
+            <span className="kw-exceptionTile__count">{tile.display ?? tile.count}</span>
             <span className="kw-exceptionTile__label">{tile.label}</span>
           </button>
         );

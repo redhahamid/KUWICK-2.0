@@ -33,6 +33,7 @@ export function FinanceOverviewPage() {
 
   const unreconciled = openDays.data ?? [];
   const aging = receivables.data?.aging;
+  const agingCounts = receivables.data?.agingCounts ?? { current: 0, d31_60: 0, d61_90: 0, d90_plus: 0 };
 
   const stats = useMemo(
     () => [
@@ -141,10 +142,12 @@ export function FinanceOverviewPage() {
         >
           <ExceptionTiles
             tiles={[
-              { key: 'current', label: '0–30 days', count: Math.round(aging?.current ?? 0), tone: 'info' },
-              { key: 'd31', label: '31–60 days', count: Math.round(aging?.d31_60 ?? 0), tone: 'warn' },
-              { key: 'd61', label: '61–90 days', count: Math.round(aging?.d61_90 ?? 0), tone: 'warn' },
-              { key: 'd90', label: 'Over 90 days', count: Math.round(aging?.d90_plus ?? 0), tone: 'bad' },
+              // The amount is what a person chases, so the amount is what the
+              // tile shows; the count still decides whether it is clean.
+              { key: 'current', label: '0–30 days', count: agingCounts.current, display: money(aging?.current ?? 0), tone: 'info' },
+              { key: 'd31', label: '31–60 days', count: agingCounts.d31_60, display: money(aging?.d31_60 ?? 0), tone: 'warn' },
+              { key: 'd61', label: '61–90 days', count: agingCounts.d61_90, display: money(aging?.d61_90 ?? 0), tone: 'warn' },
+              { key: 'd90', label: 'Over 90 days', count: agingCounts.d90_plus, display: money(aging?.d90_plus ?? 0), tone: 'bad' },
             ]}
           />
           {(receivables.data?.unresolvedCount ?? 0) > 0 ? (

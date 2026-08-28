@@ -183,7 +183,11 @@ export function AppLayout() {
             {/* minWidth 0 so this truncates instead of pushing the user menu
                 off the right edge of a phone, where it was unreachable. */}
             <Text strong style={{ flex: 1, minWidth: 0 }} ellipsis>
-              {inSettings ? 'Clinic Settings' : 'Management'}
+              {/* Each hub names itself. Administration read "Management" here,
+                  which is a different area with different screens — a header
+                  that mislabels where you are is how somebody reports a bug
+                  against the wrong module. */}
+              {inSettings ? 'Clinic Settings' : inAdmin ? 'Administration' : 'Management'}
             </Text>
           </>
         )}

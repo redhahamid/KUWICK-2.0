@@ -31,6 +31,15 @@ test.describe('Stock', () => {
     await expect(page.getByText(/It is not profit and not a forecast/i)).toBeVisible();
     await expect(statValue(page, 'POTENTIAL SELF-PAY VALUE')).toBeVisible();
 
+    // A view shows only the columns it actually reports. The seven exception
+    // views share one table, and padding the gaps with em-dashes turned "this
+    // view does not report cost" into "this item has no cost on record" — with
+    // a panel three lines below saying none are missing one.
+    const board = page.locator('.kw-dataTable').first();
+    await expect(board.getByRole('columnheader', { name: 'Shortfall' })).toBeVisible();
+    await expect(board.getByRole('columnheader', { name: 'Value at cost' })).toHaveCount(0);
+    await expect(board.getByRole('columnheader', { name: 'Last dispensed' })).toHaveCount(0);
+
     // --- The ledger is the source, and says so ----------------------------
     await gotoAdmin(page, '/admin/stock/movements');
     await expect(page.getByText(/append-only, enforced by the database/i)).toBeVisible();
