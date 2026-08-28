@@ -214,6 +214,16 @@ Money is integer cents everywhere (`finance/money.ts`). Rounding happens once, a
 
 The UAT seed re-derives every one of these from the rows it writes and refuses to report success if any drift. `npx tsx prisma/seed-admin-uat.ts --verify-only` re-checks a tenant without rebuilding it.
 
+### 4.1 How each invariant is held
+
+| Layer | What it catches |
+|---|---|
+| **Pure unit tests** — 144 across the arithmetic modules | The rule itself: money rounding (10), invoice/balance/claim/aging (23), tax in force (11), transfer and stock-take variance (17), attendance hours (10), leave balance (11), payroll (18), incentives (15), segment mapping (10), date parameters (19) |
+| **Integration tests** against real PostgreSQL | The rule surviving a transaction, RLS, concurrency and a locked run: finance 11, stock 13, panel 10, workforce 12 |
+| **Database triggers and CHECKs** | The rule surviving a raw query that never went through the application at all |
+| **The seed's own `verify()`** | The rule holding over a whole realistic dataset, not just a fixture |
+| **Browser tests** — 24 | The rule reaching the screen, and the screen not claiming more than the rule supports |
+
 ---
 
 ## 5. Permission model

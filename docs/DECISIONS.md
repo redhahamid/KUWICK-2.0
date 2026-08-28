@@ -2340,6 +2340,64 @@ Recorded at the owner's request after G4c1. **Nothing here is changed.** Each de
 
 ---
 
+## D-106 — Money received becomes its own record
+
+`Invoice.patientPaidAmount` was a running total on the invoice: enough to know a bill was settled, not enough to answer when, by what tender, taken by whom, or which of three part-payments was the one keyed against the wrong patient. Day-end reconciliation, the payment report and the receivables age all needed the same thing — a row per movement of money.
+
+`Payment` is that row: kind (PAYMENT / REFUND), tender, amount, actor, timestamp, invoice. Append-only, enforced by a database trigger that permits exactly two later stamps (`reversed_at`, `day_end_closing_id`) and no deletes at all. The existing PAID invoices were backfilled by an idempotent INSERT, so the ledger starts complete rather than starting today.
+
+**A reversal is not a refund**, and the distinction is structural, not presentational. A refund is money genuinely handed back; it reduces net receipts. A reversal says the record itself was wrong: both the original row and its reversing row stay on the ledger, both stamped `reversed_at`, and neither counts toward anything. One rule — "reversed rows do not count" — covers both halves, which is why the count cannot drift.
+
+---
+
+## D-107 — Service tax lands on the patient's portion by default
+
+Tax has to be line-driven (each line carries its own code, treatment, rate and amount, snapshotted at the rate in force on the invoice's own date), and the invoice split has to keep adding up: patient responsibility plus panel responsibility equals the total. Those two pull against each other the moment a panel-covered line is taxable, because the panel's contractual share is a fixed sum that tax must not inflate.
+
+Resolved with a configurable basis, `finance.taxBasis`, defaulting to `PATIENT_PORTION`: the line's tax is computed line by line, and lands on the patient's responsibility. The alternative, `FULL_LINE`, exists for a clinic whose panel agreements say otherwise. The default is the safer of the two — it never inflates a receivable a panel has not agreed to pay.
+
+**Unmapped is not zero-rated.** A line with no tax code is reported as *not classified*, as its own number the owner can act on, rather than assumed exempt. A missing classification and a deliberate exemption are different facts and stay different.
+
+---
+
+## D-108 — A typed count changes no stock until somebody else approves it
+
+`POST /stock/stock-take` adjusted the live balance the instant a count was submitted. One person, no review, no record of what the system had said beforehand — and the adjustment was indistinguishable from any other.
+
+Counting now writes to `StockTakeLine.countedQuantity` and to nothing else. `systemQuantity` is frozen when the take opens, so the variance is measured against what the ledger said when counting began rather than against whatever it says at approval. A second person — **not** the submitter, checked by identity in code — approves, and only then does the ledger move, as `STOCK_TAKE` movements carrying the before and after in each note.
+
+The old endpoint survives as a read-only **preview** returning the variances it would produce, `posted: false`, and a note saying where the real workflow lives. A silent 404 would have been a worse answer than an honest one, and a silent write would have been worse still.
+
+---
+
+## D-109 — Stock that never arrived stays missing
+
+A branch transfer writes `quantitySent` once, at send, by the sender, and `quantityReceived` once, at receipt, by the receiver. **The sender cannot alter what the receiver confirmed.** In between, the stock is on neither shelf and is reported as in transit.
+
+Where the two disagree, the difference is a discrepancy requiring a reason, and the missing units **stay missing**. Putting them back automatically would balance the ledger by hiding a loss, which is the one thing an inventory system must not do. It is resolved by a deliberate adjustment once somebody knows what happened.
+
+An unconfirmed line is *not* a discrepancy — that is in-transit stock, a different fact on a different screen. Collapsing the two would report every transfer as broken the moment it left the building.
+
+---
+
+## D-110 — Payroll refuses to print a statutory figure it cannot stand behind
+
+Malaysian EPF, SOCSO, EIS and PCB rates are not hardcoded. They are rates a clinic owns, that change, and that need to be effective-dated and auditable — so the schema holds them (`StatutoryRuleSet`) and the system ships with none populated.
+
+Until a rule set exists, a payroll run computes gross and net **without** statutory deductions, carries `statutoryStatus: NOT_CONFIGURED`, leaves every statutory column NULL, and says so on the run, on the list and on the payslip. Approving such a run requires an explicit acknowledgement. A NULL is not a zero and is never rendered as RM0.00.
+
+An approved run is locked in the database: a trigger refuses any change to its lines and any transition out of APPROVED except to PAID with the totals unchanged. A correction after approval is an appended `PayrollAdjustment`, never an edit.
+
+---
+
+## D-111 — Audit logs come inside row-level security
+
+`audit_logs` was deliberately excluded from the original RLS sweep, on the reasoning recorded in `DATABASE_ARCHITECTURE.md` §2: an append-only table of clinical create/update diffs, already protected by RBAC on the records themselves.
+
+The admin programme changed what is in it. It now carries basic salary before-and-after, payroll adjustment reasons, payment reversals, credit-note approvals and stock adjustment justifications — the most sensitive per-person data in the system, one unscoped SELECT from crossing tenants. Nothing in the application reads the table (`finance/admin-audit.ts` only INSERTs, always inside a tenant-scoped transaction), so the policy costs nothing today and closes the gap for every reader that comes later. `WITH CHECK` as well as `USING`, so a mis-set tenant id cannot file a salary change in somebody else's trail.
+
+---
+
 ## Decisions requiring owner sign-off (not unilaterally decided — tracked here for visibility, detailed in `PRODUCT_REQUIREMENTS.md` §17)
 
 - ~~Diagnosis deletion is a hard delete with no audit trail (D-059)~~ — **resolved by D-061.**

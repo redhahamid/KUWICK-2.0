@@ -217,6 +217,23 @@ jobs:
       - name: Seed the standard prescriptions
         run: npm run seed:standard-rx --workspace=apps/api
 
+      # THE ADMIN MODULES' OWN CLINIC. A separate tenant from the golden path's,
+      # because the five back-office modules need a history the clinical suite
+      # has no reason to carry: two branches, three panels with different rules,
+      # a rejected claim, a transfer that arrived short, a payroll run that
+      # refuses to guess a statutory figure. It rebuilds only its own tenant.
+      #
+      # It also re-derives every financial and stock invariant from the rows it
+      # just wrote and exits non-zero if any of them drift — so a change that
+      # breaks the arithmetic fails HERE, with a line saying which invariant,
+      # rather than as a confusing assertion inside a browser test.
+      - name: Seed the admin UAT clinic
+        run: npx tsx prisma/seed-admin-uat.ts
+        working-directory: apps/api
+        env:
+          KUWICK_ADMIN_UAT_SEED: 'yes'
+          ADMIN_UAT_PASSWORD: ${{ env.E2E_PASSWORD }}
+
       - name: Build API
         run: npm run build
         working-directory: apps/api
@@ -280,8 +297,10 @@ jobs:
       # came from one surface being fixed and the other left alone, in one case
       # broken in the opposite direction — so surfaces are asserted
       # independently and a name-matching term proves nothing.
-      - name: E2E — golden path, viewport, catalogue findability
+      - name: E2E — golden path, viewport, catalogue findability, admin modules
         run: npx playwright test
+        env:
+          ADMIN_UAT_PASSWORD: ${{ env.E2E_PASSWORD }}
 
       # The logs are the first thing anybody wants when this job is red, and
       # they are gone the moment the runner is reclaimed.
