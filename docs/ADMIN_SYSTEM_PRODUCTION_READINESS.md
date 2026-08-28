@@ -364,6 +364,23 @@ Sign in as `owner@admin-uat.kuwick.invalid` (also `finance@`, `stock@`, `panel@`
 
 ---
 
+## 9.1 Running the tests
+
+```bash
+npm run test:api                                   # 2160 unit tests, 99 suites
+npm run test:api:e2e                               # 121 integration tests against real PostgreSQL
+npm --prefix apps/web test -- --run                # 1614 web tests, 90 files
+npx playwright test                                # 68 browser tests, servers must be up
+```
+
+The browser suite needs both servers running and both seeds applied — the clinical UAT seed for the golden path, the admin seed for the five modules. CI does this in the `e2e` job.
+
+**A note on running the browser suite against a long-lived dev database.** Two golden-path tests register a patient and then look for them in the Waiting tab. On a database that has been accumulating fixtures across many sessions — 57 stale WAITING tickets locally at the time of writing — the queue table paginates and the new row is not in the DOM, so both fail. This is identical on `master` and has nothing to do with this branch; CI creates the database fresh for every run, which is why it does not see it. If it bites locally, clear the day's queue or run against a fresh `kuwick_dev`.
+
+`npm run lint` does not currently run: `apps/web` has no `eslint.config.js` and ESLint 9 no longer reads the legacy format. That is also true on `master`, and CI has no lint step, so nothing regressed — but it means the linter is not protecting anything today.
+
+---
+
 ## 10. Future integration opportunities
 
 Ordered by what would remove the most manual work.
