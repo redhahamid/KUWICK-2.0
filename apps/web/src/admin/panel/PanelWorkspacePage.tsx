@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { App, Button, Input, Modal, Select, Tag, Tooltip } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { ExceptionTiles, StatStrip } from '../components/StatStrip';
 import { DataTable, money, moneyOrDash } from '../components/DataTable';
 import { useCan } from '../../core/hooks/useCan';
@@ -87,6 +87,7 @@ export function PanelWorkspacePage() {
 
   return (
     <AdminShell
+      error={firstError(queue, work, reconciliation)}
       title="Panel Claims"
       subtitle="What has not been submitted, what was rejected, and what money is still outstanding."
       actions={

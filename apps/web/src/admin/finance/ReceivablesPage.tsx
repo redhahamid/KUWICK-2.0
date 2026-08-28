@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { DatePicker, Tag } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { ExceptionTiles, StatStrip } from '../components/StatStrip';
 import { DataTable, money } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -25,6 +25,7 @@ export function ReceivablesPage() {
 
   return (
     <AdminShell
+      error={firstError(patients, panel)}
       title="Outstanding"
       subtitle="Patient money and panel money are chased differently, so they are never added into one figure."
       actions={

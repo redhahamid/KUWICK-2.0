@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Button, DatePicker, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { Link, useNavigate } from 'react-router-dom';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { ExceptionTiles, StatStrip } from '../components/StatStrip';
 import { DataTable, money } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -75,6 +75,7 @@ export function FinanceOverviewPage() {
 
   return (
     <AdminShell
+      error={firstError(openDays, receivables, payments, tax, panel)}
       title="Finance"
       subtitle="Did yesterday reconcile, what is outstanding, and are the revenue and tax figures right?"
       actions={

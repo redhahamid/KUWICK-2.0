@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Typography } from 'antd';
+import { Alert, Typography } from 'antd';
 
 const { Title, Text } = Typography;
 
@@ -15,11 +15,21 @@ export function AdminShell({
   title,
   subtitle,
   actions,
+  error,
   children,
 }: {
   title: string;
   subtitle?: ReactNode;
   actions?: ReactNode;
+  /**
+   * The first failed query on this page, from `firstError(...)` below.
+   *
+   * NOT optional in spirit, only in types. A finance screen whose query 404s
+   * and renders RM0.00 tells the reader everything is settled, which is worse
+   * than telling them nothing — it is the one failure mode that gets acted on.
+   * Every page in the five modules passes this.
+   */
+  error?: unknown;
   children: ReactNode;
 }) {
   return (
@@ -37,9 +47,43 @@ export function AdminShell({
         </div>
         {actions ? <div className="kw-admin__actions">{actions}</div> : null}
       </header>
+      {error ? (
+        <Alert
+          type="error"
+          showIcon
+          className="kw-adminError"
+          message="This page could not load its figures"
+          description={
+            <>
+              {errorMessage(error)}
+              <br />
+              Every number below is missing rather than zero. Do not read this screen as a result.
+            </>
+          }
+        />
+      ) : null}
       {children}
     </div>
   );
+}
+
+/**
+ * The first error among a page's queries, or undefined.
+ *
+ * A page runs three to six queries and any one of them failing makes the whole
+ * screen untrustworthy, so they are reported together rather than each pretending
+ * independently that it has an answer.
+ */
+export function firstError(...queries: { isError?: boolean; error?: unknown }[]): unknown {
+  return queries.find((query) => query?.isError)?.error;
+}
+
+function errorMessage(error: unknown): string {
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = String((error as { message?: unknown }).message ?? '').trim();
+    if (message) return message;
+  }
+  return 'The server did not return an answer.';
 }
 
 /**

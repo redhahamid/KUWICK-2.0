@@ -40,7 +40,7 @@ export function HubShell({ title, categories, headerExtra }: HubShellProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const screens = Grid.useBreakpoint();
-  const { clinicId, clinics } = useClinicFilter();
+  const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
 
   const activeCategory = useMemo(
     () => categories.find((category) => category.items.some((item) => item.path === location.pathname)),
@@ -60,9 +60,39 @@ export function HubShell({ title, categories, headerExtra }: HubShellProps) {
             <Title level={4} style={{ margin: 0 }}>
               {title}
             </Title>
-            <Text type="secondary" style={{ fontSize: 12.5 }}>
-              Viewing: {scopeName ?? 'All Branches'}
-            </Text>
+            {showSelector ? (
+              /*
+               * A GROUP-LEVEL PERSON HAS TO BE ABLE TO PICK A BRANCH.
+               *
+               * Staff with no home clinic — the finance controller who covers
+               * both branches, the owner's accountant — resolved to no
+               * clinicId at all, and the header simply said "All Branches"
+               * with nothing to click. Every branch-scoped endpoint then
+               * answered "No branch selected for this request", which the
+               * screens rendered as zeros: a day-end page reporting nothing
+               * left to reconcile because it did not know which branch to ask
+               * about. The picker is the missing half of that sentence.
+               */
+              <Select
+                size="small"
+                value={clinicId ?? ''}
+                onChange={(value) => setClinicId(value || undefined)}
+                style={{ minWidth: 190 }}
+                aria-label="Branch"
+                options={[
+                  // "All branches" is a real scope for a group-level person,
+                  // so it is an option they choose rather than the silent state
+                  // they land in — a screen showing both branches under the
+                  // same heading as one branch is how two totals disagree.
+                  { value: '', label: 'All branches' },
+                  ...(clinics ?? []).map((clinic) => ({ value: clinic.id, label: clinic.name })),
+                ]}
+              />
+            ) : (
+              <Text type="secondary" style={{ fontSize: 12.5 }}>
+                Viewing: {scopeName ?? 'All Branches'}
+              </Text>
+            )}
           </div>
           {headerExtra}
         </div>

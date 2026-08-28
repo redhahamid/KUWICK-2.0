@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { App, Button, DatePicker, Tag } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -27,7 +27,7 @@ export function TimesheetPage() {
     dayjs().endOf('month').format('YYYY-MM-DD'),
   ]);
   const [expanded, setExpanded] = useState<string | undefined>();
-  const { data, isLoading } = useTimesheet({ from: range[0], to: range[1], clinicId });
+  const { data, isLoading, isError, error } = useTimesheet({ from: range[0], to: range[1], clinicId });
   const approveOvertime = useApproveOvertime();
 
   const staff = data?.staff ?? [];
@@ -37,6 +37,7 @@ export function TimesheetPage() {
 
   return (
     <AdminShell
+      error={firstError({ isError, error })}
       title="Timesheets"
       subtitle="What payroll will read. Overtime nobody has approved is shown separately and is not paid."
       actions={

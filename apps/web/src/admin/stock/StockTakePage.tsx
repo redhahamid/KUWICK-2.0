@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { App, Button, Input, Modal, Progress, Tag } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, money } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -65,6 +65,7 @@ export function StockTakePage() {
 
   return (
     <AdminShell
+      error={firstError(takes, detail)}
       title="Stock Take"
       subtitle="Count → submit → a second person approves → the ledger is corrected. Typing a count changes nothing on its own."
       actions={

@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import { Tag } from 'antd';
 import { Link } from 'react-router-dom';
-import { AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { ExceptionTiles, StatStrip } from '../components/StatStrip';
 import { DataTable } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -18,10 +18,11 @@ import { useWorkforceToday } from '../hooks/useAdmin';
  */
 export function HrOverviewPage() {
   const { clinicId } = useClinicFilter();
-  const { data, isLoading } = useWorkforceToday(clinicId);
+  const { data, isLoading, isError, error } = useWorkforceToday(clinicId);
 
   return (
     <AdminShell
+      error={firstError({ isError, error })}
       title="Workforce"
       subtitle={`Who is working, who is absent, and what is waiting for a decision — ${dayjs(data?.date).format('dddd D MMMM')}.`}
     >

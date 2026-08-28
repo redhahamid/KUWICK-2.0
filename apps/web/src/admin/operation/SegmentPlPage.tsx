@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { DatePicker } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, money } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -24,10 +24,11 @@ export function SegmentPlPage() {
     dayjs().startOf('month').format('YYYY-MM-DD'),
     dayjs().format('YYYY-MM-DD'),
   ]);
-  const { data, isLoading } = useSegmentPl({ from: range[0], to: range[1], clinicId });
+  const { data, isLoading, isError, error } = useSegmentPl({ from: range[0], to: range[1], clinicId });
 
   return (
     <AdminShell
+      error={firstError({ isError, error })}
       title="Segment P&L"
       subtitle="The clinic's service lines, as configuration rather than as five hardcoded reports."
       actions={

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Tag } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { ExceptionTiles, StatStrip } from '../components/StatStrip';
 import { DataTable, money } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -35,7 +35,7 @@ export function StockOverviewPage() {
   const t = exceptions.data;
 
   return (
-    <AdminShell title="Stock" subtitle="What requires attention today, and what the shelves are worth.">
+    <AdminShell error={firstError(exceptions, rows, valuation)} title="Stock" subtitle="What requires attention today, and what the shelves are worth.">
       <ExceptionTiles
         selected={view}
         tiles={[

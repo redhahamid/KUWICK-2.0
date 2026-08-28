@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, DatePicker } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, money } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -26,7 +26,7 @@ export function OperationsOverviewPage() {
     dayjs().format('YYYY-MM-DD'),
   ]);
 
-  const { data, isLoading } = useOperationsOverview({
+  const { data, isLoading, isError, error } = useOperationsOverview({
     clinicId,
     preset,
     from: preset === 'CUSTOM' ? range[0] : undefined,
@@ -38,6 +38,7 @@ export function OperationsOverviewPage() {
 
   return (
     <AdminShell
+      error={firstError({ isError, error })}
       title="Operations"
       subtitle={data ? `${data.period.label} · ${data.period.from} to ${data.period.to}` : 'How is the clinic performing?'}
       actions={

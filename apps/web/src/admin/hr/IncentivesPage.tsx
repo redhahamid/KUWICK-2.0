@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { App, Button, DatePicker, Tag } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, money } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -27,6 +27,7 @@ export function IncentivesPage() {
 
   return (
     <AdminShell
+      error={firstError(runs, rules, detail)}
       title="Doctor Incentives"
       subtitle="Threshold commissions and per-procedure rates, versioned so a paid incentive is never recalculated with today's rules."
       actions={

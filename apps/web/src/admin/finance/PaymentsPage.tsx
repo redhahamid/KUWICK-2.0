@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { DatePicker, Tag } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, money } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -21,10 +21,11 @@ export function PaymentsPage() {
     dayjs().startOf('month').format('YYYY-MM-DD'),
     dayjs().format('YYYY-MM-DD'),
   ]);
-  const { data, isLoading } = usePaymentReport({ from: range[0], to: range[1], clinicId });
+  const { data, isLoading, isError, error } = usePaymentReport({ from: range[0], to: range[1], clinicId });
 
   return (
     <AdminShell
+      error={firstError({ isError, error })}
       title="Payments"
       subtitle="Every movement of money, bucketed by the day it moved — not by the day the bill was raised."
       actions={

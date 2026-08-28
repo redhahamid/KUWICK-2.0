@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { App, Button, Input, InputNumber, Select, Tag } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -28,6 +28,7 @@ export function MarketingPage() {
 
   return (
     <AdminShell
+      error={firstError(programmes, templates, history, audience)}
       title="Marketing"
       subtitle="Build an audience from live data, prepare a message from a template, and send it yourself."
     >

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { App, Button, Tag } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, money } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -20,7 +20,7 @@ export function CreditNotesPage() {
   const { message } = App.useApp();
   const { clinicId } = useClinicFilter();
   const [status, setStatus] = useState<string | undefined>();
-  const { data, isLoading } = useCreditNotes({ clinicId, status });
+  const { data, isLoading, isError, error } = useCreditNotes({ clinicId, status });
   const approve = useApproveCreditNote();
   const mayApprove = useCan('creditNote.approve');
 
@@ -29,6 +29,7 @@ export function CreditNotesPage() {
 
   return (
     <AdminShell
+      error={firstError({ isError, error })}
       title="Credit Notes"
       subtitle="A credit note leaves the original invoice exactly as issued and records the reduction as its own dated, approvable document."
       actions={

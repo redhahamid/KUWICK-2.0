@@ -3971,3 +3971,11 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 
 .kw-unavailable strong { font-size: 12.5px; color: var(--kw-text); }
 .kw-unavailable p { margin: 3px 0 0; font-size: 12px; line-height: 1.5; color: var(--kw-text-secondary); }
+
+/* An admin page that could not load its figures says so, loudly. A finance
+   screen rendering RM0.00 for a failed query is the one wrong answer that
+   gets acted on, so the banner sits above the content rather than beside it. */
+.kw-adminError {
+  margin-bottom: 16px;
+  border-radius: 6px;
+}

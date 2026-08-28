@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { App, Button, DatePicker, Modal, Tag } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, money, moneyOrDash } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -59,6 +59,7 @@ export function PayrollPage() {
 
   return (
     <AdminShell
+      error={firstError(runs, statutory, detail)}
       title="Payroll"
       subtitle="Monthly runs, the exceptions that must be resolved before approval, and the lock that makes an approved run final."
       actions={

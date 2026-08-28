@@ -1,5 +1,5 @@
 import { Tag } from 'antd';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { DataTable, money } from '../components/DataTable';
 import { usePanelConfigs } from '../hooks/useAdmin';
 
@@ -12,12 +12,13 @@ import { usePanelConfigs } from '../hooks/useAdmin';
  * phone number cannot accidentally change what a panel is billed.
  */
 export function PanelConfigPage() {
-  const { data, isLoading } = usePanelConfigs();
+  const { data, isLoading, isError, error } = usePanelConfigs();
 
   const withoutPortal = data?.filter((panel) => panel.active && !panel.portalUrl) ?? [];
 
   return (
     <AdminShell
+      error={firstError({ isError, error })}
       title="Panel Configuration"
       subtitle="What the claim workspace needs to know about each panel: where to submit, what they require, and how long they take to pay."
     >

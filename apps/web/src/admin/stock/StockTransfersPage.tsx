@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { App, Button, InputNumber, Modal, Tag } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, money } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -28,7 +28,7 @@ export function StockTransfersPage() {
   const { message } = App.useApp();
   const { clinicId } = useClinicFilter();
   const [direction, setDirection] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
-  const { data, isLoading } = useStockTransfers({
+  const { data, isLoading, isError, error } = useStockTransfers({
     clinicId,
     direction: direction === 'ALL' ? undefined : direction,
   });
@@ -50,6 +50,7 @@ export function StockTransfersPage() {
 
   return (
     <AdminShell
+      error={firstError({ isError, error })}
       title="Stock Transfers"
       subtitle="Stock leaves one branch when it is sent and arrives at the other when it is received — in between it is in transit, on neither shelf."
       actions={

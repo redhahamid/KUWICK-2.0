@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { DatePicker, Tag } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { DataTable } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useStockMovements } from '../hooks/useAdmin';
@@ -34,10 +34,11 @@ export function StockMovementsPage() {
     dayjs().subtract(30, 'day').format('YYYY-MM-DD'),
     dayjs().format('YYYY-MM-DD'),
   ]);
-  const { data, isLoading } = useStockMovements({ clinicId, from: range[0], to: range[1] });
+  const { data, isLoading, isError, error } = useStockMovements({ clinicId, from: range[0], to: range[1] });
 
   return (
     <AdminShell
+      error={firstError({ isError, error })}
       title="Movement Ledger"
       subtitle="Every change to every stock balance, with who made it and why."
       actions={

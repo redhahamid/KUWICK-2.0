@@ -1,6 +1,6 @@
 import { Tag } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -20,13 +20,13 @@ import { useEmployees } from '../hooks/useAdmin';
  */
 export function EmployeesPage() {
   const { clinicId } = useClinicFilter();
-  const { data, isLoading } = useEmployees({ clinicId });
+  const { data, isLoading, isError, error } = useEmployees({ clinicId });
 
   const withProfile = data?.filter((row) => row.hasProfile) ?? [];
   const clinicians = data?.filter((row) => row.professionalActive) ?? [];
 
   return (
-    <AdminShell title="Employees" subtitle="Account, employment and clinical credential are three separate facts about one person.">
+    <AdminShell error={firstError({ isError, error })} title="Employees" subtitle="Account, employment and clinical credential are three separate facts about one person.">
       <StatStrip
         stats={[
           { label: 'Staff records', value: data?.length ?? 0 },

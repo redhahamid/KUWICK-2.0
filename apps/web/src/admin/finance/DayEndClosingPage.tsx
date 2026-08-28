@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { App, Button, DatePicker, Input, InputNumber, Modal, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { useSearchParams } from 'react-router-dom';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, money, moneyOrDash } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -24,7 +24,7 @@ export function DayEndClosingPage() {
   const { clinicId } = useClinicFilter();
   const date = params.get('date') ?? dayjs().format('YYYY-MM-DD');
 
-  const { data, isLoading } = useDayEnd(date, clinicId);
+  const { data, isLoading, isError, error } = useDayEnd(date, clinicId);
   const count = useCountDayEnd(date, clinicId);
   const close = useCloseDayEnd(date, clinicId);
   const reopen = useReopenDayEnd(date, clinicId);
@@ -68,6 +68,7 @@ export function DayEndClosingPage() {
 
   return (
     <AdminShell
+      error={firstError({ isError, error })}
       title="Day-End Closing"
       subtitle="What the ledger expects, what a person counted, and the difference explained before anyone signs it off."
       actions={

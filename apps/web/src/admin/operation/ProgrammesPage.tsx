@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { DatePicker, Select, Tag } from 'antd';
 import dayjs from 'dayjs';
-import { AdminNotice, AdminSection, AdminShell } from '../components/AdminShell';
+import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, money } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
@@ -29,6 +29,7 @@ export function ProgrammesPage() {
 
   return (
     <AdminShell
+      error={firstError(programmes, dashboard)}
       title="Programmes"
       subtitle="Enrolment, activity and contribution for each programme the clinic runs."
       actions={
