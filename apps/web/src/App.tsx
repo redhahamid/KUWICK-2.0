@@ -58,6 +58,30 @@ import { DoctorPerformancePage } from './reports/DoctorPerformancePage';
 import { InvoiceListingPage } from './reports/InvoiceListingPage';
 import { DrugMovementPage } from './reports/DrugMovementPage';
 import { WaitTimesPage } from './reports/WaitTimesPage';
+// THE ADMIN PROGRAMME — five back-office modules that have to feel like one
+// product. Added alongside Management rather than replacing it: the reports a
+// clinic already relies on keep working while these go through UAT.
+import { AdminLayout } from './admin/AdminLayout';
+import { OperationsOverviewPage } from './admin/operation/OperationsOverviewPage';
+import { SegmentPlPage } from './admin/operation/SegmentPlPage';
+import { ProgrammesPage } from './admin/operation/ProgrammesPage';
+import { MarketingPage } from './admin/operation/MarketingPage';
+import { StockOverviewPage } from './admin/stock/StockOverviewPage';
+import { StockTransfersPage } from './admin/stock/StockTransfersPage';
+import { StockTakePage as AdminStockTakePage } from './admin/stock/StockTakePage';
+import { StockMovementsPage } from './admin/stock/StockMovementsPage';
+import { PanelWorkspacePage } from './admin/panel/PanelWorkspacePage';
+import { PanelConfigPage } from './admin/panel/PanelConfigPage';
+import { HrOverviewPage } from './admin/hr/HrOverviewPage';
+import { EmployeesPage } from './admin/hr/EmployeesPage';
+import { TimesheetPage } from './admin/hr/TimesheetPage';
+import { PayrollPage } from './admin/hr/PayrollPage';
+import { IncentivesPage } from './admin/hr/IncentivesPage';
+import { FinanceOverviewPage } from './admin/finance/FinanceOverviewPage';
+import { DayEndClosingPage } from './admin/finance/DayEndClosingPage';
+import { PaymentsPage } from './admin/finance/PaymentsPage';
+import { ReceivablesPage } from './admin/finance/ReceivablesPage';
+import { CreditNotesPage } from './admin/finance/CreditNotesPage';
 
 export function App() {
   return (
@@ -148,6 +172,38 @@ export function App() {
 
           {/* CMS Settings (M1) — configuration changed a few times a year,
               extracted from Management. Same page components, new home. */}
+          {/* ---------------------------------------------------------------
+              THE ADMIN PROGRAMME. Five modules, each landing on the page that
+              answers its own first question. Management's URLs are untouched.
+              --------------------------------------------------------------- */}
+          <Route path="/admin" element={<Navigate to="/admin/operation" replace />} />
+          <Route element={<AdminLayout />}>
+            <Route path="/admin/operation" element={<OperationsOverviewPage />} />
+            <Route path="/admin/operation/segments" element={<SegmentPlPage />} />
+            <Route path="/admin/operation/programmes" element={<ProgrammesPage />} />
+            <Route path="/admin/operation/marketing" element={<MarketingPage />} />
+
+            <Route path="/admin/stock" element={<StockOverviewPage />} />
+            <Route path="/admin/stock/transfers" element={<StockTransfersPage />} />
+            <Route path="/admin/stock/stock-take" element={<AdminStockTakePage />} />
+            <Route path="/admin/stock/movements" element={<StockMovementsPage />} />
+
+            <Route path="/admin/panel" element={<PanelWorkspacePage />} />
+            <Route path="/admin/panel/configuration" element={<PanelConfigPage />} />
+
+            <Route path="/admin/hr" element={<HrOverviewPage />} />
+            <Route path="/admin/hr/employees" element={<EmployeesPage />} />
+            <Route path="/admin/hr/attendance" element={<TimesheetPage />} />
+            <Route path="/admin/hr/payroll" element={<PayrollPage />} />
+            <Route path="/admin/hr/incentives" element={<IncentivesPage />} />
+
+            <Route path="/admin/finance" element={<FinanceOverviewPage />} />
+            <Route path="/admin/finance/day-end" element={<DayEndClosingPage />} />
+            <Route path="/admin/finance/payments" element={<PaymentsPage />} />
+            <Route path="/admin/finance/receivables" element={<ReceivablesPage />} />
+            <Route path="/admin/finance/credit-notes" element={<CreditNotesPage />} />
+          </Route>
+
           <Route path="/settings" element={<Navigate to="/settings/organisation/branches" replace />} />
           <Route element={<SettingsLayout />}>
             <Route path="/settings/organisation/branches" element={<ClinicsPage />} />

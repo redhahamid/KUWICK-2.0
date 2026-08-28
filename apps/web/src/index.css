@@ -3496,3 +3496,478 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
    were REPLACED by that file, not overridden — do not re-add appointment
    selectors to this stylesheet.
    =========================================================================== */
+
+/* ===========================================================================
+   THE ADMIN PROGRAMME
+   ---------------------------------------------------------------------------
+   Five back-office modules — Operation, Stock, Panel, HR, Finance — that have
+   to feel like ONE product. That is the reason this block exists rather than
+   each module styling itself: shared frame, shared table, shared stat strip,
+   shared exception tile, so a person moving between Stock and Panel is not
+   learning a second application.
+
+   The direction is the approved Kuwick one, applied to dense back-office work:
+   near-white workspace, navy as the structural colour, teal used sparingly,
+   semantic red/amber/green reserved for meaning. Hairline borders, no
+   glassmorphism, no gradient cards, restrained shadows. Vertical space is
+   treated as expensive, because these screens have to show a summary and a
+   work queue at the same time.
+   ======================================================================== */
+
+.kw-admin {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s4);
+  padding-bottom: var(--kw-s6);
+}
+
+.kw-admin__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--kw-s4);
+  flex-wrap: wrap;
+}
+
+.kw-admin__headText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.kw-admin__title.ant-typography {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--kw-text);
+}
+
+.kw-admin__subtitle.ant-typography {
+  font-size: 12.5px;
+  line-height: 1.45;
+  max-width: 78ch;
+}
+
+.kw-admin__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s2);
+  flex-wrap: wrap;
+}
+
+/* --- Section -------------------------------------------------------------- */
+
+.kw-adminSection {
+  background: var(--kw-card);
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.kw-adminSection__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--kw-s4);
+  padding: 10px var(--kw-s4);
+  border-bottom: 1px solid var(--kw-border);
+  background: var(--kw-surface-2);
+}
+
+.kw-adminSection__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--kw-text);
+  letter-spacing: 0.01em;
+}
+
+.kw-adminSection__desc {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--kw-text-secondary);
+  max-width: 90ch;
+}
+
+.kw-adminSection__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s2);
+  flex-shrink: 0;
+}
+
+.kw-adminSection__body {
+  padding: var(--kw-s4);
+}
+
+.kw-adminSection__body--flush {
+  padding: 0;
+}
+
+/* --- Notices -------------------------------------------------------------- */
+/* The sentences this system insists on saying: a statutory figure that was not
+   computed, a value that is potential rather than profit, a message prepared
+   rather than sent. A quiet band, not a dismissible alert, because they are
+   permanent facts about the screen. */
+
+.kw-adminNotice {
+  margin: 0 0 var(--kw-s3);
+  padding: 7px 11px;
+  font-size: 12px;
+  line-height: 1.55;
+  border-radius: 6px;
+  border-left: 3px solid var(--kw-band-border);
+  background: var(--kw-band-bg);
+  color: var(--kw-text-secondary);
+}
+
+.kw-adminNotice--warn {
+  border-left-color: #d9a441;
+  background: var(--kw-pending-bg);
+  color: #7c4a03;
+}
+
+/* --- Stat strip ----------------------------------------------------------- */
+
+.kw-statStrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  background: var(--kw-border);
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.kw-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 11px 14px;
+  background: var(--kw-card);
+  min-width: 0;
+}
+
+.kw-stat__label {
+  font-size: 11px;
+  font-weight: 550;
+  text-transform: uppercase;
+  letter-spacing: 0.045em;
+  color: var(--kw-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kw-stat__value {
+  font-size: 20px;
+  font-weight: 640;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  color: var(--kw-navy);
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-stat__hint {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--kw-text-secondary);
+}
+
+.kw-stat--good .kw-stat__value { color: var(--kw-success-fg); }
+.kw-stat--warn .kw-stat__value { color: #b45309; }
+.kw-stat--bad .kw-stat__value  { color: var(--kw-danger-fg); }
+
+/* --- Exception tiles ------------------------------------------------------ */
+/* A tile with a zero count stays VISIBLE and goes quiet. "Nothing expired" is
+   information, and a tile that disappears when it is clean teaches people not
+   to look for it. */
+
+.kw-exceptionTiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: var(--kw-s2);
+}
+
+.kw-exceptionTile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--kw-border);
+  background: var(--kw-card);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.kw-exceptionTile:disabled {
+  cursor: default;
+}
+
+.kw-exceptionTile:not(:disabled):hover {
+  border-color: var(--kw-navy);
+}
+
+.kw-exceptionTile__count {
+  font-size: 21px;
+  font-weight: 660;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-exceptionTile__label {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--kw-text-secondary);
+}
+
+.kw-exceptionTile--clean { background: var(--kw-surface-2); }
+.kw-exceptionTile--clean .kw-exceptionTile__count { color: var(--kw-text-muted); }
+
+.kw-exceptionTile--bad  { border-color: #f3c1bb; background: #fff8f7; }
+.kw-exceptionTile--bad  .kw-exceptionTile__count { color: var(--kw-danger-fg); }
+.kw-exceptionTile--warn { border-color: #f0d9a8; background: #fffcf5; }
+.kw-exceptionTile--warn .kw-exceptionTile__count { color: #b45309; }
+.kw-exceptionTile--info { border-color: var(--kw-band-border); background: var(--kw-band-bg); }
+.kw-exceptionTile--info .kw-exceptionTile__count { color: var(--kw-navy); }
+
+.kw-exceptionTile--selected {
+  border-color: var(--kw-navy);
+  box-shadow: inset 0 0 0 1px var(--kw-navy);
+}
+
+/* --- Dense table ---------------------------------------------------------- */
+
+.kw-dataTable__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kw-s3);
+  padding: 8px var(--kw-s4);
+  border-bottom: 1px solid var(--kw-border);
+  background: var(--kw-surface-2);
+  flex-wrap: wrap;
+}
+
+.kw-dataTable__toolbarRight {
+  display: flex;
+  align-items: center;
+  gap: var(--kw-s2);
+}
+
+.kw-dataTable__search {
+  max-width: 280px;
+}
+
+.kw-dataTable .ant-table-thead > tr > th {
+  background: var(--kw-surface-3);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+  color: var(--kw-text-secondary);
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--kw-border-strong);
+}
+
+.kw-dataTable .ant-table-tbody > tr > td {
+  font-size: 12.5px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--kw-border);
+}
+
+.kw-dataTable .ant-table-tbody > tr:hover > td {
+  background: var(--kw-surface-2);
+}
+
+.kw-dataTable__row--clickable { cursor: pointer; }
+
+/* Numbers line up. A money column that does not is a money column nobody can
+   scan for the large one. */
+.kw-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.kw-muted { color: var(--kw-text-muted); }
+.kw-bad   { color: var(--kw-danger-fg); font-weight: 550; }
+.kw-good  { color: var(--kw-success-fg); }
+.kw-warn  { color: #b45309; }
+
+/* --- Two-column layout for a summary beside a queue ----------------------- */
+
+.kw-adminGrid {
+  display: grid;
+  gap: var(--kw-s4);
+}
+
+.kw-adminGrid--2 { grid-template-columns: 1fr 1fr; }
+.kw-adminGrid--3 { grid-template-columns: repeat(3, 1fr); }
+.kw-adminGrid--sidebar { grid-template-columns: minmax(0, 1fr) 320px; }
+
+/* iPad landscape and below: the sidebar layouts stack rather than squeeze. A
+   320px panel next to a table at 1024px leaves the table unreadable. */
+@media (max-width: 1180px) {
+  .kw-adminGrid--sidebar,
+  .kw-adminGrid--3 { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 900px) {
+  .kw-adminGrid--2 { grid-template-columns: 1fr; }
+  .kw-admin__title.ant-typography { font-size: 17px; }
+}
+
+/* --- Day-end count form --------------------------------------------------- */
+
+.kw-countForm {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--kw-border);
+  border: 1px solid var(--kw-border);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: var(--kw-s3);
+}
+
+.kw-countRow {
+  display: grid;
+  grid-template-columns: 1fr 88px 118px 88px;
+  align-items: center;
+  gap: var(--kw-s2);
+  padding: 8px 10px;
+  background: var(--kw-card);
+}
+
+.kw-countRow__label {
+  display: flex;
+  flex-direction: column;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--kw-text);
+  min-width: 0;
+}
+
+.kw-countRow__label small {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--kw-text-muted);
+}
+
+.kw-countRow__expected,
+.kw-countRow__variance {
+  text-align: right;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-countActions {
+  display: flex;
+  gap: var(--kw-s2);
+  margin-top: var(--kw-s3);
+  flex-wrap: wrap;
+}
+
+.kw-tableTotals td {
+  background: var(--kw-surface-3);
+  border-top: 1px solid var(--kw-border-strong);
+  padding: 8px 12px !important;
+}
+
+.kw-tableTotals td > span { color: var(--kw-text-secondary); font-size: 12px; }
+.kw-tableTotals td > strong { float: right; font-variant-numeric: tabular-nums; }
+
+/* --- Transfer receiving --------------------------------------------------- */
+
+.kw-receiveForm {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--kw-border);
+  border: 1px solid var(--kw-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.kw-receiveRow {
+  display: grid;
+  grid-template-columns: 1fr 70px 92px minmax(140px, 1.2fr);
+  gap: var(--kw-s2);
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--kw-card);
+}
+
+.kw-receiveRow__item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 12.5px;
+}
+
+.kw-receiveRow__item small { color: var(--kw-text-muted); font-size: 11px; }
+
+.kw-receiveRow__sent {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kw-receiveRow__sent small { color: var(--kw-text-muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+.kw-receiveRow__reason {
+  border: 1px solid #f0c7c0;
+  background: #fff8f7;
+  border-radius: 5px;
+  padding: 3px 8px;
+  font-size: 12px;
+  width: 100%;
+}
+
+/* --- Filter stack (a criteria panel beside a result table) ---------------- */
+
+.kw-filterStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kw-s3);
+}
+
+.kw-filterStack label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.kw-filterStack label > span {
+  font-size: 11px;
+  font-weight: 550;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--kw-text-muted);
+}
+
+.kw-filterRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--kw-s2);
+}
+
+.kw-unavailable {
+  padding: 9px 11px;
+  border-left: 3px solid var(--kw-border-strong);
+  background: var(--kw-surface-2);
+  border-radius: 0 6px 6px 0;
+  margin-bottom: var(--kw-s2);
+}
+
+.kw-unavailable strong { font-size: 12.5px; color: var(--kw-text); }
+.kw-unavailable p { margin: 3px 0 0; font-size: 12px; line-height: 1.5; color: var(--kw-text-secondary); }

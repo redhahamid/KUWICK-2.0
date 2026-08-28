@@ -1,6 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Avatar, Dropdown, Layout, Menu, Space, Typography } from 'antd';
-import { ArrowLeftOutlined, BarChartOutlined, LogoutOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons';
+import {
+  AppstoreOutlined,
+  ArrowLeftOutlined,
+  BarChartOutlined,
+  LogoutOutlined,
+  SettingOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../core/auth-store';
 import { useClinicTimeZoneSync } from '../../core/hooks/useClinicTimeZone';
@@ -93,7 +100,11 @@ export function AppLayout() {
 
   const inManagement = location.pathname.startsWith('/management');
   const inSettings = location.pathname.startsWith('/settings');
-  const inHub = inManagement || inSettings;
+  // THE ADMIN PROGRAMME — the five back-office modules. A hub area like the
+  // other two, so the user menu offers a way back to the clinic and a way
+  // across to the other hubs rather than stranding somebody in it.
+  const inAdmin = location.pathname.startsWith('/admin');
+  const inHub = inManagement || inSettings || inAdmin;
 
   const handleLogout = () => {
     clearAuth();
@@ -105,7 +116,10 @@ export function AppLayout() {
       inHub
         ? [
             { key: 'back', icon: <ArrowLeftOutlined />, label: 'Back to Main Menu', onClick: () => navigate('/appointments') },
-            inManagement
+            inAdmin
+              ? { key: 'management', icon: <BarChartOutlined />, label: 'Management Reports', onClick: () => navigate('/management/reports') }
+              : { key: 'admin', icon: <AppstoreOutlined />, label: 'Administration', onClick: () => navigate('/admin/operation') },
+            inManagement || inAdmin
               ? { key: 'settings', icon: <SettingOutlined />, label: 'Clinic Settings', onClick: () => navigate('/settings') }
               : { key: 'management', icon: <BarChartOutlined />, label: 'Management', onClick: () => navigate('/management/reports') },
             {
@@ -118,6 +132,12 @@ export function AppLayout() {
             { key: 'logout', icon: <LogoutOutlined />, label: 'Logout', onClick: handleLogout },
           ]
         : [
+            {
+              key: 'admin',
+              icon: <AppstoreOutlined />,
+              label: 'Administration',
+              onClick: () => navigate('/admin/operation'),
+            },
             {
               key: 'management',
               icon: <BarChartOutlined />,
