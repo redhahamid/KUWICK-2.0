@@ -202,15 +202,30 @@ test.describe('the module opens on the calendar and holds its five surfaces', ()
           description: `${view} view held no bookings, so the appointment drawer was not opened here`,
         });
       } else {
-        await content.evaluate((element) => {
-          const card = element.querySelector('.rbc-event') as HTMLElement;
+        // ONE card, scrolled and clicked. This used to scroll whatever
+        // `querySelector('.rbc-event')` found and then, 700ms and two waits
+        // later, click a separately-resolved `events.first()`. On a quiet
+        // diary those are the same card. On a busy one — this database grows
+        // by a booking, a cancellation and a follow-up every time the suite
+        // runs — a refetch in between can reorder them, and the click lands on
+        // a card that was never brought into view. Playwright then scrolls it
+        // in itself, which moves the diary by the TEST's hand, in a test whose
+        // whole subject is the diary not moving. It failed once in five runs
+        // that way, which is the worst frequency a race can have.
+        const card = events.first();
+        await card.waitFor({ state: 'attached' });
+        // The card handle goes INTO the scroll, so the element being centred
+        // and the element about to be clicked are provably the same one, and
+        // the host being scrolled is the same one `readScroll` measures.
+        const cardHandle = await card.elementHandle();
+        await content.evaluate((element, cardEl) => {
           const host = element.getBoundingClientRect();
-          const box = card.getBoundingClientRect();
+          const box = (cardEl as HTMLElement).getBoundingClientRect();
           element.scrollTop = Math.max(
             0,
             element.scrollTop + (box.top - host.top) - element.clientHeight / 2 + box.height / 2,
           );
-        });
+        }, cardHandle);
         await page.waitForTimeout(300);
         const scrolledTo = await readScroll();
         await page.waitForTimeout(400);
@@ -220,7 +235,7 @@ test.describe('the module opens on the calendar and holds its five surfaces', ()
         ).toBeLessThanOrEqual(2);
         baseline = scrolledTo;
 
-        await events.first().click();
+        await card.click();
         const drawer = page.getByTestId('appointment-drawer');
         await expect(drawer).toBeVisible();
         await holds('opening an appointment drawer');

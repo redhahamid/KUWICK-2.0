@@ -234,6 +234,64 @@ async function main() {
     });
     lines.push(`${E2E_MEDICATION}: ${STOCK_ON_HAND} on hand`);
 
+    // --- 5. A queue board that starts on today -------------------------
+    //
+    // THE ONE PLACE THIS SEED CHANGES EXISTING ROWS, and the reason is worth
+    // stating: a clinic queue is a DAILY board. A patient still WAITING from
+    // four days ago is not waiting — nobody is sitting in that chair. The
+    // clinic closes those out at the end of the day; a test database has
+    // nobody to do it, so they pile up. On this machine they had reached 52
+    // in the E2E tenant, spread over four days.
+    //
+    // That is not cosmetic. The Waiting tab is an antd Table paginating at
+    // ten rows, so the patient the golden path had just registered was on
+    // page six and simply not in the DOM — two tests failing for a reason
+    // that has nothing to do with the code under test, and failing
+    // identically on master. A test whose result depends on how many runs
+    // preceded it is not a test.
+    //
+    // Scoped tightly on purpose: only this synthetic tenant, only tickets
+    // still open, and only from a day already past. TODAY's board is left
+    // exactly as it is, so a run never disturbs another run's patients. In
+    // CI, where the database is built fresh every time, this matches nothing
+    // and does nothing.
+    const startOfToday = new Date();
+    startOfToday.setUTCHours(0, 0, 0, 0);
+    //
+    // WAITING ONLY. The later stages are not leftovers, they are FIXTURES:
+    // `seed-staging-uat.ts` deliberately parks patients in consultation, at
+    // the dispensary and at payment, and the canvas and layout specs drive
+    // those. Sweeping them up as "stale" broke the layout-toggle spec the
+    // first time this ran, which is exactly the kind of collateral a cleanup
+    // step earns if it is written by status instead of by intent. Waiting is
+    // also the only stage that accumulates: the golden path drives its own
+    // patients through to COMPLETED, and what piles up is registrations from
+    // runs that stopped partway.
+    // And never a `UAT-` visit. Those are the staging seed's DEMO BOARD —
+    // eight patients deliberately parked one per stage, which the canvas,
+    // dispensary and layout specs drive and which the staging seed will not
+    // recreate because it is idempotent by visit number. They are dated
+    // whenever the database was first built, so "from a previous day" catches
+    // them, and cancelling them silently removed the patient the layout-toggle
+    // spec opens. They are fixtures, not leftovers.
+    const stale = await tx.queueTicket.findMany({
+      where: {
+        status: 'WAITING',
+        visit: { createdAt: { lt: startOfToday }, visitNumber: { not: { startsWith: 'UAT-' } } },
+      },
+      select: { id: true },
+    });
+    if (stale.length > 0) {
+      await tx.queueTicket.updateMany({
+        where: { id: { in: stale.map((ticket) => ticket.id) } },
+        data: {
+          status: 'CANCELLED',
+          cancelReason: 'Closed out by the E2E seed — a queue is a daily board and this ticket was still waiting from a previous day.',
+        },
+      });
+    }
+    lines.push(`waiting board reset: ${stale.length} ticket(s) still waiting from a previous day closed out`);
+
     return lines;
   });
 

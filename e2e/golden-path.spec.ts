@@ -301,10 +301,14 @@ test('golden path — registration through payment, completion and the history r
   // =====================================================================
   // 2. CALLED IN. The patient moves from Waiting to Consultation.
   // =====================================================================
-  // The stage tabs are TABLES; only the Overview tab uses cards.
-  await page.getByRole('tab', { name: /^waiting/i }).click();
+  // The stage tabs are TABLES; only the Overview tab uses cards. Through
+  // expectRowInStage for the same reason every other stage goes through it:
+  // the table paginates at ten, and this step used to look only at page one.
+  // It passed for months because the board was short, then failed the day the
+  // database had a week of tickets nobody had closed out — with an error that
+  // said "the patient never reached Waiting" about a patient who had.
+  await expectRowInStage(page, 'waiting', patientName);
   const waitingRow = page.getByRole('row').filter({ hasText: patientName });
-  await expect(waitingRow).toBeVisible();
   await waitingRow.getByRole('button', { name: 'Call' }).click();
 
   const callModal = page.getByRole('dialog').filter({ hasText: /attending doctor/i });
@@ -597,10 +601,10 @@ test('OTC (C) variant — the invoice carries the medication and NO consultation
   await queueDrawer.getByRole('button', { name: 'Add to Queue' }).click();
   await expect(queueDrawer).toBeHidden();
 
-  // Called in, arrived — the ticket lifecycle is the same lifecycle.
-  await page.getByRole('tab', { name: /^waiting/i }).click();
+  // Called in, arrived — the ticket lifecycle is the same lifecycle, found
+  // the same paginating way as every other stage.
+  await expectRowInStage(page, 'waiting', patientName);
   const waitingRow = page.getByRole('row').filter({ hasText: patientName });
-  await expect(waitingRow).toBeVisible();
   await waitingRow.getByRole('button', { name: 'Call' }).click();
   const callModal = page.getByRole('dialog').filter({ hasText: /attending doctor/i });
   await expect(callModal).toBeVisible();

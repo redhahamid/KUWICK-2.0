@@ -118,19 +118,33 @@ test.describe('booking a follow-up from the consultation', () => {
     // second run against a re-used database for a reason that has nothing to
     // do with the feature: the slot it named would already be taken.
     const chosenIso = (await slotButtons.first().getAttribute('data-slot'))!;
-    const chosenLabel = (await slotButtons.first().innerText()).trim();
+    // How many this patient already has on that day, BEFORE booking. The
+    // count is the honest measure of "the month picked it up": asserting on
+    // `appointment-next` instead looked right and was not, because that dock
+    // shows the patient's EARLIEST upcoming appointment, not their newest.
+    // Run this spec twice against one database and the second run books a
+    // later slot — the first slot being taken by the first run — so `next`
+    // correctly keeps showing run one's booking and the assertion fails for a
+    // reason that has nothing to do with the feature. The spec already avoided
+    // hardcoding a slot time for exactly this reason; this is the same trap
+    // one line further down.
+    const bookedBefore = Number((await day.getAttribute('data-appointments')) ?? '0');
+
     await slotButtons.first().click();
     await page.getByTestId('confirm-follow-up').click();
 
     // ---- THE MONTH NOW CARRIES IT -----------------------------------------
     await expect(page.getByText('Book a follow-up')).toHaveCount(0);
-    const next = calendar.getByTestId('appointment-next');
-    await expect(next, 'the month did not pick up the booking it just made').toContainText(
-      booking.followUpService,
+    // Exactly one more on that day than there was a moment ago — stronger
+    // than the "some appointment exists" this used to assert, and true on the
+    // hundredth run as much as the first.
+    await expect(day, 'the month did not pick up the booking it just made').toHaveAttribute(
+      'data-appointments',
+      String(bookedBefore + 1),
     );
-    await expect(next).toContainText(chosenLabel);
-    // And the day itself is marked, so the diary reads at a glance.
-    await expect(day).toHaveAttribute('data-appointments', /[1-9]/);
+    // And the dock names a real upcoming appointment rather than reporting none.
+    const next = calendar.getByTestId('appointment-next');
+    await expect(next).not.toContainText(/none booked/i);
 
     await page.screenshot({ path: 'test-results/canvas-appointment-month.png', fullPage: false });
 

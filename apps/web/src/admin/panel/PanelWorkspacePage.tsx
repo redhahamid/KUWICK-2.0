@@ -15,6 +15,7 @@ import {
   useWriteOffClaim,
 } from '../hooks/useAdmin';
 import type { PanelWorkQueueRow, SubmissionQueueRow } from '../types';
+import { canRecordOutcome, canReclaim, canWriteOff } from './claimActions';
 
 const STATUS_COLOUR: Record<string, string> = {
   READY: 'blue',
@@ -334,17 +335,17 @@ export function PanelWorkspacePage() {
                   noExport: true,
                   render: (_: unknown, row) => (
                     <>
-                      {mayManage && row.approvedAmount === null ? (
+                      {mayManage && canRecordOutcome(row) ? (
                         <Button size="small" type="link" onClick={() => { setAdjudicating(row); setApproved(''); setRejected(''); setRejectionReason(''); setClaimNo(row.panelClaimNo ?? ''); }}>
                           Record outcome
                         </Button>
                       ) : null}
-                      {mayManage && (row.status === 'REJECTED' || row.status === 'PARTIALLY_APPROVED') && !row.replacement ? (
+                      {mayManage && canReclaim(row) ? (
                         <Button size="small" type="link" onClick={() => { setResubmitting(row); setResubmitReason(''); }}>
                           Re-claim
                         </Button>
                       ) : null}
-                      {mayWriteOff && row.outstanding > 0 ? (
+                      {mayWriteOff && canWriteOff(row) ? (
                         <Button size="small" type="link" danger onClick={() => { setWritingOff(row); setWriteOffReason(''); }}>
                           Write off
                         </Button>

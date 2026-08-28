@@ -1,6 +1,8 @@
 # Kuwick 2.0 — Admin System Production Readiness
 
-**Branch:** `claude/kuwick-2-visual-audit-k9uk5z` · **Status:** ready for owner UAT, not merged.
+**Branch:** `claude/kuwick-2-visual-audit-k9uk5z` · **Status:** ready for owner UAT. **Not merged, and not production-ready as a whole.**
+
+The five modules are architecturally complete and their arithmetic is tested. Two things stop the word "production-ready" applying to the system as a whole, and both are stated in full in §6: **Malaysian payroll cannot be run for a live period** (§6.1.1), and **stock is valued at standard cost only** (§6.2). Architectural completeness and production readiness are different claims, and this document keeps them apart.
 
 This is the reference for the five back-office modules — Operation, Stock, Panel, HR, Finance — built as one system rather than five screens. It covers what the system does, what it deliberately refuses to do, the arithmetic it guarantees, who may do what, how to run each workflow, and what is still missing.
 
@@ -264,12 +266,48 @@ Every one of the 37 new tables carries `ENABLE` + `FORCE ROW LEVEL SECURITY` and
 
 Stated plainly, because a limitation nobody mentions looks exactly like a feature that works.
 
-### 6.1 Statutory payroll is not implemented — it is configuration, and none exists
+### 6.1 Statutory payroll is configuration, and none exists
 Malaysian **EPF, SOCSO, EIS and PCB** rates are not built into this system. They are rates a clinic owns, that change, and that need to be effective-dated and auditable. The schema for them exists (`StatutoryRuleSet`); no rate table is populated.
 
-Until one is, a payroll run computes **gross and net without statutory deductions**, carries `statutoryStatus: NOT_CONFIGURED`, leaves every statutory column NULL, and says so on the run, on the list and on the payslip. Approving such a run requires an explicit acknowledgement.
+Until one is, a payroll run computes **gross and net without statutory deductions**, carries `statutoryStatus: NOT_CONFIGURED`, leaves every statutory column NULL, and says so on the run, on the list and on the run detail. Approving such a run requires an explicit acknowledgement.
 
-**This system will not print a statutory figure it cannot stand behind.** Configure and verify the rate tables against LHDN/KWSP/PERKESO schedules before running payroll for real.
+**This system will not print a statutory figure it cannot stand behind.** The item-by-item position — including which parts have a working engine, which do not exist at all, and what must happen before Malaysian payroll may be run for real — is §6.1.1 immediately below.
+
+### 6.1.1 Malaysia Payroll Statutory Readiness
+
+**HR is architecturally complete. Malaysian payroll is NOT production-ready.** Those are different claims and the difference is this table. Nothing below has been verified against KWSP, PERKESO or LHDN schedules, because nothing below has been configured.
+
+Three labels are used, and they mean exactly this:
+
+- **IMPLEMENTED** — built, tested, working.
+- **ENGINE READY BUT NOT CONFIGURED** — the calculation exists and is unit-tested, and it is driven entirely by a tenant-owned rate table. No such table exists, so the figure is not produced and is reported as absent rather than as zero.
+- **NOT IMPLEMENTED** — does not exist.
+
+| Item | Status | What is actually there |
+|---|---|---|
+| **KWSP / EPF** | ENGINE READY BUT NOT CONFIGURED | `computeEpf` takes employee rate, employer rate, an optional wage ceiling and a round-up-to-ringgit flag. Returns absent, with a note, when no rate is configured. No rate table populated. |
+| **SOCSO / PERKESO** | ENGINE READY BUT NOT CONFIGURED | `computeBracketContribution` reads a configured bracket table and returns the employee and employer amounts for the band the wage falls in. No bracket table populated. |
+| **EIS / SIP** | ENGINE READY BUT NOT CONFIGURED | The same bracket engine, its own table. No bracket table populated. |
+| **PCB / MTD** | ENGINE READY BUT NOT CONFIGURED — **and the engine is a simplification** | `computePcb` applies a flat monthly relief then a configured band (base amount + percentage of excess). That is a progressive-band calculation, **not the LHDN MTD formula**: no cumulative year-to-date, no spouse or child relief, no zakat, no EPF-relief cap, no bonus/additional-remuneration handling. Configuring bands would produce a number; it would not produce a compliant MTD figure. Treat this as the thinnest item on the list. |
+| **Employer contribution** | ENGINE READY BUT NOT CONFIGURED | `epfEmployer`, `socsoEmployer`, `eisEmployer` are computed and stored separately from the employee side, and roll into `employerCost` — the cost-to-clinic figure, which is not a payslip deduction. |
+| **Employee contribution** | ENGINE READY BUT NOT CONFIGURED | `epfEmployee`, `socsoEmployee`, `eisEmployee`, `pcb`, all nullable. A NULL is "not computed" and is never rendered as RM0.00. |
+| **Effective-dated statutory tables** | **IMPLEMENTED** | `StatutoryRuleSet` carries `jurisdiction`, `effectiveFrom`, `effectiveTo`, the four rule sets as JSON, and `verifiedAt` / `verifiedByStaffId` / `verificationNote`. A run resolves the set in force for its period. `PROVISIONAL` exists for a table entered but not yet verified — figures compute and are labelled unverified everywhere they appear. Endpoints: `GET`/`POST /workforce/payroll/statutory-rules`. |
+| **Per-employee applicability** | **IMPLEMENTED** | `epfApplicable`, `socsoApplicable`, `eisApplicable`, `pcbApplicable` on the employee profile. A person outside a scheme contributes a real zero, which is a different fact from an uncomputed one and stays different. |
+| **Statutory identifiers** | **IMPLEMENTED** | `epfNumber`, `socsoNumber`, `pcbCategory` on the employee profile. |
+| **Statutory export / submission** | **NOT IMPLEMENTED** | No Borang A, no CP39, no CP8D, no EA form, no e-Caruman or PERKESO ASSIST file, no portal submission of any kind. Nothing is generated and nothing is transmitted. |
+| **Payslip document** | **NOT IMPLEMENTED** | A payroll line is a row in a table. There is no printable or downloadable payslip. |
+
+**What this means for the owner.** A payroll run today computes gross, allowances, deductions the clinic itself entered, and net. It carries `statutoryStatus: NOT_CONFIGURED`, leaves every statutory column NULL, says so on the run, on the list and on the detail, and requires an explicit acknowledgement before it can be approved. That is the system declining to guess, working as designed.
+
+**Before Malaysian payroll can be called production-ready, all of the following must happen:**
+
+1. EPF, SOCSO and EIS rate tables entered, effective-dated, and **verified against the current KWSP and PERKESO schedules by a person who signs for it** (the `verifiedBy` field exists for that signature).
+2. The PCB engine reviewed against the LHDN MTD formula and either extended to it or explicitly scoped — a band table alone will not produce a compliant deduction.
+3. A payslip document produced and reviewed.
+4. Statutory submission files scoped and built, or the manual process documented as permanent.
+5. A parallel run against a period already paid by the clinic's current method, reconciled line by line.
+
+None of the five has been done. **Do not run Malaysian payroll on this system for a live period.**
 
 ### 6.2 Stock is valued at standard cost
 Valuation is each item's **current cost price × quantity on hand**. Weighted-average and FIFO costing are not implemented and the screen does not claim otherwise. Drug P&L uses the same basis. Where an item has no cost on record it is counted separately rather than valued at zero.
