@@ -108,7 +108,12 @@ test.describe('Finance', () => {
     await expect(page.getByText(/leaves the original invoice exactly as issued/i)).toBeVisible();
     // A draft credits nothing, and the approver cannot be the raiser.
     await expect(page.getByText(/A DRAFT credit note reduces nothing/i)).toBeVisible();
-    await expect(page.getByText(/cannot be the one who raised it/i)).toBeVisible();
+    // Raising and issuing are separate PERMISSIONS, and both names are on the
+    // note — but the code does not check that the two people differ, so the
+    // screen says to read the names rather than implying a four-eyes rule it
+    // does not enforce. (The stock take, which does enforce one, says so.)
+    await expect(page.getByText(/SEPARATE issuing\s+permission/i)).toBeVisible();
+    await expect(page.getByText(/read the two names below rather than assuming two people/i)).toBeVisible();
 
     await expect(page.getByRole('row', { name: /ISSUED/ }).first()).toBeVisible();
     expect(errors).toEqual([]);

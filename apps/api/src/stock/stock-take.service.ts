@@ -10,6 +10,7 @@ import { postMovement } from './stock-ledger';
 import { CreateStockTakeDto } from './dto/create-stock-take.dto';
 import { RecordCountDto } from './dto/record-count.dto';
 import { ReviewStockTakeDto } from './dto/review-stock-take.dto';
+import { effectiveCount, lineVariance, summariseStockTake } from './stock-variance';
 
 /**
  * STOCK TAKE — the cycle, with the one rule that makes it worth having.
@@ -227,10 +228,9 @@ export class StockTakeService {
         }
         // A recount supersedes the first count: it is the more considered
         // number and the reason a recount exists.
-        const counted = line.recountQuantity ?? line.countedQuantity;
-        if (counted === null) continue;
-        const delta = counted - line.systemQuantity;
-        if (delta === 0) continue;
+        const counted = effectiveCount(line);
+        const delta = lineVariance(line);
+        if (counted === null || delta === null || delta === 0) continue;
 
         await postMovement(tx, {
           tenantId: take.tenantId,
@@ -316,12 +316,11 @@ export class StockTakeService {
     });
 
     return takes.map((take) => {
-      const counted = take.lines.filter((line) => line.countedQuantity !== null).length;
-      const variances = take.lines.filter(
-        (line) =>
-          line.countedQuantity !== null &&
-          (line.recountQuantity ?? line.countedQuantity) !== line.systemQuantity,
-      ).length;
+      // The same summary the approval screen and the posting itself use, so
+      // the number somebody approves is the number that gets written.
+      const summary = summariseStockTake(take.lines);
+      const counted = summary.countedCount;
+      const variances = summary.varianceCount;
       return {
         id: take.id,
         takeNumber: take.takeNumber,

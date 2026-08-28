@@ -36,12 +36,14 @@ Tenant
 - **NotificationLog** — id, tenant_id, trigger_type, channel, recipient, payload (jsonb), status, sent_at — every dispatched notification from `PRODUCT_REQUIREMENTS.md` §10.
 - **AuditLog** — id, tenant_id, actor_user_id, action (`create`/`update`/`delete`), entity_type, entity_id, before (jsonb), after (jsonb), created_at. Append-only — no update/delete grants at all on this table, including for the application role.
 
-Row-Level Security: every table above except `AuditLog` (append-only, no read restriction needed beyond RBAC) has:
+Row-Level Security: **every table above, `AuditLog` included**, has:
 ```sql
 CREATE POLICY tenant_isolation ON <table>
   USING (tenant_id = current_setting('app.tenant_id')::uuid);
 ```
 set per-request by the tenant-isolation guard described in `SYSTEM_ARCHITECTURE.md` §4.
+
+`AuditLog` was originally excluded here, on the reasoning that an append-only table of clinical diffs needs no read restriction beyond RBAC. The admin programme changed what is in it — basic salary before-and-after, payroll adjustment reasons, payment reversals, credit-note approvals — so it is now covered like everything else (migration `20260828200000_audit_log_tenant_isolation`). Nothing in the application reads the table, so the policy costs nothing today; it closes the gap for every reader that comes later, including a person at a psql prompt.
 
 ## 3. Clinical Operations — **`ServiceCatalog`, `Visit`, `QueueTicket` implemented (Phase 1a, Phase 1); rest target design**
 

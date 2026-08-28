@@ -1,5 +1,5 @@
 import { PrismaClient, Role } from '@prisma/client';
-import { createTestPrismaClient, randomId, withTenantContext } from './test-db';
+import { createOwnerTestPrismaClient, createTestPrismaClient, randomId, withTenantContext } from './test-db';
 
 // Proves the database-level backstop itself works, independent of any
 // application code remembering to filter by tenant — the thing
@@ -13,15 +13,19 @@ import { createTestPrismaClient, randomId, withTenantContext } from './test-db';
 // foundation and add_appointment_module migrations).
 describe('Row-Level Security enforcement (e2e, DB-level)', () => {
   let prisma: PrismaClient;
+  // Only for clearing append-only rows in afterEach — see createOwnerTestPrismaClient.
+  let owner: PrismaClient;
   let tenantA: string;
   let tenantB: string;
 
   beforeAll(() => {
     prisma = createTestPrismaClient();
+    owner = createOwnerTestPrismaClient();
   });
 
   afterAll(async () => {
     await prisma.$disconnect();
+    await owner.$disconnect();
   });
 
   beforeEach(async () => {
@@ -37,6 +41,9 @@ describe('Row-Level Security enforcement (e2e, DB-level)', () => {
 
   afterEach(async () => {
     for (const tenantId of [tenantA, tenantB]) {
+      // Audit rows hold a foreign key to their tenant and the application role
+      // has no DELETE on them — the append-only guarantee working as intended.
+      await withTenantContext(owner, tenantId, (tx) => tx.auditLog.deleteMany({ where: { tenantId } }));
       await withTenantContext(prisma, tenantId, async (tx) => {
         await tx.visit.deleteMany({ where: { tenantId } });
         await tx.patient.deleteMany({ where: { tenantId } });
@@ -213,5 +220,55 @@ describe('Row-Level Security enforcement (e2e, DB-level)', () => {
       await tx.clinicCustomRole.deleteMany({ where: { tenantId: tenantA } });
       await tx.staff.deleteMany({ where: { tenantId: tenantA, fullName: 'RLS Role Author' } });
     });
+  });
+  it('an audit trail cannot be read across tenants, or without a tenant at all', async () => {
+    // `audit_logs` was deliberately outside the original RLS sweep — a table of
+    // clinical create/update diffs, already protected by RBAC on the records
+    // themselves. The admin programme changed what is in it: basic salary
+    // before-and-after, payroll adjustment reasons, payment reversals,
+    // credit-note approvals. That is the most sensitive per-person data in the
+    // system, and it was one unscoped SELECT away from crossing tenants.
+    await withTenantContext(prisma, tenantA, async (tx) => {
+      await tx.auditLog.create({
+        data: {
+          tenantId: tenantA,
+          action: 'employee.updated',
+          entityType: 'EmployeeProfile',
+          entityId: randomId(),
+          before: { basicSalary: '4200.00' },
+          after: { basicSalary: '4800.00', _reason: 'Annual review' },
+        },
+      });
+    });
+
+    // No tenant context at all: the backstop, not the application's own guard.
+    expect(await prisma.auditLog.findMany({ where: { tenantId: tenantA } })).toEqual([]);
+    // The other tenant, asking directly for A's rows by id.
+    expect(
+      await withTenantContext(prisma, tenantB, (tx) => tx.auditLog.findMany({ where: { tenantId: tenantA } })),
+    ).toEqual([]);
+    // And the owning tenant still sees its own.
+    expect(
+      await withTenantContext(prisma, tenantA, (tx) => tx.auditLog.findMany({ where: { tenantId: tenantA } })),
+    ).toHaveLength(1);
+  });
+
+  it('an audit row cannot be written into another tenant', async () => {
+    // The WITH CHECK half of the policy. Without it, a mis-set tenantId would
+    // file a salary change in somebody else's audit trail — invisible to the
+    // tenant it concerns and visible to one it does not.
+    await expect(
+      withTenantContext(prisma, tenantA, (tx) =>
+        tx.auditLog.create({
+          data: {
+            tenantId: tenantB,
+            action: 'payroll.adjusted',
+            entityType: 'PayrollRun',
+            entityId: randomId(),
+            after: { amount: '900.00' },
+          },
+        }),
+      ),
+    ).rejects.toThrow();
   });
 });

@@ -9,6 +9,7 @@ import { postMovement } from './stock-ledger';
 import { CreateStockTransferDto } from './dto/create-stock-transfer.dto';
 import { ReceiveStockTransferDto } from './dto/receive-stock-transfer.dto';
 import { CancelStockTransferDto } from './dto/cancel-stock-transfer.dto';
+import { isTransferDiscrepancy, summariseTransfer } from './stock-variance';
 
 /**
  * STOCK TRANSFERS — a document with two ends, and one rule that shapes it all.
@@ -329,9 +330,7 @@ export class StockTransferService {
     });
 
     return transfers.map((transfer) => {
-      const discrepancies = transfer.lines.filter(
-        (line) => line.quantityReceived !== null && line.quantityReceived !== line.quantitySent,
-      );
+      const discrepancies = transfer.lines.filter(isTransferDiscrepancy);
       return {
         id: transfer.id,
         transferNumber: transfer.transferNumber,
@@ -351,7 +350,7 @@ export class StockTransferService {
         receivedBy: transfer.receivedBy?.fullName ?? null,
         lineCount: transfer.lines.length,
         totalSent: transfer.lines.reduce((total, line) => total + line.quantitySent, 0),
-        totalReceived: transfer.lines.reduce((total, line) => total + (line.quantityReceived ?? 0), 0),
+        totalReceived: summariseTransfer(transfer.lines).totalReceived,
         discrepancyCount: discrepancies.length,
         value: transfer.lines.reduce(
           (total, line) => total + Number(line.unitCost ?? 0) * line.quantitySent,

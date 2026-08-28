@@ -10,6 +10,24 @@ export function createTestPrismaClient(): PrismaClient {
   return new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
 }
 
+/**
+ * The same, as the MIGRATION OWNER rather than the application role.
+ *
+ * Needed for exactly one thing: clearing append-only tables between tests.
+ * `audit_logs`, `stock_movements`, `payments` and `claim_events` have their
+ * DELETE grant revoked from the application role on purpose, so a fixture that
+ * writes one cannot tidy it up afterwards — and an audit row holds a foreign
+ * key to its tenant, which then cannot be deleted either.
+ *
+ * Row-level security still applies (the tables are FORCE'd, so ownership does
+ * not exempt this connection), so it must still be used inside
+ * `withTenantContext`. It is a way past the GRANT, not past the policy.
+ */
+export function createOwnerTestPrismaClient(): PrismaClient {
+  const url = process.env.TEST_OWNER_DATABASE_URL ?? process.env.DATABASE_URL;
+  return new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
+}
+
 // Mirrors the pattern in core/tenant-context.middleware.ts and
 // core/tenant-scoped-prisma.provider.ts: runs `fn` inside a transaction
 // with app.tenant_id set, so RLS scopes it exactly as a real request would.

@@ -55,8 +55,9 @@ export function CreditNotesPage() {
       />
 
       <AdminNotice>
-        A DRAFT credit note reduces nothing. It becomes effective only when somebody holding the approval permission
-        issues it — and that person cannot be the one who raised it unless they hold both.
+        A DRAFT credit note reduces nothing. It becomes effective only when somebody holding the SEPARATE issuing
+        permission approves it, and both names are recorded on the note. In a clinic where one person holds both
+        permissions they can do both, so read the two names below rather than assuming two people.
       </AdminNotice>
 
       <AdminSection title="Credit notes" padded={false}>

@@ -24,10 +24,26 @@ export default function globalSetup(): void {
     );
   }
 
+  // MIGRATIONS RUN AS THE OWNER, NOT AS THE APPLICATION ROLE.
+  //
+  // This used TEST_DATABASE_URL, which is `kuwick_app` — deliberately
+  // NOSUPERUSER, NOBYPASSRLS, and deliberately NOT the owner of any table, so
+  // that row-level security actually binds during the tests. That role cannot
+  // CREATE TABLE and cannot ALTER a table it does not own, so any migration
+  // doing either failed here and left a permanently-failed row behind, after
+  // which `migrate deploy` refuses every later migration with P3009. It has
+  // happened at least twice: 20260822210000 (create) and 20260828200000
+  // (alter), the second only because the first had been resolved by hand.
+  //
+  // The owner URL is what CI already passes for exactly this reason, and what
+  // the application never uses. Falling back keeps a single-URL local setup
+  // working.
+  const migrationUrl = env.TEST_OWNER_DATABASE_URL ?? env.TEST_DATABASE_URL;
+
   // Idempotent: applies any pending migrations, no-ops if already current.
   execSync('npx prisma migrate deploy', {
     cwd: path.join(__dirname, '..'),
-    env: { ...env, DATABASE_URL: env.TEST_DATABASE_URL },
+    env: { ...env, DATABASE_URL: migrationUrl },
     stdio: 'inherit',
   });
 }
