@@ -347,6 +347,13 @@ model Tenant {
   statutoryRuleSets          StatutoryRuleSet[]
   payrollRuns                PayrollRun[]
   payrollLines               PayrollLine[]
+  businessSegments           BusinessSegment[]
+  segmentMappingRules        SegmentMappingRule[]
+  clinicProgrammes           ClinicProgramme[]
+  programmeEnrolments        ProgrammeEnrolment[]
+  marketingAudiences         MarketingAudience[]
+  marketingTemplates         MarketingTemplate[]
+  marketingDispatches        MarketingDispatch[]
   payrollAdjustments         PayrollAdjustment[]
   staffPermissionGrants      StaffPermissionGrant[]
 
@@ -606,14 +613,16 @@ model Patient {
   createdAt             DateTime              @default(now()) @map("created_at")
   updatedAt             DateTime              @updatedAt @map("updated_at")
 
-  tenant             Tenant                  @relation(fields: [tenantId], references: [id])
-  appointments       Appointment[]
-  appointmentSeries  AppointmentSeries[]
-  waitlistEntries    WaitlistEntry[]
-  visits             Visit[]
-  benefitMemberships StaffBenefitMember[]
-  alerts             PatientAlert[]
-  identityChanges    PatientIdentityChange[]
+  tenant              Tenant                  @relation(fields: [tenantId], references: [id])
+  appointments        Appointment[]
+  appointmentSeries   AppointmentSeries[]
+  waitlistEntries     WaitlistEntry[]
+  visits              Visit[]
+  programmeEnrolments ProgrammeEnrolment[]
+  marketingDispatches MarketingDispatch[]
+  benefitMemberships  StaffBenefitMember[]
+  alerts              PatientAlert[]
+  identityChanges     PatientIdentityChange[]
 
   @@unique([tenantId, identifierType, identifierValue])
   @@index([tenantId])
@@ -1035,6 +1044,10 @@ model Staff {
   payrollRunsApproved          PayrollRun[]                 @relation("PayrollRunApprover")
   payrollLines                 PayrollLine[]                @relation("PayrollLineStaff")
   payrollAdjustments           PayrollAdjustment[]          @relation("PayrollAdjustmentStaff")
+  programmeEnrolments          ProgrammeEnrolment[]         @relation("ProgrammeEnroller")
+  marketingAudiences           MarketingAudience[]          @relation("MarketingAudienceAuthor")
+  marketingTemplates           MarketingTemplate[]          @relation("MarketingTemplateAuthor")
+  marketingDispatches          MarketingDispatch[]          @relation("MarketingDispatchAuthor")
   payrollAdjustmentsAuthored   PayrollAdjustment[]          @relation("PayrollAdjustmentAuthor")
   prescriptionsReviewed        Prescription[]               @relation("PrescriptionReviewer")
 
@@ -6354,4 +6367,214 @@ model PayrollAdjustment {
 
   @@index([tenantId, payrollRunId])
   @@map("payroll_adjustments")
+}
+
+// ===========================================================================
+// ADMIN PROGRAMME — WAVE 5: OPERATIONS ANALYTICS
+//
+// Hijraa's admin segments its P&L into Maternal & Obstetric, NCD, Minor OT,
+// Weight Loss and Outpatient. That segmentation is genuinely useful and worth
+// keeping — but as CONFIGURATION, not as five hardcoded branches in a report.
+// A clinic that opens a dermatology line should add a segment, not wait for a
+// deployment.
+//
+// AND ONE THING THIS DELIBERATELY DOES NOT DO: fabricate clinical indicators.
+// A programme dashboard reports what is actually recorded. Where a clinic has
+// no structured HbA1c, the NCD screen says the data is not captured rather
+// than inventing a control rate from nothing.
+// ===========================================================================
+
+/// A reporting segment — a service line the clinic wants its P&L split by.
+model BusinessSegment {
+  id        String  @id @default(uuid())
+  tenantId  String  @map("tenant_id")
+  name      String
+  code      String
+  colour    String?
+  /// Lower sorts first on every segment report.
+  sortOrder Int     @default(0) @map("sort_order")
+  active    Boolean @default(true)
+  notes     String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant               @relation(fields: [tenantId], references: [id])
+  rules  SegmentMappingRule[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, active])
+  @@map("business_segments")
+}
+
+/// How a billed line finds its segment.
+///
+/// EVERY LINE BELONGS TO AT MOST ONE SEGMENT (owner brief §2B). Rules are
+/// evaluated in `priority` order and the FIRST match wins, so a line that
+/// matches two rules is counted once — under the more specific one, which is
+/// the one with the lower priority number. Summing a line into two segments
+/// would make the segment totals exceed the clinic's revenue.
+model SegmentMappingRule {
+  id        String @id @default(uuid())
+  tenantId  String @map("tenant_id")
+  segmentId String @map("segment_id")
+  /// Lower runs first. First match wins.
+  priority  Int    @default(100)
+
+  /// Exactly one of these decides what the rule matches. A rule with none
+  /// matches nothing and is reported as misconfigured rather than matching
+  /// everything.
+  serviceCatalogId String? @map("service_catalog_id")
+  itemId           String? @map("item_id")
+  itemCategory     String? @map("item_category")
+  serviceCategory  String? @map("service_category")
+  /// A case-insensitive substring of the line description — the fallback for
+  /// freehand lines, and the only rule type that can match one.
+  descriptionMatch String? @map("description_match")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id])
+  segment BusinessSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, priority])
+  @@map("segment_mapping_rules")
+}
+
+/// A clinical programme a patient can be enrolled in — NCD, weight management,
+/// antenatal. Configuration, so a specialised dashboard is a programme rather
+/// than a code branch.
+model ClinicProgramme {
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  name              String
+  code              String
+  description       String?
+  active            Boolean  @default(true)
+  /// Services whose delivery counts as programme activity.
+  serviceCatalogIds String[] @default([]) @map("service_catalog_ids")
+  /// Items whose dispensing counts — the injections and medications that make
+  /// a weight-management or NCD programme measurable.
+  itemIds           String[] @default([]) @map("item_ids")
+  /// Diagnoses that suggest a patient belongs, for the enrolment prompt. Never
+  /// auto-enrols anybody: enrolment is a decision a clinician makes.
+  diagnosisCodes    String[] @default([]) @map("diagnosis_codes")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant               @relation(fields: [tenantId], references: [id])
+  enrolments ProgrammeEnrolment[]
+
+  @@unique([tenantId, code])
+  @@map("clinic_programmes")
+}
+
+model ProgrammeEnrolment {
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  programmeId String    @map("programme_id")
+  patientId   String    @map("patient_id")
+  enrolledAt  DateTime  @map("enrolled_at") @db.Date
+  exitedAt    DateTime? @map("exited_at") @db.Date
+  exitReason  String?   @map("exit_reason")
+  notes       String?
+
+  enrolledByStaffId String   @map("enrolled_by_staff_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id])
+  programme  ClinicProgramme @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  patient    Patient         @relation(fields: [patientId], references: [id])
+  enrolledBy Staff           @relation("ProgrammeEnroller", fields: [enrolledByStaffId], references: [id])
+
+  @@unique([programmeId, patientId, enrolledAt])
+  @@index([tenantId, programmeId, exitedAt])
+  @@map("programme_enrolments")
+}
+
+/// A saved audience definition. The audience itself is COMPUTED on demand from
+/// live data — storing a list of patient ids would go stale the moment somebody
+/// registers.
+model MarketingAudience {
+  id       String  @id @default(uuid())
+  tenantId String  @map("tenant_id")
+  name     String
+  /// The filter, as the builder produced it.
+  criteria Json
+  notes    String?
+
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  createdBy Staff  @relation("MarketingAudienceAuthor", fields: [createdByStaffId], references: [id])
+
+  @@unique([tenantId, name])
+  @@map("marketing_audiences")
+}
+
+/// A WhatsApp message template.
+///
+/// WHAT THIS IS NOT: a sending integration. Kuwick has no WhatsApp Business API
+/// connection, so a staff member copies the message or opens WhatsApp with it
+/// pre-filled and sends it themselves. `MarketingDispatch` records that the
+/// message was PREPARED — never that it was delivered, because nothing here
+/// receives a delivery acknowledgement (owner brief §15.5).
+model MarketingTemplate {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  name         String
+  /// The body, with {{placeholders}} the preview fills from the patient.
+  body         String
+  /// Which placeholders this template uses, so the builder can validate them.
+  placeholders String[] @default([])
+  category     String?
+  active       Boolean  @default(true)
+
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id])
+  createdBy  Staff               @relation("MarketingTemplateAuthor", fields: [createdByStaffId], references: [id])
+  dispatches MarketingDispatch[]
+
+  @@unique([tenantId, name])
+  @@map("marketing_templates")
+}
+
+/// A record that a message was PREPARED for a patient, by whom, and when.
+///
+/// The status vocabulary is deliberately short and honest: PREPARED means the
+/// text was generated and handed to a person; OPENED means they clicked through
+/// to WhatsApp. There is no SENT and no DELIVERED, because Kuwick receives no
+/// acknowledgement of either and recording one would be a claim it cannot
+/// support.
+model MarketingDispatch {
+  id           String    @id @default(uuid())
+  tenantId     String    @map("tenant_id")
+  templateId   String?   @map("template_id")
+  patientId    String    @map("patient_id")
+  audienceName String?   @map("audience_name")
+  /// The exact text handed to the staff member, so what a patient received is
+  /// answerable later.
+  renderedBody String    @map("rendered_body")
+  /// PREPARED | OPENED. Nothing further, deliberately.
+  status       String    @default("PREPARED")
+  openedAt     DateTime? @map("opened_at")
+
+  preparedByStaffId String   @map("prepared_by_staff_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant             @relation(fields: [tenantId], references: [id])
+  template   MarketingTemplate? @relation(fields: [templateId], references: [id])
+  patient    Patient            @relation(fields: [patientId], references: [id])
+  preparedBy Staff              @relation("MarketingDispatchAuthor", fields: [preparedByStaffId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, patientId])
+  @@map("marketing_dispatches")
 }
