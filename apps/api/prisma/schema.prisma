@@ -92,8 +92,8 @@ model StaffRoleAssignment {
  * custom role can never mint a doctor or an owner.
  */
 model ClinicCustomRole {
-  id          String  @id @default(uuid())
-  tenantId    String  @map("tenant_id")
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
   name        String
   description String?
   /// Permission strings from CUSTOM_ROLE_GRANTABLE.
@@ -318,6 +318,12 @@ model Tenant {
 
   labelPrints           LabelPrint[]
   staffRoleAssignments  StaffRoleAssignment[]
+  payments              Payment[]
+  creditNotes           CreditNote[]
+  creditNoteLines       CreditNoteLine[]
+  taxCodes              TaxCode[]
+  taxRates              TaxRate[]
+  dayEndClosings        DayEndClosing[]
   staffPermissionGrants StaffPermissionGrant[]
 
   @@map("tenants")
@@ -395,6 +401,9 @@ model Clinic {
   clinicalNotes               ClinicalNote[]
   visitObservations           VisitObservation[]
   consultationTariffRules     ConsultationTariffRule[]
+  payments                    Payment[]
+  creditNotes                 CreditNote[]
+  dayEndClosings              DayEndClosing[]
   labelPrints                 LabelPrint[]
 
   @@index([tenantId])
@@ -708,25 +717,25 @@ model NotificationLog {
 /// clinic has not accepted this booking yet" with "the patient wants to move
 /// an accepted one", which are different facts about different things.
 model AppointmentChangeRequest {
-  id             String                         @id @default(uuid())
-  tenantId       String                         @map("tenant_id")
-  clinicId       String                         @map("clinic_id")
-  appointmentId  String                         @map("appointment_id")
-  type           AppointmentChangeRequestType
-  status         AppointmentChangeRequestStatus @default(PENDING)
+  id               String                         @id @default(uuid())
+  tenantId         String                         @map("tenant_id")
+  clinicId         String                         @map("clinic_id")
+  appointmentId    String                         @map("appointment_id")
+  type             AppointmentChangeRequestType
+  status           AppointmentChangeRequestStatus @default(PENDING)
   /// The patient's own words — required; a request without a reason is a
   /// decision nobody can make.
-  reason         String
+  reason           String
   /// RESCHEDULE only: where the patient wants to move to. NOT a reservation —
   /// availability is re-checked by the canonical engine at approval time.
-  requestedStart DateTime?                      @map("requested_start")
-  requestedEnd   DateTime?                      @map("requested_end")
-  decidedByStaffId String?                      @map("decided_by_staff_id")
-  decidedAt      DateTime?                      @map("decided_at")
+  requestedStart   DateTime?                      @map("requested_start")
+  requestedEnd     DateTime?                      @map("requested_end")
+  decidedByStaffId String?                        @map("decided_by_staff_id")
+  decidedAt        DateTime?                      @map("decided_at")
   /// The clinic's words back to the patient — a decline explanation or an
   /// offered alternative ("we could do 15:30 instead — ring us").
-  decisionNote   String?                        @map("decision_note")
-  createdAt      DateTime                       @default(now()) @map("created_at")
+  decisionNote     String?                        @map("decision_note")
+  createdAt        DateTime                       @default(now()) @map("created_at")
 
   tenant         Tenant      @relation(fields: [tenantId], references: [id])
   clinic         Clinic      @relation(fields: [clinicId], references: [id])
@@ -952,6 +961,13 @@ model Staff {
   professionalAudits           StaffProfessionalAudit[]     @relation("ProfessionalAuditSubject")
   professionalAuditsMade       StaffProfessionalAudit[]     @relation("ProfessionalAuditActor")
   labelPrints                  LabelPrint[]
+  paymentsReceived             Payment[]                    @relation("PaymentReceivedBy")
+  creditNotesCreated           CreditNote[]                 @relation("CreditNoteCreatedBy")
+  creditNotesApproved          CreditNote[]                 @relation("CreditNoteApprovedBy")
+  creditNotesVoided            CreditNote[]                 @relation("CreditNoteVoidedBy")
+  dayEndsCounted               DayEndClosing[]              @relation("DayEndCountedBy")
+  dayEndsClosed                DayEndClosing[]              @relation("DayEndClosedBy")
+  dayEndsReopened              DayEndClosing[]              @relation("DayEndReopenedBy")
   prescriptionsReviewed        Prescription[]               @relation("PrescriptionReviewer")
 
   @@index([tenantId])
@@ -1326,6 +1342,9 @@ model ServiceCatalog {
   /// The tail of a service-specific public link: /hijraa-bangi/sinus (§40).
   bookingSlug        String?                   @map("booking_slug")
 
+  /// WAVE 1 — see Item.taxCodeId.
+  taxCodeId String? @map("tax_code_id")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -1342,6 +1361,7 @@ model ServiceCatalog {
   formTemplates               FormTemplate[]
   panelPriceOverrides         PanelPriceOverride[]
   panelExclusions             PanelExclusion[]
+  taxCode                     TaxCode?                     @relation(fields: [taxCodeId], references: [id])
   consultationTariffRules     ConsultationTariffRule[]
 
   @@unique([tenantId, bookingSlug])
@@ -1511,41 +1531,41 @@ model DataCorrection {
 }
 
 model ClinicBookingSettings {
-  id                    String    @id @default(uuid())
-  tenantId              String    @map("tenant_id")
-  clinicId              String    @map("clinic_id")
+  id                    String              @id @default(uuid())
+  tenantId              String              @map("tenant_id")
+  clinicId              String              @map("clinic_id")
   /// The clinic's own booking band, which NARROWS a provider's roster and
   /// never widens it. Both nullable since the roster redesign: a 24-hour
   /// clinic has no first or last session, and a hard 09:00-17:00 default
   /// silently amputated a night roster (§50). NULL on either side means "the
   /// clinic does not narrow that end".
-  firstSessionTime      DateTime? @map("first_session_time") @db.Time
-  lastSessionTime       DateTime? @map("last_session_time") @db.Time
+  firstSessionTime      DateTime?           @map("first_session_time") @db.Time
+  lastSessionTime       DateTime?           @map("last_session_time") @db.Time
   /// 0 means walk-up booking is fine — a real answer, and the safe default: a
   /// clinic that has not thought about this should not find its diary silently
   /// narrowed.
-  minimumNoticeMinutes  Int       @default(0) @map("minimum_notice_minutes")
+  minimumNoticeMinutes  Int                 @default(0) @map("minimum_notice_minutes")
   /// How far ahead anybody may book at this branch. NULL = no horizon.
-  maxAdvanceDays        Int?      @map("max_advance_days")
+  maxAdvanceDays        Int?                @map("max_advance_days")
   /// Whether the tenant-wide HR public-holiday calendar closes THIS branch.
   /// Defaults false so no existing diary is narrowed by a migration: a
   /// Malaysian holiday is a payroll fact first, and plenty of clinics open on
   /// one. A branch that does shut ticks this once instead of re-typing the
   /// national calendar as branch closed dates (§3).
-  observePublicHolidays Boolean   @default(false) @map("observe_public_holidays")
+  observePublicHolidays Boolean             @default(false) @map("observe_public_holidays")
   /// THE DIARY AXIS (Phase 3). Display settings only — never availability.
   /// The booking band above NARROWS what can be booked; these say what hours
   /// the calendar RENDERS, which must hold still whatever the roster does.
   calendarDisplayMode   CalendarDisplayMode @default(STANDARD_HOURS) @map("calendar_display_mode")
   /// The branch's stated operating hours, wall clock. NULL = never stated;
   /// the diary falls back to a stable default band rather than to the roster.
-  displayOpenTime       DateTime? @map("display_open_time") @db.Time
-  displayCloseTime      DateTime? @map("display_close_time") @db.Time
+  displayOpenTime       DateTime?           @map("display_open_time") @db.Time
+  displayCloseTime      DateTime?           @map("display_close_time") @db.Time
   /// Breathing room drawn either side of the operating hours (09:00–17:00
   /// with 60 → an 08:00–18:00 diary), clamped to the day.
-  displayPaddingMinutes Int       @default(60) @map("display_padding_minutes")
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
+  displayPaddingMinutes Int                 @default(60) @map("display_padding_minutes")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
   clinic Clinic @relation(fields: [clinicId], references: [id])
@@ -1718,27 +1738,27 @@ model Appointment {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  tenant          Tenant                     @relation(fields: [tenantId], references: [id])
-  clinic          Clinic                     @relation(fields: [clinicId], references: [id])
-  patient         Patient                    @relation(fields: [patientId], references: [id])
-  staff           Staff                      @relation(fields: [staffId], references: [id])
-  service         ServiceCatalog             @relation(fields: [serviceId], references: [id])
-  rescheduledFrom Appointment?               @relation("AppointmentReschedule", fields: [rescheduledFromId], references: [id])
+  tenant             Tenant                     @relation(fields: [tenantId], references: [id])
+  clinic             Clinic                     @relation(fields: [clinicId], references: [id])
+  patient            Patient                    @relation(fields: [patientId], references: [id])
+  staff              Staff                      @relation(fields: [staffId], references: [id])
+  service            ServiceCatalog             @relation(fields: [serviceId], references: [id])
+  rescheduledFrom    Appointment?               @relation("AppointmentReschedule", fields: [rescheduledFromId], references: [id])
   /// THE REPLACEMENT. `rescheduledTo` is the forward link §12 asks for; it is
   /// the same relation read the other way, so the two can never disagree.
-  rescheduledTo   Appointment?               @relation("AppointmentReschedule")
-  series          AppointmentSeries?         @relation(fields: [seriesId], references: [id])
-  overriddenBy    Staff?                     @relation("AppointmentOverrideAuthor", fields: [overriddenByStaffId], references: [id])
-  depositInvoice  Invoice?                   @relation("AppointmentDepositInvoice", fields: [depositInvoiceId], references: [id])
+  rescheduledTo      Appointment?               @relation("AppointmentReschedule")
+  series             AppointmentSeries?         @relation(fields: [seriesId], references: [id])
+  overriddenBy       Staff?                     @relation("AppointmentOverrideAuthor", fields: [overriddenByStaffId], references: [id])
+  depositInvoice     Invoice?                   @relation("AppointmentDepositInvoice", fields: [depositInvoiceId], references: [id])
   events             AppointmentEvent[]
   formAnswers        AppointmentFormAnswer[]
   communications     AppointmentCommunication[]
   waitlistEntries    WaitlistEntry[]            @relation("WaitlistBookedAppointment")
   staffNotifications StaffNotification[]
   changeRequests     AppointmentChangeRequest[]
-  reminderSentBy  Staff?                     @relation("AppointmentReminderAuthor", fields: [reminderSentByStaffId], references: [id])
-  visit           Visit?                     @relation(fields: [visitId], references: [id])
-  cancelledBy     Staff?                     @relation("AppointmentCancelAuthor", fields: [cancelledByStaffId], references: [id])
+  reminderSentBy     Staff?                     @relation("AppointmentReminderAuthor", fields: [reminderSentByStaffId], references: [id])
+  visit              Visit?                     @relation(fields: [visitId], references: [id])
+  cancelledBy        Staff?                     @relation("AppointmentCancelAuthor", fields: [cancelledByStaffId], references: [id])
 
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId])
@@ -1949,11 +1969,16 @@ model Item {
   tracksBatchExpiry Boolean @default(true) @map("tracks_batch_expiry")
 
   /// When somebody at this clinic declared this item dispensed whole.
-  dispensedWholeAt        DateTime? @map("dispensed_whole_at")
+  dispensedWholeAt DateTime? @map("dispensed_whole_at")
   /// Who declared it. Plain staff-id audit column, the same convention as
   /// PatientAlert.createdByStaffId — attribution on record without another
   /// relation into the Staff constellation.
-  dispensedWholeByStaffId String?   @map("dispensed_whole_by_staff_id")
+  /// WAVE 1 — the DEFAULT tax treatment for this item, copied onto an
+  /// invoice line at add-time. NULL means "no tax mapping", which produces a
+  /// zero-tax line rather than a guessed one.
+  taxCodeId        String?   @map("tax_code_id")
+
+  dispensedWholeByStaffId String? @map("dispensed_whole_by_staff_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1971,6 +1996,7 @@ model Item {
   goodsReceivedNoteLines   GoodsReceivedNoteLine[]
   ageDosages               ItemAgeDosage[]
   prescriptions            Prescription[]
+  taxCode                  TaxCode?                @relation(fields: [taxCodeId], references: [id])
   panelPriceOverrides      PanelPriceOverride[]
   panelExclusions          PanelExclusion[]
 
@@ -3885,6 +3911,11 @@ model Invoice {
   invoiceDiscountReason     String?              @map("invoice_discount_reason")
   invoiceDiscountByStaffId  String?              @map("invoice_discount_by_staff_id")
   invoiceDiscountAt         DateTime?            @map("invoice_discount_at")
+  /// WAVE 1 — service tax carried on the invoice as its own number, summed
+  /// from the lines. `totalAmount` INCLUDES it. Both stay 0 for a clinic that
+  /// is not tax-registered, which is every clinic until a TaxCode is mapped,
+  /// so nothing about an existing invoice changes by this field existing.
+  taxAmount                 Decimal              @default(0) @map("tax_amount") @db.Decimal(10, 2)
   createdAt                 DateTime             @default(now()) @map("created_at")
   updatedAt                 DateTime             @updatedAt @map("updated_at")
 
@@ -3895,6 +3926,8 @@ model Invoice {
   claimBatchLines     ClaimBatchLine[]
   /// Bookings whose deposit was applied to this invoice, so a deposit taken at
   /// booking is reconciled against the clinic bill rather than counted twice.
+  payments            Payment[]
+  creditNotes         CreditNote[]
   depositAppointments Appointment[]    @relation("AppointmentDepositInvoice")
 
   @@unique([tenantId, invoiceNumber])
@@ -4060,18 +4093,30 @@ model InvoiceLine {
   // Auditable cancellation — a removed charge is a historical fact, not a
   // deleted row. Cancelled lines leave every total and worklist; the record
   // of who removed what, when and why survives.
-  cancelledAt        DateTime? @map("cancelled_at")
-  cancelledByStaffId String?   @map("cancelled_by_staff_id")
-  cancelReason       String?   @map("cancel_reason")
-  createdAt          DateTime  @default(now()) @map("created_at")
+  // WAVE 1 — tax is decided PER LINE, then summed. A clinic bills exempt
+  // medicines and standard-rated procedures on the same invoice, so an
+  // invoice-level rate would be wrong on one of them. The rate is SNAPSHOTTED
+  // here at add-time from the rate in force on that date: a later rate change
+  // is a new rate row, never a rewrite of an issued bill.
+  taxCodeId          String?       @map("tax_code_id")
+  taxTreatment       TaxTreatment? @map("tax_treatment")
+  taxRatePercent     Decimal?      @map("tax_rate_percent") @db.Decimal(6, 3)
+  taxAmount          Decimal       @default(0) @map("tax_amount") @db.Decimal(10, 2)
+  cancelledAt        DateTime?     @map("cancelled_at")
+  cancelledByStaffId String?       @map("cancelled_by_staff_id")
+  cancelReason       String?       @map("cancel_reason")
+  createdAt          DateTime      @default(now()) @map("created_at")
 
   tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
   invoice                Invoice                 @relation(fields: [invoiceId], references: [id])
   sourceOrderService     OrderService?           @relation(fields: [sourceOrderServiceId], references: [id])
   sourcePrescription     Prescription?           @relation(fields: [sourcePrescriptionId], references: [id])
   consultationVisit      Visit?                  @relation("VisitConsultationChargeLines", fields: [sourceConsultationVisitId], references: [id])
+  taxCode                TaxCode?                @relation(fields: [taxCodeId], references: [id])
+  creditNoteLines        CreditNoteLine[]
   consultationTariffRule ConsultationTariffRule? @relation(fields: [consultationTariffRuleId], references: [id])
 
+  @@index([tenantId, taxCodeId])
   @@index([tenantId, invoiceId])
   @@map("invoice_lines")
 }
@@ -4586,44 +4631,44 @@ model AppointmentMessageTemplate {
 /// belong to it. One row per clinic, so there is one place these live rather
 /// than four technical screens.
 model ClinicBookingPage {
-  id                       String   @id @default(uuid())
-  tenantId                 String   @map("tenant_id")
-  clinicId                 String   @unique @map("clinic_id")
+  id                         String               @id @default(uuid())
+  tenantId                   String               @map("tenant_id")
+  clinicId                   String               @unique @map("clinic_id")
   /// The public URL segment: /hijraa-bangi. Unique across the platform,
   /// because the link is public and shared outside any tenant.
-  slug                     String   @unique
-  displayName              String   @map("display_name")
-  logoUrl                  String?  @map("logo_url")
+  slug                       String               @unique
+  displayName                String               @map("display_name")
+  logoUrl                    String?              @map("logo_url")
   /// 'en' or 'ms'. Free text rather than an enum so adding a language is
   /// content, not a migration.
-  language                 String   @default("en")
-  introText                String?  @map("intro_text")
+  language                   String               @default("en")
+  introText                  String?              @map("intro_text")
   /// Which patient details the page insists on. Name is always required and
   /// is therefore not a flag.
-  requirePhone             Boolean  @default(true) @map("require_phone")
-  requireEmail             Boolean  @default(false) @map("require_email")
-  requireNric              Boolean  @default(false) @map("require_nric")
-  showReasonField          Boolean  @default(true) @map("show_reason_field")
+  requirePhone               Boolean              @default(true) @map("require_phone")
+  requireEmail               Boolean              @default(false) @map("require_email")
+  requireNric                Boolean              @default(false) @map("require_nric")
+  showReasonField            Boolean              @default(true) @map("show_reason_field")
   /// Whether the page is live at all. False = the link 404s.
-  active                   Boolean  @default(false)
+  active                     Boolean              @default(false)
   /// §42 — what a patient may do with their own booking, and up to when.
-  allowPatientReschedule   Boolean  @default(true) @map("allow_patient_reschedule")
-  allowPatientCancel       Boolean  @default(true) @map("allow_patient_cancel")
+  allowPatientReschedule     Boolean              @default(true) @map("allow_patient_reschedule")
+  allowPatientCancel         Boolean              @default(true) @map("allow_patient_cancel")
   /// Hours before the appointment after which the patient can no longer
   /// change it themselves. 0 = right up to the start.
-  patientChangeCutoffHours Int      @default(4) @map("patient_change_cutoff_hours")
+  patientChangeCutoffHours   Int                  @default(4) @map("patient_change_cutoff_hours")
   /// PHASE 7 — the tri-state policies. NULL means "never decided under the
   /// new model": behaviour then falls back to the frozen booleans above
   /// (true → INSTANT, false → NOT_ALLOWED), so no existing page changes
   /// behaviour by migration. The settings screen writes these from now on.
-  patientRescheduleMode    PatientChangePolicy? @map("patient_reschedule_mode")
-  patientCancelMode        PatientChangePolicy? @map("patient_cancel_mode")
+  patientRescheduleMode      PatientChangePolicy? @map("patient_reschedule_mode")
+  patientCancelMode          PatientChangePolicy? @map("patient_cancel_mode")
   /// Cutoff with minute precision (owner: value + minutes/hours/days). NULL
   /// falls back to patientChangeCutoffHours × 60.
-  patientChangeCutoffMinutes Int?   @map("patient_change_cutoff_minutes")
-  confirmationMessage      String?  @map("confirmation_message")
-  createdAt                DateTime @default(now()) @map("created_at")
-  updatedAt                DateTime @updatedAt @map("updated_at")
+  patientChangeCutoffMinutes Int?                 @map("patient_change_cutoff_minutes")
+  confirmationMessage        String?              @map("confirmation_message")
+  createdAt                  DateTime             @default(now()) @map("created_at")
+  updatedAt                  DateTime             @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
   clinic Clinic @relation(fields: [clinicId], references: [id])
@@ -4708,4 +4753,306 @@ model WaitlistEntry {
   @@index([tenantId, clinicId, status])
   @@index([tenantId, serviceId, status])
   @@map("waitlist_entries")
+}
+
+// ===========================================================================
+// ADMIN PROGRAMME — WAVE 1: THE FINANCIAL MODEL
+//
+// The rule this wave exists to enforce (owner brief §7): INVOICE, PAYMENT,
+// CLAIM, RECEIVABLE, CREDIT NOTE and REFUND are separate facts. Before this
+// wave, `Invoice.paidAt` / `paymentMethod` / `patientPaidAmount` carried all
+// six of them on one row, which made four things impossible to record:
+// a partial payment, a second payment, a payment on a day other than the
+// invoice's, and a refund. None of those are exotic — they are Tuesday.
+//
+// Nothing here rewrites the invoice. `Invoice.patientPaidAmount` stays
+// exactly what it was (money collected at settlement) and remains the
+// backfill source for the first Payment row of every historical invoice, so
+// every existing report keeps returning the number it returned yesterday.
+// ===========================================================================
+
+/// A payment ROW is money moving, in one direction, once.
+/// A refund is not a negative payment on the same row — it is its own row,
+/// because "we took RM80 and later gave RM30 back" is two events that both
+/// happened, and collapsing them to RM50 destroys the second one.
+enum PaymentKind {
+  PAYMENT
+  REFUND
+}
+
+/// The tender types day-end reconciliation counts. Free-text payment methods
+/// (Invoice.paymentMethod) are mapped onto these once, in `tenderOf()`, so
+/// that a spelling difference at the counter can never split a settlement
+/// line in two.
+enum PaymentTender {
+  CASH
+  CARD
+  QR
+  EWALLET
+  BANK_TRANSFER
+  CHEQUE
+  /// No money moved at the counter — the panel carries the bill. Recorded so
+  /// that a fully-covered invoice still has a settlement event with an actor
+  /// and a timestamp, and never looks like an unpaid one.
+  PANEL
+  OTHER
+}
+
+/// One movement of patient money against one invoice.
+///
+/// APPEND-ONLY BY POLICY AND BY TRIGGER (see the wave-1 migration): a payment
+/// that should not have been taken is REVERSED — a second row pointing at the
+/// first — never edited and never deleted. `reversedAt` on the original is the
+/// single exception the trigger allows, and only to stamp the reversal.
+model Payment {
+  id        String @id @default(uuid())
+  tenantId  String @map("tenant_id")
+  /// Denormalised from the invoice's visit so day-end can scope by branch
+  /// without a three-table join on every reconciliation query.
+  clinicId  String @map("clinic_id")
+  invoiceId String @map("invoice_id")
+
+  kind        PaymentKind   @default(PAYMENT)
+  tender      PaymentTender
+  /// The exact string the counter chose, kept beside the canonical tender so a
+  /// clinic can report on "Touch 'n Go" vs "GrabPay" without either becoming a
+  /// reconciliation bucket of its own.
+  methodLabel String?       @map("method_label")
+
+  /// ALWAYS POSITIVE, for both kinds. Direction is `kind`, never the sign —
+  /// a signed amount is how a refund gets double-counted by a query that
+  /// forgot to filter.
+  amount Decimal @db.Decimal(10, 2)
+
+  /// When the money moved, which is NOT when the invoice was raised. Day-end
+  /// buckets on this; the sales report buckets on the invoice date. Two
+  /// different questions, two different dates, and the reason both exist.
+  receivedAt DateTime @map("received_at")
+
+  referenceNo       String? @map("reference_no")
+  receivedByStaffId String  @map("received_by_staff_id")
+  notes             String?
+
+  /// Set when this row reverses another. The reversal carries the reason;
+  /// the original keeps its own record of having happened.
+  reversesPaymentId String?   @map("reverses_payment_id")
+  reversalReason    String?   @map("reversal_reason")
+  reversedAt        DateTime? @map("reversed_at")
+
+  /// Which day-end this settled into, stamped when the day is closed. A
+  /// payment with a closing attached is inside a reconciled day and cannot be
+  /// reversed without reopening it.
+  dayEndClosingId String? @map("day_end_closing_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  clinic        Clinic         @relation(fields: [clinicId], references: [id])
+  invoice       Invoice        @relation(fields: [invoiceId], references: [id])
+  receivedBy    Staff          @relation("PaymentReceivedBy", fields: [receivedByStaffId], references: [id])
+  reverses      Payment?       @relation("PaymentReversal", fields: [reversesPaymentId], references: [id])
+  reversedBy    Payment[]      @relation("PaymentReversal")
+  dayEndClosing DayEndClosing? @relation(fields: [dayEndClosingId], references: [id])
+
+  @@index([tenantId, invoiceId])
+  @@index([tenantId, clinicId, receivedAt])
+  @@index([tenantId, dayEndClosingId])
+  @@map("payments")
+}
+
+enum CreditNoteStatus {
+  DRAFT
+  ISSUED
+  VOID
+}
+
+/// Correcting revenue WITHOUT destroying the record of what was billed.
+///
+/// The alternative — editing or deleting the invoice — is what makes a
+/// clinic's reported revenue unauditable, because the number changes and
+/// nothing says why. A credit note leaves the original invoice exactly as
+/// issued and records the reduction as its own dated, attributed, approvable
+/// document.
+model CreditNote {
+  id               String           @id @default(uuid())
+  tenantId         String           @map("tenant_id")
+  clinicId         String           @map("clinic_id")
+  creditNoteNumber String           @map("credit_note_number")
+  invoiceId        String           @map("invoice_id")
+  status           CreditNoteStatus @default(DRAFT)
+  reason           String
+
+  subtotalAmount Decimal @default(0) @map("subtotal_amount") @db.Decimal(10, 2)
+  taxAmount      Decimal @default(0) @map("tax_amount") @db.Decimal(10, 2)
+  totalAmount    Decimal @default(0) @map("total_amount") @db.Decimal(10, 2)
+
+  createdByStaffId  String    @map("created_by_staff_id")
+  approvedByStaffId String?   @map("approved_by_staff_id")
+  approvedAt        DateTime? @map("approved_at")
+  issuedAt          DateTime? @map("issued_at")
+  voidedByStaffId   String?   @map("voided_by_staff_id")
+  voidedAt          DateTime? @map("voided_at")
+  voidReason        String?   @map("void_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id])
+  clinic     Clinic           @relation(fields: [clinicId], references: [id])
+  invoice    Invoice          @relation(fields: [invoiceId], references: [id])
+  createdBy  Staff            @relation("CreditNoteCreatedBy", fields: [createdByStaffId], references: [id])
+  approvedBy Staff?           @relation("CreditNoteApprovedBy", fields: [approvedByStaffId], references: [id])
+  voidedBy   Staff?           @relation("CreditNoteVoidedBy", fields: [voidedByStaffId], references: [id])
+  lines      CreditNoteLine[]
+
+  @@unique([tenantId, creditNoteNumber])
+  @@index([tenantId, invoiceId])
+  @@index([tenantId, clinicId, status])
+  @@map("credit_notes")
+}
+
+model CreditNoteLine {
+  id            String  @id @default(uuid())
+  tenantId      String  @map("tenant_id")
+  creditNoteId  String  @map("credit_note_id")
+  /// Which invoice line is being credited, when the credit is line-specific.
+  /// NULL for a whole-invoice credit (a goodwill write-down, say), which is a
+  /// real case and must not be forced into a fake line reference.
+  invoiceLineId String? @map("invoice_line_id")
+  description   String
+  quantity      Int     @default(1)
+  unitPrice     Decimal @map("unit_price") @db.Decimal(10, 2)
+  amount        Decimal @db.Decimal(10, 2)
+  taxAmount     Decimal @default(0) @map("tax_amount") @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  creditNote  CreditNote   @relation(fields: [creditNoteId], references: [id])
+  invoiceLine InvoiceLine? @relation(fields: [invoiceLineId], references: [id])
+
+  @@index([tenantId, creditNoteId])
+  @@map("credit_note_lines")
+}
+
+/// How a line is treated for service tax, independent of the RATE — a
+/// zero-rated line and an exempt line both add RM0 and are reported apart.
+enum TaxTreatment {
+  STANDARD_RATED
+  ZERO_RATED
+  EXEMPT
+}
+
+/// A named tax treatment ("SST-6", "Exempt — medicines"). The RATE lives on
+/// TaxRate and is effective-dated, because a rate change is a date, not an
+/// edit: invoices issued before it must keep computing at the old rate
+/// forever.
+model TaxCode {
+  id        String       @id @default(uuid())
+  tenantId  String       @map("tenant_id")
+  code      String
+  name      String
+  treatment TaxTreatment @default(STANDARD_RATED)
+  active    Boolean      @default(true)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id])
+  rates        TaxRate[]
+  invoiceLines InvoiceLine[]
+  items        Item[]
+  services     ServiceCatalog[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("tax_codes")
+}
+
+model TaxRate {
+  id            String    @id @default(uuid())
+  tenantId      String    @map("tenant_id")
+  taxCodeId     String    @map("tax_code_id")
+  ratePercent   Decimal   @map("rate_percent") @db.Decimal(6, 3)
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  /// NULL means "still in force". Closing a rate is setting this, never
+  /// deleting the row.
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  taxCode TaxCode @relation(fields: [taxCodeId], references: [id])
+
+  @@index([tenantId, taxCodeId, effectiveFrom])
+  @@map("tax_rates")
+}
+
+enum DayEndStatus {
+  OPEN
+  COUNTED
+  CLOSED
+}
+
+/// One branch, one business day, one reconciliation.
+///
+/// This is a WORKFLOW, not a report (owner brief §6B). The report can be run
+/// again tomorrow and will say the same thing; the closing records what a
+/// named person counted in the drawer at the time, what the system expected,
+/// and what they said about the difference. Those three facts are not
+/// recoverable after the fact from anything else.
+model DayEndClosing {
+  id           String       @id @default(uuid())
+  tenantId     String       @map("tenant_id")
+  clinicId     String       @map("clinic_id")
+  businessDate DateTime     @map("business_date") @db.Date
+  status       DayEndStatus @default(OPEN)
+
+  /// What the ledger says should be there, snapshotted when the day is
+  /// counted. Recomputed live while OPEN; frozen at CLOSED so a late
+  /// back-dated payment cannot silently rewrite a signed-off day.
+  expectedCash  Decimal @default(0) @map("expected_cash") @db.Decimal(12, 2)
+  expectedCard  Decimal @default(0) @map("expected_card") @db.Decimal(12, 2)
+  expectedQr    Decimal @default(0) @map("expected_qr") @db.Decimal(12, 2)
+  expectedOther Decimal @default(0) @map("expected_other") @db.Decimal(12, 2)
+  expectedTotal Decimal @default(0) @map("expected_total") @db.Decimal(12, 2)
+
+  /// What a person actually counted or read off the terminal. NULL means not
+  /// yet counted — which is not the same as counted-and-found-zero, and the
+  /// variance must not be computed from a guess.
+  countedCash  Decimal? @map("counted_cash") @db.Decimal(12, 2)
+  countedCard  Decimal? @map("counted_card") @db.Decimal(12, 2)
+  countedQr    Decimal? @map("counted_qr") @db.Decimal(12, 2)
+  countedOther Decimal? @map("counted_other") @db.Decimal(12, 2)
+
+  varianceAmount Decimal? @map("variance_amount") @db.Decimal(12, 2)
+  varianceReason String?  @map("variance_reason")
+
+  /// Operational counts frozen with the day, so the closed record answers
+  /// "what kind of day was it" without re-running a report over data that
+  /// has since moved on.
+  invoiceCount Int   @default(0) @map("invoice_count")
+  paymentCount Int   @default(0) @map("payment_count")
+  snapshot     Json?
+
+  countedByStaffId  String?   @map("counted_by_staff_id")
+  countedAt         DateTime? @map("counted_at")
+  closedByStaffId   String?   @map("closed_by_staff_id")
+  closedAt          DateTime? @map("closed_at")
+  reopenedByStaffId String?   @map("reopened_by_staff_id")
+  reopenedAt        DateTime? @map("reopened_at")
+  reopenReason      String?   @map("reopen_reason")
+  reopenCount       Int       @default(0) @map("reopen_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  clinic     Clinic    @relation(fields: [clinicId], references: [id])
+  countedBy  Staff?    @relation("DayEndCountedBy", fields: [countedByStaffId], references: [id])
+  closedBy   Staff?    @relation("DayEndClosedBy", fields: [closedByStaffId], references: [id])
+  reopenedBy Staff?    @relation("DayEndReopenedBy", fields: [reopenedByStaffId], references: [id])
+  payments   Payment[]
+
+  @@unique([tenantId, clinicId, businessDate])
+  @@index([tenantId, clinicId, businessDate])
+  @@map("day_end_closings")
 }

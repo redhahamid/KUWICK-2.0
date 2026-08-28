@@ -2,6 +2,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { Role, Staff, SystemRole } from '@prisma/client';
 import {
   INDIVIDUALLY_GRANTABLE,
+  type Permission,
   LEGACY_ROLE_FALLBACK,
   LEGACY_ROLE_PERMISSIONS,
   ROLE_PERMISSIONS,
@@ -260,27 +261,57 @@ describe('migrating what already exists', () => {
     expect(can(stock, 'note.staffRemark')).toBe(false);
   });
 
-  it('STOCK_STAFF holds dispensing and NOTHING else', () => {
-    // Owner decision (option 1). The back-office roles no longer map to a
-    // system role at all: an inventory clerk who arrived at ADMINISTRATOR
-    // would have acquired the queue and the counter's till on the way.
+  it('STOCK_STAFF runs the stockroom, and still arrives at no queue and no clinical record', () => {
+    // Owner decision (option 1) unchanged: the back-office roles map to a
+    // permission SUBSET, never to a system role, so an inventory clerk cannot
+    // arrive at ADMINISTRATOR and acquire the queue and the till on the way.
+    //
+    // ADMIN PROGRAMME widened the subset, because the acts a stock clerk is
+    // employed to perform now exist as named permissions. What it must never
+    // include is asserted below rather than implied by a short list.
     expect(LEGACY_ROLE_FALLBACK.STOCK_STAFF).toEqual([]);
-    expect(LEGACY_ROLE_PERMISSIONS.STOCK_STAFF).toEqual(['dispense.perform']);
     const stock = admin({ role: 'STOCK_STAFF' as Role });
-    expect([...effectivePermissions(stock)]).toEqual(['dispense.perform']);
+    expect(can(stock, 'stock.view')).toBe(true);
+    expect(can(stock, 'stock.adjust')).toBe(true);
+    expect(can(stock, 'stock.transfer')).toBe(true);
+    expect(can(stock, 'stockTake.manage')).toBe(true);
+    expect(can(stock, 'dispense.perform')).toBe(true);
+    // The person who counts does not approve their own variance, and pricing
+    // is a commercial decision rather than a stockroom one.
+    expect(can(stock, 'stockTake.approve')).toBe(false);
+    expect(can(stock, 'stock.price.manage')).toBe(false);
+    // And nothing outside the stockroom.
+    expect(can(stock, 'queue.manage')).toBe(false);
+    expect(can(stock, 'billing.counter')).toBe(false);
+    expect(can(stock, 'note.write')).toBe(false);
+    expect(can(stock, 'hr.payroll.view')).toBe(false);
   });
 
-  it('HR_STAFF holds nothing — it held nothing before', () => {
-    // Checked against 1.0 rather than assumed: HR_STAFF appears in neither
-    // the queue nor the billing matrix, and patient demographics were never
-    // role-gated at all, so there is no right to preserve.
-    expect(LEGACY_ROLE_PERMISSIONS.HR_STAFF).toEqual([]);
-    expect([...effectivePermissions(admin({ role: 'HR_STAFF' as Role }))]).toEqual([]);
+  it('HR_STAFF maintains records — and approves neither leave nor pay', () => {
+    const hr = admin({ role: 'HR_STAFF' as Role });
+    expect(can(hr, 'hr.view')).toBe(true);
+    expect(can(hr, 'hr.employee.manage')).toBe(true);
+    expect(can(hr, 'hr.attendance.manage')).toBe(true);
+    // A clerk maintaining records is not the person who approves somebody's
+    // leave or signs off their pay.
+    expect(can(hr, 'hr.leave.approve')).toBe(false);
+    expect(can(hr, 'hr.payroll.run')).toBe(false);
+    expect(can(hr, 'hr.payroll.approve')).toBe(false);
+    expect(can(hr, 'hr.payroll.view')).toBe(false);
+    expect(can(hr, 'queue.manage')).toBe(false);
+    expect(can(hr, 'billing.counter')).toBe(false);
   });
 
-  it('PANEL_STAFF gets the counter till and no queue', () => {
+  it('PANEL_STAFF works claims and the counter till, and abandons no receivable', () => {
     const panel = admin({ role: 'PANEL_STAFF' as Role });
-    expect([...effectivePermissions(panel)]).toEqual(['billing.counter']);
+    expect(can(panel, 'billing.counter')).toBe(true);
+    expect(can(panel, 'panel.claim.manage')).toBe(true);
+    expect(can(panel, 'panel.claim.submit')).toBe(true);
+    expect(can(panel, 'panel.receipt.record')).toBe(true);
+    // Abandoning a receivable and changing a panel's commercial terms are
+    // owner decisions.
+    expect(can(panel, 'panel.writeOff')).toBe(false);
+    expect(can(panel, 'panel.configure')).toBe(false);
     expect(can(panel, 'queue.consultationFlow')).toBe(false);
     expect(can(panel, 'queue.manage')).toBe(false);
   });
@@ -407,9 +438,71 @@ describe('individual permission grants', () => {
       // for everybody.
       'appointment.override',
       'appointment.manage_roster',
+      // ADMIN PROGRAMME — the capabilities an owner most often delegates to
+      // one named person without handing over a whole module.
+      'payment.reverse',
+      'creditNote.create',
+      'dayEnd.reopen',
+      'stock.adjust',
+      'stockTake.approve',
+      'stock.price.manage',
+      'panel.receipt.record',
+      'panel.writeOff',
+      'hr.leave.approve',
+      'hr.payroll.view',
+      'analytics.view',
     ]);
     expect(isIndividuallyGrantable('note.write')).toBe(false);
     expect(isIndividuallyGrantable('settings.manage')).toBe(false);
+    // The approvals stay out of reach of a staple-on grant: each of these
+    // approves money leaving or arriving on somebody's say-so.
+    expect(isIndividuallyGrantable('creditNote.approve')).toBe(false);
+    expect(isIndividuallyGrantable('hr.payroll.run')).toBe(false);
+    expect(isIndividuallyGrantable('hr.payroll.approve')).toBe(false);
+    expect(isIndividuallyGrantable('finance.configure')).toBe(false);
+    expect(isIndividuallyGrantable('panel.configure')).toBe(false);
+  });
+
+  it('the counter takes money and does not move money it has already taken', () => {
+    // ADMIN PROGRAMME. The three acts withheld from ADMINISTRATOR are the ones
+    // that alter a record the clinic has already made: reversing a receipt,
+    // crediting an invoice, and reopening a day somebody signed off.
+    const counter = admin();
+    const asCounter = (permission: Permission) => can(counter, permission, ['ADMINISTRATOR']);
+    expect(asCounter('payment.record')).toBe(true);
+    expect(asCounter('dayEnd.count')).toBe(true);
+    expect(asCounter('dayEnd.close')).toBe(true);
+    expect(asCounter('payment.reverse')).toBe(false);
+    expect(asCounter('creditNote.create')).toBe(false);
+    expect(asCounter('creditNote.approve')).toBe(false);
+    expect(asCounter('dayEnd.reopen')).toBe(false);
+    // And it does not acquire the other four modules by holding the till.
+    expect(asCounter('stock.adjust')).toBe(false);
+    expect(asCounter('panel.claim.manage')).toBe(false);
+    expect(asCounter('hr.view')).toBe(false);
+    expect(asCounter('finance.configure')).toBe(false);
+  });
+
+  it('the admin programme adds nothing clinical to OWNER', () => {
+    // The rule most likely to be eroded by convenience, re-checked against the
+    // thirty-odd permissions this programme added: not one of them touches a
+    // patient's record.
+    const clinical: Permission[] = [
+      'note.write',
+      'note.sign',
+      'diagnosis.write',
+      'prescription.write',
+      'order.write',
+      'observation.write',
+      'allergy.write',
+      'clinical.void',
+      'document.authoriseClinical',
+      'patient.alert.medical.write',
+    ];
+    const owner = effectivePermissions(staffOf({ role: 'OWNER_ADMIN' as Role }), ['OWNER']);
+    for (const permission of clinical) {
+      expect(owner.has(permission)).toBe(false);
+    }
   });
 
   it('note.sign is NOT grantable — no permission substitutes for a registration', () => {
@@ -424,10 +517,28 @@ describe('individual permission grants', () => {
   it('FINANCE keeps every billing action it holds today, and gains no queue', () => {
     // Option 1: the fallback is a permission SUBSET, not a role. Finance keeps
     // all seven billing actions and does not arrive at the queue on the way.
-    expect(LEGACY_ROLE_PERMISSIONS.FINANCE_STAFF).toEqual(['billing.counter', 'billing.corrections']);
+    expect(LEGACY_ROLE_PERMISSIONS.FINANCE_STAFF).toContain('billing.counter');
+    expect(LEGACY_ROLE_PERMISSIONS.FINANCE_STAFF).toContain('billing.corrections');
     expect(can(counterStaff(), 'billing.corrections')).toBe(true);
     expect(can(counterStaff(), 'billing.counter')).toBe(true);
     expect(can(counterStaff(), 'queue.manage')).toBe(false);
+  });
+
+  it('FINANCE runs the finance module and still approves nothing on its own', () => {
+    const finance = counterStaff();
+    expect(can(finance, 'finance.view')).toBe(true);
+    expect(can(finance, 'payment.record')).toBe(true);
+    expect(can(finance, 'payment.reverse')).toBe(true);
+    expect(can(finance, 'creditNote.create')).toBe(true);
+    expect(can(finance, 'dayEnd.close')).toBe(true);
+    // A credit note it raised is approved by somebody else, and a day it
+    // closed is reopened by somebody else.
+    expect(can(finance, 'creditNote.approve')).toBe(false);
+    expect(can(finance, 'dayEnd.reopen')).toBe(false);
+    expect(can(finance, 'finance.configure')).toBe(false);
+    // And it stays out of the clinical record and the stockroom.
+    expect(can(finance, 'note.write')).toBe(false);
+    expect(can(finance, 'stock.adjust')).toBe(false);
   });
 
   it('an EXPLICIT role assignment drops the legacy grant — it must be re-granted', () => {

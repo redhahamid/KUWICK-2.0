@@ -6,6 +6,7 @@ import {
   InvoiceStatus,
   OrderServiceStatus,
   PanelVerificationStatus,
+  PaymentKind,
   PrescriptionStatus,
   PrescriptionSupplyMode,
 } from '@prisma/client';
@@ -31,9 +32,30 @@ import { ApplyInvoiceDiscountDto } from './dto/apply-invoice-discount.dto';
 import { CancelInvoiceLineDto } from './dto/cancel-invoice-line.dto';
 import { CancelInvoiceDto } from './dto/cancel-invoice.dto';
 import { PayInvoiceDto } from './dto/pay-invoice.dto';
+import {
+  TAX_BASIS_SETTING_KEY,
+  applyInvoiceTax,
+  taxBasisFrom,
+} from '../finance/invoice-tax';
+import { TaxCodeSnapshot } from '../finance/tax';
+import { PaymentService } from '../finance/payment.service';
+import { fromCents, sumCents, toCents } from '../finance/money';
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+/**
+ * Adds tax to a responsibility amount WITHOUT resolving an unresolved one.
+ *
+ * NULL means "the split has not been computed" (D-084). It must stay NULL:
+ * turning it into 0 by adding zero tax would convert "we do not know what the
+ * patient owes" into "the patient owes nothing", and the settlement engine
+ * treats those two answers very differently.
+ */
+function addTax(responsibility: number | null | undefined, taxAmount: number | null | undefined): number | null {
+  if (responsibility === null || responsibility === undefined) return null;
+  return fromCents(toCents(responsibility) + toCents(taxAmount ?? 0));
 }
 
 /** The approved counter-facing wording — the same sentence the blocker uses. */
@@ -101,6 +123,7 @@ export class InvoiceService {
         id: true,
         visitId: true,
         status: true,
+        createdAt: true,
         invoiceDiscountType: true,
         invoiceDiscountValue: true,
       },
@@ -123,6 +146,7 @@ export class InvoiceService {
         cancelledAt: true,
         lineDiscountType: true,
         lineDiscountValue: true,
+        taxCodeId: true,
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -142,13 +166,49 @@ export class InvoiceService {
       benefit,
     });
 
+    // ------------------------------------------------------------------
+    // WAVE 1 — SERVICE TAX.
+    //
+    // Runs AFTER the responsibility split, because the default basis is the
+    // patient's portion of each line and that number does not exist until the
+    // split has been computed. Inert for a clinic with no tax codes mapped:
+    // every line resolves to zero and the invoice's totals are unchanged, byte
+    // for byte, from what they were before this block existed.
+    // ------------------------------------------------------------------
+    const responsibilityById = new Map(result.lines.map((line) => [line.id, line]));
+    const tax = await this.applyTax(tx, {
+      invoiceCreatedAt: invoice.createdAt,
+      lines: lines.map((line) => ({
+        id: line.id,
+        amount: line.amount,
+        lineDiscountAmount: responsibilityById.get(line.id)?.lineDiscountAmount ?? 0,
+        patientResponsibilityAmount: responsibilityById.get(line.id)?.patientResponsibilityAmount ?? null,
+        taxCodeId: line.taxCodeId,
+        cancelledAt: line.cancelledAt,
+      })),
+    });
+    const taxByLine = new Map(tax.lines.map((line) => [line.id, line]));
+
     for (const line of result.lines) {
+      const lineTax = taxByLine.get(line.id);
       await tx.invoiceLine.update({
         where: { id: line.id },
         data: {
           lineDiscountAmount: line.lineDiscountAmount,
           panelResponsibilityAmount: line.panelResponsibilityAmount,
-          patientResponsibilityAmount: line.patientResponsibilityAmount,
+          // The tax a patient is charged is part of what the patient owes. It
+          // is added here rather than left as a separate column nobody sums,
+          // which keeps `panel + patient = total` true — the invariant the
+          // settlement engine and the day-end both depend on.
+          //
+          // NULL SURVIVES. An unresolved split stays unresolved: adding zero
+          // tax to it would turn "we do not know what the patient owes" into
+          // "the patient owes nothing", which is the one arithmetic error
+          // D-084 exists to prevent.
+          patientResponsibilityAmount: addTax(line.patientResponsibilityAmount, lineTax?.taxAmount),
+          taxAmount: lineTax?.taxAmount ?? 0,
+          taxRatePercent: lineTax?.taxRatePercent ?? null,
+          taxTreatment: lineTax?.taxTreatment ?? null,
         },
       });
     }
@@ -157,11 +217,76 @@ export class InvoiceService {
       where: { id: invoiceId },
       data: {
         subtotalAmount: result.subtotalAmount,
-        totalAmount: result.totalAmount,
+        totalAmount: fromCents(toCents(result.totalAmount) + tax.taxCents),
+        taxAmount: fromCents(tax.taxCents),
         invoiceDiscountAmount: result.invoiceDiscountAmount,
         panelResponsibilityAmount: result.panelResponsibilityAmount,
-        patientResponsibilityAmount: result.patientResponsibilityAmount,
+        patientResponsibilityAmount: addTax(result.patientResponsibilityAmount, fromCents(tax.taxCents)),
       },
+    });
+  }
+
+  /**
+   * The tax codes an invoice's lines reference, and the tax they produce.
+   *
+   * Returns zero for everything when nothing is mapped, and does not query at
+   * all in that case — the overwhelmingly common path today, and one that must
+   * not cost a round trip on every recalculation.
+   */
+  private async applyTax(
+    tx: ClinicalTx,
+    input: {
+      invoiceCreatedAt: Date;
+      lines: {
+        id: string;
+        amount: unknown;
+        lineDiscountAmount: unknown;
+        patientResponsibilityAmount: unknown;
+        taxCodeId: string | null;
+        cancelledAt: Date | null;
+      }[];
+    },
+  ) {
+    const codeIds = [...new Set(input.lines.map((line) => line.taxCodeId).filter((id): id is string => !!id))];
+    if (codeIds.length === 0) {
+      return {
+        lines: input.lines.map((line) => ({
+          id: line.id,
+          taxAmount: 0,
+          taxRatePercent: null,
+          taxTreatment: null,
+        })),
+        taxCents: 0,
+        unclassifiedLineIds: [],
+      };
+    }
+
+    const [codes, setting] = await Promise.all([
+      tx.taxCode.findMany({ where: { id: { in: codeIds }, active: true }, include: { rates: true } }),
+      tx.globalSetting.findFirst({ where: { key: TAX_BASIS_SETTING_KEY }, select: { value: true } }),
+    ]);
+
+    const snapshots = new Map<string, TaxCodeSnapshot>(
+      codes.map((code) => [
+        code.id,
+        {
+          id: code.id,
+          code: code.code,
+          treatment: code.treatment,
+          rates: code.rates.map((rate) => ({
+            ratePercent: rate.ratePercent,
+            effectiveFrom: rate.effectiveFrom,
+            effectiveTo: rate.effectiveTo,
+          })),
+        },
+      ]),
+    );
+
+    return applyInvoiceTax({
+      lines: input.lines as never,
+      codes: snapshots,
+      on: input.invoiceCreatedAt,
+      basis: taxBasisFrom(setting?.value),
     });
   }
 
@@ -481,11 +606,16 @@ export class InvoiceService {
 
       // --- Exclusion snapshot ----------------------------------------------
       const exclusion = await this.resolveExclusion(tx, panelClinicId, dto);
+      const taxCodeId = await this.defaultTaxCodeId(tx, {
+        sourcePrescriptionId: dto.sourcePrescriptionId,
+        sourceOrderServiceId: dto.sourceOrderServiceId,
+      });
 
       await tx.invoiceLine.create({
         data: {
           tenantId: currentTenantId(),
           invoiceId,
+          taxCodeId,
           description: dto.description,
           quantity,
           unit: dto.unit,
@@ -580,11 +710,13 @@ export class InvoiceService {
         throw new BadRequestException('This item cannot be priced — its catalog record was not found.');
       }
       const exclusion = await this.resolveExclusionFor(tx, panelClinicId, { serviceCatalogId: state.service.id });
+      const taxCodeId = await this.defaultTaxCodeId(tx, { serviceCatalogId: state.service.id });
 
       await tx.invoiceLine.create({
         data: {
           tenantId: currentTenantId(),
           invoiceId,
+          taxCodeId,
           description: state.service.name,
           // Server-selected: one consultation, quantity one, always.
           quantity: 1,
@@ -602,6 +734,49 @@ export class InvoiceService {
       const updated = await this.recalculateInvoice(tx, invoiceId);
       return { added: true, state: { kind: 'BILLED' as const }, invoice: updated };
     });
+  }
+
+
+  /**
+   * The DEFAULT tax code for a line, snapshotted at add-time.
+   *
+   * Resolved from the CATALOGUE entry the line was sourced from — the item
+   * behind a dispensed medication, the service behind a procedure. A manual
+   * freehand line has no catalogue entry and therefore no tax classification;
+   * it reports as unclassified rather than inheriting a neighbouring line's
+   * treatment.
+   *
+   * Snapshotted rather than looked up live at report time, for the same reason
+   * description and unit price are: re-classifying an item next March must not
+   * silently change the tax on a bill issued last March.
+   */
+  private async defaultTaxCodeId(
+    tx: ClinicalTx,
+    source: { sourcePrescriptionId?: string | null; sourceOrderServiceId?: string | null; serviceCatalogId?: string | null },
+  ): Promise<string | null> {
+    if (source.sourcePrescriptionId) {
+      const prescription = await tx.prescription.findUnique({
+        where: { id: source.sourcePrescriptionId },
+        select: { item: { select: { taxCodeId: true } } },
+      });
+      return prescription?.item?.taxCodeId ?? null;
+    }
+    const serviceCatalogId =
+      source.serviceCatalogId ??
+      (source.sourceOrderServiceId
+        ? (
+            await tx.orderService.findUnique({
+              where: { id: source.sourceOrderServiceId },
+              select: { serviceCatalogId: true },
+            })
+          )?.serviceCatalogId
+        : null);
+    if (!serviceCatalogId) return null;
+    const service = await tx.serviceCatalog.findUnique({
+      where: { id: serviceCatalogId },
+      select: { taxCodeId: true },
+    });
+    return service?.taxCodeId ?? null;
   }
 
   // Resolves whether a sourced line is on the visit's panel's exclusion
@@ -842,7 +1017,7 @@ export class InvoiceService {
    * Invoice.status alone is never proof of anything here.
    */
   async pay(id: string, dto: PayInvoiceDto) {
-    await this.authoriseBilling('MARK_PAID', await this.invoiceVisitId(id));
+    const actor = await this.authoriseBilling('MARK_PAID', await this.invoiceVisitId(id));
     return withTenantTx(this.rawPrisma, async (tx) => {
       const invoice = await tx.invoice.findUnique({
         where: { id },
@@ -897,15 +1072,56 @@ export class InvoiceService {
         );
       }
 
-      // All-or-nothing model: the payment recorded is exactly the persisted
-      // remaining responsibility, which resolves the balance to zero. Partial
-      // tender is a future payment-table design, not smuggled in here.
+      // WAVE 1 — this is still the FULL-SETTLEMENT path, and it stays that
+      // way: the counter's "mark paid" button means "the patient has paid what
+      // they owe", and changing that button's meaning would be a change to the
+      // clinical workflow, not to finance. What changed is that the settlement
+      // now ALSO writes a `Payment` row, so the same act produces both the
+      // legacy columns every existing report reads and a ledger entry the
+      // day-end can reconcile, a partial payment can be added to, and a refund
+      // can be taken against.
+      //
+      // Partial tender enters through `POST /finance/invoices/:id/payments`,
+      // which writes the same ledger and then derives these columns back. Two
+      // entry points, ONE representation.
       const patientPaidAmount = dto.paymentMethod === 'PANEL' ? 0 : patientResponsibility;
+      const paidAt = new Date();
+
+      // Deposits taken at booking were already credited to
+      // `patientPaidAmount` at invoice creation. The ledger row records only
+      // what moves at the counter NOW, so the deposit is not banked twice.
+      const alreadyReceived = await tx.payment.aggregate({
+        where: { invoiceId: id, reversedAt: null, kind: PaymentKind.PAYMENT },
+        _sum: { amount: true },
+      });
+      const alreadyReceivedCents = toCents(alreadyReceived._sum.amount ?? 0);
+      const collectedNowCents = toCents(patientPaidAmount) - alreadyReceivedCents;
+
+      if (collectedNowCents > 0) {
+        const clinicVisit = await tx.visit.findUnique({
+          where: { id: invoice.visitId },
+          select: { clinicId: true },
+        });
+        await tx.payment.create({
+          data: {
+            tenantId: currentTenantId(),
+            clinicId: clinicVisit!.clinicId,
+            invoiceId: id,
+            kind: PaymentKind.PAYMENT,
+            tender: PaymentService.tenderOf(dto.paymentMethod),
+            methodLabel: dto.paymentMethod,
+            amount: fromCents(collectedNowCents),
+            receivedAt: paidAt,
+            receivedByStaffId: actor.id,
+          },
+        });
+      }
+
       return tx.invoice.update({
         where: { id },
         data: {
           status: InvoiceStatus.PAID,
-          paidAt: new Date(),
+          paidAt,
           paymentMethod: dto.paymentMethod,
           panelCoveredAmount: Number(invoice.panelResponsibilityAmount ?? 0),
           patientPaidAmount,

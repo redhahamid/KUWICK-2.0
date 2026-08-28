@@ -86,10 +86,18 @@ BEGIN
   FOREACH t IN ARRAY ARRAY[
     'visit_workflow_events',
     'appointment_events',
-    'appointment_form_answers'
+    'appointment_form_answers',
+    -- Wave-1 finance: money received is a historical fact. UPDATE stays
+    -- granted (the append-only TRIGGER allows exactly two stamped columns and
+    -- refuses everything else); DELETE does not, at any level.
+    'payments'
   ] LOOP
     IF to_regclass('public.' || t) IS NOT NULL THEN
-      EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE ON TABLE %I FROM kuwick_app', t);
+      IF t = 'payments' THEN
+        EXECUTE format('REVOKE DELETE, TRUNCATE ON TABLE %I FROM kuwick_app', t);
+      ELSE
+        EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE ON TABLE %I FROM kuwick_app', t);
+      END IF;
     END IF;
   END LOOP;
 END $$;

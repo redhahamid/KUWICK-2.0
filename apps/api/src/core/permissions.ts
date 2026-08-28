@@ -122,7 +122,64 @@ export type Permission =
   | 'document.authoriseClinical'
   | 'settings.manage'
   | 'discount.approve'
-  | 'users.manage';
+  | 'users.manage'
+  // ---------------------------------------------------------------------
+  // THE ADMIN PROGRAMME
+  //
+  // Five back-office modules — Operation, Stock, Panel, HR, Finance — that
+  // until now had almost no permissions of their own to hold. That is why
+  // FINANCE_STAFF, STOCK_STAFF, PANEL_STAFF and HR_STAFF resolved to nearly
+  // nothing in LEGACY_ROLE_PERMISSIONS below: the capabilities those job
+  // titles describe did not exist yet as named acts.
+  //
+  // Split the same way everything else here is: by ACT. Reading a module is
+  // separated from changing it, and changing it is separated from the two or
+  // three acts inside it that move money, stock or somebody's pay.
+  // ---------------------------------------------------------------------
+  // FINANCE. Taking money is counter work; reversing it, crediting it and
+  // reopening a signed-off day are not.
+  | 'finance.view'
+  | 'payment.record'
+  | 'payment.reverse'
+  | 'creditNote.create'
+  | 'creditNote.approve'
+  | 'dayEnd.count'
+  | 'dayEnd.close'
+  | 'dayEnd.reopen'
+  | 'finance.configure'
+  // STOCK. `stock.adjust` is the one that can make inventory say anything at
+  // all, so it is never bundled with reading or with ordinary transfers.
+  | 'stock.view'
+  | 'stock.adjust'
+  | 'stock.transfer'
+  | 'stock.transfer.receive'
+  | 'stockTake.manage'
+  | 'stockTake.approve'
+  | 'stock.price.manage'
+  | 'procurement.manage'
+  // PANEL. Recording what a panel PAID is separated from managing the claim,
+  // and writing a receivable off is separated from both.
+  | 'panel.view'
+  | 'panel.claim.manage'
+  | 'panel.claim.submit'
+  | 'panel.receipt.record'
+  | 'panel.writeOff'
+  | 'panel.configure'
+  // HR. Payroll is three permissions because seeing somebody's salary,
+  // calculating it and approving it are three different jobs — and in a small
+  // clinic the first two are frequently delegated while the third is not.
+  | 'hr.view'
+  | 'hr.employee.manage'
+  | 'hr.attendance.manage'
+  | 'hr.leave.approve'
+  | 'hr.payroll.view'
+  | 'hr.payroll.run'
+  | 'hr.payroll.approve'
+  | 'hr.incentive.manage'
+  // OPERATIONS ANALYTICS.
+  | 'analytics.view'
+  | 'analytics.configure'
+  | 'marketing.manage';
 
 /**
  * What each role grants. The single table this whole module exists to hold.
@@ -259,6 +316,19 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     'appointment.cancel',
     'appointment.check_in',
     'appointment.no_show',
+    // ADMIN PROGRAMME — the counter takes money, counts the drawer at the end
+    // of the day and signs the day off. It does not REVERSE a payment, issue a
+    // credit note or reopen a day that has been closed: those are the three
+    // acts that move money the clinic has already recorded, and they sit with
+    // `billing.corrections` where discounts and cancellations already sit.
+    'payment.record',
+    'dayEnd.count',
+    'dayEnd.close',
+    'finance.view',
+    // Reading stock and panel state is part of counter work — "do we have it"
+    // and "is this patient's panel claim outstanding" are counter questions.
+    'stock.view',
+    'panel.view',
   ],
 
   // OWNER ALONE IS NOT CLINICAL. Not one permission here touches a patient's
@@ -292,6 +362,46 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     'appointment.override',
     'appointment.configure',
     'appointment.manage_roster',
+    // ADMIN PROGRAMME. The owner holds every administrative capability,
+    // including the ones deliberately withheld from everybody else: reversing
+    // a payment, approving a credit note, reopening a closed day, approving a
+    // stock-take adjustment, writing off a panel receivable and approving
+    // payroll. None of them touches a patient's clinical record, so the rule
+    // above still holds.
+    'finance.view',
+    'payment.record',
+    'payment.reverse',
+    'creditNote.create',
+    'creditNote.approve',
+    'dayEnd.count',
+    'dayEnd.close',
+    'dayEnd.reopen',
+    'finance.configure',
+    'stock.view',
+    'stock.adjust',
+    'stock.transfer',
+    'stock.transfer.receive',
+    'stockTake.manage',
+    'stockTake.approve',
+    'stock.price.manage',
+    'procurement.manage',
+    'panel.view',
+    'panel.claim.manage',
+    'panel.claim.submit',
+    'panel.receipt.record',
+    'panel.writeOff',
+    'panel.configure',
+    'hr.view',
+    'hr.employee.manage',
+    'hr.attendance.manage',
+    'hr.leave.approve',
+    'hr.payroll.view',
+    'hr.payroll.run',
+    'hr.payroll.approve',
+    'hr.incentive.manage',
+    'analytics.view',
+    'analytics.configure',
+    'marketing.manage',
   ],
 };
 
@@ -359,10 +469,53 @@ export const LEGACY_ROLE_FALLBACK: Record<Role, SystemRole[]> = {
  *                 widening; it holds no billing action today.
  */
 export const LEGACY_ROLE_PERMISSIONS: Partial<Record<Role, Permission[]>> = {
-  FINANCE_STAFF: ['billing.counter', 'billing.corrections'],
-  HR_STAFF: [],
-  STOCK_STAFF: ['dispense.perform'],
-  PANEL_STAFF: ['billing.counter'],
+  FINANCE_STAFF: [
+    'billing.counter',
+    'billing.corrections',
+    // ADMIN PROGRAMME. These four job titles held almost nothing because the
+    // capabilities they describe did not exist as named acts. They do now, and
+    // withholding them would leave a finance clerk unable to open the finance
+    // module they are employed to run. Each list is the job, and stops there:
+    // finance does not approve its own credit notes, and does not reopen a day
+    // it closed.
+    'finance.view',
+    'payment.record',
+    'payment.reverse',
+    'creditNote.create',
+    'dayEnd.count',
+    'dayEnd.close',
+    'panel.view',
+    'analytics.view',
+  ],
+  HR_STAFF: [
+    'hr.view',
+    'hr.employee.manage',
+    'hr.attendance.manage',
+    // NOT leave approval, payroll or incentives: an HR clerk maintaining
+    // records is not the person who approves somebody's leave or signs off
+    // their pay.
+  ],
+  STOCK_STAFF: [
+    'dispense.perform',
+    'stock.view',
+    'stock.adjust',
+    'stock.transfer',
+    'stock.transfer.receive',
+    'stockTake.manage',
+    'procurement.manage',
+    // NOT stockTake.approve and NOT stock.price.manage: the person who counts
+    // does not approve their own variance, and pricing is a commercial
+    // decision rather than a stockroom one.
+  ],
+  PANEL_STAFF: [
+    'billing.counter',
+    'panel.view',
+    'panel.claim.manage',
+    'panel.claim.submit',
+    'panel.receipt.record',
+    // NOT panel.writeOff and NOT panel.configure: abandoning a receivable and
+    // changing a panel's commercial terms are owner decisions.
+  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -525,6 +678,25 @@ export const INDIVIDUALLY_GRANTABLE: Permission[] = [
   'appointment.override',
   // A clinic manager who writes the roster without owning the clinic.
   'appointment.manage_roster',
+  // ADMIN PROGRAMME — the capabilities an owner most often needs to delegate
+  // to one named person without handing over the whole module. Every one of
+  // them is recorded with an actor and a reason wherever it is used.
+  'payment.reverse',
+  'creditNote.create',
+  'dayEnd.reopen',
+  'stock.adjust',
+  'stockTake.approve',
+  'stock.price.manage',
+  'panel.receipt.record',
+  'panel.writeOff',
+  'hr.leave.approve',
+  'hr.payroll.view',
+  'analytics.view',
+  // Deliberately ABSENT, and each for the same reason: it approves money
+  // leaving or arriving on somebody's say-so, and an owner who wants to
+  // delegate it should be composing a role, not stapling on a grant —
+  //   creditNote.approve, hr.payroll.run, hr.payroll.approve,
+  //   finance.configure, panel.configure, users.manage, settings.manage
 ];
 
 export function isIndividuallyGrantable(permission: string): permission is Permission {
@@ -570,6 +742,46 @@ const REFUSAL: Partial<Record<Permission, string>> = {
   'appointment.configure': 'Only an owner may change how appointments and services are configured.',
   'appointment.manage_roster': 'Your account is not permitted to change the provider roster.',
   'users.manage': 'Only an owner may manage users and roles.',
+  // ADMIN PROGRAMME refusals. Same rule as the rest: say what was refused and
+  // what to do instead, never which role holds it.
+  'finance.view': 'Your account is not permitted to open the Finance module.',
+  'payment.record': 'Your account is not permitted to record payments.',
+  'payment.reverse':
+    'Reversing a payment needs the payment-reversal permission. The original payment cannot be edited or deleted.',
+  'creditNote.create': 'Your account is not permitted to raise a credit note.',
+  'creditNote.approve': 'A credit note must be approved by an owner before it reduces revenue.',
+  'dayEnd.count': 'Your account is not permitted to record a day-end count.',
+  'dayEnd.close': 'Your account is not permitted to close the day.',
+  'dayEnd.reopen':
+    'Reopening a closed day needs the day-end reopen permission, and a reason is recorded against it.',
+  'finance.configure': 'Only an owner may change tax codes and finance configuration.',
+  'stock.view': 'Your account is not permitted to open the Stock module.',
+  'stock.adjust':
+    'Correcting a stock quantity needs the stock-adjustment permission. Every adjustment is recorded with a reason.',
+  'stock.transfer': 'Your account is not permitted to send stock between branches.',
+  'stock.transfer.receive': 'Your account is not permitted to receive a stock transfer.',
+  'stockTake.manage': 'Your account is not permitted to run a stock take.',
+  'stockTake.approve':
+    'Approving a stock-take variance needs the stock-take approval permission — the person who counted cannot approve their own count.',
+  'stock.price.manage': 'Your account is not permitted to change prices or costs.',
+  'procurement.manage': 'Your account is not permitted to manage procurement.',
+  'panel.view': 'Your account is not permitted to open the Panel module.',
+  'panel.claim.manage': 'Your account is not permitted to manage panel claims.',
+  'panel.claim.submit': 'Your account is not permitted to mark a claim batch as submitted.',
+  'panel.receipt.record': 'Your account is not permitted to record a panel receipt.',
+  'panel.writeOff': 'Writing off a panel receivable needs the panel write-off permission.',
+  'panel.configure': 'Only an owner may change a panel’s commercial terms.',
+  'hr.view': 'Your account is not permitted to open the HR module.',
+  'hr.employee.manage': 'Your account is not permitted to change employee records.',
+  'hr.attendance.manage': 'Your account is not permitted to correct attendance.',
+  'hr.leave.approve': 'Your account is not permitted to approve leave.',
+  'hr.payroll.view': 'Your account is not permitted to view payroll.',
+  'hr.payroll.run': 'Your account is not permitted to calculate a payroll run.',
+  'hr.payroll.approve': 'Approving and locking a payroll run is an owner decision.',
+  'hr.incentive.manage': 'Your account is not permitted to change incentive rules.',
+  'analytics.view': 'Your account is not permitted to view clinic analytics.',
+  'analytics.configure': 'Only an owner may change reporting segments and programmes.',
+  'marketing.manage': 'Your account is not permitted to manage marketing audiences.',
 };
 
 export function assertCan(

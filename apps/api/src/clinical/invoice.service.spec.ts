@@ -169,7 +169,7 @@ function createService(role = 'FINANCE_STAFF', world: World = {}) {
         // PIECE 4 — a medicine is charged in PACKS. A divisor of 1 means one
         // dose per pack, which keeps every case below at the arithmetic it was
         // written for; the pack-pricing cases state their own divisor.
-        item: { sellPrice: 10, quantityPerStockUnit: 1, unitsPerPack: null, dispensedWholeAt: null },
+        item: { sellPrice: 10, quantityPerStockUnit: 1, unitsPerPack: null, dispensedWholeAt: null, taxCodeId: null },
         // D-094 — a chargeable medication source by default: DISPENSED and
         // clinic-dispensed, with the SOURCE quantity the server must use.
         status: 'DISPENSED',
@@ -192,7 +192,7 @@ function createService(role = 'FINANCE_STAFF', world: World = {}) {
       findMany: jest.fn(async () => world.worklistOrders ?? []),
     },
     serviceCatalog: {
-      findUnique: jest.fn().mockResolvedValue({ price: 35 }),
+      findUnique: jest.fn().mockResolvedValue({ price: 35, taxCodeId: null }),
     },
     consultationTariffRule: { findMany: jest.fn(async () => world.tariffRules ?? []) },
     visitWorkflowEvent: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -201,6 +201,21 @@ function createService(role = 'FINANCE_STAFF', world: World = {}) {
     },
     panelPriceOverride: { findFirst: jest.fn().mockResolvedValue(null) },
     panelExclusion: { findFirst: jest.fn().mockResolvedValue(null) },
+    // WAVE 1 — the payment ledger and the tax configuration.
+    //
+    // `payment.aggregate` returns a null sum by default, which is what an
+    // invoice with nothing received yet actually looks like, so settlement
+    // records the full patient responsibility. `taxCode.findMany` returning
+    // empty is a clinic that has not configured tax — the default state, and
+    // the one every existing expectation in this file was written against.
+    payment: {
+      aggregate: jest.fn().mockResolvedValue({ _sum: { amount: null } }),
+      create: jest.fn(async ({ data }: { data: object }) => ({ id: 'pay-1', ...data })),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    taxCode: { findMany: jest.fn().mockResolvedValue([]) },
+    globalSetting: { findFirst: jest.fn().mockResolvedValue(null) },
+    item: { findUnique: jest.fn().mockResolvedValue({ taxCodeId: null }) },
   };
   const rawPrisma = { $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) } as unknown as PrismaService;
 
