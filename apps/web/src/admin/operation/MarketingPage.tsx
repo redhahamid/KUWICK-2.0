@@ -258,11 +258,22 @@ export function MarketingPage() {
           rows={queue?.messages}
           rowKey="dispatchId"
           emptyText="Nothing prepared"
+          fitWidth
           scrollY={420}
           columns={[
             { title: 'Patient', dataIndex: 'name', key: 'name' },
             { title: 'Phone', dataIndex: 'phone', key: 'phone' },
-            { title: 'Message', dataIndex: 'body', key: 'body', ellipsis: true },
+            {
+              // WIDTH, not just `ellipsis`. The shared table scrolls on
+              // `max-content`, so a column with no width sizes itself to the
+              // longest message and pushes the WhatsApp link — the one control
+              // on this screen that does anything — off the right edge.
+              title: 'Message',
+              dataIndex: 'body',
+              key: 'body',
+              width: 360,
+              ellipsis: true,
+            },
             {
               title: '',
               key: 'open',

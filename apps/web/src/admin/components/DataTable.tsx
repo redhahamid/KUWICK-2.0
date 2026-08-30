@@ -45,6 +45,7 @@ export function DataTable<T extends object>({
   onRow,
   toolbar,
   expandable,
+  fitWidth = false,
 }: {
   rows: T[] | undefined;
   columns: DataTableColumn<T>[];
@@ -69,6 +70,16 @@ export function DataTable<T extends object>({
    * when the detail is a screen in its own right.
    */
   expandable?: ExpandableConfig<T>;
+  /**
+   * Fit the container instead of scrolling sideways.
+   *
+   * These tables default to `scroll.x: max-content`, which is right on a page:
+   * a dense money table is read by scrolling it, not by squashing it. Inside a
+   * MODAL it is wrong — the table grows past the dialog and takes the action
+   * column with it, so the one control that does anything ends up off-screen
+   * and unreachable. With this on, `ellipsis` and column widths actually bind.
+   */
+  fitWidth?: boolean;
 }) {
   const [query, setQuery] = useState('');
   const [hidden, setHidden] = useState<string[]>(() =>
@@ -158,7 +169,16 @@ export function DataTable<T extends object>({
         columns={visibleColumns as ColumnType<T>[]}
         pagination={pagination}
         sticky
-        scroll={scrollY ? { y: scrollY, x: 'max-content' } : { x: 'max-content' }}
+        scroll={
+          fitWidth
+            ? scrollY
+              ? { y: scrollY }
+              : undefined
+            : scrollY
+              ? { y: scrollY, x: 'max-content' }
+              : { x: 'max-content' }
+        }
+        tableLayout={fitWidth ? 'fixed' : undefined}
         summary={summary}
         expandable={expandable}
         onRow={onRow ? (row) => onRow(row) : undefined}
