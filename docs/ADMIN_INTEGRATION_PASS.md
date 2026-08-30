@@ -255,6 +255,27 @@ rebuilding it.
 
 ---
 
+## Defects found and fixed in this pass
+
+All eight were found by driving the product or by the guardrail, not by reading
+the code.
+
+| # | Defect | Where |
+|---|---|---|
+| 1 | **"Claimed" showed claimed + fee.** On an 8% panel, RM108 under a heading saying RM100 — on the reconciliation screen. | Panel work queue |
+| 2 | **Two screens disagreed by RM40 about one stat.** "Patient receivable" meant "as at this instant" on the overview and "as at end of today" on Outstanding. | Finance overview vs Outstanding |
+| 3 | **A closed day reported "Refunded RM0.00"** directly above a movements table listing a RM40 refund. | Day-end |
+| 4 | **A closed day said "the day cannot be closed until the difference is explained"**, next to the explanation that closed it. | Day-end |
+| 5 | **Profitability's summary tiles read "Direct cost RM0.00" and "Contribution RM0.00"** above a banner saying six rows have no cost on record. | Finance ▸ Profitability |
+| 6 | **A `<ul>` inside a `<p>`.** The payroll exceptions list broke out of its band and logged a React error on every render. | `AdminNotice`, all modules |
+| 7 | **Two nav entries highlighted nothing.** `?view=` query strings against a rail that matches on exact pathname — a working link that reads as dead. | Admin ▸ Stock |
+| 8 | **The drawer count form was unreadable.** Four columns in a 360px sidebar; the hint wrapped to five lines into the expected figure. | Day-end |
+
+Plus two screens that were empty because the seed was, not the product: HR ▸
+Roster and HR ▸ Roles & Access.
+
+---
+
 ## Unresolved product gaps
 
 These are stated rather than papered over.
