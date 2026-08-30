@@ -134,5 +134,10 @@ export function AdminSection({
  * screen rather than problems to dismiss.
  */
 export function AdminNotice({ children, tone = 'info' }: { children: ReactNode; tone?: 'info' | 'warn' }) {
-  return <p className={`kw-adminNotice kw-adminNotice--${tone}`}>{children}</p>;
+  // A DIV, not a P. Several notices carry a LIST — the payroll exceptions that
+  // block approval, named one per line — and a <ul> inside a <p> is invalid
+  // HTML that React reports as an error on every render. The browser then
+  // closes the paragraph early and the list escapes the band it is supposed to
+  // sit in, so the markup mattered visually as well as in the console.
+  return <div className={`kw-adminNotice kw-adminNotice--${tone}`}>{children}</div>;
 }

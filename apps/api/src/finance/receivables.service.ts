@@ -38,7 +38,23 @@ export class ReceivablesService {
   async patientReceivables(params: { clinicId?: string; asOf?: string; includeSettled?: boolean }) {
     const actor = await requirePermission(this.rawPrisma, 'finance.view');
     const clinicId = params.clinicId ?? actor.clinicId ?? undefined;
-    const asOf = params.asOf ? new Date(`${params.asOf}T23:59:59.999Z`) : new Date();
+    /**
+     * AS AT THE END OF A DAY, ALWAYS — including when the day is today.
+     *
+     * This defaulted to `new Date()`, the current instant, and a caller that
+     * passed a date got the end of that date. Two screens then showed a stat
+     * labelled "Patient receivable" and disagreed: the Finance overview (no
+     * `asOf`) excluded an invoice raised at 04:00 because the clock said 03:05
+     * in another timezone's reckoning, while Outstanding (asOf = today)
+     * included it. Exactly RM40 apart, on the one pair of screens whose job is
+     * to agree.
+     *
+     * "What is owed, part-way through today" is also not a question anybody
+     * asks. Receivables are read as a position at a date, so the default is
+     * the end of the current day and there is one rule rather than two.
+     */
+    const asOfDate = params.asOf ?? new Date().toISOString().slice(0, 10);
+    const asOf = new Date(`${asOfDate}T23:59:59.999Z`);
 
     const invoices = await this.prisma.invoice.findMany({
       where: {
