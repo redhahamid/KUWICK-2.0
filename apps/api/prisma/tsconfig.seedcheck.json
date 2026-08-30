@@ -8,6 +8,12 @@
     "seed-e2e.ts",
     "admin-uat-shots.ts",
     "admin-uat-review-shots.ts",
-    "admin-rc-shots.ts"
+    "admin-rc-shots.ts",
+    "full-uat/harness.ts",
+    "full-uat/01-operation-stock.ts",
+    "full-uat/02-panel.ts",
+    "full-uat/03-hr.ts",
+    "full-uat/04-finance.ts",
+    "full-uat/05-workflows-responsive.ts"
   ]
 }

@@ -1,0 +1,25 @@
+{
+  "captured": [
+    "90-finance-overview",
+    "91-finance-sales-report",
+    "92-finance-sales-breakdowns",
+    "93-finance-day-end-OPEN",
+    "94-finance-day-end-COUNTED-variance",
+    "95-finance-day-end-variance-reason-required",
+    "96-finance-day-end-CLOSED-locked",
+    "97-finance-day-end-reopen-modal",
+    "98-finance-payment-ledger",
+    "99-finance-invoice-listing",
+    "100-finance-outstanding-receivables",
+    "101-finance-credit-notes",
+    "102-finance-credit-note-approve-DRAFT",
+    "103-finance-tax-sst",
+    "104-finance-profitability-drugs",
+    "105-finance-profitability-procedures-no-cost",
+    "106-finance-profitability-lowest-margin",
+    "107-finance-inter-company",
+    "108-finance-e-invoice-NOT-IMPLEMENTED"
+  ],
+  "failures": [],
+  "at": "2026-08-30T08:01:21.851Z"
+}

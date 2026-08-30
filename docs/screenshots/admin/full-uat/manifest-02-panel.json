@@ -1,0 +1,20 @@
+{
+  "captured": [
+    "40-panel-submission-queue",
+    "41-panel-claim-readiness-checklist",
+    "42-panel-mark-submitted-modal",
+    "43-panel-work-queue",
+    "44-panel-work-queue-include-resolved",
+    "45-panel-reclaim-chain-columns",
+    "46-panel-record-outcome-modal",
+    "47-panel-write-off-modal",
+    "48-panel-reclaim-modal",
+    "49-panel-reconciliation",
+    "50-panel-configuration",
+    "51-panel-configuration-all-columns",
+    "52-panel-companies",
+    "53-panel-claim-batches"
+  ],
+  "failures": [],
+  "at": "2026-08-30T07:58:46.582Z"
+}

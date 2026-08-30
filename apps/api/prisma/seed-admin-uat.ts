@@ -25,13 +25,32 @@ config({ path: join(__dirname, '..', '.env') });
  * 000000-00-xxxx form, and every email is on the RFC 2606 `.invalid` TLD which
  * can never route. Nothing here came from, or resembles, a real record.
  *
- *   KUWICK_ADMIN_UAT_SEED=yes npx tsx prisma/seed-admin-uat.ts
+ *   KUWICK_ADMIN_UAT_SEED=yes \
+ *   ADMIN_UAT_RESET_URL=postgresql://<owner>:<pass>@host:5432/<db> \
+ *   npx tsx prisma/seed-admin-uat.ts
  *
  * Idempotent by tenant: re-running deletes and rebuilds ITS OWN tenant and
- * touches nothing else.
+ * touches nothing else. The delete half needs the database OWNER — see
+ * RESET_URL below for why the application role cannot do it. On a database
+ * where the tenant does not exist yet, DATABASE_URL alone is enough.
  */
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
+
+/**
+ * THE URL USED TO CLEAR THE TENANT, which is not the one used to build it.
+ *
+ * Dropping a whole tenant needs two things the application role deliberately
+ * does not have: sight of the rows at all (every table is FORCE ROW LEVEL
+ * SECURITY, so a DELETE issued without `app.tenant_id` matches nothing and
+ * reports success), and the right to switch off the append-only triggers on
+ * payments and stock movements. `DATABASE_URL` is the application role. Run
+ * against it, the reset below deleted nothing, said nothing, and the rebuild
+ * then failed on the duplicate tenant id — so the "idempotent by tenant"
+ * promise in the header was not true. Point this at the database owner and it
+ * is.
+ */
+const RESET_URL = process.env.ADMIN_UAT_RESET_URL ?? process.env.DATABASE_URL;
 
 const TENANT_ID = 'aaaaaaaa-0000-4000-8000-000000000001';
 const DOMAIN = 'admin-uat.kuwick.invalid';
@@ -449,20 +468,6 @@ async function verify() {
 
 /** Deletes this tenant only, in dependency order. */
 async function reset() {
-  const exists = await prisma.$queryRawUnsafe<{ id: string }[]>(
-    `SELECT id FROM tenants WHERE id = $1`,
-    TENANT_ID,
-  );
-  if (exists.length === 0) return;
-
-  // Append-only tables refuse deletion by design, so the whole tenant is
-  // dropped with the trigger disabled — legitimate here because this is a
-  // seed rebuilding its OWN synthetic tenant on a disposable database, and
-  // it is the only place in the repository that does it.
-  const appendOnly = ['payments', 'stock_movements', 'claim_events', 'payroll_adjustments', 'visit_workflow_events', 'appointment_events', 'appointment_form_answers'];
-  for (const table of appendOnly) {
-    await prisma.$executeRawUnsafe(`ALTER TABLE "${table}" DISABLE TRIGGER USER`);
-  }
   const order = [
     'marketing_dispatches', 'marketing_templates', 'marketing_audiences',
     'programme_enrolments', 'clinic_programmes', 'segment_mapping_rules', 'business_segments',
@@ -496,11 +501,83 @@ async function reset() {
     'notification_logs', 'media_assets', 'global_settings', 'visit_number_counters',
     'user_clinic_access', 'staff', 'users', 'clinics', 'tenants',
   ];
-  for (const table of order) {
-    await prisma.$executeRawUnsafe(`DELETE FROM "${table}" WHERE ${table === 'tenants' ? 'id' : 'tenant_id'} = $1`, TENANT_ID).catch(() => undefined);
-  }
-  for (const table of appendOnly) {
-    await prisma.$executeRawUnsafe(`ALTER TABLE "${table}" ENABLE TRIGGER USER`);
+
+  const owner = new PrismaClient({ adapter: new PrismaPg({ connectionString: RESET_URL }) });
+  try {
+    // ONE TRANSACTION, with the tenant set on it. `set_config(..., true)` is
+    // transaction-local, and a pooled client hands consecutive statements to
+    // different connections — so a session-level setting would be lost between
+    // the DELETEs and they would silently match nothing again. DDL is
+    // transactional in PostgreSQL, so the trigger toggles ride along and roll
+    // back with everything else if any step fails.
+    await owner.$transaction(
+      async (tx) => {
+        await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', $1, true)`, TENANT_ID);
+
+        const exists = await tx.$queryRawUnsafe<{ id: string }[]>(
+          `SELECT id FROM tenants WHERE id = $1`,
+          TENANT_ID,
+        );
+        if (exists.length === 0) return;
+
+        // Append-only tables refuse deletion by design, so the whole tenant is
+        // dropped with those triggers off — legitimate here because this is a
+        // seed rebuilding its OWN synthetic tenant on a disposable database,
+        // and it is the only place in the repository that does it.
+        //
+        // ASKED OF THE DATABASE, not kept as a list here. The hand-written list
+        // this replaces had gone stale — `label_prints` grew an append-only
+        // trigger and nobody added it — and the per-table `catch` below turned
+        // the resulting failure into a reset that quietly did nothing.
+        const appendOnly = await tx.$queryRawUnsafe<{ relname: string }[]>(
+          `SELECT DISTINCT c.relname
+             FROM pg_trigger t
+             JOIN pg_class c ON c.oid = t.tgrelid
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE NOT t.tgisinternal AND n.nspname = 'public' AND c.relname = ANY($1)`,
+          order,
+        );
+
+        for (const { relname } of appendOnly) {
+          await tx.$executeRawUnsafe(`ALTER TABLE "${relname}" DISABLE TRIGGER USER`);
+        }
+        // NO per-table catch. Swallowing these is what let a reset that deleted
+        // nothing look like a reset that worked; a stale table name in the list
+        // above should stop the seed and say so.
+        //
+        // Two tables do not carry `tenant_id`: the tenant row is keyed by `id`,
+        // and user↔clinic access hangs off the clinic. Both are deleted before
+        // what they point at, so the sub-select still resolves.
+        const predicate: Record<string, string> = {
+          tenants: 'id = $1',
+          user_clinic_access: 'clinic_id IN (SELECT id FROM clinics WHERE tenant_id = $1)',
+        };
+        for (const table of order) {
+          const where = predicate[table] ?? 'tenant_id = $1';
+          await tx.$executeRawUnsafe(`DELETE FROM "${table}" WHERE ${where}`, TENANT_ID);
+        }
+        for (const { relname } of appendOnly) {
+          await tx.$executeRawUnsafe(`ALTER TABLE "${relname}" ENABLE TRIGGER USER`);
+        }
+
+        const left = await tx.$queryRawUnsafe<{ id: string }[]>(
+          `SELECT id FROM tenants WHERE id = $1`,
+          TENANT_ID,
+        );
+        if (left.length > 0) {
+          throw new Error('Tenant still present after the reset — refusing to rebuild on top of it.');
+        }
+      },
+      { timeout: 120_000 },
+    );
+  } catch (error) {
+    throw new Error(
+      `Could not clear the UAT tenant. This needs the DATABASE OWNER, not the application role: ` +
+        `set ADMIN_UAT_RESET_URL to an owner connection string and run again. ` +
+        `Underlying error: ${(error as Error).message}`,
+    );
+  } finally {
+    await owner.$disconnect();
   }
 }
 
@@ -689,6 +766,45 @@ async function seedStock(ids: Ids) {
         lines: {
           create: levels.map((level) => ({
             tenantId: tenant.id, itemId: level.itemId, systemQuantity: level.quantityOnHand, unitCost: level.item.cost,
+          })),
+        },
+      },
+    });
+
+    // A COUNTING take AT CENTRAL TOO. The owner account is bound to Contoh
+    // Central (they are the principal doctor there), so the Bandar count above
+    // is not reachable from it — and a count that nobody reviewing this system
+    // can open does not demonstrate the count → submit → approve → post chain
+    // the workflow exists for. One partly-counted take at the owner's own
+    // branch is what makes that chain visible.
+    const centralLevels = await tx.stockLevel.findMany({
+      where: { clinicId: central.id },
+      include: { item: true },
+      orderBy: { itemId: 'asc' },
+      take: 6,
+    });
+    await tx.stockTake.create({
+      data: {
+        tenantId: tenant.id, clinicId: central.id, takeNumber: nextNumber('ST'), name: 'Month-end count — dispensary',
+        status: 'COUNTING', createdByStaffId: staff.stock,
+        counters: { create: [{ tenantId: tenant.id, staffId: staff.stock, location: 'Dispensary shelf A' }] },
+        lines: {
+          create: centralLevels.map((level, index) => ({
+            tenantId: tenant.id,
+            itemId: level.itemId,
+            systemQuantity: level.quantityOnHand,
+            unitCost: level.item.cost,
+            // Half the shelf counted, one line short of what the system says —
+            // so the progress bar, the variance column and the "not counted
+            // yet" state are all on screen at once.
+            ...(index < 3
+              ? {
+                  countedQuantity: index === 1 ? level.quantityOnHand - 2 : level.quantityOnHand,
+                  countedByStaffId: staff.stock,
+                  countedAt: day(-1),
+                  ...(index === 1 ? { varianceReason: 'Two boxes not on the shelf' } : {}),
+                }
+              : {}),
           })),
         },
       },
@@ -1308,6 +1424,39 @@ async function seedPanelClaims(ids: Ids) {
       ],
     });
 
+    // 3b. REJECTED AND STILL AWAITING A DECISION.
+    //
+    // The claim above was rejected AND re-claimed, which correctly removes both
+    // the re-claim and the write-off buttons from it — a second replacement
+    // would claim the same money twice. That left the work queue with no row a
+    // person could actually act on, so the two decisions this module exists to
+    // offer (pursue it again, or stop pursuing it and say why) could not be
+    // seen or reviewed.
+    //
+    // A real panel book always has rejections waiting on somebody. This is one:
+    // rejected eleven days ago, nobody has decided yet, and the queue offers
+    // both routes out.
+    const openRejectVisit = await panelVisit(0, 5, -18, 120, central.id, 'resident');
+    const openRejectClaim = await claim(0, openRejectVisit.invoice.id, 120, -18);
+    await submit(openRejectClaim.batch.id, openRejectClaim.line.id, -17, 'MC-2026-00204', 30);
+    await tx.claimBatchLine.update({
+      where: { id: openRejectClaim.line.id },
+      data: {
+        claimStatus: 'REJECTED', status: 'REJECTED',
+        approvedAmount: 0, rejectedAmount: 129.6,
+        rejectionReason: 'Referral letter not attached to the submission',
+        adjudicatedAt: at(-11, 4), responsibleStaffId: staff.panel,
+      },
+    });
+    await tx.claimEvent.create({
+      data: {
+        tenantId: tenant.id, claimBatchLineId: openRejectClaim.line.id, eventType: 'ADJUDICATED',
+        fromStatus: 'SUBMITTED', toStatus: 'REJECTED', amount: 0,
+        reason: 'Referral letter not attached to the submission',
+        actorStaffId: staff.panel, createdAt: at(-11, 4),
+      },
+    });
+
     // 4. SUBMITTED AND OVERDUE — past the panel's own payment term.
     const overdueVisit = await panelVisit(2, 3, -95, 95, branch.id, 'locum');
     const overdueClaim = await claim(2, overdueVisit.invoice.id, 95, -95);
@@ -1338,7 +1487,7 @@ async function seedPanelClaims(ids: Ids) {
     // readiness check has a real failure to report.
     await claim(0, incompleteInvoice.id, CONSULT, -2);
 
-    console.log('  panel: paid, partially paid, rejected→re-claimed, overdue, ready, incomplete');
+    console.log('  panel: paid, partially paid, rejected→re-claimed, rejected→awaiting decision, overdue, ready, incomplete');
     void remittance;
   });
 }

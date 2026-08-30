@@ -1,0 +1,31 @@
+{
+  "captured": [
+    "60-hr-today-dashboard",
+    "61-hr-employee-directory",
+    "62-hr-employee-profile-top",
+    "63-hr-employee-profile-payroll-history",
+    "64-hr-staff-management-legacy",
+    "65-hr-add-staff-form-legacy",
+    "66-hr-attendance-timesheets",
+    "67-hr-attendance-overtime-approval",
+    "68-hr-leave-requests",
+    "69-hr-leave-request-form",
+    "70-hr-roster-month",
+    "71-hr-roster-shift-edit",
+    "72-hr-payroll-landing",
+    "73-hr-payroll-new-run-modal",
+    "74-hr-payroll-run-detail",
+    "75-hr-payroll-employee-breakdown",
+    "76-hr-payroll-statutory-notready-banner",
+    "77-hr-incentives-overview",
+    "78-hr-incentive-run-detail",
+    "79-hr-incentive-rules",
+    "80-hr-staff-benefits",
+    "81-hr-staff-benefit-member-detail",
+    "82-hr-roles-and-access",
+    "83-hr-custom-role-permission-matrix",
+    "84-hr-staff-access-drawer-legacy"
+  ],
+  "failures": [],
+  "at": "2026-08-30T08:00:21.448Z"
+}
