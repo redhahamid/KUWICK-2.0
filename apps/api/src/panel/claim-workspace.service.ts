@@ -838,6 +838,21 @@ export class ClaimWorkspaceService {
     await requirePermission(this.rawPrisma, 'panel.view');
     const now = new Date();
 
+    /**
+     * "INCLUDE RESOLVED" HAS TO MEAN SOMETHING.
+     *
+     * Dropping the `resolvedAt: null` filter was not enough on its own. A claim
+     * that was rejected and then re-claimed ends up RESUBMITTED, and that status
+     * appears in NEITHER branch of the work-state filter below — so the settled
+     * original stayed invisible however the checkbox was set, and the columns
+     * that exist to show a re-claim chain (original claim number, replacement,
+     * resubmission date, resolved date) had nothing to draw.
+     *
+     * Ticking the box widens the states as well as lifting the filter: what a
+     * person is asking is "what happened to that one", and the answer is always
+     * a claim that has LEFT the work queue.
+     */
+    const settledStates: PanelClaimStatus[] = ['RESUBMITTED', 'WRITTEN_OFF', 'CLOSED', 'PAID'];
     const lines = await this.prisma.claimBatchLine.findMany({
       where: {
         ...(params.panelClinicId ? { claimBatch: { panelClinicId: params.panelClinicId } } : {}),
@@ -850,6 +865,9 @@ export class ClaimWorkspaceService {
               { claimStatus: { in: ['SUBMITTED', 'ACKNOWLEDGED', 'APPROVED', 'PARTIALLY_PAID'] } },
             ],
           },
+          ...(params.includeResolved
+            ? [{ claimStatus: { in: settledStates } }, { resolvedAt: { not: null } }]
+            : []),
         ],
       },
       include: {
