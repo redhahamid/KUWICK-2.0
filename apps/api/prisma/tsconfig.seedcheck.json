@@ -14,6 +14,7 @@
     "full-uat/02-panel.ts",
     "full-uat/03-hr.ts",
     "full-uat/04-finance.ts",
-    "full-uat/05-workflows-responsive.ts"
+    "full-uat/05-workflows-responsive.ts",
+    "full-uat/06-empty-check.ts"
   ]
 }

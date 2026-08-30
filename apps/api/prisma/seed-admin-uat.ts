@@ -691,9 +691,15 @@ async function seedStock(ids: Ids) {
       data: { tenantId: tenant.id, purchaseOrderId: openPo.id, itemId: items.SEMA025.id, orderedQuantity: 20, unitCost: 315 },
     });
 
-    // A pending procurement request from the branch.
+    // Two pending procurement requests. The branch one is what the workflow is
+    // FOR — a branch asking central to buy something — but the owner account is
+    // pinned to Central, so on its own it left the Procurement Requests screen
+    // showing an empty table. The Central one is what that account sees.
     await tx.procurementRequest.create({
       data: { tenantId: tenant.id, clinicId: branch.id, itemId: items.MET500.id, requestedQuantity: 60, status: 'PENDING' },
+    });
+    await tx.procurementRequest.create({
+      data: { tenantId: tenant.id, clinicId: central.id, itemId: items.AMOX500.id, requestedQuantity: 200, status: 'PENDING' },
     });
 
     // A monthly purchasing budget.
@@ -707,6 +713,11 @@ async function seedStock(ids: Ids) {
         tenantId: tenant.id, transferNumber: nextNumber('TRF'), fromClinicId: central.id, toClinicId: branch.id,
         status: 'RECEIVED', createdByStaffId: staff.stock, sentByStaffId: staff.stock, sentAt: day(-12),
         receivedByStaffId: staff.counter2, receivedAt: day(-11),
+        // The two branches are separate entities, so this movement has to be
+        // billed between them. Without a flagged transfer the Inter-company
+        // screen had nothing to list and read as a broken page rather than an
+        // empty one.
+        interCompany: true, interCompanyReference: 'IC-2026-0041',
         lines: { create: [{ tenantId: tenant.id, itemId: items.MET500.id, quantitySent: 30, quantityReceived: 30, unitCost: 3.2 }] },
       },
     });
@@ -717,6 +728,11 @@ async function seedStock(ids: Ids) {
     const short = await tx.stockTransfer.create({
       data: {
         tenantId: tenant.id, transferNumber: nextNumber('TRF'), fromClinicId: central.id, toClinicId: branch.id,
+        // Also inter-company, and deliberately WITHOUT a billing reference, so
+        // the warning the screen exists to raise — stock left one entity and
+        // arrived at another with nothing recorded to bill against — has a real
+        // case rather than a hypothetical one.
+        interCompany: true,
         status: 'RECEIVED_WITH_DISCREPANCY', createdByStaffId: staff.stock, sentByStaffId: staff.stock, sentAt: day(-5),
         receivedByStaffId: staff.counter2, receivedAt: day(-4),
         lines: {
@@ -1113,6 +1129,22 @@ async function seedClinicalAndFinance(ids: Ids) {
         subtotalAmount: 10, taxAmount: 0.6, totalAmount: 10.6,
         createdByStaffId: staff.counter2,
         lines: { create: [{ tenantId: tenant.id, description: 'Dressing tier correction', quantity: 1, unitPrice: 10, amount: 10, taxAmount: 0.6 }] },
+      },
+    });
+
+    // AND ONE AT CENTRAL, because the draft above is at Bandar and the owner
+    // account is pinned to Central — so the DRAFT filter opened on an empty
+    // table and the two-person approval rule, which is the whole point of this
+    // screen, had nothing to demonstrate itself on. Raised by the finance
+    // executive, so the Approve button belongs to somebody else.
+    await tx.creditNote.create({
+      data: {
+        tenantId: tenant.id, clinicId: central.id, creditNoteNumber: nextNumber('CN'),
+        invoiceId: partial.invoice.id, status: 'DRAFT',
+        reason: 'Weight management review billed at the specialist rate in error',
+        subtotalAmount: 30, taxAmount: 1.8, totalAmount: 31.8,
+        createdByStaffId: staff.finance,
+        lines: { create: [{ tenantId: tenant.id, description: 'Consultation rate correction', quantity: 1, unitPrice: 30, amount: 30, taxAmount: 1.8 }] },
       },
     });
 
@@ -1636,7 +1668,22 @@ async function seedWorkforce(ids: Ids) {
     for (let offset = -14; offset <= 7; offset += 1) {
       const date = day(offset);
       const weekday = date.getUTCDay();
-      if (weekday === 0 || weekday === 6) continue;
+      if (weekday === 0 || weekday === 6) {
+        // A WEEKEND SESSION, one provider, shorter hours. Without it the pack
+        // regenerated on a Saturday or Sunday photographed HR ▸ Today reading
+        // "Nobody is rostered" — honest for a clinic that shuts at the weekend,
+        // but useless as a demonstration of a screen whose entire subject is
+        // today, and indistinguishable from the screen being broken. A weekend
+        // morning session is also how most Malaysian GP clinics actually run.
+        await tx.providerShift.create({
+          data: {
+            tenantId: tenant.id, clinicId: central.id, staffId: staff.owner,
+            shiftDate: date, startsAt: at(offset, 1), endsAt: at(offset, 5),
+            note: 'Weekend session',
+          },
+        });
+        continue;
+      }
       for (const [index, key] of ['owner', 'resident'].entries()) {
         await tx.providerShift.create({
           data: {
@@ -1728,6 +1775,22 @@ async function seedWorkforce(ids: Ids) {
       data: {
         tenantId: tenant.id, staffId: staff.counter, leaveType: 'ANNUAL',
         startDate: day(14), endDate: day(18), reason: 'Holiday', status: 'PENDING',
+      },
+    });
+    // SOMEBODY ON LEAVE TODAY. Every leave above is in the past or the future,
+    // so HR ▸ Today showed "Nobody is on leave" — which reads as a screen that
+    // does not work rather than a quiet day.
+    //
+    // The panel clerk, and specifically NOT the stock controller: he is clocked
+    // in today a few lines below, and the first attempt put him in "On duty"
+    // and "Away today" at the same time. A fixture that contradicts itself is
+    // worse than an empty one, because the reviewer cannot tell whether the
+    // screen or the data is wrong.
+    await tx.leaveRequest.create({
+      data: {
+        tenantId: tenant.id, staffId: staff.panel, leaveType: 'ANNUAL',
+        startDate: day(0), endDate: day(1), reason: 'Family matters', status: 'APPROVED',
+        approvedByStaffId: staff.owner, approvedAt: at(-3, 2),
       },
     });
     await tx.leaveRequest.create({

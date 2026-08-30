@@ -277,7 +277,12 @@ files are.
 ## Branch scope — read every screenshot in this pack as ONE branch
 
 This surfaced while capturing the stock-take workflow and it changes how the
-whole pack should be read, so it belongs here rather than in a footnote.
+whole pack should be read, so it belongs here rather than in a footnote. It
+also silently emptied three screens in the first pass — the stock take still
+counting, the DRAFT credit note awaiting approval, and the procurement request
+— because each was seeded at the *other* branch. A screen showing "no data" is
+indistinguishable from a screen that does not work, so `06-empty-check.ts` now
+sweeps every route after seeding and names any table that rendered empty.
 
 A staff member whose record names a branch is **pinned to that branch**, and
 the branch picker is not shown to them at all — `useClinicFilter` resolves the
@@ -433,9 +438,15 @@ so a draft or recalculating incentive run cannot leak into a salary.
 Fully operational: day-end closing end to end (open → count → variance →
 mandatory reason → close → frozen → permissioned reopen); the payment ledger
 including refunds and reversals kept distinct; patient and panel receivables
-aged separately; credit notes create/approve/issue leaving the original invoice
-untouched; SST/tax summed from what each line actually charged; drug and
+aged separately; SST/tax summed from what each line actually charged; drug and
 procedure profitability with honest missing-cost handling; sales reporting.
+
+Partly operational: **credit notes**. Approving and issuing work, the two-person
+rule is enforced and visible, and the original invoice is left exactly as
+issued — but a credit note cannot be *raised* from this screen. `POST
+/finance/credit-notes` and `useCreateCreditNote` both exist and nothing calls
+them, so the drafts on screen (`101`, `102`) are ones the seed created. An owner
+can approve a credit note here; they cannot start one.
 
 Not fully operational: **e-Invoice (nothing)**, **debit notes (nothing)**,
 **invoice detail drill-down (nothing)**, **inter-company (flags only, cannot

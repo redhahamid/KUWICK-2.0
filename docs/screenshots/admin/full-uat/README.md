@@ -36,6 +36,11 @@ KUWICK_ADMIN_UAT_SEED=yes \
 ADMIN_UAT_RESET_URL='postgresql://<owner>:<pass>@127.0.0.1:5432/kuwick_dev?schema=public' \
 npx tsx prisma/seed-admin-uat.ts
 
+# Check the fixture before spending twenty minutes photographing it. Reports
+# any screen whose table rendered empty; only the marketing prepared-message
+# queue is expected to, and the pack captures that filling up on purpose.
+npx tsx prisma/full-uat/06-empty-check.ts
+
 # In this order. 04 DRIVES the day-end — it counts the drawer short, saves the
 # variance reason, closes the day and opens the reopen dialog — so it must run
 # after 01–03 and before 05, and a second full pack needs the re-seed above.
