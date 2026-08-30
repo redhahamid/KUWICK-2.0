@@ -429,9 +429,28 @@ export interface PanelWorkQueueRow {
   outstanding: number;
   rejectionReason: string | null;
   responsible: string | null;
+  paymentTermDays: number | null;
+  resolved: boolean;
   resolvedAt: string | null;
   resolutionNote: string | null;
-  replacement: { claimLineId: string; batchNumber: string; panelClaimNo: string | null; status: string } | null;
+  /** The re-claim raised to replace this one, when there is one. */
+  replacement: {
+    claimLineId: string;
+    batchNumber: string;
+    panelClaimNo: string | null;
+    status: string;
+    /** When it actually went back out. NULL while only prepared. */
+    resubmittedAt: string | null;
+    raisedAt: string;
+  } | null;
+  /** The claim this one replaces, when it is itself a re-claim. */
+  supersedes: {
+    claimLineId: string;
+    batchNumber: string;
+    panelClaimNo: string | null;
+    status: string;
+    rejectionReason: string | null;
+  } | null;
 }
 
 export interface PanelConfigRow {
@@ -775,4 +794,203 @@ export interface MarketingHistory {
     preparedBy: string;
     body: string;
   }[];
+}
+
+// --- Profitability -----------------------------------------------------------
+
+export type ProfitabilityKind = 'DRUG' | 'SERVICE';
+
+export interface ProfitabilityRow {
+  kind: ProfitabilityKind;
+  referenceId: string | null;
+  name: string;
+  code: string | null;
+  category: string | null;
+  clinicId: string | null;
+  clinicName: string | null;
+  quantity: number;
+  revenue: number;
+  /** NULL where no cost basis exists. Never zero standing in for unknown. */
+  directCost: number | null;
+  contribution: number | null;
+  margin: number | null;
+  costConfigured: boolean;
+  lines: number;
+  invoices: number;
+}
+
+export interface ProfitabilityReport {
+  from: string;
+  to: string;
+  clinicId: string | null;
+  costBasis: string;
+  contributionNote: string;
+  rows: ProfitabilityRow[];
+  totals: {
+    revenue: number;
+    costedRevenue: number;
+    directCost: number;
+    contribution: number;
+    margin: number | null;
+    rows: number;
+    rowsWithoutCost: number;
+    revenueWithoutCost: number;
+  };
+}
+
+// --- Staff benefits ----------------------------------------------------------
+
+export interface StaffBenefitAccountRow {
+  id: string;
+  staffId: string;
+  staffName: string;
+  role: string;
+  clinicName: string | null;
+  benefitYear: number;
+  allowance: number;
+  used: number;
+  remaining: number;
+  overdrawn: number;
+  notes: string | null;
+  members: {
+    id: string;
+    name: string;
+    relationship: string;
+    allowanceOverride: number | null;
+    linkedPatient: boolean;
+  }[];
+  usages: {
+    id: string;
+    usedAt: string;
+    amount: number;
+    forWhom: string;
+    invoiceNumber: string | null;
+    recordedBy: string;
+    notes: string | null;
+  }[];
+}
+
+export interface StaffBenefitReport {
+  year: number;
+  clinicId: string | null;
+  note: string;
+  accounts: StaffBenefitAccountRow[];
+}
+
+// --- EMPLOYEE RECORD --------------------------------------------------------
+// One employee, composed from the tables that own each fact. See
+// `EmployeeService.record` — there is no second employee record behind this.
+
+export interface EmployeeRecord {
+  staffId: string;
+  year: number;
+  identity: {
+    fullName: string;
+    legalName: string | null;
+    accountActive: boolean;
+    accountRole: string;
+    email: string | null;
+    phone: string | null;
+    dateOfBirth: string | null;
+    gender: string | null;
+    nationality: string | null;
+    maritalStatus: string | null;
+    address: string | null;
+    emergencyContactName: string | null;
+    emergencyContactPhone: string | null;
+    emergencyContactRelation: string | null;
+  };
+  employment: {
+    employeeNo: string | null;
+    position: string | null;
+    department: string | null;
+    employmentType: string;
+    employmentStatus: string;
+    clinicName: string | null;
+    manager: string | null;
+    startDate: string | null;
+    confirmedDate: string | null;
+    endDate: string | null;
+    endReason: string | null;
+    notes: string | null;
+  };
+  /** False means "you may not read pay", which is not "there is no pay". */
+  payVisible: boolean;
+  pay: {
+    payBasis: 'MONTHLY' | 'HOURLY' | null;
+    basicSalary: number | null;
+    hourlyRate: number | null;
+    bankName: string | null;
+    bankAccountOnFile: boolean;
+  } | null;
+  statutory: {
+    epfNumberOnFile: boolean;
+    socsoNumberOnFile: boolean;
+    taxNumberOnFile: boolean;
+    taxCategory: string | null;
+    epfApplicable: boolean;
+    socsoApplicable: boolean;
+    eisApplicable: boolean;
+    pcbApplicable: boolean;
+    note: string;
+  };
+  leavePolicy: { id: string; name: string } | null;
+  attendance: {
+    daysRecorded: number;
+    daysWorked: number;
+    absent: number;
+    onLeave: number;
+    lateDays: number;
+    approvedOvertimeHours: number;
+    corrected: number;
+    recent: {
+      id: string;
+      workDate: string;
+      status: string;
+      clockInAt: string | null;
+      clockOutAt: string | null;
+      workedMinutes: number | null;
+      lateMinutes: number | null;
+      overtimeMinutes: number;
+      overtimeApproved: boolean;
+      corrected: boolean;
+    }[];
+  };
+  payrollHistory: {
+    id: string;
+    runId: string;
+    period: string;
+    runStatus: string;
+    statutoryStatus: string;
+    gross: number | null;
+    net: number | null;
+    employerCost: number | null;
+    epfEmployee: number | null;
+    socsoEmployee: number | null;
+    eisEmployee: number | null;
+    pcb: number | null;
+  }[];
+  documents: { implemented: boolean; note: string };
+}
+
+// --- MARKETING DISPATCH -----------------------------------------------------
+// PREPARED, and at most OPENED. There is no SENT and no DELIVERED anywhere in
+// this type, because neither is something this system observes.
+
+export interface PreparedMessage {
+  dispatchId: string;
+  patientId: string;
+  name: string;
+  phone: string;
+  body: string;
+  /** A wa.me link a staff member clicks. Clicking is all `markOpened` records. */
+  whatsappUrl: string;
+}
+
+export interface PreparedDispatchResult {
+  templateName: string;
+  prepared: number;
+  skippedWithoutPhone: number;
+  notice: string;
+  messages: PreparedMessage[];
 }

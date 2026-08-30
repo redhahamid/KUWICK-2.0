@@ -57,6 +57,23 @@ export function PayrollPage() {
   const hasExceptions = (run?.exceptions.length ?? 0) > 0;
   const statutoryGap = run?.statutoryStatus !== 'CONFIGURED';
 
+  /**
+   * IS THIS PAYROLL FIT TO PAY MALAYSIAN STAFF WITH? Currently: no.
+   *
+   * The engine computes gross, allowances, unpaid-leave proration, deductions
+   * it was given, and net. It does NOT contain EPF/KWSP, SOCSO/PERKESO, EIS or
+   * PCB schedules — nobody has entered them, and this system will not guess a
+   * statutory table. Guessing is the one failure here with a legal consequence
+   * attached: an under-deducted PCB is the employer's liability, not a bug
+   * report.
+   *
+   * So the answer is READY only when a rate set exists AND somebody has marked
+   * it checked against the authority's published tables. Anything else is the
+   * banner below, in the brief's own words, above everything on the page.
+   */
+  const verifiedRates = statutory.data?.filter((set) => set.verified) ?? [];
+  const payrollReady = verifiedRates.length > 0;
+
   return (
     <AdminShell
       error={firstError(runs, statutory, detail)}
@@ -70,6 +87,26 @@ export function PayrollPage() {
         ) : null
       }
     >
+      {/* THE FIRST THING ON THIS PAGE, and deliberately not dismissible.
+          An owner who scrolls past a quiet grey band and approves a run has
+          been told nothing. */}
+      {payrollReady ? null : (
+        <div className="kw-payrollBlock" role="alert">
+          <p className="kw-payrollBlock__headline">NOT READY FOR LIVE MALAYSIAN PAYROLL</p>
+          <p className="kw-payrollBlock__body">
+            EPF/KWSP, SOCSO/PERKESO, EIS and PCB are <strong>not implemented</strong> in this system. No statutory
+            schedule is built in and none has been verified against the authority’s published tables, so no run on this
+            screen carries a statutory deduction — the figures below are gross, non-statutory deductions and the
+            arithmetic between them, nothing more.
+          </p>
+          <p className="kw-payrollBlock__body">
+            Runs may be produced and approved for internal costing and review. They must not be used to pay staff, to
+            file a statutory return, or as the basis of a payslip issued to an employee, until Malaysian rate tables are
+            configured and verified.
+          </p>
+        </div>
+      )}
+
       {(statutory.data?.length ?? 0) === 0 ? (
         <AdminNotice tone="warn">
           No statutory rate tables are configured. Malaysian EPF, SOCSO, EIS and PCB rates are NOT built into this

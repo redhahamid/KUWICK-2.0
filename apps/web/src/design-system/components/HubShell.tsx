@@ -23,6 +23,17 @@ interface HubShellProps {
   categories: HubCategory[];
   // Extra element on the right of the context header (e.g. a link back).
   headerExtra?: ReactNode;
+  /**
+   * A class on the hub root, so a hub can normalise the screens rendered
+   * inside it.
+   *
+   * Admin uses `kw-hub--admin`: a third of its screens were written for
+   * /management years earlier and arrive with their own header idiom, their
+   * own card weight and their own table density. Restyling them in place
+   * would have changed how they look under /management too; scoping the
+   * corrections to this shell means one component, two chromes, no fork.
+   */
+  scopeClass?: string;
 }
 
 // M1 layout shell (owner-approved revision of the focused Management
@@ -36,7 +47,7 @@ interface HubShellProps {
 // Mobile (<md): main tabs scroll horizontally (antd keeps the active tab
 // in view); the secondary submenu becomes a full-width dropdown — the
 // owner's "Option 2", avoiding two crowded rows of tiny tabs.
-export function HubShell({ title, categories, headerExtra }: HubShellProps) {
+export function HubShell({ title, categories, headerExtra, scopeClass }: HubShellProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const screens = Grid.useBreakpoint();
@@ -53,7 +64,10 @@ export function HubShell({ title, categories, headerExtra }: HubShellProps) {
   const showSecondary = secondaryItems.length > 1;
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#fff' }}>
+    <div
+      className={scopeClass}
+      style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#fff' }}
+    >
       <div style={{ padding: '10px 24px 0', borderBottom: '1px solid #f0f0f0', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>

@@ -16,6 +16,7 @@ import { UpsertTaxCodeDto } from './dto/upsert-tax-code.dto';
 import { AddTaxRateDto } from './dto/add-tax-rate.dto';
 import { OptionalDateParam, RequiredDateParam } from '../core/date-param.pipe';
 import { assertDateOrder } from '../core/query-dates';
+import { ProfitabilityKind, ProfitabilityService } from './profitability.service';
 
 /**
  * Every route here is authorised INSIDE the service, against a named
@@ -31,6 +32,7 @@ export class FinanceController {
     private readonly dayEnd: DayEndService,
     private readonly tax: TaxService,
     private readonly receivables: ReceivablesService,
+    private readonly profit: ProfitabilityService,
   ) {}
 
   // --- Payments -------------------------------------------------------------
@@ -149,5 +151,18 @@ export class FinanceController {
   taxReport(@Query('from', RequiredDateParam) from: string, @Query('to', RequiredDateParam) to: string, @Query('clinicId') clinicId?: string) {
     assertDateOrder(from, to);
     return this.tax.report({ from, to, clinicId });
+  }
+
+  // --- Profitability ----------------------------------------------------------
+
+  @Get('profitability')
+  profitability(
+    @Query('from', RequiredDateParam) from: string,
+    @Query('to', RequiredDateParam) to: string,
+    @Query('clinicId') clinicId?: string,
+    @Query('kind') kind?: ProfitabilityKind,
+  ) {
+    assertDateOrder(from, to);
+    return this.profit.report({ from, to, clinicId, kind });
   }
 }

@@ -6,6 +6,7 @@ import { CreditNoteService } from './credit-note.service';
 import { DayEndService } from './day-end.service';
 import { TaxService } from './tax.service';
 import { ReceivablesService } from './receivables.service';
+import { ProfitabilityService } from './profitability.service';
 
 /**
  * WAVE 1 of the admin programme.
@@ -20,7 +21,7 @@ import { ReceivablesService } from './receivables.service';
 @Module({
   imports: [CoreModule],
   controllers: [FinanceController],
-  providers: [PaymentService, CreditNoteService, DayEndService, TaxService, ReceivablesService],
+  providers: [PaymentService, CreditNoteService, DayEndService, TaxService, ReceivablesService, ProfitabilityService],
   exports: [PaymentService, TaxService, DayEndService],
 })
 export class FinanceModule {}

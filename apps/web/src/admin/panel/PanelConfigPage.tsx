@@ -1,4 +1,4 @@
-import { Tag } from 'antd';
+import { Tag, Tooltip } from 'antd';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { DataTable, money } from '../components/DataTable';
 import { usePanelConfigs } from '../hooks/useAdmin';
@@ -125,6 +125,34 @@ export function PanelConfigPage() {
               optional: true,
               render: (value: boolean | null) =>
                 value === null ? <span className="kw-muted">not decided</span> : value ? 'Yes' : 'No',
+            },
+            {
+              // CLAIM-NUMBER REQUIREMENTS. Some panels reject a claim keyed
+              // without their own reference format; that rule lived in
+              // somebody's memory and is a configured field.
+              title: 'Claim no format',
+              dataIndex: 'claimNumberFormat',
+              key: 'claimNumberFormat',
+              optional: true,
+              render: (value: string | null) =>
+                value ? <code>{value}</code> : <span className="kw-muted">no format required</span>,
+            },
+            {
+              title: 'Account ref',
+              dataIndex: 'accountReference',
+              key: 'accountReference',
+              optional: true,
+              render: (value: string | null) => value ?? <span className="kw-muted">—</span>,
+            },
+            {
+              // The instruction sheet stuck to the monitor, in the record.
+              title: 'Instructions',
+              dataIndex: 'notes',
+              key: 'notes',
+              optional: true,
+              ellipsis: true,
+              render: (value: string | null) =>
+                value ? <Tooltip title={value}>{value}</Tooltip> : <span className="kw-muted">none</span>,
             },
             { title: 'Contact', dataIndex: 'contactName', key: 'contactName', optional: true },
             { title: 'Phone', dataIndex: 'contactPhone', key: 'contactPhone', optional: true },

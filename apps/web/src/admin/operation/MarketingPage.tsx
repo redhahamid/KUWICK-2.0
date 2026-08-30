@@ -1,11 +1,20 @@
 import { useState } from 'react';
-import { App, Button, Input, InputNumber, Select, Tag } from 'antd';
+import { App, Button, Input, InputNumber, Modal, Select, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
-import { useMarketingAudience, useMarketingHistory, useMarketingTemplates, useProgrammes } from '../hooks/useAdmin';
+import { useCan } from '../../core/hooks/useCan';
+import {
+  useMarkDispatchOpened,
+  useMarketingAudience,
+  useMarketingHistory,
+  useMarketingTemplates,
+  usePrepareDispatch,
+  useProgrammes,
+} from '../hooks/useAdmin';
+import type { PreparedDispatchResult } from '../types';
 
 /**
  * MARKETING — an audience builder and a template library.
@@ -25,6 +34,27 @@ export function MarketingPage() {
   const [criteria, setCriteria] = useState<Record<string, string | number | undefined>>({});
   const [built, setBuilt] = useState(false);
   const audience = useMarketingAudience({ ...criteria, clinicId }, built);
+
+  /**
+   * THE SENDING QUEUE — the part that was missing.
+   *
+   * The audience builder, the templates and the history all existed; what did
+   * not was any way to get FROM a built audience TO a message, so `prepare`
+   * and `markOpened` were unreachable endpoints and the history table could
+   * only ever be empty. This is the manual queue the previous marketing
+   * capability had: one row per patient, a link that opens WhatsApp with the
+   * text already in it, and a record of the click.
+   *
+   * It is still not sending. Each row is opened by a person, one at a time,
+   * and the furthest this screen will ever claim is OPENED.
+   */
+  const mayPrepare = useCan('marketing.manage');
+  const prepare = usePrepareDispatch();
+  const markOpened = useMarkDispatchOpened();
+  const [templateId, setTemplateId] = useState<string | undefined>();
+  const [audienceName, setAudienceName] = useState('');
+  const [queue, setQueue] = useState<PreparedDispatchResult | null>(null);
+  const [opened, setOpened] = useState<Record<string, true>>({});
 
   return (
     <AdminShell
@@ -139,6 +169,130 @@ export function MarketingPage() {
         </AdminSection>
       </div>
 
+      {audience.data && audience.data.count > 0 ? (
+        <AdminSection
+          title="Prepare messages"
+          description="Renders the template for each patient in the audience and gives you a queue to work through by hand."
+          actions={
+            <Button
+              size="small"
+              type="primary"
+              disabled={!mayPrepare || !templateId}
+              loading={prepare.isPending}
+              onClick={() => {
+                if (!templateId) return;
+                prepare.mutate(
+                  {
+                    templateId,
+                    // Patients with no phone number are skipped SERVER-side and
+                    // counted back, so the queue never contains a row that
+                    // cannot be actioned.
+                    patientIds: audience.data.patients.slice(0, 200).map((patient) => patient.patientId),
+                    clinicId,
+                    audienceName: audienceName || undefined,
+                  },
+                  {
+                    onSuccess: (result) => {
+                      setQueue(result);
+                      setOpened({});
+                    },
+                    onError: (error: unknown) => message.error((error as Error).message),
+                  },
+                );
+              }}
+            >
+              Prepare {Math.min(audience.data.count, 200)} message(s)
+            </Button>
+          }
+        >
+          <div className="kw-filterRow">
+            <label>
+              <span>Template</span>
+              <Select
+                size="small"
+                placeholder="Choose a template"
+                style={{ width: '100%' }}
+                value={templateId}
+                onChange={setTemplateId}
+                options={templates.data
+                  ?.filter((template) => template.active)
+                  .map((template) => ({ value: template.id, label: `${template.name} · ${template.category}` }))}
+              />
+            </label>
+            <label>
+              <span>Name this audience (optional)</span>
+              <Input
+                size="small"
+                placeholder="e.g. Lapsed diabetics, August"
+                value={audienceName}
+                onChange={(event) => setAudienceName(event.target.value)}
+              />
+            </label>
+          </div>
+          {audience.data.count > 200 ? (
+            <AdminNotice tone="warn">
+              This audience is {audience.data.count} patients and only the first 200 will be prepared. Two hundred
+              messages a person has to send by hand is already a day's work; a thousand is not a workflow.
+            </AdminNotice>
+          ) : null}
+          {mayPrepare ? null : (
+            <AdminNotice tone="warn">You do not have permission to prepare messages.</AdminNotice>
+          )}
+        </AdminSection>
+      ) : null}
+
+      <Modal
+        open={queue !== null}
+        onCancel={() => setQueue(null)}
+        width={860}
+        title={`Sending queue — ${queue?.templateName ?? ''}`}
+        footer={<Button onClick={() => setQueue(null)}>Close</Button>}
+      >
+        <AdminNotice tone="warn">{queue?.notice}</AdminNotice>
+        {queue && queue.skippedWithoutPhone > 0 ? (
+          <AdminNotice>
+            {queue.skippedWithoutPhone} patient(s) were skipped because no phone number is on record.
+          </AdminNotice>
+        ) : null}
+        <DataTable
+          rows={queue?.messages}
+          rowKey="dispatchId"
+          emptyText="Nothing prepared"
+          scrollY={420}
+          columns={[
+            { title: 'Patient', dataIndex: 'name', key: 'name' },
+            { title: 'Phone', dataIndex: 'phone', key: 'phone' },
+            { title: 'Message', dataIndex: 'body', key: 'body', ellipsis: true },
+            {
+              title: '',
+              key: 'open',
+              noExport: true,
+              render: (_: unknown, row) =>
+                opened[row.dispatchId] ? (
+                  <Tag color="blue">Opened</Tag>
+                ) : (
+                  <Button
+                    size="small"
+                    type="link"
+                    href={row.whatsappUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => {
+                      // Recorded on the CLICK, which is the last thing this
+                      // system witnesses. Whether the staff member then pressed
+                      // send, and whether it arrived, are not ours to claim.
+                      setOpened((current) => ({ ...current, [row.dispatchId]: true }));
+                      markOpened.mutate(row.dispatchId);
+                    }}
+                  >
+                    Open in WhatsApp
+                  </Button>
+                ),
+            },
+          ]}
+        />
+      </Modal>
+
       <AdminSection title="Message templates" padded={false}>
         <DataTable
           rows={templates.data}
@@ -193,6 +347,28 @@ export function MarketingPage() {
             { title: 'Message', dataIndex: 'body', key: 'body', ellipsis: true, optional: true },
           ]}
         />
+      </AdminSection>
+
+      {/* THE REST OF THE OUTBOUND CAPABILITY, and where it actually lives.
+          Named here rather than rebuilt here: a second template store or a
+          second booking link is exactly the duplication this consolidation is
+          meant to remove. What this section fixes is that somebody in Admin
+          could not tell the pieces existed. */}
+      <AdminSection title="The rest of patient outreach" description="These are separate screens, not missing ones.">
+        <ul className="kw-adminList">
+          <li>
+            <strong>Appointment reminders and their timing</strong> — Appointments ▸ Communication. One template store
+            for reminders and confirmations, with the same "prepared, not sent" rule as this page.
+          </li>
+          <li>
+            <strong>The public booking link, QR code and printable poster</strong> — Appointments ▸ Booking Page. That
+            is the shareable material a patient receives; it is generated from the branch's own slug.
+          </li>
+          <li>
+            <strong>Programme cohorts</strong> — Operation ▸ Programmes. Enrolment is what the programme criterion on
+            this page filters by.
+          </li>
+        </ul>
       </AdminSection>
     </AdminShell>
   );

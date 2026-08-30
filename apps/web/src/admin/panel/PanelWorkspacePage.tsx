@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { App, Button, Input, Modal, Select, Tag, Tooltip } from 'antd';
+import { App, Button, Checkbox, Input, Modal, Select, Tag, Tooltip } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { ExceptionTiles, StatStrip } from '../components/StatStrip';
@@ -52,7 +52,16 @@ export function PanelWorkspacePage() {
   const { message } = App.useApp();
   const [tab, setTab] = useState<'submit' | 'work' | 'reconcile'>('submit');
   const queue = usePanelSubmissionQueue();
-  const work = usePanelWorkQueue({});
+  /**
+   * RESOLVED CLAIMS ARE HIDDEN BY DEFAULT AND FINDABLE ON DEMAND.
+   *
+   * A work queue that keeps settled claims in it stops being a work queue. But
+   * "we resolved that in March" is a question somebody asks, and a queue that
+   * can never show a resolved row cannot answer it — which is how a claim gets
+   * chased twice.
+   */
+  const [includeResolved, setIncludeResolved] = useState(false);
+  const work = usePanelWorkQueue({ includeResolved });
   const reconciliation = usePanelReconciliation({});
 
   const markSubmitted = useMarkBatchSubmitted();
@@ -259,6 +268,11 @@ export function PanelWorkspacePage() {
               emptyText="Nothing needs chasing"
               emptyHint="Every claim is either awaiting a panel inside its terms, or settled."
               scrollY={520}
+              toolbar={
+                <Checkbox checked={includeResolved} onChange={(event) => setIncludeResolved(event.target.checked)}>
+                  Include resolved
+                </Checkbox>
+              }
               columns={[
                 { title: 'Panel', dataIndex: 'panelName', key: 'panelName' },
                 {
@@ -268,6 +282,24 @@ export function PanelWorkspacePage() {
                   render: (value: string) => <Tag color={STATUS_COLOUR[value]}>{value.replace(/_/g, ' ')}</Tag>,
                 },
                 { title: 'Claim no', dataIndex: 'panelClaimNo', key: 'panelClaimNo' },
+                {
+                  // THE ORIGINAL CLAIM NUMBER. The sheet this replaces carries
+                  // it beside the replacement, because six months later the
+                  // argument with the panel is conducted in both references and
+                  // "which claim was this instead of?" is the first question.
+                  title: 'Replaces',
+                  dataIndex: 'supersedes',
+                  key: 'supersedes',
+                  optional: true,
+                  render: (value: PanelWorkQueueRow['supersedes']) =>
+                    value ? (
+                      <Tooltip title={value.rejectionReason ?? 'Re-claimed'}>
+                        <Tag color="purple">{value.panelClaimNo ?? value.batchNumber}</Tag>
+                      </Tooltip>
+                    ) : (
+                      '—'
+                    ),
+                },
                 { title: 'Invoice', dataIndex: 'invoiceNumber', key: 'invoiceNumber' },
                 {
                   title: 'Service date',
@@ -293,12 +325,52 @@ export function PanelWorkspacePage() {
                   key: 'dueDate',
                   render: (value: string | null, row) =>
                     value ? (
-                      <span className={row.overdue ? 'kw-bad' : undefined}>{dayjs(value).format('D MMM YY')}</span>
+                      <Tooltip title={row.paymentTermDays ? `${row.paymentTermDays}-day payment term` : undefined}>
+                        <span className={row.overdue ? 'kw-bad' : undefined}>{dayjs(value).format('D MMM YY')}</span>
+                      </Tooltip>
                     ) : (
                       <span className="kw-muted">no term</span>
                     ),
                 },
-                { title: 'Claimed', dataIndex: 'expectedReceivable', key: 'expectedReceivable', className: 'kw-num', render: (v: number) => money(v) },
+                {
+                  // Terms per panel, because aging is judged against the panel's
+                  // own promise rather than a fixed bucket.
+                  title: 'Terms',
+                  dataIndex: 'paymentTermDays',
+                  key: 'paymentTermDays',
+                  className: 'kw-num',
+                  optional: true,
+                  render: (days: number | null) => (days === null ? <span className="kw-muted">none set</span> : `${days}d`),
+                },
+                {
+                  // CLAIMED, FEE AND RECEIVABLE ARE THREE NUMBERS.
+                  //
+                  // This column read `expectedReceivable` under the heading
+                  // "Claimed", which is claimed PLUS the panel's admin fee. On
+                  // a panel carrying an 8% fee that is RM108 displayed as the
+                  // RM100 that was claimed — a heading and a value describing
+                  // different quantities, on the screen whose entire purpose is
+                  // reconciling against what the panel says it received.
+                  title: 'Claimed',
+                  dataIndex: 'claimedAmount',
+                  key: 'claimedAmount',
+                  className: 'kw-num',
+                  render: (v: number) => money(v),
+                },
+                {
+                  title: 'Fee',
+                  dataIndex: 'feeAmount',
+                  key: 'feeAmount',
+                  className: 'kw-num',
+                  render: (v: number) => (v === 0 ? <span className="kw-muted">—</span> : money(v)),
+                },
+                {
+                  title: 'Receivable',
+                  dataIndex: 'expectedReceivable',
+                  key: 'expectedReceivable',
+                  className: 'kw-num',
+                  render: (v: number) => money(v),
+                },
                 {
                   title: 'Approved',
                   dataIndex: 'approvedAmount',
@@ -327,7 +399,44 @@ export function PanelWorkspacePage() {
                   dataIndex: 'replacement',
                   key: 'replacement',
                   render: (value: PanelWorkQueueRow['replacement']) =>
-                    value ? <Tag color="purple">{value.batchNumber}</Tag> : '—',
+                    value ? (
+                      <Tooltip title={`Raised ${dayjs(value.raisedAt).format('D MMM YY')} · ${value.status.replace(/_/g, ' ')}`}>
+                        <Tag color="purple">{value.panelClaimNo ?? value.batchNumber}</Tag>
+                      </Tooltip>
+                    ) : (
+                      '—'
+                    ),
+                },
+                {
+                  // RESUBMITTED, not "re-claim exists". A replacement that has
+                  // been raised but not sent is a claim nobody at the panel has
+                  // seen, and this module's whole discipline is that preparing
+                  // and sending are different events.
+                  title: 'Resubmitted',
+                  dataIndex: 'replacement',
+                  key: 'resubmittedAt',
+                  render: (value: PanelWorkQueueRow['replacement']) =>
+                    !value ? (
+                      '—'
+                    ) : value.resubmittedAt ? (
+                      dayjs(value.resubmittedAt).format('D MMM YY')
+                    ) : (
+                      <span className="kw-warn">not sent yet</span>
+                    ),
+                },
+                {
+                  title: 'Resolved',
+                  dataIndex: 'resolvedAt',
+                  key: 'resolvedAt',
+                  optional: true,
+                  render: (value: string | null, row) =>
+                    value ? (
+                      <Tooltip title={row.resolutionNote ?? undefined}>
+                        <span className="kw-good">{dayjs(value).format('D MMM YY')}</span>
+                      </Tooltip>
+                    ) : (
+                      <span className="kw-muted">open</span>
+                    ),
                 },
                 {
                   title: '',

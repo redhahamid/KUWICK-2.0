@@ -6,6 +6,7 @@ import { AttendanceRecordService } from './attendance-record.service';
 import { LeaveService } from './leave.service';
 import { IncentiveService } from './incentive.service';
 import { PayrollService } from './payroll.service';
+import { BenefitService } from './benefit.service';
 
 /**
  * WAVE 4 of the admin programme.
@@ -22,7 +23,7 @@ import { PayrollService } from './payroll.service';
 @Module({
   imports: [CoreModule],
   controllers: [WorkforceController],
-  providers: [EmployeeService, AttendanceRecordService, LeaveService, IncentiveService, PayrollService],
-  exports: [EmployeeService, AttendanceRecordService, LeaveService, IncentiveService, PayrollService],
+  providers: [EmployeeService, AttendanceRecordService, LeaveService, IncentiveService, PayrollService, BenefitService],
+  exports: [EmployeeService, AttendanceRecordService, LeaveService, IncentiveService, PayrollService, BenefitService],
 })
 export class WorkforceModule {}

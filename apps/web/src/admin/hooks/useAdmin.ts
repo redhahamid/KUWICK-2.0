@@ -31,6 +31,10 @@ import type {
   StockValuation,
   SubmissionQueueRow,
   TaxCode,
+  EmployeeRecord,
+  PreparedDispatchResult,
+  ProfitabilityReport,
+  StaffBenefitReport,
   TaxReport,
   TimesheetReport,
   WorkforceToday,
@@ -559,5 +563,56 @@ export function useMarketingHistory(params: { from?: string; to?: string }) {
   return useQuery({
     queryKey: ['admin-ops', 'marketing-history', params],
     queryFn: () => apiClient.get<MarketingHistory>(`/operations/marketing/history${qs(params)}`),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// PROFITABILITY & BENEFITS
+// ---------------------------------------------------------------------------
+
+export function useProfitability(params: { from: string; to: string; clinicId?: string; kind?: string }) {
+  return useQuery({
+    queryKey: ['admin-finance', 'profitability', params],
+    queryFn: () => apiClient.get<ProfitabilityReport>(`/finance/profitability${qs(params)}`),
+  });
+}
+
+export function useStaffBenefits(params: { year?: number; clinicId?: string }) {
+  return useQuery({
+    queryKey: ['admin-hr', 'benefits', params],
+    queryFn: () => apiClient.get<StaffBenefitReport>(`/workforce/benefits${qs(params)}`),
+  });
+}
+
+export function useEmployeeRecord(staffId: string | undefined, year?: number) {
+  return useQuery({
+    queryKey: ['admin-hr', 'employee-record', staffId, year],
+    queryFn: () => apiClient.get<EmployeeRecord>(`/workforce/employees/${staffId}/record${qs({ year })}`),
+    enabled: Boolean(staffId),
+  });
+}
+
+/**
+ * PREPARE A MESSAGE PER PATIENT — and nothing further.
+ *
+ * The server builds the text and a wa.me link; a staff member clicks it and
+ * sends it in WhatsApp themselves. `useMarkDispatchOpened` records THAT CLICK,
+ * which is the last event this system can honestly observe. There is no send
+ * mutation here because there is no sending.
+ */
+export function usePrepareDispatch() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { templateId: string; patientIds: string[]; clinicId?: string; audienceName?: string }) =>
+      apiClient.post<PreparedDispatchResult>('/operations/marketing/prepare', body),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['admin-ops', 'marketing-history'] }),
+  });
+}
+
+export function useMarkDispatchOpened() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (dispatchId: string) => apiClient.patch(`/operations/marketing/dispatches/${dispatchId}/opened`, {}),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['admin-ops', 'marketing-history'] }),
   });
 }

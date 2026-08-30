@@ -16,6 +16,7 @@ import { PayrollAdjustmentDto } from './dto/payroll-adjustment.dto';
 import { UpsertStatutoryRulesDto } from './dto/upsert-statutory-rules.dto';
 import { OptionalDateParam, RequiredDateParam } from '../core/date-param.pipe';
 import { assertDateOrder } from '../core/query-dates';
+import { BenefitService } from './benefit.service';
 
 @Controller('workforce')
 export class WorkforceController {
@@ -25,6 +26,7 @@ export class WorkforceController {
     private readonly leave: LeaveService,
     private readonly incentives: IncentiveService,
     private readonly payroll: PayrollService,
+    private readonly benefits_: BenefitService,
   ) {}
 
   // --- Who is working today -------------------------------------------------
@@ -48,6 +50,16 @@ export class WorkforceController {
   @Get('employees/:staffId')
   getEmployee(@Param('staffId') staffId: string) {
     return this.employees.get(staffId);
+  }
+
+  /**
+   * The whole employment record for one person, composed from the tables that
+   * own each part. See `EmployeeService.record` — nothing here is a second
+   * copy of anything, and pay stays behind `hr.payroll.view`.
+   */
+  @Get('employees/:staffId/record')
+  employeeRecord(@Param('staffId') staffId: string, @Query('year') year?: string) {
+    return this.employees.record(staffId, { year: year ? Number(year) : undefined });
   }
 
   @Get('employees/:staffId/payroll-detail')
@@ -197,5 +209,11 @@ export class WorkforceController {
   @Post('payroll/runs/:id/adjustments')
   adjustPayroll(@Param('id') id: string, @Body() dto: PayrollAdjustmentDto) {
     return this.payroll.adjust(id, dto);
+  }
+  // --- Staff benefits ---------------------------------------------------------
+
+  @Get('benefits')
+  benefits(@Query('year') year?: string, @Query('clinicId') clinicId?: string) {
+    return this.benefits_.list({ year: year ? Number(year) : undefined, clinicId });
   }
 }

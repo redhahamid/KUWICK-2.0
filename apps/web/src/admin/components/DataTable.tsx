@@ -1,6 +1,7 @@
 import { ReactNode, useMemo, useState } from 'react';
 import { Button, Checkbox, Dropdown, Empty, Input, Table } from 'antd';
 import type { ColumnType, TablePaginationConfig } from 'antd/es/table';
+import type { ExpandableConfig } from 'antd/es/table/interface';
 import { DownloadOutlined, SearchOutlined, SettingOutlined } from '@ant-design/icons';
 
 export interface DataTableColumn<T> extends ColumnType<T> {
@@ -43,6 +44,7 @@ export function DataTable<T extends object>({
   scrollY,
   onRow,
   toolbar,
+  expandable,
 }: {
   rows: T[] | undefined;
   columns: DataTableColumn<T>[];
@@ -60,6 +62,13 @@ export function DataTable<T extends object>({
   scrollY?: number | string;
   onRow?: (row: T) => { onClick?: () => void };
   toolbar?: ReactNode;
+  /**
+   * Detail in place. The row stays where it is and its detail opens under it,
+   * which is the right shape when the detail is the evidence FOR the row —
+   * the uses that add up to a benefit balance, say. Prefer a click-through
+   * when the detail is a screen in its own right.
+   */
+  expandable?: ExpandableConfig<T>;
 }) {
   const [query, setQuery] = useState('');
   const [hidden, setHidden] = useState<string[]>(() =>
@@ -151,6 +160,7 @@ export function DataTable<T extends object>({
         sticky
         scroll={scrollY ? { y: scrollY, x: 'max-content' } : { x: 'max-content' }}
         summary={summary}
+        expandable={expandable}
         onRow={onRow ? (row) => onRow(row) : undefined}
         rowClassName={onRow ? 'kw-dataTable__row--clickable' : undefined}
         locale={{
@@ -213,4 +223,41 @@ export function money(value: number | null | undefined): string {
  */
 export function moneyOrDash(value: number | null | undefined): string {
   return value === null || value === undefined ? '—' : money(value);
+}
+
+/**
+ * THE TOTALS ROW every money table ends with.
+ *
+ * It lived as a private helper inside one page and was copied nowhere, which
+ * meant the second money table would have grown its own. A finance table
+ * without a total is a table somebody adds up by hand, and two tables that
+ * total differently are worse than one that does not total at all.
+ *
+ * `total` is summed over the rows CURRENTLY IN VIEW, not the whole dataset —
+ * a filtered table showing a total for rows it is not showing is the kind of
+ * number that gets quoted in a meeting.
+ */
+export function DataTableTotals({
+  count,
+  total,
+  label = 'outstanding',
+  countLabel = 'row(s)',
+}: {
+  count: number;
+  total: number;
+  label?: string;
+  countLabel?: string;
+}) {
+  return (
+    <tr className="kw-tableTotals">
+      <td colSpan={99}>
+        <span>
+          {count} {countLabel}
+        </span>
+        <strong>
+          {money(total)} {label}
+        </strong>
+      </td>
+    </tr>
+  );
 }

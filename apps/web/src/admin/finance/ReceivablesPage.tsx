@@ -3,7 +3,7 @@ import { DatePicker, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { ExceptionTiles, StatStrip } from '../components/StatStrip';
-import { DataTable, money } from '../components/DataTable';
+import { DataTable, DataTableTotals, money } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { usePanelReconciliation, usePatientReceivables } from '../hooks/useAdmin';
 
@@ -156,6 +156,7 @@ export function ReceivablesPage() {
           ]}
           summary={(rows) => (
             <DataTableTotals
+              countLabel="invoice(s)"
               count={rows.length}
               total={rows.reduce((sum, row) => sum + (row as { balance: number }).balance, 0)}
             />
@@ -220,16 +221,5 @@ export function ReceivablesPage() {
         />
       </AdminSection>
     </AdminShell>
-  );
-}
-
-function DataTableTotals({ count, total }: { count: number; total: number }) {
-  return (
-    <tr className="kw-tableTotals">
-      <td colSpan={99}>
-        <span>{count} invoice(s)</span>
-        <strong>{money(total)} outstanding</strong>
-      </td>
-    </tr>
   );
 }

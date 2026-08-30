@@ -66,6 +66,7 @@ import { OperationsOverviewPage } from './admin/operation/OperationsOverviewPage
 import { SegmentPlPage } from './admin/operation/SegmentPlPage';
 import { ProgrammesPage } from './admin/operation/ProgrammesPage';
 import { MarketingPage } from './admin/operation/MarketingPage';
+import { StockLevelsPage } from './inventory/StockLevelsPage';
 import { StockOverviewPage } from './admin/stock/StockOverviewPage';
 import { StockTransfersPage } from './admin/stock/StockTransfersPage';
 import { StockTakePage as AdminStockTakePage } from './admin/stock/StockTakePage';
@@ -77,11 +78,17 @@ import { EmployeesPage } from './admin/hr/EmployeesPage';
 import { TimesheetPage } from './admin/hr/TimesheetPage';
 import { PayrollPage } from './admin/hr/PayrollPage';
 import { IncentivesPage } from './admin/hr/IncentivesPage';
+import { BenefitsPage } from './admin/hr/BenefitsPage';
+import { AdminRosterPage } from './admin/hr/RosterPage';
 import { FinanceOverviewPage } from './admin/finance/FinanceOverviewPage';
 import { DayEndClosingPage } from './admin/finance/DayEndClosingPage';
 import { PaymentsPage } from './admin/finance/PaymentsPage';
 import { ReceivablesPage } from './admin/finance/ReceivablesPage';
 import { CreditNotesPage } from './admin/finance/CreditNotesPage';
+import { TaxPage } from './admin/finance/TaxPage';
+import { ProfitabilityPage } from './admin/finance/ProfitabilityPage';
+import { InterCompanyPage } from './admin/finance/InterCompanyPage';
+import { EInvoicePage } from './admin/finance/EInvoicePage';
 
 export function App() {
   return (
@@ -176,32 +183,77 @@ export function App() {
               THE ADMIN PROGRAMME. Five modules, each landing on the page that
               answers its own first question. Management's URLs are untouched.
               --------------------------------------------------------------- */}
+          {/* ONE ADMIN, NOT TWO PRODUCTS.
+
+              Fourteen of the routes below render a component that was built
+              for /management, /settings or /appointments. They are MOUNTED,
+              not copied: same import, same hooks, same endpoints, same rows.
+              The owner's complaint was that reaching item pricing from
+              Admin ▸ Stock meant leaving Admin and arriving somewhere that
+              looked like a different application — that is a navigation
+              defect, and a second ItemsPage would have been a data defect.
+
+              The original URLs below still resolve to the Management shell,
+              so every bookmark, deep link and redirect keeps working. */}
           <Route path="/admin" element={<Navigate to="/admin/operation" replace />} />
           <Route element={<AdminLayout />}>
             <Route path="/admin/operation" element={<OperationsOverviewPage />} />
             <Route path="/admin/operation/segments" element={<SegmentPlPage />} />
             <Route path="/admin/operation/programmes" element={<ProgrammesPage />} />
             <Route path="/admin/operation/marketing" element={<MarketingPage />} />
+            {/* Clinic performance is one subject. It was split across two hubs. */}
+            <Route path="/admin/operation/patients" element={<PatientAnalysisPage />} />
+            <Route path="/admin/operation/procedures" element={<ProcedureAnalysisPage />} />
+            <Route path="/admin/operation/doctors" element={<DoctorPerformancePage />} />
+            <Route path="/admin/operation/wait-times" element={<WaitTimesPage />} />
 
             <Route path="/admin/stock" element={<StockOverviewPage />} />
+            {/* THE CATALOGUE, not a copy of it. One item record, one price. */}
+            <Route path="/admin/stock/items" element={<ItemsPage />} />
+            <Route path="/admin/stock/locations" element={<StockLevelsPage />} />
             <Route path="/admin/stock/transfers" element={<StockTransfersPage />} />
+            <Route path="/admin/stock/purchase-orders" element={<PurchaseOrdersPage />} />
+            <Route path="/admin/stock/procurement-requests" element={<ProcurementRequestsPage />} />
+            <Route path="/admin/stock/suppliers" element={<SuppliersPage />} />
             <Route path="/admin/stock/stock-take" element={<AdminStockTakePage />} />
             <Route path="/admin/stock/movements" element={<StockMovementsPage />} />
+            {/* Three doors into the attention board. A prop, not three boards:
+                the rail names the questions an owner asks separately, and the
+                page answers whichever one it was opened by. */}
+            <Route path="/admin/stock/near-expiry" element={<StockOverviewPage initialView="near-expiry" />} />
+            <Route path="/admin/stock/slow-moving" element={<StockOverviewPage initialView="slow-moving" />} />
+            <Route path="/admin/stock/value" element={<StockOverviewPage focus="value" />} />
 
             <Route path="/admin/panel" element={<PanelWorkspacePage />} />
             <Route path="/admin/panel/configuration" element={<PanelConfigPage />} />
+            <Route path="/admin/panel/batches" element={<PanelClaimsPage />} />
+            <Route path="/admin/panel/companies" element={<PanelClinicsPage />} />
 
             <Route path="/admin/hr" element={<HrOverviewPage />} />
             <Route path="/admin/hr/employees" element={<EmployeesPage />} />
             <Route path="/admin/hr/attendance" element={<TimesheetPage />} />
+            <Route path="/admin/hr/leave" element={<LeaveRequestsPage />} />
+            {/* The Appointments roster, rendered in the Admin shell. There is
+                exactly one shift table and exactly one component that writes
+                it — see admin/hr/RosterPage.tsx. */}
+            <Route path="/admin/hr/roster" element={<AdminRosterPage />} />
             <Route path="/admin/hr/payroll" element={<PayrollPage />} />
             <Route path="/admin/hr/incentives" element={<IncentivesPage />} />
+            <Route path="/admin/hr/benefits" element={<BenefitsPage />} />
+            <Route path="/admin/hr/access" element={<RolesSettingsPage />} />
 
             <Route path="/admin/finance" element={<FinanceOverviewPage />} />
+            <Route path="/admin/finance/sales" element={<SalesAnalysisPage />} />
             <Route path="/admin/finance/day-end" element={<DayEndClosingPage />} />
             <Route path="/admin/finance/payments" element={<PaymentsPage />} />
+            {/* The existing invoice listing. There is one invoice source. */}
+            <Route path="/admin/finance/invoices" element={<InvoiceListingPage />} />
             <Route path="/admin/finance/receivables" element={<ReceivablesPage />} />
             <Route path="/admin/finance/credit-notes" element={<CreditNotesPage />} />
+            <Route path="/admin/finance/tax" element={<TaxPage />} />
+            <Route path="/admin/finance/profitability" element={<ProfitabilityPage />} />
+            <Route path="/admin/finance/inter-company" element={<InterCompanyPage />} />
+            <Route path="/admin/finance/e-invoice" element={<EInvoicePage />} />
           </Route>
 
           <Route path="/settings" element={<Navigate to="/settings/organisation/branches" replace />} />

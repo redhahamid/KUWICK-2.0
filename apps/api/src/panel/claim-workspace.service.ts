@@ -853,7 +853,11 @@ export class ClaimWorkspaceService {
         ],
       },
       include: {
-        claimBatch: { include: { panelClinic: { select: { id: true, name: true } } } },
+        claimBatch: {
+          include: {
+            panelClinic: { select: { id: true, name: true, paymentTermDays: true, claimFeeType: true, claimFeeValue: true } },
+          },
+        },
         invoice: {
           select: {
             invoiceNumber: true,
@@ -863,11 +867,31 @@ export class ClaimWorkspaceService {
           },
         },
         responsible: { select: { fullName: true } },
+        /**
+         * BOTH ENDS OF THE RE-CLAIM CHAIN.
+         *
+         * The Google Sheet this replaces carries an ORIGINAL claim number and a
+         * REPLACEMENT claim number in adjacent columns, and the argument with a
+         * panel six months later is conducted in exactly those two references.
+         * Reading only one direction meant a resubmitted claim could show what
+         * replaced it but never what it replaced.
+         */
         supersededBy: {
           select: {
             id: true,
             panelClaimNo: true,
             claimStatus: true,
+            submittedAt: true,
+            createdAt: true,
+            claimBatch: { select: { batchNumber: true } },
+          },
+        },
+        supersedes: {
+          select: {
+            id: true,
+            panelClaimNo: true,
+            claimStatus: true,
+            rejectionReason: true,
             claimBatch: { select: { batchNumber: true } },
           },
         },
@@ -910,6 +934,10 @@ export class ClaimWorkspaceService {
         outstanding: fromCents(balance.outstandingCents),
         rejectionReason: line.rejectionReason,
         responsible: line.responsible?.fullName ?? null,
+        // The panel's own term, so the due date on this row can be read as a
+        // consequence of something rather than as a date somebody typed.
+        paymentTermDays: line.claimBatch.panelClinic.paymentTermDays,
+        resolved: line.resolvedAt !== null,
         resolvedAt: line.resolvedAt,
         resolutionNote: line.resolutionNote,
         replacement:
@@ -919,6 +947,22 @@ export class ClaimWorkspaceService {
                 batchNumber: line.supersededBy[0].claimBatch.batchNumber,
                 panelClaimNo: line.supersededBy[0].panelClaimNo,
                 status: line.supersededBy[0].claimStatus,
+                // WHEN it went back out. `submittedAt` when the replacement has
+                // actually been sent; NULL while it is only prepared — the
+                // distinction this whole module exists to keep.
+                resubmittedAt: line.supersededBy[0].submittedAt,
+                raisedAt: line.supersededBy[0].createdAt,
+              }
+            : null,
+        /** The claim THIS one replaces, when it is itself a re-claim. */
+        supersedes:
+          line.supersedes !== null
+            ? {
+                claimLineId: line.supersedes.id,
+                batchNumber: line.supersedes.claimBatch.batchNumber,
+                panelClaimNo: line.supersedes.panelClaimNo,
+                status: line.supersedes.claimStatus,
+                rejectionReason: line.supersedes.rejectionReason,
               }
             : null,
       };
