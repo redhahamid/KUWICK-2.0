@@ -297,6 +297,35 @@ async function main() {
     await shoot(page, 'rc-12-credit-note-creation-and-approval');
   });
 
+  // 13 — THE MARKETING SENDING QUEUE, with an audience actually built.
+  //
+  // `prepare` and `markOpened` were endpoints with no UI, so the audience
+  // builder could not reach a message and the history table could only ever be
+  // empty. Photographing the screen in its resting state would show none of
+  // that, so this builds the audience, picks a template, prepares the messages
+  // and captures the per-patient queue — which is the thing that was missing.
+  //
+  // It still sends nothing. Every row is a link a person clicks themselves.
+  await step('rc-13-marketing-sending-queue', async () => {
+    await page.goto(`${WEB}/admin/operation/marketing`);
+    await settle(page);
+    await page.getByRole('button', { name: 'Build audience' }).click();
+    await settle(page);
+    await shoot(page, 'rc-ia-21-marketing-consolidated');
+
+    await page
+      .locator('.kw-adminSection', { hasText: 'Prepare messages' })
+      .locator('.ant-select')
+      .first()
+      .click();
+    await page.locator('.ant-select-item-option').first().click();
+    await page.getByRole('button', { name: /Prepare \d+ message/ }).click();
+    await page.getByRole('dialog').first().waitFor({ timeout: 20_000 });
+    await page.waitForTimeout(900);
+    await shoot(page, 'rc-13-marketing-sending-queue', { viewport: true });
+    await page.keyboard.press('Escape');
+  });
+
   await context.close();
 
   // -------------------------------------------------------------------------

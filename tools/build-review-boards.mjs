@@ -142,10 +142,10 @@ const RC_BOARDS = [
     tiles: [
       ['desktop--operation-01-overview.png', 'Operations overview', 'Period presets, KPIs, activity by day, doctor productivity labelled BILLED — never doctor income.', 'Admin (new)'],
       ['desktop--operation-02-segment-pl.png', 'Segment P&L', 'Service lines as configuration. Unclassified revenue shown separately; margin is contribution, never net profit.', 'Admin (new)'],
-      ['rc-ia-21-marketing-consolidated.png', 'Marketing — audience, templates, sending queue', 'Audience building, programme segmentation and message templates, plus the manual WhatsApp queue that had no UI and could not be reached. Kuwick still sends nothing and the screen still says so.', 'Admin (new)'],
+      ['rc-13-marketing-sending-queue.png', 'The manual sending queue', 'One row per patient, a WhatsApp link, and a record of the click. `prepare` and `markOpened` were endpoints with NO UI, so the audience builder could not reach a message and the history table could only ever be empty. Kuwick still sends nothing; the furthest this claims is OPENED.', 'Admin (new)'],
+      ['rc-ia-21-marketing-consolidated.png', 'Marketing — audience and templates', 'Audience built from live data: programme, recency, lapse, age. Message templates with per-patient placeholders beneath.', 'Admin (new)'],
       ['rc-ia-17-operation-patient-analysis-in-admin.png', 'Patient analysis, inside Admin', 'The pre-existing report, mounted in the Admin shell. Same component, same endpoint, same rows — one door closer.', 'Management (existing)'],
       ['rc-ia-19-operation-doctor-performance-in-admin.png', 'Doctor performance, inside Admin', 'Was under Management ▸ Reports. Nothing about it was rebuilt; the old URL still resolves.', 'Management (existing)'],
-      ['rc-ia-20-operation-wait-times-in-admin.png', 'Waiting times, inside Admin', 'Operational quality belongs beside operational performance. Mounted, not duplicated.', 'Management (existing)'],
     ],
   },
   {
