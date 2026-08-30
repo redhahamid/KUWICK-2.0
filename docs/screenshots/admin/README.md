@@ -46,6 +46,10 @@ a genuine count, a genuine variance and a genuine close, not a staged form.
 | 10 | Drug profitability | [rc-10-drug-profitability.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-10-drug-profitability.png) |
 | 11 | Procedure profitability — COST NOT CONFIGURED | [rc-11-procedure-profitability-cost-not-configured.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-11-procedure-profitability-cost-not-configured.png) |
 | 12 | Credit note — creation and approval | [rc-12-credit-note-creation-and-approval.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-12-credit-note-creation-and-approval.png) |
+| 13 | Marketing — the manual sending queue | [rc-13-marketing-sending-queue.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-13-marketing-sending-queue.png) · [audience & templates](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-21-marketing-consolidated.png) |
+
+Thirteen rather than twelve: the sending queue is the capability §H found had no
+UI at all, so it is shown rather than described.
 
 **Day-end, in detail.** Today at Contoh Central is seeded OPEN with takings in
 all four tender buckets, a RM40 card refund and a panel invoice that bills but

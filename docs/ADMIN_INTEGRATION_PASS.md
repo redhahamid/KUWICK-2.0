@@ -278,6 +278,50 @@ Roster and HR ▸ Roles & Access.
 
 ---
 
+## Test results
+
+Run locally against real PostgreSQL, with the API booted as the **non-superuser
+application role** so every row-level-security policy in the schema is live.
+
+| Suite | Result |
+|---|---|
+| API typecheck (`tsc --noEmit`) | clean |
+| Web typecheck + production build | clean |
+| Seed typecheck (`prisma/tsconfig.seedcheck.json`) | clean |
+| API unit — 99 suites | **2160 passed** |
+| Web unit — 91 files | **1621 passed** |
+| API integration — 12 suites, real PostgreSQL | **121 passed** |
+| Browser (Playwright, whole `e2e/`) | **71 passed, 0 failed** |
+
+Two browser tests are reported as skipped and are meant to be: `SWEEP: console
+errors per route` and `SCAFFOLD: dump the canvas` are developer tools gated on
+`E2E_SWEEP` / `E2E_DUMP`. CI skips them too.
+
+**Nothing was weakened to make a test pass.** Every failure this pass produced
+was either a real defect (fixed, and listed above) or a bad assertion in a spec
+I had just written — an anchored `/^Save count$/` that stopped matching once
+antd renamed the button to "loading Save count", and a `getByText` that counted
+the two page-level notices explaining COST NOT CONFIGURED alongside the six
+table cells. Both are narrowed, not relaxed.
+
+### New browser coverage
+
+`e2e/admin-integration.spec.ts` — five tests over what this pass changed:
+
+1. all fifteen mounted screens render inside the Admin shell, rail present and
+   the correct sub-tab lit;
+2. near-expiry and slow-moving are the attention board with a prop;
+3. every original `/management` and `/settings` URL still resolves;
+4. the day-end driven end to end — count short, be refused, explain, close,
+   assert locked and the refund still reported;
+5. a procedure with no cost basis is never reported as profitable, and the same
+   screen on drugs produces real figures.
+
+`e2e/support/admin.ts` gains `ADMIN_MOUNTED_ROUTES` and `ADMIN_VIEW_ROUTES`, and
+the existing `ADMIN_ROUTES` sweep grows from 20 pages to 27.
+
+---
+
 ## Unresolved product gaps
 
 These are stated rather than papered over.
