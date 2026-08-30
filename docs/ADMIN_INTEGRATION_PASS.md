@@ -257,7 +257,7 @@ rebuilding it.
 
 ## Defects found and fixed in this pass
 
-All eight were found by driving the product or by the guardrail, not by reading
+All ten were found by driving the product or by the guardrail, not by reading
 the code.
 
 | # | Defect | Where |
@@ -270,6 +270,8 @@ the code.
 | 6 | **A `<ul>` inside a `<p>`.** The payroll exceptions list broke out of its band and logged a React error on every render. | `AdminNotice`, all modules |
 | 7 | **Two nav entries highlighted nothing.** `?view=` query strings against a rail that matches on exact pathname — a working link that reads as dead. | Admin ▸ Stock |
 | 8 | **The drawer count form was unreadable.** Four columns in a 360px sidebar; the hint wrapped to five lines into the expected figure. | Day-end |
+| 9 | **"Include resolved" included nothing.** A re-claimed original ends up `RESUBMITTED`, a status in neither branch of the work-state filter, so the re-claim chain could not be seen on any view of the screen. | Panel work queue |
+| 10 | **The rejection reason pushed the re-claim columns off screen.** As the widest column it sat in front of "Replaced by" and "Resubmitted". | Panel work queue |
 
 Plus two screens that were empty because the seed was, not the product: HR ▸
 Roster and HR ▸ Roles & Access.
