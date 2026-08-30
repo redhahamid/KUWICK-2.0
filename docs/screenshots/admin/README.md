@@ -36,7 +36,7 @@ a genuine count, a genuine variance and a genuine close, not a staged form.
 |---|---|---|
 | 1 | Stock transfer discrepancy — sent 40, received 36 | [rc-01-stock-transfer-discrepancy.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-01-stock-transfer-discrepancy.png) |
 | 2 | Stock take — count, submit, approve | [rc-02-stock-take-submit-and-approve.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-02-stock-take-submit-and-approve.png) |
-| 3 | Panel rejected → re-claim → reconciliation | [rc-03-panel-reclaim-and-reconciliation.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-03-panel-reclaim-and-reconciliation.png) · [work queue](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-03a-panel-work-queue-rejected.png) · [record outcome](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-03b-panel-record-outcome.png) |
+| 3 | Panel rejected → re-claim → reconciliation | [rc-03-panel-reclaim-and-reconciliation.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-03-panel-reclaim-and-reconciliation.png) · [work queue](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-03a-panel-work-queue-rejected.png) · [record outcome](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-03b-panel-record-outcome.png) · [the re-claim chain](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-03c-panel-reclaim-chain.png) |
 | 4 | HR employee detail | [rc-04-hr-employee-detail.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-04-hr-employee-detail.png) · [payroll history & documents](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-04b-hr-employee-payroll-history.png) |
 | 5 | Leave → roster impact | [rc-05-hr-leave-roster-impact.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-05-hr-leave-roster-impact.png) · [leave requests](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-05a-hr-leave-requests.png) |
 | 6 | Payroll run — statutory NOT READY | [rc-06-payroll-statutory-not-ready.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-06-payroll-statutory-not-ready.png) |
@@ -107,6 +107,10 @@ The six screens somebody actually holds a tablet in front of:
 | 05B | Finance — what is owed and what it earned | 4 | [ADMIN-05B-FINANCE.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/ADMIN-05B-FINANCE.png) |
 
 Split into A/B where one sheet of readable screens was not enough. Four to six per board, at a size where the numbers can be read — a contact sheet of ten thumbnails is a sheet nobody can approve from.
+
+These eight predate the integration pass and are kept as the module-by-module
+record. Where a screen appears on both an original board and an RC board, the RC
+version is the current one: it was re-shot inside the Admin shell.
 
 ---
 

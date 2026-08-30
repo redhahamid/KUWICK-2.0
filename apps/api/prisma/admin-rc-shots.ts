@@ -150,6 +150,19 @@ async function main() {
     await page.getByRole('button', { name: /Work queue/i }).click();
     await settle(page);
     await shoot(page, 'rc-03a-panel-work-queue-rejected');
+
+    // THE FULL RE-CLAIM CHAIN, which the default queue correctly hides.
+    // SJ-2026-0442 was rejected on formulary grounds and RESOLVED by raising
+    // SJ-2026-0517 the next day; a queue that kept showing the settled original
+    // would have it chased twice. Ticking "Include resolved" is how somebody
+    // answers "what happened to that one", and it is the only view where the
+    // Replaces / Resubmitted / Resolved columns have anything to say.
+    await page.getByLabel('Include resolved').check();
+    await settle(page);
+    await shoot(page, 'rc-03c-panel-reclaim-chain');
+    await page.getByLabel('Include resolved').uncheck();
+    await settle(page);
+
     await page.getByRole('button', { name: /Record outcome/i }).first().click();
     await page.getByRole('dialog').first().waitFor({ timeout: 15_000 });
     await page.waitForTimeout(400);

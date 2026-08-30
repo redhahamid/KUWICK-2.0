@@ -167,11 +167,11 @@ const RC_BOARDS = [
     question: 'Opened ≠ accepted ≠ paid. Every screen here keeps the three apart.',
     tiles: [
       ['rc-03a-panel-work-queue-rejected.png', 'Work queue — claimed, fee, receivable', 'Claimed, the panel’s admin fee and the resulting receivable are now three columns. One column headed "Claimed" was showing claimed PLUS fee.', 'Admin (new)'],
+      ['rc-03c-panel-reclaim-chain.png', 'The re-claim chain, both ends', 'SJ-2026-0442 rejected on formulary grounds and RESOLVED by raising SJ-2026-0517 the next day. Original claim number, replacement, resubmission date and resolved date, in adjacent columns — the Google Sheet\u2019s own layout. Hidden by default so a settled claim is never chased twice.', 'Admin (new)'],
       ['rc-03b-panel-record-outcome.png', 'Recording what the panel said', 'The moment "we submitted" becomes "they adjudicated". Neither is "they paid".', 'Admin (new)'],
       ['rc-03-panel-reclaim-and-reconciliation.png', 'Reconciliation', 'Expected = received + outstanding + rejected + written off, and the screen states whether it balances.', 'Admin (new)'],
       ['desktop--panel-02-configuration.png', 'Panel configuration', 'Submission method, portal link, payment terms, fee rule, required documents, claim-number format, re-claim rule, instructions.', 'Admin (new)'],
-      ['rc-ia-08-panel-companies-in-admin.png', 'Panel companies, inside Admin', 'The panel master record, mounted here. There is one panel company list.', 'Management (existing)'],
-      ['rc-ia-09-panel-batches-in-admin.png', 'Claim batches, inside Admin', 'The existing batch workflow, in the Admin shell. Same batches the workspace above drives.', 'Management (existing)'],
+      ['rc-ia-09-panel-batches-in-admin.png', 'Claim batches & companies, inside Admin', 'The existing batch workflow in the Admin shell, driving the same batches as the workspace above. Panel Companies is mounted beside it on the same rail.', 'Management (existing)'],
     ],
   },
   {

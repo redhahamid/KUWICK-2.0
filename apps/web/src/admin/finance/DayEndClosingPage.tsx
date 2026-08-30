@@ -214,9 +214,15 @@ export function DayEndClosingPage() {
 
           {variance !== null && variance !== 0 ? (
             <>
-              <AdminNotice tone="warn">
-                The drawer differs from the ledger by {money(variance)}. The day cannot be closed until the difference is
-                explained.
+              {/* PAST TENSE ONCE IT IS DONE.
+                  A closed day was still being told "the day cannot be closed
+                  until the difference is explained" — a sentence that is false
+                  about a day which has been closed, next to a reason box
+                  holding the explanation that closed it. */}
+              <AdminNotice tone={closed ? 'info' : 'warn'}>
+                {closed
+                  ? `The drawer differed from the ledger by ${money(variance)}. The explanation below was recorded with the closing.`
+                  : `The drawer differs from the ledger by ${money(variance)}. The day cannot be closed until the difference is explained.`}
               </AdminNotice>
               <Input.TextArea
                 rows={3}

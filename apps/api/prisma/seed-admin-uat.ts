@@ -1463,16 +1463,85 @@ async function seedWorkforce(ids: Ids) {
       },
     });
 
-    // Rostered today — read from the canonical provider roster, not a second
-    // HR-only schedule. The HR screen says as much and links back to it.
-    for (const [index, key] of ['owner', 'resident'].entries()) {
-      await tx.providerShift.create({
-        data: {
-          tenantId: tenant.id, clinicId: central.id, staffId: staff[key],
-          shiftDate: day(0), startsAt: at(0, 1 + index), endsAt: at(0, 9 + index),
-        },
-      });
+    // THE ROSTER FOR THIS MONTH, not just for today.
+    //
+    // Only today was rostered, which meant HR ▸ Roster — the screen whose whole
+    // claim is that there is ONE shift table and this is it — opened on a month
+    // grid reading "no provider is on the monthly roster yet". A screen that
+    // proves a shared roster by showing an empty one proves nothing.
+    //
+    // Fourteen days back and seven forward, weekdays only, two providers on
+    // staggered shifts. Written through the SAME `providerShift` table the
+    // Appointments calendar books against — there is no HR-only schedule here
+    // and this loop is not creating one.
+    // ROSTER_LINKED, not the default FIXED_WEEKLY. A provider on a standing
+    // weekly pattern is not "on the monthly roster", and the board correctly
+    // said so over a month that had 49 shifts in it — the shifts were real,
+    // the doctors just were not the kind of provider that board is about.
+    // Both modes exist for a reason; this seed needs the one the board shows.
+    await tx.staff.updateMany({
+      where: { id: { in: [staff.owner, staff.resident, staff.locum] } },
+      data: { appointmentScheduleMode: 'ROSTER_LINKED' },
+    });
+
+    for (let offset = -14; offset <= 7; offset += 1) {
+      const date = day(offset);
+      const weekday = date.getUTCDay();
+      if (weekday === 0 || weekday === 6) continue;
+      for (const [index, key] of ['owner', 'resident'].entries()) {
+        await tx.providerShift.create({
+          data: {
+            tenantId: tenant.id, clinicId: central.id, staffId: staff[key],
+            shiftDate: date, startsAt: at(offset, 1 + index), endsAt: at(offset, 9 + index),
+          },
+        });
+      }
+      // The locum covers the branch on Tuesdays and Thursdays only, so the
+      // board shows an uneven week rather than two identical rows.
+      if (weekday === 2 || weekday === 4) {
+        await tx.providerShift.create({
+          data: {
+            tenantId: tenant.id, clinicId: branch.id, staffId: staff.locum,
+            shiftDate: date, startsAt: at(offset, 2), endsAt: at(offset, 10),
+          },
+        });
+      }
     }
+
+    // TWO CUSTOM ROLES, so Roles & Access is not an empty table.
+    //
+    // Both are real shapes a clinic asks for and neither carries clinical
+    // authority — which is the rule that screen exists to state: writing notes,
+    // prescribing and signing come only from the built-in Doctor and Clinical
+    // staff roles with their credential checks, and a custom role can carry
+    // everything else.
+    const branchManager = await tx.clinicCustomRole.create({
+      data: {
+        tenantId: tenant.id,
+        name: 'Branch Manager',
+        description: 'Runs one branch day to day: stock, the drawer, the panel queue and the roster.',
+        permissions: [
+          'stock.view', 'stock.transfer', 'stock.take.count', 'analytics.view',
+          'dayEnd.count', 'panel.view', 'panel.claim.submit', 'hr.view',
+        ],
+        createdByStaffId: staff.owner,
+      },
+    });
+    const claimsClerk = await tx.clinicCustomRole.create({
+      data: {
+        tenantId: tenant.id,
+        name: 'Panel Claims Clerk',
+        description: 'Prepares, submits and chases panel claims. Cannot write off a receivable.',
+        permissions: ['panel.view', 'panel.claim.submit', 'panel.claim.manage', 'finance.view'],
+        createdByStaffId: staff.owner,
+      },
+    });
+    await tx.staffRoleAssignment.create({
+      data: { tenantId: tenant.id, staffId: staff.stock, customRoleId: branchManager.id, assignedByStaffId: staff.owner },
+    });
+    await tx.staffRoleAssignment.create({
+      data: { tenantId: tenant.id, staffId: staff.panel, customRoleId: claimsClerk.id, assignedByStaffId: staff.owner },
+    });
 
     // A MISSING PUNCH, and a CORRECTED record.
     await tx.attendanceRecord.create({

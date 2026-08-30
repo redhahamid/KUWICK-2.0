@@ -46,6 +46,56 @@ export const ADMIN_ROUTES = [
   { path: '/admin/finance/payments', module: 'Finance', heading: 'Payments' },
   { path: '/admin/finance/receivables', module: 'Finance', heading: 'Outstanding' },
   { path: '/admin/finance/credit-notes', module: 'Finance', heading: 'Credit Notes' },
+  // Added by the integration pass. These are Admin-native pages like the
+  // twenty above — same `AdminShell`, same heading element.
+  { path: '/admin/stock/value', module: 'Stock', heading: 'Stock Value' },
+  { path: '/admin/hr/roster', module: 'HR', heading: 'Roster' },
+  { path: '/admin/hr/benefits', module: 'HR', heading: 'Staff Benefits' },
+  { path: '/admin/finance/tax', module: 'Finance', heading: 'Tax / SST' },
+  { path: '/admin/finance/profitability', module: 'Finance', heading: 'Profitability' },
+  { path: '/admin/finance/inter-company', module: 'Finance', heading: 'Inter-company' },
+  { path: '/admin/finance/e-invoice', module: 'Finance', heading: 'e-Invoice (LHDN)' },
+] as const;
+
+/**
+ * THE MOUNTED SCREENS — the ones written for another hub.
+ *
+ * Each renders a component built for /management, /settings or /appointments.
+ * They are listed SEPARATELY from the routes above for one honest reason: they
+ * do not use `AdminShell`, so they have no `.kw-admin__title` to assert on.
+ * What they must prove instead is the thing the owner actually complained
+ * about — that arriving at one does not feel like leaving Admin. So the spec
+ * checks the Admin rail is present, the right sub-tab is lit, and the screen
+ * itself rendered something identifiable.
+ *
+ * `owns` records which hub originally built the screen. It is documentation
+ * for whoever reads a failure, not something asserted.
+ */
+export const ADMIN_MOUNTED_ROUTES = [
+  { path: '/admin/operation/patients', module: 'Operation', tab: 'Patient Analysis', marker: 'Unique Patients', owns: 'management' },
+  { path: '/admin/operation/procedures', module: 'Operation', tab: 'Procedure Analysis', marker: 'Procedures Done', owns: 'management' },
+  { path: '/admin/operation/doctors', module: 'Operation', tab: 'Doctor Performance', marker: 'Doctor', owns: 'management' },
+  { path: '/admin/operation/wait-times', module: 'Operation', tab: 'Waiting Times', marker: 'Avg Wait to Be Called', owns: 'management' },
+  { path: '/admin/stock/items', module: 'Stock', tab: 'Items & Pricing', marker: 'Inventory', owns: 'management' },
+  { path: '/admin/stock/locations', module: 'Stock', tab: 'Stock by Location', marker: 'Stock Levels', owns: 'management' },
+  { path: '/admin/stock/purchase-orders', module: 'Stock', tab: 'Purchase Orders', marker: 'Purchase Orders', owns: 'management' },
+  { path: '/admin/stock/procurement-requests', module: 'Stock', tab: 'Procurement Requests', marker: 'Procurement Requests', owns: 'management' },
+  { path: '/admin/stock/suppliers', module: 'Stock', tab: 'Suppliers', marker: 'Suppliers', owns: 'management' },
+  { path: '/admin/panel/batches', module: 'Panel', tab: 'Claim batches', marker: 'Panel Claims', owns: 'management' },
+  { path: '/admin/panel/companies', module: 'Panel', tab: 'Panel companies', marker: 'Panel Companies', owns: 'management' },
+  { path: '/admin/hr/leave', module: 'HR', tab: 'Leave', marker: 'Leave Requests', owns: 'management' },
+  { path: '/admin/hr/access', module: 'HR', tab: 'Roles & access', marker: 'Roles & permissions', owns: 'settings' },
+  { path: '/admin/finance/sales', module: 'Finance', tab: 'Sales', marker: 'Total Sales', owns: 'management' },
+  { path: '/admin/finance/invoices', module: 'Finance', tab: 'Invoices', marker: 'Invoice', owns: 'management' },
+] as const;
+
+/**
+ * The two Admin routes that render an existing page with a PROP rather than a
+ * copy. Both open the attention board on a particular view.
+ */
+export const ADMIN_VIEW_ROUTES = [
+  { path: '/admin/stock/near-expiry', tab: 'Near Expiry' },
+  { path: '/admin/stock/slow-moving', tab: 'Slow Moving' },
 ] as const;
 
 export async function loginAdmin(page: Page, email: string = ADMIN_ACCOUNTS.owner): Promise<void> {

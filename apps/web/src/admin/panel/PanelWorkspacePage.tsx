@@ -393,7 +393,6 @@ export function PanelWorkspacePage() {
                   className: 'kw-num',
                   render: (value: number) => <strong>{money(value)}</strong>,
                 },
-                { title: 'Reason', dataIndex: 'rejectionReason', key: 'rejectionReason', ellipsis: true },
                 {
                   title: 'Replaced by',
                   dataIndex: 'replacement',
@@ -423,6 +422,20 @@ export function PanelWorkspacePage() {
                     ) : (
                       <span className="kw-warn">not sent yet</span>
                     ),
+                },
+                {
+                  // AFTER the re-claim chain, not before it. A free-text
+                  // rejection reason is the widest column on this table, and
+                  // sitting it in front of "Replaced by" and "Resubmitted"
+                  // pushed both past the right edge — so the two columns that
+                  // answer "has this been chased again, and when" were only
+                  // reachable by scrolling a table nobody scrolls.
+                  title: 'Reason',
+                  dataIndex: 'rejectionReason',
+                  key: 'rejectionReason',
+                  ellipsis: true,
+                  render: (value: string | null) =>
+                    value ? <Tooltip title={value}>{value}</Tooltip> : <span className="kw-muted">—</span>,
                 },
                 {
                   title: 'Resolved',
