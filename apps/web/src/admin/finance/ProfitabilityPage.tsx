@@ -63,6 +63,8 @@ export function ProfitabilityPage() {
 
   const rows = [...(report.data?.rows ?? [])].sort(RANKINGS[ranking].sort);
   const lossMaking = rows.filter((row) => row.contribution !== null && row.contribution < 0).length;
+  /** Is there ANY cost basis behind what is on screen? */
+  const costedAnything = (totals?.rows ?? 0) > (totals?.rowsWithoutCost ?? 0);
 
   return (
     <AdminShell
@@ -80,14 +82,26 @@ export function ProfitabilityPage() {
         />
       }
     >
+      {/* THE SAME REFUSAL AS THE TABLE, ONE LEVEL UP.
+          When nothing in view has a cost basis — every procedure, today —
+          these tiles were rendering "Direct cost RM0.00" and "Contribution
+          RM0.00" three inches above a banner saying six rows have no cost on
+          record. The table gets this right and the summary contradicted it,
+          which is the version somebody screenshots for a meeting. */}
       <StatStrip
         stats={[
           { label: 'Revenue', value: money(totals?.revenue ?? 0), hint: `${totals?.rows ?? 0} lines` },
-          { label: 'Direct cost', value: money(totals?.directCost ?? 0), tone: 'neutral' },
+          {
+            label: 'Direct cost',
+            value: costedAnything ? money(totals?.directCost ?? 0) : '—',
+            tone: 'neutral',
+            hint: costedAnything ? undefined : 'Nothing in view has a cost on record',
+          },
           {
             label: 'Contribution',
-            value: money(totals?.contribution ?? 0),
-            tone: 'good',
+            value: costedAnything ? money(totals?.contribution ?? 0) : '—',
+            tone: costedAnything ? 'good' : 'neutral',
+            hint: costedAnything ? undefined : 'Cannot be computed without a cost basis',
             explain: report.data?.contributionNote,
           },
           {

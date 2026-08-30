@@ -185,6 +185,11 @@ export class DayEndService {
           otherCents: toCents(closing.expectedOther),
           totalCents: toCents(closing.expectedTotal),
           paymentCount: closing.paymentCount,
+          // Filled from the day's payments below. A closed day was reporting
+          // "Refunded RM0.00" directly above a movements table listing a
+          // RM40 refund, because the frozen columns have no refund total to
+          // read and this stood in a zero. Zero is a CLAIM — "no money was
+          // handed back today" — and it was false.
           refundCents: 0,
         }
       : await this.expectedFor(this.prisma as unknown as AdminTx, clinicId, businessDate);
@@ -202,6 +207,21 @@ export class DayEndService {
         invoice: { select: { invoiceNumber: true, visit: { select: { visitNumber: true } } } },
       },
     });
+
+    /**
+     * WHAT WAS HANDED BACK, on a closed day as much as an open one.
+     *
+     * Derived from the movements already loaded above rather than from a
+     * frozen column, and that is safe for the one reason it would not be safe
+     * for the expected totals: `payments` is append-only and a reversal is a
+     * NEW row, so this set cannot change retrospectively. Reversed payments
+     * are excluded on both sides, exactly as `expectedFor` excludes them.
+     */
+    if (frozen) {
+      expected.refundCents = payments
+        .filter((payment) => payment.kind === PaymentKind.REFUND && payment.reversedAt === null)
+        .reduce((total, payment) => total + toCents(payment.amount), 0);
+    }
 
     const countedTotalCents = closing
       ? toCents(closing.countedCash ?? 0) +

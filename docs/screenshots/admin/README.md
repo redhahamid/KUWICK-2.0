@@ -1,6 +1,8 @@
 # Admin System — Owner Visual Review Pack
 
-Eight review boards covering the five Admin modules, built from the browser-UAT screenshots taken against the synthetic UAT clinic **Klinik Contoh (UAT)**.
+Thirteen review boards covering the five Admin modules, built from the browser-UAT screenshots taken against the synthetic UAT clinic **Klinik Contoh (UAT)**.
+
+**Start with the five RC boards.** They answer the question this pass was about — whether the five modules read as one Kuwick Admin rather than a new product bolted onto the old Management and Settings. The eight original boards are kept below as the module-by-module record.
 
 **Branch:** `claude/kuwick-2-visual-audit-k9uk5z` · **Not merged.** These are for visual acceptance before merge.
 
@@ -8,7 +10,90 @@ Every name, identifier and address in these screens is synthetic — invented na
 
 ---
 
-## The boards
+## Release-candidate boards — start here
+
+Every tile on these five is photographed **inside the Admin shell**, including the
+screens that were written for `/management` or `/settings` years ago. That is the
+point: a tile tagged MANAGEMENT (EXISTING) is saying that component was not
+rebuilt, was not copied, and still serves its original URL — it is simply
+reachable from Admin now, and looks like it belongs there.
+
+| # | Board | Tiles | View |
+|---|---|---|---|
+| RC-01 | Operation — one performance picture | 6 | [ADMIN-RC-01-OPERATIONS.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/ADMIN-RC-01-OPERATIONS.png) |
+| RC-02 | Stock — eleven doors, one ledger | 6 | [ADMIN-RC-02-STOCK.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/ADMIN-RC-02-STOCK.png) |
+| RC-03 | Panel — control tower and receivables ledger | 6 | [ADMIN-RC-03-PANEL.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/ADMIN-RC-03-PANEL.png) |
+| RC-04 | HR — nine screens, one employee, one roster | 6 | [ADMIN-RC-04-HR.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/ADMIN-RC-04-HR.png) |
+| RC-05 | Finance — one workspace, one invoice source | 6 | [ADMIN-RC-05-FINANCE.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/ADMIN-RC-05-FINANCE.png) |
+
+### The twelve workflow captures
+
+The brief names twelve workflows that a screen alone does not prove. These were
+driven in a real browser against the seeded clinic — the day-end shots below are
+a genuine count, a genuine variance and a genuine close, not a staged form.
+
+| # | Workflow | Image |
+|---|---|---|
+| 1 | Stock transfer discrepancy — sent 40, received 36 | [rc-01-stock-transfer-discrepancy.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-01-stock-transfer-discrepancy.png) |
+| 2 | Stock take — count, submit, approve | [rc-02-stock-take-submit-and-approve.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-02-stock-take-submit-and-approve.png) |
+| 3 | Panel rejected → re-claim → reconciliation | [rc-03-panel-reclaim-and-reconciliation.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-03-panel-reclaim-and-reconciliation.png) · [work queue](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-03a-panel-work-queue-rejected.png) · [record outcome](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-03b-panel-record-outcome.png) |
+| 4 | HR employee detail | [rc-04-hr-employee-detail.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-04-hr-employee-detail.png) · [payroll history & documents](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-04b-hr-employee-payroll-history.png) |
+| 5 | Leave → roster impact | [rc-05-hr-leave-roster-impact.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-05-hr-leave-roster-impact.png) · [leave requests](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-05a-hr-leave-requests.png) |
+| 6 | Payroll run — statutory NOT READY | [rc-06-payroll-statutory-not-ready.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-06-payroll-statutory-not-ready.png) |
+| 7 | Day-end — counted money and variance | [rc-07-day-end-counted-money-and-variance.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-07-day-end-counted-money-and-variance.png) · [open, expected](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-07a-day-end-open-with-expected.png) · [variance blocks close](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-07b-day-end-variance-blocks-close.png) |
+| 8 | Day-end — closed and locked | [rc-08-day-end-closed-and-locked.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-08-day-end-closed-and-locked.png) |
+| 9 | Outstanding / receivable aging | [rc-09-outstanding-invoice-aging.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-09-outstanding-invoice-aging.png) |
+| 10 | Drug profitability | [rc-10-drug-profitability.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-10-drug-profitability.png) |
+| 11 | Procedure profitability — COST NOT CONFIGURED | [rc-11-procedure-profitability-cost-not-configured.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-11-procedure-profitability-cost-not-configured.png) |
+| 12 | Credit note — creation and approval | [rc-12-credit-note-creation-and-approval.png](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-12-credit-note-creation-and-approval.png) |
+
+**Day-end, in detail.** Today at Contoh Central is seeded OPEN with takings in
+all four tender buckets, a RM40 card refund and a panel invoice that bills but
+puts nothing in the drawer. Expected comes out at **RM562.90**. The script counts
+cash **RM20 short** and every other bucket exactly; the screen refuses to close
+until the difference is explained, and the closed state freezes the expected
+figures, disables count and close, and puts reopening behind its own permission.
+
+### The reused screens, shot inside Admin
+
+Twenty-one captures named `rc-ia-*` show each mounted screen in the Admin shell.
+They exist so the claim in §A can be checked rather than taken on trust:
+[items & pricing](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-01-stock-items-in-admin.png) ·
+[stock by location](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-02-stock-by-location-in-admin.png) ·
+[purchase orders](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-03-stock-purchase-orders-in-admin.png) ·
+[suppliers](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-04-stock-suppliers-in-admin.png) ·
+[near expiry](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-05-stock-near-expiry-in-admin.png) ·
+[slow moving](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-06-stock-slow-moving-in-admin.png) ·
+[stock value](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-07-stock-value-in-admin.png) ·
+[panel companies](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-08-panel-companies-in-admin.png) ·
+[claim batches](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-09-panel-batches-in-admin.png) ·
+[roles & access](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-10-hr-roles-and-access-in-admin.png) ·
+[staff benefits](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-11-hr-staff-benefits.png) ·
+[sales](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-12-finance-sales-in-admin.png) ·
+[invoices](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-13-finance-invoices-in-admin.png) ·
+[tax / SST](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-14-finance-tax-sst.png) ·
+[inter-company](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-15-finance-inter-company.png) ·
+[e-Invoice — not built](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-16-finance-e-invoice-not-built.png) ·
+[patient analysis](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-17-operation-patient-analysis-in-admin.png) ·
+[procedure analysis](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-18-operation-procedure-analysis-in-admin.png) ·
+[doctor performance](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-19-operation-doctor-performance-in-admin.png) ·
+[waiting times](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-20-operation-wait-times-in-admin.png) ·
+[marketing](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ia-21-marketing-consolidated.png)
+
+### iPad landscape (1194×834)
+
+The six screens somebody actually holds a tablet in front of:
+[stock attention](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ipad-01-stock-attention.png) ·
+[stock take](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ipad-02-stock-take.png) ·
+[panel work queue](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ipad-03-panel-work-queue.png) ·
+[day-end](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ipad-04-day-end.png) ·
+[HR today](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ipad-05-hr-today.png) ·
+[outstanding](https://github.com/redhahamid/KUWICK-2.0/blob/claude/kuwick-2-visual-audit-k9uk5z/docs/screenshots/admin/rc-ipad-06-outstanding.png)
+
+---
+
+## The original module boards
+
 
 | # | Board | Screens | View |
 |---|---|---|---|
@@ -125,7 +210,13 @@ KUWICK_ADMIN_UAT_SEED=yes npx tsx prisma/seed-admin-uat.ts
 CHROME_PATH=/opt/pw-browsers/chromium npx tsx prisma/admin-uat-shots.ts
 CHROME_PATH=/opt/pw-browsers/chromium npx tsx prisma/admin-uat-review-shots.ts
 
-# 3. Compose the boards
+# 3. Capture the release-candidate pack: the mounted screens, the twelve
+#    workflows, and the iPad set. This one DRIVES the day-end — it counts the
+#    drawer short and closes the day — so re-run the seed (step 1) before it if
+#    you want a fresh open day to close again.
+CHROME_PATH=/opt/pw-browsers/chromium npx tsx prisma/admin-rc-shots.ts
+
+# 4. Compose all thirteen boards
 cd ../.. && node tools/build-review-boards.mjs
 ```
 
@@ -135,4 +226,7 @@ Both servers must be running. The board layout and every caption live in `tools/
 
 ## The rest of the pack
 
-Alongside the boards, the same directory holds the 46 individual full-resolution screenshots, including responsive captures of four key screens at **iPad landscape (1194×834)** and **iPad portrait (834×1194)** — `ipad-landscape--*.png` and `ipad-portrait--*.png`.
+Alongside the boards, the same directory holds every individual full-resolution
+screenshot: the original `desktop--*` set for the twenty Admin pages, the
+`ipad-landscape--*` / `ipad-portrait--*` responsive captures, and this pass's
+`rc-*` release-candidate pack (workflows, mounted screens and the tablet set).

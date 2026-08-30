@@ -88,9 +88,23 @@ export function DayEndClosingPage() {
             label: 'Variance',
             value: variance === null ? '—' : money(variance),
             tone: variance === null ? 'neutral' : variance === 0 ? 'good' : 'bad',
-            hint: variance === null ? 'Appears once counted' : variance === 0 ? 'Reconciled' : 'Needs an explanation',
+            // Once the day is closed the difference has BEEN explained — the
+            // server refuses the close otherwise — so telling the reader it
+            // still needs explaining is the screen contradicting itself.
+            hint:
+              variance === null
+                ? 'Appears once counted'
+                : variance === 0
+                  ? 'Reconciled'
+                  : closed
+                    ? 'Explained and signed off'
+                    : 'Needs an explanation',
           },
-          { label: 'Refunded', value: money(data?.refunds ?? 0) },
+          {
+            label: 'Refunded',
+            value: money(data?.refunds ?? 0),
+            hint: (data?.refunds ?? 0) > 0 ? 'Already netted off the expected figures' : undefined,
+          },
           {
             label: 'Status',
             value: closed ? 'Closed' : data?.status === 'COUNTED' ? 'Counted' : 'Open',
@@ -160,6 +174,11 @@ export function DayEndClosingPage() {
 
         <AdminSection title="Count the drawer" description="Leave a box empty if you have not counted that tender.">
           <div className="kw-countForm">
+            <div className="kw-countHead">
+              <span>Expected</span>
+              <span>Counted</span>
+              <span>Difference</span>
+            </div>
             {buckets.map((bucket) => {
               const expected = data?.expected[bucket.key] ?? 0;
               const value = counted[bucket.key];
@@ -178,6 +197,10 @@ export function DayEndClosingPage() {
                     min={0}
                     precision={2}
                     placeholder="Not counted"
+                    // Named, because a screen reader reading four unlabelled
+                    // number boxes in a row cannot tell somebody which drawer
+                    // they are counting into — and neither can a test.
+                    aria-label={`Counted ${bucket.label}`}
                     onChange={(next) => setCounted((current) => ({ ...current, [bucket.key]: next ?? undefined }))}
                     style={{ width: 118 }}
                   />
@@ -199,6 +222,7 @@ export function DayEndClosingPage() {
                 rows={3}
                 disabled={closed}
                 value={reason}
+                aria-label="Reason for the variance"
                 onChange={(event) => setReason(event.target.value)}
                 placeholder="What accounts for the difference?"
               />

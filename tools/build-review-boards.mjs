@@ -119,6 +119,89 @@ const BOARDS = [
   },
 ];
 
+/**
+ * THE RELEASE-CANDIDATE BOARDS.
+ *
+ * The eight boards above answer "was each module built". These five answer the
+ * question the owner asked second, which is harder and more important:
+ *
+ *   "Do these five modules read as ONE Kuwick Admin, or as a new product
+ *    bolted onto the old Management and Settings?"
+ *
+ * So every tile here is shot INSIDE the Admin shell, including the screens
+ * that were written for /management years ago. Where a tile carries the
+ * MANAGEMENT / SETTINGS tag it is saying something specific: this component
+ * was not rebuilt, was not copied, and is the same one the old URL still
+ * serves — it is simply reachable from here now, and looks like it belongs.
+ */
+const RC_BOARDS = [
+  {
+    file: 'ADMIN-RC-01-OPERATIONS.png',
+    title: 'Operation — one performance picture',
+    question: 'Clinic performance was split across two hubs. It is now one.',
+    tiles: [
+      ['desktop--operation-01-overview.png', 'Operations overview', 'Period presets, KPIs, activity by day, doctor productivity labelled BILLED — never doctor income.', 'Admin (new)'],
+      ['desktop--operation-02-segment-pl.png', 'Segment P&L', 'Service lines as configuration. Unclassified revenue shown separately; margin is contribution, never net profit.', 'Admin (new)'],
+      ['rc-ia-21-marketing-consolidated.png', 'Marketing — audience, templates, sending queue', 'Audience building, programme segmentation and message templates, plus the manual WhatsApp queue that had no UI and could not be reached. Kuwick still sends nothing and the screen still says so.', 'Admin (new)'],
+      ['rc-ia-17-operation-patient-analysis-in-admin.png', 'Patient analysis, inside Admin', 'The pre-existing report, mounted in the Admin shell. Same component, same endpoint, same rows — one door closer.', 'Management (existing)'],
+      ['rc-ia-19-operation-doctor-performance-in-admin.png', 'Doctor performance, inside Admin', 'Was under Management ▸ Reports. Nothing about it was rebuilt; the old URL still resolves.', 'Management (existing)'],
+      ['rc-ia-20-operation-wait-times-in-admin.png', 'Waiting times, inside Admin', 'Operational quality belongs beside operational performance. Mounted, not duplicated.', 'Management (existing)'],
+    ],
+  },
+  {
+    file: 'ADMIN-RC-02-STOCK.png',
+    title: 'Stock — eleven doors, one ledger',
+    question: 'Every stock screen the brief lists, reachable from Admin ▸ Stock.',
+    tiles: [
+      ['rc-01-stock-transfer-discrepancy.png', 'Transfer discrepancy', 'Sent 40, received 36. The receiver states what arrived; the shortfall stays missing rather than being balanced away by the sender.', 'Admin (new)'],
+      ['rc-02-stock-take-submit-and-approve.png', 'Stock take — count, submit, approve', 'Counting changes nothing. A second person approves, and only then does the ledger move.', 'Admin (new)'],
+      ['rc-ia-01-stock-items-in-admin.png', 'Items & pricing, inside Admin', 'THE catalogue — the one every margin figure resolves to. Reaching it no longer means leaving Admin. Not a second item record.', 'Management (existing)'],
+      ['rc-ia-02-stock-by-location-in-admin.png', 'Stock by location, inside Admin', 'Live quantity per item per branch, derived from the same append-only ledger.', 'Management (existing)'],
+      ['rc-ia-07-stock-value-in-admin.png', 'Stock value', 'The attention board opened on valuation. A prop, not a fourth copy of the board — and standard cost is disclosed as standard cost.', 'Admin (new)'],
+      ['rc-ia-03-stock-purchase-orders-in-admin.png', 'Purchase orders, inside Admin', 'Procurement and goods receiving, the other way stock legitimately arrives.', 'Management (existing)'],
+    ],
+  },
+  {
+    file: 'ADMIN-RC-03-PANEL.png',
+    title: 'Panel — the control tower and the receivables ledger',
+    question: 'Opened ≠ accepted ≠ paid. Every screen here keeps the three apart.',
+    tiles: [
+      ['rc-03a-panel-work-queue-rejected.png', 'Work queue — claimed, fee, receivable', 'Claimed, the panel’s admin fee and the resulting receivable are now three columns. One column headed "Claimed" was showing claimed PLUS fee.', 'Admin (new)'],
+      ['rc-03b-panel-record-outcome.png', 'Recording what the panel said', 'The moment "we submitted" becomes "they adjudicated". Neither is "they paid".', 'Admin (new)'],
+      ['rc-03-panel-reclaim-and-reconciliation.png', 'Reconciliation', 'Expected = received + outstanding + rejected + written off, and the screen states whether it balances.', 'Admin (new)'],
+      ['desktop--panel-02-configuration.png', 'Panel configuration', 'Submission method, portal link, payment terms, fee rule, required documents, claim-number format, re-claim rule, instructions.', 'Admin (new)'],
+      ['rc-ia-08-panel-companies-in-admin.png', 'Panel companies, inside Admin', 'The panel master record, mounted here. There is one panel company list.', 'Management (existing)'],
+      ['rc-ia-09-panel-batches-in-admin.png', 'Claim batches, inside Admin', 'The existing batch workflow, in the Admin shell. Same batches the workspace above drives.', 'Management (existing)'],
+    ],
+  },
+  {
+    file: 'ADMIN-RC-04-HR.png',
+    title: 'HR — nine screens, one employee, one roster',
+    question: 'What does the system know about a person, and what will it not pretend to know?',
+    tiles: [
+      ['rc-04-hr-employee-detail.png', 'Employee record', 'Employment, person, pay basis, statutory position, attendance and payroll history — composed in ONE read from the tables that own each fact.', 'Admin (new)'],
+      ['rc-04b-hr-employee-payroll-history.png', 'Payroll history & documents', 'Every run this person appeared on, with statutory marked NOT COMPUTED. Documents state that no employee document store exists rather than showing an empty list.', 'Admin (new)'],
+      ['rc-06-payroll-statutory-not-ready.png', 'NOT READY FOR LIVE MALAYSIAN PAYROLL', 'The banner is the deliverable. EPF/KWSP, SOCSO, EIS and PCB are not implemented, statutory columns are blank rather than zero, and approval is labelled "without statutory figures".', 'Admin (new)'],
+      ['rc-05-hr-leave-roster-impact.png', 'Roster, inside Admin', 'The Appointments roster component, rendered in the Admin shell. There is exactly one shift table and one component that writes it.', 'Appointments (existing)'],
+      ['rc-ia-11-hr-staff-benefits.png', 'Staff benefits', 'Allowance, dependants and every dated use that makes up the balance. Derived, never a stored running total.', 'Admin (new)'],
+      ['rc-ia-10-hr-roles-and-access-in-admin.png', 'Roles & access, inside Admin', 'The permission model that gates every screen in this pack, reachable from HR.', 'Settings (existing)'],
+    ],
+  },
+  {
+    file: 'ADMIN-RC-05-FINANCE.png',
+    title: 'Finance — one workspace, one invoice source',
+    question: 'Did today reconcile, what is owed, and what actually earns?',
+    tiles: [
+      ['rc-07-day-end-counted-money-and-variance.png', 'Day-end — counted money, real variance', 'Expected RM562.90 derived from payments with the RM40 refund netted. A named person counted RM542.90. The RM20 difference must be explained before the day can close.', 'Admin (new)'],
+      ['rc-08-day-end-closed-and-locked.png', 'Day-end — closed and locked', 'Closed by name and timestamp, expected figures FROZEN, count and close disabled, reopen a separate permission that leaves its own record.', 'Admin (new)'],
+      ['rc-10-drug-profitability.png', 'Drug profitability', 'Per item: units, revenue, direct cost, contribution and margin — ranked five ways. Contribution, never net profit.', 'Admin (new)'],
+      ['rc-11-procedure-profitability-cost-not-configured.png', 'Procedure profitability', 'No service has a cost basis in this schema, so every row reads COST NOT CONFIGURED and is excluded from the totals. Treating unknown as RM0 would report procedures as pure profit.', 'Admin (new)'],
+      ['rc-09-outstanding-invoice-aging.png', 'Outstanding & aging', 'Patient money and panel money aged separately and never summed into one headline.', 'Admin (new)'],
+      ['rc-ia-13-finance-invoices-in-admin.png', 'Invoice listing, inside Admin', 'The existing invoice report, mounted here. There is one invoice source and this is it.', 'Management (existing)'],
+    ],
+  },
+];
+
 const CSS = `
   * { box-sizing: border-box; }
   body { margin: 0; background: #f4f6f9; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #101828; }
@@ -169,7 +252,7 @@ async function main() {
   mkdirSync(OUT, { recursive: true });
   const browser = await chromium.launch({ executablePath: CHROME });
 
-  for (const board of BOARDS) {
+  for (const board of [...BOARDS, ...RC_BOARDS]) {
     const html = `<!doctype html><meta charset="utf-8"><style>${CSS}</style>
       <div class="board">
         <header>

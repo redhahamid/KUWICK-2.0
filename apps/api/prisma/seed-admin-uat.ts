@@ -390,6 +390,53 @@ async function verify() {
         problems.push(`day end ${c.businessDate.toISOString().slice(0, 10)}: variance ${Number(c.varianceAmount ?? 0).toFixed(2)} != counted - expected ${variance.toFixed(2)}`);
       }
     }
+
+    // 7. TODAY IS AN OPEN DAY WITH REAL TAKINGS IN EVERY BUCKET.
+    //
+    // The review board showed an almost-empty closing screen, and the cause was
+    // that every seeded trading day was in the past and already closed. This
+    // check makes that impossible to reintroduce silently: it re-derives the
+    // drawer the way `DayEndService.expectedFor` does — payments, not invoices;
+    // refunds NETTED against their own bucket; PANEL excluded because no money
+    // crossed the counter — and fails the seed if the day is empty, if a bucket
+    // is missing, if the refund is not netted, or if the day has been closed.
+    const central = await tx.clinic.findFirst({ where: { tenantId: TENANT_ID, name: 'Contoh Central' }, select: { id: true } });
+    if (!central) {
+      problems.push('day end today: Contoh Central not found');
+    } else {
+      const start = day(0);
+      const end = day(1);
+      const todaysPayments = await tx.payment.findMany({
+        where: { clinicId: central.id, receivedAt: { gte: start, lt: end }, reversedAt: null },
+        select: { kind: true, tender: true, amount: true },
+      });
+      const bucket = { CASH: 0, CARD: 0, QR: 0, OTHER: 0 };
+      let refunds = 0;
+      for (const payment of todaysPayments) {
+        if (payment.tender === 'PANEL') continue;
+        const key = payment.tender === 'CASH' ? 'CASH' : payment.tender === 'CARD' ? 'CARD' : payment.tender === 'QR' ? 'QR' : 'OTHER';
+        const signed = (payment.kind === 'REFUND' ? -1 : 1) * Number(payment.amount);
+        bucket[key] += signed;
+        if (payment.kind === 'REFUND') refunds += Number(payment.amount);
+      }
+      for (const [key, value] of Object.entries(bucket)) {
+        if (value <= 0) problems.push(`day end today: expected ${key} is ${value.toFixed(2)} — the closing screen needs takings in every bucket`);
+      }
+      if (refunds <= 0) problems.push('day end today: no refund today, so the netting rule is untested');
+      const alreadyClosed = await tx.dayEndClosing.findFirst({
+        where: { tenantId: TENANT_ID, clinicId: central.id, businessDate: start },
+        select: { status: true },
+      });
+      if (alreadyClosed) {
+        problems.push(`day end today: a closing already exists (${alreadyClosed.status}) — today must be OPEN for the owner to count and close it`);
+      }
+      const panelToday = await tx.invoice.count({
+        where: { visit: { clinicId: central.id }, createdAt: { gte: start, lt: end }, panelResponsibilityAmount: { gt: 0 } },
+      });
+      if (panelToday === 0) {
+        problems.push('day end today: no panel invoice, so "billed today but not in the drawer" is untested');
+      }
+    }
   });
 
   if (problems.length > 0) {
@@ -397,7 +444,7 @@ async function verify() {
     for (const problem of problems) console.error(`  - ${problem}`);
     throw new Error(`${problems.length} seed invariant(s) failed`);
   }
-  console.log('  invariants: stock ledger, claim adjudication, remittances, invoice split, payroll, day end — all reconcile');
+  console.log('  invariants: stock ledger, claim adjudication, remittances, invoice split, payroll, day end (closed + today OPEN) — all reconcile');
 }
 
 /** Deletes this tenant only, in dependency order. */
@@ -832,7 +879,7 @@ async function seedClinicalAndFinance(ids: Ids) {
       return tx.payment.create({
         data: {
           tenantId: tenant.id, clinicId, invoiceId, kind, tender: tender as never,
-          methodLabel: tender === 'CASH' ? 'Cash' : tender === 'CARD' ? 'Credit Card' : tender === 'QR' ? 'DuitNow QR' : tender,
+          methodLabel: tender === 'CASH' ? 'Cash' : tender === 'CARD' ? 'Credit Card' : tender === 'QR' ? 'DuitNow QR' : tender === 'BANK_TRANSFER' ? 'Bank Transfer' : tender,
           amount, receivedAt: at(dayOffset, hour), receivedByStaffId: staff.counter, ...extra,
         },
       });
@@ -953,7 +1000,109 @@ async function seedClinicalAndFinance(ids: Ids) {
       },
     });
 
-    console.log(`  finance: ${visitSeq} visits, cash/card/QR, partial, refund, reversal, 2 credit notes, 1 closed day`);
+    // -----------------------------------------------------------------------
+    // TODAY AT CENTRAL — AN OPEN TRADING DAY, LEFT FOR THE OWNER TO CLOSE.
+    //
+    // The review board showed an almost-empty closing screen, and the reason
+    // was arithmetic rather than a defect: every seeded trading day was in the
+    // past and already closed, so the day-end screen opened on TODAY and
+    // correctly reported that nothing had happened yet.
+    //
+    // This is a real day's takings, deliberately shaped so that closing it
+    // exercises every rule the screen enforces:
+    //
+    //   - all four tender buckets, so the count form has four fields to fill;
+    //   - a REFUND, which must reduce the CARD bucket rather than appear as a
+    //     separate line, because money handed back left the drawer it entered;
+    //   - a PANEL invoice, which contributes to the day's billing and to
+    //     NOTHING in the drawer, since no cash changed hands;
+    //   - a cash total ending in a figure the counter is meant to get WRONG:
+    //     the UAT script counts RM20 short, so the variance, the mandatory
+    //     reason and the closed-state lock are all provable rather than
+    //     assertions in a document.
+    //
+    // NO `dayEndClosing` ROW IS WRITTEN. The day is OPEN because nobody has
+    // counted it, which is the state the whole workflow starts from. Seeding a
+    // closed day would have proved only that a seed can write a row.
+    // -----------------------------------------------------------------------
+    const t1 = await makeVisit({
+      patientIndex: 0, clinicId: central.id, doctorKey: 'owner', dayOffset: 0,
+      lines: [
+        { description: 'General Consultation', amount: CONSULT, serviceIndex: 0 },
+        { description: 'Amoxicillin 500mg', amount: Number(items.AMOX500.sellPrice), itemCode: 'AMOX500', taxable: false },
+      ],
+    });
+    await pay(t1.invoice.id, central.id, t1.patientShare, 'CASH', 0, 3);
+    await tx.invoice.update({ where: { id: t1.invoice.id }, data: { status: 'PAID', paidAt: at(0, 3), paymentMethod: 'Cash', patientPaidAmount: t1.patientShare } });
+
+    const t2 = await makeVisit({
+      patientIndex: 3, clinicId: central.id, doctorKey: 'resident', dayOffset: 0,
+      lines: [
+        { description: 'Wound Dressing', amount: DRESSING, serviceIndex: 1 },
+        { description: 'Dressing Pack', amount: Number(items.DRESS1.sellPrice), itemCode: 'DRESS1', taxable: false },
+      ],
+    });
+    await pay(t2.invoice.id, central.id, t2.patientShare, 'CASH', 0, 4);
+    await tx.invoice.update({ where: { id: t2.invoice.id }, data: { status: 'PAID', paidAt: at(0, 4), paymentMethod: 'Cash', patientPaidAmount: t2.patientShare } });
+
+    const t3 = await makeVisit({
+      patientIndex: 4, clinicId: central.id, doctorKey: 'owner', dayOffset: 0,
+      lines: [
+        { description: 'Suturing (minor)', amount: SUTURE, serviceIndex: 2 },
+        { description: 'Metformin 500mg', amount: Number(items.MET500.sellPrice), itemCode: 'MET500', taxable: false },
+      ],
+    });
+    await pay(t3.invoice.id, central.id, t3.patientShare, 'CARD', 0, 5);
+    await tx.invoice.update({ where: { id: t3.invoice.id }, data: { status: 'PAID', paidAt: at(0, 5), paymentMethod: 'Credit Card', patientPaidAmount: t3.patientShare } });
+
+    const t4 = await makeVisit({
+      patientIndex: 5, clinicId: central.id, doctorKey: 'resident', dayOffset: 0,
+      lines: [{ description: 'NCD Review', amount: NCD, serviceIndex: 4 }],
+    });
+    await pay(t4.invoice.id, central.id, t4.patientShare, 'QR', 0, 6);
+    await tx.invoice.update({ where: { id: t4.invoice.id }, data: { status: 'PAID', paidAt: at(0, 6), paymentMethod: 'DuitNow QR', patientPaidAmount: t4.patientShare } });
+
+    const t5 = await makeVisit({
+      patientIndex: 6, clinicId: central.id, doctorKey: 'owner', dayOffset: 0,
+      lines: [{ description: 'Weight Management Review', amount: WEIGHT, serviceIndex: 5 }],
+    });
+    await pay(t5.invoice.id, central.id, t5.patientShare, 'QR', 0, 7);
+    await tx.invoice.update({ where: { id: t5.invoice.id }, data: { status: 'PAID', paidAt: at(0, 7), paymentMethod: 'DuitNow QR', patientPaidAmount: t5.patientShare } });
+
+    // A BANK TRANSFER, so the "Other" bucket is not a permanently empty field.
+    const t6 = await makeVisit({
+      patientIndex: 7, clinicId: central.id, doctorKey: 'resident', dayOffset: 0,
+      lines: [{ description: 'Antenatal Review', amount: ANTENATAL, serviceIndex: 3 }],
+    });
+    await pay(t6.invoice.id, central.id, t6.patientShare, 'BANK_TRANSFER', 0, 8);
+    await tx.invoice.update({ where: { id: t6.invoice.id }, data: { status: 'PAID', paidAt: at(0, 8), paymentMethod: 'Bank Transfer', patientPaidAmount: t6.patientShare } });
+
+    // THE REFUND. Card, same day, against a visit paid earlier this morning:
+    // the patient was charged for a suture kit that was not used. Expected CARD
+    // must come out RM40 lower than the card takings, which is the assertion
+    // that separates "we netted the refund" from "we listed it somewhere".
+    await pay(t3.invoice.id, central.id, 40, 'CARD', 0, 9, 'REFUND', {
+      notes: 'Suture kit charged but not used — returned to the card at the counter',
+    });
+    await tx.invoice.update({ where: { id: t3.invoice.id }, data: { patientPaidAmount: t3.patientShare - 40 } });
+
+    // A PANEL visit today: it bills, it appears in the day's operational
+    // figures, and it puts NOTHING in the drawer. A day-end that shows this
+    // as expected cash is the classic false shortage.
+    const tPanel = await makeVisit({
+      patientIndex: 1, clinicId: central.id, doctorKey: 'owner', dayOffset: 0,
+      panelIndex: 0,
+      lines: [
+        { description: 'General Consultation', amount: CONSULT, serviceIndex: 0 },
+        { description: 'Metformin 500mg', amount: Number(items.MET500.sellPrice), itemCode: 'MET500', taxable: false },
+      ],
+    });
+    if (tPanel.patientShare > 0) {
+      await pay(tPanel.invoice.id, central.id, tPanel.patientShare, 'CASH', 0, 10);
+      await tx.invoice.update({ where: { id: tPanel.invoice.id }, data: { patientPaidAmount: tPanel.patientShare } });
+    }
+
+    console.log(`  finance: ${visitSeq} visits, cash/card/QR, partial, refund, reversal, 2 credit notes, 1 closed day, 1 OPEN day today`);
     return { note };
   });
 }

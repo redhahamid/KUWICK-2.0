@@ -3837,20 +3837,35 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   margin-bottom: var(--kw-s3);
 }
 
+/* TWO LINES PER TENDER, NOT FOUR COLUMNS.
+   This form lives in a ~360px sidebar, and a four-column row left the label
+   about fifty pixels: "Notes and coins in the drawer" wrapped to five lines and
+   ran straight into the expected figure beside it. Which tender you are
+   counting, and how much the ledger says should be there, are the two facts
+   this row exists to state, and they were the two it made unreadable.
+
+   So the name and its hint get a full line, and the three numbers get their
+   own line under a header that says which is which. */
 .kw-countRow {
   display: grid;
-  grid-template-columns: 1fr 88px 118px 88px;
+  grid-template-columns: minmax(0, 1fr) 104px 84px;
+  grid-template-areas:
+    "label    label label"
+    "expected input variance";
   align-items: center;
-  gap: var(--kw-s2);
-  padding: 8px 10px;
+  gap: 3px var(--kw-s2);
+  padding: 9px 10px;
   background: var(--kw-card);
 }
 
 .kw-countRow__label {
+  grid-area: label;
   display: flex;
-  flex-direction: column;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 6px;
   font-size: 12.5px;
-  font-weight: 550;
+  font-weight: 600;
   color: var(--kw-text);
   min-width: 0;
 }
@@ -3859,6 +3874,30 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   font-size: 11px;
   font-weight: 400;
   color: var(--kw-text-muted);
+}
+
+.kw-countRow__expected { grid-area: expected; }
+.kw-countRow__variance { grid-area: variance; }
+.kw-countRow .ant-input-number { grid-area: input; width: 100% !important; }
+
+/* The header that names the three numeric columns. Without it the middle box
+   is an unlabelled number field on a screen about money. */
+.kw-countHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px 84px;
+  gap: var(--kw-s2);
+  padding: 6px 10px;
+  background: var(--kw-surface-2);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--kw-text-secondary);
+}
+
+.kw-countHead span:nth-child(2),
+.kw-countHead span:nth-child(3) {
+  text-align: right;
 }
 
 .kw-countRow__expected,
