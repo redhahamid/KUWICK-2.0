@@ -43,6 +43,19 @@ export class PanelConfigService {
       resubmitAsNewClaim: panel.resubmitAsNewClaim,
       claimNumberFormat: panel.claimNumberFormat,
       paymentTermDays: panel.paymentTermDays,
+      paymentTermMaxDays: panel.paymentTermMaxDays,
+      paymentTermUnit: panel.paymentTermUnit,
+      paymentTermAnchor: panel.paymentTermAnchor,
+      paymentTermVariesByPayer: panel.paymentTermVariesByPayer,
+      resubmissionWindowDays: panel.resubmissionWindowDays,
+      feeDirection: panel.feeDirection,
+      /**
+       * TRUE when this panel charges a fee but nobody has said which way it
+       * moves. Every receivable on the panel is then computed WITHOUT the fee
+       * and flagged, so this is the row an owner has to come and fix.
+       */
+      feeDirectionUnresolved:
+        panel.claimFeeType !== null && Number(panel.claimFeeValue ?? 0) > 0 && panel.feeDirection === null,
       claimFeeType: panel.claimFeeType,
       claimFeeValue: panel.claimFeeValue === null ? null : Number(panel.claimFeeValue),
       limitAmount: panel.limitAmount === null ? null : Number(panel.limitAmount),
@@ -83,8 +96,36 @@ export class PanelConfigService {
           accountReference: dto.accountReference,
           notes: dto.notes,
           panelShareTaxable: dto.panelShareTaxable,
+          feeDirection: dto.feeDirection,
+          paymentTermDays: dto.paymentTermDays,
+          paymentTermMaxDays: dto.paymentTermMaxDays,
+          paymentTermUnit: dto.paymentTermUnit,
+          paymentTermAnchor: dto.paymentTermAnchor,
+          paymentTermVariesByPayer: dto.paymentTermVariesByPayer,
+          resubmissionWindowDays: dto.resubmissionWindowDays,
         },
       });
+
+      // RE-STAMP THE CLAIMS NOBODY HAS SENT YET.
+      //
+      // `ClaimBatchLine.feeDirection` is a snapshot, so a claim already
+      // submitted keeps the arithmetic it was raised under — that is the whole
+      // point of snapshotting, and it is what makes a six-month-old claim
+      // defensible in an argument. But a claim still sitting in BATCHED has not
+      // been sent to anybody, and it should carry the corrected fact rather
+      // than a stale NULL. Only the direction is re-stamped; the fee amount is
+      // not, because that is a price and prices stay as billed.
+      let restamped = 0;
+      if (dto.feeDirection !== undefined && dto.feeDirection !== before.feeDirection) {
+        const result = await tx.claimBatchLine.updateMany({
+          where: {
+            claimStatus: { in: ['READY', 'NEEDS_INFORMATION', 'BATCHED'] },
+            claimBatch: { panelClinicId: id, status: 'BATCHED' },
+          },
+          data: { feeDirection: dto.feeDirection },
+        });
+        restamped = result.count;
+      }
 
       const changed = diffOf(before as unknown as Record<string, unknown>, dto as Record<string, unknown>);
       await recordAudit(tx, actor, {
@@ -96,7 +137,18 @@ export class PanelConfigService {
         source: 'panel.configuration',
       });
 
-      return updated;
+      if (restamped > 0) {
+        await recordAudit(tx, actor, {
+          action: 'panel.feeDirectionRestamped',
+          entityType: 'PanelClinic',
+          entityId: id,
+          before: { feeDirection: before.feeDirection },
+          after: { feeDirection: dto.feeDirection, unsentClaimsRestamped: restamped },
+          source: 'panel.configuration',
+        });
+      }
+
+      return { ...updated, unsentClaimsRestamped: restamped };
     });
   }
 }

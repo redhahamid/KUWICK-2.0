@@ -66,6 +66,11 @@ describe('Panel: the claim workspace (e2e)', () => {
           paymentTermDays: 30,
           claimFeeType: 'PERCENT',
           claimFeeValue: 8,
+          // Explicit, because the direction is now a contract term rather than
+          // a constant: this fixture panel ADDS its fee to what it is billed.
+          // The two tests at the bottom of this file cover the other panel
+          // shapes — one that withholds, and one where nobody has said.
+          feeDirection: 'ADDED',
           resubmitAsNewClaim: true,
         },
       }),
@@ -74,7 +79,13 @@ describe('Panel: the claim workspace (e2e)', () => {
   });
 
   /** A panel invoice already batched into a claim, ready to be submitted. */
-  async function makeClaim(claimed = 100, fee = 8): Promise<{ batchId: string; lineId: string }> {
+  async function makeClaim(
+    claimed = 100,
+    fee = 8,
+    opts: { panelId?: string; feeDirection?: 'ADDED' | 'WITHHELD' | null } = {},
+  ): Promise<{ batchId: string; lineId: string }> {
+    const targetPanelId = opts.panelId ?? panelId;
+    const direction = opts.feeDirection === undefined ? 'ADDED' : opts.feeDirection;
     return withTenantContext(prisma, tenantId, async (tx) => {
       const patient = await tx.patient.create({
         data: {
@@ -91,7 +102,7 @@ describe('Panel: the claim workspace (e2e)', () => {
           patientId: patient.id,
           visitNumber: `V-${Math.floor(Math.random() * 1_000_000)}`,
           billingType: 'PANEL',
-          panelClinicId: panelId,
+          panelClinicId: targetPanelId,
           registeredByStaffId: ownerStaffId,
           staffId: ownerStaffId,
         },
@@ -124,13 +135,20 @@ describe('Panel: the claim workspace (e2e)', () => {
       const batch = await tx.claimBatch.create({
         data: {
           tenantId,
-          panelClinicId: panelId,
+          panelClinicId: targetPanelId,
           batchNumber: `CLAIM-${Math.floor(Math.random() * 1_000_000)}`,
           createdByStaffId: ownerStaffId,
         },
       });
       const line = await tx.claimBatchLine.create({
-        data: { tenantId, claimBatchId: batch.id, invoiceId: invoice.id, claimedAmount: claimed, feeAmount: fee },
+        data: {
+          tenantId,
+          claimBatchId: batch.id,
+          invoiceId: invoice.id,
+          claimedAmount: claimed,
+          feeAmount: fee,
+          feeDirection: direction,
+        },
       });
       return { batchId: batch.id, lineId: line.id };
     });
@@ -420,5 +438,149 @@ describe('Panel: the claim workspace (e2e)', () => {
         allocations: [{ claimLineId: claim.lineId, amount: '108.00' }],
       })
       .expect(400);
+  });
+
+  // ---------------------------------------------------------------------------
+  // G-1 — WHICH WAY THE FEE MOVES, END TO END.
+  //
+  // Reading the clinic's real claim workbook found that Kuwick had this
+  // backwards: every one of its 29 sheets computes `claim to receive =
+  // claimed − fee`, and of 2,640 paid fee-bearing claims, 2,615 were banked at
+  // exactly claimed − fee and none at claimed + fee. Rather than flip a money
+  // formula on one side of a contradiction with an earlier owner decision, the
+  // direction became per-panel configuration with a third state — unset — that
+  // applies the fee in neither direction. These two tests prove all of it
+  // through the HTTP surface, not just through the pure function.
+  // ---------------------------------------------------------------------------
+
+  it('a withheld fee makes the receivable claimed MINUS fee, and a full payment settles it to zero', async () => {
+    const withholdingPanel = await withTenantContext(prisma, tenantId, (tx) =>
+      tx.panelClinic.create({
+        data: {
+          tenantId,
+          name: 'Withholding Panel',
+          code: 'WHP',
+          paymentTermDays: 30,
+          claimFeeType: 'PERCENT',
+          claimFeeValue: 8,
+          feeDirection: 'WITHHELD',
+        },
+      }),
+    );
+    const claim = await makeClaim(100, 8, { panelId: withholdingPanel.id, feeDirection: 'WITHHELD' });
+
+    const queue = await request(app.getHttpServer())
+      .get(`/panel-workspace/submission-queue?panelClinicId=${withholdingPanel.id}`)
+      .set('Authorization', bearer)
+      .expect(200);
+    expect(queue.body[0].expectedReceivable).toBe(92);
+
+    await request(app.getHttpServer())
+      .patch(`/panel-workspace/batches/${claim.batchId}/submitted`)
+      .set('Authorization', bearer)
+      .send({ submissionMethod: 'PORTAL', submissionReference: 'WHP-1' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .patch(`/panel-workspace/claims/${claim.lineId}/adjudicate`)
+      .set('Authorization', bearer)
+      .send({ approvedAmount: '92.00' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .post('/panel-workspace/remittances')
+      .set('Authorization', bearer)
+      .send({
+        panelClinicId: withholdingPanel.id,
+        receivedAt: '2026-08-20',
+        grossAmount: '92.00',
+        allocations: [{ claimLineId: claim.lineId, amount: '92.00' }],
+      })
+      .expect(201);
+
+    // The failure this fixes: computing claimed + fee leaves this fully-settled
+    // claim reading as RM16 short — twice the fee — forever.
+    const reconciliation = await request(app.getHttpServer())
+      .get(`/panel-workspace/reconciliation?panelClinicId=${withholdingPanel.id}`)
+      .set('Authorization', bearer)
+      .expect(200);
+    expect(reconciliation.body.totals.expectedReceivable).toBe(92);
+    expect(reconciliation.body.totals.received).toBe(92);
+    expect(reconciliation.body.totals.outstanding).toBe(0);
+    expect(reconciliation.body.totals.unresolvedFeeDirection).toBe(0);
+    expect(reconciliation.body.reconciles).toBe(true);
+  });
+
+  it('leaves the fee out entirely — and says so — when nobody has configured a direction', async () => {
+    const unsetPanel = await withTenantContext(prisma, tenantId, (tx) =>
+      tx.panelClinic.create({
+        data: {
+          tenantId,
+          name: 'Unconfigured Panel',
+          code: 'UNC',
+          paymentTermDays: 30,
+          claimFeeType: 'AMOUNT',
+          claimFeeValue: 8,
+          // feeDirection deliberately absent.
+        },
+      }),
+    );
+    await makeClaim(100, 8, { panelId: unsetPanel.id, feeDirection: null });
+
+    const queue = await request(app.getHttpServer())
+      .get(`/panel-workspace/submission-queue?panelClinicId=${unsetPanel.id}`)
+      .set('Authorization', bearer)
+      .expect(200);
+    // Neither 108 nor 92 — the fee is not guessed in either direction.
+    expect(queue.body[0].expectedReceivable).toBe(100);
+
+    const reconciliation = await request(app.getHttpServer())
+      .get(`/panel-workspace/reconciliation?panelClinicId=${unsetPanel.id}`)
+      .set('Authorization', bearer)
+      .expect(200);
+    expect(reconciliation.body.totals.expectedReceivable).toBe(100);
+    expect(reconciliation.body.totals.fees).toBe(8);
+    // The count that makes the omission visible instead of silent.
+    expect(reconciliation.body.totals.unresolvedFeeDirection).toBe(1);
+
+    // And the configuration screen names the panel to go and fix.
+    const panels = await request(app.getHttpServer())
+      .get('/panel-workspace/panels')
+      .set('Authorization', bearer)
+      .expect(200);
+    const row = panels.body.find((p: { id: string }) => p.id === unsetPanel.id);
+    expect(row.feeDirectionUnresolved).toBe(true);
+  });
+
+  it('re-stamps claims nobody has sent yet when the fee direction is set, and leaves submitted ones alone', async () => {
+    const latePanel = await withTenantContext(prisma, tenantId, (tx) =>
+      tx.panelClinic.create({
+        data: { tenantId, name: 'Late Config Panel', code: 'LCP', claimFeeType: 'AMOUNT', claimFeeValue: 8 },
+      }),
+    );
+    const unsent = await makeClaim(100, 8, { panelId: latePanel.id, feeDirection: null });
+    const sent = await makeClaim(100, 8, { panelId: latePanel.id, feeDirection: null });
+    await request(app.getHttpServer())
+      .patch(`/panel-workspace/batches/${sent.batchId}/submitted`)
+      .set('Authorization', bearer)
+      .send({ submissionMethod: 'PORTAL', submissionReference: 'LCP-1' })
+      .expect(200);
+
+    const updated = await request(app.getHttpServer())
+      .patch(`/panel-workspace/panels/${latePanel.id}`)
+      .set('Authorization', bearer)
+      .send({ feeDirection: 'WITHHELD' })
+      .expect(200);
+    expect(updated.body.unsentClaimsRestamped).toBe(1);
+
+    const lines = await withTenantContext(prisma, tenantId, (tx) =>
+      tx.claimBatchLine.findMany({
+        where: { id: { in: [unsent.lineId, sent.lineId] } },
+        select: { id: true, feeDirection: true },
+      }),
+    );
+    const byId = new Map(lines.map((line) => [line.id, line.feeDirection]));
+    // The unsent claim carries the corrected fact…
+    expect(byId.get(unsent.lineId)).toBe('WITHHELD');
+    // …and the one already with the panel keeps the arithmetic it went out under.
+    expect(byId.get(sent.lineId)).toBeNull();
   });
 });

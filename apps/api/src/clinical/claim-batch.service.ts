@@ -5,6 +5,8 @@ import { currentTenantId } from '../core/tenant-context';
 import { CreateClaimBatchDto } from './dto/create-claim-batch.dto';
 import { SubmitClaimBatchDto } from './dto/submit-claim-batch.dto';
 import { RecordClaimLinePaymentDto } from './dto/record-claim-line-payment.dto';
+import { computeClaimBalance, rollUpClaims } from '../finance/financial-invariants';
+import { fromCents } from '../finance/money';
 
 const BATCH_INCLUDE = { lines: { include: { invoice: true } } } as const;
 
@@ -108,8 +110,12 @@ export class ClaimBatchService {
 
     // D-041 (owner refinement) — the fee comes from the panel's own
     // configuration: PERCENT of the claimed amount or a flat AMOUNT in RM
-    // per claim. Panels with no fee configured (e.g. AIA) get 0.
-    // receivable = claimed + fee.
+    // per claim. Panels with no fee configured get 0.
+    //
+    // G-1: the DIRECTION of that fee is snapshotted alongside it, because
+    // whether the panel adds it to the bill or withholds it from the payment
+    // is a per-panel contract term, and a claim already sent must not change
+    // its arithmetic when somebody later corrects the configuration.
     for (const invoice of invoices) {
       await this.prisma.claimBatchLine.create({
         data: {
@@ -118,6 +124,7 @@ export class ClaimBatchService {
           invoiceId: invoice.id,
           claimedAmount: invoice.panelCoveredAmount,
           feeAmount: panelClaimFee(panel.claimFeeType, panel.claimFeeValue, Number(invoice.panelCoveredAmount)),
+          feeDirection: panel.feeDirection,
         },
       });
     }
@@ -226,9 +233,20 @@ export class ClaimBatchService {
       orderBy: { submittedAt: 'asc' },
     });
     return batches.map((batch) => {
-      const claimedTotal = round2(batch.lines.reduce((sum, line) => sum + Number(line.claimedAmount), 0));
-      const feeTotal = round2(batch.lines.reduce((sum, line) => sum + Number(line.feeAmount), 0));
-      const paidTotal = round2(batch.lines.reduce((sum, line) => sum + Number(line.paidAmount ?? 0), 0));
+      // Through the shared invariant rather than a second formula: the fee is
+      // added or withheld per the panel's configured direction, and left out
+      // entirely when nobody has configured one (G-1).
+      const roll = rollUpClaims(
+        batch.lines.map((line) => ({
+          claimedAmount: line.claimedAmount,
+          feeAmount: line.feeAmount,
+          feeDirection: line.feeDirection,
+          receivedAmount: line.paidAmount,
+        })),
+      );
+      const claimedTotal = round2(fromCents(roll.claimedCents));
+      const feeTotal = round2(fromCents(roll.feeCents));
+      const paidTotal = round2(fromCents(roll.receivedCents));
       const daysOutstanding = batch.submittedAt
         ? Math.floor((Date.now() - batch.submittedAt.getTime()) / (1000 * 60 * 60 * 24))
         : 0;
@@ -238,7 +256,9 @@ export class ClaimBatchService {
         claimedTotal,
         feeTotal,
         paidTotal,
-        outstandingAmount: round2(claimedTotal + feeTotal - paidTotal),
+        outstandingAmount: round2(fromCents(roll.expectedReceivableCents - roll.receivedCents)),
+        /** Claims in this batch whose fee direction nobody has configured. */
+        unresolvedFeeDirectionCount: roll.unresolvedFeeDirectionCount,
         daysOutstanding,
         paymentTermDays,
         overdue: paymentTermDays !== null && daysOutstanding > paymentTermDays,
@@ -291,6 +311,12 @@ export class ClaimBatchService {
       const claimed = Number(line.claimedAmount);
       const fee = Number(line.feeAmount);
       const paid = Number(line.paidAmount ?? 0);
+      const balance = computeClaimBalance({
+        claimedAmount: line.claimedAmount,
+        feeAmount: line.feeAmount,
+        feeDirection: line.feeDirection,
+        receivedAmount: line.paidAmount,
+      });
       const submittedAt = line.claimBatch.submittedAt;
       const daysSinceSubmission = submittedAt
         ? Math.floor((Date.now() - submittedAt.getTime()) / (1000 * 60 * 60 * 24))
@@ -316,9 +342,11 @@ export class ClaimBatchService {
         invoiceNumber: line.invoice.invoiceNumber,
         claimedAmount: claimed,
         feeAmount: fee,
-        claimToReceive: round2(claimed + fee),
+        claimToReceive: round2(fromCents(balance.expectedReceivableCents)),
+        feeDirection: line.feeDirection,
+        feeDirectionResolved: balance.feeDirectionResolved,
         paidAmount: paid,
-        receivable: round2(claimed + fee - paid),
+        receivable: round2(fromCents(balance.expectedReceivableCents - balance.receivedCents)),
         remarks: line.remarks,
         deductionReason: line.deductionReason,
         daysSinceSubmission,
@@ -342,6 +370,11 @@ export class ClaimBatchService {
         const serviceDate = invoice.paidAt ?? invoice.createdAt;
         const claimed = Number(invoice.panelCoveredAmount);
         const fee = panelClaimFee(panel.claimFeeType, panel.claimFeeValue, claimed);
+        const balance = computeClaimBalance({
+          claimedAmount: claimed,
+          feeAmount: fee,
+          feeDirection: panel.feeDirection,
+        });
         return {
           id: `unclaimed-${invoice.id}`,
           claimBatchId: null as string | null,
@@ -355,9 +388,11 @@ export class ClaimBatchService {
           invoiceNumber: invoice.invoiceNumber,
           claimedAmount: claimed,
           feeAmount: fee,
-          claimToReceive: round2(claimed + fee),
+          claimToReceive: round2(fromCents(balance.expectedReceivableCents)),
+          feeDirection: panel.feeDirection,
+          feeDirectionResolved: balance.feeDirectionResolved,
           paidAmount: 0,
-          receivable: round2(claimed + fee),
+          receivable: round2(fromCents(balance.expectedReceivableCents)),
           remarks: null as string | null,
           deductionReason: null as string | null,
           daysSinceSubmission: null as number | null,

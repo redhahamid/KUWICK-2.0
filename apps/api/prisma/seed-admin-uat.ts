@@ -246,9 +246,17 @@ async function main() {
           payerName: 'MediCover Administrators Sdn Bhd',
           portalUrl: 'https://portal.medicover.invalid/claims',
           submissionMethod: 'PORTAL' as const,
+          // A RANGE TERM with a WITHHELD fee — the commonest shape in the
+          // clinic's real book: chase at 30, genuinely late at 45, and the
+          // panel keeps its 8% out of what it pays.
           paymentTermDays: 30,
+          paymentTermMaxDays: 45,
+          paymentTermUnit: 'CALENDAR_DAYS' as const,
+          paymentTermAnchor: 'SUBMISSION_DATE' as const,
+          resubmissionWindowDays: 60,
           claimFeeType: 'PERCENT' as const,
           claimFeeValue: 8,
+          feeDirection: 'WITHHELD' as const,
           limitAmount: 150,
           requiresItemisation: true,
           resubmitAsNewClaim: true,
@@ -262,7 +270,17 @@ async function main() {
           payerName: 'Sejahtera Insurance Berhad',
           portalUrl: 'https://portal.sejahtera.invalid',
           submissionMethod: 'EMAIL' as const,
-          paymentTermDays: 45,
+          // WORKING DAYS counted from the INVOICE date, and — deliberately —
+          // NO FEE DIRECTION. This panel exists in the UAT set to show what
+          // Kuwick does when a contract term is unknown: the receivable is
+          // computed WITHOUT the fee, the claim is marked unresolved, and both
+          // the configuration screen and the reconciliation say so. It is the
+          // one thing a demo usually hides and the one thing an owner needs to
+          // see before trusting a receivable figure.
+          paymentTermDays: 30,
+          paymentTermUnit: 'WORKING_DAYS' as const,
+          paymentTermAnchor: 'INVOICE_DATE' as const,
+          resubmissionWindowDays: 60,
           claimFeeType: 'AMOUNT' as const,
           claimFeeValue: 5,
           limitAmount: 200,
@@ -277,7 +295,11 @@ async function main() {
           code: 'KILANG',
           payerName: 'Kilang Sejati Sdn Bhd',
           submissionMethod: 'COURIER' as const,
+          // A plain calendar term and no fee at all, so there is no direction
+          // to get wrong. The re-claim window is left unset, which is its own
+          // honest state: no deadline is counted down for this panel.
           paymentTermDays: 60,
+          paymentTermUnit: 'CALENDAR_DAYS' as const,
           limitAmount: 100,
           resubmitAsNewClaim: false,
           documentRequirements: ['Company authorisation slip'],
@@ -334,18 +356,24 @@ async function verify() {
       problems.push(`stock level ${row.item_id} @ ${row.clinic_id}: on hand ${row.on_hand}, ledger ${row.ledger}`);
     }
 
-    // 2. CLAIMS: a claim's receivable is claimed + the panel's add-on fee.
-    //    Once adjudicated, approved + rejected + written off must land on it —
-    //    a panel cannot approve more than was asked for, or reject more.
+    // 2. CLAIMS: a claim's receivable is claimed ± the panel's fee, in the
+    //    direction that panel's contract says (G-1). Once adjudicated, approved
+    //    + rejected + written off must land on it — a panel cannot approve more
+    //    than was asked for, or reject more.
+    //
+    //    A claim whose fee direction is unset carries its fee in NEITHER
+    //    direction, which is exactly what `computeClaimBalance` does, so the
+    //    seed and the engine agree by construction rather than by coincidence.
     const claims = await tx.claimBatchLine.findMany({
       where: { tenantId: TENANT_ID },
       select: {
-        panelClaimNo: true, claimedAmount: true, feeAmount: true, approvedAmount: true,
+        panelClaimNo: true, claimedAmount: true, feeAmount: true, feeDirection: true, approvedAmount: true,
         rejectedAmount: true, writtenOffAmount: true, paidAmount: true, adjudicatedAt: true,
       },
     });
     for (const line of claims) {
-      const receivable = Number(line.claimedAmount) + Number(line.feeAmount);
+      const feeSign = line.feeDirection === 'ADDED' ? 1 : line.feeDirection === 'WITHHELD' ? -1 : 0;
+      const receivable = Number(line.claimedAmount) + feeSign * Number(line.feeAmount);
       const label = line.panelClaimNo ?? '(unsubmitted)';
       if (!line.adjudicatedAt) continue;
       const settled = Number(line.approvedAmount ?? 0) + Number(line.rejectedAmount ?? 0) + Number(line.writtenOffAmount ?? 0);
@@ -611,7 +639,15 @@ declare function buildIdsType(): Promise<{
   staff: Record<string, string>;
   services: { id: string; name: string; price: Prisma.Decimal; category: string | null }[];
   items: Record<string, { id: string; name: string; sellPrice: Prisma.Decimal; cost: Prisma.Decimal | null }>;
-  panels: { id: string; name: string; code: string | null }[];
+  // feeDirection travels with the panel because the seed writes adjudication
+  // figures directly, and those have to land on the receivable the engine will
+  // compute — which depends on which way this panel's fee moves.
+  panels: {
+    id: string;
+    name: string;
+    code: string | null;
+    feeDirection: 'ADDED' | 'WITHHELD' | null;
+  }[];
   suppliers: { id: string; name: string }[];
   sst: { id: string };
   exempt: { id: string };
@@ -1357,6 +1393,20 @@ async function seedPanelClaims(ids: Ids) {
       return { visit, invoice, panel };
     }
 
+    /**
+     * What the panel owes on a claim, in the direction THAT panel's contract
+     * says (G-1). The same arithmetic as `computeClaimBalance`, restated here
+     * because the seed writes adjudication figures directly and they have to
+     * land on the receivable the engine will compute from the same rows.
+     *
+     * A NULL direction contributes NO fee, which is what the engine does when
+     * nobody has said which way it moves.
+     */
+    function receivableOf(amount: number, fee: number, direction: 'ADDED' | 'WITHHELD' | null) {
+      const sign = direction === 'ADDED' ? 1 : direction === 'WITHHELD' ? -1 : 0;
+      return Math.round((amount + sign * fee) * 100) / 100;
+    }
+
     async function claim(panelIndex: number, invoiceId: string, amount: number, dayOffset: number) {
       const panel = panels[panelIndex];
       const fee =
@@ -1370,7 +1420,13 @@ async function seedPanelClaims(ids: Ids) {
       const line = await tx.claimBatchLine.create({
         data: {
           tenantId: tenant.id, claimBatchId: batch.id, invoiceId,
-          claimedAmount: amount, feeAmount: fee, claimStatus: 'BATCHED', createdAt: at(dayOffset, 8),
+          claimedAmount: amount, feeAmount: fee,
+          // Snapshotted from the panel, exactly as ClaimBatchService does.
+          // SEJAHTERA has no direction configured, so its claims carry NULL and
+          // their fee stays out of the receivable — the state the UAT set
+          // deliberately demonstrates.
+          feeDirection: panel.feeDirection,
+          claimStatus: 'BATCHED', createdAt: at(dayOffset, 8),
         },
       });
       return { batch, line, fee };
@@ -1401,7 +1457,7 @@ async function seedPanelClaims(ids: Ids) {
     const paidVisit = await panelVisit(0, 0, -50, 120, central.id, 'owner');
     const paidClaim = await claim(0, paidVisit.invoice.id, 120, -50);
     await submit(paidClaim.batch.id, paidClaim.line.id, -49, 'MC-2026-00101', 30);
-    const paidReceivable = 120 + paidClaim.fee;
+    const paidReceivable = receivableOf(120, paidClaim.fee, panels[0].feeDirection);
     await tx.claimBatchLine.update({
       where: { id: paidClaim.line.id },
       data: { claimStatus: 'PAID', status: 'PAID', approvedAmount: paidReceivable, rejectedAmount: 0, adjudicatedAt: at(-40, 4), paidAmount: paidReceivable, resolvedAt: at(-30, 4) },
@@ -1425,11 +1481,17 @@ async function seedPanelClaims(ids: Ids) {
     const partialVisit = await panelVisit(0, 1, -40, 220, central.id, 'resident');
     const partialClaim = await claim(0, partialVisit.invoice.id, 220, -40);
     await submit(partialClaim.batch.id, partialClaim.line.id, -39, 'MC-2026-00118', 30);
+    // Approved 180 of what was asked; the rest is the rejection. Derived from
+    // the receivable rather than typed, so the two always sum to it whichever
+    // way this panel's fee moves.
+    const partialReceivable = receivableOf(220, partialClaim.fee, panels[0].feeDirection);
     await tx.claimBatchLine.update({
       where: { id: partialClaim.line.id },
       data: {
         claimStatus: 'PARTIALLY_PAID', status: 'PAID',
-        approvedAmount: 180, rejectedAmount: 57.6, rejectionReason: 'Consultation cap exceeded for this member',
+        approvedAmount: 180,
+        rejectedAmount: Math.round((partialReceivable - 180) * 100) / 100,
+        rejectionReason: 'Consultation cap exceeded for this member',
         adjudicatedAt: at(-32, 4), paidAmount: 120,
       },
     });
@@ -1445,11 +1507,12 @@ async function seedPanelClaims(ids: Ids) {
     const rejectedVisit = await panelVisit(1, 2, -35, 160, central.id, 'owner');
     const rejectedClaim = await claim(1, rejectedVisit.invoice.id, 160, -35);
     await submit(rejectedClaim.batch.id, rejectedClaim.line.id, -34, 'SJ-2026-0442', 45);
+    const rejectedReceivable = receivableOf(160, rejectedClaim.fee, panels[1].feeDirection);
     await tx.claimBatchLine.update({
       where: { id: rejectedClaim.line.id },
       data: {
         claimStatus: 'RESUBMITTED', status: 'REJECTED',
-        approvedAmount: 0, rejectedAmount: 165, rejectionReason: 'Medication not on the member’s formulary',
+        approvedAmount: 0, rejectedAmount: rejectedReceivable, rejectionReason: 'Medication not on the member’s formulary',
         adjudicatedAt: at(-28, 4), resolvedAt: at(-26, 2), resolutionNote: 'Re-claimed under a new claim number',
       },
     });
@@ -1459,11 +1522,12 @@ async function seedPanelClaims(ids: Ids) {
     const replacement = await tx.claimBatchLine.create({
       data: {
         tenantId: tenant.id, claimBatchId: replacementBatch.id, invoiceId: rejectedVisit.invoice.id,
-        // The re-claim pursues the SAME base amount as the line it supersedes
-        // (160 + the panel's RM5 add-on = the 165 receivable that was rejected).
-        // Re-claiming 165 as the base would quietly inflate the receivable by
-        // one more fee every time a claim bounces.
-        claimedAmount: 160, feeAmount: 5, claimStatus: 'SUBMITTED',
+        // The re-claim pursues the SAME base amount as the line it supersedes —
+        // 160, with the panel's RM5 fee applied exactly once, in whichever
+        // direction that panel's contract says. Re-claiming the RECEIVABLE as
+        // the new base would quietly move the fee again every time a claim
+        // bounces, which over a year of rejections is a real drift.
+        claimedAmount: 160, feeAmount: 5, feeDirection: panels[1].feeDirection, claimStatus: 'SUBMITTED',
         supersedesLineId: rejectedClaim.line.id, responsibleStaffId: staff.panel,
         panelClaimNo: 'SJ-2026-0517', submittedAt: at(-25, 9), dueDate: day(20),
         remarks: 'Formulary exception approved by the panel by telephone',
@@ -1473,8 +1537,8 @@ async function seedPanelClaims(ids: Ids) {
     await tx.claimEvent.createMany({
       data: [
         { tenantId: tenant.id, claimBatchLineId: rejectedClaim.line.id, eventType: 'ADJUDICATED', fromStatus: 'SUBMITTED', toStatus: 'REJECTED', amount: 0, reason: 'Medication not on the member’s formulary', actorStaffId: staff.panel, createdAt: at(-28, 4) },
-        { tenantId: tenant.id, claimBatchLineId: rejectedClaim.line.id, eventType: 'RESUBMITTED', fromStatus: 'REJECTED', toStatus: 'RESUBMITTED', amount: 165, reference: replacementBatch.batchNumber, actorStaffId: staff.panel, createdAt: at(-26, 2) },
-        { tenantId: tenant.id, claimBatchLineId: replacement.id, eventType: 'CREATED_AS_REPLACEMENT', toStatus: 'READY', amount: 165, reason: 'Formulary exception approved by the panel by telephone', actorStaffId: staff.panel, createdAt: at(-26, 2) },
+        { tenantId: tenant.id, claimBatchLineId: rejectedClaim.line.id, eventType: 'RESUBMITTED', fromStatus: 'REJECTED', toStatus: 'RESUBMITTED', amount: rejectedReceivable, reference: replacementBatch.batchNumber, actorStaffId: staff.panel, createdAt: at(-26, 2) },
+        { tenantId: tenant.id, claimBatchLineId: replacement.id, eventType: 'CREATED_AS_REPLACEMENT', toStatus: 'READY', amount: rejectedReceivable, reason: 'Formulary exception approved by the panel by telephone', actorStaffId: staff.panel, createdAt: at(-26, 2) },
       ],
     });
 
@@ -1497,7 +1561,8 @@ async function seedPanelClaims(ids: Ids) {
       where: { id: openRejectClaim.line.id },
       data: {
         claimStatus: 'REJECTED', status: 'REJECTED',
-        approvedAmount: 0, rejectedAmount: 129.6,
+        approvedAmount: 0,
+        rejectedAmount: receivableOf(120, openRejectClaim.fee, panels[0].feeDirection),
         rejectionReason: 'Referral letter not attached to the submission',
         adjudicatedAt: at(-11, 4), responsibleStaffId: staff.panel,
       },

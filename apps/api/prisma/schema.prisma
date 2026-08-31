@@ -2440,27 +2440,60 @@ model GoodsReceivedNoteLine {
 // Claims" menu), since that's an external workflow on the panel's own
 // website today.
 model PanelClinic {
-  id                    String                 @id @default(uuid())
-  tenantId              String                 @map("tenant_id")
-  name                  String
-  code                  String?
-  limitAmount           Decimal?               @map("limit_amount") @db.Decimal(10, 2)
+  id              String             @id @default(uuid())
+  tenantId        String             @map("tenant_id")
+  name            String
+  code            String?
+  limitAmount     Decimal?           @map("limit_amount") @db.Decimal(10, 2)
   // Panel workbook upgrade (D-041) — the panel's own payment term; a
   // claim is overdue when days since submission exceed this, so aging is
   // judged per panel rather than against fixed buckets.
-  paymentTermDays       Int?                   @map("payment_term_days")
+  paymentTermDays Int?               @map("payment_term_days")
   // D-041 (owner refinement) — per-panel claim fee: some panels carry an
   // admin fee per claim, as a % of the claimed amount or a flat RM value;
   // most (e.g. AIA) have none. Applied automatically at batch creation
   // from this configuration — never a manual per-batch entry.
-  claimFeeType          PanelClaimFeeType?     @map("claim_fee_type")
-  claimFeeValue         Decimal?               @map("claim_fee_value") @db.Decimal(10, 2)
+  claimFeeType    PanelClaimFeeType? @map("claim_fee_type")
+  claimFeeValue   Decimal?           @map("claim_fee_value") @db.Decimal(10, 2)
+  /// WHICH WAY THE FEE MOVES — see `PanelFeeDirection`. NULL is not a default,
+  /// it is an unanswered question, and every receivable computed from a
+  /// fee-bearing claim on this panel is marked unresolved until it is set.
+  feeDirection    PanelFeeDirection? @map("fee_direction")
+
+  // ---------------------------------------------------------------------
+  // PAYMENT TERMS, in the shapes real panels actually use.
+  //
+  // `paymentTermDays` (above) stays as the NOMINAL term — the number a person
+  // chases against, and the one every existing screen reads. The fields below
+  // describe it properly: 14 of the 29 panels in the clinic's workbook state a
+  // term this single integer cannot hold.
+  // ---------------------------------------------------------------------
+  /// The far edge of a range term ("60 - 90 DAYS" → nominal 60, max 90). NULL
+  /// means the term is a single number, not a range.
+  paymentTermMaxDays       Int?             @map("payment_term_max_days")
+  /// Calendar or working days. NULL is read as calendar days, which is what
+  /// every existing row means.
+  paymentTermUnit          PanelTermUnit?   @map("payment_term_unit")
+  /// What the clock starts from. NULL is read as submission, which is what the
+  /// existing due-date calculation already does.
+  paymentTermAnchor        PanelTermAnchor? @map("payment_term_anchor")
+  /// TRUE for a TPA whose term is set by the corporate client behind the claim
+  /// rather than by the panel ("VARY BASED ON COMPANY"). The term above is then
+  /// indicative only, and screens must say so rather than call a claim overdue.
+  paymentTermVariesByPayer Boolean          @default(false) @map("payment_term_varies_by_payer")
+
+  /// HOW LONG THERE IS TO RE-CLAIM A REJECTION, in days from the original
+  /// service date. The clinic's excess-claim register carries this as rule 5 of
+  /// a procedure typed into spreadsheet cells — "max 2 months from the previous
+  /// service date" — a hard deadline with money attached that nothing counts
+  /// down. NULL means this panel's window is not known.
+  resubmissionWindowDays Int?                   @map("resubmission_window_days")
   // G4.5d3c-3b1 (D-093) — panel-wide FIXED MARKUPS in RM, added to the clinic
   // cash price (owner rule). NOT absolute prices, and never stacked with a
   // specific PanelPriceOverride: a specific price REPLACES the markup-derived
   // one. NULL or 0 means no markup — the cash price stands.
-  inventoryMarkupAmount Decimal?               @map("inventory_markup_amount") @db.Decimal(10, 2)
-  serviceMarkupAmount   Decimal?               @map("service_markup_amount") @db.Decimal(10, 2)
+  inventoryMarkupAmount  Decimal?               @map("inventory_markup_amount") @db.Decimal(10, 2)
+  serviceMarkupAmount    Decimal?               @map("service_markup_amount") @db.Decimal(10, 2)
   // WAVE 3 — the operational configuration a claim workspace needs. Every
   // field here answers a question staff currently answer from memory or from a
   // note stuck to a monitor.
@@ -2468,28 +2501,28 @@ model PanelClinic {
   // `payerName` matters because the panel a patient names and the company that
   // actually pays are frequently different (a TPA administering an insurer's
   // scheme), and the cheque arrives from the second one.
-  payerName             String?                @map("payer_name")
-  portalUrl             String?                @map("portal_url")
-  submissionMethod      PanelSubmissionMethod? @map("submission_method")
+  payerName              String?                @map("payer_name")
+  portalUrl              String?                @map("portal_url")
+  submissionMethod       PanelSubmissionMethod? @map("submission_method")
   /// What staff must have in hand before this panel's claim can go out —
   /// free-text lines, because every panel's list is different and encoding
   /// them as columns would mean a migration per panel.
-  documentRequirements  String[]               @default([]) @map("document_requirements")
+  documentRequirements   String[]               @default([]) @map("document_requirements")
   /// Whether this panel wants an itemised bill rather than a total.
-  requiresItemisation   Boolean                @default(false) @map("requires_itemisation")
+  requiresItemisation    Boolean                @default(false) @map("requires_itemisation")
   /// Whether a rejected claim is re-claimed under a NEW number (the owner's
   /// "buat claim baru untuk excess claim") or corrected in place.
-  resubmitAsNewClaim    Boolean                @default(true) @map("resubmit_as_new_claim")
-  claimNumberFormat     String?                @map("claim_number_format")
-  contactName           String?                @map("contact_name")
-  contactPhone          String?                @map("contact_phone")
-  contactEmail          String?                @map("contact_email")
-  accountReference      String?                @map("account_reference")
-  notes                 String?
+  resubmitAsNewClaim     Boolean                @default(true) @map("resubmit_as_new_claim")
+  claimNumberFormat      String?                @map("claim_number_format")
+  contactName            String?                @map("contact_name")
+  contactPhone           String?                @map("contact_phone")
+  contactEmail           String?                @map("contact_email")
+  accountReference       String?                @map("account_reference")
+  notes                  String?
   /// Whether this panel's share is subject to service tax. NULL means nobody
   /// has decided, and the tax engine treats that as "do not tax" rather than
   /// guessing — see finance/invoice-tax.ts.
-  panelShareTaxable     Boolean?               @map("panel_share_taxable")
+  panelShareTaxable      Boolean?               @map("panel_share_taxable")
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")
@@ -4093,6 +4126,42 @@ enum PanelClaimFeeType {
   AMOUNT
 }
 
+/// WHICH WAY THE PANEL'S ADMIN FEE MOVES.
+///
+/// Read from the clinic's own claim workbook (`PANEL_LEGACY_WORKFLOW_AUDIT.md`
+/// §4.1, finding P-1): every sheet computes `CLAIM TO RECEIVE = CLAIMED − FEE`,
+/// and testing that against money actually banked, **2,615 of 2,640 fee-bearing
+/// claims arrived as exactly `claimed − fee`, and none as `claimed + fee`.**
+///
+/// The earlier decision D-041 recorded the opposite. Rather than flip a money
+/// formula on one side of a contradiction, the direction is now configuration:
+/// NULL means nobody has said, and `computeClaimBalance` then applies the fee
+/// in NEITHER direction and marks the balance unresolved, instead of guessing.
+enum PanelFeeDirection {
+  /// The clinic bills claim + fee and expects the whole of it back.
+  ADDED
+  /// The panel keeps its fee out of the payment: bill the claim, bank claim − fee.
+  WITHHELD
+}
+
+/// Whether a payment term is counted in calendar or working days. Four panels
+/// in the clinic's workbook state their term in working days
+/// (`30 WORKING DAYS`, `20 WORKING DAYS`, `45 WORKING DAYS`), which is roughly
+/// half as long again as the same number of calendar days.
+enum PanelTermUnit {
+  CALENDAR_DAYS
+  WORKING_DAYS
+}
+
+/// What the payment clock starts from. Most panels count from when the claim
+/// was sent; two in the workbook count from the INVOICE date, which for a
+/// monthly-invoiced panel can be four weeks after the service.
+enum PanelTermAnchor {
+  SERVICE_DATE
+  SUBMISSION_DATE
+  INVOICE_DATE
+}
+
 enum ClaimBatchStatus {
   BATCHED
   SUBMITTED
@@ -4160,15 +4229,25 @@ model ClaimBatch {
 // panel's add-on fee per claim ("claim RM100 → claimed RM108");
 // receivable = claimedAmount + feeAmount.
 model ClaimBatchLine {
-  id              String          @id @default(uuid())
-  tenantId        String          @map("tenant_id")
-  claimBatchId    String          @map("claim_batch_id")
-  invoiceId       String          @map("invoice_id")
-  claimedAmount   Decimal         @map("claimed_amount") @db.Decimal(10, 2)
-  feeAmount       Decimal         @default(0) @map("fee_amount") @db.Decimal(10, 2)
-  status          ClaimLineStatus @default(PENDING)
-  paidAmount      Decimal?        @map("paid_amount") @db.Decimal(10, 2)
-  deductionReason String?         @map("deduction_reason")
+  id              String             @id @default(uuid())
+  tenantId        String             @map("tenant_id")
+  claimBatchId    String             @map("claim_batch_id")
+  invoiceId       String             @map("invoice_id")
+  claimedAmount   Decimal            @map("claimed_amount") @db.Decimal(10, 2)
+  feeAmount       Decimal            @default(0) @map("fee_amount") @db.Decimal(10, 2)
+  status          ClaimLineStatus    @default(PENDING)
+  /// WHICH WAY THIS CLAIM'S FEE MOVES, snapshotted from the panel at batch
+  /// creation — the same convention as `claimedAmount` and `feeAmount`, so a
+  /// later configuration change never silently rewrites a claim that has
+  /// already been sent and argued about. NULL means the panel had no direction
+  /// configured when the claim was raised; `computeClaimBalance` then leaves
+  /// the fee out entirely and marks the balance unresolved instead of guessing.
+  /// A claim still sitting in BATCHED is re-stamped when the owner sets the
+  /// panel's direction, because a claim nobody has sent yet should carry the
+  /// corrected fact.
+  feeDirection    PanelFeeDirection? @map("fee_direction")
+  paidAmount      Decimal?           @map("paid_amount") @db.Decimal(10, 2)
+  deductionReason String?            @map("deduction_reason")
   remarks         String?
 
   // WAVE 3 — the lifecycle and the money, kept apart.

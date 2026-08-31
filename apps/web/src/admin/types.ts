@@ -388,6 +388,8 @@ export interface PanelReconciliation {
     received: number;
     writtenOff: number;
     outstanding: number;
+    /** Claims whose fee direction is unset — their fee is NOT in the figures above. */
+    unresolvedFeeDirection: number;
   };
   reconciles: boolean;
   aging: { current: number; d31_60: number; d61_90: number; d90_plus: number };
@@ -491,6 +493,14 @@ export interface PanelConfigRow {
   resubmitAsNewClaim: boolean;
   claimNumberFormat: string | null;
   paymentTermDays: number | null;
+  paymentTermMaxDays: number | null;
+  paymentTermUnit: 'CALENDAR_DAYS' | 'WORKING_DAYS' | null;
+  paymentTermAnchor: 'SERVICE_DATE' | 'SUBMISSION_DATE' | 'INVOICE_DATE' | null;
+  paymentTermVariesByPayer: boolean;
+  resubmissionWindowDays: number | null;
+  feeDirection: 'ADDED' | 'WITHHELD' | null;
+  /** This panel charges a fee and nobody has said which way it moves. */
+  feeDirectionUnresolved: boolean;
   claimFeeType: string | null;
   claimFeeValue: number | null;
   limitAmount: number | null;

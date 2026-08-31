@@ -191,10 +191,31 @@ export function computePatientBalance(input: PatientBalanceInput): PatientBalanc
 // precisely the situation the panel module exists to make visible.
 // ---------------------------------------------------------------------------
 
+/**
+ * WHICH WAY THE PANEL'S FEE MOVES.
+ *
+ * `'ADDED'`    — the clinic bills claim + fee and expects all of it back.
+ * `'WITHHELD'` — the panel keeps its fee out of the payment: bill the claim,
+ *                bank claim − fee.
+ * `null`       — nobody has said. The fee is then applied in NEITHER direction
+ *                and `feeDirectionResolved` comes back false, because a fee
+ *                whose sign is unknown is worse than no fee at all.
+ *
+ * Reading the clinic's own claim workbook settled that this had to become
+ * configuration rather than a constant: every one of its 29 sheets computes
+ * `claim to receive = claimed − fee`, and of 2,640 fee-bearing claims that were
+ * actually paid, 2,615 arrived as exactly `claimed − fee` and none as
+ * `claimed + fee`. The earlier decision (D-041) recorded the opposite. See
+ * `docs/PANEL_LEGACY_WORKFLOW_AUDIT.md` P-1 / G-1.
+ */
+export type ClaimFeeDirection = 'ADDED' | 'WITHHELD';
+
 export interface ClaimFacts {
   claimedAmount: MoneyLike;
-  /** The panel's per-claim admin fee, which is ADDED to what we bill them. */
+  /** The panel's per-claim admin fee. See `feeDirection` for which way it moves. */
   feeAmount?: MoneyLike;
+  /** Per-panel configuration. NULL/undefined means unanswered — never a default. */
+  feeDirection?: ClaimFeeDirection | null;
   /** What the panel said it would pay. NULL until they have said anything. */
   approvedAmount?: MoneyLike | null;
   /** What they refused. */
@@ -208,8 +229,21 @@ export interface ClaimFacts {
 export interface ClaimBalance {
   claimedCents: number;
   feeCents: number;
-  /** claimed + fee — what the clinic asked the panel for. */
+  /**
+   * What the clinic can expect back.
+   *
+   * `ADDED`    → claimed + fee
+   * `WITHHELD` → claimed − fee
+   * unknown    → claimed, with `feeDirectionResolved` false
+   */
   expectedReceivableCents: number;
+  /**
+   * FALSE when this claim carries a fee whose direction nobody has configured.
+   * The expected receivable above is then the claimed amount with the fee left
+   * out entirely, and every screen showing it must say so rather than present
+   * it as settled arithmetic.
+   */
+  feeDirectionResolved: boolean;
   approvedCents: number;
   rejectedCents: number;
   receivedCents: number;
@@ -231,7 +265,15 @@ export interface ClaimBalance {
 export function computeClaimBalance(claim: ClaimFacts): ClaimBalance {
   const claimedCents = toCents(claim.claimedAmount);
   const feeCents = toCents(claim.feeAmount ?? 0);
-  const expectedReceivableCents = claimedCents + feeCents;
+  const direction = claim.feeDirection ?? null;
+  // A zero fee has no direction to get wrong, so it is resolved trivially.
+  const feeDirectionResolved = feeCents === 0 || direction !== null;
+  const expectedReceivableCents =
+    direction === 'ADDED'
+      ? claimedCents + feeCents
+      : direction === 'WITHHELD'
+        ? claimedCents - feeCents
+        : claimedCents;
   const adjudicated = claim.approvedAmount !== null && claim.approvedAmount !== undefined;
   const approvedCents = toCents(claim.approvedAmount ?? 0);
   const rejectedCents = toCents(claim.rejectedAmount ?? 0);
@@ -244,6 +286,7 @@ export function computeClaimBalance(claim: ClaimFacts): ClaimBalance {
     claimedCents,
     feeCents,
     expectedReceivableCents,
+    feeDirectionResolved,
     approvedCents,
     rejectedCents,
     receivedCents,
@@ -258,6 +301,12 @@ export function rollUpClaims(claims: ClaimFacts[]) {
   const balances = claims.map(computeClaimBalance);
   return {
     count: balances.length,
+    /**
+     * How many of those claims carry a fee whose direction is not configured.
+     * Non-zero means this panel's expected receivable is understated by the
+     * fees it excluded, and the screen must say which panel to go and set.
+     */
+    unresolvedFeeDirectionCount: balances.filter((balance) => !balance.feeDirectionResolved).length,
     claimedCents: balances.reduce((total, balance) => total + balance.claimedCents, 0),
     feeCents: balances.reduce((total, balance) => total + balance.feeCents, 0),
     expectedReceivableCents: balances.reduce((total, balance) => total + balance.expectedReceivableCents, 0),

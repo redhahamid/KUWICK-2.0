@@ -19,6 +19,7 @@ import { SubmitBatchDto } from './dto/submit-batch.dto';
 import { WriteOffClaimDto } from './dto/write-off-claim.dto';
 import { RecordRemittanceDto } from './dto/record-remittance.dto';
 import { ResubmitClaimDto } from './dto/resubmit-claim.dto';
+import { resolveTermWindow } from './payment-terms';
 
 /**
  * THE PANEL CLAIM WORKSPACE.
@@ -161,6 +162,7 @@ export class ClaimWorkspaceService {
       const balance = computeClaimBalance({
         claimedAmount: line.claimedAmount,
         feeAmount: line.feeAmount,
+        feeDirection: line.feeDirection,
         approvedAmount: line.approvedAmount,
         rejectedAmount: line.rejectedAmount,
         receivedAmount: line.paidAmount,
@@ -208,8 +210,18 @@ export class ClaimWorkspaceService {
       const batch = await tx.claimBatch.findUnique({
         where: { id: batchId },
         include: {
-          lines: { select: { id: true, claimStatus: true } },
-          panelClinic: { select: { paymentTermDays: true } },
+          lines: {
+            select: { id: true, claimStatus: true, invoice: { select: { paidAt: true, createdAt: true } } },
+          },
+          panelClinic: {
+            select: {
+              paymentTermDays: true,
+              paymentTermMaxDays: true,
+              paymentTermUnit: true,
+              paymentTermAnchor: true,
+              paymentTermVariesByPayer: true,
+            },
+          },
         },
       });
       if (!batch) throw new NotFoundException('Claim batch not found');
@@ -218,9 +230,21 @@ export class ClaimWorkspaceService {
       }
 
       const submittedAt = dto.submittedAt ? new Date(dto.submittedAt) : new Date();
-      const dueDate = batch.panelClinic.paymentTermDays
-        ? new Date(submittedAt.getTime() + batch.panelClinic.paymentTermDays * 86400000)
-        : null;
+      // THE DUE DATE COMES FROM THE PANEL'S OWN TERM SHAPE, not from a bare
+      // number of days added to today. A range term stores its FAR edge here,
+      // because that is the date after which the panel is genuinely late; the
+      // near edge is a chasing prompt, not a breach. A working-day term skips
+      // weekends. A term that varies by the employer behind the claim resolves
+      // to no date at all, so the claim is never called overdue on a rule
+      // nobody has configured. See panel/payment-terms.ts.
+      const panel = batch.panelClinic;
+      const term = {
+        nominalDays: panel.paymentTermDays,
+        maxDays: panel.paymentTermMaxDays,
+        unit: panel.paymentTermUnit,
+        anchor: panel.paymentTermAnchor,
+        variesByPayer: panel.paymentTermVariesByPayer,
+      };
 
       await tx.claimBatch.update({
         where: { id: batchId },
@@ -232,7 +256,17 @@ export class ClaimWorkspaceService {
         },
       });
 
+      let dueDate: Date | null = null;
       for (const line of batch.lines) {
+        // Resolved per line, because a SERVICE_DATE or INVOICE_DATE anchor
+        // makes the due date a property of the claim, not of the batch.
+        const serviceDate = line.invoice.paidAt ?? line.invoice.createdAt;
+        const window = resolveTermWindow(term, {
+          submittedAt,
+          serviceDate,
+          invoiceDate: line.invoice.createdAt,
+        });
+        dueDate = window.dueBy;
         await tx.claimBatchLine.update({
           where: { id: line.id },
           data: {
@@ -500,6 +534,7 @@ export class ClaimWorkspaceService {
           claimStatus: true,
           claimedAmount: true,
           feeAmount: true,
+          feeDirection: true,
           approvedAmount: true,
           paidAmount: true,
           writtenOffAmount: true,
@@ -513,6 +548,7 @@ export class ClaimWorkspaceService {
       const balance = computeClaimBalance({
         claimedAmount: line.claimedAmount,
         feeAmount: line.feeAmount,
+        feeDirection: line.feeDirection,
         approvedAmount: line.approvedAmount,
         receivedAmount: line.paidAmount,
       });
@@ -648,6 +684,7 @@ export class ClaimWorkspaceService {
         const balance = computeClaimBalance({
           claimedAmount: line.claimedAmount,
           feeAmount: line.feeAmount,
+          feeDirection: line.feeDirection,
           approvedAmount: line.approvedAmount,
           receivedAmount: fromCents(receivedCents),
           writtenOffAmount: line.writtenOffAmount,
@@ -702,7 +739,7 @@ export class ClaimWorkspaceService {
    * The reconciliation the owner brief demands, and the arithmetic that makes
    * it a reconciliation rather than a list of numbers:
    *
-   *   expected receivable = claimed + fee
+   *   expected receivable = claimed ± fee, per the panel's fee direction
    *   received + outstanding + rejected + written off = expected
    *
    * Every figure comes from `rollUpClaims`, which is `computeClaimBalance`
@@ -734,6 +771,7 @@ export class ClaimWorkspaceService {
       lines.map((line) => ({
         claimedAmount: line.claimedAmount,
         feeAmount: line.feeAmount,
+        feeDirection: line.feeDirection,
         approvedAmount: line.approvedAmount,
         rejectedAmount: line.rejectedAmount,
         receivedAmount: line.paidAmount,
@@ -759,6 +797,7 @@ export class ClaimWorkspaceService {
       const balance = computeClaimBalance({
         claimedAmount: line.claimedAmount,
         feeAmount: line.feeAmount,
+        feeDirection: line.feeDirection,
         approvedAmount: line.approvedAmount,
         rejectedAmount: line.rejectedAmount,
         receivedAmount: line.paidAmount,
@@ -805,6 +844,13 @@ export class ClaimWorkspaceService {
         received: fromCents(roll.receivedCents),
         writtenOff: fromCents(roll.writtenOffCents),
         outstanding: fromCents(roll.outstandingCents),
+        /**
+         * Claims whose fee direction nobody has configured (G-1). Their fee is
+         * excluded from `expectedReceivable` above rather than guessed, so a
+         * non-zero count here means this figure is understated by that much
+         * and the screen must say so.
+         */
+        unresolvedFeeDirection: roll.unresolvedFeeDirectionCount,
       },
       // The check, computed and returned rather than assumed. If this is ever
       // false the dashboard says so instead of showing numbers that do not add
@@ -887,6 +933,7 @@ export class ClaimWorkspaceService {
         const balance = computeClaimBalance({
           claimedAmount: line.claimedAmount,
           feeAmount: line.feeAmount,
+          feeDirection: line.feeDirection,
           approvedAmount: line.approvedAmount,
           rejectedAmount: line.rejectedAmount,
           receivedAmount: line.paidAmount,
@@ -1002,6 +1049,7 @@ export class ClaimWorkspaceService {
       const balance = computeClaimBalance({
         claimedAmount: line.claimedAmount,
         feeAmount: line.feeAmount,
+        feeDirection: line.feeDirection,
         approvedAmount: line.approvedAmount,
         rejectedAmount: line.rejectedAmount,
         receivedAmount: line.paidAmount,

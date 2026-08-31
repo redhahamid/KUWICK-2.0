@@ -167,17 +167,82 @@ describe('financial invariants', () => {
   // INVARIANT 5 — panel receivable
   // -------------------------------------------------------------------------
   describe('claim balance', () => {
-    it('asks the panel for claimed + fee', () => {
-      const balance = computeClaimBalance({ claimedAmount: '100.00', feeAmount: '8.00' });
+    it('asks the panel for claimed + fee when the fee is ADDED', () => {
+      const balance = computeClaimBalance({
+        claimedAmount: '100.00',
+        feeAmount: '8.00',
+        feeDirection: 'ADDED',
+      });
       expect(balance.expectedReceivableCents).toBe(10800);
       expect(balance.outstandingCents).toBe(10800);
       expect(balance.adjudicated).toBe(false);
+      expect(balance.feeDirectionResolved).toBe(true);
+    });
+
+    // ---------------------------------------------------------------------
+    // G-1 — WHICH WAY THE FEE MOVES.
+    //
+    // Every sheet in the clinic's panel workbook computes
+    // `CLAIM TO RECEIVE = CLAIMED − FEE`. Tested against money actually banked:
+    // of 2,640 paid claims carrying a non-zero fee, 2,615 arrived as exactly
+    // claimed − fee, two as claimed, and NONE as claimed + fee. The three cases
+    // below are the three states that fact left the model in.
+    // ---------------------------------------------------------------------
+    it('expects claimed MINUS fee when the panel withholds it', () => {
+      // The shape that 99.1% of the clinic's paid fee-bearing claims took:
+      // bill 100, the panel keeps its 8, bank 92.
+      const balance = computeClaimBalance({
+        claimedAmount: '100.00',
+        feeAmount: '8.00',
+        feeDirection: 'WITHHELD',
+      });
+      expect(balance.expectedReceivableCents).toBe(9200);
+      expect(balance.outstandingCents).toBe(9200);
+      expect(balance.feeDirectionResolved).toBe(true);
+    });
+
+    it('settles to zero — not to twice the fee — when a withheld-fee claim is paid', () => {
+      // The failure this fixes: under `claimed + fee` this claim reads as RM16
+      // short forever, on a panel that has paid it in full.
+      const balance = computeClaimBalance({
+        claimedAmount: '100.00',
+        feeAmount: '8.00',
+        feeDirection: 'WITHHELD',
+        approvedAmount: '92.00',
+        receivedAmount: '92.00',
+      });
+      expect(balance.outstandingCents).toBe(0);
+    });
+
+    it('applies the fee in NEITHER direction when nobody has configured one', () => {
+      // Not a guess in the old direction, and not a guess in the new one.
+      const balance = computeClaimBalance({ claimedAmount: '100.00', feeAmount: '8.00' });
+      expect(balance.expectedReceivableCents).toBe(10000);
+      expect(balance.feeDirectionResolved).toBe(false);
+      expect(balance.feeCents).toBe(800);
+    });
+
+    it('treats a zero fee as resolved, because there is no sign to get wrong', () => {
+      const balance = computeClaimBalance({ claimedAmount: '100.00', feeAmount: '0.00' });
+      expect(balance.expectedReceivableCents).toBe(10000);
+      expect(balance.feeDirectionResolved).toBe(true);
+    });
+
+    it('counts the unresolved claims in a panel roll-up rather than hiding them', () => {
+      const roll = rollUpClaims([
+        { claimedAmount: '100.00', feeAmount: '8.00', feeDirection: 'WITHHELD' },
+        { claimedAmount: '50.00', feeAmount: '8.00' },
+        { claimedAmount: '40.00', feeAmount: '0.00' },
+      ]);
+      expect(roll.unresolvedFeeDirectionCount).toBe(1);
+      expect(roll.expectedReceivableCents).toBe(9200 + 5000 + 4000);
     });
 
     it('does NOT treat submission as receipt', () => {
       const balance = computeClaimBalance({
         claimedAmount: '100.00',
         feeAmount: '8.00',
+        feeDirection: 'ADDED',
         status: 'SUBMITTED',
       });
       expect(balance.receivedCents).toBe(0);
@@ -190,6 +255,7 @@ describe('financial invariants', () => {
       const balance = computeClaimBalance({
         claimedAmount: '100.00',
         feeAmount: '8.00',
+        feeDirection: 'ADDED',
         approvedAmount: '90.00',
         rejectedAmount: '18.00',
       });
@@ -201,6 +267,7 @@ describe('financial invariants', () => {
       const balance = computeClaimBalance({
         claimedAmount: '100.00',
         feeAmount: '8.00',
+        feeDirection: 'ADDED',
         approvedAmount: '108.00',
         receivedAmount: '60.00',
       });
@@ -228,7 +295,13 @@ describe('financial invariants', () => {
 
     it('reconciles: expected = received + outstanding + rejected-not-claimed + written off', () => {
       const claims = [
-        { claimedAmount: '100.00', feeAmount: '8.00', approvedAmount: '108.00', receivedAmount: '108.00' },
+        {
+          claimedAmount: '100.00',
+          feeAmount: '8.00',
+          feeDirection: 'ADDED' as const,
+          approvedAmount: '108.00',
+          receivedAmount: '108.00',
+        },
         { claimedAmount: '200.00', feeAmount: '0', approvedAmount: '150.00', rejectedAmount: '50.00', receivedAmount: '150.00' },
         { claimedAmount: '50.00', feeAmount: '0' },
       ];
