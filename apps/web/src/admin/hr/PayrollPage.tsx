@@ -94,29 +94,35 @@ export function PayrollPage() {
         <div className="kw-payrollBlock" role="alert">
           <p className="kw-payrollBlock__headline">NOT READY FOR LIVE MALAYSIAN PAYROLL</p>
           <p className="kw-payrollBlock__body">
-            EPF/KWSP, SOCSO/PERKESO, EIS and PCB are <strong>not implemented</strong> in this system. No statutory
-            schedule is built in and none has been verified against the authority’s published tables, so no run on this
-            screen carries a statutory deduction — the figures below are gross, non-statutory deductions and the
-            arithmetic between them, nothing more.
+            <strong>EPF, SOCSO and EIS are calculated</strong> here, from dated band tables, with the age-60 rules and
+            the different wage bases each scheme uses. What is missing is the part nobody can do for you:{' '}
+            <strong>nobody has checked those tables against KWSP’s and PERKESO’s own published schedules.</strong> Until
+            somebody does, every figure below is provisional.
           </p>
           <p className="kw-payrollBlock__body">
-            Runs may be produced and approved for internal costing and review. They must not be used to pay staff, to
-            file a statutory return, or as the basis of a payslip issued to an employee, until Malaysian rate tables are
-            configured and verified.
+            <strong>PCB is not calculated at all.</strong> Monthly tax deduction requires LHDN’s Computerised
+            Calculation method, which is not implemented, and no approximation has been put in its place. An employee
+            with no PCB entered blocks the run.
+          </p>
+          <p className="kw-payrollBlock__body">
+            Runs may be produced and reviewed for internal costing. They must not be used to pay staff, to file a
+            statutory return, or as the basis of a payslip, until the rate tables are verified and PCB is entered or
+            implemented. There is also <strong>no payslip and no bank payment file</strong> in this system yet.
           </p>
         </div>
       )}
 
       {(statutory.data?.length ?? 0) === 0 ? (
         <AdminNotice tone="warn">
-          No statutory rate tables are configured. Malaysian EPF, SOCSO, EIS and PCB rates are NOT built into this
-          system — they are configuration a clinic owns and dates. Until one exists, payroll will compute gross and net
-          without statutory deductions and will say so on every payslip, rather than presenting a plausible wrong figure.
+          No statutory rate tables are configured for this clinic. Rates are configuration a clinic owns and dates, not
+          something built into the product. Until a table exists, payroll computes gross and net without statutory
+          deductions and says so on every line, rather than presenting a plausible wrong figure.
         </AdminNotice>
       ) : statutory.data?.every((set) => !set.verified) ? (
         <AdminNotice tone="warn">
-          The configured statutory rates have not been marked as checked against the authority’s published tables. Runs
-          using them are labelled provisional.
+          The configured EPF, SOCSO and EIS tables have not been checked against KWSP’s and PERKESO’s published
+          schedules by anybody. They are computed and internally consistent, but until somebody opens the official
+          schedule and compares them, runs using them stay provisional and cannot be approved as final.
         </AdminNotice>
       ) : null}
 

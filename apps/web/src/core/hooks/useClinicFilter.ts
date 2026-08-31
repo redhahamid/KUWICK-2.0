@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { useAuthStore } from '../auth-store';
 import { useClinics } from './useClinics';
+import { useCan } from './useCan';
 
 /**
  * THE BRANCH A GROUP-LEVEL PERSON IS LOOKING AT — one value, app-wide.
@@ -53,25 +54,62 @@ const useSelectedBranch = create<{ clinicId?: string; select: (clinicId?: string
 // the clinic automatically wherever possible and only asks when it
 // genuinely can't be known — a multi-branch tenant where this staff member
 // (owner/finance/HR-type roles) isn't tied to one specific branch.
-function useResolvedClinicId() {
+//
+// AND THE CORRECTION THAT MATTERS: being a doctor somewhere is not the same
+// fact as being allowed to manage only that branch.
+//
+// The rule above pinned a person to `staff.clinicId`, which is where they
+// PRACTISE. For a clinic owner who is also the principal doctor at one branch,
+// that silently reduced their management scope to that branch: the picker was
+// hidden, every figure on every Admin screen was one branch's, and nothing on
+// screen said so or hinted that another branch existed. The owner of a
+// two-branch group could not see half their own business.
+//
+// So viewing scope is now decided by what the ACCOUNT may do, and the branch
+// on the staff record stays what it always was — a default for forms and the
+// place this person sees patients.
+function useGroupLevel(): boolean {
+  // The same test the server uses for group-level authority elsewhere. A
+  // stale session with no permissions array falls back to `true` in `useCan`,
+  // which errs toward showing the picker — the safe direction, since the
+  // server still scopes every response.
+  return useCan('settings.manage');
+}
+
+function useResolvedClinicId(options: { forViewing: boolean }) {
   const staffClinicId = useAuthStore((state) => state.staff?.clinicId ?? undefined);
   const { data: clinics } = useClinics();
-  const resolvedId = staffClinicId ?? (clinics?.length === 1 ? clinics[0].id : undefined);
-  return { resolvedId, clinics };
+  const groupLevel = useGroupLevel();
+
+  // One branch in the tenant: there is nothing to choose either way.
+  if ((clinics?.length ?? 0) <= 1) {
+    return { resolvedId: staffClinicId ?? clinics?.[0]?.id, clinics, groupLevel };
+  }
+  // Group-level, and this is a viewing scope: do not pin. `undefined` here
+  // means "the picker decides", including All Branches.
+  if (options.forViewing && groupLevel) {
+    return { resolvedId: undefined, clinics, groupLevel };
+  }
+  return { resolvedId: staffClinicId, clinics, groupLevel };
 }
 
 // For read/filter screens (Queue, Reports, Stock lists, ...): a clinicId
 // plus a setter, and whether the picker should even be shown. Falls back
 // to manual selection only when there's real ambiguity to resolve.
 export function useClinicFilter() {
-  const { resolvedId, clinics } = useResolvedClinicId();
+  const { resolvedId, clinics, groupLevel } = useResolvedClinicId({ forViewing: true });
   const manualClinicId = useSelectedBranch((state) => state.clinicId);
   const setClinicId = useSelectedBranch((state) => state.select);
 
   const clinicId = resolvedId ?? manualClinicId;
   const showSelector = !resolvedId && (clinics?.length ?? 0) > 1;
 
-  return { clinicId, setClinicId, clinics, showSelector };
+  // Whether "All Branches" is a legitimate choice, as opposed to a gap. Only a
+  // group-level account may compare branches; for everyone else an absent
+  // clinicId is the "No branch selected" failure this module exists to prevent.
+  const mayViewAllBranches = groupLevel && (clinics?.length ?? 0) > 1;
+
+  return { clinicId, setClinicId, clinics, showSelector, mayViewAllBranches };
 }
 
 // For create/edit forms with a required Clinic field (Add to Queue, New
@@ -81,6 +119,9 @@ export function useClinicFilter() {
 // `destroyOnHidden`, so a fresh `initialValues` is exactly what's needed
 // each time the form (re)mounts — no effect/sync required.
 export function useDefaultClinicId(): string | undefined {
-  const { resolvedId } = useResolvedClinicId();
+  // NOT `forViewing`. Pre-filling a New Visit with the branch this person
+  // actually works at is right even for an owner who may view all of them —
+  // it is a helpful default, not a limit on what they can see.
+  const { resolvedId } = useResolvedClinicId({ forViewing: false });
   return resolvedId;
 }
