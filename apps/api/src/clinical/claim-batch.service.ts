@@ -332,7 +332,14 @@ export class ClaimBatchService {
     ]);
 
     const claimedRows = lines.map((line) => {
-      const serviceDate = line.invoice.paidAt ?? line.invoice.createdAt;
+      // AN IMPORTED CLAIM HAS NO INVOICE (G-12). The visit happened in the
+      // system this one replaced, so the dates and the patient come from what
+      // the import carried instead. Everything else about the claim — the
+      // money, the status, the term — behaves identically, which is the whole
+      // reason imported claims live in this model rather than beside it.
+      const serviceDate = line.invoice
+        ? line.invoice.paidAt ?? line.invoice.createdAt
+        : line.legacyServiceDate ?? line.createdAt;
       const monthKey = serviceDate.toISOString().slice(0, 7);
       const claimed = Number(line.claimedAmount);
       const fee = Number(line.feeAmount);
@@ -347,7 +354,7 @@ export class ClaimBatchService {
       const lineWindow = resolveTermWindow(term, {
         submittedAt,
         serviceDate,
-        invoiceDate: line.invoice.createdAt,
+        invoiceDate: line.invoice?.createdAt ?? serviceDate,
       });
       const daysSinceSubmission = submittedAt
         ? Math.floor((Date.now() - submittedAt.getTime()) / (1000 * 60 * 60 * 24))
@@ -369,8 +376,10 @@ export class ClaimBatchService {
         status: displayStatus as string,
         serviceDate,
         monthKey,
-        patientName: line.invoice.visit.patient.name,
-        invoiceNumber: line.invoice.invoiceNumber,
+        patientName: line.invoice?.visit.patient.name ?? line.legacyPatientReference ?? null,
+        invoiceNumber: line.invoice?.invoiceNumber ?? null,
+        /** TRUE when this claim came from the workbook rather than a Kuwick visit. */
+        imported: line.importBatchId !== null,
         claimedAmount: claimed,
         feeAmount: fee,
         claimToReceive: round2(fromCents(balance.expectedReceivableCents)),

@@ -72,6 +72,12 @@ export type AuditAction =
   | 'panel.feeTreatmentRestamped'
   /** A new effective-dated fee term was recorded against a panel. */
   | 'panel.feeTermRecorded'
+  /**
+   * A file of historical claims was imported (G-12). The audit row carries the
+   * totals as they stood, which is what makes the import checkable against the
+   * workbook it came from months later.
+   */
+  | 'panel.claimsImported'
   // HR
   | 'employee.changed'
   | 'attendance.corrected'

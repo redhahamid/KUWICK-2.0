@@ -2493,6 +2493,37 @@ Both figures are shown rather than one standing in for the other, with the reaso
 
 ---
 
+## D-115 — A claim may have no invoice, if and only if it came from a named import
+**Status: DECIDED** (2026-08-31 — closing G-12, Panel's last production blocker)
+
+**The problem.** Kuwick cannot start empty on the day the clinic switches over. The claim workbook holds 7,146 open and historical claims, 30% of them unpaid, all of them money somebody is still owed. A receivables module that begins empty tells the clinic it is owed nothing, which is worse than no module at all. But `ClaimBatchLine.invoiceId` was NOT NULL, and these claims have no Kuwick invoice — the visits happened in the system Kuwick replaces.
+
+**Two alternatives rejected.**
+
+- **Fabricate a visit and an invoice per imported claim.** This puts invented clinical records in a patient's chart, to satisfy a foreign key. Never.
+- **A separate legacy-claim model.** Clean on paper; in practice it doubles every read path in the panel module — work queue, reconciliation, dashboard, remittance allocation, Finance → Panel money — and the two would drift.
+
+**The decision: state the invariant precisely rather than drop it.** It used to be *"every claim has an invoice"*. It is now *"every claim Kuwick raises has an invoice, and every claim without one came from a named import"*, and a database CHECK enforces exactly that: `invoice_id IS NOT NULL OR import_batch_id IS NOT NULL`. Making the column nullable without the CHECK would have been the weakening; with it, the rule is stronger than before, because it is now written down in the schema instead of living in the type system of one service.
+
+Imported claims are otherwise real claims in the same model: same `computeClaimBalance`, same work queue, same dashboard, same remittance allocation. Two things they cannot do, both refused with the reason:
+
+- **Charge to patient (G-5)** moves money from the panel share to the patient share of the SAME invoice. There is none, and creating one would be a fabricated bill.
+- **Appear as ready to submit.** They were submitted through the previous system. They are listed in the submission queue with that as their one blocking reason rather than hidden — a claim the queue drops silently is a claim nobody chases.
+
+**Six safety rules, and the one that is easiest to get wrong.** Dry run by default; all-or-nothing with every problem reported at once; the totals reported BEFORE the write; idempotent by claim number scoped to the panel; nothing invented; everything traceable to its batch. Full rationale in [`MIGRATION_AND_IMPORT_SAFETY.md`](./MIGRATION_AND_IMPORT_SAFETY.md) §1.
+
+The easiest to get wrong is *nothing invented*, and specifically **the template has no column for the fee direction**. That is deliberate: the fee treatment is effective-dated configuration Kuwick already owns (D-112), and a spreadsheet column asking for it again is a second source of truth for the same fact. The importer stamps every row from the panel's configuration, and the screen says which treatment it will use before you commit.
+
+**Why the dry run matters more than the import.** The totals — claimed, fee, expected, received, outstanding — are computed by the same functions the live screens use and shown before anything is written, so the clinic compares them against the workbook's own TOTAL row and only then commits. An importer that cannot be checked against its source is a way of getting wrong numbers in faster.
+
+**Payroll history is deliberately NOT imported.** PCB has no engine, the statutory tables are `CORROBORATED` rather than `VERIFIED`, and a payslip re-derived from a spreadsheet under unverified rates is a document that looks official and is not. See `MIGRATION_AND_IMPORT_SAFETY.md` §5.
+
+**Tested**: 18 unit tests on the format and its cross-column rules, 10 integration tests through HTTP — including that a dry run writes nothing, that a file with any problem imports nothing even when told to commit, that re-running does not double the receivable, that a corrected file imports only its new rows, and that the database itself refuses a claim with neither an invoice nor an import.
+
+**Reversibility**: Medium. The nullable column and the CHECK are a real migration; no data is lost reversing it as long as no imported claims exist. An import that turns out to be wrong is identified by its batch and can be removed as a set — nothing else references those lines until a remittance is allocated against one.
+
+---
+
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:
 
 - Doctor incentive formula: worked semantics now captured in full from Klinik Hijraa (`docs/PROPOSED_ADDENDUM_2026-08-01_klinik-hijraa-admin-reference.md`) — spec is no longer the blocker, building it is; still needs owner go-ahead to schedule (OQ#2, blocks 1c only)

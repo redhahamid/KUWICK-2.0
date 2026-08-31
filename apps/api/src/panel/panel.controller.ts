@@ -8,6 +8,8 @@ import { ChargeToPatientDto } from './dto/charge-to-patient.dto';
 import { ResubmitClaimDto } from './dto/resubmit-claim.dto';
 import { RecordRemittanceDto } from './dto/record-remittance.dto';
 import { UpsertPanelConfigDto } from './dto/upsert-panel-config.dto';
+import { ImportClaimsDto } from './dto/import-claims.dto';
+import { ClaimImportService } from './claim-import.service';
 import { OptionalDateParam, RequiredDateParam } from '../core/date-param.pipe';
 import { assertDateOrder } from '../core/query-dates';
 
@@ -16,6 +18,7 @@ export class PanelWorkspaceController {
   constructor(
     private readonly claims: ClaimWorkspaceService,
     private readonly config: PanelConfigService,
+    private readonly imports: ClaimImportService,
   ) {}
 
   // --- What has not been submitted -----------------------------------------
@@ -102,5 +105,26 @@ export class PanelWorkspaceController {
   @Patch('panels/:id')
   updatePanel(@Param('id') id: string, @Body() dto: UpsertPanelConfigDto) {
     return this.config.update(id, dto);
+  }
+
+  // --- Historical claim import (G-12) ---------------------------------------
+  //
+  // Kuwick cannot start empty on cutover day. Every route here is a dry run
+  // unless `commit` is true; see panel/claim-import.service.ts for the six
+  // safety rules and why each one exists.
+
+  @Get('import/template')
+  importTemplate() {
+    return this.imports.template();
+  }
+
+  @Get('import/batches')
+  importBatches(@Query('panelClinicId') panelClinicId?: string) {
+    return this.imports.list(panelClinicId);
+  }
+
+  @Post('import/claims')
+  importClaims(@Body() dto: ImportClaimsDto) {
+    return this.imports.import(dto);
   }
 }

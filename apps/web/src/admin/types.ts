@@ -1380,3 +1380,56 @@ export interface PanelMoneyPosition {
   exceptionRows: PanelMoneyExceptionRow[];
   remittanceRows: PanelMoneyRemittanceRow[];
 }
+
+// ---------------------------------------------------------------------------
+// HISTORICAL CLAIM IMPORT (G-12)
+//
+// Kuwick cannot start empty on the day the clinic switches over. See
+// apps/api/src/panel/claim-import.service.ts for the six safety rules.
+// ---------------------------------------------------------------------------
+
+export interface ImportRowProblem {
+  /** The line number IN THE SPREADSHEET, header counted. */
+  line: number;
+  column: string;
+  message: string;
+}
+
+export interface ClaimImportResult {
+  /** TRUE when nothing was written — a dry run, or a file with problems. */
+  dryRun: boolean;
+  panelClinicId: string;
+  panelName: string;
+  feeTreatment: PanelFeeTreatment;
+  rowCount: number;
+  importable: number;
+  alreadyPresent: number;
+  problems: ImportRowProblem[];
+  totals: {
+    claimed: number;
+    fee: number;
+    expectedReceivable: number;
+    approved: number;
+    rejected: number;
+    received: number;
+    outstanding: number;
+  };
+  importBatchId?: string;
+}
+
+export interface ClaimImportBatchRow {
+  id: string;
+  panelClinicId: string;
+  panelName: string;
+  fileName: string | null;
+  rowCount: number;
+  importedCount: number;
+  skippedCount: number;
+  claimedTotal: number;
+  expectedTotal: number;
+  receivedTotal: number;
+  outstandingTotal: number;
+  note: string | null;
+  importedBy: string;
+  importedAt: string;
+}

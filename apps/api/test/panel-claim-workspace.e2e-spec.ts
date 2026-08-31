@@ -591,7 +591,7 @@ describe('Panel: the claim workspace (e2e)', () => {
         },
       }),
     );
-    expect(Number(before!.invoice.patientResponsibilityAmount)).toBe(0);
+    expect(Number(before!.invoice!.patientResponsibilityAmount)).toBe(0);
 
     const charged = await request(app.getHttpServer())
       .patch(`/panel-workspace/claims/${claim.lineId}/charge-to-patient`)
@@ -615,10 +615,10 @@ describe('Panel: the claim workspace (e2e)', () => {
       }),
     );
     // The money moved between the two shares; the invoice total did not change.
-    expect(Number(after!.invoice.patientResponsibilityAmount)).toBe(48);
-    expect(Number(after!.invoice.panelResponsibilityAmount)).toBe(52);
+    expect(Number(after!.invoice!.patientResponsibilityAmount)).toBe(48);
+    expect(Number(after!.invoice!.panelResponsibilityAmount)).toBe(52);
     // And the invoice is no longer settled, because somebody now owes on it.
-    expect(after!.invoice.status).toBe('UNPAID');
+    expect(after!.invoice!.status).toBe('UNPAID');
     // Recorded as its own resolution, NOT as a write-off — a write-off total is
     // read as losses, and this money is still coming.
     expect(Number(after!.chargedToPatientAmount)).toBe(48);

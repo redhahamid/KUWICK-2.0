@@ -15,6 +15,8 @@ import type {
   PanelConfigRow,
   NewItemRequestRow,
   PayableInvoiceRow,
+  ClaimImportBatchRow,
+  ClaimImportResult,
   PanelMoneyPosition,
   PayablesSummary,
   SupplierOption,
@@ -440,6 +442,42 @@ export function usePayables(params: { asOf?: string }) {
  * PANEL MONEY, FROM FINANCE — billed vs claimed, what the fee cost, and what
  * the panels actually banked. See apps/api/src/finance/panel-money.ts.
  */
+/**
+ * THE HISTORICAL CLAIM IMPORT (G-12).
+ *
+ * `commit` is FALSE by default on the server, so calling this without it is a
+ * dry run that reports the totals and writes nothing. The screen makes the
+ * clinic read those totals before it offers the commit button.
+ */
+export function useImportClaims() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      panelClinicId: string;
+      csv: string;
+      fileName?: string;
+      note?: string;
+      commit?: boolean;
+    }) => apiClient.post<ClaimImportResult>('/panel-workspace/import/claims', body),
+    onSuccess: (result) => {
+      if (!result.dryRun) {
+        queryClient.invalidateQueries({ queryKey: ['admin-panel'] });
+        queryClient.invalidateQueries({ queryKey: ['admin-finance'] });
+      }
+    },
+  });
+}
+
+export function useClaimImportBatches(panelClinicId?: string) {
+  return useQuery({
+    queryKey: ['admin-panel', 'import-batches', panelClinicId ?? null],
+    queryFn: () =>
+      apiClient.get<ClaimImportBatchRow[]>(
+        `/panel-workspace/import/batches${panelClinicId ? `?panelClinicId=${panelClinicId}` : ''}`,
+      ),
+  });
+}
+
 export function usePanelMoney(params: { from?: string; to?: string; panelClinicId?: string }) {
   return useQuery({
     queryKey: ['admin-finance', 'panel-money', params],

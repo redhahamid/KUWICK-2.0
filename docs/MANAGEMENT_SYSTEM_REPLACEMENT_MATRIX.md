@@ -40,24 +40,28 @@ backwards when the real file was read**, and they are marked.
 | **Rejected claim → patient bill** | Work queue ▸ Charge to patient | 🟢 | — | **Resolved (G-5).** Moves the rejected amount from the panel share to the patient share on the SAME invoice, keeping the link. Explicitly not a write-off. |
 | **Why a claim was rejected, countable** | `rejectionCategory` + free text | 🟢 | — | **Resolved (G-6).** A reason code beside the prose, with the breakdown by amount on the dashboard and a count of rejections nobody has categorised. |
 | Rejection rate as a KPI | Panel ▸ dashboard tile | 🟢 | — | **Resolved (G-10).** NULL rather than 0% where nothing has been claimed — "0% rejected" on a panel with no claims reads as excellent. |
-| **7,146 historical and open claims** | — | 🔴 | — | **G-12.** No importer. 30% of those rows are unpaid, live money. **The one remaining blocker.** |
+| **7,146 historical and open claims** | Panel ▸ **Import claims** | 🟢 | Somebody exports the workbook to CSV | **Resolved (G-12).** Dry run reports the money before anything is written, so the totals can be checked against the workbook's own. All-or-nothing, idempotent, traceable. An imported claim has no invoice and a database CHECK says when that is allowed (D-115). |
 | **What the admin fee costs the clinic** | Finance ▸ Panel money ▸ Admin fees borne | 🟢 | — | **New.** Only askable since D-112 established the fee is withheld. Borne vs expected, with unconfigured fees excluded from both and counted. |
 | **A panel that did not take its fee** | Finance ▸ Panel money ▸ Fee exceptions | 🟢 | — | **New.** The forensic pass that found two such payments in 2,640 workbook rows, run continuously against every settled claim (D-113). |
 
-> **Corrected verdict: one blocker stands between the clinic and closing this
-> file, and it is the importer.** The pass before last said the workbook could
-> be retired, on the strength of a *description* of the workflow; reading the
-> file itself moved that backwards. It has since moved forward again on
-> evidence rather than optimism: **G-1** the receivable arithmetic (D-041
+> **Corrected verdict: the panel workbook can now be retired.** The pass before
+> last said so on the strength of a *description* of the workflow; reading the
+> file itself moved that backwards, and it has since moved forward again on
+> evidence rather than optimism. **G-1** the receivable arithmetic (D-041
 > superseded 2026-08-31, migrated and measured), **G-2** the term shapes,
 > **G-3** the computed due date, **G-4** the re-claim countdown, **G-5** charge
 > to patient, **G-6** the rejection taxonomy, **G-10** the rejection-rate KPI,
-> and **G-13** billed-versus-claimed are all built, tested and on screen.
+> **G-12** the importer, and **G-13** billed-versus-claimed are all built,
+> tested and on screen.
 >
-> What remains is **G-12, the importer for 7,146 live claims**, plus three
-> single-panel shapes (G-7 monthly-invoice fee, G-8 fee tiers, G-11 per-scheme
-> split) that need an owner decision more than they need code. Submitting to the
-> portal stays manual by design.
+> Retiring it is a sequence, not a switch — configure the panels, dry-run the
+> file, check the totals against the workbook's own, commit, then run one full
+> remittance cycle in Kuwick before the file goes read-only
+> ([`MIGRATION_AND_IMPORT_SAFETY.md`](./MIGRATION_AND_IMPORT_SAFETY.md) §6).
+>
+> What remains are three single-panel shapes (G-7 monthly-invoice fee, G-8 fee
+> tiers, G-11 per-scheme split) that need an owner decision more than they need
+> code. Submitting to the portal stays manual by design.
 
 ---
 
@@ -222,7 +226,7 @@ this matrix at all.
 | Tool | Can it be retired? | What stands in the way |
 |---|---|---|
 | **Hijraa Admin** | **Mostly**, for day-to-day operation | Employee editing, credit-note creation, raise-transfer. Each is a form over an endpoint that already works. |
-| **Panel claim workbook** | **No** *(was "yes")* | Eight of thirteen gaps closed — ~~G-1 fee direction~~ **(D-112)**, ~~G-2 terms~~, ~~G-3 overdue~~, ~~G-4 deadline~~, ~~G-5 self-pay~~, ~~G-6 taxonomy~~, ~~G-10 KPI~~, ~~G-13 billed vs claimed~~ **(D-113)**. What stands in the way is **G-12: no importer for 7,146 live claims.** |
+| **Panel claim workbook** | **Yes, in sequence** | Nine of thirteen gaps closed — ~~G-1 fee direction~~ **(D-112)**, ~~G-2 terms~~, ~~G-3 overdue~~, ~~G-4 deadline~~, ~~G-5 self-pay~~, ~~G-6 taxonomy~~, ~~G-10 KPI~~, ~~G-12 importer~~ **(D-115)**, ~~G-13 billed vs claimed~~ **(D-113)**. Retiring it is the cutover sequence in `MIGRATION_AND_IMPORT_SAFETY.md` §6, not a switch. |
 | **Que order medication** | **Close** | Bonus price, price-change-at-receipt, item activation on goods-in, supplier SLA. |
 | **Consumable que order** | **Close** | Same list. The file needs nothing Kuwick's procurement chain does not already have in shape. |
 | **Inventory count sheet** | **Yes, on the count itself** | Kuwick is strictly better here — it computes the variance the sheet never had, and requires a second approver. Keep the sheet only for the printable walk-round list and selling-value-at-count. |

@@ -74,6 +74,7 @@ import { StockMovementsPage } from './admin/stock/StockMovementsPage';
 import { PanelWorkspacePage } from './admin/panel/PanelWorkspacePage';
 import { PayablesPage } from './admin/finance/PayablesPage';
 import { PanelMoneyPage } from './admin/finance/PanelMoneyPage';
+import { ClaimImportPage } from './admin/panel/ClaimImportPage';
 import { NewItemRequestsPage } from './admin/stock/NewItemRequestsPage';
 import { PanelConfigPage } from './admin/panel/PanelConfigPage';
 import { HrOverviewPage } from './admin/hr/HrOverviewPage';
@@ -230,6 +231,7 @@ export function App() {
             <Route path="/admin/panel" element={<PanelWorkspacePage />} />
             <Route path="/admin/finance/payables" element={<PayablesPage />} />
             <Route path="/admin/finance/panel-money" element={<PanelMoneyPage />} />
+            <Route path="/admin/panel/import" element={<ClaimImportPage />} />
             <Route path="/admin/stock/new-item-requests" element={<NewItemRequestsPage />} />
             <Route path="/admin/panel/configuration" element={<PanelConfigPage />} />
             <Route path="/admin/panel/batches" element={<PanelClaimsPage />} />

@@ -509,7 +509,7 @@ Named honestly, each with the evidence that produced it.
 | **G-9** | **Term that varies by the corporate client behind a TPA.** *(partly addressed)* | §3 — one panel is explicitly `VARY BASED ON COMPANY`. | `paymentTermVariesByPayer` records THAT it varies, so no due date is invented for that panel. Modelling the sub-payer itself is still outstanding. Low volume; not urgent. |
 | **G-10** | ~~**Rejection rate as a KPI.**~~ **RESOLVED** | §9 item 6 — the clinic already computes excess receivable ÷ total claimed. | **Done.** On the panel dashboard, NULL rather than 0% where nothing has been claimed, plus a count of rejections nobody has categorised. |
 | **G-11** | **Per-scheme split within one panel** (fee-for-service vs managed care). | §5 — one panel splits its monthly counts into two schemes. | A scheme dimension on the claim, or accept two panel records. |
-| **G-12** | **Panel claim import.** | 7,146 open and historical rows, 30% unpaid, live money. | Kuwick cannot start empty on day one. An importer is required before cutover. **The one remaining blocker.** |
+| **G-12** | ~~**Panel claim import.**~~ **RESOLVED** | 7,146 open and historical rows, 30% unpaid, live money. | **Done.** `POST /panel-workspace/import/claims` with a dry run that reports claimed / fee / expected / received / outstanding BEFORE anything is written, so the totals can be checked against the workbook's own TOTAL row. All-or-nothing, idempotent, every row traceable to its import. An imported claim carries no invoice, and a database CHECK states exactly when that is allowed. See [`MIGRATION_AND_IMPORT_SAFETY.md`](./MIGRATION_AND_IMPORT_SAFETY.md) and D-115. |
 | **G-13** | ~~**Billed to a panel and never claimed.**~~ **RESOLVED** | §7 — the monthly Avixo reconciliation exists because billed and claimed drift, and the drift is money nobody chases. | **Done.** Finance → Panel money reports billed vs claimed per invoice and per panel, aged from settlement, alongside what the admin fee costs and what each panel actually banked. Kuwick does not invent a first-submission deadline (D-113). |
 
 ---
@@ -541,15 +541,21 @@ and that was wrong: a claim is only raised when somebody raises one, so billed
 and claimed still drift. What Kuwick does instead is report the drift, which is
 better than needing a monthly export to find it (G-13).
 
-**Eight of the thirteen gaps in §12 are now closed, and one is partly closed.**
+**Nine of the thirteen gaps in §12 are now closed, and one is partly closed.**
 G-1 (fee direction), G-2 (term shapes), G-3 (computed overdue), G-4 (the
 re-claim deadline), G-5 (rejected → patient), G-6 (the rejection taxonomy),
-G-10 (the rejection-rate KPI) and G-13 (billed vs claimed) are implemented,
-tested and visible on screen; G-9 records that a term varies without yet
-modelling the sub-payer.
+G-10 (the rejection-rate KPI), G-12 (the importer) and G-13 (billed vs claimed)
+are implemented, tested and visible on screen; G-9 records that a term varies
+without yet modelling the sub-payer.
 
-**Four remain.** G-7 (a fee on a consolidated monthly invoice), G-8 (fee tiers)
-and G-11 (per-scheme split) are each one panel out of twenty-nine and need an
-owner decision more than they need code. **G-12, the claim importer, is the one
-production blocker**: 7,146 open and historical rows of live money that Kuwick
-cannot start without.
+**Three remain, and none of them is a blocker.** G-7 (a fee on a consolidated
+monthly invoice), G-8 (fee tiers) and G-11 (per-scheme split) are each one panel
+out of twenty-nine and need an owner decision more than they need code. G-9 is
+half-done and low volume.
+
+**G-12, the importer, is built** — which means the panel workbook can now be
+retired, in the sequence set out in
+[`MIGRATION_AND_IMPORT_SAFETY.md`](./MIGRATION_AND_IMPORT_SAFETY.md) §6:
+configure the panels, dry-run the file, compare the totals against the
+workbook's own, commit, then record one full remittance cycle in Kuwick before
+the file goes read-only.

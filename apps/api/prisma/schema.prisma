@@ -363,6 +363,7 @@ model Tenant {
   payrollAdjustments         PayrollAdjustment[]
   staffPermissionGrants      StaffPermissionGrant[]
   payrollInputEntries        PayrollInputEntry[]
+  claimImportBatches         ClaimImportBatch[]
 
   @@map("tenants")
 }
@@ -1068,6 +1069,7 @@ model Staff {
   prescriptionsReviewed        Prescription[]               @relation("PrescriptionReviewer")
   payrollInputs                PayrollInputEntry[]          @relation("PayrollInputStaff")
   payrollInputsCreated         PayrollInputEntry[]          @relation("PayrollInputAuthor")
+  claimImportBatches           ClaimImportBatch[]           @relation("ClaimImportedBy")
 
   @@index([tenantId])
   @@index([tenantId, role])
@@ -2843,12 +2845,13 @@ model PanelClinic {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant         Tenant               @relation(fields: [tenantId], references: [id])
-  remittances    PanelRemittance[]
-  visits         Visit[]
-  priceOverrides PanelPriceOverride[]
-  exclusions     PanelExclusion[]
-  claimBatches   ClaimBatch[]
+  tenant             Tenant               @relation(fields: [tenantId], references: [id])
+  remittances        PanelRemittance[]
+  visits             Visit[]
+  priceOverrides     PanelPriceOverride[]
+  exclusions         PanelExclusion[]
+  claimBatches       ClaimBatch[]
+  claimImportBatches ClaimImportBatch[]
 
   @@index([tenantId])
   @@map("panel_clinics")
@@ -4607,7 +4610,16 @@ model ClaimBatchLine {
   id              String            @id @default(uuid())
   tenantId        String            @map("tenant_id")
   claimBatchId    String            @map("claim_batch_id")
-  invoiceId       String            @map("invoice_id")
+  /// NULL ONLY ON AN IMPORTED HISTORICAL CLAIM.
+  ///
+  /// Every claim Kuwick raises comes from a settled invoice, and a database
+  /// CHECK enforces that: `invoice_id IS NOT NULL OR import_batch_id IS NOT
+  /// NULL`. The clinic's open claims predate Kuwick — the visits happened in
+  /// another system — and the alternatives were both worse than relaxing this:
+  /// fabricating visits and invoices would put invented clinical records in
+  /// patient charts, and a separate legacy-claim model would double every read
+  /// path in the panel module.
+  invoiceId       String?           @map("invoice_id")
   claimedAmount   Decimal           @map("claimed_amount") @db.Decimal(10, 2)
   feeAmount       Decimal           @default(0) @map("fee_amount") @db.Decimal(10, 2)
   status          ClaimLineStatus   @default(PENDING)
@@ -4681,6 +4693,18 @@ model ClaimBatchLine {
   /// revenue.
   supersedesLineId String? @map("supersedes_line_id")
 
+  /// WHERE AN IMPORTED CLAIM CAME FROM, and the facts it carries in place of
+  /// an invoice. Set together with a NULL `invoiceId`, never otherwise.
+  importBatchId          String?   @map("import_batch_id")
+  /// The service date, which a Kuwick claim reads from its visit. The re-claim
+  /// deadline counts from this, so an imported claim without it cannot be given
+  /// a countdown — and is shown as unknown rather than counted from today.
+  legacyServiceDate      DateTime? @map("legacy_service_date") @db.Date
+  /// Who the claim was for, as the source system identified them. Free text on
+  /// purpose: it is whatever reference the clinic can still trace, and Kuwick
+  /// must not pretend it resolves to a patient record it does not have.
+  legacyPatientReference String?   @map("legacy_patient_reference")
+
   /// The work-item fields the Google Sheet carries today.
   dueDate            DateTime? @map("due_date") @db.Date
   responsibleStaffId String?   @map("responsible_staff_id")
@@ -4692,7 +4716,8 @@ model ClaimBatchLine {
 
   tenant             Tenant                      @relation(fields: [tenantId], references: [id])
   claimBatch         ClaimBatch                  @relation(fields: [claimBatchId], references: [id])
-  invoice            Invoice                     @relation(fields: [invoiceId], references: [id])
+  invoice            Invoice?                    @relation(fields: [invoiceId], references: [id])
+  importBatch        ClaimImportBatch?           @relation(fields: [importBatchId], references: [id])
   supersedes         ClaimBatchLine?             @relation("ClaimSupersession", fields: [supersedesLineId], references: [id])
   supersededBy       ClaimBatchLine[]            @relation("ClaimSupersession")
   responsible        Staff?                      @relation("ClaimResponsibleStaff", fields: [responsibleStaffId], references: [id])
@@ -4703,7 +4728,56 @@ model ClaimBatchLine {
 
   @@index([tenantId, claimBatchId])
   @@index([tenantId, invoiceId])
+  @@index([tenantId, importBatchId])
   @@map("claim_batch_lines")
+}
+
+/// ONE RUN OF THE PANEL CLAIM IMPORTER.
+///
+/// Kuwick cannot start empty on the day the clinic switches over: the claim
+/// workbook holds thousands of open and historical claims, a third of them
+/// unpaid and all of them live money (G-12). This records what a run brought
+/// in, and it is what makes an import reversible as a set and reconcilable
+/// against the file it came from.
+///
+/// The totals are the point. A dry run reports them BEFORE anything is
+/// written, so the person importing compares them against the workbook's own
+/// TOTAL row and only then commits. An importer that cannot be checked against
+/// its source is a way of getting wrong numbers in faster.
+model ClaimImportBatch {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// The panel these claims belong to. One file, one panel — a mixed file is
+  /// refused, because a claim number means nothing without the panel it was
+  /// issued by.
+  panelClinicId String  @map("panel_clinic_id")
+  fileName      String? @map("file_name")
+
+  /// Rows in the file, and rows that became claims. They differ when rows were
+  /// skipped as already present, which is what makes a re-run safe.
+  rowCount      Int @map("row_count")
+  importedCount Int @map("imported_count")
+  skippedCount  Int @map("skipped_count")
+
+  /// THE RECONCILIATION, frozen at import. Compare these against the
+  /// workbook's own totals before trusting anything downstream.
+  claimedTotal     Decimal @map("claimed_total") @db.Decimal(12, 2)
+  expectedTotal    Decimal @map("expected_total") @db.Decimal(12, 2)
+  receivedTotal    Decimal @map("received_total") @db.Decimal(12, 2)
+  outstandingTotal Decimal @map("outstanding_total") @db.Decimal(12, 2)
+
+  note              String?
+  importedByStaffId String   @map("imported_by_staff_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id])
+  panelClinic PanelClinic      @relation(fields: [panelClinicId], references: [id])
+  importedBy  Staff            @relation("ClaimImportedBy", fields: [importedByStaffId], references: [id])
+  lines       ClaimBatchLine[]
+
+  @@index([tenantId, panelClinicId])
+  @@map("claim_import_batches")
 }
 
 // Snapshots description/unitPrice/amount at add-time (same historical-

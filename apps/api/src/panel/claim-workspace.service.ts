@@ -64,6 +64,31 @@ const CHARGEABLE_TO_PATIENT: PanelClaimStatus[] = [
  * finance dashboard and the invariant tests use — so the panel screen and the
  * finance screen cannot report different outstanding totals.
  */
+/**
+ * The legacy five-value status every existing report still reads, derived from
+ * the richer lifecycle. EXPORTED so the claim importer maps statuses through
+ * this one function: two maps between the same pair of enums is two maps that
+ * will eventually disagree, and the disagreement would be invisible.
+ */
+export function legacyStatusOf(status: PanelClaimStatus): ClaimLineStatus {
+  switch (status) {
+    case 'PAID':
+    case 'PARTIALLY_PAID':
+      return ClaimLineStatus.PAID;
+    case 'APPROVED':
+    case 'ACKNOWLEDGED':
+      return ClaimLineStatus.ACCEPTED;
+    case 'PARTIALLY_APPROVED':
+      return ClaimLineStatus.DEDUCTED;
+    case 'REJECTED':
+    case 'RESUBMISSION_REQUIRED':
+    case 'WRITTEN_OFF':
+      return ClaimLineStatus.REJECTED;
+    default:
+      return ClaimLineStatus.PENDING;
+  }
+}
+
 @Injectable()
 export class ClaimWorkspaceService {
   constructor(
@@ -80,22 +105,7 @@ export class ClaimWorkspaceService {
    * be retired later when its last reader is gone.
    */
   private static legacyStatusOf(status: PanelClaimStatus): ClaimLineStatus {
-    switch (status) {
-      case 'PAID':
-      case 'PARTIALLY_PAID':
-        return ClaimLineStatus.PAID;
-      case 'APPROVED':
-      case 'ACKNOWLEDGED':
-        return ClaimLineStatus.ACCEPTED;
-      case 'PARTIALLY_APPROVED':
-        return ClaimLineStatus.DEDUCTED;
-      case 'REJECTED':
-      case 'RESUBMISSION_REQUIRED':
-      case 'WRITTEN_OFF':
-        return ClaimLineStatus.REJECTED;
-      default:
-        return ClaimLineStatus.PENDING;
-    }
+    return legacyStatusOf(status);
   }
 
   private async logEvent(
@@ -170,14 +180,22 @@ export class ClaimWorkspaceService {
 
     return lines.map((line) => {
       const panel = line.claimBatch.panelClinic;
-      const visit = line.invoice.visit;
+      const visit = line.invoice?.visit ?? null;
       const missing: string[] = [];
-      if (!visit?.patient?.identifierValue) missing.push('Patient IC / passport number');
-      if (panel.requiresItemisation && line.invoice.lines.length === 0) {
+      // AN IMPORTED CLAIM HAS NO INVOICE (G-12), and cannot be prepared for
+      // submission here — it was submitted through the system this one
+      // replaced. It is listed with that as its one blocking reason rather
+      // than hidden, because a claim the queue silently drops is a claim
+      // nobody chases.
+      if (line.invoice === null) {
+        missing.push('Imported from the previous system — submit and adjudicate it there, or record its outcome directly');
+      }
+      if (line.invoice !== null && !visit?.patient?.identifierValue) missing.push('Patient IC / passport number');
+      if (panel.requiresItemisation && (line.invoice?.lines.length ?? 0) === 0 && line.invoice !== null) {
         missing.push('Itemised bill lines (this panel requires itemisation)');
       }
-      if ((visit?.diagnoses?.length ?? 0) === 0) missing.push('Diagnosis');
-      if (!visit?.staff?.fullName) missing.push('Attending doctor');
+      if (line.invoice !== null && (visit?.diagnoses?.length ?? 0) === 0) missing.push('Diagnosis');
+      if (line.invoice !== null && !visit?.staff?.fullName) missing.push('Attending doctor');
 
       const balance = computeClaimBalance({
         claimedAmount: line.claimedAmount,
@@ -200,11 +218,12 @@ export class ClaimWorkspaceService {
         submissionMethod: panel.submissionMethod,
         documentRequirements: panel.documentRequirements,
         invoiceId: line.invoiceId,
-        invoiceNumber: line.invoice.invoiceNumber,
+        invoiceNumber: line.invoice?.invoiceNumber ?? null,
+        imported: line.importBatchId !== null,
         visitNumber: visit?.visitNumber ?? null,
-        serviceDate: visit?.createdAt ?? null,
+        serviceDate: visit?.createdAt ?? line.legacyServiceDate ?? null,
         clinicName: visit?.clinic?.name ?? null,
-        patientName: visit?.patient?.name ?? null,
+        patientName: visit?.patient?.name ?? line.legacyPatientReference ?? null,
         patientIdentifier: visit?.patient?.identifierValue ?? null,
         doctorName: visit?.staff?.fullName ?? null,
         diagnoses: visit?.diagnoses?.map((diagnosis) => diagnosis.name) ?? [],
@@ -231,7 +250,13 @@ export class ClaimWorkspaceService {
         where: { id: batchId },
         include: {
           lines: {
-            select: { id: true, claimStatus: true, invoice: { select: { paidAt: true, createdAt: true } } },
+            select: {
+              id: true,
+              claimStatus: true,
+              createdAt: true,
+              legacyServiceDate: true,
+              invoice: { select: { paidAt: true, createdAt: true } },
+            },
           },
           panelClinic: {
             select: {
@@ -280,11 +305,15 @@ export class ClaimWorkspaceService {
       for (const line of batch.lines) {
         // Resolved per line, because a SERVICE_DATE or INVOICE_DATE anchor
         // makes the due date a property of the claim, not of the batch.
-        const serviceDate = line.invoice.paidAt ?? line.invoice.createdAt;
+        // An imported claim carries its service date directly, having no
+        // invoice to read one from.
+        const serviceDate = line.invoice
+          ? line.invoice.paidAt ?? line.invoice.createdAt
+          : line.legacyServiceDate ?? line.createdAt;
         const window = resolveTermWindow(term, {
           submittedAt,
           serviceDate,
-          invoiceDate: line.invoice.createdAt,
+          invoiceDate: line.invoice?.createdAt ?? serviceDate,
         });
         dueDate = window.dueBy;
         await tx.claimBatchLine.update({
@@ -697,6 +726,20 @@ export class ClaimWorkspaceService {
       if (amountCents > rejectedCents) {
         throw new BadRequestException(
           `Cannot charge ${fromCents(amountCents)} to the patient — the panel only rejected ${fromCents(rejectedCents)}.`,
+        );
+      }
+
+      // AN IMPORTED CLAIM HAS NO INVOICE TO MOVE THE MONEY ONTO.
+      //
+      // Charging a rejection to the patient means moving it from the panel
+      // share to the patient share of the SAME invoice, so that the patient is
+      // chased through `computePatientBalance` like anybody else. A claim
+      // imported from the previous system has no such invoice, and inventing
+      // one would put a fabricated bill in a patient's record. Refused, with
+      // the reason, rather than half-done.
+      if (line.invoice === null) {
+        throw new BadRequestException(
+          'This claim was imported from the previous system and has no Kuwick invoice, so there is nothing to move the money onto. Raise the patient bill directly.',
         );
       }
 
@@ -1196,9 +1239,10 @@ export class ClaimWorkspaceService {
           panelClinicId: line.claimBatch.panelClinic.id,
           panelName: line.claimBatch.panelClinic.name,
           panelClaimNo: line.panelClaimNo,
-          invoiceNumber: line.invoice.invoiceNumber,
-          patientName: line.invoice.visit?.patient?.name ?? null,
-          serviceDate: line.invoice.visit?.createdAt ?? null,
+          invoiceNumber: line.invoice?.invoiceNumber ?? null,
+          imported: line.importBatchId !== null,
+          patientName: line.invoice?.visit?.patient?.name ?? line.legacyPatientReference ?? null,
+          serviceDate: line.invoice?.visit?.createdAt ?? line.legacyServiceDate ?? null,
           status: line.claimStatus,
           dueDate: line.dueDate,
           overdue: line.dueDate ? line.dueDate < now : false,
@@ -1323,11 +1367,13 @@ export class ClaimWorkspaceService {
         panelName: line.claimBatch.panelClinic.name,
         batchNumber: line.claimBatch.batchNumber,
         panelClaimNo: line.panelClaimNo,
-        invoiceNumber: line.invoice.invoiceNumber,
-        visitNumber: line.invoice.visit?.visitNumber ?? null,
-        serviceDate: line.invoice.visit?.createdAt ?? null,
-        patientName: line.invoice.visit?.patient?.name ?? null,
-        patientIdentifier: line.invoice.visit?.patient?.identifierValue ?? null,
+        invoiceNumber: line.invoice?.invoiceNumber ?? null,
+        /** TRUE where this claim came from the workbook rather than a Kuwick visit. */
+        imported: line.importBatchId !== null,
+        visitNumber: line.invoice?.visit?.visitNumber ?? null,
+        serviceDate: line.invoice?.visit?.createdAt ?? line.legacyServiceDate ?? null,
+        patientName: line.invoice?.visit?.patient?.name ?? line.legacyPatientReference ?? null,
+        patientIdentifier: line.invoice?.visit?.patient?.identifierValue ?? null,
         status: line.claimStatus,
         submittedAt: line.submittedAt,
         dueDate: line.dueDate,
@@ -1361,9 +1407,13 @@ export class ClaimWorkspaceService {
         // ---------------------------------------------------------------
         resubmission: NEEDS_RECLAIM.includes(line.claimStatus)
           ? (() => {
+              // From the ORIGINAL service date — the visit's, or, on an
+              // imported claim, whatever the file carried. Where neither
+              // exists the window resolves to unknown rather than counting
+              // from today, which would invent a deadline.
               const w = resolveResubmissionWindow(
                 line.claimBatch.panelClinic.resubmissionWindowDays,
-                line.invoice.visit?.createdAt ?? null,
+                line.invoice?.visit?.createdAt ?? line.legacyServiceDate ?? null,
                 now,
               );
               return {

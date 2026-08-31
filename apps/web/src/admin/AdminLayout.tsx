@@ -78,6 +78,7 @@ const ADMIN_CATEGORIES: HubCategory[] = [
     label: 'Panel',
     items: [
       { path: '/admin/panel', label: 'Claim workspace' },
+      { path: '/admin/panel/import', label: 'Import claims' },
       { path: '/admin/panel/configuration', label: 'Panel configuration' },
       { path: '/admin/panel/batches', label: 'Claim batches' },
       { path: '/admin/panel/companies', label: 'Panel companies' },
