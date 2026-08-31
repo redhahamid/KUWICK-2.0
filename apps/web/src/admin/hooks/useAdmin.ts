@@ -15,6 +15,7 @@ import type {
   PanelConfigRow,
   NewItemRequestRow,
   PayableInvoiceRow,
+  PanelMoneyPosition,
   PayablesSummary,
   SupplierOption,
   SupplierPaymentRow,
@@ -432,6 +433,24 @@ export function usePayables(params: { asOf?: string }) {
     queryKey: ['admin-finance', 'payables', params],
     queryFn: () =>
       apiClient.get<PayablesSummary>(`/finance/payables${params.asOf ? `?asOf=${params.asOf}` : ''}`),
+  });
+}
+
+/**
+ * PANEL MONEY, FROM FINANCE — billed vs claimed, what the fee cost, and what
+ * the panels actually banked. See apps/api/src/finance/panel-money.ts.
+ */
+export function usePanelMoney(params: { from?: string; to?: string; panelClinicId?: string }) {
+  return useQuery({
+    queryKey: ['admin-finance', 'panel-money', params],
+    queryFn: () => {
+      const query = new URLSearchParams();
+      if (params.from) query.set('from', params.from);
+      if (params.to) query.set('to', params.to);
+      if (params.panelClinicId) query.set('panelClinicId', params.panelClinicId);
+      const suffix = query.toString();
+      return apiClient.get<PanelMoneyPosition>(`/finance/panel-money${suffix ? `?${suffix}` : ''}`);
+    },
   });
 }
 

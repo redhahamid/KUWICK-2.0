@@ -2444,6 +2444,31 @@ The admin programme changed what is in it. It now carries basic salary before-an
 
 ---
 
+## D-113 — Panel money is reported in Finance, and Kuwick does not invent a first-submission deadline
+**Status: DECIDED** (2026-08-31 — implementation of the panel↔finance integration required by the Master Management System programme, Task 10)
+
+**What this adds.** A Finance screen (`/admin/finance/panel-money`, `GET /finance/panel-money`) answering three questions the panel work queue structurally cannot, because two of them are about something MISSING and the third is about money that has already left:
+
+1. **Billed to a panel and never claimed.** Per invoice and per panel, aged from settlement. This is the clinic's own monthly Avixo reconciliation (`PANEL_LEGACY_WORKFLOW_AUDIT.md` §7) — today a billing-system export compared against the claim workbook by hand — turned into a standing report. An invoice whose panel share was never claimed appears in no claim listing anywhere; it is invisible by construction, which is why nobody notices it.
+2. **What the withheld admin fee costs.** Only askable since D-112. Split into *borne* (claims that settled with money) and *expected* (claims still owed), with claims whose direction is `UNCONFIGURED` excluded from both and **counted**, so the screen can say the totals are understated rather than quietly reporting a fee of zero. A fee under `ADDED_TO_RECEIVABLE` is not a cost at all — the panel pays it — and a claim closed by a write-off cost the whole claim, not a fee.
+3. **Where the fee rule and the banked money disagree.** The owner's instruction on the workbook's two full-amount payments was to investigate them rather than average them away. `feeEvidence()` runs that investigation continuously: every settled claim is compared against what its own fee rule says should have arrived, and a payment above the expectation is reported as `NOT_TAKEN` with the difference.
+
+**Three judgements worth recording, because each had a wrong answer available:**
+
+- **NO INVENTED DEADLINE.** Unclaimed money is aged and shown; it is never called *late*. No panel in the clinic's records states a first-submission window, and the two-month rule in the rejection register is about RE-claiming, not first claims. Ageing is a fact; a deadline would be a rule the clinic never agreed.
+- **THE `withheldAmount` FIELD CANNOT BE THE TEST for whether a fee was taken.** A remittance can be keyed two equally correct ways — gross RM100 with RM8 withheld, or gross RM92 with nothing withheld. Reconciling against that field alone flags every correctly-entered net payment; the first draft of this did, on the seeded clinic, twice. The evidence is what the CLAIM received against what it expected. The remittance-level check survives, narrowed to remittances that actually record a withholding, where "they kept RM20 and the fees were RM8" is a real finding.
+- **"HAS THIS INVOICE BEEN CLAIMED" MEANS THE SAME THING ON BOTH SIDES.** Finance counts only claim lines in `PENDING`/`ACCEPTED`/`PAID` — the identical set `ClaimBatchService` uses to decide whether an invoice can be claimed again. A rejected claim frees its invoice, so its money correctly returns to "never claimed" instead of sitting in the gap between two screens.
+
+**A claim settled BELOW its expectation is `INCONCLUSIVE`, not "fee taken".** On a part-approved claim the shortfall could be the rejection or the fee, and nothing in the numbers tells them apart, so Kuwick says so.
+
+**Panel receipts are reported apart from patient payments.** They arrive by transfer, not at the till, and adding them into a day-end drawer figure would make the count wrong. Same principle that already keeps patient and panel receivables in separate columns on Finance → Outstanding: money chased by different people, with different escalation, is never added into one figure.
+
+**Tested**: 22 unit tests (`finance/panel-money.spec.ts`) and 9 integration tests through HTTP (`test/panel-money.e2e-spec.ts`), including tenant isolation and the rejected-claim-frees-its-invoice case.
+
+**Reversibility**: High. Read-only — no schema change, no writes to the panel module. Removing the screen and the endpoint removes the feature entirely.
+
+---
+
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:
 
 - Doctor incentive formula: worked semantics now captured in full from Klinik Hijraa (`docs/PROPOSED_ADDENDUM_2026-08-01_klinik-hijraa-admin-reference.md`) — spec is no longer the blocker, building it is; still needs owner go-ahead to schedule (OQ#2, blocks 1c only)

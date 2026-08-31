@@ -405,7 +405,21 @@ async function verify() {
       const label = line.panelClaimNo ?? '(unsubmitted)';
       if (!line.adjudicatedAt) continue;
       const settled = Number(line.approvedAmount ?? 0) + Number(line.rejectedAmount ?? 0) + Number(line.writtenOffAmount ?? 0);
-      if (Math.abs(settled - receivable) > 0.005) {
+      /**
+       * A PANEL THAT DID NOT APPLY ITS OWN FEE.
+       *
+       * The identity above assumes the panel adjudicated against the fee rule
+       * we hold for them. The real claim workbook contains payments where they
+       * did not — two of 2,640, which the owner asked to have investigated
+       * rather than averaged away (D-112). On those, adjudication lands on the
+       * CLAIMED amount instead of the receivable, and that divergence is the
+       * finding, not an error. It is allowed here for exactly one shape — a
+       * withheld fee that was not taken — and nothing else moves.
+       */
+      const feeNotTaken =
+        line.feeTreatment === 'WITHHELD_FROM_CLAIM' &&
+        Math.abs(settled - Number(line.claimedAmount)) <= 0.005;
+      if (Math.abs(settled - receivable) > 0.005 && !feeNotTaken) {
         problems.push(`claim ${label}: approved+rejected+written-off ${settled.toFixed(2)} != receivable ${receivable.toFixed(2)}`);
       }
       if (Number(line.paidAmount ?? 0) > Number(line.approvedAmount ?? 0) + 0.005) {
@@ -610,8 +624,12 @@ async function reset() {
     'service_bookable_hours', 'booking_form_fields', 'clinic_booking_pages', 'clinic_booking_settings',
     'clinic_closed_dates', 'appointment_reminder_rules', 'appointment_message_templates',
     'panel_price_overrides', 'panel_exclusions', 'panel_fee_terms', 'panel_clinics',
-    'consultation_tariff_rules', 'service_catalog', 'item_age_dosages', 'items', 'item_categories',
+    'consultation_tariff_rules', 'service_catalog', 'item_age_dosages',
+    // BEFORE `items`, not after: both carry a foreign key to it. Ordered wrong,
+    // the delete of `items` fails on the second run of the seed and not the
+    // first, when the child tables are still empty.
     'new_item_requests', 'item_price_changes',
+    'items', 'item_categories',
     'supplier_payment_allocations', 'supplier_payments', 'supplier_invoices',
     'suppliers', 'tax_rates', 'tax_codes', 'patient_alerts', 'patient_identity_changes', 'patients',
     'staff_role_assignments', 'staff_permission_grants', 'clinic_custom_roles',
@@ -1781,7 +1799,54 @@ async function seedPanelClaims(ids: Ids) {
     const overdueClaim = await claim(2, overdueVisit.invoice.id, 95, -95);
     await submit(overdueClaim.batch.id, overdueClaim.line.id, -94, 'KS-2026-0031', 60);
 
-    // 5. AWAITING SUBMISSION — one complete, one missing a diagnosis.
+    // 5. PAID THE FULL AMOUNT DESPITE A WITHHELD FEE.
+    //
+    // The shape of the two exceptions the owner asked to have investigated
+    // rather than averaged away: this panel's fee is WITHHELD, so RM110.40 was
+    // expected on a RM120 claim — and RM120 arrived. Finance → Panel money
+    // finds it by itself and names it, which is the point: the forensic pass
+    // that found two of these in a 2,640-row workbook now runs continuously.
+    const fullPayVisit = await panelVisit(0, 6, -60, 120, central.id, 'owner');
+    const fullPayClaim = await claim(0, fullPayVisit.invoice.id, 120, -60);
+    await submit(fullPayClaim.batch.id, fullPayClaim.line.id, -59, 'MC-2026-00131', 30);
+    // The panel adjudicated at the FULL claimed amount — which is precisely why
+    // no fee came off. The configured rule expects RM110.40; RM120 arrived, and
+    // the gap between the two is the finding Finance now surfaces by itself.
+    await tx.claimBatchLine.update({
+      where: { id: fullPayClaim.line.id },
+      data: {
+        claimStatus: 'PAID', status: 'PAID',
+        approvedAmount: 120, rejectedAmount: 0, adjudicatedAt: at(-52, 4),
+        // The money that actually arrived — the WHOLE claim, fee and all.
+        paidAmount: 120, resolvedAt: at(-45, 4),
+        remarks: 'Panel remitted the full claimed amount; no admin fee deducted',
+      },
+    });
+    await tx.claimEvent.createMany({
+      data: [
+        { tenantId: tenant.id, claimBatchLineId: fullPayClaim.line.id, eventType: 'ADJUDICATED', fromStatus: 'SUBMITTED', toStatus: 'APPROVED', amount: 120, actorStaffId: staff.panel, createdAt: at(-52, 4) },
+        { tenantId: tenant.id, claimBatchLineId: fullPayClaim.line.id, eventType: 'PAYMENT_RECEIVED', fromStatus: 'APPROVED', toStatus: 'PAID', amount: 120, reference: 'TRF-2026-8790', actorStaffId: staff.finance, createdAt: at(-45, 4) },
+      ],
+    });
+    await tx.panelRemittance.create({
+      data: {
+        tenantId: tenant.id, panelClinicId: panels[0].id, remittanceRef: 'TRF-2026-8790',
+        receivedAt: day(-45), grossAmount: 120, withheldAmount: 0, netAmount: 120,
+        notes: 'Full claimed amount received — admin fee not deducted on this payment',
+        recordedByStaffId: staff.finance,
+        allocations: { create: [{ tenantId: tenant.id, claimBatchLineId: fullPayClaim.line.id, amount: 120 }] },
+      },
+    });
+
+    // 5b. BILLED TO A PANEL AND NEVER CLAIMED.
+    //
+    // The clinic's own monthly reconciliation exists to find exactly this: an
+    // invoice whose panel share was settled two months ago and for which no
+    // claim was ever raised. It appears in NO claim listing anywhere — it is
+    // invisible by construction — and it is RM145 of real money.
+    await panelVisit(0, 7, -70, 145, central.id, 'resident');
+
+    // 6. AWAITING SUBMISSION — one complete, one missing a diagnosis.
     const readyVisit = await panelVisit(0, 4, -3, NCD + 40, central.id, 'owner');
     await claim(0, readyVisit.invoice.id, NCD + 40, -3);
 
@@ -1806,7 +1871,9 @@ async function seedPanelClaims(ids: Ids) {
     // readiness check has a real failure to report.
     await claim(0, incompleteInvoice.id, CONSULT, -2);
 
-    console.log('  panel: paid, partially paid, rejected→re-claimed, rejected→awaiting decision, overdue, ready, incomplete');
+    console.log(
+      '  panel: paid, partially paid, rejected→re-claimed, rejected→awaiting decision, overdue, fee-not-taken, never-claimed, ready, incomplete',
+    );
     void remittance;
   });
 }

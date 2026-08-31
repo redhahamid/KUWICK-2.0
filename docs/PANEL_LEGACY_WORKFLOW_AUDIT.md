@@ -499,17 +499,18 @@ Named honestly, each with the evidence that produced it.
 | # | Gap | Evidence | Cost |
 |---|---|---|---|
 | **G-1** | ~~**Fee direction.** Kuwick can only add the fee.~~ **RESOLVED** | §4.1 — 2,615 banked payments say withheld; D-041 said added. | **Done.** Owner superseded D-041 on 2026-08-31. Four-state `PanelFeeTreatment`, effective-dated `PanelFeeTerm`, per-claim snapshot, migrated with a measured impact report. See D-112. |
-| **G-2** | **Payment terms that are not a single number of calendar days.** `paymentTermDays Int?` cannot hold a range, working days, or an invoice-date anchor. | §3 — 14 of 29 panels are one of those three shapes. | Term = `{ min, max, unit: CALENDAR\|WORKING, anchor: SERVICE\|SUBMISSION\|INVOICE }`. |
-| **G-3** | **Overdue as a computed state.** | P-17. Kuwick has `dueDate` per line, but nothing derives it from the panel's term. | Derive the due date at submission from G-2, then age against it. |
-| **G-4** | **The 2-month re-claim deadline.** | §8.1 rule 5 — a hard money deadline enforced by nobody. | A per-panel `resubmissionWindowDays`, a countdown on the rejected queue, and an expiry state. |
-| **G-5** | **Rejected → patient receivable.** | §8.3 — "self pay" is one of the four routes, and the clinic actually collects it. | A conversion from a rejected claim to a patient balance, keeping the link. |
-| **G-6** | **Rejection reason as a taxonomy.** | §8.3 — five recurring causes, all free text today. | A reason code beside the free text, so "how much did we lose to exhausted limits this year" is answerable. |
+| **G-2** | ~~**Payment terms that are not a single number of calendar days.**~~ **RESOLVED** | §3 — 14 of 29 panels are a range, working days, or an invoice-date anchor. | **Done.** `paymentTermMaxDays`, `paymentTermUnit` (CALENDAR/WORKING), `paymentTermAnchor` (SERVICE/SUBMISSION/INVOICE) and `paymentTermVariesByPayer`, resolved by `panel/payment-terms.ts`. Public holidays are NOT modelled and the API says so. |
+| **G-3** | ~~**Overdue as a computed state.**~~ **RESOLVED** | P-17. Kuwick had `dueDate` per line and nothing that derived it. | **Done.** `resolveTermWindow` derives the due date per line at submission from the panel's own term, and overdue is judged against the FAR edge of a range so a panel is never chased early. |
+| **G-4** | ~~**The 2-month re-claim deadline.**~~ **RESOLVED** | §8.1 rule 5 — a hard money deadline enforced by nobody. | **Done.** Per-panel `resubmissionWindowDays`, a countdown on the rejected queue (shown only where a re-claim is actually possible), and an expired state. |
+| **G-5** | ~~**Rejected → patient receivable.**~~ **RESOLVED** | §8.3 — "self pay" is one of the four routes, and the clinic actually collects it. | **Done.** `chargeToPatient` moves the rejected amount from the panel share to the patient share on the SAME invoice, keeping the link. It is explicitly not a write-off. |
+| **G-6** | ~~**Rejection reason as a taxonomy.**~~ **RESOLVED** | §8.3 — five recurring causes, all free text today. | **Done.** `ClaimRejectionCategory` beside the free text, with the breakdown by amount on the dashboard: "what did exhausted member limits cost us this year" is now answerable. |
 | **G-7** | **Fee on a consolidated monthly invoice.** | §4 — one panel charges 10% of the monthly invoice, not per claim. | A third `claimFeeType`, applied at batch level. |
 | **G-8** | **Fee tiers.** | §4.2 — one panel shows two fee values across 2,268 claims. | Either a tier table, or a per-claim override with a reason. Ask the owner which; the sheet cannot say. |
-| **G-9** | **Term that varies by the corporate client behind a TPA.** | §3 — one panel is explicitly `VARY BASED ON COMPANY`. | Sub-payer under a panel. Low volume; not urgent. |
-| **G-10** | **Rejection rate as a KPI.** | §9 item 6 — the clinic already computes excess receivable ÷ total claimed. | One tile on the panel dashboard. |
+| **G-9** | **Term that varies by the corporate client behind a TPA.** *(partly addressed)* | §3 — one panel is explicitly `VARY BASED ON COMPANY`. | `paymentTermVariesByPayer` records THAT it varies, so no due date is invented for that panel. Modelling the sub-payer itself is still outstanding. Low volume; not urgent. |
+| **G-10** | ~~**Rejection rate as a KPI.**~~ **RESOLVED** | §9 item 6 — the clinic already computes excess receivable ÷ total claimed. | **Done.** On the panel dashboard, NULL rather than 0% where nothing has been claimed, plus a count of rejections nobody has categorised. |
 | **G-11** | **Per-scheme split within one panel** (fee-for-service vs managed care). | §5 — one panel splits its monthly counts into two schemes. | A scheme dimension on the claim, or accept two panel records. |
-| **G-12** | **Panel claim import.** | 7,146 open and historical rows, 30% unpaid, live money. | Kuwick cannot start empty on day one. An importer is required before cutover. |
+| **G-12** | **Panel claim import.** | 7,146 open and historical rows, 30% unpaid, live money. | Kuwick cannot start empty on day one. An importer is required before cutover. **The one remaining blocker.** |
+| **G-13** | ~~**Billed to a panel and never claimed.**~~ **RESOLVED** | §7 — the monthly Avixo reconciliation exists because billed and claimed drift, and the drift is money nobody chases. | **Done.** Finance → Panel money reports billed vs claimed per invoice and per panel, aged from settlement, alongside what the admin fee costs and what each panel actually banked. Kuwick does not invent a first-submission deadline (D-113). |
 
 ---
 
@@ -534,12 +535,21 @@ That one is now fixed: the owner superseded D-041 on the evidence, and the
 correction is migrated, measured and regression-tested (D-112,
 [`PANEL_FEE_DIRECTION_CORRECTION.md`](./PANEL_FEE_DIRECTION_CORRECTION.md)).
 
-Kuwick already replaces the majority of it, and replaces the Avixo
-reconciliation by making it impossible to need. The twelve gaps in §12 are what
-stand between "most of it" and "the clinic can close this file". **Nine of the
-twelve are configuration shapes rather than new subsystems.** The two that are
-not — the rejected-to-patient conversion (G-5) and the claim importer (G-12) —
-are both real work. G-1 is answered and closed.
+Kuwick already replaces the majority of it. The Avixo reconciliation it does
+NOT make impossible to need — an earlier draft of this document claimed it did,
+and that was wrong: a claim is only raised when somebody raises one, so billed
+and claimed still drift. What Kuwick does instead is report the drift, which is
+better than needing a monthly export to find it (G-13).
 
-**None of the twelve is implemented in this pass.** They are specified here so
-the next one starts from evidence.
+**Eight of the thirteen gaps in §12 are now closed, and one is partly closed.**
+G-1 (fee direction), G-2 (term shapes), G-3 (computed overdue), G-4 (the
+re-claim deadline), G-5 (rejected → patient), G-6 (the rejection taxonomy),
+G-10 (the rejection-rate KPI) and G-13 (billed vs claimed) are implemented,
+tested and visible on screen; G-9 records that a term varies without yet
+modelling the sub-payer.
+
+**Four remain.** G-7 (a fee on a consolidated monthly invoice), G-8 (fee tiers)
+and G-11 (per-scheme split) are each one panel out of twenty-nine and need an
+owner decision more than they need code. **G-12, the claim importer, is the one
+production blocker**: 7,146 open and historical rows of live money that Kuwick
+cannot start without.

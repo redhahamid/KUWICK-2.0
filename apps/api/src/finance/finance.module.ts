@@ -8,6 +8,7 @@ import { TaxService } from './tax.service';
 import { ReceivablesService } from './receivables.service';
 import { ProfitabilityService } from './profitability.service';
 import { SupplierPayablesService } from './supplier-payables.service';
+import { PanelMoneyService } from './panel-money.service';
 
 /**
  * WAVE 1 of the admin programme.
@@ -24,6 +25,11 @@ import { SupplierPayablesService } from './supplier-payables.service';
  * question they answer ("what must I pay this week") is a finance question,
  * even though the documents arrive with the stock. Stock still owns the
  * purchase order and the goods receipt; an invoice only LINKS to them.
+ *
+ * And it READS panel claims, to answer the questions the panel work queue
+ * structurally cannot: what we billed panels and never claimed, what their
+ * admin fees cost us, and what they actually banked. It writes nothing in the
+ * panel module — see panel-money.service.ts.
  */
 @Module({
   imports: [CoreModule],
@@ -36,6 +42,7 @@ import { SupplierPayablesService } from './supplier-payables.service';
     ReceivablesService,
     ProfitabilityService,
     SupplierPayablesService,
+    PanelMoneyService,
   ],
   exports: [PaymentService, TaxService, DayEndService],
 })

@@ -1252,3 +1252,131 @@ export interface SupplierOption {
   id: string;
   name: string;
 }
+
+// ---------------------------------------------------------------------------
+// PANEL MONEY, SEEN FROM FINANCE
+//
+// Three questions the panel work queue structurally cannot answer, because two
+// are about something MISSING and one is about money that has already left.
+// See apps/api/src/finance/panel-money.ts.
+// ---------------------------------------------------------------------------
+
+export type PanelBillingState = 'CLAIMED' | 'UNCLAIMED' | 'UNDER_CLAIMED' | 'OVER_CLAIMED';
+
+export type FeeEvidenceState =
+  | 'TAKEN'
+  | 'NOT_TAKEN'
+  | 'OVERPAID'
+  | 'PENDING'
+  | 'NOT_PAID'
+  | 'INCONCLUSIVE'
+  | 'NOT_APPLICABLE';
+
+export const FEE_EVIDENCE_LABELS: Record<FeeEvidenceState, string> = {
+  TAKEN: 'Fee taken as configured',
+  NOT_TAKEN: 'Fee NOT taken',
+  OVERPAID: 'Paid above the claim',
+  PENDING: 'Still owed',
+  NOT_PAID: 'Closed without payment',
+  INCONCLUSIVE: 'Cannot be attributed',
+  NOT_APPLICABLE: 'No withheld fee',
+};
+
+export interface PanelMoneyUnclaimedRow {
+  invoiceId: string;
+  invoiceNumber: string;
+  visitNumber: string | null;
+  clinicName: string | null;
+  panelClinicId: string | null;
+  panelName: string | null;
+  settledAt: string | null;
+  billed: number;
+  claimed: number;
+  unclaimed: number;
+  state: PanelBillingState;
+  ageDays: number;
+}
+
+export interface PanelMoneyExceptionRow {
+  panelClinicId: string;
+  panelName: string;
+  invoiceNumber: string | null;
+  state: FeeEvidenceState;
+  claimed: number;
+  expected: number;
+  received: number;
+  difference: number;
+}
+
+export interface PanelMoneyRemittanceRow {
+  remittanceId: string;
+  panelClinicId: string;
+  panelName: string;
+  receivedAt: string;
+  reference: string | null;
+  claims: number;
+  gross: number;
+  withheld: number;
+  net: number;
+  expectedFee: number;
+  unexplained: number;
+  /** FALSE where the remittance was keyed net and there is nothing to check. */
+  withholdingChecked: boolean;
+  agrees: boolean;
+}
+
+export interface PanelMoneyPanelRow {
+  panelClinicId: string | null;
+  panelName: string;
+  billed: number;
+  claimed: number;
+  unclaimed: number;
+  unclaimedInvoices: number;
+  banked: number;
+  withheld: number;
+  feeBorne: number;
+  feeExpected: number;
+}
+
+export interface PanelMoneyPosition {
+  period: { from: string | null; to: string | null; asOf: string };
+  billing: {
+    invoices: number;
+    billed: number;
+    claimed: number;
+    unclaimed: number;
+    unclaimedInvoices: number;
+    overClaimed: number;
+    overClaimedInvoices: number;
+    claimedRate: number | null;
+    aging: { current: number; d31_60: number; d61_90: number; d90_plus: number };
+  };
+  feeCost: {
+    borne: number;
+    expected: number;
+    unresolvedClaims: number;
+    unresolvedFee: number;
+  };
+  banked: {
+    remittances: number;
+    gross: number;
+    withheld: number;
+    net: number;
+    unexplained: number;
+    remittancesThatDisagree: number;
+  };
+  feeEvidence: {
+    taken: number;
+    notTaken: number;
+    notTakenAmount: number;
+    overpaid: number;
+    overpaidAmount: number;
+    pending: number;
+    notPaid: number;
+    inconclusive: number;
+  };
+  byPanel: PanelMoneyPanelRow[];
+  unclaimedInvoiceRows: PanelMoneyUnclaimedRow[];
+  exceptionRows: PanelMoneyExceptionRow[];
+  remittanceRows: PanelMoneyRemittanceRow[];
+}

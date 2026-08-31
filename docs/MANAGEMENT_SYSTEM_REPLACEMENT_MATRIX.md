@@ -32,25 +32,32 @@ backwards when the real file was read**, and they are marked.
 | Resubmission date, resolution, resolved date | Claim workspace columns | 🟢 | — | — |
 | **Amount paid / receipt** | Panel ▸ Reconciliation ▸ **Record a payment** | 🟢 | Somebody reads the remittance advice | — |
 | Remarks / owner of the claim | Claim workspace | 🟢 | — | — |
-| Reconcile the listing against the billing system monthly | — | ⚪ | — | **Disappears.** Claims derive from invoices, so the two cannot disagree. An entire monthly ritual stops existing. |
+| Reconcile the listing against the billing system monthly | Finance ▸ **Panel money** ▸ Never claimed | 🟢 ⬇ | — | **Corrected.** An earlier pass said this ritual "disappears because claims derive from invoices" — wrong: a claim exists only when somebody raises one, so billed and claimed still drift. Kuwick now REPORTS the drift per invoice and per panel, aged from settlement, instead of needing a monthly export to find it (G-13, D-113). |
 | **Admin fee and expected receivable** | Claim workspace — Claimed / Fee / Receivable | 🟢 | — | **Resolved.** D-041 superseded 2026-08-31 on the evidence of 2,615 banked payments: existing panels withhold. Four-state treatment, effective-dated, migrated, impact measured (D-112). |
-| **Payment terms per panel** | Panel ▸ Panel configuration | 🟡 ⬇ | Term for 14 of 29 panels held outside Kuwick | **G-2.** `paymentTermDays` is one number of calendar days. Real terms are ranges, working days, invoice-date-anchored, or delegated to the corporate client. |
-| **Overdue** | Aging views | 🟡 | — | **G-3.** Nothing derives a due date from the term, so "overdue" is still judgement. (The workbook cannot do it either.) |
-| **2-month re-claim deadline** | — | 🔴 | Counted in somebody's head | **G-4.** A hard money deadline. Miss it and the claim is gone. |
-| **Rejected claim → patient bill** | — | 🔴 | **Patient charged outside the claim record** | **G-5.** One of the four resolution routes the clinic actually uses. |
-| **Why a claim was rejected, countable** | `rejectionReason` free text | 🟡 | — | **G-6.** Five recurring causes; no taxonomy, so "what did exhausted limits cost us" is unanswerable. |
-| Rejection rate as a KPI | — | 🔴 | — | **G-10.** The workbook already computes it; Kuwick does not show it. |
-| **7,146 historical and open claims** | — | 🔴 | — | **G-12.** No importer. 30% of those rows are unpaid, live money. |
+| **Payment terms per panel** | Panel ▸ Panel configuration | 🟢 | — | **Resolved (G-2).** Range (`paymentTermMaxDays`), calendar or working days, and a SERVICE / SUBMISSION / INVOICE anchor. A TPA whose term is set by the employer is flagged rather than guessed. Public holidays are not modelled and the API says so. |
+| **Overdue** | Aging views + per-line due date | 🟢 | — | **Resolved (G-3).** `resolveTermWindow` sets each line's due date at submission from that panel's own term; a range is judged against its FAR edge, so a panel is never chased early. |
+| **2-month re-claim deadline** | Work queue ▸ re-claim countdown | 🟢 | — | **Resolved (G-4).** Per-panel `resubmissionWindowDays`, counted from the ORIGINAL service date, shown only on claims a re-claim is actually possible for, with an expired state. |
+| **Rejected claim → patient bill** | Work queue ▸ Charge to patient | 🟢 | — | **Resolved (G-5).** Moves the rejected amount from the panel share to the patient share on the SAME invoice, keeping the link. Explicitly not a write-off. |
+| **Why a claim was rejected, countable** | `rejectionCategory` + free text | 🟢 | — | **Resolved (G-6).** A reason code beside the prose, with the breakdown by amount on the dashboard and a count of rejections nobody has categorised. |
+| Rejection rate as a KPI | Panel ▸ dashboard tile | 🟢 | — | **Resolved (G-10).** NULL rather than 0% where nothing has been claimed — "0% rejected" on a panel with no claims reads as excellent. |
+| **7,146 historical and open claims** | — | 🔴 | — | **G-12.** No importer. 30% of those rows are unpaid, live money. **The one remaining blocker.** |
+| **What the admin fee costs the clinic** | Finance ▸ Panel money ▸ Admin fees borne | 🟢 | — | **New.** Only askable since D-112 established the fee is withheld. Borne vs expected, with unconfigured fees excluded from both and counted. |
+| **A panel that did not take its fee** | Finance ▸ Panel money ▸ Fee exceptions | 🟢 | — | **New.** The forensic pass that found two such payments in 2,640 workbook rows, run continuously against every settled claim (D-113). |
 
-> **Corrected verdict: the panel workbook cannot be retired yet — but the
-> blocker that mattered most is closed.** The previous pass said it could, on
-> the strength of a *description* of the workflow; reading the file changed
-> that. **G-1, the receivable arithmetic, is now correct** (D-041 superseded
-> 2026-08-31, migrated and measured), the payment-term shapes are expressible
-> (G-2), the re-claim deadline is counted down (G-4), and a rejected claim can
-> be charged to the patient (G-5). What remains is the **importer for 7,146 live
-> claims (G-12)** and the smaller items above. Submitting to the portal stays
-> manual by design.
+> **Corrected verdict: one blocker stands between the clinic and closing this
+> file, and it is the importer.** The pass before last said the workbook could
+> be retired, on the strength of a *description* of the workflow; reading the
+> file itself moved that backwards. It has since moved forward again on
+> evidence rather than optimism: **G-1** the receivable arithmetic (D-041
+> superseded 2026-08-31, migrated and measured), **G-2** the term shapes,
+> **G-3** the computed due date, **G-4** the re-claim countdown, **G-5** charge
+> to patient, **G-6** the rejection taxonomy, **G-10** the rejection-rate KPI,
+> and **G-13** billed-versus-claimed are all built, tested and on screen.
+>
+> What remains is **G-12, the importer for 7,146 live claims**, plus three
+> single-panel shapes (G-7 monthly-invoice fee, G-8 fee tiers, G-11 per-scheme
+> split) that need an owner decision more than they need code. Submitting to the
+> portal stays manual by design.
 
 ---
 
@@ -215,7 +222,7 @@ this matrix at all.
 | Tool | Can it be retired? | What stands in the way |
 |---|---|---|
 | **Hijraa Admin** | **Mostly**, for day-to-day operation | Employee editing, credit-note creation, raise-transfer. Each is a form over an endpoint that already works. |
-| **Panel claim workbook** | **No** *(was "yes")* | ~~G-1 fee direction~~ **resolved (D-112)**, ~~G-2 terms~~, ~~G-4 deadline~~, ~~G-5 self-pay~~ all built. What stands in the way now is **G-12: no importer for 7,146 live claims.** |
+| **Panel claim workbook** | **No** *(was "yes")* | Eight of thirteen gaps closed — ~~G-1 fee direction~~ **(D-112)**, ~~G-2 terms~~, ~~G-3 overdue~~, ~~G-4 deadline~~, ~~G-5 self-pay~~, ~~G-6 taxonomy~~, ~~G-10 KPI~~, ~~G-13 billed vs claimed~~ **(D-113)**. What stands in the way is **G-12: no importer for 7,146 live claims.** |
 | **Que order medication** | **Close** | Bonus price, price-change-at-receipt, item activation on goods-in, supplier SLA. |
 | **Consumable que order** | **Close** | Same list. The file needs nothing Kuwick's procurement chain does not already have in shape. |
 | **Inventory count sheet** | **Yes, on the count itself** | Kuwick is strictly better here — it computes the variance the sheet never had, and requires a second approver. Keep the sheet only for the printable walk-round list and selling-value-at-count. |

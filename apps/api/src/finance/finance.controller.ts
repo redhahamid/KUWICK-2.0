@@ -18,6 +18,7 @@ import { OptionalDateParam, RequiredDateParam } from '../core/date-param.pipe';
 import { assertDateOrder } from '../core/query-dates';
 import { ProfitabilityKind, ProfitabilityService } from './profitability.service';
 import { SupplierPayablesService } from './supplier-payables.service';
+import { PanelMoneyService } from './panel-money.service';
 import {
   RecordSupplierInvoiceDto,
   RecordSupplierPaymentDto,
@@ -41,6 +42,7 @@ export class FinanceController {
     private readonly receivables: ReceivablesService,
     private readonly profit: ProfitabilityService,
     private readonly payables_: SupplierPayablesService,
+    private readonly panelMoney: PanelMoneyService,
   ) {}
 
   // --- Payments -------------------------------------------------------------
@@ -203,6 +205,23 @@ export class FinanceController {
   @Patch('payables/suppliers/:id/terms')
   updateSupplierTerms(@Param('id') id: string, @Body() dto: UpdateSupplierTermsDto) {
     return this.payables_.updateTerms(id, dto);
+  }
+
+  // --- Panel money ------------------------------------------------------------
+  //
+  // The finance side of the panel relationship: billed vs claimed, what the
+  // admin fee costs, and what the panels actually banked. See
+  // finance/panel-money.ts for why each of the three is a separate question.
+
+  @Get('panel-money')
+  panelMoneyPosition(
+    @Query('from', OptionalDateParam) from?: string,
+    @Query('to', OptionalDateParam) to?: string,
+    @Query('clinicId') clinicId?: string,
+    @Query('panelClinicId') panelClinicId?: string,
+  ) {
+    assertDateOrder(from, to);
+    return this.panelMoney.position({ from, to, clinicId, panelClinicId });
   }
 
   // --- Profitability ----------------------------------------------------------

@@ -109,6 +109,7 @@ const ADMIN_CATEGORIES: HubCategory[] = [
       { path: '/admin/finance/invoices', label: 'Invoices' },
       { path: '/admin/finance/receivables', label: 'Outstanding' },
       { path: '/admin/finance/payables', label: 'Supplier payables' },
+      { path: '/admin/finance/panel-money', label: 'Panel money' },
       { path: '/admin/finance/credit-notes', label: 'Credit notes' },
       { path: '/admin/finance/tax', label: 'Tax / SST' },
       { path: '/admin/finance/profitability', label: 'Profitability' },
