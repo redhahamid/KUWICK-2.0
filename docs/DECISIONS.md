@@ -2524,6 +2524,32 @@ The easiest to get wrong is *nothing invented*, and specifically **the template 
 
 ---
 
+## D-116 — The payslip prints what is true about itself, including that it may not be a payslip
+**Status: DECIDED** (2026-08-31 — closing the payroll wave's remaining deliverable)
+
+**What this is.** A written statement of wages is a statutory record under the Employment Act 1955 s.19, not a report. That single fact decides the design, because the failure mode here is not an ugly document — it is one that **looks official and is not**.
+
+**Printed through the browser, not a server-side renderer.** Same route as every other document Kuwick prints (`clinical/printTextDocument.ts`): the page is rendered as HTML and `window.print()` opens the dialog, where "Save as PDF" produces the PDF. No new dependency, no headless Chrome to keep alive in production, and one printing story across the product rather than two.
+
+**Four things the printed page must admit, and does:**
+
+1. **A run that is not APPROVED or PAID prints as a DRAFT** — watermark on the paper (`print-color-adjust: exact`, so it survives the printer) plus a banner naming the status. A payslip handed to somebody from a run nobody approved is a promise the clinic has not made.
+2. **PROVISIONAL statutory rates say so on the slip**, in the run's own words. The seeded Malaysian tables are `CORROBORATED` — from the clinic's own workbook, checked against no authority, because this environment cannot reach KWSP or PERKESO. An employee is entitled to know the EPF line on their payslip has not been verified against the Third Schedule.
+3. **A statutory figure that was not calculated prints "Not calculated", with the reason, and NEVER 0.00.** Zero states that nothing is owed; blank states that nobody worked it out. On a statutory document those are different statements, and printing the first when the second is true is a false one. A separate case reads **"Not applicable to this employee"** — a fact about the person, not about the system, and the two must not look alike on a document somebody may query.
+4. **PCB entered by hand says it was entered by hand.** Kuwick does not calculate MTD; a figure it merely stored must not read as one it computed.
+
+**And the slip checks its own arithmetic.** Gross minus the deductions actually printed must equal the net actually printed. Where they disagree the page prints the discrepancy and *"this payslip is not safe to issue — recalculate the run"* **in place of the net**, because a payslip that does not add up is worse than no payslip: somebody will pay whatever the net says.
+
+**What is deliberately absent.** The bank account number — it is not snapshotted onto the payroll line at all, so there is nothing here to leak. The slip prints the bank name only.
+
+**It prints the frozen snapshot, not today's record.** A payslip must keep saying what it said after somebody is promoted or changes bank.
+
+**Tested**: 18 cases in `admin/hr/payslip.test.ts`, including that a DRAFT run cannot print without the watermark, that an uncalculated figure never renders as `0.00`, that a slip which does not add up refuses to show a net, that employer contributions are shown and never deducted, and that a name containing markup cannot break out of the document.
+
+**Reversibility**: High. A pure render function plus a button. Nothing is stored, nothing migrated.
+
+---
+
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:
 
 - Doctor incentive formula: worked semantics now captured in full from Klinik Hijraa (`docs/PROPOSED_ADDENDUM_2026-08-01_klinik-hijraa-admin-reference.md`) — spec is no longer the blocker, building it is; still needs owner go-ahead to schedule (OQ#2, blocks 1c only)

@@ -27,7 +27,7 @@
  * is the safety rule working, not a broken script.
  */
 import { join } from 'node:path';
-import { ensureOut, launch, open, pageShot, settle, shot, step, wideShot, writeManifest } from './harness';
+import { OUT, captured, ensureOut, launch, open, pageShot, settle, shot, step, wideShot, writeManifest } from './harness';
 
 const FIXTURES = join(__dirname, 'fixtures');
 
@@ -256,6 +256,37 @@ async function main() {
     if ((await row.count()) > 0) await row.click();
     await settle(page, 700);
     await wideShot(page, '111-stock-take-selling-value', 2200);
+  });
+
+  // =========================================================================
+  // HR — THE PAYSLIP
+  // =========================================================================
+
+  await step('112-hr-payroll-run', async () => {
+    await open(page, '/admin/hr/payroll');
+    const row = page.locator('.ant-table-tbody tr.ant-table-row').first();
+    if ((await row.count()) > 0) await row.click();
+    await settle(page, 900);
+    await wideShot(page, '112-hr-payroll-run', 2600);
+  });
+
+  // THE PAYSLIP ITSELF, captured from the window it prints from — because what
+  // matters about this document is what comes off the printer, not what the
+  // screen behind it looks like. The seeded run is CALCULATED and its rates are
+  // CORROBORATED rather than VERIFIED, so the page carries both admissions:
+  // a DRAFT watermark and a provisional-rates banner.
+  await step('113-hr-payslip', async () => {
+    const [payslip] = await Promise.all([
+      page.context().waitForEvent('page'),
+      page.getByRole('button', { name: /Print (payslip|draft)/ }).first().click(),
+    ]);
+    await payslip.waitForLoadState('domcontentloaded');
+    await payslip.setViewportSize({ width: 1000, height: 1320 });
+    await payslip.waitForTimeout(700);
+    await payslip.screenshot({ path: join(OUT, '113-hr-payslip.png'), fullPage: true });
+    captured.push('113-hr-payslip');
+    console.log('  113-hr-payslip');
+    await payslip.close();
   });
 
   await browser.close();

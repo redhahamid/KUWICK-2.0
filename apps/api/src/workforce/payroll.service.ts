@@ -794,6 +794,10 @@ export class PayrollService {
         bonus: Number(line.bonus),
         grossPay: Number(line.grossPay),
         unpaidLeaveDeduction: Number(line.unpaidLeaveDeduction),
+        // Needed by the payslip: without it the deductions column does not sum
+        // to the difference between gross and net, and a payslip that does not
+        // add up is worse than no payslip.
+        otherDeductions: Number(line.otherDeductions),
         // NULL travels through as null, never coerced to 0 — that is the whole
         // point of `StatutoryStatus`.
         epfEmployee: numberOrNull(line.epfEmployee),

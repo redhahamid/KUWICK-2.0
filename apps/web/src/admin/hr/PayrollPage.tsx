@@ -5,6 +5,9 @@ import { AdminNotice, AdminSection, AdminShell, firstError } from '../components
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, money, moneyOrDash } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
+import { useAuthStore } from '../../core/auth-store';
+import { isDraftRun, payslipTotals, printPayslip } from './payslip';
+import type { PayslipLine } from './payslip';
 import { useCan } from '../../core/hooks/useCan';
 import {
   useApprovePayroll,
@@ -42,6 +45,11 @@ export function PayrollPage() {
   const statutory = useStatutoryRuleSets();
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const detail = usePayrollRun(selectedId);
+  // The employer's registered name and the person pressing print — a payslip
+  // names both, and neither is invented: they come from the session the server
+  // issued.
+  const tenantName = useAuthStore((state) => state.tenant?.name ?? null);
+  const me = useAuthStore((state) => state.staff);
 
   const create = useCreatePayrollRun();
   const calculate = useCalculatePayroll();
@@ -281,8 +289,57 @@ export function PayrollPage() {
               { title: 'Net', dataIndex: 'netPay', key: 'netPay', className: 'kw-num', render: (v: number) => <strong>{money(v)}</strong> },
               { title: 'Worked days', dataIndex: 'workedDays', key: 'workedDays', className: 'kw-num', optional: true },
               { title: 'OT hours', dataIndex: 'overtimeHours', key: 'overtimeHours', className: 'kw-num', optional: true },
+              {
+                title: '',
+                key: 'payslip',
+                render: (_: unknown, row: PayslipLine) => {
+                  // A payslip that does not add up must not be printable as
+                  // one — the button still works, because seeing the refusal
+                  // on the page is how somebody finds out, but it says what it
+                  // will produce.
+                  const totals = payslipTotals(row);
+                  return (
+                    <Button
+                      size="small"
+                      type="link"
+                      danger={!totals.adds}
+                      onClick={() =>
+                        printPayslip(run, row, {
+                          employerName: tenantName ?? run.clinicName,
+                          branchName: run.clinicName,
+                          printedBy: me?.fullName ?? null,
+                        })
+                      }
+                    >
+                      {totals.adds ? (isDraftRun(run.status) ? 'Print draft' : 'Print payslip') : 'Does not add up'}
+                    </Button>
+                  );
+                },
+              },
             ]}
           />
+
+          {/*
+            A payslip is a statutory record under the Employment Act 1955 s.19,
+            and the failure mode is not an ugly document — it is one that looks
+            official and is not. So the page says, before anybody prints, what
+            the print will carry.
+          */}
+          <AdminNotice tone={isDraftRun(run.status) ? 'warn' : 'info'}>
+            {isDraftRun(run.status) ? (
+              <>
+                <strong>This run is {RUN_STATUS[run.status] ?? run.status}.</strong> Payslips printed
+                from it carry a DRAFT watermark and say they are not payslips. Approve the run first
+                if you intend to hand these out.
+              </>
+            ) : (
+              <>
+                Payslips print through your browser — choose <strong>Save as PDF</strong> in the
+                print dialog to keep a copy. A statutory figure that was not calculated prints as
+                blank with the reason, never as 0.00.
+              </>
+            )}
+          </AdminNotice>
 
           {run.adjustments.length > 0 ? (
             <AdminSection title="Adjustments to this locked run" padded={false}>

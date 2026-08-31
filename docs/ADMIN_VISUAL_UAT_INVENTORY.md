@@ -254,6 +254,8 @@ yourself in [`MANAGEMENT_UAT_FLOWS.md`](./MANAGEMENT_UAT_FLOWS.md).
 | 109 | Stock ▸ Duplicate guard | Approving a flagged request requires acknowledging the duplicate. |
 | 110 | Stock ▸ Near expiry | **Received** beside **at risk (at most)** — the batch exposure that used to be reported at full size for a sold-out batch (D-114). |
 | 111 | Stock ▸ Stock take | Counted cost and counted retail side by side, never added. |
+| 112 | HR ▸ Payroll run | The run, its exceptions, and a Print action per employee that says what it will produce. |
+| 113 | **The payslip itself** | Captured from the window it prints from, because what matters is what comes off the printer. Carries a DRAFT watermark (the run is CALCULATED), a provisional-rates banner, and the PCB note saying the figure was entered by hand rather than calculated (D-116). |
 
 **Two defects this pack found, both fixed before it was published**, which is
 the argument for capturing screens rather than trusting tests alone:
@@ -457,9 +459,34 @@ Nothing on this branch should be read as EPF/SOCSO/EIS/PCB compliance.
 
 ### 5. Is a payslip generated?
 
-**No.** Nothing in the product generates, renders, prints, emails or stores a
-payslip. The word appears only in explanatory copy warning that runs must not be
-used as the basis of one.
+**Yes, since 2026-08-31 — and it prints what is true about itself** (D-116).
+This answer used to be a flat *no*.
+
+`HR → Payroll` gives every employee in a run a **Print payslip** action. It
+renders through the browser, so *Save as PDF* in the print dialog produces the
+PDF — the same route as every other document Kuwick prints, with no
+server-side renderer to keep alive.
+
+What the printed page admits, because a statement of wages is a statutory
+record and the failure mode is a document that **looks official and is not**:
+
+- **A run that is not APPROVED or PAID prints as a DRAFT** — watermark on the
+  paper, plus a banner naming the status. Shot 113 in the management-completion
+  pack is exactly this case.
+- **Provisional statutory rates say so**, in the run's own words. The seeded
+  tables are `CORROBORATED`, verified against no authority.
+- **A statutory figure that was not calculated prints "Not calculated" with the
+  reason — never `0.00`.** Zero says nothing is owed; blank says nobody worked
+  it out. A third state, "Not applicable to this employee", is a fact about the
+  person rather than the system and reads differently.
+- **PCB says it was entered by hand**, because Kuwick does not calculate MTD.
+- **The slip checks its own arithmetic** and, where gross less deductions does
+  not equal the stored net, prints the discrepancy and *"not safe to issue"* in
+  place of the net.
+
+So the honest form of the answer is: **a payslip is generated, and it will not
+pretend to be a final one while the run is a draft or the rates are
+unverified.**
 
 ### 6. Does leave automatically affect roster and appointments?
 

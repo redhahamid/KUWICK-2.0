@@ -78,7 +78,7 @@ backwards when the real file was read**, and they are marked.
 | OT tiers 1.5× / 2× / 3× / flat RM10 | `computeOvertime` | 🟡 | — | Engine supports all four; the service applies one |
 | Unpaid leave deduction | `unpaidLeaveDeductionCents` | 🟢 | — | — |
 | Age-60 branching | Statutory engine | 🟢 | — | — |
-| **PCB** | — | 🔴 | **Computed in the LHDN calculator and keyed in** | No MTD engine, by decision |
+| **PCB** | — | 🔴 | **Computed in the LHDN calculator and keyed in** | No MTD engine, by decision. The payslip prints the keyed figure with a note saying it was entered by hand (D-116). |
 | **Payslip** | — | 🔴 | **Workbook `PaySlip D` sheet** | Not built |
 | Net pay / employer cost arithmetic | Payroll run | 🟢 | — | — |
 | **Employer EPF/SOCSO/EIS totals for filing** | Run totals | 🟡 | Read off screen | No export file |

@@ -707,6 +707,20 @@ export interface PayrollRunRow {
   paidAt: string | null;
 }
 
+/**
+ * The employee's details AS AT the payroll run. Frozen on purpose — a payslip
+ * must keep saying what it said after somebody's position changes.
+ */
+export interface PayslipEmployeeSnapshot {
+  name?: string;
+  employeeNo?: string | null;
+  position?: string | null;
+  department?: string | null;
+  employmentType?: string | null;
+  bankName?: string | null;
+  statutoryApplicability?: { epf?: boolean; socso?: boolean; eis?: boolean; pcb?: boolean };
+}
+
 export interface PayrollRunDetail {
   id: string;
   period: string;
@@ -736,6 +750,9 @@ export interface PayrollRunDetail {
     bonus: number;
     grossPay: number;
     unpaidLeaveDeduction: number;
+    otherDeductions: number;
+    /** Frozen at the run: a payslip must keep saying what it said. */
+    snapshot: PayslipEmployeeSnapshot | null;
     epfEmployee: number | null;
     epfEmployer: number | null;
     socsoEmployee: number | null;

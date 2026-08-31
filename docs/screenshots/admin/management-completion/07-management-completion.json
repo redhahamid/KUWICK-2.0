@@ -21,8 +21,10 @@
     "108-stock-new-item-requests",
     "109-stock-new-item-duplicate-guard",
     "110-stock-near-expiry-at-risk",
-    "111-stock-take-selling-value"
+    "111-stock-take-selling-value",
+    "112-hr-payroll-run",
+    "113-hr-payslip"
   ],
   "failures": [],
-  "at": "2026-08-31T16:05:57.518Z"
+  "at": "2026-08-31T17:41:21.249Z"
 }
