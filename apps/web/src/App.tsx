@@ -72,6 +72,7 @@ import { StockTransfersPage } from './admin/stock/StockTransfersPage';
 import { StockTakePage as AdminStockTakePage } from './admin/stock/StockTakePage';
 import { StockMovementsPage } from './admin/stock/StockMovementsPage';
 import { PanelWorkspacePage } from './admin/panel/PanelWorkspacePage';
+import { PayablesPage } from './admin/finance/PayablesPage';
 import { PanelConfigPage } from './admin/panel/PanelConfigPage';
 import { HrOverviewPage } from './admin/hr/HrOverviewPage';
 import { EmployeesPage } from './admin/hr/EmployeesPage';
@@ -225,6 +226,7 @@ export function App() {
             <Route path="/admin/stock/value" element={<StockOverviewPage focus="value" />} />
 
             <Route path="/admin/panel" element={<PanelWorkspacePage />} />
+            <Route path="/admin/finance/payables" element={<PayablesPage />} />
             <Route path="/admin/panel/configuration" element={<PanelConfigPage />} />
             <Route path="/admin/panel/batches" element={<PanelClaimsPage />} />
             <Route path="/admin/panel/companies" element={<PanelClinicsPage />} />

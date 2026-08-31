@@ -221,6 +221,75 @@ describe('Row-Level Security enforcement (e2e, DB-level)', () => {
       await tx.staff.deleteMany({ where: { tenantId: tenantA, fullName: 'RLS Role Author' } });
     });
   });
+  it("PAYABLES: what a clinic owes its suppliers is invisible without its tenant context", async () => {
+    // A payable listing names a clinic's suppliers, its commercial terms and
+    // its cash position — one tenant seeing another's is a commercial leak, not
+    // just a privacy one. Same ENABLE + FORCE + tenant_isolation policy as
+    // every other money table.
+    await withTenantContext(prisma, tenantA, async (tx) => {
+      const holder = await tx.staff.create({
+        data: { tenantId: tenantA, role: Role.OWNER_ADMIN, fullName: 'RLS Payables Clerk' },
+      });
+      const supplier = await tx.supplier.create({
+        data: { tenantId: tenantA, name: 'RLS Supplier', paymentTermDays: 30, creditLimitAmount: 1000 },
+      });
+      const invoice = await tx.supplierInvoice.create({
+        data: {
+          tenantId: tenantA,
+          supplierId: supplier.id,
+          invoiceNumber: 'RLS-1',
+          invoiceDate: new Date('2026-08-01T00:00:00.000Z'),
+          totalAmount: 250,
+          recordedByStaffId: holder.id,
+        },
+      });
+      await tx.supplierPayment.create({
+        data: {
+          tenantId: tenantA,
+          supplierId: supplier.id,
+          paidAt: new Date('2026-08-10T00:00:00.000Z'),
+          amount: 250,
+          recordedByStaffId: holder.id,
+          allocations: {
+            create: [{ tenantId: tenantA, supplierInvoiceId: invoice.id, amount: 250 }],
+          },
+        },
+      });
+    });
+
+    // No tenant context at all.
+    expect(await prisma.supplierInvoice.findMany({ where: { tenantId: tenantA } })).toEqual([]);
+    expect(await prisma.supplierPayment.findMany({ where: { tenantId: tenantA } })).toEqual([]);
+    expect(await prisma.supplierPaymentAllocation.findMany({ where: { tenantId: tenantA } })).toEqual([]);
+
+    // Another tenant's context.
+    expect(
+      await withTenantContext(prisma, tenantB, (tx) =>
+        tx.supplierInvoice.findMany({ where: { tenantId: tenantA } }),
+      ),
+    ).toEqual([]);
+    expect(
+      await withTenantContext(prisma, tenantB, (tx) =>
+        tx.supplierPaymentAllocation.findMany({ where: { tenantId: tenantA } }),
+      ),
+    ).toEqual([]);
+
+    // Its own context sees it.
+    expect(
+      await withTenantContext(prisma, tenantA, (tx) =>
+        tx.supplierInvoice.findMany({ where: { tenantId: tenantA } }),
+      ),
+    ).toHaveLength(1);
+
+    await withTenantContext(prisma, tenantA, async (tx) => {
+      await tx.supplierPaymentAllocation.deleteMany({ where: { tenantId: tenantA } });
+      await tx.supplierPayment.deleteMany({ where: { tenantId: tenantA } });
+      await tx.supplierInvoice.deleteMany({ where: { tenantId: tenantA } });
+      await tx.supplier.deleteMany({ where: { tenantId: tenantA, name: 'RLS Supplier' } });
+      await tx.staff.deleteMany({ where: { tenantId: tenantA, fullName: 'RLS Payables Clerk' } });
+    });
+  });
+
   it('an audit trail cannot be read across tenants, or without a tenant at all', async () => {
     // `audit_logs` was deliberately outside the original RLS sweep — a table of
     // clinical create/update diffs, already protected by RBAC on the records

@@ -329,6 +329,9 @@ model Tenant {
   stockTakeLines             StockTakeLine[]
   stockTakeAssignments       StockTakeAssignment[]
   panelRemittances           PanelRemittance[]
+  supplierInvoices           SupplierInvoice[]
+  supplierPayments           SupplierPayment[]
+  supplierPaymentAllocations SupplierPaymentAllocation[]
   panelRemittanceAllocations PanelRemittanceAllocation[]
   claimEvents                ClaimEvent[]
   procurementBudgets         ProcurementBudget[]
@@ -1025,6 +1028,8 @@ model Staff {
   claimsResponsibleFor         ClaimBatchLine[]             @relation("ClaimResponsibleStaff")
   claimsWrittenOff             ClaimBatchLine[]             @relation("ClaimWrittenOffBy")
   claimsChargedToPatient       ClaimBatchLine[]             @relation("ClaimChargedToPatientBy")
+  supplierInvoicesRecorded     SupplierInvoice[]            @relation("SupplierInvoiceRecordedBy")
+  supplierPaymentsRecorded     SupplierPayment[]            @relation("SupplierPaymentRecordedBy")
   claimEvents                  ClaimEvent[]                 @relation("ClaimEventActor")
   stockMovementsMade           StockMovement[]              @relation("StockMovementActor")
   dayEndsReopened              DayEndClosing[]              @relation("DayEndReopenedBy")
@@ -2172,22 +2177,182 @@ model ItemCategory {
 }
 
 model Supplier {
-  id          String   @id @default(uuid())
-  tenantId    String   @map("tenant_id")
+  id          String  @id @default(uuid())
+  tenantId    String  @map("tenant_id")
   name        String
-  contactName String?  @map("contact_name")
+  contactName String? @map("contact_name")
   phone       String?
   email       String?
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  active      Boolean @default(true)
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  // -------------------------------------------------------------------------
+  // THE COMMERCIAL TERMS THE CLINIC KEEPS IN SPREADSHEET PROSE.
+  //
+  // Its payable listing runs one sheet per supplier, thirty of them, and holds
+  // each supplier's terms in THREE places at once: the text of a column
+  // heading ("30 days payment term date"), the `+30` inside that column's
+  // formula, and a term column on the roll-up. Changing a supplier's terms
+  // means editing formulas. Credit limits live in a free-text note, and the
+  // delivery SLA lives in another column heading ("received date (max 1
+  // week)") where nothing can measure it.
+  //
+  // See docs/STOCK_LEGACY_WORKFLOW_AUDIT.md §5.
+  // -------------------------------------------------------------------------
+
+  /// Days from the invoice date to when payment is due. NULL means nobody has
+  /// recorded this supplier's terms, and no invoice on them can be called
+  /// overdue — which is stated on screen rather than assumed to be 30.
+  paymentTermDays Int? @map("payment_term_days")
+
+  /// What this supplier will let the clinic owe at once. NULL means no limit is
+  /// known; it is NOT enforced as a block, because a clinic that cannot order
+  /// medication because of a stale number in a config screen is worse off than
+  /// one that gets a warning.
+  creditLimitAmount Decimal? @map("credit_limit_amount") @db.Decimal(12, 2)
+
+  /// How long this supplier is expected to take to deliver, in days. The
+  /// clinic's order queue carries this as "max 1 week" in a column heading.
+  deliverySlaDays Int? @map("delivery_sla_days")
+
+  accountReference String? @map("account_reference")
+  notes            String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant            @relation(fields: [tenantId], references: [id])
   purchaseOrders PurchaseOrder[]
   stockBatches   StockBatch[]
+  invoices       SupplierInvoice[]
+  payments       SupplierPayment[]
 
   @@index([tenantId])
   @@map("suppliers")
+}
+
+/// Where a supplier invoice stands. Deliberately short: the money is derived
+/// from payments, not from this, so the status can never disagree with the
+/// ledger — it only records the things the ledger cannot say.
+enum SupplierInvoiceStatus {
+  /// Entered, not yet fully paid. The normal state.
+  OPEN
+  /// Fully settled by allocated payments. Set by the service, never by hand.
+  PAID
+  /// Being argued about — held out of "what must I pay this week" with a reason.
+  DISPUTED
+  /// Entered in error. Kept, not deleted, because it may have been paid against.
+  CANCELLED
+}
+
+/// A SUPPLIER'S INVOICE — the document Kuwick had no model for.
+///
+/// This is the single largest gap the stock workbooks exposed
+/// (`docs/STOCK_LEGACY_WORKFLOW_AUDIT.md` §5): Kuwick tracked what was ordered
+/// and what was received, and then stopped. "What do we owe suppliers" had no
+/// answer in the system at all, which is why thirty spreadsheet tabs exist.
+///
+/// The one thing the spreadsheet cannot do, and this can: `goodsReceivedNoteId`
+/// links the invoice to the delivery it is for, so "does this invoice match what
+/// actually arrived" is a question with an answer.
+model SupplierInvoice {
+  id         String @id @default(uuid())
+  tenantId   String @map("tenant_id")
+  supplierId String @map("supplier_id")
+
+  /// The supplier's own number, as printed. The reference an argument is
+  /// conducted in, so it is unique per supplier rather than globally.
+  invoiceNumber String   @map("invoice_number")
+  invoiceDate   DateTime @map("invoice_date") @db.Date
+
+  /// Derived from the supplier's term at entry and STORED, not recomputed: a
+  /// term change next year must not silently move when last year's invoices
+  /// were due. NULL when the supplier has no term configured.
+  dueDate DateTime? @map("due_date") @db.Date
+
+  /// What the invoice asks for, tax included.
+  totalAmount Decimal  @map("total_amount") @db.Decimal(12, 2)
+  taxAmount   Decimal? @map("tax_amount") @db.Decimal(12, 2)
+
+  status        SupplierInvoiceStatus @default(OPEN)
+  /// Why it is disputed. Required by the service whenever status is DISPUTED.
+  disputeReason String?               @map("dispute_reason")
+
+  /// THE LINK THE SPREADSHEET CANNOT HAVE. Optional because an invoice for
+  /// something that never went through a purchase order (a courier charge, a
+  /// one-off) is still an invoice; but where it exists, three-way matching
+  /// becomes possible.
+  goodsReceivedNoteId String? @map("goods_received_note_id")
+  purchaseOrderId     String? @map("purchase_order_id")
+
+  /// A link to the scan, exactly as the spreadsheet's hyperlink column does.
+  documentUrl String? @map("document_url")
+  notes       String?
+
+  recordedByStaffId String   @map("recorded_by_staff_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant            Tenant                      @relation(fields: [tenantId], references: [id])
+  supplier          Supplier                    @relation(fields: [supplierId], references: [id])
+  goodsReceivedNote GoodsReceivedNote?          @relation(fields: [goodsReceivedNoteId], references: [id])
+  purchaseOrder     PurchaseOrder?              @relation(fields: [purchaseOrderId], references: [id])
+  recordedBy        Staff                       @relation("SupplierInvoiceRecordedBy", fields: [recordedByStaffId], references: [id])
+  allocations       SupplierPaymentAllocation[]
+
+  @@unique([tenantId, supplierId, invoiceNumber])
+  @@index([tenantId, supplierId, dueDate])
+  @@map("supplier_invoices")
+}
+
+/// MONEY GOING OUT TO A SUPPLIER.
+///
+/// Its own document, allocated explicitly to invoices — the same shape as
+/// `PanelRemittance` and for the same reason: one bank transfer settles several
+/// invoices, and a paid figure typed onto an invoice is a figure that will
+/// eventually disagree with the bank.
+model SupplierPayment {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  supplierId String   @map("supplier_id")
+  paidAt     DateTime @map("paid_at") @db.Date
+  amount     Decimal  @db.Decimal(12, 2)
+  /// Bank transfer, cheque, cash — free text, because a clinic's payment
+  /// methods are its own business and an enum here would need a migration per
+  /// bank.
+  method     String?
+  reference  String?
+  notes      String?
+
+  recordedByStaffId String   @map("recorded_by_staff_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tenant      Tenant                      @relation(fields: [tenantId], references: [id])
+  supplier    Supplier                    @relation(fields: [supplierId], references: [id])
+  recordedBy  Staff                       @relation("SupplierPaymentRecordedBy", fields: [recordedByStaffId], references: [id])
+  allocations SupplierPaymentAllocation[]
+
+  @@index([tenantId, supplierId, paidAt])
+  @@map("supplier_payments")
+}
+
+/// How much of a payment settled which invoice. The join that makes "paid" a
+/// number derived from records rather than typed on a row.
+model SupplierPaymentAllocation {
+  id                String  @id @default(uuid())
+  tenantId          String  @map("tenant_id")
+  paymentId         String  @map("payment_id")
+  supplierInvoiceId String  @map("supplier_invoice_id")
+  amount            Decimal @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id])
+  payment SupplierPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice SupplierInvoice @relation(fields: [supplierInvoiceId], references: [id])
+
+  @@unique([paymentId, supplierInvoiceId])
+  @@index([tenantId, supplierInvoiceId])
+  @@map("supplier_payment_allocations")
 }
 
 // Cached/derived total (docs/DATABASE_ARCHITECTURE.md §6) — only ever
@@ -2348,6 +2513,7 @@ model PurchaseOrder {
   supplier           Supplier            @relation(fields: [supplierId], references: [id])
   lines              PurchaseOrderLine[]
   goodsReceivedNotes GoodsReceivedNote[]
+  supplierInvoices   SupplierInvoice[]
 
   @@index([tenantId, clinicId])
   @@index([tenantId, status])
@@ -2388,10 +2554,11 @@ model GoodsReceivedNote {
   receivedAt       DateTime @default(now()) @map("received_at")
   createdAt        DateTime @default(now()) @map("created_at")
 
-  tenant        Tenant                  @relation(fields: [tenantId], references: [id])
-  clinic        Clinic                  @relation(fields: [clinicId], references: [id])
-  purchaseOrder PurchaseOrder           @relation(fields: [purchaseOrderId], references: [id])
-  lines         GoodsReceivedNoteLine[]
+  tenant           Tenant                  @relation(fields: [tenantId], references: [id])
+  clinic           Clinic                  @relation(fields: [clinicId], references: [id])
+  purchaseOrder    PurchaseOrder           @relation(fields: [purchaseOrderId], references: [id])
+  lines            GoodsReceivedNoteLine[]
+  supplierInvoices SupplierInvoice[]
 
   @@index([tenantId, clinicId])
   @@index([tenantId, purchaseOrderId])

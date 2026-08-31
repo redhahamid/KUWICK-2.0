@@ -7,6 +7,7 @@ import { DayEndService } from './day-end.service';
 import { TaxService } from './tax.service';
 import { ReceivablesService } from './receivables.service';
 import { ProfitabilityService } from './profitability.service';
+import { SupplierPayablesService } from './supplier-payables.service';
 
 /**
  * WAVE 1 of the admin programme.
@@ -17,11 +18,25 @@ import { ProfitabilityService } from './profitability.service';
  * column this module writes is the settlement mirror (`patientPaidAmount` /
  * `status` / `paidAt`), and it writes it from the payment ledger so the two
  * representations cannot drift.
+ *
+ * It also owns ACCOUNTS PAYABLE — `supplier_invoices`, `supplier_payments` and
+ * their allocations. Payables sit here rather than in Stock because the
+ * question they answer ("what must I pay this week") is a finance question,
+ * even though the documents arrive with the stock. Stock still owns the
+ * purchase order and the goods receipt; an invoice only LINKS to them.
  */
 @Module({
   imports: [CoreModule],
   controllers: [FinanceController],
-  providers: [PaymentService, CreditNoteService, DayEndService, TaxService, ReceivablesService, ProfitabilityService],
+  providers: [
+    PaymentService,
+    CreditNoteService,
+    DayEndService,
+    TaxService,
+    ReceivablesService,
+    ProfitabilityService,
+    SupplierPayablesService,
+  ],
   exports: [PaymentService, TaxService, DayEndService],
 })
 export class FinanceModule {}

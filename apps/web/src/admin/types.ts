@@ -1075,3 +1075,102 @@ export interface PreparedDispatchResult {
   notice: string;
   messages: PreparedMessage[];
 }
+
+
+// ---------------------------------------------------------------------------
+// ACCOUNTS PAYABLE — what the clinic owes its suppliers.
+// ---------------------------------------------------------------------------
+
+export interface PayableSupplierRow {
+  supplierId: string;
+  supplierName: string;
+  active: boolean;
+  paymentTermDays: number | null;
+  deliverySlaDays: number | null;
+  accountReference: string | null;
+  notes: string | null;
+  invoices: number;
+  billed: number;
+  paid: number;
+  outstanding: number;
+  overdue: number;
+  overdueInvoices: number;
+  dueThisWeek: number;
+  dueThisWeekInvoices: number;
+  disputed: number;
+  disputedInvoices: number;
+  undated: number;
+  undatedInvoices: number;
+  creditLimit: number | null;
+  creditUtilisation: number | null;
+  overCreditLimit: boolean;
+  creditHeadroom: number | null;
+}
+
+export interface PayablesSummary {
+  asOf: string;
+  totals: {
+    suppliers: number;
+    invoices: number;
+    billed: number;
+    paid: number;
+    outstanding: number;
+    overdue: number;
+    overdueInvoices: number;
+    dueThisWeek: number;
+    dueThisWeekInvoices: number;
+    disputed: number;
+    undated: number;
+    undatedInvoices: number;
+  };
+  /** Suppliers with money owed and no payment term recorded. */
+  suppliersWithoutTerms: string[];
+  overLimit: string[];
+  bySupplier: PayableSupplierRow[];
+}
+
+export interface PayableInvoiceRow {
+  id: string;
+  supplierId: string;
+  supplierName: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  dueDate: string | null;
+  paymentTermDays: number | null;
+  total: number;
+  tax: number | null;
+  paid: number;
+  outstanding: number;
+  overpaid: number;
+  status: 'OPEN' | 'PAID' | 'DISPUTED' | 'CANCELLED';
+  disputeReason: string | null;
+  settled: boolean;
+  overdue: boolean;
+  daysUntilDue: number | null;
+  ageBucket: 'NOT_DUE' | 'D1_30' | 'D31_60' | 'D61_90' | 'D90_PLUS' | null;
+  goodsReceivedNoteId: string | null;
+  purchaseOrderId: string | null;
+  receivedAt: string | null;
+  purchaseOrderOrderedAt: string | null;
+  /** What the linked delivery was worth. NULL when it cannot be checked. */
+  receivedValue: number | null;
+  /** Invoice minus delivery. NULL when unmatched; non-zero is a question. */
+  matchVariance: number | null;
+  documentUrl: string | null;
+  notes: string | null;
+  recordedBy: string;
+  createdAt: string;
+}
+
+export interface SupplierPaymentRow {
+  id: string;
+  supplierId: string;
+  supplierName: string;
+  paidAt: string;
+  amount: number;
+  method: string | null;
+  reference: string | null;
+  notes: string | null;
+  recordedBy: string;
+  settled: { supplierInvoiceId: string; invoiceNumber: string; amount: number }[];
+}

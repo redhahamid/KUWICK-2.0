@@ -184,8 +184,27 @@ async function main() {
     // --- Suppliers --------------------------------------------------------
     const suppliers = await Promise.all(
       [
-        { name: 'Contoh Pharma Supplies', contactName: 'Encik Rosli', phone: '03-1111 0001' },
-        { name: 'Bandar Medical Trading', contactName: 'Ms Lee', phone: '03-1111 0002' },
+        // Terms out of prose and into fields. Three shapes on purpose: a
+        // supplier with everything recorded, one with terms but no credit
+        // limit, and one where NOTHING was recorded — so the payables screen
+        // demonstrates what it does when a term is unknown rather than hiding
+        // the case.
+        {
+          name: 'Contoh Pharma Supplies',
+          contactName: 'Encik Rosli',
+          phone: '03-1111 0001',
+          paymentTermDays: 30,
+          creditLimitAmount: 12000,
+          deliverySlaDays: 7,
+          accountReference: 'CPS-KLK-0041',
+        },
+        {
+          name: 'Bandar Medical Trading',
+          contactName: 'Ms Lee',
+          phone: '03-1111 0002',
+          paymentTermDays: 60,
+          deliverySlaDays: 14,
+        },
         { name: 'Sinar Consumables', contactName: 'Puan Zainab', phone: '03-1111 0003' },
       ].map((supplier) => tx.supplier.create({ data: { tenantId: tenant.id, ...supplier } })),
     );
@@ -385,6 +404,45 @@ async function verify() {
       }
     }
 
+    // 2b. PAYABLES: what is owed on a supplier invoice is the invoice minus the
+    //     payments ALLOCATED to it — never a typed column. Nothing may be
+    //     overpaid, and a PAID status must be backed by allocations that
+    //     actually cover it. This is the invariant the clinic's own payable
+    //     workbook fails: its roll-up sums the payment-DATE column.
+    const supplierInvoices = await tx.supplierInvoice.findMany({
+      where: { tenantId: TENANT_ID },
+      select: {
+        invoiceNumber: true, totalAmount: true, status: true, dueDate: true,
+        supplier: { select: { name: true, paymentTermDays: true } },
+        allocations: { select: { amount: true } },
+      },
+    });
+    for (const invoice of supplierInvoices) {
+      const allocated = invoice.allocations.reduce((sum, a) => sum + Number(a.amount), 0);
+      const total = Number(invoice.totalAmount);
+      if (allocated - total > 0.005) {
+        problems.push(`supplier invoice ${invoice.invoiceNumber}: allocated ${allocated.toFixed(2)} exceeds ${total.toFixed(2)}`);
+      }
+      if (invoice.status === 'PAID' && total - allocated > 0.005) {
+        problems.push(`supplier invoice ${invoice.invoiceNumber}: marked PAID with only ${allocated.toFixed(2)} of ${total.toFixed(2)} allocated`);
+      }
+      // A due date only exists where a term does. The reverse is not asserted:
+      // a due date may be entered by hand.
+      if (invoice.dueDate !== null && invoice.supplier.paymentTermDays === null) {
+        problems.push(`supplier invoice ${invoice.invoiceNumber}: has a due date but ${invoice.supplier.name} has no payment term`);
+      }
+    }
+    const supplierPayments = await tx.supplierPayment.findMany({
+      where: { tenantId: TENANT_ID },
+      select: { reference: true, amount: true, allocations: { select: { amount: true } } },
+    });
+    for (const payment of supplierPayments) {
+      const allocated = payment.allocations.reduce((sum, a) => sum + Number(a.amount), 0);
+      if (Math.abs(allocated - Number(payment.amount)) > 0.005) {
+        problems.push(`supplier payment ${payment.reference}: allocated ${allocated.toFixed(2)} != paid ${Number(payment.amount).toFixed(2)}`);
+      }
+    }
+
     // 3. REMITTANCES: net = gross - withheld, and what was allocated to claims
     //    cannot exceed what actually arrived.
     const remittances = await tx.panelRemittance.findMany({
@@ -513,7 +571,7 @@ async function verify() {
     for (const problem of problems) console.error(`  - ${problem}`);
     throw new Error(`${problems.length} seed invariant(s) failed`);
   }
-  console.log('  invariants: stock ledger, claim adjudication, remittances, invoice split, payroll, day end (closed + today OPEN) — all reconcile');
+  console.log('  invariants: stock ledger, claim adjudication, supplier payables, remittances, invoice split, payroll, day end (closed + today OPEN) — all reconcile');
 }
 
 /** Deletes this tenant only, in dependency order. */
@@ -544,6 +602,7 @@ async function reset() {
     'clinic_closed_dates', 'appointment_reminder_rules', 'appointment_message_templates',
     'panel_price_overrides', 'panel_exclusions', 'panel_clinics',
     'consultation_tariff_rules', 'service_catalog', 'item_age_dosages', 'items', 'item_categories',
+    'supplier_payment_allocations', 'supplier_payments', 'supplier_invoices',
     'suppliers', 'tax_rates', 'tax_codes', 'patient_alerts', 'patient_identity_changes', 'patients',
     'staff_role_assignments', 'staff_permission_grants', 'clinic_custom_roles',
     'staff_professional_audits', 'leave_requests', 'public_holidays', 'audit_logs',
@@ -648,7 +707,7 @@ declare function buildIdsType(): Promise<{
     code: string | null;
     feeDirection: 'ADDED' | 'WITHHELD' | null;
   }[];
-  suppliers: { id: string; name: string }[];
+  suppliers: { id: string; name: string; paymentTermDays: number | null }[];
   sst: { id: string };
   exempt: { id: string };
 }>;
@@ -741,6 +800,73 @@ async function seedStock(ids: Ids) {
       data: { tenantId: tenant.id, goodsReceivedNoteId: grn.id, purchaseOrderLineId: receivedLine.id, itemId: items.AMOX500.id, quantityReceived: 100, unitCost: 4.3 },
     });
     await move(central.id, items.AMOX500.id, 100, 'GOODS_RECEIVED', { referenceType: 'GoodsReceivedNote', referenceId: grn.id });
+
+    // --- ACCOUNTS PAYABLE -------------------------------------------------
+    //
+    // Five invoices, chosen so the payables screen shows every state a real
+    // book has: settled, part-paid and overdue, disputed, falling due inside
+    // the week, and one on the supplier whose terms nobody recorded — which
+    // has NO due date at all and is counted separately.
+    //
+    // The first is linked to the goods receipt above so the three-way match is
+    // demonstrable: 100 units at RM4.30 is RM430, and the invoice asks RM430.
+    const paidInvoice = await tx.supplierInvoice.create({
+      data: {
+        tenantId: tenant.id, supplierId: suppliers[0].id, invoiceNumber: 'CPS-2026-4471',
+        invoiceDate: day(-25), dueDate: day(5), totalAmount: 430, taxAmount: 0,
+        goodsReceivedNoteId: grn.id, purchaseOrderId: receivedPo.id,
+        recordedByStaffId: staff.stock, createdAt: at(-24, 9),
+      },
+    });
+    const overdueInvoice = await tx.supplierInvoice.create({
+      data: {
+        tenantId: tenant.id, supplierId: suppliers[0].id, invoiceNumber: 'CPS-2026-4388',
+        invoiceDate: day(-70), dueDate: day(-40), totalAmount: 2860,
+        recordedByStaffId: staff.stock, createdAt: at(-69, 9),
+      },
+    });
+    const dueSoonInvoice = await tx.supplierInvoice.create({
+      data: {
+        tenantId: tenant.id, supplierId: suppliers[1].id, invoiceNumber: 'BMT-88213',
+        invoiceDate: day(-57), dueDate: day(3), totalAmount: 6300,
+        recordedByStaffId: staff.stock, createdAt: at(-56, 10),
+      },
+    });
+    await tx.supplierInvoice.create({
+      data: {
+        tenantId: tenant.id, supplierId: suppliers[1].id, invoiceNumber: 'BMT-88540',
+        invoiceDate: day(-30), dueDate: day(30), totalAmount: 940, status: 'DISPUTED',
+        disputeReason: 'Billed for 4 boxes of dressing packs; 3 were delivered. Credit note requested.',
+        recordedByStaffId: staff.stock, createdAt: at(-29, 11),
+      },
+    });
+    await tx.supplierInvoice.create({
+      data: {
+        tenantId: tenant.id, supplierId: suppliers[2].id, invoiceNumber: 'SIN-0092',
+        invoiceDate: day(-45), dueDate: null, totalAmount: 615,
+        notes: 'No payment term agreed with this supplier yet.',
+        recordedByStaffId: staff.stock, createdAt: at(-44, 9),
+      },
+    });
+
+    // One transfer settles the matched invoice in full and part of the overdue
+    // one. Both invoices' paid figures come from THESE allocations — nothing is
+    // typed onto an invoice.
+    await tx.supplierPayment.create({
+      data: {
+        tenantId: tenant.id, supplierId: suppliers[0].id, paidAt: day(-12), amount: 1430,
+        method: 'Bank transfer', reference: 'FT26081200417', recordedByStaffId: staff.finance,
+        createdAt: at(-12, 15),
+        allocations: {
+          create: [
+            { tenantId: tenant.id, supplierInvoiceId: paidInvoice.id, amount: 430 },
+            { tenantId: tenant.id, supplierInvoiceId: overdueInvoice.id, amount: 1000 },
+          ],
+        },
+      },
+    });
+    await tx.supplierInvoice.update({ where: { id: paidInvoice.id }, data: { status: 'PAID' } });
+    void dueSoonInvoice;
 
     const openPo = await tx.purchaseOrder.create({
       data: { tenantId: tenant.id, clinicId: central.id, supplierId: suppliers[1].id, status: 'ORDERED', orderedAt: day(-6) },

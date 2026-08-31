@@ -157,6 +157,11 @@ export type Permission =
   | 'stockTake.approve'
   | 'stock.price.manage'
   | 'procurement.manage'
+  // ACCOUNTS PAYABLE. Recording what a supplier has BILLED is procurement
+  // clerical work; deciding to PAY one is money leaving the clinic, and the two
+  // are separated for the same reason taking a payment and reversing one are.
+  | 'supplierInvoice.manage'
+  | 'supplierPayment.record'
   // PANEL. Recording what a panel PAID is separated from managing the claim,
   // and writing a receivable off is separated from both.
   | 'panel.view'
@@ -371,6 +376,7 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     'finance.view',
     'payment.record',
     'payment.reverse',
+    'supplierPayment.record',
     'creditNote.create',
     'creditNote.approve',
     'dayEnd.count',
@@ -385,6 +391,7 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     'stockTake.approve',
     'stock.price.manage',
     'procurement.manage',
+    'supplierInvoice.manage',
     'panel.view',
     'panel.claim.manage',
     'panel.claim.submit',
@@ -481,6 +488,7 @@ export const LEGACY_ROLE_PERMISSIONS: Partial<Record<Role, Permission[]>> = {
     'finance.view',
     'payment.record',
     'payment.reverse',
+    'supplierPayment.record',
     'creditNote.create',
     'dayEnd.count',
     'dayEnd.close',
@@ -503,6 +511,7 @@ export const LEGACY_ROLE_PERMISSIONS: Partial<Record<Role, Permission[]>> = {
     'stock.transfer.receive',
     'stockTake.manage',
     'procurement.manage',
+    'supplierInvoice.manage',
     // NOT stockTake.approve and NOT stock.price.manage: the person who counts
     // does not approve their own variance, and pricing is a commercial
     // decision rather than a stockroom one.
@@ -689,6 +698,7 @@ export const INDIVIDUALLY_GRANTABLE: Permission[] = [
   'stock.price.manage',
   'panel.receipt.record',
   'panel.writeOff',
+  'supplierPayment.record',
   'hr.leave.approve',
   'hr.payroll.view',
   'analytics.view',
@@ -765,6 +775,8 @@ const REFUSAL: Partial<Record<Permission, string>> = {
     'Approving a stock-take variance needs the stock-take approval permission — the person who counted cannot approve their own count.',
   'stock.price.manage': 'Your account is not permitted to change prices or costs.',
   'procurement.manage': 'Your account is not permitted to manage procurement.',
+  'supplierInvoice.manage': 'Your account is not permitted to record supplier invoices.',
+  'supplierPayment.record': 'Your account is not permitted to record payments to suppliers.',
   'panel.view': 'Your account is not permitted to open the Panel module.',
   'panel.claim.manage': 'Your account is not permitted to manage panel claims.',
   'panel.claim.submit': 'Your account is not permitted to mark a claim batch as submitted.',

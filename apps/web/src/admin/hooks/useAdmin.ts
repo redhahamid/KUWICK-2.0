@@ -13,6 +13,9 @@ import type {
   OpenDayRow,
   OperationsOverview,
   PanelConfigRow,
+  PayableInvoiceRow,
+  PayablesSummary,
+  SupplierPaymentRow,
   PanelReconciliation,
   PanelWorkQueueRow,
   PaymentReport,
@@ -355,6 +358,91 @@ export function useChargeClaimToPatient() {
     ({ claimLineId, ...body }: { claimLineId: string; amount?: string; reason: string }) =>
       apiClient.patch(`/panel-workspace/claims/${claimLineId}/charge-to-patient`, body),
     ['admin-panel', 'admin-finance'],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ACCOUNTS PAYABLE
+// ---------------------------------------------------------------------------
+
+export function usePayables(params: { asOf?: string }) {
+  return useQuery({
+    queryKey: ['admin-finance', 'payables', params],
+    queryFn: () =>
+      apiClient.get<PayablesSummary>(`/finance/payables${params.asOf ? `?asOf=${params.asOf}` : ''}`),
+  });
+}
+
+export function usePayableInvoices(params: { supplierId?: string; asOf?: string }) {
+  return useQuery({
+    queryKey: ['admin-finance', 'payable-invoices', params],
+    queryFn: () => {
+      const query = new URLSearchParams();
+      if (params.supplierId) query.set('supplierId', params.supplierId);
+      if (params.asOf) query.set('asOf', params.asOf);
+      const suffix = query.toString();
+      return apiClient.get<PayableInvoiceRow[]>(`/finance/payables/invoices${suffix ? `?${suffix}` : ''}`);
+    },
+  });
+}
+
+export function useSupplierPayments(params: { supplierId?: string }) {
+  return useQuery({
+    queryKey: ['admin-finance', 'supplier-payments', params],
+    queryFn: () =>
+      apiClient.get<SupplierPaymentRow[]>(
+        `/finance/payables/payments${params.supplierId ? `?supplierId=${params.supplierId}` : ''}`,
+      ),
+  });
+}
+
+export function useRecordSupplierInvoice() {
+  return useAdminMutation(
+    (body: {
+      supplierId: string;
+      invoiceNumber: string;
+      invoiceDate: string;
+      totalAmount: string;
+      dueDate?: string;
+      goodsReceivedNoteId?: string;
+      documentUrl?: string;
+      notes?: string;
+    }) => apiClient.post('/finance/payables/invoices', body),
+    ['admin-finance'],
+  );
+}
+
+export function useUpdateSupplierInvoice() {
+  return useAdminMutation(
+    ({ id, ...body }: { id: string; status?: string; disputeReason?: string; dueDate?: string; notes?: string }) =>
+      apiClient.patch(`/finance/payables/invoices/${id}`, body),
+    ['admin-finance'],
+  );
+}
+
+export function useRecordSupplierPayment() {
+  return useAdminMutation(
+    (body: {
+      supplierId: string;
+      paidAt: string;
+      amount: string;
+      method?: string;
+      reference?: string;
+      allocations: { supplierInvoiceId: string; amount: string }[];
+    }) => apiClient.post('/finance/payables/payments', body),
+    ['admin-finance'],
+  );
+}
+
+export function useUpdateSupplierTerms() {
+  return useAdminMutation(
+    ({ id, ...body }: {
+      id: string;
+      paymentTermDays?: number;
+      creditLimitAmount?: string;
+      deliverySlaDays?: number;
+    }) => apiClient.patch(`/finance/payables/suppliers/${id}/terms`, body),
+    ['admin-finance', 'admin-stock'],
   );
 }
 

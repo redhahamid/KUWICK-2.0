@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { CreditNoteStatus } from '@prisma/client';
+import { CreditNoteStatus, SupplierInvoiceStatus } from '@prisma/client';
 import { PaymentService } from './payment.service';
 import { CreditNoteService } from './credit-note.service';
 import { DayEndService } from './day-end.service';
@@ -17,6 +17,13 @@ import { AddTaxRateDto } from './dto/add-tax-rate.dto';
 import { OptionalDateParam, RequiredDateParam } from '../core/date-param.pipe';
 import { assertDateOrder } from '../core/query-dates';
 import { ProfitabilityKind, ProfitabilityService } from './profitability.service';
+import { SupplierPayablesService } from './supplier-payables.service';
+import {
+  RecordSupplierInvoiceDto,
+  RecordSupplierPaymentDto,
+  UpdateSupplierInvoiceDto,
+  UpdateSupplierTermsDto,
+} from './dto/supplier-payable.dto';
 
 /**
  * Every route here is authorised INSIDE the service, against a named
@@ -33,6 +40,7 @@ export class FinanceController {
     private readonly tax: TaxService,
     private readonly receivables: ReceivablesService,
     private readonly profit: ProfitabilityService,
+    private readonly payables_: SupplierPayablesService,
   ) {}
 
   // --- Payments -------------------------------------------------------------
@@ -151,6 +159,50 @@ export class FinanceController {
   taxReport(@Query('from', RequiredDateParam) from: string, @Query('to', RequiredDateParam) to: string, @Query('clinicId') clinicId?: string) {
     assertDateOrder(from, to);
     return this.tax.report({ from, to, clinicId });
+  }
+
+  // --- Accounts payable -------------------------------------------------------
+  //
+  // The one question the clinic could not ask Kuwick: what do we owe suppliers.
+  // See finance/supplier-payables.ts for why the arithmetic lives in one place.
+
+  @Get('payables')
+  payables(@Query('asOf') asOf?: string) {
+    return this.payables_.summary({ asOf });
+  }
+
+  @Get('payables/invoices')
+  payableInvoices(
+    @Query('supplierId') supplierId?: string,
+    @Query('status') status?: SupplierInvoiceStatus,
+    @Query('asOf') asOf?: string,
+  ) {
+    return this.payables_.invoices({ supplierId, status, asOf });
+  }
+
+  @Get('payables/payments')
+  supplierPayments(@Query('supplierId') supplierId?: string) {
+    return this.payables_.payments({ supplierId });
+  }
+
+  @Post('payables/invoices')
+  recordSupplierInvoice(@Body() dto: RecordSupplierInvoiceDto) {
+    return this.payables_.recordInvoice(dto);
+  }
+
+  @Patch('payables/invoices/:id')
+  updateSupplierInvoice(@Param('id') id: string, @Body() dto: UpdateSupplierInvoiceDto) {
+    return this.payables_.updateInvoice(id, dto);
+  }
+
+  @Post('payables/payments')
+  recordSupplierPayment(@Body() dto: RecordSupplierPaymentDto) {
+    return this.payables_.recordPayment(dto);
+  }
+
+  @Patch('payables/suppliers/:id/terms')
+  updateSupplierTerms(@Param('id') id: string, @Body() dto: UpdateSupplierTermsDto) {
+    return this.payables_.updateTerms(id, dto);
   }
 
   // --- Profitability ----------------------------------------------------------

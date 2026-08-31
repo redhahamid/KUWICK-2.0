@@ -448,6 +448,11 @@ describe('individual permission grants', () => {
       'stock.price.manage',
       'panel.receipt.record',
       'panel.writeOff',
+      // Paying a supplier is money leaving the clinic, so it sits with the
+      // other money-moving acts an owner delegates by name rather than by
+      // widening a role. RECORDING what a supplier billed is not here: that is
+      // clerical, and it belongs to whoever opens the post.
+      'supplierPayment.record',
       'hr.leave.approve',
       'hr.payroll.view',
       'analytics.view',
@@ -461,6 +466,9 @@ describe('individual permission grants', () => {
     expect(isIndividuallyGrantable('hr.payroll.approve')).toBe(false);
     expect(isIndividuallyGrantable('finance.configure')).toBe(false);
     expect(isIndividuallyGrantable('panel.configure')).toBe(false);
+    // Entering a supplier invoice comes with the stock role; it is not a
+    // staple-on grant, because it is a job rather than an authority.
+    expect(isIndividuallyGrantable('supplierInvoice.manage')).toBe(false);
   });
 
   it('the counter takes money and does not move money it has already taken', () => {

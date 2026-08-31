@@ -51,6 +51,13 @@ export type AuditAction =
    * name and a date on it.
    */
   | 'panel.chargedToPatient'
+  // ACCOUNTS PAYABLE. What a supplier billed, what the clinic paid, and the
+  // terms both are judged against — all three recorded, because a supplier
+  // arguing about an invoice a year later is the case this table is for.
+  | 'supplierInvoice.recorded'
+  | 'supplierInvoice.updated'
+  | 'supplierPayment.recorded'
+  | 'supplier.termsUpdated'
   | 'panel.configured'
   /**
    * The fee direction changed and unsent claims were re-stamped with it. Kept
