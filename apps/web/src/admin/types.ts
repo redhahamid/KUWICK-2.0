@@ -390,7 +390,17 @@ export interface PanelReconciliation {
     outstanding: number;
     /** Claims whose fee direction is unset — their fee is NOT in the figures above. */
     unresolvedFeeDirection: number;
+    /**
+     * Rejected as a percentage of everything claimed — the clinic's own KPI,
+     * computed in one cell of the workbook's summary sheet. NULL when nothing
+     * has been claimed, because "0% rejected" on an empty panel reads as good.
+     */
+    rejectionRate: number | null;
+    /** Rejections nobody has given a category. */
+    uncategorisedRejections: number;
   };
+  /** What the money was refused FOR, by amount. */
+  rejectionReasons: { category: ClaimRejectionCategory; claims: number; amount: number }[];
   reconciles: boolean;
   aging: { current: number; d31_60: number; d61_90: number; d90_plus: number };
   byPanel: {

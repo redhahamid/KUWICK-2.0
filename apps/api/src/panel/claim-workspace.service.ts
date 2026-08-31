@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { ClaimLineStatus, PanelClaimStatus, Prisma } from '@prisma/client';
+import { ClaimLineStatus, ClaimRejectionCategory, PanelClaimStatus, Prisma } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
@@ -984,6 +984,8 @@ export class ClaimWorkspaceService {
     );
 
     const aging: Record<AgingBucket, number> = emptyAging();
+    const byReason = new Map<ClaimRejectionCategory, { claims: number; cents: number }>();
+    let uncategorised = 0;
     const byPanel = new Map<
       string,
       {
@@ -1034,6 +1036,19 @@ export class ClaimWorkspaceService {
         bucket.turnaroundDays.push(daysBetween(line.submittedAt, line.adjudicatedAt));
       }
       byPanel.set(panel.id, bucket);
+
+      // G-6/G-10 — the rejection breakdown, accumulated in the same pass.
+      const rejectedCents = toCents(line.rejectedAmount ?? 0);
+      if (rejectedCents > 0) {
+        if (line.rejectionCategory === null) {
+          uncategorised += 1;
+        } else {
+          const reason = byReason.get(line.rejectionCategory) ?? { claims: 0, cents: 0 };
+          reason.claims += 1;
+          reason.cents += rejectedCents;
+          byReason.set(line.rejectionCategory, reason);
+        }
+      }
     }
 
     return {
@@ -1055,7 +1070,39 @@ export class ClaimWorkspaceService {
          * and the screen must say so.
          */
         unresolvedFeeDirection: roll.unresolvedFeeDirectionCount,
+        /**
+         * G-10 — THE CLINIC'S OWN KPI, WHICH KUWICK DID NOT SHOW.
+         *
+         * The claim workbook divides its excess/rejected receivable by total
+         * claimed, in one cell, off to the side of the summary sheet. It is the
+         * single most useful number in the whole file: what fraction of
+         * everything we claim ends up refused. A panel at 2% and a panel at 18%
+         * are different businesses, and the difference is invisible in a list
+         * of outstanding balances.
+         *
+         * NULL rather than zero when nothing has been claimed, because "0%
+         * rejected" on a panel with no claims reads as excellent.
+         */
+        rejectionRate:
+          roll.expectedReceivableCents === 0
+            ? null
+            : Math.round((roll.rejectedCents / roll.expectedReceivableCents) * 1000) / 10,
+        /** How many rejections nobody has categorised — see `rejectionReasons`. */
+        uncategorisedRejections: uncategorised,
       },
+      /**
+       * WHY the money was refused, by amount (G-6). The countable half of the
+       * reason, which is the whole point of having categorised it: "what did
+       * exhausted member limits cost us this year" is a question the free-text
+       * column could never answer.
+       */
+      rejectionReasons: [...byReason.entries()]
+        .map(([category, bucket]) => ({
+          category,
+          claims: bucket.claims,
+          amount: fromCents(bucket.cents),
+        }))
+        .sort((a, b) => b.amount - a.amount),
       // The check, computed and returned rather than assumed. If this is ever
       // false the dashboard says so instead of showing numbers that do not add
       // up.

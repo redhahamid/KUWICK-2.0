@@ -687,6 +687,77 @@ export function PanelWorkspacePage() {
             </AdminNotice>
           </AdminSection>
 
+          {/*
+            G-10 — the number the clinic already computes and Kuwick did not
+            show. A panel at 2% rejected and a panel at 18% are different
+            businesses, and that difference is invisible in a list of balances.
+          */}
+          <AdminSection
+            title="Rejections"
+            description="What fraction of everything claimed the panels refused, and what they refused it for."
+          >
+            <StatStrip
+              stats={[
+                {
+                  label: 'Rejection rate',
+                  value:
+                    reconciliation.data?.totals.rejectionRate === null ||
+                    reconciliation.data?.totals.rejectionRate === undefined
+                      ? '—'
+                      : `${reconciliation.data.totals.rejectionRate}%`,
+                  hint: 'Rejected ÷ claimed',
+                  tone:
+                    (reconciliation.data?.totals.rejectionRate ?? 0) >= 10
+                      ? 'bad'
+                      : (reconciliation.data?.totals.rejectionRate ?? 0) >= 5
+                        ? 'warn'
+                        : 'good',
+                },
+                {
+                  label: 'Rejected',
+                  value: money(reconciliation.data?.totals.rejected ?? 0),
+                  hint: 'Money the panels refused',
+                },
+                {
+                  label: 'Uncategorised',
+                  value: String(reconciliation.data?.totals.uncategorisedRejections ?? 0),
+                  hint: 'Rejections with no reason type recorded',
+                  tone: (reconciliation.data?.totals.uncategorisedRejections ?? 0) > 0 ? 'warn' : 'good',
+                },
+              ]}
+            />
+            {reconciliation.data && reconciliation.data.rejectionReasons.length > 0 ? (
+              <div style={{ marginTop: 12 }}>
+                <DataTable
+                  rows={reconciliation.data.rejectionReasons}
+                  rowKey="category"
+                  exportName="panel-rejection-reasons"
+                  columns={[
+                    {
+                      title: 'Reason',
+                      dataIndex: 'category',
+                      key: 'category',
+                      render: (value: ClaimRejectionCategory) => REJECTION_CATEGORY_LABEL[value],
+                    },
+                    { title: 'Claims', dataIndex: 'claims', key: 'claims', className: 'kw-num' },
+                    {
+                      title: 'Amount',
+                      dataIndex: 'amount',
+                      key: 'amount',
+                      className: 'kw-num',
+                      render: (value: number) => money(value),
+                    },
+                  ]}
+                />
+              </div>
+            ) : (
+              <p className="kw-muted" style={{ fontSize: 12.5, margin: '10px 0 0' }}>
+                No categorised rejections in this period. The reason type is recorded when an outcome is entered — it is
+                optional, so a blank here can mean either no rejections or none categorised.
+              </p>
+            )}
+          </AdminSection>
+
           <AdminSection title="Outstanding by age" description="Aged from the day the claim was submitted, not the service date.">
             <ExceptionTiles
               tiles={[
