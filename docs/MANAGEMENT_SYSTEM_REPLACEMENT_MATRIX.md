@@ -148,7 +148,7 @@ holds the middle of that chain properly and both ends barely or not at all.
 | System quantity to compare against | Read from the ledger | 🟢 | The sheet transcribes it by hand |
 | Second person approves before posting | Stock Take approval | 🟢 | Typing a count changes nothing until approved |
 | Value the shelf at **cost** | Stock Take + Valuation | 🟢 | — |
-| **Value the shelf at patient prices during a count** | — | 🔴 | Cost variance only |
+| **Value the shelf at patient prices during a count** | Stock Take detail | 🟢 | **Resolved.** Counted cost and counted retail sit side by side, per line and in total. Never added together, and the difference is never called profit. |
 | **Printable count sheet to carry round** | — | 🔴 | Not built |
 
 ### 5.2 · List new medication
@@ -156,9 +156,9 @@ holds the middle of that chain properly and both ends barely or not at all.
 | Old workflow | Kuwick replacement | Status | Blocker |
 |---|---|---|---|
 | Item catalogue with cost, price, pack size, supplier | Stock ▸ Items & Pricing | 🟢 | Fields, not prose |
-| **Any staff member requests a new item** | — | 🔴 | No request workflow |
-| **Stock admin approves it into existence** | — | 🔴 | Approval is a text note in a cell today |
-| **Duplicate check before creating** | — | 🔴 | How a catalogue grows two entries for one medicine |
+| **Any staff member requests a new item** | Stock ▸ New item requests | 🟢 | **Resolved.** What was asked for, why, and who decided. |
+| **Stock admin approves it into existence** | Approve / reject with a reason | 🟢 | **Resolved.** A decision has an author and a date; a rejection must say why. |
+| **Duplicate check before creating** | Checked twice | 🟢 | **Resolved.** At request time and again at approval; approving a flagged request requires `acknowledgeDuplicate`. Two entries for one medicine means two stock levels, two costs and a count that never reconciles. |
 | Unit cost from pack size | Item fields | 🟢 | The sheet hardcodes `=6.84*90` per row |
 
 ### 5.3 · Que order medication + 5.4 · Consumable que order
@@ -174,10 +174,10 @@ procurement is one primitive with different items in it.
 | Ordered vs received, both valued, partial receipt normal | Goods received notes | 🟢 | — |
 | Invoice scan attached to the order | Invoice link column | 🟡 | Attachments exist; not wired to a PO |
 | Order status | Enum | 🟢 | The sheet has free text, so four spellings of "ordered" coexist |
-| **Promotional / bonus price — pay `MIN(list, bonus)`** | — | 🔴 | Real pricing rule, not modelled |
-| **Old price → new price captured at goods-in** | — | 🔴 | The moment cost actually changes |
-| **Item activated on receipt, not on order** | — | 🔴 | Four activation states in the sheet; none in Kuwick |
-| **Supplier delivery SLA ("max 1 week")** | — | 🔴 | Lives in a column heading; nothing measures it |
+| **Promotional / bonus price — pay `MIN(list, bonus)`** | `PurchaseOrderLine.bonusUnitCost` | 🟢 | **Resolved.** `effectiveUnitCostCents` takes the lower of the two, and a NULL bonus is absent rather than a promotion of zero. |
+| **Old price → new price captured at goods-in** | `item_price_changes` | 🟢 | **Resolved.** Written at receipt with the receiver's name, append-only at the database level. "Who changed our cost" was previously unanswerable from any source. |
+| **Item activated on receipt, not on order** | `awaitingFirstReceipt` | 🟢 | **Resolved.** An approved item is created inactive; goods-in activates it. A catalogue entry never delivered cannot be dispensed. |
+| **Supplier delivery SLA ("max 1 week")** | Payables ▸ Delivery column | 🟢 | **Resolved.** Ordered date against received date against the supplier's SLA. A supplier with no SLA recorded is neither on time nor late. |
 | Consumables and admin spend on one rail | Same procurement chain | 🟢 | — |
 | Half-yearly archive sheets | One ledger, date-filtered | 🟢 | Cross-boundary questions stop being manual |
 
@@ -188,19 +188,20 @@ programme outside payroll.
 
 | Old workflow | Kuwick replacement | Status | Blocker |
 |---|---|---|---|
-| **Supplier invoice** | — | 🔴 | No model |
-| **Amount / paid / balance per invoice** | — | 🔴 | No model |
-| **What do we owe suppliers, in total** | — | 🔴 | **Kuwick cannot answer this at all** |
-| **Payment terms per supplier** | — | 🔴 | Held in the heading, the `+n` in the formula, and the roll-up — three places |
-| **Days due, and "what must I pay this week"** | — | 🔴 | The operating question the file exists for |
-| **Supplier credit limit** | — | 🔴 | A free-text note today |
-| **Record a payment to a supplier** | — | 🔴 | No model |
-| **Match an invoice to its goods receipt** | — | 🔴 | Impossible in the sheet too — no link exists either side |
+| **Supplier invoice** | `supplier_invoices` | 🟢 | **Resolved.** |
+| **Amount / paid / balance per invoice** | Derived from allocations | 🟢 | **Resolved, and there is no paid column** — it is the sum of the payments allocated to the invoice, so it cannot drift from the bank. |
+| **What do we owe suppliers, in total** | Finance ▸ Supplier payables | 🟢 | **Resolved.** The question Kuwick could not answer at all. |
+| **Payment terms per supplier** | `Supplier.paymentTermDays` | 🟢 | **Resolved**, in one place. **No term means no due date** — never an assumed thirty days — and the supplier is named on screen. |
+| **Days due, and "what must I pay this week"** | Overdue / due-this-week tiles | 🟢 | **Resolved.** Aged from the DUE date; a disputed invoice is held out of both. |
+| **Supplier credit limit** | `Supplier.creditLimitAmount` | 🟢 | **Resolved.** Warns, never blocks — a clinic that cannot buy medication over a number in a settings screen is worse off than one that is told. |
+| **Record a payment to a supplier** | `supplier_payments` + allocations | 🟢 | **Resolved.** Allocations must equal the payment exactly. |
+| **Match an invoice to its goods receipt** | Three-way `matchVariance` | 🟢 | **Resolved — and impossible in the sheet**, where no link exists either side. |
 
 > The roll-up that answers "what do we owe" **sums the payment-date column
 > instead of the balance column**. The clinic's headline payable figure is built
-> from dates. Nothing in Kuwick reproduces that, because nothing in Kuwick
-> computes it at all.
+> from dates. Kuwick cannot reproduce that defect: what has been paid has no
+> column at all, so there is nothing to point a range at — it is the sum of the
+> payments allocated to each invoice, computed on read.
 
 ---
 
@@ -219,40 +220,49 @@ programme outside payroll.
 
 ## What can be retired today
 
-**Nothing yet, and that is a change from the last pass.** Reading the six real
-workbooks moved the panel sheet backwards and added five tools that were not on
-this matrix at all.
+**Six of the nine, in sequence.** Reading the six real workbooks first moved the
+panel sheet backwards and added five tools that were not on this matrix at all;
+building against them has since moved most of it forward. Payroll is the
+exception, and it is an honest one — see §2 and §3.
 
 | Tool | Can it be retired? | What stands in the way |
 |---|---|---|
 | **Hijraa Admin** | **Mostly**, for day-to-day operation | Employee editing, credit-note creation, raise-transfer. Each is a form over an endpoint that already works. |
 | **Panel claim workbook** | **Yes, in sequence** | Nine of thirteen gaps closed — ~~G-1 fee direction~~ **(D-112)**, ~~G-2 terms~~, ~~G-3 overdue~~, ~~G-4 deadline~~, ~~G-5 self-pay~~, ~~G-6 taxonomy~~, ~~G-10 KPI~~, ~~G-12 importer~~ **(D-115)**, ~~G-13 billed vs claimed~~ **(D-113)**. Retiring it is the cutover sequence in `MIGRATION_AND_IMPORT_SAFETY.md` §6, not a switch. |
-| **Que order medication** | **Close** | Bonus price, price-change-at-receipt, item activation on goods-in, supplier SLA. |
-| **Consumable que order** | **Close** | Same list. The file needs nothing Kuwick's procurement chain does not already have in shape. |
-| **Inventory count sheet** | **Yes, on the count itself** | Kuwick is strictly better here — it computes the variance the sheet never had, and requires a second approver. Keep the sheet only for the printable walk-round list and selling-value-at-count. |
-| **List new medication** | **No** | No request-and-approve workflow, and no duplicate check. |
-| **Medications payable listing** | **No** | Nothing to move to. No supplier invoice, no payable, no supplier payment in Kuwick. |
-| **Payroll listing Excel** | **No** | Payment-date split, HRD levy, legal entity |
-| **AAS payroll workbook** | **No** | PCB, payslip, verification of the statutory tables |
+| **Que order medication** | **Yes** | All four closed: bonus price, price-change-at-receipt, activation on goods-in, supplier SLA. |
+| **Consumable que order** | **Yes** | Same list, same chain. |
+| **Inventory count sheet** | **Yes** | Kuwick computes the variance the sheet never had, requires a second approver, and now shows selling value at count time. Keep the sheet only for the printable walk-round list. |
+| **List new medication** | **Yes** | Request, duplicate check, approval with an author, and an item that cannot be dispensed until it has actually arrived. |
+| **Medications payable listing** | **Yes, once the open invoices are entered** | Supplier invoices, payments, allocations, terms, credit limits and a three-way match all exist. No importer — thirty open invoices are typed in; ask for one if there are three hundred. |
+| **Payroll listing Excel** | **No** | Payment-date split, HRD levy, legal entity. |
+| **AAS payroll workbook** | **No** | PCB has no engine by decision, and the statutory tables are `CORROBORATED` rather than `VERIFIED`. The payslip itself now exists and states both facts on its face (D-116) — but a workbook you still need for PCB is a workbook you still keep. |
 
-### The pattern, restated after reading the real files
+### The pattern, restated after building against the real files
 
-The last pass said *"almost every remaining blocker is a screen over an endpoint
-that already works."* That was true of what had been examined then. It is no
-longer the whole picture:
+An earlier pass said *"almost every remaining blocker is a screen over an
+endpoint that already works."* Reading the files showed that was too
+optimistic; building against them has now cleared most of what it missed. The
+four categories, and where each stands:
 
-1. **Screens over working endpoints** — employee editing, credit notes,
-   raise-transfer, incentive rules, leave policy, claim history. Still the
-   largest category, still the cheapest.
-2. **Configuration shapes that cannot express reality** — panel payment terms,
-   panel fee direction and tiers, supplier terms and credit limits. Cheap in
-   code, but each one needs an owner decision first, and G-1 needs one before
-   any panel receivable can be trusted.
-3. **Genuinely unbuilt subsystems** — supplier invoice/payable/payment, the
-   new-item request workflow, rejected-claim-to-patient conversion, PCB,
-   payslips, bank files, statutory exports, the legal-entity model.
-4. **Migration** — every one of these files holds live open balances. There is
-   no importer for any of them, and no cutover is possible without one.
+1. **Screens over working endpoints** — employee editing, credit-note creation,
+   raise-transfer, incentive rules, leave policy. Still the cheapest category
+   and still the largest of what is left, but none of it blocks a workbook.
+2. **Configuration shapes that could not express reality** — **closed.** Panel
+   payment terms (range, working days, anchor), the four-state fee treatment
+   effective-dated, supplier terms and credit limits. The one that mattered,
+   G-1, was not a shape problem at all: the arithmetic was backwards, and the
+   owner superseded D-041 on the evidence (D-112).
+3. **Genuinely unbuilt subsystems** — supplier invoice/payable/payment
+   **built**, the new-item request workflow **built**, rejected-claim-to-patient
+   **built**, the payslip **built**. PCB, bank files, statutory exports and the
+   legal-entity model remain, and all four are payroll.
+4. **Migration** — **the panel claim importer is built** (D-115), which was the
+   only one of these files whose open balances could not be typed in. Supplier
+   invoices and opening stock have working manual paths and need no importer;
+   payroll history is deliberately not imported (see
+   `MIGRATION_AND_IMPORT_SAFETY.md` §5).
 
-Categories 3 and 4 are the honest answer to "why can the clinic not stop using
-these files yet."
+The honest answer to *"why can the clinic not stop using these files yet"* is
+now much shorter than it was: **it can stop using six of the nine.** What keeps
+the payroll workbook alive is PCB and the unverified statutory tables — neither
+of which is a thing to build, and one of which is a thing to check.
