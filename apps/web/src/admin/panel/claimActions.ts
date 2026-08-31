@@ -26,3 +26,22 @@ export function canWriteOff(row: { outstanding: number }): boolean {
 export function canRecordOutcome(row: { approvedAmount: number | null }): boolean {
   return row.approvedAmount === null;
 }
+
+/**
+ * THE PANEL REFUSED, SO THE PATIENT PAYS (G-5).
+ *
+ * A distinct decision from a write-off and it must read that way on the row: a
+ * write-off says the money is gone, this says it is coming from somebody else.
+ * Offered only where the panel has actually refused something, and only once —
+ * charging the same rejection to a patient twice is the kind of mistake that
+ * ends in an argument at the counter.
+ */
+export function canChargeToPatient(row: {
+  status: PanelClaimStatus;
+  rejectedAmount: number | null;
+  chargedToPatient?: number | null;
+}): boolean {
+  if (row.chargedToPatient) return false;
+  if (!row.rejectedAmount || row.rejectedAmount <= 0) return false;
+  return row.status === 'REJECTED' || row.status === 'PARTIALLY_APPROVED' || row.status === 'RESUBMISSION_REQUIRED';
+}

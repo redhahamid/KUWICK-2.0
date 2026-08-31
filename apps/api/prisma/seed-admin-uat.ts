@@ -1492,6 +1492,7 @@ async function seedPanelClaims(ids: Ids) {
         approvedAmount: 180,
         rejectedAmount: Math.round((partialReceivable - 180) * 100) / 100,
         rejectionReason: 'Consultation cap exceeded for this member',
+        rejectionCategory: 'PATIENT_LIMIT_EXHAUSTED',
         adjudicatedAt: at(-32, 4), paidAmount: 120,
       },
     });
@@ -1513,6 +1514,7 @@ async function seedPanelClaims(ids: Ids) {
       data: {
         claimStatus: 'RESUBMITTED', status: 'REJECTED',
         approvedAmount: 0, rejectedAmount: rejectedReceivable, rejectionReason: 'Medication not on the member’s formulary',
+        rejectionCategory: 'ITEM_NOT_COVERED',
         adjudicatedAt: at(-28, 4), resolvedAt: at(-26, 2), resolutionNote: 'Re-claimed under a new claim number',
       },
     });
@@ -1564,6 +1566,7 @@ async function seedPanelClaims(ids: Ids) {
         approvedAmount: 0,
         rejectedAmount: receivableOf(120, openRejectClaim.fee, panels[0].feeDirection),
         rejectionReason: 'Referral letter not attached to the submission',
+        rejectionCategory: 'DOCUMENTATION_INCOMPLETE',
         adjudicatedAt: at(-11, 4), responsibleStaffId: staff.panel,
       },
     });

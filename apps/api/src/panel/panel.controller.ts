@@ -4,6 +4,7 @@ import { PanelConfigService } from './panel-config.service';
 import { AdjudicateClaimDto } from './dto/adjudicate-claim.dto';
 import { SubmitBatchDto } from './dto/submit-batch.dto';
 import { WriteOffClaimDto } from './dto/write-off-claim.dto';
+import { ChargeToPatientDto } from './dto/charge-to-patient.dto';
 import { ResubmitClaimDto } from './dto/resubmit-claim.dto';
 import { RecordRemittanceDto } from './dto/record-remittance.dto';
 import { UpsertPanelConfigDto } from './dto/upsert-panel-config.dto';
@@ -39,6 +40,16 @@ export class PanelWorkspaceController {
   @Post('claims/:id/resubmit')
   resubmit(@Param('id') id: string, @Body() dto: ResubmitClaimDto) {
     return this.claims.resubmit(id, dto);
+  }
+
+  /**
+   * G-5 — the panel refused, so the patient pays. Permission-gated as a
+   * write-off, because both decisions end a panel receivable and both need the
+   * same seniority; what differs is where the money goes next.
+   */
+  @Patch('claims/:id/charge-to-patient')
+  chargeToPatient(@Param('id') id: string, @Body() dto: ChargeToPatientDto) {
+    return this.claims.chargeToPatient(id, dto);
   }
 
   @Patch('claims/:id/write-off')

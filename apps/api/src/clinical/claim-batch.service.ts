@@ -6,6 +6,7 @@ import { CreateClaimBatchDto } from './dto/create-claim-batch.dto';
 import { SubmitClaimBatchDto } from './dto/submit-claim-batch.dto';
 import { RecordClaimLinePaymentDto } from './dto/record-claim-line-payment.dto';
 import { computeClaimBalance, rollUpClaims } from '../finance/financial-invariants';
+import { isOverdue, resolveTermWindow } from '../panel/payment-terms';
 import { fromCents } from '../finance/money';
 
 const BATCH_INCLUDE = { lines: { include: { invoice: true } } } as const;
@@ -251,6 +252,20 @@ export class ClaimBatchService {
         ? Math.floor((Date.now() - batch.submittedAt.getTime()) / (1000 * 60 * 60 * 24))
         : 0;
       const paymentTermDays = batch.panelClinic.paymentTermDays ?? null;
+      // Overdue comes from the panel's TERM SHAPE, not from a bare day count:
+      // a range is late only past its far edge, working days skip weekends, and
+      // a term that varies by the employer behind the claim resolves to no date
+      // at all rather than a guessed one. See panel/payment-terms.ts (G-2, G-3).
+      const window = resolveTermWindow(
+        {
+          nominalDays: batch.panelClinic.paymentTermDays,
+          maxDays: batch.panelClinic.paymentTermMaxDays,
+          unit: batch.panelClinic.paymentTermUnit,
+          anchor: batch.panelClinic.paymentTermAnchor,
+          variesByPayer: batch.panelClinic.paymentTermVariesByPayer,
+        },
+        { submittedAt: batch.submittedAt },
+      );
       return {
         ...batch,
         claimedTotal,
@@ -261,7 +276,10 @@ export class ClaimBatchService {
         unresolvedFeeDirectionCount: roll.unresolvedFeeDirectionCount,
         daysOutstanding,
         paymentTermDays,
-        overdue: paymentTermDays !== null && daysOutstanding > paymentTermDays,
+        dueBy: window.dueBy,
+        overdue: isOverdue(window, new Date(), false),
+        /** Why no due date could be computed, when there is none. */
+        termUnresolvedReason: window.reason,
       };
     });
   }
@@ -282,6 +300,14 @@ export class ClaimBatchService {
       throw new NotFoundException('Panel not found');
     }
     const termDays = panel.paymentTermDays ?? null;
+    const term = {
+      nominalDays: panel.paymentTermDays,
+      maxDays: panel.paymentTermMaxDays,
+      unit: panel.paymentTermUnit,
+      anchor: panel.paymentTermAnchor,
+      variesByPayer: panel.paymentTermVariesByPayer,
+    };
+    const now = new Date();
 
     const [lines, unclaimedInvoices] = await Promise.all([
       this.prisma.claimBatchLine.findMany({
@@ -318,6 +344,11 @@ export class ClaimBatchService {
         receivedAmount: line.paidAmount,
       });
       const submittedAt = line.claimBatch.submittedAt;
+      const lineWindow = resolveTermWindow(term, {
+        submittedAt,
+        serviceDate,
+        invoiceDate: line.invoice.createdAt,
+      });
       const daysSinceSubmission = submittedAt
         ? Math.floor((Date.now() - submittedAt.getTime()) / (1000 * 60 * 60 * 24))
         : null;
@@ -351,10 +382,10 @@ export class ClaimBatchService {
         deductionReason: line.deductionReason,
         daysSinceSubmission,
         paymentTermDays: termDays,
+        dueBy: lineWindow.dueBy,
+        termUnresolvedReason: lineWindow.reason,
         overdue:
-          termDays !== null &&
-          daysSinceSubmission !== null &&
-          daysSinceSubmission > termDays &&
+          isOverdue(lineWindow, now, false) &&
           line.status !== ClaimLineStatus.PAID &&
           line.status !== ClaimLineStatus.REJECTED,
       };
@@ -397,6 +428,10 @@ export class ClaimBatchService {
           deductionReason: null as string | null,
           daysSinceSubmission: null as number | null,
           paymentTermDays: termDays,
+          // Nothing has been submitted, so no term has started — an unclaimed
+          // invoice is never overdue on the panel.
+          dueBy: null as Date | null,
+          termUnresolvedReason: 'Not submitted yet, so the payment term has not started.' as string | null,
           overdue: false,
         };
       });

@@ -1024,6 +1024,7 @@ model Staff {
   panelRemittancesRecorded     PanelRemittance[]            @relation("PanelRemittanceRecordedBy")
   claimsResponsibleFor         ClaimBatchLine[]             @relation("ClaimResponsibleStaff")
   claimsWrittenOff             ClaimBatchLine[]             @relation("ClaimWrittenOffBy")
+  claimsChargedToPatient       ClaimBatchLine[]             @relation("ClaimChargedToPatientBy")
   claimEvents                  ClaimEvent[]                 @relation("ClaimEventActor")
   stockMovementsMade           StockMovement[]              @relation("StockMovementActor")
   dayEndsReopened              DayEndClosing[]              @relation("DayEndReopenedBy")
@@ -4260,25 +4261,46 @@ model ClaimBatchLine {
 
   /// The panel's own claim number, as keyed into their portal. This is the
   /// reference an argument six months later is conducted in.
-  panelClaimNo        String?   @map("panel_claim_no")
+  panelClaimNo        String?                 @map("panel_claim_no")
   /// When the claim was actually sent. Distinct from the batch's date: a claim
   /// can be pulled from a batch, re-keyed and sent a day later.
-  submittedAt         DateTime? @map("submitted_at")
-  acknowledgedAt      DateTime? @map("acknowledged_at")
+  submittedAt         DateTime?               @map("submitted_at")
+  acknowledgedAt      DateTime?               @map("acknowledged_at")
   /// When the panel told us what they would pay.
-  adjudicatedAt       DateTime? @map("adjudicated_at")
+  adjudicatedAt       DateTime?               @map("adjudicated_at")
   /// What the panel agreed to pay. NULL means they have not said — which is
   /// NOT zero, and the receivable calculation depends on the difference
   /// (see finance/financial-invariants.computeClaimBalance).
-  approvedAmount      Decimal?  @map("approved_amount") @db.Decimal(10, 2)
+  approvedAmount      Decimal?                @map("approved_amount") @db.Decimal(10, 2)
   /// What they refused.
-  rejectedAmount      Decimal?  @map("rejected_amount") @db.Decimal(10, 2)
-  rejectionReason     String?   @map("rejection_reason")
+  rejectedAmount      Decimal?                @map("rejected_amount") @db.Decimal(10, 2)
+  rejectionReason     String?                 @map("rejection_reason")
+  /// The countable half of the reason above (G-6). NULL on a claim rejected
+  /// before this existed, or where nobody chose one — which is itself worth
+  /// seeing on a report, so it is not defaulted to OTHER.
+  rejectionCategory   ClaimRejectionCategory? @map("rejection_category")
   /// Abandoned as uncollectable, with a reason and an actor.
-  writtenOffAmount    Decimal?  @map("written_off_amount") @db.Decimal(10, 2)
-  writtenOffAt        DateTime? @map("written_off_at")
-  writtenOffByStaffId String?   @map("written_off_by_staff_id")
-  writeOffReason      String?   @map("write_off_reason")
+  writtenOffAmount    Decimal?                @map("written_off_amount") @db.Decimal(10, 2)
+  writtenOffAt        DateTime?               @map("written_off_at")
+  writtenOffByStaffId String?                 @map("written_off_by_staff_id")
+  writeOffReason      String?                 @map("write_off_reason")
+
+  /// CHARGED TO THE PATIENT INSTEAD (G-5).
+  ///
+  /// One of the four routes out of a rejection in the clinic's own excess
+  /// register, and the one no system usually models: the panel will not pay, so
+  /// the patient does. In the spreadsheet it is the word "SELF PAY" typed into
+  /// a column meant for dates, followed weeks later by a payment method and a
+  /// date in another column.
+  ///
+  /// This is NOT a write-off. A write-off says the money is gone; this says the
+  /// money is still coming, from somebody else. It is recorded here as a
+  /// resolution of the claim, and the actual receivable moves onto the invoice
+  /// where every other patient balance lives — so the patient is chased through
+  /// `computePatientBalance` like anyone else, not through a panel report.
+  chargedToPatientAmount    Decimal?  @map("charged_to_patient_amount") @db.Decimal(10, 2)
+  chargedToPatientAt        DateTime? @map("charged_to_patient_at")
+  chargedToPatientByStaffId String?   @map("charged_to_patient_by_staff_id")
 
   /// THE EXCESS/RESUBMISSION CHAIN. The owner's real workflow: a rejected
   /// claim is re-claimed under a NEW claim, and the two are linked so the
@@ -4295,15 +4317,16 @@ model ClaimBatchLine {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant       Tenant                      @relation(fields: [tenantId], references: [id])
-  claimBatch   ClaimBatch                  @relation(fields: [claimBatchId], references: [id])
-  invoice      Invoice                     @relation(fields: [invoiceId], references: [id])
-  supersedes   ClaimBatchLine?             @relation("ClaimSupersession", fields: [supersedesLineId], references: [id])
-  supersededBy ClaimBatchLine[]            @relation("ClaimSupersession")
-  responsible  Staff?                      @relation("ClaimResponsibleStaff", fields: [responsibleStaffId], references: [id])
-  writtenOffBy Staff?                      @relation("ClaimWrittenOffBy", fields: [writtenOffByStaffId], references: [id])
-  allocations  PanelRemittanceAllocation[]
-  events       ClaimEvent[]
+  tenant             Tenant                      @relation(fields: [tenantId], references: [id])
+  claimBatch         ClaimBatch                  @relation(fields: [claimBatchId], references: [id])
+  invoice            Invoice                     @relation(fields: [invoiceId], references: [id])
+  supersedes         ClaimBatchLine?             @relation("ClaimSupersession", fields: [supersedesLineId], references: [id])
+  supersededBy       ClaimBatchLine[]            @relation("ClaimSupersession")
+  responsible        Staff?                      @relation("ClaimResponsibleStaff", fields: [responsibleStaffId], references: [id])
+  writtenOffBy       Staff?                      @relation("ClaimWrittenOffBy", fields: [writtenOffByStaffId], references: [id])
+  chargedToPatientBy Staff?                      @relation("ClaimChargedToPatientBy", fields: [chargedToPatientByStaffId], references: [id])
+  allocations        PanelRemittanceAllocation[]
+  events             ClaimEvent[]
 
   @@index([tenantId, claimBatchId])
   @@index([tenantId, invoiceId])
@@ -5664,6 +5687,33 @@ enum PanelClaimStatus {
   PARTIALLY_PAID
   WRITTEN_OFF
   CLOSED
+}
+
+/// WHY A PANEL REFUSED TO PAY, as a countable fact rather than a sentence.
+///
+/// Every value here was read off the clinic's own excess/rejected register
+/// (`docs/PANEL_LEGACY_WORKFLOW_AUDIT.md` §8.3), where the reason is free text
+/// in a column meant for dates. Free text cannot answer "what did exhausted
+/// member limits cost us this year", which is the question that decides whether
+/// to renegotiate a panel or drop it.
+///
+/// The free-text `rejectionReason` stays: the category is what can be counted,
+/// the sentence is what actually happened. Neither replaces the other.
+enum ClaimRejectionCategory {
+  /// The member's annual or per-visit limit was already spent.
+  PATIENT_LIMIT_EXHAUSTED
+  /// A specific drug or procedure is not on this panel's formulary at all.
+  ITEM_NOT_COVERED
+  /// Covered, but only up to a ceiling below what was claimed.
+  PARTIALLY_COVERED
+  /// A named benefit carries its own cap, lower than the claim.
+  BENEFIT_SUBLIMIT
+  /// Pre-authorisation or a bypass had not come through.
+  AUTHORISATION_PENDING
+  /// Something the panel requires was not attached to the submission.
+  DOCUMENTATION_INCOMPLETE
+  /// Recorded rather than forced into a category that would be wrong.
+  OTHER
 }
 
 /// How a panel wants claims delivered. Recorded so the workspace can show the

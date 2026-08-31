@@ -1,4 +1,5 @@
-import { IsISO8601, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsEnum, IsISO8601, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { ClaimRejectionCategory } from '@prisma/client';
 
 const MONEY = /^\d{1,8}(\.\d{1,2})?$/;
 
@@ -16,6 +17,16 @@ export class AdjudicateClaimDto {
   @IsString()
   @MaxLength(500)
   rejectionReason?: string;
+
+  /**
+   * The countable half of the reason (G-6). Optional rather than required:
+   * forcing a category on somebody recording a rejection they do not yet
+   * understand produces OTHER on every row, which is worse than NULL. The
+   * dashboard reports how many are uncategorised rather than pretending.
+   */
+  @IsOptional()
+  @IsEnum(ClaimRejectionCategory)
+  rejectionCategory?: ClaimRejectionCategory;
 
   @IsOptional()
   @IsISO8601()

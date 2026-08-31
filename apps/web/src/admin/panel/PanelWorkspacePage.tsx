@@ -7,6 +7,7 @@ import { DataTable, money, moneyOrDash } from '../components/DataTable';
 import { useCan } from '../../core/hooks/useCan';
 import {
   useAdjudicateClaim,
+  useChargeClaimToPatient,
   useMarkBatchSubmitted,
   usePanelAwaitingPayment,
   usePanelReconciliation,
@@ -16,8 +17,14 @@ import {
   useResubmitClaim,
   useWriteOffClaim,
 } from '../hooks/useAdmin';
-import type { PanelAwaitingPaymentRow, PanelWorkQueueRow, SubmissionQueueRow } from '../types';
-import { canRecordOutcome, canReclaim, canWriteOff } from './claimActions';
+import type {
+  ClaimRejectionCategory,
+  PanelAwaitingPaymentRow,
+  PanelWorkQueueRow,
+  SubmissionQueueRow,
+} from '../types';
+import { REJECTION_CATEGORY_LABEL } from '../types';
+import { canChargeToPatient, canRecordOutcome, canReclaim, canWriteOff } from './claimActions';
 
 const STATUS_COLOUR: Record<string, string> = {
   READY: 'blue',
@@ -68,6 +75,7 @@ export function PanelWorkspacePage() {
 
   const markSubmitted = useMarkBatchSubmitted();
   const adjudicate = useAdjudicateClaim();
+  const chargePatient = useChargeClaimToPatient();
   const resubmit = useResubmitClaim();
   const writeOff = useWriteOffClaim();
   const recordRemittance = useRecordRemittance();
@@ -81,6 +89,10 @@ export function PanelWorkspacePage() {
   const [approved, setApproved] = useState('');
   const [rejected, setRejected] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectionCategory, setRejectionCategory] = useState<ClaimRejectionCategory | null>(null);
+  const [chargingPatient, setChargingPatient] = useState<PanelWorkQueueRow | null>(null);
+  const [chargeReason, setChargeReason] = useState('');
+  const [chargeAmount, setChargeAmount] = useState('');
   const [claimNo, setClaimNo] = useState('');
 
   const [resubmitting, setResubmitting] = useState<PanelWorkQueueRow | null>(null);
@@ -535,8 +547,56 @@ export function PanelWorkspacePage() {
                   dataIndex: 'rejectionReason',
                   key: 'rejectionReason',
                   ellipsis: true,
-                  render: (value: string | null) =>
-                    value ? <Tooltip title={value}>{value}</Tooltip> : <span className="kw-muted">—</span>,
+                  render: (value: string | null, row) => {
+                    const category = row.rejectionCategory
+                      ? REJECTION_CATEGORY_LABEL[row.rejectionCategory]
+                      : null;
+                    if (!value && !category) return <span className="kw-muted">—</span>;
+                    return (
+                      <Tooltip title={value ?? undefined}>
+                        {category ? <Tag>{category}</Tag> : null}
+                        {value ? <span>{value}</span> : null}
+                      </Tooltip>
+                    );
+                  },
+                },
+                {
+                  // G-4 — THE DEADLINE THAT LOSES CLAIMS.
+                  //
+                  // The clinic's excess register carries "max 2 months from the
+                  // previous service date" as rule 5 of a procedure typed into
+                  // spreadsheet cells, and nothing counts it down. It runs from
+                  // the SERVICE date, not the rejection, so it is usually
+                  // several weeks gone before anybody looks.
+                  title: 'Re-claim by',
+                  key: 'resubmission',
+                  render: (_: unknown, row) => {
+                    const window = row.resubmission;
+                    if (!window) return <span className="kw-muted">—</span>;
+                    if (!window.known) {
+                      return (
+                        <Tooltip title={window.reason ?? undefined}>
+                          <span className="kw-muted">not set</span>
+                        </Tooltip>
+                      );
+                    }
+                    const when = window.deadline ? dayjs(window.deadline).format('D MMM YY') : '';
+                    if (window.expired) {
+                      return (
+                        <Tooltip title={`The re-claim window closed on ${when}.`}>
+                          <Tag color="red">missed · {when}</Tag>
+                        </Tooltip>
+                      );
+                    }
+                    const days = window.daysRemaining ?? 0;
+                    return (
+                      <Tooltip title={`Re-claim by ${when} or this money is gone.`}>
+                        <Tag color={days <= 14 ? 'orange' : 'default'}>
+                          {days}d left · {when}
+                        </Tag>
+                      </Tooltip>
+                    );
+                  },
                 },
                 {
                   title: 'Resolved',
@@ -566,6 +626,31 @@ export function PanelWorkspacePage() {
                       {mayManage && canReclaim(row) ? (
                         <Button size="small" type="link" onClick={() => { setResubmitting(row); setResubmitReason(''); }}>
                           Re-claim
+                        </Button>
+                      ) : null}
+                      {/*
+                        G-5. Deliberately BEFORE the write-off and not styled as
+                        a danger action: recovering the money from the patient
+                        is the better outcome, and a row that offers only "write
+                        off" quietly teaches staff to give up on it. Two
+                        different decisions, and they must not look like one.
+                      */}
+                      {mayWriteOff && canChargeToPatient(row) ? (
+                        <Button
+                          size="small"
+                          type="link"
+                          onClick={() => {
+                            setChargingPatient(row);
+                            setChargeReason('');
+                            // Two decimals, because a money field that opens
+                            // reading "110.4" invites somebody to fix it into
+                            // something else.
+                            setChargeAmount(
+                              row.rejectedAmount === null ? '' : row.rejectedAmount.toFixed(2),
+                            );
+                          }}
+                        >
+                          Charge patient
                         </Button>
                       ) : null}
                       {mayWriteOff && canWriteOff(row) ? (
@@ -720,12 +805,14 @@ export function PanelWorkspacePage() {
               approvedAmount: approved || '0',
               rejectedAmount: rejected || undefined,
               rejectionReason: rejectionReason || undefined,
+              rejectionCategory: rejectionCategory ?? undefined,
               panelClaimNo: claimNo || undefined,
             },
             {
               onSuccess: () => {
                 message.success('Outcome recorded');
                 setAdjudicating(null);
+                setRejectionCategory(null);
               },
               onError: (error: Error) => message.error(error.message),
             },
@@ -748,7 +835,84 @@ export function PanelWorkspacePage() {
           placeholder="The panel's reason (required if anything was rejected)"
           style={{ marginBottom: 8 }}
         />
+        {/*
+          THE COUNTABLE HALF OF THE REASON.
+          The sentence above says what happened to this claim; the category
+          below is what a year of them can be added up by. Optional on purpose:
+          forcing a choice on somebody who does not yet understand a rejection
+          produces "Other" on every row, which reports worse than a blank.
+        */}
+        <Select
+          style={{ width: '100%', marginBottom: 8 }}
+          allowClear
+          value={rejectionCategory}
+          placeholder="Reason type — optional, for reporting"
+          onChange={(value) => setRejectionCategory(value ?? null)}
+          options={(Object.keys(REJECTION_CATEGORY_LABEL) as ClaimRejectionCategory[]).map((value) => ({
+            value,
+            label: REJECTION_CATEGORY_LABEL[value],
+          }))}
+        />
         <Input addonBefore="Claim no" value={claimNo} onChange={(event) => setClaimNo(event.target.value)} />
+      </Modal>
+
+      {/* --- Charge the patient instead (G-5) --- */}
+      <Modal
+        open={chargingPatient !== null}
+        title="Charge this rejection to the patient"
+        okText="Move it to the patient's bill"
+        okButtonProps={{ disabled: chargeReason.trim().length < 10 }}
+        confirmLoading={chargePatient.isPending}
+        onCancel={() => setChargingPatient(null)}
+        onOk={() =>
+          chargingPatient &&
+          chargePatient.mutate(
+            {
+              claimLineId: chargingPatient.claimLineId,
+              amount: chargeAmount || undefined,
+              reason: chargeReason,
+            },
+            {
+              onSuccess: (result: unknown) => {
+                const owed = (result as { patientNowOwes?: number } | undefined)?.patientNowOwes;
+                message.success(
+                  owed === undefined
+                    ? 'Moved to the patient'
+                    : `Moved to the patient — ${chargingPatient.patientName ?? 'they'} now owe ${money(owed)} on ${chargingPatient.invoiceNumber}`,
+                );
+                setChargingPatient(null);
+              },
+              onError: (error: Error) => message.error(error.message),
+            },
+          )
+        }
+      >
+        <AdminNotice>
+          This is <strong>not</strong> a write-off. The money is not gone — it moves from the panel's share of{' '}
+          {chargingPatient?.invoiceNumber} to the patient's, so it appears in Finance ▸ Outstanding and can be taken at
+          the counter like any other balance. The invoice total does not change.
+        </AdminNotice>
+        <p style={{ fontSize: 12.5, marginBottom: 8 }}>
+          {chargingPatient?.panelName} rejected{' '}
+          <strong>{money(chargingPatient?.rejectedAmount ?? 0)}</strong>
+          {chargingPatient?.rejectionReason ? ` — “${chargingPatient.rejectionReason}”` : ''}
+        </p>
+        <Input
+          addonBefore="Amount"
+          value={chargeAmount}
+          onChange={(event) => setChargeAmount(event.target.value)}
+          placeholder="0.00"
+          style={{ marginBottom: 8 }}
+        />
+        <Input.TextArea
+          rows={3}
+          value={chargeReason}
+          onChange={(event) => setChargeReason(event.target.value)}
+          placeholder="Why the patient is being asked to pay, and whether they have been told"
+        />
+        <div className="kw-muted" style={{ fontSize: 11.5, marginTop: 6 }}>
+          Whoever takes the patient's call in three weeks will not be you. Write the sentence they will need.
+        </div>
       </Modal>
 
       {/* --- Resubmission --- */}

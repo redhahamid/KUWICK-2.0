@@ -346,6 +346,18 @@ export function useUpdatePanelConfig() {
   );
 }
 
+/**
+ * G-5 — the panel refused, so the patient pays. Not a write-off: the money is
+ * still coming, it just moves onto the invoice's patient share.
+ */
+export function useChargeClaimToPatient() {
+  return useAdminMutation(
+    ({ claimLineId, ...body }: { claimLineId: string; amount?: string; reason: string }) =>
+      apiClient.patch(`/panel-workspace/claims/${claimLineId}/charge-to-patient`, body),
+    ['admin-panel', 'admin-finance'],
+  );
+}
+
 export function useMarkBatchSubmitted() {
   return useAdminMutation(
     ({ batchId, ...body }: { batchId: string; submissionMethod: string; submissionReference?: string }) =>
@@ -356,8 +368,14 @@ export function useMarkBatchSubmitted() {
 
 export function useAdjudicateClaim() {
   return useAdminMutation(
-    ({ claimLineId, ...body }: { claimLineId: string; approvedAmount: string; rejectedAmount?: string; rejectionReason?: string; panelClaimNo?: string }) =>
-      apiClient.patch(`/panel-workspace/claims/${claimLineId}/adjudicate`, body),
+    ({ claimLineId, ...body }: {
+      claimLineId: string;
+      approvedAmount: string;
+      rejectedAmount?: string;
+      rejectionReason?: string;
+      rejectionCategory?: string;
+      panelClaimNo?: string;
+    }) => apiClient.patch(`/panel-workspace/claims/${claimLineId}/adjudicate`, body),
     ['admin-panel'],
   );
 }

@@ -431,6 +431,26 @@ export interface PanelAwaitingPaymentRow {
   outstanding: number;
 }
 
+/** Why a panel refused to pay, as a countable fact beside the free text. */
+export type ClaimRejectionCategory =
+  | 'PATIENT_LIMIT_EXHAUSTED'
+  | 'ITEM_NOT_COVERED'
+  | 'PARTIALLY_COVERED'
+  | 'BENEFIT_SUBLIMIT'
+  | 'AUTHORISATION_PENDING'
+  | 'DOCUMENTATION_INCOMPLETE'
+  | 'OTHER';
+
+export const REJECTION_CATEGORY_LABEL: Record<ClaimRejectionCategory, string> = {
+  PATIENT_LIMIT_EXHAUSTED: 'Member limit exhausted',
+  ITEM_NOT_COVERED: 'Item not covered',
+  PARTIALLY_COVERED: 'Covered only in part',
+  BENEFIT_SUBLIMIT: 'Benefit sub-limit',
+  AUTHORISATION_PENDING: 'Authorisation pending',
+  DOCUMENTATION_INCOMPLETE: 'Documentation incomplete',
+  OTHER: 'Other',
+};
+
 export interface PanelWorkQueueRow {
   claimLineId: string;
   panelClinicId: string;
@@ -455,6 +475,22 @@ export interface PanelWorkQueueRow {
   receivedAmount: number | null;
   outstanding: number;
   rejectionReason: string | null;
+  rejectionCategory: ClaimRejectionCategory | null;
+  /** G-5 — already handed to the patient, and for how much. */
+  chargedToPatient: number | null;
+  chargedToPatientAt: string | null;
+  /**
+   * The re-claim deadline, on claims where re-claiming is still the route out.
+   * NULL on every other status — a settled claim has no countdown.
+   */
+  resubmission: {
+    deadline: string | null;
+    daysRemaining: number | null;
+    expired: boolean;
+    /** FALSE when the panel's window is not configured, or there is no service date. */
+    known: boolean;
+    reason: string | null;
+  } | null;
   responsible: string | null;
   paymentTermDays: number | null;
   resolved: boolean;

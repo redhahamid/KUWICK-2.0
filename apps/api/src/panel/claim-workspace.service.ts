@@ -9,6 +9,7 @@ import {
   AgingBucket,
   accumulateAging,
   computeClaimBalance,
+  computePatientBalance,
   daysBetween,
   emptyAging,
   rollUpClaims,
@@ -19,7 +20,26 @@ import { SubmitBatchDto } from './dto/submit-batch.dto';
 import { WriteOffClaimDto } from './dto/write-off-claim.dto';
 import { RecordRemittanceDto } from './dto/record-remittance.dto';
 import { ResubmitClaimDto } from './dto/resubmit-claim.dto';
-import { resolveTermWindow } from './payment-terms';
+import { ChargeToPatientDto } from './dto/charge-to-patient.dto';
+import { resolveResubmissionWindow, resolveTermWindow } from './payment-terms';
+
+/**
+ * The claim states where a re-claim is still the route out, and therefore the
+ * only states where a re-claim deadline means anything. A RESUBMITTED claim has
+ * already taken that route; a WRITTEN_OFF one has given it up.
+ */
+const NEEDS_RECLAIM: PanelClaimStatus[] = ['REJECTED', 'PARTIALLY_APPROVED', 'RESUBMISSION_REQUIRED'];
+
+/**
+ * The states where charging the patient is a legitimate route. A claim the
+ * panel has not refused cannot be handed to the patient, and one already
+ * resubmitted or written off has taken a different route out.
+ */
+const CHARGEABLE_TO_PATIENT: PanelClaimStatus[] = [
+  'REJECTED',
+  'PARTIALLY_APPROVED',
+  'RESUBMISSION_REQUIRED',
+];
 
 /**
  * THE PANEL CLAIM WORKSPACE.
@@ -330,6 +350,7 @@ export class ClaimWorkspaceService {
           claimStatus: true,
           claimedAmount: true,
           feeAmount: true,
+          feeDirection: true,
           approvedAmount: true,
           rejectedAmount: true,
           paidAmount: true,
@@ -341,7 +362,15 @@ export class ClaimWorkspaceService {
         throw new ConflictException(`A ${line.claimStatus.toLowerCase()} claim cannot be adjudicated.`);
       }
 
-      const expectedCents = toCents(line.claimedAmount) + toCents(line.feeAmount);
+      // Through the shared invariant, so the ceiling this validates against
+      // moves with the panel's fee direction. Adding the fee on a panel that
+      // withholds it would let somebody approve more than the claim can ever
+      // pay, which is the inflation this check exists to stop.
+      const expectedCents = computeClaimBalance({
+        claimedAmount: line.claimedAmount,
+        feeAmount: line.feeAmount,
+        feeDirection: line.feeDirection,
+      }).expectedReceivableCents;
       const approvedCents = toCents(dto.approvedAmount);
       const rejectedCents = toCents(dto.rejectedAmount ?? 0);
 
@@ -369,6 +398,7 @@ export class ClaimWorkspaceService {
           approvedAmount: dto.approvedAmount,
           rejectedAmount: dto.rejectedAmount ?? 0,
           rejectionReason: dto.rejectionReason ?? null,
+          rejectionCategory: dto.rejectionCategory ?? null,
           adjudicatedAt: dto.adjudicatedAt ? new Date(dto.adjudicatedAt) : new Date(),
           deductionReason: dto.rejectionReason ?? null,
           ...(dto.panelClaimNo ? { panelClaimNo: dto.panelClaimNo } : {}),
@@ -597,6 +627,180 @@ export class ClaimWorkspaceService {
       });
 
       return updated;
+    });
+  }
+
+  /**
+   * CHARGE A REJECTED CLAIM TO THE PATIENT INSTEAD (G-5).
+   *
+   * The fourth route out of a rejection, and the one the clinic actually uses:
+   * the panel will not pay, so the patient does. In the workbook this is the
+   * word "SELF PAY" typed into a column meant for dates, followed weeks later
+   * by "QR PAYMENT 3/8/26" in another column, with nothing connecting the two
+   * to the claim they came from.
+   *
+   * THIS IS NOT A WRITE-OFF, and the distinction is the whole point. A write-off
+   * says the money is gone. This says the money is still coming, from somebody
+   * else — so it must not land in a "written off" total that the owner reads as
+   * losses.
+   *
+   * What it actually does is move the amount on the INVOICE, from the panel's
+   * share to the patient's. That single move is what makes the patient
+   * chaseable: `computePatientBalance` picks them up like any other debtor,
+   * they appear in Finance ▸ Outstanding, and the counter can take payment
+   * through the ordinary payment path. Nothing about panel receivables changes,
+   * because the panel's rejection is already a fact.
+   *
+   * `panelCoveredAmount` is deliberately left alone: it is the historical claim
+   * base, the number this claim was raised against, and rewriting it would make
+   * the claim's own `claimedAmount` snapshot look wrong six months later.
+   */
+  async chargeToPatient(claimLineId: string, dto: ChargeToPatientDto) {
+    return withAdminTx(this.rawPrisma, 'panel.writeOff', async (tx, actor) => {
+      const line = await tx.claimBatchLine.findUnique({
+        where: { id: claimLineId },
+        select: {
+          id: true,
+          claimStatus: true,
+          rejectedAmount: true,
+          chargedToPatientAmount: true,
+          invoiceId: true,
+          invoice: {
+            select: {
+              id: true,
+              invoiceNumber: true,
+              status: true,
+              panelResponsibilityAmount: true,
+              patientResponsibilityAmount: true,
+            },
+          },
+        },
+      });
+      if (!line) throw new NotFoundException('Claim not found');
+      if (line.chargedToPatientAmount) {
+        throw new ConflictException('This claim has already been charged to the patient.');
+      }
+      if (!CHARGEABLE_TO_PATIENT.includes(line.claimStatus)) {
+        throw new ConflictException(
+          `Only a rejected or part-approved claim can be charged to the patient. This one is ${line.claimStatus.toLowerCase()}.`,
+        );
+      }
+
+      const rejectedCents = toCents(line.rejectedAmount ?? 0);
+      if (rejectedCents <= 0) {
+        throw new BadRequestException('The panel has not rejected anything on this claim.');
+      }
+      const amountCents = dto.amount === undefined ? rejectedCents : toCents(dto.amount);
+      if (amountCents <= 0) {
+        throw new BadRequestException('The amount charged to the patient must be more than zero.');
+      }
+      if (amountCents > rejectedCents) {
+        throw new BadRequestException(
+          `Cannot charge ${fromCents(amountCents)} to the patient — the panel only rejected ${fromCents(rejectedCents)}.`,
+        );
+      }
+
+      // The panel's share cannot go below zero, whatever was rejected: an
+      // invoice that ends up owing a negative amount to a panel is a figure
+      // nobody can act on.
+      const panelCents = toCents(line.invoice.panelResponsibilityAmount ?? 0);
+      if (amountCents > panelCents) {
+        throw new BadRequestException(
+          `Invoice ${line.invoice.invoiceNumber} only carries ${fromCents(panelCents)} of panel responsibility.`,
+        );
+      }
+
+      const patientCents = toCents(line.invoice.patientResponsibilityAmount ?? 0);
+      const newPatientCents = patientCents + amountCents;
+
+      await tx.invoice.update({
+        where: { id: line.invoice.id },
+        data: {
+          panelResponsibilityAmount: fromCents(panelCents - amountCents),
+          patientResponsibilityAmount: fromCents(newPatientCents),
+        },
+      });
+
+      // The invoice may have been settled when the patient owed nothing. It is
+      // not settled now, and saying so is the point — a PAID invoice with a
+      // balance is exactly the kind of quiet inconsistency this system exists
+      // to avoid.
+      const settlement = await this.patientSettlement(tx, line.invoice.id, newPatientCents);
+      if (line.invoice.status !== 'CANCELLED') {
+        await tx.invoice.update({
+          where: { id: line.invoice.id },
+          data: settlement.settled
+            ? { status: 'PAID' }
+            : { status: 'UNPAID', paidAt: null },
+        });
+      }
+
+      const updated = await tx.claimBatchLine.update({
+        where: { id: claimLineId },
+        data: {
+          chargedToPatientAmount: fromCents(amountCents),
+          chargedToPatientAt: new Date(),
+          chargedToPatientByStaffId: actor.id,
+          claimStatus: PanelClaimStatus.CLOSED,
+          resolvedAt: new Date(),
+          resolutionNote: `Charged to the patient: ${dto.reason}`,
+        },
+      });
+
+      await this.logEvent(tx, {
+        claimLineId,
+        eventType: 'CHARGED_TO_PATIENT',
+        fromStatus: line.claimStatus,
+        toStatus: PanelClaimStatus.CLOSED,
+        amount: fromCents(amountCents),
+        reason: dto.reason,
+        reference: line.invoice.invoiceNumber,
+        actorStaffId: actor.id,
+      });
+
+      await recordAudit(tx, actor, {
+        action: 'panel.chargedToPatient',
+        entityType: 'ClaimBatchLine',
+        entityId: claimLineId,
+        before: {
+          claimStatus: line.claimStatus,
+          invoicePanelShare: fromCents(panelCents),
+          invoicePatientShare: fromCents(patientCents),
+        },
+        after: {
+          claimStatus: PanelClaimStatus.CLOSED,
+          chargedToPatient: fromCents(amountCents),
+          invoicePanelShare: fromCents(panelCents - amountCents),
+          invoicePatientShare: fromCents(newPatientCents),
+        },
+        reason: dto.reason,
+        source: 'panel.chargeToPatient',
+      });
+
+      return {
+        ...updated,
+        invoiceNumber: line.invoice.invoiceNumber,
+        patientNowOwes: fromCents(settlement.balanceCents),
+      };
+    });
+  }
+
+  /**
+   * What the patient owes on an invoice, from its own payments and credit
+   * notes. The shared invariant, not a second formula.
+   */
+  private async patientSettlement(tx: AdminTx, invoiceId: string, responsibilityCents: number) {
+    const [payments, creditNotes] = await Promise.all([
+      tx.payment.findMany({
+        where: { invoiceId },
+        select: { kind: true, amount: true, reversedAt: true },
+      }),
+      tx.creditNote.findMany({ where: { invoiceId }, select: { status: true, totalAmount: true } }),
+    ]);
+    return computePatientBalance({
+      patientResponsibility: fromCents(responsibilityCents),
+      payments: payments.map((p) => ({ kind: p.kind, amount: p.amount, reversedAt: p.reversedAt })),
+      creditNotes: creditNotes.map((n) => ({ status: n.status, totalAmount: n.totalAmount })),
     });
   }
 
@@ -1001,7 +1205,17 @@ export class ClaimWorkspaceService {
       include: {
         claimBatch: {
           include: {
-            panelClinic: { select: { id: true, name: true, paymentTermDays: true, claimFeeType: true, claimFeeValue: true } },
+            panelClinic: {
+              select: {
+                id: true,
+                name: true,
+                paymentTermDays: true,
+                claimFeeType: true,
+                claimFeeValue: true,
+                resubmissionWindowDays: true,
+                resubmitAsNewClaim: true,
+              },
+            },
           },
         },
         invoice: {
@@ -1080,6 +1294,40 @@ export class ClaimWorkspaceService {
         receivedAmount: line.paidAmount === null ? null : Number(line.paidAmount),
         outstanding: fromCents(balance.outstandingCents),
         rejectionReason: line.rejectionReason,
+        rejectionCategory: line.rejectionCategory,
+        /** G-5 — already handed to the patient, and for how much. */
+        chargedToPatient:
+          line.chargedToPatientAmount === null ? null : Number(line.chargedToPatientAmount),
+        chargedToPatientAt: line.chargedToPatientAt,
+        // ---------------------------------------------------------------
+        // THE RE-CLAIM DEADLINE (G-4).
+        //
+        // The clinic's excess register carries this as rule 5 of a procedure
+        // typed into spreadsheet cells — "max 2 months from the previous
+        // service date" — and nothing counts it down. Miss it and the claim
+        // is gone. It is counted from the ORIGINAL SERVICE DATE, not from the
+        // rejection, which is what makes it easy to lose: the clock has often
+        // been running for weeks before the panel even says no.
+        //
+        // Only meaningful on a claim that still needs re-claiming, so it is
+        // NULL elsewhere rather than a countdown on a settled row.
+        // ---------------------------------------------------------------
+        resubmission: NEEDS_RECLAIM.includes(line.claimStatus)
+          ? (() => {
+              const w = resolveResubmissionWindow(
+                line.claimBatch.panelClinic.resubmissionWindowDays,
+                line.invoice.visit?.createdAt ?? null,
+                now,
+              );
+              return {
+                deadline: w.deadline,
+                daysRemaining: w.daysRemaining,
+                expired: w.expired,
+                known: w.resolved,
+                reason: w.reason,
+              };
+            })()
+          : null,
         responsible: line.responsible?.fullName ?? null,
         // The panel's own term, so the due date on this row can be read as a
         // consequence of something rather than as a date somebody typed.

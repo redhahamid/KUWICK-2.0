@@ -550,6 +550,136 @@ describe('Panel: the claim workspace (e2e)', () => {
     expect(row.feeDirectionUnresolved).toBe(true);
   });
 
+  // ---------------------------------------------------------------------------
+  // G-5 — THE PANEL REFUSED, SO THE PATIENT PAYS.
+  //
+  // The fourth route out of a rejection in the clinic's excess register, and
+  // the one no system usually models: "SELF PAY", then a payment method and a
+  // date typed into another column weeks later, with nothing joining them to
+  // the claim. It is NOT a write-off — the money is still coming.
+  // ---------------------------------------------------------------------------
+
+  it('moves a rejected amount onto the patient, and it is not a write-off', async () => {
+    const claim = await makeClaim(100, 8);
+    await request(app.getHttpServer())
+      .patch(`/panel-workspace/batches/${claim.batchId}/submitted`)
+      .set('Authorization', bearer)
+      .send({ submissionMethod: 'PORTAL', submissionReference: 'SP-1' })
+      .expect(200);
+    // Panel approves 60 of the 108 and refuses 48.
+    await request(app.getHttpServer())
+      .patch(`/panel-workspace/claims/${claim.lineId}/adjudicate`)
+      .set('Authorization', bearer)
+      .send({
+        approvedAmount: '60.00',
+        rejectedAmount: '48.00',
+        rejectionReason: 'Member annual limit already spent',
+        rejectionCategory: 'PATIENT_LIMIT_EXHAUSTED',
+      })
+      .expect(200);
+
+    const before = await withTenantContext(prisma, tenantId, (tx) =>
+      tx.claimBatchLine.findUnique({
+        where: { id: claim.lineId },
+        select: {
+          invoice: {
+            select: { panelResponsibilityAmount: true, patientResponsibilityAmount: true, status: true },
+          },
+        },
+      }),
+    );
+    expect(Number(before!.invoice.patientResponsibilityAmount)).toBe(0);
+
+    const charged = await request(app.getHttpServer())
+      .patch(`/panel-workspace/claims/${claim.lineId}/charge-to-patient`)
+      .set('Authorization', bearer)
+      .send({ reason: 'Panel refused: member annual limit spent. Patient informed by phone.' })
+      .expect(200);
+    expect(charged.body.patientNowOwes).toBe(48);
+
+    const after = await withTenantContext(prisma, tenantId, (tx) =>
+      tx.claimBatchLine.findUnique({
+        where: { id: claim.lineId },
+        select: {
+          claimStatus: true,
+          chargedToPatientAmount: true,
+          writtenOffAmount: true,
+          resolvedAt: true,
+          invoice: {
+            select: { panelResponsibilityAmount: true, patientResponsibilityAmount: true, status: true },
+          },
+        },
+      }),
+    );
+    // The money moved between the two shares; the invoice total did not change.
+    expect(Number(after!.invoice.patientResponsibilityAmount)).toBe(48);
+    expect(Number(after!.invoice.panelResponsibilityAmount)).toBe(52);
+    // And the invoice is no longer settled, because somebody now owes on it.
+    expect(after!.invoice.status).toBe('UNPAID');
+    // Recorded as its own resolution, NOT as a write-off — a write-off total is
+    // read as losses, and this money is still coming.
+    expect(Number(after!.chargedToPatientAmount)).toBe(48);
+    expect(after!.writtenOffAmount).toBeNull();
+    expect(after!.claimStatus).toBe('CLOSED');
+    expect(after!.resolvedAt).not.toBeNull();
+
+    // It is on the claim's own timeline, which is where an argument six months
+    // later gets conducted.
+    const timeline = await request(app.getHttpServer())
+      .get(`/panel-workspace/claims/${claim.lineId}/timeline`)
+      .set('Authorization', bearer)
+      .expect(200);
+    expect(timeline.body.map((event: { type: string }) => event.type)).toContain('CHARGED_TO_PATIENT');
+  });
+
+  it('refuses to charge the patient more than the panel actually rejected, or twice', async () => {
+    const claim = await makeClaim(100, 8);
+    await request(app.getHttpServer())
+      .patch(`/panel-workspace/batches/${claim.batchId}/submitted`)
+      .set('Authorization', bearer)
+      .send({ submissionMethod: 'PORTAL', submissionReference: 'SP-2' })
+      .expect(200);
+
+    // Nothing rejected yet — there is nothing to hand over.
+    await request(app.getHttpServer())
+      .patch(`/panel-workspace/claims/${claim.lineId}/charge-to-patient`)
+      .set('Authorization', bearer)
+      .send({ reason: 'Trying this before the panel has said anything at all.' })
+      .expect(409);
+
+    await request(app.getHttpServer())
+      .patch(`/panel-workspace/claims/${claim.lineId}/adjudicate`)
+      .set('Authorization', bearer)
+      .send({ approvedAmount: '88.00', rejectedAmount: '20.00', rejectionReason: 'Item not on the formulary' })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .patch(`/panel-workspace/claims/${claim.lineId}/charge-to-patient`)
+      .set('Authorization', bearer)
+      .send({ amount: '50.00', reason: 'More than the panel refused, which would invent a debt.' })
+      .expect(400);
+
+    // A reason is mandatory: the patient who rings up in three weeks needs one.
+    await request(app.getHttpServer())
+      .patch(`/panel-workspace/claims/${claim.lineId}/charge-to-patient`)
+      .set('Authorization', bearer)
+      .send({ amount: '20.00', reason: 'no' })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .patch(`/panel-workspace/claims/${claim.lineId}/charge-to-patient`)
+      .set('Authorization', bearer)
+      .send({ amount: '20.00', reason: 'Item not covered; patient agreed to pay the difference.' })
+      .expect(200);
+
+    // And not twice.
+    await request(app.getHttpServer())
+      .patch(`/panel-workspace/claims/${claim.lineId}/charge-to-patient`)
+      .set('Authorization', bearer)
+      .send({ amount: '20.00', reason: 'Charging the same rejection to the patient a second time.' })
+      .expect(409);
+  });
+
   it('re-stamps claims nobody has sent yet when the fee direction is set, and leaves submitted ones alone', async () => {
     const latePanel = await withTenantContext(prisma, tenantId, (tx) =>
       tx.panelClinic.create({

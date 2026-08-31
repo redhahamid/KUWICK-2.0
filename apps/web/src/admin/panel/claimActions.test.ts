@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canRecordOutcome, canReclaim, canWriteOff } from './claimActions';
+import { canChargeToPatient, canRecordOutcome, canReclaim, canWriteOff } from './claimActions';
 
 describe('which decisions a claim is open to', () => {
   describe('canReclaim', () => {
@@ -50,5 +50,30 @@ describe('which decisions a claim is open to', () => {
       expect(canRecordOutcome({ approvedAmount: 0 })).toBe(false);
       expect(canRecordOutcome({ approvedAmount: 180 })).toBe(false);
     });
+  });
+});
+
+describe('canChargeToPatient', () => {
+  const base = { status: 'REJECTED' as const, rejectedAmount: 48, chargedToPatient: null };
+
+  it('offers the route only where the panel actually refused something', () => {
+    expect(canChargeToPatient(base)).toBe(true);
+    expect(canChargeToPatient({ ...base, rejectedAmount: 0 })).toBe(false);
+    expect(canChargeToPatient({ ...base, rejectedAmount: null })).toBe(false);
+  });
+
+  it('is not offered on a claim the panel has not refused', () => {
+    expect(canChargeToPatient({ ...base, status: 'SUBMITTED' })).toBe(false);
+    expect(canChargeToPatient({ ...base, status: 'PAID' })).toBe(false);
+    expect(canChargeToPatient({ ...base, status: 'WRITTEN_OFF' })).toBe(false);
+  });
+
+  it('is offered on every state where a rejection is still open', () => {
+    expect(canChargeToPatient({ ...base, status: 'PARTIALLY_APPROVED' })).toBe(true);
+    expect(canChargeToPatient({ ...base, status: 'RESUBMISSION_REQUIRED' })).toBe(true);
+  });
+
+  it('refuses a second charge — the same rejection cannot be billed twice', () => {
+    expect(canChargeToPatient({ ...base, chargedToPatient: 48 })).toBe(false);
   });
 });

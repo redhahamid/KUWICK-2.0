@@ -44,6 +44,13 @@ export type AuditAction =
   | 'panel.claim.financialEdit'
   | 'panel.receipt.recorded'
   | 'panel.writeOff'
+  /**
+   * A rejected claim handed to the patient instead. Its own action because it
+   * moves money between two people's responsibility on a real invoice, and the
+   * patient who rings up asking why they owe RM128 deserves an answer with a
+   * name and a date on it.
+   */
+  | 'panel.chargedToPatient'
   | 'panel.configured'
   /**
    * The fee direction changed and unsent claims were re-stamped with it. Kept
