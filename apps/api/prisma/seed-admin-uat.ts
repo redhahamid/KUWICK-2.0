@@ -609,7 +609,9 @@ async function reset() {
     'attendance_records', 'employee_profiles',
     'panel_remittance_allocations', 'panel_remittances', 'claim_events',
     'credit_note_lines', 'credit_notes', 'payments', 'day_end_closings',
-    'claim_batch_lines', 'claim_batches',
+    // Lines first, then the import batches they point at, then the claim
+    // batches. Both parents are reachable from a line, so both come after it.
+    'claim_batch_lines', 'claim_import_batches', 'claim_batches',
     'stock_take_lines', 'stock_take_assignments', 'stock_takes',
     'stock_transfer_lines', 'stock_transfers', 'procurement_budgets',
     'goods_received_note_lines', 'goods_received_notes', 'purchase_order_lines', 'purchase_orders',

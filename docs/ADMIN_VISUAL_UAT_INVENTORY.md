@@ -223,6 +223,54 @@ day. Every name is invented, every identifier is in the reserved
 | Inter-company | Partial | `107` | Yes | — | Partly | Flags transfers with no billing reference; does not raise or settle an inter-company invoice |
 | **e-Invoice (LHDN)** | **NOT IMPLEMENTED** | `108` | — | — | **No** | No MyInvois credentials, no submission, no validation, no document UUID, no consolidated return. The page exists to say exactly this |
 
+## 5b · MANAGEMENT COMPLETION — the surfaces built after this pack
+
+Captured separately in
+[`screenshots/admin/management-completion/`](./screenshots/admin/management-completion/)
+by `prisma/full-uat/07-management-completion.ts`, with the flows to run them
+yourself in [`MANAGEMENT_UAT_FLOWS.md`](./MANAGEMENT_UAT_FLOWS.md).
+
+| # | Screen | What it shows that nothing showed before |
+|---|---|---|
+| 90 | Finance ▸ Panel money ▸ Never claimed | **RM265 billed to a panel and never claimed**, aged from settlement. Money that appears in no claim listing anywhere. |
+| 91 | Finance ▸ Panel money ▸ By panel | Billed, claimed, banked and fee cost per panel. |
+| 92 | Finance ▸ Panel money ▸ Fee exceptions | A settled claim paid **RM9.60 more than its own fee rule expects** — the workbook's exception shape, found without anybody looking. |
+| 93 | Finance ▸ Panel money ▸ Receipts | Panel money banked, kept apart from patient payments. A payment keyed net is not reported as a discrepancy. |
+| 94 | Finance ▸ Supplier payables | **RM9,715 owed**, RM1,860 overdue, RM6,300 due this week — the question Kuwick could not answer at all. Names the supplier with no term. |
+| 95 | Finance ▸ Payables ▸ Invoices | Three-way match variance against the goods receipt. |
+| 96 | Finance ▸ Payables ▸ Payments made | Every payment with what it settled. |
+| 97 | Finance ▸ Payables ▸ Pay | Allocations must equal the payment exactly. |
+| 98 | Finance ▸ Payables ▸ Edit terms | No term means no due date — never an assumed thirty days. |
+| 99 | Panel ▸ Configuration | The four-state fee treatment, effective-dated, with one panel deliberately UNCONFIGURED. |
+| 100 | Panel ▸ Work queue | Rejection categories, the re-claim countdown from the ORIGINAL service date, charge-to-patient. |
+| 101 | Panel ▸ Charge to patient | Moves a rejection onto the patient's share of the same invoice. Explicitly not a write-off. |
+| 102 | Panel ▸ Reconciliation | The rejection-rate KPI the workbook already computed and Kuwick did not show. |
+| 103 | Panel ▸ Import claims | The cutover screen. Nothing is written until you say so. |
+| 104 | Panel ▸ Import ▸ problems | A file with two defects imports **nothing**, and both are named with line numbers. |
+| 105 | Panel ▸ Import ▸ dry run | The totals to compare against the workbook's own TOTAL row — the only check that proves the import, and impossible afterwards. |
+| 106 | Panel ▸ Import ▸ committed | Seven claims imported, with the batch recorded and its totals frozen. |
+| 107 | Finance ▸ Panel money after the import | The fee figures move by the imported claims' fees — the same `computeClaimBalance` on both screens. |
+| 108 | Stock ▸ New item requests | Asking for something the catalogue does not have, with a decision that has an author. |
+| 109 | Stock ▸ Duplicate guard | Approving a flagged request requires acknowledging the duplicate. |
+| 110 | Stock ▸ Near expiry | **Received** beside **at risk (at most)** — the batch exposure that used to be reported at full size for a sold-out batch (D-114). |
+| 111 | Stock ▸ Stock take | Counted cost and counted retail side by side, never added. |
+
+**Two defects this pack found, both fixed before it was published**, which is
+the argument for capturing screens rather than trusting tests alone:
+
+1. **Imported claims were invisible on Finance → Panel money.** A claim's branch
+   comes from its visit; an imported claim has no visit, and the branch filter
+   went through the invoice relation — so seven claims worth RM885 sat in the
+   database and in none of the figures. The branch now travels on the import
+   batch, and a regression test asserts it.
+2. **The near-expiry columns were only on one of two identical tables.** The
+   page had the same fifteen columns written out twice, once per layout, and
+   the batch-exposure fix landed on one copy. Extracted to a single definition
+   — the same "one number in two places" defect the whole programme is about,
+   in JSX.
+
+---
+
 ## 6 · CROSS-MODULE WORKFLOWS
 
 | Workflow | Frames | Complete end to end? | Known break |

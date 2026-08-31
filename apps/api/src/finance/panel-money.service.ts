@@ -217,7 +217,15 @@ export class PanelMoneyService {
     const claimLines = await this.prisma.claimBatchLine.findMany({
       where: {
         ...(params.panelClinicId ? { claimBatch: { panelClinicId: params.panelClinicId } } : {}),
-        ...(clinicId ? { invoice: { visit: { clinicId } } } : {}),
+        // A CLAIM'S BRANCH COMES FROM ITS VISIT — EXCEPT WHERE THERE IS NO
+        // VISIT. An imported claim (G-12) carries its branch on the import
+        // batch instead, and filtering only through the invoice relation
+        // silently dropped every one of them from this screen. The visual UAT
+        // pack found that: seven imported claims worth RM885 present in the
+        // database and absent from every figure here.
+        ...(clinicId
+          ? { OR: [{ invoice: { visit: { clinicId } } }, { importBatch: { clinicId } }] }
+          : {}),
         ...(from || to
           ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lt: to } : {}) } }
           : {}),
@@ -232,6 +240,8 @@ export class PanelMoneyService {
         writtenOffAmount: true,
         claimBatch: { select: { panelClinicId: true, panelClinic: { select: { name: true } } } },
         invoice: { select: { invoiceNumber: true } },
+        importBatchId: true,
+        panelClaimNo: true,
       },
     });
 
@@ -255,10 +265,23 @@ export class PanelMoneyService {
         receivedCents: balance.receivedCents,
         panelClinicId: line.claimBatch.panelClinicId,
         panelName: line.claimBatch.panelClinic.name,
-        invoiceNumber: line.invoice?.invoiceNumber ?? null,
+        /** An imported claim has no invoice; its own number identifies it. */
+        invoiceNumber: line.invoice?.invoiceNumber ?? line.panelClaimNo ?? null,
+        imported: line.importBatchId !== null,
       };
     });
     const feeRoll = rollUpPanelFeeCost(feeFacts);
+    /**
+     * CLAIMS WITH NO KUWICK INVOICE BEHIND THEM.
+     *
+     * Billed-versus-claimed above is a statement about INVOICES: what the
+     * clinic billed panels, and how much of it was claimed. An imported claim
+     * (G-12) has no invoice, so it appears in neither figure — correctly, but
+     * silently, and a screen that says "73% of billed was claimed" while
+     * holding seven claims it did not count is misleading. The count is
+     * reported so the screen can say so.
+     */
+    const importedClaims = feeFacts.filter((fact) => fact.imported).length;
 
     // THE EXCEPTIONS, FOUND WITHOUT ANYBODY LOOKING.
     //
@@ -281,6 +304,7 @@ export class PanelMoneyService {
       panelClinicId: string;
       panelName: string;
       invoiceNumber: string | null;
+      imported: boolean;
       state: FeeEvidenceState;
       claimed: number;
       expected: number;
@@ -303,6 +327,7 @@ export class PanelMoneyService {
           panelClinicId: fact.panelClinicId,
           panelName: fact.panelName,
           invoiceNumber: fact.invoiceNumber,
+          imported: fact.imported,
           state: evidence.state,
           claimed: fromCents(fact.claimedCents),
           expected: fromCents(fact.expectedReceivableCents),
@@ -406,6 +431,13 @@ export class PanelMoneyService {
         overClaimedInvoices,
         claimedRate:
           billedCents === 0 ? null : Math.round((claimedAgainstBillingCents / billedCents) * 1000) / 10,
+        /**
+         * Claims carried in from the previous system. They have no Kuwick
+         * invoice, so they are in NEITHER `billed` nor `claimed` — they are
+         * counted in the fee figures and chased in the Panel module like any
+         * other claim.
+         */
+        importedClaims,
         aging: {
           current: fromCents(unclaimedAging.CURRENT),
           d31_60: fromCents(unclaimedAging.D31_60),

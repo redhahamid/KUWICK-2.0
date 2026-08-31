@@ -1,0 +1,8 @@
+Claim No,Service Date,Patient Reference,Claimed Amount (RM),Fee Amount (RM),Status,Submitted Date,Adjudicated Date,Approved Amount (RM),Rejected Amount (RM),Rejection Reason,Paid Amount (RM),Paid Date,Remarks
+MC-2025-0401,2025-11-04,FILE-20194,120.00,9.60,SUBMITTED,2025-11-06,,,,,,,Awaiting the November remittance
+MC-2025-0402,2025-11-05,FILE-20195,200.00,16.00,SUBMITTED,2025-11-06,,,,,,,
+MC-2025-0403,2025-10-18,FILE-19822,220.00,17.60,PARTIALLY_PAID,2025-10-20,2025-11-02,180.00,22.40,Consultation cap exceeded for this member,120.00,2025-11-20,Balance still being chased
+MC-2025-0404,2025-10-02,FILE-19740,120.00,9.60,PAID,2025-10-03,2025-10-14,110.40,,,110.40,2025-10-30,
+MC-2025-0405,2025-09-14,FILE-19511,90.00,7.20,REJECTED,2025-09-15,2025-09-30,0,82.80,Member limit exhausted for the year,,,Considering self-pay
+MC-2025-0406,2025-11-04,FILE-19488,75.00,6.00,SUBMITTED,2025-11-06,,,,,,,
+MC-2025-0407,2025-11-01,FILE-19477,60.00,4.80,PAID,2025-11-02,2025-11-18,55.20,,,55.20,2025-11-25,

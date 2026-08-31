@@ -454,6 +454,7 @@ export function useImportClaims() {
   return useMutation({
     mutationFn: (body: {
       panelClinicId: string;
+      clinicId?: string;
       csv: string;
       fileName?: string;
       note?: string;

@@ -1349,6 +1349,8 @@ export interface PanelMoneyPosition {
     overClaimed: number;
     overClaimedInvoices: number;
     claimedRate: number | null;
+    /** Claims imported from the previous system: in neither `billed` nor `claimed`. */
+    importedClaims: number;
     aging: { current: number; d31_60: number; d61_90: number; d90_plus: number };
   };
   feeCost: {
@@ -1421,6 +1423,9 @@ export interface ClaimImportBatchRow {
   id: string;
   panelClinicId: string;
   panelName: string;
+  /** NULL where the person importing did not say which branch the file covers. */
+  clinicId: string | null;
+  clinicName: string | null;
   fileName: string | null;
   rowCount: number;
   importedCount: number;

@@ -4,6 +4,7 @@ import { AdminNotice, AdminSection, AdminShell, firstError } from '../components
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, money } from '../components/DataTable';
 import { useClaimImportBatches, useImportClaims, usePanelConfigs } from '../hooks/useAdmin';
+import { useClinics } from '../../core/hooks/useClinics';
 import { FEE_TREATMENT_LABEL } from '../types';
 import type { ClaimImportBatchRow, ClaimImportResult, ImportRowProblem, PanelConfigRow } from '../types';
 
@@ -23,12 +24,14 @@ import type { ClaimImportBatchRow, ClaimImportResult, ImportRowProblem, PanelCon
 export function ClaimImportPage() {
   const { message } = App.useApp();
   const [panelClinicId, setPanelClinicId] = useState<string | undefined>();
+  const [clinicId, setClinicId] = useState<string | undefined>();
   const [csv, setCsv] = useState('');
   const [fileName, setFileName] = useState<string | undefined>();
   const [note, setNote] = useState('');
   const [preview, setPreview] = useState<ClaimImportResult | null>(null);
 
   const panels = usePanelConfigs();
+  const { data: clinics } = useClinics();
   const batches = useClaimImportBatches(panelClinicId);
   const runImport = useImportClaims();
 
@@ -38,7 +41,7 @@ export function ClaimImportPage() {
   const check = () => {
     if (!panelClinicId || !csv) return;
     runImport.mutate(
-      { panelClinicId, csv, fileName },
+      { panelClinicId, clinicId, csv, fileName },
       {
         onSuccess: (result) => setPreview(result),
         onError: (error) => message.error((error as Error).message),
@@ -49,7 +52,7 @@ export function ClaimImportPage() {
   const commit = () => {
     if (!panelClinicId || !csv) return;
     runImport.mutate(
-      { panelClinicId, csv, fileName, note: note || undefined, commit: true },
+      { panelClinicId, clinicId, csv, fileName, note: note || undefined, commit: true },
       {
         onSuccess: (result) => {
           setPreview(result);
@@ -103,6 +106,24 @@ export function ClaimImportPage() {
             }}
             options={panelOptions}
           />
+          {/*
+            AN IMPORTED CLAIM HAS NO VISIT, so it has no branch of its own, and
+            every branch-scoped finance screen reads the branch from the visit.
+            Leave this blank and the claims are reported as not attributable to
+            a branch — which is honest, but means they sit outside the per-branch
+            figures. The person importing usually knows.
+          */}
+          <Select
+            style={{ minWidth: 220 }}
+            allowClear
+            placeholder="Which branch? (optional)"
+            value={clinicId}
+            onChange={(value) => {
+              setClinicId(value);
+              setPreview(null);
+            }}
+            options={(clinics ?? []).map((clinic) => ({ value: clinic.id, label: clinic.name }))}
+          />
           <Upload
             accept=".csv,text/csv"
             maxCount={1}
@@ -124,6 +145,13 @@ export function ClaimImportPage() {
             Check the file
           </Button>
         </div>
+        {chosenPanel && !clinicId ? (
+          <div style={{ marginTop: 10, fontSize: 12, color: '#d46b08' }}>
+            No branch chosen. These claims will be imported and chased normally, but they will sit
+            outside the per-branch figures on Finance → Panel money, because an imported claim has
+            no visit to read a branch from.
+          </div>
+        ) : null}
         {chosenPanel ? (
           <div style={{ marginTop: 10, fontSize: 12, color: '#595959' }}>
             Every imported claim will be stamped{' '}
@@ -244,6 +272,13 @@ export function ClaimImportPage() {
               render: (value: string) => new Date(value).toLocaleString(),
             },
             { title: 'Panel', dataIndex: 'panelName', key: 'panelName' },
+            {
+              title: 'Branch',
+              dataIndex: 'clinicName',
+              key: 'clinicName',
+              render: (value: string | null) =>
+                value ?? <span style={{ color: '#8c8c8c' }}>not stated</span>,
+            },
             { title: 'File', dataIndex: 'fileName', key: 'fileName', render: (v: string | null) => v ?? '—' },
             { title: 'By', dataIndex: 'importedBy', key: 'importedBy' },
             { title: 'Imported', dataIndex: 'importedCount', key: 'importedCount', align: 'right' },

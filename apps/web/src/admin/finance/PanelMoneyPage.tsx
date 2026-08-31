@@ -116,7 +116,12 @@ export function PanelMoneyPage() {
           {
             label: 'Claimed',
             value: money(billing?.claimed ?? 0),
-            hint: billing?.claimedRate === null || billing?.claimedRate === undefined ? '—' : `${billing.claimedRate}% of billed`,
+            hint:
+              billing?.claimedRate === null || billing?.claimedRate === undefined
+                ? '—'
+                : `${billing.claimedRate}% of billed`,
+            explain:
+              'Claims raised against a Kuwick invoice. Claims imported from the previous system have no invoice behind them, so they are in neither this figure nor "billed" — they are counted in the fee figures below and chased in the Panel module like any other claim.',
           },
           {
             label: 'Billed and never claimed',
@@ -149,6 +154,16 @@ export function PanelMoneyPage() {
           {billing?.unclaimedInvoices} invoice(s). Kuwick does not put a deadline on this — no panel in the clinic's
           own records states a submission window, and the two-month rule in the rejection register is about
           re-claiming, not first claims. The age is below; the judgement is yours.
+        </AdminNotice>
+      ) : null}
+
+      {(billing?.importedClaims ?? 0) > 0 ? (
+        <AdminNotice tone="info">
+          {billing?.importedClaims} claim(s) here were imported from the previous system. They have
+          no Kuwick invoice behind them, so <strong>billed</strong> and <strong>claimed</strong>
+          {' '}above exclude them — those two figures compare invoices raised in Kuwick against
+          claims made from them. The fee cost, the fee exceptions and the panel receivable all
+          include them.
         </AdminNotice>
       ) : null}
 

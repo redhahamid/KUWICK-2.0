@@ -328,4 +328,35 @@ describe('Finance: panel money (e2e)', () => {
     expect(body.billing.billed).toBe(0);
     expect(body.billing.unclaimed).toBe(0);
   });
+
+  it('a claim imported from the previous system is NOT dropped by the branch filter', async () => {
+    // THE DEFECT THE VISUAL UAT PACK FOUND. A claim's branch comes from its
+    // visit, and an imported claim has no visit — so filtering only through the
+    // invoice relation made seven imported claims worth RM885 vanish from this
+    // screen while sitting in the database. The branch now travels on the
+    // import batch, and the filter reads both.
+    const clinicScopedOwner = await withTenantContext(prisma, tenantId, (tx) =>
+      tx.staff.update({
+        where: { id: ownerStaffId },
+        data: { clinicId },
+        select: { id: true },
+      }),
+    );
+    expect(clinicScopedOwner.id).toBe(ownerStaffId);
+
+    const csv = [
+      'Claim No,Service Date,Patient Reference,Claimed Amount (RM),Fee Amount (RM),Status,Submitted Date,Adjudicated Date,Approved Amount (RM),Rejected Amount (RM),Rejection Reason,Paid Amount (RM),Paid Date,Remarks',
+      'LEG-001,2025-11-04,FILE-1,100.00,8.00,SUBMITTED,2025-11-06,,,,,,,',
+    ].join('\n');
+    await request(app.getHttpServer())
+      .post('/panel-workspace/import/claims')
+      .set('Authorization', bearer)
+      .send({ panelClinicId: panelId, clinicId, csv, commit: true })
+      .expect(201);
+
+    const { body } = await position();
+    // RM8 of withheld fee, still to come — the figure that used to read zero.
+    expect(body.feeCost.expected).toBe(8);
+    expect(body.feeEvidence.pending).toBe(1);
+  });
 });

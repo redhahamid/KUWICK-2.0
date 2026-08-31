@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { ExceptionTiles, StatStrip } from '../components/StatStrip';
 import { DataTable, money } from '../components/DataTable';
+import type { DataTableColumn } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useStockExceptionRows, useStockExceptions, useStockValuation } from '../hooks/useAdmin';
 
@@ -33,6 +34,155 @@ const EXCEPTION_VIEWS: Record<string, { label: string; columns: string[] }> = {
  * asks separately. They are props, not three copies of the screen: a
  * duplicated board is a board that drifts from the ledger it reads.
  */
+/**
+ * THE COLUMNS the exception views share. Defined once — see
+ * `ExceptionRowsTable` for what happened when they were not.
+ */
+const EXCEPTION_COLUMNS: DataTableColumn<Record<string, unknown>>[] = [
+  { title: 'Item', dataIndex: 'itemName', key: 'itemName' },
+  { title: 'Code', dataIndex: 'itemCode', key: 'itemCode', optional: true },
+  { title: 'Branch', dataIndex: 'clinicName', key: 'clinicName' },
+  { title: 'Category', dataIndex: 'category', key: 'category', optional: true },
+  {
+    title: 'Batch',
+    dataIndex: 'batchNumber',
+    key: 'batchNumber',
+    render: (value) => (value as string | null) ?? '—',
+  },
+  {
+    title: 'On hand',
+    dataIndex: 'quantityOnHand',
+    key: 'quantityOnHand',
+    className: 'kw-num',
+    // NO FALLBACK to a batch's `quantity`. That column is what was RECEIVED in
+    // the batch and never decrements — Kuwick does not attribute a dispense to
+    // a batch — so showing it under "on hand" reported a fully-dispensed batch
+    // at its full size. Batch rows carry their own honest columns below.
+    render: (value) => {
+      const quantity = value as number | undefined;
+      if (quantity === undefined) return '—';
+      return <span className={quantity < 0 ? 'kw-bad' : undefined}>{quantity}</span>;
+    },
+  },
+  {
+    title: 'Received',
+    dataIndex: 'quantity',
+    key: 'quantity',
+    className: 'kw-num',
+    render: (value) => ((value as number | undefined) === undefined ? '—' : (value as number)),
+  },
+  {
+    title: 'At risk (at most)',
+    dataIndex: 'atRiskQuantity',
+    key: 'atRiskQuantity',
+    className: 'kw-num',
+    render: (value, row) => {
+      const atRisk = value as number | undefined;
+      if (atRisk === undefined) return '—';
+      const received = row.quantity as number | undefined;
+      const onHand = row.itemOnHand as number | undefined;
+      return atRisk < (received ?? 0) ? (
+        <Tooltip
+          title={`Only ${onHand} of this item are on hand across all batches, so no more than that can be left of this one. Kuwick does not attribute a dispense to a batch, so the exact remainder is not known.`}
+        >
+          <strong>{atRisk}</strong>
+        </Tooltip>
+      ) : (
+        <strong>{atRisk}</strong>
+      );
+    },
+  },
+  { title: 'Minimum', dataIndex: 'minThreshold', key: 'minThreshold', className: 'kw-num', optional: true },
+  {
+    title: 'Shortfall',
+    dataIndex: 'shortfall',
+    key: 'shortfall',
+    className: 'kw-num',
+    render: (value) =>
+      (value as number | undefined) === undefined ? '—' : <span className="kw-warn">{value as number}</span>,
+  },
+  {
+    title: 'Expiry',
+    dataIndex: 'expiryDate',
+    key: 'expiryDate',
+    render: (value, row) => {
+      if (!value) return '—';
+      const days = row.daysToExpiry as number | null;
+      return (
+        <span className={days !== null && days < 0 ? 'kw-bad' : days !== null && days < 30 ? 'kw-warn' : undefined}>
+          {dayjs(value as string).format('D MMM YY')}
+          {days !== null ? ` (${days}d)` : ''}
+        </span>
+      );
+    },
+  },
+  {
+    title: 'Last dispensed',
+    dataIndex: 'lastDispensedAt',
+    key: 'lastDispensedAt',
+    render: (value, row) =>
+      value ? (
+        `${dayjs(value as string).format('D MMM YY')} (${row.daysSinceDispense as number}d)`
+      ) : (
+        <span className="kw-muted">Never</span>
+      ),
+  },
+  {
+    title: 'Value at cost',
+    dataIndex: 'valueAtCost',
+    key: 'valueAtCost',
+    className: 'kw-num',
+    render: (value) => ((value as number | undefined) === undefined ? '—' : money(value as number)),
+  },
+];
+
+/**
+ * THE EXCEPTION ROWS TABLE.
+ *
+ * ONE definition, used by both of this page's layouts. It was literally
+ * duplicated — the same fifteen columns written out twice, once for each
+ * `focus` branch — and when the batch-exposure columns were added (D-114) only
+ * one copy got them, so the Near Expiry route kept showing the old five. That
+ * is the same "one number maintained in two places" defect the whole
+ * management programme is about, expressed in JSX.
+ */
+function ExceptionRowsTable({
+  rows,
+  view,
+}: {
+  rows: { data?: unknown[]; isLoading: boolean };
+  view: string;
+}) {
+  // A column appears when at least one row carries the key at all. A key
+  // present and NULL still shows — that is the view saying "genuinely never" —
+  // and a key the view does not report simply is not a column.
+  const reportedKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const row of (rows.data ?? []) as Record<string, unknown>[]) {
+      for (const [key, value] of Object.entries(row)) {
+        if (value !== undefined) keys.add(key);
+      }
+    }
+    return keys;
+  }, [rows.data]);
+
+  return (
+    <DataTable
+      rows={rows.data as never}
+      loading={rows.isLoading}
+      rowKey={(row) => String((row as { itemId?: string; batchId?: string }).batchId ?? (row as { itemId?: string }).itemId)}
+      exportName={`stock-${view}`}
+      searchFields={['itemName' as never, 'itemCode' as never, 'clinicName' as never]}
+      searchPlaceholder="Search item or branch…"
+      emptyText="Nothing needs attention here"
+      scrollY={460}
+      columns={EXCEPTION_COLUMNS.filter(
+        (column) => reportedKeys.size === 0 || reportedKeys.has(column.dataIndex as string),
+      )}
+    />
+  );
+}
+
 export function StockOverviewPage({
   initialView = 'below-minimum',
   focus = 'exceptions',
@@ -188,107 +338,7 @@ export function StockOverviewPage({
         }
         padded={false}
       >
-        <DataTable
-          rows={rows.data}
-          loading={rows.isLoading}
-          rowKey={(row) => String((row as { itemId?: string; batchId?: string }).batchId ?? (row as { itemId?: string }).itemId)}
-          exportName={`stock-${view}`}
-          searchFields={['itemName' as never, 'itemCode' as never, 'clinicName' as never]}
-          searchPlaceholder="Search item or branch…"
-          emptyText="Nothing needs attention here"
-          scrollY={460}
-          columns={[
-            { title: 'Item', dataIndex: 'itemName', key: 'itemName' },
-            { title: 'Code', dataIndex: 'itemCode', key: 'itemCode', optional: true },
-            { title: 'Branch', dataIndex: 'clinicName', key: 'clinicName' },
-            { title: 'Category', dataIndex: 'category', key: 'category', optional: true },
-            {
-              title: 'Batch',
-              dataIndex: 'batchNumber',
-              key: 'batchNumber',
-              render: (value: string | null) => value ?? '—',
-            },
-            {
-              title: 'On hand',
-              dataIndex: 'quantityOnHand',
-              key: 'quantityOnHand',
-              className: 'kw-num',
-              render: (value: number | undefined) => {
-                // NO FALLBACK to a batch's `quantity`. That column is what was
-                // RECEIVED in the batch and never decrements — Kuwick does not
-                // attribute a dispense to a batch — so showing it under "on
-                // hand" reported a fully-dispensed batch at its full size. The
-                // batch rows carry their own honest columns below.
-                if (value === undefined) return '—';
-                return <span className={value < 0 ? 'kw-bad' : undefined}>{value}</span>;
-              },
-            },
-            {
-              title: 'Received',
-              dataIndex: 'quantity',
-              key: 'quantity',
-              className: 'kw-num',
-              render: (value: number | undefined) => (value === undefined ? '—' : value),
-            },
-            {
-              title: 'At risk (at most)',
-              dataIndex: 'atRiskQuantity',
-              key: 'atRiskQuantity',
-              className: 'kw-num',
-              render: (value: number | undefined, row: Record<string, unknown>) => {
-                if (value === undefined) return '—';
-                const received = row.quantity as number | undefined;
-                const onHand = row.itemOnHand as number | undefined;
-                return value < (received ?? 0) ? (
-                  <Tooltip
-                    title={`Only ${onHand} of this item are on hand across all batches, so no more than that can be left of this one. Kuwick does not attribute a dispense to a batch, so the exact remainder is not known.`}
-                  >
-                    <strong>{value}</strong>
-                  </Tooltip>
-                ) : (
-                  <strong>{value}</strong>
-                );
-              },
-            },
-            { title: 'Minimum', dataIndex: 'minThreshold', key: 'minThreshold', className: 'kw-num', optional: true },
-            {
-              title: 'Shortfall',
-              dataIndex: 'shortfall',
-              key: 'shortfall',
-              className: 'kw-num',
-              render: (value: number | undefined) => (value === undefined ? '—' : <span className="kw-warn">{value}</span>),
-            },
-            {
-              title: 'Expiry',
-              dataIndex: 'expiryDate',
-              key: 'expiryDate',
-              render: (value: string | null, row: Record<string, unknown>) => {
-                if (!value) return '—';
-                const days = row.daysToExpiry as number | null;
-                return (
-                  <span className={days !== null && days < 0 ? 'kw-bad' : days !== null && days < 30 ? 'kw-warn' : undefined}>
-                    {dayjs(value).format('D MMM YY')}
-                    {days !== null ? ` (${days}d)` : ''}
-                  </span>
-                );
-              },
-            },
-            {
-              title: 'Last dispensed',
-              dataIndex: 'lastDispensedAt',
-              key: 'lastDispensedAt',
-              render: (value: string | null, row: Record<string, unknown>) =>
-                value ? `${dayjs(value).format('D MMM YY')} (${row.daysSinceDispense as number}d)` : <span className="kw-muted">Never</span>,
-            },
-            {
-              title: 'Value at cost',
-              dataIndex: 'valueAtCost',
-              key: 'valueAtCost',
-              className: 'kw-num',
-              render: (value: number | undefined) => (value === undefined ? '—' : money(value)),
-            },
-          ].filter((column) => reportedKeys.size === 0 || reportedKeys.has(column.dataIndex as string))}
-        />
+        <ExceptionRowsTable rows={rows} view={view} />
       </AdminSection>
         </>
       ) : (
@@ -349,76 +399,7 @@ export function StockOverviewPage({
         }
         padded={false}
       >
-        <DataTable
-          rows={rows.data}
-          loading={rows.isLoading}
-          rowKey={(row) => String((row as { itemId?: string; batchId?: string }).batchId ?? (row as { itemId?: string }).itemId)}
-          exportName={`stock-${view}`}
-          searchFields={['itemName' as never, 'itemCode' as never, 'clinicName' as never]}
-          searchPlaceholder="Search item or branch…"
-          emptyText="Nothing needs attention here"
-          scrollY={460}
-          columns={[
-            { title: 'Item', dataIndex: 'itemName', key: 'itemName' },
-            { title: 'Code', dataIndex: 'itemCode', key: 'itemCode', optional: true },
-            { title: 'Branch', dataIndex: 'clinicName', key: 'clinicName' },
-            { title: 'Category', dataIndex: 'category', key: 'category', optional: true },
-            {
-              title: 'Batch',
-              dataIndex: 'batchNumber',
-              key: 'batchNumber',
-              render: (value: string | null) => value ?? '—',
-            },
-            {
-              title: 'On hand',
-              dataIndex: 'quantityOnHand',
-              key: 'quantityOnHand',
-              className: 'kw-num',
-              render: (value: number | undefined, row: Record<string, unknown>) => {
-                const quantity = value ?? (row.quantity as number | undefined);
-                if (quantity === undefined) return '—';
-                return <span className={quantity < 0 ? 'kw-bad' : undefined}>{quantity}</span>;
-              },
-            },
-            { title: 'Minimum', dataIndex: 'minThreshold', key: 'minThreshold', className: 'kw-num', optional: true },
-            {
-              title: 'Shortfall',
-              dataIndex: 'shortfall',
-              key: 'shortfall',
-              className: 'kw-num',
-              render: (value: number | undefined) => (value === undefined ? '—' : <span className="kw-warn">{value}</span>),
-            },
-            {
-              title: 'Expiry',
-              dataIndex: 'expiryDate',
-              key: 'expiryDate',
-              render: (value: string | null, row: Record<string, unknown>) => {
-                if (!value) return '—';
-                const days = row.daysToExpiry as number | null;
-                return (
-                  <span className={days !== null && days < 0 ? 'kw-bad' : days !== null && days < 30 ? 'kw-warn' : undefined}>
-                    {dayjs(value).format('D MMM YY')}
-                    {days !== null ? ` (${days}d)` : ''}
-                  </span>
-                );
-              },
-            },
-            {
-              title: 'Last dispensed',
-              dataIndex: 'lastDispensedAt',
-              key: 'lastDispensedAt',
-              render: (value: string | null, row: Record<string, unknown>) =>
-                value ? `${dayjs(value).format('D MMM YY')} (${row.daysSinceDispense as number}d)` : <span className="kw-muted">Never</span>,
-            },
-            {
-              title: 'Value at cost',
-              dataIndex: 'valueAtCost',
-              key: 'valueAtCost',
-              className: 'kw-num',
-              render: (value: number | undefined) => (value === undefined ? '—' : money(value)),
-            },
-          ].filter((column) => reportedKeys.size === 0 || reportedKeys.has(column.dataIndex as string))}
-        />
+        <ExceptionRowsTable rows={rows} view={view} />
       </AdminSection>
       <AdminSection title="What the shelves are worth" description={valuation.data?.costingNote}>
         <StatStrip

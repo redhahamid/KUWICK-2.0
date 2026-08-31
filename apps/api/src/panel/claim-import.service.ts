@@ -102,6 +102,7 @@ export class ClaimImportService {
       where: { ...(panelClinicId ? { panelClinicId } : {}) },
       include: {
         panelClinic: { select: { name: true } },
+        clinic: { select: { name: true } },
         importedBy: { select: { fullName: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -110,6 +111,8 @@ export class ClaimImportService {
       id: batch.id,
       panelClinicId: batch.panelClinicId,
       panelName: batch.panelClinic.name,
+      clinicId: batch.clinicId,
+      clinicName: batch.clinic?.name ?? null,
       fileName: batch.fileName,
       rowCount: batch.rowCount,
       importedCount: batch.importedCount,
@@ -126,6 +129,7 @@ export class ClaimImportService {
 
   async import(dto: {
     panelClinicId: string;
+    clinicId?: string;
     csv: string;
     fileName?: string;
     note?: string;
@@ -195,6 +199,7 @@ export class ClaimImportService {
         data: {
           tenantId: currentTenantId(),
           panelClinicId: panel.id,
+          clinicId: dto.clinicId ?? null,
           fileName: dto.fileName ?? null,
           rowCount: result.rowCount,
           importedCount: importable.length,

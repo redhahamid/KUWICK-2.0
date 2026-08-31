@@ -457,6 +457,7 @@ model Clinic {
 
   @@index([tenantId])
   @@map("clinics")
+  claimImportBatches ClaimImportBatch[]
 }
 
 model User {
@@ -4752,6 +4753,16 @@ model ClaimImportBatch {
   /// refused, because a claim number means nothing without the panel it was
   /// issued by.
   panelClinicId String  @map("panel_clinic_id")
+  /// WHICH BRANCH THESE CLAIMS CAME FROM.
+  ///
+  /// An imported claim has no visit, so it has no branch of its own — and
+  /// every branch-scoped finance screen reads the branch from the visit. Left
+  /// NULL, imported claims would vanish from those screens entirely, which is
+  /// what happened the first time this was built. The person importing knows
+  /// which branch the file covers; where they genuinely do not, this stays
+  /// NULL and the claims are reported as not attributable to a branch rather
+  /// than quietly assigned to one.
+  clinicId      String? @map("clinic_id")
   fileName      String? @map("file_name")
 
   /// Rows in the file, and rows that became claims. They differ when rows were
@@ -4773,10 +4784,12 @@ model ClaimImportBatch {
 
   tenant      Tenant           @relation(fields: [tenantId], references: [id])
   panelClinic PanelClinic      @relation(fields: [panelClinicId], references: [id])
+  clinic      Clinic?          @relation(fields: [clinicId], references: [id])
   importedBy  Staff            @relation("ClaimImportedBy", fields: [importedByStaffId], references: [id])
   lines       ClaimBatchLine[]
 
   @@index([tenantId, panelClinicId])
+  @@index([tenantId, clinicId])
   @@map("claim_import_batches")
 }
 

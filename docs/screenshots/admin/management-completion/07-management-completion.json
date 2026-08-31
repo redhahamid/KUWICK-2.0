@@ -1,0 +1,28 @@
+{
+  "captured": [
+    "90-finance-panel-money-never-claimed",
+    "91-finance-panel-money-by-panel",
+    "92-finance-panel-money-fee-exceptions",
+    "93-finance-panel-money-receipts",
+    "94-finance-payables-by-supplier",
+    "95-finance-payables-invoices",
+    "96-finance-payables-payments-made",
+    "97-finance-payables-pay-modal",
+    "98-finance-payables-edit-terms-modal",
+    "99-panel-configuration-fee-treatment",
+    "100-panel-work-queue-rejections",
+    "101-panel-charge-to-patient-modal",
+    "102-panel-reconciliation-rejection-rate",
+    "103-panel-import-empty",
+    "104-panel-import-problems",
+    "105-panel-import-dry-run",
+    "106-panel-import-committed",
+    "107-panel-money-after-import",
+    "108-stock-new-item-requests",
+    "109-stock-new-item-duplicate-guard",
+    "110-stock-near-expiry-at-risk",
+    "111-stock-take-selling-value"
+  ],
+  "failures": [],
+  "at": "2026-08-31T16:05:57.518Z"
+}
