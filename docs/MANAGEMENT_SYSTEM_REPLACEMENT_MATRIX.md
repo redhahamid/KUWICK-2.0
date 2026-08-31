@@ -33,7 +33,7 @@ backwards when the real file was read**, and they are marked.
 | **Amount paid / receipt** | Panel ▸ Reconciliation ▸ **Record a payment** | 🟢 | Somebody reads the remittance advice | — |
 | Remarks / owner of the claim | Claim workspace | 🟢 | — | — |
 | Reconcile the listing against the billing system monthly | — | ⚪ | — | **Disappears.** Claims derive from invoices, so the two cannot disagree. An entire monthly ritual stops existing. |
-| **Admin fee and expected receivable** | Claim workspace — Claimed / Fee / Receivable | 🟡 ⬇ | — | **G-1. Kuwick ADDS the fee; 2,615 banked payments prove the panel WITHHOLDS it.** Every receivable figure is over-stated until this is settled. |
+| **Admin fee and expected receivable** | Claim workspace — Claimed / Fee / Receivable | 🟢 | — | **Resolved.** D-041 superseded 2026-08-31 on the evidence of 2,615 banked payments: existing panels withhold. Four-state treatment, effective-dated, migrated, impact measured (D-112). |
 | **Payment terms per panel** | Panel ▸ Panel configuration | 🟡 ⬇ | Term for 14 of 29 panels held outside Kuwick | **G-2.** `paymentTermDays` is one number of calendar days. Real terms are ranges, working days, invoice-date-anchored, or delegated to the corporate client. |
 | **Overdue** | Aging views | 🟡 | — | **G-3.** Nothing derives a due date from the term, so "overdue" is still judgement. (The workbook cannot do it either.) |
 | **2-month re-claim deadline** | — | 🔴 | Counted in somebody's head | **G-4.** A hard money deadline. Miss it and the claim is gone. |
@@ -42,15 +42,15 @@ backwards when the real file was read**, and they are marked.
 | Rejection rate as a KPI | — | 🔴 | — | **G-10.** The workbook already computes it; Kuwick does not show it. |
 | **7,146 historical and open claims** | — | 🔴 | — | **G-12.** No importer. 30% of those rows are unpaid, live money. |
 
-> **Corrected verdict: the panel workbook cannot be retired yet.** The previous
-> pass said it could, on the strength of a *description* of the workflow. Reading
-> the file changed that. Kuwick genuinely replaces the tracking, chasing,
-> re-claiming and — new this programme — the booking of money, and it removes the
-> monthly billing-system reconciliation entirely. But **the receivable arithmetic
-> is currently wrong in Kuwick's favour (G-1)**, half the panels' payment terms
-> cannot be expressed (G-2), the deadline that loses claims is not tracked (G-4),
-> and there is no way in and no way to charge a rejected claim to the patient
-> (G-12, G-5). Submitting to the portal stays manual by design; the rest is work.
+> **Corrected verdict: the panel workbook cannot be retired yet — but the
+> blocker that mattered most is closed.** The previous pass said it could, on
+> the strength of a *description* of the workflow; reading the file changed
+> that. **G-1, the receivable arithmetic, is now correct** (D-041 superseded
+> 2026-08-31, migrated and measured), the payment-term shapes are expressible
+> (G-2), the re-claim deadline is counted down (G-4), and a rejected claim can
+> be charged to the patient (G-5). What remains is the **importer for 7,146 live
+> claims (G-12)** and the smaller items above. Submitting to the portal stays
+> manual by design.
 
 ---
 
@@ -215,7 +215,7 @@ this matrix at all.
 | Tool | Can it be retired? | What stands in the way |
 |---|---|---|
 | **Hijraa Admin** | **Mostly**, for day-to-day operation | Employee editing, credit-note creation, raise-transfer. Each is a form over an endpoint that already works. |
-| **Panel claim workbook** | **No** *(was "yes")* | G-1 fee direction — the receivable is wrong until it is settled. Then G-2 terms, G-4 the 2-month deadline, G-5 self-pay conversion, G-12 import. |
+| **Panel claim workbook** | **No** *(was "yes")* | ~~G-1 fee direction~~ **resolved (D-112)**, ~~G-2 terms~~, ~~G-4 deadline~~, ~~G-5 self-pay~~ all built. What stands in the way now is **G-12: no importer for 7,146 live claims.** |
 | **Que order medication** | **Close** | Bonus price, price-change-at-receipt, item activation on goods-in, supplier SLA. |
 | **Consumable que order** | **Close** | Same list. The file needs nothing Kuwick's procurement chain does not already have in shape. |
 | **Inventory count sheet** | **Yes, on the count itself** | Kuwick is strictly better here — it computes the variance the sheet never had, and requires a second approver. Keep the sheet only for the printable walk-round list and selling-value-at-count. |

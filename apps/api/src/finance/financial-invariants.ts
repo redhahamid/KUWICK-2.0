@@ -192,30 +192,45 @@ export function computePatientBalance(input: PatientBalanceInput): PatientBalanc
 // ---------------------------------------------------------------------------
 
 /**
- * WHICH WAY THE PANEL'S FEE MOVES.
+ * HOW A PANEL'S ADMIN FEE IS TREATED IN THE RECEIVABLE.
  *
- * `'ADDED'`    — the clinic bills claim + fee and expects all of it back.
- * `'WITHHELD'` — the panel keeps its fee out of the payment: bill the claim,
- *                bank claim − fee.
- * `null`       — nobody has said. The fee is then applied in NEITHER direction
- *                and `feeDirectionResolved` comes back false, because a fee
- *                whose sign is unknown is worse than no fee at all.
+ * `'WITHHELD_FROM_CLAIM'` — expected = claimed − fee. The panel keeps its fee
+ *                           out of the payment.
+ * `'ADDED_TO_RECEIVABLE'` — expected = claimed + fee.
+ * `'NO_FEE'`              — the panel charges nothing; expected = claimed.
+ * `'UNCONFIGURED'`        — nobody has established the rule. The fee is applied
+ *                           in NEITHER direction and `feeTreatmentResolved`
+ *                           comes back false, because a fee whose sign is
+ *                           unknown is worse than no fee at all.
  *
- * Reading the clinic's own claim workbook settled that this had to become
- * configuration rather than a constant: every one of its 29 sheets computes
- * `claim to receive = claimed − fee`, and of 2,640 fee-bearing claims that were
- * actually paid, 2,615 arrived as exactly `claimed − fee` and none as
- * `claimed + fee`. The earlier decision (D-041) recorded the opposite. See
- * `docs/PANEL_LEGACY_WORKFLOW_AUDIT.md` P-1 / G-1.
+ * **D-041 IS SUPERSEDED ON THIS POINT** (owner decision, 2026-08-31). It
+ * recorded `claimed + fee`. Reading the clinic's own claim workbook settled it
+ * the other way: every one of its 29 sheets computes `claim to receive =
+ * claimed − fee`, and of 2,640 fee-bearing claims that were actually paid,
+ * 2,615 arrived as exactly claimed − fee, two at the claimed amount, and NONE
+ * at claimed + fee. The owner accepted that evidence as the source of truth for
+ * the current panel setup and set WITHHELD as the default for existing panels.
+ *
+ * `NO_FEE` and `UNCONFIGURED` are separate on purpose. Collapsing them into one
+ * NULL was the previous design, and it made a panel that charges nothing
+ * indistinguishable from one nobody has asked about — so the screens could not
+ * tell an owner which panels actually needed an answer.
+ *
+ * See `docs/PANEL_LEGACY_WORKFLOW_AUDIT.md` P-1 / G-1 and
+ * `docs/PANEL_FEE_DIRECTION_CORRECTION.md`.
  */
-export type ClaimFeeDirection = 'ADDED' | 'WITHHELD';
+export type ClaimFeeTreatment =
+  | 'WITHHELD_FROM_CLAIM'
+  | 'ADDED_TO_RECEIVABLE'
+  | 'NO_FEE'
+  | 'UNCONFIGURED';
 
 export interface ClaimFacts {
   claimedAmount: MoneyLike;
-  /** The panel's per-claim admin fee. See `feeDirection` for which way it moves. */
+  /** The panel's per-claim admin fee. See `feeTreatment` for how it is applied. */
   feeAmount?: MoneyLike;
-  /** Per-panel configuration. NULL/undefined means unanswered — never a default. */
-  feeDirection?: ClaimFeeDirection | null;
+  /** Per-panel configuration, snapshotted onto the claim. Undefined reads as UNCONFIGURED. */
+  feeTreatment?: ClaimFeeTreatment | null;
   /** What the panel said it would pay. NULL until they have said anything. */
   approvedAmount?: MoneyLike | null;
   /** What they refused. */
@@ -232,18 +247,19 @@ export interface ClaimBalance {
   /**
    * What the clinic can expect back.
    *
-   * `ADDED`    → claimed + fee
-   * `WITHHELD` → claimed − fee
-   * unknown    → claimed, with `feeDirectionResolved` false
+   * `WITHHELD_FROM_CLAIM` → claimed − fee
+   * `ADDED_TO_RECEIVABLE` → claimed + fee
+   * `NO_FEE`              → claimed
+   * `UNCONFIGURED`        → claimed, with `feeTreatmentResolved` false
    */
   expectedReceivableCents: number;
   /**
-   * FALSE when this claim carries a fee whose direction nobody has configured.
+   * FALSE when this claim carries a fee whose treatment nobody has established.
    * The expected receivable above is then the claimed amount with the fee left
    * out entirely, and every screen showing it must say so rather than present
    * it as settled arithmetic.
    */
-  feeDirectionResolved: boolean;
+  feeTreatmentResolved: boolean;
   approvedCents: number;
   rejectedCents: number;
   receivedCents: number;
@@ -265,13 +281,14 @@ export interface ClaimBalance {
 export function computeClaimBalance(claim: ClaimFacts): ClaimBalance {
   const claimedCents = toCents(claim.claimedAmount);
   const feeCents = toCents(claim.feeAmount ?? 0);
-  const direction = claim.feeDirection ?? null;
-  // A zero fee has no direction to get wrong, so it is resolved trivially.
-  const feeDirectionResolved = feeCents === 0 || direction !== null;
+  const treatment: ClaimFeeTreatment = claim.feeTreatment ?? 'UNCONFIGURED';
+  // A zero fee has no sign to get wrong, so it is resolved trivially whatever
+  // the panel's treatment says.
+  const feeTreatmentResolved = feeCents === 0 || treatment !== 'UNCONFIGURED';
   const expectedReceivableCents =
-    direction === 'ADDED'
+    treatment === 'ADDED_TO_RECEIVABLE'
       ? claimedCents + feeCents
-      : direction === 'WITHHELD'
+      : treatment === 'WITHHELD_FROM_CLAIM'
         ? claimedCents - feeCents
         : claimedCents;
   const adjudicated = claim.approvedAmount !== null && claim.approvedAmount !== undefined;
@@ -286,7 +303,7 @@ export function computeClaimBalance(claim: ClaimFacts): ClaimBalance {
     claimedCents,
     feeCents,
     expectedReceivableCents,
-    feeDirectionResolved,
+    feeTreatmentResolved,
     approvedCents,
     rejectedCents,
     receivedCents,
@@ -302,11 +319,11 @@ export function rollUpClaims(claims: ClaimFacts[]) {
   return {
     count: balances.length,
     /**
-     * How many of those claims carry a fee whose direction is not configured.
+     * How many of those claims carry a fee whose treatment is not established.
      * Non-zero means this panel's expected receivable is understated by the
-     * fees it excluded, and the screen must say which panel to go and set.
+     * fees it excluded, and the screen must say which panel to go and answer.
      */
-    unresolvedFeeDirectionCount: balances.filter((balance) => !balance.feeDirectionResolved).length,
+    unresolvedFeeTreatmentCount: balances.filter((balance) => !balance.feeTreatmentResolved).length,
     claimedCents: balances.reduce((total, balance) => total + balance.claimedCents, 0),
     feeCents: balances.reduce((total, balance) => total + balance.feeCents, 0),
     expectedReceivableCents: balances.reduce((total, balance) => total + balance.expectedReceivableCents, 0),

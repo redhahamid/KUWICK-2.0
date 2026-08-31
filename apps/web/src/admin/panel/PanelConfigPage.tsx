@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { App, Button, Checkbox, Input, InputNumber, Modal, Select, Tag, Tooltip } from 'antd';
+import { App, Button, Checkbox, DatePicker, Input, InputNumber, Modal, Select, Tag, Tooltip } from 'antd';
+import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { DataTable, money } from '../components/DataTable';
 import { usePanelConfigs, useUpdatePanelConfig } from '../hooks/useAdmin';
-import type { PanelConfigRow } from '../types';
+import type { PanelConfigRow, PanelFeeTreatment } from '../types';
+import { FEE_TREATMENT_HINT, FEE_TREATMENT_LABEL } from '../types';
 
 /**
  * HOW A PANEL'S PAYMENT TERM READS BACK.
@@ -48,7 +50,9 @@ const SUBMISSION_METHODS = ['PORTAL', 'EMAIL', 'COURIER', 'IN_PERSON', 'OTHER'].
 
 /** The editable shape. Every field is nullable — NULL means nobody has said. */
 interface Draft {
-  feeDirection: 'ADDED' | 'WITHHELD' | null;
+  feeTreatment: PanelFeeTreatment;
+  feeEffectiveFrom: string;
+  feeTermNote: string;
   paymentTermDays: number | null;
   paymentTermMaxDays: number | null;
   paymentTermUnit: 'CALENDAR_DAYS' | 'WORKING_DAYS' | null;
@@ -61,7 +65,9 @@ interface Draft {
 
 function draftOf(row: PanelConfigRow): Draft {
   return {
-    feeDirection: row.feeDirection,
+    feeTreatment: row.feeTreatment,
+    feeEffectiveFrom: dayjs().format('YYYY-MM-DD'),
+    feeTermNote: '',
     paymentTermDays: row.paymentTermDays,
     paymentTermMaxDays: row.paymentTermMaxDays,
     paymentTermUnit: row.paymentTermUnit,
@@ -89,7 +95,7 @@ export function PanelConfigPage() {
   const [draft, setDraft] = useState<Draft | null>(null);
 
   const withoutPortal = data?.filter((panel) => panel.active && !panel.portalUrl) ?? [];
-  const unresolvedFee = data?.filter((panel) => panel.active && panel.feeDirectionUnresolved) ?? [];
+  const unresolvedFee = data?.filter((panel) => panel.active && panel.feeTreatmentUnresolved) ?? [];
   const withoutTerm = data?.filter(
     (panel) => panel.active && panel.paymentTermDays === null && !panel.paymentTermVariesByPayer,
   ) ?? [];
@@ -104,7 +110,9 @@ export function PanelConfigPage() {
     update.mutate(
       {
         id: editing.id,
-        feeDirection: draft.feeDirection ?? undefined,
+        feeTreatment: draft.feeTreatment,
+        feeEffectiveFrom: draft.feeEffectiveFrom,
+        feeTermNote: draft.feeTermNote || undefined,
         paymentTermDays: draft.paymentTermDays ?? undefined,
         paymentTermMaxDays: draft.paymentTermMaxDays ?? undefined,
         paymentTermUnit: draft.paymentTermUnit ?? undefined,
@@ -133,16 +141,14 @@ export function PanelConfigPage() {
     <AdminShell
       error={firstError({ isError, error })}
       title="Panel Configuration"
-      subtitle="What the claim workspace needs to know about each panel: where to submit, what they require, how long they take to pay, and which way their fee moves."
+      subtitle="What the claim workspace needs to know about each panel: where to submit, what they require, how long they take to pay, and how their fee is treated."
     >
       {unresolvedFee.length > 0 ? (
         <AdminNotice tone="warn">
-          <strong>
-            {unresolvedFee.length} active panel(s) charge an admin fee and nobody has recorded which way it moves.
-          </strong>{' '}
-          Until that is set, every receivable on those panels is computed WITHOUT the fee and shown as unresolved —
-          Kuwick will not guess a direction. Set it on each panel below. Panels differ: some add the fee to what they are
-          billed, others keep it out of what they pay.
+          <strong>{unresolvedFee.length} active panel(s) have no established fee treatment.</strong> Every receivable on
+          them is computed WITHOUT the fee and shown as unresolved — Kuwick will not guess. The standing rule for
+          existing panels is <strong>withheld</strong> (owner decision, 31 Aug 2026); a panel is left here only where
+          the evidence genuinely does not settle it, and it needs an answer before its figures can be relied on.
         </AdminNotice>
       ) : null}
 
@@ -234,23 +240,52 @@ export function PanelConfigPage() {
             {
               // G-1. The column that decides whether every receivable on this
               // panel is right or wrong by the fee, twice over once it is paid.
-              title: 'Fee direction',
-              key: 'feeDirection',
+              // D-041 said added; the owner superseded that on 2026-08-31 on
+              // the evidence of 2,615 banked payments.
+              title: 'Fee treatment',
+              key: 'feeTreatment',
+              render: (_: unknown, row) => (
+                <Tooltip title={FEE_TREATMENT_HINT[row.feeTreatment]}>
+                  <Tag
+                    color={
+                      row.feeTreatment === 'WITHHELD_FROM_CLAIM'
+                        ? 'purple'
+                        : row.feeTreatment === 'ADDED_TO_RECEIVABLE'
+                          ? 'blue'
+                          : row.feeTreatment === 'NO_FEE'
+                            ? undefined
+                            : 'red'
+                    }
+                  >
+                    {FEE_TREATMENT_LABEL[row.feeTreatment]}
+                  </Tag>
+                </Tooltip>
+              ),
+            },
+            {
+              // The effective-dated history. A term is a fact about a period,
+              // and "what were we on in March" has to have an answer.
+              title: 'Fee terms since',
+              key: 'feeTerms',
+              optional: true,
               render: (_: unknown, row) =>
-                row.feeDirection === 'ADDED' ? (
-                  <Tooltip title="We bill claim + fee and expect all of it back.">
-                    <Tag color="blue">Added to the bill</Tag>
-                  </Tooltip>
-                ) : row.feeDirection === 'WITHHELD' ? (
-                  <Tooltip title="The panel keeps its fee out of the payment: we bill the claim and bank claim − fee.">
-                    <Tag color="purple">Withheld from payment</Tag>
-                  </Tooltip>
-                ) : row.feeDirectionUnresolved ? (
-                  <Tooltip title="This panel charges a fee and nobody has said which way it moves, so the fee is left out of the receivable entirely.">
-                    <Tag color="red">Not set</Tag>
-                  </Tooltip>
+                row.feeTerms.length === 0 ? (
+                  <span className="kw-muted">—</span>
                 ) : (
-                  <span className="kw-muted">no fee</span>
+                  <Tooltip
+                    title={row.feeTerms
+                      .map(
+                        (term) =>
+                          `${term.effectiveFrom}: ${FEE_TREATMENT_LABEL[term.feeTreatment]}` +
+                          (term.note ? ` — ${term.note}` : ''),
+                      )
+                      .join('\n')}
+                  >
+                    <span>
+                      {row.feeTerms[0].effectiveFrom}
+                      {row.feeTerms.length > 1 ? ` · ${row.feeTerms.length} versions` : ''}
+                    </span>
+                  </Tooltip>
                 ),
             },
             {
@@ -354,21 +389,39 @@ export function PanelConfigPage() {
         {draft ? (
           <div style={{ display: 'grid', gap: 14 }}>
             <div>
-              <div style={{ fontWeight: 600, fontSize: 12.5, marginBottom: 4 }}>Which way does their fee move?</div>
+              <div style={{ fontWeight: 600, fontSize: 12.5, marginBottom: 4 }}>How is their fee treated?</div>
               <Select
                 style={{ width: '100%' }}
-                value={draft.feeDirection}
-                placeholder="Not set — the fee is left out of the receivable"
-                allowClear
-                onChange={(value) => setDraft({ ...draft, feeDirection: value ?? null })}
-                options={[
-                  { value: 'ADDED', label: 'Added — we bill claim + fee and expect all of it back' },
-                  { value: 'WITHHELD', label: 'Withheld — they keep the fee out of what they pay us' },
-                ]}
+                value={draft.feeTreatment}
+                onChange={(value) => setDraft({ ...draft, feeTreatment: value })}
+                options={(Object.keys(FEE_TREATMENT_LABEL) as PanelFeeTreatment[]).map((value) => ({
+                  value,
+                  label: `${FEE_TREATMENT_LABEL[value]} — ${FEE_TREATMENT_HINT[value]}`,
+                }))}
               />
               <div className="kw-muted" style={{ fontSize: 11.5, marginTop: 4 }}>
-                Leave this unset and Kuwick will not guess: the receivable is computed without the fee and marked
-                unresolved. Check a remittance advice against a claim if you are not sure which one this panel does.
+                Existing panels here <strong>withhold</strong> their fee: the clinic bills the claim and banks claim −
+                fee. That is the standing rule from the owner's decision of 31 Aug 2026, taken on the evidence of the
+                clinic's own workbook and 2,615 bank credits. Leave a panel <strong>Not established</strong> only where
+                the evidence genuinely does not settle it — its receivables then exclude the fee and say so.
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+                <span style={{ fontSize: 12.5 }}>In force from</span>
+                <DatePicker
+                  allowClear={false}
+                  value={dayjs(draft.feeEffectiveFrom)}
+                  onChange={(value) => value && setDraft({ ...draft, feeEffectiveFrom: value.format('YYYY-MM-DD') })}
+                />
+              </div>
+              <Input
+                style={{ marginTop: 8 }}
+                placeholder="Why — the contract clause, the email, or the evidence"
+                value={draft.feeTermNote}
+                onChange={(event) => setDraft({ ...draft, feeTermNote: event.target.value })}
+              />
+              <div className="kw-muted" style={{ fontSize: 11.5, marginTop: 4 }}>
+                Terms are versioned by date, so agreeing new ones next month cannot change what last month's claims were
+                worth. Claims already sent keep the treatment they were raised under whatever is recorded here.
               </div>
             </div>
 

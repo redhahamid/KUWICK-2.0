@@ -171,12 +171,12 @@ describe('financial invariants', () => {
       const balance = computeClaimBalance({
         claimedAmount: '100.00',
         feeAmount: '8.00',
-        feeDirection: 'ADDED',
+        feeTreatment: 'ADDED_TO_RECEIVABLE',
       });
       expect(balance.expectedReceivableCents).toBe(10800);
       expect(balance.outstandingCents).toBe(10800);
       expect(balance.adjudicated).toBe(false);
-      expect(balance.feeDirectionResolved).toBe(true);
+      expect(balance.feeTreatmentResolved).toBe(true);
     });
 
     // ---------------------------------------------------------------------
@@ -194,11 +194,11 @@ describe('financial invariants', () => {
       const balance = computeClaimBalance({
         claimedAmount: '100.00',
         feeAmount: '8.00',
-        feeDirection: 'WITHHELD',
+        feeTreatment: 'WITHHELD_FROM_CLAIM',
       });
       expect(balance.expectedReceivableCents).toBe(9200);
       expect(balance.outstandingCents).toBe(9200);
-      expect(balance.feeDirectionResolved).toBe(true);
+      expect(balance.feeTreatmentResolved).toBe(true);
     });
 
     it('settles to zero — not to twice the fee — when a withheld-fee claim is paid', () => {
@@ -207,34 +207,95 @@ describe('financial invariants', () => {
       const balance = computeClaimBalance({
         claimedAmount: '100.00',
         feeAmount: '8.00',
-        feeDirection: 'WITHHELD',
+        feeTreatment: 'WITHHELD_FROM_CLAIM',
         approvedAmount: '92.00',
         receivedAmount: '92.00',
       });
       expect(balance.outstandingCents).toBe(0);
     });
 
-    it('applies the fee in NEITHER direction when nobody has configured one', () => {
+    it('applies the fee in NEITHER direction when nobody has established the rule', () => {
       // Not a guess in the old direction, and not a guess in the new one.
       const balance = computeClaimBalance({ claimedAmount: '100.00', feeAmount: '8.00' });
       expect(balance.expectedReceivableCents).toBe(10000);
-      expect(balance.feeDirectionResolved).toBe(false);
+      expect(balance.feeTreatmentResolved).toBe(false);
       expect(balance.feeCents).toBe(800);
+      // …and an explicit UNCONFIGURED behaves identically to an absent one.
+      expect(
+        computeClaimBalance({ claimedAmount: '100.00', feeAmount: '8.00', feeTreatment: 'UNCONFIGURED' })
+          .expectedReceivableCents,
+      ).toBe(10000);
+    });
+
+    it('NO_FEE is resolved and is not the same state as UNCONFIGURED', () => {
+      // Collapsing the two was the previous design, and it left a panel that
+      // charges nothing indistinguishable from one nobody had asked about — so
+      // no screen could tell an owner which panels needed an answer.
+      const noFee = computeClaimBalance({ claimedAmount: '100.00', feeAmount: '0', feeTreatment: 'NO_FEE' });
+      expect(noFee.expectedReceivableCents).toBe(10000);
+      expect(noFee.feeTreatmentResolved).toBe(true);
+      const unknown = computeClaimBalance({ claimedAmount: '100.00', feeAmount: '8.00', feeTreatment: 'UNCONFIGURED' });
+      expect(unknown.feeTreatmentResolved).toBe(false);
+    });
+
+    // -----------------------------------------------------------------------
+    // THE REGRESSION THE OWNER ASKED FOR BY NAME (decision of 2026-08-31).
+    //
+    // "RM100 claimed, RM8 withheld fee, expected receivable = RM92. If RM92
+    //  received, outstanding = RM0. Never expected = RM108, or outstanding =
+    //  RM16 after receiving RM92."
+    //
+    // Written as the owner stated it, in the owner's numbers, so the assertion
+    // that fails if D-041's behaviour ever comes back reads like the decision
+    // that removed it.
+    // -----------------------------------------------------------------------
+    describe('D-041 supersession — RM100 claimed, RM8 withheld', () => {
+      const claim = {
+        claimedAmount: '100.00',
+        feeAmount: '8.00',
+        feeTreatment: 'WITHHELD_FROM_CLAIM' as const,
+      };
+
+      it('expects RM92, and never RM108', () => {
+        const balance = computeClaimBalance(claim);
+        expect(balance.expectedReceivableCents).toBe(9200);
+        expect(balance.expectedReceivableCents).not.toBe(10800);
+      });
+
+      it('settles to RM0 when RM92 is received, and never leaves RM16 outstanding', () => {
+        const balance = computeClaimBalance({ ...claim, approvedAmount: '92.00', receivedAmount: '92.00' });
+        expect(balance.outstandingCents).toBe(0);
+        expect(balance.outstandingCents).not.toBe(1600);
+      });
+
+      it('settles to RM0 on receipt even before the panel has adjudicated', () => {
+        // The un-adjudicated path uses the expected receivable as its base, and
+        // that is where the old +fee behaviour left a permanent RM16 shortfall.
+        const balance = computeClaimBalance({ ...claim, receivedAmount: '92.00' });
+        expect(balance.outstandingCents).toBe(0);
+      });
+
+      it('rolls up the same way — twenty such claims owe RM1,840, not RM2,160', () => {
+        const roll = rollUpClaims(Array.from({ length: 20 }, () => claim));
+        expect(roll.expectedReceivableCents).toBe(184000);
+        expect(roll.expectedReceivableCents).not.toBe(216000);
+        expect(roll.unresolvedFeeTreatmentCount).toBe(0);
+      });
     });
 
     it('treats a zero fee as resolved, because there is no sign to get wrong', () => {
       const balance = computeClaimBalance({ claimedAmount: '100.00', feeAmount: '0.00' });
       expect(balance.expectedReceivableCents).toBe(10000);
-      expect(balance.feeDirectionResolved).toBe(true);
+      expect(balance.feeTreatmentResolved).toBe(true);
     });
 
     it('counts the unresolved claims in a panel roll-up rather than hiding them', () => {
       const roll = rollUpClaims([
-        { claimedAmount: '100.00', feeAmount: '8.00', feeDirection: 'WITHHELD' },
-        { claimedAmount: '50.00', feeAmount: '8.00' },
-        { claimedAmount: '40.00', feeAmount: '0.00' },
+        { claimedAmount: '100.00', feeAmount: '8.00', feeTreatment: 'WITHHELD_FROM_CLAIM' as const },
+        { claimedAmount: '50.00', feeAmount: '8.00', feeTreatment: 'UNCONFIGURED' as const },
+        { claimedAmount: '40.00', feeAmount: '0.00', feeTreatment: 'NO_FEE' as const },
       ]);
-      expect(roll.unresolvedFeeDirectionCount).toBe(1);
+      expect(roll.unresolvedFeeTreatmentCount).toBe(1);
       expect(roll.expectedReceivableCents).toBe(9200 + 5000 + 4000);
     });
 
@@ -242,7 +303,7 @@ describe('financial invariants', () => {
       const balance = computeClaimBalance({
         claimedAmount: '100.00',
         feeAmount: '8.00',
-        feeDirection: 'ADDED',
+        feeTreatment: 'ADDED_TO_RECEIVABLE',
         status: 'SUBMITTED',
       });
       expect(balance.receivedCents).toBe(0);
@@ -255,7 +316,7 @@ describe('financial invariants', () => {
       const balance = computeClaimBalance({
         claimedAmount: '100.00',
         feeAmount: '8.00',
-        feeDirection: 'ADDED',
+        feeTreatment: 'ADDED_TO_RECEIVABLE',
         approvedAmount: '90.00',
         rejectedAmount: '18.00',
       });
@@ -267,7 +328,7 @@ describe('financial invariants', () => {
       const balance = computeClaimBalance({
         claimedAmount: '100.00',
         feeAmount: '8.00',
-        feeDirection: 'ADDED',
+        feeTreatment: 'ADDED_TO_RECEIVABLE',
         approvedAmount: '108.00',
         receivedAmount: '60.00',
       });
@@ -298,7 +359,7 @@ describe('financial invariants', () => {
         {
           claimedAmount: '100.00',
           feeAmount: '8.00',
-          feeDirection: 'ADDED' as const,
+          feeTreatment: 'ADDED_TO_RECEIVABLE' as const,
           approvedAmount: '108.00',
           receivedAmount: '108.00',
         },

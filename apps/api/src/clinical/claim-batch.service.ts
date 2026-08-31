@@ -125,7 +125,7 @@ export class ClaimBatchService {
           invoiceId: invoice.id,
           claimedAmount: invoice.panelCoveredAmount,
           feeAmount: panelClaimFee(panel.claimFeeType, panel.claimFeeValue, Number(invoice.panelCoveredAmount)),
-          feeDirection: panel.feeDirection,
+          feeTreatment: panel.feeTreatment,
         },
       });
     }
@@ -241,7 +241,7 @@ export class ClaimBatchService {
         batch.lines.map((line) => ({
           claimedAmount: line.claimedAmount,
           feeAmount: line.feeAmount,
-          feeDirection: line.feeDirection,
+          feeTreatment: line.feeTreatment,
           receivedAmount: line.paidAmount,
         })),
       );
@@ -273,7 +273,7 @@ export class ClaimBatchService {
         paidTotal,
         outstandingAmount: round2(fromCents(roll.expectedReceivableCents - roll.receivedCents)),
         /** Claims in this batch whose fee direction nobody has configured. */
-        unresolvedFeeDirectionCount: roll.unresolvedFeeDirectionCount,
+        unresolvedFeeTreatmentCount: roll.unresolvedFeeTreatmentCount,
         daysOutstanding,
         paymentTermDays,
         dueBy: window.dueBy,
@@ -340,7 +340,7 @@ export class ClaimBatchService {
       const balance = computeClaimBalance({
         claimedAmount: line.claimedAmount,
         feeAmount: line.feeAmount,
-        feeDirection: line.feeDirection,
+        feeTreatment: line.feeTreatment,
         receivedAmount: line.paidAmount,
       });
       const submittedAt = line.claimBatch.submittedAt;
@@ -374,8 +374,8 @@ export class ClaimBatchService {
         claimedAmount: claimed,
         feeAmount: fee,
         claimToReceive: round2(fromCents(balance.expectedReceivableCents)),
-        feeDirection: line.feeDirection,
-        feeDirectionResolved: balance.feeDirectionResolved,
+        feeTreatment: line.feeTreatment,
+        feeTreatmentResolved: balance.feeTreatmentResolved,
         paidAmount: paid,
         receivable: round2(fromCents(balance.expectedReceivableCents - balance.receivedCents)),
         remarks: line.remarks,
@@ -404,7 +404,7 @@ export class ClaimBatchService {
         const balance = computeClaimBalance({
           claimedAmount: claimed,
           feeAmount: fee,
-          feeDirection: panel.feeDirection,
+          feeTreatment: panel.feeTreatment,
         });
         return {
           id: `unclaimed-${invoice.id}`,
@@ -420,8 +420,8 @@ export class ClaimBatchService {
           claimedAmount: claimed,
           feeAmount: fee,
           claimToReceive: round2(fromCents(balance.expectedReceivableCents)),
-          feeDirection: panel.feeDirection,
-          feeDirectionResolved: balance.feeDirectionResolved,
+          feeTreatment: panel.feeTreatment,
+          feeTreatmentResolved: balance.feeTreatmentResolved,
           paidAmount: 0,
           receivable: round2(fromCents(balance.expectedReceivableCents)),
           remarks: null as string | null,

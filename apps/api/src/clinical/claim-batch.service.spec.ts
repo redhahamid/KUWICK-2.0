@@ -419,7 +419,7 @@ describe('ClaimBatchService', () => {
           status: ClaimLineStatus.PENDING,
           claimedAmount: 100,
           feeAmount: 8,
-          feeDirection: 'ADDED',
+          feeTreatment: 'ADDED_TO_RECEIVABLE',
           paidAmount: null,
           remarks: null,
           deductionReason: null,

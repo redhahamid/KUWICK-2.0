@@ -4,6 +4,7 @@ import {
   IsEmail,
   IsEnum,
   IsInt,
+  IsISO8601,
   IsOptional,
   IsString,
   Matches,
@@ -11,7 +12,13 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { PanelFeeDirection, PanelSubmissionMethod, PanelTermAnchor, PanelTermUnit } from '@prisma/client';
+import {
+  PanelClaimFeeType,
+  PanelFeeTreatment,
+  PanelSubmissionMethod,
+  PanelTermAnchor,
+  PanelTermUnit,
+} from '@prisma/client';
 
 /**
  * A panel's OPERATIONAL configuration — what the claim workspace needs to know
@@ -99,17 +106,49 @@ export class UpsertPanelConfigDto {
   // -------------------------------------------------------------------------
 
   /**
-   * WHICH WAY THE PANEL'S ADMIN FEE MOVES (G-1).
+   * HOW THE PANEL'S ADMIN FEE IS TREATED (G-1).
    *
-   * ADDED — the clinic bills claim + fee and expects all of it back.
-   * WITHHELD — the panel keeps its fee out of the payment.
+   * WITHHELD_FROM_CLAIM — expected = claimed − fee. The default for existing
+   *                       panels, per the owner's decision of 2026-08-31.
+   * ADDED_TO_RECEIVABLE — expected = claimed + fee.
+   * NO_FEE              — this panel charges nothing.
+   * UNCONFIGURED        — the rule cannot be established; the fee is applied in
+   *                       neither direction and the balance says so.
    *
-   * Changing this re-stamps claims that have not been sent yet; claims already
-   * submitted keep the direction they were raised under.
+   * Setting this writes a new EFFECTIVE-DATED term (see `feeEffectiveFrom`) and
+   * re-stamps claims that have not been sent yet; claims already submitted keep
+   * the treatment they were raised under.
    */
   @IsOptional()
-  @IsEnum(PanelFeeDirection)
-  feeDirection?: PanelFeeDirection;
+  @IsEnum(PanelFeeTreatment)
+  feeTreatment?: PanelFeeTreatment;
+
+  /**
+   * When the fee term below takes effect. Defaults to today.
+   *
+   * Owner requirement (2026-08-31): fee configuration is effective-dated so a
+   * future contract change does not alter historical receivables. Correcting a
+   * term that is already in force means re-recording it on the SAME date, which
+   * replaces that version; agreeing new terms means a new date.
+   */
+  @IsOptional()
+  @IsISO8601()
+  feeEffectiveFrom?: string;
+
+  /** The fee itself, versioned alongside its treatment. */
+  @IsOptional()
+  @IsEnum(PanelClaimFeeType)
+  claimFeeType?: PanelClaimFeeType;
+
+  @IsOptional()
+  @Matches(/^\d{1,8}(\.\d{1,2})?$/)
+  claimFeeValue?: string;
+
+  /** Why these terms are what they are — the contract clause, or the evidence. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  feeTermNote?: string;
 
   /** The nominal payment term — the near edge of a range, or the whole term. */
   @IsOptional()

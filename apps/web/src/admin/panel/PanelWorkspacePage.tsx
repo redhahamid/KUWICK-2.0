@@ -248,15 +248,16 @@ export function PanelWorkspacePage() {
         </AdminNotice>
       ) : null}
 
-      {reconciliation.data && reconciliation.data.totals.unresolvedFeeDirection > 0 ? (
+      {reconciliation.data && reconciliation.data.totals.unresolvedFeeTreatment > 0 ? (
         <AdminNotice tone="warn">
           <strong>
-            {reconciliation.data.totals.unresolvedFeeDirection} claim(s) carry an admin fee whose direction is not
-            configured, so the expected receivable above EXCLUDES those fees.
+            {reconciliation.data.totals.unresolvedFeeTreatment} claim(s) are on a panel whose fee treatment is not
+            established, so the expected receivable above EXCLUDES those fees.
           </strong>{' '}
-          Panels differ: some add their fee to what they are billed, others keep it out of what they pay. Kuwick will
-          not guess, because guessing the wrong way makes a fully-settled claim read as short by twice the fee. Set it
-          per panel in <strong>Panel ▸ Panel Configuration ▸ Edit terms</strong>.
+          Existing panels here withhold their fee from the payment — that is the standing rule. A panel is left
+          unestablished only where the evidence genuinely does not settle it, and Kuwick will not guess, because
+          guessing the wrong way makes a fully-settled claim read as short by twice the fee. Answer it in{' '}
+          <strong>Panel ▸ Panel Configuration ▸ Edit terms</strong>.
         </AdminNotice>
       ) : null}
 

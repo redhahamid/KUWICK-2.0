@@ -388,8 +388,8 @@ export interface PanelReconciliation {
     received: number;
     writtenOff: number;
     outstanding: number;
-    /** Claims whose fee direction is unset — their fee is NOT in the figures above. */
-    unresolvedFeeDirection: number;
+    /** Claims whose fee treatment is unestablished — their fee is NOT in the figures above. */
+    unresolvedFeeTreatment: number;
     /**
      * Rejected as a percentage of everything claimed — the clinic's own KPI,
      * computed in one cell of the workbook's summary sheet. NULL when nothing
@@ -526,6 +526,33 @@ export interface PanelWorkQueueRow {
   } | null;
 }
 
+/**
+ * How a panel's admin fee is treated in the receivable. D-041 recorded
+ * `claimed + fee`; the owner superseded that on 2026-08-31 on the evidence of
+ * the clinic's own workbook and bank credits. See
+ * `docs/PANEL_FEE_DIRECTION_CORRECTION.md`.
+ */
+export type PanelFeeTreatment =
+  | 'WITHHELD_FROM_CLAIM'
+  | 'ADDED_TO_RECEIVABLE'
+  | 'NO_FEE'
+  | 'UNCONFIGURED';
+
+export const FEE_TREATMENT_LABEL: Record<PanelFeeTreatment, string> = {
+  WITHHELD_FROM_CLAIM: 'Withheld from payment',
+  ADDED_TO_RECEIVABLE: 'Added to the bill',
+  NO_FEE: 'No fee',
+  UNCONFIGURED: 'Not established',
+};
+
+export const FEE_TREATMENT_HINT: Record<PanelFeeTreatment, string> = {
+  WITHHELD_FROM_CLAIM: 'We bill the claim and bank claim − fee. The panel keeps its fee out of the payment.',
+  ADDED_TO_RECEIVABLE: 'We bill claim + fee and expect all of it back.',
+  NO_FEE: 'This panel charges nothing, so there is no sign to get wrong.',
+  UNCONFIGURED:
+    'Nobody has established the rule. The fee is applied in neither direction and every receivable on this panel excludes it.',
+};
+
 export interface PanelConfigRow {
   id: string;
   name: string;
@@ -544,9 +571,17 @@ export interface PanelConfigRow {
   paymentTermAnchor: 'SERVICE_DATE' | 'SUBMISSION_DATE' | 'INVOICE_DATE' | null;
   paymentTermVariesByPayer: boolean;
   resubmissionWindowDays: number | null;
-  feeDirection: 'ADDED' | 'WITHHELD' | null;
-  /** This panel charges a fee and nobody has said which way it moves. */
-  feeDirectionUnresolved: boolean;
+  feeTreatment: PanelFeeTreatment;
+  /** The effective-dated history behind the current treatment, newest first. */
+  feeTerms: {
+    effectiveFrom: string;
+    feeTreatment: PanelFeeTreatment;
+    feeType: string | null;
+    feeValue: number | null;
+    note: string | null;
+  }[];
+  /** This panel's fee treatment is UNCONFIGURED — an owner has to answer it. */
+  feeTreatmentUnresolved: boolean;
   claimFeeType: string | null;
   claimFeeValue: number | null;
   limitAmount: number | null;

@@ -173,13 +173,50 @@ matches and 374 short/over rows, which are the genuine partial payments.
 withholds its fee from the payment. The clinic bills the full amount and banks
 the amount minus the fee.
 
-> **Kuwick currently models the opposite.** `computeClaimBalance` in
-> `apps/api/src/finance/financial-invariants.ts` computes
-> `expectedReceivableCents = claimedCents + feeCents`, and the field comment
-> reads *"the panel's per-claim admin fee, which is ADDED to what we bill
-> them"* (`ClaimBatchLine.feeAmount`, decision D-041). Against this workbook,
-> that over-states the expected receivable by the fee on every claim, and would
-> leave every fully-settled claim looking short by twice the fee. See **P-1**.
+> **Kuwick modelled the opposite, and it has been corrected.**
+> `computeClaimBalance` computed `claimed + fee`, per decision D-041. Against
+> this workbook that over-stated the receivable by the fee on every claim and
+> left every fully-settled claim short by twice it.
+>
+> **The owner superseded D-041 on 2026-08-31** on this evidence: existing panels
+> are `WITHHELD_FROM_CLAIM`, the treatment is per-panel and effective-dated, and
+> the correction has been migrated with a measured financial-impact report. See
+> **D-112** and [`PANEL_FEE_DIRECTION_CORRECTION.md`](./PANEL_FEE_DIRECTION_CORRECTION.md).
+
+### 4.1a · The two exceptions, and what they turned out to be
+
+The owner's instruction was not to infer a rule from two rows, but to find out
+what they were. Both were traced to their neighbours.
+
+**The first is a manual exception inside a single remittance.** On the panel
+with 1,860 paid fee-bearing claims, one banked at the full amount — and the
+rows around it settle the question:
+
+| | Claimed | Fee | Paid | Remittance |
+|---|--:|--:|--:|---|
+| previous | 242.00 | 8.00 | 234.00 | *(same reference)* |
+| **this one** | **100.00** | **8.00** | **100.00** | *(same reference)* |
+| next | 202.00 | 8.00 | 194.00 | *(same reference)* |
+| next | 110.00 | 8.00 | 102.00 | *(same reference)* |
+
+Same service date, **same payment**, and the fee withheld from three of the four.
+That is one row's mistake, not a second rule.
+
+**The second decides a panel.** It is the *only* paid fee-bearing claim on its
+panel — three claims in total, two still unpaid. One row establishes nothing in
+either direction, so that panel alone is left `UNCONFIGURED` and reported.
+
+### 4.1b · Every panel classified from its own rows
+
+| State | Panels | Basis |
+|---|--:|---|
+| `WITHHELD_FROM_CLAIM` | **16** | 10 with direct banked evidence (39/39, 56/56, 132/133, 530/536, 1,843/1,860 …); 6 with a documented fee rule but no paid claim yet, taking the owner's default |
+| `NO_FEE` | **12** | No fee value on any claim row, and a nil or blank fee rule |
+| `UNCONFIGURED` | **1** | One paid fee-bearing claim, banked at the full amount — insufficient either way |
+
+**No panel showed contradictory evidence.** The one problem panel is
+insufficient, not contradictory, which is a different thing and needs a
+different answer.
 
 ### 4.2 · The fee is re-keyed by hand on the panels that matter
 
@@ -400,7 +437,7 @@ rejected.** That is a genuine KPI, and Kuwick does not currently show it.
 
 | # | Where | Defect | Severity |
 |---|---|---|---|
-| **P-1** | Every sheet vs. Kuwick | Fee is **withheld** (`receivable = claimed − fee`, proven on 2,615 banked payments). **Kuwick adds it.** | **Material — Kuwick side** |
+| **P-1** | Every sheet vs. Kuwick | Fee is **withheld** (`receivable = claimed − fee`, proven on 2,615 banked payments). Kuwick added it. | ~~Material — Kuwick side~~ **FIXED** (D-112) |
 | **P-2** | Summary | Two panel sheets referenced nowhere; one row is a label; the largest panel's fee reads as zero. | **Material** |
 | **P-3** | Excess register | Three of four totals start one row below the data; the receivable total is what the summary imports. | **Material** |
 | **P-4** | Two panel sheets | `DUE DAYS` on the first data row is anchored 13 rows away, so the age shown belongs to an unrelated claim. | High |
@@ -461,7 +498,7 @@ Named honestly, each with the evidence that produced it.
 
 | # | Gap | Evidence | Cost |
 |---|---|---|---|
-| **G-1** | **Fee direction.** Kuwick can only add the fee. | §4.1 — 2,615 banked payments say withheld; decision D-041 says added. | A `feeDirection` (`ADDED` \| `WITHHELD`) on `PanelClinic`, one branch in `computeClaimBalance`, and an owner decision per panel. **Blocking: the receivable is wrong until this is settled.** |
+| **G-1** | ~~**Fee direction.** Kuwick can only add the fee.~~ **RESOLVED** | §4.1 — 2,615 banked payments say withheld; D-041 said added. | **Done.** Owner superseded D-041 on 2026-08-31. Four-state `PanelFeeTreatment`, effective-dated `PanelFeeTerm`, per-claim snapshot, migrated with a measured impact report. See D-112. |
 | **G-2** | **Payment terms that are not a single number of calendar days.** `paymentTermDays Int?` cannot hold a range, working days, or an invoice-date anchor. | §3 — 14 of 29 panels are one of those three shapes. | Term = `{ min, max, unit: CALENDAR\|WORKING, anchor: SERVICE\|SUBMISSION\|INVOICE }`. |
 | **G-3** | **Overdue as a computed state.** | P-17. Kuwick has `dueDate` per line, but nothing derives it from the panel's term. | Derive the due date at submission from G-2, then age against it. |
 | **G-4** | **The 2-month re-claim deadline.** | §8.1 rule 5 — a hard money deadline enforced by nobody. | A per-panel `resubmissionWindowDays`, a countdown on the rejected queue, and an expiry state. |
@@ -493,14 +530,16 @@ have accumulated: three are wrong right now, two more are armed and one of those
 is a fortnight from going off, two are limits no amount of care could fix, and
 one — the fee direction — turned out to be a defect in *Kuwick*, found only
 because the workbook's banked amounts could be tested against Kuwick's formula.
+That one is now fixed: the owner superseded D-041 on the evidence, and the
+correction is migrated, measured and regression-tested (D-112,
+[`PANEL_FEE_DIRECTION_CORRECTION.md`](./PANEL_FEE_DIRECTION_CORRECTION.md)).
 
 Kuwick already replaces the majority of it, and replaces the Avixo
 reconciliation by making it impossible to need. The twelve gaps in §12 are what
 stand between "most of it" and "the clinic can close this file". **Nine of the
 twelve are configuration shapes rather than new subsystems.** The two that are
 not — the rejected-to-patient conversion (G-5) and the claim importer (G-12) —
-are both real work, and G-1 must be answered by the owner before any panel
-receivable figure in Kuwick can be trusted.
+are both real work. G-1 is answered and closed.
 
 **None of the twelve is implemented in this pass.** They are specified here so
 the next one starts from evidence.

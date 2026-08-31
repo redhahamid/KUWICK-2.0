@@ -182,7 +182,7 @@ export class ClaimWorkspaceService {
       const balance = computeClaimBalance({
         claimedAmount: line.claimedAmount,
         feeAmount: line.feeAmount,
-        feeDirection: line.feeDirection,
+        feeTreatment: line.feeTreatment,
         approvedAmount: line.approvedAmount,
         rejectedAmount: line.rejectedAmount,
         receivedAmount: line.paidAmount,
@@ -350,7 +350,7 @@ export class ClaimWorkspaceService {
           claimStatus: true,
           claimedAmount: true,
           feeAmount: true,
-          feeDirection: true,
+          feeTreatment: true,
           approvedAmount: true,
           rejectedAmount: true,
           paidAmount: true,
@@ -369,7 +369,7 @@ export class ClaimWorkspaceService {
       const expectedCents = computeClaimBalance({
         claimedAmount: line.claimedAmount,
         feeAmount: line.feeAmount,
-        feeDirection: line.feeDirection,
+        feeTreatment: line.feeTreatment,
       }).expectedReceivableCents;
       const approvedCents = toCents(dto.approvedAmount);
       const rejectedCents = toCents(dto.rejectedAmount ?? 0);
@@ -564,7 +564,7 @@ export class ClaimWorkspaceService {
           claimStatus: true,
           claimedAmount: true,
           feeAmount: true,
-          feeDirection: true,
+          feeTreatment: true,
           approvedAmount: true,
           paidAmount: true,
           writtenOffAmount: true,
@@ -578,7 +578,7 @@ export class ClaimWorkspaceService {
       const balance = computeClaimBalance({
         claimedAmount: line.claimedAmount,
         feeAmount: line.feeAmount,
-        feeDirection: line.feeDirection,
+        feeTreatment: line.feeTreatment,
         approvedAmount: line.approvedAmount,
         receivedAmount: line.paidAmount,
       });
@@ -888,7 +888,7 @@ export class ClaimWorkspaceService {
         const balance = computeClaimBalance({
           claimedAmount: line.claimedAmount,
           feeAmount: line.feeAmount,
-          feeDirection: line.feeDirection,
+          feeTreatment: line.feeTreatment,
           approvedAmount: line.approvedAmount,
           receivedAmount: fromCents(receivedCents),
           writtenOffAmount: line.writtenOffAmount,
@@ -975,7 +975,7 @@ export class ClaimWorkspaceService {
       lines.map((line) => ({
         claimedAmount: line.claimedAmount,
         feeAmount: line.feeAmount,
-        feeDirection: line.feeDirection,
+        feeTreatment: line.feeTreatment,
         approvedAmount: line.approvedAmount,
         rejectedAmount: line.rejectedAmount,
         receivedAmount: line.paidAmount,
@@ -1003,7 +1003,7 @@ export class ClaimWorkspaceService {
       const balance = computeClaimBalance({
         claimedAmount: line.claimedAmount,
         feeAmount: line.feeAmount,
-        feeDirection: line.feeDirection,
+        feeTreatment: line.feeTreatment,
         approvedAmount: line.approvedAmount,
         rejectedAmount: line.rejectedAmount,
         receivedAmount: line.paidAmount,
@@ -1069,7 +1069,7 @@ export class ClaimWorkspaceService {
          * non-zero count here means this figure is understated by that much
          * and the screen must say so.
          */
-        unresolvedFeeDirection: roll.unresolvedFeeDirectionCount,
+        unresolvedFeeTreatment: roll.unresolvedFeeTreatmentCount,
         /**
          * G-10 — THE CLINIC'S OWN KPI, WHICH KUWICK DID NOT SHOW.
          *
@@ -1184,7 +1184,7 @@ export class ClaimWorkspaceService {
         const balance = computeClaimBalance({
           claimedAmount: line.claimedAmount,
           feeAmount: line.feeAmount,
-          feeDirection: line.feeDirection,
+          feeTreatment: line.feeTreatment,
           approvedAmount: line.approvedAmount,
           rejectedAmount: line.rejectedAmount,
           receivedAmount: line.paidAmount,
@@ -1310,7 +1310,7 @@ export class ClaimWorkspaceService {
       const balance = computeClaimBalance({
         claimedAmount: line.claimedAmount,
         feeAmount: line.feeAmount,
-        feeDirection: line.feeDirection,
+        feeTreatment: line.feeTreatment,
         approvedAmount: line.approvedAmount,
         rejectedAmount: line.rejectedAmount,
         receivedAmount: line.paidAmount,

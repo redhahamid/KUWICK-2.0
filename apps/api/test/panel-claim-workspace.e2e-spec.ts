@@ -70,7 +70,7 @@ describe('Panel: the claim workspace (e2e)', () => {
           // a constant: this fixture panel ADDS its fee to what it is billed.
           // The two tests at the bottom of this file cover the other panel
           // shapes — one that withholds, and one where nobody has said.
-          feeDirection: 'ADDED',
+          feeTreatment: 'ADDED_TO_RECEIVABLE',
           resubmitAsNewClaim: true,
         },
       }),
@@ -82,10 +82,13 @@ describe('Panel: the claim workspace (e2e)', () => {
   async function makeClaim(
     claimed = 100,
     fee = 8,
-    opts: { panelId?: string; feeDirection?: 'ADDED' | 'WITHHELD' | null } = {},
+    opts: {
+      panelId?: string;
+      feeTreatment?: 'WITHHELD_FROM_CLAIM' | 'ADDED_TO_RECEIVABLE' | 'NO_FEE' | 'UNCONFIGURED';
+    } = {},
   ): Promise<{ batchId: string; lineId: string }> {
     const targetPanelId = opts.panelId ?? panelId;
-    const direction = opts.feeDirection === undefined ? 'ADDED' : opts.feeDirection;
+    const treatment = opts.feeTreatment === undefined ? 'ADDED_TO_RECEIVABLE' : opts.feeTreatment;
     return withTenantContext(prisma, tenantId, async (tx) => {
       const patient = await tx.patient.create({
         data: {
@@ -147,7 +150,7 @@ describe('Panel: the claim workspace (e2e)', () => {
           invoiceId: invoice.id,
           claimedAmount: claimed,
           feeAmount: fee,
-          feeDirection: direction,
+          feeTreatment: treatment,
         },
       });
       return { batchId: batch.id, lineId: line.id };
@@ -463,11 +466,11 @@ describe('Panel: the claim workspace (e2e)', () => {
           paymentTermDays: 30,
           claimFeeType: 'PERCENT',
           claimFeeValue: 8,
-          feeDirection: 'WITHHELD',
+          feeTreatment: 'WITHHELD_FROM_CLAIM',
         },
       }),
     );
-    const claim = await makeClaim(100, 8, { panelId: withholdingPanel.id, feeDirection: 'WITHHELD' });
+    const claim = await makeClaim(100, 8, { panelId: withholdingPanel.id, feeTreatment: 'WITHHELD_FROM_CLAIM' });
 
     const queue = await request(app.getHttpServer())
       .get(`/panel-workspace/submission-queue?panelClinicId=${withholdingPanel.id}`)
@@ -505,11 +508,11 @@ describe('Panel: the claim workspace (e2e)', () => {
     expect(reconciliation.body.totals.expectedReceivable).toBe(92);
     expect(reconciliation.body.totals.received).toBe(92);
     expect(reconciliation.body.totals.outstanding).toBe(0);
-    expect(reconciliation.body.totals.unresolvedFeeDirection).toBe(0);
+    expect(reconciliation.body.totals.unresolvedFeeTreatment).toBe(0);
     expect(reconciliation.body.reconciles).toBe(true);
   });
 
-  it('leaves the fee out entirely — and says so — when nobody has configured a direction', async () => {
+  it('leaves the fee out entirely — and says so — when the treatment is not established', async () => {
     const unsetPanel = await withTenantContext(prisma, tenantId, (tx) =>
       tx.panelClinic.create({
         data: {
@@ -519,11 +522,11 @@ describe('Panel: the claim workspace (e2e)', () => {
           paymentTermDays: 30,
           claimFeeType: 'AMOUNT',
           claimFeeValue: 8,
-          // feeDirection deliberately absent.
+          // feeTreatment deliberately left at its UNCONFIGURED default.
         },
       }),
     );
-    await makeClaim(100, 8, { panelId: unsetPanel.id, feeDirection: null });
+    await makeClaim(100, 8, { panelId: unsetPanel.id, feeTreatment: 'UNCONFIGURED' });
 
     const queue = await request(app.getHttpServer())
       .get(`/panel-workspace/submission-queue?panelClinicId=${unsetPanel.id}`)
@@ -539,7 +542,7 @@ describe('Panel: the claim workspace (e2e)', () => {
     expect(reconciliation.body.totals.expectedReceivable).toBe(100);
     expect(reconciliation.body.totals.fees).toBe(8);
     // The count that makes the omission visible instead of silent.
-    expect(reconciliation.body.totals.unresolvedFeeDirection).toBe(1);
+    expect(reconciliation.body.totals.unresolvedFeeTreatment).toBe(1);
 
     // And the configuration screen names the panel to go and fix.
     const panels = await request(app.getHttpServer())
@@ -547,7 +550,7 @@ describe('Panel: the claim workspace (e2e)', () => {
       .set('Authorization', bearer)
       .expect(200);
     const row = panels.body.find((p: { id: string }) => p.id === unsetPanel.id);
-    expect(row.feeDirectionUnresolved).toBe(true);
+    expect(row.feeTreatmentUnresolved).toBe(true);
   });
 
   // ---------------------------------------------------------------------------
@@ -680,14 +683,14 @@ describe('Panel: the claim workspace (e2e)', () => {
       .expect(409);
   });
 
-  it('re-stamps claims nobody has sent yet when the fee direction is set, and leaves submitted ones alone', async () => {
+  it('re-stamps claims nobody has sent yet when the fee treatment is set, and leaves submitted ones alone', async () => {
     const latePanel = await withTenantContext(prisma, tenantId, (tx) =>
       tx.panelClinic.create({
         data: { tenantId, name: 'Late Config Panel', code: 'LCP', claimFeeType: 'AMOUNT', claimFeeValue: 8 },
       }),
     );
-    const unsent = await makeClaim(100, 8, { panelId: latePanel.id, feeDirection: null });
-    const sent = await makeClaim(100, 8, { panelId: latePanel.id, feeDirection: null });
+    const unsent = await makeClaim(100, 8, { panelId: latePanel.id, feeTreatment: 'UNCONFIGURED' });
+    const sent = await makeClaim(100, 8, { panelId: latePanel.id, feeTreatment: 'UNCONFIGURED' });
     await request(app.getHttpServer())
       .patch(`/panel-workspace/batches/${sent.batchId}/submitted`)
       .set('Authorization', bearer)
@@ -697,20 +700,20 @@ describe('Panel: the claim workspace (e2e)', () => {
     const updated = await request(app.getHttpServer())
       .patch(`/panel-workspace/panels/${latePanel.id}`)
       .set('Authorization', bearer)
-      .send({ feeDirection: 'WITHHELD' })
+      .send({ feeTreatment: 'WITHHELD_FROM_CLAIM' })
       .expect(200);
     expect(updated.body.unsentClaimsRestamped).toBe(1);
 
     const lines = await withTenantContext(prisma, tenantId, (tx) =>
       tx.claimBatchLine.findMany({
         where: { id: { in: [unsent.lineId, sent.lineId] } },
-        select: { id: true, feeDirection: true },
+        select: { id: true, feeTreatment: true },
       }),
     );
-    const byId = new Map(lines.map((line) => [line.id, line.feeDirection]));
+    const byId = new Map(lines.map((line) => [line.id, line.feeTreatment]));
     // The unsent claim carries the corrected fact…
-    expect(byId.get(unsent.lineId)).toBe('WITHHELD');
+    expect(byId.get(unsent.lineId)).toBe('WITHHELD_FROM_CLAIM');
     // …and the one already with the panel keeps the arithmetic it went out under.
-    expect(byId.get(sent.lineId)).toBeNull();
+    expect(byId.get(sent.lineId)).toBe('UNCONFIGURED');
   });
 });

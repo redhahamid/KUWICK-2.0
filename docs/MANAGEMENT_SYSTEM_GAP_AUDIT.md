@@ -144,12 +144,12 @@ The honest summary before the tables:
 | **Record payment received (remittance)** | ✅ *(this pass)* | Reconciliation ▸ Record a payment. Allocations must equal the payment exactly, checked live. Drove RM60 through end to end: claim moved PARTIALLY_PAID → PAID, received RM249.60 → RM309.60, ledger still reconciles |
 | **Claims awaiting payment** | ✅ *(this pass)* | New `GET /panel-workspace/awaiting-payment` — the work queue is the *problem* queue and could not answer "what is this panel still owed on" |
 | **Claim history / audit trail** | 🔌 | `ClaimEvent` rows written, `timeline()` exists; no screen |
-| **Expected receivable — fee direction** | ⚠️ **DEFECT** *(found this pass)* | `computeClaimBalance` uses `claimed + fee`. The clinic's workbook uses `claimed − fee`, and **2,615 of 2,640 fee-bearing claims were banked at exactly `claimed − fee`; none at `claimed + fee`.** Kuwick over-states every panel receivable by the fee, and a fully settled claim reads as short by twice it. Needs a per-panel `feeDirection` and an owner decision — not a unilateral sign flip. See `PANEL_LEGACY_WORKFLOW_AUDIT.md` P-1 / G-1 |
-| **Payment terms beyond N calendar days** | ❌ | 14 of 29 panels use a range, working days, an invoice-date anchor, or delegate the term to the corporate client behind a TPA. `paymentTermDays Int?` holds none of those |
-| **Overdue as a computed state** | ❌ | Nothing derives a due date from the panel's term |
-| **Re-claim deadline (2 months)** | ❌ | A hard deadline with money attached, tracked by nobody |
-| **Rejected claim → patient receivable** | ❌ | One of the four routes the clinic actually uses |
-| **Rejection reason taxonomy** | 🟡 | Free text only, so recurring causes cannot be counted |
+| **Expected receivable — fee treatment** | ✅ *(defect found and fixed this pass)* | `computeClaimBalance` used `claimed + fee` per D-041. The clinic's workbook and **2,615 of 2,640 banked payments** say `claimed − fee`. **Owner superseded D-041 on 2026-08-31**: four-state `PanelFeeTreatment`, effective-dated `PanelFeeTerm`, per-claim snapshot, migrated with a measured impact report (D-112, `PANEL_FEE_DIRECTION_CORRECTION.md`) |
+| **Payment terms beyond N calendar days** | ✅ *(this pass)* | Ranges, working days, SERVICE/SUBMISSION/INVOICE anchors, and a term that varies by the employer behind a TPA |
+| **Overdue as a computed state** | ✅ *(this pass)* | Derived from the panel's term shape; a range is late only past its far edge |
+| **Re-claim deadline (2 months)** | ✅ *(this pass)* | Counted down per claim from the original service date, orange inside a fortnight |
+| **Rejected claim → patient receivable** | ✅ *(this pass)* | Moves onto the invoice's patient share; explicitly not a write-off |
+| **Rejection reason taxonomy** | ✅ *(this pass)* | Seven categories read off the clinic's own register, plus the free text |
 | **Claim import** | ❌ | 7,146 claims for one branch-year, 30% unpaid. No cutover without an importer |
 
 ---
@@ -205,7 +205,7 @@ in this pass has made any of them harder.
 |---|---|---|
 | **Operation** | ✅ **PRODUCTION READY** | — |
 | **Stock** | ✅ **PRODUCTION READY** for daily operation | Dispensing, counting, ordering and receiving all hold up, and Stock Take is strictly better than the sheet it replaces. Raise-transfer and price-change history are conveniences. Costing limitation must stay visible. **Not production-ready for buying:** supplier invoices, payables and payments do not exist, so the clinic keeps thirty supplier sheets. That is a Finance-shaped gap sitting inside Stock's chain. |
-| **Panel** | ⚠️ **CONDITIONALLY READY** *(downgraded this pass)* | The receipt screen closed the workflow blocker, and the domain model is strong. But reading the clinic's actual workbook found a **correctness defect in Kuwick**: the admin fee is added to the expected receivable when the banked money proves it is withheld. Until `feeDirection` exists and the owner has set it per panel, no panel receivable figure should be trusted. Payment terms, the 2-month re-claim deadline and the claim importer are the next three. |
+| **Panel** | ⚠️ **CONDITIONALLY READY** | Reading the clinic's workbook found a correctness defect in Kuwick — the fee was added where the banked money proves it is withheld — and **that is now fixed, migrated and measured** (D-112). Payment terms, the re-claim deadline, the rejection taxonomy and the rejected→patient route all landed this pass. **One blocker remains: no importer for the 7,146 live claims**, so a real cutover is not yet possible. One panel is `UNCONFIGURED` pending an owner answer. |
 | **Finance** | ⚠️ **CONDITIONALLY READY** | Blockers: credit-note creation, invoice detail. e-Invoice and debit notes are absent and honestly labelled. |
 | **HR** | ⚠️ **CONDITIONALLY READY** | Blockers: add/edit employee from Admin, leave-policy config, attendance correction. |
 | **Payroll** | ❌ **NOT PRODUCTION READY** | Blockers, all named: (1) statutory tables unverified against KWSP/PERKESO; (2) no PCB engine; (3) no payslip; (4) no bank file; (5) no statutory output files. |

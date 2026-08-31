@@ -332,6 +332,7 @@ model Tenant {
   supplierInvoices           SupplierInvoice[]
   supplierPayments           SupplierPayment[]
   supplierPaymentAllocations SupplierPaymentAllocation[]
+  panelFeeTerms              PanelFeeTerm[]
   panelRemittanceAllocations PanelRemittanceAllocation[]
   claimEvents                ClaimEvent[]
   procurementBudgets         ProcurementBudget[]
@@ -1030,6 +1031,7 @@ model Staff {
   claimsChargedToPatient       ClaimBatchLine[]             @relation("ClaimChargedToPatientBy")
   supplierInvoicesRecorded     SupplierInvoice[]            @relation("SupplierInvoiceRecordedBy")
   supplierPaymentsRecorded     SupplierPayment[]            @relation("SupplierPaymentRecordedBy")
+  panelFeeTermsRecorded        PanelFeeTerm[]               @relation("PanelFeeTermRecordedBy")
   claimEvents                  ClaimEvent[]                 @relation("ClaimEventActor")
   stockMovementsMade           StockMovement[]              @relation("StockMovementActor")
   dayEndsReopened              DayEndClosing[]              @relation("DayEndReopenedBy")
@@ -2623,10 +2625,14 @@ model PanelClinic {
   // from this configuration — never a manual per-batch entry.
   claimFeeType    PanelClaimFeeType? @map("claim_fee_type")
   claimFeeValue   Decimal?           @map("claim_fee_value") @db.Decimal(10, 2)
-  /// WHICH WAY THE FEE MOVES — see `PanelFeeDirection`. NULL is not a default,
-  /// it is an unanswered question, and every receivable computed from a
-  /// fee-bearing claim on this panel is marked unresolved until it is set.
-  feeDirection    PanelFeeDirection? @map("fee_direction")
+  /// HOW THE FEE IS TREATED — see `PanelFeeTreatment`. This is the CURRENT
+  /// value, mirrored from the panel's effective-dated `PanelFeeTerm` history by
+  /// `PanelConfigService`, in the same transaction that writes it. The history
+  /// is authoritative; this column exists so the read sites that need "what is
+  /// it today" do not each resolve a date range. Same convention as
+  /// `Invoice.patientPaidAmount` mirroring the payment ledger.
+  feeTreatment    PanelFeeTreatment  @default(UNCONFIGURED) @map("fee_treatment")
+  feeTerms        PanelFeeTerm[]
 
   // ---------------------------------------------------------------------
   // PAYMENT TERMS, in the shapes real panels actually use.
@@ -2735,6 +2741,51 @@ model PanelPriceOverride {
   @@index([tenantId, itemId])
   @@index([tenantId, serviceCatalogId])
   @@map("panel_price_overrides")
+}
+
+/// A PANEL'S FEE TERM, AS AT A DATE.
+///
+/// Owner requirement (2026-08-31): "Fee configuration should be
+/// effective-dated/versioned so a future contract change does not alter
+/// historical receivables."
+///
+/// Two independent protections, and both are needed:
+///
+///  1. THIS TABLE keeps the history, so "what were the terms in March" has an
+///     answer, and correcting today's terms cannot rewrite what was agreed
+///     last year.
+///  2. THE CLAIM SNAPSHOT (`ClaimBatchLine.feeTreatment` / `feeAmount`) records
+///     what was actually applied to each claim. Even a mistaken edit to the
+///     history cannot move a claim that has already gone out.
+///
+/// The row in force on a date is the one with the greatest `effectiveFrom` not
+/// after it. There is no `effectiveTo`: a term ends when the next one begins,
+/// which makes a gap impossible to create.
+model PanelFeeTerm {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  panelClinicId String   @map("panel_clinic_id")
+  /// Day-precision. Terms are agreed on a date, not at a time.
+  effectiveFrom DateTime @map("effective_from") @db.Date
+
+  feeTreatment PanelFeeTreatment  @map("fee_treatment")
+  feeType      PanelClaimFeeType? @map("fee_type")
+  feeValue     Decimal?           @map("fee_value") @db.Decimal(10, 2)
+
+  /// Why this term is what it is - the contract clause, the email, or in the
+  /// case of the migrated rows, the evidence that established it.
+  note String?
+
+  recordedByStaffId String?  @map("recorded_by_staff_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  panelClinic PanelClinic @relation(fields: [panelClinicId], references: [id])
+  recordedBy  Staff?      @relation("PanelFeeTermRecordedBy", fields: [recordedByStaffId], references: [id])
+
+  @@unique([tenantId, panelClinicId, effectiveFrom])
+  @@index([tenantId, panelClinicId, effectiveFrom])
+  @@map("panel_fee_terms")
 }
 
 // Clinical Operations, Phase A8. Items/services a panel does NOT cover.
@@ -4294,28 +4345,43 @@ enum PanelClaimFeeType {
   AMOUNT
 }
 
-/// WHICH WAY THE PANEL'S ADMIN FEE MOVES.
+/// HOW A PANEL'S ADMIN FEE IS TREATED IN THE RECEIVABLE.
 ///
-/// Read from the clinic's own claim workbook (`PANEL_LEGACY_WORKFLOW_AUDIT.md`
-/// §4.1, finding P-1): every sheet computes `CLAIM TO RECEIVE = CLAIMED − FEE`,
-/// and testing that against money actually banked, **2,615 of 2,640 fee-bearing
-/// claims arrived as exactly `claimed − fee`, and none as `claimed + fee`.**
+/// **D-041 is superseded on this point** (owner decision, 2026-08-31). D-041
+/// recorded `receivable = claimed + fee`. The clinic's own claim workbook and
+/// its bank credits say otherwise, and the owner has accepted that evidence as
+/// the source of truth for the current panel setup:
 ///
-/// The earlier decision D-041 recorded the opposite. Rather than flip a money
-/// formula on one side of a contradiction, the direction is now configuration:
-/// NULL means nobody has said, and `computeClaimBalance` then applies the fee
-/// in NEITHER direction and marks the balance unresolved, instead of guessing.
-enum PanelFeeDirection {
-  /// The clinic bills claim + fee and expects the whole of it back.
-  ADDED
-  /// The panel keeps its fee out of the payment: bill the claim, bank claim − fee.
-  WITHHELD
+///   - all 29 workbook sheets compute `CLAIM TO RECEIVE = CLAIMED - FEE`
+///   - 2,615 of 2,640 paid fee-bearing claims banked at exactly claimed - fee
+///   - 2 banked at the claimed amount, both investigated (below)
+///   - **none** banked at claimed + fee
+///
+/// The two exceptions were investigated rather than averaged away. One is a
+/// single claim inside a remittance that settled three OTHER claims the same
+/// day WITH the fee deducted - a manual exception on one row, not a second
+/// rule. The other is the only paid fee-bearing claim on its panel, which is
+/// why that panel alone is UNCONFIGURED and flagged for owner review.
+///
+/// The architecture stays per-panel and effective-dated (`PanelFeeTerm`),
+/// because a future contract may genuinely differ.
+enum PanelFeeTreatment {
+  /// `expected = claimed - fee`. The panel keeps its fee out of what it pays.
+  /// The default for every existing panel, per the owner's 2026-08-31 decision.
+  WITHHELD_FROM_CLAIM
+  /// `expected = claimed + fee`. The clinic bills claim + fee and expects all
+  /// of it back. Retained because a future contract may work this way.
+  ADDED_TO_RECEIVABLE
+  /// This panel charges no fee. `expected = claimed`, and there is no sign to
+  /// get wrong - distinct from UNCONFIGURED, which means nobody knows.
+  NO_FEE
+  /// The rule genuinely cannot be established from evidence. The fee is applied
+  /// in NEITHER direction and the balance is marked unresolved, so a screen
+  /// says so rather than presenting guessed arithmetic. Never a resting state:
+  /// it exists to be reported and answered.
+  UNCONFIGURED
 }
 
-/// Whether a payment term is counted in calendar or working days. Four panels
-/// in the clinic's workbook state their term in working days
-/// (`30 WORKING DAYS`, `20 WORKING DAYS`, `45 WORKING DAYS`), which is roughly
-/// half as long again as the same number of calendar days.
 enum PanelTermUnit {
   CALENDAR_DAYS
   WORKING_DAYS
@@ -4397,25 +4463,24 @@ model ClaimBatch {
 // panel's add-on fee per claim ("claim RM100 → claimed RM108");
 // receivable = claimedAmount + feeAmount.
 model ClaimBatchLine {
-  id              String             @id @default(uuid())
-  tenantId        String             @map("tenant_id")
-  claimBatchId    String             @map("claim_batch_id")
-  invoiceId       String             @map("invoice_id")
-  claimedAmount   Decimal            @map("claimed_amount") @db.Decimal(10, 2)
-  feeAmount       Decimal            @default(0) @map("fee_amount") @db.Decimal(10, 2)
-  status          ClaimLineStatus    @default(PENDING)
-  /// WHICH WAY THIS CLAIM'S FEE MOVES, snapshotted from the panel at batch
-  /// creation — the same convention as `claimedAmount` and `feeAmount`, so a
-  /// later configuration change never silently rewrites a claim that has
-  /// already been sent and argued about. NULL means the panel had no direction
-  /// configured when the claim was raised; `computeClaimBalance` then leaves
-  /// the fee out entirely and marks the balance unresolved instead of guessing.
-  /// A claim still sitting in BATCHED is re-stamped when the owner sets the
-  /// panel's direction, because a claim nobody has sent yet should carry the
-  /// corrected fact.
-  feeDirection    PanelFeeDirection? @map("fee_direction")
-  paidAmount      Decimal?           @map("paid_amount") @db.Decimal(10, 2)
-  deductionReason String?            @map("deduction_reason")
+  id              String            @id @default(uuid())
+  tenantId        String            @map("tenant_id")
+  claimBatchId    String            @map("claim_batch_id")
+  invoiceId       String            @map("invoice_id")
+  claimedAmount   Decimal           @map("claimed_amount") @db.Decimal(10, 2)
+  feeAmount       Decimal           @default(0) @map("fee_amount") @db.Decimal(10, 2)
+  status          ClaimLineStatus   @default(PENDING)
+  /// HOW THIS CLAIM'S FEE IS TREATED, snapshotted from the panel's fee term in
+  /// force on the day the claim was raised — the same convention as
+  /// `claimedAmount` and `feeAmount`. A contract change next year must never
+  /// rewrite the arithmetic of a claim already sent and argued about; that is
+  /// what makes the effective-dated `PanelFeeTerm` history safe to edit.
+  ///
+  /// A claim still sitting in BATCHED is re-stamped when the treatment changes,
+  /// because a claim nobody has sent yet should carry the corrected fact.
+  feeTreatment    PanelFeeTreatment @default(UNCONFIGURED) @map("fee_treatment")
+  paidAmount      Decimal?          @map("paid_amount") @db.Decimal(10, 2)
+  deductionReason String?           @map("deduction_reason")
   remarks         String?
 
   // WAVE 3 — the lifecycle and the money, kept apart.

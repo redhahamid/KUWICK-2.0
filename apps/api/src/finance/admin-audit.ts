@@ -60,12 +60,14 @@ export type AuditAction =
   | 'supplier.termsUpdated'
   | 'panel.configured'
   /**
-   * The fee direction changed and unsent claims were re-stamped with it. Kept
+   * The fee treatment changed and unsent claims were re-stamped with it. Kept
    * as its own action because it silently changes the arithmetic on claims
    * nobody edited, and "who changed our receivable and when" is exactly the
    * question this table exists to answer.
    */
-  | 'panel.feeDirectionRestamped'
+  | 'panel.feeTreatmentRestamped'
+  /** A new effective-dated fee term was recorded against a panel. */
+  | 'panel.feeTermRecorded'
   // HR
   | 'employee.changed'
   | 'attendance.corrected'

@@ -345,7 +345,9 @@ export function usePanelConfigs() {
 export function useUpdatePanelConfig() {
   return useAdminMutation(
     ({ id, ...body }: { id: string } & Record<string, unknown>) => apiClient.patch(`/panel-workspace/panels/${id}`, body),
-    ['admin-panel'],
+    // A fee term changes what every panel receivable is worth, and receivables
+    // are shown in Finance ▸ Outstanding as well as in Panel.
+    ['admin-panel', 'admin-finance'],
   );
 }
 
