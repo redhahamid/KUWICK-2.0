@@ -1,0 +1,10313 @@
+{
+ "socso_under60": {
+  "label": "SOCSO First Category (<60)",
+  "bands": [
+   {
+    "min": 0,
+    "max": 0,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 0.01,
+    "max": 30,
+    "employer": 0.4,
+    "employee": 0.1,
+    "total": 0.5
+   },
+   {
+    "min": 30.01,
+    "max": 50,
+    "employer": 0.7,
+    "employee": 0.2,
+    "total": 0.8999999999999999
+   },
+   {
+    "min": 50.01,
+    "max": 70,
+    "employer": 1.1,
+    "employee": 0.3,
+    "total": 1.4000000000000001
+   },
+   {
+    "min": 70.01,
+    "max": 100,
+    "employer": 1.5,
+    "employee": 0.4,
+    "total": 1.9
+   },
+   {
+    "min": 100.01,
+    "max": 140,
+    "employer": 2.1,
+    "employee": 0.6,
+    "total": 2.7
+   },
+   {
+    "min": 140.01,
+    "max": 200,
+    "employer": 2.95,
+    "employee": 0.85,
+    "total": 3.8000000000000003
+   },
+   {
+    "min": 200.01,
+    "max": 300,
+    "employer": 4.35,
+    "employee": 1.25,
+    "total": 5.6
+   },
+   {
+    "min": 300.01,
+    "max": 400,
+    "employer": 6.15,
+    "employee": 1.75,
+    "total": 7.9
+   },
+   {
+    "min": 400.01,
+    "max": 500,
+    "employer": 7.85,
+    "employee": 2.25,
+    "total": 10.1
+   },
+   {
+    "min": 500.01,
+    "max": 600,
+    "employer": 9.65,
+    "employee": 2.75,
+    "total": 12.4
+   },
+   {
+    "min": 600.01,
+    "max": 700,
+    "employer": 11.35,
+    "employee": 3.25,
+    "total": 14.6
+   },
+   {
+    "min": 700.01,
+    "max": 800,
+    "employer": 13.15,
+    "employee": 3.75,
+    "total": 16.9
+   },
+   {
+    "min": 800.01,
+    "max": 900,
+    "employer": 14.85,
+    "employee": 4.25,
+    "total": 19.1
+   },
+   {
+    "min": 900.01,
+    "max": 1000,
+    "employer": 16.65,
+    "employee": 4.75,
+    "total": 21.4
+   },
+   {
+    "min": 1000.01,
+    "max": 1100,
+    "employer": 18.35,
+    "employee": 5.25,
+    "total": 23.6
+   },
+   {
+    "min": 1100.01,
+    "max": 1200,
+    "employer": 20.15,
+    "employee": 5.75,
+    "total": 25.9
+   },
+   {
+    "min": 1200.01,
+    "max": 1300,
+    "employer": 21.85,
+    "employee": 6.25,
+    "total": 28.1
+   },
+   {
+    "min": 1300.01,
+    "max": 1400,
+    "employer": 23.65,
+    "employee": 6.75,
+    "total": 30.4
+   },
+   {
+    "min": 1400.01,
+    "max": 1500,
+    "employer": 25.35,
+    "employee": 7.25,
+    "total": 32.6
+   },
+   {
+    "min": 1500.01,
+    "max": 1600,
+    "employer": 27.15,
+    "employee": 7.75,
+    "total": 34.9
+   },
+   {
+    "min": 1600.01,
+    "max": 1700,
+    "employer": 28.85,
+    "employee": 8.25,
+    "total": 37.1
+   },
+   {
+    "min": 1700.01,
+    "max": 1800,
+    "employer": 30.65,
+    "employee": 8.75,
+    "total": 39.4
+   },
+   {
+    "min": 1800.01,
+    "max": 1900,
+    "employer": 32.35,
+    "employee": 9.25,
+    "total": 41.6
+   },
+   {
+    "min": 1900.01,
+    "max": 2000,
+    "employer": 34.15,
+    "employee": 9.75,
+    "total": 43.9
+   },
+   {
+    "min": 2000.01,
+    "max": 2100,
+    "employer": 35.85,
+    "employee": 10.25,
+    "total": 46.1
+   },
+   {
+    "min": 2100.01,
+    "max": 2200,
+    "employer": 37.65,
+    "employee": 10.75,
+    "total": 48.4
+   },
+   {
+    "min": 2200.01,
+    "max": 2300,
+    "employer": 39.35,
+    "employee": 11.25,
+    "total": 50.6
+   },
+   {
+    "min": 2300.01,
+    "max": 2400,
+    "employer": 41.15,
+    "employee": 11.75,
+    "total": 52.9
+   },
+   {
+    "min": 2400.01,
+    "max": 2500,
+    "employer": 42.85,
+    "employee": 12.25,
+    "total": 55.1
+   },
+   {
+    "min": 2500.01,
+    "max": 2600,
+    "employer": 44.65,
+    "employee": 12.75,
+    "total": 57.4
+   },
+   {
+    "min": 2600.01,
+    "max": 2700,
+    "employer": 46.35,
+    "employee": 13.25,
+    "total": 59.6
+   },
+   {
+    "min": 2700.01,
+    "max": 2800,
+    "employer": 48.15,
+    "employee": 13.75,
+    "total": 61.9
+   },
+   {
+    "min": 2800.01,
+    "max": 2900,
+    "employer": 49.85,
+    "employee": 14.25,
+    "total": 64.1
+   },
+   {
+    "min": 2900.01,
+    "max": 3000,
+    "employer": 51.65,
+    "employee": 14.75,
+    "total": 66.4
+   },
+   {
+    "min": 3000.01,
+    "max": 3100,
+    "employer": 53.35,
+    "employee": 15.25,
+    "total": 68.6
+   },
+   {
+    "min": 3100.01,
+    "max": 3200,
+    "employer": 55.15,
+    "employee": 15.75,
+    "total": 70.9
+   },
+   {
+    "min": 3200.01,
+    "max": 3300,
+    "employer": 56.85,
+    "employee": 16.25,
+    "total": 73.1
+   },
+   {
+    "min": 3300.01,
+    "max": 3400,
+    "employer": 58.65,
+    "employee": 16.75,
+    "total": 75.4
+   },
+   {
+    "min": 3400.01,
+    "max": 3500,
+    "employer": 60.35,
+    "employee": 17.25,
+    "total": 77.6
+   },
+   {
+    "min": 3500.01,
+    "max": 3600,
+    "employer": 62.15,
+    "employee": 17.75,
+    "total": 79.9
+   },
+   {
+    "min": 3600.01,
+    "max": 3700,
+    "employer": 63.85,
+    "employee": 18.25,
+    "total": 82.1
+   },
+   {
+    "min": 3700.01,
+    "max": 3800,
+    "employer": 65.65,
+    "employee": 18.75,
+    "total": 84.4
+   },
+   {
+    "min": 3800.01,
+    "max": 3900,
+    "employer": 67.35,
+    "employee": 19.25,
+    "total": 86.6
+   },
+   {
+    "min": 3900.01,
+    "max": 4000,
+    "employer": 69.15,
+    "employee": 19.75,
+    "total": 88.9
+   },
+   {
+    "min": 4000.01,
+    "max": 4100,
+    "employer": 70.85,
+    "employee": 20.25,
+    "total": 91.1
+   },
+   {
+    "min": 4100.01,
+    "max": 4200,
+    "employer": 72.65,
+    "employee": 20.75,
+    "total": 93.4
+   },
+   {
+    "min": 4200.01,
+    "max": 4300,
+    "employer": 74.35,
+    "employee": 21.25,
+    "total": 95.6
+   },
+   {
+    "min": 4300.01,
+    "max": 4400,
+    "employer": 76.15,
+    "employee": 21.75,
+    "total": 97.9
+   },
+   {
+    "min": 4400.01,
+    "max": 4500,
+    "employer": 77.85,
+    "employee": 22.25,
+    "total": 100.1
+   },
+   {
+    "min": 4500.01,
+    "max": 4600,
+    "employer": 79.65,
+    "employee": 22.75,
+    "total": 102.4
+   },
+   {
+    "min": 4600.01,
+    "max": 4700,
+    "employer": 81.35,
+    "employee": 23.25,
+    "total": 104.6
+   },
+   {
+    "min": 4700.01,
+    "max": 4800,
+    "employer": 83.15,
+    "employee": 23.75,
+    "total": 106.9
+   },
+   {
+    "min": 4800.01,
+    "max": 4900,
+    "employer": 84.85,
+    "employee": 24.25,
+    "total": 109.1
+   },
+   {
+    "min": 4900.01,
+    "max": 5000,
+    "employer": 86.65,
+    "employee": 24.75,
+    "total": 111.4
+   },
+   {
+    "min": 5000.01,
+    "max": 5100,
+    "employer": 88.35,
+    "employee": 25.25,
+    "total": 113.6
+   },
+   {
+    "min": 5100.01,
+    "max": 5200,
+    "employer": 90.15,
+    "employee": 25.75,
+    "total": 115.9
+   },
+   {
+    "min": 5200.01,
+    "max": 5300,
+    "employer": 91.85,
+    "employee": 26.25,
+    "total": 118.1
+   },
+   {
+    "min": 5300.01,
+    "max": 5400,
+    "employer": 93.65,
+    "employee": 26.75,
+    "total": 120.4
+   },
+   {
+    "min": 5400.01,
+    "max": 5500,
+    "employer": 95.35,
+    "employee": 27.25,
+    "total": 122.6
+   },
+   {
+    "min": 5500.01,
+    "max": 5600,
+    "employer": 97.15,
+    "employee": 27.75,
+    "total": 124.9
+   },
+   {
+    "min": 5600.01,
+    "max": 5700,
+    "employer": 98.85,
+    "employee": 28.25,
+    "total": 127.1
+   },
+   {
+    "min": 5700.01,
+    "max": 5800,
+    "employer": 100.65,
+    "employee": 28.75,
+    "total": 129.4
+   },
+   {
+    "min": 5800.01,
+    "max": 5900,
+    "employer": 102.35,
+    "employee": 29.25,
+    "total": 131.6
+   },
+   {
+    "min": 5900.01,
+    "max": 50000,
+    "employer": 104.15,
+    "employee": 29.75,
+    "total": 133.9
+   }
+  ]
+ },
+ "eis_under60": {
+  "label": "EIS/SIP (<60)",
+  "bands": [
+   {
+    "min": 0,
+    "max": 0,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 0.01,
+    "max": 30,
+    "employer": 0.05,
+    "employee": 0.05,
+    "total": 0.1
+   },
+   {
+    "min": 30.01,
+    "max": 50,
+    "employer": 0.1,
+    "employee": 0.1,
+    "total": 0.2
+   },
+   {
+    "min": 50.01,
+    "max": 70,
+    "employer": 0.15,
+    "employee": 0.15,
+    "total": 0.3
+   },
+   {
+    "min": 70.01,
+    "max": 100,
+    "employer": 0.2,
+    "employee": 0.2,
+    "total": 0.4
+   },
+   {
+    "min": 100.01,
+    "max": 140,
+    "employer": 0.25,
+    "employee": 0.25,
+    "total": 0.5
+   },
+   {
+    "min": 140.01,
+    "max": 200,
+    "employer": 0.35,
+    "employee": 0.35,
+    "total": 0.7
+   },
+   {
+    "min": 200.01,
+    "max": 300,
+    "employer": 0.5,
+    "employee": 0.5,
+    "total": 1
+   },
+   {
+    "min": 300.01,
+    "max": 400,
+    "employer": 0.7,
+    "employee": 0.7,
+    "total": 1.4
+   },
+   {
+    "min": 400.01,
+    "max": 500,
+    "employer": 0.9,
+    "employee": 0.9,
+    "total": 1.8
+   },
+   {
+    "min": 500.01,
+    "max": 600,
+    "employer": 1.1,
+    "employee": 1.1,
+    "total": 2.2
+   },
+   {
+    "min": 600.01,
+    "max": 700,
+    "employer": 1.3,
+    "employee": 1.3,
+    "total": 2.6
+   },
+   {
+    "min": 700.01,
+    "max": 800,
+    "employer": 1.5,
+    "employee": 1.5,
+    "total": 3
+   },
+   {
+    "min": 800.01,
+    "max": 900,
+    "employer": 1.7,
+    "employee": 1.7,
+    "total": 3.4
+   },
+   {
+    "min": 900.01,
+    "max": 1000,
+    "employer": 1.9,
+    "employee": 1.9,
+    "total": 3.8
+   },
+   {
+    "min": 1000.01,
+    "max": 1100,
+    "employer": 2.1,
+    "employee": 2.1,
+    "total": 4.2
+   },
+   {
+    "min": 1100.01,
+    "max": 1200,
+    "employer": 2.3000000000000003,
+    "employee": 2.3000000000000003,
+    "total": 4.6000000000000005
+   },
+   {
+    "min": 1200.01,
+    "max": 1300,
+    "employer": 2.5000000000000004,
+    "employee": 2.5000000000000004,
+    "total": 5.000000000000001
+   },
+   {
+    "min": 1300.01,
+    "max": 1400,
+    "employer": 2.7000000000000006,
+    "employee": 2.7000000000000006,
+    "total": 5.400000000000001
+   },
+   {
+    "min": 1400.01,
+    "max": 1500,
+    "employer": 2.900000000000001,
+    "employee": 2.900000000000001,
+    "total": 5.800000000000002
+   },
+   {
+    "min": 1500.01,
+    "max": 1600,
+    "employer": 3.100000000000001,
+    "employee": 3.100000000000001,
+    "total": 6.200000000000002
+   },
+   {
+    "min": 1600.01,
+    "max": 1700,
+    "employer": 3.300000000000001,
+    "employee": 3.300000000000001,
+    "total": 6.600000000000002
+   },
+   {
+    "min": 1700.01,
+    "max": 1800,
+    "employer": 3.5000000000000013,
+    "employee": 3.5000000000000013,
+    "total": 7.000000000000003
+   },
+   {
+    "min": 1800.01,
+    "max": 1900,
+    "employer": 3.7000000000000015,
+    "employee": 3.7000000000000015,
+    "total": 7.400000000000003
+   },
+   {
+    "min": 1900.01,
+    "max": 2000,
+    "employer": 3.9000000000000017,
+    "employee": 3.9000000000000017,
+    "total": 7.800000000000003
+   },
+   {
+    "min": 2000.01,
+    "max": 2100,
+    "employer": 4.100000000000001,
+    "employee": 4.100000000000001,
+    "total": 8.200000000000003
+   },
+   {
+    "min": 2100.01,
+    "max": 2200,
+    "employer": 4.300000000000002,
+    "employee": 4.300000000000002,
+    "total": 8.600000000000003
+   },
+   {
+    "min": 2200.01,
+    "max": 2300,
+    "employer": 4.500000000000002,
+    "employee": 4.500000000000002,
+    "total": 9.000000000000004
+   },
+   {
+    "min": 2300.01,
+    "max": 2400,
+    "employer": 4.700000000000002,
+    "employee": 4.700000000000002,
+    "total": 9.400000000000004
+   },
+   {
+    "min": 2400.01,
+    "max": 2500,
+    "employer": 4.900000000000002,
+    "employee": 4.900000000000002,
+    "total": 9.800000000000004
+   },
+   {
+    "min": 2500.01,
+    "max": 2600,
+    "employer": 5.100000000000002,
+    "employee": 5.100000000000002,
+    "total": 10.200000000000005
+   },
+   {
+    "min": 2600.01,
+    "max": 2700,
+    "employer": 5.3000000000000025,
+    "employee": 5.3000000000000025,
+    "total": 10.600000000000005
+   },
+   {
+    "min": 2700.01,
+    "max": 2800,
+    "employer": 5.500000000000003,
+    "employee": 5.500000000000003,
+    "total": 11.000000000000005
+   },
+   {
+    "min": 2800.01,
+    "max": 2900,
+    "employer": 5.700000000000003,
+    "employee": 5.700000000000003,
+    "total": 11.400000000000006
+   },
+   {
+    "min": 2900.01,
+    "max": 3000,
+    "employer": 5.900000000000003,
+    "employee": 5.900000000000003,
+    "total": 11.800000000000006
+   },
+   {
+    "min": 3000.01,
+    "max": 3100,
+    "employer": 6.100000000000003,
+    "employee": 6.100000000000003,
+    "total": 12.200000000000006
+   },
+   {
+    "min": 3100.01,
+    "max": 3200,
+    "employer": 6.300000000000003,
+    "employee": 6.300000000000003,
+    "total": 12.600000000000007
+   },
+   {
+    "min": 3200.01,
+    "max": 3300,
+    "employer": 6.5000000000000036,
+    "employee": 6.5000000000000036,
+    "total": 13.000000000000007
+   },
+   {
+    "min": 3300.01,
+    "max": 3400,
+    "employer": 6.700000000000004,
+    "employee": 6.700000000000004,
+    "total": 13.400000000000007
+   },
+   {
+    "min": 3400.01,
+    "max": 3500,
+    "employer": 6.900000000000004,
+    "employee": 6.900000000000004,
+    "total": 13.800000000000008
+   },
+   {
+    "min": 3500.01,
+    "max": 3600,
+    "employer": 7.100000000000004,
+    "employee": 7.100000000000004,
+    "total": 14.200000000000008
+   },
+   {
+    "min": 3600.01,
+    "max": 3700,
+    "employer": 7.300000000000004,
+    "employee": 7.300000000000004,
+    "total": 14.600000000000009
+   },
+   {
+    "min": 3700.01,
+    "max": 3800,
+    "employer": 7.500000000000004,
+    "employee": 7.500000000000004,
+    "total": 15.000000000000009
+   },
+   {
+    "min": 3800.01,
+    "max": 3900,
+    "employer": 7.700000000000005,
+    "employee": 7.700000000000005,
+    "total": 15.40000000000001
+   },
+   {
+    "min": 3900.01,
+    "max": 4000,
+    "employer": 7.900000000000005,
+    "employee": 7.900000000000005,
+    "total": 15.80000000000001
+   },
+   {
+    "min": 4000.01,
+    "max": 4100,
+    "employer": 8.100000000000005,
+    "employee": 8.100000000000005,
+    "total": 16.20000000000001
+   },
+   {
+    "min": 4100.01,
+    "max": 4200,
+    "employer": 8.300000000000004,
+    "employee": 8.300000000000004,
+    "total": 16.60000000000001
+   },
+   {
+    "min": 4200.01,
+    "max": 4300,
+    "employer": 8.500000000000004,
+    "employee": 8.500000000000004,
+    "total": 17.000000000000007
+   },
+   {
+    "min": 4300.01,
+    "max": 4400,
+    "employer": 8.700000000000003,
+    "employee": 8.700000000000003,
+    "total": 17.400000000000006
+   },
+   {
+    "min": 4400.01,
+    "max": 4500,
+    "employer": 8.900000000000002,
+    "employee": 8.900000000000002,
+    "total": 17.800000000000004
+   },
+   {
+    "min": 4500.01,
+    "max": 4600,
+    "employer": 9.100000000000001,
+    "employee": 9.100000000000001,
+    "total": 18.200000000000003
+   },
+   {
+    "min": 4600.01,
+    "max": 4700,
+    "employer": 9.3,
+    "employee": 9.3,
+    "total": 18.6
+   },
+   {
+    "min": 4700.01,
+    "max": 4800,
+    "employer": 9.5,
+    "employee": 9.5,
+    "total": 19
+   },
+   {
+    "min": 4800.01,
+    "max": 4900,
+    "employer": 9.7,
+    "employee": 9.7,
+    "total": 19.4
+   },
+   {
+    "min": 4900.01,
+    "max": 5000,
+    "employer": 9.899999999999999,
+    "employee": 9.899999999999999,
+    "total": 19.799999999999997
+   },
+   {
+    "min": 5000.01,
+    "max": 5100,
+    "employer": 10.099999999999998,
+    "employee": 10.099999999999998,
+    "total": 20.199999999999996
+   },
+   {
+    "min": 5100.01,
+    "max": 5200,
+    "employer": 10.299999999999997,
+    "employee": 10.299999999999997,
+    "total": 20.599999999999994
+   },
+   {
+    "min": 5200.01,
+    "max": 5300,
+    "employer": 10.499999999999996,
+    "employee": 10.499999999999996,
+    "total": 20.999999999999993
+   },
+   {
+    "min": 5300.01,
+    "max": 5400,
+    "employer": 10.699999999999996,
+    "employee": 10.699999999999996,
+    "total": 21.39999999999999
+   },
+   {
+    "min": 5400.01,
+    "max": 5500,
+    "employer": 10.899999999999995,
+    "employee": 10.899999999999995,
+    "total": 21.79999999999999
+   },
+   {
+    "min": 5500.01,
+    "max": 5600,
+    "employer": 11.099999999999994,
+    "employee": 11.099999999999994,
+    "total": 22.19999999999999
+   },
+   {
+    "min": 5600.01,
+    "max": 5700,
+    "employer": 11.299999999999994,
+    "employee": 11.299999999999994,
+    "total": 22.599999999999987
+   },
+   {
+    "min": 5700.01,
+    "max": 5800,
+    "employer": 11.499999999999993,
+    "employee": 11.499999999999993,
+    "total": 22.999999999999986
+   },
+   {
+    "min": 5800.01,
+    "max": 5900,
+    "employer": 11.699999999999992,
+    "employee": 11.699999999999992,
+    "total": 23.399999999999984
+   },
+   {
+    "min": 5900.01,
+    "max": 50000,
+    "employer": 11.899999999999991,
+    "employee": 11.899999999999991,
+    "total": 23.799999999999983
+   }
+  ]
+ },
+ "epf11_under60": {
+  "label": "EPF employee 11% (<60)",
+  "bands": [
+   {
+    "min": 0,
+    "max": 0,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 0.01,
+    "max": 10,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 10.01,
+    "max": 20,
+    "employer": 3,
+    "employee": 3,
+    "total": 6
+   },
+   {
+    "min": 20.01,
+    "max": 40,
+    "employer": 6,
+    "employee": 5,
+    "total": 11
+   },
+   {
+    "min": 40.01,
+    "max": 60,
+    "employer": 8,
+    "employee": 7,
+    "total": 15
+   },
+   {
+    "min": 60.01,
+    "max": 80,
+    "employer": 11,
+    "employee": 9,
+    "total": 20
+   },
+   {
+    "min": 80.01,
+    "max": 100,
+    "employer": 13,
+    "employee": 11,
+    "total": 24
+   },
+   {
+    "min": 100.01,
+    "max": 120,
+    "employer": 16,
+    "employee": 14,
+    "total": 30
+   },
+   {
+    "min": 120.01,
+    "max": 140,
+    "employer": 19,
+    "employee": 16,
+    "total": 35
+   },
+   {
+    "min": 140.01,
+    "max": 160,
+    "employer": 21,
+    "employee": 18,
+    "total": 39
+   },
+   {
+    "min": 160.01,
+    "max": 180,
+    "employer": 24,
+    "employee": 20,
+    "total": 44
+   },
+   {
+    "min": 180.01,
+    "max": 200,
+    "employer": 26,
+    "employee": 22,
+    "total": 48
+   },
+   {
+    "min": 200.01,
+    "max": 220,
+    "employer": 29,
+    "employee": 25,
+    "total": 54
+   },
+   {
+    "min": 220.01,
+    "max": 240,
+    "employer": 32,
+    "employee": 27,
+    "total": 59
+   },
+   {
+    "min": 240.01,
+    "max": 260,
+    "employer": 34,
+    "employee": 29,
+    "total": 63
+   },
+   {
+    "min": 260.01,
+    "max": 280,
+    "employer": 37,
+    "employee": 31,
+    "total": 68
+   },
+   {
+    "min": 280.01,
+    "max": 300,
+    "employer": 39,
+    "employee": 33,
+    "total": 72
+   },
+   {
+    "min": 300.01,
+    "max": 320,
+    "employer": 42,
+    "employee": 36,
+    "total": 78
+   },
+   {
+    "min": 320.01,
+    "max": 340,
+    "employer": 45,
+    "employee": 38,
+    "total": 83
+   },
+   {
+    "min": 340.01,
+    "max": 360,
+    "employer": 47,
+    "employee": 40,
+    "total": 87
+   },
+   {
+    "min": 360.01,
+    "max": 380,
+    "employer": 50,
+    "employee": 42,
+    "total": 92
+   },
+   {
+    "min": 380.01,
+    "max": 400,
+    "employer": 52,
+    "employee": 44,
+    "total": 96
+   },
+   {
+    "min": 400.01,
+    "max": 420,
+    "employer": 55,
+    "employee": 47,
+    "total": 102
+   },
+   {
+    "min": 420.01,
+    "max": 440,
+    "employer": 58,
+    "employee": 49,
+    "total": 107
+   },
+   {
+    "min": 440.01,
+    "max": 460,
+    "employer": 60,
+    "employee": 51,
+    "total": 111
+   },
+   {
+    "min": 460.01,
+    "max": 480,
+    "employer": 63,
+    "employee": 53,
+    "total": 116
+   },
+   {
+    "min": 480.01,
+    "max": 500,
+    "employer": 65,
+    "employee": 55,
+    "total": 120
+   },
+   {
+    "min": 500.01,
+    "max": 520,
+    "employer": 68,
+    "employee": 58,
+    "total": 126
+   },
+   {
+    "min": 520.01,
+    "max": 540,
+    "employer": 71,
+    "employee": 60,
+    "total": 131
+   },
+   {
+    "min": 540.01,
+    "max": 560,
+    "employer": 73,
+    "employee": 62,
+    "total": 135
+   },
+   {
+    "min": 560.01,
+    "max": 580,
+    "employer": 76,
+    "employee": 64,
+    "total": 140
+   },
+   {
+    "min": 580.01,
+    "max": 600,
+    "employer": 78,
+    "employee": 66,
+    "total": 144
+   },
+   {
+    "min": 600.01,
+    "max": 620,
+    "employer": 81,
+    "employee": 69,
+    "total": 150
+   },
+   {
+    "min": 620.01,
+    "max": 640,
+    "employer": 84,
+    "employee": 71,
+    "total": 155
+   },
+   {
+    "min": 640.01,
+    "max": 660,
+    "employer": 86,
+    "employee": 73,
+    "total": 159
+   },
+   {
+    "min": 660.01,
+    "max": 680,
+    "employer": 89,
+    "employee": 75,
+    "total": 164
+   },
+   {
+    "min": 680.01,
+    "max": 700,
+    "employer": 91,
+    "employee": 77,
+    "total": 168
+   },
+   {
+    "min": 700.01,
+    "max": 720,
+    "employer": 94,
+    "employee": 80,
+    "total": 174
+   },
+   {
+    "min": 720.01,
+    "max": 740,
+    "employer": 97,
+    "employee": 82,
+    "total": 179
+   },
+   {
+    "min": 740.01,
+    "max": 760,
+    "employer": 99,
+    "employee": 84,
+    "total": 183
+   },
+   {
+    "min": 760.01,
+    "max": 780,
+    "employer": 102,
+    "employee": 86,
+    "total": 188
+   },
+   {
+    "min": 780.01,
+    "max": 800,
+    "employer": 104,
+    "employee": 88,
+    "total": 192
+   },
+   {
+    "min": 800.01,
+    "max": 820,
+    "employer": 107,
+    "employee": 91,
+    "total": 198
+   },
+   {
+    "min": 820.01,
+    "max": 840,
+    "employer": 110,
+    "employee": 93,
+    "total": 203
+   },
+   {
+    "min": 840.01,
+    "max": 860,
+    "employer": 112,
+    "employee": 95,
+    "total": 207
+   },
+   {
+    "min": 860.01,
+    "max": 880,
+    "employer": 115,
+    "employee": 97,
+    "total": 212
+   },
+   {
+    "min": 880.01,
+    "max": 900,
+    "employer": 117,
+    "employee": 99,
+    "total": 216
+   },
+   {
+    "min": 900.01,
+    "max": 920,
+    "employer": 120,
+    "employee": 102,
+    "total": 222
+   },
+   {
+    "min": 920.01,
+    "max": 940,
+    "employer": 123,
+    "employee": 104,
+    "total": 227
+   },
+   {
+    "min": 940.01,
+    "max": 960,
+    "employer": 125,
+    "employee": 106,
+    "total": 231
+   },
+   {
+    "min": 960.01,
+    "max": 980,
+    "employer": 128,
+    "employee": 108,
+    "total": 236
+   },
+   {
+    "min": 980.01,
+    "max": 1000,
+    "employer": 130,
+    "employee": 110,
+    "total": 240
+   },
+   {
+    "min": 1000.01,
+    "max": 1020,
+    "employer": 133,
+    "employee": 113,
+    "total": 246
+   },
+   {
+    "min": 1020.01,
+    "max": 1040,
+    "employer": 136,
+    "employee": 115,
+    "total": 251
+   },
+   {
+    "min": 1040.01,
+    "max": 1060,
+    "employer": 138,
+    "employee": 117,
+    "total": 255
+   },
+   {
+    "min": 1060.01,
+    "max": 1080,
+    "employer": 141,
+    "employee": 119,
+    "total": 260
+   },
+   {
+    "min": 1080.01,
+    "max": 1100,
+    "employer": 143,
+    "employee": 121,
+    "total": 264
+   },
+   {
+    "min": 1100.01,
+    "max": 1120,
+    "employer": 146,
+    "employee": 124,
+    "total": 270
+   },
+   {
+    "min": 1120.01,
+    "max": 1140,
+    "employer": 149,
+    "employee": 126,
+    "total": 275
+   },
+   {
+    "min": 1140.01,
+    "max": 1160,
+    "employer": 151,
+    "employee": 128,
+    "total": 279
+   },
+   {
+    "min": 1160.01,
+    "max": 1180,
+    "employer": 154,
+    "employee": 130,
+    "total": 284
+   },
+   {
+    "min": 1180.01,
+    "max": 1200,
+    "employer": 156,
+    "employee": 132,
+    "total": 288
+   },
+   {
+    "min": 1200.01,
+    "max": 1220,
+    "employer": 159,
+    "employee": 135,
+    "total": 294
+   },
+   {
+    "min": 1220.01,
+    "max": 1240,
+    "employer": 162,
+    "employee": 137,
+    "total": 299
+   },
+   {
+    "min": 1240.01,
+    "max": 1260,
+    "employer": 164,
+    "employee": 139,
+    "total": 303
+   },
+   {
+    "min": 1260.01,
+    "max": 1280,
+    "employer": 167,
+    "employee": 141,
+    "total": 308
+   },
+   {
+    "min": 1280.01,
+    "max": 1300,
+    "employer": 169,
+    "employee": 143,
+    "total": 312
+   },
+   {
+    "min": 1300.01,
+    "max": 1320,
+    "employer": 172,
+    "employee": 146,
+    "total": 318
+   },
+   {
+    "min": 1320.01,
+    "max": 1340,
+    "employer": 175,
+    "employee": 148,
+    "total": 323
+   },
+   {
+    "min": 1340.01,
+    "max": 1360,
+    "employer": 177,
+    "employee": 150,
+    "total": 327
+   },
+   {
+    "min": 1360.01,
+    "max": 1380,
+    "employer": 180,
+    "employee": 152,
+    "total": 332
+   },
+   {
+    "min": 1380.01,
+    "max": 1400,
+    "employer": 182,
+    "employee": 154,
+    "total": 336
+   },
+   {
+    "min": 1400.01,
+    "max": 1420,
+    "employer": 185,
+    "employee": 157,
+    "total": 342
+   },
+   {
+    "min": 1420.01,
+    "max": 1440,
+    "employer": 188,
+    "employee": 159,
+    "total": 347
+   },
+   {
+    "min": 1440.01,
+    "max": 1460,
+    "employer": 190,
+    "employee": 161,
+    "total": 351
+   },
+   {
+    "min": 1460.01,
+    "max": 1480,
+    "employer": 193,
+    "employee": 163,
+    "total": 356
+   },
+   {
+    "min": 1480.01,
+    "max": 1500,
+    "employer": 195,
+    "employee": 165,
+    "total": 360
+   },
+   {
+    "min": 1500.01,
+    "max": 1520,
+    "employer": 198,
+    "employee": 168,
+    "total": 366
+   },
+   {
+    "min": 1520.01,
+    "max": 1540,
+    "employer": 201,
+    "employee": 170,
+    "total": 371
+   },
+   {
+    "min": 1540.01,
+    "max": 1560,
+    "employer": 203,
+    "employee": 172,
+    "total": 375
+   },
+   {
+    "min": 1560.01,
+    "max": 1580,
+    "employer": 206,
+    "employee": 174,
+    "total": 380
+   },
+   {
+    "min": 1580.01,
+    "max": 1600,
+    "employer": 208,
+    "employee": 176,
+    "total": 384
+   },
+   {
+    "min": 1600.01,
+    "max": 1620,
+    "employer": 211,
+    "employee": 179,
+    "total": 390
+   },
+   {
+    "min": 1620.01,
+    "max": 1640,
+    "employer": 214,
+    "employee": 181,
+    "total": 395
+   },
+   {
+    "min": 1640.01,
+    "max": 1660,
+    "employer": 216,
+    "employee": 183,
+    "total": 399
+   },
+   {
+    "min": 1660.01,
+    "max": 1680,
+    "employer": 219,
+    "employee": 185,
+    "total": 404
+   },
+   {
+    "min": 1680.01,
+    "max": 1700,
+    "employer": 221,
+    "employee": 187,
+    "total": 408
+   },
+   {
+    "min": 1700.01,
+    "max": 1720,
+    "employer": 224,
+    "employee": 190,
+    "total": 414
+   },
+   {
+    "min": 1720.01,
+    "max": 1740,
+    "employer": 227,
+    "employee": 192,
+    "total": 419
+   },
+   {
+    "min": 1740.01,
+    "max": 1760,
+    "employer": 229,
+    "employee": 194,
+    "total": 423
+   },
+   {
+    "min": 1760.01,
+    "max": 1780,
+    "employer": 232,
+    "employee": 196,
+    "total": 428
+   },
+   {
+    "min": 1780.01,
+    "max": 1800,
+    "employer": 234,
+    "employee": 198,
+    "total": 432
+   },
+   {
+    "min": 1800.01,
+    "max": 1820,
+    "employer": 237,
+    "employee": 201,
+    "total": 438
+   },
+   {
+    "min": 1820.01,
+    "max": 1840,
+    "employer": 240,
+    "employee": 203,
+    "total": 443
+   },
+   {
+    "min": 1840.01,
+    "max": 1860,
+    "employer": 242,
+    "employee": 205,
+    "total": 447
+   },
+   {
+    "min": 1860.01,
+    "max": 1880,
+    "employer": 245,
+    "employee": 207,
+    "total": 452
+   },
+   {
+    "min": 1880.01,
+    "max": 1900,
+    "employer": 247,
+    "employee": 209,
+    "total": 456
+   },
+   {
+    "min": 1900.01,
+    "max": 1920,
+    "employer": 250,
+    "employee": 212,
+    "total": 462
+   },
+   {
+    "min": 1920.01,
+    "max": 1940,
+    "employer": 253,
+    "employee": 214,
+    "total": 467
+   },
+   {
+    "min": 1940.01,
+    "max": 1960,
+    "employer": 255,
+    "employee": 216,
+    "total": 471
+   },
+   {
+    "min": 1960.01,
+    "max": 1980,
+    "employer": 258,
+    "employee": 218,
+    "total": 476
+   },
+   {
+    "min": 1980.01,
+    "max": 2000,
+    "employer": 260,
+    "employee": 220,
+    "total": 480
+   },
+   {
+    "min": 2000.01,
+    "max": 2020,
+    "employer": 263,
+    "employee": 223,
+    "total": 486
+   },
+   {
+    "min": 2020.01,
+    "max": 2040,
+    "employer": 266,
+    "employee": 225,
+    "total": 491
+   },
+   {
+    "min": 2040.01,
+    "max": 2060,
+    "employer": 268,
+    "employee": 227,
+    "total": 495
+   },
+   {
+    "min": 2060.01,
+    "max": 2080,
+    "employer": 271,
+    "employee": 229,
+    "total": 500
+   },
+   {
+    "min": 2080.01,
+    "max": 2100,
+    "employer": 273,
+    "employee": 231,
+    "total": 504
+   },
+   {
+    "min": 2100.01,
+    "max": 2120,
+    "employer": 276,
+    "employee": 234,
+    "total": 510
+   },
+   {
+    "min": 2120.01,
+    "max": 2140,
+    "employer": 279,
+    "employee": 236,
+    "total": 515
+   },
+   {
+    "min": 2140.01,
+    "max": 2160,
+    "employer": 281,
+    "employee": 238,
+    "total": 519
+   },
+   {
+    "min": 2160.01,
+    "max": 2180,
+    "employer": 284,
+    "employee": 240,
+    "total": 524
+   },
+   {
+    "min": 2180.01,
+    "max": 2200,
+    "employer": 286,
+    "employee": 242,
+    "total": 528
+   },
+   {
+    "min": 2200.01,
+    "max": 2220,
+    "employer": 289,
+    "employee": 245,
+    "total": 534
+   },
+   {
+    "min": 2220.01,
+    "max": 2240,
+    "employer": 292,
+    "employee": 247,
+    "total": 539
+   },
+   {
+    "min": 2240.01,
+    "max": 2260,
+    "employer": 294,
+    "employee": 249,
+    "total": 543
+   },
+   {
+    "min": 2260.01,
+    "max": 2280,
+    "employer": 297,
+    "employee": 251,
+    "total": 548
+   },
+   {
+    "min": 2280.01,
+    "max": 2300,
+    "employer": 299,
+    "employee": 253,
+    "total": 552
+   },
+   {
+    "min": 2300.01,
+    "max": 2320,
+    "employer": 302,
+    "employee": 256,
+    "total": 558
+   },
+   {
+    "min": 2320.01,
+    "max": 2340,
+    "employer": 305,
+    "employee": 258,
+    "total": 563
+   },
+   {
+    "min": 2340.01,
+    "max": 2360,
+    "employer": 307,
+    "employee": 260,
+    "total": 567
+   },
+   {
+    "min": 2360.01,
+    "max": 2380,
+    "employer": 310,
+    "employee": 262,
+    "total": 572
+   },
+   {
+    "min": 2380.01,
+    "max": 2400,
+    "employer": 312,
+    "employee": 264,
+    "total": 576
+   },
+   {
+    "min": 2400.01,
+    "max": 2420,
+    "employer": 315,
+    "employee": 267,
+    "total": 582
+   },
+   {
+    "min": 2420.01,
+    "max": 2440,
+    "employer": 318,
+    "employee": 269,
+    "total": 587
+   },
+   {
+    "min": 2440.01,
+    "max": 2460,
+    "employer": 320,
+    "employee": 271,
+    "total": 591
+   },
+   {
+    "min": 2460.01,
+    "max": 2480,
+    "employer": 323,
+    "employee": 273,
+    "total": 596
+   },
+   {
+    "min": 2480.01,
+    "max": 2500,
+    "employer": 325,
+    "employee": 275,
+    "total": 600
+   },
+   {
+    "min": 2500.01,
+    "max": 2520,
+    "employer": 328,
+    "employee": 278,
+    "total": 606
+   },
+   {
+    "min": 2520.01,
+    "max": 2540,
+    "employer": 331,
+    "employee": 280,
+    "total": 611
+   },
+   {
+    "min": 2540.01,
+    "max": 2560,
+    "employer": 333,
+    "employee": 282,
+    "total": 615
+   },
+   {
+    "min": 2560.01,
+    "max": 2580,
+    "employer": 336,
+    "employee": 284,
+    "total": 620
+   },
+   {
+    "min": 2580.01,
+    "max": 2600,
+    "employer": 338,
+    "employee": 286,
+    "total": 624
+   },
+   {
+    "min": 2600.01,
+    "max": 2620,
+    "employer": 341,
+    "employee": 289,
+    "total": 630
+   },
+   {
+    "min": 2620.01,
+    "max": 2640,
+    "employer": 344,
+    "employee": 291,
+    "total": 635
+   },
+   {
+    "min": 2640.01,
+    "max": 2660,
+    "employer": 346,
+    "employee": 293,
+    "total": 639
+   },
+   {
+    "min": 2660.01,
+    "max": 2680,
+    "employer": 349,
+    "employee": 295,
+    "total": 644
+   },
+   {
+    "min": 2680.01,
+    "max": 2700,
+    "employer": 351,
+    "employee": 297,
+    "total": 648
+   },
+   {
+    "min": 2700.01,
+    "max": 2720,
+    "employer": 354,
+    "employee": 300,
+    "total": 654
+   },
+   {
+    "min": 2720.01,
+    "max": 2740,
+    "employer": 357,
+    "employee": 302,
+    "total": 659
+   },
+   {
+    "min": 2740.01,
+    "max": 2760,
+    "employer": 359,
+    "employee": 304,
+    "total": 663
+   },
+   {
+    "min": 2760.01,
+    "max": 2780,
+    "employer": 362,
+    "employee": 306,
+    "total": 668
+   },
+   {
+    "min": 2780.01,
+    "max": 2800,
+    "employer": 364,
+    "employee": 308,
+    "total": 672
+   },
+   {
+    "min": 2800.01,
+    "max": 2820,
+    "employer": 367,
+    "employee": 311,
+    "total": 678
+   },
+   {
+    "min": 2820.01,
+    "max": 2840,
+    "employer": 370,
+    "employee": 313,
+    "total": 683
+   },
+   {
+    "min": 2840.01,
+    "max": 2860,
+    "employer": 372,
+    "employee": 315,
+    "total": 687
+   },
+   {
+    "min": 2860.01,
+    "max": 2880,
+    "employer": 375,
+    "employee": 317,
+    "total": 692
+   },
+   {
+    "min": 2880.01,
+    "max": 2900,
+    "employer": 377,
+    "employee": 319,
+    "total": 696
+   },
+   {
+    "min": 2900.01,
+    "max": 2920,
+    "employer": 380,
+    "employee": 322,
+    "total": 702
+   },
+   {
+    "min": 2920.01,
+    "max": 2940,
+    "employer": 383,
+    "employee": 324,
+    "total": 707
+   },
+   {
+    "min": 2940.01,
+    "max": 2960,
+    "employer": 385,
+    "employee": 326,
+    "total": 711
+   },
+   {
+    "min": 2960.01,
+    "max": 2980,
+    "employer": 388,
+    "employee": 328,
+    "total": 716
+   },
+   {
+    "min": 2980.01,
+    "max": 3000,
+    "employer": 390,
+    "employee": 330,
+    "total": 720
+   },
+   {
+    "min": 3000.01,
+    "max": 3020,
+    "employer": 393,
+    "employee": 333,
+    "total": 726
+   },
+   {
+    "min": 3020.01,
+    "max": 3040,
+    "employer": 396,
+    "employee": 335,
+    "total": 731
+   },
+   {
+    "min": 3040.01,
+    "max": 3060,
+    "employer": 398,
+    "employee": 337,
+    "total": 735
+   },
+   {
+    "min": 3060.01,
+    "max": 3080,
+    "employer": 401,
+    "employee": 339,
+    "total": 740
+   },
+   {
+    "min": 3080.01,
+    "max": 3100,
+    "employer": 403,
+    "employee": 341,
+    "total": 744
+   },
+   {
+    "min": 3100.01,
+    "max": 3120,
+    "employer": 406,
+    "employee": 344,
+    "total": 750
+   },
+   {
+    "min": 3120.01,
+    "max": 3140,
+    "employer": 409,
+    "employee": 346,
+    "total": 755
+   },
+   {
+    "min": 3140.01,
+    "max": 3160,
+    "employer": 411,
+    "employee": 348,
+    "total": 759
+   },
+   {
+    "min": 3160.01,
+    "max": 3180,
+    "employer": 414,
+    "employee": 350,
+    "total": 764
+   },
+   {
+    "min": 3180.01,
+    "max": 3200,
+    "employer": 416,
+    "employee": 352,
+    "total": 768
+   },
+   {
+    "min": 3200.01,
+    "max": 3220,
+    "employer": 419,
+    "employee": 355,
+    "total": 774
+   },
+   {
+    "min": 3220.01,
+    "max": 3240,
+    "employer": 422,
+    "employee": 357,
+    "total": 779
+   },
+   {
+    "min": 3240.01,
+    "max": 3260,
+    "employer": 424,
+    "employee": 359,
+    "total": 783
+   },
+   {
+    "min": 3260.01,
+    "max": 3280,
+    "employer": 427,
+    "employee": 361,
+    "total": 788
+   },
+   {
+    "min": 3280.01,
+    "max": 3300,
+    "employer": 429,
+    "employee": 363,
+    "total": 792
+   },
+   {
+    "min": 3300.01,
+    "max": 3320,
+    "employer": 432,
+    "employee": 366,
+    "total": 798
+   },
+   {
+    "min": 3320.01,
+    "max": 3340,
+    "employer": 435,
+    "employee": 368,
+    "total": 803
+   },
+   {
+    "min": 3340.01,
+    "max": 3360,
+    "employer": 437,
+    "employee": 370,
+    "total": 807
+   },
+   {
+    "min": 3360.01,
+    "max": 3380,
+    "employer": 440,
+    "employee": 372,
+    "total": 812
+   },
+   {
+    "min": 3380.01,
+    "max": 3400,
+    "employer": 442,
+    "employee": 374,
+    "total": 816
+   },
+   {
+    "min": 3400.01,
+    "max": 3420,
+    "employer": 445,
+    "employee": 377,
+    "total": 822
+   },
+   {
+    "min": 3420.01,
+    "max": 3440,
+    "employer": 448,
+    "employee": 379,
+    "total": 827
+   },
+   {
+    "min": 3440.01,
+    "max": 3460,
+    "employer": 450,
+    "employee": 381,
+    "total": 831
+   },
+   {
+    "min": 3460.01,
+    "max": 3480,
+    "employer": 453,
+    "employee": 383,
+    "total": 836
+   },
+   {
+    "min": 3480.01,
+    "max": 3500,
+    "employer": 455,
+    "employee": 385,
+    "total": 840
+   },
+   {
+    "min": 3500.01,
+    "max": 3520,
+    "employer": 458,
+    "employee": 388,
+    "total": 846
+   },
+   {
+    "min": 3520.01,
+    "max": 3540,
+    "employer": 461,
+    "employee": 390,
+    "total": 851
+   },
+   {
+    "min": 3540.01,
+    "max": 3560,
+    "employer": 463,
+    "employee": 392,
+    "total": 855
+   },
+   {
+    "min": 3560.01,
+    "max": 3580,
+    "employer": 466,
+    "employee": 394,
+    "total": 860
+   },
+   {
+    "min": 3580.01,
+    "max": 3600,
+    "employer": 468,
+    "employee": 396,
+    "total": 864
+   },
+   {
+    "min": 3600.01,
+    "max": 3620,
+    "employer": 471,
+    "employee": 399,
+    "total": 870
+   },
+   {
+    "min": 3620.01,
+    "max": 3640,
+    "employer": 474,
+    "employee": 401,
+    "total": 875
+   },
+   {
+    "min": 3640.01,
+    "max": 3660,
+    "employer": 476,
+    "employee": 403,
+    "total": 879
+   },
+   {
+    "min": 3660.01,
+    "max": 3680,
+    "employer": 479,
+    "employee": 405,
+    "total": 884
+   },
+   {
+    "min": 3680.01,
+    "max": 3700,
+    "employer": 481,
+    "employee": 407,
+    "total": 888
+   },
+   {
+    "min": 3700.01,
+    "max": 3720,
+    "employer": 484,
+    "employee": 410,
+    "total": 894
+   },
+   {
+    "min": 3720.01,
+    "max": 3740,
+    "employer": 487,
+    "employee": 412,
+    "total": 899
+   },
+   {
+    "min": 3740.01,
+    "max": 3760,
+    "employer": 489,
+    "employee": 414,
+    "total": 903
+   },
+   {
+    "min": 3760.01,
+    "max": 3780,
+    "employer": 492,
+    "employee": 416,
+    "total": 908
+   },
+   {
+    "min": 3780.01,
+    "max": 3800,
+    "employer": 494,
+    "employee": 418,
+    "total": 912
+   },
+   {
+    "min": 3800.01,
+    "max": 3820,
+    "employer": 497,
+    "employee": 421,
+    "total": 918
+   },
+   {
+    "min": 3820.01,
+    "max": 3840,
+    "employer": 500,
+    "employee": 423,
+    "total": 923
+   },
+   {
+    "min": 3840.01,
+    "max": 3860,
+    "employer": 502,
+    "employee": 425,
+    "total": 927
+   },
+   {
+    "min": 3860.01,
+    "max": 3880,
+    "employer": 505,
+    "employee": 427,
+    "total": 932
+   },
+   {
+    "min": 3880.01,
+    "max": 3900,
+    "employer": 507,
+    "employee": 429,
+    "total": 936
+   },
+   {
+    "min": 3900.01,
+    "max": 3920,
+    "employer": 510,
+    "employee": 432,
+    "total": 942
+   },
+   {
+    "min": 3920.01,
+    "max": 3940,
+    "employer": 513,
+    "employee": 434,
+    "total": 947
+   },
+   {
+    "min": 3940.01,
+    "max": 3960,
+    "employer": 515,
+    "employee": 436,
+    "total": 951
+   },
+   {
+    "min": 3960.01,
+    "max": 3980,
+    "employer": 518,
+    "employee": 438,
+    "total": 956
+   },
+   {
+    "min": 3980.01,
+    "max": 4000,
+    "employer": 520,
+    "employee": 440,
+    "total": 960
+   },
+   {
+    "min": 4000.01,
+    "max": 4020,
+    "employer": 523,
+    "employee": 443,
+    "total": 966
+   },
+   {
+    "min": 4020.01,
+    "max": 4040,
+    "employer": 526,
+    "employee": 445,
+    "total": 971
+   },
+   {
+    "min": 4040.01,
+    "max": 4060,
+    "employer": 528,
+    "employee": 447,
+    "total": 975
+   },
+   {
+    "min": 4060.01,
+    "max": 4080,
+    "employer": 531,
+    "employee": 449,
+    "total": 980
+   },
+   {
+    "min": 4080.01,
+    "max": 4100,
+    "employer": 533,
+    "employee": 451,
+    "total": 984
+   },
+   {
+    "min": 4100.01,
+    "max": 4120,
+    "employer": 536,
+    "employee": 454,
+    "total": 990
+   },
+   {
+    "min": 4120.01,
+    "max": 4140,
+    "employer": 539,
+    "employee": 456,
+    "total": 995
+   },
+   {
+    "min": 4140.01,
+    "max": 4160,
+    "employer": 541,
+    "employee": 458,
+    "total": 999
+   },
+   {
+    "min": 4160.01,
+    "max": 4180,
+    "employer": 544,
+    "employee": 460,
+    "total": 1004
+   },
+   {
+    "min": 4180.01,
+    "max": 4200,
+    "employer": 546,
+    "employee": 462,
+    "total": 1008
+   },
+   {
+    "min": 4200.01,
+    "max": 4220,
+    "employer": 549,
+    "employee": 465,
+    "total": 1014
+   },
+   {
+    "min": 4220.01,
+    "max": 4240,
+    "employer": 552,
+    "employee": 467,
+    "total": 1019
+   },
+   {
+    "min": 4240.01,
+    "max": 4260,
+    "employer": 554,
+    "employee": 469,
+    "total": 1023
+   },
+   {
+    "min": 4260.01,
+    "max": 4280,
+    "employer": 557,
+    "employee": 471,
+    "total": 1028
+   },
+   {
+    "min": 4280.01,
+    "max": 4300,
+    "employer": 559,
+    "employee": 473,
+    "total": 1032
+   },
+   {
+    "min": 4300.01,
+    "max": 4320,
+    "employer": 562,
+    "employee": 476,
+    "total": 1038
+   },
+   {
+    "min": 4320.01,
+    "max": 4340,
+    "employer": 565,
+    "employee": 478,
+    "total": 1043
+   },
+   {
+    "min": 4340.01,
+    "max": 4360,
+    "employer": 567,
+    "employee": 480,
+    "total": 1047
+   },
+   {
+    "min": 4360.01,
+    "max": 4380,
+    "employer": 570,
+    "employee": 482,
+    "total": 1052
+   },
+   {
+    "min": 4380.01,
+    "max": 4400,
+    "employer": 572,
+    "employee": 484,
+    "total": 1056
+   },
+   {
+    "min": 4400.01,
+    "max": 4420,
+    "employer": 575,
+    "employee": 487,
+    "total": 1062
+   },
+   {
+    "min": 4420.01,
+    "max": 4440,
+    "employer": 578,
+    "employee": 489,
+    "total": 1067
+   },
+   {
+    "min": 4440.01,
+    "max": 4460,
+    "employer": 580,
+    "employee": 491,
+    "total": 1071
+   },
+   {
+    "min": 4460.01,
+    "max": 4480,
+    "employer": 583,
+    "employee": 493,
+    "total": 1076
+   },
+   {
+    "min": 4480.01,
+    "max": 4500,
+    "employer": 585,
+    "employee": 495,
+    "total": 1080
+   },
+   {
+    "min": 4500.01,
+    "max": 4520,
+    "employer": 588,
+    "employee": 498,
+    "total": 1086
+   },
+   {
+    "min": 4520.01,
+    "max": 4540,
+    "employer": 591,
+    "employee": 500,
+    "total": 1091
+   },
+   {
+    "min": 4540.01,
+    "max": 4560,
+    "employer": 593,
+    "employee": 502,
+    "total": 1095
+   },
+   {
+    "min": 4560.01,
+    "max": 4580,
+    "employer": 596,
+    "employee": 504,
+    "total": 1100
+   },
+   {
+    "min": 4580.01,
+    "max": 4600,
+    "employer": 598,
+    "employee": 506,
+    "total": 1104
+   },
+   {
+    "min": 4600.01,
+    "max": 4620,
+    "employer": 601,
+    "employee": 509,
+    "total": 1110
+   },
+   {
+    "min": 4620.01,
+    "max": 4640,
+    "employer": 604,
+    "employee": 511,
+    "total": 1115
+   },
+   {
+    "min": 4640.01,
+    "max": 4660,
+    "employer": 606,
+    "employee": 513,
+    "total": 1119
+   },
+   {
+    "min": 4660.01,
+    "max": 4680,
+    "employer": 609,
+    "employee": 515,
+    "total": 1124
+   },
+   {
+    "min": 4680.01,
+    "max": 4700,
+    "employer": 611,
+    "employee": 517,
+    "total": 1128
+   },
+   {
+    "min": 4700.01,
+    "max": 4720,
+    "employer": 614,
+    "employee": 520,
+    "total": 1134
+   },
+   {
+    "min": 4720.01,
+    "max": 4740,
+    "employer": 617,
+    "employee": 522,
+    "total": 1139
+   },
+   {
+    "min": 4740.01,
+    "max": 4760,
+    "employer": 619,
+    "employee": 524,
+    "total": 1143
+   },
+   {
+    "min": 4760.01,
+    "max": 4780,
+    "employer": 622,
+    "employee": 526,
+    "total": 1148
+   },
+   {
+    "min": 4780.01,
+    "max": 4800,
+    "employer": 624,
+    "employee": 528,
+    "total": 1152
+   },
+   {
+    "min": 4800.01,
+    "max": 4820,
+    "employer": 627,
+    "employee": 531,
+    "total": 1158
+   },
+   {
+    "min": 4820.01,
+    "max": 4840,
+    "employer": 630,
+    "employee": 533,
+    "total": 1163
+   },
+   {
+    "min": 4840.01,
+    "max": 4860,
+    "employer": 632,
+    "employee": 535,
+    "total": 1167
+   },
+   {
+    "min": 4860.01,
+    "max": 4880,
+    "employer": 635,
+    "employee": 537,
+    "total": 1172
+   },
+   {
+    "min": 4880.01,
+    "max": 4900,
+    "employer": 637,
+    "employee": 539,
+    "total": 1176
+   },
+   {
+    "min": 4900.01,
+    "max": 4920,
+    "employer": 640,
+    "employee": 542,
+    "total": 1182
+   },
+   {
+    "min": 4920.01,
+    "max": 4940,
+    "employer": 643,
+    "employee": 544,
+    "total": 1187
+   },
+   {
+    "min": 4940.01,
+    "max": 4960,
+    "employer": 645,
+    "employee": 546,
+    "total": 1191
+   },
+   {
+    "min": 4960.01,
+    "max": 4980,
+    "employer": 648,
+    "employee": 548,
+    "total": 1196
+   },
+   {
+    "min": 4980.01,
+    "max": 5000,
+    "employer": 650,
+    "employee": 550,
+    "total": 1200
+   },
+   {
+    "min": 5000.01,
+    "max": 5100,
+    "employer": 612,
+    "employee": 561,
+    "total": 1173
+   },
+   {
+    "min": 5100.01,
+    "max": 5200,
+    "employer": 624,
+    "employee": 572,
+    "total": 1196
+   },
+   {
+    "min": 5200.01,
+    "max": 5300,
+    "employer": 636,
+    "employee": 583,
+    "total": 1219
+   },
+   {
+    "min": 5300.01,
+    "max": 5400,
+    "employer": 648,
+    "employee": 594,
+    "total": 1242
+   },
+   {
+    "min": 5400.01,
+    "max": 5500,
+    "employer": 660,
+    "employee": 605,
+    "total": 1265
+   },
+   {
+    "min": 5500.01,
+    "max": 5600,
+    "employer": 672,
+    "employee": 616,
+    "total": 1288
+   },
+   {
+    "min": 5600.01,
+    "max": 5700,
+    "employer": 684,
+    "employee": 627,
+    "total": 1311
+   },
+   {
+    "min": 5700.01,
+    "max": 5800,
+    "employer": 696,
+    "employee": 638,
+    "total": 1334
+   },
+   {
+    "min": 5800.01,
+    "max": 5900,
+    "employer": 708,
+    "employee": 649,
+    "total": 1357
+   },
+   {
+    "min": 5900.01,
+    "max": 6000,
+    "employer": 720,
+    "employee": 660,
+    "total": 1380
+   },
+   {
+    "min": 6000.01,
+    "max": 6100,
+    "employer": 732,
+    "employee": 671,
+    "total": 1403
+   },
+   {
+    "min": 6100.01,
+    "max": 6200,
+    "employer": 744,
+    "employee": 682,
+    "total": 1426
+   },
+   {
+    "min": 6200.01,
+    "max": 6300,
+    "employer": 756,
+    "employee": 693,
+    "total": 1449
+   },
+   {
+    "min": 6300.01,
+    "max": 6400,
+    "employer": 768,
+    "employee": 704,
+    "total": 1472
+   },
+   {
+    "min": 6400.01,
+    "max": 6500,
+    "employer": 780,
+    "employee": 715,
+    "total": 1495
+   },
+   {
+    "min": 6500.01,
+    "max": 6600,
+    "employer": 792,
+    "employee": 726,
+    "total": 1518
+   },
+   {
+    "min": 6600.01,
+    "max": 6700,
+    "employer": 804,
+    "employee": 737,
+    "total": 1541
+   },
+   {
+    "min": 6700.01,
+    "max": 6800,
+    "employer": 816,
+    "employee": 748,
+    "total": 1564
+   },
+   {
+    "min": 6800.01,
+    "max": 6900,
+    "employer": 828,
+    "employee": 759,
+    "total": 1587
+   },
+   {
+    "min": 6900.01,
+    "max": 7000,
+    "employer": 840,
+    "employee": 770,
+    "total": 1610
+   },
+   {
+    "min": 7000.01,
+    "max": 7100,
+    "employer": 852,
+    "employee": 781,
+    "total": 1633
+   },
+   {
+    "min": 7100.01,
+    "max": 7200,
+    "employer": 864,
+    "employee": 792,
+    "total": 1656
+   },
+   {
+    "min": 7200.01,
+    "max": 7300,
+    "employer": 876,
+    "employee": 803,
+    "total": 1679
+   },
+   {
+    "min": 7300.01,
+    "max": 7400,
+    "employer": 888,
+    "employee": 814,
+    "total": 1702
+   },
+   {
+    "min": 7400.01,
+    "max": 7500,
+    "employer": 900,
+    "employee": 825,
+    "total": 1725
+   },
+   {
+    "min": 7500.01,
+    "max": 7600,
+    "employer": 912,
+    "employee": 836,
+    "total": 1748
+   },
+   {
+    "min": 7600.01,
+    "max": 7700,
+    "employer": 924,
+    "employee": 847,
+    "total": 1771
+   },
+   {
+    "min": 7700.01,
+    "max": 7800,
+    "employer": 936,
+    "employee": 858,
+    "total": 1794
+   },
+   {
+    "min": 7800.01,
+    "max": 7900,
+    "employer": 948,
+    "employee": 869,
+    "total": 1817
+   },
+   {
+    "min": 7900.01,
+    "max": 8000,
+    "employer": 960,
+    "employee": 880,
+    "total": 1840
+   },
+   {
+    "min": 8000.01,
+    "max": 8100,
+    "employer": 972,
+    "employee": 891,
+    "total": 1863
+   },
+   {
+    "min": 8100.01,
+    "max": 8200,
+    "employer": 984,
+    "employee": 902,
+    "total": 1886
+   },
+   {
+    "min": 8200.01,
+    "max": 8300,
+    "employer": 996,
+    "employee": 913,
+    "total": 1909
+   },
+   {
+    "min": 8300.01,
+    "max": 8400,
+    "employer": 1008,
+    "employee": 924,
+    "total": 1932
+   },
+   {
+    "min": 8400.01,
+    "max": 8500,
+    "employer": 1020,
+    "employee": 935,
+    "total": 1955
+   },
+   {
+    "min": 8500.01,
+    "max": 8600,
+    "employer": 1032,
+    "employee": 946,
+    "total": 1978
+   },
+   {
+    "min": 8600.01,
+    "max": 8700,
+    "employer": 1044,
+    "employee": 957,
+    "total": 2001
+   },
+   {
+    "min": 8700.01,
+    "max": 8800,
+    "employer": 1056,
+    "employee": 968,
+    "total": 2024
+   },
+   {
+    "min": 8800.01,
+    "max": 8900,
+    "employer": 1068,
+    "employee": 979,
+    "total": 2047
+   },
+   {
+    "min": 8900.01,
+    "max": 9000,
+    "employer": 1080,
+    "employee": 990,
+    "total": 2070
+   },
+   {
+    "min": 9000.01,
+    "max": 9100,
+    "employer": 1092,
+    "employee": 1001,
+    "total": 2093
+   },
+   {
+    "min": 9100.01,
+    "max": 9200,
+    "employer": 1104,
+    "employee": 1012,
+    "total": 2116
+   },
+   {
+    "min": 9200.01,
+    "max": 9300,
+    "employer": 1116,
+    "employee": 1023,
+    "total": 2139
+   },
+   {
+    "min": 9300.01,
+    "max": 9400,
+    "employer": 1128,
+    "employee": 1034,
+    "total": 2162
+   },
+   {
+    "min": 9400.01,
+    "max": 9500,
+    "employer": 1140,
+    "employee": 1045,
+    "total": 2185
+   },
+   {
+    "min": 9500.01,
+    "max": 9600,
+    "employer": 1152,
+    "employee": 1056,
+    "total": 2208
+   },
+   {
+    "min": 9600.01,
+    "max": 9700,
+    "employer": 1164,
+    "employee": 1067,
+    "total": 2231
+   },
+   {
+    "min": 9700.01,
+    "max": 9800,
+    "employer": 1176,
+    "employee": 1078,
+    "total": 2254
+   },
+   {
+    "min": 9800.01,
+    "max": 9900,
+    "employer": 1188,
+    "employee": 1089,
+    "total": 2277
+   },
+   {
+    "min": 9900.01,
+    "max": 10000,
+    "employer": 1200,
+    "employee": 1100,
+    "total": 2300
+   },
+   {
+    "min": 10000.01,
+    "max": 10100,
+    "employer": 1212,
+    "employee": 1111,
+    "total": 2323
+   },
+   {
+    "min": 10100.01,
+    "max": 10200,
+    "employer": 1224,
+    "employee": 1122,
+    "total": 2346
+   },
+   {
+    "min": 10200.01,
+    "max": 10300,
+    "employer": 1236,
+    "employee": 1133,
+    "total": 2369
+   },
+   {
+    "min": 10300.01,
+    "max": 10400,
+    "employer": 1248,
+    "employee": 1144,
+    "total": 2392
+   },
+   {
+    "min": 10400.01,
+    "max": 10500,
+    "employer": 1260,
+    "employee": 1155,
+    "total": 2415
+   },
+   {
+    "min": 10500.01,
+    "max": 10600,
+    "employer": 1272,
+    "employee": 1166,
+    "total": 2438
+   },
+   {
+    "min": 10600.01,
+    "max": 10700,
+    "employer": 1284,
+    "employee": 1177,
+    "total": 2461
+   },
+   {
+    "min": 10700.01,
+    "max": 10800,
+    "employer": 1296,
+    "employee": 1188,
+    "total": 2484
+   },
+   {
+    "min": 10800.01,
+    "max": 10900,
+    "employer": 1308,
+    "employee": 1199,
+    "total": 2507
+   },
+   {
+    "min": 10900.01,
+    "max": 11000,
+    "employer": 1320,
+    "employee": 1210,
+    "total": 2530
+   },
+   {
+    "min": 11000.01,
+    "max": 11100,
+    "employer": 1332,
+    "employee": 1221,
+    "total": 2553
+   },
+   {
+    "min": 11100.01,
+    "max": 11200,
+    "employer": 1344,
+    "employee": 1232,
+    "total": 2576
+   },
+   {
+    "min": 11200.01,
+    "max": 11300,
+    "employer": 1356,
+    "employee": 1243,
+    "total": 2599
+   },
+   {
+    "min": 11300.01,
+    "max": 11400,
+    "employer": 1368,
+    "employee": 1254,
+    "total": 2622
+   },
+   {
+    "min": 11400.01,
+    "max": 11500,
+    "employer": 1380,
+    "employee": 1265,
+    "total": 2645
+   },
+   {
+    "min": 11500.01,
+    "max": 11600,
+    "employer": 1392,
+    "employee": 1276,
+    "total": 2668
+   },
+   {
+    "min": 11600.01,
+    "max": 11700,
+    "employer": 1404,
+    "employee": 1287,
+    "total": 2691
+   },
+   {
+    "min": 11700.01,
+    "max": 11800,
+    "employer": 1416,
+    "employee": 1298,
+    "total": 2714
+   },
+   {
+    "min": 11800.01,
+    "max": 11900,
+    "employer": 1428,
+    "employee": 1309,
+    "total": 2737
+   },
+   {
+    "min": 11900.01,
+    "max": 12000,
+    "employer": 1440,
+    "employee": 1320,
+    "total": 2760
+   },
+   {
+    "min": 12000.01,
+    "max": 12100,
+    "employer": 1452,
+    "employee": 1331,
+    "total": 2783
+   },
+   {
+    "min": 12100.01,
+    "max": 12200,
+    "employer": 1464,
+    "employee": 1342,
+    "total": 2806
+   },
+   {
+    "min": 12200.01,
+    "max": 12300,
+    "employer": 1476,
+    "employee": 1353,
+    "total": 2829
+   },
+   {
+    "min": 12300.01,
+    "max": 12400,
+    "employer": 1488,
+    "employee": 1364,
+    "total": 2852
+   },
+   {
+    "min": 12400.01,
+    "max": 12500,
+    "employer": 1500,
+    "employee": 1375,
+    "total": 2875
+   },
+   {
+    "min": 12500.01,
+    "max": 12600,
+    "employer": 1512,
+    "employee": 1386,
+    "total": 2898
+   },
+   {
+    "min": 12600.01,
+    "max": 12700,
+    "employer": 1524,
+    "employee": 1397,
+    "total": 2921
+   },
+   {
+    "min": 12700.01,
+    "max": 12800,
+    "employer": 1536,
+    "employee": 1408,
+    "total": 2944
+   },
+   {
+    "min": 12800.01,
+    "max": 12900,
+    "employer": 1548,
+    "employee": 1419,
+    "total": 2967
+   },
+   {
+    "min": 12900.01,
+    "max": 13000,
+    "employer": 1560,
+    "employee": 1430,
+    "total": 2990
+   },
+   {
+    "min": 13000.01,
+    "max": 13100,
+    "employer": 1572,
+    "employee": 1441,
+    "total": 3013
+   },
+   {
+    "min": 13100.01,
+    "max": 13200,
+    "employer": 1584,
+    "employee": 1452,
+    "total": 3036
+   },
+   {
+    "min": 13200.01,
+    "max": 13300,
+    "employer": 1596,
+    "employee": 1463,
+    "total": 3059
+   },
+   {
+    "min": 13300.01,
+    "max": 13400,
+    "employer": 1608,
+    "employee": 1474,
+    "total": 3082
+   },
+   {
+    "min": 13400.01,
+    "max": 13500,
+    "employer": 1620,
+    "employee": 1485,
+    "total": 3105
+   },
+   {
+    "min": 13500.01,
+    "max": 13600,
+    "employer": 1632,
+    "employee": 1496,
+    "total": 3128
+   },
+   {
+    "min": 13600.01,
+    "max": 13700,
+    "employer": 1644,
+    "employee": 1507,
+    "total": 3151
+   },
+   {
+    "min": 13700.01,
+    "max": 13800,
+    "employer": 1656,
+    "employee": 1518,
+    "total": 3174
+   },
+   {
+    "min": 13800.01,
+    "max": 13900,
+    "employer": 1668,
+    "employee": 1529,
+    "total": 3197
+   },
+   {
+    "min": 13900.01,
+    "max": 14000,
+    "employer": 1680,
+    "employee": 1540,
+    "total": 3220
+   },
+   {
+    "min": 14000.01,
+    "max": 14100,
+    "employer": 1692,
+    "employee": 1551,
+    "total": 3243
+   },
+   {
+    "min": 14100.01,
+    "max": 14200,
+    "employer": 1704,
+    "employee": 1562,
+    "total": 3266
+   },
+   {
+    "min": 14200.01,
+    "max": 14300,
+    "employer": 1716,
+    "employee": 1573,
+    "total": 3289
+   },
+   {
+    "min": 14300.01,
+    "max": 14400,
+    "employer": 1728,
+    "employee": 1584,
+    "total": 3312
+   },
+   {
+    "min": 14400.01,
+    "max": 14500,
+    "employer": 1740,
+    "employee": 1595,
+    "total": 3335
+   },
+   {
+    "min": 14500.01,
+    "max": 14600,
+    "employer": 1752,
+    "employee": 1606,
+    "total": 3358
+   },
+   {
+    "min": 14600.01,
+    "max": 14700,
+    "employer": 1764,
+    "employee": 1617,
+    "total": 3381
+   },
+   {
+    "min": 14700.01,
+    "max": 14800,
+    "employer": 1776,
+    "employee": 1628,
+    "total": 3404
+   },
+   {
+    "min": 14800.01,
+    "max": 14900,
+    "employer": 1788,
+    "employee": 1639,
+    "total": 3427
+   },
+   {
+    "min": 14900.01,
+    "max": 15000,
+    "employer": 1800,
+    "employee": 1650,
+    "total": 3450
+   },
+   {
+    "min": 15000.01,
+    "max": 15100,
+    "employer": 1812,
+    "employee": 1661,
+    "total": 3473
+   },
+   {
+    "min": 15100.01,
+    "max": 15200,
+    "employer": 1824,
+    "employee": 1672,
+    "total": 3496
+   },
+   {
+    "min": 15200.01,
+    "max": 15300,
+    "employer": 1836,
+    "employee": 1683,
+    "total": 3519
+   },
+   {
+    "min": 15300.01,
+    "max": 15400,
+    "employer": 1848,
+    "employee": 1694,
+    "total": 3542
+   },
+   {
+    "min": 15400.01,
+    "max": 15500,
+    "employer": 1860,
+    "employee": 1705,
+    "total": 3565
+   },
+   {
+    "min": 15500.01,
+    "max": 15600,
+    "employer": 1872,
+    "employee": 1716,
+    "total": 3588
+   },
+   {
+    "min": 15600.01,
+    "max": 15700,
+    "employer": 1884,
+    "employee": 1727,
+    "total": 3611
+   },
+   {
+    "min": 15700.01,
+    "max": 15800,
+    "employer": 1896,
+    "employee": 1738,
+    "total": 3634
+   },
+   {
+    "min": 15800.01,
+    "max": 15900,
+    "employer": 1908,
+    "employee": 1749,
+    "total": 3657
+   },
+   {
+    "min": 15900.01,
+    "max": 16000,
+    "employer": 1920,
+    "employee": 1760,
+    "total": 3680
+   },
+   {
+    "min": 16000.01,
+    "max": 16100,
+    "employer": 1932,
+    "employee": 1771,
+    "total": 3703
+   },
+   {
+    "min": 16100.01,
+    "max": 16200,
+    "employer": 1944,
+    "employee": 1782,
+    "total": 3726
+   },
+   {
+    "min": 16200.01,
+    "max": 16300,
+    "employer": 1956,
+    "employee": 1793,
+    "total": 3749
+   },
+   {
+    "min": 16300.01,
+    "max": 16400,
+    "employer": 1968,
+    "employee": 1804,
+    "total": 3772
+   },
+   {
+    "min": 16400.01,
+    "max": 16500,
+    "employer": 1980,
+    "employee": 1815,
+    "total": 3795
+   },
+   {
+    "min": 16500.01,
+    "max": 16600,
+    "employer": 1992,
+    "employee": 1826,
+    "total": 3818
+   },
+   {
+    "min": 16600.01,
+    "max": 16700,
+    "employer": 2004,
+    "employee": 1837,
+    "total": 3841
+   },
+   {
+    "min": 16700.01,
+    "max": 16800,
+    "employer": 2016,
+    "employee": 1848,
+    "total": 3864
+   },
+   {
+    "min": 16800.01,
+    "max": 16900,
+    "employer": 2028,
+    "employee": 1859,
+    "total": 3887
+   },
+   {
+    "min": 16900.01,
+    "max": 17000,
+    "employer": 2040,
+    "employee": 1870,
+    "total": 3910
+   },
+   {
+    "min": 17000.01,
+    "max": 17100,
+    "employer": 2052,
+    "employee": 1881,
+    "total": 3933
+   },
+   {
+    "min": 17100.01,
+    "max": 17200,
+    "employer": 2064,
+    "employee": 1892,
+    "total": 3956
+   },
+   {
+    "min": 17200.01,
+    "max": 17300,
+    "employer": 2076,
+    "employee": 1903,
+    "total": 3979
+   },
+   {
+    "min": 17300.01,
+    "max": 17400,
+    "employer": 2088,
+    "employee": 1914,
+    "total": 4002
+   },
+   {
+    "min": 17400.01,
+    "max": 17500,
+    "employer": 2100,
+    "employee": 1925,
+    "total": 4025
+   },
+   {
+    "min": 17500.01,
+    "max": 17600,
+    "employer": 2112,
+    "employee": 1936,
+    "total": 4048
+   },
+   {
+    "min": 17600.01,
+    "max": 17700,
+    "employer": 2124,
+    "employee": 1947,
+    "total": 4071
+   },
+   {
+    "min": 17700.01,
+    "max": 17800,
+    "employer": 2136,
+    "employee": 1958,
+    "total": 4094
+   },
+   {
+    "min": 17800.01,
+    "max": 17900,
+    "employer": 2148,
+    "employee": 1969,
+    "total": 4117
+   },
+   {
+    "min": 17900.01,
+    "max": 18000,
+    "employer": 2160,
+    "employee": 1980,
+    "total": 4140
+   },
+   {
+    "min": 18000.01,
+    "max": 18100,
+    "employer": 2172,
+    "employee": 1991,
+    "total": 4163
+   },
+   {
+    "min": 18100.01,
+    "max": 18200,
+    "employer": 2184,
+    "employee": 2002,
+    "total": 4186
+   },
+   {
+    "min": 18200.01,
+    "max": 18300,
+    "employer": 2196,
+    "employee": 2013,
+    "total": 4209
+   },
+   {
+    "min": 18300.01,
+    "max": 18400,
+    "employer": 2208,
+    "employee": 2024,
+    "total": 4232
+   },
+   {
+    "min": 18400.01,
+    "max": 18500,
+    "employer": 2220,
+    "employee": 2035,
+    "total": 4255
+   },
+   {
+    "min": 18500.01,
+    "max": 18600,
+    "employer": 2232,
+    "employee": 2046,
+    "total": 4278
+   },
+   {
+    "min": 18600.01,
+    "max": 18700,
+    "employer": 2244,
+    "employee": 2057,
+    "total": 4301
+   },
+   {
+    "min": 18700.01,
+    "max": 18800,
+    "employer": 2256,
+    "employee": 2068,
+    "total": 4324
+   },
+   {
+    "min": 18800.01,
+    "max": 18900,
+    "employer": 2268,
+    "employee": 2079,
+    "total": 4347
+   },
+   {
+    "min": 18900.01,
+    "max": 19000,
+    "employer": 2280,
+    "employee": 2090,
+    "total": 4370
+   },
+   {
+    "min": 19000.01,
+    "max": 19100,
+    "employer": 2292,
+    "employee": 2101,
+    "total": 4393
+   },
+   {
+    "min": 19100.01,
+    "max": 19200,
+    "employer": 2304,
+    "employee": 2112,
+    "total": 4416
+   },
+   {
+    "min": 19200.01,
+    "max": 19300,
+    "employer": 2316,
+    "employee": 2123,
+    "total": 4439
+   },
+   {
+    "min": 19300.01,
+    "max": 19400,
+    "employer": 2328,
+    "employee": 2134,
+    "total": 4462
+   },
+   {
+    "min": 19400.01,
+    "max": 19500,
+    "employer": 2340,
+    "employee": 2145,
+    "total": 4485
+   },
+   {
+    "min": 19500.01,
+    "max": 19600,
+    "employer": 2352,
+    "employee": 2156,
+    "total": 4508
+   },
+   {
+    "min": 19600.01,
+    "max": 19700,
+    "employer": 2364,
+    "employee": 2167,
+    "total": 4531
+   },
+   {
+    "min": 19700.01,
+    "max": 19800,
+    "employer": 2376,
+    "employee": 2178,
+    "total": 4554
+   },
+   {
+    "min": 19800.01,
+    "max": 19900,
+    "employer": 2388,
+    "employee": 2189,
+    "total": 4577
+   },
+   {
+    "min": 19900.01,
+    "max": 20000,
+    "employer": 2400,
+    "employee": 2200,
+    "total": 4600
+   },
+   {
+    "min": 20000.01,
+    "max": 1000000,
+    "employer": null,
+    "employee": null,
+    "total": null
+   }
+  ]
+ },
+ "epf9_under60": {
+  "label": "EPF employee 9% (<60)",
+  "bands": [
+   {
+    "min": 0,
+    "max": 0,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 0.01,
+    "max": 10,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 10.01,
+    "max": 20,
+    "employer": 3,
+    "employee": 2,
+    "total": 5
+   },
+   {
+    "min": 20.01,
+    "max": 40,
+    "employer": 6,
+    "employee": 4,
+    "total": 10
+   },
+   {
+    "min": 40.01,
+    "max": 60,
+    "employer": 8,
+    "employee": 6,
+    "total": 14
+   },
+   {
+    "min": 60.01,
+    "max": 80,
+    "employer": 11,
+    "employee": 8,
+    "total": 19
+   },
+   {
+    "min": 80.01,
+    "max": 100,
+    "employer": 13,
+    "employee": 9,
+    "total": 22
+   },
+   {
+    "min": 100.01,
+    "max": 120,
+    "employer": 16,
+    "employee": 11,
+    "total": 27
+   },
+   {
+    "min": 120.01,
+    "max": 140,
+    "employer": 19,
+    "employee": 13,
+    "total": 32
+   },
+   {
+    "min": 140.01,
+    "max": 160,
+    "employer": 21,
+    "employee": 15,
+    "total": 36
+   },
+   {
+    "min": 160.01,
+    "max": 180,
+    "employer": 24,
+    "employee": 17,
+    "total": 41
+   },
+   {
+    "min": 180.01,
+    "max": 200,
+    "employer": 26,
+    "employee": 18,
+    "total": 44
+   },
+   {
+    "min": 200.01,
+    "max": 220,
+    "employer": 29,
+    "employee": 20,
+    "total": 49
+   },
+   {
+    "min": 220.01,
+    "max": 240,
+    "employer": 32,
+    "employee": 22,
+    "total": 54
+   },
+   {
+    "min": 240.01,
+    "max": 260,
+    "employer": 34,
+    "employee": 24,
+    "total": 58
+   },
+   {
+    "min": 260.01,
+    "max": 280,
+    "employer": 37,
+    "employee": 26,
+    "total": 63
+   },
+   {
+    "min": 280.01,
+    "max": 300,
+    "employer": 39,
+    "employee": 27,
+    "total": 66
+   },
+   {
+    "min": 300.01,
+    "max": 320,
+    "employer": 42,
+    "employee": 29,
+    "total": 71
+   },
+   {
+    "min": 320.01,
+    "max": 340,
+    "employer": 45,
+    "employee": 31,
+    "total": 76
+   },
+   {
+    "min": 340.01,
+    "max": 360,
+    "employer": 47,
+    "employee": 33,
+    "total": 80
+   },
+   {
+    "min": 360.01,
+    "max": 380,
+    "employer": 50,
+    "employee": 35,
+    "total": 85
+   },
+   {
+    "min": 380.01,
+    "max": 400,
+    "employer": 52,
+    "employee": 36,
+    "total": 88
+   },
+   {
+    "min": 400.01,
+    "max": 420,
+    "employer": 55,
+    "employee": 38,
+    "total": 93
+   },
+   {
+    "min": 420.01,
+    "max": 440,
+    "employer": 58,
+    "employee": 40,
+    "total": 98
+   },
+   {
+    "min": 440.01,
+    "max": 460,
+    "employer": 60,
+    "employee": 42,
+    "total": 102
+   },
+   {
+    "min": 460.01,
+    "max": 480,
+    "employer": 63,
+    "employee": 44,
+    "total": 107
+   },
+   {
+    "min": 480.01,
+    "max": 500,
+    "employer": 65,
+    "employee": 45,
+    "total": 110
+   },
+   {
+    "min": 500.01,
+    "max": 520,
+    "employer": 68,
+    "employee": 47,
+    "total": 115
+   },
+   {
+    "min": 520.01,
+    "max": 540,
+    "employer": 71,
+    "employee": 49,
+    "total": 120
+   },
+   {
+    "min": 540.01,
+    "max": 560,
+    "employer": 73,
+    "employee": 51,
+    "total": 124
+   },
+   {
+    "min": 560.01,
+    "max": 580,
+    "employer": 76,
+    "employee": 53,
+    "total": 129
+   },
+   {
+    "min": 580.01,
+    "max": 600,
+    "employer": 78,
+    "employee": 54,
+    "total": 132
+   },
+   {
+    "min": 600.01,
+    "max": 620,
+    "employer": 81,
+    "employee": 56,
+    "total": 137
+   },
+   {
+    "min": 620.01,
+    "max": 640,
+    "employer": 84,
+    "employee": 58,
+    "total": 142
+   },
+   {
+    "min": 640.01,
+    "max": 660,
+    "employer": 86,
+    "employee": 60,
+    "total": 146
+   },
+   {
+    "min": 660.01,
+    "max": 680,
+    "employer": 89,
+    "employee": 62,
+    "total": 151
+   },
+   {
+    "min": 680.01,
+    "max": 700,
+    "employer": 91,
+    "employee": 63,
+    "total": 154
+   },
+   {
+    "min": 700.01,
+    "max": 720,
+    "employer": 94,
+    "employee": 65,
+    "total": 159
+   },
+   {
+    "min": 720.01,
+    "max": 740,
+    "employer": 97,
+    "employee": 67,
+    "total": 164
+   },
+   {
+    "min": 740.01,
+    "max": 760,
+    "employer": 99,
+    "employee": 69,
+    "total": 168
+   },
+   {
+    "min": 760.01,
+    "max": 780,
+    "employer": 102,
+    "employee": 71,
+    "total": 173
+   },
+   {
+    "min": 780.01,
+    "max": 800,
+    "employer": 104,
+    "employee": 72,
+    "total": 176
+   },
+   {
+    "min": 800.01,
+    "max": 820,
+    "employer": 107,
+    "employee": 74,
+    "total": 181
+   },
+   {
+    "min": 820.01,
+    "max": 840,
+    "employer": 110,
+    "employee": 76,
+    "total": 186
+   },
+   {
+    "min": 840.01,
+    "max": 860,
+    "employer": 112,
+    "employee": 78,
+    "total": 190
+   },
+   {
+    "min": 860.01,
+    "max": 880,
+    "employer": 115,
+    "employee": 80,
+    "total": 195
+   },
+   {
+    "min": 880.01,
+    "max": 900,
+    "employer": 117,
+    "employee": 81,
+    "total": 198
+   },
+   {
+    "min": 900.01,
+    "max": 920,
+    "employer": 120,
+    "employee": 83,
+    "total": 203
+   },
+   {
+    "min": 920.01,
+    "max": 940,
+    "employer": 123,
+    "employee": 85,
+    "total": 208
+   },
+   {
+    "min": 940.01,
+    "max": 960,
+    "employer": 125,
+    "employee": 87,
+    "total": 212
+   },
+   {
+    "min": 960.01,
+    "max": 980,
+    "employer": 128,
+    "employee": 89,
+    "total": 217
+   },
+   {
+    "min": 980.01,
+    "max": 1000,
+    "employer": 130,
+    "employee": 90,
+    "total": 220
+   },
+   {
+    "min": 1000.01,
+    "max": 1020,
+    "employer": 133,
+    "employee": 92,
+    "total": 225
+   },
+   {
+    "min": 1020.01,
+    "max": 1040,
+    "employer": 136,
+    "employee": 94,
+    "total": 230
+   },
+   {
+    "min": 1040.01,
+    "max": 1060,
+    "employer": 138,
+    "employee": 96,
+    "total": 234
+   },
+   {
+    "min": 1060.01,
+    "max": 1080,
+    "employer": 141,
+    "employee": 98,
+    "total": 239
+   },
+   {
+    "min": 1080.01,
+    "max": 1100,
+    "employer": 143,
+    "employee": 99,
+    "total": 242
+   },
+   {
+    "min": 1100.01,
+    "max": 1120,
+    "employer": 146,
+    "employee": 101,
+    "total": 247
+   },
+   {
+    "min": 1120.01,
+    "max": 1140,
+    "employer": 149,
+    "employee": 103,
+    "total": 252
+   },
+   {
+    "min": 1140.01,
+    "max": 1160,
+    "employer": 151,
+    "employee": 105,
+    "total": 256
+   },
+   {
+    "min": 1160.01,
+    "max": 1180,
+    "employer": 154,
+    "employee": 107,
+    "total": 261
+   },
+   {
+    "min": 1180.01,
+    "max": 1200,
+    "employer": 156,
+    "employee": 108,
+    "total": 264
+   },
+   {
+    "min": 1200.01,
+    "max": 1220,
+    "employer": 159,
+    "employee": 110,
+    "total": 269
+   },
+   {
+    "min": 1220.01,
+    "max": 1240,
+    "employer": 162,
+    "employee": 112,
+    "total": 274
+   },
+   {
+    "min": 1240.01,
+    "max": 1260,
+    "employer": 164,
+    "employee": 114,
+    "total": 278
+   },
+   {
+    "min": 1260.01,
+    "max": 1280,
+    "employer": 167,
+    "employee": 116,
+    "total": 283
+   },
+   {
+    "min": 1280.01,
+    "max": 1300,
+    "employer": 169,
+    "employee": 117,
+    "total": 286
+   },
+   {
+    "min": 1300.01,
+    "max": 1320,
+    "employer": 172,
+    "employee": 119,
+    "total": 291
+   },
+   {
+    "min": 1320.01,
+    "max": 1340,
+    "employer": 175,
+    "employee": 121,
+    "total": 296
+   },
+   {
+    "min": 1340.01,
+    "max": 1360,
+    "employer": 177,
+    "employee": 123,
+    "total": 300
+   },
+   {
+    "min": 1360.01,
+    "max": 1380,
+    "employer": 180,
+    "employee": 125,
+    "total": 305
+   },
+   {
+    "min": 1380.01,
+    "max": 1400,
+    "employer": 182,
+    "employee": 126,
+    "total": 308
+   },
+   {
+    "min": 1400.01,
+    "max": 1420,
+    "employer": 185,
+    "employee": 128,
+    "total": 313
+   },
+   {
+    "min": 1420.01,
+    "max": 1440,
+    "employer": 188,
+    "employee": 130,
+    "total": 318
+   },
+   {
+    "min": 1440.01,
+    "max": 1460,
+    "employer": 190,
+    "employee": 132,
+    "total": 322
+   },
+   {
+    "min": 1460.01,
+    "max": 1480,
+    "employer": 193,
+    "employee": 134,
+    "total": 327
+   },
+   {
+    "min": 1480.01,
+    "max": 1500,
+    "employer": 195,
+    "employee": 135,
+    "total": 330
+   },
+   {
+    "min": 1500.01,
+    "max": 1520,
+    "employer": 198,
+    "employee": 137,
+    "total": 335
+   },
+   {
+    "min": 1520.01,
+    "max": 1540,
+    "employer": 201,
+    "employee": 139,
+    "total": 340
+   },
+   {
+    "min": 1540.01,
+    "max": 1560,
+    "employer": 203,
+    "employee": 141,
+    "total": 344
+   },
+   {
+    "min": 1560.01,
+    "max": 1580,
+    "employer": 206,
+    "employee": 143,
+    "total": 349
+   },
+   {
+    "min": 1580.01,
+    "max": 1600,
+    "employer": 208,
+    "employee": 144,
+    "total": 352
+   },
+   {
+    "min": 1600.01,
+    "max": 1620,
+    "employer": 211,
+    "employee": 146,
+    "total": 357
+   },
+   {
+    "min": 1620.01,
+    "max": 1640,
+    "employer": 214,
+    "employee": 148,
+    "total": 362
+   },
+   {
+    "min": 1640.01,
+    "max": 1660,
+    "employer": 216,
+    "employee": 150,
+    "total": 366
+   },
+   {
+    "min": 1660.01,
+    "max": 1680,
+    "employer": 219,
+    "employee": 152,
+    "total": 371
+   },
+   {
+    "min": 1680.01,
+    "max": 1700,
+    "employer": 221,
+    "employee": 153,
+    "total": 374
+   },
+   {
+    "min": 1700.01,
+    "max": 1720,
+    "employer": 224,
+    "employee": 155,
+    "total": 379
+   },
+   {
+    "min": 1720.01,
+    "max": 1740,
+    "employer": 227,
+    "employee": 157,
+    "total": 384
+   },
+   {
+    "min": 1740.01,
+    "max": 1760,
+    "employer": 229,
+    "employee": 159,
+    "total": 388
+   },
+   {
+    "min": 1760.01,
+    "max": 1780,
+    "employer": 232,
+    "employee": 161,
+    "total": 393
+   },
+   {
+    "min": 1780.01,
+    "max": 1800,
+    "employer": 234,
+    "employee": 162,
+    "total": 396
+   },
+   {
+    "min": 1800.01,
+    "max": 1820,
+    "employer": 237,
+    "employee": 164,
+    "total": 401
+   },
+   {
+    "min": 1820.01,
+    "max": 1840,
+    "employer": 240,
+    "employee": 166,
+    "total": 406
+   },
+   {
+    "min": 1840.01,
+    "max": 1860,
+    "employer": 242,
+    "employee": 168,
+    "total": 410
+   },
+   {
+    "min": 1860.01,
+    "max": 1880,
+    "employer": 245,
+    "employee": 170,
+    "total": 415
+   },
+   {
+    "min": 1880.01,
+    "max": 1900,
+    "employer": 247,
+    "employee": 171,
+    "total": 418
+   },
+   {
+    "min": 1900.01,
+    "max": 1920,
+    "employer": 250,
+    "employee": 173,
+    "total": 423
+   },
+   {
+    "min": 1920.01,
+    "max": 1940,
+    "employer": 253,
+    "employee": 175,
+    "total": 428
+   },
+   {
+    "min": 1940.01,
+    "max": 1960,
+    "employer": 255,
+    "employee": 177,
+    "total": 432
+   },
+   {
+    "min": 1960.01,
+    "max": 1980,
+    "employer": 258,
+    "employee": 179,
+    "total": 437
+   },
+   {
+    "min": 1980.01,
+    "max": 2000,
+    "employer": 260,
+    "employee": 180,
+    "total": 440
+   },
+   {
+    "min": 2000.01,
+    "max": 2020,
+    "employer": 263,
+    "employee": 182,
+    "total": 445
+   },
+   {
+    "min": 2020.01,
+    "max": 2040,
+    "employer": 266,
+    "employee": 184,
+    "total": 450
+   },
+   {
+    "min": 2040.01,
+    "max": 2060,
+    "employer": 268,
+    "employee": 186,
+    "total": 454
+   },
+   {
+    "min": 2060.01,
+    "max": 2080,
+    "employer": 271,
+    "employee": 188,
+    "total": 459
+   },
+   {
+    "min": 2080.01,
+    "max": 2100,
+    "employer": 273,
+    "employee": 189,
+    "total": 462
+   },
+   {
+    "min": 2100.01,
+    "max": 2120,
+    "employer": 276,
+    "employee": 191,
+    "total": 467
+   },
+   {
+    "min": 2120.01,
+    "max": 2140,
+    "employer": 279,
+    "employee": 193,
+    "total": 472
+   },
+   {
+    "min": 2140.01,
+    "max": 2160,
+    "employer": 281,
+    "employee": 195,
+    "total": 476
+   },
+   {
+    "min": 2160.01,
+    "max": 2180,
+    "employer": 284,
+    "employee": 197,
+    "total": 481
+   },
+   {
+    "min": 2180.01,
+    "max": 2200,
+    "employer": 286,
+    "employee": 198,
+    "total": 484
+   },
+   {
+    "min": 2200.01,
+    "max": 2220,
+    "employer": 289,
+    "employee": 200,
+    "total": 489
+   },
+   {
+    "min": 2220.01,
+    "max": 2240,
+    "employer": 292,
+    "employee": 202,
+    "total": 494
+   },
+   {
+    "min": 2240.01,
+    "max": 2260,
+    "employer": 294,
+    "employee": 204,
+    "total": 498
+   },
+   {
+    "min": 2260.01,
+    "max": 2280,
+    "employer": 297,
+    "employee": 206,
+    "total": 503
+   },
+   {
+    "min": 2280.01,
+    "max": 2300,
+    "employer": 299,
+    "employee": 207,
+    "total": 506
+   },
+   {
+    "min": 2300.01,
+    "max": 2320,
+    "employer": 302,
+    "employee": 209,
+    "total": 511
+   },
+   {
+    "min": 2320.01,
+    "max": 2340,
+    "employer": 305,
+    "employee": 211,
+    "total": 516
+   },
+   {
+    "min": 2340.01,
+    "max": 2360,
+    "employer": 307,
+    "employee": 213,
+    "total": 520
+   },
+   {
+    "min": 2360.01,
+    "max": 2380,
+    "employer": 310,
+    "employee": 215,
+    "total": 525
+   },
+   {
+    "min": 2380.01,
+    "max": 2400,
+    "employer": 312,
+    "employee": 216,
+    "total": 528
+   },
+   {
+    "min": 2400.01,
+    "max": 2420,
+    "employer": 315,
+    "employee": 218,
+    "total": 533
+   },
+   {
+    "min": 2420.01,
+    "max": 2440,
+    "employer": 318,
+    "employee": 220,
+    "total": 538
+   },
+   {
+    "min": 2440.01,
+    "max": 2460,
+    "employer": 320,
+    "employee": 222,
+    "total": 542
+   },
+   {
+    "min": 2460.01,
+    "max": 2480,
+    "employer": 323,
+    "employee": 224,
+    "total": 547
+   },
+   {
+    "min": 2480.01,
+    "max": 2500,
+    "employer": 325,
+    "employee": 225,
+    "total": 550
+   },
+   {
+    "min": 2500.01,
+    "max": 2520,
+    "employer": 328,
+    "employee": 227,
+    "total": 555
+   },
+   {
+    "min": 2520.01,
+    "max": 2540,
+    "employer": 331,
+    "employee": 229,
+    "total": 560
+   },
+   {
+    "min": 2540.01,
+    "max": 2560,
+    "employer": 333,
+    "employee": 231,
+    "total": 564
+   },
+   {
+    "min": 2560.01,
+    "max": 2580,
+    "employer": 336,
+    "employee": 233,
+    "total": 569
+   },
+   {
+    "min": 2580.01,
+    "max": 2600,
+    "employer": 338,
+    "employee": 234,
+    "total": 572
+   },
+   {
+    "min": 2600.01,
+    "max": 2620,
+    "employer": 341,
+    "employee": 236,
+    "total": 577
+   },
+   {
+    "min": 2620.01,
+    "max": 2640,
+    "employer": 344,
+    "employee": 238,
+    "total": 582
+   },
+   {
+    "min": 2640.01,
+    "max": 2660,
+    "employer": 346,
+    "employee": 240,
+    "total": 586
+   },
+   {
+    "min": 2660.01,
+    "max": 2680,
+    "employer": 349,
+    "employee": 242,
+    "total": 591
+   },
+   {
+    "min": 2680.01,
+    "max": 2700,
+    "employer": 351,
+    "employee": 243,
+    "total": 594
+   },
+   {
+    "min": 2700.01,
+    "max": 2720,
+    "employer": 354,
+    "employee": 245,
+    "total": 599
+   },
+   {
+    "min": 2720.01,
+    "max": 2740,
+    "employer": 357,
+    "employee": 247,
+    "total": 604
+   },
+   {
+    "min": 2740.01,
+    "max": 2760,
+    "employer": 359,
+    "employee": 249,
+    "total": 608
+   },
+   {
+    "min": 2760.01,
+    "max": 2780,
+    "employer": 362,
+    "employee": 251,
+    "total": 613
+   },
+   {
+    "min": 2780.01,
+    "max": 2800,
+    "employer": 364,
+    "employee": 252,
+    "total": 616
+   },
+   {
+    "min": 2800.01,
+    "max": 2820,
+    "employer": 367,
+    "employee": 254,
+    "total": 621
+   },
+   {
+    "min": 2820.01,
+    "max": 2840,
+    "employer": 370,
+    "employee": 256,
+    "total": 626
+   },
+   {
+    "min": 2840.01,
+    "max": 2860,
+    "employer": 372,
+    "employee": 258,
+    "total": 630
+   },
+   {
+    "min": 2860.01,
+    "max": 2880,
+    "employer": 375,
+    "employee": 260,
+    "total": 635
+   },
+   {
+    "min": 2880.01,
+    "max": 2900,
+    "employer": 377,
+    "employee": 261,
+    "total": 638
+   },
+   {
+    "min": 2900.01,
+    "max": 2920,
+    "employer": 380,
+    "employee": 263,
+    "total": 643
+   },
+   {
+    "min": 2920.01,
+    "max": 2940,
+    "employer": 383,
+    "employee": 265,
+    "total": 648
+   },
+   {
+    "min": 2940.01,
+    "max": 2960,
+    "employer": 385,
+    "employee": 267,
+    "total": 652
+   },
+   {
+    "min": 2960.01,
+    "max": 2980,
+    "employer": 388,
+    "employee": 269,
+    "total": 657
+   },
+   {
+    "min": 2980.01,
+    "max": 3000,
+    "employer": 390,
+    "employee": 270,
+    "total": 660
+   },
+   {
+    "min": 3000.01,
+    "max": 3020,
+    "employer": 393,
+    "employee": 272,
+    "total": 665
+   },
+   {
+    "min": 3020.01,
+    "max": 3040,
+    "employer": 396,
+    "employee": 274,
+    "total": 670
+   },
+   {
+    "min": 3040.01,
+    "max": 3060,
+    "employer": 398,
+    "employee": 276,
+    "total": 674
+   },
+   {
+    "min": 3060.01,
+    "max": 3080,
+    "employer": 401,
+    "employee": 278,
+    "total": 679
+   },
+   {
+    "min": 3080.01,
+    "max": 3100,
+    "employer": 403,
+    "employee": 279,
+    "total": 682
+   },
+   {
+    "min": 3100.01,
+    "max": 3120,
+    "employer": 406,
+    "employee": 281,
+    "total": 687
+   },
+   {
+    "min": 3120.01,
+    "max": 3140,
+    "employer": 409,
+    "employee": 283,
+    "total": 692
+   },
+   {
+    "min": 3140.01,
+    "max": 3160,
+    "employer": 411,
+    "employee": 285,
+    "total": 696
+   },
+   {
+    "min": 3160.01,
+    "max": 3180,
+    "employer": 414,
+    "employee": 287,
+    "total": 701
+   },
+   {
+    "min": 3180.01,
+    "max": 3200,
+    "employer": 416,
+    "employee": 288,
+    "total": 704
+   },
+   {
+    "min": 3200.01,
+    "max": 3220,
+    "employer": 419,
+    "employee": 290,
+    "total": 709
+   },
+   {
+    "min": 3220.01,
+    "max": 3240,
+    "employer": 422,
+    "employee": 292,
+    "total": 714
+   },
+   {
+    "min": 3240.01,
+    "max": 3260,
+    "employer": 424,
+    "employee": 294,
+    "total": 718
+   },
+   {
+    "min": 3260.01,
+    "max": 3280,
+    "employer": 427,
+    "employee": 296,
+    "total": 723
+   },
+   {
+    "min": 3280.01,
+    "max": 3300,
+    "employer": 429,
+    "employee": 297,
+    "total": 726
+   },
+   {
+    "min": 3300.01,
+    "max": 3320,
+    "employer": 432,
+    "employee": 299,
+    "total": 731
+   },
+   {
+    "min": 3320.01,
+    "max": 3340,
+    "employer": 435,
+    "employee": 301,
+    "total": 736
+   },
+   {
+    "min": 3340.01,
+    "max": 3360,
+    "employer": 437,
+    "employee": 303,
+    "total": 740
+   },
+   {
+    "min": 3360.01,
+    "max": 3380,
+    "employer": 440,
+    "employee": 305,
+    "total": 745
+   },
+   {
+    "min": 3380.01,
+    "max": 3400,
+    "employer": 442,
+    "employee": 306,
+    "total": 748
+   },
+   {
+    "min": 3400.01,
+    "max": 3420,
+    "employer": 445,
+    "employee": 308,
+    "total": 753
+   },
+   {
+    "min": 3420.01,
+    "max": 3440,
+    "employer": 448,
+    "employee": 310,
+    "total": 758
+   },
+   {
+    "min": 3440.01,
+    "max": 3460,
+    "employer": 450,
+    "employee": 312,
+    "total": 762
+   },
+   {
+    "min": 3460.01,
+    "max": 3480,
+    "employer": 453,
+    "employee": 314,
+    "total": 767
+   },
+   {
+    "min": 3480.01,
+    "max": 3500,
+    "employer": 455,
+    "employee": 315,
+    "total": 770
+   },
+   {
+    "min": 3500.01,
+    "max": 3520,
+    "employer": 458,
+    "employee": 317,
+    "total": 775
+   },
+   {
+    "min": 3520.01,
+    "max": 3540,
+    "employer": 461,
+    "employee": 319,
+    "total": 780
+   },
+   {
+    "min": 3540.01,
+    "max": 3560,
+    "employer": 463,
+    "employee": 321,
+    "total": 784
+   },
+   {
+    "min": 3560.01,
+    "max": 3580,
+    "employer": 466,
+    "employee": 323,
+    "total": 789
+   },
+   {
+    "min": 3580.01,
+    "max": 3600,
+    "employer": 468,
+    "employee": 324,
+    "total": 792
+   },
+   {
+    "min": 3600.01,
+    "max": 3620,
+    "employer": 471,
+    "employee": 326,
+    "total": 797
+   },
+   {
+    "min": 3620.01,
+    "max": 3640,
+    "employer": 474,
+    "employee": 328,
+    "total": 802
+   },
+   {
+    "min": 3640.01,
+    "max": 3660,
+    "employer": 476,
+    "employee": 330,
+    "total": 806
+   },
+   {
+    "min": 3660.01,
+    "max": 3680,
+    "employer": 479,
+    "employee": 332,
+    "total": 811
+   },
+   {
+    "min": 3680.01,
+    "max": 3700,
+    "employer": 481,
+    "employee": 333,
+    "total": 814
+   },
+   {
+    "min": 3700.01,
+    "max": 3720,
+    "employer": 484,
+    "employee": 335,
+    "total": 819
+   },
+   {
+    "min": 3720.01,
+    "max": 3740,
+    "employer": 487,
+    "employee": 337,
+    "total": 824
+   },
+   {
+    "min": 3740.01,
+    "max": 3760,
+    "employer": 489,
+    "employee": 339,
+    "total": 828
+   },
+   {
+    "min": 3760.01,
+    "max": 3780,
+    "employer": 492,
+    "employee": 341,
+    "total": 833
+   },
+   {
+    "min": 3780.01,
+    "max": 3800,
+    "employer": 494,
+    "employee": 342,
+    "total": 836
+   },
+   {
+    "min": 3800.01,
+    "max": 3820,
+    "employer": 497,
+    "employee": 344,
+    "total": 841
+   },
+   {
+    "min": 3820.01,
+    "max": 3840,
+    "employer": 500,
+    "employee": 346,
+    "total": 846
+   },
+   {
+    "min": 3840.01,
+    "max": 3860,
+    "employer": 502,
+    "employee": 348,
+    "total": 850
+   },
+   {
+    "min": 3860.01,
+    "max": 3880,
+    "employer": 505,
+    "employee": 350,
+    "total": 855
+   },
+   {
+    "min": 3880.01,
+    "max": 3900,
+    "employer": 507,
+    "employee": 351,
+    "total": 858
+   },
+   {
+    "min": 3900.01,
+    "max": 3920,
+    "employer": 510,
+    "employee": 353,
+    "total": 863
+   },
+   {
+    "min": 3920.01,
+    "max": 3940,
+    "employer": 513,
+    "employee": 355,
+    "total": 868
+   },
+   {
+    "min": 3940.01,
+    "max": 3960,
+    "employer": 515,
+    "employee": 357,
+    "total": 872
+   },
+   {
+    "min": 3960.01,
+    "max": 3980,
+    "employer": 518,
+    "employee": 359,
+    "total": 877
+   },
+   {
+    "min": 3980.01,
+    "max": 4000,
+    "employer": 520,
+    "employee": 360,
+    "total": 880
+   },
+   {
+    "min": 4000.01,
+    "max": 4020,
+    "employer": 523,
+    "employee": 362,
+    "total": 885
+   },
+   {
+    "min": 4020.01,
+    "max": 4040,
+    "employer": 526,
+    "employee": 364,
+    "total": 890
+   },
+   {
+    "min": 4040.01,
+    "max": 4060,
+    "employer": 528,
+    "employee": 366,
+    "total": 894
+   },
+   {
+    "min": 4060.01,
+    "max": 4080,
+    "employer": 531,
+    "employee": 368,
+    "total": 899
+   },
+   {
+    "min": 4080.01,
+    "max": 4100,
+    "employer": 533,
+    "employee": 369,
+    "total": 902
+   },
+   {
+    "min": 4100.01,
+    "max": 4120,
+    "employer": 536,
+    "employee": 371,
+    "total": 907
+   },
+   {
+    "min": 4120.01,
+    "max": 4140,
+    "employer": 539,
+    "employee": 373,
+    "total": 912
+   },
+   {
+    "min": 4140.01,
+    "max": 4160,
+    "employer": 541,
+    "employee": 375,
+    "total": 916
+   },
+   {
+    "min": 4160.01,
+    "max": 4180,
+    "employer": 544,
+    "employee": 377,
+    "total": 921
+   },
+   {
+    "min": 4180.01,
+    "max": 4200,
+    "employer": 546,
+    "employee": 378,
+    "total": 924
+   },
+   {
+    "min": 4200.01,
+    "max": 4220,
+    "employer": 549,
+    "employee": 380,
+    "total": 929
+   },
+   {
+    "min": 4220.01,
+    "max": 4240,
+    "employer": 552,
+    "employee": 382,
+    "total": 934
+   },
+   {
+    "min": 4240.01,
+    "max": 4260,
+    "employer": 554,
+    "employee": 384,
+    "total": 938
+   },
+   {
+    "min": 4260.01,
+    "max": 4280,
+    "employer": 557,
+    "employee": 386,
+    "total": 943
+   },
+   {
+    "min": 4280.01,
+    "max": 4300,
+    "employer": 559,
+    "employee": 387,
+    "total": 946
+   },
+   {
+    "min": 4300.01,
+    "max": 4320,
+    "employer": 562,
+    "employee": 389,
+    "total": 951
+   },
+   {
+    "min": 4320.01,
+    "max": 4340,
+    "employer": 565,
+    "employee": 391,
+    "total": 956
+   },
+   {
+    "min": 4340.01,
+    "max": 4360,
+    "employer": 567,
+    "employee": 393,
+    "total": 960
+   },
+   {
+    "min": 4360.01,
+    "max": 4380,
+    "employer": 570,
+    "employee": 395,
+    "total": 965
+   },
+   {
+    "min": 4380.01,
+    "max": 4400,
+    "employer": 572,
+    "employee": 396,
+    "total": 968
+   },
+   {
+    "min": 4400.01,
+    "max": 4420,
+    "employer": 575,
+    "employee": 398,
+    "total": 973
+   },
+   {
+    "min": 4420.01,
+    "max": 4440,
+    "employer": 578,
+    "employee": 400,
+    "total": 978
+   },
+   {
+    "min": 4440.01,
+    "max": 4460,
+    "employer": 580,
+    "employee": 402,
+    "total": 982
+   },
+   {
+    "min": 4460.01,
+    "max": 4480,
+    "employer": 583,
+    "employee": 404,
+    "total": 987
+   },
+   {
+    "min": 4480.01,
+    "max": 4500,
+    "employer": 585,
+    "employee": 405,
+    "total": 990
+   },
+   {
+    "min": 4500.01,
+    "max": 4520,
+    "employer": 588,
+    "employee": 407,
+    "total": 995
+   },
+   {
+    "min": 4520.01,
+    "max": 4540,
+    "employer": 591,
+    "employee": 409,
+    "total": 1000
+   },
+   {
+    "min": 4540.01,
+    "max": 4560,
+    "employer": 593,
+    "employee": 411,
+    "total": 1004
+   },
+   {
+    "min": 4560.01,
+    "max": 4580,
+    "employer": 596,
+    "employee": 413,
+    "total": 1009
+   },
+   {
+    "min": 4580.01,
+    "max": 4600,
+    "employer": 598,
+    "employee": 414,
+    "total": 1012
+   },
+   {
+    "min": 4600.01,
+    "max": 4620,
+    "employer": 601,
+    "employee": 416,
+    "total": 1017
+   },
+   {
+    "min": 4620.01,
+    "max": 4640,
+    "employer": 604,
+    "employee": 418,
+    "total": 1022
+   },
+   {
+    "min": 4640.01,
+    "max": 4660,
+    "employer": 606,
+    "employee": 420,
+    "total": 1026
+   },
+   {
+    "min": 4660.01,
+    "max": 4680,
+    "employer": 609,
+    "employee": 422,
+    "total": 1031
+   },
+   {
+    "min": 4680.01,
+    "max": 4700,
+    "employer": 611,
+    "employee": 423,
+    "total": 1034
+   },
+   {
+    "min": 4700.01,
+    "max": 4720,
+    "employer": 614,
+    "employee": 425,
+    "total": 1039
+   },
+   {
+    "min": 4720.01,
+    "max": 4740,
+    "employer": 617,
+    "employee": 427,
+    "total": 1044
+   },
+   {
+    "min": 4740.01,
+    "max": 4760,
+    "employer": 619,
+    "employee": 429,
+    "total": 1048
+   },
+   {
+    "min": 4760.01,
+    "max": 4780,
+    "employer": 622,
+    "employee": 431,
+    "total": 1053
+   },
+   {
+    "min": 4780.01,
+    "max": 4800,
+    "employer": 624,
+    "employee": 432,
+    "total": 1056
+   },
+   {
+    "min": 4800.01,
+    "max": 4820,
+    "employer": 627,
+    "employee": 434,
+    "total": 1061
+   },
+   {
+    "min": 4820.01,
+    "max": 4840,
+    "employer": 630,
+    "employee": 436,
+    "total": 1066
+   },
+   {
+    "min": 4840.01,
+    "max": 4860,
+    "employer": 632,
+    "employee": 438,
+    "total": 1070
+   },
+   {
+    "min": 4860.01,
+    "max": 4880,
+    "employer": 635,
+    "employee": 440,
+    "total": 1075
+   },
+   {
+    "min": 4880.01,
+    "max": 4900,
+    "employer": 637,
+    "employee": 441,
+    "total": 1078
+   },
+   {
+    "min": 4900.01,
+    "max": 4920,
+    "employer": 640,
+    "employee": 443,
+    "total": 1083
+   },
+   {
+    "min": 4920.01,
+    "max": 4940,
+    "employer": 643,
+    "employee": 445,
+    "total": 1088
+   },
+   {
+    "min": 4940.01,
+    "max": 4960,
+    "employer": 645,
+    "employee": 447,
+    "total": 1092
+   },
+   {
+    "min": 4960.01,
+    "max": 4980,
+    "employer": 648,
+    "employee": 449,
+    "total": 1097
+   },
+   {
+    "min": 4980.01,
+    "max": 5000,
+    "employer": 650,
+    "employee": 450,
+    "total": 1100
+   },
+   {
+    "min": 5000.01,
+    "max": 5100,
+    "employer": 612,
+    "employee": 459,
+    "total": 1071
+   },
+   {
+    "min": 5100.01,
+    "max": 5200,
+    "employer": 624,
+    "employee": 468,
+    "total": 1092
+   },
+   {
+    "min": 5200.01,
+    "max": 5300,
+    "employer": 636,
+    "employee": 477,
+    "total": 1113
+   },
+   {
+    "min": 5300.01,
+    "max": 5400,
+    "employer": 648,
+    "employee": 486,
+    "total": 1134
+   },
+   {
+    "min": 5400.01,
+    "max": 5500,
+    "employer": 660,
+    "employee": 495,
+    "total": 1155
+   },
+   {
+    "min": 5500.01,
+    "max": 5600,
+    "employer": 672,
+    "employee": 504,
+    "total": 1176
+   },
+   {
+    "min": 5600.01,
+    "max": 5700,
+    "employer": 684,
+    "employee": 513,
+    "total": 1197
+   },
+   {
+    "min": 5700.01,
+    "max": 5800,
+    "employer": 696,
+    "employee": 522,
+    "total": 1218
+   },
+   {
+    "min": 5800.01,
+    "max": 5900,
+    "employer": 708,
+    "employee": 531,
+    "total": 1239
+   },
+   {
+    "min": 5900.01,
+    "max": 6000,
+    "employer": 720,
+    "employee": 540,
+    "total": 1260
+   },
+   {
+    "min": 6000.01,
+    "max": 6100,
+    "employer": 732,
+    "employee": 549,
+    "total": 1281
+   },
+   {
+    "min": 6100.01,
+    "max": 6200,
+    "employer": 744,
+    "employee": 558,
+    "total": 1302
+   },
+   {
+    "min": 6200.01,
+    "max": 6300,
+    "employer": 756,
+    "employee": 567,
+    "total": 1323
+   },
+   {
+    "min": 6300.01,
+    "max": 6400,
+    "employer": 768,
+    "employee": 576,
+    "total": 1344
+   },
+   {
+    "min": 6400.01,
+    "max": 6500,
+    "employer": 780,
+    "employee": 585,
+    "total": 1365
+   },
+   {
+    "min": 6500.01,
+    "max": 6600,
+    "employer": 792,
+    "employee": 594,
+    "total": 1386
+   },
+   {
+    "min": 6600.01,
+    "max": 6700,
+    "employer": 804,
+    "employee": 603,
+    "total": 1407
+   },
+   {
+    "min": 6700.01,
+    "max": 6800,
+    "employer": 816,
+    "employee": 612,
+    "total": 1428
+   },
+   {
+    "min": 6800.01,
+    "max": 6900,
+    "employer": 828,
+    "employee": 621,
+    "total": 1449
+   },
+   {
+    "min": 6900.01,
+    "max": 7000,
+    "employer": 840,
+    "employee": 630,
+    "total": 1470
+   },
+   {
+    "min": 7000.01,
+    "max": 7100,
+    "employer": 852,
+    "employee": 639,
+    "total": 1491
+   },
+   {
+    "min": 7100.01,
+    "max": 7200,
+    "employer": 864,
+    "employee": 648,
+    "total": 1512
+   },
+   {
+    "min": 7200.01,
+    "max": 7300,
+    "employer": 876,
+    "employee": 657,
+    "total": 1533
+   },
+   {
+    "min": 7300.01,
+    "max": 7400,
+    "employer": 888,
+    "employee": 666,
+    "total": 1554
+   },
+   {
+    "min": 7400.01,
+    "max": 7500,
+    "employer": 900,
+    "employee": 675,
+    "total": 1575
+   },
+   {
+    "min": 7500.01,
+    "max": 7600,
+    "employer": 912,
+    "employee": 684,
+    "total": 1596
+   },
+   {
+    "min": 7600.01,
+    "max": 7700,
+    "employer": 924,
+    "employee": 693,
+    "total": 1617
+   },
+   {
+    "min": 7700.01,
+    "max": 7800,
+    "employer": 936,
+    "employee": 702,
+    "total": 1638
+   },
+   {
+    "min": 7800.01,
+    "max": 7900,
+    "employer": 948,
+    "employee": 711,
+    "total": 1659
+   },
+   {
+    "min": 7900.01,
+    "max": 8000,
+    "employer": 960,
+    "employee": 720,
+    "total": 1680
+   },
+   {
+    "min": 8000.01,
+    "max": 8100,
+    "employer": 972,
+    "employee": 729,
+    "total": 1701
+   },
+   {
+    "min": 8100.01,
+    "max": 8200,
+    "employer": 984,
+    "employee": 738,
+    "total": 1722
+   },
+   {
+    "min": 8200.01,
+    "max": 8300,
+    "employer": 996,
+    "employee": 747,
+    "total": 1743
+   },
+   {
+    "min": 8300.01,
+    "max": 8400,
+    "employer": 1008,
+    "employee": 756,
+    "total": 1764
+   },
+   {
+    "min": 8400.01,
+    "max": 8500,
+    "employer": 1020,
+    "employee": 765,
+    "total": 1785
+   },
+   {
+    "min": 8500.01,
+    "max": 8600,
+    "employer": 1032,
+    "employee": 774,
+    "total": 1806
+   },
+   {
+    "min": 8600.01,
+    "max": 8700,
+    "employer": 1044,
+    "employee": 783,
+    "total": 1827
+   },
+   {
+    "min": 8700.01,
+    "max": 8800,
+    "employer": 1056,
+    "employee": 792,
+    "total": 1848
+   },
+   {
+    "min": 8800.01,
+    "max": 8900,
+    "employer": 1068,
+    "employee": 801,
+    "total": 1869
+   },
+   {
+    "min": 8900.01,
+    "max": 9000,
+    "employer": 1080,
+    "employee": 810,
+    "total": 1890
+   },
+   {
+    "min": 9000.01,
+    "max": 9100,
+    "employer": 1092,
+    "employee": 819,
+    "total": 1911
+   },
+   {
+    "min": 9100.01,
+    "max": 9200,
+    "employer": 1104,
+    "employee": 828,
+    "total": 1932
+   },
+   {
+    "min": 9200.01,
+    "max": 9300,
+    "employer": 1116,
+    "employee": 837,
+    "total": 1953
+   },
+   {
+    "min": 9300.01,
+    "max": 9400,
+    "employer": 1128,
+    "employee": 846,
+    "total": 1974
+   },
+   {
+    "min": 9400.01,
+    "max": 9500,
+    "employer": 1140,
+    "employee": 855,
+    "total": 1995
+   },
+   {
+    "min": 9500.01,
+    "max": 9600,
+    "employer": 1152,
+    "employee": 864,
+    "total": 2016
+   },
+   {
+    "min": 9600.01,
+    "max": 9700,
+    "employer": 1164,
+    "employee": 873,
+    "total": 2037
+   },
+   {
+    "min": 9700.01,
+    "max": 9800,
+    "employer": 1176,
+    "employee": 882,
+    "total": 2058
+   },
+   {
+    "min": 9800.01,
+    "max": 9900,
+    "employer": 1188,
+    "employee": 891,
+    "total": 2079
+   },
+   {
+    "min": 9900.01,
+    "max": 10000,
+    "employer": 1200,
+    "employee": 900,
+    "total": 2100
+   },
+   {
+    "min": 10000.01,
+    "max": 10100,
+    "employer": 1212,
+    "employee": 909,
+    "total": 2121
+   },
+   {
+    "min": 10100.01,
+    "max": 10200,
+    "employer": 1224,
+    "employee": 918,
+    "total": 2142
+   },
+   {
+    "min": 10200.01,
+    "max": 10300,
+    "employer": 1236,
+    "employee": 927,
+    "total": 2163
+   },
+   {
+    "min": 10300.01,
+    "max": 10400,
+    "employer": 1248,
+    "employee": 936,
+    "total": 2184
+   },
+   {
+    "min": 10400.01,
+    "max": 10500,
+    "employer": 1260,
+    "employee": 945,
+    "total": 2205
+   },
+   {
+    "min": 10500.01,
+    "max": 10600,
+    "employer": 1272,
+    "employee": 954,
+    "total": 2226
+   },
+   {
+    "min": 10600.01,
+    "max": 10700,
+    "employer": 1284,
+    "employee": 963,
+    "total": 2247
+   },
+   {
+    "min": 10700.01,
+    "max": 10800,
+    "employer": 1296,
+    "employee": 972,
+    "total": 2268
+   },
+   {
+    "min": 10800.01,
+    "max": 10900,
+    "employer": 1308,
+    "employee": 981,
+    "total": 2289
+   },
+   {
+    "min": 10900.01,
+    "max": 11000,
+    "employer": 1320,
+    "employee": 990,
+    "total": 2310
+   },
+   {
+    "min": 11000.01,
+    "max": 11100,
+    "employer": 1332,
+    "employee": 999,
+    "total": 2331
+   },
+   {
+    "min": 11100.01,
+    "max": 11200,
+    "employer": 1344,
+    "employee": 1008,
+    "total": 2352
+   },
+   {
+    "min": 11200.01,
+    "max": 11300,
+    "employer": 1356,
+    "employee": 1017,
+    "total": 2373
+   },
+   {
+    "min": 11300.01,
+    "max": 11400,
+    "employer": 1368,
+    "employee": 1026,
+    "total": 2394
+   },
+   {
+    "min": 11400.01,
+    "max": 11500,
+    "employer": 1380,
+    "employee": 1035,
+    "total": 2415
+   },
+   {
+    "min": 11500.01,
+    "max": 11600,
+    "employer": 1392,
+    "employee": 1044,
+    "total": 2436
+   },
+   {
+    "min": 11600.01,
+    "max": 11700,
+    "employer": 1404,
+    "employee": 1053,
+    "total": 2457
+   },
+   {
+    "min": 11700.01,
+    "max": 11800,
+    "employer": 1416,
+    "employee": 1062,
+    "total": 2478
+   },
+   {
+    "min": 11800.01,
+    "max": 11900,
+    "employer": 1428,
+    "employee": 1071,
+    "total": 2499
+   },
+   {
+    "min": 11900.01,
+    "max": 12000,
+    "employer": 1440,
+    "employee": 1080,
+    "total": 2520
+   },
+   {
+    "min": 12000.01,
+    "max": 12100,
+    "employer": 1452,
+    "employee": 1089,
+    "total": 2541
+   },
+   {
+    "min": 12100.01,
+    "max": 12200,
+    "employer": 1464,
+    "employee": 1098,
+    "total": 2562
+   },
+   {
+    "min": 12200.01,
+    "max": 12300,
+    "employer": 1476,
+    "employee": 1107,
+    "total": 2583
+   },
+   {
+    "min": 12300.01,
+    "max": 12400,
+    "employer": 1488,
+    "employee": 1116,
+    "total": 2604
+   },
+   {
+    "min": 12400.01,
+    "max": 12500,
+    "employer": 1500,
+    "employee": 1125,
+    "total": 2625
+   },
+   {
+    "min": 12500.01,
+    "max": 12600,
+    "employer": 1512,
+    "employee": 1134,
+    "total": 2646
+   },
+   {
+    "min": 12600.01,
+    "max": 12700,
+    "employer": 1524,
+    "employee": 1143,
+    "total": 2667
+   },
+   {
+    "min": 12700.01,
+    "max": 12800,
+    "employer": 1536,
+    "employee": 1152,
+    "total": 2688
+   },
+   {
+    "min": 12800.01,
+    "max": 12900,
+    "employer": 1548,
+    "employee": 1161,
+    "total": 2709
+   },
+   {
+    "min": 12900.01,
+    "max": 13000,
+    "employer": 1560,
+    "employee": 1170,
+    "total": 2730
+   },
+   {
+    "min": 13000.01,
+    "max": 13100,
+    "employer": 1572,
+    "employee": 1179,
+    "total": 2751
+   },
+   {
+    "min": 13100.01,
+    "max": 13200,
+    "employer": 1584,
+    "employee": 1188,
+    "total": 2772
+   },
+   {
+    "min": 13200.01,
+    "max": 13300,
+    "employer": 1596,
+    "employee": 1197,
+    "total": 2793
+   },
+   {
+    "min": 13300.01,
+    "max": 13400,
+    "employer": 1608,
+    "employee": 1206,
+    "total": 2814
+   },
+   {
+    "min": 13400.01,
+    "max": 13500,
+    "employer": 1620,
+    "employee": 1215,
+    "total": 2835
+   },
+   {
+    "min": 13500.01,
+    "max": 13600,
+    "employer": 1632,
+    "employee": 1224,
+    "total": 2856
+   },
+   {
+    "min": 13600.01,
+    "max": 13700,
+    "employer": 1644,
+    "employee": 1233,
+    "total": 2877
+   },
+   {
+    "min": 13700.01,
+    "max": 13800,
+    "employer": 1656,
+    "employee": 1242,
+    "total": 2898
+   },
+   {
+    "min": 13800.01,
+    "max": 13900,
+    "employer": 1668,
+    "employee": 1251,
+    "total": 2919
+   },
+   {
+    "min": 13900.01,
+    "max": 14000,
+    "employer": 1680,
+    "employee": 1260,
+    "total": 2940
+   },
+   {
+    "min": 14000.01,
+    "max": 14100,
+    "employer": 1692,
+    "employee": 1269,
+    "total": 2961
+   },
+   {
+    "min": 14100.01,
+    "max": 14200,
+    "employer": 1704,
+    "employee": 1278,
+    "total": 2982
+   },
+   {
+    "min": 14200.01,
+    "max": 14300,
+    "employer": 1716,
+    "employee": 1287,
+    "total": 3003
+   },
+   {
+    "min": 14300.01,
+    "max": 14400,
+    "employer": 1728,
+    "employee": 1296,
+    "total": 3024
+   },
+   {
+    "min": 14400.01,
+    "max": 14500,
+    "employer": 1740,
+    "employee": 1305,
+    "total": 3045
+   },
+   {
+    "min": 14500.01,
+    "max": 14600,
+    "employer": 1752,
+    "employee": 1314,
+    "total": 3066
+   },
+   {
+    "min": 14600.01,
+    "max": 14700,
+    "employer": 1764,
+    "employee": 1323,
+    "total": 3087
+   },
+   {
+    "min": 14700.01,
+    "max": 14800,
+    "employer": 1776,
+    "employee": 1332,
+    "total": 3108
+   },
+   {
+    "min": 14800.01,
+    "max": 14900,
+    "employer": 1788,
+    "employee": 1341,
+    "total": 3129
+   },
+   {
+    "min": 14900.01,
+    "max": 15000,
+    "employer": 1800,
+    "employee": 1350,
+    "total": 3150
+   },
+   {
+    "min": 15000.01,
+    "max": 15100,
+    "employer": 1812,
+    "employee": 1359,
+    "total": 3171
+   },
+   {
+    "min": 15100.01,
+    "max": 15200,
+    "employer": 1824,
+    "employee": 1368,
+    "total": 3192
+   },
+   {
+    "min": 15200.01,
+    "max": 15300,
+    "employer": 1836,
+    "employee": 1377,
+    "total": 3213
+   },
+   {
+    "min": 15300.01,
+    "max": 15400,
+    "employer": 1848,
+    "employee": 1386,
+    "total": 3234
+   },
+   {
+    "min": 15400.01,
+    "max": 15500,
+    "employer": 1860,
+    "employee": 1395,
+    "total": 3255
+   },
+   {
+    "min": 15500.01,
+    "max": 15600,
+    "employer": 1872,
+    "employee": 1404,
+    "total": 3276
+   },
+   {
+    "min": 15600.01,
+    "max": 15700,
+    "employer": 1884,
+    "employee": 1413,
+    "total": 3297
+   },
+   {
+    "min": 15700.01,
+    "max": 15800,
+    "employer": 1896,
+    "employee": 1422,
+    "total": 3318
+   },
+   {
+    "min": 15800.01,
+    "max": 15900,
+    "employer": 1908,
+    "employee": 1431,
+    "total": 3339
+   },
+   {
+    "min": 15900.01,
+    "max": 16000,
+    "employer": 1920,
+    "employee": 1440,
+    "total": 3360
+   },
+   {
+    "min": 16000.01,
+    "max": 16100,
+    "employer": 1932,
+    "employee": 1449,
+    "total": 3381
+   },
+   {
+    "min": 16100.01,
+    "max": 16200,
+    "employer": 1944,
+    "employee": 1458,
+    "total": 3402
+   },
+   {
+    "min": 16200.01,
+    "max": 16300,
+    "employer": 1956,
+    "employee": 1467,
+    "total": 3423
+   },
+   {
+    "min": 16300.01,
+    "max": 16400,
+    "employer": 1968,
+    "employee": 1476,
+    "total": 3444
+   },
+   {
+    "min": 16400.01,
+    "max": 16500,
+    "employer": 1980,
+    "employee": 1485,
+    "total": 3465
+   },
+   {
+    "min": 16500.01,
+    "max": 16600,
+    "employer": 1992,
+    "employee": 1494,
+    "total": 3486
+   },
+   {
+    "min": 16600.01,
+    "max": 16700,
+    "employer": 2004,
+    "employee": 1503,
+    "total": 3507
+   },
+   {
+    "min": 16700.01,
+    "max": 16800,
+    "employer": 2016,
+    "employee": 1512,
+    "total": 3528
+   },
+   {
+    "min": 16800.01,
+    "max": 16900,
+    "employer": 2028,
+    "employee": 1521,
+    "total": 3549
+   },
+   {
+    "min": 16900.01,
+    "max": 17000,
+    "employer": 2040,
+    "employee": 1530,
+    "total": 3570
+   },
+   {
+    "min": 17000.01,
+    "max": 17100,
+    "employer": 2052,
+    "employee": 1539,
+    "total": 3591
+   },
+   {
+    "min": 17100.01,
+    "max": 17200,
+    "employer": 2064,
+    "employee": 1548,
+    "total": 3612
+   },
+   {
+    "min": 17200.01,
+    "max": 17300,
+    "employer": 2076,
+    "employee": 1557,
+    "total": 3633
+   },
+   {
+    "min": 17300.01,
+    "max": 17400,
+    "employer": 2088,
+    "employee": 1566,
+    "total": 3654
+   },
+   {
+    "min": 17400.01,
+    "max": 17500,
+    "employer": 2100,
+    "employee": 1575,
+    "total": 3675
+   },
+   {
+    "min": 17500.01,
+    "max": 17600,
+    "employer": 2112,
+    "employee": 1584,
+    "total": 3696
+   },
+   {
+    "min": 17600.01,
+    "max": 17700,
+    "employer": 2124,
+    "employee": 1593,
+    "total": 3717
+   },
+   {
+    "min": 17700.01,
+    "max": 17800,
+    "employer": 2136,
+    "employee": 1602,
+    "total": 3738
+   },
+   {
+    "min": 17800.01,
+    "max": 17900,
+    "employer": 2148,
+    "employee": 1611,
+    "total": 3759
+   },
+   {
+    "min": 17900.01,
+    "max": 18000,
+    "employer": 2160,
+    "employee": 1620,
+    "total": 3780
+   },
+   {
+    "min": 18000.01,
+    "max": 18100,
+    "employer": 2172,
+    "employee": 1629,
+    "total": 3801
+   },
+   {
+    "min": 18100.01,
+    "max": 18200,
+    "employer": 2184,
+    "employee": 1638,
+    "total": 3822
+   },
+   {
+    "min": 18200.01,
+    "max": 18300,
+    "employer": 2196,
+    "employee": 1647,
+    "total": 3843
+   },
+   {
+    "min": 18300.01,
+    "max": 18400,
+    "employer": 2208,
+    "employee": 1656,
+    "total": 3864
+   },
+   {
+    "min": 18400.01,
+    "max": 18500,
+    "employer": 2220,
+    "employee": 1665,
+    "total": 3885
+   },
+   {
+    "min": 18500.01,
+    "max": 18600,
+    "employer": 2232,
+    "employee": 1674,
+    "total": 3906
+   },
+   {
+    "min": 18600.01,
+    "max": 18700,
+    "employer": 2244,
+    "employee": 1683,
+    "total": 3927
+   },
+   {
+    "min": 18700.01,
+    "max": 18800,
+    "employer": 2256,
+    "employee": 1692,
+    "total": 3948
+   },
+   {
+    "min": 18800.01,
+    "max": 18900,
+    "employer": 2268,
+    "employee": 1701,
+    "total": 3969
+   },
+   {
+    "min": 18900.01,
+    "max": 19000,
+    "employer": 2280,
+    "employee": 1710,
+    "total": 3990
+   },
+   {
+    "min": 19000.01,
+    "max": 19100,
+    "employer": 2292,
+    "employee": 1719,
+    "total": 4011
+   },
+   {
+    "min": 19100.01,
+    "max": 19200,
+    "employer": 2304,
+    "employee": 1728,
+    "total": 4032
+   },
+   {
+    "min": 19200.01,
+    "max": 19300,
+    "employer": 2316,
+    "employee": 1737,
+    "total": 4053
+   },
+   {
+    "min": 19300.01,
+    "max": 19400,
+    "employer": 2328,
+    "employee": 1746,
+    "total": 4074
+   },
+   {
+    "min": 19400.01,
+    "max": 19500,
+    "employer": 2340,
+    "employee": 1755,
+    "total": 4095
+   },
+   {
+    "min": 19500.01,
+    "max": 19600,
+    "employer": 2352,
+    "employee": 1764,
+    "total": 4116
+   },
+   {
+    "min": 19600.01,
+    "max": 19700,
+    "employer": 2364,
+    "employee": 1773,
+    "total": 4137
+   },
+   {
+    "min": 19700.01,
+    "max": 19800,
+    "employer": 2376,
+    "employee": 1782,
+    "total": 4158
+   },
+   {
+    "min": 19800.01,
+    "max": 19900,
+    "employer": 2388,
+    "employee": 1791,
+    "total": 4179
+   },
+   {
+    "min": 19900.01,
+    "max": 20000,
+    "employer": 2400,
+    "employee": 1800,
+    "total": 4200
+   }
+  ]
+ },
+ "socso_over60": {
+  "label": "SOCSO Second Category (>60)",
+  "bands": [
+   {
+    "min": 0,
+    "max": 0,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 0.01,
+    "max": 30,
+    "employer": 0.3,
+    "employee": 0,
+    "total": 0.3
+   },
+   {
+    "min": 30.01,
+    "max": 50,
+    "employer": 0.5,
+    "employee": 0,
+    "total": 0.5
+   },
+   {
+    "min": 50.01,
+    "max": 70,
+    "employer": 0.8,
+    "employee": 0,
+    "total": 0.8
+   },
+   {
+    "min": 70.01,
+    "max": 100,
+    "employer": 1.1,
+    "employee": 0,
+    "total": 1.1
+   },
+   {
+    "min": 100.01,
+    "max": 140,
+    "employer": 1.5,
+    "employee": 0,
+    "total": 1.5
+   },
+   {
+    "min": 140.01,
+    "max": 200,
+    "employer": 2.1,
+    "employee": 0,
+    "total": 2.1
+   },
+   {
+    "min": 200.01,
+    "max": 300,
+    "employer": 3.1,
+    "employee": 0,
+    "total": 3.1
+   },
+   {
+    "min": 300.01,
+    "max": 400,
+    "employer": 4.4,
+    "employee": 0,
+    "total": 4.4
+   },
+   {
+    "min": 400.01,
+    "max": 500,
+    "employer": 5.6,
+    "employee": 0,
+    "total": 5.6
+   },
+   {
+    "min": 500.01,
+    "max": 600,
+    "employer": 6.9,
+    "employee": 0,
+    "total": 6.9
+   },
+   {
+    "min": 600.01,
+    "max": 700,
+    "employer": 8.1,
+    "employee": 0,
+    "total": 8.1
+   },
+   {
+    "min": 700.01,
+    "max": 800,
+    "employer": 9.4,
+    "employee": 0,
+    "total": 9.4
+   },
+   {
+    "min": 800.01,
+    "max": 900,
+    "employer": 10.6,
+    "employee": 0,
+    "total": 10.6
+   },
+   {
+    "min": 900.01,
+    "max": 1000,
+    "employer": 11.9,
+    "employee": 0,
+    "total": 11.9
+   },
+   {
+    "min": 1000.01,
+    "max": 1100,
+    "employer": 13.1,
+    "employee": 0,
+    "total": 13.1
+   },
+   {
+    "min": 1100.01,
+    "max": 1200,
+    "employer": 14.4,
+    "employee": 0,
+    "total": 14.4
+   },
+   {
+    "min": 1200.01,
+    "max": 1300,
+    "employer": 15.6,
+    "employee": 0,
+    "total": 15.6
+   },
+   {
+    "min": 1300.01,
+    "max": 1400,
+    "employer": 16.9,
+    "employee": 0,
+    "total": 16.9
+   },
+   {
+    "min": 1400.01,
+    "max": 1500,
+    "employer": 18.1,
+    "employee": 0,
+    "total": 18.1
+   },
+   {
+    "min": 1500.01,
+    "max": 1600,
+    "employer": 19.4,
+    "employee": 0,
+    "total": 19.4
+   },
+   {
+    "min": 1600.01,
+    "max": 1700,
+    "employer": 20.6,
+    "employee": 0,
+    "total": 20.6
+   },
+   {
+    "min": 1700.01,
+    "max": 1800,
+    "employer": 21.9,
+    "employee": 0,
+    "total": 21.9
+   },
+   {
+    "min": 1800.01,
+    "max": 1900,
+    "employer": 23.1,
+    "employee": 0,
+    "total": 23.1
+   },
+   {
+    "min": 1900.01,
+    "max": 2000,
+    "employer": 24.4,
+    "employee": 0,
+    "total": 24.4
+   },
+   {
+    "min": 2000.01,
+    "max": 2100,
+    "employer": 25.6,
+    "employee": 0,
+    "total": 25.6
+   },
+   {
+    "min": 2100.01,
+    "max": 2200,
+    "employer": 26.9,
+    "employee": 0,
+    "total": 26.9
+   },
+   {
+    "min": 2200.01,
+    "max": 2300,
+    "employer": 28.1,
+    "employee": 0,
+    "total": 28.1
+   },
+   {
+    "min": 2300.01,
+    "max": 2400,
+    "employer": 29.4,
+    "employee": 0,
+    "total": 29.4
+   },
+   {
+    "min": 2400.01,
+    "max": 2500,
+    "employer": 30.6,
+    "employee": 0,
+    "total": 30.6
+   },
+   {
+    "min": 2500.01,
+    "max": 2600,
+    "employer": 31.9,
+    "employee": 0,
+    "total": 31.9
+   },
+   {
+    "min": 2600.01,
+    "max": 2700,
+    "employer": 33.1,
+    "employee": 0,
+    "total": 33.1
+   },
+   {
+    "min": 2700.01,
+    "max": 2800,
+    "employer": 34.4,
+    "employee": 0,
+    "total": 34.4
+   },
+   {
+    "min": 2800.01,
+    "max": 2900,
+    "employer": 35.6,
+    "employee": 0,
+    "total": 35.6
+   },
+   {
+    "min": 2900.01,
+    "max": 3000,
+    "employer": 36.9,
+    "employee": 0,
+    "total": 36.9
+   },
+   {
+    "min": 3000.01,
+    "max": 3100,
+    "employer": 38.1,
+    "employee": 0,
+    "total": 38.1
+   },
+   {
+    "min": 3100.01,
+    "max": 3200,
+    "employer": 39.4,
+    "employee": 0,
+    "total": 39.4
+   },
+   {
+    "min": 3200.01,
+    "max": 3300,
+    "employer": 40.6,
+    "employee": 0,
+    "total": 40.6
+   },
+   {
+    "min": 3300.01,
+    "max": 3400,
+    "employer": 41.9,
+    "employee": 0,
+    "total": 41.9
+   },
+   {
+    "min": 3400.01,
+    "max": 3500,
+    "employer": 43.1,
+    "employee": 0,
+    "total": 43.1
+   },
+   {
+    "min": 3500.01,
+    "max": 3600,
+    "employer": 44.4,
+    "employee": 0,
+    "total": 44.4
+   },
+   {
+    "min": 3600.01,
+    "max": 3700,
+    "employer": 45.6,
+    "employee": 0,
+    "total": 45.6
+   },
+   {
+    "min": 3700.01,
+    "max": 3800,
+    "employer": 46.9,
+    "employee": 0,
+    "total": 46.9
+   },
+   {
+    "min": 3800.01,
+    "max": 3900,
+    "employer": 48.1,
+    "employee": 0,
+    "total": 48.1
+   },
+   {
+    "min": 3900.01,
+    "max": 4000,
+    "employer": 49.4,
+    "employee": 0,
+    "total": 49.4
+   },
+   {
+    "min": 4000.01,
+    "max": 4100,
+    "employer": 50.6,
+    "employee": 0,
+    "total": 50.6
+   },
+   {
+    "min": 4100.01,
+    "max": 4200,
+    "employer": 51.9,
+    "employee": 0,
+    "total": 51.9
+   },
+   {
+    "min": 4200.01,
+    "max": 4300,
+    "employer": 53.1,
+    "employee": 0,
+    "total": 53.1
+   },
+   {
+    "min": 4300.01,
+    "max": 4400,
+    "employer": 54.4,
+    "employee": 0,
+    "total": 54.4
+   },
+   {
+    "min": 4400.01,
+    "max": 4500,
+    "employer": 55.6,
+    "employee": 0,
+    "total": 55.6
+   },
+   {
+    "min": 4500.01,
+    "max": 4600,
+    "employer": 56.9,
+    "employee": 0,
+    "total": 56.9
+   },
+   {
+    "min": 4600.01,
+    "max": 4700,
+    "employer": 58.1,
+    "employee": 0,
+    "total": 58.1
+   },
+   {
+    "min": 4700.01,
+    "max": 4800,
+    "employer": 59.4,
+    "employee": 0,
+    "total": 59.4
+   },
+   {
+    "min": 4800.01,
+    "max": 4900,
+    "employer": 60.6,
+    "employee": 0,
+    "total": 60.6
+   },
+   {
+    "min": 4900.01,
+    "max": 5000,
+    "employer": 61.9,
+    "employee": 0,
+    "total": 61.9
+   },
+   {
+    "min": 5000.01,
+    "max": 5100,
+    "employer": 63.1,
+    "employee": 0,
+    "total": 63.1
+   },
+   {
+    "min": 5100.01,
+    "max": 5200,
+    "employer": 64.4,
+    "employee": 0,
+    "total": 64.4
+   },
+   {
+    "min": 5200.01,
+    "max": 5300,
+    "employer": 65.6,
+    "employee": 0,
+    "total": 65.6
+   },
+   {
+    "min": 5300.01,
+    "max": 5400,
+    "employer": 66.9,
+    "employee": 0,
+    "total": 66.9
+   },
+   {
+    "min": 5400.01,
+    "max": 5500,
+    "employer": 68.1,
+    "employee": 0,
+    "total": 68.1
+   },
+   {
+    "min": 5500.01,
+    "max": 5600,
+    "employer": 69.4,
+    "employee": 0,
+    "total": 69.4
+   },
+   {
+    "min": 5600.01,
+    "max": 5700,
+    "employer": 70.6,
+    "employee": 0,
+    "total": 70.6
+   },
+   {
+    "min": 5700.01,
+    "max": 5800,
+    "employer": 71.9,
+    "employee": 0,
+    "total": 71.9
+   },
+   {
+    "min": 5800.01,
+    "max": 5900,
+    "employer": 73.1,
+    "employee": 0,
+    "total": 73.1
+   },
+   {
+    "min": 5900.01,
+    "max": 50000,
+    "employer": 74.4,
+    "employee": 0,
+    "total": 74.4
+   }
+  ]
+ },
+ "eis_over60": {
+  "label": "EIS/SIP (>60)",
+  "bands": [
+   {
+    "min": 0,
+    "max": 0,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 0.01,
+    "max": 30,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 30.01,
+    "max": 50,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 50.01,
+    "max": 70,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 70.01,
+    "max": 100,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 100.01,
+    "max": 140,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 140.01,
+    "max": 200,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 200.01,
+    "max": 300,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 300.01,
+    "max": 400,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 400.01,
+    "max": 500,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 500.01,
+    "max": 600,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 600.01,
+    "max": 700,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 700.01,
+    "max": 800,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 800.01,
+    "max": 900,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 900.01,
+    "max": 1000,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 1000.01,
+    "max": 1100,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 1100.01,
+    "max": 1200,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 1200.01,
+    "max": 1300,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 1300.01,
+    "max": 1400,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 1400.01,
+    "max": 1500,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 1500.01,
+    "max": 1600,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 1600.01,
+    "max": 1700,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 1700.01,
+    "max": 1800,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 1800.01,
+    "max": 1900,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 1900.01,
+    "max": 2000,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 2000.01,
+    "max": 2100,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 2100.01,
+    "max": 2200,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 2200.01,
+    "max": 2300,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 2300.01,
+    "max": 2400,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 2400.01,
+    "max": 2500,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 2500.01,
+    "max": 2600,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 2600.01,
+    "max": 2700,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 2700.01,
+    "max": 2800,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 2800.01,
+    "max": 2900,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 2900.01,
+    "max": 3000,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 3000.01,
+    "max": 3100,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 3100.01,
+    "max": 3200,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 3200.01,
+    "max": 3300,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 3300.01,
+    "max": 3400,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 3400.01,
+    "max": 3500,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 3500.01,
+    "max": 3600,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 3600.01,
+    "max": 3700,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 3700.01,
+    "max": 3800,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 3800.01,
+    "max": 3900,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 3900.01,
+    "max": 4000,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 4000.01,
+    "max": 4100,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 4100.01,
+    "max": 4200,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 4200.01,
+    "max": 4300,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 4300.01,
+    "max": 4400,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 4400.01,
+    "max": 4500,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 4500.01,
+    "max": 4600,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 4600.01,
+    "max": 4700,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 4700.01,
+    "max": 4800,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 4800.01,
+    "max": 4900,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 4900.01,
+    "max": 5000,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 5000.01,
+    "max": 5100,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 5100.01,
+    "max": 5200,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 5200.01,
+    "max": 5300,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 5300.01,
+    "max": 5400,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 5400.01,
+    "max": 5500,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 5500.01,
+    "max": 5600,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 5600.01,
+    "max": 5700,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 5700.01,
+    "max": 5800,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 5800.01,
+    "max": 5900,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 5900.01,
+    "max": 50000,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   }
+  ]
+ },
+ "epf_over60": {
+  "label": "EPF (>60) citizen",
+  "bands": [
+   {
+    "min": 0,
+    "max": 0,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 0.01,
+    "max": 10,
+    "employer": 0,
+    "employee": 0,
+    "total": 0
+   },
+   {
+    "min": 10.01,
+    "max": 20,
+    "employer": 1,
+    "employee": 0,
+    "total": 1
+   },
+   {
+    "min": 20.01,
+    "max": 40,
+    "employer": 2,
+    "employee": 0,
+    "total": 2
+   },
+   {
+    "min": 40.01,
+    "max": 60,
+    "employer": 3,
+    "employee": 0,
+    "total": 3
+   },
+   {
+    "min": 60.01,
+    "max": 80,
+    "employer": 4,
+    "employee": 0,
+    "total": 4
+   },
+   {
+    "min": 80.01,
+    "max": 100,
+    "employer": 4,
+    "employee": 0,
+    "total": 4
+   },
+   {
+    "min": 100.01,
+    "max": 120,
+    "employer": 5,
+    "employee": 0,
+    "total": 5
+   },
+   {
+    "min": 120.01,
+    "max": 140,
+    "employer": 6,
+    "employee": 0,
+    "total": 6
+   },
+   {
+    "min": 140.01,
+    "max": 160,
+    "employer": 7,
+    "employee": 0,
+    "total": 7
+   },
+   {
+    "min": 160.01,
+    "max": 180,
+    "employer": 8,
+    "employee": 0,
+    "total": 8
+   },
+   {
+    "min": 180.01,
+    "max": 200,
+    "employer": 8,
+    "employee": 0,
+    "total": 8
+   },
+   {
+    "min": 200.01,
+    "max": 220,
+    "employer": 9,
+    "employee": 0,
+    "total": 9
+   },
+   {
+    "min": 220.01,
+    "max": 240,
+    "employer": 10,
+    "employee": 0,
+    "total": 10
+   },
+   {
+    "min": 240.01,
+    "max": 260,
+    "employer": 11,
+    "employee": 0,
+    "total": 11
+   },
+   {
+    "min": 260.01,
+    "max": 280,
+    "employer": 12,
+    "employee": 0,
+    "total": 12
+   },
+   {
+    "min": 280.01,
+    "max": 300,
+    "employer": 12,
+    "employee": 0,
+    "total": 12
+   },
+   {
+    "min": 300.01,
+    "max": 320,
+    "employer": 13,
+    "employee": 0,
+    "total": 13
+   },
+   {
+    "min": 320.01,
+    "max": 340,
+    "employer": 14,
+    "employee": 0,
+    "total": 14
+   },
+   {
+    "min": 340.01,
+    "max": 360,
+    "employer": 15,
+    "employee": 0,
+    "total": 15
+   },
+   {
+    "min": 360.01,
+    "max": 380,
+    "employer": 16,
+    "employee": 0,
+    "total": 16
+   },
+   {
+    "min": 380.01,
+    "max": 400,
+    "employer": 16,
+    "employee": 0,
+    "total": 16
+   },
+   {
+    "min": 400.01,
+    "max": 420,
+    "employer": 17,
+    "employee": 0,
+    "total": 17
+   },
+   {
+    "min": 420.01,
+    "max": 440,
+    "employer": 18,
+    "employee": 0,
+    "total": 18
+   },
+   {
+    "min": 440.01,
+    "max": 460,
+    "employer": 19,
+    "employee": 0,
+    "total": 19
+   },
+   {
+    "min": 460.01,
+    "max": 480,
+    "employer": 20,
+    "employee": 0,
+    "total": 20
+   },
+   {
+    "min": 480.01,
+    "max": 500,
+    "employer": 20,
+    "employee": 0,
+    "total": 20
+   },
+   {
+    "min": 500.01,
+    "max": 520,
+    "employer": 21,
+    "employee": 0,
+    "total": 21
+   },
+   {
+    "min": 520.01,
+    "max": 540,
+    "employer": 22,
+    "employee": 0,
+    "total": 22
+   },
+   {
+    "min": 540.01,
+    "max": 560,
+    "employer": 23,
+    "employee": 0,
+    "total": 23
+   },
+   {
+    "min": 560.01,
+    "max": 580,
+    "employer": 24,
+    "employee": 0,
+    "total": 24
+   },
+   {
+    "min": 580.01,
+    "max": 600,
+    "employer": 24,
+    "employee": 0,
+    "total": 24
+   },
+   {
+    "min": 600.01,
+    "max": 620,
+    "employer": 25,
+    "employee": 0,
+    "total": 25
+   },
+   {
+    "min": 620.01,
+    "max": 640,
+    "employer": 26,
+    "employee": 0,
+    "total": 26
+   },
+   {
+    "min": 640.01,
+    "max": 660,
+    "employer": 27,
+    "employee": 0,
+    "total": 27
+   },
+   {
+    "min": 660.01,
+    "max": 680,
+    "employer": 28,
+    "employee": 0,
+    "total": 28
+   },
+   {
+    "min": 680.01,
+    "max": 700,
+    "employer": 28,
+    "employee": 0,
+    "total": 28
+   },
+   {
+    "min": 700.01,
+    "max": 720,
+    "employer": 29,
+    "employee": 0,
+    "total": 29
+   },
+   {
+    "min": 720.01,
+    "max": 740,
+    "employer": 30,
+    "employee": 0,
+    "total": 30
+   },
+   {
+    "min": 740.01,
+    "max": 760,
+    "employer": 31,
+    "employee": 0,
+    "total": 31
+   },
+   {
+    "min": 760.01,
+    "max": 780,
+    "employer": 32,
+    "employee": 0,
+    "total": 32
+   },
+   {
+    "min": 780.01,
+    "max": 800,
+    "employer": 32,
+    "employee": 0,
+    "total": 32
+   },
+   {
+    "min": 800.01,
+    "max": 820,
+    "employer": 33,
+    "employee": 0,
+    "total": 33
+   },
+   {
+    "min": 820.01,
+    "max": 840,
+    "employer": 34,
+    "employee": 0,
+    "total": 34
+   },
+   {
+    "min": 840.01,
+    "max": 860,
+    "employer": 35,
+    "employee": 0,
+    "total": 35
+   },
+   {
+    "min": 860.01,
+    "max": 880,
+    "employer": 36,
+    "employee": 0,
+    "total": 36
+   },
+   {
+    "min": 880.01,
+    "max": 900,
+    "employer": 36,
+    "employee": 0,
+    "total": 36
+   },
+   {
+    "min": 900.01,
+    "max": 920,
+    "employer": 37,
+    "employee": 0,
+    "total": 37
+   },
+   {
+    "min": 920.01,
+    "max": 940,
+    "employer": 38,
+    "employee": 0,
+    "total": 38
+   },
+   {
+    "min": 940.01,
+    "max": 960,
+    "employer": 39,
+    "employee": 0,
+    "total": 39
+   },
+   {
+    "min": 960.01,
+    "max": 980,
+    "employer": 40,
+    "employee": 0,
+    "total": 40
+   },
+   {
+    "min": 980.01,
+    "max": 1000,
+    "employer": 40,
+    "employee": 0,
+    "total": 40
+   },
+   {
+    "min": 1000.01,
+    "max": 1020,
+    "employer": 41,
+    "employee": 0,
+    "total": 41
+   },
+   {
+    "min": 1020.01,
+    "max": 1040,
+    "employer": 42,
+    "employee": 0,
+    "total": 42
+   },
+   {
+    "min": 1040.01,
+    "max": 1060,
+    "employer": 43,
+    "employee": 0,
+    "total": 43
+   },
+   {
+    "min": 1060.01,
+    "max": 1080,
+    "employer": 44,
+    "employee": 0,
+    "total": 44
+   },
+   {
+    "min": 1080.01,
+    "max": 1100,
+    "employer": 44,
+    "employee": 0,
+    "total": 44
+   },
+   {
+    "min": 1100.01,
+    "max": 1120,
+    "employer": 45,
+    "employee": 0,
+    "total": 45
+   },
+   {
+    "min": 1120.01,
+    "max": 1140,
+    "employer": 46,
+    "employee": 0,
+    "total": 46
+   },
+   {
+    "min": 1140.01,
+    "max": 1160,
+    "employer": 47,
+    "employee": 0,
+    "total": 47
+   },
+   {
+    "min": 1160.01,
+    "max": 1180,
+    "employer": 48,
+    "employee": 0,
+    "total": 48
+   },
+   {
+    "min": 1180.01,
+    "max": 1200,
+    "employer": 48,
+    "employee": 0,
+    "total": 48
+   },
+   {
+    "min": 1200.01,
+    "max": 1220,
+    "employer": 49,
+    "employee": 0,
+    "total": 49
+   },
+   {
+    "min": 1220.01,
+    "max": 1240,
+    "employer": 50,
+    "employee": 0,
+    "total": 50
+   },
+   {
+    "min": 1240.01,
+    "max": 1260,
+    "employer": 51,
+    "employee": 0,
+    "total": 51
+   },
+   {
+    "min": 1260.01,
+    "max": 1280,
+    "employer": 52,
+    "employee": 0,
+    "total": 52
+   },
+   {
+    "min": 1280.01,
+    "max": 1300,
+    "employer": 52,
+    "employee": 0,
+    "total": 52
+   },
+   {
+    "min": 1300.01,
+    "max": 1320,
+    "employer": 53,
+    "employee": 0,
+    "total": 53
+   },
+   {
+    "min": 1320.01,
+    "max": 1340,
+    "employer": 54,
+    "employee": 0,
+    "total": 54
+   },
+   {
+    "min": 1340.01,
+    "max": 1360,
+    "employer": 55,
+    "employee": 0,
+    "total": 55
+   },
+   {
+    "min": 1360.01,
+    "max": 1380,
+    "employer": 56,
+    "employee": 0,
+    "total": 56
+   },
+   {
+    "min": 1380.01,
+    "max": 1400,
+    "employer": 56,
+    "employee": 0,
+    "total": 56
+   },
+   {
+    "min": 1400.01,
+    "max": 1420,
+    "employer": 57,
+    "employee": 0,
+    "total": 57
+   },
+   {
+    "min": 1420.01,
+    "max": 1440,
+    "employer": 58,
+    "employee": 0,
+    "total": 58
+   },
+   {
+    "min": 1440.01,
+    "max": 1460,
+    "employer": 59,
+    "employee": 0,
+    "total": 59
+   },
+   {
+    "min": 1460.01,
+    "max": 1480,
+    "employer": 60,
+    "employee": 0,
+    "total": 60
+   },
+   {
+    "min": 1480.01,
+    "max": 1500,
+    "employer": 60,
+    "employee": 0,
+    "total": 60
+   },
+   {
+    "min": 1500.01,
+    "max": 1520,
+    "employer": 61,
+    "employee": 0,
+    "total": 61
+   },
+   {
+    "min": 1520.01,
+    "max": 1540,
+    "employer": 62,
+    "employee": 0,
+    "total": 62
+   },
+   {
+    "min": 1540.01,
+    "max": 1560,
+    "employer": 63,
+    "employee": 0,
+    "total": 63
+   },
+   {
+    "min": 1560.01,
+    "max": 1580,
+    "employer": 64,
+    "employee": 0,
+    "total": 64
+   },
+   {
+    "min": 1580.01,
+    "max": 1600,
+    "employer": 64,
+    "employee": 0,
+    "total": 64
+   },
+   {
+    "min": 1600.01,
+    "max": 1620,
+    "employer": 65,
+    "employee": 0,
+    "total": 65
+   },
+   {
+    "min": 1620.01,
+    "max": 1640,
+    "employer": 66,
+    "employee": 0,
+    "total": 66
+   },
+   {
+    "min": 1640.01,
+    "max": 1660,
+    "employer": 67,
+    "employee": 0,
+    "total": 67
+   },
+   {
+    "min": 1660.01,
+    "max": 1680,
+    "employer": 68,
+    "employee": 0,
+    "total": 68
+   },
+   {
+    "min": 1680.01,
+    "max": 1700,
+    "employer": 68,
+    "employee": 0,
+    "total": 68
+   },
+   {
+    "min": 1700.01,
+    "max": 1720,
+    "employer": 69,
+    "employee": 0,
+    "total": 69
+   },
+   {
+    "min": 1720.01,
+    "max": 1740,
+    "employer": 70,
+    "employee": 0,
+    "total": 70
+   },
+   {
+    "min": 1740.01,
+    "max": 1760,
+    "employer": 71,
+    "employee": 0,
+    "total": 71
+   },
+   {
+    "min": 1760.01,
+    "max": 1780,
+    "employer": 72,
+    "employee": 0,
+    "total": 72
+   },
+   {
+    "min": 1780.01,
+    "max": 1800,
+    "employer": 72,
+    "employee": 0,
+    "total": 72
+   },
+   {
+    "min": 1800.01,
+    "max": 1820,
+    "employer": 73,
+    "employee": 0,
+    "total": 73
+   },
+   {
+    "min": 1820.01,
+    "max": 1840,
+    "employer": 74,
+    "employee": 0,
+    "total": 74
+   },
+   {
+    "min": 1840.01,
+    "max": 1860,
+    "employer": 75,
+    "employee": 0,
+    "total": 75
+   },
+   {
+    "min": 1860.01,
+    "max": 1880,
+    "employer": 76,
+    "employee": 0,
+    "total": 76
+   },
+   {
+    "min": 1880.01,
+    "max": 1900,
+    "employer": 76,
+    "employee": 0,
+    "total": 76
+   },
+   {
+    "min": 1900.01,
+    "max": 1920,
+    "employer": 77,
+    "employee": 0,
+    "total": 77
+   },
+   {
+    "min": 1920.01,
+    "max": 1940,
+    "employer": 78,
+    "employee": 0,
+    "total": 78
+   },
+   {
+    "min": 1940.01,
+    "max": 1960,
+    "employer": 79,
+    "employee": 0,
+    "total": 79
+   },
+   {
+    "min": 1960.01,
+    "max": 1980,
+    "employer": 80,
+    "employee": 0,
+    "total": 80
+   },
+   {
+    "min": 1980.01,
+    "max": 2000,
+    "employer": 80,
+    "employee": 0,
+    "total": 80
+   },
+   {
+    "min": 2000.01,
+    "max": 2020,
+    "employer": 81,
+    "employee": 0,
+    "total": 81
+   },
+   {
+    "min": 2020.01,
+    "max": 2040,
+    "employer": 82,
+    "employee": 0,
+    "total": 82
+   },
+   {
+    "min": 2040.01,
+    "max": 2060,
+    "employer": 83,
+    "employee": 0,
+    "total": 83
+   },
+   {
+    "min": 2060.01,
+    "max": 2080,
+    "employer": 84,
+    "employee": 0,
+    "total": 84
+   },
+   {
+    "min": 2080.01,
+    "max": 2100,
+    "employer": 84,
+    "employee": 0,
+    "total": 84
+   },
+   {
+    "min": 2100.01,
+    "max": 2120,
+    "employer": 85,
+    "employee": 0,
+    "total": 85
+   },
+   {
+    "min": 2120.01,
+    "max": 2140,
+    "employer": 86,
+    "employee": 0,
+    "total": 86
+   },
+   {
+    "min": 2140.01,
+    "max": 2160,
+    "employer": 87,
+    "employee": 0,
+    "total": 87
+   },
+   {
+    "min": 2160.01,
+    "max": 2180,
+    "employer": 88,
+    "employee": 0,
+    "total": 88
+   },
+   {
+    "min": 2180.01,
+    "max": 2200,
+    "employer": 88,
+    "employee": 0,
+    "total": 88
+   },
+   {
+    "min": 2200.01,
+    "max": 2220,
+    "employer": 89,
+    "employee": 0,
+    "total": 89
+   },
+   {
+    "min": 2220.01,
+    "max": 2240,
+    "employer": 90,
+    "employee": 0,
+    "total": 90
+   },
+   {
+    "min": 2240.01,
+    "max": 2260,
+    "employer": 91,
+    "employee": 0,
+    "total": 91
+   },
+   {
+    "min": 2260.01,
+    "max": 2280,
+    "employer": 92,
+    "employee": 0,
+    "total": 92
+   },
+   {
+    "min": 2280.01,
+    "max": 2300,
+    "employer": 92,
+    "employee": 0,
+    "total": 92
+   },
+   {
+    "min": 2300.01,
+    "max": 2320,
+    "employer": 93,
+    "employee": 0,
+    "total": 93
+   },
+   {
+    "min": 2320.01,
+    "max": 2340,
+    "employer": 94,
+    "employee": 0,
+    "total": 94
+   },
+   {
+    "min": 2340.01,
+    "max": 2360,
+    "employer": 95,
+    "employee": 0,
+    "total": 95
+   },
+   {
+    "min": 2360.01,
+    "max": 2380,
+    "employer": 96,
+    "employee": 0,
+    "total": 96
+   },
+   {
+    "min": 2380.01,
+    "max": 2400,
+    "employer": 96,
+    "employee": 0,
+    "total": 96
+   },
+   {
+    "min": 2400.01,
+    "max": 2420,
+    "employer": 97,
+    "employee": 0,
+    "total": 97
+   },
+   {
+    "min": 2420.01,
+    "max": 2440,
+    "employer": 98,
+    "employee": 0,
+    "total": 98
+   },
+   {
+    "min": 2440.01,
+    "max": 2460,
+    "employer": 99,
+    "employee": 0,
+    "total": 99
+   },
+   {
+    "min": 2460.01,
+    "max": 2480,
+    "employer": 100,
+    "employee": 0,
+    "total": 100
+   },
+   {
+    "min": 2480.01,
+    "max": 2500,
+    "employer": 100,
+    "employee": 0,
+    "total": 100
+   },
+   {
+    "min": 2500.01,
+    "max": 2520,
+    "employer": 101,
+    "employee": 0,
+    "total": 101
+   },
+   {
+    "min": 2520.01,
+    "max": 2540,
+    "employer": 102,
+    "employee": 0,
+    "total": 102
+   },
+   {
+    "min": 2540.01,
+    "max": 2560,
+    "employer": 103,
+    "employee": 0,
+    "total": 103
+   },
+   {
+    "min": 2560.01,
+    "max": 2580,
+    "employer": 104,
+    "employee": 0,
+    "total": 104
+   },
+   {
+    "min": 2580.01,
+    "max": 2600,
+    "employer": 104,
+    "employee": 0,
+    "total": 104
+   },
+   {
+    "min": 2600.01,
+    "max": 2620,
+    "employer": 105,
+    "employee": 0,
+    "total": 105
+   },
+   {
+    "min": 2620.01,
+    "max": 2640,
+    "employer": 106,
+    "employee": 0,
+    "total": 106
+   },
+   {
+    "min": 2640.01,
+    "max": 2660,
+    "employer": 107,
+    "employee": 0,
+    "total": 107
+   },
+   {
+    "min": 2660.01,
+    "max": 2680,
+    "employer": 108,
+    "employee": 0,
+    "total": 108
+   },
+   {
+    "min": 2680.01,
+    "max": 2700,
+    "employer": 108,
+    "employee": 0,
+    "total": 108
+   },
+   {
+    "min": 2700.01,
+    "max": 2720,
+    "employer": 109,
+    "employee": 0,
+    "total": 109
+   },
+   {
+    "min": 2720.01,
+    "max": 2740,
+    "employer": 110,
+    "employee": 0,
+    "total": 110
+   },
+   {
+    "min": 2740.01,
+    "max": 2760,
+    "employer": 111,
+    "employee": 0,
+    "total": 111
+   },
+   {
+    "min": 2760.01,
+    "max": 2780,
+    "employer": 112,
+    "employee": 0,
+    "total": 112
+   },
+   {
+    "min": 2780.01,
+    "max": 2800,
+    "employer": 112,
+    "employee": 0,
+    "total": 112
+   },
+   {
+    "min": 2800.01,
+    "max": 2820,
+    "employer": 113,
+    "employee": 0,
+    "total": 113
+   },
+   {
+    "min": 2820.01,
+    "max": 2840,
+    "employer": 114,
+    "employee": 0,
+    "total": 114
+   },
+   {
+    "min": 2840.01,
+    "max": 2860,
+    "employer": 115,
+    "employee": 0,
+    "total": 115
+   },
+   {
+    "min": 2860.01,
+    "max": 2880,
+    "employer": 116,
+    "employee": 0,
+    "total": 116
+   },
+   {
+    "min": 2880.01,
+    "max": 2900,
+    "employer": 116,
+    "employee": 0,
+    "total": 116
+   },
+   {
+    "min": 2900.01,
+    "max": 2920,
+    "employer": 117,
+    "employee": 0,
+    "total": 117
+   },
+   {
+    "min": 2920.01,
+    "max": 2940,
+    "employer": 118,
+    "employee": 0,
+    "total": 118
+   },
+   {
+    "min": 2940.01,
+    "max": 2960,
+    "employer": 119,
+    "employee": 0,
+    "total": 119
+   },
+   {
+    "min": 2960.01,
+    "max": 2980,
+    "employer": 120,
+    "employee": 0,
+    "total": 120
+   },
+   {
+    "min": 2980.01,
+    "max": 3000,
+    "employer": 120,
+    "employee": 0,
+    "total": 120
+   },
+   {
+    "min": 3000.01,
+    "max": 3020,
+    "employer": 121,
+    "employee": 0,
+    "total": 121
+   },
+   {
+    "min": 3020.01,
+    "max": 3040,
+    "employer": 122,
+    "employee": 0,
+    "total": 122
+   },
+   {
+    "min": 3040.01,
+    "max": 3060,
+    "employer": 123,
+    "employee": 0,
+    "total": 123
+   },
+   {
+    "min": 3060.01,
+    "max": 3080,
+    "employer": 124,
+    "employee": 0,
+    "total": 124
+   },
+   {
+    "min": 3080.01,
+    "max": 3100,
+    "employer": 124,
+    "employee": 0,
+    "total": 124
+   },
+   {
+    "min": 3100.01,
+    "max": 3120,
+    "employer": 125,
+    "employee": 0,
+    "total": 125
+   },
+   {
+    "min": 3120.01,
+    "max": 3140,
+    "employer": 126,
+    "employee": 0,
+    "total": 126
+   },
+   {
+    "min": 3140.01,
+    "max": 3160,
+    "employer": 127,
+    "employee": 0,
+    "total": 127
+   },
+   {
+    "min": 3160.01,
+    "max": 3180,
+    "employer": 128,
+    "employee": 0,
+    "total": 128
+   },
+   {
+    "min": 3180.01,
+    "max": 3200,
+    "employer": 128,
+    "employee": 0,
+    "total": 128
+   },
+   {
+    "min": 3200.01,
+    "max": 3220,
+    "employer": 129,
+    "employee": 0,
+    "total": 129
+   },
+   {
+    "min": 3220.01,
+    "max": 3240,
+    "employer": 130,
+    "employee": 0,
+    "total": 130
+   },
+   {
+    "min": 3240.01,
+    "max": 3260,
+    "employer": 131,
+    "employee": 0,
+    "total": 131
+   },
+   {
+    "min": 3260.01,
+    "max": 3280,
+    "employer": 132,
+    "employee": 0,
+    "total": 132
+   },
+   {
+    "min": 3280.01,
+    "max": 3300,
+    "employer": 132,
+    "employee": 0,
+    "total": 132
+   },
+   {
+    "min": 3300.01,
+    "max": 3320,
+    "employer": 133,
+    "employee": 0,
+    "total": 133
+   },
+   {
+    "min": 3320.01,
+    "max": 3340,
+    "employer": 134,
+    "employee": 0,
+    "total": 134
+   },
+   {
+    "min": 3340.01,
+    "max": 3360,
+    "employer": 135,
+    "employee": 0,
+    "total": 135
+   },
+   {
+    "min": 3360.01,
+    "max": 3380,
+    "employer": 136,
+    "employee": 0,
+    "total": 136
+   },
+   {
+    "min": 3380.01,
+    "max": 3400,
+    "employer": 136,
+    "employee": 0,
+    "total": 136
+   },
+   {
+    "min": 3400.01,
+    "max": 3420,
+    "employer": 137,
+    "employee": 0,
+    "total": 137
+   },
+   {
+    "min": 3420.01,
+    "max": 3440,
+    "employer": 138,
+    "employee": 0,
+    "total": 138
+   },
+   {
+    "min": 3440.01,
+    "max": 3460,
+    "employer": 139,
+    "employee": 0,
+    "total": 139
+   },
+   {
+    "min": 3460.01,
+    "max": 3480,
+    "employer": 140,
+    "employee": 0,
+    "total": 140
+   },
+   {
+    "min": 3480.01,
+    "max": 3500,
+    "employer": 140,
+    "employee": 0,
+    "total": 140
+   },
+   {
+    "min": 3500.01,
+    "max": 3520,
+    "employer": 141,
+    "employee": 0,
+    "total": 141
+   },
+   {
+    "min": 3520.01,
+    "max": 3540,
+    "employer": 142,
+    "employee": 0,
+    "total": 142
+   },
+   {
+    "min": 3540.01,
+    "max": 3560,
+    "employer": 143,
+    "employee": 0,
+    "total": 143
+   },
+   {
+    "min": 3560.01,
+    "max": 3580,
+    "employer": 144,
+    "employee": 0,
+    "total": 144
+   },
+   {
+    "min": 3580.01,
+    "max": 3600,
+    "employer": 144,
+    "employee": 0,
+    "total": 144
+   },
+   {
+    "min": 3600.01,
+    "max": 3620,
+    "employer": 145,
+    "employee": 0,
+    "total": 145
+   },
+   {
+    "min": 3620.01,
+    "max": 3640,
+    "employer": 146,
+    "employee": 0,
+    "total": 146
+   },
+   {
+    "min": 3640.01,
+    "max": 3660,
+    "employer": 147,
+    "employee": 0,
+    "total": 147
+   },
+   {
+    "min": 3660.01,
+    "max": 3680,
+    "employer": 148,
+    "employee": 0,
+    "total": 148
+   },
+   {
+    "min": 3680.01,
+    "max": 3700,
+    "employer": 148,
+    "employee": 0,
+    "total": 148
+   },
+   {
+    "min": 3700.01,
+    "max": 3720,
+    "employer": 149,
+    "employee": 0,
+    "total": 149
+   },
+   {
+    "min": 3720.01,
+    "max": 3740,
+    "employer": 150,
+    "employee": 0,
+    "total": 150
+   },
+   {
+    "min": 3740.01,
+    "max": 3760,
+    "employer": 151,
+    "employee": 0,
+    "total": 151
+   },
+   {
+    "min": 3760.01,
+    "max": 3780,
+    "employer": 152,
+    "employee": 0,
+    "total": 152
+   },
+   {
+    "min": 3780.01,
+    "max": 3800,
+    "employer": 152,
+    "employee": 0,
+    "total": 152
+   },
+   {
+    "min": 3800.01,
+    "max": 3820,
+    "employer": 153,
+    "employee": 0,
+    "total": 153
+   },
+   {
+    "min": 3820.01,
+    "max": 3840,
+    "employer": 154,
+    "employee": 0,
+    "total": 154
+   },
+   {
+    "min": 3840.01,
+    "max": 3860,
+    "employer": 155,
+    "employee": 0,
+    "total": 155
+   },
+   {
+    "min": 3860.01,
+    "max": 3880,
+    "employer": 156,
+    "employee": 0,
+    "total": 156
+   },
+   {
+    "min": 3880.01,
+    "max": 3900,
+    "employer": 156,
+    "employee": 0,
+    "total": 156
+   },
+   {
+    "min": 3900.01,
+    "max": 3920,
+    "employer": 157,
+    "employee": 0,
+    "total": 157
+   },
+   {
+    "min": 3920.01,
+    "max": 3940,
+    "employer": 158,
+    "employee": 0,
+    "total": 158
+   },
+   {
+    "min": 3940.01,
+    "max": 3960,
+    "employer": 159,
+    "employee": 0,
+    "total": 159
+   },
+   {
+    "min": 3960.01,
+    "max": 3980,
+    "employer": 160,
+    "employee": 0,
+    "total": 160
+   },
+   {
+    "min": 3980.01,
+    "max": 4000,
+    "employer": 160,
+    "employee": 0,
+    "total": 160
+   },
+   {
+    "min": 4000.01,
+    "max": 4020,
+    "employer": 161,
+    "employee": 0,
+    "total": 161
+   },
+   {
+    "min": 4020.01,
+    "max": 4040,
+    "employer": 162,
+    "employee": 0,
+    "total": 162
+   },
+   {
+    "min": 4040.01,
+    "max": 4060,
+    "employer": 163,
+    "employee": 0,
+    "total": 163
+   },
+   {
+    "min": 4060.01,
+    "max": 4080,
+    "employer": 164,
+    "employee": 0,
+    "total": 164
+   },
+   {
+    "min": 4080.01,
+    "max": 4100,
+    "employer": 164,
+    "employee": 0,
+    "total": 164
+   },
+   {
+    "min": 4100.01,
+    "max": 4120,
+    "employer": 165,
+    "employee": 0,
+    "total": 165
+   },
+   {
+    "min": 4120.01,
+    "max": 4140,
+    "employer": 166,
+    "employee": 0,
+    "total": 166
+   },
+   {
+    "min": 4140.01,
+    "max": 4160,
+    "employer": 167,
+    "employee": 0,
+    "total": 167
+   },
+   {
+    "min": 4160.01,
+    "max": 4180,
+    "employer": 168,
+    "employee": 0,
+    "total": 168
+   },
+   {
+    "min": 4180.01,
+    "max": 4200,
+    "employer": 168,
+    "employee": 0,
+    "total": 168
+   },
+   {
+    "min": 4200.01,
+    "max": 4220,
+    "employer": 169,
+    "employee": 0,
+    "total": 169
+   },
+   {
+    "min": 4220.01,
+    "max": 4240,
+    "employer": 170,
+    "employee": 0,
+    "total": 170
+   },
+   {
+    "min": 4240.01,
+    "max": 4260,
+    "employer": 171,
+    "employee": 0,
+    "total": 171
+   },
+   {
+    "min": 4260.01,
+    "max": 4280,
+    "employer": 172,
+    "employee": 0,
+    "total": 172
+   },
+   {
+    "min": 4280.01,
+    "max": 4300,
+    "employer": 172,
+    "employee": 0,
+    "total": 172
+   },
+   {
+    "min": 4300.01,
+    "max": 4320,
+    "employer": 173,
+    "employee": 0,
+    "total": 173
+   },
+   {
+    "min": 4320.01,
+    "max": 4340,
+    "employer": 174,
+    "employee": 0,
+    "total": 174
+   },
+   {
+    "min": 4340.01,
+    "max": 4360,
+    "employer": 175,
+    "employee": 0,
+    "total": 175
+   },
+   {
+    "min": 4360.01,
+    "max": 4380,
+    "employer": 176,
+    "employee": 0,
+    "total": 176
+   },
+   {
+    "min": 4380.01,
+    "max": 4400,
+    "employer": 176,
+    "employee": 0,
+    "total": 176
+   },
+   {
+    "min": 4400.01,
+    "max": 4420,
+    "employer": 177,
+    "employee": 0,
+    "total": 177
+   },
+   {
+    "min": 4420.01,
+    "max": 4440,
+    "employer": 178,
+    "employee": 0,
+    "total": 178
+   },
+   {
+    "min": 4440.01,
+    "max": 4460,
+    "employer": 179,
+    "employee": 0,
+    "total": 179
+   },
+   {
+    "min": 4460.01,
+    "max": 4480,
+    "employer": 180,
+    "employee": 0,
+    "total": 180
+   },
+   {
+    "min": 4480.01,
+    "max": 4500,
+    "employer": 180,
+    "employee": 0,
+    "total": 180
+   },
+   {
+    "min": 4500.01,
+    "max": 4520,
+    "employer": 181,
+    "employee": 0,
+    "total": 181
+   },
+   {
+    "min": 4520.01,
+    "max": 4540,
+    "employer": 182,
+    "employee": 0,
+    "total": 182
+   },
+   {
+    "min": 4540.01,
+    "max": 4560,
+    "employer": 183,
+    "employee": 0,
+    "total": 183
+   },
+   {
+    "min": 4560.01,
+    "max": 4580,
+    "employer": 184,
+    "employee": 0,
+    "total": 184
+   },
+   {
+    "min": 4580.01,
+    "max": 4600,
+    "employer": 184,
+    "employee": 0,
+    "total": 184
+   },
+   {
+    "min": 4600.01,
+    "max": 4620,
+    "employer": 185,
+    "employee": 0,
+    "total": 185
+   },
+   {
+    "min": 4620.01,
+    "max": 4640,
+    "employer": 186,
+    "employee": 0,
+    "total": 186
+   },
+   {
+    "min": 4640.01,
+    "max": 4660,
+    "employer": 187,
+    "employee": 0,
+    "total": 187
+   },
+   {
+    "min": 4660.01,
+    "max": 4680,
+    "employer": 188,
+    "employee": 0,
+    "total": 188
+   },
+   {
+    "min": 4680.01,
+    "max": 4700,
+    "employer": 188,
+    "employee": 0,
+    "total": 188
+   },
+   {
+    "min": 4700.01,
+    "max": 4720,
+    "employer": 189,
+    "employee": 0,
+    "total": 189
+   },
+   {
+    "min": 4720.01,
+    "max": 4740,
+    "employer": 190,
+    "employee": 0,
+    "total": 190
+   },
+   {
+    "min": 4740.01,
+    "max": 4760,
+    "employer": 191,
+    "employee": 0,
+    "total": 191
+   },
+   {
+    "min": 4760.01,
+    "max": 4780,
+    "employer": 192,
+    "employee": 0,
+    "total": 192
+   },
+   {
+    "min": 4780.01,
+    "max": 4800,
+    "employer": 192,
+    "employee": 0,
+    "total": 192
+   },
+   {
+    "min": 4800.01,
+    "max": 4820,
+    "employer": 193,
+    "employee": 0,
+    "total": 193
+   },
+   {
+    "min": 4820.01,
+    "max": 4840,
+    "employer": 194,
+    "employee": 0,
+    "total": 194
+   },
+   {
+    "min": 4840.01,
+    "max": 4860,
+    "employer": 195,
+    "employee": 0,
+    "total": 195
+   },
+   {
+    "min": 4860.01,
+    "max": 4880,
+    "employer": 196,
+    "employee": 0,
+    "total": 196
+   },
+   {
+    "min": 4880.01,
+    "max": 4900,
+    "employer": 196,
+    "employee": 0,
+    "total": 196
+   },
+   {
+    "min": 4900.01,
+    "max": 4920,
+    "employer": 197,
+    "employee": 0,
+    "total": 197
+   },
+   {
+    "min": 4920.01,
+    "max": 4940,
+    "employer": 198,
+    "employee": 0,
+    "total": 198
+   },
+   {
+    "min": 4940.01,
+    "max": 4960,
+    "employer": 199,
+    "employee": 0,
+    "total": 199
+   },
+   {
+    "min": 4960.01,
+    "max": 4980,
+    "employer": 200,
+    "employee": 0,
+    "total": 200
+   },
+   {
+    "min": 4980.01,
+    "max": 5000,
+    "employer": 200,
+    "employee": 0,
+    "total": 200
+   },
+   {
+    "min": 5000.01,
+    "max": 5100,
+    "employer": 204,
+    "employee": 0,
+    "total": 204
+   },
+   {
+    "min": 5100.01,
+    "max": 5200,
+    "employer": 208,
+    "employee": 0,
+    "total": 208
+   },
+   {
+    "min": 5200.01,
+    "max": 5300,
+    "employer": 212,
+    "employee": 0,
+    "total": 212
+   },
+   {
+    "min": 5300.01,
+    "max": 5400,
+    "employer": 216,
+    "employee": 0,
+    "total": 216
+   },
+   {
+    "min": 5400.01,
+    "max": 5500,
+    "employer": 220,
+    "employee": 0,
+    "total": 220
+   },
+   {
+    "min": 5500.01,
+    "max": 5600,
+    "employer": 224,
+    "employee": 0,
+    "total": 224
+   },
+   {
+    "min": 5600.01,
+    "max": 5700,
+    "employer": 228,
+    "employee": 0,
+    "total": 228
+   },
+   {
+    "min": 5700.01,
+    "max": 5800,
+    "employer": 232,
+    "employee": 0,
+    "total": 232
+   },
+   {
+    "min": 5800.01,
+    "max": 5900,
+    "employer": 236,
+    "employee": 0,
+    "total": 236
+   },
+   {
+    "min": 5900.01,
+    "max": 6000,
+    "employer": 240,
+    "employee": 0,
+    "total": 240
+   },
+   {
+    "min": 6000.01,
+    "max": 6100,
+    "employer": 244,
+    "employee": 0,
+    "total": 244
+   },
+   {
+    "min": 6100.01,
+    "max": 6200,
+    "employer": 248,
+    "employee": 0,
+    "total": 248
+   },
+   {
+    "min": 6200.01,
+    "max": 6300,
+    "employer": 252,
+    "employee": 0,
+    "total": 252
+   },
+   {
+    "min": 6300.01,
+    "max": 6400,
+    "employer": 256,
+    "employee": 0,
+    "total": 256
+   },
+   {
+    "min": 6400.01,
+    "max": 6500,
+    "employer": 260,
+    "employee": 0,
+    "total": 260
+   },
+   {
+    "min": 6500.01,
+    "max": 6600,
+    "employer": 264,
+    "employee": 0,
+    "total": 264
+   },
+   {
+    "min": 6600.01,
+    "max": 6700,
+    "employer": 268,
+    "employee": 0,
+    "total": 268
+   },
+   {
+    "min": 6700.01,
+    "max": 6800,
+    "employer": 272,
+    "employee": 0,
+    "total": 272
+   },
+   {
+    "min": 6800.01,
+    "max": 6900,
+    "employer": 276,
+    "employee": 0,
+    "total": 276
+   },
+   {
+    "min": 6900.01,
+    "max": 7000,
+    "employer": 280,
+    "employee": 0,
+    "total": 280
+   },
+   {
+    "min": 7000.01,
+    "max": 7100,
+    "employer": 284,
+    "employee": 0,
+    "total": 284
+   },
+   {
+    "min": 7100.01,
+    "max": 7200,
+    "employer": 288,
+    "employee": 0,
+    "total": 288
+   },
+   {
+    "min": 7200.01,
+    "max": 7300,
+    "employer": 292,
+    "employee": 0,
+    "total": 292
+   },
+   {
+    "min": 7300.01,
+    "max": 7400,
+    "employer": 296,
+    "employee": 0,
+    "total": 296
+   },
+   {
+    "min": 7400.01,
+    "max": 7500,
+    "employer": 300,
+    "employee": 0,
+    "total": 300
+   },
+   {
+    "min": 7500.01,
+    "max": 7600,
+    "employer": 304,
+    "employee": 0,
+    "total": 304
+   },
+   {
+    "min": 7600.01,
+    "max": 7700,
+    "employer": 308,
+    "employee": 0,
+    "total": 308
+   },
+   {
+    "min": 7700.01,
+    "max": 7800,
+    "employer": 312,
+    "employee": 0,
+    "total": 312
+   },
+   {
+    "min": 7800.01,
+    "max": 7900,
+    "employer": 316,
+    "employee": 0,
+    "total": 316
+   },
+   {
+    "min": 7900.01,
+    "max": 8000,
+    "employer": 320,
+    "employee": 0,
+    "total": 320
+   },
+   {
+    "min": 8000.01,
+    "max": 8100,
+    "employer": 324,
+    "employee": 0,
+    "total": 324
+   },
+   {
+    "min": 8100.01,
+    "max": 8200,
+    "employer": 328,
+    "employee": 0,
+    "total": 328
+   },
+   {
+    "min": 8200.01,
+    "max": 8300,
+    "employer": 332,
+    "employee": 0,
+    "total": 332
+   },
+   {
+    "min": 8300.01,
+    "max": 8400,
+    "employer": 336,
+    "employee": 0,
+    "total": 336
+   },
+   {
+    "min": 8400.01,
+    "max": 8500,
+    "employer": 340,
+    "employee": 0,
+    "total": 340
+   },
+   {
+    "min": 8500.01,
+    "max": 8600,
+    "employer": 344,
+    "employee": 0,
+    "total": 344
+   },
+   {
+    "min": 8600.01,
+    "max": 8700,
+    "employer": 348,
+    "employee": 0,
+    "total": 348
+   },
+   {
+    "min": 8700.01,
+    "max": 8800,
+    "employer": 352,
+    "employee": 0,
+    "total": 352
+   },
+   {
+    "min": 8800.01,
+    "max": 8900,
+    "employer": 356,
+    "employee": 0,
+    "total": 356
+   },
+   {
+    "min": 8900.01,
+    "max": 9000,
+    "employer": 360,
+    "employee": 0,
+    "total": 360
+   },
+   {
+    "min": 9000.01,
+    "max": 9100,
+    "employer": 364,
+    "employee": 0,
+    "total": 364
+   },
+   {
+    "min": 9100.01,
+    "max": 9200,
+    "employer": 368,
+    "employee": 0,
+    "total": 368
+   },
+   {
+    "min": 9200.01,
+    "max": 9300,
+    "employer": 372,
+    "employee": 0,
+    "total": 372
+   },
+   {
+    "min": 9300.01,
+    "max": 9400,
+    "employer": 376,
+    "employee": 0,
+    "total": 376
+   },
+   {
+    "min": 9400.01,
+    "max": 9500,
+    "employer": 380,
+    "employee": 0,
+    "total": 380
+   },
+   {
+    "min": 9500.01,
+    "max": 9600,
+    "employer": 384,
+    "employee": 0,
+    "total": 384
+   },
+   {
+    "min": 9600.01,
+    "max": 9700,
+    "employer": 388,
+    "employee": 0,
+    "total": 388
+   },
+   {
+    "min": 9700.01,
+    "max": 9800,
+    "employer": 392,
+    "employee": 0,
+    "total": 392
+   },
+   {
+    "min": 9800.01,
+    "max": 9900,
+    "employer": 396,
+    "employee": 0,
+    "total": 396
+   },
+   {
+    "min": 9900.01,
+    "max": 10000,
+    "employer": 400,
+    "employee": 0,
+    "total": 400
+   },
+   {
+    "min": 10000.01,
+    "max": 10100,
+    "employer": 404,
+    "employee": 0,
+    "total": 404
+   },
+   {
+    "min": 10100.01,
+    "max": 10200,
+    "employer": 408,
+    "employee": 0,
+    "total": 408
+   },
+   {
+    "min": 10200.01,
+    "max": 10300,
+    "employer": 412,
+    "employee": 0,
+    "total": 412
+   },
+   {
+    "min": 10300.01,
+    "max": 10400,
+    "employer": 416,
+    "employee": 0,
+    "total": 416
+   },
+   {
+    "min": 10400.01,
+    "max": 10500,
+    "employer": 420,
+    "employee": 0,
+    "total": 420
+   },
+   {
+    "min": 10500.01,
+    "max": 10600,
+    "employer": 424,
+    "employee": 0,
+    "total": 424
+   },
+   {
+    "min": 10600.01,
+    "max": 10700,
+    "employer": 428,
+    "employee": 0,
+    "total": 428
+   },
+   {
+    "min": 10700.01,
+    "max": 10800,
+    "employer": 432,
+    "employee": 0,
+    "total": 432
+   },
+   {
+    "min": 10800.01,
+    "max": 10900,
+    "employer": 436,
+    "employee": 0,
+    "total": 436
+   },
+   {
+    "min": 10900.01,
+    "max": 11000,
+    "employer": 440,
+    "employee": 0,
+    "total": 440
+   },
+   {
+    "min": 11000.01,
+    "max": 11100,
+    "employer": 444,
+    "employee": 0,
+    "total": 444
+   },
+   {
+    "min": 11100.01,
+    "max": 11200,
+    "employer": 448,
+    "employee": 0,
+    "total": 448
+   },
+   {
+    "min": 11200.01,
+    "max": 11300,
+    "employer": 452,
+    "employee": 0,
+    "total": 452
+   },
+   {
+    "min": 11300.01,
+    "max": 11400,
+    "employer": 456,
+    "employee": 0,
+    "total": 456
+   },
+   {
+    "min": 11400.01,
+    "max": 11500,
+    "employer": 460,
+    "employee": 0,
+    "total": 460
+   },
+   {
+    "min": 11500.01,
+    "max": 11600,
+    "employer": 464,
+    "employee": 0,
+    "total": 464
+   },
+   {
+    "min": 11600.01,
+    "max": 11700,
+    "employer": 468,
+    "employee": 0,
+    "total": 468
+   },
+   {
+    "min": 11700.01,
+    "max": 11800,
+    "employer": 472,
+    "employee": 0,
+    "total": 472
+   },
+   {
+    "min": 11800.01,
+    "max": 11900,
+    "employer": 476,
+    "employee": 0,
+    "total": 476
+   },
+   {
+    "min": 11900.01,
+    "max": 12000,
+    "employer": 480,
+    "employee": 0,
+    "total": 480
+   },
+   {
+    "min": 12000.01,
+    "max": 12100,
+    "employer": 484,
+    "employee": 0,
+    "total": 484
+   },
+   {
+    "min": 12100.01,
+    "max": 12200,
+    "employer": 488,
+    "employee": 0,
+    "total": 488
+   },
+   {
+    "min": 12200.01,
+    "max": 12300,
+    "employer": 492,
+    "employee": 0,
+    "total": 492
+   },
+   {
+    "min": 12300.01,
+    "max": 12400,
+    "employer": 496,
+    "employee": 0,
+    "total": 496
+   },
+   {
+    "min": 12400.01,
+    "max": 12500,
+    "employer": 500,
+    "employee": 0,
+    "total": 500
+   },
+   {
+    "min": 12500.01,
+    "max": 12600,
+    "employer": 504,
+    "employee": 0,
+    "total": 504
+   },
+   {
+    "min": 12600.01,
+    "max": 12700,
+    "employer": 508,
+    "employee": 0,
+    "total": 508
+   },
+   {
+    "min": 12700.01,
+    "max": 12800,
+    "employer": 512,
+    "employee": 0,
+    "total": 512
+   },
+   {
+    "min": 12800.01,
+    "max": 12900,
+    "employer": 516,
+    "employee": 0,
+    "total": 516
+   },
+   {
+    "min": 12900.01,
+    "max": 13000,
+    "employer": 520,
+    "employee": 0,
+    "total": 520
+   },
+   {
+    "min": 13000.01,
+    "max": 13100,
+    "employer": 524,
+    "employee": 0,
+    "total": 524
+   },
+   {
+    "min": 13100.01,
+    "max": 13200,
+    "employer": 528,
+    "employee": 0,
+    "total": 528
+   },
+   {
+    "min": 13200.01,
+    "max": 13300,
+    "employer": 532,
+    "employee": 0,
+    "total": 532
+   },
+   {
+    "min": 13300.01,
+    "max": 13400,
+    "employer": 536,
+    "employee": 0,
+    "total": 536
+   },
+   {
+    "min": 13400.01,
+    "max": 13500,
+    "employer": 540,
+    "employee": 0,
+    "total": 540
+   },
+   {
+    "min": 13500.01,
+    "max": 13600,
+    "employer": 544,
+    "employee": 0,
+    "total": 544
+   },
+   {
+    "min": 13600.01,
+    "max": 13700,
+    "employer": 548,
+    "employee": 0,
+    "total": 548
+   },
+   {
+    "min": 13700.01,
+    "max": 13800,
+    "employer": 552,
+    "employee": 0,
+    "total": 552
+   },
+   {
+    "min": 13800.01,
+    "max": 13900,
+    "employer": 556,
+    "employee": 0,
+    "total": 556
+   },
+   {
+    "min": 13900.01,
+    "max": 14000,
+    "employer": 560,
+    "employee": 0,
+    "total": 560
+   },
+   {
+    "min": 14000.01,
+    "max": 14100,
+    "employer": 564,
+    "employee": 0,
+    "total": 564
+   },
+   {
+    "min": 14100.01,
+    "max": 14200,
+    "employer": 568,
+    "employee": 0,
+    "total": 568
+   },
+   {
+    "min": 14200.01,
+    "max": 14300,
+    "employer": 572,
+    "employee": 0,
+    "total": 572
+   },
+   {
+    "min": 14300.01,
+    "max": 14400,
+    "employer": 576,
+    "employee": 0,
+    "total": 576
+   },
+   {
+    "min": 14400.01,
+    "max": 14500,
+    "employer": 580,
+    "employee": 0,
+    "total": 580
+   },
+   {
+    "min": 14500.01,
+    "max": 14600,
+    "employer": 584,
+    "employee": 0,
+    "total": 584
+   },
+   {
+    "min": 14600.01,
+    "max": 14700,
+    "employer": 588,
+    "employee": 0,
+    "total": 588
+   },
+   {
+    "min": 14700.01,
+    "max": 14800,
+    "employer": 592,
+    "employee": 0,
+    "total": 592
+   },
+   {
+    "min": 14800.01,
+    "max": 14900,
+    "employer": 596,
+    "employee": 0,
+    "total": 596
+   },
+   {
+    "min": 14900.01,
+    "max": 15000,
+    "employer": 600,
+    "employee": 0,
+    "total": 600
+   },
+   {
+    "min": 15000.01,
+    "max": 15100,
+    "employer": 604,
+    "employee": 0,
+    "total": 604
+   },
+   {
+    "min": 15100.01,
+    "max": 15200,
+    "employer": 608,
+    "employee": 0,
+    "total": 608
+   },
+   {
+    "min": 15200.01,
+    "max": 15300,
+    "employer": 612,
+    "employee": 0,
+    "total": 612
+   },
+   {
+    "min": 15300.01,
+    "max": 15400,
+    "employer": 616,
+    "employee": 0,
+    "total": 616
+   },
+   {
+    "min": 15400.01,
+    "max": 15500,
+    "employer": 620,
+    "employee": 0,
+    "total": 620
+   },
+   {
+    "min": 15500.01,
+    "max": 15600,
+    "employer": 624,
+    "employee": 0,
+    "total": 624
+   },
+   {
+    "min": 15600.01,
+    "max": 15700,
+    "employer": 628,
+    "employee": 0,
+    "total": 628
+   },
+   {
+    "min": 15700.01,
+    "max": 15800,
+    "employer": 632,
+    "employee": 0,
+    "total": 632
+   },
+   {
+    "min": 15800.01,
+    "max": 15900,
+    "employer": 636,
+    "employee": 0,
+    "total": 636
+   },
+   {
+    "min": 15900.01,
+    "max": 16000,
+    "employer": 640,
+    "employee": 0,
+    "total": 640
+   },
+   {
+    "min": 16000.01,
+    "max": 16100,
+    "employer": 644,
+    "employee": 0,
+    "total": 644
+   },
+   {
+    "min": 16100.01,
+    "max": 16200,
+    "employer": 648,
+    "employee": 0,
+    "total": 648
+   },
+   {
+    "min": 16200.01,
+    "max": 16300,
+    "employer": 652,
+    "employee": 0,
+    "total": 652
+   },
+   {
+    "min": 16300.01,
+    "max": 16400,
+    "employer": 656,
+    "employee": 0,
+    "total": 656
+   },
+   {
+    "min": 16400.01,
+    "max": 16500,
+    "employer": 660,
+    "employee": 0,
+    "total": 660
+   },
+   {
+    "min": 16500.01,
+    "max": 16600,
+    "employer": 664,
+    "employee": 0,
+    "total": 664
+   },
+   {
+    "min": 16600.01,
+    "max": 16700,
+    "employer": 668,
+    "employee": 0,
+    "total": 668
+   },
+   {
+    "min": 16700.01,
+    "max": 16800,
+    "employer": 672,
+    "employee": 0,
+    "total": 672
+   },
+   {
+    "min": 16800.01,
+    "max": 16900,
+    "employer": 676,
+    "employee": 0,
+    "total": 676
+   },
+   {
+    "min": 16900.01,
+    "max": 17000,
+    "employer": 680,
+    "employee": 0,
+    "total": 680
+   },
+   {
+    "min": 17000.01,
+    "max": 17100,
+    "employer": 684,
+    "employee": 0,
+    "total": 684
+   },
+   {
+    "min": 17100.01,
+    "max": 17200,
+    "employer": 688,
+    "employee": 0,
+    "total": 688
+   },
+   {
+    "min": 17200.01,
+    "max": 17300,
+    "employer": 692,
+    "employee": 0,
+    "total": 692
+   },
+   {
+    "min": 17300.01,
+    "max": 17400,
+    "employer": 696,
+    "employee": 0,
+    "total": 696
+   },
+   {
+    "min": 17400.01,
+    "max": 17500,
+    "employer": 700,
+    "employee": 0,
+    "total": 700
+   },
+   {
+    "min": 17500.01,
+    "max": 17600,
+    "employer": 704,
+    "employee": 0,
+    "total": 704
+   },
+   {
+    "min": 17600.01,
+    "max": 17700,
+    "employer": 708,
+    "employee": 0,
+    "total": 708
+   },
+   {
+    "min": 17700.01,
+    "max": 17800,
+    "employer": 712,
+    "employee": 0,
+    "total": 712
+   },
+   {
+    "min": 17800.01,
+    "max": 17900,
+    "employer": 716,
+    "employee": 0,
+    "total": 716
+   },
+   {
+    "min": 17900.01,
+    "max": 18000,
+    "employer": 720,
+    "employee": 0,
+    "total": 720
+   },
+   {
+    "min": 18000.01,
+    "max": 18100,
+    "employer": 724,
+    "employee": 0,
+    "total": 724
+   },
+   {
+    "min": 18100.01,
+    "max": 18200,
+    "employer": 728,
+    "employee": 0,
+    "total": 728
+   },
+   {
+    "min": 18200.01,
+    "max": 18300,
+    "employer": 732,
+    "employee": 0,
+    "total": 732
+   },
+   {
+    "min": 18300.01,
+    "max": 18400,
+    "employer": 736,
+    "employee": 0,
+    "total": 736
+   },
+   {
+    "min": 18400.01,
+    "max": 18500,
+    "employer": 740,
+    "employee": 0,
+    "total": 740
+   },
+   {
+    "min": 18500.01,
+    "max": 18600,
+    "employer": 744,
+    "employee": 0,
+    "total": 744
+   },
+   {
+    "min": 18600.01,
+    "max": 18700,
+    "employer": 748,
+    "employee": 0,
+    "total": 748
+   },
+   {
+    "min": 18700.01,
+    "max": 18800,
+    "employer": 752,
+    "employee": 0,
+    "total": 752
+   },
+   {
+    "min": 18800.01,
+    "max": 18900,
+    "employer": 756,
+    "employee": 0,
+    "total": 756
+   },
+   {
+    "min": 18900.01,
+    "max": 19000,
+    "employer": 760,
+    "employee": 0,
+    "total": 760
+   },
+   {
+    "min": 19000.01,
+    "max": 19100,
+    "employer": 764,
+    "employee": 0,
+    "total": 764
+   },
+   {
+    "min": 19100.01,
+    "max": 19200,
+    "employer": 768,
+    "employee": 0,
+    "total": 768
+   },
+   {
+    "min": 19200.01,
+    "max": 19300,
+    "employer": 772,
+    "employee": 0,
+    "total": 772
+   },
+   {
+    "min": 19300.01,
+    "max": 19400,
+    "employer": 776,
+    "employee": 0,
+    "total": 776
+   },
+   {
+    "min": 19400.01,
+    "max": 19500,
+    "employer": 780,
+    "employee": 0,
+    "total": 780
+   },
+   {
+    "min": 19500.01,
+    "max": 19600,
+    "employer": 784,
+    "employee": 0,
+    "total": 784
+   },
+   {
+    "min": 19600.01,
+    "max": 19700,
+    "employer": 788,
+    "employee": 0,
+    "total": 788
+   },
+   {
+    "min": 19700.01,
+    "max": 19800,
+    "employer": 792,
+    "employee": 0,
+    "total": 792
+   },
+   {
+    "min": 19800.01,
+    "max": 19900,
+    "employer": 796,
+    "employee": 0,
+    "total": 796
+   },
+   {
+    "min": 19900.01,
+    "max": 20000,
+    "employer": 800,
+    "employee": 0,
+    "total": 800
+   },
+   {
+    "min": 20000.01,
+    "max": 1000000,
+    "employer": null,
+    "employee": null,
+    "total": null
+   }
+  ]
+ }
+}

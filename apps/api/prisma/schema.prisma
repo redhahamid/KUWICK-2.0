@@ -356,6 +356,7 @@ model Tenant {
   marketingDispatches        MarketingDispatch[]
   payrollAdjustments         PayrollAdjustment[]
   staffPermissionGrants      StaffPermissionGrant[]
+  payrollInputEntries        PayrollInputEntry[]
 
   @@map("tenants")
 }
@@ -444,6 +445,7 @@ model Clinic {
   procurementBudgets          ProcurementBudget[]
   dayEndClosings              DayEndClosing[]
   labelPrints                 LabelPrint[]
+  payrollInputEntries         PayrollInputEntry[]
 
   @@index([tenantId])
   @@map("clinics")
@@ -1050,6 +1052,8 @@ model Staff {
   marketingDispatches          MarketingDispatch[]          @relation("MarketingDispatchAuthor")
   payrollAdjustmentsAuthored   PayrollAdjustment[]          @relation("PayrollAdjustmentAuthor")
   prescriptionsReviewed        Prescription[]               @relation("PrescriptionReviewer")
+  payrollInputs                PayrollInputEntry[]          @relation("PayrollInputStaff")
+  payrollInputsCreated         PayrollInputEntry[]          @relation("PayrollInputAuthor")
 
   @@index([tenantId])
   @@index([tenantId, role])
@@ -5773,18 +5777,22 @@ model EmployeeProfile {
 
   /// Statutory identifiers. Stored, never used to derive a RATE — rates come
   /// only from StatutoryRuleSet.
-  epfNumber       String? @map("epf_number")
-  socsoNumber     String? @map("socso_number")
-  taxNumber       String? @map("tax_number")
+  epfNumber       String?  @map("epf_number")
+  socsoNumber     String?  @map("socso_number")
+  taxNumber       String?  @map("tax_number")
   /// PCB category ("S", "TP1"…). Free text: the categories are the tenant's
   /// configuration, not this schema's opinion.
-  taxCategory     String? @map("tax_category")
+  taxCategory     String?  @map("tax_category")
   /// Whether statutory contributions apply at all. A foreign locum on a
   /// service contract may be outside EPF/SOCSO entirely.
-  epfApplicable   Boolean @default(true) @map("epf_applicable")
-  socsoApplicable Boolean @default(true) @map("socso_applicable")
-  eisApplicable   Boolean @default(true) @map("eis_applicable")
-  pcbApplicable   Boolean @default(true) @map("pcb_applicable")
+  /// The employee's elected EPF share: 11 (statutory) or 9 (reduced). Selects
+  /// between two different Third Schedule tables, so it is a rate ELECTION and
+  /// not a percentage this system multiplies by.
+  epfEmployeeRate Decimal? @default(11) @map("epf_employee_rate") @db.Decimal(4, 2)
+  epfApplicable   Boolean  @default(true) @map("epf_applicable")
+  socsoApplicable Boolean  @default(true) @map("socso_applicable")
+  eisApplicable   Boolean  @default(true) @map("eis_applicable")
+  pcbApplicable   Boolean  @default(true) @map("pcb_applicable")
 
   leavePolicyId String? @map("leave_policy_id")
   notes         String?
@@ -6179,6 +6187,20 @@ model StaffBenefitUsage {
 /// statutory lines are absent rather than zero, and every payslip and export
 /// carries the fact. A wrong EPF number that looks right is worse than no EPF
 /// number at all.
+/// How far a rate set has been checked. `VERIFIED` is the ONLY value that lets
+/// a payroll run be approved, and it means a person opened the authority's
+/// published schedule and compared it — not that the numbers look plausible,
+/// and not that they came from the clinic's own spreadsheet.
+enum StatutoryVerificationStatus {
+  /// Entered, unchecked.
+  DRAFT
+  /// Cross-checked against secondary references and internally consistent, but
+  /// NOT against kwsp.gov.my / perkeso.gov.my / hasil.gov.my.
+  CORROBORATED
+  /// Checked against the authority's own published schedule by a named person.
+  VERIFIED
+}
+
 enum StatutoryStatus {
   /// A tenant-owned, effective-dated rule set was in force and was applied.
   CONFIGURED
@@ -6209,9 +6231,13 @@ model StatutoryRuleSet {
   /// Marked by the tenant when the figures have been checked against the
   /// authority's published tables. Until then the run is PROVISIONAL and every
   /// payslip says so.
-  verifiedAt        DateTime? @map("verified_at")
-  verifiedByStaffId String?   @map("verified_by_staff_id")
-  verificationNote  String?   @map("verification_note")
+  verificationStatus StatutoryVerificationStatus @default(DRAFT) @map("verification_status")
+  /// Where the figures came from. Recorded so a later reviewer can repeat the
+  /// check rather than take the last one on trust.
+  sourceUrl          String?                     @map("source_url")
+  verifiedAt         DateTime?                   @map("verified_at")
+  verifiedByStaffId  String?                     @map("verified_by_staff_id")
+  verificationNote   String?                     @map("verification_note")
 
   /// { employeeRate, employerRate, wageCeiling, ageBands: [...] }
   epfRules   Json? @map("epf_rules")
@@ -6267,6 +6293,14 @@ model PayrollRun {
   /// unapproved overtime claim. Surfaced BEFORE approval, never silently
   /// dropped or zeroed.
   exceptions Json?
+
+  /// Ordinary Rate of Pay divisors AS APPLIED. Clinic policy, not law, and the
+  /// clinic uses two different day counts on purpose: overtime is priced on a
+  /// 26-day month, unpaid leave is deducted on a 31-day one. Frozen here so a
+  /// later policy change cannot silently reprice a historical run.
+  orpOvertimeDays    Decimal @default(26) @map("orp_overtime_days") @db.Decimal(4, 1)
+  orpUnpaidLeaveDays Decimal @default(31) @map("orp_unpaid_leave_days") @db.Decimal(4, 1)
+  orpHoursPerDay     Decimal @default(7.5) @map("orp_hours_per_day") @db.Decimal(4, 2)
 
   calculatedAt      DateTime? @map("calculated_at")
   approvedByStaffId String?   @map("approved_by_staff_id")
@@ -6339,6 +6373,58 @@ model PayrollLine {
   @@unique([payrollRunId, staffId])
   @@index([tenantId, payrollRunId])
   @@map("payroll_lines")
+}
+
+/// A PAYROLL INPUT — something a person supplies for a period that the system
+/// cannot derive.
+///
+/// Three kinds of thing land here, and they are the reason a clinic can run
+/// payroll at all while parts of the calculation remain unimplemented:
+///
+///   - Amounts only a human knows: this month's allowance, a bonus, a
+///     reimbursed claim, a salary advance being recovered.
+///   - PCB. This system does not calculate monthly tax deduction, and until it
+///     does, an employee with no PCB input raises a BLOCKING exception. The
+///     clinic already computes PCB outside its spreadsheet and keys it in; this
+///     is that step, with an actor and a timestamp on it.
+///   - Corrections to a derived figure, where the derivation is wrong and
+///     waiting for a fix would stop payday.
+///
+/// Keyed by COMPONENT CODE, so each input carries the statutory liability of
+/// the component it is an instance of — an allowance is EPF wages, a mileage
+/// claim is not — instead of every caller having to remember.
+model PayrollInputEntry {
+  id       String   @id @default(uuid())
+  tenantId String   @map("tenant_id")
+  clinicId String?  @map("clinic_id")
+  staffId  String   @map("staff_id")
+  /// First day of the month this input belongs to.
+  period   DateTime @db.Date
+
+  /// Matches a key of DEFAULT_COMPONENT_LIABILITY, e.g. ALLOWANCE, BONUS, PCB.
+  componentCode String  @map("component_code")
+  label         String?
+  /// Always positive; the component's kind carries the sign.
+  amount        Decimal @db.Decimal(12, 2)
+
+  /// Where the money was earned, when that is not the period it is paid in.
+  /// The clinic pays December's overtime and locum fees in January, so a
+  /// payslip that cannot say "this is December's overtime" is misleading.
+  earnedPeriod DateTime? @map("earned_period") @db.Date
+
+  note             String?
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  clinic    Clinic? @relation(fields: [clinicId], references: [id])
+  staff     Staff   @relation("PayrollInputStaff", fields: [staffId], references: [id])
+  createdBy Staff   @relation("PayrollInputAuthor", fields: [createdByStaffId], references: [id])
+
+  @@unique([tenantId, staffId, period, componentCode])
+  @@index([tenantId, period])
+  @@map("payroll_input_entries")
 }
 
 /// The ONLY way an approved run changes.

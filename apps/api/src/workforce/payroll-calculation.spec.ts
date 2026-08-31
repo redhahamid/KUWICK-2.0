@@ -1,203 +1,283 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
-  computeBracketContribution,
-  computeEpf,
+  DEFAULT_COMPONENT_LIABILITY,
+  LIABILITY_BY_STATUS_CODE,
+  PayrollComponentLine,
+  computeBases,
+  computeOvertime,
   computePayslip,
-  computePcb,
-  computeStatutory,
-  dailyRateCents,
-  overtimePayCents,
-  statutoryStatusOf,
+  ordinaryRates,
+  unpaidLeaveDeductionCents,
+  ageAt,
 } from './payroll-calculation';
+import { PCB_NOT_IMPLEMENTED, StatutoryRules, computeEpf, computeEis, computeSocso, statutoryStatusOf } from './statutory';
 
-// A rule set a TENANT configured. Nothing here is a rate this system believes
-// in — these are test fixtures standing in for what a clinic types into
-// Settings, and the numbers are deliberately round so the arithmetic is
-// checkable by eye rather than resembling any published table.
-const CONFIGURED = {
-  epfRules: { employeeRate: '10.000', employerRate: '12.000' },
-  socsoRules: {
-    brackets: [
-      { from: '0', to: '1000.00', employee: '5.00', employer: '17.50' },
-      { from: '1000.01', to: '3000.00', employee: '15.00', employer: '52.50' },
-      { from: '3000.01', employee: '20.00', employer: '70.00' },
-    ],
-  },
-  eisRules: {
-    brackets: [
-      { from: '0', to: '3000.00', employee: '2.00', employer: '2.00' },
-      { from: '3000.01', employee: '5.00', employer: '5.00' },
-    ],
-  },
-  pcbRules: {
-    monthlyRelief: '500.00',
-    brackets: [
-      { from: '0', to: '2000.00', baseAmount: '0', percentOfExcess: '0' },
-      { from: '2000.01', baseAmount: '10.00', percentOfExcess: '5.000' },
-    ],
-  },
-};
+/**
+ * THESE TESTS ARE THE RECONCILIATION.
+ *
+ * Every expected figure below is a real number off one of the clinic's two
+ * payroll workbooks — not a value invented to make an assertion pass. If the
+ * engine and the spreadsheet disagree on any of these, one of them is wrong
+ * and somebody has to decide which; see docs/HR_PAYROLL_RECONCILIATION.md.
+ *
+ * The previous version of this file tested SYNTHETIC rates ("employeeRate: 5")
+ * against a percentage engine. It passed, and it proved nothing about whether
+ * this system could pay a Malaysian employee correctly.
+ */
 
-describe('payroll calculation', () => {
-  // -------------------------------------------------------------------------
-  // THE RULE THE WHOLE MODULE EXISTS FOR
-  // -------------------------------------------------------------------------
-  describe('an unconfigured system computes NOTHING rather than zero', () => {
-    it('returns absent contributions, not zeros, when no rules exist', () => {
-      const result = computeStatutory(300000, null);
-      expect(result.epf.employeeCents).toBeNull();
-      expect(result.socso.employeeCents).toBeNull();
-      expect(result.eis.employeeCents).toBeNull();
-      expect(result.pcbCents).toBeNull();
-      expect(result.epf.note).toMatch(/No statutory rate configured/);
-    });
+const RULES = JSON.parse(
+  readFileSync(join(__dirname, '..', '..', 'prisma', 'statutory-my-2024-10.json'), 'utf8'),
+) as StatutoryRules & { verificationStatus: string };
 
-    it('marks a payslip incomplete when a statutory figure could not be computed', () => {
-      const payslip = computePayslip({ basicSalary: '3000.00' }, null);
-      expect(payslip.incomplete).toBe(true);
-      // Net pay is gross, because nothing was deducted — visibly a draft
-      // rather than a plausible final number.
-      expect(payslip.netCents).toBe(payslip.grossCents);
-    });
+const under60 = { age: 34, epfEmployeeRate: 11 };
+const at60 = { age: 61, epfEmployeeRate: 11 };
 
-    it('reports NOT_CONFIGURED for an empty rule set and PROVISIONAL for an unverified one', () => {
-      expect(statutoryStatusOf(null, false)).toBe('NOT_CONFIGURED');
-      expect(statutoryStatusOf({}, true)).toBe('NOT_CONFIGURED');
-      expect(statutoryStatusOf(CONFIGURED, false)).toBe('PROVISIONAL');
-      expect(statutoryStatusOf(CONFIGURED, true)).toBe('CONFIGURED');
-    });
+const earning = (code: string, amount: number): PayrollComponentLine => ({
+  code,
+  label: code,
+  kind: 'EARNING',
+  amount,
+  liability: DEFAULT_COMPONENT_LIABILITY[code] ?? LIABILITY_BY_STATUS_CODE['2'],
+});
+const deduction = (code: string, amount: number): PayrollComponentLine => ({
+  code,
+  label: code,
+  kind: 'DEDUCTION',
+  amount,
+  liability: DEFAULT_COMPONENT_LIABILITY[code] ?? LIABILITY_BY_STATUS_CODE['1'],
+});
 
-    it('distinguishes "outside the scheme" from "not configured" — they are different facts', () => {
-      const outside = computeStatutory(300000, CONFIGURED, { epf: false });
-      expect(outside.epf.employeeCents).toBe(0);
-      expect(outside.epf.note).toMatch(/outside the scheme/);
-
-      const unconfigured = computeStatutory(300000, { epfRules: null });
-      expect(unconfigured.epf.employeeCents).toBeNull();
-    });
+describe('EPF — the Third Schedule is a table, not a percentage', () => {
+  // payroll_listing.xlsx JAN 26, rows 5, 6, 10, 18 and 29.
+  it.each([
+    // [wage RM, employee RM, employer RM, source]
+    [2100, 231, 273, 'row 5 — 11% and 13% of a round band'],
+    [596.77, 66, 78, 'row 6 — band 580.01-600.00'],
+    [1451.61, 161, 190, 'row 10 — ceiling rounding, not 11% of the wage'],
+    [1741.94, 194, 229, 'row 18 — basic 1800 less 58.06 unpaid leave'],
+    [9750, 1078, 1176, 'row 29 — above RM5,000, so employer drops to 12%'],
+  ])('RM%s contributes %s / %s (%s)', (wage, employee, employer) => {
+    const result = computeEpf(Math.round((wage as number) * 100), RULES.epfRules, under60);
+    expect(result.employeeCents).toBe(Math.round((employee as number) * 100));
+    expect(result.employerCents).toBe(Math.round((employer as number) * 100));
   });
 
-  // -------------------------------------------------------------------------
-  describe('EPF from a configured rate pair', () => {
-    it('applies the configured percentages', () => {
-      const epf = computeEpf(300000, CONFIGURED.epfRules);
-      expect(epf.employeeCents).toBe(30000);
-      expect(epf.employerCents).toBe(36000);
-    });
-
-    it('honours a configured wage ceiling', () => {
-      const epf = computeEpf(1000000, { employeeRate: '10.000', employerRate: '12.000', wageCeiling: '5000.00' });
-      expect(epf.employeeCents).toBe(50000);
-      expect(epf.employerCents).toBe(60000);
-    });
-
-    it('rounds up to the ringgit only when the tenant configured that', () => {
-      const plain = computeEpf(333333, { employeeRate: '10.000', employerRate: '12.000' });
-      expect(plain.employeeCents).toBe(33333);
-      const rounded = computeEpf(333333, {
-        employeeRate: '10.000',
-        employerRate: '12.000',
-        roundUpToRinggit: true,
-      });
-      expect(rounded.employeeCents).toBe(33400);
-    });
+  it('is computed on the band ceiling, so it disagrees with naive percentage arithmetic', () => {
+    const wage = 145161; // RM1,451.61
+    const naive = Math.round(wage * 0.11); // RM159.68 — what the old engine returned
+    const actual = computeEpf(wage, RULES.epfRules, under60).employeeCents;
+    expect(actual).toBe(16100);
+    expect(actual).not.toBe(naive);
   });
 
-  describe('bracket contributions', () => {
-    it('picks the band the wage falls in, inclusive at both edges', () => {
-      expect(computeBracketContribution(100000, CONFIGURED.socsoRules).employeeCents).toBe(500);
-      expect(computeBracketContribution(100001, CONFIGURED.socsoRules).employeeCents).toBe(1500);
-      expect(computeBracketContribution(300000, CONFIGURED.socsoRules).employeeCents).toBe(1500);
-      expect(computeBracketContribution(300001, CONFIGURED.socsoRules).employeeCents).toBe(2000);
-    });
-
-    it('reports a wage outside every band as a GAP, not as zero', () => {
-      const partial = { brackets: [{ from: '0', to: '1000.00', employee: '5.00', employer: '17.50' }] };
-      const result = computeBracketContribution(500000, partial);
-      expect(result.employeeCents).toBeNull();
-      expect(result.note).toMatch(/outside every configured contribution band/);
-    });
+  it('steps the employer rate from 13% to 12% at exactly RM5,000', () => {
+    expect(computeEpf(500000, RULES.epfRules, under60).employerCents).toBe(65000); // 13%
+    expect(computeEpf(500001, RULES.epfRules, under60).employerCents).toBe(61200); // 12% of 5,100
   });
 
-  describe('PCB', () => {
-    it('is absent unless a schedule is configured — the common case', () => {
-      const result = computePcb(400000, null);
-      expect(result.cents).toBeNull();
-      expect(result.note).toMatch(/not calculated by this system/);
-    });
-
-    it('applies the relief before the table, and the marginal rate to the excess', () => {
-      // 3,000 chargeable − 500 relief = 2,500 taxable.
-      // Band 2: base 10.00 + 5% of (2,500 − 2,000.01) ≈ 10 + 25.00
-      const result = computePcb(300000, CONFIGURED.pcbRules);
-      expect(result.cents).toBe(1000 + 2500);
-    });
-
-    it('is zero in the bottom band rather than absent', () => {
-      const result = computePcb(150000, CONFIGURED.pcbRules);
-      expect(result.cents).toBe(0);
-    });
+  it('reverts to an exact percentage above RM20,000, rounded up to the ringgit', () => {
+    const result = computeEpf(2500000, RULES.epfRules, under60); // RM25,000
+    expect(result.employeeCents).toBe(275000); // 11%
+    expect(result.employerCents).toBe(300000); // 12%
   });
 
-  // -------------------------------------------------------------------------
-  describe('the payslip', () => {
-    it('adds up gross, deductions, net and employer cost consistently', () => {
-      const payslip = computePayslip(
-        { basicSalary: '3000.00', allowances: '200.00', overtimePay: '150.00' },
-        CONFIGURED,
-      );
-      expect(payslip.grossCents).toBe(335000);
-      expect(payslip.statutoryWageCents).toBe(335000);
-
-      // EPF 10/12%, SOCSO top band, EIS top band, PCB on 3,350.
-      expect(payslip.statutory.epf.employeeCents).toBe(33500);
-      expect(payslip.statutory.epf.employerCents).toBe(40200);
-      expect(payslip.statutory.socso.employeeCents).toBe(2000);
-      expect(payslip.statutory.eis.employeeCents).toBe(500);
-
-      const expectedDeductions =
-        33500 + 2000 + 500 + (payslip.statutory.pcbCents ?? 0);
-      expect(payslip.employeeDeductionCents).toBe(expectedDeductions);
-      expect(payslip.netCents).toBe(payslip.grossCents - expectedDeductions);
-      expect(payslip.employerCostCents).toBe(payslip.grossCents + payslip.employerContributionCents);
-      expect(payslip.incomplete).toBe(false);
-    });
-
-    it('EXCLUDES bonus and incentive from statutory wages, and says so by the arithmetic', () => {
-      // Including them silently would over-contribute in a bonus month.
-      const withBonus = computePayslip(
-        { basicSalary: '3000.00', bonus: '5000.00', incentives: '1200.00' },
-        CONFIGURED,
-      );
-      expect(withBonus.grossCents).toBe(920000);
-      expect(withBonus.statutoryWageCents).toBe(300000);
-      expect(withBonus.statutory.epf.employeeCents).toBe(30000);
-    });
-
-    it('reduces both gross and statutory wages by unpaid leave', () => {
-      const payslip = computePayslip({ basicSalary: '3000.00', unpaidLeaveDeduction: '300.00' }, CONFIGURED);
-      expect(payslip.grossCents).toBe(270000);
-      expect(payslip.statutoryWageCents).toBe(270000);
-      expect(payslip.statutory.epf.employeeCents).toBe(27000);
-    });
-
-    it('never produces a negative statutory wage', () => {
-      const payslip = computePayslip({ basicSalary: '1000.00', unpaidLeaveDeduction: '2000.00' }, CONFIGURED);
-      expect(payslip.statutoryWageCents).toBe(0);
-    });
+  it('honours the 9% employee election', () => {
+    expect(computeEpf(210000, RULES.epfRules, { age: 34, epfEmployeeRate: 9 }).employeeCents).toBe(18900);
   });
 
-  describe('helpers', () => {
-    it('divides monthly pay by the calendar days in the month', () => {
-      expect(dailyRateCents(310000, 31)).toBe(10000);
-      expect(dailyRateCents(280000, 28)).toBe(10000);
-      expect(dailyRateCents(0, 30)).toBe(0);
-      expect(dailyRateCents(100000, 0)).toBe(0);
-    });
+  it('drops the employee share to nil and the employer to 4% at age 60', () => {
+    const result = computeEpf(210000, RULES.epfRules, at60);
+    expect(result.employeeCents).toBe(0);
+    expect(result.employerCents).toBe(8400); // 4% of RM2,100
+  });
 
-    it('takes the overtime multiplier as a parameter rather than assuming one', () => {
-      // 1.5× on a normal day and 2× on a rest day are contractual terms.
-      expect(overtimePayCents(1000, 120, 1.5)).toBe(3000);
-      expect(overtimePayCents(1000, 120, 2)).toBe(4000);
-    });
+  it('refuses to guess when the date of birth is unknown', () => {
+    const result = computeEpf(210000, RULES.epfRules, { age: null });
+    expect(result.employeeCents).toBeNull();
+    expect(result.note).toMatch(/date of birth/i);
+  });
+});
+
+describe('SOCSO and EIS — different wages, different categories', () => {
+  it('matches the clinic listing at RM2,229.24 (basic plus overtime)', () => {
+    const socso = computeSocso(222924, RULES.socsoRules, under60);
+    expect(socso.employeeCents).toBe(1125);
+    expect(socso.employerCents).toBe(3935);
+    const eis = computeEis(222924, RULES.eisRules, under60);
+    expect(eis.employeeCents).toBe(450);
+    expect(eis.employerCents).toBe(450);
+  });
+
+  it('caps at the RM6,000 ceiling for any wage above it', () => {
+    const top = computeSocso(600000, RULES.socsoRules, under60);
+    expect(top.employeeCents).toBe(2975);
+    expect(top.employerCents).toBe(10415);
+    // A doctor on RM9,750 pays the same as one on RM6,000.
+    expect(computeSocso(975000, RULES.socsoRules, under60)).toEqual(top);
+    expect(computeEis(975000, RULES.eisRules, under60).employeeCents).toBe(1190);
+  });
+
+  it('moves to the Second Category at 60 — employer only', () => {
+    const result = computeSocso(600000, RULES.socsoRules, at60);
+    expect(result.employeeCents).toBe(0);
+    expect(result.employerCents).toBe(7440);
+  });
+
+  it('ceases EIS entirely at 60', () => {
+    const result = computeEis(600000, RULES.eisRules, at60);
+    expect(result.employeeCents).toBe(0);
+    expect(result.employerCents).toBe(0);
+  });
+});
+
+describe('the three bases are different, which is the whole point', () => {
+  it('excludes overtime from EPF wages but includes it in SOCSO and EIS wages', () => {
+    const bases = computeBases([earning('BASIC', 2100), earning('OVERTIME', 129.24)]);
+    expect(bases.epfCents).toBe(210000); // overtime excluded — EPF Act 1991 s.2
+    expect(bases.socsoCents).toBe(222924); // overtime included
+    expect(bases.eisCents).toBe(222924);
+  });
+
+  it('reproduces the clinic listing row 5 end to end', () => {
+    const slip = computePayslip([earning('BASIC', 2100), earning('OVERTIME', 129.24)], RULES, under60);
+    expect(slip.statutory.epf.employeeCents).toBe(23100);
+    expect(slip.statutory.epf.employerCents).toBe(27300);
+    expect(slip.statutory.socso.employeeCents).toBe(1125);
+    expect(slip.statutory.socso.employerCents).toBe(3935);
+    expect(slip.statutory.eis.employeeCents).toBe(450);
+  });
+
+  it('lets unpaid leave reduce every base, while a uniform charge reduces none', () => {
+    const bases = computeBases([earning('BASIC', 1800), deduction('UNPAID_LEAVE', 58.06), deduction('UNIFORM', 65.35)]);
+    expect(bases.epfCents).toBe(174194); // 1800 - 58.06
+    expect(bases.socsoCents).toBe(174194);
+    expect(bases.grossCents).toBe(167659); // both deductions reduce pay
+  });
+
+  it('keeps mileage out of every statutory base but inside gross', () => {
+    const bases = computeBases([earning('BASIC', 2100), earning('MILEAGE', 14.34)]);
+    expect(bases.epfCents).toBe(210000);
+    expect(bases.socsoCents).toBe(210000);
+    expect(bases.grossCents).toBe(211434);
+  });
+
+  it('treats bonus and incentive as additional remuneration for tax, and as EPF wages', () => {
+    const bases = computeBases([earning('BASIC', 2000), earning('BONUS', 1000)]);
+    expect(bases.epfCents).toBe(300000);
+    expect(bases.pcbNormalCents).toBe(200000);
+    expect(bases.pcbAdditionalCents).toBe(100000);
+  });
+
+  it('defaults commission to EPF-liable, unlike the clinic spreadsheet', () => {
+    // The workbook sets commission to status 1 (no contribution). Commission is
+    // not on the EPF Act's closed list of exclusions, so the default here is
+    // liable and a clinic must opt out deliberately.
+    expect(DEFAULT_COMPONENT_LIABILITY.COMMISSION.epf).toBe(true);
+    expect(DEFAULT_COMPONENT_LIABILITY.ALLOWANCE.epf).toBe(true);
+    expect(DEFAULT_COMPONENT_LIABILITY.ATTENDANCE_ALLOWANCE.epf).toBe(true);
+  });
+});
+
+describe('ordinary rate of pay, overtime and unpaid leave', () => {
+  // AAS Summary: OT divisor 26 days, UPL divisor 31 days, 7.5 hours a day.
+  const config = { overtimeDaysPerMonth: 26, unpaidLeaveDaysPerMonth: 31, hoursPerDay: 7.5 };
+
+  it('uses two different day divisors, as the clinic does', () => {
+    const rates = ordinaryRates(210000, config);
+    expect(rates.unpaidLeaveDailyCents).toBe(6774); // 2100 / 31
+    expect(rates.overtimeDailyCents).toBe(8077); // 2100 / 26
+    expect(rates.overtimeHourlyCents).toBe(1077); // and then / 7.5, to the sen
+  });
+
+  it('rounds the hourly rate to the sen BEFORE applying the multiplier', () => {
+    const rates = ordinaryRates(210000, config);
+    const { totalCents } = computeOvertime([{ label: '1.5x', hours: 3, multiplier: 1.5 }], rates.overtimeHourlyCents);
+    // 10.77 x 1.5 = 16.155 -> 16.16 per hour, x3
+    expect(totalCents).toBe(4848);
+  });
+
+  it('supports a flat-rate overtime tier alongside multiplier tiers', () => {
+    const result = computeOvertime(
+      [
+        { label: '1.5x', hours: 2, multiplier: 1.5 },
+        { label: 'flat', hours: 2, flatHourlyRate: 10 },
+      ],
+      1077,
+    );
+    expect(result.tiers[1].totalCents).toBe(2000);
+    expect(result.totalCents).toBe(2000 + 3232);
+  });
+
+  it('never lets overtime raise the rate at which overtime is paid', () => {
+    expect(DEFAULT_COMPONENT_LIABILITY.OVERTIME.ordinaryRateOfPay).toBe(false);
+  });
+
+  it('deducts unpaid leave on the 31-day divisor', () => {
+    const rates = ordinaryRates(180000, config);
+    expect(unpaidLeaveDeductionCents(1, rates)).toBe(5806); // matches listing row 18
+  });
+});
+
+describe('PCB is a blocking gap, not a guess', () => {
+  it('returns null and says why', () => {
+    const slip = computePayslip([earning('BASIC', 5000)], RULES, under60);
+    expect(slip.statutory.pcbCents).toBeNull();
+    expect(slip.notes).toContain(PCB_NOT_IMPLEMENTED);
+    expect(slip.incomplete).toBe(true);
+  });
+
+  it('is zero — a fact — only for somebody recorded as outside PCB', () => {
+    const slip = computePayslip([earning('BASIC', 5000)], RULES, { ...under60, pcbApplicable: false });
+    expect(slip.statutory.pcbCents).toBe(0);
+  });
+});
+
+describe('absent is not zero', () => {
+  it('leaves statutory figures null when no rule set covers the period', () => {
+    const slip = computePayslip([earning('BASIC', 3000)], null, under60);
+    expect(slip.statutory.epf.employeeCents).toBeNull();
+    expect(slip.statutory.socso.employeeCents).toBeNull();
+    expect(slip.incomplete).toBe(true);
+    // Net pay is gross, visibly a draft rather than a plausible final figure.
+    expect(slip.netCents).toBe(300000);
+  });
+
+  it('reports zero — a fact — for somebody recorded as outside a scheme', () => {
+    const slip = computePayslip([earning('BASIC', 3000)], RULES, { ...under60, epfApplicable: false });
+    expect(slip.statutory.epf.employeeCents).toBe(0);
+    expect(slip.statutory.epf.note).toMatch(/outside EPF/);
+  });
+
+  it('refuses a wage outside every configured band rather than flooring it', () => {
+    const truncated = { socsoRules: { firstCategory: { bands: [{ min: 0, max: 100000, employer: 100, employee: 50 }] } } };
+    const result = computeSocso(500000, truncated.socsoRules, under60);
+    expect(result.employeeCents).toBeNull();
+    expect(result.note).toMatch(/incomplete/i);
+  });
+});
+
+describe('a run cannot be approved against unverified rates', () => {
+  it('is PROVISIONAL while the seeded set is only corroborated', () => {
+    expect(RULES.verificationStatus).toBe('CORROBORATED');
+    expect(statutoryStatusOf(RULES, 'CORROBORATED')).toBe('PROVISIONAL');
+    expect(statutoryStatusOf(RULES, 'DRAFT')).toBe('PROVISIONAL');
+  });
+
+  it('is CONFIGURED only once a person has verified it against the authority', () => {
+    expect(statutoryStatusOf(RULES, 'VERIFIED')).toBe('CONFIGURED');
+  });
+
+  it('is NOT_CONFIGURED when there are no tables at all', () => {
+    expect(statutoryStatusOf(null, 'VERIFIED')).toBe('NOT_CONFIGURED');
+    expect(statutoryStatusOf({}, 'VERIFIED')).toBe('NOT_CONFIGURED');
+  });
+});
+
+describe('age', () => {
+  it('counts completed years, and the day before a 60th birthday is still 59', () => {
+    expect(ageAt(new Date(Date.UTC(1966, 7, 30)), new Date(Date.UTC(2026, 7, 29)))).toBe(59);
+    expect(ageAt(new Date(Date.UTC(1966, 7, 30)), new Date(Date.UTC(2026, 7, 30)))).toBe(60);
+    expect(ageAt(null, new Date())).toBeNull();
   });
 });

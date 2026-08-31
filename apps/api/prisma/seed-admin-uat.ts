@@ -1,8 +1,17 @@
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from 'dotenv';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcryptjs';
+import {
+  DEFAULT_COMPONENT_LIABILITY,
+  PayrollComponentLine,
+  ageAt,
+  computeOvertime,
+  computePayslip,
+  ordinaryRates,
+} from '../src/workforce/payroll-calculation';
 
 config({ path: join(__dirname, '..', '.env') });
 
@@ -379,21 +388,34 @@ async function verify() {
       }
     }
 
-    // 5. PAYROLL: a run that cannot compute statutory figures must SAY so.
-    //    A payroll line carrying an EPF number under a NOT_CONFIGURED rule set
-    //    is a fabricated statutory figure, which §5 forbids outright.
+    // 5. PAYROLL: statutory figures must match what the rule set can support.
+    //
+    //    The three states mean three different things, and this check used to
+    //    treat two of them as one:
+    //
+    //      NOT_CONFIGURED  no rule set covers the period. A line carrying an
+    //                      EPF number is a FABRICATED figure.
+    //      PROVISIONAL     a rule set exists but nobody has verified it against
+    //                      the authority's published schedule. Figures ARE
+    //                      computed — that is what the schema says the state
+    //                      means — but the run must never be APPROVED.
+    //      CONFIGURED      verified. Figures computed, run approvable.
     const runs = await tx.payrollRun.findMany({
       where: { tenantId: TENANT_ID },
-      select: { id: true, period: true, statutoryStatus: true, lines: { select: { epfEmployee: true, socsoEmployee: true, eisEmployee: true, pcb: true } } },
+      select: { id: true, period: true, status: true, statutoryStatus: true, lines: { select: { epfEmployee: true, socsoEmployee: true, eisEmployee: true, pcb: true } } },
     });
     for (const run of runs) {
-      if (run.statutoryStatus === 'CONFIGURED') continue;
+      const label = run.period.toISOString().slice(0, 7);
+      if (run.statutoryStatus === 'PROVISIONAL' && (run.status === 'APPROVED' || run.status === 'PAID')) {
+        problems.push(`payroll ${label}: approved against a rule set nobody has verified`);
+        continue;
+      }
+      if (run.statutoryStatus !== 'NOT_CONFIGURED') continue;
       const fabricated = run.lines.filter(
         (l) => l.epfEmployee !== null || l.socsoEmployee !== null || l.eisEmployee !== null || l.pcb !== null,
       );
       if (fabricated.length > 0) {
-        const label = run.period.toISOString().slice(0, 7);
-        problems.push(`payroll ${label}: ${fabricated.length} line(s) carry statutory figures while the rule set is ${run.statutoryStatus}`);
+        problems.push(`payroll ${label}: ${fabricated.length} line(s) carry statutory figures while no rule set covers the period`);
       }
     }
 
@@ -471,7 +493,7 @@ async function reset() {
   const order = [
     'marketing_dispatches', 'marketing_templates', 'marketing_audiences',
     'programme_enrolments', 'clinic_programmes', 'segment_mapping_rules', 'business_segments',
-    'payroll_adjustments', 'payroll_lines', 'payroll_runs', 'statutory_rule_sets',
+    'payroll_adjustments', 'payroll_lines', 'payroll_runs', 'payroll_input_entries', 'statutory_rule_sets',
     'incentive_results', 'incentive_runs', 'incentive_rules',
     'staff_benefit_usages', 'staff_benefit_members', 'staff_benefit_accounts',
     'leave_balances', 'leave_policy_entitlements', 'leave_policies',
@@ -1546,17 +1568,21 @@ async function seedWorkforce(ids: Ids) {
       },
     });
 
-    const profiles: { key: string; position: string; salary: number | null; type: 'PERMANENT' | 'LOCUM' | 'CONTRACT' }[] = [
-      { key: 'owner', position: 'Principal Doctor / Owner', salary: 18000, type: 'PERMANENT' },
-      { key: 'resident', position: 'Resident Medical Officer', salary: 9500, type: 'PERMANENT' },
-      { key: 'locum', position: 'Locum Doctor', salary: null, type: 'LOCUM' },
-      { key: 'counter', position: 'Senior Clinic Assistant', salary: 3200, type: 'PERMANENT' },
-      { key: 'counter2', position: 'Clinic Assistant', salary: 2600, type: 'PERMANENT' },
-      { key: 'stock', position: 'Stock Controller', salary: 2900, type: 'PERMANENT' },
-      { key: 'finance', position: 'Finance Executive', salary: 4200, type: 'PERMANENT' },
+    // DATE OF BIRTH IS PAYROLL DATA, not demographics: EPF, SOCSO and EIS all
+    // change at 60, so an employee without one cannot be calculated. Hafiz is
+    // deliberately 61 so the 60+ branch is exercised by the seeded run —
+    // employee EPF nil, employer 4%, SOCSO Second Category, no EIS.
+    const profiles: { key: string; position: string; salary: number | null; type: 'PERMANENT' | 'LOCUM' | 'CONTRACT'; born: [number, number, number] }[] = [
+      { key: 'owner', position: 'Principal Doctor / Owner', salary: 18000, type: 'PERMANENT', born: [1981, 3, 14] },
+      { key: 'resident', position: 'Resident Medical Officer', salary: 9500, type: 'PERMANENT', born: [1990, 8, 2] },
+      { key: 'locum', position: 'Locum Doctor', salary: null, type: 'LOCUM', born: [1988, 11, 30] },
+      { key: 'counter', position: 'Senior Clinic Assistant', salary: 3200, type: 'PERMANENT', born: [1995, 5, 19] },
+      { key: 'counter2', position: 'Clinic Assistant', salary: 2600, type: 'PERMANENT', born: [1999, 1, 7] },
+      { key: 'stock', position: 'Stock Controller', salary: 2900, type: 'PERMANENT', born: [1964, 6, 11] },
+      { key: 'finance', position: 'Finance Executive', salary: 4200, type: 'PERMANENT', born: [1992, 9, 23] },
       // Deliberately WITHOUT a salary: the payroll run must surface this person
       // as an exception rather than paying them nothing.
-      { key: 'panel', position: 'Panel Claims Executive', salary: null, type: 'CONTRACT' },
+      { key: 'panel', position: 'Panel Claims Executive', salary: null, type: 'CONTRACT', born: [1993, 2, 5] },
     ];
 
     for (const [index, profile] of profiles.entries()) {
@@ -1569,6 +1595,7 @@ async function seedWorkforce(ids: Ids) {
           employmentType: profile.type,
           employmentStatus: 'ACTIVE',
           startDate: day(-500 - index * 30),
+          dateOfBirth: new Date(Date.UTC(profile.born[0], profile.born[1], profile.born[2])),
           basicSalary: profile.salary,
           hourlyRate: profile.type === 'LOCUM' ? 120 : null,
           leavePolicyId: policy.id,
@@ -1848,42 +1875,197 @@ async function seedWorkforce(ids: Ids) {
       },
     });
 
-    // --- Payroll — deliberately WITHOUT statutory rates --------------------
-    const payroll = await tx.payrollRun.create({
+    // --- Statutory rate set ------------------------------------------------
+    //
+    // The Malaysian EPF/SOCSO/EIS schedules, seeded as CORROBORATED and NOT
+    // VERIFIED. That is the honest state: the tables were transcribed from the
+    // clinic's own workbook and cross-checked against published references, but
+    // kwsp.gov.my and perkeso.gov.my are unreachable from the build
+    // environment, so nobody has compared them to the authority's own copy.
+    // A run calculated against them is PROVISIONAL and says so.
+    const statutoryTables = JSON.parse(
+      readFileSync(join(__dirname, 'statutory-my-2024-10.json'), 'utf8'),
+    ) as Record<string, unknown>;
+    const ruleSet = await tx.statutoryRuleSet.create({
       data: {
-        tenantId: tenant.id, clinicId: central.id, period: monthStart(-1), status: 'CALCULATED',
-        statutoryStatus: 'NOT_CONFIGURED', createdByStaffId: staff.finance, calculatedAt: at(-2, 8),
-        exceptions: [{ staffId: staff.panel, name: 'Wan Azman', issue: 'No salary or hourly rate on record — this employee cannot be paid until one is set.' }] as never,
+        tenantId: tenant.id,
+        name: statutoryTables.name as string,
+        jurisdiction: 'MY',
+        effectiveFrom: new Date('2024-10-01T00:00:00.000Z'),
+        verificationStatus: 'CORROBORATED',
+        sourceUrl: 'https://www.kwsp.gov.my/en/epf-act-1991-third-schedule',
+        verificationNote: statutoryTables.sourceNote as string,
+        epfRules: statutoryTables.epfRules as never,
+        socsoRules: statutoryTables.socsoRules as never,
+        eisRules: statutoryTables.eisRules as never,
+        pcbRules: undefined,
+        createdByStaffId: staff.owner,
       },
     });
-    let gross = 0;
-    for (const profile of profiles.filter((entry) => entry.salary !== null && entry.key !== 'locum')) {
-      const basic = profile.salary!;
-      const incentives = profile.key === 'resident' ? 260 : 0;
-      const overtimePay = profile.key === 'counter' ? 4 * 1.5 * Math.round((basic / (26 * 8)) * 100) / 100 : 0;
-      const grossPay = Math.round((basic + incentives + overtimePay) * 100) / 100;
-      gross += grossPay;
-      await tx.payrollLine.create({
+
+    // --- Payroll inputs ----------------------------------------------------
+    //
+    // PCB is not calculated by this system, so it is ENTERED — which is what
+    // the clinic already does in its spreadsheet. Two people deliberately have
+    // no PCB entered, so the blocking exception the owner needs to see is on
+    // screen rather than described in a document.
+    const payrollPeriod = monthStart(-1);
+    const pcbEntered: Record<string, number> = { owner: 1855.4, resident: 542.15, finance: 62.3 };
+    for (const [key, amount] of Object.entries(pcbEntered)) {
+      await tx.payrollInputEntry.create({
         data: {
-          tenantId: tenant.id, payrollRunId: payroll.id, staffId: staff[profile.key],
-          employeeSnapshot: { name: profile.key, position: profile.position, employmentType: profile.type } as never,
-          basicSalary: basic, incentives, overtimePay, grossPay,
-          // NULL, not zero: no statutory rates are configured for this period.
-          epfEmployee: null, epfEmployer: null, socsoEmployee: null, socsoEmployer: null,
-          eisEmployee: null, eisEmployer: null, pcb: null,
-          netPay: grossPay, employerCost: grossPay,
-          workedDays: 20, unpaidDays: profile.key === 'finance' ? 1 : 0,
-          overtimeHours: profile.key === 'counter' ? 4 : 0,
-          breakdown: { statutoryNotes: { epf: 'No statutory rate configured for this period.' }, incomplete: true } as never,
+          tenantId: tenant.id, clinicId: central.id, staffId: staff[key], period: payrollPeriod,
+          componentCode: 'PCB', label: 'PCB (computed outside Kuwick)', amount,
+          note: 'Keyed from the LHDN calculator, as the clinic does today.',
+          createdByStaffId: staff.finance,
         },
       });
     }
-    await tx.payrollRun.update({
-      where: { id: payroll.id },
-      data: { grossTotal: gross, deductionTotal: 0, netTotal: gross, employerCostTotal: gross, employeeCount: profiles.filter((p) => p.salary !== null && p.key !== 'locum').length },
+    await tx.payrollInputEntry.create({
+      data: {
+        tenantId: tenant.id, clinicId: central.id, staffId: staff.counter, period: payrollPeriod,
+        componentCode: 'ALLOWANCE', label: 'Fixed monthly allowance', amount: 250,
+        createdByStaffId: staff.finance,
+      },
+    });
+    // Paid this month, EARNED last month — the clinic pays variable pay one
+    // month in arrears and a payslip that cannot say so is misleading.
+    await tx.payrollInputEntry.create({
+      data: {
+        tenantId: tenant.id, clinicId: central.id, staffId: staff.counter2, period: payrollPeriod,
+        componentCode: 'MILEAGE', label: 'Outreach mileage', amount: 86.4,
+        earnedPeriod: monthStart(-2), createdByStaffId: staff.finance,
+      },
     });
 
-    console.log('  workforce: 8 employees, 20 days attendance, leave, incentive run, payroll with 1 exception');
+    // --- Payroll run, CALCULATED THROUGH THE REAL ENGINE -------------------
+    //
+    // Not hand-written figures. The seed calls the same code the service does,
+    // so the numbers on the review screens are the numbers the product
+    // produces — including the two blocking PCB exceptions.
+    const payroll = await tx.payrollRun.create({
+      data: {
+        tenantId: tenant.id, clinicId: central.id, period: payrollPeriod, status: 'CALCULATED',
+        statutoryStatus: 'PROVISIONAL', statutoryRuleSetId: ruleSet.id,
+        statutorySnapshot: {
+          name: ruleSet.name, effectiveFrom: ruleSet.effectiveFrom,
+          verificationStatus: 'CORROBORATED', verified: false,
+        } as never,
+        createdByStaffId: staff.finance, calculatedAt: at(-2, 8),
+      },
+    });
+
+    const orp = { overtimeDaysPerMonth: 26, unpaidLeaveDaysPerMonth: 31, hoursPerDay: 7.5 };
+    const staffRows = await tx.staff.findMany({ where: { id: { in: Object.values(staff) } }, select: { id: true, fullName: true } });
+    const byId = new Map(staffRows.map((row) => [row.id, row.fullName]));
+    const staffNames: Record<string, string> = Object.fromEntries(
+      Object.entries(staff).map(([key, id]) => [key, byId.get(id) ?? key]),
+    );
+    const periodEndDay = new Date(Date.UTC(payrollPeriod.getUTCFullYear(), payrollPeriod.getUTCMonth() + 1, 0));
+    const exceptions: { staffId: string; name: string; issue: string }[] = [];
+    let gross = 0, deductions = 0, net = 0, employerCost = 0, counted = 0;
+
+    for (const [index, profile] of profiles.entries()) {
+      const staffId = staff[profile.key];
+      const name = staffNames[profile.key] ?? profile.key;
+      if (profile.salary === null) {
+        exceptions.push({ staffId, name, issue: 'No salary or hourly rate on record — this employee cannot be paid until one is set.' });
+        continue;
+      }
+      const age = ageAt(new Date(Date.UTC(profile.born[0], profile.born[1], profile.born[2])), periodEndDay)!;
+      const basicCents = Math.round(profile.salary * 100);
+      const rates = ordinaryRates(basicCents, orp);
+
+      const lines: PayrollComponentLine[] = [
+        { code: 'BASIC', label: 'Basic pay', kind: 'EARNING', amount: profile.salary, liability: DEFAULT_COMPONENT_LIABILITY.BASIC },
+      ];
+      if (profile.key === 'counter') {
+        const ot = computeOvertime([{ label: 'Normal day (1.5x)', hours: 4, multiplier: 1.5 }], rates.overtimeHourlyCents);
+        lines.push({ code: 'OVERTIME', label: 'Overtime', kind: 'EARNING', amount: ot.totalCents / 100, liability: DEFAULT_COMPONENT_LIABILITY.OVERTIME });
+        lines.push({ code: 'ALLOWANCE', label: 'Fixed monthly allowance', kind: 'EARNING', amount: 250, liability: DEFAULT_COMPONENT_LIABILITY.ALLOWANCE });
+      }
+      if (profile.key === 'counter2') {
+        lines.push({ code: 'MILEAGE', label: 'Outreach mileage', kind: 'EARNING', amount: 86.4, liability: DEFAULT_COMPONENT_LIABILITY.MILEAGE });
+      }
+      if (profile.key === 'resident') {
+        lines.push({ code: 'INCENTIVE', label: 'Procedure incentive', kind: 'EARNING', amount: 260, liability: DEFAULT_COMPONENT_LIABILITY.INCENTIVE });
+      }
+      if (profile.key === 'finance') {
+        lines.push({ code: 'UNPAID_LEAVE', label: 'Unpaid leave (1 day)', kind: 'DEDUCTION', amount: rates.unpaidLeaveDailyCents / 100, liability: DEFAULT_COMPONENT_LIABILITY.UNPAID_LEAVE });
+      }
+
+      const slip = computePayslip(lines, statutoryTables as never, {
+        age, epfEmployeeRate: 11,
+        epfApplicable: profile.type !== 'LOCUM',
+        socsoApplicable: profile.type !== 'LOCUM',
+        eisApplicable: profile.type !== 'LOCUM',
+        pcbApplicable: true,
+      });
+
+      const pcb = pcbEntered[profile.key];
+      if (pcb === undefined) {
+        exceptions.push({
+          staffId, name,
+          issue: 'PCB (monthly tax deduction) is not calculated by this system and no amount has been entered. Enter it as a payroll input, or record this employee as outside PCB.',
+        });
+      } else {
+        slip.statutory.pcbCents = Math.round(pcb * 100);
+        slip.employeeDeductionCents += slip.statutory.pcbCents;
+        slip.netCents -= slip.statutory.pcbCents;
+        slip.incomplete = false;
+      }
+
+      await tx.payrollLine.create({
+        data: {
+          tenantId: tenant.id, payrollRunId: payroll.id, staffId,
+          employeeSnapshot: { name, position: profile.position, employmentType: profile.type, bankName: 'Bank Contoh' } as never,
+          basicSalary: profile.salary,
+          allowances: profile.key === 'counter' ? 250 : profile.key === 'counter2' ? 86.4 : 0,
+          overtimePay: Number(lines.find((l) => l.code === 'OVERTIME')?.amount ?? 0),
+          incentives: profile.key === 'resident' ? 260 : 0,
+          grossPay: slip.grossCents / 100,
+          unpaidLeaveDeduction: profile.key === 'finance' ? rates.unpaidLeaveDailyCents / 100 : 0,
+          epfEmployee: slip.statutory.epf.employeeCents === null ? null : slip.statutory.epf.employeeCents / 100,
+          epfEmployer: slip.statutory.epf.employerCents === null ? null : slip.statutory.epf.employerCents / 100,
+          socsoEmployee: slip.statutory.socso.employeeCents === null ? null : slip.statutory.socso.employeeCents / 100,
+          socsoEmployer: slip.statutory.socso.employerCents === null ? null : slip.statutory.socso.employerCents / 100,
+          eisEmployee: slip.statutory.eis.employeeCents === null ? null : slip.statutory.eis.employeeCents / 100,
+          eisEmployer: slip.statutory.eis.employerCents === null ? null : slip.statutory.eis.employerCents / 100,
+          pcb: slip.statutory.pcbCents === null ? null : slip.statutory.pcbCents / 100,
+          netPay: slip.netCents / 100,
+          employerCost: slip.employerCostCents / 100,
+          workedDays: 20,
+          unpaidDays: profile.key === 'finance' ? 1 : 0,
+          overtimeHours: profile.key === 'counter' ? 4 : 0,
+          breakdown: {
+            age,
+            bases: { epf: slip.bases.epfCents / 100, socso: slip.bases.socsoCents / 100, eis: slip.bases.eisCents / 100 },
+            components: lines.map((l) => ({ code: l.code, label: l.label, kind: l.kind, amount: l.amount, liability: l.liability })),
+            ordinaryRateOfPay: { overtimeDays: 26, unpaidLeaveDays: 31, hoursPerDay: 7.5, overtimeHourly: rates.overtimeHourlyCents / 100, unpaidLeaveDaily: rates.unpaidLeaveDailyCents / 100 },
+            statutoryNotes: { epf: slip.statutory.epf.note ?? null, socso: slip.statutory.socso.note ?? null, eis: slip.statutory.eis.note ?? null, pcb: slip.statutory.pcbNote },
+            incomplete: slip.incomplete,
+          } as never,
+        },
+      });
+
+      gross += slip.grossCents;
+      deductions += slip.employeeDeductionCents;
+      net += slip.netCents;
+      employerCost += slip.employerCostCents;
+      counted += 1;
+    }
+
+    await tx.payrollRun.update({
+      where: { id: payroll.id },
+      data: {
+        grossTotal: gross / 100, deductionTotal: deductions / 100, netTotal: net / 100,
+        employerCostTotal: employerCost / 100, employeeCount: counted,
+        exceptions: exceptions as never,
+      },
+    });
+
+    console.log(`  workforce: 8 employees, 20 days attendance, leave, incentive run, payroll CALCULATED against corroborated MY statutory tables (${exceptions.length} exceptions)`);
+
   });
 }
 

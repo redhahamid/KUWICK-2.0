@@ -7,17 +7,28 @@ import { AdminTx, actorCan, requirePermission, withAdminTx } from '../finance/ad
 import { recordAudit } from '../finance/admin-audit';
 import { fromCents, toCents } from '../finance/money';
 import {
+  DEFAULT_COMPONENT_LIABILITY,
+  LIABILITY_BY_STATUS_CODE,
+  PayrollComponentLine,
   StatutoryRules,
+  ageAt,
+  computeOvertime,
   computePayslip,
-  dailyRateCents,
-  overtimePayCents,
+  ordinaryRates,
   statutoryStatusOf,
+  unpaidLeaveDeductionCents,
 } from './payroll-calculation';
 import { totalTimesheet } from './attendance-hours';
 import { leaveDaysInYear } from './leave-balance';
 import { CreatePayrollRunDto } from './dto/create-payroll-run.dto';
 import { PayrollAdjustmentDto } from './dto/payroll-adjustment.dto';
 import { UpsertStatutoryRulesDto } from './dto/upsert-statutory-rules.dto';
+
+/// Components that reduce pay whichever way the amount is entered. Everything
+/// else is an earning unless the amount itself is negative.
+const DEDUCTION_COMPONENTS = new Set([
+  'UNPAID_LEAVE', 'ZAKAT', 'ADVANCE_RECOVERY', 'UNIFORM', 'OTHER_DEDUCTION',
+]);
 
 function monthStart(value: string | Date): Date {
   const date = typeof value === 'string' ? new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`) : value;
@@ -75,7 +86,7 @@ export class PayrollService {
       hasSocso: set.socsoRules !== null,
       hasEis: set.eisRules !== null,
       hasPcb: set.pcbRules !== null,
-      status: statutoryStatusOf(set as unknown as StatutoryRules, set.verifiedAt !== null),
+      status: statutoryStatusOf(set as unknown as StatutoryRules, set.verificationStatus),
     }));
   }
 
@@ -176,8 +187,15 @@ export class PayrollService {
       const ruleSet = await this.rulesInForce(tx, period);
       const statutoryStatus = statutoryStatusOf(
         ruleSet as unknown as StatutoryRules | null,
-        ruleSet?.verifiedAt != null,
+        ruleSet?.verificationStatus ?? null,
       ) as StatutoryStatus;
+
+      // Ordinary Rate of Pay, frozen onto the run. Two divisors, on purpose.
+      const orpConfig = {
+        overtimeDaysPerMonth: Number(run.orpOvertimeDays),
+        unpaidLeaveDaysPerMonth: Number(run.orpUnpaidLeaveDays),
+        hoursPerDay: Number(run.orpHoursPerDay),
+      };
 
       const employees = await tx.employeeProfile.findMany({
         where: {
@@ -185,6 +203,9 @@ export class PayrollService {
           ...(run.clinicId ? { staff: { clinicId: run.clinicId } } : {}),
         },
         include: { staff: { select: { id: true, fullName: true, active: true, clinicId: true, role: true } } },
+        // Deterministic order, so two calculations of the same run produce the
+        // same exception list in the same sequence.
+        orderBy: { staffId: 'asc' },
       });
 
       const exceptions: { staffId: string; name: string; issue: string }[] = [];
@@ -210,7 +231,7 @@ export class PayrollService {
           continue;
         }
 
-        const [attendance, leave, incentives] = await Promise.all([
+        const [attendance, leave, incentives, inputs] = await Promise.all([
           tx.attendanceRecord.findMany({
             where: { staffId: employee.staffId, workDate: { gte: period, lt: periodEnd } },
           }),
@@ -228,6 +249,9 @@ export class PayrollService {
               incentiveRun: { period, status: { in: ['APPROVED', 'PAID'] } },
             },
           }),
+          // What a person supplied for this period: allowances, bonus, claims,
+          // and PCB — which this system does not calculate.
+          tx.payrollInputEntry.findMany({ where: { staffId: employee.staffId, period } }),
         ]);
 
         const timesheet = totalTimesheet(
@@ -257,6 +281,21 @@ export class PayrollService {
 
         const basicCents = toCents(employee.basicSalary ?? 0);
 
+        // AGE DRIVES THE SCHEME, not just the rate: at 60 the employee's EPF
+        // share goes to nil and the employer's to 4%, SOCSO moves to the Second
+        // Category, and EIS ceases. An unknown date of birth is therefore a
+        // BLOCKING exception, not a reason to assume "under 60" — assuming
+        // would under-contribute for the whole workforce and nobody would see it.
+        const age = ageAt(employee.dateOfBirth, new Date(periodEnd.getTime() - 86400000));
+        if (age === null) {
+          exceptions.push({
+            staffId: employee.staffId,
+            name: employee.staff.fullName,
+            issue: 'No date of birth on record. EPF, SOCSO and EIS all change at age 60, so this employee cannot be calculated.',
+          });
+          continue;
+        }
+
         // Unpaid leave, from the leave TYPE — a clinic's own policy decides
         // which types are unpaid, and this reads that rather than assuming.
         const unpaidTypes = new Set(['UNPAID']);
@@ -274,33 +313,119 @@ export class PayrollService {
               ),
             0,
           );
-        const unpaidCents = unpaidDays * dailyRateCents(basicCents, days);
 
-        // Overtime, from the APPROVED minutes only, at the employee's hourly
-        // rate. Where no hourly rate is recorded, it is derived from the
-        // monthly salary over a 26-day, 8-hour month — a convention, stated
-        // here so a clinic that uses a different one changes one line.
-        const hourlyCents = employee.hourlyRate
-          ? toCents(employee.hourlyRate)
-          : Math.round(basicCents / (26 * 8));
-        const overtimeCents = overtimePayCents(hourlyCents, timesheet.approvedOvertimeMinutes, 1.5);
         const incentiveCents = incentives.reduce((total, row) => total + toCents(row.amount), 0);
 
-        const payslip = computePayslip(
-          {
-            basicSalary: fromCents(basicCents),
-            overtimePay: fromCents(overtimeCents),
-            incentives: fromCents(incentiveCents),
-            unpaidLeaveDeduction: fromCents(unpaidCents),
-          },
-          ruleSet as unknown as StatutoryRules | null,
-          {
-            epf: employee.epfApplicable,
-            socso: employee.socsoApplicable,
-            eis: employee.eisApplicable,
-            pcb: employee.pcbApplicable,
-          },
+        // The Ordinary Rate of Pay is built from the earnings that COUNT toward
+        // it — basic and ORP-liable allowances — and never from overtime, or an
+        // hour of overtime would raise the rate paid for the next one.
+        const orpBase = basicCents;
+        const rates = ordinaryRates(orpBase, orpConfig);
+        const unpaidCents = unpaidLeaveDeductionCents(unpaidDays, rates);
+
+        // Overtime from APPROVED minutes only, at the hourly ORP. The 1.5x
+        // multiplier is the Employment Act's normal-day minimum; rest-day and
+        // public-holiday tiers are supported by the engine and are configured
+        // per clinic rather than assumed here.
+        const overtimeHours = timesheet.approvedOvertimeMinutes / 60;
+        const hourlyCents = employee.hourlyRate ? toCents(employee.hourlyRate) : rates.overtimeHourlyCents;
+        const overtime = computeOvertime(
+          [{ label: 'Normal day (1.5x)', hours: overtimeHours, multiplier: 1.5 }],
+          hourlyCents,
         );
+        const overtimeCents = overtime.totalCents;
+
+        // Components carry their own statutory liability, so the three bases
+        // come out different — overtime is SOCSO and EIS wages but not EPF
+        // wages. See docs/HR_PAYROLL_EXCEL_REFERENCE_AUDIT.md section 1.3.
+        const componentLines: PayrollComponentLine[] = [
+          { code: 'BASIC', label: 'Basic pay', kind: 'EARNING', amount: fromCents(basicCents), liability: DEFAULT_COMPONENT_LIABILITY.BASIC },
+        ];
+        if (overtimeCents > 0) {
+          componentLines.push({
+            code: 'OVERTIME', label: 'Overtime', kind: 'EARNING',
+            amount: fromCents(overtimeCents), liability: DEFAULT_COMPONENT_LIABILITY.OVERTIME,
+          });
+        }
+        if (incentiveCents > 0) {
+          componentLines.push({
+            code: 'INCENTIVE', label: 'Incentives', kind: 'EARNING',
+            amount: fromCents(incentiveCents), liability: DEFAULT_COMPONENT_LIABILITY.INCENTIVE,
+          });
+        }
+        if (unpaidCents > 0) {
+          componentLines.push({
+            code: 'UNPAID_LEAVE', label: 'Unpaid leave', kind: 'DEDUCTION',
+            amount: fromCents(unpaidCents), liability: DEFAULT_COMPONENT_LIABILITY.UNPAID_LEAVE,
+          });
+        }
+
+        // PCB is a supplied amount, not a computed one, so it is taken out of
+        // the component list and applied as an override further down.
+        const pcbInput = inputs.find((row) => row.componentCode === 'PCB');
+        const pcbOverrideCents = pcbInput ? toCents(pcbInput.amount) : null;
+
+        for (const input of inputs) {
+          if (input.componentCode === 'PCB') continue;
+          const liability = DEFAULT_COMPONENT_LIABILITY[input.componentCode];
+          if (!liability) {
+            // An input naming a component this build does not know would
+            // otherwise be silently dropped from somebody's pay.
+            exceptions.push({
+              staffId: employee.staffId,
+              name: employee.staff.fullName,
+              issue: `Payroll input "${input.componentCode}" is not a known component and was NOT included.`,
+            });
+            continue;
+          }
+          const amountCents = toCents(input.amount);
+          if (amountCents === 0) continue;
+          componentLines.push({
+            code: input.componentCode,
+            label: input.label ?? input.componentCode,
+            kind: amountCents < 0 ? 'DEDUCTION' : DEDUCTION_COMPONENTS.has(input.componentCode) ? 'DEDUCTION' : 'EARNING',
+            amount: fromCents(Math.abs(amountCents)),
+            liability,
+          });
+        }
+
+        const payslip = computePayslip(componentLines, ruleSet as unknown as StatutoryRules | null, {
+          age,
+          epfEmployeeRate: employee.epfEmployeeRate ? Number(employee.epfEmployeeRate) : 11,
+          epfApplicable: employee.epfApplicable,
+          socsoApplicable: employee.socsoApplicable,
+          eisApplicable: employee.eisApplicable,
+          pcbApplicable: employee.pcbApplicable,
+        });
+
+        // PCB is not calculated by this system, and that is a BLOCKING
+        // exception rather than a quiet null on a payslip somebody might pay
+        // against. See docs/MALAYSIA_PAYROLL_STATUTORY_SOURCES.md section 4.
+        if (payslip.statutory.pcbCents === null) {
+          if (pcbOverrideCents === null) {
+            exceptions.push({
+              staffId: employee.staffId,
+              name: employee.staff.fullName,
+              issue:
+                'PCB (monthly tax deduction) is not calculated by this system and no amount has been entered. ' +
+                'Enter it as a payroll input, or record this employee as outside PCB.',
+            });
+          } else {
+            // A supplied figure completes the payslip. It is withheld from the
+            // employee and reduces net pay exactly as a computed one would.
+            payslip.statutory.pcbCents = pcbOverrideCents;
+            payslip.statutory.pcbNote = `PCB of ${pcbInput?.label ?? 'this amount'} was entered by hand, not calculated.`;
+            payslip.employeeDeductionCents += pcbOverrideCents;
+            payslip.netCents -= pcbOverrideCents;
+            payslip.incomplete =
+              payslip.statutory.epf.employeeCents === null ||
+              payslip.statutory.socso.employeeCents === null ||
+              payslip.statutory.eis.employeeCents === null;
+          }
+        }
+        for (const note of payslip.notes.filter((n) => !n.startsWith('PCB is not calculated'))) {
+          exceptions.push({ staffId: employee.staffId, name: employee.staff.fullName, issue: note });
+        }
 
         await tx.payrollLine.create({
           data: {
@@ -334,14 +459,36 @@ export class PayrollService {
             socsoEmployer: nullableCents(payslip.statutory.socso.employerCents),
             eisEmployee: nullableCents(payslip.statutory.eis.employeeCents),
             eisEmployer: nullableCents(payslip.statutory.eis.employerCents),
-            pcb: nullableCents(payslip.pcbOrNull()),
+            pcb: nullableCents(payslip.statutory.pcbCents),
             netPay: fromCents(payslip.netCents),
             employerCost: fromCents(payslip.employerCostCents),
             workedDays: timesheet.daysPresent,
             unpaidDays,
             overtimeHours: Math.round((timesheet.approvedOvertimeMinutes / 60) * 100) / 100,
             breakdown: {
-              statutoryWage: fromCents(payslip.statutoryWageCents),
+              // The THREE bases, not one. A payslip that shows a single
+              // "statutory wage" cannot explain why EPF and SOCSO differ.
+              bases: {
+                epf: fromCents(payslip.bases.epfCents),
+                socso: fromCents(payslip.bases.socsoCents),
+                eis: fromCents(payslip.bases.eisCents),
+              },
+              components: payslip.lines.map((line) => ({
+                code: line.code, label: line.label, kind: line.kind,
+                amount: line.amount, liability: line.liability,
+              })),
+              ordinaryRateOfPay: {
+                overtimeDays: orpConfig.overtimeDaysPerMonth,
+                unpaidLeaveDays: orpConfig.unpaidLeaveDaysPerMonth,
+                hoursPerDay: orpConfig.hoursPerDay,
+                unpaidLeaveDaily: fromCents(rates.unpaidLeaveDailyCents),
+                overtimeHourly: fromCents(rates.overtimeHourlyCents),
+              },
+              overtimeTiers: overtime.tiers.map((tier) => ({
+                label: tier.label, hours: tier.hours,
+                hourlyRate: fromCents(tier.hourlyRateCents), total: fromCents(tier.totalCents),
+              })),
+              age,
               statutoryNotes: {
                 epf: payslip.statutory.epf.note ?? null,
                 socso: payslip.statutory.socso.note ?? null,
@@ -350,7 +497,6 @@ export class PayrollService {
               },
               incomplete: payslip.incomplete,
               hourlyRateUsed: fromCents(hourlyCents),
-              overtimeMultiplier: 1.5,
               timesheet,
             } as never,
           },
@@ -373,7 +519,8 @@ export class PayrollService {
             ? {
                 name: ruleSet.name,
                 effectiveFrom: ruleSet.effectiveFrom,
-                verified: ruleSet.verifiedAt !== null,
+                verificationStatus: ruleSet.verificationStatus,
+                verified: ruleSet.verificationStatus === 'VERIFIED',
                 epfRules: ruleSet.epfRules,
                 socsoRules: ruleSet.socsoRules,
                 eisRules: ruleSet.eisRules,

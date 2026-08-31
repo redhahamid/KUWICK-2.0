@@ -1,278 +1,311 @@
-import { MoneyLike, fromCents, percentOfCents, toCents } from '../finance/money';
+import { MoneyLike, fromCents, toCents } from '../finance/money';
+import {
+  Contribution,
+  EmployeeStatutoryProfile,
+  StatutoryBases,
+  StatutoryResult,
+  StatutoryRules,
+  computeStatutory,
+  statutoryStatusOf,
+} from './statutory';
 
 /**
- * PAYROLL ARITHMETIC — and the rule that shapes the whole module.
+ * PAYROLL ASSEMBLY — turning components into a payslip.
  *
- * OWNER BRIEF §15.7: "Do not calculate statutory payroll figures with
- * unverified hard-coded assumptions."
+ * The arithmetic of the three statutory schemes lives in `statutory.ts`. What
+ * lives here is the question that comes BEFORE it: which parts of somebody's
+ * pay are each scheme computed on?
  *
- * There is therefore NO Malaysian rate anywhere in this file. Not an EPF
- * percentage, not a SOCSO bracket, not a PCB schedule. Every statutory figure
- * is computed from a `StatutoryRuleSet` the tenant configured and dated, and
- * when no rule set covers the period the result is NOT zero — it is ABSENT,
- * and the run says so.
+ * That question has a different answer per scheme and per component, and the
+ * previous version of this file could not express it. It computed one
+ * `statutoryWage = basic + allowances + overtime` and handed the same figure to
+ * EPF, SOCSO and EIS. Overtime is SOCSO and EIS wages but is EXPRESSLY EXCLUDED
+ * from EPF wages by s.2 of the EPF Act 1991, so that single figure
+ * over-contributed EPF for every employee who worked an hour of overtime.
  *
- * The distinction matters because a payslip showing "EPF: RM0.00" is a
- * statement that no EPF is due. A payslip showing "EPF: not configured" is a
- * statement that the system does not know. Only the second one is true of a
- * clinic that has not set its rates up, and only the second one causes somebody
- * to go and set them up.
+ * The clinic's own spreadsheet already solves this properly, and the model
+ * below is deliberately the same shape: liability is declared once per
+ * component, and the three bases fall out of the declaration. See
+ * docs/HR_PAYROLL_EXCEL_REFERENCE_AUDIT.md section 1.3.
  */
 
 // ---------------------------------------------------------------------------
-// The rule shapes. Deliberately permissive: these mirror what a tenant types
-// in, and this module VALIDATES rather than assumes.
+// Components and their statutory treatment
 // ---------------------------------------------------------------------------
 
-export interface EpfRules {
-  /** Percentage of wages the employee contributes. */
-  employeeRate?: MoneyLike;
-  employerRate?: MoneyLike;
-  /** Wages above this are not contributed on. Omit for no ceiling. */
-  wageCeiling?: MoneyLike;
-  /** Contributions are rounded UP to the next ringgit under EPF's own rules;
-   *  whether that applies is the tenant's configuration, not our assumption. */
-  roundUpToRinggit?: boolean;
+export type ComponentKind = 'EARNING' | 'DEDUCTION';
+
+/**
+ * What a component is liable to.
+ *
+ * `ordinaryRateOfPay` is separate from the three schemes and easy to overlook:
+ * it decides whether a component counts toward the Ordinary Rate of Pay that
+ * prices overtime and unpaid leave. Overtime itself must NOT count, or an hour
+ * of overtime raises the rate at which the next hour is paid.
+ */
+export interface ComponentLiability {
+  epf: boolean;
+  socso: boolean;
+  eis: boolean;
+  /** Liable to monthly tax deduction. Nearly everything is. */
+  pcb: boolean;
+  ordinaryRateOfPay: boolean;
+  /**
+   * LHDN treats bonus and once- or twice-yearly incentives as ADDITIONAL
+   * remuneration, taxed by a different part of the MTD method from normal
+   * monthly remuneration. Carried so that a PCB engine can be implemented
+   * later without re-modelling every component.
+   */
+  additionalRemuneration?: boolean;
 }
 
-export interface BracketRule {
-  /** Inclusive lower bound of the wage band. */
-  from: MoneyLike;
-  /** Inclusive upper bound. Omit for the open-ended top band. */
-  to?: MoneyLike;
-  employee: MoneyLike;
-  employer: MoneyLike;
+export interface PayrollComponentLine {
+  code: string;
+  label: string;
+  kind: ComponentKind;
+  /** Always positive. `kind` carries the sign. */
+  amount: MoneyLike;
+  liability: ComponentLiability;
 }
 
-export interface BracketRules {
-  brackets?: BracketRule[];
-}
-
-export interface PcbBracket {
-  from: MoneyLike;
-  to?: MoneyLike;
-  /** A flat amount for the band, plus a percentage of the excess over `from`. */
-  baseAmount?: MoneyLike;
-  percentOfExcess?: MoneyLike;
-}
-
-export interface PcbRules {
-  brackets?: PcbBracket[];
-  /** A flat monthly relief subtracted from chargeable income before the table. */
-  monthlyRelief?: MoneyLike;
-}
-
-export interface StatutoryRules {
-  epfRules?: EpfRules | null;
-  socsoRules?: BracketRules | null;
-  eisRules?: BracketRules | null;
-  pcbRules?: PcbRules | null;
-}
-
-export type StatutoryStatusName = 'CONFIGURED' | 'NOT_CONFIGURED' | 'PROVISIONAL';
-
-export interface StatutoryContribution {
-  employeeCents: number | null;
-  employerCents: number | null;
-  /** Why a figure is absent, when it is. Rendered on the payslip verbatim. */
-  note?: string;
-}
-
-export interface StatutoryResult {
-  epf: StatutoryContribution;
-  socso: StatutoryContribution;
-  eis: StatutoryContribution;
-  pcbCents: number | null;
-  pcbNote?: string;
-}
-
-const NOT_CONFIGURED: StatutoryContribution = {
-  employeeCents: null,
-  employerCents: null,
-  note: 'No statutory rate configured for this period.',
+/**
+ * The five contribution-status codes the clinic's workbook uses, expressed as
+ * liability. Kept because they are the vocabulary the clinic already thinks in,
+ * and because a migration from the spreadsheet can map straight onto them.
+ *
+ *   1  No contribution
+ *   2  EPF, SOCSO & EIS            (and counts toward ORP)
+ *   3  SOCSO & EIS only
+ *   4  EPF only, no ORP
+ *   5  EPF, SOCSO & EIS, no ORP
+ */
+export const LIABILITY_BY_STATUS_CODE: Record<string, ComponentLiability> = {
+  '1': { epf: false, socso: false, eis: false, pcb: true, ordinaryRateOfPay: false },
+  '2': { epf: true, socso: true, eis: true, pcb: true, ordinaryRateOfPay: true },
+  '3': { epf: false, socso: true, eis: true, pcb: true, ordinaryRateOfPay: false },
+  '4': { epf: true, socso: false, eis: false, pcb: true, ordinaryRateOfPay: false },
+  '5': { epf: true, socso: true, eis: true, pcb: true, ordinaryRateOfPay: false },
 };
 
-function bracketFor<T extends { from: MoneyLike; to?: MoneyLike }>(brackets: T[], wageCents: number): T | null {
-  for (const bracket of brackets) {
-    const from = toCents(bracket.from);
-    const to = bracket.to === undefined || bracket.to === null ? Infinity : toCents(bracket.to);
-    if (wageCents >= from && wageCents <= to) return bracket;
-  }
-  return null;
+/**
+ * Defaults for the components a Malaysian clinic actually runs.
+ *
+ * NOTE ON ALLOWANCE, ATTENDANCE AND COMMISSION. The clinic's spreadsheet
+ * currently exempts all three from EPF. The EPF Act's definition of wages has a
+ * CLOSED list of exclusions — service charge, overtime, gratuity, retirement
+ * and retrenchment benefits, travelling allowance, and anything gazetted — and
+ * commission, bonus and fixed or attendance allowances are not on it. So they
+ * default to EPF-liable here. A clinic that believes otherwise must say so
+ * deliberately, and that choice is dated and audited rather than inherited from
+ * a spreadsheet.
+ *
+ * Mileage is exempt because travelling allowance IS an express exclusion.
+ */
+export const DEFAULT_COMPONENT_LIABILITY: Record<string, ComponentLiability> = {
+  BASIC: LIABILITY_BY_STATUS_CODE['2'],
+  ALLOWANCE: LIABILITY_BY_STATUS_CODE['2'],
+  ATTENDANCE_ALLOWANCE: LIABILITY_BY_STATUS_CODE['2'],
+  COMMISSION: LIABILITY_BY_STATUS_CODE['5'],
+  // Overtime: SOCSO and EIS wages, NOT EPF wages, and never part of ORP.
+  OVERTIME: LIABILITY_BY_STATUS_CODE['3'],
+  // Travelling allowance is an express EPF exclusion, and SOCSO excludes it too.
+  MILEAGE: LIABILITY_BY_STATUS_CODE['1'],
+  // Bonus is EPF wages, but is additional remuneration for tax.
+  BONUS: { ...LIABILITY_BY_STATUS_CODE['5'], additionalRemuneration: true },
+  INCENTIVE: { ...LIABILITY_BY_STATUS_CODE['5'], additionalRemuneration: true },
+  // Director's fee is not paid under a contract of service.
+  DIRECTOR_FEE: LIABILITY_BY_STATUS_CODE['1'],
+  LOCUM_FEE: LIABILITY_BY_STATUS_CODE['1'],
+  // Unpaid leave reduces every base as well as pay.
+  UNPAID_LEAVE: LIABILITY_BY_STATUS_CODE['2'],
+  // Pure deductions: they reduce net pay and nothing else.
+  ZAKAT: LIABILITY_BY_STATUS_CODE['1'],
+  ADVANCE_RECOVERY: LIABILITY_BY_STATUS_CODE['1'],
+  UNIFORM: LIABILITY_BY_STATUS_CODE['1'],
+  OTHER_DEDUCTION: LIABILITY_BY_STATUS_CODE['1'],
+};
+
+// ---------------------------------------------------------------------------
+// Bases
+// ---------------------------------------------------------------------------
+
+export interface BasesResult extends StatutoryBases {
+  grossCents: number;
+  /** Earnings that count toward the Ordinary Rate of Pay. */
+  ordinaryRateBaseCents: number;
+  pcbNormalCents: number;
+  pcbAdditionalCents: number;
 }
 
-/** EPF from a configured rate pair. Returns absent contributions if unconfigured. */
-export function computeEpf(wageCents: number, rules: EpfRules | null | undefined): StatutoryContribution {
-  if (!rules || rules.employeeRate === undefined || rules.employerRate === undefined) {
-    return NOT_CONFIGURED;
-  }
-  const ceiling = rules.wageCeiling === undefined || rules.wageCeiling === null ? Infinity : toCents(rules.wageCeiling);
-  const contributable = Math.min(wageCents, ceiling);
+/**
+ * The three statutory bases, plus gross and the ORP base, from the component
+ * lines.
+ *
+ * A deduction reduces a base only if the deduction is itself liable to that
+ * scheme — which is how unpaid leave reduces EPF wages while a uniform charge
+ * does not. Bases are floored at zero: a month whose deductions exceed its
+ * earnings is an exception for a human, not a negative contribution.
+ */
+export function computeBases(lines: PayrollComponentLine[]): BasesResult {
+  let gross = 0;
+  let epf = 0;
+  let socso = 0;
+  let eis = 0;
+  let orp = 0;
+  let pcbNormal = 0;
+  let pcbAdditional = 0;
 
-  const round = (cents: number) => (rules.roundUpToRinggit ? Math.ceil(cents / 100) * 100 : cents);
+  for (const line of lines) {
+    const amount = toCents(line.amount);
+    const sign = line.kind === 'EARNING' ? 1 : -1;
+    gross += sign * amount;
+    if (line.liability.epf) epf += sign * amount;
+    if (line.liability.socso) socso += sign * amount;
+    if (line.liability.eis) eis += sign * amount;
+    if (line.liability.ordinaryRateOfPay) orp += sign * amount;
+    if (line.liability.pcb) {
+      if (line.liability.additionalRemuneration) pcbAdditional += sign * amount;
+      else pcbNormal += sign * amount;
+    }
+  }
 
   return {
-    employeeCents: round(percentOfCents(contributable, rules.employeeRate)),
-    employerCents: round(percentOfCents(contributable, rules.employerRate)),
+    grossCents: gross,
+    epfCents: Math.max(0, epf),
+    socsoCents: Math.max(0, socso),
+    eisCents: Math.max(0, eis),
+    ordinaryRateBaseCents: Math.max(0, orp),
+    pcbNormalCents: Math.max(0, pcbNormal),
+    pcbAdditionalCents: Math.max(0, pcbAdditional),
   };
 }
 
-/** SOCSO / EIS from a configured bracket table. */
-export function computeBracketContribution(
-  wageCents: number,
-  rules: BracketRules | null | undefined,
-): StatutoryContribution {
-  if (!rules?.brackets?.length) return NOT_CONFIGURED;
-  const bracket = bracketFor(rules.brackets, wageCents);
-  if (!bracket) {
-    // A wage outside every configured band is a configuration GAP. Returning
-    // zero would silently under-contribute for somebody paid above the top
-    // band the tenant happened to enter.
-    return {
-      employeeCents: null,
-      employerCents: null,
-      note: 'Wage falls outside every configured contribution band.',
-    };
-  }
-  return { employeeCents: toCents(bracket.employee), employerCents: toCents(bracket.employer) };
+// ---------------------------------------------------------------------------
+// Ordinary Rate of Pay, overtime, unpaid leave
+// ---------------------------------------------------------------------------
+
+/**
+ * The divisors are CLINIC POLICY, not law, and the clinic uses two different
+ * ones on purpose: overtime is priced on a 26-day month and unpaid leave is
+ * deducted on a 31-day month. Both are configurable per employer and neither
+ * has a default baked in here.
+ */
+export interface OrdinaryRateConfig {
+  overtimeDaysPerMonth: number;
+  unpaidLeaveDaysPerMonth: number;
+  hoursPerDay: number;
 }
 
-/** PCB from a configured schedule. Absent unless configured — the common case. */
-export function computePcb(chargeableCents: number, rules: PcbRules | null | undefined): { cents: number | null; note?: string } {
-  if (!rules?.brackets?.length) {
-    return {
-      cents: null,
-      note: 'No PCB schedule configured. Monthly tax deduction is not calculated by this system.',
-    };
-  }
-  const relief = rules.monthlyRelief === undefined ? 0 : toCents(rules.monthlyRelief);
-  const taxable = Math.max(0, chargeableCents - relief);
-  const bracket = bracketFor(rules.brackets, taxable);
-  if (!bracket) {
-    return { cents: null, note: 'Income falls outside every configured PCB band.' };
-  }
-  const base = bracket.baseAmount === undefined ? 0 : toCents(bracket.baseAmount);
-  const excess = Math.max(0, taxable - toCents(bracket.from));
-  const marginal = bracket.percentOfExcess === undefined ? 0 : percentOfCents(excess, bracket.percentOfExcess);
-  return { cents: base + marginal };
+export interface OrdinaryRates {
+  /** Daily rate used to deduct unpaid leave. */
+  unpaidLeaveDailyCents: number;
+  /** Daily rate used to price overtime. */
+  overtimeDailyCents: number;
+  /** Hourly rate used to price overtime, ROUNDED TO THE SEN before use. */
+  overtimeHourlyCents: number;
 }
 
-export function computeStatutory(
-  wageCents: number,
-  rules: StatutoryRules | null | undefined,
-  applicability: { epf?: boolean; socso?: boolean; eis?: boolean; pcb?: boolean } = {},
-): StatutoryResult {
-  // An employee explicitly outside a scheme contributes ZERO, and that zero is
-  // a fact rather than a gap — a foreign locum on a service contract is
-  // genuinely outside EPF, and reporting "not configured" for them would send
-  // somebody looking for a rate that will never apply.
-  const outside: StatutoryContribution = {
-    employeeCents: 0,
-    employerCents: 0,
-    note: 'This employee is recorded as outside the scheme.',
+/**
+ * The rounding order here is load-bearing. The clinic's spreadsheet computes
+ * `ROUND(daily / hours, 2)` and only then multiplies by hours and the
+ * multiplier. Rounding at the end instead produces figures a sen or two out on
+ * most rows, which is exactly the kind of difference that makes a
+ * reconciliation against the old spreadsheet impossible to sign off.
+ */
+export function ordinaryRates(orpBaseCents: number, config: OrdinaryRateConfig): OrdinaryRates {
+  const upl = config.unpaidLeaveDaysPerMonth > 0 ? orpBaseCents / config.unpaidLeaveDaysPerMonth : 0;
+  const otDaily = config.overtimeDaysPerMonth > 0 ? orpBaseCents / config.overtimeDaysPerMonth : 0;
+  const otHourly = config.hoursPerDay > 0 ? Math.round(otDaily / config.hoursPerDay) : 0;
+  return {
+    unpaidLeaveDailyCents: Math.round(upl),
+    overtimeDailyCents: Math.round(otDaily),
+    overtimeHourlyCents: otHourly,
   };
-
-  const epf = applicability.epf === false ? outside : computeEpf(wageCents, rules?.epfRules);
-  const socso = applicability.socso === false ? outside : computeBracketContribution(wageCents, rules?.socsoRules);
-  const eis = applicability.eis === false ? outside : computeBracketContribution(wageCents, rules?.eisRules);
-  const pcb =
-    applicability.pcb === false
-      ? { cents: 0, note: 'This employee is recorded as outside PCB.' }
-      : computePcb(wageCents, rules?.pcbRules);
-
-  return { epf, socso, eis, pcbCents: pcb.cents, pcbNote: pcb.note };
 }
 
-/** Whether a rule set is complete enough to be described as CONFIGURED. */
-export function statutoryStatusOf(rules: StatutoryRules | null | undefined, verified: boolean): StatutoryStatusName {
-  if (!rules) return 'NOT_CONFIGURED';
-  const hasAny =
-    Boolean(rules.epfRules?.employeeRate !== undefined && rules.epfRules?.employerRate !== undefined) ||
-    Boolean(rules.socsoRules?.brackets?.length) ||
-    Boolean(rules.eisRules?.brackets?.length) ||
-    Boolean(rules.pcbRules?.brackets?.length);
-  if (!hasAny) return 'NOT_CONFIGURED';
-  return verified ? 'CONFIGURED' : 'PROVISIONAL';
+/** One overtime tier: either a multiple of the hourly ORP, or a flat rate. */
+export interface OvertimeTier {
+  label: string;
+  hours: number;
+  /** e.g. 1.5, 2, 3. Ignored when `flatHourlyRate` is set. */
+  multiplier?: number;
+  flatHourlyRate?: MoneyLike;
+}
+
+export interface OvertimeTierResult extends OvertimeTier {
+  hourlyRateCents: number;
+  totalCents: number;
+}
+
+export function computeOvertime(tiers: OvertimeTier[], hourlyOrpCents: number): { tiers: OvertimeTierResult[]; totalCents: number } {
+  const results = tiers.map((tier) => {
+    if (tier.hours <= 0) return { ...tier, hourlyRateCents: 0, totalCents: 0 };
+    const hourlyRateCents =
+      tier.flatHourlyRate !== undefined && tier.flatHourlyRate !== null
+        ? toCents(tier.flatHourlyRate)
+        : Math.round(hourlyOrpCents * (tier.multiplier ?? 1));
+    return { ...tier, hourlyRateCents, totalCents: Math.round(hourlyRateCents * tier.hours) };
+  });
+  return { tiers: results, totalCents: results.reduce((sum, t) => sum + t.totalCents, 0) };
+}
+
+export function unpaidLeaveDeductionCents(days: number, rates: OrdinaryRates): number {
+  return Math.round(days * rates.unpaidLeaveDailyCents);
 }
 
 // ---------------------------------------------------------------------------
 // The payslip
 // ---------------------------------------------------------------------------
 
-export interface PayrollInput {
-  basicSalary: MoneyLike;
-  allowances?: MoneyLike;
-  overtimePay?: MoneyLike;
-  incentives?: MoneyLike;
-  bonus?: MoneyLike;
-  unpaidLeaveDeduction?: MoneyLike;
-  otherDeductions?: MoneyLike;
-}
-
 export interface PayslipResult {
-  grossCents: number;
-  /** Wages the statutory schemes are computed on. */
-  statutoryWageCents: number;
+  lines: PayrollComponentLine[];
+  bases: BasesResult;
   statutory: StatutoryResult;
+  grossCents: number;
+  /** Everything withheld from the employee, statutory and otherwise. */
   employeeDeductionCents: number;
+  /** Employer EPF + SOCSO + EIS. Never withheld from the employee. */
   employerContributionCents: number;
   netCents: number;
-  /** Total cost to the clinic: gross plus employer contributions. */
+  /** Gross plus employer contributions plus any other employer-borne cost. */
   employerCostCents: number;
-  /** True when a statutory figure could not be computed. */
+  /** True when any statutory figure could not be computed. */
   incomplete: boolean;
-  /** PCB, or null when it could not be computed. A named reader so callers do
-   *  not reach into `statutory` and accidentally coerce the null. */
-  pcbOrNull(): number | null;
+  /** Every reason a figure is missing, for the exception list and the payslip. */
+  notes: string[];
 }
 
 /**
  * One payslip.
  *
- * TWO THINGS THIS DELIBERATELY DOES NOT DO:
- *
- *  1. It does not fall back to zero for an uncomputable statutory figure. An
- *     absent contribution stays absent, `incomplete` is true, and the net pay
- *     is computed WITHOUT it — which is visibly a draft rather than a plausible
- *     final number.
- *
- *  2. It does not decide what counts as statutory wages beyond the documented
- *     rule below. Whether a bonus attracts EPF is a question of law and of the
- *     bonus's nature; the tenant's rule set answers it by what it is applied
- *     to, and here that is BASIC + ALLOWANCES + OVERTIME — the ordinary
- *     monthly wage — with bonus and incentive excluded and stated as such.
+ * An uncomputable statutory figure stays ABSENT. Net pay is then computed
+ * without it, and `incomplete` is true — so the number on screen is visibly a
+ * draft rather than a plausible final figure somebody might pay against. The
+ * run cannot be approved while any line is incomplete.
  */
 export function computePayslip(
-  input: PayrollInput,
+  lines: PayrollComponentLine[],
   rules: StatutoryRules | null | undefined,
-  applicability: { epf?: boolean; socso?: boolean; eis?: boolean; pcb?: boolean } = {},
+  profile: EmployeeStatutoryProfile,
 ): PayslipResult {
-  const basic = toCents(input.basicSalary);
-  const allowances = toCents(input.allowances ?? 0);
-  const overtime = toCents(input.overtimePay ?? 0);
-  const incentives = toCents(input.incentives ?? 0);
-  const bonus = toCents(input.bonus ?? 0);
-  const unpaidLeave = toCents(input.unpaidLeaveDeduction ?? 0);
-  const other = toCents(input.otherDeductions ?? 0);
+  const bases = computeBases(lines);
+  const statutory = computeStatutory(bases, rules, profile);
 
-  const grossCents = basic + allowances + overtime + incentives + bonus - unpaidLeave;
-
-  // The ordinary monthly wage, which is what a rate table is written against.
-  // Bonus and incentive are excluded and the exclusion is stated, because
-  // including them silently would over-contribute in a month with a bonus.
-  const statutoryWageCents = Math.max(0, basic + allowances + overtime - unpaidLeave);
-
-  const statutory = computeStatutory(statutoryWageCents, rules, applicability);
-
-  const employeeDeductionCents =
+  const employeeStatutory =
     (statutory.epf.employeeCents ?? 0) +
     (statutory.socso.employeeCents ?? 0) +
     (statutory.eis.employeeCents ?? 0) +
-    (statutory.pcbCents ?? 0) +
-    other;
+    (statutory.pcbCents ?? 0);
+
+  const nonStatutoryDeductions = lines
+    .filter((line) => line.kind === 'DEDUCTION')
+    .reduce((sum, line) => sum + toCents(line.amount), 0);
 
   const employerContributionCents =
     (statutory.epf.employerCents ?? 0) + (statutory.socso.employerCents ?? 0) + (statutory.eis.employerCents ?? 0);
+
+  const notes = [statutory.epf.note, statutory.socso.note, statutory.eis.note, statutory.pcbCents === null ? statutory.pcbNote : undefined]
+    .filter((note): note is string => Boolean(note));
 
   const incomplete =
     statutory.epf.employeeCents === null ||
@@ -280,45 +313,34 @@ export function computePayslip(
     statutory.eis.employeeCents === null ||
     statutory.pcbCents === null;
 
+  // `bases.grossCents` is already net of the deduction lines, so the employee's
+  // statutory share is the only further withholding.
+  const netCents = bases.grossCents - employeeStatutory;
+
   return {
-    grossCents,
-    statutoryWageCents,
+    lines,
+    bases,
     statutory,
-    employeeDeductionCents,
+    grossCents: bases.grossCents,
+    employeeDeductionCents: employeeStatutory + nonStatutoryDeductions,
     employerContributionCents,
-    netCents: grossCents - employeeDeductionCents,
-    employerCostCents: grossCents + employerContributionCents,
+    netCents,
+    employerCostCents: bases.grossCents + employerContributionCents,
     incomplete,
-    pcbOrNull: () => statutory.pcbCents,
+    notes,
   };
 }
 
-/**
- * A day's pay, for unpaid-leave deductions.
- *
- * Divided by the CALENDAR days in the month, which is the convention Malaysian
- * clinics generally use for a monthly-rated employee. It is stated here so
- * that a clinic using working days instead changes one function with one test
- * rather than hunting through a payroll service.
- */
-export function dailyRateCents(monthlySalaryCents: number, daysInMonth: number): number {
-  if (daysInMonth <= 0) return 0;
-  return Math.round(monthlySalaryCents / daysInMonth);
+/** Completed years of age at a date. Payroll branches on it at 60. */
+export function ageAt(dateOfBirth: Date | null | undefined, on: Date): number | null {
+  if (!dateOfBirth) return null;
+  let age = on.getUTCFullYear() - dateOfBirth.getUTCFullYear();
+  const beforeBirthday =
+    on.getUTCMonth() < dateOfBirth.getUTCMonth() ||
+    (on.getUTCMonth() === dateOfBirth.getUTCMonth() && on.getUTCDate() < dateOfBirth.getUTCDate());
+  if (beforeBirthday) age -= 1;
+  return age;
 }
 
-/**
- * Overtime pay from approved overtime minutes.
- *
- * The MULTIPLIER is a parameter, not a constant: 1.5× on a normal day and 2×
- * on a rest day are contractual terms, and hardcoding either would be exactly
- * the "unverified assumption" the brief forbids.
- */
-export function overtimePayCents(
-  hourlyRateCents: number,
-  overtimeMinutes: number,
-  multiplier: number,
-): number {
-  return Math.round((hourlyRateCents * overtimeMinutes * multiplier) / 60);
-}
-
-export { fromCents, toCents };
+export { fromCents, toCents, statutoryStatusOf };
+export type { Contribution, StatutoryResult, StatutoryRules, EmployeeStatutoryProfile };

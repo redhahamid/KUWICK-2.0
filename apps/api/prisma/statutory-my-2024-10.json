@@ -1,0 +1,8816 @@
+{
+ "name": "Malaysia \u2014 EPF / SOCSO / EIS, from 1 October 2024",
+ "jurisdiction": "MY",
+ "effectiveFrom": "2024-10-01",
+ "verificationStatus": "CORROBORATED",
+ "sourceNote": "Bands transcribed from the clinic-supplied AAS_PAYROLL_AUGUST.xlsx sheet \"SOCSO-SIP-EPF Table\" and corroborated against published Malaysian payroll references. NOT verified against kwsp.gov.my or perkeso.gov.my, which are unreachable from the build environment. See docs/MALAYSIA_PAYROLL_STATUTORY_SOURCES.md.",
+ "epfRules": {
+  "under60": {
+   "11": {
+    "bands": [
+     {
+      "min": 1,
+      "max": 1000,
+      "employer": 0,
+      "employee": 0
+     },
+     {
+      "min": 1001,
+      "max": 2000,
+      "employer": 300,
+      "employee": 300
+     },
+     {
+      "min": 2001,
+      "max": 4000,
+      "employer": 600,
+      "employee": 500
+     },
+     {
+      "min": 4001,
+      "max": 6000,
+      "employer": 800,
+      "employee": 700
+     },
+     {
+      "min": 6001,
+      "max": 8000,
+      "employer": 1100,
+      "employee": 900
+     },
+     {
+      "min": 8001,
+      "max": 10000,
+      "employer": 1300,
+      "employee": 1100
+     },
+     {
+      "min": 10001,
+      "max": 12000,
+      "employer": 1600,
+      "employee": 1400
+     },
+     {
+      "min": 12001,
+      "max": 14000,
+      "employer": 1900,
+      "employee": 1600
+     },
+     {
+      "min": 14001,
+      "max": 16000,
+      "employer": 2100,
+      "employee": 1800
+     },
+     {
+      "min": 16001,
+      "max": 18000,
+      "employer": 2400,
+      "employee": 2000
+     },
+     {
+      "min": 18001,
+      "max": 20000,
+      "employer": 2600,
+      "employee": 2200
+     },
+     {
+      "min": 20001,
+      "max": 22000,
+      "employer": 2900,
+      "employee": 2500
+     },
+     {
+      "min": 22001,
+      "max": 24000,
+      "employer": 3200,
+      "employee": 2700
+     },
+     {
+      "min": 24001,
+      "max": 26000,
+      "employer": 3400,
+      "employee": 2900
+     },
+     {
+      "min": 26001,
+      "max": 28000,
+      "employer": 3700,
+      "employee": 3100
+     },
+     {
+      "min": 28001,
+      "max": 30000,
+      "employer": 3900,
+      "employee": 3300
+     },
+     {
+      "min": 30001,
+      "max": 32000,
+      "employer": 4200,
+      "employee": 3600
+     },
+     {
+      "min": 32001,
+      "max": 34000,
+      "employer": 4500,
+      "employee": 3800
+     },
+     {
+      "min": 34001,
+      "max": 36000,
+      "employer": 4700,
+      "employee": 4000
+     },
+     {
+      "min": 36001,
+      "max": 38000,
+      "employer": 5000,
+      "employee": 4200
+     },
+     {
+      "min": 38001,
+      "max": 40000,
+      "employer": 5200,
+      "employee": 4400
+     },
+     {
+      "min": 40001,
+      "max": 42000,
+      "employer": 5500,
+      "employee": 4700
+     },
+     {
+      "min": 42001,
+      "max": 44000,
+      "employer": 5800,
+      "employee": 4900
+     },
+     {
+      "min": 44001,
+      "max": 46000,
+      "employer": 6000,
+      "employee": 5100
+     },
+     {
+      "min": 46001,
+      "max": 48000,
+      "employer": 6300,
+      "employee": 5300
+     },
+     {
+      "min": 48001,
+      "max": 50000,
+      "employer": 6500,
+      "employee": 5500
+     },
+     {
+      "min": 50001,
+      "max": 52000,
+      "employer": 6800,
+      "employee": 5800
+     },
+     {
+      "min": 52001,
+      "max": 54000,
+      "employer": 7100,
+      "employee": 6000
+     },
+     {
+      "min": 54001,
+      "max": 56000,
+      "employer": 7300,
+      "employee": 6200
+     },
+     {
+      "min": 56001,
+      "max": 58000,
+      "employer": 7600,
+      "employee": 6400
+     },
+     {
+      "min": 58001,
+      "max": 60000,
+      "employer": 7800,
+      "employee": 6600
+     },
+     {
+      "min": 60001,
+      "max": 62000,
+      "employer": 8100,
+      "employee": 6900
+     },
+     {
+      "min": 62001,
+      "max": 64000,
+      "employer": 8400,
+      "employee": 7100
+     },
+     {
+      "min": 64001,
+      "max": 66000,
+      "employer": 8600,
+      "employee": 7300
+     },
+     {
+      "min": 66001,
+      "max": 68000,
+      "employer": 8900,
+      "employee": 7500
+     },
+     {
+      "min": 68001,
+      "max": 70000,
+      "employer": 9100,
+      "employee": 7700
+     },
+     {
+      "min": 70001,
+      "max": 72000,
+      "employer": 9400,
+      "employee": 8000
+     },
+     {
+      "min": 72001,
+      "max": 74000,
+      "employer": 9700,
+      "employee": 8200
+     },
+     {
+      "min": 74001,
+      "max": 76000,
+      "employer": 9900,
+      "employee": 8400
+     },
+     {
+      "min": 76001,
+      "max": 78000,
+      "employer": 10200,
+      "employee": 8600
+     },
+     {
+      "min": 78001,
+      "max": 80000,
+      "employer": 10400,
+      "employee": 8800
+     },
+     {
+      "min": 80001,
+      "max": 82000,
+      "employer": 10700,
+      "employee": 9100
+     },
+     {
+      "min": 82001,
+      "max": 84000,
+      "employer": 11000,
+      "employee": 9300
+     },
+     {
+      "min": 84001,
+      "max": 86000,
+      "employer": 11200,
+      "employee": 9500
+     },
+     {
+      "min": 86001,
+      "max": 88000,
+      "employer": 11500,
+      "employee": 9700
+     },
+     {
+      "min": 88001,
+      "max": 90000,
+      "employer": 11700,
+      "employee": 9900
+     },
+     {
+      "min": 90001,
+      "max": 92000,
+      "employer": 12000,
+      "employee": 10200
+     },
+     {
+      "min": 92001,
+      "max": 94000,
+      "employer": 12300,
+      "employee": 10400
+     },
+     {
+      "min": 94001,
+      "max": 96000,
+      "employer": 12500,
+      "employee": 10600
+     },
+     {
+      "min": 96001,
+      "max": 98000,
+      "employer": 12800,
+      "employee": 10800
+     },
+     {
+      "min": 98001,
+      "max": 100000,
+      "employer": 13000,
+      "employee": 11000
+     },
+     {
+      "min": 100001,
+      "max": 102000,
+      "employer": 13300,
+      "employee": 11300
+     },
+     {
+      "min": 102001,
+      "max": 104000,
+      "employer": 13600,
+      "employee": 11500
+     },
+     {
+      "min": 104001,
+      "max": 106000,
+      "employer": 13800,
+      "employee": 11700
+     },
+     {
+      "min": 106001,
+      "max": 108000,
+      "employer": 14100,
+      "employee": 11900
+     },
+     {
+      "min": 108001,
+      "max": 110000,
+      "employer": 14300,
+      "employee": 12100
+     },
+     {
+      "min": 110001,
+      "max": 112000,
+      "employer": 14600,
+      "employee": 12400
+     },
+     {
+      "min": 112001,
+      "max": 114000,
+      "employer": 14900,
+      "employee": 12600
+     },
+     {
+      "min": 114001,
+      "max": 116000,
+      "employer": 15100,
+      "employee": 12800
+     },
+     {
+      "min": 116001,
+      "max": 118000,
+      "employer": 15400,
+      "employee": 13000
+     },
+     {
+      "min": 118001,
+      "max": 120000,
+      "employer": 15600,
+      "employee": 13200
+     },
+     {
+      "min": 120001,
+      "max": 122000,
+      "employer": 15900,
+      "employee": 13500
+     },
+     {
+      "min": 122001,
+      "max": 124000,
+      "employer": 16200,
+      "employee": 13700
+     },
+     {
+      "min": 124001,
+      "max": 126000,
+      "employer": 16400,
+      "employee": 13900
+     },
+     {
+      "min": 126001,
+      "max": 128000,
+      "employer": 16700,
+      "employee": 14100
+     },
+     {
+      "min": 128001,
+      "max": 130000,
+      "employer": 16900,
+      "employee": 14300
+     },
+     {
+      "min": 130001,
+      "max": 132000,
+      "employer": 17200,
+      "employee": 14600
+     },
+     {
+      "min": 132001,
+      "max": 134000,
+      "employer": 17500,
+      "employee": 14800
+     },
+     {
+      "min": 134001,
+      "max": 136000,
+      "employer": 17700,
+      "employee": 15000
+     },
+     {
+      "min": 136001,
+      "max": 138000,
+      "employer": 18000,
+      "employee": 15200
+     },
+     {
+      "min": 138001,
+      "max": 140000,
+      "employer": 18200,
+      "employee": 15400
+     },
+     {
+      "min": 140001,
+      "max": 142000,
+      "employer": 18500,
+      "employee": 15700
+     },
+     {
+      "min": 142001,
+      "max": 144000,
+      "employer": 18800,
+      "employee": 15900
+     },
+     {
+      "min": 144001,
+      "max": 146000,
+      "employer": 19000,
+      "employee": 16100
+     },
+     {
+      "min": 146001,
+      "max": 148000,
+      "employer": 19300,
+      "employee": 16300
+     },
+     {
+      "min": 148001,
+      "max": 150000,
+      "employer": 19500,
+      "employee": 16500
+     },
+     {
+      "min": 150001,
+      "max": 152000,
+      "employer": 19800,
+      "employee": 16800
+     },
+     {
+      "min": 152001,
+      "max": 154000,
+      "employer": 20100,
+      "employee": 17000
+     },
+     {
+      "min": 154001,
+      "max": 156000,
+      "employer": 20300,
+      "employee": 17200
+     },
+     {
+      "min": 156001,
+      "max": 158000,
+      "employer": 20600,
+      "employee": 17400
+     },
+     {
+      "min": 158001,
+      "max": 160000,
+      "employer": 20800,
+      "employee": 17600
+     },
+     {
+      "min": 160001,
+      "max": 162000,
+      "employer": 21100,
+      "employee": 17900
+     },
+     {
+      "min": 162001,
+      "max": 164000,
+      "employer": 21400,
+      "employee": 18100
+     },
+     {
+      "min": 164001,
+      "max": 166000,
+      "employer": 21600,
+      "employee": 18300
+     },
+     {
+      "min": 166001,
+      "max": 168000,
+      "employer": 21900,
+      "employee": 18500
+     },
+     {
+      "min": 168001,
+      "max": 170000,
+      "employer": 22100,
+      "employee": 18700
+     },
+     {
+      "min": 170001,
+      "max": 172000,
+      "employer": 22400,
+      "employee": 19000
+     },
+     {
+      "min": 172001,
+      "max": 174000,
+      "employer": 22700,
+      "employee": 19200
+     },
+     {
+      "min": 174001,
+      "max": 176000,
+      "employer": 22900,
+      "employee": 19400
+     },
+     {
+      "min": 176001,
+      "max": 178000,
+      "employer": 23200,
+      "employee": 19600
+     },
+     {
+      "min": 178001,
+      "max": 180000,
+      "employer": 23400,
+      "employee": 19800
+     },
+     {
+      "min": 180001,
+      "max": 182000,
+      "employer": 23700,
+      "employee": 20100
+     },
+     {
+      "min": 182001,
+      "max": 184000,
+      "employer": 24000,
+      "employee": 20300
+     },
+     {
+      "min": 184001,
+      "max": 186000,
+      "employer": 24200,
+      "employee": 20500
+     },
+     {
+      "min": 186001,
+      "max": 188000,
+      "employer": 24500,
+      "employee": 20700
+     },
+     {
+      "min": 188001,
+      "max": 190000,
+      "employer": 24700,
+      "employee": 20900
+     },
+     {
+      "min": 190001,
+      "max": 192000,
+      "employer": 25000,
+      "employee": 21200
+     },
+     {
+      "min": 192001,
+      "max": 194000,
+      "employer": 25300,
+      "employee": 21400
+     },
+     {
+      "min": 194001,
+      "max": 196000,
+      "employer": 25500,
+      "employee": 21600
+     },
+     {
+      "min": 196001,
+      "max": 198000,
+      "employer": 25800,
+      "employee": 21800
+     },
+     {
+      "min": 198001,
+      "max": 200000,
+      "employer": 26000,
+      "employee": 22000
+     },
+     {
+      "min": 200001,
+      "max": 202000,
+      "employer": 26300,
+      "employee": 22300
+     },
+     {
+      "min": 202001,
+      "max": 204000,
+      "employer": 26600,
+      "employee": 22500
+     },
+     {
+      "min": 204001,
+      "max": 206000,
+      "employer": 26800,
+      "employee": 22700
+     },
+     {
+      "min": 206001,
+      "max": 208000,
+      "employer": 27100,
+      "employee": 22900
+     },
+     {
+      "min": 208001,
+      "max": 210000,
+      "employer": 27300,
+      "employee": 23100
+     },
+     {
+      "min": 210001,
+      "max": 212000,
+      "employer": 27600,
+      "employee": 23400
+     },
+     {
+      "min": 212001,
+      "max": 214000,
+      "employer": 27900,
+      "employee": 23600
+     },
+     {
+      "min": 214001,
+      "max": 216000,
+      "employer": 28100,
+      "employee": 23800
+     },
+     {
+      "min": 216001,
+      "max": 218000,
+      "employer": 28400,
+      "employee": 24000
+     },
+     {
+      "min": 218001,
+      "max": 220000,
+      "employer": 28600,
+      "employee": 24200
+     },
+     {
+      "min": 220001,
+      "max": 222000,
+      "employer": 28900,
+      "employee": 24500
+     },
+     {
+      "min": 222001,
+      "max": 224000,
+      "employer": 29200,
+      "employee": 24700
+     },
+     {
+      "min": 224001,
+      "max": 226000,
+      "employer": 29400,
+      "employee": 24900
+     },
+     {
+      "min": 226001,
+      "max": 228000,
+      "employer": 29700,
+      "employee": 25100
+     },
+     {
+      "min": 228001,
+      "max": 230000,
+      "employer": 29900,
+      "employee": 25300
+     },
+     {
+      "min": 230001,
+      "max": 232000,
+      "employer": 30200,
+      "employee": 25600
+     },
+     {
+      "min": 232001,
+      "max": 234000,
+      "employer": 30500,
+      "employee": 25800
+     },
+     {
+      "min": 234001,
+      "max": 236000,
+      "employer": 30700,
+      "employee": 26000
+     },
+     {
+      "min": 236001,
+      "max": 238000,
+      "employer": 31000,
+      "employee": 26200
+     },
+     {
+      "min": 238001,
+      "max": 240000,
+      "employer": 31200,
+      "employee": 26400
+     },
+     {
+      "min": 240001,
+      "max": 242000,
+      "employer": 31500,
+      "employee": 26700
+     },
+     {
+      "min": 242001,
+      "max": 244000,
+      "employer": 31800,
+      "employee": 26900
+     },
+     {
+      "min": 244001,
+      "max": 246000,
+      "employer": 32000,
+      "employee": 27100
+     },
+     {
+      "min": 246001,
+      "max": 248000,
+      "employer": 32300,
+      "employee": 27300
+     },
+     {
+      "min": 248001,
+      "max": 250000,
+      "employer": 32500,
+      "employee": 27500
+     },
+     {
+      "min": 250001,
+      "max": 252000,
+      "employer": 32800,
+      "employee": 27800
+     },
+     {
+      "min": 252001,
+      "max": 254000,
+      "employer": 33100,
+      "employee": 28000
+     },
+     {
+      "min": 254001,
+      "max": 256000,
+      "employer": 33300,
+      "employee": 28200
+     },
+     {
+      "min": 256001,
+      "max": 258000,
+      "employer": 33600,
+      "employee": 28400
+     },
+     {
+      "min": 258001,
+      "max": 260000,
+      "employer": 33800,
+      "employee": 28600
+     },
+     {
+      "min": 260001,
+      "max": 262000,
+      "employer": 34100,
+      "employee": 28900
+     },
+     {
+      "min": 262001,
+      "max": 264000,
+      "employer": 34400,
+      "employee": 29100
+     },
+     {
+      "min": 264001,
+      "max": 266000,
+      "employer": 34600,
+      "employee": 29300
+     },
+     {
+      "min": 266001,
+      "max": 268000,
+      "employer": 34900,
+      "employee": 29500
+     },
+     {
+      "min": 268001,
+      "max": 270000,
+      "employer": 35100,
+      "employee": 29700
+     },
+     {
+      "min": 270001,
+      "max": 272000,
+      "employer": 35400,
+      "employee": 30000
+     },
+     {
+      "min": 272001,
+      "max": 274000,
+      "employer": 35700,
+      "employee": 30200
+     },
+     {
+      "min": 274001,
+      "max": 276000,
+      "employer": 35900,
+      "employee": 30400
+     },
+     {
+      "min": 276001,
+      "max": 278000,
+      "employer": 36200,
+      "employee": 30600
+     },
+     {
+      "min": 278001,
+      "max": 280000,
+      "employer": 36400,
+      "employee": 30800
+     },
+     {
+      "min": 280001,
+      "max": 282000,
+      "employer": 36700,
+      "employee": 31100
+     },
+     {
+      "min": 282001,
+      "max": 284000,
+      "employer": 37000,
+      "employee": 31300
+     },
+     {
+      "min": 284001,
+      "max": 286000,
+      "employer": 37200,
+      "employee": 31500
+     },
+     {
+      "min": 286001,
+      "max": 288000,
+      "employer": 37500,
+      "employee": 31700
+     },
+     {
+      "min": 288001,
+      "max": 290000,
+      "employer": 37700,
+      "employee": 31900
+     },
+     {
+      "min": 290001,
+      "max": 292000,
+      "employer": 38000,
+      "employee": 32200
+     },
+     {
+      "min": 292001,
+      "max": 294000,
+      "employer": 38300,
+      "employee": 32400
+     },
+     {
+      "min": 294001,
+      "max": 296000,
+      "employer": 38500,
+      "employee": 32600
+     },
+     {
+      "min": 296001,
+      "max": 298000,
+      "employer": 38800,
+      "employee": 32800
+     },
+     {
+      "min": 298001,
+      "max": 300000,
+      "employer": 39000,
+      "employee": 33000
+     },
+     {
+      "min": 300001,
+      "max": 302000,
+      "employer": 39300,
+      "employee": 33300
+     },
+     {
+      "min": 302001,
+      "max": 304000,
+      "employer": 39600,
+      "employee": 33500
+     },
+     {
+      "min": 304001,
+      "max": 306000,
+      "employer": 39800,
+      "employee": 33700
+     },
+     {
+      "min": 306001,
+      "max": 308000,
+      "employer": 40100,
+      "employee": 33900
+     },
+     {
+      "min": 308001,
+      "max": 310000,
+      "employer": 40300,
+      "employee": 34100
+     },
+     {
+      "min": 310001,
+      "max": 312000,
+      "employer": 40600,
+      "employee": 34400
+     },
+     {
+      "min": 312001,
+      "max": 314000,
+      "employer": 40900,
+      "employee": 34600
+     },
+     {
+      "min": 314001,
+      "max": 316000,
+      "employer": 41100,
+      "employee": 34800
+     },
+     {
+      "min": 316001,
+      "max": 318000,
+      "employer": 41400,
+      "employee": 35000
+     },
+     {
+      "min": 318001,
+      "max": 320000,
+      "employer": 41600,
+      "employee": 35200
+     },
+     {
+      "min": 320001,
+      "max": 322000,
+      "employer": 41900,
+      "employee": 35500
+     },
+     {
+      "min": 322001,
+      "max": 324000,
+      "employer": 42200,
+      "employee": 35700
+     },
+     {
+      "min": 324001,
+      "max": 326000,
+      "employer": 42400,
+      "employee": 35900
+     },
+     {
+      "min": 326001,
+      "max": 328000,
+      "employer": 42700,
+      "employee": 36100
+     },
+     {
+      "min": 328001,
+      "max": 330000,
+      "employer": 42900,
+      "employee": 36300
+     },
+     {
+      "min": 330001,
+      "max": 332000,
+      "employer": 43200,
+      "employee": 36600
+     },
+     {
+      "min": 332001,
+      "max": 334000,
+      "employer": 43500,
+      "employee": 36800
+     },
+     {
+      "min": 334001,
+      "max": 336000,
+      "employer": 43700,
+      "employee": 37000
+     },
+     {
+      "min": 336001,
+      "max": 338000,
+      "employer": 44000,
+      "employee": 37200
+     },
+     {
+      "min": 338001,
+      "max": 340000,
+      "employer": 44200,
+      "employee": 37400
+     },
+     {
+      "min": 340001,
+      "max": 342000,
+      "employer": 44500,
+      "employee": 37700
+     },
+     {
+      "min": 342001,
+      "max": 344000,
+      "employer": 44800,
+      "employee": 37900
+     },
+     {
+      "min": 344001,
+      "max": 346000,
+      "employer": 45000,
+      "employee": 38100
+     },
+     {
+      "min": 346001,
+      "max": 348000,
+      "employer": 45300,
+      "employee": 38300
+     },
+     {
+      "min": 348001,
+      "max": 350000,
+      "employer": 45500,
+      "employee": 38500
+     },
+     {
+      "min": 350001,
+      "max": 352000,
+      "employer": 45800,
+      "employee": 38800
+     },
+     {
+      "min": 352001,
+      "max": 354000,
+      "employer": 46100,
+      "employee": 39000
+     },
+     {
+      "min": 354001,
+      "max": 356000,
+      "employer": 46300,
+      "employee": 39200
+     },
+     {
+      "min": 356001,
+      "max": 358000,
+      "employer": 46600,
+      "employee": 39400
+     },
+     {
+      "min": 358001,
+      "max": 360000,
+      "employer": 46800,
+      "employee": 39600
+     },
+     {
+      "min": 360001,
+      "max": 362000,
+      "employer": 47100,
+      "employee": 39900
+     },
+     {
+      "min": 362001,
+      "max": 364000,
+      "employer": 47400,
+      "employee": 40100
+     },
+     {
+      "min": 364001,
+      "max": 366000,
+      "employer": 47600,
+      "employee": 40300
+     },
+     {
+      "min": 366001,
+      "max": 368000,
+      "employer": 47900,
+      "employee": 40500
+     },
+     {
+      "min": 368001,
+      "max": 370000,
+      "employer": 48100,
+      "employee": 40700
+     },
+     {
+      "min": 370001,
+      "max": 372000,
+      "employer": 48400,
+      "employee": 41000
+     },
+     {
+      "min": 372001,
+      "max": 374000,
+      "employer": 48700,
+      "employee": 41200
+     },
+     {
+      "min": 374001,
+      "max": 376000,
+      "employer": 48900,
+      "employee": 41400
+     },
+     {
+      "min": 376001,
+      "max": 378000,
+      "employer": 49200,
+      "employee": 41600
+     },
+     {
+      "min": 378001,
+      "max": 380000,
+      "employer": 49400,
+      "employee": 41800
+     },
+     {
+      "min": 380001,
+      "max": 382000,
+      "employer": 49700,
+      "employee": 42100
+     },
+     {
+      "min": 382001,
+      "max": 384000,
+      "employer": 50000,
+      "employee": 42300
+     },
+     {
+      "min": 384001,
+      "max": 386000,
+      "employer": 50200,
+      "employee": 42500
+     },
+     {
+      "min": 386001,
+      "max": 388000,
+      "employer": 50500,
+      "employee": 42700
+     },
+     {
+      "min": 388001,
+      "max": 390000,
+      "employer": 50700,
+      "employee": 42900
+     },
+     {
+      "min": 390001,
+      "max": 392000,
+      "employer": 51000,
+      "employee": 43200
+     },
+     {
+      "min": 392001,
+      "max": 394000,
+      "employer": 51300,
+      "employee": 43400
+     },
+     {
+      "min": 394001,
+      "max": 396000,
+      "employer": 51500,
+      "employee": 43600
+     },
+     {
+      "min": 396001,
+      "max": 398000,
+      "employer": 51800,
+      "employee": 43800
+     },
+     {
+      "min": 398001,
+      "max": 400000,
+      "employer": 52000,
+      "employee": 44000
+     },
+     {
+      "min": 400001,
+      "max": 402000,
+      "employer": 52300,
+      "employee": 44300
+     },
+     {
+      "min": 402001,
+      "max": 404000,
+      "employer": 52600,
+      "employee": 44500
+     },
+     {
+      "min": 404001,
+      "max": 406000,
+      "employer": 52800,
+      "employee": 44700
+     },
+     {
+      "min": 406001,
+      "max": 408000,
+      "employer": 53100,
+      "employee": 44900
+     },
+     {
+      "min": 408001,
+      "max": 410000,
+      "employer": 53300,
+      "employee": 45100
+     },
+     {
+      "min": 410001,
+      "max": 412000,
+      "employer": 53600,
+      "employee": 45400
+     },
+     {
+      "min": 412001,
+      "max": 414000,
+      "employer": 53900,
+      "employee": 45600
+     },
+     {
+      "min": 414001,
+      "max": 416000,
+      "employer": 54100,
+      "employee": 45800
+     },
+     {
+      "min": 416001,
+      "max": 418000,
+      "employer": 54400,
+      "employee": 46000
+     },
+     {
+      "min": 418001,
+      "max": 420000,
+      "employer": 54600,
+      "employee": 46200
+     },
+     {
+      "min": 420001,
+      "max": 422000,
+      "employer": 54900,
+      "employee": 46500
+     },
+     {
+      "min": 422001,
+      "max": 424000,
+      "employer": 55200,
+      "employee": 46700
+     },
+     {
+      "min": 424001,
+      "max": 426000,
+      "employer": 55400,
+      "employee": 46900
+     },
+     {
+      "min": 426001,
+      "max": 428000,
+      "employer": 55700,
+      "employee": 47100
+     },
+     {
+      "min": 428001,
+      "max": 430000,
+      "employer": 55900,
+      "employee": 47300
+     },
+     {
+      "min": 430001,
+      "max": 432000,
+      "employer": 56200,
+      "employee": 47600
+     },
+     {
+      "min": 432001,
+      "max": 434000,
+      "employer": 56500,
+      "employee": 47800
+     },
+     {
+      "min": 434001,
+      "max": 436000,
+      "employer": 56700,
+      "employee": 48000
+     },
+     {
+      "min": 436001,
+      "max": 438000,
+      "employer": 57000,
+      "employee": 48200
+     },
+     {
+      "min": 438001,
+      "max": 440000,
+      "employer": 57200,
+      "employee": 48400
+     },
+     {
+      "min": 440001,
+      "max": 442000,
+      "employer": 57500,
+      "employee": 48700
+     },
+     {
+      "min": 442001,
+      "max": 444000,
+      "employer": 57800,
+      "employee": 48900
+     },
+     {
+      "min": 444001,
+      "max": 446000,
+      "employer": 58000,
+      "employee": 49100
+     },
+     {
+      "min": 446001,
+      "max": 448000,
+      "employer": 58300,
+      "employee": 49300
+     },
+     {
+      "min": 448001,
+      "max": 450000,
+      "employer": 58500,
+      "employee": 49500
+     },
+     {
+      "min": 450001,
+      "max": 452000,
+      "employer": 58800,
+      "employee": 49800
+     },
+     {
+      "min": 452001,
+      "max": 454000,
+      "employer": 59100,
+      "employee": 50000
+     },
+     {
+      "min": 454001,
+      "max": 456000,
+      "employer": 59300,
+      "employee": 50200
+     },
+     {
+      "min": 456001,
+      "max": 458000,
+      "employer": 59600,
+      "employee": 50400
+     },
+     {
+      "min": 458001,
+      "max": 460000,
+      "employer": 59800,
+      "employee": 50600
+     },
+     {
+      "min": 460001,
+      "max": 462000,
+      "employer": 60100,
+      "employee": 50900
+     },
+     {
+      "min": 462001,
+      "max": 464000,
+      "employer": 60400,
+      "employee": 51100
+     },
+     {
+      "min": 464001,
+      "max": 466000,
+      "employer": 60600,
+      "employee": 51300
+     },
+     {
+      "min": 466001,
+      "max": 468000,
+      "employer": 60900,
+      "employee": 51500
+     },
+     {
+      "min": 468001,
+      "max": 470000,
+      "employer": 61100,
+      "employee": 51700
+     },
+     {
+      "min": 470001,
+      "max": 472000,
+      "employer": 61400,
+      "employee": 52000
+     },
+     {
+      "min": 472001,
+      "max": 474000,
+      "employer": 61700,
+      "employee": 52200
+     },
+     {
+      "min": 474001,
+      "max": 476000,
+      "employer": 61900,
+      "employee": 52400
+     },
+     {
+      "min": 476001,
+      "max": 478000,
+      "employer": 62200,
+      "employee": 52600
+     },
+     {
+      "min": 478001,
+      "max": 480000,
+      "employer": 62400,
+      "employee": 52800
+     },
+     {
+      "min": 480001,
+      "max": 482000,
+      "employer": 62700,
+      "employee": 53100
+     },
+     {
+      "min": 482001,
+      "max": 484000,
+      "employer": 63000,
+      "employee": 53300
+     },
+     {
+      "min": 484001,
+      "max": 486000,
+      "employer": 63200,
+      "employee": 53500
+     },
+     {
+      "min": 486001,
+      "max": 488000,
+      "employer": 63500,
+      "employee": 53700
+     },
+     {
+      "min": 488001,
+      "max": 490000,
+      "employer": 63700,
+      "employee": 53900
+     },
+     {
+      "min": 490001,
+      "max": 492000,
+      "employer": 64000,
+      "employee": 54200
+     },
+     {
+      "min": 492001,
+      "max": 494000,
+      "employer": 64300,
+      "employee": 54400
+     },
+     {
+      "min": 494001,
+      "max": 496000,
+      "employer": 64500,
+      "employee": 54600
+     },
+     {
+      "min": 496001,
+      "max": 498000,
+      "employer": 64800,
+      "employee": 54800
+     },
+     {
+      "min": 498001,
+      "max": 500000,
+      "employer": 65000,
+      "employee": 55000
+     },
+     {
+      "min": 500001,
+      "max": 510000,
+      "employer": 61200,
+      "employee": 56100
+     },
+     {
+      "min": 510001,
+      "max": 520000,
+      "employer": 62400,
+      "employee": 57200
+     },
+     {
+      "min": 520001,
+      "max": 530000,
+      "employer": 63600,
+      "employee": 58300
+     },
+     {
+      "min": 530001,
+      "max": 540000,
+      "employer": 64800,
+      "employee": 59400
+     },
+     {
+      "min": 540001,
+      "max": 550000,
+      "employer": 66000,
+      "employee": 60500
+     },
+     {
+      "min": 550001,
+      "max": 560000,
+      "employer": 67200,
+      "employee": 61600
+     },
+     {
+      "min": 560001,
+      "max": 570000,
+      "employer": 68400,
+      "employee": 62700
+     },
+     {
+      "min": 570001,
+      "max": 580000,
+      "employer": 69600,
+      "employee": 63800
+     },
+     {
+      "min": 580001,
+      "max": 590000,
+      "employer": 70800,
+      "employee": 64900
+     },
+     {
+      "min": 590001,
+      "max": 600000,
+      "employer": 72000,
+      "employee": 66000
+     },
+     {
+      "min": 600001,
+      "max": 610000,
+      "employer": 73200,
+      "employee": 67100
+     },
+     {
+      "min": 610001,
+      "max": 620000,
+      "employer": 74400,
+      "employee": 68200
+     },
+     {
+      "min": 620001,
+      "max": 630000,
+      "employer": 75600,
+      "employee": 69300
+     },
+     {
+      "min": 630001,
+      "max": 640000,
+      "employer": 76800,
+      "employee": 70400
+     },
+     {
+      "min": 640001,
+      "max": 650000,
+      "employer": 78000,
+      "employee": 71500
+     },
+     {
+      "min": 650001,
+      "max": 660000,
+      "employer": 79200,
+      "employee": 72600
+     },
+     {
+      "min": 660001,
+      "max": 670000,
+      "employer": 80400,
+      "employee": 73700
+     },
+     {
+      "min": 670001,
+      "max": 680000,
+      "employer": 81600,
+      "employee": 74800
+     },
+     {
+      "min": 680001,
+      "max": 690000,
+      "employer": 82800,
+      "employee": 75900
+     },
+     {
+      "min": 690001,
+      "max": 700000,
+      "employer": 84000,
+      "employee": 77000
+     },
+     {
+      "min": 700001,
+      "max": 710000,
+      "employer": 85200,
+      "employee": 78100
+     },
+     {
+      "min": 710001,
+      "max": 720000,
+      "employer": 86400,
+      "employee": 79200
+     },
+     {
+      "min": 720001,
+      "max": 730000,
+      "employer": 87600,
+      "employee": 80300
+     },
+     {
+      "min": 730001,
+      "max": 740000,
+      "employer": 88800,
+      "employee": 81400
+     },
+     {
+      "min": 740001,
+      "max": 750000,
+      "employer": 90000,
+      "employee": 82500
+     },
+     {
+      "min": 750001,
+      "max": 760000,
+      "employer": 91200,
+      "employee": 83600
+     },
+     {
+      "min": 760001,
+      "max": 770000,
+      "employer": 92400,
+      "employee": 84700
+     },
+     {
+      "min": 770001,
+      "max": 780000,
+      "employer": 93600,
+      "employee": 85800
+     },
+     {
+      "min": 780001,
+      "max": 790000,
+      "employer": 94800,
+      "employee": 86900
+     },
+     {
+      "min": 790001,
+      "max": 800000,
+      "employer": 96000,
+      "employee": 88000
+     },
+     {
+      "min": 800001,
+      "max": 810000,
+      "employer": 97200,
+      "employee": 89100
+     },
+     {
+      "min": 810001,
+      "max": 820000,
+      "employer": 98400,
+      "employee": 90200
+     },
+     {
+      "min": 820001,
+      "max": 830000,
+      "employer": 99600,
+      "employee": 91300
+     },
+     {
+      "min": 830001,
+      "max": 840000,
+      "employer": 100800,
+      "employee": 92400
+     },
+     {
+      "min": 840001,
+      "max": 850000,
+      "employer": 102000,
+      "employee": 93500
+     },
+     {
+      "min": 850001,
+      "max": 860000,
+      "employer": 103200,
+      "employee": 94600
+     },
+     {
+      "min": 860001,
+      "max": 870000,
+      "employer": 104400,
+      "employee": 95700
+     },
+     {
+      "min": 870001,
+      "max": 880000,
+      "employer": 105600,
+      "employee": 96800
+     },
+     {
+      "min": 880001,
+      "max": 890000,
+      "employer": 106800,
+      "employee": 97900
+     },
+     {
+      "min": 890001,
+      "max": 900000,
+      "employer": 108000,
+      "employee": 99000
+     },
+     {
+      "min": 900001,
+      "max": 910000,
+      "employer": 109200,
+      "employee": 100100
+     },
+     {
+      "min": 910001,
+      "max": 920000,
+      "employer": 110400,
+      "employee": 101200
+     },
+     {
+      "min": 920001,
+      "max": 930000,
+      "employer": 111600,
+      "employee": 102300
+     },
+     {
+      "min": 930001,
+      "max": 940000,
+      "employer": 112800,
+      "employee": 103400
+     },
+     {
+      "min": 940001,
+      "max": 950000,
+      "employer": 114000,
+      "employee": 104500
+     },
+     {
+      "min": 950001,
+      "max": 960000,
+      "employer": 115200,
+      "employee": 105600
+     },
+     {
+      "min": 960001,
+      "max": 970000,
+      "employer": 116400,
+      "employee": 106700
+     },
+     {
+      "min": 970001,
+      "max": 980000,
+      "employer": 117600,
+      "employee": 107800
+     },
+     {
+      "min": 980001,
+      "max": 990000,
+      "employer": 118800,
+      "employee": 108900
+     },
+     {
+      "min": 990001,
+      "max": 1000000,
+      "employer": 120000,
+      "employee": 110000
+     },
+     {
+      "min": 1000001,
+      "max": 1010000,
+      "employer": 121200,
+      "employee": 111100
+     },
+     {
+      "min": 1010001,
+      "max": 1020000,
+      "employer": 122400,
+      "employee": 112200
+     },
+     {
+      "min": 1020001,
+      "max": 1030000,
+      "employer": 123600,
+      "employee": 113300
+     },
+     {
+      "min": 1030001,
+      "max": 1040000,
+      "employer": 124800,
+      "employee": 114400
+     },
+     {
+      "min": 1040001,
+      "max": 1050000,
+      "employer": 126000,
+      "employee": 115500
+     },
+     {
+      "min": 1050001,
+      "max": 1060000,
+      "employer": 127200,
+      "employee": 116600
+     },
+     {
+      "min": 1060001,
+      "max": 1070000,
+      "employer": 128400,
+      "employee": 117700
+     },
+     {
+      "min": 1070001,
+      "max": 1080000,
+      "employer": 129600,
+      "employee": 118800
+     },
+     {
+      "min": 1080001,
+      "max": 1090000,
+      "employer": 130800,
+      "employee": 119900
+     },
+     {
+      "min": 1090001,
+      "max": 1100000,
+      "employer": 132000,
+      "employee": 121000
+     },
+     {
+      "min": 1100001,
+      "max": 1110000,
+      "employer": 133200,
+      "employee": 122100
+     },
+     {
+      "min": 1110001,
+      "max": 1120000,
+      "employer": 134400,
+      "employee": 123200
+     },
+     {
+      "min": 1120001,
+      "max": 1130000,
+      "employer": 135600,
+      "employee": 124300
+     },
+     {
+      "min": 1130001,
+      "max": 1140000,
+      "employer": 136800,
+      "employee": 125400
+     },
+     {
+      "min": 1140001,
+      "max": 1150000,
+      "employer": 138000,
+      "employee": 126500
+     },
+     {
+      "min": 1150001,
+      "max": 1160000,
+      "employer": 139200,
+      "employee": 127600
+     },
+     {
+      "min": 1160001,
+      "max": 1170000,
+      "employer": 140400,
+      "employee": 128700
+     },
+     {
+      "min": 1170001,
+      "max": 1180000,
+      "employer": 141600,
+      "employee": 129800
+     },
+     {
+      "min": 1180001,
+      "max": 1190000,
+      "employer": 142800,
+      "employee": 130900
+     },
+     {
+      "min": 1190001,
+      "max": 1200000,
+      "employer": 144000,
+      "employee": 132000
+     },
+     {
+      "min": 1200001,
+      "max": 1210000,
+      "employer": 145200,
+      "employee": 133100
+     },
+     {
+      "min": 1210001,
+      "max": 1220000,
+      "employer": 146400,
+      "employee": 134200
+     },
+     {
+      "min": 1220001,
+      "max": 1230000,
+      "employer": 147600,
+      "employee": 135300
+     },
+     {
+      "min": 1230001,
+      "max": 1240000,
+      "employer": 148800,
+      "employee": 136400
+     },
+     {
+      "min": 1240001,
+      "max": 1250000,
+      "employer": 150000,
+      "employee": 137500
+     },
+     {
+      "min": 1250001,
+      "max": 1260000,
+      "employer": 151200,
+      "employee": 138600
+     },
+     {
+      "min": 1260001,
+      "max": 1270000,
+      "employer": 152400,
+      "employee": 139700
+     },
+     {
+      "min": 1270001,
+      "max": 1280000,
+      "employer": 153600,
+      "employee": 140800
+     },
+     {
+      "min": 1280001,
+      "max": 1290000,
+      "employer": 154800,
+      "employee": 141900
+     },
+     {
+      "min": 1290001,
+      "max": 1300000,
+      "employer": 156000,
+      "employee": 143000
+     },
+     {
+      "min": 1300001,
+      "max": 1310000,
+      "employer": 157200,
+      "employee": 144100
+     },
+     {
+      "min": 1310001,
+      "max": 1320000,
+      "employer": 158400,
+      "employee": 145200
+     },
+     {
+      "min": 1320001,
+      "max": 1330000,
+      "employer": 159600,
+      "employee": 146300
+     },
+     {
+      "min": 1330001,
+      "max": 1340000,
+      "employer": 160800,
+      "employee": 147400
+     },
+     {
+      "min": 1340001,
+      "max": 1350000,
+      "employer": 162000,
+      "employee": 148500
+     },
+     {
+      "min": 1350001,
+      "max": 1360000,
+      "employer": 163200,
+      "employee": 149600
+     },
+     {
+      "min": 1360001,
+      "max": 1370000,
+      "employer": 164400,
+      "employee": 150700
+     },
+     {
+      "min": 1370001,
+      "max": 1380000,
+      "employer": 165600,
+      "employee": 151800
+     },
+     {
+      "min": 1380001,
+      "max": 1390000,
+      "employer": 166800,
+      "employee": 152900
+     },
+     {
+      "min": 1390001,
+      "max": 1400000,
+      "employer": 168000,
+      "employee": 154000
+     },
+     {
+      "min": 1400001,
+      "max": 1410000,
+      "employer": 169200,
+      "employee": 155100
+     },
+     {
+      "min": 1410001,
+      "max": 1420000,
+      "employer": 170400,
+      "employee": 156200
+     },
+     {
+      "min": 1420001,
+      "max": 1430000,
+      "employer": 171600,
+      "employee": 157300
+     },
+     {
+      "min": 1430001,
+      "max": 1440000,
+      "employer": 172800,
+      "employee": 158400
+     },
+     {
+      "min": 1440001,
+      "max": 1450000,
+      "employer": 174000,
+      "employee": 159500
+     },
+     {
+      "min": 1450001,
+      "max": 1460000,
+      "employer": 175200,
+      "employee": 160600
+     },
+     {
+      "min": 1460001,
+      "max": 1470000,
+      "employer": 176400,
+      "employee": 161700
+     },
+     {
+      "min": 1470001,
+      "max": 1480000,
+      "employer": 177600,
+      "employee": 162800
+     },
+     {
+      "min": 1480001,
+      "max": 1490000,
+      "employer": 178800,
+      "employee": 163900
+     },
+     {
+      "min": 1490001,
+      "max": 1500000,
+      "employer": 180000,
+      "employee": 165000
+     },
+     {
+      "min": 1500001,
+      "max": 1510000,
+      "employer": 181200,
+      "employee": 166100
+     },
+     {
+      "min": 1510001,
+      "max": 1520000,
+      "employer": 182400,
+      "employee": 167200
+     },
+     {
+      "min": 1520001,
+      "max": 1530000,
+      "employer": 183600,
+      "employee": 168300
+     },
+     {
+      "min": 1530001,
+      "max": 1540000,
+      "employer": 184800,
+      "employee": 169400
+     },
+     {
+      "min": 1540001,
+      "max": 1550000,
+      "employer": 186000,
+      "employee": 170500
+     },
+     {
+      "min": 1550001,
+      "max": 1560000,
+      "employer": 187200,
+      "employee": 171600
+     },
+     {
+      "min": 1560001,
+      "max": 1570000,
+      "employer": 188400,
+      "employee": 172700
+     },
+     {
+      "min": 1570001,
+      "max": 1580000,
+      "employer": 189600,
+      "employee": 173800
+     },
+     {
+      "min": 1580001,
+      "max": 1590000,
+      "employer": 190800,
+      "employee": 174900
+     },
+     {
+      "min": 1590001,
+      "max": 1600000,
+      "employer": 192000,
+      "employee": 176000
+     },
+     {
+      "min": 1600001,
+      "max": 1610000,
+      "employer": 193200,
+      "employee": 177100
+     },
+     {
+      "min": 1610001,
+      "max": 1620000,
+      "employer": 194400,
+      "employee": 178200
+     },
+     {
+      "min": 1620001,
+      "max": 1630000,
+      "employer": 195600,
+      "employee": 179300
+     },
+     {
+      "min": 1630001,
+      "max": 1640000,
+      "employer": 196800,
+      "employee": 180400
+     },
+     {
+      "min": 1640001,
+      "max": 1650000,
+      "employer": 198000,
+      "employee": 181500
+     },
+     {
+      "min": 1650001,
+      "max": 1660000,
+      "employer": 199200,
+      "employee": 182600
+     },
+     {
+      "min": 1660001,
+      "max": 1670000,
+      "employer": 200400,
+      "employee": 183700
+     },
+     {
+      "min": 1670001,
+      "max": 1680000,
+      "employer": 201600,
+      "employee": 184800
+     },
+     {
+      "min": 1680001,
+      "max": 1690000,
+      "employer": 202800,
+      "employee": 185900
+     },
+     {
+      "min": 1690001,
+      "max": 1700000,
+      "employer": 204000,
+      "employee": 187000
+     },
+     {
+      "min": 1700001,
+      "max": 1710000,
+      "employer": 205200,
+      "employee": 188100
+     },
+     {
+      "min": 1710001,
+      "max": 1720000,
+      "employer": 206400,
+      "employee": 189200
+     },
+     {
+      "min": 1720001,
+      "max": 1730000,
+      "employer": 207600,
+      "employee": 190300
+     },
+     {
+      "min": 1730001,
+      "max": 1740000,
+      "employer": 208800,
+      "employee": 191400
+     },
+     {
+      "min": 1740001,
+      "max": 1750000,
+      "employer": 210000,
+      "employee": 192500
+     },
+     {
+      "min": 1750001,
+      "max": 1760000,
+      "employer": 211200,
+      "employee": 193600
+     },
+     {
+      "min": 1760001,
+      "max": 1770000,
+      "employer": 212400,
+      "employee": 194700
+     },
+     {
+      "min": 1770001,
+      "max": 1780000,
+      "employer": 213600,
+      "employee": 195800
+     },
+     {
+      "min": 1780001,
+      "max": 1790000,
+      "employer": 214800,
+      "employee": 196900
+     },
+     {
+      "min": 1790001,
+      "max": 1800000,
+      "employer": 216000,
+      "employee": 198000
+     },
+     {
+      "min": 1800001,
+      "max": 1810000,
+      "employer": 217200,
+      "employee": 199100
+     },
+     {
+      "min": 1810001,
+      "max": 1820000,
+      "employer": 218400,
+      "employee": 200200
+     },
+     {
+      "min": 1820001,
+      "max": 1830000,
+      "employer": 219600,
+      "employee": 201300
+     },
+     {
+      "min": 1830001,
+      "max": 1840000,
+      "employer": 220800,
+      "employee": 202400
+     },
+     {
+      "min": 1840001,
+      "max": 1850000,
+      "employer": 222000,
+      "employee": 203500
+     },
+     {
+      "min": 1850001,
+      "max": 1860000,
+      "employer": 223200,
+      "employee": 204600
+     },
+     {
+      "min": 1860001,
+      "max": 1870000,
+      "employer": 224400,
+      "employee": 205700
+     },
+     {
+      "min": 1870001,
+      "max": 1880000,
+      "employer": 225600,
+      "employee": 206800
+     },
+     {
+      "min": 1880001,
+      "max": 1890000,
+      "employer": 226800,
+      "employee": 207900
+     },
+     {
+      "min": 1890001,
+      "max": 1900000,
+      "employer": 228000,
+      "employee": 209000
+     },
+     {
+      "min": 1900001,
+      "max": 1910000,
+      "employer": 229200,
+      "employee": 210100
+     },
+     {
+      "min": 1910001,
+      "max": 1920000,
+      "employer": 230400,
+      "employee": 211200
+     },
+     {
+      "min": 1920001,
+      "max": 1930000,
+      "employer": 231600,
+      "employee": 212300
+     },
+     {
+      "min": 1930001,
+      "max": 1940000,
+      "employer": 232800,
+      "employee": 213400
+     },
+     {
+      "min": 1940001,
+      "max": 1950000,
+      "employer": 234000,
+      "employee": 214500
+     },
+     {
+      "min": 1950001,
+      "max": 1960000,
+      "employer": 235200,
+      "employee": 215600
+     },
+     {
+      "min": 1960001,
+      "max": 1970000,
+      "employer": 236400,
+      "employee": 216700
+     },
+     {
+      "min": 1970001,
+      "max": 1980000,
+      "employer": 237600,
+      "employee": 217800
+     },
+     {
+      "min": 1980001,
+      "max": 1990000,
+      "employer": 238800,
+      "employee": 218900
+     },
+     {
+      "min": 1990001,
+      "max": 2000000,
+      "employer": 240000,
+      "employee": 220000
+     }
+    ],
+    "aboveTable": {
+     "threshold": 20000,
+     "employerPercent": 12,
+     "employeePercent": 11,
+     "roundUpToRinggit": true
+    }
+   },
+   "9": {
+    "bands": [
+     {
+      "min": 1,
+      "max": 1000,
+      "employer": 0,
+      "employee": 0
+     },
+     {
+      "min": 1001,
+      "max": 2000,
+      "employer": 300,
+      "employee": 200
+     },
+     {
+      "min": 2001,
+      "max": 4000,
+      "employer": 600,
+      "employee": 400
+     },
+     {
+      "min": 4001,
+      "max": 6000,
+      "employer": 800,
+      "employee": 600
+     },
+     {
+      "min": 6001,
+      "max": 8000,
+      "employer": 1100,
+      "employee": 800
+     },
+     {
+      "min": 8001,
+      "max": 10000,
+      "employer": 1300,
+      "employee": 900
+     },
+     {
+      "min": 10001,
+      "max": 12000,
+      "employer": 1600,
+      "employee": 1100
+     },
+     {
+      "min": 12001,
+      "max": 14000,
+      "employer": 1900,
+      "employee": 1300
+     },
+     {
+      "min": 14001,
+      "max": 16000,
+      "employer": 2100,
+      "employee": 1500
+     },
+     {
+      "min": 16001,
+      "max": 18000,
+      "employer": 2400,
+      "employee": 1700
+     },
+     {
+      "min": 18001,
+      "max": 20000,
+      "employer": 2600,
+      "employee": 1800
+     },
+     {
+      "min": 20001,
+      "max": 22000,
+      "employer": 2900,
+      "employee": 2000
+     },
+     {
+      "min": 22001,
+      "max": 24000,
+      "employer": 3200,
+      "employee": 2200
+     },
+     {
+      "min": 24001,
+      "max": 26000,
+      "employer": 3400,
+      "employee": 2400
+     },
+     {
+      "min": 26001,
+      "max": 28000,
+      "employer": 3700,
+      "employee": 2600
+     },
+     {
+      "min": 28001,
+      "max": 30000,
+      "employer": 3900,
+      "employee": 2700
+     },
+     {
+      "min": 30001,
+      "max": 32000,
+      "employer": 4200,
+      "employee": 2900
+     },
+     {
+      "min": 32001,
+      "max": 34000,
+      "employer": 4500,
+      "employee": 3100
+     },
+     {
+      "min": 34001,
+      "max": 36000,
+      "employer": 4700,
+      "employee": 3300
+     },
+     {
+      "min": 36001,
+      "max": 38000,
+      "employer": 5000,
+      "employee": 3500
+     },
+     {
+      "min": 38001,
+      "max": 40000,
+      "employer": 5200,
+      "employee": 3600
+     },
+     {
+      "min": 40001,
+      "max": 42000,
+      "employer": 5500,
+      "employee": 3800
+     },
+     {
+      "min": 42001,
+      "max": 44000,
+      "employer": 5800,
+      "employee": 4000
+     },
+     {
+      "min": 44001,
+      "max": 46000,
+      "employer": 6000,
+      "employee": 4200
+     },
+     {
+      "min": 46001,
+      "max": 48000,
+      "employer": 6300,
+      "employee": 4400
+     },
+     {
+      "min": 48001,
+      "max": 50000,
+      "employer": 6500,
+      "employee": 4500
+     },
+     {
+      "min": 50001,
+      "max": 52000,
+      "employer": 6800,
+      "employee": 4700
+     },
+     {
+      "min": 52001,
+      "max": 54000,
+      "employer": 7100,
+      "employee": 4900
+     },
+     {
+      "min": 54001,
+      "max": 56000,
+      "employer": 7300,
+      "employee": 5100
+     },
+     {
+      "min": 56001,
+      "max": 58000,
+      "employer": 7600,
+      "employee": 5300
+     },
+     {
+      "min": 58001,
+      "max": 60000,
+      "employer": 7800,
+      "employee": 5400
+     },
+     {
+      "min": 60001,
+      "max": 62000,
+      "employer": 8100,
+      "employee": 5600
+     },
+     {
+      "min": 62001,
+      "max": 64000,
+      "employer": 8400,
+      "employee": 5800
+     },
+     {
+      "min": 64001,
+      "max": 66000,
+      "employer": 8600,
+      "employee": 6000
+     },
+     {
+      "min": 66001,
+      "max": 68000,
+      "employer": 8900,
+      "employee": 6200
+     },
+     {
+      "min": 68001,
+      "max": 70000,
+      "employer": 9100,
+      "employee": 6300
+     },
+     {
+      "min": 70001,
+      "max": 72000,
+      "employer": 9400,
+      "employee": 6500
+     },
+     {
+      "min": 72001,
+      "max": 74000,
+      "employer": 9700,
+      "employee": 6700
+     },
+     {
+      "min": 74001,
+      "max": 76000,
+      "employer": 9900,
+      "employee": 6900
+     },
+     {
+      "min": 76001,
+      "max": 78000,
+      "employer": 10200,
+      "employee": 7100
+     },
+     {
+      "min": 78001,
+      "max": 80000,
+      "employer": 10400,
+      "employee": 7200
+     },
+     {
+      "min": 80001,
+      "max": 82000,
+      "employer": 10700,
+      "employee": 7400
+     },
+     {
+      "min": 82001,
+      "max": 84000,
+      "employer": 11000,
+      "employee": 7600
+     },
+     {
+      "min": 84001,
+      "max": 86000,
+      "employer": 11200,
+      "employee": 7800
+     },
+     {
+      "min": 86001,
+      "max": 88000,
+      "employer": 11500,
+      "employee": 8000
+     },
+     {
+      "min": 88001,
+      "max": 90000,
+      "employer": 11700,
+      "employee": 8100
+     },
+     {
+      "min": 90001,
+      "max": 92000,
+      "employer": 12000,
+      "employee": 8300
+     },
+     {
+      "min": 92001,
+      "max": 94000,
+      "employer": 12300,
+      "employee": 8500
+     },
+     {
+      "min": 94001,
+      "max": 96000,
+      "employer": 12500,
+      "employee": 8700
+     },
+     {
+      "min": 96001,
+      "max": 98000,
+      "employer": 12800,
+      "employee": 8900
+     },
+     {
+      "min": 98001,
+      "max": 100000,
+      "employer": 13000,
+      "employee": 9000
+     },
+     {
+      "min": 100001,
+      "max": 102000,
+      "employer": 13300,
+      "employee": 9200
+     },
+     {
+      "min": 102001,
+      "max": 104000,
+      "employer": 13600,
+      "employee": 9400
+     },
+     {
+      "min": 104001,
+      "max": 106000,
+      "employer": 13800,
+      "employee": 9600
+     },
+     {
+      "min": 106001,
+      "max": 108000,
+      "employer": 14100,
+      "employee": 9800
+     },
+     {
+      "min": 108001,
+      "max": 110000,
+      "employer": 14300,
+      "employee": 9900
+     },
+     {
+      "min": 110001,
+      "max": 112000,
+      "employer": 14600,
+      "employee": 10100
+     },
+     {
+      "min": 112001,
+      "max": 114000,
+      "employer": 14900,
+      "employee": 10300
+     },
+     {
+      "min": 114001,
+      "max": 116000,
+      "employer": 15100,
+      "employee": 10500
+     },
+     {
+      "min": 116001,
+      "max": 118000,
+      "employer": 15400,
+      "employee": 10700
+     },
+     {
+      "min": 118001,
+      "max": 120000,
+      "employer": 15600,
+      "employee": 10800
+     },
+     {
+      "min": 120001,
+      "max": 122000,
+      "employer": 15900,
+      "employee": 11000
+     },
+     {
+      "min": 122001,
+      "max": 124000,
+      "employer": 16200,
+      "employee": 11200
+     },
+     {
+      "min": 124001,
+      "max": 126000,
+      "employer": 16400,
+      "employee": 11400
+     },
+     {
+      "min": 126001,
+      "max": 128000,
+      "employer": 16700,
+      "employee": 11600
+     },
+     {
+      "min": 128001,
+      "max": 130000,
+      "employer": 16900,
+      "employee": 11700
+     },
+     {
+      "min": 130001,
+      "max": 132000,
+      "employer": 17200,
+      "employee": 11900
+     },
+     {
+      "min": 132001,
+      "max": 134000,
+      "employer": 17500,
+      "employee": 12100
+     },
+     {
+      "min": 134001,
+      "max": 136000,
+      "employer": 17700,
+      "employee": 12300
+     },
+     {
+      "min": 136001,
+      "max": 138000,
+      "employer": 18000,
+      "employee": 12500
+     },
+     {
+      "min": 138001,
+      "max": 140000,
+      "employer": 18200,
+      "employee": 12600
+     },
+     {
+      "min": 140001,
+      "max": 142000,
+      "employer": 18500,
+      "employee": 12800
+     },
+     {
+      "min": 142001,
+      "max": 144000,
+      "employer": 18800,
+      "employee": 13000
+     },
+     {
+      "min": 144001,
+      "max": 146000,
+      "employer": 19000,
+      "employee": 13200
+     },
+     {
+      "min": 146001,
+      "max": 148000,
+      "employer": 19300,
+      "employee": 13400
+     },
+     {
+      "min": 148001,
+      "max": 150000,
+      "employer": 19500,
+      "employee": 13500
+     },
+     {
+      "min": 150001,
+      "max": 152000,
+      "employer": 19800,
+      "employee": 13700
+     },
+     {
+      "min": 152001,
+      "max": 154000,
+      "employer": 20100,
+      "employee": 13900
+     },
+     {
+      "min": 154001,
+      "max": 156000,
+      "employer": 20300,
+      "employee": 14100
+     },
+     {
+      "min": 156001,
+      "max": 158000,
+      "employer": 20600,
+      "employee": 14300
+     },
+     {
+      "min": 158001,
+      "max": 160000,
+      "employer": 20800,
+      "employee": 14400
+     },
+     {
+      "min": 160001,
+      "max": 162000,
+      "employer": 21100,
+      "employee": 14600
+     },
+     {
+      "min": 162001,
+      "max": 164000,
+      "employer": 21400,
+      "employee": 14800
+     },
+     {
+      "min": 164001,
+      "max": 166000,
+      "employer": 21600,
+      "employee": 15000
+     },
+     {
+      "min": 166001,
+      "max": 168000,
+      "employer": 21900,
+      "employee": 15200
+     },
+     {
+      "min": 168001,
+      "max": 170000,
+      "employer": 22100,
+      "employee": 15300
+     },
+     {
+      "min": 170001,
+      "max": 172000,
+      "employer": 22400,
+      "employee": 15500
+     },
+     {
+      "min": 172001,
+      "max": 174000,
+      "employer": 22700,
+      "employee": 15700
+     },
+     {
+      "min": 174001,
+      "max": 176000,
+      "employer": 22900,
+      "employee": 15900
+     },
+     {
+      "min": 176001,
+      "max": 178000,
+      "employer": 23200,
+      "employee": 16100
+     },
+     {
+      "min": 178001,
+      "max": 180000,
+      "employer": 23400,
+      "employee": 16200
+     },
+     {
+      "min": 180001,
+      "max": 182000,
+      "employer": 23700,
+      "employee": 16400
+     },
+     {
+      "min": 182001,
+      "max": 184000,
+      "employer": 24000,
+      "employee": 16600
+     },
+     {
+      "min": 184001,
+      "max": 186000,
+      "employer": 24200,
+      "employee": 16800
+     },
+     {
+      "min": 186001,
+      "max": 188000,
+      "employer": 24500,
+      "employee": 17000
+     },
+     {
+      "min": 188001,
+      "max": 190000,
+      "employer": 24700,
+      "employee": 17100
+     },
+     {
+      "min": 190001,
+      "max": 192000,
+      "employer": 25000,
+      "employee": 17300
+     },
+     {
+      "min": 192001,
+      "max": 194000,
+      "employer": 25300,
+      "employee": 17500
+     },
+     {
+      "min": 194001,
+      "max": 196000,
+      "employer": 25500,
+      "employee": 17700
+     },
+     {
+      "min": 196001,
+      "max": 198000,
+      "employer": 25800,
+      "employee": 17900
+     },
+     {
+      "min": 198001,
+      "max": 200000,
+      "employer": 26000,
+      "employee": 18000
+     },
+     {
+      "min": 200001,
+      "max": 202000,
+      "employer": 26300,
+      "employee": 18200
+     },
+     {
+      "min": 202001,
+      "max": 204000,
+      "employer": 26600,
+      "employee": 18400
+     },
+     {
+      "min": 204001,
+      "max": 206000,
+      "employer": 26800,
+      "employee": 18600
+     },
+     {
+      "min": 206001,
+      "max": 208000,
+      "employer": 27100,
+      "employee": 18800
+     },
+     {
+      "min": 208001,
+      "max": 210000,
+      "employer": 27300,
+      "employee": 18900
+     },
+     {
+      "min": 210001,
+      "max": 212000,
+      "employer": 27600,
+      "employee": 19100
+     },
+     {
+      "min": 212001,
+      "max": 214000,
+      "employer": 27900,
+      "employee": 19300
+     },
+     {
+      "min": 214001,
+      "max": 216000,
+      "employer": 28100,
+      "employee": 19500
+     },
+     {
+      "min": 216001,
+      "max": 218000,
+      "employer": 28400,
+      "employee": 19700
+     },
+     {
+      "min": 218001,
+      "max": 220000,
+      "employer": 28600,
+      "employee": 19800
+     },
+     {
+      "min": 220001,
+      "max": 222000,
+      "employer": 28900,
+      "employee": 20000
+     },
+     {
+      "min": 222001,
+      "max": 224000,
+      "employer": 29200,
+      "employee": 20200
+     },
+     {
+      "min": 224001,
+      "max": 226000,
+      "employer": 29400,
+      "employee": 20400
+     },
+     {
+      "min": 226001,
+      "max": 228000,
+      "employer": 29700,
+      "employee": 20600
+     },
+     {
+      "min": 228001,
+      "max": 230000,
+      "employer": 29900,
+      "employee": 20700
+     },
+     {
+      "min": 230001,
+      "max": 232000,
+      "employer": 30200,
+      "employee": 20900
+     },
+     {
+      "min": 232001,
+      "max": 234000,
+      "employer": 30500,
+      "employee": 21100
+     },
+     {
+      "min": 234001,
+      "max": 236000,
+      "employer": 30700,
+      "employee": 21300
+     },
+     {
+      "min": 236001,
+      "max": 238000,
+      "employer": 31000,
+      "employee": 21500
+     },
+     {
+      "min": 238001,
+      "max": 240000,
+      "employer": 31200,
+      "employee": 21600
+     },
+     {
+      "min": 240001,
+      "max": 242000,
+      "employer": 31500,
+      "employee": 21800
+     },
+     {
+      "min": 242001,
+      "max": 244000,
+      "employer": 31800,
+      "employee": 22000
+     },
+     {
+      "min": 244001,
+      "max": 246000,
+      "employer": 32000,
+      "employee": 22200
+     },
+     {
+      "min": 246001,
+      "max": 248000,
+      "employer": 32300,
+      "employee": 22400
+     },
+     {
+      "min": 248001,
+      "max": 250000,
+      "employer": 32500,
+      "employee": 22500
+     },
+     {
+      "min": 250001,
+      "max": 252000,
+      "employer": 32800,
+      "employee": 22700
+     },
+     {
+      "min": 252001,
+      "max": 254000,
+      "employer": 33100,
+      "employee": 22900
+     },
+     {
+      "min": 254001,
+      "max": 256000,
+      "employer": 33300,
+      "employee": 23100
+     },
+     {
+      "min": 256001,
+      "max": 258000,
+      "employer": 33600,
+      "employee": 23300
+     },
+     {
+      "min": 258001,
+      "max": 260000,
+      "employer": 33800,
+      "employee": 23400
+     },
+     {
+      "min": 260001,
+      "max": 262000,
+      "employer": 34100,
+      "employee": 23600
+     },
+     {
+      "min": 262001,
+      "max": 264000,
+      "employer": 34400,
+      "employee": 23800
+     },
+     {
+      "min": 264001,
+      "max": 266000,
+      "employer": 34600,
+      "employee": 24000
+     },
+     {
+      "min": 266001,
+      "max": 268000,
+      "employer": 34900,
+      "employee": 24200
+     },
+     {
+      "min": 268001,
+      "max": 270000,
+      "employer": 35100,
+      "employee": 24300
+     },
+     {
+      "min": 270001,
+      "max": 272000,
+      "employer": 35400,
+      "employee": 24500
+     },
+     {
+      "min": 272001,
+      "max": 274000,
+      "employer": 35700,
+      "employee": 24700
+     },
+     {
+      "min": 274001,
+      "max": 276000,
+      "employer": 35900,
+      "employee": 24900
+     },
+     {
+      "min": 276001,
+      "max": 278000,
+      "employer": 36200,
+      "employee": 25100
+     },
+     {
+      "min": 278001,
+      "max": 280000,
+      "employer": 36400,
+      "employee": 25200
+     },
+     {
+      "min": 280001,
+      "max": 282000,
+      "employer": 36700,
+      "employee": 25400
+     },
+     {
+      "min": 282001,
+      "max": 284000,
+      "employer": 37000,
+      "employee": 25600
+     },
+     {
+      "min": 284001,
+      "max": 286000,
+      "employer": 37200,
+      "employee": 25800
+     },
+     {
+      "min": 286001,
+      "max": 288000,
+      "employer": 37500,
+      "employee": 26000
+     },
+     {
+      "min": 288001,
+      "max": 290000,
+      "employer": 37700,
+      "employee": 26100
+     },
+     {
+      "min": 290001,
+      "max": 292000,
+      "employer": 38000,
+      "employee": 26300
+     },
+     {
+      "min": 292001,
+      "max": 294000,
+      "employer": 38300,
+      "employee": 26500
+     },
+     {
+      "min": 294001,
+      "max": 296000,
+      "employer": 38500,
+      "employee": 26700
+     },
+     {
+      "min": 296001,
+      "max": 298000,
+      "employer": 38800,
+      "employee": 26900
+     },
+     {
+      "min": 298001,
+      "max": 300000,
+      "employer": 39000,
+      "employee": 27000
+     },
+     {
+      "min": 300001,
+      "max": 302000,
+      "employer": 39300,
+      "employee": 27200
+     },
+     {
+      "min": 302001,
+      "max": 304000,
+      "employer": 39600,
+      "employee": 27400
+     },
+     {
+      "min": 304001,
+      "max": 306000,
+      "employer": 39800,
+      "employee": 27600
+     },
+     {
+      "min": 306001,
+      "max": 308000,
+      "employer": 40100,
+      "employee": 27800
+     },
+     {
+      "min": 308001,
+      "max": 310000,
+      "employer": 40300,
+      "employee": 27900
+     },
+     {
+      "min": 310001,
+      "max": 312000,
+      "employer": 40600,
+      "employee": 28100
+     },
+     {
+      "min": 312001,
+      "max": 314000,
+      "employer": 40900,
+      "employee": 28300
+     },
+     {
+      "min": 314001,
+      "max": 316000,
+      "employer": 41100,
+      "employee": 28500
+     },
+     {
+      "min": 316001,
+      "max": 318000,
+      "employer": 41400,
+      "employee": 28700
+     },
+     {
+      "min": 318001,
+      "max": 320000,
+      "employer": 41600,
+      "employee": 28800
+     },
+     {
+      "min": 320001,
+      "max": 322000,
+      "employer": 41900,
+      "employee": 29000
+     },
+     {
+      "min": 322001,
+      "max": 324000,
+      "employer": 42200,
+      "employee": 29200
+     },
+     {
+      "min": 324001,
+      "max": 326000,
+      "employer": 42400,
+      "employee": 29400
+     },
+     {
+      "min": 326001,
+      "max": 328000,
+      "employer": 42700,
+      "employee": 29600
+     },
+     {
+      "min": 328001,
+      "max": 330000,
+      "employer": 42900,
+      "employee": 29700
+     },
+     {
+      "min": 330001,
+      "max": 332000,
+      "employer": 43200,
+      "employee": 29900
+     },
+     {
+      "min": 332001,
+      "max": 334000,
+      "employer": 43500,
+      "employee": 30100
+     },
+     {
+      "min": 334001,
+      "max": 336000,
+      "employer": 43700,
+      "employee": 30300
+     },
+     {
+      "min": 336001,
+      "max": 338000,
+      "employer": 44000,
+      "employee": 30500
+     },
+     {
+      "min": 338001,
+      "max": 340000,
+      "employer": 44200,
+      "employee": 30600
+     },
+     {
+      "min": 340001,
+      "max": 342000,
+      "employer": 44500,
+      "employee": 30800
+     },
+     {
+      "min": 342001,
+      "max": 344000,
+      "employer": 44800,
+      "employee": 31000
+     },
+     {
+      "min": 344001,
+      "max": 346000,
+      "employer": 45000,
+      "employee": 31200
+     },
+     {
+      "min": 346001,
+      "max": 348000,
+      "employer": 45300,
+      "employee": 31400
+     },
+     {
+      "min": 348001,
+      "max": 350000,
+      "employer": 45500,
+      "employee": 31500
+     },
+     {
+      "min": 350001,
+      "max": 352000,
+      "employer": 45800,
+      "employee": 31700
+     },
+     {
+      "min": 352001,
+      "max": 354000,
+      "employer": 46100,
+      "employee": 31900
+     },
+     {
+      "min": 354001,
+      "max": 356000,
+      "employer": 46300,
+      "employee": 32100
+     },
+     {
+      "min": 356001,
+      "max": 358000,
+      "employer": 46600,
+      "employee": 32300
+     },
+     {
+      "min": 358001,
+      "max": 360000,
+      "employer": 46800,
+      "employee": 32400
+     },
+     {
+      "min": 360001,
+      "max": 362000,
+      "employer": 47100,
+      "employee": 32600
+     },
+     {
+      "min": 362001,
+      "max": 364000,
+      "employer": 47400,
+      "employee": 32800
+     },
+     {
+      "min": 364001,
+      "max": 366000,
+      "employer": 47600,
+      "employee": 33000
+     },
+     {
+      "min": 366001,
+      "max": 368000,
+      "employer": 47900,
+      "employee": 33200
+     },
+     {
+      "min": 368001,
+      "max": 370000,
+      "employer": 48100,
+      "employee": 33300
+     },
+     {
+      "min": 370001,
+      "max": 372000,
+      "employer": 48400,
+      "employee": 33500
+     },
+     {
+      "min": 372001,
+      "max": 374000,
+      "employer": 48700,
+      "employee": 33700
+     },
+     {
+      "min": 374001,
+      "max": 376000,
+      "employer": 48900,
+      "employee": 33900
+     },
+     {
+      "min": 376001,
+      "max": 378000,
+      "employer": 49200,
+      "employee": 34100
+     },
+     {
+      "min": 378001,
+      "max": 380000,
+      "employer": 49400,
+      "employee": 34200
+     },
+     {
+      "min": 380001,
+      "max": 382000,
+      "employer": 49700,
+      "employee": 34400
+     },
+     {
+      "min": 382001,
+      "max": 384000,
+      "employer": 50000,
+      "employee": 34600
+     },
+     {
+      "min": 384001,
+      "max": 386000,
+      "employer": 50200,
+      "employee": 34800
+     },
+     {
+      "min": 386001,
+      "max": 388000,
+      "employer": 50500,
+      "employee": 35000
+     },
+     {
+      "min": 388001,
+      "max": 390000,
+      "employer": 50700,
+      "employee": 35100
+     },
+     {
+      "min": 390001,
+      "max": 392000,
+      "employer": 51000,
+      "employee": 35300
+     },
+     {
+      "min": 392001,
+      "max": 394000,
+      "employer": 51300,
+      "employee": 35500
+     },
+     {
+      "min": 394001,
+      "max": 396000,
+      "employer": 51500,
+      "employee": 35700
+     },
+     {
+      "min": 396001,
+      "max": 398000,
+      "employer": 51800,
+      "employee": 35900
+     },
+     {
+      "min": 398001,
+      "max": 400000,
+      "employer": 52000,
+      "employee": 36000
+     },
+     {
+      "min": 400001,
+      "max": 402000,
+      "employer": 52300,
+      "employee": 36200
+     },
+     {
+      "min": 402001,
+      "max": 404000,
+      "employer": 52600,
+      "employee": 36400
+     },
+     {
+      "min": 404001,
+      "max": 406000,
+      "employer": 52800,
+      "employee": 36600
+     },
+     {
+      "min": 406001,
+      "max": 408000,
+      "employer": 53100,
+      "employee": 36800
+     },
+     {
+      "min": 408001,
+      "max": 410000,
+      "employer": 53300,
+      "employee": 36900
+     },
+     {
+      "min": 410001,
+      "max": 412000,
+      "employer": 53600,
+      "employee": 37100
+     },
+     {
+      "min": 412001,
+      "max": 414000,
+      "employer": 53900,
+      "employee": 37300
+     },
+     {
+      "min": 414001,
+      "max": 416000,
+      "employer": 54100,
+      "employee": 37500
+     },
+     {
+      "min": 416001,
+      "max": 418000,
+      "employer": 54400,
+      "employee": 37700
+     },
+     {
+      "min": 418001,
+      "max": 420000,
+      "employer": 54600,
+      "employee": 37800
+     },
+     {
+      "min": 420001,
+      "max": 422000,
+      "employer": 54900,
+      "employee": 38000
+     },
+     {
+      "min": 422001,
+      "max": 424000,
+      "employer": 55200,
+      "employee": 38200
+     },
+     {
+      "min": 424001,
+      "max": 426000,
+      "employer": 55400,
+      "employee": 38400
+     },
+     {
+      "min": 426001,
+      "max": 428000,
+      "employer": 55700,
+      "employee": 38600
+     },
+     {
+      "min": 428001,
+      "max": 430000,
+      "employer": 55900,
+      "employee": 38700
+     },
+     {
+      "min": 430001,
+      "max": 432000,
+      "employer": 56200,
+      "employee": 38900
+     },
+     {
+      "min": 432001,
+      "max": 434000,
+      "employer": 56500,
+      "employee": 39100
+     },
+     {
+      "min": 434001,
+      "max": 436000,
+      "employer": 56700,
+      "employee": 39300
+     },
+     {
+      "min": 436001,
+      "max": 438000,
+      "employer": 57000,
+      "employee": 39500
+     },
+     {
+      "min": 438001,
+      "max": 440000,
+      "employer": 57200,
+      "employee": 39600
+     },
+     {
+      "min": 440001,
+      "max": 442000,
+      "employer": 57500,
+      "employee": 39800
+     },
+     {
+      "min": 442001,
+      "max": 444000,
+      "employer": 57800,
+      "employee": 40000
+     },
+     {
+      "min": 444001,
+      "max": 446000,
+      "employer": 58000,
+      "employee": 40200
+     },
+     {
+      "min": 446001,
+      "max": 448000,
+      "employer": 58300,
+      "employee": 40400
+     },
+     {
+      "min": 448001,
+      "max": 450000,
+      "employer": 58500,
+      "employee": 40500
+     },
+     {
+      "min": 450001,
+      "max": 452000,
+      "employer": 58800,
+      "employee": 40700
+     },
+     {
+      "min": 452001,
+      "max": 454000,
+      "employer": 59100,
+      "employee": 40900
+     },
+     {
+      "min": 454001,
+      "max": 456000,
+      "employer": 59300,
+      "employee": 41100
+     },
+     {
+      "min": 456001,
+      "max": 458000,
+      "employer": 59600,
+      "employee": 41300
+     },
+     {
+      "min": 458001,
+      "max": 460000,
+      "employer": 59800,
+      "employee": 41400
+     },
+     {
+      "min": 460001,
+      "max": 462000,
+      "employer": 60100,
+      "employee": 41600
+     },
+     {
+      "min": 462001,
+      "max": 464000,
+      "employer": 60400,
+      "employee": 41800
+     },
+     {
+      "min": 464001,
+      "max": 466000,
+      "employer": 60600,
+      "employee": 42000
+     },
+     {
+      "min": 466001,
+      "max": 468000,
+      "employer": 60900,
+      "employee": 42200
+     },
+     {
+      "min": 468001,
+      "max": 470000,
+      "employer": 61100,
+      "employee": 42300
+     },
+     {
+      "min": 470001,
+      "max": 472000,
+      "employer": 61400,
+      "employee": 42500
+     },
+     {
+      "min": 472001,
+      "max": 474000,
+      "employer": 61700,
+      "employee": 42700
+     },
+     {
+      "min": 474001,
+      "max": 476000,
+      "employer": 61900,
+      "employee": 42900
+     },
+     {
+      "min": 476001,
+      "max": 478000,
+      "employer": 62200,
+      "employee": 43100
+     },
+     {
+      "min": 478001,
+      "max": 480000,
+      "employer": 62400,
+      "employee": 43200
+     },
+     {
+      "min": 480001,
+      "max": 482000,
+      "employer": 62700,
+      "employee": 43400
+     },
+     {
+      "min": 482001,
+      "max": 484000,
+      "employer": 63000,
+      "employee": 43600
+     },
+     {
+      "min": 484001,
+      "max": 486000,
+      "employer": 63200,
+      "employee": 43800
+     },
+     {
+      "min": 486001,
+      "max": 488000,
+      "employer": 63500,
+      "employee": 44000
+     },
+     {
+      "min": 488001,
+      "max": 490000,
+      "employer": 63700,
+      "employee": 44100
+     },
+     {
+      "min": 490001,
+      "max": 492000,
+      "employer": 64000,
+      "employee": 44300
+     },
+     {
+      "min": 492001,
+      "max": 494000,
+      "employer": 64300,
+      "employee": 44500
+     },
+     {
+      "min": 494001,
+      "max": 496000,
+      "employer": 64500,
+      "employee": 44700
+     },
+     {
+      "min": 496001,
+      "max": 498000,
+      "employer": 64800,
+      "employee": 44900
+     },
+     {
+      "min": 498001,
+      "max": 500000,
+      "employer": 65000,
+      "employee": 45000
+     },
+     {
+      "min": 500001,
+      "max": 510000,
+      "employer": 61200,
+      "employee": 45900
+     },
+     {
+      "min": 510001,
+      "max": 520000,
+      "employer": 62400,
+      "employee": 46800
+     },
+     {
+      "min": 520001,
+      "max": 530000,
+      "employer": 63600,
+      "employee": 47700
+     },
+     {
+      "min": 530001,
+      "max": 540000,
+      "employer": 64800,
+      "employee": 48600
+     },
+     {
+      "min": 540001,
+      "max": 550000,
+      "employer": 66000,
+      "employee": 49500
+     },
+     {
+      "min": 550001,
+      "max": 560000,
+      "employer": 67200,
+      "employee": 50400
+     },
+     {
+      "min": 560001,
+      "max": 570000,
+      "employer": 68400,
+      "employee": 51300
+     },
+     {
+      "min": 570001,
+      "max": 580000,
+      "employer": 69600,
+      "employee": 52200
+     },
+     {
+      "min": 580001,
+      "max": 590000,
+      "employer": 70800,
+      "employee": 53100
+     },
+     {
+      "min": 590001,
+      "max": 600000,
+      "employer": 72000,
+      "employee": 54000
+     },
+     {
+      "min": 600001,
+      "max": 610000,
+      "employer": 73200,
+      "employee": 54900
+     },
+     {
+      "min": 610001,
+      "max": 620000,
+      "employer": 74400,
+      "employee": 55800
+     },
+     {
+      "min": 620001,
+      "max": 630000,
+      "employer": 75600,
+      "employee": 56700
+     },
+     {
+      "min": 630001,
+      "max": 640000,
+      "employer": 76800,
+      "employee": 57600
+     },
+     {
+      "min": 640001,
+      "max": 650000,
+      "employer": 78000,
+      "employee": 58500
+     },
+     {
+      "min": 650001,
+      "max": 660000,
+      "employer": 79200,
+      "employee": 59400
+     },
+     {
+      "min": 660001,
+      "max": 670000,
+      "employer": 80400,
+      "employee": 60300
+     },
+     {
+      "min": 670001,
+      "max": 680000,
+      "employer": 81600,
+      "employee": 61200
+     },
+     {
+      "min": 680001,
+      "max": 690000,
+      "employer": 82800,
+      "employee": 62100
+     },
+     {
+      "min": 690001,
+      "max": 700000,
+      "employer": 84000,
+      "employee": 63000
+     },
+     {
+      "min": 700001,
+      "max": 710000,
+      "employer": 85200,
+      "employee": 63900
+     },
+     {
+      "min": 710001,
+      "max": 720000,
+      "employer": 86400,
+      "employee": 64800
+     },
+     {
+      "min": 720001,
+      "max": 730000,
+      "employer": 87600,
+      "employee": 65700
+     },
+     {
+      "min": 730001,
+      "max": 740000,
+      "employer": 88800,
+      "employee": 66600
+     },
+     {
+      "min": 740001,
+      "max": 750000,
+      "employer": 90000,
+      "employee": 67500
+     },
+     {
+      "min": 750001,
+      "max": 760000,
+      "employer": 91200,
+      "employee": 68400
+     },
+     {
+      "min": 760001,
+      "max": 770000,
+      "employer": 92400,
+      "employee": 69300
+     },
+     {
+      "min": 770001,
+      "max": 780000,
+      "employer": 93600,
+      "employee": 70200
+     },
+     {
+      "min": 780001,
+      "max": 790000,
+      "employer": 94800,
+      "employee": 71100
+     },
+     {
+      "min": 790001,
+      "max": 800000,
+      "employer": 96000,
+      "employee": 72000
+     },
+     {
+      "min": 800001,
+      "max": 810000,
+      "employer": 97200,
+      "employee": 72900
+     },
+     {
+      "min": 810001,
+      "max": 820000,
+      "employer": 98400,
+      "employee": 73800
+     },
+     {
+      "min": 820001,
+      "max": 830000,
+      "employer": 99600,
+      "employee": 74700
+     },
+     {
+      "min": 830001,
+      "max": 840000,
+      "employer": 100800,
+      "employee": 75600
+     },
+     {
+      "min": 840001,
+      "max": 850000,
+      "employer": 102000,
+      "employee": 76500
+     },
+     {
+      "min": 850001,
+      "max": 860000,
+      "employer": 103200,
+      "employee": 77400
+     },
+     {
+      "min": 860001,
+      "max": 870000,
+      "employer": 104400,
+      "employee": 78300
+     },
+     {
+      "min": 870001,
+      "max": 880000,
+      "employer": 105600,
+      "employee": 79200
+     },
+     {
+      "min": 880001,
+      "max": 890000,
+      "employer": 106800,
+      "employee": 80100
+     },
+     {
+      "min": 890001,
+      "max": 900000,
+      "employer": 108000,
+      "employee": 81000
+     },
+     {
+      "min": 900001,
+      "max": 910000,
+      "employer": 109200,
+      "employee": 81900
+     },
+     {
+      "min": 910001,
+      "max": 920000,
+      "employer": 110400,
+      "employee": 82800
+     },
+     {
+      "min": 920001,
+      "max": 930000,
+      "employer": 111600,
+      "employee": 83700
+     },
+     {
+      "min": 930001,
+      "max": 940000,
+      "employer": 112800,
+      "employee": 84600
+     },
+     {
+      "min": 940001,
+      "max": 950000,
+      "employer": 114000,
+      "employee": 85500
+     },
+     {
+      "min": 950001,
+      "max": 960000,
+      "employer": 115200,
+      "employee": 86400
+     },
+     {
+      "min": 960001,
+      "max": 970000,
+      "employer": 116400,
+      "employee": 87300
+     },
+     {
+      "min": 970001,
+      "max": 980000,
+      "employer": 117600,
+      "employee": 88200
+     },
+     {
+      "min": 980001,
+      "max": 990000,
+      "employer": 118800,
+      "employee": 89100
+     },
+     {
+      "min": 990001,
+      "max": 1000000,
+      "employer": 120000,
+      "employee": 90000
+     },
+     {
+      "min": 1000001,
+      "max": 1010000,
+      "employer": 121200,
+      "employee": 90900
+     },
+     {
+      "min": 1010001,
+      "max": 1020000,
+      "employer": 122400,
+      "employee": 91800
+     },
+     {
+      "min": 1020001,
+      "max": 1030000,
+      "employer": 123600,
+      "employee": 92700
+     },
+     {
+      "min": 1030001,
+      "max": 1040000,
+      "employer": 124800,
+      "employee": 93600
+     },
+     {
+      "min": 1040001,
+      "max": 1050000,
+      "employer": 126000,
+      "employee": 94500
+     },
+     {
+      "min": 1050001,
+      "max": 1060000,
+      "employer": 127200,
+      "employee": 95400
+     },
+     {
+      "min": 1060001,
+      "max": 1070000,
+      "employer": 128400,
+      "employee": 96300
+     },
+     {
+      "min": 1070001,
+      "max": 1080000,
+      "employer": 129600,
+      "employee": 97200
+     },
+     {
+      "min": 1080001,
+      "max": 1090000,
+      "employer": 130800,
+      "employee": 98100
+     },
+     {
+      "min": 1090001,
+      "max": 1100000,
+      "employer": 132000,
+      "employee": 99000
+     },
+     {
+      "min": 1100001,
+      "max": 1110000,
+      "employer": 133200,
+      "employee": 99900
+     },
+     {
+      "min": 1110001,
+      "max": 1120000,
+      "employer": 134400,
+      "employee": 100800
+     },
+     {
+      "min": 1120001,
+      "max": 1130000,
+      "employer": 135600,
+      "employee": 101700
+     },
+     {
+      "min": 1130001,
+      "max": 1140000,
+      "employer": 136800,
+      "employee": 102600
+     },
+     {
+      "min": 1140001,
+      "max": 1150000,
+      "employer": 138000,
+      "employee": 103500
+     },
+     {
+      "min": 1150001,
+      "max": 1160000,
+      "employer": 139200,
+      "employee": 104400
+     },
+     {
+      "min": 1160001,
+      "max": 1170000,
+      "employer": 140400,
+      "employee": 105300
+     },
+     {
+      "min": 1170001,
+      "max": 1180000,
+      "employer": 141600,
+      "employee": 106200
+     },
+     {
+      "min": 1180001,
+      "max": 1190000,
+      "employer": 142800,
+      "employee": 107100
+     },
+     {
+      "min": 1190001,
+      "max": 1200000,
+      "employer": 144000,
+      "employee": 108000
+     },
+     {
+      "min": 1200001,
+      "max": 1210000,
+      "employer": 145200,
+      "employee": 108900
+     },
+     {
+      "min": 1210001,
+      "max": 1220000,
+      "employer": 146400,
+      "employee": 109800
+     },
+     {
+      "min": 1220001,
+      "max": 1230000,
+      "employer": 147600,
+      "employee": 110700
+     },
+     {
+      "min": 1230001,
+      "max": 1240000,
+      "employer": 148800,
+      "employee": 111600
+     },
+     {
+      "min": 1240001,
+      "max": 1250000,
+      "employer": 150000,
+      "employee": 112500
+     },
+     {
+      "min": 1250001,
+      "max": 1260000,
+      "employer": 151200,
+      "employee": 113400
+     },
+     {
+      "min": 1260001,
+      "max": 1270000,
+      "employer": 152400,
+      "employee": 114300
+     },
+     {
+      "min": 1270001,
+      "max": 1280000,
+      "employer": 153600,
+      "employee": 115200
+     },
+     {
+      "min": 1280001,
+      "max": 1290000,
+      "employer": 154800,
+      "employee": 116100
+     },
+     {
+      "min": 1290001,
+      "max": 1300000,
+      "employer": 156000,
+      "employee": 117000
+     },
+     {
+      "min": 1300001,
+      "max": 1310000,
+      "employer": 157200,
+      "employee": 117900
+     },
+     {
+      "min": 1310001,
+      "max": 1320000,
+      "employer": 158400,
+      "employee": 118800
+     },
+     {
+      "min": 1320001,
+      "max": 1330000,
+      "employer": 159600,
+      "employee": 119700
+     },
+     {
+      "min": 1330001,
+      "max": 1340000,
+      "employer": 160800,
+      "employee": 120600
+     },
+     {
+      "min": 1340001,
+      "max": 1350000,
+      "employer": 162000,
+      "employee": 121500
+     },
+     {
+      "min": 1350001,
+      "max": 1360000,
+      "employer": 163200,
+      "employee": 122400
+     },
+     {
+      "min": 1360001,
+      "max": 1370000,
+      "employer": 164400,
+      "employee": 123300
+     },
+     {
+      "min": 1370001,
+      "max": 1380000,
+      "employer": 165600,
+      "employee": 124200
+     },
+     {
+      "min": 1380001,
+      "max": 1390000,
+      "employer": 166800,
+      "employee": 125100
+     },
+     {
+      "min": 1390001,
+      "max": 1400000,
+      "employer": 168000,
+      "employee": 126000
+     },
+     {
+      "min": 1400001,
+      "max": 1410000,
+      "employer": 169200,
+      "employee": 126900
+     },
+     {
+      "min": 1410001,
+      "max": 1420000,
+      "employer": 170400,
+      "employee": 127800
+     },
+     {
+      "min": 1420001,
+      "max": 1430000,
+      "employer": 171600,
+      "employee": 128700
+     },
+     {
+      "min": 1430001,
+      "max": 1440000,
+      "employer": 172800,
+      "employee": 129600
+     },
+     {
+      "min": 1440001,
+      "max": 1450000,
+      "employer": 174000,
+      "employee": 130500
+     },
+     {
+      "min": 1450001,
+      "max": 1460000,
+      "employer": 175200,
+      "employee": 131400
+     },
+     {
+      "min": 1460001,
+      "max": 1470000,
+      "employer": 176400,
+      "employee": 132300
+     },
+     {
+      "min": 1470001,
+      "max": 1480000,
+      "employer": 177600,
+      "employee": 133200
+     },
+     {
+      "min": 1480001,
+      "max": 1490000,
+      "employer": 178800,
+      "employee": 134100
+     },
+     {
+      "min": 1490001,
+      "max": 1500000,
+      "employer": 180000,
+      "employee": 135000
+     },
+     {
+      "min": 1500001,
+      "max": 1510000,
+      "employer": 181200,
+      "employee": 135900
+     },
+     {
+      "min": 1510001,
+      "max": 1520000,
+      "employer": 182400,
+      "employee": 136800
+     },
+     {
+      "min": 1520001,
+      "max": 1530000,
+      "employer": 183600,
+      "employee": 137700
+     },
+     {
+      "min": 1530001,
+      "max": 1540000,
+      "employer": 184800,
+      "employee": 138600
+     },
+     {
+      "min": 1540001,
+      "max": 1550000,
+      "employer": 186000,
+      "employee": 139500
+     },
+     {
+      "min": 1550001,
+      "max": 1560000,
+      "employer": 187200,
+      "employee": 140400
+     },
+     {
+      "min": 1560001,
+      "max": 1570000,
+      "employer": 188400,
+      "employee": 141300
+     },
+     {
+      "min": 1570001,
+      "max": 1580000,
+      "employer": 189600,
+      "employee": 142200
+     },
+     {
+      "min": 1580001,
+      "max": 1590000,
+      "employer": 190800,
+      "employee": 143100
+     },
+     {
+      "min": 1590001,
+      "max": 1600000,
+      "employer": 192000,
+      "employee": 144000
+     },
+     {
+      "min": 1600001,
+      "max": 1610000,
+      "employer": 193200,
+      "employee": 144900
+     },
+     {
+      "min": 1610001,
+      "max": 1620000,
+      "employer": 194400,
+      "employee": 145800
+     },
+     {
+      "min": 1620001,
+      "max": 1630000,
+      "employer": 195600,
+      "employee": 146700
+     },
+     {
+      "min": 1630001,
+      "max": 1640000,
+      "employer": 196800,
+      "employee": 147600
+     },
+     {
+      "min": 1640001,
+      "max": 1650000,
+      "employer": 198000,
+      "employee": 148500
+     },
+     {
+      "min": 1650001,
+      "max": 1660000,
+      "employer": 199200,
+      "employee": 149400
+     },
+     {
+      "min": 1660001,
+      "max": 1670000,
+      "employer": 200400,
+      "employee": 150300
+     },
+     {
+      "min": 1670001,
+      "max": 1680000,
+      "employer": 201600,
+      "employee": 151200
+     },
+     {
+      "min": 1680001,
+      "max": 1690000,
+      "employer": 202800,
+      "employee": 152100
+     },
+     {
+      "min": 1690001,
+      "max": 1700000,
+      "employer": 204000,
+      "employee": 153000
+     },
+     {
+      "min": 1700001,
+      "max": 1710000,
+      "employer": 205200,
+      "employee": 153900
+     },
+     {
+      "min": 1710001,
+      "max": 1720000,
+      "employer": 206400,
+      "employee": 154800
+     },
+     {
+      "min": 1720001,
+      "max": 1730000,
+      "employer": 207600,
+      "employee": 155700
+     },
+     {
+      "min": 1730001,
+      "max": 1740000,
+      "employer": 208800,
+      "employee": 156600
+     },
+     {
+      "min": 1740001,
+      "max": 1750000,
+      "employer": 210000,
+      "employee": 157500
+     },
+     {
+      "min": 1750001,
+      "max": 1760000,
+      "employer": 211200,
+      "employee": 158400
+     },
+     {
+      "min": 1760001,
+      "max": 1770000,
+      "employer": 212400,
+      "employee": 159300
+     },
+     {
+      "min": 1770001,
+      "max": 1780000,
+      "employer": 213600,
+      "employee": 160200
+     },
+     {
+      "min": 1780001,
+      "max": 1790000,
+      "employer": 214800,
+      "employee": 161100
+     },
+     {
+      "min": 1790001,
+      "max": 1800000,
+      "employer": 216000,
+      "employee": 162000
+     },
+     {
+      "min": 1800001,
+      "max": 1810000,
+      "employer": 217200,
+      "employee": 162900
+     },
+     {
+      "min": 1810001,
+      "max": 1820000,
+      "employer": 218400,
+      "employee": 163800
+     },
+     {
+      "min": 1820001,
+      "max": 1830000,
+      "employer": 219600,
+      "employee": 164700
+     },
+     {
+      "min": 1830001,
+      "max": 1840000,
+      "employer": 220800,
+      "employee": 165600
+     },
+     {
+      "min": 1840001,
+      "max": 1850000,
+      "employer": 222000,
+      "employee": 166500
+     },
+     {
+      "min": 1850001,
+      "max": 1860000,
+      "employer": 223200,
+      "employee": 167400
+     },
+     {
+      "min": 1860001,
+      "max": 1870000,
+      "employer": 224400,
+      "employee": 168300
+     },
+     {
+      "min": 1870001,
+      "max": 1880000,
+      "employer": 225600,
+      "employee": 169200
+     },
+     {
+      "min": 1880001,
+      "max": 1890000,
+      "employer": 226800,
+      "employee": 170100
+     },
+     {
+      "min": 1890001,
+      "max": 1900000,
+      "employer": 228000,
+      "employee": 171000
+     },
+     {
+      "min": 1900001,
+      "max": 1910000,
+      "employer": 229200,
+      "employee": 171900
+     },
+     {
+      "min": 1910001,
+      "max": 1920000,
+      "employer": 230400,
+      "employee": 172800
+     },
+     {
+      "min": 1920001,
+      "max": 1930000,
+      "employer": 231600,
+      "employee": 173700
+     },
+     {
+      "min": 1930001,
+      "max": 1940000,
+      "employer": 232800,
+      "employee": 174600
+     },
+     {
+      "min": 1940001,
+      "max": 1950000,
+      "employer": 234000,
+      "employee": 175500
+     },
+     {
+      "min": 1950001,
+      "max": 1960000,
+      "employer": 235200,
+      "employee": 176400
+     },
+     {
+      "min": 1960001,
+      "max": 1970000,
+      "employer": 236400,
+      "employee": 177300
+     },
+     {
+      "min": 1970001,
+      "max": 1980000,
+      "employer": 237600,
+      "employee": 178200
+     },
+     {
+      "min": 1980001,
+      "max": 1990000,
+      "employer": 238800,
+      "employee": 179100
+     },
+     {
+      "min": 1990001,
+      "max": 2000000,
+      "employer": 240000,
+      "employee": 180000
+     }
+    ],
+    "aboveTable": {
+     "threshold": 20000,
+     "employerPercent": 12,
+     "employeePercent": 9,
+     "roundUpToRinggit": true
+    }
+   }
+  },
+  "over60": {
+   "bands": [
+    {
+     "min": 1,
+     "max": 1000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 1001,
+     "max": 2000,
+     "employer": 100,
+     "employee": 0
+    },
+    {
+     "min": 2001,
+     "max": 4000,
+     "employer": 200,
+     "employee": 0
+    },
+    {
+     "min": 4001,
+     "max": 6000,
+     "employer": 300,
+     "employee": 0
+    },
+    {
+     "min": 6001,
+     "max": 8000,
+     "employer": 400,
+     "employee": 0
+    },
+    {
+     "min": 8001,
+     "max": 10000,
+     "employer": 400,
+     "employee": 0
+    },
+    {
+     "min": 10001,
+     "max": 12000,
+     "employer": 500,
+     "employee": 0
+    },
+    {
+     "min": 12001,
+     "max": 14000,
+     "employer": 600,
+     "employee": 0
+    },
+    {
+     "min": 14001,
+     "max": 16000,
+     "employer": 700,
+     "employee": 0
+    },
+    {
+     "min": 16001,
+     "max": 18000,
+     "employer": 800,
+     "employee": 0
+    },
+    {
+     "min": 18001,
+     "max": 20000,
+     "employer": 800,
+     "employee": 0
+    },
+    {
+     "min": 20001,
+     "max": 22000,
+     "employer": 900,
+     "employee": 0
+    },
+    {
+     "min": 22001,
+     "max": 24000,
+     "employer": 1000,
+     "employee": 0
+    },
+    {
+     "min": 24001,
+     "max": 26000,
+     "employer": 1100,
+     "employee": 0
+    },
+    {
+     "min": 26001,
+     "max": 28000,
+     "employer": 1200,
+     "employee": 0
+    },
+    {
+     "min": 28001,
+     "max": 30000,
+     "employer": 1200,
+     "employee": 0
+    },
+    {
+     "min": 30001,
+     "max": 32000,
+     "employer": 1300,
+     "employee": 0
+    },
+    {
+     "min": 32001,
+     "max": 34000,
+     "employer": 1400,
+     "employee": 0
+    },
+    {
+     "min": 34001,
+     "max": 36000,
+     "employer": 1500,
+     "employee": 0
+    },
+    {
+     "min": 36001,
+     "max": 38000,
+     "employer": 1600,
+     "employee": 0
+    },
+    {
+     "min": 38001,
+     "max": 40000,
+     "employer": 1600,
+     "employee": 0
+    },
+    {
+     "min": 40001,
+     "max": 42000,
+     "employer": 1700,
+     "employee": 0
+    },
+    {
+     "min": 42001,
+     "max": 44000,
+     "employer": 1800,
+     "employee": 0
+    },
+    {
+     "min": 44001,
+     "max": 46000,
+     "employer": 1900,
+     "employee": 0
+    },
+    {
+     "min": 46001,
+     "max": 48000,
+     "employer": 2000,
+     "employee": 0
+    },
+    {
+     "min": 48001,
+     "max": 50000,
+     "employer": 2000,
+     "employee": 0
+    },
+    {
+     "min": 50001,
+     "max": 52000,
+     "employer": 2100,
+     "employee": 0
+    },
+    {
+     "min": 52001,
+     "max": 54000,
+     "employer": 2200,
+     "employee": 0
+    },
+    {
+     "min": 54001,
+     "max": 56000,
+     "employer": 2300,
+     "employee": 0
+    },
+    {
+     "min": 56001,
+     "max": 58000,
+     "employer": 2400,
+     "employee": 0
+    },
+    {
+     "min": 58001,
+     "max": 60000,
+     "employer": 2400,
+     "employee": 0
+    },
+    {
+     "min": 60001,
+     "max": 62000,
+     "employer": 2500,
+     "employee": 0
+    },
+    {
+     "min": 62001,
+     "max": 64000,
+     "employer": 2600,
+     "employee": 0
+    },
+    {
+     "min": 64001,
+     "max": 66000,
+     "employer": 2700,
+     "employee": 0
+    },
+    {
+     "min": 66001,
+     "max": 68000,
+     "employer": 2800,
+     "employee": 0
+    },
+    {
+     "min": 68001,
+     "max": 70000,
+     "employer": 2800,
+     "employee": 0
+    },
+    {
+     "min": 70001,
+     "max": 72000,
+     "employer": 2900,
+     "employee": 0
+    },
+    {
+     "min": 72001,
+     "max": 74000,
+     "employer": 3000,
+     "employee": 0
+    },
+    {
+     "min": 74001,
+     "max": 76000,
+     "employer": 3100,
+     "employee": 0
+    },
+    {
+     "min": 76001,
+     "max": 78000,
+     "employer": 3200,
+     "employee": 0
+    },
+    {
+     "min": 78001,
+     "max": 80000,
+     "employer": 3200,
+     "employee": 0
+    },
+    {
+     "min": 80001,
+     "max": 82000,
+     "employer": 3300,
+     "employee": 0
+    },
+    {
+     "min": 82001,
+     "max": 84000,
+     "employer": 3400,
+     "employee": 0
+    },
+    {
+     "min": 84001,
+     "max": 86000,
+     "employer": 3500,
+     "employee": 0
+    },
+    {
+     "min": 86001,
+     "max": 88000,
+     "employer": 3600,
+     "employee": 0
+    },
+    {
+     "min": 88001,
+     "max": 90000,
+     "employer": 3600,
+     "employee": 0
+    },
+    {
+     "min": 90001,
+     "max": 92000,
+     "employer": 3700,
+     "employee": 0
+    },
+    {
+     "min": 92001,
+     "max": 94000,
+     "employer": 3800,
+     "employee": 0
+    },
+    {
+     "min": 94001,
+     "max": 96000,
+     "employer": 3900,
+     "employee": 0
+    },
+    {
+     "min": 96001,
+     "max": 98000,
+     "employer": 4000,
+     "employee": 0
+    },
+    {
+     "min": 98001,
+     "max": 100000,
+     "employer": 4000,
+     "employee": 0
+    },
+    {
+     "min": 100001,
+     "max": 102000,
+     "employer": 4100,
+     "employee": 0
+    },
+    {
+     "min": 102001,
+     "max": 104000,
+     "employer": 4200,
+     "employee": 0
+    },
+    {
+     "min": 104001,
+     "max": 106000,
+     "employer": 4300,
+     "employee": 0
+    },
+    {
+     "min": 106001,
+     "max": 108000,
+     "employer": 4400,
+     "employee": 0
+    },
+    {
+     "min": 108001,
+     "max": 110000,
+     "employer": 4400,
+     "employee": 0
+    },
+    {
+     "min": 110001,
+     "max": 112000,
+     "employer": 4500,
+     "employee": 0
+    },
+    {
+     "min": 112001,
+     "max": 114000,
+     "employer": 4600,
+     "employee": 0
+    },
+    {
+     "min": 114001,
+     "max": 116000,
+     "employer": 4700,
+     "employee": 0
+    },
+    {
+     "min": 116001,
+     "max": 118000,
+     "employer": 4800,
+     "employee": 0
+    },
+    {
+     "min": 118001,
+     "max": 120000,
+     "employer": 4800,
+     "employee": 0
+    },
+    {
+     "min": 120001,
+     "max": 122000,
+     "employer": 4900,
+     "employee": 0
+    },
+    {
+     "min": 122001,
+     "max": 124000,
+     "employer": 5000,
+     "employee": 0
+    },
+    {
+     "min": 124001,
+     "max": 126000,
+     "employer": 5100,
+     "employee": 0
+    },
+    {
+     "min": 126001,
+     "max": 128000,
+     "employer": 5200,
+     "employee": 0
+    },
+    {
+     "min": 128001,
+     "max": 130000,
+     "employer": 5200,
+     "employee": 0
+    },
+    {
+     "min": 130001,
+     "max": 132000,
+     "employer": 5300,
+     "employee": 0
+    },
+    {
+     "min": 132001,
+     "max": 134000,
+     "employer": 5400,
+     "employee": 0
+    },
+    {
+     "min": 134001,
+     "max": 136000,
+     "employer": 5500,
+     "employee": 0
+    },
+    {
+     "min": 136001,
+     "max": 138000,
+     "employer": 5600,
+     "employee": 0
+    },
+    {
+     "min": 138001,
+     "max": 140000,
+     "employer": 5600,
+     "employee": 0
+    },
+    {
+     "min": 140001,
+     "max": 142000,
+     "employer": 5700,
+     "employee": 0
+    },
+    {
+     "min": 142001,
+     "max": 144000,
+     "employer": 5800,
+     "employee": 0
+    },
+    {
+     "min": 144001,
+     "max": 146000,
+     "employer": 5900,
+     "employee": 0
+    },
+    {
+     "min": 146001,
+     "max": 148000,
+     "employer": 6000,
+     "employee": 0
+    },
+    {
+     "min": 148001,
+     "max": 150000,
+     "employer": 6000,
+     "employee": 0
+    },
+    {
+     "min": 150001,
+     "max": 152000,
+     "employer": 6100,
+     "employee": 0
+    },
+    {
+     "min": 152001,
+     "max": 154000,
+     "employer": 6200,
+     "employee": 0
+    },
+    {
+     "min": 154001,
+     "max": 156000,
+     "employer": 6300,
+     "employee": 0
+    },
+    {
+     "min": 156001,
+     "max": 158000,
+     "employer": 6400,
+     "employee": 0
+    },
+    {
+     "min": 158001,
+     "max": 160000,
+     "employer": 6400,
+     "employee": 0
+    },
+    {
+     "min": 160001,
+     "max": 162000,
+     "employer": 6500,
+     "employee": 0
+    },
+    {
+     "min": 162001,
+     "max": 164000,
+     "employer": 6600,
+     "employee": 0
+    },
+    {
+     "min": 164001,
+     "max": 166000,
+     "employer": 6700,
+     "employee": 0
+    },
+    {
+     "min": 166001,
+     "max": 168000,
+     "employer": 6800,
+     "employee": 0
+    },
+    {
+     "min": 168001,
+     "max": 170000,
+     "employer": 6800,
+     "employee": 0
+    },
+    {
+     "min": 170001,
+     "max": 172000,
+     "employer": 6900,
+     "employee": 0
+    },
+    {
+     "min": 172001,
+     "max": 174000,
+     "employer": 7000,
+     "employee": 0
+    },
+    {
+     "min": 174001,
+     "max": 176000,
+     "employer": 7100,
+     "employee": 0
+    },
+    {
+     "min": 176001,
+     "max": 178000,
+     "employer": 7200,
+     "employee": 0
+    },
+    {
+     "min": 178001,
+     "max": 180000,
+     "employer": 7200,
+     "employee": 0
+    },
+    {
+     "min": 180001,
+     "max": 182000,
+     "employer": 7300,
+     "employee": 0
+    },
+    {
+     "min": 182001,
+     "max": 184000,
+     "employer": 7400,
+     "employee": 0
+    },
+    {
+     "min": 184001,
+     "max": 186000,
+     "employer": 7500,
+     "employee": 0
+    },
+    {
+     "min": 186001,
+     "max": 188000,
+     "employer": 7600,
+     "employee": 0
+    },
+    {
+     "min": 188001,
+     "max": 190000,
+     "employer": 7600,
+     "employee": 0
+    },
+    {
+     "min": 190001,
+     "max": 192000,
+     "employer": 7700,
+     "employee": 0
+    },
+    {
+     "min": 192001,
+     "max": 194000,
+     "employer": 7800,
+     "employee": 0
+    },
+    {
+     "min": 194001,
+     "max": 196000,
+     "employer": 7900,
+     "employee": 0
+    },
+    {
+     "min": 196001,
+     "max": 198000,
+     "employer": 8000,
+     "employee": 0
+    },
+    {
+     "min": 198001,
+     "max": 200000,
+     "employer": 8000,
+     "employee": 0
+    },
+    {
+     "min": 200001,
+     "max": 202000,
+     "employer": 8100,
+     "employee": 0
+    },
+    {
+     "min": 202001,
+     "max": 204000,
+     "employer": 8200,
+     "employee": 0
+    },
+    {
+     "min": 204001,
+     "max": 206000,
+     "employer": 8300,
+     "employee": 0
+    },
+    {
+     "min": 206001,
+     "max": 208000,
+     "employer": 8400,
+     "employee": 0
+    },
+    {
+     "min": 208001,
+     "max": 210000,
+     "employer": 8400,
+     "employee": 0
+    },
+    {
+     "min": 210001,
+     "max": 212000,
+     "employer": 8500,
+     "employee": 0
+    },
+    {
+     "min": 212001,
+     "max": 214000,
+     "employer": 8600,
+     "employee": 0
+    },
+    {
+     "min": 214001,
+     "max": 216000,
+     "employer": 8700,
+     "employee": 0
+    },
+    {
+     "min": 216001,
+     "max": 218000,
+     "employer": 8800,
+     "employee": 0
+    },
+    {
+     "min": 218001,
+     "max": 220000,
+     "employer": 8800,
+     "employee": 0
+    },
+    {
+     "min": 220001,
+     "max": 222000,
+     "employer": 8900,
+     "employee": 0
+    },
+    {
+     "min": 222001,
+     "max": 224000,
+     "employer": 9000,
+     "employee": 0
+    },
+    {
+     "min": 224001,
+     "max": 226000,
+     "employer": 9100,
+     "employee": 0
+    },
+    {
+     "min": 226001,
+     "max": 228000,
+     "employer": 9200,
+     "employee": 0
+    },
+    {
+     "min": 228001,
+     "max": 230000,
+     "employer": 9200,
+     "employee": 0
+    },
+    {
+     "min": 230001,
+     "max": 232000,
+     "employer": 9300,
+     "employee": 0
+    },
+    {
+     "min": 232001,
+     "max": 234000,
+     "employer": 9400,
+     "employee": 0
+    },
+    {
+     "min": 234001,
+     "max": 236000,
+     "employer": 9500,
+     "employee": 0
+    },
+    {
+     "min": 236001,
+     "max": 238000,
+     "employer": 9600,
+     "employee": 0
+    },
+    {
+     "min": 238001,
+     "max": 240000,
+     "employer": 9600,
+     "employee": 0
+    },
+    {
+     "min": 240001,
+     "max": 242000,
+     "employer": 9700,
+     "employee": 0
+    },
+    {
+     "min": 242001,
+     "max": 244000,
+     "employer": 9800,
+     "employee": 0
+    },
+    {
+     "min": 244001,
+     "max": 246000,
+     "employer": 9900,
+     "employee": 0
+    },
+    {
+     "min": 246001,
+     "max": 248000,
+     "employer": 10000,
+     "employee": 0
+    },
+    {
+     "min": 248001,
+     "max": 250000,
+     "employer": 10000,
+     "employee": 0
+    },
+    {
+     "min": 250001,
+     "max": 252000,
+     "employer": 10100,
+     "employee": 0
+    },
+    {
+     "min": 252001,
+     "max": 254000,
+     "employer": 10200,
+     "employee": 0
+    },
+    {
+     "min": 254001,
+     "max": 256000,
+     "employer": 10300,
+     "employee": 0
+    },
+    {
+     "min": 256001,
+     "max": 258000,
+     "employer": 10400,
+     "employee": 0
+    },
+    {
+     "min": 258001,
+     "max": 260000,
+     "employer": 10400,
+     "employee": 0
+    },
+    {
+     "min": 260001,
+     "max": 262000,
+     "employer": 10500,
+     "employee": 0
+    },
+    {
+     "min": 262001,
+     "max": 264000,
+     "employer": 10600,
+     "employee": 0
+    },
+    {
+     "min": 264001,
+     "max": 266000,
+     "employer": 10700,
+     "employee": 0
+    },
+    {
+     "min": 266001,
+     "max": 268000,
+     "employer": 10800,
+     "employee": 0
+    },
+    {
+     "min": 268001,
+     "max": 270000,
+     "employer": 10800,
+     "employee": 0
+    },
+    {
+     "min": 270001,
+     "max": 272000,
+     "employer": 10900,
+     "employee": 0
+    },
+    {
+     "min": 272001,
+     "max": 274000,
+     "employer": 11000,
+     "employee": 0
+    },
+    {
+     "min": 274001,
+     "max": 276000,
+     "employer": 11100,
+     "employee": 0
+    },
+    {
+     "min": 276001,
+     "max": 278000,
+     "employer": 11200,
+     "employee": 0
+    },
+    {
+     "min": 278001,
+     "max": 280000,
+     "employer": 11200,
+     "employee": 0
+    },
+    {
+     "min": 280001,
+     "max": 282000,
+     "employer": 11300,
+     "employee": 0
+    },
+    {
+     "min": 282001,
+     "max": 284000,
+     "employer": 11400,
+     "employee": 0
+    },
+    {
+     "min": 284001,
+     "max": 286000,
+     "employer": 11500,
+     "employee": 0
+    },
+    {
+     "min": 286001,
+     "max": 288000,
+     "employer": 11600,
+     "employee": 0
+    },
+    {
+     "min": 288001,
+     "max": 290000,
+     "employer": 11600,
+     "employee": 0
+    },
+    {
+     "min": 290001,
+     "max": 292000,
+     "employer": 11700,
+     "employee": 0
+    },
+    {
+     "min": 292001,
+     "max": 294000,
+     "employer": 11800,
+     "employee": 0
+    },
+    {
+     "min": 294001,
+     "max": 296000,
+     "employer": 11900,
+     "employee": 0
+    },
+    {
+     "min": 296001,
+     "max": 298000,
+     "employer": 12000,
+     "employee": 0
+    },
+    {
+     "min": 298001,
+     "max": 300000,
+     "employer": 12000,
+     "employee": 0
+    },
+    {
+     "min": 300001,
+     "max": 302000,
+     "employer": 12100,
+     "employee": 0
+    },
+    {
+     "min": 302001,
+     "max": 304000,
+     "employer": 12200,
+     "employee": 0
+    },
+    {
+     "min": 304001,
+     "max": 306000,
+     "employer": 12300,
+     "employee": 0
+    },
+    {
+     "min": 306001,
+     "max": 308000,
+     "employer": 12400,
+     "employee": 0
+    },
+    {
+     "min": 308001,
+     "max": 310000,
+     "employer": 12400,
+     "employee": 0
+    },
+    {
+     "min": 310001,
+     "max": 312000,
+     "employer": 12500,
+     "employee": 0
+    },
+    {
+     "min": 312001,
+     "max": 314000,
+     "employer": 12600,
+     "employee": 0
+    },
+    {
+     "min": 314001,
+     "max": 316000,
+     "employer": 12700,
+     "employee": 0
+    },
+    {
+     "min": 316001,
+     "max": 318000,
+     "employer": 12800,
+     "employee": 0
+    },
+    {
+     "min": 318001,
+     "max": 320000,
+     "employer": 12800,
+     "employee": 0
+    },
+    {
+     "min": 320001,
+     "max": 322000,
+     "employer": 12900,
+     "employee": 0
+    },
+    {
+     "min": 322001,
+     "max": 324000,
+     "employer": 13000,
+     "employee": 0
+    },
+    {
+     "min": 324001,
+     "max": 326000,
+     "employer": 13100,
+     "employee": 0
+    },
+    {
+     "min": 326001,
+     "max": 328000,
+     "employer": 13200,
+     "employee": 0
+    },
+    {
+     "min": 328001,
+     "max": 330000,
+     "employer": 13200,
+     "employee": 0
+    },
+    {
+     "min": 330001,
+     "max": 332000,
+     "employer": 13300,
+     "employee": 0
+    },
+    {
+     "min": 332001,
+     "max": 334000,
+     "employer": 13400,
+     "employee": 0
+    },
+    {
+     "min": 334001,
+     "max": 336000,
+     "employer": 13500,
+     "employee": 0
+    },
+    {
+     "min": 336001,
+     "max": 338000,
+     "employer": 13600,
+     "employee": 0
+    },
+    {
+     "min": 338001,
+     "max": 340000,
+     "employer": 13600,
+     "employee": 0
+    },
+    {
+     "min": 340001,
+     "max": 342000,
+     "employer": 13700,
+     "employee": 0
+    },
+    {
+     "min": 342001,
+     "max": 344000,
+     "employer": 13800,
+     "employee": 0
+    },
+    {
+     "min": 344001,
+     "max": 346000,
+     "employer": 13900,
+     "employee": 0
+    },
+    {
+     "min": 346001,
+     "max": 348000,
+     "employer": 14000,
+     "employee": 0
+    },
+    {
+     "min": 348001,
+     "max": 350000,
+     "employer": 14000,
+     "employee": 0
+    },
+    {
+     "min": 350001,
+     "max": 352000,
+     "employer": 14100,
+     "employee": 0
+    },
+    {
+     "min": 352001,
+     "max": 354000,
+     "employer": 14200,
+     "employee": 0
+    },
+    {
+     "min": 354001,
+     "max": 356000,
+     "employer": 14300,
+     "employee": 0
+    },
+    {
+     "min": 356001,
+     "max": 358000,
+     "employer": 14400,
+     "employee": 0
+    },
+    {
+     "min": 358001,
+     "max": 360000,
+     "employer": 14400,
+     "employee": 0
+    },
+    {
+     "min": 360001,
+     "max": 362000,
+     "employer": 14500,
+     "employee": 0
+    },
+    {
+     "min": 362001,
+     "max": 364000,
+     "employer": 14600,
+     "employee": 0
+    },
+    {
+     "min": 364001,
+     "max": 366000,
+     "employer": 14700,
+     "employee": 0
+    },
+    {
+     "min": 366001,
+     "max": 368000,
+     "employer": 14800,
+     "employee": 0
+    },
+    {
+     "min": 368001,
+     "max": 370000,
+     "employer": 14800,
+     "employee": 0
+    },
+    {
+     "min": 370001,
+     "max": 372000,
+     "employer": 14900,
+     "employee": 0
+    },
+    {
+     "min": 372001,
+     "max": 374000,
+     "employer": 15000,
+     "employee": 0
+    },
+    {
+     "min": 374001,
+     "max": 376000,
+     "employer": 15100,
+     "employee": 0
+    },
+    {
+     "min": 376001,
+     "max": 378000,
+     "employer": 15200,
+     "employee": 0
+    },
+    {
+     "min": 378001,
+     "max": 380000,
+     "employer": 15200,
+     "employee": 0
+    },
+    {
+     "min": 380001,
+     "max": 382000,
+     "employer": 15300,
+     "employee": 0
+    },
+    {
+     "min": 382001,
+     "max": 384000,
+     "employer": 15400,
+     "employee": 0
+    },
+    {
+     "min": 384001,
+     "max": 386000,
+     "employer": 15500,
+     "employee": 0
+    },
+    {
+     "min": 386001,
+     "max": 388000,
+     "employer": 15600,
+     "employee": 0
+    },
+    {
+     "min": 388001,
+     "max": 390000,
+     "employer": 15600,
+     "employee": 0
+    },
+    {
+     "min": 390001,
+     "max": 392000,
+     "employer": 15700,
+     "employee": 0
+    },
+    {
+     "min": 392001,
+     "max": 394000,
+     "employer": 15800,
+     "employee": 0
+    },
+    {
+     "min": 394001,
+     "max": 396000,
+     "employer": 15900,
+     "employee": 0
+    },
+    {
+     "min": 396001,
+     "max": 398000,
+     "employer": 16000,
+     "employee": 0
+    },
+    {
+     "min": 398001,
+     "max": 400000,
+     "employer": 16000,
+     "employee": 0
+    },
+    {
+     "min": 400001,
+     "max": 402000,
+     "employer": 16100,
+     "employee": 0
+    },
+    {
+     "min": 402001,
+     "max": 404000,
+     "employer": 16200,
+     "employee": 0
+    },
+    {
+     "min": 404001,
+     "max": 406000,
+     "employer": 16300,
+     "employee": 0
+    },
+    {
+     "min": 406001,
+     "max": 408000,
+     "employer": 16400,
+     "employee": 0
+    },
+    {
+     "min": 408001,
+     "max": 410000,
+     "employer": 16400,
+     "employee": 0
+    },
+    {
+     "min": 410001,
+     "max": 412000,
+     "employer": 16500,
+     "employee": 0
+    },
+    {
+     "min": 412001,
+     "max": 414000,
+     "employer": 16600,
+     "employee": 0
+    },
+    {
+     "min": 414001,
+     "max": 416000,
+     "employer": 16700,
+     "employee": 0
+    },
+    {
+     "min": 416001,
+     "max": 418000,
+     "employer": 16800,
+     "employee": 0
+    },
+    {
+     "min": 418001,
+     "max": 420000,
+     "employer": 16800,
+     "employee": 0
+    },
+    {
+     "min": 420001,
+     "max": 422000,
+     "employer": 16900,
+     "employee": 0
+    },
+    {
+     "min": 422001,
+     "max": 424000,
+     "employer": 17000,
+     "employee": 0
+    },
+    {
+     "min": 424001,
+     "max": 426000,
+     "employer": 17100,
+     "employee": 0
+    },
+    {
+     "min": 426001,
+     "max": 428000,
+     "employer": 17200,
+     "employee": 0
+    },
+    {
+     "min": 428001,
+     "max": 430000,
+     "employer": 17200,
+     "employee": 0
+    },
+    {
+     "min": 430001,
+     "max": 432000,
+     "employer": 17300,
+     "employee": 0
+    },
+    {
+     "min": 432001,
+     "max": 434000,
+     "employer": 17400,
+     "employee": 0
+    },
+    {
+     "min": 434001,
+     "max": 436000,
+     "employer": 17500,
+     "employee": 0
+    },
+    {
+     "min": 436001,
+     "max": 438000,
+     "employer": 17600,
+     "employee": 0
+    },
+    {
+     "min": 438001,
+     "max": 440000,
+     "employer": 17600,
+     "employee": 0
+    },
+    {
+     "min": 440001,
+     "max": 442000,
+     "employer": 17700,
+     "employee": 0
+    },
+    {
+     "min": 442001,
+     "max": 444000,
+     "employer": 17800,
+     "employee": 0
+    },
+    {
+     "min": 444001,
+     "max": 446000,
+     "employer": 17900,
+     "employee": 0
+    },
+    {
+     "min": 446001,
+     "max": 448000,
+     "employer": 18000,
+     "employee": 0
+    },
+    {
+     "min": 448001,
+     "max": 450000,
+     "employer": 18000,
+     "employee": 0
+    },
+    {
+     "min": 450001,
+     "max": 452000,
+     "employer": 18100,
+     "employee": 0
+    },
+    {
+     "min": 452001,
+     "max": 454000,
+     "employer": 18200,
+     "employee": 0
+    },
+    {
+     "min": 454001,
+     "max": 456000,
+     "employer": 18300,
+     "employee": 0
+    },
+    {
+     "min": 456001,
+     "max": 458000,
+     "employer": 18400,
+     "employee": 0
+    },
+    {
+     "min": 458001,
+     "max": 460000,
+     "employer": 18400,
+     "employee": 0
+    },
+    {
+     "min": 460001,
+     "max": 462000,
+     "employer": 18500,
+     "employee": 0
+    },
+    {
+     "min": 462001,
+     "max": 464000,
+     "employer": 18600,
+     "employee": 0
+    },
+    {
+     "min": 464001,
+     "max": 466000,
+     "employer": 18700,
+     "employee": 0
+    },
+    {
+     "min": 466001,
+     "max": 468000,
+     "employer": 18800,
+     "employee": 0
+    },
+    {
+     "min": 468001,
+     "max": 470000,
+     "employer": 18800,
+     "employee": 0
+    },
+    {
+     "min": 470001,
+     "max": 472000,
+     "employer": 18900,
+     "employee": 0
+    },
+    {
+     "min": 472001,
+     "max": 474000,
+     "employer": 19000,
+     "employee": 0
+    },
+    {
+     "min": 474001,
+     "max": 476000,
+     "employer": 19100,
+     "employee": 0
+    },
+    {
+     "min": 476001,
+     "max": 478000,
+     "employer": 19200,
+     "employee": 0
+    },
+    {
+     "min": 478001,
+     "max": 480000,
+     "employer": 19200,
+     "employee": 0
+    },
+    {
+     "min": 480001,
+     "max": 482000,
+     "employer": 19300,
+     "employee": 0
+    },
+    {
+     "min": 482001,
+     "max": 484000,
+     "employer": 19400,
+     "employee": 0
+    },
+    {
+     "min": 484001,
+     "max": 486000,
+     "employer": 19500,
+     "employee": 0
+    },
+    {
+     "min": 486001,
+     "max": 488000,
+     "employer": 19600,
+     "employee": 0
+    },
+    {
+     "min": 488001,
+     "max": 490000,
+     "employer": 19600,
+     "employee": 0
+    },
+    {
+     "min": 490001,
+     "max": 492000,
+     "employer": 19700,
+     "employee": 0
+    },
+    {
+     "min": 492001,
+     "max": 494000,
+     "employer": 19800,
+     "employee": 0
+    },
+    {
+     "min": 494001,
+     "max": 496000,
+     "employer": 19900,
+     "employee": 0
+    },
+    {
+     "min": 496001,
+     "max": 498000,
+     "employer": 20000,
+     "employee": 0
+    },
+    {
+     "min": 498001,
+     "max": 500000,
+     "employer": 20000,
+     "employee": 0
+    },
+    {
+     "min": 500001,
+     "max": 510000,
+     "employer": 20400,
+     "employee": 0
+    },
+    {
+     "min": 510001,
+     "max": 520000,
+     "employer": 20800,
+     "employee": 0
+    },
+    {
+     "min": 520001,
+     "max": 530000,
+     "employer": 21200,
+     "employee": 0
+    },
+    {
+     "min": 530001,
+     "max": 540000,
+     "employer": 21600,
+     "employee": 0
+    },
+    {
+     "min": 540001,
+     "max": 550000,
+     "employer": 22000,
+     "employee": 0
+    },
+    {
+     "min": 550001,
+     "max": 560000,
+     "employer": 22400,
+     "employee": 0
+    },
+    {
+     "min": 560001,
+     "max": 570000,
+     "employer": 22800,
+     "employee": 0
+    },
+    {
+     "min": 570001,
+     "max": 580000,
+     "employer": 23200,
+     "employee": 0
+    },
+    {
+     "min": 580001,
+     "max": 590000,
+     "employer": 23600,
+     "employee": 0
+    },
+    {
+     "min": 590001,
+     "max": 600000,
+     "employer": 24000,
+     "employee": 0
+    },
+    {
+     "min": 600001,
+     "max": 610000,
+     "employer": 24400,
+     "employee": 0
+    },
+    {
+     "min": 610001,
+     "max": 620000,
+     "employer": 24800,
+     "employee": 0
+    },
+    {
+     "min": 620001,
+     "max": 630000,
+     "employer": 25200,
+     "employee": 0
+    },
+    {
+     "min": 630001,
+     "max": 640000,
+     "employer": 25600,
+     "employee": 0
+    },
+    {
+     "min": 640001,
+     "max": 650000,
+     "employer": 26000,
+     "employee": 0
+    },
+    {
+     "min": 650001,
+     "max": 660000,
+     "employer": 26400,
+     "employee": 0
+    },
+    {
+     "min": 660001,
+     "max": 670000,
+     "employer": 26800,
+     "employee": 0
+    },
+    {
+     "min": 670001,
+     "max": 680000,
+     "employer": 27200,
+     "employee": 0
+    },
+    {
+     "min": 680001,
+     "max": 690000,
+     "employer": 27600,
+     "employee": 0
+    },
+    {
+     "min": 690001,
+     "max": 700000,
+     "employer": 28000,
+     "employee": 0
+    },
+    {
+     "min": 700001,
+     "max": 710000,
+     "employer": 28400,
+     "employee": 0
+    },
+    {
+     "min": 710001,
+     "max": 720000,
+     "employer": 28800,
+     "employee": 0
+    },
+    {
+     "min": 720001,
+     "max": 730000,
+     "employer": 29200,
+     "employee": 0
+    },
+    {
+     "min": 730001,
+     "max": 740000,
+     "employer": 29600,
+     "employee": 0
+    },
+    {
+     "min": 740001,
+     "max": 750000,
+     "employer": 30000,
+     "employee": 0
+    },
+    {
+     "min": 750001,
+     "max": 760000,
+     "employer": 30400,
+     "employee": 0
+    },
+    {
+     "min": 760001,
+     "max": 770000,
+     "employer": 30800,
+     "employee": 0
+    },
+    {
+     "min": 770001,
+     "max": 780000,
+     "employer": 31200,
+     "employee": 0
+    },
+    {
+     "min": 780001,
+     "max": 790000,
+     "employer": 31600,
+     "employee": 0
+    },
+    {
+     "min": 790001,
+     "max": 800000,
+     "employer": 32000,
+     "employee": 0
+    },
+    {
+     "min": 800001,
+     "max": 810000,
+     "employer": 32400,
+     "employee": 0
+    },
+    {
+     "min": 810001,
+     "max": 820000,
+     "employer": 32800,
+     "employee": 0
+    },
+    {
+     "min": 820001,
+     "max": 830000,
+     "employer": 33200,
+     "employee": 0
+    },
+    {
+     "min": 830001,
+     "max": 840000,
+     "employer": 33600,
+     "employee": 0
+    },
+    {
+     "min": 840001,
+     "max": 850000,
+     "employer": 34000,
+     "employee": 0
+    },
+    {
+     "min": 850001,
+     "max": 860000,
+     "employer": 34400,
+     "employee": 0
+    },
+    {
+     "min": 860001,
+     "max": 870000,
+     "employer": 34800,
+     "employee": 0
+    },
+    {
+     "min": 870001,
+     "max": 880000,
+     "employer": 35200,
+     "employee": 0
+    },
+    {
+     "min": 880001,
+     "max": 890000,
+     "employer": 35600,
+     "employee": 0
+    },
+    {
+     "min": 890001,
+     "max": 900000,
+     "employer": 36000,
+     "employee": 0
+    },
+    {
+     "min": 900001,
+     "max": 910000,
+     "employer": 36400,
+     "employee": 0
+    },
+    {
+     "min": 910001,
+     "max": 920000,
+     "employer": 36800,
+     "employee": 0
+    },
+    {
+     "min": 920001,
+     "max": 930000,
+     "employer": 37200,
+     "employee": 0
+    },
+    {
+     "min": 930001,
+     "max": 940000,
+     "employer": 37600,
+     "employee": 0
+    },
+    {
+     "min": 940001,
+     "max": 950000,
+     "employer": 38000,
+     "employee": 0
+    },
+    {
+     "min": 950001,
+     "max": 960000,
+     "employer": 38400,
+     "employee": 0
+    },
+    {
+     "min": 960001,
+     "max": 970000,
+     "employer": 38800,
+     "employee": 0
+    },
+    {
+     "min": 970001,
+     "max": 980000,
+     "employer": 39200,
+     "employee": 0
+    },
+    {
+     "min": 980001,
+     "max": 990000,
+     "employer": 39600,
+     "employee": 0
+    },
+    {
+     "min": 990001,
+     "max": 1000000,
+     "employer": 40000,
+     "employee": 0
+    },
+    {
+     "min": 1000001,
+     "max": 1010000,
+     "employer": 40400,
+     "employee": 0
+    },
+    {
+     "min": 1010001,
+     "max": 1020000,
+     "employer": 40800,
+     "employee": 0
+    },
+    {
+     "min": 1020001,
+     "max": 1030000,
+     "employer": 41200,
+     "employee": 0
+    },
+    {
+     "min": 1030001,
+     "max": 1040000,
+     "employer": 41600,
+     "employee": 0
+    },
+    {
+     "min": 1040001,
+     "max": 1050000,
+     "employer": 42000,
+     "employee": 0
+    },
+    {
+     "min": 1050001,
+     "max": 1060000,
+     "employer": 42400,
+     "employee": 0
+    },
+    {
+     "min": 1060001,
+     "max": 1070000,
+     "employer": 42800,
+     "employee": 0
+    },
+    {
+     "min": 1070001,
+     "max": 1080000,
+     "employer": 43200,
+     "employee": 0
+    },
+    {
+     "min": 1080001,
+     "max": 1090000,
+     "employer": 43600,
+     "employee": 0
+    },
+    {
+     "min": 1090001,
+     "max": 1100000,
+     "employer": 44000,
+     "employee": 0
+    },
+    {
+     "min": 1100001,
+     "max": 1110000,
+     "employer": 44400,
+     "employee": 0
+    },
+    {
+     "min": 1110001,
+     "max": 1120000,
+     "employer": 44800,
+     "employee": 0
+    },
+    {
+     "min": 1120001,
+     "max": 1130000,
+     "employer": 45200,
+     "employee": 0
+    },
+    {
+     "min": 1130001,
+     "max": 1140000,
+     "employer": 45600,
+     "employee": 0
+    },
+    {
+     "min": 1140001,
+     "max": 1150000,
+     "employer": 46000,
+     "employee": 0
+    },
+    {
+     "min": 1150001,
+     "max": 1160000,
+     "employer": 46400,
+     "employee": 0
+    },
+    {
+     "min": 1160001,
+     "max": 1170000,
+     "employer": 46800,
+     "employee": 0
+    },
+    {
+     "min": 1170001,
+     "max": 1180000,
+     "employer": 47200,
+     "employee": 0
+    },
+    {
+     "min": 1180001,
+     "max": 1190000,
+     "employer": 47600,
+     "employee": 0
+    },
+    {
+     "min": 1190001,
+     "max": 1200000,
+     "employer": 48000,
+     "employee": 0
+    },
+    {
+     "min": 1200001,
+     "max": 1210000,
+     "employer": 48400,
+     "employee": 0
+    },
+    {
+     "min": 1210001,
+     "max": 1220000,
+     "employer": 48800,
+     "employee": 0
+    },
+    {
+     "min": 1220001,
+     "max": 1230000,
+     "employer": 49200,
+     "employee": 0
+    },
+    {
+     "min": 1230001,
+     "max": 1240000,
+     "employer": 49600,
+     "employee": 0
+    },
+    {
+     "min": 1240001,
+     "max": 1250000,
+     "employer": 50000,
+     "employee": 0
+    },
+    {
+     "min": 1250001,
+     "max": 1260000,
+     "employer": 50400,
+     "employee": 0
+    },
+    {
+     "min": 1260001,
+     "max": 1270000,
+     "employer": 50800,
+     "employee": 0
+    },
+    {
+     "min": 1270001,
+     "max": 1280000,
+     "employer": 51200,
+     "employee": 0
+    },
+    {
+     "min": 1280001,
+     "max": 1290000,
+     "employer": 51600,
+     "employee": 0
+    },
+    {
+     "min": 1290001,
+     "max": 1300000,
+     "employer": 52000,
+     "employee": 0
+    },
+    {
+     "min": 1300001,
+     "max": 1310000,
+     "employer": 52400,
+     "employee": 0
+    },
+    {
+     "min": 1310001,
+     "max": 1320000,
+     "employer": 52800,
+     "employee": 0
+    },
+    {
+     "min": 1320001,
+     "max": 1330000,
+     "employer": 53200,
+     "employee": 0
+    },
+    {
+     "min": 1330001,
+     "max": 1340000,
+     "employer": 53600,
+     "employee": 0
+    },
+    {
+     "min": 1340001,
+     "max": 1350000,
+     "employer": 54000,
+     "employee": 0
+    },
+    {
+     "min": 1350001,
+     "max": 1360000,
+     "employer": 54400,
+     "employee": 0
+    },
+    {
+     "min": 1360001,
+     "max": 1370000,
+     "employer": 54800,
+     "employee": 0
+    },
+    {
+     "min": 1370001,
+     "max": 1380000,
+     "employer": 55200,
+     "employee": 0
+    },
+    {
+     "min": 1380001,
+     "max": 1390000,
+     "employer": 55600,
+     "employee": 0
+    },
+    {
+     "min": 1390001,
+     "max": 1400000,
+     "employer": 56000,
+     "employee": 0
+    },
+    {
+     "min": 1400001,
+     "max": 1410000,
+     "employer": 56400,
+     "employee": 0
+    },
+    {
+     "min": 1410001,
+     "max": 1420000,
+     "employer": 56800,
+     "employee": 0
+    },
+    {
+     "min": 1420001,
+     "max": 1430000,
+     "employer": 57200,
+     "employee": 0
+    },
+    {
+     "min": 1430001,
+     "max": 1440000,
+     "employer": 57600,
+     "employee": 0
+    },
+    {
+     "min": 1440001,
+     "max": 1450000,
+     "employer": 58000,
+     "employee": 0
+    },
+    {
+     "min": 1450001,
+     "max": 1460000,
+     "employer": 58400,
+     "employee": 0
+    },
+    {
+     "min": 1460001,
+     "max": 1470000,
+     "employer": 58800,
+     "employee": 0
+    },
+    {
+     "min": 1470001,
+     "max": 1480000,
+     "employer": 59200,
+     "employee": 0
+    },
+    {
+     "min": 1480001,
+     "max": 1490000,
+     "employer": 59600,
+     "employee": 0
+    },
+    {
+     "min": 1490001,
+     "max": 1500000,
+     "employer": 60000,
+     "employee": 0
+    },
+    {
+     "min": 1500001,
+     "max": 1510000,
+     "employer": 60400,
+     "employee": 0
+    },
+    {
+     "min": 1510001,
+     "max": 1520000,
+     "employer": 60800,
+     "employee": 0
+    },
+    {
+     "min": 1520001,
+     "max": 1530000,
+     "employer": 61200,
+     "employee": 0
+    },
+    {
+     "min": 1530001,
+     "max": 1540000,
+     "employer": 61600,
+     "employee": 0
+    },
+    {
+     "min": 1540001,
+     "max": 1550000,
+     "employer": 62000,
+     "employee": 0
+    },
+    {
+     "min": 1550001,
+     "max": 1560000,
+     "employer": 62400,
+     "employee": 0
+    },
+    {
+     "min": 1560001,
+     "max": 1570000,
+     "employer": 62800,
+     "employee": 0
+    },
+    {
+     "min": 1570001,
+     "max": 1580000,
+     "employer": 63200,
+     "employee": 0
+    },
+    {
+     "min": 1580001,
+     "max": 1590000,
+     "employer": 63600,
+     "employee": 0
+    },
+    {
+     "min": 1590001,
+     "max": 1600000,
+     "employer": 64000,
+     "employee": 0
+    },
+    {
+     "min": 1600001,
+     "max": 1610000,
+     "employer": 64400,
+     "employee": 0
+    },
+    {
+     "min": 1610001,
+     "max": 1620000,
+     "employer": 64800,
+     "employee": 0
+    },
+    {
+     "min": 1620001,
+     "max": 1630000,
+     "employer": 65200,
+     "employee": 0
+    },
+    {
+     "min": 1630001,
+     "max": 1640000,
+     "employer": 65600,
+     "employee": 0
+    },
+    {
+     "min": 1640001,
+     "max": 1650000,
+     "employer": 66000,
+     "employee": 0
+    },
+    {
+     "min": 1650001,
+     "max": 1660000,
+     "employer": 66400,
+     "employee": 0
+    },
+    {
+     "min": 1660001,
+     "max": 1670000,
+     "employer": 66800,
+     "employee": 0
+    },
+    {
+     "min": 1670001,
+     "max": 1680000,
+     "employer": 67200,
+     "employee": 0
+    },
+    {
+     "min": 1680001,
+     "max": 1690000,
+     "employer": 67600,
+     "employee": 0
+    },
+    {
+     "min": 1690001,
+     "max": 1700000,
+     "employer": 68000,
+     "employee": 0
+    },
+    {
+     "min": 1700001,
+     "max": 1710000,
+     "employer": 68400,
+     "employee": 0
+    },
+    {
+     "min": 1710001,
+     "max": 1720000,
+     "employer": 68800,
+     "employee": 0
+    },
+    {
+     "min": 1720001,
+     "max": 1730000,
+     "employer": 69200,
+     "employee": 0
+    },
+    {
+     "min": 1730001,
+     "max": 1740000,
+     "employer": 69600,
+     "employee": 0
+    },
+    {
+     "min": 1740001,
+     "max": 1750000,
+     "employer": 70000,
+     "employee": 0
+    },
+    {
+     "min": 1750001,
+     "max": 1760000,
+     "employer": 70400,
+     "employee": 0
+    },
+    {
+     "min": 1760001,
+     "max": 1770000,
+     "employer": 70800,
+     "employee": 0
+    },
+    {
+     "min": 1770001,
+     "max": 1780000,
+     "employer": 71200,
+     "employee": 0
+    },
+    {
+     "min": 1780001,
+     "max": 1790000,
+     "employer": 71600,
+     "employee": 0
+    },
+    {
+     "min": 1790001,
+     "max": 1800000,
+     "employer": 72000,
+     "employee": 0
+    },
+    {
+     "min": 1800001,
+     "max": 1810000,
+     "employer": 72400,
+     "employee": 0
+    },
+    {
+     "min": 1810001,
+     "max": 1820000,
+     "employer": 72800,
+     "employee": 0
+    },
+    {
+     "min": 1820001,
+     "max": 1830000,
+     "employer": 73200,
+     "employee": 0
+    },
+    {
+     "min": 1830001,
+     "max": 1840000,
+     "employer": 73600,
+     "employee": 0
+    },
+    {
+     "min": 1840001,
+     "max": 1850000,
+     "employer": 74000,
+     "employee": 0
+    },
+    {
+     "min": 1850001,
+     "max": 1860000,
+     "employer": 74400,
+     "employee": 0
+    },
+    {
+     "min": 1860001,
+     "max": 1870000,
+     "employer": 74800,
+     "employee": 0
+    },
+    {
+     "min": 1870001,
+     "max": 1880000,
+     "employer": 75200,
+     "employee": 0
+    },
+    {
+     "min": 1880001,
+     "max": 1890000,
+     "employer": 75600,
+     "employee": 0
+    },
+    {
+     "min": 1890001,
+     "max": 1900000,
+     "employer": 76000,
+     "employee": 0
+    },
+    {
+     "min": 1900001,
+     "max": 1910000,
+     "employer": 76400,
+     "employee": 0
+    },
+    {
+     "min": 1910001,
+     "max": 1920000,
+     "employer": 76800,
+     "employee": 0
+    },
+    {
+     "min": 1920001,
+     "max": 1930000,
+     "employer": 77200,
+     "employee": 0
+    },
+    {
+     "min": 1930001,
+     "max": 1940000,
+     "employer": 77600,
+     "employee": 0
+    },
+    {
+     "min": 1940001,
+     "max": 1950000,
+     "employer": 78000,
+     "employee": 0
+    },
+    {
+     "min": 1950001,
+     "max": 1960000,
+     "employer": 78400,
+     "employee": 0
+    },
+    {
+     "min": 1960001,
+     "max": 1970000,
+     "employer": 78800,
+     "employee": 0
+    },
+    {
+     "min": 1970001,
+     "max": 1980000,
+     "employer": 79200,
+     "employee": 0
+    },
+    {
+     "min": 1980001,
+     "max": 1990000,
+     "employer": 79600,
+     "employee": 0
+    },
+    {
+     "min": 1990001,
+     "max": 2000000,
+     "employer": 80000,
+     "employee": 0
+    }
+   ],
+   "aboveTable": {
+    "threshold": 20000,
+    "employerPercent": 4,
+    "employeePercent": 0,
+    "roundUpToRinggit": true
+   }
+  }
+ },
+ "socsoRules": {
+  "firstCategory": {
+   "bands": [
+    {
+     "min": 1,
+     "max": 3000,
+     "employer": 40,
+     "employee": 10
+    },
+    {
+     "min": 3001,
+     "max": 5000,
+     "employer": 70,
+     "employee": 20
+    },
+    {
+     "min": 5001,
+     "max": 7000,
+     "employer": 110,
+     "employee": 30
+    },
+    {
+     "min": 7001,
+     "max": 10000,
+     "employer": 150,
+     "employee": 40
+    },
+    {
+     "min": 10001,
+     "max": 14000,
+     "employer": 210,
+     "employee": 60
+    },
+    {
+     "min": 14001,
+     "max": 20000,
+     "employer": 295,
+     "employee": 85
+    },
+    {
+     "min": 20001,
+     "max": 30000,
+     "employer": 435,
+     "employee": 125
+    },
+    {
+     "min": 30001,
+     "max": 40000,
+     "employer": 615,
+     "employee": 175
+    },
+    {
+     "min": 40001,
+     "max": 50000,
+     "employer": 785,
+     "employee": 225
+    },
+    {
+     "min": 50001,
+     "max": 60000,
+     "employer": 965,
+     "employee": 275
+    },
+    {
+     "min": 60001,
+     "max": 70000,
+     "employer": 1135,
+     "employee": 325
+    },
+    {
+     "min": 70001,
+     "max": 80000,
+     "employer": 1315,
+     "employee": 375
+    },
+    {
+     "min": 80001,
+     "max": 90000,
+     "employer": 1485,
+     "employee": 425
+    },
+    {
+     "min": 90001,
+     "max": 100000,
+     "employer": 1665,
+     "employee": 475
+    },
+    {
+     "min": 100001,
+     "max": 110000,
+     "employer": 1835,
+     "employee": 525
+    },
+    {
+     "min": 110001,
+     "max": 120000,
+     "employer": 2015,
+     "employee": 575
+    },
+    {
+     "min": 120001,
+     "max": 130000,
+     "employer": 2185,
+     "employee": 625
+    },
+    {
+     "min": 130001,
+     "max": 140000,
+     "employer": 2365,
+     "employee": 675
+    },
+    {
+     "min": 140001,
+     "max": 150000,
+     "employer": 2535,
+     "employee": 725
+    },
+    {
+     "min": 150001,
+     "max": 160000,
+     "employer": 2715,
+     "employee": 775
+    },
+    {
+     "min": 160001,
+     "max": 170000,
+     "employer": 2885,
+     "employee": 825
+    },
+    {
+     "min": 170001,
+     "max": 180000,
+     "employer": 3065,
+     "employee": 875
+    },
+    {
+     "min": 180001,
+     "max": 190000,
+     "employer": 3235,
+     "employee": 925
+    },
+    {
+     "min": 190001,
+     "max": 200000,
+     "employer": 3415,
+     "employee": 975
+    },
+    {
+     "min": 200001,
+     "max": 210000,
+     "employer": 3585,
+     "employee": 1025
+    },
+    {
+     "min": 210001,
+     "max": 220000,
+     "employer": 3765,
+     "employee": 1075
+    },
+    {
+     "min": 220001,
+     "max": 230000,
+     "employer": 3935,
+     "employee": 1125
+    },
+    {
+     "min": 230001,
+     "max": 240000,
+     "employer": 4115,
+     "employee": 1175
+    },
+    {
+     "min": 240001,
+     "max": 250000,
+     "employer": 4285,
+     "employee": 1225
+    },
+    {
+     "min": 250001,
+     "max": 260000,
+     "employer": 4465,
+     "employee": 1275
+    },
+    {
+     "min": 260001,
+     "max": 270000,
+     "employer": 4635,
+     "employee": 1325
+    },
+    {
+     "min": 270001,
+     "max": 280000,
+     "employer": 4815,
+     "employee": 1375
+    },
+    {
+     "min": 280001,
+     "max": 290000,
+     "employer": 4985,
+     "employee": 1425
+    },
+    {
+     "min": 290001,
+     "max": 300000,
+     "employer": 5165,
+     "employee": 1475
+    },
+    {
+     "min": 300001,
+     "max": 310000,
+     "employer": 5335,
+     "employee": 1525
+    },
+    {
+     "min": 310001,
+     "max": 320000,
+     "employer": 5515,
+     "employee": 1575
+    },
+    {
+     "min": 320001,
+     "max": 330000,
+     "employer": 5685,
+     "employee": 1625
+    },
+    {
+     "min": 330001,
+     "max": 340000,
+     "employer": 5865,
+     "employee": 1675
+    },
+    {
+     "min": 340001,
+     "max": 350000,
+     "employer": 6035,
+     "employee": 1725
+    },
+    {
+     "min": 350001,
+     "max": 360000,
+     "employer": 6215,
+     "employee": 1775
+    },
+    {
+     "min": 360001,
+     "max": 370000,
+     "employer": 6385,
+     "employee": 1825
+    },
+    {
+     "min": 370001,
+     "max": 380000,
+     "employer": 6565,
+     "employee": 1875
+    },
+    {
+     "min": 380001,
+     "max": 390000,
+     "employer": 6735,
+     "employee": 1925
+    },
+    {
+     "min": 390001,
+     "max": 400000,
+     "employer": 6915,
+     "employee": 1975
+    },
+    {
+     "min": 400001,
+     "max": 410000,
+     "employer": 7085,
+     "employee": 2025
+    },
+    {
+     "min": 410001,
+     "max": 420000,
+     "employer": 7265,
+     "employee": 2075
+    },
+    {
+     "min": 420001,
+     "max": 430000,
+     "employer": 7435,
+     "employee": 2125
+    },
+    {
+     "min": 430001,
+     "max": 440000,
+     "employer": 7615,
+     "employee": 2175
+    },
+    {
+     "min": 440001,
+     "max": 450000,
+     "employer": 7785,
+     "employee": 2225
+    },
+    {
+     "min": 450001,
+     "max": 460000,
+     "employer": 7965,
+     "employee": 2275
+    },
+    {
+     "min": 460001,
+     "max": 470000,
+     "employer": 8135,
+     "employee": 2325
+    },
+    {
+     "min": 470001,
+     "max": 480000,
+     "employer": 8315,
+     "employee": 2375
+    },
+    {
+     "min": 480001,
+     "max": 490000,
+     "employer": 8485,
+     "employee": 2425
+    },
+    {
+     "min": 490001,
+     "max": 500000,
+     "employer": 8665,
+     "employee": 2475
+    },
+    {
+     "min": 500001,
+     "max": 510000,
+     "employer": 8835,
+     "employee": 2525
+    },
+    {
+     "min": 510001,
+     "max": 520000,
+     "employer": 9015,
+     "employee": 2575
+    },
+    {
+     "min": 520001,
+     "max": 530000,
+     "employer": 9185,
+     "employee": 2625
+    },
+    {
+     "min": 530001,
+     "max": 540000,
+     "employer": 9365,
+     "employee": 2675
+    },
+    {
+     "min": 540001,
+     "max": 550000,
+     "employer": 9535,
+     "employee": 2725
+    },
+    {
+     "min": 550001,
+     "max": 560000,
+     "employer": 9715,
+     "employee": 2775
+    },
+    {
+     "min": 560001,
+     "max": 570000,
+     "employer": 9885,
+     "employee": 2825
+    },
+    {
+     "min": 570001,
+     "max": 580000,
+     "employer": 10065,
+     "employee": 2875
+    },
+    {
+     "min": 580001,
+     "max": 590000,
+     "employer": 10235,
+     "employee": 2925
+    },
+    {
+     "min": 590001,
+     "max": null,
+     "employer": 10415,
+     "employee": 2975
+    }
+   ]
+  },
+  "secondCategory": {
+   "bands": [
+    {
+     "min": 1,
+     "max": 3000,
+     "employer": 30,
+     "employee": 0
+    },
+    {
+     "min": 3001,
+     "max": 5000,
+     "employer": 50,
+     "employee": 0
+    },
+    {
+     "min": 5001,
+     "max": 7000,
+     "employer": 80,
+     "employee": 0
+    },
+    {
+     "min": 7001,
+     "max": 10000,
+     "employer": 110,
+     "employee": 0
+    },
+    {
+     "min": 10001,
+     "max": 14000,
+     "employer": 150,
+     "employee": 0
+    },
+    {
+     "min": 14001,
+     "max": 20000,
+     "employer": 210,
+     "employee": 0
+    },
+    {
+     "min": 20001,
+     "max": 30000,
+     "employer": 310,
+     "employee": 0
+    },
+    {
+     "min": 30001,
+     "max": 40000,
+     "employer": 440,
+     "employee": 0
+    },
+    {
+     "min": 40001,
+     "max": 50000,
+     "employer": 560,
+     "employee": 0
+    },
+    {
+     "min": 50001,
+     "max": 60000,
+     "employer": 690,
+     "employee": 0
+    },
+    {
+     "min": 60001,
+     "max": 70000,
+     "employer": 810,
+     "employee": 0
+    },
+    {
+     "min": 70001,
+     "max": 80000,
+     "employer": 940,
+     "employee": 0
+    },
+    {
+     "min": 80001,
+     "max": 90000,
+     "employer": 1060,
+     "employee": 0
+    },
+    {
+     "min": 90001,
+     "max": 100000,
+     "employer": 1190,
+     "employee": 0
+    },
+    {
+     "min": 100001,
+     "max": 110000,
+     "employer": 1310,
+     "employee": 0
+    },
+    {
+     "min": 110001,
+     "max": 120000,
+     "employer": 1440,
+     "employee": 0
+    },
+    {
+     "min": 120001,
+     "max": 130000,
+     "employer": 1560,
+     "employee": 0
+    },
+    {
+     "min": 130001,
+     "max": 140000,
+     "employer": 1690,
+     "employee": 0
+    },
+    {
+     "min": 140001,
+     "max": 150000,
+     "employer": 1810,
+     "employee": 0
+    },
+    {
+     "min": 150001,
+     "max": 160000,
+     "employer": 1940,
+     "employee": 0
+    },
+    {
+     "min": 160001,
+     "max": 170000,
+     "employer": 2060,
+     "employee": 0
+    },
+    {
+     "min": 170001,
+     "max": 180000,
+     "employer": 2190,
+     "employee": 0
+    },
+    {
+     "min": 180001,
+     "max": 190000,
+     "employer": 2310,
+     "employee": 0
+    },
+    {
+     "min": 190001,
+     "max": 200000,
+     "employer": 2440,
+     "employee": 0
+    },
+    {
+     "min": 200001,
+     "max": 210000,
+     "employer": 2560,
+     "employee": 0
+    },
+    {
+     "min": 210001,
+     "max": 220000,
+     "employer": 2690,
+     "employee": 0
+    },
+    {
+     "min": 220001,
+     "max": 230000,
+     "employer": 2810,
+     "employee": 0
+    },
+    {
+     "min": 230001,
+     "max": 240000,
+     "employer": 2940,
+     "employee": 0
+    },
+    {
+     "min": 240001,
+     "max": 250000,
+     "employer": 3060,
+     "employee": 0
+    },
+    {
+     "min": 250001,
+     "max": 260000,
+     "employer": 3190,
+     "employee": 0
+    },
+    {
+     "min": 260001,
+     "max": 270000,
+     "employer": 3310,
+     "employee": 0
+    },
+    {
+     "min": 270001,
+     "max": 280000,
+     "employer": 3440,
+     "employee": 0
+    },
+    {
+     "min": 280001,
+     "max": 290000,
+     "employer": 3560,
+     "employee": 0
+    },
+    {
+     "min": 290001,
+     "max": 300000,
+     "employer": 3690,
+     "employee": 0
+    },
+    {
+     "min": 300001,
+     "max": 310000,
+     "employer": 3810,
+     "employee": 0
+    },
+    {
+     "min": 310001,
+     "max": 320000,
+     "employer": 3940,
+     "employee": 0
+    },
+    {
+     "min": 320001,
+     "max": 330000,
+     "employer": 4060,
+     "employee": 0
+    },
+    {
+     "min": 330001,
+     "max": 340000,
+     "employer": 4190,
+     "employee": 0
+    },
+    {
+     "min": 340001,
+     "max": 350000,
+     "employer": 4310,
+     "employee": 0
+    },
+    {
+     "min": 350001,
+     "max": 360000,
+     "employer": 4440,
+     "employee": 0
+    },
+    {
+     "min": 360001,
+     "max": 370000,
+     "employer": 4560,
+     "employee": 0
+    },
+    {
+     "min": 370001,
+     "max": 380000,
+     "employer": 4690,
+     "employee": 0
+    },
+    {
+     "min": 380001,
+     "max": 390000,
+     "employer": 4810,
+     "employee": 0
+    },
+    {
+     "min": 390001,
+     "max": 400000,
+     "employer": 4940,
+     "employee": 0
+    },
+    {
+     "min": 400001,
+     "max": 410000,
+     "employer": 5060,
+     "employee": 0
+    },
+    {
+     "min": 410001,
+     "max": 420000,
+     "employer": 5190,
+     "employee": 0
+    },
+    {
+     "min": 420001,
+     "max": 430000,
+     "employer": 5310,
+     "employee": 0
+    },
+    {
+     "min": 430001,
+     "max": 440000,
+     "employer": 5440,
+     "employee": 0
+    },
+    {
+     "min": 440001,
+     "max": 450000,
+     "employer": 5560,
+     "employee": 0
+    },
+    {
+     "min": 450001,
+     "max": 460000,
+     "employer": 5690,
+     "employee": 0
+    },
+    {
+     "min": 460001,
+     "max": 470000,
+     "employer": 5810,
+     "employee": 0
+    },
+    {
+     "min": 470001,
+     "max": 480000,
+     "employer": 5940,
+     "employee": 0
+    },
+    {
+     "min": 480001,
+     "max": 490000,
+     "employer": 6060,
+     "employee": 0
+    },
+    {
+     "min": 490001,
+     "max": 500000,
+     "employer": 6190,
+     "employee": 0
+    },
+    {
+     "min": 500001,
+     "max": 510000,
+     "employer": 6310,
+     "employee": 0
+    },
+    {
+     "min": 510001,
+     "max": 520000,
+     "employer": 6440,
+     "employee": 0
+    },
+    {
+     "min": 520001,
+     "max": 530000,
+     "employer": 6560,
+     "employee": 0
+    },
+    {
+     "min": 530001,
+     "max": 540000,
+     "employer": 6690,
+     "employee": 0
+    },
+    {
+     "min": 540001,
+     "max": 550000,
+     "employer": 6810,
+     "employee": 0
+    },
+    {
+     "min": 550001,
+     "max": 560000,
+     "employer": 6940,
+     "employee": 0
+    },
+    {
+     "min": 560001,
+     "max": 570000,
+     "employer": 7060,
+     "employee": 0
+    },
+    {
+     "min": 570001,
+     "max": 580000,
+     "employer": 7190,
+     "employee": 0
+    },
+    {
+     "min": 580001,
+     "max": 590000,
+     "employer": 7310,
+     "employee": 0
+    },
+    {
+     "min": 590001,
+     "max": null,
+     "employer": 7440,
+     "employee": 0
+    }
+   ]
+  }
+ },
+ "eisRules": {
+  "under60": {
+   "bands": [
+    {
+     "min": 1,
+     "max": 3000,
+     "employer": 5,
+     "employee": 5
+    },
+    {
+     "min": 3001,
+     "max": 5000,
+     "employer": 10,
+     "employee": 10
+    },
+    {
+     "min": 5001,
+     "max": 7000,
+     "employer": 15,
+     "employee": 15
+    },
+    {
+     "min": 7001,
+     "max": 10000,
+     "employer": 20,
+     "employee": 20
+    },
+    {
+     "min": 10001,
+     "max": 14000,
+     "employer": 25,
+     "employee": 25
+    },
+    {
+     "min": 14001,
+     "max": 20000,
+     "employer": 35,
+     "employee": 35
+    },
+    {
+     "min": 20001,
+     "max": 30000,
+     "employer": 50,
+     "employee": 50
+    },
+    {
+     "min": 30001,
+     "max": 40000,
+     "employer": 70,
+     "employee": 70
+    },
+    {
+     "min": 40001,
+     "max": 50000,
+     "employer": 90,
+     "employee": 90
+    },
+    {
+     "min": 50001,
+     "max": 60000,
+     "employer": 110,
+     "employee": 110
+    },
+    {
+     "min": 60001,
+     "max": 70000,
+     "employer": 130,
+     "employee": 130
+    },
+    {
+     "min": 70001,
+     "max": 80000,
+     "employer": 150,
+     "employee": 150
+    },
+    {
+     "min": 80001,
+     "max": 90000,
+     "employer": 170,
+     "employee": 170
+    },
+    {
+     "min": 90001,
+     "max": 100000,
+     "employer": 190,
+     "employee": 190
+    },
+    {
+     "min": 100001,
+     "max": 110000,
+     "employer": 210,
+     "employee": 210
+    },
+    {
+     "min": 110001,
+     "max": 120000,
+     "employer": 230,
+     "employee": 230
+    },
+    {
+     "min": 120001,
+     "max": 130000,
+     "employer": 250,
+     "employee": 250
+    },
+    {
+     "min": 130001,
+     "max": 140000,
+     "employer": 270,
+     "employee": 270
+    },
+    {
+     "min": 140001,
+     "max": 150000,
+     "employer": 290,
+     "employee": 290
+    },
+    {
+     "min": 150001,
+     "max": 160000,
+     "employer": 310,
+     "employee": 310
+    },
+    {
+     "min": 160001,
+     "max": 170000,
+     "employer": 330,
+     "employee": 330
+    },
+    {
+     "min": 170001,
+     "max": 180000,
+     "employer": 350,
+     "employee": 350
+    },
+    {
+     "min": 180001,
+     "max": 190000,
+     "employer": 370,
+     "employee": 370
+    },
+    {
+     "min": 190001,
+     "max": 200000,
+     "employer": 390,
+     "employee": 390
+    },
+    {
+     "min": 200001,
+     "max": 210000,
+     "employer": 410,
+     "employee": 410
+    },
+    {
+     "min": 210001,
+     "max": 220000,
+     "employer": 430,
+     "employee": 430
+    },
+    {
+     "min": 220001,
+     "max": 230000,
+     "employer": 450,
+     "employee": 450
+    },
+    {
+     "min": 230001,
+     "max": 240000,
+     "employer": 470,
+     "employee": 470
+    },
+    {
+     "min": 240001,
+     "max": 250000,
+     "employer": 490,
+     "employee": 490
+    },
+    {
+     "min": 250001,
+     "max": 260000,
+     "employer": 510,
+     "employee": 510
+    },
+    {
+     "min": 260001,
+     "max": 270000,
+     "employer": 530,
+     "employee": 530
+    },
+    {
+     "min": 270001,
+     "max": 280000,
+     "employer": 550,
+     "employee": 550
+    },
+    {
+     "min": 280001,
+     "max": 290000,
+     "employer": 570,
+     "employee": 570
+    },
+    {
+     "min": 290001,
+     "max": 300000,
+     "employer": 590,
+     "employee": 590
+    },
+    {
+     "min": 300001,
+     "max": 310000,
+     "employer": 610,
+     "employee": 610
+    },
+    {
+     "min": 310001,
+     "max": 320000,
+     "employer": 630,
+     "employee": 630
+    },
+    {
+     "min": 320001,
+     "max": 330000,
+     "employer": 650,
+     "employee": 650
+    },
+    {
+     "min": 330001,
+     "max": 340000,
+     "employer": 670,
+     "employee": 670
+    },
+    {
+     "min": 340001,
+     "max": 350000,
+     "employer": 690,
+     "employee": 690
+    },
+    {
+     "min": 350001,
+     "max": 360000,
+     "employer": 710,
+     "employee": 710
+    },
+    {
+     "min": 360001,
+     "max": 370000,
+     "employer": 730,
+     "employee": 730
+    },
+    {
+     "min": 370001,
+     "max": 380000,
+     "employer": 750,
+     "employee": 750
+    },
+    {
+     "min": 380001,
+     "max": 390000,
+     "employer": 770,
+     "employee": 770
+    },
+    {
+     "min": 390001,
+     "max": 400000,
+     "employer": 790,
+     "employee": 790
+    },
+    {
+     "min": 400001,
+     "max": 410000,
+     "employer": 810,
+     "employee": 810
+    },
+    {
+     "min": 410001,
+     "max": 420000,
+     "employer": 830,
+     "employee": 830
+    },
+    {
+     "min": 420001,
+     "max": 430000,
+     "employer": 850,
+     "employee": 850
+    },
+    {
+     "min": 430001,
+     "max": 440000,
+     "employer": 870,
+     "employee": 870
+    },
+    {
+     "min": 440001,
+     "max": 450000,
+     "employer": 890,
+     "employee": 890
+    },
+    {
+     "min": 450001,
+     "max": 460000,
+     "employer": 910,
+     "employee": 910
+    },
+    {
+     "min": 460001,
+     "max": 470000,
+     "employer": 930,
+     "employee": 930
+    },
+    {
+     "min": 470001,
+     "max": 480000,
+     "employer": 950,
+     "employee": 950
+    },
+    {
+     "min": 480001,
+     "max": 490000,
+     "employer": 970,
+     "employee": 970
+    },
+    {
+     "min": 490001,
+     "max": 500000,
+     "employer": 990,
+     "employee": 990
+    },
+    {
+     "min": 500001,
+     "max": 510000,
+     "employer": 1010,
+     "employee": 1010
+    },
+    {
+     "min": 510001,
+     "max": 520000,
+     "employer": 1030,
+     "employee": 1030
+    },
+    {
+     "min": 520001,
+     "max": 530000,
+     "employer": 1050,
+     "employee": 1050
+    },
+    {
+     "min": 530001,
+     "max": 540000,
+     "employer": 1070,
+     "employee": 1070
+    },
+    {
+     "min": 540001,
+     "max": 550000,
+     "employer": 1090,
+     "employee": 1090
+    },
+    {
+     "min": 550001,
+     "max": 560000,
+     "employer": 1110,
+     "employee": 1110
+    },
+    {
+     "min": 560001,
+     "max": 570000,
+     "employer": 1130,
+     "employee": 1130
+    },
+    {
+     "min": 570001,
+     "max": 580000,
+     "employer": 1150,
+     "employee": 1150
+    },
+    {
+     "min": 580001,
+     "max": 590000,
+     "employer": 1170,
+     "employee": 1170
+    },
+    {
+     "min": 590001,
+     "max": null,
+     "employer": 1190,
+     "employee": 1190
+    }
+   ]
+  },
+  "over60": {
+   "bands": [
+    {
+     "min": 1,
+     "max": 3000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 3001,
+     "max": 5000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 5001,
+     "max": 7000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 7001,
+     "max": 10000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 10001,
+     "max": 14000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 14001,
+     "max": 20000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 20001,
+     "max": 30000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 30001,
+     "max": 40000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 40001,
+     "max": 50000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 50001,
+     "max": 60000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 60001,
+     "max": 70000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 70001,
+     "max": 80000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 80001,
+     "max": 90000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 90001,
+     "max": 100000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 100001,
+     "max": 110000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 110001,
+     "max": 120000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 120001,
+     "max": 130000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 130001,
+     "max": 140000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 140001,
+     "max": 150000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 150001,
+     "max": 160000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 160001,
+     "max": 170000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 170001,
+     "max": 180000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 180001,
+     "max": 190000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 190001,
+     "max": 200000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 200001,
+     "max": 210000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 210001,
+     "max": 220000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 220001,
+     "max": 230000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 230001,
+     "max": 240000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 240001,
+     "max": 250000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 250001,
+     "max": 260000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 260001,
+     "max": 270000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 270001,
+     "max": 280000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 280001,
+     "max": 290000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 290001,
+     "max": 300000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 300001,
+     "max": 310000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 310001,
+     "max": 320000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 320001,
+     "max": 330000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 330001,
+     "max": 340000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 340001,
+     "max": 350000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 350001,
+     "max": 360000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 360001,
+     "max": 370000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 370001,
+     "max": 380000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 380001,
+     "max": 390000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 390001,
+     "max": 400000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 400001,
+     "max": 410000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 410001,
+     "max": 420000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 420001,
+     "max": 430000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 430001,
+     "max": 440000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 440001,
+     "max": 450000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 450001,
+     "max": 460000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 460001,
+     "max": 470000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 470001,
+     "max": 480000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 480001,
+     "max": 490000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 490001,
+     "max": 500000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 500001,
+     "max": 510000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 510001,
+     "max": 520000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 520001,
+     "max": 530000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 530001,
+     "max": 540000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 540001,
+     "max": 550000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 550001,
+     "max": 560000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 560001,
+     "max": 570000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 570001,
+     "max": 580000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 580001,
+     "max": 590000,
+     "employer": 0,
+     "employee": 0
+    },
+    {
+     "min": 590001,
+     "max": null,
+     "employer": 0,
+     "employee": 0
+    }
+   ]
+  }
+ },
+ "pcbRules": null
+}
