@@ -388,6 +388,8 @@ export interface PanelReconciliation {
     received: number;
     writtenOff: number;
     outstanding: number;
+    /** Agreed or banked ABOVE what the fee rule expects. See financial-invariants.ts. */
+    overRecovered: number;
     /** Claims whose fee treatment is unestablished — their fee is NOT in the figures above. */
     unresolvedFeeTreatment: number;
     /**

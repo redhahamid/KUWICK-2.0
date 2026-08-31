@@ -987,7 +987,12 @@ export class ClaimWorkspaceService {
    * it a reconciliation rather than a list of numbers:
    *
    *   expected receivable = claimed ± fee, per the panel's fee direction
-   *   received + outstanding + rejected + written off = expected
+   *   received + outstanding + rejected + written off = expected + over-recovered
+   *
+   * The last term is not padding. The four states partition the EXPECTATION,
+   * and a panel that pays more than its own fee rule says — which the clinic's
+   * workbook actually contains — puts money outside it. Without the term the
+   * dashboard reads "does not reconcile" on a legitimate event.
    *
    * Every figure comes from `rollUpClaims`, which is `computeClaimBalance`
    * summed — the same function the individual claim screen uses. There is no
@@ -1107,6 +1112,15 @@ export class ClaimWorkspaceService {
         writtenOff: fromCents(roll.writtenOffCents),
         outstanding: fromCents(roll.outstandingCents),
         /**
+         * Money that arrived, or was agreed, beyond what the fee rule expected
+         * — a panel that did not deduct its configured admin fee pays the whole
+         * claim. The four states partition the EXPECTATION, so this sits
+         * outside them and the identity below carries it explicitly rather than
+         * the dashboard reading "does not reconcile" whenever a real exception
+         * occurs.
+         */
+        overRecovered: fromCents(roll.overRecoveredCents),
+        /**
          * Claims whose fee direction nobody has configured (G-1). Their fee is
          * excluded from `expectedReceivable` above rather than guessed, so a
          * non-zero count here means this figure is understated by that much
@@ -1151,7 +1165,7 @@ export class ClaimWorkspaceService {
       // up.
       reconciles:
         roll.receivedCents + roll.outstandingCents + roll.rejectedCents + roll.writtenOffCents ===
-        roll.expectedReceivableCents,
+        roll.expectedReceivableCents + roll.overRecoveredCents,
       aging: {
         current: fromCents(aging.CURRENT),
         d31_60: fromCents(aging.D31_60),

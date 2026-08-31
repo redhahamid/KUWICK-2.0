@@ -274,6 +274,27 @@ export interface ClaimBalance {
    * ledger drifts permanently above what it will ever bank.
    */
   outstandingCents: number;
+  /**
+   * MONEY BEYOND WHAT THE FEE RULE EXPECTED.
+   *
+   * The four states — received, outstanding, rejected, written off — partition
+   * the EXPECTATION. When a panel adjudicates or pays ABOVE it, the excess was
+   * never part of that expectation, and the identity
+   * `received + outstanding + rejected + written off = expected` cannot hold
+   * without a term for it.
+   *
+   * This is not hypothetical. A panel that does not deduct its configured
+   * admin fee pays the whole claim: RM120 arrives where the rule said RM110.40,
+   * and the reconciliation was out by exactly the RM9.60 fee. That case is real
+   * — the clinic's own workbook contains two of them (D-112 §4.1a) — so the
+   * arithmetic has to name it rather than a dashboard reading "does not
+   * reconcile" forever.
+   *
+   * Measured against `expectedReceivableCents`, from whichever of the panel's
+   * two statements is larger: what they said they would pay, and what they
+   * actually paid.
+   */
+  overRecoveredCents: number;
   /** True once the panel has told us something. */
   adjudicated: boolean;
 }
@@ -298,6 +319,10 @@ export function computeClaimBalance(claim: ClaimFacts): ClaimBalance {
   const writtenOffCents = toCents(claim.writtenOffAmount ?? 0);
 
   const collectableBase = adjudicated ? approvedCents : expectedReceivableCents;
+  // The panel's two statements about this claim: what they agreed to pay, and
+  // what they actually paid. Either can exceed the expectation, and the excess
+  // is the same money whichever way it arrived.
+  const claimedBackCents = Math.max(adjudicated ? approvedCents : 0, receivedCents);
 
   return {
     claimedCents,
@@ -309,6 +334,7 @@ export function computeClaimBalance(claim: ClaimFacts): ClaimBalance {
     receivedCents,
     writtenOffCents,
     outstandingCents: clampAtZero(collectableBase - receivedCents - writtenOffCents),
+    overRecoveredCents: clampAtZero(claimedBackCents - expectedReceivableCents),
     adjudicated,
   };
 }
@@ -332,6 +358,8 @@ export function rollUpClaims(claims: ClaimFacts[]) {
     receivedCents: balances.reduce((total, balance) => total + balance.receivedCents, 0),
     writtenOffCents: balances.reduce((total, balance) => total + balance.writtenOffCents, 0),
     outstandingCents: balances.reduce((total, balance) => total + balance.outstandingCents, 0),
+    /** See `ClaimBalance.overRecoveredCents`. Without this the identity below fails. */
+    overRecoveredCents: balances.reduce((total, balance) => total + balance.overRecoveredCents, 0),
   };
 }
 

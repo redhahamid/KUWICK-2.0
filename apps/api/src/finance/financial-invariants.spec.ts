@@ -409,3 +409,69 @@ describe('financial invariants', () => {
     });
   });
 });
+
+describe('over-recovery — when a panel pays more than its own fee rule says', () => {
+  // The clinic's workbook contains two of these (D-112 §4.1a): a panel with a
+  // configured admin fee that remitted the whole claim anyway. Before this
+  // term the reconciliation was out by exactly that fee, and the dashboard
+  // read "does not reconcile" on a legitimate business event.
+  const withheld = { claimedAmount: 120, feeAmount: 9.6, feeTreatment: 'WITHHELD_FROM_CLAIM' as const };
+
+  it('a claim settled at exactly the expectation has no over-recovery', () => {
+    const balance = computeClaimBalance({ ...withheld, approvedAmount: 110.4, receivedAmount: 110.4 });
+    expect(balance.expectedReceivableCents).toBe(11_040);
+    expect(balance.overRecoveredCents).toBe(0);
+  });
+
+  it('a panel that did not deduct its fee over-recovers by exactly the fee', () => {
+    const balance = computeClaimBalance({ ...withheld, approvedAmount: 120, receivedAmount: 120 });
+    expect(balance.overRecoveredCents).toBe(960);
+    // And the identity holds WITH the term, which is the whole point.
+    expect(
+      balance.receivedCents + balance.outstandingCents + balance.rejectedCents + balance.writtenOffCents,
+    ).toBe(balance.expectedReceivableCents + balance.overRecoveredCents);
+  });
+
+  it('a part-approved claim has no over-recovery — the shortfall is the rejection', () => {
+    const balance = computeClaimBalance({
+      claimedAmount: 220,
+      feeAmount: 17.6,
+      feeTreatment: 'WITHHELD_FROM_CLAIM',
+      approvedAmount: 180,
+      rejectedAmount: 22.4,
+      receivedAmount: 120,
+    });
+    expect(balance.overRecoveredCents).toBe(0);
+    expect(
+      balance.receivedCents + balance.outstandingCents + balance.rejectedCents + balance.writtenOffCents,
+    ).toBe(balance.expectedReceivableCents + balance.overRecoveredCents);
+  });
+
+  it('a claim rejected in full has no over-recovery', () => {
+    const balance = computeClaimBalance({ ...withheld, approvedAmount: 0, rejectedAmount: 110.4 });
+    expect(balance.overRecoveredCents).toBe(0);
+    expect(
+      balance.receivedCents + balance.outstandingCents + balance.rejectedCents + balance.writtenOffCents,
+    ).toBe(balance.expectedReceivableCents);
+  });
+
+  it('paying an UNADJUDICATED claim more than expected is over-recovery too', () => {
+    // No adjudication to read, so the only statement the panel has made is the
+    // money itself.
+    const balance = computeClaimBalance({ ...withheld, receivedAmount: 120 });
+    expect(balance.adjudicated).toBe(false);
+    expect(balance.overRecoveredCents).toBe(960);
+  });
+
+  it('the roll-up carries it, so a panel of mixed claims still reconciles', () => {
+    const roll = rollUpClaims([
+      { ...withheld, approvedAmount: 110.4, receivedAmount: 110.4 },
+      { ...withheld, approvedAmount: 120, receivedAmount: 120 },
+      { ...withheld, approvedAmount: 0, rejectedAmount: 110.4 },
+    ]);
+    expect(roll.overRecoveredCents).toBe(960);
+    expect(
+      roll.receivedCents + roll.outstandingCents + roll.rejectedCents + roll.writtenOffCents,
+    ).toBe(roll.expectedReceivableCents + roll.overRecoveredCents);
+  });
+});

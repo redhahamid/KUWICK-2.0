@@ -37,9 +37,15 @@ test.describe('Panel', () => {
     const outstanding = cents(await statValue(page, 'OUTSTANDING').innerText());
     const rejected = cents(await statValue(page, 'REJECTED').innerText());
     const writtenOff = cents(await statValue(page, 'WRITTEN OFF').innerText());
+    const overRecovered = cents(await statValue(page, 'OVER-RECOVERED').innerText());
 
-    // Every ringgit claimed is in exactly one of these four states.
-    expect(received + outstanding + rejected + writtenOff).toBe(expected);
+    // Every ringgit claimed is in exactly one of these four states — PLUS the
+    // money that arrived beyond what the fee rule expected. That last term is
+    // not slack in the identity: the four states partition the EXPECTATION,
+    // and a panel that does not deduct its own admin fee pays the whole claim,
+    // putting money outside it. The seeded clinic contains exactly one such
+    // claim, which is why this assertion caught the missing term.
+    expect(received + outstanding + rejected + writtenOff).toBe(expected + overRecovered);
     await expect(statValue(page, 'RECONCILES')).toHaveText('Yes');
 
     expect(errors).toEqual([]);

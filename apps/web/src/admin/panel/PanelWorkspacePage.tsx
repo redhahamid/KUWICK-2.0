@@ -233,10 +233,21 @@ export function PanelWorkspacePage() {
           { label: 'Rejected', value: money(totals?.rejected ?? 0), tone: (totals?.rejected ?? 0) > 0 ? 'bad' : 'neutral' },
           { label: 'Written off', value: money(totals?.writtenOff ?? 0) },
           {
+            // Money beyond what the fee rule expected. Not a windfall to
+            // celebrate — it means a panel did not apply its own configured
+            // fee, and either the fee was waived or the configuration is wrong.
+            label: 'Over-recovered',
+            value: money(totals?.overRecovered ?? 0),
+            tone: (totals?.overRecovered ?? 0) > 0 ? 'warn' : 'neutral',
+            explain:
+              'Money agreed or banked ABOVE what this panel’s fee rule expects — usually a panel that did not deduct its own admin fee. Worth establishing whether the fee was waived or the configuration is wrong. Listed under Finance → Panel money → Fee exceptions.',
+          },
+          {
             label: 'Reconciles',
             value: reconciliation.data?.reconciles ? 'Yes' : 'NO',
             tone: reconciliation.data?.reconciles ? 'good' : 'bad',
-            explain: 'received + outstanding + rejected + written off = claimed + fees. Computed, not assumed.',
+            explain:
+              'received + outstanding + rejected + written off = expected receivable + over-recovered. Computed, not assumed. The last term exists because the four states partition the EXPECTATION, and a panel that pays more than its own rule says puts money outside it.',
           },
         ]}
       />
@@ -244,7 +255,7 @@ export function PanelWorkspacePage() {
       {reconciliation.data && !reconciliation.data.reconciles ? (
         <AdminNotice tone="warn">
           The panel ledger does not reconcile. Received, outstanding, rejected and written-off amounts do not add up to
-          what was claimed — investigate before relying on any figure on this page.
+          the expected receivable plus what was over-recovered — investigate before relying on any figure on this page.
         </AdminNotice>
       ) : null}
 
