@@ -404,6 +404,31 @@ export interface PanelReconciliation {
   }[];
 }
 
+/**
+ * A claim this panel still owes money on.
+ *
+ * Deliberately NOT `PanelWorkQueueRow`. The work queue is the problem queue —
+ * rejected, part-approved, overdue — and a claim that was approved and will be
+ * paid on terms is correctly absent from it. Somebody entering a remittance
+ * advice needs the opposite list: everything with a balance, healthy or not.
+ */
+export interface PanelAwaitingPaymentRow {
+  claimLineId: string;
+  panelClinicId: string;
+  panelName: string;
+  panelClaimNo: string | null;
+  invoiceNumber: string;
+  patientName: string | null;
+  serviceDate: string | null;
+  status: PanelClaimStatus;
+  dueDate: string | null;
+  overdue: boolean;
+  ageDays: number;
+  claimedAmount: number;
+  expectedReceivable: number;
+  outstanding: number;
+}
+
 export interface PanelWorkQueueRow {
   claimLineId: string;
   panelClinicId: string;

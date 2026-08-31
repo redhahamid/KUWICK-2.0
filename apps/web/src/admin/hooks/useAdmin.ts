@@ -37,6 +37,7 @@ import type {
   StaffBenefitReport,
   TaxReport,
   TimesheetReport,
+  PanelAwaitingPaymentRow,
   WorkforceToday,
 } from '../types';
 
@@ -313,6 +314,14 @@ export function usePanelReconciliation(params: { panelClinicId?: string; from?: 
   return useQuery({
     queryKey: ['admin-panel', 'reconciliation', params],
     queryFn: () => apiClient.get<PanelReconciliation>(`/panel-workspace/reconciliation${qs(params)}`),
+  });
+}
+
+export function usePanelAwaitingPayment(params: { panelClinicId?: string }, enabled = true) {
+  return useQuery({
+    queryKey: ['admin-panel', 'awaiting-payment', params],
+    queryFn: () => apiClient.get<PanelAwaitingPaymentRow[]>(`/panel-workspace/awaiting-payment${qs(params)}`),
+    enabled,
   });
 }
 

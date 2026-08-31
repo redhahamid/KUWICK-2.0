@@ -27,13 +27,15 @@ stop using the old thing"**.
 | Rejected / partially approved tracking | Work queue | 🟢 | — | — |
 | Replacement claim number linkage | Re-claim workflow | 🟢 | — | — |
 | Resubmission date, resolution, resolved date | Claim workspace columns | 🟢 | — | — |
-| **Amount paid / receipt** | — | 🔴 | **Recorded nowhere** | `POST /panel-workspace/remittances` exists; **no screen calls it** |
-| Outstanding and aging | Panel ▸ Reconciliation + Finance ▸ Outstanding | 🟡 | — | Depends on the receipt above |
+| **Amount paid / receipt** | Panel ▸ Reconciliation ▸ **Record a payment** | 🟢 | Somebody reads the remittance advice | — |
+| Outstanding and aging | Panel ▸ Reconciliation + Finance ▸ Outstanding | 🟢 | — | — |
 | Remarks / owner of the claim | Claim workspace | 🟢 | — | — |
 
-> **The sheet cannot be retired yet, for one reason: there is no way to record a
-> panel payment.** Everything up to the money works. One screen over an endpoint
-> that already exists closes this.
+> **The sheet can now be retired**, with one honest caveat: submitting a claim
+> is still a person opening the panel's portal and keying it in, which is
+> deliberate — no panel in use here offers an interface to submit to. Everything
+> the spreadsheet was actually used for — tracking, chasing, recording responses,
+> re-claiming, and now booking the money — is in Kuwick.
 
 ---
 
@@ -112,18 +114,18 @@ stop using the old thing"**.
 | Credit / debit notes | Finance | 🟡 credit approve only; no debit note |
 | Drug P&L | Finance ▸ Profitability | 🟢 |
 | Service inventory | Stock ▸ Items | 🟢 |
-| Panel / group invoices | Panel + Finance | 🟡 pending the receipt screen |
+| Panel / group invoices | Panel + Finance | 🟢 |
 | e-Invoice (LHDN) | Placeholder | 🔴 nothing behind it, and it says so |
 
 ---
 
 ## What can be retired today
 
-**Nothing, entirely — but two are one screen away.**
+**The panel Google Sheet — that one is done. The rest are close.**
 
 | Tool | Can it be retired? | What stands in the way |
 |---|---|---|
-| **Panel Google Sheet** | **Almost.** | One screen: record a panel payment. The endpoint exists. |
+| **Panel Google Sheet** | **Yes** | Nothing. Submission to the portal stays manual by design. |
 | **Hijraa Admin** | **Mostly**, for day-to-day operation | Employee editing, credit-note creation, raise-transfer. Each is a form over an existing endpoint. |
 | **Payroll listing Excel** | No | Payment-date split, HRD levy, legal entity |
 | **AAS payroll workbook** | **No** | PCB, payslip, and verification of the statutory tables |

@@ -127,7 +127,8 @@ The honest summary before the tables:
 | Re-claim with original↔replacement linkage | ✅ | Refuses a second replacement |
 | Work queues (rejected, partial, overdue) | ✅ | — |
 | Reconciliation and aging | ✅ | — |
-| **Record payment received (remittance)** | 🔌 | `POST /panel-workspace/remittances` + `useRecordRemittance` exist; **no screen**. The ledger cannot book a receipt. Biggest gap in the module |
+| **Record payment received (remittance)** | ✅ *(this pass)* | Reconciliation ▸ Record a payment. Allocations must equal the payment exactly, checked live. Drove RM60 through end to end: claim moved PARTIALLY_PAID → PAID, received RM249.60 → RM309.60, ledger still reconciles |
+| **Claims awaiting payment** | ✅ *(this pass)* | New `GET /panel-workspace/awaiting-payment` — the work queue is the *problem* queue and could not answer "what is this panel still owed on" |
 | **Claim history / audit trail** | 🔌 | `ClaimEvent` rows written, `timeline()` exists; no screen |
 
 ---
@@ -183,7 +184,7 @@ in this pass has made any of them harder.
 |---|---|---|
 | **Operation** | ✅ **PRODUCTION READY** | — |
 | **Stock** | ✅ **PRODUCTION READY** for daily operation | Raise-transfer and price-change history are conveniences, not blockers. Costing limitation must stay visible. |
-| **Panel** | ⚠️ **CONDITIONALLY READY** | **Blocker: a screen to record panel payments received.** Everything else works; the ledger currently has no way to book a receipt. |
+| **Panel** | ✅ **PRODUCTION READY** | The receipt screen closed the last blocker. Claim history/audit-trail remains endpoint-only, which is a convenience rather than a workflow gap. |
 | **Finance** | ⚠️ **CONDITIONALLY READY** | Blockers: credit-note creation, invoice detail. e-Invoice and debit notes are absent and honestly labelled. |
 | **HR** | ⚠️ **CONDITIONALLY READY** | Blockers: add/edit employee from Admin, leave-policy config, attendance correction. |
 | **Payroll** | ❌ **NOT PRODUCTION READY** | Blockers, all named: (1) statutory tables unverified against KWSP/PERKESO; (2) no PCB engine; (3) no payslip; (4) no bank file; (5) no statutory output files. |

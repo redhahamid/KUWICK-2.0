@@ -71,6 +71,11 @@ export class PanelWorkspaceController {
     return this.claims.reconciliation({ panelClinicId, from, to, asOf });
   }
 
+  @Get('awaiting-payment')
+  awaitingPayment(@Query('panelClinicId') panelClinicId?: string) {
+    return this.claims.awaitingPayment({ panelClinicId });
+  }
+
   @Get('work-queue')
   workQueue(@Query('panelClinicId') panelClinicId?: string, @Query('includeResolved') includeResolved?: string) {
     return this.claims.workQueue({ panelClinicId, includeResolved: includeResolved === 'true' });

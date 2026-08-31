@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { App, Button, Checkbox, Input, Modal, Select, Tag, Tooltip } from 'antd';
+import { App, Button, Checkbox, DatePicker, Input, InputNumber, Modal, Select, Tag, Tooltip } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { ExceptionTiles, StatStrip } from '../components/StatStrip';
@@ -8,13 +8,15 @@ import { useCan } from '../../core/hooks/useCan';
 import {
   useAdjudicateClaim,
   useMarkBatchSubmitted,
+  usePanelAwaitingPayment,
   usePanelReconciliation,
   usePanelSubmissionQueue,
   usePanelWorkQueue,
+  useRecordRemittance,
   useResubmitClaim,
   useWriteOffClaim,
 } from '../hooks/useAdmin';
-import type { PanelWorkQueueRow, SubmissionQueueRow } from '../types';
+import type { PanelAwaitingPaymentRow, PanelWorkQueueRow, SubmissionQueueRow } from '../types';
 import { canRecordOutcome, canReclaim, canWriteOff } from './claimActions';
 
 const STATUS_COLOUR: Record<string, string> = {
@@ -68,10 +70,12 @@ export function PanelWorkspacePage() {
   const adjudicate = useAdjudicateClaim();
   const resubmit = useResubmitClaim();
   const writeOff = useWriteOffClaim();
+  const recordRemittance = useRecordRemittance();
 
   const maySubmit = useCan('panel.claim.submit');
   const mayManage = useCan('panel.claim.manage');
   const mayWriteOff = useCan('panel.writeOff');
+  const mayRecordReceipt = useCan('panel.receipt.record');
 
   const [adjudicating, setAdjudicating] = useState<PanelWorkQueueRow | SubmissionQueueRow | null>(null);
   const [approved, setApproved] = useState('');
@@ -85,6 +89,31 @@ export function PanelWorkspacePage() {
   const [writingOff, setWritingOff] = useState<PanelWorkQueueRow | null>(null);
   const [writeOffReason, setWriteOffReason] = useState('');
 
+  /**
+   * RECORDING A PANEL PAYMENT.
+   *
+   * This was the module's largest gap: every step up to the money worked, and
+   * then the money itself was recorded nowhere. The endpoint has always been
+   * there; nothing called it, so the clinic went back to the spreadsheet to
+   * write down what a panel had actually paid.
+   *
+   * The server requires the allocations to total the net EXACTLY — a remittance
+   * that does not add up is refused at entry rather than found weeks later in a
+   * reconciliation. That is the right rule and this form is built around it:
+   * the difference is shown live, "Allocate oldest first" does the arithmetic
+   * a person would otherwise do by hand, and the submit button stays disabled
+   * until the two agree.
+   */
+  const [receipting, setReceipting] = useState(false);
+  const [receiptPanel, setReceiptPanel] = useState<string | undefined>();
+  const [receiptDate, setReceiptDate] = useState<dayjs.Dayjs | null>(dayjs());
+  const [receiptGross, setReceiptGross] = useState<number | null>(null);
+  const [receiptWithheld, setReceiptWithheld] = useState<number | null>(null);
+  const [receiptRef, setReceiptRef] = useState('');
+  const [allocations, setAllocations] = useState<Record<string, number>>({});
+
+  const owed = usePanelAwaitingPayment({}, receipting);
+
   const [submitting, setSubmitting] = useState<SubmissionQueueRow | null>(null);
   const [method, setMethod] = useState('PORTAL');
   const [reference, setReference] = useState('');
@@ -94,6 +123,66 @@ export function PanelWorkspacePage() {
   const notReady = queue.data?.filter((row) => !row.ready) ?? [];
   const overdue = work.data?.filter((row) => row.overdue) ?? [];
   const rejectedRows = work.data?.filter((row) => row.status === 'REJECTED' || row.status === 'PARTIALLY_APPROVED') ?? [];
+
+  // Claims this panel still owes money on, oldest first — the order somebody
+  // chasing a payment actually works in.
+  //
+  // From its OWN endpoint, not from the work queue. The work queue is the
+  // PROBLEM queue — rejected, part-approved, overdue — so building the form on
+  // it made a healthy approved claim unallocatable.
+  const awaitingPayment = (owed.data ?? [])
+    .filter((row) => row.panelClinicId === receiptPanel)
+    .sort((a, b) => b.ageDays - a.ageDays);
+
+  /**
+   * WHAT A PANEL CAN ACTUALLY PAY, which is not what it owes.
+   *
+   * The reconciliation's outstanding figure counts claims that have been
+   * batched but never submitted — genuinely receivable, and genuinely not
+   * payable, because the panel has not been asked yet. Labelling the picker
+   * "RM205.80 outstanding" and then offering RM60 of rows to allocate against
+   * is the kind of quiet contradiction this module exists to avoid, so the
+   * picker states the payable figure and the notice below explains the gap.
+   */
+  const payableByPanel = new Map<string, number>();
+  for (const row of owed.data ?? []) {
+    payableByPanel.set(
+      row.panelClinicId,
+      Math.round(((payableByPanel.get(row.panelClinicId) ?? 0) + row.outstanding) * 100) / 100,
+    );
+  }
+  const selectedPanelTotals = (reconciliation.data?.byPanel ?? []).find((row) => row.panelClinicId === receiptPanel);
+  const payableForSelected = receiptPanel ? (payableByPanel.get(receiptPanel) ?? 0) : 0;
+  const notYetSubmitted = selectedPanelTotals
+    ? Math.round((selectedPanelTotals.outstanding - payableForSelected) * 100) / 100
+    : 0;
+  const netToAllocate = Math.round(((receiptGross ?? 0) - (receiptWithheld ?? 0)) * 100) / 100;
+  const allocatedTotal = Math.round(Object.values(allocations).reduce((sum, value) => sum + (value || 0), 0) * 100) / 100;
+  const allocationDifference = Math.round((netToAllocate - allocatedTotal) * 100) / 100;
+  const receiptReady = Boolean(receiptPanel) && netToAllocate > 0 && allocationDifference === 0 && Boolean(receiptDate);
+
+  function resetReceipt() {
+    setReceipting(false);
+    setReceiptPanel(undefined);
+    setReceiptGross(null);
+    setReceiptWithheld(null);
+    setReceiptRef('');
+    setAllocations({});
+    setReceiptDate(dayjs());
+  }
+
+  /** The arithmetic a person would otherwise do by hand, oldest claim first. */
+  function allocateOldestFirst() {
+    let left = netToAllocate;
+    const next: Record<string, number> = {};
+    for (const row of awaitingPayment) {
+      if (left <= 0) break;
+      const take = Math.min(left, row.outstanding);
+      next[row.claimLineId] = Math.round(take * 100) / 100;
+      left = Math.round((left - take) * 100) / 100;
+    }
+    setAllocations(next);
+  }
 
   return (
     <AdminShell
@@ -483,6 +572,24 @@ export function PanelWorkspacePage() {
 
       {tab === 'reconcile' ? (
         <>
+          <AdminSection
+            title="Money received"
+            description="A panel payment settles specific claims. Recording which ones is what keeps the outstanding figure true."
+            actions={
+              <Tooltip title={mayRecordReceipt ? '' : 'Your account is not permitted to record panel receipts.'}>
+                <Button type="primary" size="small" disabled={!mayRecordReceipt} onClick={() => setReceipting(true)}>
+                  Record a payment
+                </Button>
+              </Tooltip>
+            }
+          >
+            <AdminNotice>
+              Kuwick does not read any panel’s bank file or statement. Somebody reads the remittance advice and enters
+              it here. What this screen adds is the check the spreadsheet never did: the amounts allocated to individual
+              claims must equal the payment exactly, or it is not accepted.
+            </AdminNotice>
+          </AdminSection>
+
           <AdminSection title="Outstanding by age" description="Aged from the day the claim was submitted, not the service date.">
             <ExceptionTiles
               tiles={[
@@ -700,6 +807,153 @@ export function PanelWorkspacePage() {
           placeholder="Why is this uncollectable?"
         />
       </Modal>
+
+      <Modal
+        open={receipting}
+        title="Record a panel payment"
+        okText="Record payment"
+        okButtonProps={{ disabled: !receiptReady, loading: recordRemittance.isPending }}
+        width={860}
+        onCancel={resetReceipt}
+        destroyOnHidden
+        onOk={() => {
+          if (!receiptPanel || !receiptDate) return;
+          recordRemittance.mutate(
+            {
+              panelClinicId: receiptPanel,
+              // Date-only: a receipt is dated to the day it was banked.
+              receivedAt: receiptDate.format('YYYY-MM-DD'),
+              grossAmount: (receiptGross ?? 0).toFixed(2),
+              withheldAmount: receiptWithheld ? receiptWithheld.toFixed(2) : undefined,
+              remittanceRef: receiptRef || undefined,
+              allocations: Object.entries(allocations)
+                .filter(([, amount]) => amount > 0)
+                .map(([claimLineId, amount]) => ({ claimLineId, amount: amount.toFixed(2) })),
+            },
+            {
+              onSuccess: () => {
+                message.success('Payment recorded and allocated.');
+                resetReceipt();
+              },
+              onError: (error: Error) => message.error(error.message),
+            },
+          );
+        }}
+      >
+        <div className="kw-record">
+          <label>
+            Panel
+            <Select
+              value={receiptPanel}
+              onChange={(value) => {
+                setReceiptPanel(value);
+                setAllocations({});
+              }}
+              placeholder="Which panel paid?"
+              style={{ width: '100%' }}
+              loading={owed.isLoading}
+              options={(reconciliation.data?.byPanel ?? []).map((row) => ({
+                value: row.panelClinicId,
+                label: `${row.panelName} — ${money(payableByPanel.get(row.panelClinicId) ?? 0)} awaiting payment`,
+              }))}
+            />
+          </label>
+          <label>
+            Received on
+            <DatePicker value={receiptDate} onChange={setReceiptDate} style={{ width: '100%' }} allowClear={false} />
+          </label>
+          <label>
+            Gross paid
+            <InputNumber
+              value={receiptGross}
+              onChange={setReceiptGross}
+              min={0}
+              precision={2}
+              prefix="RM"
+              style={{ width: '100%' }}
+            />
+          </label>
+          <label>
+            Withheld
+            <InputNumber
+              value={receiptWithheld}
+              onChange={setReceiptWithheld}
+              min={0}
+              precision={2}
+              prefix="RM"
+              style={{ width: '100%' }}
+              placeholder="Panel fee or tax"
+            />
+          </label>
+          <label>
+            Reference
+            <Input value={receiptRef} onChange={(event) => setReceiptRef(event.target.value)} placeholder="Remittance advice no." />
+          </label>
+        </div>
+
+        {receiptPanel ? (
+          <>
+            <div className="kw-countHead">
+              <div>
+                <strong>Net to allocate</strong> {money(netToAllocate)} · <strong>Allocated</strong>{' '}
+                {money(allocatedTotal)} ·{' '}
+                <span className={allocationDifference === 0 ? 'kw-good' : 'kw-bad'}>
+                  {allocationDifference === 0 ? 'balanced' : `${money(Math.abs(allocationDifference))} ${allocationDifference > 0 ? 'unallocated' : 'over-allocated'}`}
+                </span>
+              </div>
+              <Button size="small" onClick={allocateOldestFirst} disabled={netToAllocate <= 0}>
+                Allocate oldest first
+              </Button>
+            </div>
+
+            <DataTable<PanelAwaitingPaymentRow>
+              rows={awaitingPayment}
+              rowKey="claimLineId"
+              pageSize={8}
+              scrollY={260}
+              loading={owed.isLoading}
+              emptyText="This panel has nothing outstanding"
+              emptyHint="Every claim for this panel has been paid, rejected or written off."
+              columns={[
+                { title: 'Claim', dataIndex: 'panelClaimNo', key: 'panelClaimNo', render: (value: string | null, row) => value ?? row.invoiceNumber },
+                { title: 'Patient', dataIndex: 'patientName', key: 'patientName' },
+                { title: 'Age', dataIndex: 'ageDays', key: 'ageDays', className: 'kw-num', render: (value: number, row) => (row.overdue ? <span className="kw-bad">{value}d</span> : `${value}d`) },
+                { title: 'Outstanding', dataIndex: 'outstanding', key: 'outstanding', className: 'kw-num', render: (value: number) => money(value) },
+                {
+                  title: 'Allocate',
+                  key: 'allocate',
+                  noExport: true,
+                  render: (_: unknown, row) => (
+                    <InputNumber
+                      size="small"
+                      min={0}
+                      max={row.outstanding}
+                      precision={2}
+                      value={allocations[row.claimLineId] ?? null}
+                      onChange={(value) =>
+                        setAllocations((current) => ({ ...current, [row.claimLineId]: value ?? 0 }))
+                      }
+                      style={{ width: 120 }}
+                    />
+                  ),
+                },
+              ]}
+            />
+            {notYetSubmitted > 0.005 ? (
+              <AdminNotice tone="warn">
+                This panel also has {money(notYetSubmitted)} on claims that have been batched but never submitted. That
+                money is receivable, but no panel pays a claim it has not been sent — so those claims are not listed
+                here and cannot be allocated against. Submit them first.
+              </AdminNotice>
+            ) : null}
+            <AdminNotice>
+              A claim can be settled for less than it asked for — a panel that approves part of a claim pays part of it.
+              What the allocations may not do is total anything other than the payment itself.
+            </AdminNotice>
+          </>
+        ) : null}
+      </Modal>
+
     </AdminShell>
   );
 }

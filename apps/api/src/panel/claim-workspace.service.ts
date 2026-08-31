@@ -611,7 +611,15 @@ export class ClaimWorkspaceService {
           tenantId: currentTenantId(),
           panelClinicId: dto.panelClinicId,
           remittanceRef: dto.remittanceRef ?? null,
-          receivedAt: new Date(`${dto.receivedAt}T00:00:00.000Z`),
+          // DATE-ONLY, from whatever valid ISO-8601 the caller sent.
+          //
+          // This used to concatenate `T00:00:00.000Z` onto the raw string,
+          // which works for "2026-08-31" and produces `Invalid Date` for
+          // "2026-08-31T06:52:48.000Z" — a value the DTO's own @IsISO8601()
+          // accepts. The result was a 500 on a well-formed request. A receipt
+          // is dated to the day it was banked, so the time is dropped rather
+          // than trusted.
+          receivedAt: new Date(`${dto.receivedAt.slice(0, 10)}T00:00:00.000Z`),
           grossAmount: dto.grossAmount,
           withheldAmount: dto.withheldAmount ?? 0,
           netAmount: fromCents(netCents),
@@ -834,6 +842,79 @@ export class ClaimWorkspaceService {
    * THE WORK QUEUE — rejected, part-approved and overdue claims that somebody
    * has to do something about. The replacement for the Google Sheet.
    */
+  /**
+   * WHAT A PANEL STILL OWES — a different question from the work queue.
+   *
+   * The work queue is the PROBLEM queue: rejected, part-approved, needing
+   * information, or overdue. A claim that a panel approved last week and will
+   * pay next week is not a problem and is correctly absent from it.
+   *
+   * But it is exactly what somebody entering a remittance advice needs to see,
+   * and building the receipt form on the work queue meant a payment could only
+   * be allocated against claims that had already gone wrong. On the seeded
+   * clinic that made RM145.80 of one panel's RM205.80 unreachable — the money
+   * was owed, the claim was healthy, and there was no row to allocate it to.
+   *
+   * So this asks the question it means: every claim for this panel with an
+   * outstanding balance, oldest first.
+   */
+  async awaitingPayment(params: { panelClinicId?: string }) {
+    await requirePermission(this.rawPrisma, 'panel.view');
+    const lines = await this.prisma.claimBatchLine.findMany({
+      where: {
+        ...(params.panelClinicId ? { claimBatch: { panelClinicId: params.panelClinicId } } : {}),
+        // Submitted and not yet settled. A claim still being prepared has no
+        // balance a panel could pay, and a written-off one is not owed.
+        claimStatus: {
+          in: ['SUBMITTED', 'ACKNOWLEDGED', 'APPROVED', 'PARTIALLY_APPROVED', 'PARTIALLY_PAID', 'RESUBMITTED'],
+        },
+      },
+      include: {
+        claimBatch: { include: { panelClinic: { select: { id: true, name: true } } } },
+        invoice: {
+          select: {
+            invoiceNumber: true,
+            visit: { select: { visitNumber: true, createdAt: true, patient: { select: { name: true } } } },
+          },
+        },
+      },
+      orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    const now = new Date();
+    return lines
+      .map((line) => {
+        const balance = computeClaimBalance({
+          claimedAmount: line.claimedAmount,
+          feeAmount: line.feeAmount,
+          approvedAmount: line.approvedAmount,
+          rejectedAmount: line.rejectedAmount,
+          receivedAmount: line.paidAmount,
+          writtenOffAmount: line.writtenOffAmount,
+        });
+        const ageFrom = line.submittedAt ?? line.createdAt;
+        return {
+          claimLineId: line.id,
+          panelClinicId: line.claimBatch.panelClinic.id,
+          panelName: line.claimBatch.panelClinic.name,
+          panelClaimNo: line.panelClaimNo,
+          invoiceNumber: line.invoice.invoiceNumber,
+          patientName: line.invoice.visit?.patient?.name ?? null,
+          serviceDate: line.invoice.visit?.createdAt ?? null,
+          status: line.claimStatus,
+          dueDate: line.dueDate,
+          overdue: line.dueDate ? line.dueDate < now : false,
+          ageDays: Math.floor((now.getTime() - ageFrom.getTime()) / 86400000),
+          claimedAmount: Number(line.claimedAmount),
+          expectedReceivable: fromCents(balance.expectedReceivableCents),
+          outstanding: fromCents(balance.outstandingCents),
+        };
+      })
+      // Zero-balance rows would be noise in a form whose entire job is to
+      // allocate money against a balance.
+      .filter((row) => row.outstanding > 0);
+  }
+
   async workQueue(params: { panelClinicId?: string; includeResolved?: boolean }) {
     await requirePermission(this.rawPrisma, 'panel.view');
     const now = new Date();
