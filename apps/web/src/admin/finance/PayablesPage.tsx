@@ -273,12 +273,38 @@ export function PayablesPage() {
                   ),
               },
               {
-                title: 'Delivery SLA',
-                dataIndex: 'deliverySlaDays',
-                key: 'deliverySlaDays',
-                optional: true,
-                render: (value: number | null) =>
-                  value === null ? <span className="kw-muted">not set</span> : `${value} days`,
+                // "Received date (max 1 week)" is an SLA that lives in a column
+                // heading in the clinic's order queue, where nothing measures
+                // it — so a supplier who is habitually late is a feeling.
+                title: 'Delivery',
+                key: 'delivery',
+                render: (_: unknown, row) => {
+                  if (row.deliveries === 0) {
+                    return <span className="kw-muted">no deliveries yet</span>;
+                  }
+                  const average = `${row.averageDeliveryDays}d avg`;
+                  if (row.slaOnTimePercent === null) {
+                    return (
+                      <Tooltip title="No delivery SLA recorded for this supplier, so nothing can say whether these were on time.">
+                        <span>
+                          {average} · <span className="kw-muted">no SLA set</span>
+                        </span>
+                      </Tooltip>
+                    );
+                  }
+                  return (
+                    <Tooltip
+                      title={`${row.deliveries} deliveries measured against a ${row.deliverySlaDays}-day SLA; ${row.slaBreaches} late.`}
+                    >
+                      <span>
+                        {average} ·{' '}
+                        <Tag color={row.slaOnTimePercent >= 90 ? 'green' : row.slaOnTimePercent >= 70 ? 'gold' : 'red'}>
+                          {row.slaOnTimePercent}% on time
+                        </Tag>
+                      </span>
+                    </Tooltip>
+                  );
+                },
               },
               {
                 title: '',

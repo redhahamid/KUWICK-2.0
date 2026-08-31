@@ -59,6 +59,7 @@ const ADMIN_CATEGORIES: HubCategory[] = [
       { path: '/admin/stock/transfers', label: 'Transfers' },
       { path: '/admin/stock/purchase-orders', label: 'Purchase Orders' },
       { path: '/admin/stock/procurement-requests', label: 'Procurement Requests' },
+      { path: '/admin/stock/new-item-requests', label: 'New Item Requests' },
       { path: '/admin/stock/suppliers', label: 'Suppliers' },
       { path: '/admin/stock/stock-take', label: 'Stock Take' },
       { path: '/admin/stock/movements', label: 'Movement Ledger' },

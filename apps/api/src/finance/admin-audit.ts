@@ -58,6 +58,10 @@ export type AuditAction =
   | 'supplierInvoice.updated'
   | 'supplierPayment.recorded'
   | 'supplier.termsUpdated'
+  // STOCK. Creating a catalogue entry is how a duplicate medicine gets in, and
+  // a duplicate means two stock levels and a count that never reconciles.
+  | 'stock.newItemApproved'
+  | 'stock.newItemRejected'
   | 'panel.configured'
   /**
    * The fee treatment changed and unsent claims were re-stamped with it. Kept

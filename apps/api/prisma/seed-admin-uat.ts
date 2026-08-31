@@ -611,6 +611,7 @@ async function reset() {
     'clinic_closed_dates', 'appointment_reminder_rules', 'appointment_message_templates',
     'panel_price_overrides', 'panel_exclusions', 'panel_fee_terms', 'panel_clinics',
     'consultation_tariff_rules', 'service_catalog', 'item_age_dosages', 'items', 'item_categories',
+    'new_item_requests', 'item_price_changes',
     'supplier_payment_allocations', 'supplier_payments', 'supplier_invoices',
     'suppliers', 'tax_rates', 'tax_codes', 'patient_alerts', 'patient_identity_changes', 'patients',
     'staff_role_assignments', 'staff_permission_grants', 'clinic_custom_roles',
@@ -809,6 +810,66 @@ async function seedStock(ids: Ids) {
       data: { tenantId: tenant.id, goodsReceivedNoteId: grn.id, purchaseOrderLineId: receivedLine.id, itemId: items.AMOX500.id, quantityReceived: 100, unitCost: 4.3 },
     });
     await move(central.id, items.AMOX500.id, 100, 'GOODS_RECEIVED', { referenceType: 'GoodsReceivedNote', referenceId: grn.id });
+
+    // --- NEW ITEM REQUESTS ------------------------------------------------
+    //
+    // Three, so the screen shows every state: one waiting on a decision, one
+    // approved and sitting in the catalogue UNUSABLE until stock arrives, and
+    // one flagged as looking like something the catalogue already has — which
+    // is the check the clinic's five-column sheet has never had.
+    const approvedNewItem = await tx.item.create({
+      data: {
+        tenantId: tenant.id, name: 'Semaglutide 0.25mg Pen (Synthetic)', code: 'SEMA025PEN',
+        category: 'Weight Management', unitOfMeasure: 'Pen', sellPrice: 420, cost: 315,
+        active: false, awaitingFirstReceipt: true,
+      },
+    });
+    await tx.itemPriceChange.create({
+      data: {
+        tenantId: tenant.id, itemId: approvedNewItem.id, newCost: 315, newSellPrice: 420,
+        source: 'NEW_ITEM_REQUEST', changedByStaffId: staff.stock,
+        note: 'Opening price on approval of a new-item request.', changedAt: at(-8, 10),
+      },
+    });
+    await tx.newItemRequest.createMany({
+      data: [
+        {
+          tenantId: tenant.id, clinicId: central.id,
+          requestedName: 'Semaglutide 0.25mg pen',
+          reason: 'Two patients started on it at the hospital and we cannot continue their treatment.',
+          packSizeNote: '1 pen = 4 weekly doses', suggestedSupplierId: suppliers[1].id,
+          indicativeCost: 315, indicativePrice: 420,
+          status: 'APPROVED', decisionNote: 'Approved for the weight-management programme.',
+          decidedByStaffId: staff.stock, decidedAt: at(-8, 10), createdItemId: approvedNewItem.id,
+          requestedByStaffId: staff.counter, createdAt: at(-10, 9), updatedAt: at(-8, 10),
+        },
+        {
+          tenantId: tenant.id, clinicId: branch.id,
+          requestedName: 'Cetirizine 10mg syrup',
+          reason: 'Paediatric patients cannot swallow the tablet and we are splitting adult doses.',
+          packSizeNote: '1 bottle = 60ml', indicativeCost: 8.5, indicativePrice: 16,
+          status: 'PENDING', requestedByStaffId: staff.counter2,
+          createdAt: at(-3, 14), updatedAt: at(-3, 14),
+        },
+        {
+          tenantId: tenant.id, clinicId: central.id,
+          requestedName: 'amoxicillin 250mg caps',
+          reason: 'The paediatric strength is not stocked and we write it by hand every week.',
+          status: 'PENDING', possibleDuplicateItemId: items.AMOX500.id,
+          requestedByStaffId: staff.counter, createdAt: at(-1, 11), updatedAt: at(-1, 11),
+        },
+      ],
+    });
+
+    // A cost that moved at goods-in, on an item already in the catalogue — the
+    // "old price / new price" columns the clinic keeps on its order queue.
+    await tx.itemPriceChange.create({
+      data: {
+        tenantId: tenant.id, itemId: items.AMOX500.id, previousCost: 4.1, newCost: 4.3,
+        source: 'GOODS_RECEIPT', goodsReceivedNoteId: grn.id, changedByStaffId: staff.stock,
+        note: 'Cost changed at goods-in.', changedAt: at(-25, 11),
+      },
+    });
 
     // --- ACCOUNTS PAYABLE -------------------------------------------------
     //

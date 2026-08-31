@@ -363,7 +363,7 @@ export class StockTakeService {
         counters: { include: { staff: { select: { fullName: true } } } },
         lines: {
           include: {
-            item: { select: { name: true, code: true, category: true, unitOfMeasure: true } },
+            item: { select: { name: true, code: true, category: true, unitOfMeasure: true, sellPrice: true } },
             countedBy: { select: { fullName: true } },
           },
           orderBy: { item: { name: 'asc' } },
@@ -373,12 +373,40 @@ export class StockTakeService {
     if (!take) throw new NotFoundException('Stock take not found');
 
     let varianceValueCents = 0;
+    // SELLING VALUE ALONGSIDE COST, at count time.
+    //
+    // Kuwick showed a stock take purely at cost. The clinic's own count sheet
+    // values the shelf BOTH ways — `E*G` at acquisition cost and `F*G` at
+    // patient prices — because the two answer different questions: cost is what
+    // a discrepancy took off the balance sheet, retail is what walked out of
+    // the dispensary (docs/STOCK_LEGACY_WORKFLOW_AUDIT.md §1).
+    //
+    // The two are never added together and retail is never called profit; they
+    // sit side by side, which is exactly how the sheet has them.
+    let systemRetailCents = 0;
+    let countedRetailCents = 0;
+    let varianceRetailCents = 0;
+
     const lines = take.lines.map((line) => {
       const counted = line.recountQuantity ?? line.countedQuantity;
       const variance = counted === null ? null : counted - line.systemQuantity;
       const valueCents = variance === null ? 0 : variance * toCents(line.unitCost ?? 0);
-      if (!line.excluded) varianceValueCents += valueCents;
+      const sellCents = toCents(line.item.sellPrice);
+      const lineSystemRetail = line.systemQuantity * sellCents;
+      const lineCountedRetail = (counted ?? line.systemQuantity) * sellCents;
+      const lineVarianceRetail = variance === null ? 0 : variance * sellCents;
+      if (!line.excluded) {
+        varianceValueCents += valueCents;
+        systemRetailCents += lineSystemRetail;
+        countedRetailCents += lineCountedRetail;
+        varianceRetailCents += lineVarianceRetail;
+      }
       return {
+        sellPrice: Number(line.item.sellPrice),
+        /** What this line is worth at patient prices, as counted. */
+        countedRetailValue: fromCents(lineCountedRetail),
+        /** What the discrepancy is worth at patient prices. */
+        varianceRetailValue: fromCents(lineVarianceRetail),
         id: line.id,
         itemId: line.itemId,
         itemName: line.item.name,
@@ -416,6 +444,14 @@ export class StockTakeService {
       reviewedBy: take.reviewedBy?.fullName ?? null,
       postedAt: take.postedAt,
       varianceValue: take.varianceValue === null ? fromCents(varianceValueCents) : Number(take.varianceValue),
+      /**
+       * The shelf at PATIENT PRICES. Shown beside the cost figures, never added
+       * to them and never called profit — the same discipline the valuation
+       * report already carries.
+       */
+      systemRetailValue: fromCents(systemRetailCents),
+      countedRetailValue: fromCents(countedRetailCents),
+      varianceRetailValue: fromCents(varianceRetailCents),
       counters: take.counters.map((counter) => ({
         staffId: counter.staffId,
         name: counter.staff.fullName,

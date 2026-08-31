@@ -13,8 +13,10 @@ import type {
   OpenDayRow,
   OperationsOverview,
   PanelConfigRow,
+  NewItemRequestRow,
   PayableInvoiceRow,
   PayablesSummary,
+  SupplierOption,
   SupplierPaymentRow,
   PanelReconciliation,
   PanelWorkQueueRow,
@@ -360,6 +362,64 @@ export function useChargeClaimToPatient() {
     ({ claimLineId, ...body }: { claimLineId: string; amount?: string; reason: string }) =>
       apiClient.patch(`/panel-workspace/claims/${claimLineId}/charge-to-patient`, body),
     ['admin-panel', 'admin-finance'],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NEW ITEM REQUESTS
+// ---------------------------------------------------------------------------
+
+export function useNewItemRequests() {
+  return useQuery({
+    queryKey: ['admin-stock', 'new-item-requests'],
+    queryFn: () => apiClient.get<NewItemRequestRow[]>('/new-item-requests'),
+  });
+}
+
+export function useSuppliers() {
+  return useQuery({
+    queryKey: ['admin-stock', 'suppliers'],
+    queryFn: () => apiClient.get<SupplierOption[]>('/suppliers'),
+  });
+}
+
+export function useRaiseNewItemRequest() {
+  return useAdminMutation(
+    (body: {
+      requestedName: string;
+      reason: string;
+      comments?: string;
+      packSizeNote?: string;
+      suggestedSupplierId?: string;
+      indicativeCost?: string;
+      indicativePrice?: string;
+    }) => apiClient.post('/new-item-requests', body),
+    ['admin-stock'],
+  );
+}
+
+export function useApproveNewItemRequest() {
+  return useAdminMutation(
+    ({ id, ...body }: {
+      id: string;
+      name?: string;
+      code?: string;
+      category?: string;
+      unitOfMeasure?: string;
+      sellPrice: string;
+      cost?: string;
+      decisionNote?: string;
+      acknowledgeDuplicate?: boolean;
+    }) => apiClient.patch(`/new-item-requests/${id}/approve`, body),
+    ['admin-stock'],
+  );
+}
+
+export function useRejectNewItemRequest() {
+  return useAdminMutation(
+    ({ id, ...body }: { id: string; decisionNote: string }) =>
+      apiClient.patch(`/new-item-requests/${id}/reject`, body),
+    ['admin-stock'],
   );
 }
 

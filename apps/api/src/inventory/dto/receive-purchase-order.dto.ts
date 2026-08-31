@@ -37,6 +37,15 @@ export class ReceivePurchaseOrderDto {
   @IsUUID()
   clinicId!: string;
 
+  /**
+   * Who took the delivery in. Optional for backward compatibility with the
+   * existing receiving screen, but it is what puts a name on a price change —
+   * "who changed our cost" was previously unanswerable from any source.
+   */
+  @IsOptional()
+  @IsUUID()
+  receivedByStaffId?: string;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ReceivePurchaseOrderLineDto)

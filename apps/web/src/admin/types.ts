@@ -1140,6 +1140,12 @@ export interface PayableSupplierRow {
   creditUtilisation: number | null;
   overCreditLimit: boolean;
   creditHeadroom: number | null;
+  /** Deliveries measured — an order still in transit is neither on time nor late. */
+  deliveries: number;
+  averageDeliveryDays: number | null;
+  /** NULL when no SLA is configured: not knowing is not the same as meeting it. */
+  slaOnTimePercent: number | null;
+  slaBreaches: number;
 }
 
 export interface PayablesSummary {
@@ -1208,4 +1214,41 @@ export interface SupplierPaymentRow {
   notes: string | null;
   recordedBy: string;
   settled: { supplierInvoiceId: string; invoiceNumber: string; amount: number }[];
+}
+
+
+// ---------------------------------------------------------------------------
+// NEW ITEM REQUESTS — asking for something the catalogue does not have yet.
+// ---------------------------------------------------------------------------
+
+export interface NewItemRequestRow {
+  id: string;
+  requestedName: string;
+  reason: string;
+  comments: string | null;
+  clinicName: string | null;
+  suggestedSupplier: string | null;
+  packSizeNote: string | null;
+  indicativeCost: number | null;
+  indicativePrice: number | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  /** What the catalogue check found, if anything. A prompt, never an automatic merge. */
+  possibleDuplicate: { itemId: string; name: string; code: string | null; active: boolean } | null;
+  decisionNote: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  createdItem: {
+    itemId: string;
+    name: string;
+    active: boolean;
+    /** TRUE until the first delivery arrives — the item is not usable yet. */
+    awaitingFirstReceipt: boolean;
+  } | null;
+  requestedBy: string;
+  createdAt: string;
+}
+
+export interface SupplierOption {
+  id: string;
+  name: string;
 }

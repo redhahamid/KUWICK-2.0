@@ -1,3 +1,5 @@
+import { NewItemRequestController } from './new-item-request.controller';
+import { NewItemRequestService } from './new-item-request.service';
 import { Module } from '@nestjs/common';
 import { CoreModule } from '../core/core.module';
 import { ItemController } from './item.controller';
@@ -26,6 +28,7 @@ import { ItemAgeDosageService } from './item-age-dosage.service';
 @Module({
   imports: [CoreModule],
   controllers: [
+    NewItemRequestController,
     ItemController,
     ItemCategoryController,
     SupplierController,
@@ -35,6 +38,7 @@ import { ItemAgeDosageService } from './item-age-dosage.service';
     ItemAgeDosageController,
   ],
   providers: [
+    NewItemRequestService,
     ItemService,
     ItemCategoryService,
     ItemPanelPricingService,

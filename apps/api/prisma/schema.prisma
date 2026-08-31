@@ -333,6 +333,8 @@ model Tenant {
   supplierPayments           SupplierPayment[]
   supplierPaymentAllocations SupplierPaymentAllocation[]
   panelFeeTerms              PanelFeeTerm[]
+  itemPriceChanges           ItemPriceChange[]
+  newItemRequests            NewItemRequest[]
   panelRemittanceAllocations PanelRemittanceAllocation[]
   claimEvents                ClaimEvent[]
   procurementBudgets         ProcurementBudget[]
@@ -450,6 +452,7 @@ model Clinic {
   dayEndClosings              DayEndClosing[]
   labelPrints                 LabelPrint[]
   payrollInputEntries         PayrollInputEntry[]
+  newItemRequests             NewItemRequest[]
 
   @@index([tenantId])
   @@map("clinics")
@@ -1032,6 +1035,9 @@ model Staff {
   supplierInvoicesRecorded     SupplierInvoice[]            @relation("SupplierInvoiceRecordedBy")
   supplierPaymentsRecorded     SupplierPayment[]            @relation("SupplierPaymentRecordedBy")
   panelFeeTermsRecorded        PanelFeeTerm[]               @relation("PanelFeeTermRecordedBy")
+  itemPriceChanges             ItemPriceChange[]            @relation("ItemPriceChangedBy")
+  newItemRequestsRaised        NewItemRequest[]             @relation("NewItemRequestedBy")
+  newItemRequestsDecided       NewItemRequest[]             @relation("NewItemRequestDecidedBy")
   claimEvents                  ClaimEvent[]                 @relation("ClaimEventActor")
   stockMovementsMade           StockMovement[]              @relation("StockMovementActor")
   dayEndsReopened              DayEndClosing[]              @relation("DayEndReopenedBy")
@@ -1973,6 +1979,20 @@ model Item {
   cost                    Decimal? @db.Decimal(10, 2)
   active                  Boolean  @default(true)
 
+  /// AN ITEM IS ACTIVATED WHEN IT ARRIVES, NOT WHEN IT IS ORDERED.
+  ///
+  /// The clinic's order queue carries a whole sheet for this — TO BE ACTIVATED
+  /// MEDS, with four states — because a new medication exists in the catalogue
+  /// only once it has physically turned up. Ordering it is a promise; receiving
+  /// it is a fact, and prescribing from a promise is how a patient is handed a
+  /// prescription for something the dispensary has never seen.
+  ///
+  /// `awaitingFirstReceipt` is set when an item is created from an approved
+  /// new-item request. The first goods receipt clears it and stamps
+  /// `activatedAt`. An item created any other way is not waiting for anything.
+  awaitingFirstReceipt Boolean   @default(false) @map("awaiting_first_receipt")
+  activatedAt          DateTime? @map("activated_at")
+
   // ---- KW2-Q3: imported from the clinic's own inventory export ----------
   //
   // The source is a real spreadsheet with real conventions, and the import
@@ -2115,6 +2135,9 @@ model Item {
   stockTakeLines           StockTakeLine[]
   panelPriceOverrides      PanelPriceOverride[]
   panelExclusions          PanelExclusion[]
+  priceChanges             ItemPriceChange[]
+  newItemRequestDuplicates NewItemRequest[]        @relation("NewItemRequestDuplicate")
+  newItemRequestCreations  NewItemRequest[]        @relation("NewItemRequestCreated")
 
   @@index([tenantId])
   @@map("items")
@@ -2222,11 +2245,12 @@ model Supplier {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant         Tenant            @relation(fields: [tenantId], references: [id])
-  purchaseOrders PurchaseOrder[]
-  stockBatches   StockBatch[]
-  invoices       SupplierInvoice[]
-  payments       SupplierPayment[]
+  tenant          Tenant            @relation(fields: [tenantId], references: [id])
+  purchaseOrders  PurchaseOrder[]
+  stockBatches    StockBatch[]
+  invoices        SupplierInvoice[]
+  payments        SupplierPayment[]
+  newItemRequests NewItemRequest[]
 
   @@index([tenantId])
   @@map("suppliers")
@@ -2478,6 +2502,114 @@ model StockMovement {
   @@map("stock_movements")
 }
 
+/// WHERE A PRICE CAME FROM.
+///
+/// Two gaps in one table (`docs/STOCK_LEGACY_WORKFLOW_AUDIT.md`): Kuwick had no
+/// audit of who changed a price, and no capture of the price change that
+/// happens AT GOODS-IN — which the clinic's own order queue records as "old
+/// price / new price" columns, because the moment a cost actually changes is
+/// the moment stock arrives at a different price.
+///
+/// Append-only by convention and by service: nothing updates a row here, and
+/// the item's current cost is the newest row's `newCost`. That also makes it
+/// the foundation for moving off standard cost later — a weighted average needs
+/// exactly this history.
+model ItemPriceChange {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  itemId   String @map("item_id")
+
+  previousCost      Decimal? @map("previous_cost") @db.Decimal(10, 2)
+  newCost           Decimal? @map("new_cost") @db.Decimal(10, 2)
+  previousSellPrice Decimal? @map("previous_sell_price") @db.Decimal(10, 2)
+  newSellPrice      Decimal? @map("new_sell_price") @db.Decimal(10, 2)
+
+  /// How the change happened. GOODS_RECEIPT is the one the clinic cares about;
+  /// MANUAL is somebody editing the catalogue; IMPORT is a bulk load.
+  source              String
+  goodsReceivedNoteId String? @map("goods_received_note_id")
+  note                String?
+
+  changedByStaffId String?  @map("changed_by_staff_id")
+  changedAt        DateTime @default(now()) @map("changed_at")
+
+  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+  item              Item               @relation(fields: [itemId], references: [id])
+  goodsReceivedNote GoodsReceivedNote? @relation(fields: [goodsReceivedNoteId], references: [id])
+  changedBy         Staff?             @relation("ItemPriceChangedBy", fields: [changedByStaffId], references: [id])
+
+  @@index([tenantId, itemId, changedAt])
+  @@map("item_price_changes")
+}
+
+enum NewItemRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// ASKING FOR AN ITEM THAT DOES NOT EXIST YET.
+///
+/// The clinic runs this as a five-column sheet — medication, reason, comments,
+/// "stock admin noted", supplier — where the approval IS the text in the fourth
+/// column (`docs/STOCK_LEGACY_WORKFLOW_AUDIT.md` §2). No state, no actor, no
+/// date, and nothing checks whether the item already exists, which is how a
+/// catalogue grows two entries for one medicine.
+///
+/// Deliberately NOT folded into `ProcurementRequest`. That asks for more of
+/// something the catalogue already knows about, and answers with a purchase
+/// order. This asks for something that does not exist, and answers by creating
+/// it — a different question with a different approver and a different risk
+/// (a duplicate item, not a duplicate order).
+model NewItemRequest {
+  id       String  @id @default(uuid())
+  tenantId String  @map("tenant_id")
+  clinicId String? @map("clinic_id")
+
+  /// What was asked for, in the requester's words. Kept verbatim even after an
+  /// item is created under a tidier name, because the person who asked will
+  /// search for what they typed.
+  requestedName String  @map("requested_name")
+  reason        String
+  comments      String?
+
+  suggestedSupplierId String?  @map("suggested_supplier_id")
+  /// Pack size as prose, exactly as the clinic writes it ("n strips, 1 box = m
+  /// strips"). Prose in, structured fields out: the approval turns it into
+  /// `Item.unitOfMeasure` and a unit cost, which is the whole point.
+  packSizeNote        String?  @map("pack_size_note")
+  indicativeCost      Decimal? @map("indicative_cost") @db.Decimal(10, 2)
+  indicativePrice     Decimal? @map("indicative_price") @db.Decimal(10, 2)
+
+  status NewItemRequestStatus @default(PENDING)
+
+  /// THE DUPLICATE CHECK'S ANSWER, recorded rather than just shown. If a
+  /// requester was warned that this looks like an existing item and asked for it
+  /// anyway, that is worth knowing six months later when there are two.
+  possibleDuplicateItemId String? @map("possible_duplicate_item_id")
+
+  decisionNote     String?   @map("decision_note")
+  decidedByStaffId String?   @map("decided_by_staff_id")
+  decidedAt        DateTime? @map("decided_at")
+  /// The item this request became. NULL until approved.
+  createdItemId    String?   @map("created_item_id")
+
+  requestedByStaffId String   @map("requested_by_staff_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  tenant            Tenant    @relation(fields: [tenantId], references: [id])
+  clinic            Clinic?   @relation(fields: [clinicId], references: [id])
+  suggestedSupplier Supplier? @relation(fields: [suggestedSupplierId], references: [id])
+  possibleDuplicate Item?     @relation("NewItemRequestDuplicate", fields: [possibleDuplicateItemId], references: [id])
+  createdItem       Item?     @relation("NewItemRequestCreated", fields: [createdItemId], references: [id])
+  requestedBy       Staff     @relation("NewItemRequestedBy", fields: [requestedByStaffId], references: [id])
+  decidedBy         Staff?    @relation("NewItemRequestDecidedBy", fields: [decidedByStaffId], references: [id])
+
+  @@index([tenantId, status])
+  @@map("new_item_requests")
+}
+
 model ProcurementRequest {
   id                String                   @id @default(uuid())
   tenantId          String                   @map("tenant_id")
@@ -2531,6 +2663,14 @@ model PurchaseOrderLine {
   orderedQuantity      Int      @map("ordered_quantity")
   receivedQuantity     Int      @default(0) @map("received_quantity")
   unitCost             Decimal  @map("unit_cost") @db.Decimal(10, 2)
+  /// THE PROMOTIONAL PRICE, and it is a real pricing rule rather than a nicety.
+  ///
+  /// The clinic's order queue carries "unit price" and "bonus price" side by
+  /// side and values every line at `MIN(unit, bonus) x quantity`
+  /// (docs/STOCK_LEGACY_WORKFLOW_AUDIT.md §3). Suppliers quote a list price and
+  /// a promotion, and the clinic pays the lower of the two. NULL means the
+  /// supplier quoted no promotion, which is not the same as a promotion of zero.
+  bonusUnitCost        Decimal? @map("bonus_unit_cost") @db.Decimal(10, 2)
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
@@ -2561,6 +2701,7 @@ model GoodsReceivedNote {
   purchaseOrder    PurchaseOrder           @relation(fields: [purchaseOrderId], references: [id])
   lines            GoodsReceivedNoteLine[]
   supplierInvoices SupplierInvoice[]
+  priceChanges     ItemPriceChange[]
 
   @@index([tenantId, clinicId])
   @@index([tenantId, purchaseOrderId])

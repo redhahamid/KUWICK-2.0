@@ -35,6 +35,7 @@ export class PurchaseOrderService {
           procurementRequestId: line.procurementRequestId,
           orderedQuantity: line.orderedQuantity,
           unitCost: line.unitCost,
+          bonusUnitCost: line.bonusUnitCost ?? null,
         },
       });
       if (line.procurementRequestId) {

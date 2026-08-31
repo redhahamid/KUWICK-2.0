@@ -6,6 +6,7 @@ import { currentTenantId } from '../core/tenant-context';
 import { requirePermission, withAdminTx } from './admin-actor';
 import { recordAudit } from './admin-audit';
 import { fromCents, toCents } from './money';
+import { deliveryPerformance } from '../inventory/procurement-pricing';
 import {
   computeSupplierInvoiceBalance,
   payableAgeBucket,
@@ -82,6 +83,18 @@ export class SupplierPayablesService {
             allocations: { select: { amount: true } },
           },
         },
+        // DELIVERY PERFORMANCE. "Received date (max 1 week)" is a supplier SLA
+        // living in a COLUMN HEADING in the clinic's order queue, where nothing
+        // measures it — so a supplier who is habitually late is a feeling
+        // rather than a fact (docs/STOCK_LEGACY_WORKFLOW_AUDIT.md §3).
+        purchaseOrders: {
+          select: {
+            orderedAt: true,
+            goodsReceivedNotes: { select: { receivedAt: true }, orderBy: { receivedAt: 'asc' }, take: 1 },
+          },
+          orderBy: { orderedAt: 'desc' },
+          take: 50,
+        },
       },
     });
 
@@ -94,6 +107,21 @@ export class SupplierPayablesService {
       }));
       const roll = rollUpPayables(facts, asOf);
       const exposure = supplierExposure(roll.outstandingCents, supplier.creditLimitAmount);
+
+      // Measured over the deliveries that have actually arrived. An order still
+      // in transit is neither on time nor late, and counting it either way
+      // would make a supplier look better or worse than they are.
+      const deliveries = supplier.purchaseOrders
+        .map((order) =>
+          deliveryPerformance(
+            order.orderedAt,
+            order.goodsReceivedNotes[0]?.receivedAt ?? null,
+            supplier.deliverySlaDays,
+          ),
+        )
+        .filter((performance) => performance.days !== null);
+      const measured = deliveries.filter((performance) => performance.slaKnown);
+      const onTime = measured.filter((performance) => performance.withinSla).length;
       return {
         supplierId: supplier.id,
         supplierName: supplier.name,
@@ -118,6 +146,20 @@ export class SupplierPayablesService {
         creditUtilisation: exposure.utilisation,
         overCreditLimit: exposure.overLimit,
         creditHeadroom: exposure.headroomCents === null ? null : fromCents(exposure.headroomCents),
+        /** Deliveries received in the window measured. */
+        deliveries: deliveries.length,
+        /** Average calendar days from order to first receipt. NULL if none yet. */
+        averageDeliveryDays:
+          deliveries.length === 0
+            ? null
+            : Math.round(deliveries.reduce((sum, d) => sum + (d.days ?? 0), 0) / deliveries.length),
+        /**
+         * Share of measured deliveries that met the SLA, 0–100. NULL when no
+         * SLA is configured: not knowing is not the same as meeting it.
+         */
+        slaOnTimePercent:
+          measured.length === 0 ? null : Math.round((onTime / measured.length) * 100),
+        slaBreaches: measured.length - onTime,
       };
     });
 
