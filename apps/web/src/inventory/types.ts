@@ -209,6 +209,13 @@ export interface NearExpiryBatch extends StockBatch {
   clinic: { id: string; name: string };
   supplier: Supplier | null;
   daysToExpiry: number;
+  /** What arrived in this batch. Kuwick does not track what is LEFT of it. */
+  receivedQuantity: number;
+  /** What the clinic holds of this item now, across every batch. */
+  itemOnHand: number;
+  /** The most of this batch that can still be on the shelf — a ceiling. */
+  atRiskQuantity: number;
+  fullyConsumed: boolean;
 }
 
 // Stock take (D-043) — physical count vs system, reconciled via an

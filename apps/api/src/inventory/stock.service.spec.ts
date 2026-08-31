@@ -7,7 +7,7 @@ function createService() {
   const prisma = {
     stockBatch: { create: jest.fn(), findMany: jest.fn() },
     stockMovement: { create: jest.fn() },
-    stockLevel: { upsert: jest.fn(), findUnique: jest.fn() },
+    stockLevel: { upsert: jest.fn(), findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     item: { findUnique: jest.fn() },
     $transaction: undefined as unknown,
   } as unknown as TenantScopedPrismaClient;
@@ -100,12 +100,19 @@ describe('StockService.quickAdd', () => {
 });
 
 describe('StockService.listNearExpiry', () => {
-  it('computes daysToExpiry for each batch and orders by soonest first', async () => {
-    const { service, prisma } = createService();
+  const soonDate = () => {
     const soon = new Date();
     soon.setDate(soon.getDate() + 10);
+    return soon;
+  };
+
+  it('computes daysToExpiry for each batch and orders by soonest first', async () => {
+    const { service, prisma } = createService();
     (prisma.stockBatch.findMany as jest.Mock).mockResolvedValue([
-      { id: 'batch-1', expiryDate: soon, quantity: 5 },
+      { id: 'batch-1', itemId: 'item-1', clinicId: 'clinic-1', expiryDate: soonDate(), quantity: 5 },
+    ]);
+    (prisma.stockLevel.findMany as jest.Mock).mockResolvedValue([
+      { itemId: 'item-1', clinicId: 'clinic-1', quantityOnHand: 5 },
     ]);
 
     const result = await service.listNearExpiry('clinic-1', 90);
@@ -121,6 +128,36 @@ describe('StockService.listNearExpiry', () => {
     });
     expect(result[0].daysToExpiry).toBeGreaterThanOrEqual(9);
     expect(result[0].daysToExpiry).toBeLessThanOrEqual(11);
+  });
+
+  it('bounds a batch by what the clinic actually holds, and never by what arrived', async () => {
+    // `quantity` is what was RECEIVED and never decrements — nothing attributes
+    // a dispense to a batch. 100 arrived, 12 are left: at most 12 can expire.
+    const { service, prisma } = createService();
+    (prisma.stockBatch.findMany as jest.Mock).mockResolvedValue([
+      { id: 'batch-1', itemId: 'item-1', clinicId: 'clinic-1', expiryDate: soonDate(), quantity: 100 },
+    ]);
+    (prisma.stockLevel.findMany as jest.Mock).mockResolvedValue([
+      { itemId: 'item-1', clinicId: 'clinic-1', quantityOnHand: 12 },
+    ]);
+
+    const [row] = await service.listNearExpiry('clinic-1', 90);
+    expect(row.receivedQuantity).toBe(100);
+    expect(row.itemOnHand).toBe(12);
+    expect(row.atRiskQuantity).toBe(12);
+  });
+
+  it('drops a batch of an item the clinic no longer holds', async () => {
+    const { service, prisma } = createService();
+    (prisma.stockBatch.findMany as jest.Mock).mockResolvedValue([
+      { id: 'batch-1', itemId: 'item-1', clinicId: 'clinic-1', expiryDate: soonDate(), quantity: 100 },
+    ]);
+    (prisma.stockLevel.findMany as jest.Mock).mockResolvedValue([
+      { itemId: 'item-1', clinicId: 'clinic-1', quantityOnHand: 0 },
+    ]);
+
+    // It sat on the worklist at 100 units before this, forever.
+    expect(await service.listNearExpiry('clinic-1', 90)).toEqual([]);
   });
 });
 

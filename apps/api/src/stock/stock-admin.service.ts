@@ -6,6 +6,7 @@ import { currentTenantId } from '../core/tenant-context';
 import { requirePermission, resolveClinicId, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { fromCents, toCents } from '../finance/money';
+import { batchExposure, batchExposureValueCents } from '../inventory/batch-exposure';
 import { movementTypeForReason, postMovement } from './stock-ledger';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
 
@@ -105,12 +106,30 @@ export class StockAdminService {
             AND sl."quantity_on_hand" < sl."min_threshold"
             ${clinicId ? Prisma.sql`AND sl."clinic_id" = ${clinicId}` : Prisma.empty}
         `,
-        this.prisma.stockBatch.count({
-          where: { ...clinicFilter, quantity: { gt: 0 }, expiryDate: { lt: now } },
-        }),
-        this.prisma.stockBatch.count({
-          where: { ...clinicFilter, quantity: { gt: 0 }, expiryDate: { gte: now, lte: nearExpiryCutoff } },
-        }),
+        // BATCHES OF AN ITEM THE CLINIC STILL HOLDS.
+        //
+        // `quantity` on a batch is what was RECEIVED and never decrements —
+        // nothing attributes a dispense to a batch. Counting `quantity > 0`
+        // therefore counted batches that had been dispensed to nothing, and
+        // put them on somebody's worklist. Joining to the on-hand level is the
+        // one thing that is certain without batch attribution: hold none of the
+        // item, and none of any batch of it remains. See batch-exposure.ts.
+        this.prisma.$queryRaw<{ count: bigint }[]>`
+          SELECT COUNT(*) AS count FROM "stock_batches" b
+          JOIN "stock_levels" sl
+            ON sl."item_id" = b."item_id" AND sl."clinic_id" = b."clinic_id"
+          WHERE b."quantity" > 0 AND sl."quantity_on_hand" > 0
+            AND b."expiry_date" < ${now}
+            ${clinicId ? Prisma.sql`AND b."clinic_id" = ${clinicId}` : Prisma.empty}
+        `,
+        this.prisma.$queryRaw<{ count: bigint }[]>`
+          SELECT COUNT(*) AS count FROM "stock_batches" b
+          JOIN "stock_levels" sl
+            ON sl."item_id" = b."item_id" AND sl."clinic_id" = b."clinic_id"
+          WHERE b."quantity" > 0 AND sl."quantity_on_hand" > 0
+            AND b."expiry_date" >= ${now} AND b."expiry_date" <= ${nearExpiryCutoff}
+            ${clinicId ? Prisma.sql`AND b."clinic_id" = ${clinicId}` : Prisma.empty}
+        `,
         this.prisma.stockTransfer.count({
           where: {
             status: StockTransferStatus.SENT,
@@ -148,8 +167,8 @@ export class StockAdminService {
       thresholds: { slowMovingDays: SLOW_MOVING_DAYS, nearExpiryDays: NEAR_EXPIRY_DAYS },
       negativeStock: negative,
       belowMinimum: Number(belowMinimum[0]?.count ?? 0),
-      expired,
-      nearExpiry,
+      expired: Number(expired[0]?.count ?? 0),
+      nearExpiry: Number(nearExpiry[0]?.count ?? 0),
       unconfirmedTransfers,
       transferDiscrepancies: discrepancyTransfers,
       openStockTakes: openTakes,
@@ -222,22 +241,55 @@ export class StockAdminService {
           include: { item: itemSelect, clinic: clinicSelect },
           orderBy: { expiryDate: 'asc' },
         });
-        return rows.map((row) => ({
-          batchId: row.id,
-          itemId: row.itemId,
-          itemName: row.item.name,
-          itemCode: row.item.code,
-          clinicId: row.clinicId,
-          clinicName: row.clinic.name,
-          batchNumber: row.batchNumber,
-          quantity: row.quantity,
-          expiryDate: row.expiryDate,
-          daysToExpiry:
-            row.expiryDate === null
-              ? null
-              : Math.round((row.expiryDate.getTime() - now.getTime()) / 86400000),
-          valueAtCost: Number(row.item.cost ?? 0) * row.quantity,
-        }));
+        const levels = await this.prisma.stockLevel.findMany({
+          where: {
+            ...clinicFilter,
+            itemId: { in: [...new Set(rows.map((row) => row.itemId))] },
+          },
+          select: { itemId: true, clinicId: true, quantityOnHand: true },
+        });
+        const onHandOf = new Map(
+          levels.map((level) => [`${level.clinicId}:${level.itemId}`, level.quantityOnHand]),
+        );
+        return rows
+          .map((row) => {
+            const exposure = batchExposure({
+              receivedQuantity: row.quantity,
+              itemOnHand: onHandOf.get(`${row.clinicId}:${row.itemId}`) ?? 0,
+            });
+            return {
+              batchId: row.id,
+              itemId: row.itemId,
+              itemName: row.item.name,
+              itemCode: row.item.code,
+              clinicId: row.clinicId,
+              clinicName: row.clinic.name,
+              batchNumber: row.batchNumber,
+              /** What arrived in this batch. NOT what is left — see below. */
+              quantity: exposure.receivedQuantity,
+              /** What the clinic holds of the item now, across every batch. */
+              itemOnHand: exposure.itemOnHand,
+              /**
+               * The most of this batch that can still be on the shelf. Kuwick
+               * does not attribute a dispense to a batch, so a per-batch
+               * remainder does not exist; this is the ceiling, and it is
+               * certain rather than inferred.
+               */
+              atRiskQuantity: exposure.atRiskCeiling,
+              fullyConsumed: exposure.fullyConsumed,
+              expiryDate: row.expiryDate,
+              daysToExpiry:
+                row.expiryDate === null
+                  ? null
+                  : Math.round((row.expiryDate.getTime() - now.getTime()) / 86400000),
+              /** At the CEILING, never the received quantity — that charged a
+               *  fully-dispensed batch to the report at its full cost. */
+              valueAtCost: fromCents(
+                batchExposureValueCents(exposure, toCents(row.item.cost ?? 0)),
+              ),
+            };
+          })
+          .filter((row) => !row.fullyConsumed);
       }
       case 'slow-moving': {
         const cutoff = new Date(now.getTime() - SLOW_MOVING_DAYS * 86400000);

@@ -270,4 +270,87 @@ describe('Stock: the operating model behind the workbooks (e2e)', () => {
     expect(item!.awaitingFirstReceipt).toBe(false);
     expect(item!.activatedAt).not.toBeNull();
   });
+
+  it('does not report a fully-dispensed batch as stock about to expire', async () => {
+    // `StockBatch.quantity` is what was RECEIVED, and nothing decrements it —
+    // Kuwick does not attribute a dispense to a batch. The near-expiry and
+    // expired reports filtered on `quantity > 0` and described the result as
+    // "still on hand", so a batch sold out months ago kept appearing at its
+    // full size, and its value-at-risk at its full purchase cost.
+    const item = await request(app.getHttpServer())
+      .post('/items')
+      .set('Authorization', bearer)
+      .send({ name: 'Short Dated Syrup', sellPrice: 30, cost: 10 })
+      .expect(201);
+
+    const expiringSoon = new Date(Date.now() + 20 * 86_400_000).toISOString().slice(0, 10);
+    const po = await request(app.getHttpServer())
+      .post('/purchase-orders')
+      .set('Authorization', bearer)
+      .send({ clinicId, supplierId, lines: [{ itemId: item.body.id, orderedQuantity: 100, unitCost: 10 }] })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/purchase-orders/${po.body.id}/receive`)
+      .set('Authorization', bearer)
+      .send({
+        clinicId,
+        lines: [
+          {
+            purchaseOrderLineId: po.body.lines[0].id,
+            quantityReceived: 100,
+            batchNumber: 'B-EXPIRY-1',
+            expiryDate: expiringSoon,
+          },
+        ],
+      })
+      .expect(201);
+
+    const listed = await request(app.getHttpServer())
+      .get(`/stock/near-expiry?clinicId=${clinicId}&withinDays=90`)
+      .set('Authorization', bearer)
+      .expect(200);
+    const row = listed.body.find((batch: { batchNumber: string }) => batch.batchNumber === 'B-EXPIRY-1');
+    expect(row.receivedQuantity).toBe(100);
+    expect(row.itemOnHand).toBe(100);
+    expect(row.atRiskQuantity).toBe(100);
+
+    // Ninety of the hundred leave the shelf. The batch row still says 100 in
+    // the database — that column cannot change — but the exposure cannot be
+    // more than the ten the clinic actually holds.
+    await request(app.getHttpServer())
+      .post('/stock/adjust')
+      .set('Authorization', bearer)
+      .send({ clinicId, itemId: item.body.id, quantityDelta: -90, reason: 'DISPENSED', note: 'Sold through' })
+      .expect(201);
+
+    const afterUse = await request(app.getHttpServer())
+      .get(`/stock/near-expiry?clinicId=${clinicId}&withinDays=90`)
+      .set('Authorization', bearer)
+      .expect(200);
+    const stillThere = afterUse.body.find((batch: { batchNumber: string }) => batch.batchNumber === 'B-EXPIRY-1');
+    expect(stillThere.receivedQuantity).toBe(100);
+    expect(stillThere.atRiskQuantity).toBe(10);
+
+    // The last ten go. Nothing of this batch remains, so it leaves the
+    // worklist entirely rather than sitting there at 100 units forever.
+    await request(app.getHttpServer())
+      .post('/stock/adjust')
+      .set('Authorization', bearer)
+      .send({ clinicId, itemId: item.body.id, quantityDelta: -10, reason: 'DISPENSED', note: 'Sold out' })
+      .expect(201);
+
+    const afterSellOut = await request(app.getHttpServer())
+      .get(`/stock/near-expiry?clinicId=${clinicId}&withinDays=90`)
+      .set('Authorization', bearer)
+      .expect(200);
+    expect(afterSellOut.body.find((batch: { batchNumber: string }) => batch.batchNumber === 'B-EXPIRY-1')).toBeUndefined();
+
+    // And it is off the exception dashboard, which is where somebody would
+    // have gone looking for work that does not exist.
+    const exceptions = await request(app.getHttpServer())
+      .get(`/stock-admin/exceptions?clinicId=${clinicId}`)
+      .set('Authorization', bearer)
+      .expect(200);
+    expect(exceptions.body.nearExpiry).toBe(0);
+  });
 });

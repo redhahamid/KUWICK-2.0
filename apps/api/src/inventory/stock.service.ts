@@ -7,6 +7,7 @@ import { SetStockMinThresholdDto } from './dto/set-stock-min-threshold.dto';
 import { QuickAddStockDto } from './dto/quick-add-stock.dto';
 import { StockTakeDto } from './dto/stock-take.dto';
 import { LedgerTx, postMovement } from '../stock/stock-ledger';
+import { batchExposure } from './batch-exposure';
 
 @Injectable()
 export class StockService {
@@ -50,10 +51,19 @@ export class StockService {
     });
   }
 
-  // Near-expiry surface (D-043) — batches with stock still on hand whose
-  // expiry falls within the window (or has already passed). The expiry
-  // data has been captured since Task #62's quick-add / GRN flows; this is
-  // the report that finally surfaces it.
+  /**
+   * Near-expiry surface (D-043) — batches whose expiry falls within the window
+   * or has already passed.
+   *
+   * `quantity` on a batch is the quantity RECEIVED and is never decremented,
+   * because Kuwick does not attribute a dispense to a batch. This method used
+   * to filter on `quantity > 0` and call the result "batches with stock still
+   * on hand", which it is not: a batch dispensed to nothing still appeared, at
+   * its full received quantity. Batches of an item the clinic no longer holds
+   * are now excluded — that much is certain without batch attribution — and
+   * both figures are returned rather than one standing in for the other. See
+   * `batch-exposure.ts`.
+   */
   async listNearExpiry(clinicId?: string, withinDays = 90) {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() + withinDays);
@@ -66,12 +76,36 @@ export class StockService {
       include: { item: true, clinic: true, supplier: true },
       orderBy: { expiryDate: 'asc' },
     });
+    const levels = await this.prisma.stockLevel.findMany({
+      where: {
+        clinicId,
+        itemId: { in: [...new Set(batches.map((batch) => batch.itemId))] },
+      },
+      select: { itemId: true, clinicId: true, quantityOnHand: true },
+    });
+    const onHandOf = new Map(levels.map((level) => [`${level.clinicId}:${level.itemId}`, level.quantityOnHand]));
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    return batches.map((batch) => ({
-      ...batch,
-      daysToExpiry: Math.ceil((batch.expiryDate!.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)),
-    }));
+    return batches
+      .map((batch) => {
+        const exposure = batchExposure({
+          receivedQuantity: batch.quantity,
+          itemOnHand: onHandOf.get(`${batch.clinicId}:${batch.itemId}`) ?? 0,
+        });
+        return {
+          ...batch,
+          /** What arrived in this batch. NOT what is left — nothing tracks that. */
+          receivedQuantity: exposure.receivedQuantity,
+          /** What the clinic holds of this item now, across all batches. */
+          itemOnHand: exposure.itemOnHand,
+          /** The most of this batch that can still be on the shelf. */
+          atRiskQuantity: exposure.atRiskCeiling,
+          fullyConsumed: exposure.fullyConsumed,
+          daysToExpiry: Math.ceil((batch.expiryDate!.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)),
+        };
+      })
+      .filter((row) => !row.fullyConsumed);
   }
 
   // Stock take (D-043) — physical count vs system. Each variance writes an

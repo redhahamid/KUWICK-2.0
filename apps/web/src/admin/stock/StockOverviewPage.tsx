@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Tag } from 'antd';
+import { Tag, Tooltip } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { ExceptionTiles, StatStrip } from '../components/StatStrip';
@@ -213,10 +213,41 @@ export function StockOverviewPage({
               dataIndex: 'quantityOnHand',
               key: 'quantityOnHand',
               className: 'kw-num',
+              render: (value: number | undefined) => {
+                // NO FALLBACK to a batch's `quantity`. That column is what was
+                // RECEIVED in the batch and never decrements — Kuwick does not
+                // attribute a dispense to a batch — so showing it under "on
+                // hand" reported a fully-dispensed batch at its full size. The
+                // batch rows carry their own honest columns below.
+                if (value === undefined) return '—';
+                return <span className={value < 0 ? 'kw-bad' : undefined}>{value}</span>;
+              },
+            },
+            {
+              title: 'Received',
+              dataIndex: 'quantity',
+              key: 'quantity',
+              className: 'kw-num',
+              render: (value: number | undefined) => (value === undefined ? '—' : value),
+            },
+            {
+              title: 'At risk (at most)',
+              dataIndex: 'atRiskQuantity',
+              key: 'atRiskQuantity',
+              className: 'kw-num',
               render: (value: number | undefined, row: Record<string, unknown>) => {
-                const quantity = value ?? (row.quantity as number | undefined);
-                if (quantity === undefined) return '—';
-                return <span className={quantity < 0 ? 'kw-bad' : undefined}>{quantity}</span>;
+                if (value === undefined) return '—';
+                const received = row.quantity as number | undefined;
+                const onHand = row.itemOnHand as number | undefined;
+                return value < (received ?? 0) ? (
+                  <Tooltip
+                    title={`Only ${onHand} of this item are on hand across all batches, so no more than that can be left of this one. Kuwick does not attribute a dispense to a batch, so the exact remainder is not known.`}
+                  >
+                    <strong>{value}</strong>
+                  </Tooltip>
+                ) : (
+                  <strong>{value}</strong>
+                );
               },
             },
             { title: 'Minimum', dataIndex: 'minThreshold', key: 'minThreshold', className: 'kw-num', optional: true },

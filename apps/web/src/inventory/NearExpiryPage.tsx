@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Select, Space, Table, Tag, Typography } from 'antd';
+import { Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import { useClinicFilter } from '../core/hooks/useClinicFilter';
 import { useNearExpiry } from './hooks/useStock';
 import { NearExpiryBatch } from './types';
@@ -54,7 +54,28 @@ export function NearExpiryPage() {
           { title: 'Item', render: (_: unknown, record: NearExpiryBatch) => record.item.name },
           { title: 'Batch No.', dataIndex: 'batchNumber', render: (value: string | null) => value ?? '—' },
           { title: 'Clinic', render: (_: unknown, record: NearExpiryBatch) => record.clinic.name },
-          { title: 'Quantity', dataIndex: 'quantity' },
+          {
+            title: 'Received',
+            dataIndex: 'receivedQuantity',
+            render: (value: number) => value ?? '—',
+          },
+          {
+            // Kuwick does not attribute a dispense to a batch, so what is LEFT
+            // of one is not a number that exists. What is certain is that no
+            // batch can hold more than the clinic holds of the item, and this
+            // column says so rather than passing the received quantity off as
+            // the remainder.
+            title: 'At risk (at most)',
+            dataIndex: 'atRiskQuantity',
+            render: (value: number, record: NearExpiryBatch) =>
+              value < record.receivedQuantity ? (
+                <Tooltip title={`Only ${record.itemOnHand} of this item are on hand across all batches, so no more than that can be left of this one.`}>
+                  <strong>{value}</strong>
+                </Tooltip>
+              ) : (
+                <strong>{value}</strong>
+              ),
+          },
           {
             title: 'Expiry Date',
             dataIndex: 'expiryDate',

@@ -2469,6 +2469,30 @@ The admin programme changed what is in it. It now carries basic salary before-an
 
 ---
 
+## D-114 — A batch's remaining quantity does not exist, so the expiry reports stop pretending it does
+**Status: DECIDED** (2026-08-31 — found while writing [`MANAGEMENT_SOURCE_OF_TRUTH.md`](./MANAGEMENT_SOURCE_OF_TRUTH.md))
+
+**What was wrong.** `StockBatch.quantity` is the quantity **received** in that batch. Nothing in the codebase ever decrements it, because an outbound `StockMovement` names the item and the clinic but not the batch it came from — dispensing is not batch-attributed. The near-expiry and expired surfaces nevertheless filtered on `quantity > 0` and the code called the result *"batches with stock still on hand"*. It is not. A batch dispensed to nothing still appeared on the worklist at its full received size, and `valueAtCost` multiplied that by cost, so the value-at-risk figure was overstated by the whole batch for anything fast-moving.
+
+This is the same defect shape as finding S-1 in the clinic's own payable workbook, whose headline "what we owe" sums the payment-DATE column: **a number under a heading that means something else.** It was found by the discipline of writing down, for every number, which of the four kinds it is — and discovering this one had been filed as a balance while being written as a receipt.
+
+**What was NOT done.** The tempting fix is to infer a per-batch remainder by allocating the item's on-hand across its batches in expiry order. That assumes the clinic actually dispenses first-expiry-first. It is an assumption presented as a quantity, which is the thing this codebase refuses to do everywhere else, and it would be **backwards** if the assumption held: under true FEFO the near-expiry batches are consumed *first*, so the remaining stock sits in the newest batches, not the oldest.
+
+**What was done — two things that are certain without batch attribution:**
+
+1. If the clinic holds none of the item, none of any batch of it remains. Such batches now leave the worklist entirely.
+2. No batch can have more left than the clinic holds of the item in total. `atRiskQuantity = min(received, onHand)` is reported as a **ceiling**, beside the received quantity, and `valueAtCost` uses the ceiling.
+
+Both figures are shown rather than one standing in for the other, with the reason in a tooltip. Fixed in all three places that had it: `stock.listNearExpiry`, the exception counters, and the drill-down. A negative on-hand — which Kuwick permits deliberately (D-043) — is not stock at risk of expiring, and reads as zero.
+
+**What this leaves open.** Kuwick still cannot say what is left of a *particular* batch, and says so rather than guessing. Closing that means dispensing picking a batch — real FEFO enforcement rather than assumed. That is an owner decision about clinical workflow, not a reporting change, and it is recorded as a gap in the source-of-truth register rather than done quietly.
+
+**Tested**: 7 unit tests (`inventory/batch-exposure.spec.ts`) and an integration test walking a 100-unit batch down through 10 to sold out, asserting it leaves both the list and the exception counter.
+
+**Reversibility**: High. No schema change; the old behaviour was a filter and a multiplication.
+
+---
+
 These touch billing, panel claims, clinical workflow, or data ownership and are intentionally **not** resolved above:
 
 - Doctor incentive formula: worked semantics now captured in full from Klinik Hijraa (`docs/PROPOSED_ADDENDUM_2026-08-01_klinik-hijraa-admin-reference.md`) — spec is no longer the blocker, building it is; still needs owner go-ahead to schedule (OQ#2, blocks 1c only)
