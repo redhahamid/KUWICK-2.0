@@ -24,15 +24,19 @@ The acceptance question this document answers, per domain and per workflow:
 
 The honest summary before the tables:
 
-- **The server is further along than the product.** Nine endpoints exist that no
-  screen calls. That was true at the last review and is still the single
-  clearest signal about this branch.
+- **The server is further along than the product.** When this audit was written,
+  nine endpoints existed that no screen called, and that was the single clearest
+  signal about the branch. It is now the smallest of the remaining categories
+  rather than the largest: employee editing, credit-note creation,
+  raise-transfer, incentive rules and leave policy are each a form over an
+  endpoint that already works.
 - **Payroll arithmetic went from wrong to right in this pass**, and is now the
   best-tested part of the system — but it still cannot be used to pay anyone,
   for reasons that are configuration and verification, not code.
-- **Stock and Finance day-end are genuinely usable.** Panel claim *tracking* is
-  too — but its *arithmetic* is not, which is the finding of this pass and is
-  described below.
+- **Stock and Finance day-end are genuinely usable.** Panel claim *tracking* was
+  too — but its *arithmetic* was not, which was the finding of this pass. The fee
+  direction is now corrected, migrated and measured (D-112), and the importer
+  that was the last cutover blocker is built (D-115).
 - **Reading the owner's six real workbooks moved two verdicts backwards.** That
   is what source material is for. A verdict written from a description of a
   workflow is a hypothesis; a verdict written from the file is a measurement.
@@ -201,11 +205,14 @@ in this pass has made any of them harder.
 
 ## What would have to be true for each domain to be production ready
 
+*Final position at the close of the programme. The full evidence is in
+[`MANAGEMENT_PROGRAMME_FINAL_REPORT.md`](./MANAGEMENT_PROGRAMME_FINAL_REPORT.md) §25.*
+
 | Domain | Verdict | Exact condition |
 |---|---|---|
 | **Operation** | ✅ **PRODUCTION READY** | — |
-| **Stock** | ✅ **PRODUCTION READY** for daily operation | Dispensing, counting, ordering and receiving all hold up, and Stock Take is strictly better than the sheet it replaces. Raise-transfer and price-change history are conveniences. Costing limitation must stay visible. **Not production-ready for buying:** supplier invoices, payables and payments do not exist, so the clinic keeps thirty supplier sheets. That is a Finance-shaped gap sitting inside Stock's chain. |
-| **Panel** | ⚠️ **CONDITIONALLY READY** | Reading the clinic's workbook found a correctness defect in Kuwick — the fee was added where the banked money proves it is withheld — and **that is now fixed, migrated and measured** (D-112). Payment terms, the re-claim deadline, the rejection taxonomy and the rejected→patient route all landed this pass. **One blocker remains: no importer for the 7,146 live claims**, so a real cutover is not yet possible. One panel is `UNCONFIGURED` pending an owner answer. |
-| **Finance** | ⚠️ **CONDITIONALLY READY** | Blockers: credit-note creation, invoice detail. e-Invoice and debit notes are absent and honestly labelled. |
-| **HR** | ⚠️ **CONDITIONALLY READY** | Blockers: add/edit employee from Admin, leave-policy config, attendance correction. |
-| **Payroll** | ❌ **NOT PRODUCTION READY** | Blockers, all named: (1) statutory tables unverified against KWSP/PERKESO; (2) no PCB engine; (3) no payslip; (4) no bank file; (5) no statutory output files. |
+| **Stock** | ✅ **PRODUCTION READY** | The buying chain that previously held it back — supplier invoices, payables, payments, allocations and a three-way match — landed this pass, and with it the new-item request workflow, bonus pricing, price capture at goods-in and activation on first delivery. Two limitations stay visible on the surfaces that use them: last-purchase-price valuation, and expiry exposure as a stated ceiling rather than an exact remaining quantity (D-114). |
+| **Panel** | ⚠️ **CONDITIONALLY READY** | Nine of thirteen gaps closed. The fee direction was the correctness defect the workbook exposed, and it is fixed, migrated and measured (D-112); the importer that was the last cutover blocker is built (D-115). **Condition:** the owner states the fee direction for the one `UNCONFIGURED` panel — Kuwick excludes it from the fee cost *and counts it*, so it cannot hide — and the cutover follows `MIGRATION_AND_IMPORT_SAFETY.md` §6. G-7, G-8, G-9 and G-11 remain open and are reporting conveniences. |
+| **Finance** | ⚠️ **CONDITIONALLY READY** | **Condition:** credit notes continue to be issued in Hijraa Admin — Kuwick lists them but has no create form — and there is no invoice detail screen. e-Invoice (LHDN) and debit notes are absent and honestly labelled. Payments, day-end, tax, receivables, profitability, payables and panel money are complete and integration-tested. |
+| **HR** | ⚠️ **CONDITIONALLY READY** | **Condition:** employees continue to be created and edited in Hijraa Admin. Kuwick reads HR correctly and completely; it cannot yet maintain it. Also outstanding: leave-policy configuration and attendance correction. Each is a form over an endpoint that already works. |
+| **Payroll** | ❌ **NOT PRODUCTION READY** | The arithmetic went from wrong to right and now reconciles **35 of 35** figures against the clinic's own workbooks — and it still cannot pay anyone. **Blockers:** (1) the statutory tables are `CORROBORATED`, never verified against KWSP/PERKESO, and approval is blocked below `VERIFIED`; (2) no PCB engine, by decision — it was not guessed; (3) no bank payment file; (4) no statutory submission files; (5) no employing-legal-entity model. The payslip now exists (D-116) and states both of the first two facts on its face. |
