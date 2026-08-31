@@ -74,17 +74,28 @@ test.describe('HR', () => {
 
     await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible();
 
-    // The whole point, stated where the person about to approve a run reads it.
-    await expect(page.getByText(/No statutory rate tables are configured/i)).toBeVisible();
-    await expect(page.getByText(/are NOT built into this system/i)).toBeVisible();
-    await expect(page.getByText(/rather than presenting a plausible wrong figure/i)).toBeVisible();
+    // THE WARNING MUST BE ACCURATE IN BOTH DIRECTIONS, which is why this
+    // asserts what IS calculated as well as what is not. EPF, SOCSO and EIS
+    // now come from dated band tables; overstating that gap would be the same
+    // failure as understating it, because a reader who catches the banner
+    // being wrong once stops believing the rest of it.
+    await expect(page.getByText(/NOT READY FOR LIVE MALAYSIAN PAYROLL/i)).toBeVisible();
+    await expect(page.getByText(/EPF, SOCSO and EIS are calculated/i)).toBeVisible();
+    await expect(page.getByText(/nobody has checked those tables/i)).toBeVisible();
+
+    // PCB is the part that genuinely is not implemented, and it says so
+    // without hiding behind the others.
+    await expect(page.getByText(/PCB is not calculated at all/i)).toBeVisible();
+
+    // No payslip and no bank file, said plainly rather than left to be found.
+    await expect(page.getByText(/no payslip and no bank payment file/i)).toBeVisible();
 
     // And the run itself carries the same admission in its own row, so it
     // travels with the figure rather than living only in a banner.
-    await expect(page.getByRole('row', { name: /2026-07/ })).toContainText(/Not calculated/);
+    await expect(page.getByRole('row', { name: /2026-07/ })).toContainText(/Unverified rates/);
 
-    // The exception count is a person who cannot be paid yet, not a warning.
-    await expect(page.getByRole('row', { name: /2026-07/ })).toContainText(/1/);
+    // Exceptions are people who cannot be paid yet, not a warning.
+    await expect(page.getByRole('row', { name: /2026-07/ })).toContainText(/[1-9]/);
 
     // --- DETAIL, the fourth step of the hierarchy -------------------------
     // Summary → exceptions → work queue → detail. A run whose lines cannot be
@@ -97,6 +108,13 @@ test.describe('HR', () => {
     // The person who cannot be paid is NAMED, not counted — an exception count
     // with no name attached is a number somebody approves past.
     await expect(detail.locator('.ant-table-tbody tr.ant-table-row').first()).toBeVisible();
+
+    // A computed statutory figure really is on the line, and the age-60 branch
+    // is real: the 61-year-old contributes nothing himself and his employer
+    // pays 4%. Asserting a number here is what stops the engine silently
+    // regressing to zeros behind an honest-looking banner.
+    await expect(detail.getByRole('row', { name: /Dr Aisyah Rahman/ })).toContainText('1980.00');
+    await expect(detail.getByRole('row', { name: /Hafiz Osman/ })).toContainText('0.00');
 
     // And approving is gated on resolving them, not merely warned about.
     const approve = page.getByRole('button', { name: /Approve/ });

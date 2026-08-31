@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { PayrollRunStatus, StatutoryStatus } from '@prisma/client';
+import { PayrollRunStatus, StatutoryStatus, StatutoryVerificationStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
@@ -108,9 +108,26 @@ export class PayrollService {
         // MARKING A RULE SET VERIFIED IS A DELIBERATE, SEPARATE ACT. Editing the
         // rates clears it, because a checked table that has since been edited is
         // not a checked table.
+        //
+        // `verificationStatus` moves WITH `verifiedAt`. Setting one and not the
+        // other left a set that a person had signed off still reading DRAFT, so
+        // it could never reach CONFIGURED and every run against it stayed
+        // provisional however carefully somebody had checked the tables.
         ...(dto.verified
-          ? { verifiedAt: new Date(), verifiedByStaffId: actor.id, verificationNote: dto.verificationNote ?? null }
-          : { verifiedAt: null, verifiedByStaffId: null, verificationNote: null }),
+          ? {
+              verificationStatus: StatutoryVerificationStatus.VERIFIED,
+              verifiedAt: new Date(),
+              verifiedByStaffId: actor.id,
+              verificationNote: dto.verificationNote ?? null,
+            }
+          : {
+              // Back to DRAFT, not CORROBORATED: whatever corroboration a
+              // previous version had was corroboration of different numbers.
+              verificationStatus: StatutoryVerificationStatus.DRAFT,
+              verifiedAt: null,
+              verifiedByStaffId: null,
+              verificationNote: null,
+            }),
       };
 
       const saved = existing
@@ -423,7 +440,19 @@ export class PayrollService {
               payslip.statutory.eis.employeeCents === null;
           }
         }
-        for (const note of payslip.notes.filter((n) => !n.startsWith('PCB is not calculated'))) {
+        // DELIBERATELY NOT every statutory note. "No EPF schedule is configured
+        // for this period" is a property of the RUN, already carried by
+        // `statutoryStatus` and already gated by the acknowledge-the-gap flow
+        // on approval. Repeating it once per employee per scheme buried the
+        // real exceptions under noise and, worse, made a NOT_CONFIGURED run
+        // unapprovable — closing off the documented case of a clinic that
+        // files EPF through its accountant.
+        //
+        // What DOES belong here is anything specific to this employee: an
+        // incomplete band table that happens to exclude their wage, or a wage
+        // outside every configured band.
+        for (const note of payslip.notes) {
+          if (!/incomplete|outside every configured/i.test(note)) continue;
           exceptions.push({ staffId: employee.staffId, name: employee.staff.fullName, issue: note });
         }
 

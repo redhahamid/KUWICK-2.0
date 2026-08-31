@@ -54,7 +54,7 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
     clinicId = clinic.body.id;
   });
 
-  async function makeEmployee(name: string, salary?: string) {
+  async function makeEmployee(name: string, salary?: string, opts: { pcbApplicable?: boolean } = {}) {
     const staff = await withTenantContext(prisma, tenantId, (tx) =>
       tx.staff.create({ data: { tenantId, role: Role.FRONT_DESK_CLINICAL_STAFF, fullName: name, clinicId } }),
     );
@@ -67,6 +67,11 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         employmentType: 'PERMANENT',
         employmentStatus: 'ACTIVE',
         startDate: '2024-01-01',
+        // EPF, SOCSO and EIS all change at age 60, so payroll refuses to guess.
+        dateOfBirth: '1990-06-15',
+        // PCB is not calculated by this system; an employee inside PCB with no
+        // amount entered blocks the run, which is a separate test below.
+        pcbApplicable: opts.pcbApplicable ?? false,
         ...(salary ? { basicSalary: salary } : {}),
       })
       .expect(201);
@@ -222,7 +227,10 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       // NULL, not zero. That distinction is the whole point.
       expect(detail.body.lines[0].epfEmployee).toBeNull();
       expect(detail.body.lines[0].socsoEmployee).toBeNull();
-      expect(detail.body.lines[0].pcb).toBeNull();
+      // PCB is ZERO rather than null here, and the difference matters: this
+      // employee is recorded as OUTSIDE PCB, which is a fact. Null would mean
+      // "we do not know", which is what it says for somebody inside it.
+      expect(detail.body.lines[0].pcb).toBe(0);
       expect(detail.body.lines[0].netPay).toBe(3000);
 
       // And it cannot be approved without acknowledging the gap.
@@ -242,9 +250,26 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         .send({
           name: 'Test rates',
           effectiveFrom: '2026-01-01',
-          epfRules: { employeeRate: '10.000', employerRate: '12.000' },
-          socsoRules: { brackets: [{ from: '0', employee: '20.00', employer: '70.00' }] },
-          eisRules: { brackets: [{ from: '0', employee: '5.00', employer: '5.00' }] },
+          // BAND TABLES, in cents, which is what the Third Schedule and the
+          // SOCSO/EIS schedules actually are. Deliberately synthetic and
+          // deliberately round: this test is about the plumbing — does a
+          // configured, verified rule set reach a payslip — and not about
+          // Malaysian rates, which are covered by the unit suite against the
+          // clinic's own figures.
+          epfRules: {
+            under60: {
+              '11': { bands: [{ min: 0, max: null, employer: 36000, employee: 30000 }] },
+            },
+            over60: { bands: [{ min: 0, max: null, employer: 12000, employee: 0 }] },
+          },
+          socsoRules: {
+            firstCategory: { bands: [{ min: 0, max: null, employer: 7000, employee: 2000 }] },
+            secondCategory: { bands: [{ min: 0, max: null, employer: 5000, employee: 0 }] },
+          },
+          eisRules: {
+            under60: { bands: [{ min: 0, max: null, employer: 500, employee: 500 }] },
+            over60: { bands: [{ min: 0, max: null, employer: 0, employee: 0 }] },
+          },
           verified: true,
           verificationNote: 'Checked against the published schedule',
         })
@@ -269,11 +294,77 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       expect(line.epfEmployee).toBe(300);
       expect(line.epfEmployer).toBe(360);
       expect(line.socsoEmployee).toBe(20);
-      // PCB has no schedule configured, so it stays NULL — configuring EPF
-      // does not manufacture a tax figure.
-      expect(line.pcb).toBeNull();
+      // Outside PCB, so zero. Configuring EPF does not manufacture a tax
+      // figure for anybody who is inside it — see the blocking test below.
+      expect(line.pcb).toBe(0);
       expect(line.netPay).toBe(3000 - 300 - 20 - 5);
       expect(detail.body.statutoryNotice).toBeNull();
+    });
+
+    it('BLOCKS the run for an employee inside PCB, because this system does not calculate it', async () => {
+      await makeEmployee('Taxed Employee', '5000.00', { pcbApplicable: true });
+
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      const calculated = await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+
+      const exceptions = calculated.body.exceptions as { name: string; issue: string }[];
+      expect(exceptions.some((row) => /PCB .* is not calculated by this system/.test(row.issue))).toBe(true);
+
+      // Not approvable, and acknowledging the statutory gap does not get past
+      // it — an unresolved exception is a harder stop than an unverified rate.
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/approve`)
+        .set('Authorization', bearer)
+        .send({ acknowledgeStatutoryGap: true })
+        .expect(400);
+    });
+
+    it('accepts a PCB amount entered by hand, which is what the clinic does today', async () => {
+      const staffId = await makeEmployee('Taxed And Entered', '5000.00', { pcbApplicable: true });
+
+      await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payrollInputEntry.create({
+          data: {
+            tenantId,
+            clinicId,
+            staffId,
+            period: new Date(`${PERIOD}-01T00:00:00.000Z`),
+            componentCode: 'PCB',
+            label: 'PCB (computed outside Kuwick)',
+            amount: '412.50',
+            createdByStaffId: staffId,
+          },
+        }),
+      );
+
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      const calculated = await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+
+      const exceptions = (calculated.body.exceptions ?? []) as { issue: string }[];
+      expect(exceptions.some((row) => /PCB/.test(row.issue))).toBe(false);
+
+      const detail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const line = detail.body.lines[0];
+      // The entered figure is withheld exactly as a computed one would be.
+      expect(line.pcb).toBe(412.5);
+      expect(line.netPay).toBe(5000 - 412.5);
     });
 
     it('surfaces an employee with no salary as an EXCEPTION and blocks approval', async () => {
