@@ -13,13 +13,16 @@ stop using the old thing"**.
 
 ---
 
-## 1 · Panel claim Google Sheet
+## 1 · Panel claim workbook
+
+*Rewritten against the workbook itself.* Everything below is evidence from
+[`PANEL_LEGACY_WORKFLOW_AUDIT.md`](./PANEL_LEGACY_WORKFLOW_AUDIT.md) — 31 sheets,
+7,146 claims, one branch-year — not from a description of it. **Two rows moved
+backwards when the real file was read**, and they are marked.
 
 | Old workflow | Kuwick replacement | Status | Manual step outside Kuwick | Blocker |
 |---|---|---|---|---|
 | Track service date, patient, claim no., claimed amount | Panel ▸ Claim workspace | 🟢 | — | — |
-| Payment terms and due date per panel | Panel ▸ Panel configuration | 🟢 | — | — |
-| Admin fee and expected receivable | Claim workspace — Claimed / Fee / Receivable columns | 🟢 | — | — |
 | Decide what is ready to submit | Panel ▸ Submission queue + readiness checklist | 🟢 | — | — |
 | Submit the claim | — | 🔴 | **Person opens the panel portal and keys it** | Deliberate: no browser automation into panel portals |
 | Record that it was submitted, with reference | Mark-submitted modal | 🟢 | — | — |
@@ -28,14 +31,26 @@ stop using the old thing"**.
 | Replacement claim number linkage | Re-claim workflow | 🟢 | — | — |
 | Resubmission date, resolution, resolved date | Claim workspace columns | 🟢 | — | — |
 | **Amount paid / receipt** | Panel ▸ Reconciliation ▸ **Record a payment** | 🟢 | Somebody reads the remittance advice | — |
-| Outstanding and aging | Panel ▸ Reconciliation + Finance ▸ Outstanding | 🟢 | — | — |
 | Remarks / owner of the claim | Claim workspace | 🟢 | — | — |
+| Reconcile the listing against the billing system monthly | — | ⚪ | — | **Disappears.** Claims derive from invoices, so the two cannot disagree. An entire monthly ritual stops existing. |
+| **Admin fee and expected receivable** | Claim workspace — Claimed / Fee / Receivable | 🟡 ⬇ | — | **G-1. Kuwick ADDS the fee; 2,615 banked payments prove the panel WITHHOLDS it.** Every receivable figure is over-stated until this is settled. |
+| **Payment terms per panel** | Panel ▸ Panel configuration | 🟡 ⬇ | Term for 14 of 29 panels held outside Kuwick | **G-2.** `paymentTermDays` is one number of calendar days. Real terms are ranges, working days, invoice-date-anchored, or delegated to the corporate client. |
+| **Overdue** | Aging views | 🟡 | — | **G-3.** Nothing derives a due date from the term, so "overdue" is still judgement. (The workbook cannot do it either.) |
+| **2-month re-claim deadline** | — | 🔴 | Counted in somebody's head | **G-4.** A hard money deadline. Miss it and the claim is gone. |
+| **Rejected claim → patient bill** | — | 🔴 | **Patient charged outside the claim record** | **G-5.** One of the four resolution routes the clinic actually uses. |
+| **Why a claim was rejected, countable** | `rejectionReason` free text | 🟡 | — | **G-6.** Five recurring causes; no taxonomy, so "what did exhausted limits cost us" is unanswerable. |
+| Rejection rate as a KPI | — | 🔴 | — | **G-10.** The workbook already computes it; Kuwick does not show it. |
+| **7,146 historical and open claims** | — | 🔴 | — | **G-12.** No importer. 30% of those rows are unpaid, live money. |
 
-> **The sheet can now be retired**, with one honest caveat: submitting a claim
-> is still a person opening the panel's portal and keying it in, which is
-> deliberate — no panel in use here offers an interface to submit to. Everything
-> the spreadsheet was actually used for — tracking, chasing, recording responses,
-> re-claiming, and now booking the money — is in Kuwick.
+> **Corrected verdict: the panel workbook cannot be retired yet.** The previous
+> pass said it could, on the strength of a *description* of the workflow. Reading
+> the file changed that. Kuwick genuinely replaces the tracking, chasing,
+> re-claiming and — new this programme — the booking of money, and it removes the
+> monthly billing-system reconciliation entirely. But **the receivable arithmetic
+> is currently wrong in Kuwick's favour (G-1)**, half the panels' payment terms
+> cannot be expressed (G-2), the deadline that loses claims is not tracked (G-4),
+> and there is no way in and no way to charge a rejected claim to the patient
+> (G-12, G-5). Submitting to the portal stays manual by design; the rest is work.
 
 ---
 
@@ -106,7 +121,79 @@ stop using the old thing"**.
 | Staff benefits | HR ▸ Staff benefits | 🟢 | — |
 | Roles and access | HR ▸ Roles & access | 🟢 | — |
 
-## 5 · Avixo-style reporting references
+## 5 · Stock workbooks (five files)
+
+*From [`STOCK_LEGACY_WORKFLOW_AUDIT.md`](./STOCK_LEGACY_WORKFLOW_AUDIT.md).*
+Read together the five files are one chain — request → order → receipt → cost →
+invoice → payable → payment, with a physical count hanging off the side. Kuwick
+holds the middle of that chain properly and both ends barely or not at all.
+
+### 5.1 · Inventory count sheet
+
+| Old workflow | Kuwick replacement | Status | Blocker |
+|---|---|---|---|
+| Count the shelf, item by item | Stock ▸ Stock Take | 🟢 | — |
+| **Compare count against system quantity** | Stock Take variance | 🟢 | Kuwick computes it; **the sheet has no variance column at all** |
+| System quantity to compare against | Read from the ledger | 🟢 | The sheet transcribes it by hand |
+| Second person approves before posting | Stock Take approval | 🟢 | Typing a count changes nothing until approved |
+| Value the shelf at **cost** | Stock Take + Valuation | 🟢 | — |
+| **Value the shelf at patient prices during a count** | — | 🔴 | Cost variance only |
+| **Printable count sheet to carry round** | — | 🔴 | Not built |
+
+### 5.2 · List new medication
+
+| Old workflow | Kuwick replacement | Status | Blocker |
+|---|---|---|---|
+| Item catalogue with cost, price, pack size, supplier | Stock ▸ Items & Pricing | 🟢 | Fields, not prose |
+| **Any staff member requests a new item** | — | 🔴 | No request workflow |
+| **Stock admin approves it into existence** | — | 🔴 | Approval is a text note in a cell today |
+| **Duplicate check before creating** | — | 🔴 | How a catalogue grows two entries for one medicine |
+| Unit cost from pack size | Item fields | 🟢 | The sheet hardcodes `=6.84*90` per row |
+
+### 5.3 · Que order medication + 5.4 · Consumable que order
+
+The two files are the **same shape** — and the consumables file shares its
+columns with marketing and admin spend. That is the clinic already telling us
+procurement is one primitive with different items in it.
+
+| Old workflow | Kuwick replacement | Status | Blocker |
+|---|---|---|---|
+| Request an order (pending list) | Stock ▸ `ProcurementRequest` | 🟢 | — |
+| Raise the purchase order | Stock ▸ Purchase orders | 🟢 | — |
+| Ordered vs received, both valued, partial receipt normal | Goods received notes | 🟢 | — |
+| Invoice scan attached to the order | Invoice link column | 🟡 | Attachments exist; not wired to a PO |
+| Order status | Enum | 🟢 | The sheet has free text, so four spellings of "ordered" coexist |
+| **Promotional / bonus price — pay `MIN(list, bonus)`** | — | 🔴 | Real pricing rule, not modelled |
+| **Old price → new price captured at goods-in** | — | 🔴 | The moment cost actually changes |
+| **Item activated on receipt, not on order** | — | 🔴 | Four activation states in the sheet; none in Kuwick |
+| **Supplier delivery SLA ("max 1 week")** | — | 🔴 | Lives in a column heading; nothing measures it |
+| Consumables and admin spend on one rail | Same procurement chain | 🟢 | — |
+| Half-yearly archive sheets | One ledger, date-filtered | 🟢 | Cross-boundary questions stop being manual |
+
+### 5.5 · Medications payable listing
+
+**One sheet per supplier, thirty of them.** This is the largest gap in the whole
+programme outside payroll.
+
+| Old workflow | Kuwick replacement | Status | Blocker |
+|---|---|---|---|
+| **Supplier invoice** | — | 🔴 | No model |
+| **Amount / paid / balance per invoice** | — | 🔴 | No model |
+| **What do we owe suppliers, in total** | — | 🔴 | **Kuwick cannot answer this at all** |
+| **Payment terms per supplier** | — | 🔴 | Held in the heading, the `+n` in the formula, and the roll-up — three places |
+| **Days due, and "what must I pay this week"** | — | 🔴 | The operating question the file exists for |
+| **Supplier credit limit** | — | 🔴 | A free-text note today |
+| **Record a payment to a supplier** | — | 🔴 | No model |
+| **Match an invoice to its goods receipt** | — | 🔴 | Impossible in the sheet too — no link exists either side |
+
+> The roll-up that answers "what do we owe" **sums the payment-date column
+> instead of the balance column**. The clinic's headline payable figure is built
+> from dates. Nothing in Kuwick reproduces that, because nothing in Kuwick
+> computes it at all.
+
+---
+
+## 6 · Avixo-style reporting references
 
 | Reference | Kuwick | Status |
 |---|---|---|
@@ -121,16 +208,40 @@ stop using the old thing"**.
 
 ## What can be retired today
 
-**The panel Google Sheet — that one is done. The rest are close.**
+**Nothing yet, and that is a change from the last pass.** Reading the six real
+workbooks moved the panel sheet backwards and added five tools that were not on
+this matrix at all.
 
 | Tool | Can it be retired? | What stands in the way |
 |---|---|---|
-| **Panel Google Sheet** | **Yes** | Nothing. Submission to the portal stays manual by design. |
-| **Hijraa Admin** | **Mostly**, for day-to-day operation | Employee editing, credit-note creation, raise-transfer. Each is a form over an existing endpoint. |
-| **Payroll listing Excel** | No | Payment-date split, HRD levy, legal entity |
-| **AAS payroll workbook** | **No** | PCB, payslip, and verification of the statutory tables |
+| **Hijraa Admin** | **Mostly**, for day-to-day operation | Employee editing, credit-note creation, raise-transfer. Each is a form over an endpoint that already works. |
+| **Panel claim workbook** | **No** *(was "yes")* | G-1 fee direction — the receivable is wrong until it is settled. Then G-2 terms, G-4 the 2-month deadline, G-5 self-pay conversion, G-12 import. |
+| **Que order medication** | **Close** | Bonus price, price-change-at-receipt, item activation on goods-in, supplier SLA. |
+| **Consumable que order** | **Close** | Same list. The file needs nothing Kuwick's procurement chain does not already have in shape. |
+| **Inventory count sheet** | **Yes, on the count itself** | Kuwick is strictly better here — it computes the variance the sheet never had, and requires a second approver. Keep the sheet only for the printable walk-round list and selling-value-at-count. |
+| **List new medication** | **No** | No request-and-approve workflow, and no duplicate check. |
+| **Medications payable listing** | **No** | Nothing to move to. No supplier invoice, no payable, no supplier payment in Kuwick. |
+| **Payroll listing Excel** | **No** | Payment-date split, HRD levy, legal entity |
+| **AAS payroll workbook** | **No** | PCB, payslip, verification of the statutory tables |
 
-The pattern is worth naming: **almost every remaining blocker is a screen over an
-endpoint that already works.** The exceptions — PCB, payslips, bank files,
-statutory exports, the legal-entity model — are genuinely unbuilt, and they are
-all in payroll.
+### The pattern, restated after reading the real files
+
+The last pass said *"almost every remaining blocker is a screen over an endpoint
+that already works."* That was true of what had been examined then. It is no
+longer the whole picture:
+
+1. **Screens over working endpoints** — employee editing, credit notes,
+   raise-transfer, incentive rules, leave policy, claim history. Still the
+   largest category, still the cheapest.
+2. **Configuration shapes that cannot express reality** — panel payment terms,
+   panel fee direction and tiers, supplier terms and credit limits. Cheap in
+   code, but each one needs an owner decision first, and G-1 needs one before
+   any panel receivable can be trusted.
+3. **Genuinely unbuilt subsystems** — supplier invoice/payable/payment, the
+   new-item request workflow, rejected-claim-to-patient conversion, PCB,
+   payslips, bank files, statutory exports, the legal-entity model.
+4. **Migration** — every one of these files holds live open balances. There is
+   no importer for any of them, and no cutover is possible without one.
+
+Categories 3 and 4 are the honest answer to "why can the clinic not stop using
+these files yet."

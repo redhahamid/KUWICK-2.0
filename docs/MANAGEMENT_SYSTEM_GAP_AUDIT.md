@@ -30,7 +30,12 @@ The honest summary before the tables:
 - **Payroll arithmetic went from wrong to right in this pass**, and is now the
   best-tested part of the system — but it still cannot be used to pay anyone,
   for reasons that are configuration and verification, not code.
-- **Stock, Finance day-end, and Panel claim tracking are genuinely usable.**
+- **Stock and Finance day-end are genuinely usable.** Panel claim *tracking* is
+  too — but its *arithmetic* is not, which is the finding of this pass and is
+  described below.
+- **Reading the owner's six real workbooks moved two verdicts backwards.** That
+  is what source material is for. A verdict written from a description of a
+  workflow is a hypothesis; a verdict written from the file is a measurement.
 - **Nothing in Operation invents its own numbers**, which was the main risk there.
 
 ---
@@ -96,6 +101,7 @@ The honest summary before the tables:
 | Inter-company | 🟡 | Lists flagged transfers and unreferenced ones; cannot raise or settle |
 | **e-Invoice (LHDN)** | ⚠️→✅ | Honest placeholder page. Nothing behind it, and it says so |
 | **Payroll → Finance cost feed** | ❌ | Approved payroll does not reach Finance |
+| **Accounts payable (supplier invoices, ageing, payments)** | ❌ *(found this pass)* | Nothing. See Stock — the clinic runs it as thirty spreadsheet tabs, and its own roll-up sums the wrong column |
 | Month-on-month sales | 🟡 | Daily and custom ranges only |
 
 ---
@@ -114,6 +120,14 @@ The honest summary before the tables:
 | Valuation | ✅ | Selling value clearly not profit |
 | **Costing method** | 🟡 | Standard cost. Weighted-average / FIFO not implemented; limitation documented |
 | **Price change history** | ❌ | No audit of who changed a price |
+| **New-item request → approve → create** | ❌ *(found this pass)* | Any staff member can ask for a new item today; approval is a text note in a spreadsheet cell. No state, no actor, no date, and no duplicate check against the catalogue |
+| **Promotional (bonus) price** | ❌ *(found this pass)* | The clinic pays `MIN(list price, bonus price)`. A real pricing rule, unmodelled |
+| **Price change captured at goods-in** | ❌ *(found this pass)* | The order queue records old price → new price at receipt — the moment cost actually changes. Also the foundation for moving off standard cost |
+| **Item activated on receipt, not on order** | ❌ *(found this pass)* | Four activation states in the clinic's sheet; none in Kuwick |
+| **Supplier delivery SLA** | ❌ *(found this pass)* | "Max 1 week" lives in a column heading. Nothing measures it |
+| **Selling value at stock-take time** | ❌ *(found this pass)* | Kuwick shows cost variance; the count sheet also values the shelf at patient prices |
+| **Supplier invoice → payable → payment** | ❌ *(found this pass)* | **Kuwick cannot answer "what do we owe suppliers".** Thirty supplier sheets exist for exactly this question. Three models, a screen, and a link from invoice to goods receipt. The largest gap outside payroll |
+| **Supplier payment terms, credit limit** | ❌ *(found this pass)* | Terms differ per supplier and are held in three places in the spreadsheet; credit limits are free-text notes |
 
 ---
 
@@ -130,6 +144,13 @@ The honest summary before the tables:
 | **Record payment received (remittance)** | ✅ *(this pass)* | Reconciliation ▸ Record a payment. Allocations must equal the payment exactly, checked live. Drove RM60 through end to end: claim moved PARTIALLY_PAID → PAID, received RM249.60 → RM309.60, ledger still reconciles |
 | **Claims awaiting payment** | ✅ *(this pass)* | New `GET /panel-workspace/awaiting-payment` — the work queue is the *problem* queue and could not answer "what is this panel still owed on" |
 | **Claim history / audit trail** | 🔌 | `ClaimEvent` rows written, `timeline()` exists; no screen |
+| **Expected receivable — fee direction** | ⚠️ **DEFECT** *(found this pass)* | `computeClaimBalance` uses `claimed + fee`. The clinic's workbook uses `claimed − fee`, and **2,615 of 2,640 fee-bearing claims were banked at exactly `claimed − fee`; none at `claimed + fee`.** Kuwick over-states every panel receivable by the fee, and a fully settled claim reads as short by twice it. Needs a per-panel `feeDirection` and an owner decision — not a unilateral sign flip. See `PANEL_LEGACY_WORKFLOW_AUDIT.md` P-1 / G-1 |
+| **Payment terms beyond N calendar days** | ❌ | 14 of 29 panels use a range, working days, an invoice-date anchor, or delegate the term to the corporate client behind a TPA. `paymentTermDays Int?` holds none of those |
+| **Overdue as a computed state** | ❌ | Nothing derives a due date from the panel's term |
+| **Re-claim deadline (2 months)** | ❌ | A hard deadline with money attached, tracked by nobody |
+| **Rejected claim → patient receivable** | ❌ | One of the four routes the clinic actually uses |
+| **Rejection reason taxonomy** | 🟡 | Free text only, so recurring causes cannot be counted |
+| **Claim import** | ❌ | 7,146 claims for one branch-year, 30% unpaid. No cutover without an importer |
 
 ---
 
@@ -183,8 +204,8 @@ in this pass has made any of them harder.
 | Domain | Verdict | Exact condition |
 |---|---|---|
 | **Operation** | ✅ **PRODUCTION READY** | — |
-| **Stock** | ✅ **PRODUCTION READY** for daily operation | Raise-transfer and price-change history are conveniences, not blockers. Costing limitation must stay visible. |
-| **Panel** | ✅ **PRODUCTION READY** | The receipt screen closed the last blocker. Claim history/audit-trail remains endpoint-only, which is a convenience rather than a workflow gap. |
+| **Stock** | ✅ **PRODUCTION READY** for daily operation | Dispensing, counting, ordering and receiving all hold up, and Stock Take is strictly better than the sheet it replaces. Raise-transfer and price-change history are conveniences. Costing limitation must stay visible. **Not production-ready for buying:** supplier invoices, payables and payments do not exist, so the clinic keeps thirty supplier sheets. That is a Finance-shaped gap sitting inside Stock's chain. |
+| **Panel** | ⚠️ **CONDITIONALLY READY** *(downgraded this pass)* | The receipt screen closed the workflow blocker, and the domain model is strong. But reading the clinic's actual workbook found a **correctness defect in Kuwick**: the admin fee is added to the expected receivable when the banked money proves it is withheld. Until `feeDirection` exists and the owner has set it per panel, no panel receivable figure should be trusted. Payment terms, the 2-month re-claim deadline and the claim importer are the next three. |
 | **Finance** | ⚠️ **CONDITIONALLY READY** | Blockers: credit-note creation, invoice detail. e-Invoice and debit notes are absent and honestly labelled. |
 | **HR** | ⚠️ **CONDITIONALLY READY** | Blockers: add/edit employee from Admin, leave-policy config, attendance correction. |
 | **Payroll** | ❌ **NOT PRODUCTION READY** | Blockers, all named: (1) statutory tables unverified against KWSP/PERKESO; (2) no PCB engine; (3) no payslip; (4) no bank file; (5) no statutory output files. |
