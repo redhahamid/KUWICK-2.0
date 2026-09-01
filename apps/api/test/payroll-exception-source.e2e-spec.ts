@@ -58,9 +58,19 @@ describe('payroll exception state has one canonical source (e2e)', () => {
         startDate: '2024-01-01',
         dateOfBirth: '1990-06-15',
         pcbApplicable: opts.pcbApplicable ?? false,
-        ...(opts.salary ? { basicSalary: opts.salary } : {}),
+
       })
       .expect(201);
+
+    // Salary is recorded with the date it takes effect from — the one way
+    // payroll reads it. Backdated so any period in this suite resolves it.
+    if (opts.salary) {
+      await request(app.getHttpServer())
+        .post(`/workforce/employees/${staff.id}/salary`)
+        .set('Authorization', bearer)
+        .send({ amount: opts.salary, basis: 'MONTHLY', effectiveFrom: '2024-01-01', reason: 'Starting salary' })
+        .expect(201);
+    }
     return staff.id;
   }
 

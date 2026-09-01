@@ -72,9 +72,20 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         // PCB is not calculated by this system; an employee inside PCB with no
         // amount entered blocks the run, which is a separate test below.
         pcbApplicable: opts.pcbApplicable ?? false,
-        ...(salary ? { basicSalary: salary } : {}),
       })
       .expect(201);
+
+    // SALARY IS RECORDED WITH THE DATE IT TAKES EFFECT FROM. It used to be a
+    // field on the employee form, which meant payroll and the profile could
+    // disagree about what somebody is paid. Backdated here so a run for any
+    // period in this suite resolves it.
+    if (salary) {
+      await request(app.getHttpServer())
+        .post(`/workforce/employees/${staff.id}/salary`)
+        .set('Authorization', bearer)
+        .send({ amount: salary, basis: 'MONTHLY', effectiveFrom: '2024-01-01', reason: 'Starting salary' })
+        .expect(201);
+    }
     return staff.id;
   }
 
@@ -100,7 +111,6 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       .expect(200);
     expect(profile.body.basicSalary).toBeUndefined();
     expect(profile.body.bankAccountNo).toBeUndefined();
-    expect(profile.body.hasSalaryOnRecord).toBe(true);
 
     // The payroll read does, behind its own permission.
     const payrollDetail = await request(app.getHttpServer())
@@ -110,6 +120,19 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
     expect(Number(payrollDetail.body.basicSalary)).toBe(3000);
   });
 
+  it('REFUSES a salary sent to the employee form, and says where it goes instead', async () => {
+    const staffId = await makeEmployee('Legacy Salary Path');
+    const refused = await request(app.getHttpServer())
+      .post(`/workforce/employees/${staffId}`)
+      .set('Authorization', bearer)
+      .send({ basicSalary: '5000.00' })
+      .expect(400);
+    // The message has to be actionable: a caller who gets "bad request" here
+    // learns nothing about where salary actually goes.
+    expect(refused.body.message).toMatch(/date it takes effect from/);
+    expect(refused.body.message).toMatch(/employees\/:staffId\/salary/);
+  });
+
   it('redacts salary and bank details from the audit trail while still recording the change', async () => {
     const staffId = await makeEmployee('Redaction Test', '4000.00');
     const audit = await withTenantContext(prisma, tenantId, (tx) =>
@@ -117,9 +140,6 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
     );
     expect(audit.length).toBeGreaterThan(0);
     const after = audit[0].after as Record<string, unknown>;
-    // The salary itself never reaches the audit log — an audit row that copies
-    // a salary is a second place it can leak from.
-    expect(after.basicSalary).toBe('[changed]');
     // What an audit needs IS there: that it changed, and who changed it.
     expect(after._actor).toMatchObject({ staffId: ownerStaffId, name: 'Test Owner' });
     expect(after.position).toBe('Clinic Assistant');
@@ -315,7 +335,19 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         .expect(200);
 
       const exceptions = calculated.body.exceptions as { name: string; issue: string }[];
-      expect(exceptions.some((row) => /PCB .* is not calculated by this system/.test(row.issue))).toBe(true);
+      // The blocker is stated in the owner's words. The engine's reason — that
+      // Kuwick does not work PCB out — belongs in the remedy, not the headline.
+      expect(exceptions.some((row) => /Monthly tax \(PCB\) is missing/.test(row.issue))).toBe(true);
+
+      const gate = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}/exceptions`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const pcb = (gate.body.exceptions as { code: string; remediation: string }[]).find(
+        (row) => row.code === 'PCB_MISSING',
+      );
+      expect(pcb).toBeDefined();
+      expect(pcb!.remediation).toMatch(/does not work out monthly tax/);
 
       // Not approvable, and acknowledging the statutory gap does not get past
       // it — an unresolved exception is a harder stop than an unverified rate.
@@ -384,7 +416,7 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       const exceptions = calculated.body.exceptions as { name: string; issue: string }[];
       expect(exceptions).toHaveLength(1);
       expect(exceptions[0].name).toBe('No Salary Set');
-      expect(exceptions[0].issue).toMatch(/No salary or hourly rate/);
+      expect(exceptions[0].issue).toMatch(/Salary setup is incomplete/);
       // One employee paid, one skipped — never silently paid zero.
       expect(calculated.body.employeeCount).toBe(1);
 

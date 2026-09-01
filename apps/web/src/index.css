@@ -5065,3 +5065,116 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 @media (max-width: 1100px) {
   .kw-approveGrid { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   STAGE 2.5 — the employee workspace
+   ========================================================================== */
+
+.kw-employeeHead {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: var(--kw-card);
+  border: 1px solid var(--kw-border);
+  border-radius: 12px;
+  padding: 18px 22px;
+  margin-bottom: 16px;
+}
+
+.kw-employeeHead__avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--kw-surface-2);
+  border: 1px solid var(--kw-border);
+  color: var(--kw-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 650;
+  flex-shrink: 0;
+}
+
+.kw-employeeHead__body { flex-grow: 1; min-width: 0; }
+
+.kw-employeeHead__nameRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.kw-employeeHead__name {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--kw-text);
+}
+
+/* WORKS AT and EMPLOYED BY side by side, labelled. A group files EPF under one
+   company and rosters the person at a branch of another; getting them the wrong
+   way round means filing for somebody under a company that does not employ them. */
+.kw-employeeHead__facts,
+.kw-factGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 32px;
+  margin-top: 8px;
+}
+
+.kw-factGrid { gap: 14px 40px; }
+
+.kw-employeeHead__fact {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.kw-employeeHead__factLabel {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  color: var(--kw-text-muted);
+}
+
+.kw-employeeHead__factValue {
+  font-size: 12.5px;
+  color: var(--kw-text);
+}
+
+.kw-employeeHead__readiness {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding-left: 20px;
+  border-left: 1px solid var(--kw-border);
+  flex-shrink: 0;
+}
+
+.kw-employeeHead__readinessLabel {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  color: var(--kw-text-muted);
+}
+
+.kw-employeeHead__readinessValue {
+  font-size: 18px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: #166534;
+}
+
+.kw-employeeHead__readinessValue--warn { color: #b45309; }
+
+@media (max-width: 800px) {
+  .kw-employeeHead { flex-wrap: wrap; }
+  .kw-employeeHead__readiness {
+    border-left: none;
+    padding-left: 0;
+    align-items: flex-start;
+    width: 100%;
+  }
+}

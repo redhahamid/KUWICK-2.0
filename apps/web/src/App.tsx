@@ -90,6 +90,7 @@ import { LocumPage } from './admin/hr/LocumPage';
 import { PayrollSettingsPage } from './admin/hr/PayrollSettingsPage';
 import { PayrollHomePage } from './admin/hr/PayrollHomePage';
 import { PayrollRunPage } from './admin/hr/PayrollRunPage';
+import { EmployeeWorkspacePage } from './admin/hr/EmployeeWorkspacePage';
 import { FinanceOverviewPage } from './admin/finance/FinanceOverviewPage';
 import { DayEndClosingPage } from './admin/finance/DayEndClosingPage';
 import { PaymentsPage } from './admin/finance/PaymentsPage';
@@ -245,6 +246,10 @@ export function App() {
 
             <Route path="/admin/hr" element={<HrOverviewPage />} />
             <Route path="/admin/hr/employees" element={<EmployeesPage />} />
+            {/* One employee, addressable. The record used to live only in a
+                drawer, so it could not be linked to, left open, or reached from
+                a payroll exception without landing on a directory first. */}
+            <Route path="/admin/hr/employees/:staffId" element={<EmployeeWorkspacePage />} />
             <Route path="/admin/hr/attendance" element={<TimesheetPage />} />
             <Route path="/admin/hr/leave" element={<LeaveRequestsPage />} />
             {/* The Appointments roster, rendered in the Admin shell. There is

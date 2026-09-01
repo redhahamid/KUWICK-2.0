@@ -98,6 +98,24 @@ async function main() {
   await go(page, '/admin/hr/employees');
   await capture(page, 'employees', 'Employee list');
 
+  // The workspace: open the first employee and photograph the tabs that carry
+  // the readiness checklist, the salary periods and the claims.
+  const firstRow = page.locator('.ant-table-tbody tr.ant-table-row').first();
+  if (await firstRow.count()) {
+    await firstRow.click();
+    await page.waitForURL(/\/admin\/hr\/employees\/[0-9a-f-]{36}/, { timeout: 20_000 }).catch(() => {});
+    await settle(page);
+    await capture(page, 'employee-overview', 'Employee workspace — payroll readiness checklist');
+    for (const tab of ['Salary', 'Claims', 'Payroll']) {
+      // antd Segmented hides a radio behind the label; click the label.
+      const control = page.locator('.ant-segmented-item-label').filter({ hasText: new RegExp('^' + tab + '$') });
+      if (await control.count()) {
+        await control.first().click();
+        await capture(page, `employee-${tab.toLowerCase()}`, `Employee workspace — ${tab}`);
+      }
+    }
+  }
+
   await go(page, '/admin/hr/claims');
   await capture(page, 'claims', 'Staff claims — one payment route per claim');
 

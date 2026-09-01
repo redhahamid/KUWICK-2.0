@@ -294,6 +294,24 @@ export class PayrollService {
         });
       };
 
+      // WHO WAS LEFT OUT, AND WHY — recorded where the decision is taken rather
+      // than inferred afterwards.
+      //
+      // Not every exception excludes somebody. A missing punch or an
+      // unapproved overtime hour is raised AGAINST a payslip that is still
+      // produced; only the reasons below stop the calculation for that person.
+      // Reading "has an exception" as "was not paid" would make every
+      // still-paid employee with a warning look like a contradiction.
+      const excluded: { staffId: string; reason: string }[] = [];
+      const exclude = (
+        code: string,
+        employee: { staffId: string; staff: { fullName: string } },
+        ctx: Record<string, string | number> = {},
+      ) => {
+        raise(code, employee, ctx);
+        excluded.push({ staffId: employee.staffId, reason: code });
+      };
+
       // CANONICAL SALARY. One query for the whole run rather than one per
       // employee, and `EmployeeProfile.basicSalary` is no longer read: what
       // somebody earned in March is the rate that was in force in March.
@@ -356,12 +374,12 @@ export class PayrollService {
           lastDayOfPeriod,
         );
         if (salary.kind === 'NO_SALARY') {
-          raise('NO_SALARY', employee);
+          exclude('NO_SALARY', employee);
           continue;
         }
         if (salary.kind === 'CHANGED_MID_PERIOD') {
           // Refuse rather than prorate. See SALARY_CHANGED_MID_PERIOD.
-          raise('SALARY_CHANGED_MID_PERIOD', employee, {
+          exclude('SALARY_CHANGED_MID_PERIOD', employee, {
             previousAmount: formatCents(salary.previous.amountCents),
             nextAmount: formatCents(salary.next.amountCents),
             changedOn: salary.changedOn.toISOString().slice(0, 10),
@@ -370,7 +388,7 @@ export class PayrollService {
           continue;
         }
         if (salary.row.basis !== 'MONTHLY') {
-          raise('SALARY_BASIS_UNSUPPORTED', employee, { basis: salary.row.basis });
+          exclude('SALARY_BASIS_UNSUPPORTED', employee, { basis: salary.row.basis });
           continue;
         }
 
@@ -439,7 +457,7 @@ export class PayrollService {
         // would under-contribute for the whole workforce and nobody would see it.
         const age = ageAt(employee.dateOfBirth, new Date(periodEnd.getTime() - 86400000));
         if (age === null) {
-          raise('NO_DOB', employee);
+          exclude('NO_DOB', employee);
           continue;
         }
 
@@ -825,7 +843,7 @@ export class PayrollService {
         }),
         ...checkMembership(
           paidEmployees.map((e) => e.staffId),
-          exceptions.filter((e) => e.staffId).map((e) => ({ staffId: e.staffId as string, reason: e.code })),
+          excluded,
           employees.filter((e) => e.staff.active).map((e) => e.staffId),
         ),
       ];

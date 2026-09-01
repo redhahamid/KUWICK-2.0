@@ -150,6 +150,11 @@ export function checkPayrollInvariants(
  * If those are different sets of people, the owner is reviewing one month and
  * approving another. Anybody left out must be left out for a REASON the screen
  * can state — an exception with their name on it.
+ *
+ * `excluded` is the register of people the calculation STOPPED for, not every
+ * exception it raised. A missing punch or an unapproved overtime hour is
+ * raised against a payslip that is still produced; treating those as
+ * exclusions would report every warned-but-paid employee as a contradiction.
  */
 export function checkMembership(
   included: string[],

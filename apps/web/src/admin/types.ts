@@ -1022,6 +1022,39 @@ export interface StaffBenefitReport {
 export interface EmployeeRecord {
   staffId: string;
   year: number;
+  /** EMPLOYEE or CONTRACTOR — what statutory treatment turns on. */
+  engagement: 'EMPLOYEE' | 'CONTRACTOR';
+  /** NULL for a contractor: they are not on payroll, so it does not apply. */
+  payrollReadiness: {
+    items: { key: string; label: string; done: boolean; detail: string }[];
+    done: number;
+    total: number;
+  } | null;
+  /** Salary as PERIODS, not effective-dated rows. NULL when pay is not visible. */
+  salaryPeriods:
+    | {
+        id: string;
+        amount: string;
+        basis: string;
+        from: string;
+        to: string | null;
+        current: boolean;
+        upcoming: boolean;
+        reason: string | null;
+      }[]
+    | null;
+  claims: {
+    id: string;
+    category: string;
+    claimDate: string;
+    description: string;
+    status: string;
+    amountClaimed: string;
+    amountApproved: string | null;
+    paymentRoute: PaymentRoute | null;
+    payoutStatus: PayoutStatus;
+    decidedBy: string | null;
+  }[];
   identity: {
     fullName: string;
     legalName: string | null;

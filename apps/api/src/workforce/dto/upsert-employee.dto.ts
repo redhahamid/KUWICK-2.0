@@ -36,6 +36,11 @@ export class UpsertEmployeeDto {
    * maintaining records must not be able to change somebody's salary by
    * including it in the same submission.
    */
+  /**
+   * LEGACY, AND REFUSED. Kept on the DTO so a caller that still sends it gets a
+   * sentence telling them where salary goes, rather than a validation error
+   * that reads as "this field does not exist".
+   */
   @IsOptional() @Matches(MONEY) basicSalary?: string;
   @IsOptional() @Matches(MONEY) hourlyRate?: string;
   @IsOptional() @IsString() @MaxLength(80) bankName?: string;

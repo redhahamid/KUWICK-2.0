@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { EmploymentStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
@@ -6,6 +6,8 @@ import { currentTenantId } from '../core/tenant-context';
 import { actorCan, requirePermission, withAdminTx } from '../finance/admin-actor';
 import { diffOf, recordAudit } from '../finance/admin-audit';
 import { UpsertEmployeeDto } from './dto/upsert-employee.dto';
+import { formatCents, fromCents, toCents } from '../finance/money';
+import { resolveSalaryForPayroll } from './salary-resolution';
 
 /**
  * THE EMPLOYEE PROFILE — the employment half of a person.
@@ -135,7 +137,14 @@ export class EmployeeService {
     const yearStart = new Date(Date.UTC(year, 0, 1));
     const yearEnd = new Date(Date.UTC(year, 11, 31));
 
-    const [clinic, attendance, payrollLines] = await Promise.all([
+    // STAGE 2.5 — what payroll actually needs from this person, and what it
+    // has. Everything below is read here rather than assembled by the screen,
+    // so the readiness a payroll run enforces and the readiness an employee
+    // page reports are the same fact.
+    const period = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+    const periodEnd = new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth() + 1, 0));
+
+    const [clinic, attendance, payrollLines, salaryRows, pcbInput, claims] = await Promise.all([
       profile.staff.clinicId
         ? this.prisma.clinic.findUnique({ where: { id: profile.staff.clinicId }, select: { name: true } })
         : Promise.resolve(null),
@@ -171,7 +180,27 @@ export class EmployeeService {
           payrollRun: { select: { id: true, period: true, status: true, statutoryStatus: true } },
         },
       }),
+      this.prisma.employeeSalary.findMany({ where: { staffId }, orderBy: { effectiveFrom: 'desc' } }),
+      this.prisma.payrollInputEntry.findFirst({ where: { staffId, period, componentCode: 'PCB' } }),
+      this.prisma.staffClaim.findMany({
+        where: { staffId },
+        orderBy: { claimDate: 'desc' },
+        take: 12,
+        include: { decidedBy: { select: { fullName: true } } },
+      }),
     ]);
+
+    const salary = resolveSalaryForPayroll(
+      salaryRows.map((row) => ({
+        id: row.id,
+        basis: row.basis,
+        amountCents: toCents(row.amount),
+        effectiveFrom: row.effectiveFrom,
+        effectiveTo: row.effectiveTo,
+      })),
+      period,
+      periodEnd,
+    );
 
     const worked = attendance.filter((row) => row.workedMinutes !== null);
     const approvedOvertime = attendance.reduce(
@@ -222,9 +251,20 @@ export class EmployeeService {
       payVisible: mayReadPay,
       pay: mayReadPay
         ? {
-            payBasis: profile.basicSalary !== null ? 'MONTHLY' : profile.hourlyRate !== null ? 'HOURLY' : null,
-            basicSalary: profile.basicSalary === null ? null : Number(profile.basicSalary),
-            hourlyRate: profile.hourlyRate === null ? null : Number(profile.hourlyRate),
+            // THE CANONICAL SALARY, resolved for this month exactly as payroll
+            // resolves it. This read `EmployeeProfile.basicSalary`, so the
+            // employee page could show one figure while the run paid another.
+            payBasis: salary.kind === 'RESOLVED' ? salary.row.basis : null,
+            basicSalary:
+              salary.kind === 'RESOLVED' && salary.row.basis === 'MONTHLY'
+                ? salary.row.amountCents / 100
+                : null,
+            hourlyRate:
+              salary.kind === 'RESOLVED' && salary.row.basis === 'HOURLY'
+                ? salary.row.amountCents / 100
+                : null,
+            salaryState: salary.kind,
+            salaryNote: salary.reason,
             bankName: profile.bankName,
             // Presence, not the number. An HR detail screen has no reason to
             // display a bank account, and a screen that displays one is a
@@ -248,6 +288,121 @@ export class EmployeeService {
         note:
           'Identifiers and applicability flags only. Malaysian EPF/SOCSO/EIS/PCB rate schedules are not implemented in this system, so no contribution shown anywhere is derived from these fields.',
       },
+      /**
+       * EMPLOYEE OR CONTRACTOR. The fact everything statutory turns on, and the
+       * one `employmentType` could not express: a locum may be either.
+       */
+      engagement: profile.engagement,
+      /**
+       * PAYROLL READINESS, as a checklist rather than a score.
+       *
+       * "4 of 5" tells somebody they have work to do and not what it is. Each
+       * item names what is missing and what to do about it, and the list is
+       * derived from the SAME facts the payroll run blocks on — a person this
+       * says is ready is a person the run can pay.
+       *
+       * A CONTRACTOR is not measured against it: they are not on payroll, and
+       * a permanent amber checklist against somebody who will never be paid
+       * through it is noise.
+       */
+      payrollReadiness:
+        profile.engagement === 'CONTRACTOR'
+          ? null
+          : (() => {
+              const items = [
+                {
+                  key: 'salary',
+                  label: 'Salary',
+                  done: salary.kind === 'RESOLVED',
+                  detail:
+                    salary.kind === 'RESOLVED'
+                      ? `RM${money(salary.row.amountCents)} a ${salary.row.basis === 'MONTHLY' ? 'month' : salary.row.basis.toLowerCase()}, since ${longDate(salary.row.effectiveFrom)}`
+                      : salary.reason,
+                },
+                {
+                  key: 'bank',
+                  label: 'Bank account',
+                  done: Boolean(profile.bankName && profile.bankAccountNo),
+                  detail: profile.bankName
+                    ? `${profile.bankName}${profile.bankAccountNo ? ` · ending ${profile.bankAccountNo.slice(-4)}` : ''}`
+                    : 'No bank account is recorded, so they cannot be included in a payment file.',
+                },
+                {
+                  key: 'pcb',
+                  label: 'Monthly tax (PCB) information',
+                  done: !profile.pcbApplicable || Boolean(pcbInput),
+                  detail: !profile.pcbApplicable
+                    ? 'Recorded as not paying PCB.'
+                    : pcbInput
+                      ? `RM${money(toCents(pcbInput.amount))} entered for this month.`
+                      : 'Needed before this month can be finalised. Kuwick does not work out monthly tax.',
+                },
+                (() => {
+                  // The membership numbers a filing is made under. Only the
+                  // schemes that APPLY are required: a person outside SOCSO
+                  // needs no SOCSO number, and demanding one would be an amber
+                  // mark against a record that is complete.
+                  const missing = [
+                    profile.epfApplicable && !profile.epfNumber ? 'EPF' : null,
+                    profile.socsoApplicable && !profile.socsoNumber ? 'SOCSO' : null,
+                  ].filter((name): name is string => name !== null);
+                  const applies = [
+                    profile.epfApplicable ? 'EPF' : null,
+                    profile.socsoApplicable ? 'SOCSO' : null,
+                    profile.eisApplicable ? 'EIS' : null,
+                  ].filter((name): name is string => name !== null);
+                  return {
+                    key: 'statutory',
+                    label: 'EPF, SOCSO and EIS',
+                    done: missing.length === 0,
+                    detail:
+                      missing.length > 0
+                        ? `No ${missing.join(' or ')} membership number is on file, so nothing could be filed for them under ${missing.length === 1 ? 'that scheme' : 'those schemes'}.`
+                        : applies.length === 0
+                          ? 'None of the three applies to this person.'
+                          : `${applies.join(', ')} apply, and the membership numbers are on file.`,
+                  };
+                })(),
+                {
+                  key: 'dob',
+                  label: 'Date of birth',
+                  done: Boolean(profile.dateOfBirth),
+                  detail: profile.dateOfBirth
+                    ? 'Sets the age-related statutory rates.'
+                    : 'EPF, SOCSO and EIS all change at 60, so this is needed before they can be calculated.',
+                },
+              ];
+              return { items, done: items.filter((item) => item.done).length, total: items.length };
+            })(),
+      /**
+       * SALARY AS PERIODS, not as effective-dated rows. "5 Mar 2026 → 30 Sep
+       * 2026 · RM3,200" is a fact about somebody's employment; "effective_from
+       * / effective_to" is a fact about a table.
+       */
+      salaryPeriods: mayReadPay
+        ? salaryRows.map((row) => ({
+            id: row.id,
+            amount: formatCents(toCents(row.amount)),
+            basis: row.basis,
+            from: row.effectiveFrom.toISOString().slice(0, 10),
+            to: row.effectiveTo?.toISOString().slice(0, 10) ?? null,
+            current: row.effectiveTo === null && row.effectiveFrom <= periodEnd,
+            upcoming: row.effectiveFrom > periodEnd,
+            reason: row.reason,
+          }))
+        : null,
+      claims: claims.map((claim) => ({
+        id: claim.id,
+        category: claim.category,
+        claimDate: claim.claimDate.toISOString().slice(0, 10),
+        description: claim.description,
+        status: claim.status,
+        amountClaimed: formatCents(toCents(claim.amountClaimed)),
+        amountApproved: claim.amountApproved === null ? null : formatCents(toCents(claim.amountApproved)),
+        paymentRoute: claim.paymentRoute,
+        payoutStatus: claim.payoutStatus,
+        decidedBy: claim.decidedBy?.fullName ?? null,
+      })),
       leavePolicy: profile.leavePolicy ? { id: profile.leavePolicy.id, name: profile.leavePolicy.name } : null,
       attendance: {
         daysRecorded: attendance.length,
@@ -302,12 +457,56 @@ export class EmployeeService {
     };
   }
 
-  /** Salary, bank and statutory detail. Separate permission, on purpose. */
+  /**
+   * Salary, bank and statutory detail. Separate permission, on purpose.
+   *
+   * `basicSalary` and `hourlyRate` are the CANONICAL figures — resolved from
+   * `employee_salaries` for today, exactly as payroll resolves them for the
+   * period it is paying. They are not the legacy `EmployeeProfile` columns:
+   * those are read-only history now, and a screen showing one while the run
+   * pays the other is the disagreement this stage removed.
+   *
+   * Where no salary is on record they are null, never 0 — "nothing on file"
+   * and "paid nothing" are different sentences and only one of them is true.
+   */
   async payrollView(staffId: string) {
     await requirePermission(this.rawPrisma, 'hr.payroll.view');
-    const profile = await this.prisma.employeeProfile.findUnique({ where: { staffId } });
+    const [profile, salaryRows] = await Promise.all([
+      this.prisma.employeeProfile.findUnique({ where: { staffId } }),
+      this.prisma.employeeSalary.findMany({ where: { staffId }, orderBy: { effectiveFrom: 'desc' } }),
+    ]);
     if (!profile) throw new NotFoundException('No employee profile for that staff member');
-    return profile;
+
+    const today = new Date();
+    const salary = resolveSalaryForPayroll(
+      salaryRows.map((row) => ({
+        id: row.id,
+        basis: row.basis,
+        amountCents: toCents(row.amount),
+        effectiveFrom: row.effectiveFrom,
+        effectiveTo: row.effectiveTo,
+      })),
+      today,
+      today,
+    );
+    const resolved = salary.kind === 'RESOLVED' ? salary.row : null;
+
+    return {
+      ...profile,
+      basicSalary: resolved && resolved.basis === 'MONTHLY' ? fromCents(resolved.amountCents) : null,
+      hourlyRate: resolved && resolved.basis === 'HOURLY' ? fromCents(resolved.amountCents) : null,
+      payBasis: resolved?.basis ?? null,
+      salaryEffectiveFrom: resolved?.effectiveFrom ?? null,
+      salaryState: salary.kind,
+      salaryNote: salary.reason,
+      /**
+       * WHAT THE OLD COLUMN STILL SAYS. Kept visible rather than deleted so
+       * anyone reconciling against a pre-cutover export can see both numbers
+       * and which one is now paid; nothing computes from it.
+       */
+      legacyBasicSalary: profile.basicSalary,
+      legacyHourlyRate: profile.hourlyRate,
+    };
   }
 
   async upsert(staffId: string, dto: UpsertEmployeeDto) {
@@ -317,17 +516,34 @@ export class EmployeeService {
 
       const before = await tx.employeeProfile.findUnique({ where: { staffId } });
 
-      // Salary is a SEPARATE permission even inside this one write. An HR clerk
-      // maintaining records must not be able to change somebody's pay by
-      // including it in the same form submission.
+      /*
+       * THE LEGACY SALARY COLUMN IS CLOSED FOR WRITING.
+       *
+       * Payroll resolves `employee_salaries` now. A salary written here would
+       * be a number nobody is paid — silently, because the profile would show
+       * one figure and the run would resolve another, which is the exact
+       * failure the effective-dated table exists to prevent.
+       *
+       * Refused rather than quietly forwarded: this endpoint has no effective
+       * date to forward it WITH, and inventing "from today" is the kind of
+       * guess this stage removed everywhere else.
+       */
+      if (dto.basicSalary !== undefined || dto.hourlyRate !== undefined) {
+        throw new BadRequestException(
+          'Salary is recorded with the date it takes effect from, at ' +
+            'POST /workforce/employees/:staffId/salary. Setting it here would leave the employee profile and the ' +
+            'payroll run disagreeing about what somebody is paid.',
+        );
+      }
+
+      // Bank details are still a SEPARATE permission inside this one write. An
+      // HR clerk maintaining records must not change where somebody's pay goes
+      // by including it in the same form submission.
       const mayEditPay = actorCan(actor, 'hr.payroll.view');
-      const payFields =
-        dto.basicSalary !== undefined || dto.hourlyRate !== undefined || dto.bankAccountNo !== undefined;
+      const payFields = dto.bankAccountNo !== undefined;
       const data = {
         ...dto,
-        ...(payFields && !mayEditPay
-          ? { basicSalary: undefined, hourlyRate: undefined, bankAccountNo: undefined }
-          : {}),
+        ...(payFields && !mayEditPay ? { bankAccountNo: undefined } : {}),
         ...(dto.dateOfBirth ? { dateOfBirth: new Date(dto.dateOfBirth) } : {}),
         ...(dto.startDate ? { startDate: new Date(dto.startDate) } : {}),
         ...(dto.confirmedDate ? { confirmedDate: new Date(dto.confirmedDate) } : {}),
@@ -366,6 +582,17 @@ const SENSITIVE = new Set([
   'socsoNumber',
   'taxNumber',
 ]);
+
+/** Grouped ringgit for a sentence a person reads. `1800000` -> `18,000.00`. */
+function money(cents: number): string {
+  const [whole, part] = formatCents(cents).split('.');
+  return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${part}`;
+}
+
+/** `2025-04-19` -> `19 April 2025`. A checklist sentence is prose, not a field. */
+function longDate(value: Date): string {
+  return value.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
 
 function redactSensitive(payload: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};

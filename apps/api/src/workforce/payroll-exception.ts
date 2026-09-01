@@ -49,7 +49,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     cause: () => 'Salary setup is incomplete.',
     consequence: 'They have no salary on file for this month, so they are left out of the totals entirely rather than paid a figure nobody chose.',
     remediation: 'Set their monthly salary from the date it starts.',
-    deepLink: (c) => `/admin/hr/employees?staffId=${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
   },
   NO_DOB: {
     code: 'NO_DOB',
@@ -59,7 +59,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     consequence:
       'EPF, SOCSO and EIS all change at 60, so without a date of birth every statutory figure for this person would be a guess.',
     remediation: 'Add their date of birth to their employee record.',
-    deepLink: (c) => `/admin/hr/employees?staffId=${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
   },
   NO_LEGAL_EMPLOYER: {
     code: 'NO_LEGAL_EMPLOYER',
@@ -69,7 +69,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     consequence:
       'Nothing could be filed for them: EPF, SOCSO, EIS and monthly tax are all submitted by a company, and this person is not attached to one.',
     remediation: 'Set the company that employs them on their employee record.',
-    deepLink: (c) => `/admin/hr/employees?staffId=${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
   },
   PCB_MISSING: {
     code: 'PCB_MISSING',
@@ -116,7 +116,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     cause: () => 'No bank account is recorded for this employee.',
     consequence: 'They cannot be included in a bank payment file and will have to be paid by another means.',
     remediation: 'Record the bank name, account number and account name.',
-    deepLink: (c) => `/admin/hr/employees?staffId=${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
   },
   NEGATIVE_NET: {
     code: 'NEGATIVE_NET',
@@ -149,7 +149,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     remediation:
       'Decide the treatment for this employee: date the change from the start of a period, or split the run. ' +
       'Kuwick does not prorate a mid-period salary change.',
-    deepLink: (c) => `/admin/hr/employees?staffId=${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
   },
   /*
    * The calculation models a MONTHLY salary. A daily or hourly rate needs a day
@@ -165,7 +165,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     consequence: 'They are left out of the run rather than paid a monthly figure derived from a daily or hourly rate.',
     remediation:
       'Record a monthly salary for this employee, or leave them out of payroll until daily and hourly pay is implemented.',
-    deepLink: (c) => `/admin/hr/employees?staffId=${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
   },
   STATUTORY_UNVERIFIED: {
     code: 'STATUTORY_UNVERIFIED',

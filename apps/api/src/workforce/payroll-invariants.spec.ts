@@ -83,6 +83,22 @@ describe('membership — the same people at every step', () => {
     const v = checkMembership(['s1'], [{ staffId: 's1', reason: 'NO_SALARY' }], ['s1']);
     expect(v.map((x) => x.code)).toContain('INCLUDED_AND_EXCLUDED');
   });
+
+  /*
+   * AN EXCEPTION IS NOT AN EXCLUSION, and reading it as one made every
+   * calculation with a warning on it fail as a contradiction.
+   *
+   * A missing punch, an unapproved overtime hour or a hand-entered PCB figure
+   * is raised AGAINST a payslip the run still produces. Only the reasons that
+   * stop the calculation for that person — no salary, no date of birth, a
+   * salary that changed mid-period — put somebody in the excluded register.
+   * The caller passes that register, not the exception list.
+   */
+  it('does not treat a warning raised against a PAID employee as an exclusion', () => {
+    // s1 was paid and carries two warnings; s2 was stopped and is excluded.
+    const v = checkMembership(['s1'], [{ staffId: 's2', reason: 'NO_SALARY' }], ['s1', 's2']);
+    expect(v).toEqual([]);
+  });
 });
 
 describe('variance is a subtraction', () => {

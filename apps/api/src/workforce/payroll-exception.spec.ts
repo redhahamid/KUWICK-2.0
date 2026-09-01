@@ -95,15 +95,29 @@ describe('payroll exceptions', () => {
       '/admin/hr/claims',
       '/admin/hr/locum',
       '/admin/hr/settings',
+      // Parameterised routes are listed as PATTERNS, so a link to one person
+      // proves the route exists rather than being waved through by a literal.
+      '/admin/hr/employees/:staffId',
+      '/admin/hr/payroll/:id',
     ];
+    /** `/admin/hr/employees/s1` matches `/admin/hr/employees/:staffId`. */
+    const mounted = (path: string) =>
+      MOUNTED.some((pattern) => {
+        if (!pattern.includes(':')) return pattern === path;
+        const patternParts = pattern.split('/');
+        const pathParts = path.split('/');
+        if (patternParts.length !== pathParts.length) return false;
+        return patternParts.every(
+          (part, index) => part.startsWith(':') ? pathParts[index].length > 0 : part === pathParts[index],
+        );
+      });
     const ctx = { staffId: 's1', runId: 'r1', hours: 1, days: 1, count: 2, percent: 50, net: '-1.00', componentCode: 'X' };
     for (const [code, template] of Object.entries(EXCEPTION_CATALOGUE)) {
       if (!template.deepLink) continue;
       const link = template.deepLink(ctx);
       const path = link.split('?')[0];
       // The code is in the message so a failure names which exception is wrong.
-      expect(`${code} → ${path}`).toBe(`${code} → ${MOUNTED.find((m) => m === path) ?? path}`);
-      expect(MOUNTED).toContain(path);
+      expect(`${code} → ${mounted(path) ? 'mounted' : path}`).toBe(`${code} → mounted`);
     }
   });
 

@@ -7,12 +7,16 @@
 07-run-approve.png — Step — approve
 08-run-earnings-provenance.png — Earnings drill-down — the source behind each figure
 09-employees.png — Employee list
-10-claims.png — Staff claims — one payment route per claim
-11-locum.png — Locum sessions — a payable, never a payslip
-12-payroll-settings.png — Payroll settings — the six-step setup checklist
-13-timesheet.png — Timesheet — where overtime is corrected
-14-tablet-review.png — Tablet — Review
-15-tablet-employees.png — Tablet — employees
-16-mobile-home.png — Mobile — Payroll Home
-17-mobile-review.png — Mobile — Review (read and resolve, never finalise)
-18-mobile-claims.png — Mobile — claims
+10-employee-overview.png — Employee workspace — payroll readiness checklist
+11-employee-salary.png — Employee workspace — Salary
+12-employee-claims.png — Employee workspace — Claims
+13-employee-payroll.png — Employee workspace — Payroll
+14-claims.png — Staff claims — one payment route per claim
+15-locum.png — Locum sessions — a payable, never a payslip
+16-payroll-settings.png — Payroll settings — the six-step setup checklist
+17-timesheet.png — Timesheet — where overtime is corrected
+18-tablet-review.png — Tablet — Review
+19-tablet-employees.png — Tablet — employees
+20-mobile-home.png — Mobile — Payroll Home
+21-mobile-review.png — Mobile — Review (read and resolve, never finalise)
+22-mobile-claims.png — Mobile — claims
