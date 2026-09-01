@@ -47,6 +47,13 @@ import type {
   TimesheetReport,
   PanelAwaitingPaymentRow,
   WorkforceToday,
+  LegalEmployerRow,
+  SalaryHistoryRow,
+  PayComponentList,
+  PayrollInputRow,
+  PayrollExceptionList,
+  PayrollVarianceReport,
+  PayrollSnapshotRow,
 } from '../types';
 
 function qs(params: Record<string, string | number | boolean | undefined>): string {
@@ -850,4 +857,116 @@ export function useMarkDispatchOpened() {
     mutationFn: (dispatchId: string) => apiClient.patch(`/operations/marketing/dispatches/${dispatchId}/opened`, {}),
     onSuccess: () => client.invalidateQueries({ queryKey: ['admin-ops', 'marketing-history'] }),
   });
+}
+
+// ===========================================================================
+// MALAYSIA PAYROLL — STAGE 1 + STAGE 2
+// ===========================================================================
+
+export function useLegalEmployers() {
+  return useQuery({
+    queryKey: ['admin-hr', 'legal-employers'],
+    queryFn: () => apiClient.get<LegalEmployerRow[]>('/workforce/legal-employers'),
+  });
+}
+
+export function useUpsertLegalEmployer() {
+  return useAdminMutation(
+    (body: Record<string, unknown>) => apiClient.post('/workforce/legal-employers', body),
+    ['admin-hr'],
+  );
+}
+
+export function useAssignEmployer() {
+  return useAdminMutation(
+    ({ staffId, legalEmployerId }: { staffId: string; legalEmployerId: string | null }) =>
+      apiClient.patch(`/workforce/employees/${staffId}/legal-employer`, { legalEmployerId }),
+    ['admin-hr'],
+  );
+}
+
+export function useSalaryHistory(staffId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'salary-history', staffId],
+    queryFn: () => apiClient.get<SalaryHistoryRow[]>(`/workforce/employees/${staffId}/salary`),
+    enabled: Boolean(staffId),
+  });
+}
+
+export function useRecordSalary() {
+  return useAdminMutation(
+    ({ staffId, ...body }: { staffId: string } & Record<string, unknown>) =>
+      apiClient.post(`/workforce/employees/${staffId}/salary`, body),
+    ['admin-hr'],
+  );
+}
+
+export function usePayComponents() {
+  return useQuery({
+    queryKey: ['admin-hr', 'pay-components'],
+    queryFn: () => apiClient.get<PayComponentList>('/workforce/pay-components'),
+  });
+}
+
+export function useSeedPayComponents() {
+  return useAdminMutation(() => apiClient.post('/workforce/pay-components/seed', {}), ['admin-hr']);
+}
+
+export function usePayrollInputs(params: { period: string; staffId?: string; clinicId?: string }) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-inputs', params],
+    queryFn: () => apiClient.get<PayrollInputRow[]>(`/workforce/payroll/inputs${qs(params)}`),
+    enabled: Boolean(params.period),
+  });
+}
+
+export function useUpsertPayrollInput() {
+  return useAdminMutation(
+    (body: Record<string, unknown>) => apiClient.post('/workforce/payroll/inputs', body),
+    ['admin-hr'],
+  );
+}
+
+export function useDeletePayrollInput() {
+  return useAdminMutation((id: string) => apiClient.delete(`/workforce/payroll/inputs/${id}`), ['admin-hr']);
+}
+
+export function usePayrollExceptions(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-exceptions', runId],
+    queryFn: () => apiClient.get<PayrollExceptionList>(`/workforce/payroll/runs/${runId}/exceptions`),
+    enabled: Boolean(runId),
+  });
+}
+
+export function useOverrideException() {
+  return useAdminMutation(
+    ({ id, reason }: { id: string; reason: string }) =>
+      apiClient.patch(`/workforce/payroll/exceptions/${id}/override`, { reason }),
+    ['admin-hr'],
+  );
+}
+
+export function usePayrollVariance(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-variance', runId],
+    queryFn: () => apiClient.get<PayrollVarianceReport>(`/workforce/payroll/runs/${runId}/variance`),
+    enabled: Boolean(runId),
+  });
+}
+
+export function usePayrollSnapshots(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-snapshots', runId],
+    queryFn: () => apiClient.get<PayrollSnapshotRow[]>(`/workforce/payroll/runs/${runId}/snapshots`),
+    enabled: Boolean(runId),
+  });
+}
+
+export function useReopenPayroll() {
+  return useAdminMutation(
+    ({ id, reason }: { id: string; reason: string }) =>
+      apiClient.patch(`/workforce/payroll/runs/${id}/reopen`, { reason }),
+    ['admin-hr'],
+  );
 }

@@ -1457,3 +1457,152 @@ export interface ClaimImportBatchRow {
   importedBy: string;
   importedAt: string;
 }
+
+// ===========================================================================
+// MALAYSIA PAYROLL — STAGE 1 + STAGE 2
+// ===========================================================================
+
+export interface LegalEmployerRow {
+  id: string;
+  name: string;
+  registrationNo: string | null;
+  epfEmployerNo: string | null;
+  socsoEmployerNo: string | null;
+  lhdnEmployerNo: string | null;
+  hrdRegistrationNo: string | null;
+  hrdCategory: string | null;
+  hrdLevyRate: number | null;
+  addressLine1: string | null;
+  city: string | null;
+  state: string | null;
+  bankName: string | null;
+  bankAccountNo: string | null;
+  bankAccountName: string | null;
+  active: boolean;
+  employeeCount: number;
+  payrollRunCount: number;
+  statutoryReadiness: { complete: boolean; missing: string[]; note: string };
+}
+
+export interface SalaryHistoryRow {
+  id: string;
+  basis: 'MONTHLY' | 'DAILY' | 'HOURLY';
+  amount: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  reason: string | null;
+  note: string | null;
+  recordedBy: string;
+  recordedAt: string;
+  current: boolean;
+}
+
+export interface PayComponentRow {
+  id: string;
+  code: string;
+  name: string;
+  type: 'ADDITION' | 'DEDUCTION' | 'OVERTIME';
+  category: string;
+  includeIn: string;
+  pcbLiable: boolean;
+  epfLiable: boolean;
+  socsoLiable: boolean;
+  eisLiable: boolean;
+  hrdLiable: boolean;
+  includeInOrpBase: boolean;
+  includeInUnpaidLeaveBase: boolean;
+  additionalRemuneration: boolean;
+  pcbExemptionLimitCents: number | null;
+  eaField: string | null;
+  prorated: boolean;
+  employerSide: boolean;
+  systemControlled: boolean;
+  active: boolean;
+  verificationStatus: string;
+  version: number;
+  effectiveFrom: string;
+}
+
+export interface PayComponentList {
+  components: PayComponentRow[];
+  verificationNotice: { anyVerified: boolean; statement: string };
+}
+
+export interface PayrollInputRow {
+  id: string;
+  staffId: string;
+  staffName: string;
+  componentCode: string;
+  label: string | null;
+  amount: string;
+  kind: 'RECURRING' | 'ADDITIONAL';
+  source: string;
+  sourceRecordId: string | null;
+  earnedPeriod: string | null;
+  reason: string | null;
+  note: string | null;
+  enteredBy: string;
+  enteredAt: string;
+  editable: boolean;
+}
+
+export interface PayrollExceptionRow {
+  id: string;
+  severity: 'BLOCKING' | 'WARNING' | 'INFO';
+  code: string;
+  staffId: string | null;
+  staffName: string | null;
+  cause: string;
+  consequence: string;
+  remediation: string;
+  deepLink: string | null;
+  overridable: boolean;
+  overriddenBy: string | null;
+  overrideReason: string | null;
+  overriddenAt: string | null;
+}
+
+export interface PayrollExceptionList {
+  exceptions: PayrollExceptionRow[];
+  gate: { canApprove: boolean; blocking: number; warnings: number; overridden: number; reason: string };
+}
+
+export interface PayrollVarianceRow {
+  staffId: string;
+  name: string;
+  previousNetCents: number | null;
+  currentNetCents: number | null;
+  deltaCents: number | null;
+  percent: number | null;
+  status: 'NEW' | 'LEFT' | 'UNCHANGED' | 'MOVED' | 'MATERIAL';
+}
+
+export interface PayrollVarianceReport {
+  hasPrevious: boolean;
+  previousPeriod: string;
+  rows: PayrollVarianceRow[];
+  totals: { field: string; previous: number; current: number; deltaCents: number; percent: number | null }[];
+  headcountPrevious: number;
+  headcountCurrent: number;
+  joiners: number;
+  leavers: number;
+  material: PayrollVarianceRow[];
+  thresholdPercent: number;
+  note: string;
+}
+
+export interface PayrollSnapshotRow {
+  id: string;
+  version: number;
+  hash: string;
+  reason: string | null;
+  createdBy: string;
+  createdAt: string;
+  totals: {
+    grossCents: number;
+    deductionCents: number;
+    netCents: number;
+    employerCostCents: number;
+    employeeCount: number;
+  };
+}

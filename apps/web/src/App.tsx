@@ -81,6 +81,7 @@ import { HrOverviewPage } from './admin/hr/HrOverviewPage';
 import { EmployeesPage } from './admin/hr/EmployeesPage';
 import { TimesheetPage } from './admin/hr/TimesheetPage';
 import { PayrollPage } from './admin/hr/PayrollPage';
+import { LegalEmployersPage } from './admin/hr/LegalEmployersPage';
 import { IncentivesPage } from './admin/hr/IncentivesPage';
 import { BenefitsPage } from './admin/hr/BenefitsPage';
 import { AdminRosterPage } from './admin/hr/RosterPage';
@@ -246,6 +247,7 @@ export function App() {
                 it — see admin/hr/RosterPage.tsx. */}
             <Route path="/admin/hr/roster" element={<AdminRosterPage />} />
             <Route path="/admin/hr/payroll" element={<PayrollPage />} />
+            <Route path="/admin/hr/employers" element={<LegalEmployersPage />} />
             <Route path="/admin/hr/incentives" element={<IncentivesPage />} />
             <Route path="/admin/hr/benefits" element={<BenefitsPage />} />
             <Route path="/admin/hr/access" element={<RolesSettingsPage />} />

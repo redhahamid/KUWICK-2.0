@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { App, Button, DatePicker, Modal, Tag } from 'antd';
+import { App, Button, DatePicker, Input, Modal, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
@@ -9,6 +9,9 @@ import { useAuthStore } from '../../core/auth-store';
 import { isDraftRun, payslipTotals, printPayslip } from './payslip';
 import type { PayslipLine } from './payslip';
 import { useCan } from '../../core/hooks/useCan';
+import { PayrollExceptionCentre } from './PayrollExceptionCentre';
+import { PayrollVariancePanel } from './PayrollVariancePanel';
+import { PayrollInputsDrawer } from './PayrollInputsDrawer';
 import {
   useApprovePayroll,
   useCalculatePayroll,
@@ -16,6 +19,9 @@ import {
   usePayrollRun,
   usePayrollRuns,
   useStatutoryRuleSets,
+  usePayrollExceptions,
+  usePayrollVariance,
+  useReopenPayroll,
 } from '../hooks/useAdmin';
 
 const RUN_STATUS: Record<string, string> = {
@@ -57,13 +63,28 @@ export function PayrollPage() {
   const mayApprove = useCan('hr.payroll.approve');
   const mayRun = useCan('hr.payroll.run');
 
+  const mayReopen = useCan('hr.payroll.reopen');
+  const reopen = useReopenPayroll();
+
   const [createOpen, setCreateOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [reopenOpen, setReopenOpen] = useState(false);
+  const [reopenReason, setReopenReason] = useState('');
+  const [inputsOpen, setInputsOpen] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [period, setPeriod] = useState(dayjs().format('YYYY-MM'));
 
   const run = detail.data;
   const locked = run?.status === 'APPROVED' || run?.status === 'PAID';
   const hasExceptions = (run?.exceptions.length ?? 0) > 0;
   const statutoryGap = run?.statutoryStatus !== 'CONFIGURED';
+
+  // The gate now reads exception ROWS: BLOCKING stops approval, WARNING does
+  // not. `hasExceptions` remains for the legacy banner below.
+  const exceptionQuery = usePayrollExceptions(run?.id);
+  const variance = usePayrollVariance(run?.id);
+  const gate = exceptionQuery.data?.gate;
+  const gateBlocks = gate ? !gate.canApprove : hasExceptions;
 
   /**
    * IS THIS PAYROLL FIT TO PAY MALAYSIAN STAFF WITH? Currently: no.
@@ -205,23 +226,28 @@ export function PayrollPage() {
                   Recalculate
                 </Button>
               ) : null}
+              {!locked && mayRun ? (
+                <Button size="small" onClick={() => setInputsOpen(true)}>
+                  Payroll inputs
+                </Button>
+              ) : null}
               {run.status === 'CALCULATED' && mayApprove ? (
                 <Button
                   size="small"
                   type="primary"
-                  disabled={hasExceptions}
+                  disabled={gateBlocks}
                   loading={approve.isPending}
-                  onClick={() =>
-                    approve.mutate(
-                      { id: run.id, acknowledgeStatutoryGap: statutoryGap },
-                      {
-                        onSuccess: () => message.success('Approved and locked'),
-                        onError: (error: Error) => message.error(error.message),
-                      },
-                    )
-                  }
+                  // NEVER one click. The audited competitor approves payroll
+                  // with no dialog, no summary re-check, no reason and no
+                  // recorded actor — for an act that moves money.
+                  onClick={() => setConfirmOpen(true)}
                 >
                   {statutoryGap ? 'Approve without statutory figures' : 'Approve and lock'}
+                </Button>
+              ) : null}
+              {locked && mayReopen ? (
+                <Button size="small" danger onClick={() => setReopenOpen(true)}>
+                  Reopen
                 </Button>
               ) : null}
             </>
@@ -341,6 +367,9 @@ export function PayrollPage() {
             )}
           </AdminNotice>
 
+          <PayrollExceptionCentre runId={run.id} canOverride={mayApprove} />
+          <PayrollVariancePanel runId={run.id} />
+
           {run.adjustments.length > 0 ? (
             <AdminSection title="Adjustments to this locked run" padded={false}>
               <DataTable
@@ -394,6 +423,108 @@ export function PayrollPage() {
           onChange={(value) => value && setPeriod(value.format('YYYY-MM'))}
         />
       </Modal>
+
+      {/* NEVER a bare approve. Restates what is about to be committed. */}
+      <Modal
+        open={confirmOpen}
+        title="Approve and lock this payroll"
+        okText={statutoryGap ? 'Approve without statutory figures' : 'Approve and lock'}
+        confirmLoading={approve.isPending}
+        onCancel={() => {
+          setConfirmOpen(false);
+          setActionError(null);
+        }}
+        onOk={async () => {
+          setActionError(null);
+          try {
+            await approve.mutateAsync({ id: run!.id, acknowledgeStatutoryGap: statutoryGap });
+            message.success('Approved, locked and snapshotted.');
+            setConfirmOpen(false);
+          } catch (error) {
+            setActionError(error instanceof Error ? error.message : 'The server refused the approval.');
+          }
+        }}
+      >
+        {actionError ? <AdminNotice tone="warn">{actionError}</AdminNotice> : null}
+        {run ? (
+          <div style={{ display: 'grid', gap: 6, marginTop: 12 }}>
+            <div>Employer <strong>{run.clinicName}</strong></div>
+            <div>Period <strong>{run.period}</strong></div>
+            <div>Employees <strong>{run.employeeCount}</strong></div>
+            <div>Gross <strong>{money(run.grossTotal)}</strong></div>
+            <div>Net <strong>{money(run.netTotal)}</strong></div>
+            <div>Employer cost <strong>{money(run.employerCostTotal)}</strong></div>
+            <div>
+              Blocking exceptions <strong>{gate?.blocking ?? 0}</strong> · warnings{' '}
+              <strong>{gate?.warnings ?? 0}</strong>
+            </div>
+            {variance.data?.material.length ? (
+              <AdminNotice tone="warn">
+                {variance.data.material.length} employee(s) moved beyond {variance.data.thresholdPercent}% against last
+                period. Check them before approving.
+              </AdminNotice>
+            ) : null}
+            {statutoryGap ? (
+              <AdminNotice tone="warn">
+                The statutory figures in this run were not computed against verified tables. Approving records that you
+                know.
+              </AdminNotice>
+            ) : null}
+            <div style={{ color: '#888', marginTop: 6 }}>
+              Approval writes an immutable snapshot of everything this calculation used, so what was approved stays
+              answerable later.
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={reopenOpen}
+        title="Reopen this payroll"
+        okText="Reopen"
+        confirmLoading={reopen.isPending}
+        onCancel={() => {
+          setReopenOpen(false);
+          setActionError(null);
+        }}
+        onOk={async () => {
+          setActionError(null);
+          if (reopenReason.trim().length < 5) {
+            setActionError('Say why this run is being reopened. It becomes part of the payroll record.');
+            return;
+          }
+          try {
+            const result = await reopen.mutateAsync({ id: run!.id, reason: reopenReason.trim() });
+            message.success((result as { note?: string }).note ?? 'Reopened.');
+            setReopenOpen(false);
+            setReopenReason('');
+          } catch (error) {
+            setActionError(error instanceof Error ? error.message : 'The server refused the reopen.');
+          }
+        }}
+      >
+        {actionError ? <AdminNotice tone="warn">{actionError}</AdminNotice> : null}
+        <p style={{ marginTop: 12 }}>
+          The approved snapshot is <strong>preserved</strong>. Recalculating produces a candidate you can compare
+          against it before approving again.
+        </p>
+        <Input.TextArea
+          rows={3}
+          value={reopenReason}
+          onChange={(e) => setReopenReason(e.target.value)}
+          placeholder="Why is this being reopened?"
+        />
+      </Modal>
+
+      {run ? (
+        <PayrollInputsDrawer
+          open={inputsOpen}
+          onClose={() => setInputsOpen(false)}
+          period={`${run.period}-01`}
+          clinicId={clinicId}
+          canEdit={mayRun && !locked}
+        />
+      ) : null}
     </AdminShell>
   );
 }

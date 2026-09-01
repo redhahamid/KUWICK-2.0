@@ -94,6 +94,7 @@ const ADMIN_CATEGORIES: HubCategory[] = [
       { path: '/admin/hr/leave', label: 'Leave' },
       { path: '/admin/hr/roster', label: 'Roster' },
       { path: '/admin/hr/payroll', label: 'Payroll' },
+      { path: '/admin/hr/employers', label: 'Legal employers' },
       { path: '/admin/hr/incentives', label: 'Doctor incentives' },
       { path: '/admin/hr/benefits', label: 'Staff benefits' },
       { path: '/admin/hr/access', label: 'Roles & access' },
