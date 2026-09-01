@@ -251,53 +251,84 @@ Typechecks clean in both workspaces; web build clean.
 
 ## 14 · CI result
 
-**Run [224](https://github.com/redhahamid/KUWICK-2.0/actions/runs/33482153308) on `049dc9f`** — the
-commit carrying all of Stage 1 and Stage 2. Observed step by step before this documentation commit
-superseded it:
+**Job 1 — `types + unit suites`: ✅ SUCCESS** on `b487a4c`, every step:
+provision the non-superuser role · **apply migrations** · grant · API typecheck · web typecheck ·
+**API unit suite** · **web unit suite** · **API integration suite against real PostgreSQL as the
+non-superuser role**. All of Stage 1 and Stage 2 — including the 69 new tests — pass in CI.
 
-| Step | Result |
+**Job 2 — `golden path (E2E)`: ❌ FAILURE.** Three specs:
+
+| Spec | Assertion |
 |---|---|
-| Provision the NON-SUPERUSER application role | ✅ |
-| **Apply migrations** | ✅ — the Stage 1 + 2 migration applies to an empty database in CI |
-| Grant the application role on the migrated schema | ✅ |
-| API typecheck | ✅ |
-| Web typecheck | ✅ |
-| **API unit suite** | ✅ |
-| Build API · Build web · seed seven fixture sets | ✅ |
-| Web unit suite | superseded while running |
-| API integration suite | superseded before starting |
-| E2E golden path | superseded while running |
+| `admin-finance.spec.ts:52` | a row named `/Reversed/` is visible |
+| `admin-hr.spec.ts:65` | the text *"A long day is not automatically overtime"* is visible |
+| `admin-hr.spec.ts:95` | the row named `/2026-07/` contains *"Unverified rates"* |
 
-**The highest-risk item passed:** a 552-line migration with eight new tables, eleven enums, a replaced
-trigger and a backfill applied cleanly to a database built from nothing. That was the one thing local
-success could not prove, because this machine had already applied it — and it is why `kuwick_test` was
-dropped and rebuilt during development rather than patched.
+### This failure is not Stage 1 + 2. It is the calendar.
 
-The three superseded suites all pass locally against real PostgreSQL as the non-superuser role
-(2,334 · 1,643 · 186). Pushing this report starts a fresh run over identical application code — this
-commit changes documentation only — and its conclusion is reported to the owner rather than assumed
-here.
+Stage 1 + 2 touched **none** of the five files involved — verified with
+`git diff c711fba~1..HEAD` over `admin-hr.spec.ts`, `admin-finance.spec.ts`, `seed-admin-uat.ts`,
+`TimesheetPage.tsx` and `PaymentsPage.tsx`. All five are **UNTOUCHED**.
 
-**Reported as observed, not as inferred.** A superseded job is not a passed job.
+Reproduced on a scratch database built exactly as CI builds one — drop, migrate, provision, bootstrap,
+seed — and then measured:
+
+| Seeded by the UAT seed | Where the page looks | Result |
+|---|---|---|
+| Unapproved overtime on **2026-08-22** and **2026-08-27** | `TimesheetPage` defaults to `dayjs().startOf('month')` → **September** | outside the window |
+| Reversed payments on **2026-08-12** | `PaymentsPage` defaults to the current month → **September** | outside the window |
+| Payroll run for **2026-08** (`monthStart(-1)`) | spec hardcodes **`2026-07`** | no such row |
+
+Each failing assertion sits behind a conditional that only renders when the data is present, so absent
+data reads as a missing element rather than a wrong number.
+
+**The seed writes last month's data; the pages default to this month; the specs assume the two
+coincide.** That was true on **31 August 2026**, when run 220 was green, and stopped being true on
+**1 September 2026**, when the month rolled over. Every red run on this branch is dated 1 September.
+It is a pre-existing time bomb in the E2E layer that this stage happened to be the first thing to walk
+into.
+
+### The proposed patch — deliberately NOT applied here
+
+Two changes, both in the test and seed layer, no production code:
+
+1. **`admin-hr.spec.ts`** — derive the payroll period as "last month" the way the seed does
+   (`monthStart(-1)`), instead of hardcoding `2026-07`.
+2. **`seed-admin-uat.ts`** — place the *operational* demo data (attendance overtime, reversed
+   payments) inside the **current** month, so the default view a clinic actually lands on has something
+   in it. The payroll run correctly stays in the previous month, because payroll runs for a completed
+   month; that one is the spec's job to derive.
+
+It is not applied because the review said to stop after Stage 1 + 2 and report, the defect is not this
+stage's, and the fix touches shared demo data used by every other spec — which cannot be validated to
+green in this environment, since a full E2E pass needs seven seed steps this machine can only partly
+reproduce. Applying an unvalidated change to shared fixtures at the end of a checkpoint is exactly the
+widening the brief warns against.
+
+**Reported as observed, not as inferred. A superseded job is not a passed job, and an unrelated failure
+is not a green build.**
 
 ## 15 · Known remaining defects and gaps
 
-1. **No visual UAT was captured this stage.** The five new surfaces have not been photographed or
+1. **The E2E suite is red on a pre-existing calendar bug** (§14). Not caused by this stage, but it
+   blocks the branch and will block every run until the seed and the spec stop assuming that "last
+   month" and "the month the page opens on" are the same month. The patch is proposed in §14.
+2. **No visual UAT was captured this stage.** The five new surfaces have not been photographed or
    reviewed by a person. Rule: *"Do not claim visual acceptance from automated tests."* This is the
    largest outstanding item before the screens are accepted.
-2. **The calculation still reads the old paths** for salary and component liability. Deliberate (§3),
+3. **The calculation still reads the old paths** for salary and component liability. Deliberate (§3),
    but it means `EmployeeSalary` and `PayComponent` are proved-at-parity rather than in production use.
-3. **Proration is not implemented.** The five bases are stored; nothing applies them. A mid-month joiner
+4. **Proration is not implemented.** The five bases are stored; nothing applies them. A mid-month joiner
    is still paid a full month — the original P0 defect stands, because whether a basis is lawful is
    blocked on JTKSM.
-4. **`EmployeeYtd` has no writer yet.** The substrate exists; no approved run populates it.
-5. **`EmployeeRecurringItem` has no UI.** The table and materialisation shape exist.
-6. **Off-cycle runs are representable but have no UI** — `runType` and `sequence` are settable through
+5. **`EmployeeYtd` has no writer yet.** The substrate exists; no approved run populates it.
+6. **`EmployeeRecurringItem` has no UI.** The table and materialisation shape exist.
+7. **Off-cycle runs are representable but have no UI** — `runType` and `sequence` are settable through
    the API only.
-7. **The legacy exception JSON blob is still written** alongside the rows, so two representations exist
+8. **The legacy exception JSON blob is still written** alongside the rows, so two representations exist
    until the calculation is rewritten in Stage 3.
-8. **`hr.payroll.export.*` permissions guard nothing yet** — reserved for exporters that do not exist.
-9. **The three export permissions and `residentialStatus` are recorded but unused**, which is honest
+9. **`hr.payroll.export.*` permissions guard nothing yet** — reserved for exporters that do not exist.
+10. **The three export permissions and `residentialStatus` are recorded but unused**, which is honest
    scaffolding rather than working capability.
 
 ## 16 · Statutory items still blocked
@@ -340,7 +371,7 @@ unverified, **and the product could not complete a payroll run at all**. The sec
 | 5 · A correction preserves the prior snapshot and shows a diff | ✅ Built and tested |
 | 6 · Zero BLOCKING exceptions can be bypassed | ✅ Enforced in the gate and by CHECK |
 | 7 · Finance liabilities equal payroll totals | ❌ No Finance posting |
-| 8 · RLS and permission tests pass for every new surface | ✅ |
+| 8 · RLS and permission tests pass for every new surface | ✅ — in CI, against real PostgreSQL as the non-superuser role |
 | 9 · Visual UAT reviewed by a person | ❌ **Not captured** |
 | 10 · Parallel run agrees with the clinic's figures | ❌ Not attempted |
 
