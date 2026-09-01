@@ -3,6 +3,8 @@ import { StockMovementType } from '@prisma/client';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { currentTenantId } from '../core/tenant-context';
+import { PrismaService } from '../core/prisma.service';
+import { requireScope } from '../finance/admin-actor';
 import { SetStockMinThresholdDto } from './dto/set-stock-min-threshold.dto';
 import { QuickAddStockDto } from './dto/quick-add-stock.dto';
 import { StockTakeDto } from './dto/stock-take.dto';
@@ -11,11 +13,35 @@ import { batchExposure } from './batch-exposure';
 
 @Injectable()
 export class StockService {
-  constructor(@Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient) {}
+  constructor(
+    @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
+    private readonly rawPrisma: PrismaService,
+  ) {}
 
-  listLevels(clinicId?: string) {
+  /*
+   * AUTHORISE, THEN SCOPE.
+   *
+   * This service had no authorisation call of any kind. Six reads passed
+   * `clinicId` from the query string into Prisma — `where: { clinicId }` with
+   * undefined means NO filter, so leaving the parameter off read every
+   * branch's stock — and three WRITES took the branch from the request body,
+   * so a stock take, an adjustment or a quick-add could be posted into a
+   * branch the account had nothing to do with.
+   */
+  private async readScope() {
+    const { scope } = await requireScope(this.rawPrisma, 'stock.view');
+    return scope;
+  }
+
+  private async writeScope() {
+    const { scope } = await requireScope(this.rawPrisma, 'stock.adjust');
+    return scope;
+  }
+
+  async listLevels(clinicId?: string) {
+    const scope = await this.readScope();
     return this.prisma.stockLevel.findMany({
-      where: { clinicId },
+      where: { ...scope.where(clinicId) },
       include: { item: true },
       orderBy: { item: { name: 'asc' } },
     });
@@ -36,17 +62,19 @@ export class StockService {
   // is the reconciliation surface admin uses to find and fix it. Unlike
   // low-stock (column-vs-column), this is column-vs-literal, so Prisma can
   // express it directly without an app-code filter.
-  listNegativeStock(clinicId?: string) {
+  async listNegativeStock(clinicId?: string) {
+    const scope = await this.readScope();
     return this.prisma.stockLevel.findMany({
-      where: { clinicId, quantityOnHand: { lt: 0 } },
+      where: { ...scope.where(clinicId), quantityOnHand: { lt: 0 } },
       include: { item: true },
       orderBy: { quantityOnHand: 'asc' },
     });
   }
 
-  listBatches(clinicId?: string, itemId?: string) {
+  async listBatches(clinicId?: string, itemId?: string) {
+    const scope = await this.readScope();
     return this.prisma.stockBatch.findMany({
-      where: { clinicId, itemId },
+      where: { ...scope.where(clinicId), itemId },
       orderBy: { expiryDate: 'asc' },
     });
   }
@@ -65,6 +93,7 @@ export class StockService {
    * `batch-exposure.ts`.
    */
   async listNearExpiry(clinicId?: string, withinDays = 90) {
+    const scope = await this.readScope();
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() + withinDays);
     const batches = await this.prisma.stockBatch.findMany({
@@ -114,6 +143,10 @@ export class StockService {
   // counted quantity. Items counted equal to system are recorded as
   // zero-variance results but write nothing.
   async performStockTake(dto: StockTakeDto) {
+    // The branch comes from the request body, so it is validated against
+    // what this account may actually write to before anything is posted.
+    const scope = await this.writeScope();
+    dto = { ...dto, clinicId: scope.require(dto.clinicId) };
     const tenantId = currentTenantId();
     const results: {
       itemId: string;
@@ -165,9 +198,10 @@ export class StockService {
     };
   }
 
-  listMovements(clinicId?: string, itemId?: string) {
+  async listMovements(clinicId?: string, itemId?: string) {
+    const scope = await this.readScope();
     return this.prisma.stockMovement.findMany({
-      where: { clinicId, itemId },
+      where: { ...scope.where(clinicId), itemId },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -197,6 +231,10 @@ export class StockService {
    * that does not add up, and the ledger is the thing being protected here.
    */
   async adjust(dto: AdjustStockDto) {
+    // The branch comes from the request body, so it is validated against
+    // what this account may actually write to before anything is posted.
+    const scope = await this.writeScope();
+    dto = { ...dto, clinicId: scope.require(dto.clinicId) };
     const tenantId = currentTenantId();
     const item = await this.prisma.item.findUnique({ where: { id: dto.itemId }, select: { id: true } });
     if (!item) throw new NotFoundException('Item not found');
@@ -220,6 +258,10 @@ export class StockService {
   }
 
   async quickAdd(dto: QuickAddStockDto) {
+    // The branch comes from the request body, so it is validated against
+    // what this account may actually write to before anything is posted.
+    const scope = await this.writeScope();
+    dto = { ...dto, clinicId: scope.require(dto.clinicId) };
     const tenantId = currentTenantId();
 
     const batch = await this.prisma.stockBatch.create({

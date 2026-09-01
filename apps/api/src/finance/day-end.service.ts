@@ -3,7 +3,7 @@ import { DayEndStatus, InvoiceStatus, PaymentKind, PaymentTender } from '@prisma
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { AdminTx, requirePermission, resolveClinicId, withAdminTx } from './admin-actor';
+import { AdminTx, requirePermission, requireScope, resolveClinicId, withAdminTx, withScopedAdminTx } from './admin-actor';
 import { recordAudit } from './admin-audit';
 import { fromCents, toCents } from './money';
 import { CountDayEndDto } from './dto/count-day-end.dto';
@@ -163,8 +163,8 @@ export class DayEndService {
    * silently rewrite what somebody signed.
    */
   async view(clinicIdInput: string | undefined, dateInput: string) {
-    const actor = await requirePermission(this.rawPrisma, 'finance.view');
-    const clinicId = resolveClinicId(actor, clinicIdInput);
+    const { scope } = await requireScope(this.rawPrisma, 'finance.view');
+    const clinicId = resolveClinicId(scope, clinicIdInput);
     const businessDate = utcDate(dateInput);
 
     const closing = await this.prisma.dayEndClosing.findFirst({
@@ -290,8 +290,8 @@ export class DayEndService {
 
   /** Record what was physically counted. Repeatable until the day is closed. */
   async count(clinicIdInput: string | undefined, dateInput: string, dto: CountDayEndDto) {
-    return withAdminTx(this.rawPrisma, 'dayEnd.count', async (tx, actor) => {
-      const clinicId = resolveClinicId(actor, clinicIdInput);
+    return withScopedAdminTx(this.rawPrisma, 'dayEnd.count', async (tx, actor, scope) => {
+      const clinicId = resolveClinicId(scope, clinicIdInput);
       const businessDate = utcDate(dateInput);
       const existing = await tx.dayEndClosing.findFirst({ where: { clinicId, businessDate } });
       if (existing?.status === DayEndStatus.CLOSED) {
@@ -359,8 +359,8 @@ export class DayEndService {
    *     decorative.
    */
   async close(clinicIdInput: string | undefined, dateInput: string, dto: CloseDayEndDto) {
-    return withAdminTx(this.rawPrisma, 'dayEnd.close', async (tx, actor) => {
-      const clinicId = resolveClinicId(actor, clinicIdInput);
+    return withScopedAdminTx(this.rawPrisma, 'dayEnd.close', async (tx, actor, scope) => {
+      const clinicId = resolveClinicId(scope, clinicIdInput);
       const businessDate = utcDate(dateInput);
       const closing = await tx.dayEndClosing.findFirst({ where: { clinicId, businessDate } });
       if (!closing) {
@@ -432,8 +432,8 @@ export class DayEndService {
    * one-offs.
    */
   async reopen(clinicIdInput: string | undefined, dateInput: string, dto: ReopenDayEndDto) {
-    return withAdminTx(this.rawPrisma, 'dayEnd.reopen', async (tx, actor) => {
-      const clinicId = resolveClinicId(actor, clinicIdInput);
+    return withScopedAdminTx(this.rawPrisma, 'dayEnd.reopen', async (tx, actor, scope) => {
+      const clinicId = resolveClinicId(scope, clinicIdInput);
       const businessDate = utcDate(dateInput);
       const closing = await tx.dayEndClosing.findFirst({ where: { clinicId, businessDate } });
       if (!closing) throw new NotFoundException('No day-end closing for that date.');
@@ -473,8 +473,8 @@ export class DayEndService {
 
   /** The month's closings — the finance homepage's "did every day reconcile" strip. */
   async listRange(clinicIdInput: string | undefined, from: string, to: string) {
-    const actor = await requirePermission(this.rawPrisma, 'finance.view');
-    const clinicId = resolveClinicId(actor, clinicIdInput);
+    const { scope } = await requireScope(this.rawPrisma, 'finance.view');
+    const clinicId = resolveClinicId(scope, clinicIdInput);
     const closings = await this.prisma.dayEndClosing.findMany({
       where: { clinicId, businessDate: { gte: utcDate(from), lte: utcDate(to) } },
       orderBy: { businessDate: 'desc' },
@@ -501,8 +501,8 @@ export class DayEndService {
    * answered by this being empty.
    */
   async openDays(clinicIdInput: string | undefined, lookbackDays = 30) {
-    const actor = await requirePermission(this.rawPrisma, 'finance.view');
-    const clinicId = resolveClinicId(actor, clinicIdInput);
+    const { scope } = await requireScope(this.rawPrisma, 'finance.view');
+    const clinicId = resolveClinicId(scope, clinicIdInput);
     const today = utcDate(new Date());
     const since = new Date(today.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
 

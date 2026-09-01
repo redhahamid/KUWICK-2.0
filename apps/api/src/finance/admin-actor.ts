@@ -4,6 +4,7 @@ import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { ActingStaff, requireActor, withTenantTx } from '../clinical/clinical-actor';
 import { Permission, assertCan, can } from '../core/permissions';
+import { BranchScope, prismaScopeSource, resolveBranchScope } from '../core/branch-scope';
 
 export type AdminTx = Prisma.TransactionClient;
 
@@ -56,38 +57,68 @@ export function actorCan(actor: ActingStaff, permission: Permission): boolean {
 }
 
 /**
- * BRANCH SCOPE.
+ * WHICH BRANCHES MAY THIS ACCOUNT ACT IN.
  *
- * `Staff.clinicId` set means the person works at one branch and every
- * clinic-scoped screen resolves to it (D-045). Null means they work across the
- * tenant. A request naming a different branch than a home-branch staff member
- * holds is refused here rather than filtered silently, because silently
- * returning another branch's empty result set looks like "no data" and is
- * indistinguishable from a bug.
+ * One resolver, in `core/branch-scope.ts`, replacing the two contradictory
+ * systems the Stage 2.5 audit found. Read that module for the reasoning; this
+ * is the admin modules' way in.
+ *
+ * Every admin read that filters by branch, and every admin write that names
+ * one, goes through here. Nothing writes its own `where` fragment, and nothing
+ * compares `actor.clinicId` by hand.
  */
-export function assertBranchScope(actor: ActingStaff, clinicId: string | null | undefined): void {
-  if (!clinicId) return;
-  if (!actor.clinicId) return;
-  if (actor.clinicId !== clinicId) {
-    throw new ForbiddenException('Your account is scoped to a different branch.');
-  }
+export async function branchScopeOf(tx: AdminTx, actor: ActingStaff): Promise<BranchScope> {
+  return resolveBranchScope(
+    {
+      id: actor.id,
+      active: actor.active,
+      clinicId: actor.clinicId,
+      userId: actor.userId,
+      assignedRoles: actor.assignedRoles,
+      directGrants: actor.directGrants,
+    },
+    prismaScopeSource(tx),
+    (permission) => actorCan(actor, permission),
+  );
 }
 
 /**
- * The branch a request is about.
+ * Authorise an action AND resolve the branch scope in one step.
  *
- * What the request asked for, else the actor's home branch. Throws rather than
- * guessing when neither answers, because a stock movement or a day-end closing
- * without a branch is not a record of anything — and picking "the first clinic
- * in the tenant" would post one branch's cash into another's drawer.
+ * The two were separate, and that is exactly how sixteen call sites came to
+ * authorise the action while nothing authorised the branch. Handing both to
+ * the callback together makes the scoped version the easy one to write.
  */
-export function resolveClinicId(actor: ActingStaff, requested?: string | null): string {
-  const resolved = requested ?? actor.clinicId;
-  if (!resolved) {
-    throw new NotFoundException('No branch selected for this request.');
-  }
-  assertBranchScope(actor, resolved);
-  return resolved;
+export async function withScopedAdminTx<T>(
+  prisma: PrismaService,
+  permission: Permission,
+  fn: (tx: AdminTx, actor: ActingStaff, scope: BranchScope) => Promise<T>,
+): Promise<T> {
+  return withAdminTx(prisma, permission, async (tx, actor) => fn(tx, actor, await branchScopeOf(tx, actor)));
+}
+
+/** The read-side equivalent. */
+export async function requireScope(
+  prisma: PrismaService,
+  permission: Permission,
+): Promise<{ actor: ActingStaff; scope: BranchScope }> {
+  return withTenantTx(prisma, async (tx) => {
+    const actor = await requireActor(tx);
+    assertCan(actor, permission, actor.assignedRoles, actor.directGrants);
+    return { actor, scope: await branchScopeOf(tx, actor) };
+  });
+}
+
+/**
+ * The branch a single-branch operation is about.
+ *
+ * Was: "what the request asked for, else the actor's home branch", with a
+ * guard that returned early when the actor had no home branch — so an account
+ * with none could name any branch in the tenant. It now goes through the
+ * scope, which refuses a branch the account was not given.
+ */
+export function resolveClinicId(scope: BranchScope, requested?: string | null): string {
+  return scope.require(requested);
 }
 
 export { currentTenantId };

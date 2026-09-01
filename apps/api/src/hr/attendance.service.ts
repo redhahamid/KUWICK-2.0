@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
+import { PrismaService } from '../core/prisma.service';
+import { requireScope } from '../finance/admin-actor';
 
 export interface AttendanceQuery {
   from?: string;
@@ -23,13 +25,29 @@ function dateRangeWhere(field: string, query: AttendanceQuery) {
 // query — no different from Reports reading Invoice/Appointment).
 @Injectable()
 export class AttendanceService {
-  constructor(@Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient) {}
+  constructor(
+    @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
+    private readonly rawPrisma: PrismaService,
+  ) {}
+
+  /**
+   * AUTHORISE, THEN SCOPE.
+   *
+   * This service had no authorisation call of any kind and passed `clinicId`
+   * from the query string into Prisma, so who worked which shift at which
+   * branch was readable by anybody who could reach the route.
+   */
+  private async readScope() {
+    const { scope } = await requireScope(this.rawPrisma, 'hr.view');
+    return scope;
+  }
 
   async getAttendance(query: AttendanceQuery) {
+    const scope = await this.readScope();
     const visits = await this.prisma.visit.findMany({
       where: {
         ...dateRangeWhere('checkInAt', query),
-        ...(query.clinicId ? { clinicId: query.clinicId } : {}),
+        ...scope.where(query.clinicId),
         ...(query.staffId ? { staffId: query.staffId } : {}),
       },
       select: { staffId: true, staff: { select: { fullName: true } }, checkInAt: true, checkOutAt: true },

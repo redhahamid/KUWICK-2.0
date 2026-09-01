@@ -3,7 +3,7 @@ import { StockAdjustmentReason, StockMovementType, StockTakeStatus } from '@pris
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { AdminTx, requirePermission, resolveClinicId, withAdminTx } from '../finance/admin-actor';
+import { AdminTx, requirePermission, requireScope, resolveClinicId, withAdminTx, withScopedAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { fromCents, toCents } from '../finance/money';
 import { postMovement } from './stock-ledger';
@@ -50,8 +50,8 @@ export class StockTakeService {
    * shelf — otherwise a dispense during the count reads as a counting error.
    */
   async create(dto: CreateStockTakeDto) {
-    return withAdminTx(this.rawPrisma, 'stockTake.manage', async (tx, actor) => {
-      const clinicId = resolveClinicId(actor, dto.clinicId);
+    return withScopedAdminTx(this.rawPrisma, 'stockTake.manage', async (tx, actor, scope) => {
+      const clinicId = resolveClinicId(scope, dto.clinicId);
 
       const open = await tx.stockTake.findFirst({
         where: { clinicId, status: { in: [StockTakeStatus.DRAFT, StockTakeStatus.COUNTING, StockTakeStatus.IN_REVIEW] } },
@@ -114,13 +114,13 @@ export class StockTakeService {
 
   /** Record counts. Repeatable while the take is COUNTING; touches no stock. */
   async recordCounts(id: string, dto: RecordCountDto) {
-    return withAdminTx(this.rawPrisma, 'stockTake.manage', async (tx, actor) => {
+    return withScopedAdminTx(this.rawPrisma, 'stockTake.manage', async (tx, actor, scope) => {
       const take = await tx.stockTake.findUnique({ where: { id }, select: { id: true, status: true, clinicId: true } });
       if (!take) throw new NotFoundException('Stock take not found');
       if (take.status !== StockTakeStatus.COUNTING) {
         throw new ConflictException(`A ${take.status.toLowerCase()} stock take cannot be counted into.`);
       }
-      resolveClinicId(actor, take.clinicId);
+      resolveClinicId(scope, take.clinicId);
 
       const lineIds = dto.counts.map((count) => count.lineId);
       const lines = await tx.stockTakeLine.findMany({
@@ -161,7 +161,7 @@ export class StockTakeService {
 
   /** Submit for review. Refuses a sheet with uncounted lines. */
   async submit(id: string) {
-    return withAdminTx(this.rawPrisma, 'stockTake.manage', async (tx, actor) => {
+    return withScopedAdminTx(this.rawPrisma, 'stockTake.manage', async (tx, actor, scope) => {
       const take = await tx.stockTake.findUnique({
         where: { id },
         include: { lines: { select: { id: true, countedQuantity: true } } },
@@ -198,7 +198,7 @@ export class StockTakeService {
    * exclusion decorative.
    */
   async approve(id: string, dto: ReviewStockTakeDto) {
-    return withAdminTx(this.rawPrisma, 'stockTake.approve', async (tx, actor) => {
+    return withScopedAdminTx(this.rawPrisma, 'stockTake.approve', async (tx, actor, scope) => {
       const take = await tx.stockTake.findUnique({
         where: { id },
         include: { lines: true },
@@ -284,7 +284,7 @@ export class StockTakeService {
   }
 
   async cancel(id: string, reason: string) {
-    return withAdminTx(this.rawPrisma, 'stockTake.manage', async (tx, actor) => {
+    return withScopedAdminTx(this.rawPrisma, 'stockTake.manage', async (tx, actor, scope) => {
       const take = await tx.stockTake.findUnique({ where: { id }, select: { id: true, status: true } });
       if (!take) throw new NotFoundException('Stock take not found');
       if (take.status === StockTakeStatus.POSTED) {
@@ -300,8 +300,8 @@ export class StockTakeService {
   }
 
   async list(clinicIdInput?: string) {
-    const actor = await requirePermission(this.rawPrisma, 'stock.view');
-    const clinicId = clinicIdInput ?? actor.clinicId ?? undefined;
+    const { scope } = await requireScope(this.rawPrisma, 'stock.view');
+    const clinicId = scope.assert(clinicIdInput);
     const takes = await this.prisma.stockTake.findMany({
       where: clinicId ? { clinicId } : {},
       orderBy: { createdAt: 'desc' },

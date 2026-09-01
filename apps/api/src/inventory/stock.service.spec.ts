@@ -3,6 +3,32 @@ import { StockService } from './stock.service';
 import { TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { tenantContextStorage } from '../core/tenant-context';
 
+/*
+ * These tests are about the derivation, and the derivation is what they should
+ * test. Every method now authorises through a scope helper that needs a real
+ * actor and tenant context; stubbing it to a tenant-wide scope keeps these
+ * unit tests on their own subject. Authorisation is proved where it can be —
+ * in `authorization-scope.e2e-spec.ts`, against a real database and a real
+ * signed token.
+ */
+function grantEveryBranch(service: object) {
+  const tenantWide = (id?: string) => ({
+    clinicIds: [],
+    everyBranch: true,
+    filter: {},
+    staffFilter: {},
+    assert: () => id ?? null,
+    where: () => (id ? { clinicId: id } : {}),
+    sqlClinicIds: () => null,
+    require: (requested?: string | null) => requested ?? 'clinic-1',
+  });
+  const patched = service as { readScope?: unknown; writeScope?: unknown };
+  patched.readScope = async () => tenantWide();
+  patched.writeScope = async () => tenantWide();
+  return service;
+}
+
+
 function createService() {
   const prisma = {
     stockBatch: { create: jest.fn(), findMany: jest.fn() },
@@ -16,7 +42,7 @@ function createService() {
   (prisma as unknown as { $transaction: unknown }).$transaction = jest.fn(
     (fn: (c: TenantScopedPrismaClient) => unknown) => fn(prisma),
   );
-  return { service: new StockService(prisma), prisma };
+  return { service: grantEveryBranch(new StockService(prisma, {} as never)) as StockService, prisma };
 }
 
 function withTenant<T>(fn: () => Promise<T>): Promise<T> {

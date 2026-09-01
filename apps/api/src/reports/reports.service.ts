@@ -1,6 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AppointmentStatus, InvoiceStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
+import { PrismaService } from '../core/prisma.service';
+import { BranchScope } from '../core/branch-scope';
+import { requireScope } from '../finance/admin-actor';
 import { ClaimBatchService } from '../clinical/claim-batch.service';
 
 /**
@@ -42,8 +45,27 @@ function dateRangeWhere(field: string, range: ReportDateRange) {
 // own, matching §9's data-ownership rule that Reports only ever reads.
 @Injectable()
 export class ReportsService {
+
+  /**
+   * AUTHORISE, THEN SCOPE. Every method in this service starts here.
+   *
+   * This service had NO authorisation call of any kind. The controller passed
+   * `clinicId` from the query string straight into Prisma across eleven
+   * methods, so anybody who could reach the route could read any branch's
+   * revenue, and anybody who could reach the API at all could read the
+   * tenant's. RLS bounded it to the tenant and nothing bounded it further.
+   *
+   * Returning the branch filter rather than a boolean is deliberate: a method
+   * that forgets to authorise also has no filter to apply, so the omission
+   * fails to compile rather than failing open.
+   */
+  private async scopeFor(requested: string | undefined) {
+    const { scope } = await requireScope(this.rawPrisma, 'analytics.view');
+    return { scope, clinic: scope.where(requested), visit: { visit: scope.where(requested) } };
+  }
   constructor(
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
+    private readonly rawPrisma: PrismaService,
     private readonly claimBatches: ClaimBatchService,
   ) {}
 
@@ -53,11 +75,12 @@ export class ReportsService {
   // panelRevenue is what panel companies owe (panelCoveredAmount) — same
   // split already snapshotted onto Invoice at pay-time (Phase 1e).
   async getSalesSummary(range: ReportDateRange) {
+    const scoped = await this.scopeFor(range.clinicId);
     const raw = await this.prisma.invoice.findMany({
       where: {
         status: InvoiceStatus.PAID,
         ...dateRangeWhere('paidAt', range),
-        ...(range.clinicId ? { visit: { clinicId: range.clinicId } } : {}),
+        ...scoped.visit,
       },
       select: { totalAmount: true, patientPaidAmount: true, panelCoveredAmount: true, paidAt: true, paymentMethod: true },
     });
@@ -102,10 +125,11 @@ export class ReportsService {
   // Appointment Analytics (§4): booking volume, no-show rate, utilization
   // proxy (completed / total scheduled).
   async getAppointmentAnalytics(range: ReportDateRange) {
+    const scoped = await this.scopeFor(range.clinicId);
     const appointments = await this.prisma.appointment.findMany({
       where: {
         ...dateRangeWhere('scheduledStart', range),
-        ...(range.clinicId ? { clinicId: range.clinicId } : {}),
+        ...scoped.clinic,
       },
       select: { status: true },
     });
@@ -129,11 +153,12 @@ export class ReportsService {
   // per patient — grouped by the visit's attending staff, over PAID
   // invoices in range.
   async getDoctorPerformance(range: ReportDateRange) {
+    const scoped = await this.scopeFor(range.clinicId);
     const invoices = await this.prisma.invoice.findMany({
       where: {
         status: InvoiceStatus.PAID,
         ...dateRangeWhere('paidAt', range),
-        ...(range.clinicId ? { visit: { clinicId: range.clinicId } } : {}),
+        ...scoped.visit,
       },
       select: { totalAmount: true, visit: { select: { staffId: true, staff: { select: { fullName: true } } } } },
     });
@@ -186,11 +211,15 @@ export class ReportsService {
     return 'Others';
   }
 
-  private paidInvoicesWhere(range: ReportDateRange) {
+  /**
+   * Takes the scope rather than reading one, so it cannot be called from a
+   * method that has not authorised — the omission is a compile error.
+   */
+  private paidInvoicesWhere(range: ReportDateRange, scoped: { visit: { visit: object } }) {
     return {
       status: InvoiceStatus.PAID,
       ...dateRangeWhere('paidAt', range),
-      ...(range.clinicId ? { visit: { clinicId: range.clinicId } } : {}),
+      ...scoped.visit,
     };
   }
 
@@ -198,8 +227,9 @@ export class ReportsService {
   // panel vs cash patients, cash collections split by payment method,
   // panel billings split by panel company with patient counts.
   async getDayEndSummary(clinicId: string | undefined, date: string) {
+    const scoped = await this.scopeFor(clinicId);
     const invoices = await this.prisma.invoice.findMany({
-      where: this.paidInvoicesWhere({ from: date, to: date, clinicId }),
+      where: this.paidInvoicesWhere({ from: date, to: date, clinicId }, scoped),
       select: {
         totalAmount: true,
         patientPaidAmount: true,
@@ -246,7 +276,7 @@ export class ReportsService {
       where: {
         status: InvoiceStatus.UNPAID,
         ...dateRangeWhere('createdAt', { from: date, to: date }),
-        ...(clinicId ? { visit: { clinicId } } : {}),
+        ...scoped.visit,
       },
     });
 
@@ -275,8 +305,9 @@ export class ReportsService {
   // company, average charge per patient (overall / panel / non-panel),
   // daily trend of sales + patient count.
   async getSalesAnalysis(range: ReportDateRange) {
+    const scoped = await this.scopeFor(range.clinicId);
     const invoices = await this.prisma.invoice.findMany({
-      where: this.paidInvoicesWhere(range),
+      where: this.paidInvoicesWhere(range, scoped),
       select: {
         totalAmount: true,
         patientPaidAmount: true,
@@ -354,10 +385,11 @@ export class ReportsService {
   // existing, panel vs non-panel, gender, age group, % by panel,
   // attendance by hour and by day of week. Visit-grain over checkInAt.
   async getPatientAnalysis(range: ReportDateRange) {
+    const scoped = await this.scopeFor(range.clinicId);
     const visits = await this.prisma.visit.findMany({
       where: {
         ...dateRangeWhere('checkInAt', range),
-        ...(range.clinicId ? { clinicId: range.clinicId } : {}),
+        ...scoped.clinic,
       },
       select: {
         checkInAt: true,
@@ -428,10 +460,11 @@ export class ReportsService {
   // (ServiceCatalog.category), over PAID invoice lines sourced from
   // OrderServices.
   async getProcedureAnalysis(range: ReportDateRange) {
+    const scoped = await this.scopeFor(range.clinicId);
     const lines = await this.prisma.invoiceLine.findMany({
       where: {
         sourceOrderServiceId: { not: null },
-        invoice: this.paidInvoicesWhere(range),
+        invoice: this.paidInvoicesWhere(range, scoped),
       },
       select: {
         description: true,
@@ -485,8 +518,9 @@ export class ReportsService {
   // recoverable from the report layout — deliberately not invented (same
   // treatment as OQ#2's incentive formula).
   async getDoctorPerformanceDetailed(range: ReportDateRange) {
+    const scoped = await this.scopeFor(range.clinicId);
     const invoices = await this.prisma.invoice.findMany({
-      where: this.paidInvoicesWhere(range),
+      where: this.paidInvoicesWhere(range, scoped),
       select: {
         totalAmount: true,
         lines: { select: { amount: true, description: true, sourcePrescriptionId: true, sourceOrderServiceId: true } },
@@ -536,11 +570,12 @@ export class ReportsService {
   // slow moving") — dispensed-drug sales over PAID invoice lines sourced
   // from Prescriptions, including never-sold items so slow movers surface.
   async getDrugMovement(range: ReportDateRange) {
+    const scoped = await this.scopeFor(range.clinicId);
     const [lines, items] = await Promise.all([
       this.prisma.invoiceLine.findMany({
         where: {
           sourcePrescriptionId: { not: null },
-          invoice: this.paidInvoicesWhere(range),
+          invoice: this.paidInvoicesWhere(range, scoped),
         },
         select: {
           quantity: true,
@@ -602,10 +637,11 @@ export class ReportsService {
   // queue-ticket creation → called (waiting), called → check-out
   // (consultation + dispensary), check-in → check-out (total visit).
   async getWaitTimes(range: ReportDateRange) {
+    const scoped = await this.scopeFor(range.clinicId);
     const visits = await this.prisma.visit.findMany({
       where: {
         ...dateRangeWhere('checkInAt', range),
-        ...(range.clinicId ? { clinicId: range.clinicId } : {}),
+        ...scoped.clinic,
       },
       select: {
         checkInAt: true,
@@ -679,11 +715,12 @@ export class ReportsService {
   // Invoice / sales listing with status filter — feeds the exportable
   // Invoices table.
   async getInvoiceListing(range: ReportDateRange, status?: InvoiceStatus) {
+    const scoped = await this.scopeFor(range.clinicId);
     const invoices = await this.prisma.invoice.findMany({
       where: {
         ...(status ? { status } : {}),
         ...dateRangeWhere(status === InvoiceStatus.PAID ? 'paidAt' : 'createdAt', range),
-        ...(range.clinicId ? { visit: { clinicId: range.clinicId } } : {}),
+        ...scoped.visit,
       },
       select: {
         id: true,

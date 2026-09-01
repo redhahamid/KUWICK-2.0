@@ -3,7 +3,7 @@ import { CreditNoteStatus, InvoiceStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { AdminTx, requirePermission, resolveClinicId, withAdminTx } from './admin-actor';
+import { AdminTx, requirePermission, requireScope, resolveClinicId, withAdminTx, withScopedAdminTx } from './admin-actor';
 import { recordAudit } from './admin-audit';
 import { fromCents, sumCents, toCents } from './money';
 import { CreateCreditNoteDto } from './dto/create-credit-note.dto';
@@ -39,7 +39,7 @@ export class CreditNoteService {
   }
 
   async create(dto: CreateCreditNoteDto) {
-    return withAdminTx(this.rawPrisma, 'creditNote.create', async (tx, actor) => {
+    return withScopedAdminTx(this.rawPrisma, 'creditNote.create', async (tx, actor, scope) => {
       const invoice = await tx.invoice.findUnique({
         where: { id: dto.invoiceId },
         select: {
@@ -58,7 +58,7 @@ export class CreditNoteService {
       if (invoice.status === InvoiceStatus.CANCELLED) {
         throw new BadRequestException('A cancelled invoice has nothing left to credit.');
       }
-      const clinicId = resolveClinicId(actor, invoice.visit.clinicId);
+      const clinicId = resolveClinicId(scope, invoice.visit.clinicId);
 
       const lineById = new Map(invoice.lines.map((line) => [line.id, line]));
       const lines = dto.lines.map((input) => {
@@ -137,7 +137,7 @@ export class CreditNoteService {
 
   /** Approve and issue. Only from here does a credit note reduce anything. */
   async approve(id: string) {
-    return withAdminTx(this.rawPrisma, 'creditNote.approve', async (tx, actor) => {
+    return withScopedAdminTx(this.rawPrisma, 'creditNote.approve', async (tx, actor, scope) => {
       const note = await tx.creditNote.findUnique({
         where: { id },
         select: { id: true, status: true, createdByStaffId: true, totalAmount: true, invoiceId: true, creditNoteNumber: true },
@@ -177,7 +177,7 @@ export class CreditNoteService {
 
   /** Withdraw a credit note. It stays on the record, marked VOID with a reason. */
   async void(id: string, dto: VoidCreditNoteDto) {
-    return withAdminTx(this.rawPrisma, 'creditNote.approve', async (tx, actor) => {
+    return withScopedAdminTx(this.rawPrisma, 'creditNote.approve', async (tx, actor, scope) => {
       const note = await tx.creditNote.findUnique({ where: { id }, select: { id: true, status: true } });
       if (!note) throw new NotFoundException('Credit note not found');
       if (note.status === CreditNoteStatus.VOID) {
@@ -209,8 +209,8 @@ export class CreditNoteService {
   }
 
   async list(params: { clinicId?: string; status?: CreditNoteStatus; from?: string; to?: string }) {
-    const actor = await requirePermission(this.rawPrisma, 'finance.view');
-    const clinicId = params.clinicId ?? actor.clinicId ?? undefined;
+    const { scope } = await requireScope(this.rawPrisma, 'finance.view');
+    const clinicId = scope.assert(params.clinicId);
     const notes = await this.prisma.creditNote.findMany({
       where: {
         ...(clinicId ? { clinicId } : {}),

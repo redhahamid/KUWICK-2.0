@@ -3,7 +3,8 @@ import { Prisma, StockTransferStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { requirePermission, resolveClinicId, withAdminTx } from '../finance/admin-actor';
+import { requirePermission, requireScope, resolveClinicId, withAdminTx, withScopedAdminTx } from '../finance/admin-actor';
+import { BranchScope } from '../core/branch-scope';
 import { recordAudit } from '../finance/admin-audit';
 import { fromCents, toCents } from '../finance/money';
 import { batchExposure, batchExposureValueCents } from '../inventory/batch-exposure';
@@ -23,6 +24,21 @@ export const NEAR_EXPIRY_DAYS = 90;
  * each with a stated threshold rather than a magic number buried in a query,
  * and each linking to the record that needs the work.
  */
+
+/**
+ * THE BRANCH CLAUSE FOR A RAW QUERY.
+ *
+ * These fragments used to read `clinicId ? AND clinic_id = ... : empty`, so an
+ * account that named no branch got NO clause and read the whole tenant. The
+ * scope decides now: a named branch it validated, otherwise the branches the
+ * account may manage, and only a genuinely tenant-wide actor gets no clause.
+ */
+function branchClause(scope: BranchScope, requested: string | null | undefined, alias: string) {
+  const ids = scope.sqlClinicIds(requested);
+  if (ids === null) return Prisma.empty;
+  return Prisma.sql`AND ${Prisma.raw(`"${alias}"`)}."clinic_id" = ANY(${ids})`;
+}
+
 @Injectable()
 export class StockAdminService {
   constructor(
@@ -39,8 +55,8 @@ export class StockAdminService {
    * gate is a server-side permission check, which is the only kind that works.
    */
   async adjust(dto: AdjustStockDto) {
-    return withAdminTx(this.rawPrisma, 'stock.adjust', async (tx, actor) => {
-      const clinicId = resolveClinicId(actor, dto.clinicId);
+    return withScopedAdminTx(this.rawPrisma, 'stock.adjust', async (tx, actor, scope) => {
+      const clinicId = resolveClinicId(scope, dto.clinicId);
       const item = await tx.item.findUnique({ where: { id: dto.itemId }, select: { id: true, name: true, cost: true } });
       if (!item) throw new NotFoundException('Item not found');
       if (dto.quantityDelta === 0) {
@@ -89,12 +105,12 @@ export class StockAdminService {
    * included because it is interesting.
    */
   async exceptions(clinicIdInput?: string) {
-    const actor = await requirePermission(this.rawPrisma, 'stock.view');
-    const clinicId = clinicIdInput ?? actor.clinicId ?? undefined;
+    const { scope } = await requireScope(this.rawPrisma, 'stock.view');
+    const clinicId = scope.assert(clinicIdInput);
     const now = new Date();
     const nearExpiryCutoff = new Date(now.getTime() + NEAR_EXPIRY_DAYS * 86400000);
     const slowCutoff = new Date(now.getTime() - SLOW_MOVING_DAYS * 86400000);
-    const clinicFilter = clinicId ? { clinicId } : {};
+    const clinicFilter = scope.where(clinicId);
 
     const [negative, belowMinimum, expired, nearExpiry, unconfirmedTransfers, discrepancyTransfers, openTakes, pendingRequests] =
       await Promise.all([
@@ -104,7 +120,7 @@ export class StockAdminService {
           WHERE sl."quantity_on_hand" >= 0
             AND sl."min_threshold" > 0
             AND sl."quantity_on_hand" < sl."min_threshold"
-            ${clinicId ? Prisma.sql`AND sl."clinic_id" = ${clinicId}` : Prisma.empty}
+            ${branchClause(scope, clinicId, "sl")}
         `,
         // BATCHES OF AN ITEM THE CLINIC STILL HOLDS.
         //
@@ -120,7 +136,7 @@ export class StockAdminService {
             ON sl."item_id" = b."item_id" AND sl."clinic_id" = b."clinic_id"
           WHERE b."quantity" > 0 AND sl."quantity_on_hand" > 0
             AND b."expiry_date" < ${now}
-            ${clinicId ? Prisma.sql`AND b."clinic_id" = ${clinicId}` : Prisma.empty}
+            ${branchClause(scope, clinicId, "b")}
         `,
         this.prisma.$queryRaw<{ count: bigint }[]>`
           SELECT COUNT(*) AS count FROM "stock_batches" b
@@ -128,7 +144,7 @@ export class StockAdminService {
             ON sl."item_id" = b."item_id" AND sl."clinic_id" = b."clinic_id"
           WHERE b."quantity" > 0 AND sl."quantity_on_hand" > 0
             AND b."expiry_date" >= ${now} AND b."expiry_date" <= ${nearExpiryCutoff}
-            ${clinicId ? Prisma.sql`AND b."clinic_id" = ${clinicId}` : Prisma.empty}
+            ${branchClause(scope, clinicId, "b")}
         `,
         this.prisma.stockTransfer.count({
           where: {
@@ -152,7 +168,7 @@ export class StockAdminService {
     const slowMovers = await this.prisma.$queryRaw<{ count: bigint }[]>`
       SELECT COUNT(*) AS count FROM "stock_levels" sl
       WHERE sl."quantity_on_hand" > 0
-        ${clinicId ? Prisma.sql`AND sl."clinic_id" = ${clinicId}` : Prisma.empty}
+        ${branchClause(scope, clinicId, "sl")}
         AND NOT EXISTS (
           SELECT 1 FROM "stock_movements" sm
           WHERE sm."item_id" = sl."item_id"
@@ -179,10 +195,10 @@ export class StockAdminService {
 
   /** The rows behind one exception tile. */
   async exceptionRows(kind: string, clinicIdInput?: string) {
-    const actor = await requirePermission(this.rawPrisma, 'stock.view');
-    const clinicId = clinicIdInput ?? actor.clinicId ?? undefined;
+    const { scope } = await requireScope(this.rawPrisma, 'stock.view');
+    const clinicId = scope.assert(clinicIdInput);
     const now = new Date();
-    const clinicFilter = clinicId ? { clinicId } : {};
+    const clinicFilter = scope.where(clinicId);
 
     const itemSelect = { select: { id: true, name: true, code: true, category: true, unitOfMeasure: true, cost: true, sellPrice: true } };
     const clinicSelect = { select: { name: true } };
@@ -304,7 +320,7 @@ export class StockAdminService {
           FROM "stock_levels" sl
           JOIN "items" i ON i."id" = sl."item_id"
           WHERE sl."quantity_on_hand" > 0
-            ${clinicId ? Prisma.sql`AND sl."clinic_id" = ${clinicId}` : Prisma.empty}
+            ${branchClause(scope, clinicId, "sl")}
             AND NOT EXISTS (
               SELECT 1 FROM "stock_movements" sm
               WHERE sm."item_id" = sl."item_id" AND sm."clinic_id" = sl."clinic_id"
@@ -346,8 +362,8 @@ export class StockAdminService {
    * FIFO number computed from a standard cost would be a fabricated precision.
    */
   async valuation(clinicIdInput?: string) {
-    const actor = await requirePermission(this.rawPrisma, 'stock.view');
-    const clinicId = clinicIdInput ?? actor.clinicId ?? undefined;
+    const { scope } = await requireScope(this.rawPrisma, 'stock.view');
+    const clinicId = scope.assert(clinicIdInput);
 
     const levels = await this.prisma.stockLevel.findMany({
       where: {
@@ -426,8 +442,8 @@ export class StockAdminService {
 
   /** The movement ledger for one item at one branch — the drill-down. */
   async movements(params: { clinicId?: string; itemId?: string; from?: string; to?: string; limit?: number }) {
-    const actor = await requirePermission(this.rawPrisma, 'stock.view');
-    const clinicId = params.clinicId ?? actor.clinicId ?? undefined;
+    const { scope } = await requireScope(this.rawPrisma, 'stock.view');
+    const clinicId = scope.assert(params.clinicId);
 
     const movements = await this.prisma.stockMovement.findMany({
       where: {

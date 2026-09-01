@@ -12,7 +12,27 @@ function createService() {
     visit: { findMany: jest.fn() },
   } as unknown as TenantScopedPrismaClient;
   const claimBatches = { listOutstanding: jest.fn() } as unknown as ClaimBatchService;
-  return { service: new ReportsService(prisma, claimBatches), prisma, claimBatches };
+  const service = new ReportsService(prisma, {} as never, claimBatches);
+
+  /*
+   * These are arithmetic tests, and the arithmetic is what they should test.
+   *
+   * Every method now authorises through `scopeFor` before it reads, which
+   * needs a real actor and a real tenant context. Stubbing it to a tenant-wide
+   * scope keeps these tests about revenue bucketing rather than about
+   * authorisation — which is covered where it can actually be proved, in
+   * `authorization-scope.e2e-spec.ts`, against a real database and a real
+   * signed token.
+   */
+  (service as unknown as { scopeFor: (id?: string) => Promise<unknown> }).scopeFor = async (id?: string) => ({
+    scope: null,
+    // A tenant-wide actor: a named branch is honoured, and naming none reads
+    // every branch. Exactly what the real scope does for an account holder.
+    clinic: id ? { clinicId: id } : {},
+    visit: { visit: id ? { clinicId: id } : {} },
+  });
+
+  return { service, prisma, claimBatches };
 }
 
 describe('ReportsService', () => {

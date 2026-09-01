@@ -2,7 +2,7 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from '@nes
 import { InvoiceStatus, PaymentKind, PaymentTender } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
-import { AdminTx, resolveClinicId, withAdminTx } from './admin-actor';
+import { AdminTx, resolveClinicId, withAdminTx, withScopedAdminTx } from './admin-actor';
 import { currentTenantId } from '../core/tenant-context';
 import { recordAudit } from './admin-audit';
 import { computePatientBalance } from './financial-invariants';
@@ -172,7 +172,7 @@ export class PaymentService {
    *   - any movement against an invoice inside a day that has been CLOSED
    */
   async record(invoiceId: string, dto: RecordPaymentDto) {
-    return withAdminTx(this.rawPrisma, 'payment.record', async (tx, actor) => {
+    return withScopedAdminTx(this.rawPrisma, 'payment.record', async (tx, actor, scope) => {
       const invoice = await tx.invoice.findUnique({
         where: { id: invoiceId },
         select: {
@@ -190,7 +190,7 @@ export class PaymentService {
         throw new BadRequestException('Billing responsibility has not been confirmed.');
       }
 
-      const clinicId = resolveClinicId(actor, invoice.visit.clinicId);
+      const clinicId = resolveClinicId(scope, invoice.visit.clinicId);
       const receivedAt = dto.receivedAt ? new Date(dto.receivedAt) : new Date();
       await this.assertDayIsOpen(tx, clinicId, receivedAt);
 
@@ -259,7 +259,7 @@ export class PaymentService {
    * it. Both facts survive: the money was taken, and it was taken in error.
    */
   async reverse(paymentId: string, dto: ReversePaymentDto) {
-    return withAdminTx(this.rawPrisma, 'payment.reverse', async (tx, actor) => {
+    return withScopedAdminTx(this.rawPrisma, 'payment.reverse', async (tx, actor, scope) => {
       const original = await tx.payment.findUnique({
         where: { id: paymentId },
         select: {
