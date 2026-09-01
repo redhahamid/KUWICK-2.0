@@ -1953,6 +1953,156 @@ export interface PayrollApprovalState {
   completesTheRun: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// PAYROLL REPORTS.
+//
+// Five reports over the SAME rows the run wrote. Nothing recomputes a figure,
+// and every row carries `drill` — the canonical record behind it — because a
+// total nobody can open is a number you have to trust.
+// ---------------------------------------------------------------------------
+
+export interface PayrollReportHeader {
+  runId: string;
+  period: string;
+  periodLabel: string;
+  clinicName: string;
+  status: string;
+  provisional: boolean;
+  provisionalNote: string | null;
+}
+
+export interface PayrollReportCatalogue {
+  available: { key: string; title: string; description: string; scope: 'RUN' | 'DATE_RANGE' }[];
+  /** Named absences carrying a reason, not a "coming soon". */
+  notAvailableYet: { key: string; title: string; why: string }[];
+}
+
+export interface PayrollRegisterReport extends PayrollReportHeader {
+  report: 'PAYROLL_REGISTER';
+  rows: {
+    staffId: string;
+    name: string;
+    basicSalary: string;
+    allowances: string;
+    overtimePay: string;
+    incentives: string;
+    bonus: string;
+    grossPay: string;
+    unpaidLeaveDeduction: string;
+    otherDeductions: string;
+    /** Null, never 0, when a statutory figure could not be worked out. */
+    statutoryEmployee: string | null;
+    netPay: string;
+    employerCost: string;
+    drill: string;
+    components: {
+      code: string;
+      label: string;
+      amount: string;
+      source: string;
+      sourceRecordId: string | null;
+      reason: string | null;
+    }[];
+  }[];
+  totals: {
+    grossPay: string;
+    deductions: string;
+    netPay: string;
+    employerCost: string;
+    employees: number;
+  };
+}
+
+export interface PayrollCostBucket {
+  key: string;
+  label: string;
+  employees: number;
+  gross: string;
+  employerContributions: string | null;
+  employerCost: string;
+  notComputed: number;
+  note: string | null;
+}
+
+export interface PayrollEmployerCostReport extends PayrollReportHeader {
+  report: 'EMPLOYER_COST';
+  byBranch: PayrollCostBucket[];
+  byLegalEmployer: PayrollCostBucket[];
+  total: { gross: string; employerCost: string; employees: number };
+}
+
+export interface PayrollStatutoryReport extends PayrollReportHeader {
+  report: 'STATUTORY_TOTALS';
+  notASubmission: string;
+  byEmployer: {
+    employerId: string;
+    employerName: string;
+    employees: number;
+    canFile: { epf: boolean; socso: boolean; lhdn: boolean };
+    schemes: {
+      scheme: string;
+      employee: string | null;
+      employer: string | null;
+      total: string | null;
+      notComputed: number;
+      note: string | null;
+    }[];
+  }[];
+}
+
+export interface PayrollMonthComparisonReport extends PayrollReportHeader {
+  report: 'VARIANCE';
+  comparedWith: { runId: string; period: string; periodLabel: string } | null;
+  note: string | null;
+  rows: {
+    staffId: string;
+    name: string;
+    state: 'BOTH' | 'JOINED' | 'LEFT';
+    current: string | null;
+    previous: string | null;
+    movement: string;
+    drill: string;
+  }[];
+  totals: {
+    current: string;
+    previous: string;
+    movement: string;
+    joined: number;
+    left: number;
+  } | null;
+}
+
+export interface PayrollClaimsReport {
+  report: 'CLAIMS';
+  period: { from: string; to: string };
+  periodMeans: string;
+  rows: {
+    id: string;
+    staffId: string;
+    name: string;
+    category: string;
+    description: string;
+    claimDate: string;
+    claimed: string;
+    approved: string | null;
+    status: string;
+    route: string | null;
+    settled: boolean;
+    decidedBy: string | null;
+    decidedAt: string | null;
+    drill: string;
+  }[];
+  totals: {
+    claims: number;
+    approved: number;
+    rejected: number;
+    throughPayroll: string;
+    throughFinance: string;
+    awaitingPayment: number;
+  };
+  doublePaymentCheck: string;
+}
+
 /** Who is allowed to approve payroll in this clinic. Payroll settings. */
 export interface PayrollApprovalPolicy {
   mode: 'STANDARD' | 'MAKER_CHECKER' | 'DUAL_APPROVAL';

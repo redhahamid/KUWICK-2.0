@@ -87,6 +87,7 @@ import { BenefitsPage } from './admin/hr/BenefitsPage';
 import { AdminRosterPage } from './admin/hr/RosterPage';
 import { ClaimsPage } from './admin/hr/ClaimsPage';
 import { LocumPage } from './admin/hr/LocumPage';
+import { PayrollReportsPage } from './admin/hr/PayrollReportsPage';
 import { PayrollSettingsPage } from './admin/hr/PayrollSettingsPage';
 import { PayrollHomePage } from './admin/hr/PayrollHomePage';
 import { PayrollRunPage } from './admin/hr/PayrollRunPage';
@@ -268,6 +269,7 @@ export function App() {
             <Route path="/admin/hr/benefits" element={<BenefitsPage />} />
             <Route path="/admin/hr/claims" element={<ClaimsPage />} />
             <Route path="/admin/hr/locum" element={<LocumPage />} />
+            <Route path="/admin/hr/reports" element={<PayrollReportsPage />} />
             <Route path="/admin/hr/settings" element={<PayrollSettingsPage />} />
             <Route path="/admin/hr/access" element={<RolesSettingsPage />} />
 

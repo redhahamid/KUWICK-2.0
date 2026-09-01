@@ -106,6 +106,7 @@ const ADMIN_CATEGORIES: HubCategory[] = [
       { path: '/admin/hr/incentives', label: 'Doctor incentives' },
       { path: '/admin/hr/locum', label: 'Locum sessions' },
       { path: '/admin/hr/benefits', label: 'Staff benefits' },
+      { path: '/admin/hr/reports', label: 'Reports' },
       { path: '/admin/hr/settings', label: 'Payroll settings' },
     ],
   },

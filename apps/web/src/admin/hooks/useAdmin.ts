@@ -53,7 +53,7 @@ import type {
   PayrollInputRow,
   PayrollCandidateDiff,
   PayrollExceptionList,
-  PayrollVarianceReport,
+  PayrollMonthComparisonReport,
   PayrollSnapshotRow,
   StaffClaimRow,
   StaffClaimEventRow,
@@ -61,7 +61,13 @@ import type {
   LocumPayableSummary,
   SalaryParityReport,
   PayrollApprovalPolicy,
+  PayrollClaimsReport,
+  PayrollEmployerCostReport,
   PayrollHome,
+  PayrollRegisterReport,
+  PayrollReportCatalogue,
+  PayrollStatutoryReport,
+  PayrollVarianceReport,
   PayrollJourney,
 } from '../types';
 
@@ -1104,6 +1110,56 @@ export function usePayrollHome(params: { period?: string; clinicId?: string } = 
   return useQuery({
     queryKey: ['admin-hr', 'payroll-home', params],
     queryFn: () => apiClient.get<PayrollHome>(`/workforce/payroll/home${qs(params)}`),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// PAYROLL REPORTS. Five reads over the rows the run already wrote.
+// ---------------------------------------------------------------------------
+
+export function usePayrollReportCatalogue() {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-reports'],
+    queryFn: () => apiClient.get<PayrollReportCatalogue>('/workforce/payroll/reports'),
+  });
+}
+
+export function usePayrollRegisterReport(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-report', 'register', runId],
+    queryFn: () => apiClient.get<PayrollRegisterReport>(`/workforce/payroll/runs/${runId}/reports/register`),
+    enabled: Boolean(runId),
+  });
+}
+
+export function usePayrollEmployerCostReport(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-report', 'employer-cost', runId],
+    queryFn: () => apiClient.get<PayrollEmployerCostReport>(`/workforce/payroll/runs/${runId}/reports/employer-cost`),
+    enabled: Boolean(runId),
+  });
+}
+
+export function usePayrollStatutoryReport(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-report', 'statutory', runId],
+    queryFn: () => apiClient.get<PayrollStatutoryReport>(`/workforce/payroll/runs/${runId}/reports/statutory`),
+    enabled: Boolean(runId),
+  });
+}
+
+export function usePayrollMonthComparisonReport(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-report', 'variance', runId],
+    queryFn: () => apiClient.get<PayrollMonthComparisonReport>(`/workforce/payroll/runs/${runId}/reports/variance`),
+    enabled: Boolean(runId),
+  });
+}
+
+export function usePayrollClaimsReport(params: { from: string; to: string }) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-report', 'claims', params],
+    queryFn: () => apiClient.get<PayrollClaimsReport>(`/workforce/payroll/reports/claims${qs(params)}`),
   });
 }
 

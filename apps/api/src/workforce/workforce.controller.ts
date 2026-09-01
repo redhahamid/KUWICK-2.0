@@ -27,6 +27,7 @@ import { RecordSalaryDto } from './dto/record-salary.dto';
 import { StaffClaimService } from './staff-claim.service';
 import { LocumService } from './locum.service';
 import { PayrollJourneyService } from './payroll-journey.service';
+import { PayrollReportService } from './payroll-report.service';
 import { CreateStaffClaimDto, DecideStaffClaimDto, SettleStaffClaimDto } from './dto/staff-claim.dto';
 import {
   ApproveLocumSessionDto,
@@ -56,6 +57,7 @@ export class WorkforceController {
     private readonly claims: StaffClaimService,
     private readonly locum: LocumService,
     private readonly journey: PayrollJourneyService,
+    private readonly reports: PayrollReportService,
   ) {}
 
   // =========================================================================
@@ -187,6 +189,49 @@ export class WorkforceController {
   @Post('locum/sessions/:id/settle')
   settleLocumSession(@Param('id') id: string, @Body() dto: SettleLocumSessionDto) {
     return this.locum.settle(id, dto);
+  }
+
+  // =========================================================================
+  // STAGE 2.5 — PAYROLL REPORTS
+  //
+  // Five reports over the SAME rows the run wrote. Nothing here recomputes a
+  // figure — a report that adds up salaries its own way is a second engine,
+  // and the two disagree in the month somebody finally checks. Every row
+  // carries a link to the canonical record behind it.
+  // =========================================================================
+
+  @Get('payroll/reports')
+  reportCatalogue() {
+    return this.reports.catalogue();
+  }
+
+  @Get('payroll/runs/:id/reports/register')
+  reportRegister(@Param('id') id: string) {
+    return this.reports.register(id);
+  }
+
+  @Get('payroll/runs/:id/reports/employer-cost')
+  reportEmployerCost(@Param('id') id: string) {
+    return this.reports.employerCost(id);
+  }
+
+  @Get('payroll/runs/:id/reports/statutory')
+  reportStatutory(@Param('id') id: string) {
+    return this.reports.statutory(id);
+  }
+
+  @Get('payroll/runs/:id/reports/variance')
+  reportVariance(@Param('id') id: string) {
+    return this.reports.variance(id);
+  }
+
+  @Get('payroll/reports/claims')
+  reportClaims(
+    @Query('from', RequiredDateParam) from: string,
+    @Query('to', RequiredDateParam) to: string,
+  ) {
+    assertDateOrder(from, to);
+    return this.reports.claims({ from, to });
   }
 
   // --- Effective-dated salary ----------------------------------------------

@@ -5333,3 +5333,42 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   color: var(--kw-text-secondary);
   line-height: 1.5;
 }
+
+/* A plain date field for a report range. antd's DatePicker is heavier than a
+ * from/to pair needs, and a native date input is what a reader expects. */
+.kw-dateInput {
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--kw-border-strong);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--kw-text);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.kw-dateInput:focus {
+  outline: none;
+  border-color: var(--kw-teal);
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.12);
+}
+
+/* The period, the branch and — crucially — whether the figures are
+ * provisional, carried at the top of every report rather than left on the
+ * screen the report was opened from. */
+.kw-reportHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--kw-border);
+}
+
+.kw-reportHeader__title {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+  color: var(--kw-text);
+}
