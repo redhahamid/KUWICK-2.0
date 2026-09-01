@@ -1,0 +1,18 @@
+01-payroll-home.png — Payroll Home — one question, one button, three cards
+02-run-employees.png — Step — employees
+03-run-attendance.png — Step — attendance
+04-run-earnings.png — Step — earnings
+05-run-deductions.png — Step — deductions
+06-run-review.png — Step — review
+07-run-approve.png — Step — approve
+08-run-earnings-provenance.png — Earnings drill-down — the source behind each figure
+09-employees.png — Employee list
+10-claims.png — Staff claims — one payment route per claim
+11-locum.png — Locum sessions — a payable, never a payslip
+12-payroll-settings.png — Payroll settings — the six-step setup checklist
+13-timesheet.png — Timesheet — where overtime is corrected
+14-tablet-review.png — Tablet — Review
+15-tablet-employees.png — Tablet — employees
+16-mobile-home.png — Mobile — Payroll Home
+17-mobile-review.png — Mobile — Review (read and resolve, never finalise)
+18-mobile-claims.png — Mobile — claims

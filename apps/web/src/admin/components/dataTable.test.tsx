@@ -8,7 +8,7 @@ import { ExceptionTiles, StatStrip } from './StatStrip';
 describe('money formatting', () => {
   it('always shows two decimals with the sign in front', () => {
     expect(money(0)).toBe('RM0.00');
-    expect(money(1234.5)).toBe('RM1234.50');
+    expect(money(1234.5)).toBe('RM1,234.50');
     expect(money(-42)).toBe('-RM42.00');
   });
 

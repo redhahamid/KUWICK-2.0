@@ -26,6 +26,7 @@ import { UpsertLegalEmployerDto } from './dto/upsert-legal-employer.dto';
 import { RecordSalaryDto } from './dto/record-salary.dto';
 import { StaffClaimService } from './staff-claim.service';
 import { LocumService } from './locum.service';
+import { PayrollJourneyService } from './payroll-journey.service';
 import { CreateStaffClaimDto, DecideStaffClaimDto, SettleStaffClaimDto } from './dto/staff-claim.dto';
 import {
   ApproveLocumSessionDto,
@@ -53,6 +54,7 @@ export class WorkforceController {
     private readonly payrollInputs: PayrollInputService,
     private readonly claims: StaffClaimService,
     private readonly locum: LocumService,
+    private readonly journey: PayrollJourneyService,
   ) {}
 
   // =========================================================================
@@ -79,6 +81,25 @@ export class WorkforceController {
   @Patch('employees/:staffId/legal-employer')
   assignEmployer(@Param('staffId') staffId: string, @Body() body: { legalEmployerId: string | null }) {
     return this.legalEmployers.assignEmployee(staffId, body.legalEmployerId ?? null);
+  }
+
+  // =========================================================================
+  // STAGE 2.5 — THE MONTHLY PAYROLL JOURNEY
+  //
+  // Payroll Home answers "is this month done"; the journey serves the six
+  // steps together, because they are six views of ONE run and serving them
+  // separately is how step 1 and step 5 end up disagreeing about who is in the
+  // month.
+  // =========================================================================
+
+  @Get('payroll/home')
+  payrollHome(@Query('period') period?: string, @Query('clinicId') clinicId?: string) {
+    return this.journey.home({ period, clinicId });
+  }
+
+  @Get('payroll/runs/:id/journey')
+  payrollJourney(@Param('id') id: string) {
+    return this.journey.journey(id);
   }
 
   // =========================================================================

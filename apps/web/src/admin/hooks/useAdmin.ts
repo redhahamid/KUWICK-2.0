@@ -60,6 +60,8 @@ import type {
   LocumSessionRow,
   LocumPayableSummary,
   SalaryParityReport,
+  PayrollHome,
+  PayrollJourney,
 } from '../types';
 
 function qs(params: Record<string, string | number | boolean | undefined>): string {
@@ -1089,5 +1091,26 @@ export function useSalaryParity(period: string) {
     queryKey: ['admin-hr', 'salary-parity', period],
     queryFn: () => apiClient.get<SalaryParityReport>(`/workforce/salary/parity${qs({ period })}`),
     enabled: Boolean(period),
+  });
+}
+
+/**
+ * PAYROLL HOME. Works with no run at all — "nothing has been started for
+ * September" is the state a clinic most often opens this page in, and a hook
+ * that needs a run id cannot describe it.
+ */
+export function usePayrollHome(params: { period?: string; clinicId?: string } = {}) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-home', params],
+    queryFn: () => apiClient.get<PayrollHome>(`/workforce/payroll/home${qs(params)}`),
+  });
+}
+
+/** The six steps of one run, from one read, so no two steps can disagree. */
+export function usePayrollJourney(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-journey', runId],
+    queryFn: () => apiClient.get<PayrollJourney>(`/workforce/payroll/runs/${runId}/journey`),
+    enabled: Boolean(runId),
   });
 }

@@ -88,6 +88,8 @@ import { AdminRosterPage } from './admin/hr/RosterPage';
 import { ClaimsPage } from './admin/hr/ClaimsPage';
 import { LocumPage } from './admin/hr/LocumPage';
 import { PayrollSettingsPage } from './admin/hr/PayrollSettingsPage';
+import { PayrollHomePage } from './admin/hr/PayrollHomePage';
+import { PayrollRunPage } from './admin/hr/PayrollRunPage';
 import { FinanceOverviewPage } from './admin/finance/FinanceOverviewPage';
 import { DayEndClosingPage } from './admin/finance/DayEndClosingPage';
 import { PaymentsPage } from './admin/finance/PaymentsPage';
@@ -249,7 +251,13 @@ export function App() {
                 exactly one shift table and exactly one component that writes
                 it — see admin/hr/RosterPage.tsx. */}
             <Route path="/admin/hr/roster" element={<AdminRosterPage />} />
-            <Route path="/admin/hr/payroll" element={<PayrollPage />} />
+            {/* PAYROLL IS TWO SCREENS NOW, not one dense page: home answers "is
+                this month done", and the run is the six-step journey. The old
+                combined page stays mounted at /admin/hr/payroll/all so an
+                existing bookmark still reaches the run table it expects. */}
+            <Route path="/admin/hr/payroll" element={<PayrollHomePage />} />
+            <Route path="/admin/hr/payroll/all" element={<PayrollPage />} />
+            <Route path="/admin/hr/payroll/:id" element={<PayrollRunPage />} />
             <Route path="/admin/hr/employers" element={<LegalEmployersPage />} />
             <Route path="/admin/hr/incentives" element={<IncentivesPage />} />
             <Route path="/admin/hr/benefits" element={<BenefitsPage />} />

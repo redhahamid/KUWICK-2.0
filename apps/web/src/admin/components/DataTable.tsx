@@ -228,10 +228,41 @@ function quote(value: string): string {
 }
 
 /** RM, always two decimals, minus sign in front. */
+/**
+ * MONEY, GROUPED.
+ *
+ * This rendered `RM34171.20` — five digits with nothing between them — which is
+ * the figure an owner's eye goes to first on the payroll screen and the one it
+ * has the most trouble reading. Grouping is not decoration: `RM34,171.20` is
+ * read as thirty-four thousand at a glance, and `RM34171.20` is read digit by
+ * digit or misread.
+ *
+ * Grouped by hand rather than through `toLocaleString`, because the locale of
+ * the browser is not the locale of the money: a machine set to de-DE would
+ * render RM34.171,20 for a Malaysian clinic.
+ */
 export function money(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—';
   const sign = value < 0 ? '-' : '';
-  return `${sign}RM${Math.abs(value).toFixed(2)}`;
+  const [whole, cents] = Math.abs(value).toFixed(2).split('.');
+  return `${sign}RM${group(whole)}.${cents}`;
+}
+
+/** Thousands separators for an already-formatted whole-number string. */
+export function group(whole: string): string {
+  return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+/**
+ * A money string the API already formatted (`"34171.20"`), grouped for display.
+ * The API speaks exact two-decimal strings so no float ever reaches the wire;
+ * this puts the separators in without parsing the number back out.
+ */
+export function ringgit(value: string | null | undefined): string {
+  if (value === null || value === undefined) return '—';
+  const negative = value.startsWith('-');
+  const [whole, cents = '00'] = value.replace('-', '').split('.');
+  return `${negative ? '−' : ''}RM${group(whole)}.${cents}`;
 }
 
 /**
@@ -279,5 +310,39 @@ export function DataTableTotals({
         </strong>
       </td>
     </tr>
+  );
+}
+
+/**
+ * A TOTALS ROW THAT TOTALS EACH COLUMN.
+ *
+ * `DataTableTotals` says one number under the whole table, which is right for a
+ * receivables list and wrong for a payroll table: what the reader needs there is
+ * proof that the columns add up to the last one. A payroll table where salary
+ * plus additions does not visibly reach the earnings column is a table somebody
+ * checks on a calculator, and eventually stops trusting.
+ *
+ * Cells are positional and must match the column order, including any column
+ * rendered conditionally — a totals row that has drifted from its header is
+ * worse than none.
+ */
+export function DataTableTotalRow({
+  cells,
+}: {
+  cells: { value: ReactNode; colSpan?: number; align?: 'left' | 'right'; strong?: boolean }[];
+}) {
+  return (
+    <Table.Summary.Row className="kw-tableTotals">
+      {cells.map((cell, index) => (
+        <Table.Summary.Cell
+          key={index}
+          index={index}
+          colSpan={cell.colSpan}
+          align={cell.align ?? 'right'}
+        >
+          {cell.strong ? <strong>{cell.value}</strong> : cell.value}
+        </Table.Summary.Cell>
+      ))}
+    </Table.Summary.Row>
   );
 }

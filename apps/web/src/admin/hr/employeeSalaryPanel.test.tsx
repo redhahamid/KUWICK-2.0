@@ -86,7 +86,7 @@ describe('recording a salary change', () => {
     render(<EmployeeSalaryPanel staffId="staff-1" canSeePay />);
     expect(screen.getByText('In force now')).toBeTruthy();
     // Twice on purpose: the answer at the top and the row it comes from.
-    expect(screen.getAllByText('RM3200.00').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('RM3,200.00').length).toBeGreaterThanOrEqual(1);
   });
 
   it('says the salary is not shown rather than showing a blank, when pay is not visible', () => {

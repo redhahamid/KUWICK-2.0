@@ -1751,3 +1751,153 @@ export interface SalaryParityReport {
   clean: boolean;
   summary: string;
 }
+
+export type PayrollHomeState = 'NOT_STARTED' | 'STARTED' | 'READY_TO_REVIEW' | 'APPROVED' | 'PAID';
+
+export interface PayrollHome {
+  period: string;
+  periodLabel: string;
+  run: {
+    id: string;
+    status: string;
+    statutoryStatus: string;
+    netTotal: string;
+    employerCostTotal: string;
+    employeeCount: number;
+    calculatedAt: string | null;
+    approvedAt: string | null;
+    paymentDate: string | null;
+  } | null;
+  state: PayrollHomeState;
+  gate: PayrollExceptionGate | null;
+  employeesExpected: number;
+  setup: {
+    total: number;
+    ready: number;
+    salaryOnRecord: number;
+    bankAccount: number;
+    pcbMissing: number;
+  };
+  feeding: {
+    attendanceDays: number;
+    overtimeHours: number;
+    unapprovedOvertimeHours: number;
+    unpaidLeaveRequests: number;
+    claims: number;
+    claimTotal: string;
+    incentives: number;
+    incentiveTotal: string;
+  };
+  contractorsExcluded: number;
+  recent: {
+    id: string;
+    period: string;
+    status: string;
+    statutoryStatus: string;
+    employeeCount: number;
+    netTotal: string;
+    employerCostTotal: string;
+  }[];
+}
+
+export interface PayrollJourneyPayItem {
+  id: string;
+  componentCode: string;
+  label: string;
+  amount: string;
+  source: string;
+  sourceRecordId: string | null;
+  provenance: string | null;
+  earnedPeriod: string | null;
+  editable: boolean;
+}
+
+export interface PayrollJourney {
+  run: {
+    id: string;
+    period: string;
+    periodLabel: string;
+    clinicName: string;
+    status: string;
+    statutoryStatus: string;
+    paymentDate: string | null;
+    netTotal: string;
+    grossTotal: string;
+    deductionTotal: string;
+    employerCostTotal: string;
+    employeeCount: number;
+  };
+  employees: {
+    included: number;
+    newJoiners: number;
+    leavers: number;
+    needsSetup: number;
+    rows: {
+      staffId: string;
+      name: string;
+      position: string | null;
+      employerName: string | null;
+      startDate: string | null;
+      state: 'READY' | 'NEEDS_ATTENTION' | 'NEEDS_SETUP';
+      reason: string | null;
+      includedInRun: boolean;
+    }[];
+    contractors: { staffId: string; name: string }[];
+  };
+  attendance: {
+    rows: {
+      staffId: string;
+      name: string;
+      daysWorked: number;
+      approvedOvertimeHours: number;
+      unapprovedOvertimeHours: number;
+      missingPunchDays: number;
+      unpaidLeaveDays: number;
+      unpaidLeaveRequests: { id: string; from: string; to: string; approvedBy: string | null }[];
+      paidLeaveDays: number;
+    }[];
+    totalDaysWorked: number;
+    totalApprovedOvertimeHours: number;
+    totalUnapprovedOvertimeHours: number;
+    totalUnpaidLeaveDays: number;
+    totalMissingPunchDays: number;
+  };
+  pay: {
+    rows: {
+      staffId: string;
+      name: string;
+      basicSalary: string;
+      allowances: string;
+      overtimePay: string;
+      incentives: string;
+      bonus: string;
+      grossPay: string;
+      unpaidLeaveDeduction: string;
+      otherDeductions: string;
+      netPay: string;
+      employerCost: string;
+      statutoryEmployee: string | null;
+      pcb: string | null;
+      items: PayrollJourneyPayItem[];
+    }[];
+  };
+  review: {
+    gate: PayrollExceptionGate;
+    attention: {
+      id: string;
+      code: string;
+      severity: 'BLOCKING' | 'WARNING' | 'INFO';
+      staffId: string | null;
+      name: string | null;
+      what: string;
+      why: string;
+      whatToDo: string;
+      link: string | null;
+      overridable: boolean;
+      overridden: boolean;
+      blocksApproval: boolean;
+    }[];
+    mustFix: number;
+    worthALook: number;
+  };
+}

@@ -53,9 +53,33 @@ export function HubShell({ title, categories, headerExtra, scopeClass }: HubShel
   const screens = Grid.useBreakpoint();
   const { clinicId, setClinicId, clinics, showSelector } = useClinicFilter();
 
+  /**
+   * WHICH NAV ENTRY THIS SCREEN BELONGS TO.
+   *
+   * This matched the pathname EXACTLY, so every detail route — a payroll run at
+   * `/admin/hr/payroll/:id`, anything nested under a listed screen — matched
+   * nothing and silently fell back to the FIRST category. The result was an HR
+   * screen showing Operation as the active module and no HR submenu at all: the
+   * navigation lied about where you were, on the screens people spend longest on.
+   *
+   * Exact still wins, because some entries differ only by `?view=` and a prefix
+   * rule cannot tell those apart. Failing that, the LONGEST item path that is a
+   * path-segment prefix of the current route wins — longest so that
+   * `/admin/hr/payroll` beats `/admin/hr` for a run detail page.
+   */
+  const activePath = useMemo(() => {
+    const all = categories.flatMap((category) => category.items.map((item) => item.path));
+    const exact = all.find((path) => path === location.pathname);
+    if (exact) return exact;
+    const prefixes = all.filter(
+      (path) => location.pathname === path || location.pathname.startsWith(`${path}/`),
+    );
+    return prefixes.sort((a, b) => b.length - a.length)[0];
+  }, [categories, location.pathname]);
+
   const activeCategory = useMemo(
-    () => categories.find((category) => category.items.some((item) => item.path === location.pathname)),
-    [categories, location.pathname],
+    () => categories.find((category) => category.items.some((item) => item.path === activePath)),
+    [categories, activePath],
   );
 
   const scopeName = clinicId ? (clinics?.find((clinic) => clinic.id === clinicId)?.name ?? null) : null;
@@ -126,7 +150,7 @@ export function HubShell({ title, categories, headerExtra, scopeClass }: HubShel
         <div style={{ padding: screens.md ? '0 24px' : '8px 16px', borderBottom: '1px solid #f0f0f0', flexShrink: 0, background: '#fafafa' }}>
           {screens.md ? (
             <Tabs
-              activeKey={location.pathname}
+              activeKey={activePath}
               onChange={(path) => navigate(path)}
               items={secondaryItems.map((item) => ({ key: item.path, label: item.label }))}
               size="small"
@@ -136,7 +160,7 @@ export function HubShell({ title, categories, headerExtra, scopeClass }: HubShel
           ) : (
             <Select
               style={{ width: '100%' }}
-              value={secondaryItems.some((item) => item.path === location.pathname) ? location.pathname : undefined}
+              value={secondaryItems.some((item) => item.path === activePath) ? activePath : undefined}
               onChange={(path) => navigate(path)}
               options={secondaryItems.map((item) => ({ value: item.path, label: item.label }))}
             />

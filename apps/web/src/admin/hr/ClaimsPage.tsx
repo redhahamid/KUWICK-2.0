@@ -3,7 +3,7 @@ import { App, Button, DatePicker, Input, Modal, Radio, Segmented, Tag, Timeline 
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
-import { DataTable } from '../components/DataTable';
+import { DataTable, ringgit } from '../components/DataTable';
 import {
   useDecideStaffClaim,
   useSettleStaffClaim,
@@ -38,6 +38,16 @@ export function ClaimsPage() {
   const { message } = App.useApp();
   const [tab, setTab] = useState<'SUBMITTED' | 'APPROVED' | 'ALL'>('SUBMITTED');
   const claims = useStaffClaims(tab === 'ALL' ? {} : { status: tab });
+  /**
+   * THE COUNTS ARE NOT THE FILTER.
+   *
+   * These were computed from whatever the current tab had fetched, so opening
+   * on "Awaiting decision" reported "being paid with salary: 0" while claims
+   * were sitting on a payroll run. A count that reads zero because of a filter
+   * the reader did not apply is worse than no count: it answers a question
+   * nobody asked with a number they will believe.
+   */
+  const everyClaim = useStaffClaims({});
   const decide = useDecideStaffClaim();
   const settle = useSettleStaffClaim();
 
@@ -50,17 +60,19 @@ export function ClaimsPage() {
 
   const rows = claims.data ?? [];
   const counts = useMemo(() => {
-    const awaiting = rows.filter((r) => r.status === 'SUBMITTED').length;
-    const inPayroll = rows.filter((r) => r.payoutStatus === 'IN_PAYROLL').length;
-    const owedByFinance = rows.filter(
-      (r) => r.status === 'APPROVED' && r.paymentRoute === 'FINANCE' && r.payoutStatus !== 'PAID',
-    ).length;
-    return { awaiting, inPayroll, owedByFinance };
-  }, [rows]);
+    const all = everyClaim.data ?? [];
+    return {
+      awaiting: all.filter((r) => r.status === 'SUBMITTED').length,
+      withSalary: all.filter((r) => r.status === 'APPROVED' && r.paymentRoute === 'PAYROLL').length,
+      owedByFinance: all.filter(
+        (r) => r.status === 'APPROVED' && r.paymentRoute === 'FINANCE' && r.payoutStatus !== 'PAID',
+      ).length,
+    };
+  }, [everyClaim.data]);
 
   return (
     <AdminShell
-      error={firstError(claims)}
+      error={firstError(claims, everyClaim)}
       title="Staff claims"
       subtitle="What an employee spent that the clinic agreed to give back. Every approved claim is paid once, by one route."
       actions={
@@ -92,8 +104,8 @@ export function ClaimsPage() {
           },
           {
             label: 'Being paid with salary',
-            value: counts.inPayroll,
-            hint: 'On a payroll run for their period',
+            value: counts.withSalary,
+            hint: 'Approved to be paid with the next run for their period',
           },
           {
             label: 'Owed by Finance',
@@ -129,7 +141,7 @@ export function ClaimsPage() {
               dataIndex: 'amountClaimed',
               width: 110,
               align: 'right' as const,
-              render: (value: string) => `RM${value}`,
+              render: (value: string) => ringgit(value),
             },
             {
               title: 'Approved',
@@ -137,7 +149,7 @@ export function ClaimsPage() {
               width: 110,
               align: 'right' as const,
               render: (value: string | null) =>
-                value ? <strong>RM{value}</strong> : <span className="kw-muted">—</span>,
+                value ? <strong>{ringgit(value)}</strong> : <span className="kw-muted">—</span>,
             },
             {
               title: 'Paid from',
@@ -274,7 +286,7 @@ export function ClaimsPage() {
       >
         <p style={{ marginTop: 0 }}>{deciding?.description}</p>
         <p className="kw-muted">
-          Claimed RM{deciding?.amountClaimed} for {deciding?.claimDate}, submitted by {deciding?.submittedBy}.
+          Claimed {ringgit(deciding?.amountClaimed)} for {deciding?.claimDate}, submitted by {deciding?.submittedBy}.
         </p>
 
         <div style={{ marginTop: 16 }}>

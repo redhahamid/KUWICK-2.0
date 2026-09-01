@@ -3,7 +3,7 @@ import { App, Button, DatePicker, Input, Modal, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
-import { DataTable } from '../components/DataTable';
+import { DataTable, ringgit } from '../components/DataTable';
 import {
   useApproveLocumSession,
   useLocumPayable,
@@ -75,12 +75,12 @@ export function LocumPage() {
           },
           {
             label: 'Approved',
-            value: payable.data ? `RM${payable.data.totalApproved}` : '—',
+            value: payable.data ? ringgit(payable.data.totalApproved) : '—',
             hint: 'Fees the clinic has agreed to pay',
           },
           {
             label: 'Still outstanding',
-            value: payable.data ? `RM${payable.data.totalOutstanding}` : '—',
+            value: payable.data ? ringgit(payable.data.totalOutstanding) : '—',
             hint: 'Approved but not yet settled by Finance',
             tone: payable.data && payable.data.totalOutstanding !== '0.00' ? 'warn' : 'good',
           },
@@ -121,14 +121,14 @@ export function LocumPage() {
               title: 'Computed',
               width: 110,
               align: 'right' as const,
-              render: (_: unknown, row: LocumSessionRow) => (row.computedFee ? `RM${row.computedFee}` : '—'),
+              render: (_: unknown, row: LocumSessionRow) => (row.computedFee ? ringgit(row.computedFee) : '—'),
             },
             {
               title: 'Approved',
               width: 110,
               align: 'right' as const,
               render: (_: unknown, row: LocumSessionRow) =>
-                row.approvedAmount ? <strong>RM{row.approvedAmount}</strong> : <span className="kw-muted">—</span>,
+                row.approvedAmount ? <strong>{ringgit(row.approvedAmount)}</strong> : <span className="kw-muted">—</span>,
             },
             {
               title: 'Status',
@@ -249,14 +249,14 @@ export function LocumPage() {
               dataIndex: 'approved',
               width: 130,
               align: 'right' as const,
-              render: (value: string) => `RM${value}`,
+              render: (value: string) => ringgit(value),
             },
             {
               title: 'Outstanding',
               dataIndex: 'outstanding',
               width: 130,
               align: 'right' as const,
-              render: (value: string) => <strong>RM{value}</strong>,
+              render: (value: string) => <strong>{ringgit(value)}</strong>,
             },
           ]}
         />
@@ -284,7 +284,7 @@ export function LocumPage() {
       >
         <p>
           The session on {approving?.sessionDate} computes to{' '}
-          <strong>RM{approving?.computedFee ?? '—'}</strong>. Approving names the amount the clinic will actually pay,
+          <strong>{ringgit(approving?.computedFee)}</strong>. Approving names the amount the clinic will actually pay,
           which may differ.
         </p>
         <Input

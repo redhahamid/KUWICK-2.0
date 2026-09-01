@@ -19,7 +19,10 @@ describe('payroll exceptions', () => {
   it('builds an exception that says what will happen, not just what is wrong', () => {
     const built = buildException('PCB_MISSING', 's1', { runId: 'r1', staffId: 's1' });
     expect(built.severity).toBe('BLOCKING');
-    expect(built.consequence).toMatch(/under-remit/);
+    // The CONSEQUENCE, in the owner's terms: what happens to the person and
+    // to the clinic, not what the engine failed to do.
+    expect(built.consequence).toMatch(/take-home pay/);
+    expect(built.consequence).toMatch(/LHDN too little/);
     expect(built.deepLink).toBe('/admin/hr/payroll');
   });
 
@@ -37,6 +40,45 @@ describe('payroll exceptions', () => {
    * exception pointing anywhere else fails here rather than in front of
    * somebody trying to pay their staff.
    */
+  /**
+   * THE OWNER NEVER READS THE ENGINE.
+   *
+   * Every sentence in this catalogue is shown verbatim on the review screen a
+   * clinic owner uses once a month. An exception that says "materialised
+   * payroll input" or "verification status" is asking them to understand how
+   * Kuwick is built in order to pay five people, which is the thing the whole
+   * redesign was rejected for.
+   *
+   * The exception CODE stays — it is how the system talks about itself — but it
+   * is never rendered.
+   */
+  it('says everything in the owner\'s words, never the engine\'s', () => {
+    const ENGINE_WORDS = [
+      /materiali[sz]/i,
+      /verification (status|state)/i,
+      /snapshot/i,
+      /liability/i,
+      /effective-dated/i,
+      /idempot/i,
+      /payroll input entry/i,
+      /exception (code|catalogue)/i,
+      /component code/i,
+      /tenant/i,
+      /schema/i,
+      /endpoint/i,
+      /\bnull\b/i,
+    ];
+    const ctx = { staffId: 's1', runId: 'r1', hours: 1, days: 1, count: 2, percent: 50, net: '-1.00', componentCode: 'X', name: 'A', basis: 'DAILY', note: 'n', previousAmount: '1.00', nextAmount: '2.00', changedOn: '2026-09-15', periodLabel: 'September 2026' };
+    for (const [code, template] of Object.entries(EXCEPTION_CATALOGUE)) {
+      const sentences = [template.cause(ctx), template.consequence, template.remediation];
+      for (const sentence of sentences) {
+        for (const word of ENGINE_WORDS) {
+          expect(`${code}: ${sentence}`).not.toMatch(word);
+        }
+      }
+    }
+  });
+
   it('links only to routes the application actually mounts', () => {
     const MOUNTED = [
       '/admin/hr',
@@ -66,7 +108,7 @@ describe('payroll exceptions', () => {
   });
 
   it('interpolates context into the cause', () => {
-    expect(buildException('UNAPPROVED_OVERTIME', 's1', { hours: 7.5, staffId: 's1' }).cause).toContain('7.5h');
+    expect(buildException('UNAPPROVED_OVERTIME', 's1', { hours: 7.5, staffId: 's1' }).cause).toContain('7.5');
   });
 
   it('refuses an unknown code rather than inventing a blank exception', () => {

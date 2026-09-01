@@ -656,6 +656,10 @@ async function reset() {
     // Stage 1 + 2. Children of the run first, then the run; the employer is
     // deleted after `employee_profiles`, which points at it.
     'payroll_snapshots', 'payroll_exceptions',
+    // Stage 2.5. Claims point AT payroll inputs, so the claim's children and
+    // the claims themselves go before the inputs — otherwise the second run of
+    // this seed fails on `staff_claims.payroll_input_entry_id`, and only then.
+    'staff_claim_events', 'staff_claim_attachments', 'staff_claims', 'locum_sessions',
     'payroll_adjustments', 'payroll_lines', 'payroll_runs', 'payroll_input_entries', 'statutory_rule_sets',
     'employee_recurring_items', 'employee_ytd', 'employee_salaries',
     'incentive_results', 'incentive_runs', 'incentive_rules',
@@ -2200,6 +2204,130 @@ async function seedWorkforce(ids: Ids) {
       }
       // The panel claims executive gets NO salary row at all — that absence is
       // what the payroll run's blocking exception is about.
+    }
+
+    // --- STAGE 2.5: locum sessions — a payable, never a payslip ------------
+    //
+    // Dr Faiz is engaged as a CONTRACTOR, so his work must never reach a
+    // payroll run. Three states, so the screen shows the whole workflow rather
+    // than one row: work not yet done, a fee waiting for a decision, and a fee
+    // approved and settled by Finance under its own reference.
+    const locumSessions: {
+      offset: number;
+      label: string;
+      hours: number;
+      status: 'PLANNED' | 'COMPLETED' | 'APPROVED';
+      approved?: number;
+      invoice?: string;
+    }[] = [
+      { offset: 3, label: 'Saturday clinic', hours: 6, status: 'PLANNED' },
+      { offset: -4, label: 'Evening session', hours: 4, status: 'COMPLETED' },
+      { offset: -11, label: 'Weekend cover', hours: 8, status: 'APPROVED', approved: 960, invoice: 'PV-2026-0088' },
+    ];
+    for (const session of locumSessions) {
+      await tx.locumSession.create({
+        data: {
+          tenantId: tenant.id,
+          clinicId: branch.id,
+          staffId: staff.locum,
+          sessionDate: day(session.offset),
+          label: session.label,
+          hours: session.hours,
+          hourlyRate: 120,
+          status: session.status,
+          approvedAmount: session.approved ?? null,
+          approvedByStaffId: session.approved ? staff.owner : null,
+          approvedAt: session.approved ? at(session.offset + 1, 10) : null,
+          payoutStatus: session.invoice ? 'PAID' : 'PENDING',
+          invoiceReference: session.invoice ?? null,
+          paidAt: session.invoice ? at(session.offset + 3, 10) : null,
+          createdByStaffId: staff.owner,
+        },
+      });
+    }
+
+    // --- STAGE 2.5: staff claims — one payment route each -----------------
+    //
+    // The point of the screen is the route, so the seed shows all three states
+    // it can be in: undecided, being paid with salary, and reimbursed by
+    // Finance. A claim in the last two states can never move to the other.
+    const claims: {
+      key: string;
+      category: 'MEDICAL' | 'TRAVEL' | 'TRAINING';
+      claimed: number;
+      approved?: number;
+      route?: 'PAYROLL' | 'FINANCE';
+      offset: number;
+      description: string;
+      reference?: string;
+    }[] = [
+      {
+        key: 'counter2', category: 'MEDICAL', claimed: 86.4, approved: 86.4, route: 'PAYROLL', offset: -12,
+        description: 'Clinic visit for a work-related injury',
+      },
+      {
+        key: 'stock', category: 'TRAVEL', claimed: 240, approved: 180, route: 'FINANCE', offset: -18,
+        description: 'Taxi to the supplier warehouse and back, two trips',
+        reference: 'PV-2026-0091',
+      },
+      {
+        key: 'finance', category: 'TRAINING', claimed: 450, offset: -3,
+        description: 'Payroll compliance workshop, half day',
+      },
+    ];
+    for (const claim of claims) {
+      const decided = claim.approved !== undefined;
+      const created = await tx.staffClaim.create({
+        data: {
+          tenantId: tenant.id,
+          clinicId: central.id,
+          staffId: staff[claim.key],
+          category: claim.category,
+          amountClaimed: claim.claimed,
+          amountApproved: claim.approved ?? null,
+          claimDate: day(claim.offset),
+          description: claim.description,
+          status: decided ? 'APPROVED' : 'SUBMITTED',
+          submittedByStaffId: staff[claim.key],
+          submittedAt: at(claim.offset + 1, 9),
+          decidedByStaffId: decided ? staff.owner : null,
+          decidedAt: decided ? at(claim.offset + 2, 11) : null,
+          paymentRoute: claim.route ?? null,
+          payoutStatus: claim.reference ? 'PAID' : 'PENDING',
+          payrollPeriod:
+            claim.route === 'PAYROLL'
+              ? new Date(Date.UTC(day(claim.offset).getUTCFullYear(), day(claim.offset).getUTCMonth(), 1))
+              : null,
+          financeReference: claim.reference ?? null,
+          paidAt: claim.reference ? at(claim.offset + 5, 15) : null,
+        },
+      });
+      await tx.staffClaimEvent.create({
+        data: {
+          tenantId: tenant.id, staffClaimId: created.id, event: 'submitted',
+          detail: `${claim.category} claim for RM${claim.claimed.toFixed(2)}`,
+          toStatus: 'SUBMITTED', actorStaffId: staff[claim.key], createdAt: at(claim.offset + 1, 9),
+        },
+      });
+      if (decided) {
+        await tx.staffClaimEvent.create({
+          data: {
+            tenantId: tenant.id, staffClaimId: created.id, event: 'approved',
+            detail: `RM${claim.approved!.toFixed(2)} approved, paid via ${claim.route}`,
+            fromStatus: 'SUBMITTED', toStatus: 'APPROVED', actorStaffId: staff.owner,
+            createdAt: at(claim.offset + 2, 11),
+          },
+        });
+      }
+      if (claim.reference) {
+        await tx.staffClaimEvent.create({
+          data: {
+            tenantId: tenant.id, staffClaimId: created.id, event: 'settled',
+            detail: `Reimbursed by Finance under ${claim.reference}`,
+            actorStaffId: staff.finance, createdAt: at(claim.offset + 5, 15),
+          },
+        });
+      }
     }
 
     // --- Attendance across the current month ------------------------------
