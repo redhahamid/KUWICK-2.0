@@ -161,3 +161,20 @@ export function collectAdminConsoleErrors(page: Page): string[] {
   page.on('pageerror', (error) => errors.push(`pageerror: ${String(error.message ?? error).slice(0, 300)}`));
   return errors;
 }
+
+/**
+ * THE PAYROLL PERIOD THE SEED CREATES, derived rather than written down.
+ *
+ * `seed-admin-uat.ts` builds its payroll run with `monthStart(-1)` — a payroll
+ * run is for a month that has finished. A spec that hardcodes the answer is
+ * correct for exactly one month and then silently becomes a lie about the
+ * calendar: `2026-07` passed every day of August 2026 and failed on 1 September,
+ * with an error that pointed at the payroll screen rather than at the date.
+ *
+ * Same rule, same UTC arithmetic, one source.
+ */
+export function seededPayrollPeriod(): string {
+  const now = new Date();
+  const priorMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  return `${priorMonth.getUTCFullYear()}-${String(priorMonth.getUTCMonth() + 1).padStart(2, '0')}`;
+}

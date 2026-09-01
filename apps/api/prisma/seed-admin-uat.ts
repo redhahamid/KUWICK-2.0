@@ -80,6 +80,30 @@ function monthStart(offset = 0): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
 }
 
+/**
+ * A day guaranteed to sit inside the window the admin screens open on.
+ *
+ * THE FIXTURE CONTRACT THIS ENFORCES: demo data that a default view must show
+ * has to land inside that view's default window, and every operational screen
+ * defaults to THIS month.
+ *
+ * `day(-20)` is a sensible "three weeks ago" for most of a month and lands in
+ * the PREVIOUS one for the first three weeks of it — on the 1st, all twenty of
+ * them do. The seeded reversal and the unapproved overtime then still exist,
+ * but no default view can see them, and a spec asserting on that view fails on
+ * the calendar rather than on the code it is testing. That is exactly what
+ * happened when the month turned over from August to September 2026.
+ *
+ * `preferred` is how far back the data would ideally sit; when the month is too
+ * young to hold it, the date compresses toward today rather than falling out of
+ * the window. It never returns a future date.
+ */
+function dayInCurrentMonth(preferred: number): Date {
+  // Days available strictly before today, within this month. Zero on the 1st.
+  const elapsed = new Date().getUTCDate() - 1;
+  return day(Math.max(preferred, -elapsed));
+}
+
 let sequence = 0;
 const nextNumber = (prefix: string) => `${prefix}-${String(++sequence).padStart(6, '0')}`;
 
@@ -1354,17 +1378,20 @@ async function seedClinicalAndFinance(ids: Ids) {
     await tx.invoice.update({ where: { id: refunded.invoice.id }, data: { patientPaidAmount: refunded.patientShare - 60 } });
 
     // --- A REVERSED payment (recorded in error) ---------------------------
-    const reversedInvoice = await makeVisit({ patientIndex: 7, clinicId: central.id, doctorKey: 'owner', dayOffset: -20, lines: [{ description: 'General Consultation', amount: CONSULT, serviceIndex: 0 }] });
-    const wrong = await pay(reversedInvoice.invoice.id, central.id, reversedInvoice.patientShare, 'CASH', -20, 5);
+    // Inside the current month, so the payments screen's default window shows
+    // it on any day of any month. See `dayInCurrentMonth`.
+    const reversalOffset = Math.round((dayInCurrentMonth(-20).getTime() - day(0).getTime()) / 86400000);
+    const reversedInvoice = await makeVisit({ patientIndex: 7, clinicId: central.id, doctorKey: 'owner', dayOffset: reversalOffset, lines: [{ description: 'General Consultation', amount: CONSULT, serviceIndex: 0 }] });
+    const wrong = await pay(reversedInvoice.invoice.id, central.id, reversedInvoice.patientShare, 'CASH', reversalOffset, 5);
     await tx.payment.create({
       data: {
         tenantId: tenant.id, clinicId: central.id, invoiceId: reversedInvoice.invoice.id,
-        kind: 'REFUND', tender: 'CASH', amount: reversedInvoice.patientShare, receivedAt: at(-20, 6),
-        receivedByStaffId: staff.finance, reversesPaymentId: wrong.id, reversedAt: at(-20, 6),
+        kind: 'REFUND', tender: 'CASH', amount: reversedInvoice.patientShare, receivedAt: at(reversalOffset, 6),
+        receivedByStaffId: staff.finance, reversesPaymentId: wrong.id, reversedAt: at(reversalOffset, 6),
         reversalReason: 'Recorded against the wrong patient at the counter',
       },
     });
-    await tx.payment.update({ where: { id: wrong.id }, data: { reversedAt: at(-20, 6) } });
+    await tx.payment.update({ where: { id: wrong.id }, data: { reversedAt: at(reversalOffset, 6) } });
 
     // --- OUTSTANDING invoices at several ages -----------------------------
     for (const [index, offset] of [-15, -45, -75, -120].entries()) {
@@ -1947,7 +1974,11 @@ async function seedWorkforce(ids: Ids) {
 
     // --- Attendance across the current month ------------------------------
     const attendanceStaff = ['counter', 'counter2', 'stock', 'finance'];
-    for (let offset = -20; offset <= -1; offset += 1) {
+    // Walk back only as far as the 1st. A fixed twenty-day lookback spends the
+    // first three weeks of every month writing attendance into the PREVIOUS
+    // one, where the timesheet's default window cannot see it.
+    const oldestAttendance = Math.max(-20, -(new Date().getUTCDate() - 1));
+    for (let offset = oldestAttendance; offset <= -1; offset += 1) {
       const weekday = day(offset).getUTCDay();
       if (weekday === 0) continue; // closed Sunday
       for (const [index, key] of attendanceStaff.entries()) {
@@ -1997,11 +2028,21 @@ async function seedWorkforce(ids: Ids) {
         scheduledStart: at(0, 1), scheduledEnd: at(0, 9), lateMinutes: 24,
       },
     });
+    // AND ONE UNAPPROVED OVERTIME, TODAY.
+    //
+    // The loop above puts unapproved overtime five and ten days back, which is
+    // in this month for most of a month and in the previous one early in it. On
+    // the 1st the loop does not run at all. Overtime that nobody has approved
+    // is the whole subject of the timesheet screen, so it has to be there on
+    // every day of every month — and "somebody stayed late today and nobody has
+    // signed it off yet" is the most realistic form of it anyway.
     await tx.attendanceRecord.create({
       data: {
         tenantId: tenant.id, staffId: staff.finance, clinicId: central.id, workDate: day(0),
-        clockInAt: at(0, 0, 30), clockOutAt: at(0, 8, 30), workedMinutes: 480, status: 'PRESENT',
+        clockInAt: at(0, 0, 30), clockOutAt: at(0, 10, 30), workedMinutes: 600, status: 'PRESENT',
         scheduledStart: at(0, 1), scheduledEnd: at(0, 9),
+        overtimeMinutes: 120,
+        overtimeApproved: false,
       },
     });
 

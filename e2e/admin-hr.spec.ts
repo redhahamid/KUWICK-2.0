@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { ADMIN_ACCOUNTS, collectAdminConsoleErrors, gotoAdmin, loginAdmin, statValue } from './support/admin';
+import {
+  ADMIN_ACCOUNTS,
+  collectAdminConsoleErrors,
+  gotoAdmin,
+  loginAdmin,
+  seededPayrollPeriod,
+  statValue,
+} from './support/admin';
 
 /**
  * SCENARIO 6 — an employee, their hours, and a payroll run.
@@ -68,6 +75,9 @@ test.describe('HR', () => {
   });
 
   test('payroll refuses to invent a statutory figure it cannot stand behind', async ({ page }) => {
+    // Derived from the same rule the seed uses (`monthStart(-1)`), so this spec
+    // stops being correct-for-one-month.
+    const period = new RegExp(seededPayrollPeriod());
     const errors = collectAdminConsoleErrors(page);
     await loginAdmin(page, ADMIN_ACCOUNTS.owner);
     await gotoAdmin(page, '/admin/hr/payroll');
@@ -92,18 +102,18 @@ test.describe('HR', () => {
 
     // And the run itself carries the same admission in its own row, so it
     // travels with the figure rather than living only in a banner.
-    await expect(page.getByRole('row', { name: /2026-07/ })).toContainText(/Unverified rates/);
+    await expect(page.getByRole('row', { name: period })).toContainText(/Unverified rates/);
 
     // Exceptions are people who cannot be paid yet, not a warning.
-    await expect(page.getByRole('row', { name: /2026-07/ })).toContainText(/[1-9]/);
+    await expect(page.getByRole('row', { name: period })).toContainText(/[1-9]/);
 
     // --- DETAIL, the fourth step of the hierarchy -------------------------
     // Summary → exceptions → work queue → detail. A run whose lines cannot be
     // opened is a total nobody can check. It expands in place rather than in a
     // modal, because the person reading it is comparing it to the row above.
-    await page.getByRole('row', { name: /2026-07/ }).click();
+    await page.getByRole('row', { name: period }).click();
     const detail = page.locator('.kw-adminSection', { hasText: 'Contoh Central' }).last();
-    await expect(detail.getByRole('heading', { name: /2026-07 · Contoh Central/ })).toBeVisible();
+    await expect(detail.getByRole('heading', { name: new RegExp(`${seededPayrollPeriod()} · Contoh Central`) })).toBeVisible();
 
     // The person who cannot be paid is NAMED, not counted — an exception count
     // with no name attached is a number somebody approves past.
