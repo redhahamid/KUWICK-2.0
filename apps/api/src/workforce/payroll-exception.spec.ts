@@ -1,0 +1,84 @@
+import { approvalGate, buildException, EXCEPTION_CATALOGUE } from './payroll-exception';
+
+const ex = (
+  severity: 'BLOCKING' | 'WARNING' | 'INFO',
+  overridable = false,
+  overriddenByStaffId: string | null = null,
+) => ({ severity, overridable, overriddenByStaffId });
+
+describe('payroll exceptions', () => {
+  it('every catalogue entry names a cause, a consequence and a remedy', () => {
+    for (const [code, t] of Object.entries(EXCEPTION_CATALOGUE)) {
+      expect(t.code).toBe(code);
+      expect(t.cause({ staffId: 'x', runId: 'r', hours: 1, days: 1, count: 2, percent: 50, net: '-1.00', componentCode: 'X' })).toBeTruthy();
+      expect(t.consequence.length).toBeGreaterThan(20);
+      expect(t.remediation.length).toBeGreaterThan(10);
+    }
+  });
+
+  it('builds an exception that says what will happen, not just what is wrong', () => {
+    const built = buildException('PCB_MISSING', 's1', { runId: 'r1', staffId: 's1' });
+    expect(built.severity).toBe('BLOCKING');
+    expect(built.consequence).toMatch(/under-remit/);
+    expect(built.deepLink).toBe('/admin/hr/payroll/r1/inputs?staffId=s1');
+  });
+
+  it('interpolates context into the cause', () => {
+    expect(buildException('UNAPPROVED_OVERTIME', 's1', { hours: 7.5, staffId: 's1' }).cause).toContain('7.5h');
+  });
+
+  it('refuses an unknown code rather than inventing a blank exception', () => {
+    expect(() => buildException('NOT_A_CODE' as never, null)).toThrow(/Unknown payroll exception/);
+  });
+
+  it('approves a run with no exceptions', () => {
+    expect(approvalGate([])).toMatchObject({ canApprove: true, blocking: 0, warnings: 0 });
+  });
+
+  it('BLOCKS on a blocking exception', () => {
+    const gate = approvalGate([ex('BLOCKING')]);
+    expect(gate.canApprove).toBe(false);
+    expect(gate.reason).toMatch(/1 blocking exception/);
+  });
+
+  it('does NOT block on a warning — the whole reason severities exist', () => {
+    const gate = approvalGate([ex('WARNING'), ex('WARNING')]);
+    expect(gate.canApprove).toBe(true);
+    expect(gate.warnings).toBe(2);
+    expect(gate.reason).toMatch(/none of them prevents approval/);
+  });
+
+  it('does not block on INFO', () => {
+    expect(approvalGate([ex('INFO')]).canApprove).toBe(true);
+  });
+
+  it('counts an overridden overridable blocker as resolved', () => {
+    const gate = approvalGate([ex('BLOCKING', true, 'approver-1')]);
+    expect(gate.canApprove).toBe(true);
+    expect(gate.overridden).toBe(1);
+  });
+
+  it('still blocks when a NON-overridable blocker carries an override', () => {
+    // The database refuses this combination too; the gate does not trust it either.
+    expect(approvalGate([ex('BLOCKING', false, 'approver-1')]).canApprove).toBe(false);
+  });
+
+  it('blocks on the unresolved one when a run mixes resolved and unresolved blockers', () => {
+    const gate = approvalGate([ex('BLOCKING', true, 'a1'), ex('BLOCKING'), ex('WARNING')]);
+    expect(gate).toMatchObject({ canApprove: false, blocking: 1, warnings: 1, overridden: 1 });
+  });
+
+  it('classifies the exceptions the old JSON blob made indistinguishable', () => {
+    // Every one of these blocked approval before, including the informational ones.
+    expect(EXCEPTION_CATALOGUE.NO_SALARY.severity).toBe('BLOCKING');
+    expect(EXCEPTION_CATALOGUE.UNAPPROVED_OVERTIME.severity).toBe('WARNING');
+    expect(EXCEPTION_CATALOGUE.MISSING_PUNCH.severity).toBe('WARNING');
+    expect(EXCEPTION_CATALOGUE.STATUTORY_UNVERIFIED.severity).toBe('WARNING');
+  });
+
+  it('never marks a data-integrity blocker overridable', () => {
+    for (const code of ['NO_SALARY', 'NO_DOB', 'NO_LEGAL_EMPLOYER', 'PCB_MISSING', 'NEGATIVE_NET', 'UNKNOWN_COMPONENT']) {
+      expect(EXCEPTION_CATALOGUE[code].overridable).toBe(false);
+    }
+  });
+});

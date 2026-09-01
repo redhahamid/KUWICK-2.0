@@ -10,9 +10,9 @@
   },
   "accessPosition": {
     "measuredAt": "2026-09-01",
-    "result": "ALL TIER A AUTHORITIES UNREACHABLE FROM THE BUILD ENVIRONMENT",
-    "detail": "kwsp.gov.my, perkeso.gov.my, hasil.gov.my, phl.hasil.gov.my, hrdcorp.gov.my and jtksm.mohr.gov.my all fail at the network proxy. api.github.com returns 200 from the same proxy, so this is egress policy, not fault.",
-    "consequence": "No rule below may leave UNVERIFIED until an authority is reachable or a person supplies the official document."
+    "buildEnvironment": "ALL TIER A HOSTS UNREACHABLE — kwsp.gov.my, perkeso.gov.my, hasil.gov.my, hrdcorp.gov.my, jtksm.mohr.gov.my all fail at the proxy; api.github.com returns 200 through the same proxy, so this is egress policy, not fault. The three specific official document URLs named by the owner were retested on 2026-09-01 and also return 000 from here.",
+    "researchEnvironment": "A SEPARATE research environment can reach these authorities. The owner has located the official source set (recorded per rule below as officialDocument + officialUrl).",
+    "consequence": "Locating a source is NOT reading it. No rule may leave UNVERIFIED until the actual document has been inspected and the applicable table, version and effective date recorded here by a named person."
   },
   "rules": [
     {
@@ -27,8 +27,12 @@
       "automatedTest": "apps/api/src/workforce/payroll-calculation.spec.ts",
       "expectedResult": "Wage 1451.61 yields employee 161.00, not 159.68",
       "verificationStatus": "CORROBORATED",
-      "corroboratedBy": ["Hijraa payroll workbook (35/35 figures reconcile)"],
-      "blockedBy": "kwsp.gov.my unreachable"
+      "corroboratedBy": [
+        "Hijraa payroll workbook (35/35 figures reconcile)"
+      ],
+      "blockedBy": "kwsp.gov.my unreachable",
+      "officialUrl": "https://www.kwsp.gov.my/ms/akta-kwsp-1991-jadual-ketiga",
+      "ownerLocatedClaims": "KWSP employer mandatory-contribution page states: latest schedule effective October 2025 wages; Third Schedule must be used; exact-percentage calculation not permitted for wages <= RM20,000 except as KWSP states; maximum contribution age 75; treatment differs by age, citizenship and member category. CLAIM LOCATED, DOCUMENT NOT YET READ."
     },
     {
       "id": "EPF-02",
@@ -42,7 +46,9 @@
       "automatedTest": "payroll-calculation.spec.ts",
       "expectedResult": "TO BE ESTABLISHED FROM THE OFFICIAL SCHEDULE",
       "verificationStatus": "CORROBORATED",
-      "blockedBy": "kwsp.gov.my unreachable"
+      "blockedBy": "kwsp.gov.my unreachable",
+      "officialUrl": "https://www.kwsp.gov.my/ms/akta-kwsp-1991-jadual-ketiga",
+      "ownerLocatedClaims": "KWSP employer mandatory-contribution page states: latest schedule effective October 2025 wages; Third Schedule must be used; exact-percentage calculation not permitted for wages <= RM20,000 except as KWSP states; maximum contribution age 75; treatment differs by age, citizenship and member category. CLAIM LOCATED, DOCUMENT NOT YET READ."
     },
     {
       "id": "EPF-03",
@@ -56,7 +62,9 @@
       "automatedTest": "payroll-calculation.spec.ts",
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "CORROBORATED",
-      "blockedBy": "kwsp.gov.my unreachable"
+      "blockedBy": "kwsp.gov.my unreachable",
+      "officialUrl": "https://www.kwsp.gov.my/ms/akta-kwsp-1991-jadual-ketiga",
+      "ownerLocatedClaims": "KWSP employer mandatory-contribution page states: latest schedule effective October 2025 wages; Third Schedule must be used; exact-percentage calculation not permitted for wages <= RM20,000 except as KWSP states; maximum contribution age 75; treatment differs by age, citizenship and member category. CLAIM LOCATED, DOCUMENT NOT YET READ."
     },
     {
       "id": "EPF-04",
@@ -70,7 +78,9 @@
       "automatedTest": "NONE",
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
-      "blockedBy": "kwsp.gov.my unreachable"
+      "blockedBy": "kwsp.gov.my unreachable",
+      "officialUrl": "https://www.kwsp.gov.my/ms/akta-kwsp-1991-jadual-ketiga",
+      "ownerLocatedClaims": "KWSP employer mandatory-contribution page states: latest schedule effective October 2025 wages; Third Schedule must be used; exact-percentage calculation not permitted for wages <= RM20,000 except as KWSP states; maximum contribution age 75; treatment differs by age, citizenship and member category. CLAIM LOCATED, DOCUMENT NOT YET READ."
     },
     {
       "id": "EPF-05",
@@ -84,7 +94,9 @@
       "automatedTest": "NONE",
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
-      "blockedBy": "kwsp.gov.my unreachable"
+      "blockedBy": "kwsp.gov.my unreachable",
+      "officialUrl": "https://www.kwsp.gov.my/ms/akta-kwsp-1991-jadual-ketiga",
+      "ownerLocatedClaims": "KWSP employer mandatory-contribution page states: latest schedule effective October 2025 wages; Third Schedule must be used; exact-percentage calculation not permitted for wages <= RM20,000 except as KWSP states; maximum contribution age 75; treatment differs by age, citizenship and member category. CLAIM LOCATED, DOCUMENT NOT YET READ."
     },
     {
       "id": "EPF-06",
@@ -98,7 +110,9 @@
       "automatedTest": "NONE",
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
-      "blockedBy": "kwsp.gov.my unreachable"
+      "blockedBy": "kwsp.gov.my unreachable",
+      "officialUrl": "https://www.kwsp.gov.my/ms/akta-kwsp-1991-jadual-ketiga",
+      "ownerLocatedClaims": "KWSP employer mandatory-contribution page states: latest schedule effective October 2025 wages; Third Schedule must be used; exact-percentage calculation not permitted for wages <= RM20,000 except as KWSP states; maximum contribution age 75; treatment differs by age, citizenship and member category. CLAIM LOCATED, DOCUMENT NOT YET READ."
     },
     {
       "id": "EPF-07",
@@ -113,7 +127,9 @@
       "expectedResult": "Every component flag must match the Act",
       "verificationStatus": "UNVERIFIED",
       "note": "PayrollPanda's 96-item catalogue disagrees with Kuwick on at least one component: it treats Overtime as EPF-exempt, which Kuwick also does; but it treats Bonus as SOCSO/EIS exempt where Kuwick treats it as liable. NEITHER is authority. See PAYROLLPANDA_KUWICK_COMPARISON.md.",
-      "blockedBy": "kwsp.gov.my unreachable"
+      "blockedBy": "kwsp.gov.my unreachable",
+      "officialUrl": "https://www.kwsp.gov.my/ms/akta-kwsp-1991-jadual-ketiga",
+      "ownerLocatedClaims": "KWSP employer mandatory-contribution page states: latest schedule effective October 2025 wages; Third Schedule must be used; exact-percentage calculation not permitted for wages <= RM20,000 except as KWSP states; maximum contribution age 75; treatment differs by age, citizenship and member category. CLAIM LOCATED, DOCUMENT NOT YET READ."
     },
     {
       "id": "SOCSO-01",
@@ -127,7 +143,8 @@
       "automatedTest": "payroll-calculation.spec.ts",
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "CORROBORATED",
-      "blockedBy": "perkeso.gov.my unreachable"
+      "blockedBy": "perkeso.gov.my unreachable",
+      "ownerLocatedClaims": "PERKESO contribution-rate page states wage ceiling RM6,000 effective 1 October 2024; Act 4 and Act 800 schedules are the contribution authority. CLAIM LOCATED, DOCUMENT NOT YET READ."
     },
     {
       "id": "SOCSO-02",
@@ -141,7 +158,8 @@
       "automatedTest": "NONE",
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
-      "blockedBy": "perkeso.gov.my unreachable"
+      "blockedBy": "perkeso.gov.my unreachable",
+      "ownerLocatedClaims": "PERKESO contribution-rate page states wage ceiling RM6,000 effective 1 October 2024; Act 4 and Act 800 schedules are the contribution authority. CLAIM LOCATED, DOCUMENT NOT YET READ."
     },
     {
       "id": "SOCSO-03",
@@ -155,7 +173,8 @@
       "automatedTest": "payroll-calculation.spec.ts",
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
-      "blockedBy": "perkeso.gov.my unreachable"
+      "blockedBy": "perkeso.gov.my unreachable",
+      "ownerLocatedClaims": "PERKESO contribution-rate page states wage ceiling RM6,000 effective 1 October 2024; Act 4 and Act 800 schedules are the contribution authority. CLAIM LOCATED, DOCUMENT NOT YET READ."
     },
     {
       "id": "SOCSO-04",
@@ -169,7 +188,8 @@
       "automatedTest": "NONE",
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
-      "blockedBy": "perkeso.gov.my unreachable"
+      "blockedBy": "perkeso.gov.my unreachable",
+      "ownerLocatedClaims": "PERKESO contribution-rate page states wage ceiling RM6,000 effective 1 October 2024; Act 4 and Act 800 schedules are the contribution authority. CLAIM LOCATED, DOCUMENT NOT YET READ."
     },
     {
       "id": "EIS-01",
@@ -184,7 +204,8 @@
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "CORROBORATED",
       "note": "Act 800 must be treated separately from Act 4. Kuwick currently models EIS as a sibling band table, which is structurally right.",
-      "blockedBy": "perkeso.gov.my unreachable"
+      "blockedBy": "perkeso.gov.my unreachable",
+      "ownerLocatedClaims": "PERKESO contribution-rate page states wage ceiling RM6,000 effective 1 October 2024; Act 4 and Act 800 schedules are the contribution authority. CLAIM LOCATED, DOCUMENT NOT YET READ."
     },
     {
       "id": "LINDUNG-01",
@@ -199,7 +220,10 @@
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
       "note": "Mandatory programme scope. Must be modelled as a distinct scheme with its own participation state and history, NOT as a SOCSO boolean.",
-      "blockedBy": "perkeso.gov.my unreachable"
+      "blockedBy": "perkeso.gov.my unreachable",
+      "officialUrl": "https://perkeso.gov.my/en/skim-kemalangan-bukan-bencana-kerja-lindung-24-jam.html",
+      "officialUrlForeignWorker": "https://perkeso.gov.my/en/our-services/protection/foreign-worker/",
+      "ownerLocatedClaims": "PERKESO material states: local employees voluntary, employee-borne; foreign workers mandatory where applicable from 1 June 2026; Phase 1 employee rate 0.75%, Phase 2 1.00%, Phase 3 1.25%; PERKESO provides the contribution schedule, participation update mechanisms, ASSIST guidance and contribution text-file resources. CLAIM LOCATED, SCHEDULE NOT YET READ — do not implement from this summary."
     },
     {
       "id": "LINDUNG-02",
@@ -214,7 +238,10 @@
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
       "note": "The brief states Phase 1 non-employment-injury employee contribution of 0.75% and a 1 June 2026 commencement. Recorded here as a claim to verify, NOT as a rule to implement.",
-      "blockedBy": "perkeso.gov.my unreachable"
+      "blockedBy": "perkeso.gov.my unreachable",
+      "officialUrl": "https://perkeso.gov.my/en/skim-kemalangan-bukan-bencana-kerja-lindung-24-jam.html",
+      "officialUrlForeignWorker": "https://perkeso.gov.my/en/our-services/protection/foreign-worker/",
+      "ownerLocatedClaims": "PERKESO material states: local employees voluntary, employee-borne; foreign workers mandatory where applicable from 1 June 2026; Phase 1 employee rate 0.75%, Phase 2 1.00%, Phase 3 1.25%; PERKESO provides the contribution schedule, participation update mechanisms, ASSIST guidance and contribution text-file resources. CLAIM LOCATED, SCHEDULE NOT YET READ — do not implement from this summary."
     },
     {
       "id": "PCB-01",
@@ -229,7 +256,10 @@
       "expectedResult": "Must pass the official HASiL 2026 MTD test vectors",
       "verificationStatus": "UNVERIFIED",
       "hardGate": "PCB may not be called production-ready until the applicable official HASiL 2026 test vectors pass.",
-      "blockedBy": "hasil.gov.my unreachable; official specification and test vectors not obtained"
+      "blockedBy": "hasil.gov.my unreachable; official specification and test vectors not obtained",
+      "officialUrl": "https://www.hasil.gov.my/media/arvlrzh5/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf",
+      "officialTestVectorUrl": "https://www.hasil.gov.my/media/kdspkhrf/mtd-testing-question-2026.pdf",
+      "ownerLocatedClaims": "HASiL 'Jadual PCB dan Spesifikasi Data' provides the 2026 computerised calculation specification, TP1, TP3, explanatory notes and MTD Testing Question 2026. DOCUMENTS LOCATED, NOT YET OBTAINED FOR INSPECTION."
     },
     {
       "id": "PCB-02",
@@ -243,7 +273,10 @@
       "automatedTest": "payroll-calculation.spec.ts covers the split, not the tax treatment",
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
-      "blockedBy": "hasil.gov.my unreachable"
+      "blockedBy": "hasil.gov.my unreachable",
+      "officialUrl": "https://www.hasil.gov.my/media/arvlrzh5/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf",
+      "officialTestVectorUrl": "https://www.hasil.gov.my/media/kdspkhrf/mtd-testing-question-2026.pdf",
+      "ownerLocatedClaims": "HASiL 'Jadual PCB dan Spesifikasi Data' provides the 2026 computerised calculation specification, TP1, TP3, explanatory notes and MTD Testing Question 2026. DOCUMENTS LOCATED, NOT YET OBTAINED FOR INSPECTION."
     },
     {
       "id": "PCB-03",
@@ -258,7 +291,10 @@
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
       "note": "PayrollPanda exposes 26 relief items with caps. That catalogue is a CHECKLIST OF WHAT TO LOOK FOR in the official form, not a source of the caps.",
-      "blockedBy": "hasil.gov.my unreachable"
+      "blockedBy": "hasil.gov.my unreachable",
+      "officialUrl": "https://www.hasil.gov.my/media/arvlrzh5/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf",
+      "officialTestVectorUrl": "https://www.hasil.gov.my/media/kdspkhrf/mtd-testing-question-2026.pdf",
+      "ownerLocatedClaims": "HASiL 'Jadual PCB dan Spesifikasi Data' provides the 2026 computerised calculation specification, TP1, TP3, explanatory notes and MTD Testing Question 2026. DOCUMENTS LOCATED, NOT YET OBTAINED FOR INSPECTION."
     },
     {
       "id": "PCB-04",
@@ -272,7 +308,10 @@
       "automatedTest": "NONE",
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
-      "blockedBy": "hasil.gov.my unreachable"
+      "blockedBy": "hasil.gov.my unreachable",
+      "officialUrl": "https://www.hasil.gov.my/media/arvlrzh5/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf",
+      "officialTestVectorUrl": "https://www.hasil.gov.my/media/kdspkhrf/mtd-testing-question-2026.pdf",
+      "ownerLocatedClaims": "HASiL 'Jadual PCB dan Spesifikasi Data' provides the 2026 computerised calculation specification, TP1, TP3, explanatory notes and MTD Testing Question 2026. DOCUMENTS LOCATED, NOT YET OBTAINED FOR INSPECTION."
     },
     {
       "id": "PCB-05",
@@ -286,7 +325,10 @@
       "automatedTest": "NONE",
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
-      "blockedBy": "hasil.gov.my unreachable"
+      "blockedBy": "hasil.gov.my unreachable",
+      "officialUrl": "https://www.hasil.gov.my/media/arvlrzh5/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf",
+      "officialTestVectorUrl": "https://www.hasil.gov.my/media/kdspkhrf/mtd-testing-question-2026.pdf",
+      "ownerLocatedClaims": "HASiL 'Jadual PCB dan Spesifikasi Data' provides the 2026 computerised calculation specification, TP1, TP3, explanatory notes and MTD Testing Question 2026. DOCUMENTS LOCATED, NOT YET OBTAINED FOR INSPECTION."
     },
     {
       "id": "PCB-06",
@@ -300,7 +342,10 @@
       "automatedTest": "NONE",
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
-      "blockedBy": "hasil.gov.my unreachable"
+      "blockedBy": "hasil.gov.my unreachable",
+      "officialUrl": "https://www.hasil.gov.my/media/arvlrzh5/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf",
+      "officialTestVectorUrl": "https://www.hasil.gov.my/media/kdspkhrf/mtd-testing-question-2026.pdf",
+      "ownerLocatedClaims": "HASiL 'Jadual PCB dan Spesifikasi Data' provides the 2026 computerised calculation specification, TP1, TP3, explanatory notes and MTD Testing Question 2026. DOCUMENTS LOCATED, NOT YET OBTAINED FOR INSPECTION."
     },
     {
       "id": "HRD-01",
@@ -314,7 +359,9 @@
       "automatedTest": "NONE",
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
-      "blockedBy": "hrdcorp.gov.my unreachable"
+      "blockedBy": "hrdcorp.gov.my unreachable",
+      "ownerLocatedClaims": "HRD Corp levy guidance uses [(BASIC SALARY - UNPAID LEAVE) + FIXED ALLOWANCE] x rate, and names overtime, night work allowance, shift allowance, variable attendance allowance and production incentive as NON-FIXED allowances EXCLUDED from the levy base. LEVIABLE WAGES THEREFORE DO NOT EQUAL GROSS. CLAIM LOCATED, GUIDANCE NOT YET READ.",
+      "designConsequence": "hrdLiable stays an independent PayComponent attribute. PayrollPanda's gross-based implementation is NOT copied."
     },
     {
       "id": "HRD-02",
@@ -329,7 +376,9 @@
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
       "note": "PayrollPanda applies the levy to gross with no per-component exclusions. That is a product simplification and must NOT be copied without checking the leviable-wage definition.",
-      "blockedBy": "hrdcorp.gov.my unreachable"
+      "blockedBy": "hrdcorp.gov.my unreachable",
+      "ownerLocatedClaims": "HRD Corp levy guidance uses [(BASIC SALARY - UNPAID LEAVE) + FIXED ALLOWANCE] x rate, and names overtime, night work allowance, shift allowance, variable attendance allowance and production incentive as NON-FIXED allowances EXCLUDED from the levy base. LEVIABLE WAGES THEREFORE DO NOT EQUAL GROSS. CLAIM LOCATED, GUIDANCE NOT YET READ.",
+      "designConsequence": "hrdLiable stays an independent PayComponent attribute. PayrollPanda's gross-based implementation is NOT copied."
     },
     {
       "id": "EA-01",
@@ -343,7 +392,9 @@
       "automatedTest": "payroll-calculation.spec.ts tests the pure function only",
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
-      "blockedBy": "jtksm.mohr.gov.my unreachable"
+      "blockedBy": "jtksm.mohr.gov.my unreachable",
+      "ownerLocatedClaims": "Employment Act 1955 s60I: for a monthly-rated employee, ordinary rate of pay = monthly rate of pay / 26; hourly rate = ordinary rate of pay / normal hours of work. The definition of 'ordinary rate of pay' is statutory and determines what belongs in the ORP base. CLAIM LOCATED, SECTION AND APPLICABLE COVERAGE NOT YET FULLY MAPPED.",
+      "designConsequence": "ordinaryRateBaseCents must stop being dead data (Stage 2 wires it through), and basic-salary-alone must not be assumed correct. The COMPONENT INCLUSION SET stays UNVERIFIED and is seeded to reproduce today's output exactly, so the structural migration changes no figure. Changing the inclusion set is a configuration change once s60I coverage is mapped."
     },
     {
       "id": "EA-02",
@@ -357,7 +408,8 @@
       "automatedTest": "payroll-calculation.spec.ts covers multi-tier arithmetic",
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
-      "blockedBy": "jtksm.mohr.gov.my unreachable"
+      "blockedBy": "jtksm.mohr.gov.my unreachable",
+      "ownerLocatedClaims": "Employment Act 1955 s60I: for a monthly-rated employee, ordinary rate of pay = monthly rate of pay / 26; hourly rate = ordinary rate of pay / normal hours of work. The definition of 'ordinary rate of pay' is statutory and determines what belongs in the ORP base. CLAIM LOCATED, SECTION AND APPLICABLE COVERAGE NOT YET FULLY MAPPED."
     },
     {
       "id": "EA-03",
@@ -372,7 +424,8 @@
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
       "note": "The clinic's own divisors (26 for overtime, 31 for unpaid leave) are CLINIC POLICY and are already modelled as such on the run. Whether those divisors are lawful is a separate question this register does not answer.",
-      "blockedBy": "jtksm.mohr.gov.my unreachable"
+      "blockedBy": "jtksm.mohr.gov.my unreachable",
+      "ownerLocatedClaims": "Employment Act 1955 s60I: for a monthly-rated employee, ordinary rate of pay = monthly rate of pay / 26; hourly rate = ordinary rate of pay / normal hours of work. The definition of 'ordinary rate of pay' is statutory and determines what belongs in the ORP base. CLAIM LOCATED, SECTION AND APPLICABLE COVERAGE NOT YET FULLY MAPPED."
     },
     {
       "id": "EA-04",
@@ -386,7 +439,8 @@
       "automatedTest": "NONE",
       "expectedResult": "TO BE ESTABLISHED",
       "verificationStatus": "UNVERIFIED",
-      "blockedBy": "jtksm.mohr.gov.my unreachable"
+      "blockedBy": "jtksm.mohr.gov.my unreachable",
+      "ownerLocatedClaims": "Employment Act 1955 s60I: for a monthly-rated employee, ordinary rate of pay = monthly rate of pay / 26; hourly rate = ordinary rate of pay / normal hours of work. The definition of 'ordinary rate of pay' is statutory and determines what belongs in the ORP base. CLAIM LOCATED, SECTION AND APPLICABLE COVERAGE NOT YET FULLY MAPPED."
     }
   ],
   "summary": {
@@ -398,6 +452,6 @@
       "OFFICIAL_TEST_VECTOR_VERIFIED": 0
     },
     "productionReadyRules": 0,
-    "statement": "No rule in this register is fit to drive live payroll. Kuwick's NOT READY guard stays on."
+    "statement": "No rule in this register is fit to drive live payroll. Kuwick's NOT READY guard stays on. The official source set has now been LOCATED (owner, 2026-09-01) but not yet read; locating is not verifying."
   }
 }

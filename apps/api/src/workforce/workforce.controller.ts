@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { EmploymentStatus, LeaveType } from '@prisma/client';
 import { EmployeeService } from './employee.service';
 import { AttendanceRecordService } from './attendance-record.service';
@@ -17,6 +17,16 @@ import { UpsertStatutoryRulesDto } from './dto/upsert-statutory-rules.dto';
 import { OptionalDateParam, RequiredDateParam } from '../core/date-param.pipe';
 import { assertDateOrder } from '../core/query-dates';
 import { BenefitService } from './benefit.service';
+import { LegalEmployerService } from './legal-employer.service';
+import { EmployeeSalaryService } from './employee-salary.service';
+import { PayComponentService } from './pay-component.service';
+import { PayrollPolicyService } from './payroll-policy.service';
+import { PayrollInputService } from './payroll-input.service';
+import { UpsertLegalEmployerDto } from './dto/upsert-legal-employer.dto';
+import { RecordSalaryDto } from './dto/record-salary.dto';
+import { UpsertPayComponentDto } from './dto/upsert-pay-component.dto';
+import { UpsertPayrollPolicyDto } from './dto/upsert-payroll-policy.dto';
+import { UpsertPayrollInputDto } from './dto/upsert-payroll-input.dto';
 
 @Controller('workforce')
 export class WorkforceController {
@@ -27,7 +37,110 @@ export class WorkforceController {
     private readonly incentives: IncentiveService,
     private readonly payroll: PayrollService,
     private readonly benefits_: BenefitService,
+    private readonly legalEmployers: LegalEmployerService,
+    private readonly salaries: EmployeeSalaryService,
+    private readonly payComponents: PayComponentService,
+    private readonly payrollPolicies: PayrollPolicyService,
+    private readonly payrollInputs: PayrollInputService,
   ) {}
+
+  // =========================================================================
+  // MALAYSIA PAYROLL — STAGE 1 + STAGE 2
+  // =========================================================================
+
+  // --- Legal employer -------------------------------------------------------
+
+  @Get('legal-employers')
+  listLegalEmployers() {
+    return this.legalEmployers.list();
+  }
+
+  @Get('legal-employers/:id')
+  getLegalEmployer(@Param('id') id: string) {
+    return this.legalEmployers.get(id);
+  }
+
+  @Post('legal-employers')
+  upsertLegalEmployer(@Body() dto: UpsertLegalEmployerDto) {
+    return this.legalEmployers.upsert(dto);
+  }
+
+  @Patch('employees/:staffId/legal-employer')
+  assignEmployer(@Param('staffId') staffId: string, @Body() body: { legalEmployerId: string | null }) {
+    return this.legalEmployers.assignEmployee(staffId, body.legalEmployerId ?? null);
+  }
+
+  // --- Effective-dated salary ----------------------------------------------
+
+  @Get('employees/:staffId/salary')
+  salaryHistory(@Param('staffId') staffId: string) {
+    return this.salaries.history(staffId);
+  }
+
+  @Get('employees/:staffId/salary/resolve')
+  resolveSalary(@Param('staffId') staffId: string, @Query('period', RequiredDateParam) period: Date) {
+    return this.salaries.resolveForPeriod(staffId, period);
+  }
+
+  @Post('employees/:staffId/salary')
+  recordSalary(@Param('staffId') staffId: string, @Body() dto: RecordSalaryDto) {
+    return this.salaries.record(staffId, dto);
+  }
+
+  // --- Pay components -------------------------------------------------------
+
+  @Get('pay-components')
+  listPayComponents() {
+    return this.payComponents.list();
+  }
+
+  @Post('pay-components/seed')
+  seedPayComponents() {
+    return this.payComponents.seed();
+  }
+
+  @Post('pay-components')
+  upsertPayComponent(@Body() dto: UpsertPayComponentDto) {
+    return this.payComponents.upsert(dto);
+  }
+
+  // --- Payroll policy -------------------------------------------------------
+
+  @Get('payroll-policies')
+  listPayrollPolicies() {
+    return this.payrollPolicies.list();
+  }
+
+  @Post('payroll-policies')
+  upsertPayrollPolicy(@Body() dto: UpsertPayrollPolicyDto) {
+    return this.payrollPolicies.upsert(dto);
+  }
+
+  // --- Payroll inputs — the write path that did not exist -------------------
+
+  @Get('payroll/inputs')
+  listPayrollInputs(
+    @Query('period') period: string,
+    @Query('staffId') staffId?: string,
+    @Query('clinicId') clinicId?: string,
+  ) {
+    return this.payrollInputs.list({ period, staffId, clinicId });
+  }
+
+  @Post('payroll/inputs')
+  upsertPayrollInput(@Body() dto: UpsertPayrollInputDto) {
+    return this.payrollInputs.upsert(dto);
+  }
+
+  @Delete('payroll/inputs/:id')
+  removePayrollInput(@Param('id') id: string) {
+    return this.payrollInputs.remove(id);
+  }
+
+  @Post('payroll/inputs/materialise')
+  materialisePayrollInputs(@Body() body: { period: string; clinicId?: string }) {
+    return this.payrollInputs.materialise(body);
+  }
 
   // --- Who is working today -------------------------------------------------
 

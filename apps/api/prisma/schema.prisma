@@ -365,6 +365,16 @@ model Tenant {
   payrollInputEntries        PayrollInputEntry[]
   claimImportBatches         ClaimImportBatch[]
 
+  // Malaysia payroll — Stage 1 + 2
+  legalEmployers         LegalEmployer[]
+  employeeSalaries       EmployeeSalary[]
+  payComponents          PayComponent[]
+  payrollPolicies        PayrollPolicy[]
+  employeeRecurringItems EmployeeRecurringItem[]
+  payrollSnapshots       PayrollSnapshot[]
+  payrollExceptions      PayrollException[]
+  employeeYtdRows        EmployeeYtd[]
+
   @@map("tenants")
 }
 
@@ -454,10 +464,10 @@ model Clinic {
   labelPrints                 LabelPrint[]
   payrollInputEntries         PayrollInputEntry[]
   newItemRequests             NewItemRequest[]
+  claimImportBatches          ClaimImportBatch[]
 
   @@index([tenantId])
   @@map("clinics")
-  claimImportBatches ClaimImportBatch[]
 }
 
 model User {
@@ -1071,6 +1081,17 @@ model Staff {
   payrollInputs                PayrollInputEntry[]          @relation("PayrollInputStaff")
   payrollInputsCreated         PayrollInputEntry[]          @relation("PayrollInputAuthor")
   claimImportBatches           ClaimImportBatch[]           @relation("ClaimImportedBy")
+
+  // Malaysia payroll — Stage 1 + 2
+  salaryHistory               EmployeeSalary[]        @relation("EmployeeSalaryStaff")
+  salaryHistoryAuthored       EmployeeSalary[]        @relation("EmployeeSalaryAuthor")
+  recurringItems              EmployeeRecurringItem[] @relation("RecurringItemStaff")
+  recurringItemsAuthored      EmployeeRecurringItem[] @relation("RecurringItemAuthor")
+  payrollSnapshotsAuthored    PayrollSnapshot[]       @relation("PayrollSnapshotAuthor")
+  payrollExceptions           PayrollException[]      @relation("PayrollExceptionStaff")
+  payrollExceptionsOverridden PayrollException[]      @relation("PayrollExceptionOverrider")
+  ytdRows                     EmployeeYtd[]           @relation("EmployeeYtdStaff")
+  ytdRowsAuthored             EmployeeYtd[]           @relation("EmployeeYtdAuthor")
 
   @@index([tenantId])
   @@index([tenantId, role])
@@ -6383,16 +6404,26 @@ model EmployeeProfile {
   eisApplicable   Boolean  @default(true) @map("eis_applicable")
   pcbApplicable   Boolean  @default(true) @map("pcb_applicable")
 
-  leavePolicyId String? @map("leave_policy_id")
-  notes         String?
+  /// STAGE 1 — the employer, which is NOT the branch. Nullable while the
+  /// backfill runs; a payroll run refuses to include an employee without one.
+  legalEmployerId   String? @map("legal_employer_id")
+  /// STAGE 1 — proration policy. NO calculation reads this yet (EA-03 blocked).
+  payrollPolicyId   String? @map("payroll_policy_id")
+  /// STAGE 1 — PCB residency. Coded, not free text. Nothing branches on it yet
+  /// (register PCB-06 blocked).
+  residentialStatus String? @map("residential_status")
+  leavePolicyId     String? @map("leave_policy_id")
+  notes             String?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant      Tenant       @relation(fields: [tenantId], references: [id])
-  staff       Staff        @relation("StaffEmployeeProfile", fields: [staffId], references: [id], onDelete: Cascade)
-  manager     Staff?       @relation("EmployeeManager", fields: [managerStaffId], references: [id])
-  leavePolicy LeavePolicy? @relation(fields: [leavePolicyId], references: [id])
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  staff         Staff          @relation("StaffEmployeeProfile", fields: [staffId], references: [id], onDelete: Cascade)
+  manager       Staff?         @relation("EmployeeManager", fields: [managerStaffId], references: [id])
+  leavePolicy   LeavePolicy?   @relation(fields: [leavePolicyId], references: [id])
+  legalEmployer LegalEmployer? @relation(fields: [legalEmployerId], references: [id])
+  payrollPolicy PayrollPolicy? @relation(fields: [payrollPolicyId], references: [id])
 
   @@unique([tenantId, employeeNo])
   @@index([tenantId, employmentStatus])
@@ -6866,6 +6897,17 @@ model PayrollRun {
   period   DateTime         @map("period") @db.Date
   status   PayrollRunStatus @default(DRAFT)
 
+  /// STAGE 2 — the employer this run belongs to. Nullable while the backfill
+  /// runs; becomes the scope for every statutory output.
+  legalEmployerId String?        @map("legal_employer_id")
+  /// STAGE 2 — one run per branch per month could not represent a clinic that
+  /// pays on three dates, nor a bonus run, a correction or a final payment.
+  runType         PayrollRunType @default(REGULAR) @map("run_type")
+  /// Distinguishes several runs of the same type in one period.
+  sequence        Int            @default(1)
+  /// When the money is actually paid. Distinct from the period it is for.
+  paymentDate     DateTime?      @map("payment_date") @db.Date
+
   statutoryStatus    StatutoryStatus @default(NOT_CONFIGURED) @map("statutory_status")
   statutoryRuleSetId String?         @map("statutory_rule_set_id")
   /// The rules AS APPLIED, frozen. A later correction to the rule set cannot
@@ -6901,15 +6943,19 @@ model PayrollRun {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  tenant      Tenant              @relation(fields: [tenantId], references: [id])
-  clinic      Clinic?             @relation(fields: [clinicId], references: [id])
-  createdBy   Staff               @relation("PayrollRunAuthor", fields: [createdByStaffId], references: [id])
-  approvedBy  Staff?              @relation("PayrollRunApprover", fields: [approvedByStaffId], references: [id])
-  lines       PayrollLine[]
-  adjustments PayrollAdjustment[]
+  tenant        Tenant              @relation(fields: [tenantId], references: [id])
+  clinic        Clinic?             @relation(fields: [clinicId], references: [id])
+  createdBy     Staff               @relation("PayrollRunAuthor", fields: [createdByStaffId], references: [id])
+  approvedBy    Staff?              @relation("PayrollRunApprover", fields: [approvedByStaffId], references: [id])
+  lines         PayrollLine[]
+  adjustments   PayrollAdjustment[]
+  legalEmployer LegalEmployer?      @relation(fields: [legalEmployerId], references: [id])
+  snapshots     PayrollSnapshot[]
+  exceptionRows PayrollException[]
 
-  @@unique([tenantId, clinicId, period])
+  @@unique([tenantId, clinicId, period, runType, sequence])
   @@index([tenantId, period])
+  @@index([tenantId, legalEmployerId, period])
   @@map("payroll_runs")
 }
 
@@ -6999,6 +7045,19 @@ model PayrollInputEntry {
   /// Where the money was earned, when that is not the period it is paid in.
   /// The clinic pays December's overtime and locum fees in January, so a
   /// payslip that cannot say "this is December's overtime" is misleading.
+  /// STAGE 2 — PROVENANCE. Where this figure came from, and which upstream
+  /// record produced it. Upstream feeds were read live at calculation time,
+  /// which left no reviewable row and no way to adjust a derived figure without
+  /// editing the attendance or leave record behind it.
+  source         PayrollInputSource @default(MANUAL)
+  /// The attendance/leave/incentive row this came from. Together with the
+  /// component and period it makes re-import idempotent.
+  sourceRecordId String?            @map("source_record_id")
+  /// Recurring or additional — the PCB discriminator, stored rather than
+  /// inferred from where the row sits.
+  kind           PayrollInputKind   @default(ADDITIONAL)
+  reason         String?
+
   earnedPeriod DateTime? @map("earned_period") @db.Date
 
   note             String?
@@ -7252,4 +7311,484 @@ model MarketingDispatch {
   @@index([tenantId, createdAt])
   @@index([tenantId, patientId])
   @@map("marketing_dispatches")
+}
+
+// ===========================================================================
+// MALAYSIA HR & PAYROLL — STAGE 1 + STAGE 2
+//
+// Structural work only. NOTHING here establishes a statutory rule. Every
+// statutory flag value ships UNVERIFIED and is registered in
+// apps/api/src/workforce/statutory/statutory-register.json with the authority
+// that must confirm it.
+//
+// The governing constraint of this stage: the structural migration must not
+// change a single figure any existing payroll produces. New tables are seeded
+// and backfilled to reproduce current behaviour exactly; where the current
+// behaviour is suspected wrong (the ORP base), the suspicion is recorded as a
+// blocked statutory item rather than silently corrected.
+// ===========================================================================
+
+/// THE EMPLOYER. Not the branch.
+///
+/// Statutory registrations, filings, bank identity and year-end forms belong to
+/// the entity that employs people. A branch is where work happens; it files
+/// nothing. Kuwick conflated the two — payroll runs were scoped to `clinicId`
+/// — which meant the system could not name the employer on any submission it
+/// might one day produce.
+///
+/// A single-entity clinic configures one of these and never sees the concept
+/// again.
+model LegalEmployer {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  name           String
+  registrationNo String? @map("registration_no")
+
+  /// Statutory employer identities. Stored, never used to derive a RATE.
+  epfEmployerNo   String? @map("epf_employer_no")
+  socsoEmployerNo String? @map("socso_employer_no")
+  /// LHDN employer number (the "E" number).
+  lhdnEmployerNo  String? @map("lhdn_employer_no")
+
+  /// HRD Corp registration. `hrdLevyRate` is NOT applied by any calculation in
+  /// this stage — HRD is a Stage 3 statutory item (register HRD-01, HRD-02).
+  hrdRegistrationNo String?  @map("hrd_registration_no")
+  hrdCategory       String?  @map("hrd_category")
+  hrdLevyRate       Decimal? @map("hrd_levy_rate") @db.Decimal(5, 4)
+
+  /// Address as it must appear on a payslip and a statutory form.
+  addressLine1 String? @map("address_line1")
+  addressLine2 String? @map("address_line2")
+  postcode     String?
+  city         String?
+  state        String?
+
+  /// The account payroll is paid FROM. No file is generated in this stage.
+  bankName        String? @map("bank_name")
+  bankAccountNo   String? @map("bank_account_no")
+  bankAccountName String? @map("bank_account_name")
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id])
+  employees EmployeeProfile[]
+  policies  PayrollPolicy[]
+  runs      PayrollRun[]
+  ytd       EmployeeYtd[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, active])
+  @@map("legal_employers")
+}
+
+enum SalaryBasis {
+  MONTHLY
+  DAILY
+  HOURLY
+}
+
+/// PAY, WITH A DATE ON IT.
+///
+/// `EmployeeProfile.basicSalary` is a single mutable number, so recalculating
+/// an unlocked past period applied today's pay to it. Approved runs were safe
+/// only because a trigger refused to recalculate them — safety by accident.
+///
+/// The calculation resolves the row in force for the period. The old column is
+/// backfilled into the first row here and stays in place, unread, until a full
+/// period has run on this table (delivery plan §3: the one destructive step is
+/// deferred).
+model EmployeeSalary {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  staffId  String @map("staff_id")
+
+  basis  SalaryBasis @default(MONTHLY)
+  amount Decimal     @db.Decimal(12, 2)
+
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+
+  reason String?
+  note   String?
+
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  staff     Staff  @relation("EmployeeSalaryStaff", fields: [staffId], references: [id], onDelete: Cascade)
+  createdBy Staff  @relation("EmployeeSalaryAuthor", fields: [createdByStaffId], references: [id])
+
+  @@unique([staffId, effectiveFrom])
+  @@index([tenantId, staffId, effectiveFrom])
+  @@map("employee_salaries")
+}
+
+enum PayComponentType {
+  ADDITION
+  DEDUCTION
+  OVERTIME
+}
+
+enum PayComponentCategory {
+  REMUNERATION
+  ALLOWANCE
+  BENEFIT_IN_KIND
+  PERQUISITE
+  TAX_DEDUCTION
+  PAYROLL_DEDUCTION
+}
+
+enum PayComponentIncludeIn {
+  GROSS_AND_NET
+  GROSS_ONLY
+  NET_ONLY
+  NONE
+}
+
+enum PayComponentCalculationMode {
+  AMOUNT
+  PER_UNIT
+}
+
+/// WHAT A KIND OF MONEY IS LIABLE TO — as configuration, not as a compiled-in
+/// table.
+///
+/// `DEFAULT_COMPONENT_LIABILITY` is a TypeScript constant, so a clinic adding
+/// an allowance needs a deployment. Worse, its `ordinaryRateOfPay` flag is read
+/// by nothing: `computeBases` derives an ORP base that no caller consumes while
+/// the service uses basic salary alone.
+///
+/// TWELVE independent attributes, against PayrollPanda's four. The three it has
+/// no equivalent for are `hrdLiable` (HRD Corp's leviable wage is NOT gross —
+/// its own guidance excludes overtime, shift and variable attendance
+/// allowances), `includeInOrpBase` and `includeInUnpaidLeaveBase`.
+///
+/// EVERY FLAG VALUE SEEDED BY THIS STAGE IS UNVERIFIED. The seed reproduces
+/// today's behaviour exactly so the migration changes no figure; it does not
+/// assert that today's behaviour is correct.
+model PayComponent {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  code     String
+  name     String
+  type     PayComponentType
+  category PayComponentCategory
+
+  calculationMode PayComponentCalculationMode @default(AMOUNT) @map("calculation_mode")
+  includeIn       PayComponentIncludeIn       @default(GROSS_AND_NET) @map("include_in")
+
+  /// The four schemes, independent. An allowance may be EPF-liable and
+  /// PCB-exempt; a single `taxable` boolean cannot say that.
+  pcbLiable   Boolean @default(true) @map("pcb_liable")
+  epfLiable   Boolean @default(false) @map("epf_liable")
+  socsoLiable Boolean @default(false) @map("socso_liable")
+  eisLiable   Boolean @default(false) @map("eis_liable")
+
+  /// HRD Corp leviable wage. Independent because the levy base is not gross.
+  hrdLiable Boolean @default(false) @map("hrd_liable")
+
+  /// Ordinary Rate of Pay base, and the unpaid-leave base — separate concerns.
+  /// Overtime must never enter the ORP base or an hour of overtime raises the
+  /// rate paid for the next one.
+  includeInOrpBase         Boolean @default(false) @map("include_in_orp_base")
+  includeInUnpaidLeaveBase Boolean @default(false) @map("include_in_unpaid_leave_base")
+
+  /// Bonus and once-yearly incentives are additional remuneration for tax.
+  additionalRemuneration Boolean @default(false) @map("additional_remuneration")
+
+  /// Annual PCB exemption cap where one applies. UNVERIFIED; no engine reads it.
+  pcbExemptionLimitCents Int?    @map("pcb_exemption_limit_cents")
+  /// Year-end form classification, e.g. "B.1(a)". UNVERIFIED.
+  eaField                String? @map("ea_field")
+
+  /// Whether a partial month reduces it.
+  prorated     Boolean @default(false)
+  /// Employer cost, not employee pay.
+  employerSide Boolean @default(false) @map("employer_side")
+
+  /// System presets may be enabled or disabled, never redefined.
+  systemControlled Boolean @default(false) @map("system_controlled")
+  active           Boolean @default(true)
+
+  /// Provenance of the statutory treatment above.
+  verificationStatus StatutoryVerificationStatus @default(DRAFT) @map("verification_status")
+  sourceRef          String?                     @map("source_ref")
+
+  version       Int       @default(1)
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+
+  createdByStaffId String?  @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, code, effectiveFrom])
+  @@index([tenantId, active])
+  @@map("pay_components")
+}
+
+enum ProrationBasis {
+  FIXED_DAYS
+  WORKING_DAYS
+  CALENDAR_DAYS
+}
+
+/// THE PRORATION ENGINE, AS ONE OBJECT.
+///
+/// Five independent bases. PayrollPanda has four; the fifth — termination — is
+/// the one whose absence produced an overstated final month in the audited
+/// product, because a leaver's last month was never re-prorated.
+///
+/// NO BASIS IS APPLIED BY ANY CALCULATION IN THIS STAGE. Which basis is lawful
+/// is Employment Act territory (register EA-03) and is blocked. The structure
+/// exists so that Stage 3 is a configuration change, not a schema change.
+model PayrollPolicy {
+  id              String  @id @default(uuid())
+  tenantId        String  @map("tenant_id")
+  legalEmployerId String? @map("legal_employer_id")
+
+  name String
+
+  salaryProrationBasis ProrationBasis @default(CALENDAR_DAYS) @map("salary_proration_basis")
+  salaryProrationDays  Int            @default(26) @map("salary_proration_days")
+  overtimeBasis        ProrationBasis @default(FIXED_DAYS) @map("overtime_basis")
+  overtimeDays         Int            @default(26) @map("overtime_days")
+  overtimeHoursPerDay  Decimal        @default(7.5) @map("overtime_hours_per_day") @db.Decimal(4, 2)
+  unpaidLeaveBasis     ProrationBasis @default(CALENDAR_DAYS) @map("unpaid_leave_basis")
+  unpaidLeaveDays      Int            @default(31) @map("unpaid_leave_days")
+  leavePayBasis        ProrationBasis @default(FIXED_DAYS) @map("leave_pay_basis")
+  leavePayDays         Int            @default(26) @map("leave_pay_days")
+  /// The fifth basis.
+  terminationBasis     ProrationBasis @default(CALENDAR_DAYS) @map("termination_basis")
+  terminationDays      Int            @default(31) @map("termination_days")
+
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant            @relation(fields: [tenantId], references: [id])
+  legalEmployer LegalEmployer?    @relation(fields: [legalEmployerId], references: [id])
+  employees     EmployeeProfile[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, legalEmployerId])
+  @@map("payroll_policies")
+}
+
+// ---------------------------------------------------------------------------
+// STAGE 2 — the run becomes operable
+// ---------------------------------------------------------------------------
+
+enum PayrollInputSource {
+  MANUAL
+  ATTENDANCE
+  LEAVE
+  CLAIM
+  INCENTIVE
+  RECURRING
+  IMPORT
+}
+
+/// Recurring or additional — the discriminator PCB depends on.
+///
+/// PayrollPanda decides this by ATTACHMENT POINT (on the employee = recurring,
+/// inside a run = additional) and never labels it, leaving the user to infer a
+/// statutory treatment from where a row happens to sit. Kuwick uses the same
+/// rule and stores the answer, so every line can be badged.
+enum PayrollInputKind {
+  RECURRING
+  ADDITIONAL
+}
+
+/// A RECURRING ITEM ON THE EMPLOYEE.
+///
+/// Materialises into a `PayrollInputEntry` with kind = RECURRING when a run is
+/// calculated, rather than being read live — so the run carries a reviewable
+/// row with a source, and an amount can be overridden for one period without
+/// editing the standing instruction.
+model EmployeeRecurringItem {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  staffId  String @map("staff_id")
+
+  componentCode String  @map("component_code")
+  label         String?
+  amount        Decimal @db.Decimal(12, 2)
+
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+
+  note             String?
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  staff     Staff  @relation("RecurringItemStaff", fields: [staffId], references: [id], onDelete: Cascade)
+  createdBy Staff  @relation("RecurringItemAuthor", fields: [createdByStaffId], references: [id])
+
+  @@unique([staffId, componentCode, effectiveFrom])
+  @@index([tenantId, staffId])
+  @@map("employee_recurring_items")
+}
+
+enum PayrollRunType {
+  REGULAR
+  OFF_CYCLE_BONUS
+  CORRECTION
+  FINAL_PAY
+}
+
+/// THE APPROVED SNAPSHOT.
+///
+/// The deepest architectural fork in this design, and the one place Kuwick
+/// deliberately diverges from the audited competitor. PayrollPanda recalculates
+/// live until approval, freezes on approval, and on reopen re-derives from
+/// CURRENT master data — holding no snapshot anyone can inspect. Its own reopen
+/// dialog admits this: figures "could result in different amounts". That makes
+/// "what exactly did we approve in January?" a question with no answer.
+///
+/// Kuwick freezes everything the calculation consumed, hashes it, and keeps it.
+/// A reopen produces a CANDIDATE and a diff against this; it never overwrites.
+model PayrollSnapshot {
+  id           String @id @default(uuid())
+  tenantId     String @map("tenant_id")
+  payrollRunId String @map("payroll_run_id")
+
+  /// Monotonic per run. Version 1 is the first approval; a correction adds a
+  /// version and never replaces one.
+  version Int @default(1)
+
+  /// SHA-256 over the canonical JSON of `payload`. Two snapshots with the same
+  /// hash approved the same payroll.
+  hash String
+
+  /// Everything needed to reproduce the calculation years later: employer
+  /// identity, period, run type, payment date, per-employee salary version and
+  /// resolved amount, every input with its source, component versions and their
+  /// flags AS APPLIED, statutory rule-set version and bases, derived amounts,
+  /// and the totals.
+  payload Json
+
+  reason           String?
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  createdBy  Staff      @relation("PayrollSnapshotAuthor", fields: [createdByStaffId], references: [id])
+
+  @@unique([payrollRunId, version])
+  @@index([tenantId, payrollRunId])
+  @@map("payroll_snapshots")
+}
+
+enum PayrollExceptionSeverity {
+  BLOCKING
+  WARNING
+  INFO
+}
+
+/// EXCEPTIONS AS ROWS, NOT AS A JSON BLOB.
+///
+/// They were a `Json?` column on the run, which meant they could not be
+/// queried, counted by severity, overridden individually or audited. Each one
+/// now names the CONSEQUENCE as well as the cause — modelled on the best piece
+/// of copy found in the competitor audit, which names the condition, the
+/// consequence and two distinct remedies.
+model PayrollException {
+  id           String  @id @default(uuid())
+  tenantId     String  @map("tenant_id")
+  payrollRunId String  @map("payroll_run_id")
+  staffId      String? @map("staff_id")
+
+  severity    PayrollExceptionSeverity
+  /// Stable machine code, e.g. NO_SALARY, NO_DOB, PCB_MISSING.
+  code        String
+  cause       String
+  consequence String
+  remediation String
+  /// Where to go to fix it.
+  deepLink    String?                  @map("deep_link")
+
+  overridable         Boolean   @default(false)
+  overriddenByStaffId String?   @map("overridden_by_staff_id")
+  overrideReason      String?   @map("override_reason")
+  overriddenAt        DateTime? @map("overridden_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
+  payrollRun   PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  staff        Staff?     @relation("PayrollExceptionStaff", fields: [staffId], references: [id])
+  overriddenBy Staff?     @relation("PayrollExceptionOverrider", fields: [overriddenByStaffId], references: [id])
+
+  @@index([tenantId, payrollRunId, severity])
+  @@map("payroll_exceptions")
+}
+
+enum YtdSource {
+  CALCULATED
+  OPENING_IMPORT
+}
+
+/// YEAR-TO-DATE — the substrate PCB, Form EA and mid-year migration all need.
+///
+/// There was no YTD anywhere in the system, which is why a lawful PCB
+/// calculation was impossible in principle rather than merely unimplemented:
+/// the Computerised Calculation method is cumulative.
+///
+/// STAGE 2 BUILDS THE SUBSTRATE ONLY. Rows are written from approved runs and
+/// by a controlled opening import. Nothing reads them yet — no PCB engine
+/// exists, and none may be written until HASiL's 2026 specification and test
+/// vectors are in hand (register PCB-01, hard gate).
+model EmployeeYtd {
+  id              String @id @default(uuid())
+  tenantId        String @map("tenant_id")
+  legalEmployerId String @map("legal_employer_id")
+  staffId         String @map("staff_id")
+
+  taxYear Int @map("tax_year")
+  /// 1–12.
+  month   Int
+
+  grossCents                  Int @default(0) @map("gross_cents")
+  additionalRemunerationCents Int @default(0) @map("additional_remuneration_cents")
+  pcbCents                    Int @default(0) @map("pcb_cents")
+  cp38Cents                   Int @default(0) @map("cp38_cents")
+  zakatCents                  Int @default(0) @map("zakat_cents")
+  epfEmployeeCents            Int @default(0) @map("epf_employee_cents")
+  epfEmployerCents            Int @default(0) @map("epf_employer_cents")
+  socsoEmployeeCents          Int @default(0) @map("socso_employee_cents")
+  socsoEmployerCents          Int @default(0) @map("socso_employer_cents")
+  eisEmployeeCents            Int @default(0) @map("eis_employee_cents")
+  eisEmployerCents            Int @default(0) @map("eis_employer_cents")
+  /// LINDUNG 24 Jam. Column exists; NO calculation writes it in this stage.
+  lindungEmployeeCents        Int @default(0) @map("lindung_employee_cents")
+  lindungEmployerCents        Int @default(0) @map("lindung_employer_cents")
+
+  source       YtdSource @default(CALCULATED)
+  /// Set when the row came from an approved run, so a recalculation replaces
+  /// rather than doubles.
+  payrollRunId String?   @map("payroll_run_id")
+
+  note             String?
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  legalEmployer LegalEmployer @relation(fields: [legalEmployerId], references: [id])
+  staff         Staff         @relation("EmployeeYtdStaff", fields: [staffId], references: [id])
+  createdBy     Staff         @relation("EmployeeYtdAuthor", fields: [createdByStaffId], references: [id])
+
+  @@unique([legalEmployerId, staffId, taxYear, month])
+  @@index([tenantId, staffId, taxYear])
+  @@map("employee_ytd")
 }

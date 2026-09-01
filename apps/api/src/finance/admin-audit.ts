@@ -85,6 +85,25 @@ export type AuditAction =
   | 'payroll.calculated'
   | 'payroll.approved'
   | 'payroll.adjusted'
+  // Malaysia payroll Stage 1 + 2. The audit trail is not a feature of a
+  // payroll system; it is most of what makes one trustworthy. The audited
+  // competitor ships an `AuditLogs.View` permission and no log behind it.
+  | 'legalEmployer.created'
+  | 'legalEmployer.updated'
+  | 'employee.employerAssigned'
+  | 'employeeSalary.recorded'
+  | 'payComponent.seeded'
+  | 'payComponent.created'
+  | 'payComponent.updated'
+  | 'payrollPolicy.created'
+  | 'payrollPolicy.updated'
+  | 'payrollInput.created'
+  | 'payrollInput.updated'
+  | 'payrollInput.deleted'
+  | 'payrollInput.materialised'
+  | 'payrollException.overridden'
+  | 'payrollSnapshot.created'
+  | 'payroll.reopened'
   | 'incentiveRule.changed'
   // Access
   | 'role.changed';

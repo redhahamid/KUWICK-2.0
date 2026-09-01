@@ -180,6 +180,26 @@ export type Permission =
   | 'hr.payroll.view'
   | 'hr.payroll.run'
   | 'hr.payroll.approve'
+  // ---------------------------------------------------------------------
+  // MALAYSIA PAYROLL STAGE 2 — separating rights that were conflated.
+  //
+  // `hr.payroll.view` meant BOTH "see that a run exists" and "see what every
+  // colleague earns". `hr.payroll.approve` ALSO granted rewriting the
+  // statutory rate tables, so the person who signs off a payroll could
+  // silently change the EPF schedule it was computed against.
+  // ---------------------------------------------------------------------
+  /** See individual pay. Distinct from seeing that a payroll run exists. */
+  | 'hr.salary.view'
+  /** Reopen an approved run and create a correction candidate. */
+  | 'hr.payroll.reopen'
+  /** Generate a bank payment file. */
+  | 'hr.payroll.export.bank'
+  /** Generate a statutory submission file. */
+  | 'hr.payroll.export.statutory'
+  /** Export payroll reports and payslips. */
+  | 'hr.payroll.export.reports'
+  /** Maintain statutory rate tables and pay components. */
+  | 'hr.statutory.manage'
   | 'hr.incentive.manage'
   // OPERATIONS ANALYTICS.
   | 'analytics.view'
@@ -405,6 +425,12 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     'hr.payroll.view',
     'hr.payroll.run',
     'hr.payroll.approve',
+    'hr.salary.view',
+    'hr.payroll.reopen',
+    'hr.payroll.export.bank',
+    'hr.payroll.export.statutory',
+    'hr.payroll.export.reports',
+    'hr.statutory.manage',
     'hr.incentive.manage',
     'analytics.view',
     'analytics.configure',

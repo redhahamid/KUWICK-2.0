@@ -1,0 +1,273 @@
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
+import { PrismaService } from '../core/prisma.service';
+import { currentTenantId } from '../core/tenant-context';
+import { requirePermission, withAdminTx } from '../finance/admin-actor';
+import { recordAudit } from '../finance/admin-audit';
+import { toCents } from '../finance/money';
+import { UpsertPayrollInputDto } from './dto/upsert-payroll-input.dto';
+
+function periodStart(period: string): Date {
+  const d = new Date(`${period}T00:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) throw new BadRequestException('period must be a YYYY-MM-DD date.');
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+}
+
+/**
+ * PAYROLL INPUTS — the dead end, opened.
+ *
+ * `PayrollInputEntry` had a table, row-level security, an index and a read in
+ * the calculation, and NO WRITE PATH ANYWHERE: no DTO, no route, no service.
+ * The only writers in the repository were the seed script and one test, both
+ * going straight to Prisma.
+ *
+ * That was not a cosmetic gap. PCB is not calculated by this system, so a null
+ * PCB with no input raises a blocking exception, and approval refuses a run
+ * with any blocking exception. Every clinic with one PCB-applicable employee
+ * therefore had a payroll it could never approve. The schema comment described
+ * keying PCB in as an existing step; the step had never been built.
+ *
+ * WHAT THIS ADDS THAT THE AUDITED COMPETITOR DOES NOT RECORD: who entered the
+ * figure, when, where it came from, which upstream record produced it, and
+ * optionally why. A clinic asked "why was this RM300 added" can answer.
+ */
+@Injectable()
+export class PayrollInputService {
+  constructor(
+    @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
+    private readonly rawPrisma: PrismaService,
+  ) {}
+
+  async list(params: { period: string; staffId?: string; clinicId?: string }) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    const period = periodStart(params.period);
+    const rows = await this.prisma.payrollInputEntry.findMany({
+      where: {
+        period,
+        ...(params.staffId ? { staffId: params.staffId } : {}),
+        ...(params.clinicId ? { clinicId: params.clinicId } : {}),
+      },
+      orderBy: [{ staffId: 'asc' }, { componentCode: 'asc' }],
+      include: {
+        staff: { select: { id: true, fullName: true } },
+        createdBy: { select: { fullName: true } },
+      },
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      staffId: row.staffId,
+      staffName: row.staff.fullName,
+      componentCode: row.componentCode,
+      label: row.label,
+      amount: row.amount.toString(),
+      kind: row.kind,
+      source: row.source,
+      sourceRecordId: row.sourceRecordId,
+      earnedPeriod: row.earnedPeriod ? row.earnedPeriod.toISOString().slice(0, 10) : null,
+      reason: row.reason,
+      note: row.note,
+      /** Provenance, which the audited competitor records for none of its inputs. */
+      enteredBy: row.createdBy.fullName,
+      enteredAt: row.createdAt.toISOString(),
+      /** A derived figure is corrected upstream, not here. */
+      editable: row.source === 'MANUAL' || row.source === 'IMPORT',
+    }));
+  }
+
+  async upsert(dto: UpsertPayrollInputDto) {
+    return withAdminTx(this.rawPrisma, 'hr.payroll.run', async (tx, actor) => {
+      const period = periodStart(dto.period);
+
+      const profile = await tx.employeeProfile.findFirst({
+        where: { staffId: dto.staffId },
+        include: { staff: { select: { fullName: true, clinicId: true } } },
+      });
+      if (!profile) throw new NotFoundException('Employee not found');
+
+      const component = await tx.payComponent.findFirst({
+        where: { code: dto.componentCode, active: true },
+        orderBy: { effectiveFrom: 'desc' },
+      });
+      if (!component) {
+        throw new BadRequestException(
+          `"${dto.componentCode}" is not an active pay component. An input naming a component the system does not know would be silently dropped from somebody's pay.`,
+        );
+      }
+
+      const amountCents = toCents(dto.amount);
+      if (amountCents < 0) {
+        throw new BadRequestException(
+          'Enter a positive amount. Whether it adds to or subtracts from pay is decided by the component, not by the sign.',
+        );
+      }
+
+      // A locked run is corrected by an adjustment, never by editing the
+      // inputs behind it.
+      const locked = await tx.payrollRun.findFirst({
+        where: { period, status: { in: ['APPROVED', 'PAID'] }, ...(profile.staff.clinicId ? { OR: [{ clinicId: profile.staff.clinicId }, { clinicId: null }] } : {}) },
+      });
+      if (locked) {
+        throw new ConflictException(
+          `The payroll for ${dto.period} is already ${locked.status.toLowerCase()}. Record an adjustment against that run, or reopen it deliberately.`,
+        );
+      }
+
+      const existing = await tx.payrollInputEntry.findFirst({
+        where: { staffId: dto.staffId, period, componentCode: dto.componentCode },
+      });
+
+      if (existing && existing.source !== 'MANUAL' && existing.source !== 'IMPORT') {
+        throw new ConflictException(
+          `This ${existing.componentCode} figure came from ${existing.source.toLowerCase()} and is maintained there. Correct the underlying record, then recalculate.`,
+        );
+      }
+
+      const data = {
+        label: dto.label ?? null,
+        amount: dto.amount,
+        kind: dto.kind ?? 'ADDITIONAL',
+        source: 'MANUAL' as const,
+        sourceRecordId: null,
+        earnedPeriod: dto.earnedPeriod ? new Date(`${dto.earnedPeriod}T00:00:00.000Z`) : null,
+        reason: dto.reason ?? null,
+        note: dto.note ?? null,
+      };
+
+      const saved = existing
+        ? await tx.payrollInputEntry.update({ where: { id: existing.id }, data })
+        : await tx.payrollInputEntry.create({
+            data: {
+              ...data,
+              tenantId: currentTenantId(),
+              clinicId: profile.staff.clinicId,
+              staffId: dto.staffId,
+              period,
+              componentCode: dto.componentCode,
+              createdByStaffId: actor.id,
+            },
+          });
+
+      await recordAudit(tx, actor, {
+        action: existing ? 'payrollInput.updated' : 'payrollInput.created',
+        entityType: 'PayrollInputEntry',
+        entityId: saved.id,
+        reason: `${existing ? 'Updated' : 'Entered'} ${dto.componentCode} of ${dto.amount} for ${profile.staff.fullName}, ${dto.period}`,
+        ...(existing ? { before: existing, after: saved } : { after: saved }),
+      });
+
+      return saved;
+    });
+  }
+
+  async remove(id: string) {
+    return withAdminTx(this.rawPrisma, 'hr.payroll.run', async (tx, actor) => {
+      const row = await tx.payrollInputEntry.findFirst({
+        where: { id },
+        include: { staff: { select: { fullName: true } } },
+      });
+      if (!row) throw new NotFoundException('Payroll input not found');
+
+      if (row.source !== 'MANUAL' && row.source !== 'IMPORT') {
+        throw new ConflictException(
+          `This figure came from ${row.source.toLowerCase()}. Remove it at its source, or it will simply be re-derived on the next calculation.`,
+        );
+      }
+
+      const locked = await tx.payrollRun.findFirst({
+        where: { period: row.period, status: { in: ['APPROVED', 'PAID'] } },
+      });
+      if (locked) {
+        throw new ConflictException(`The payroll for that period is already ${locked.status.toLowerCase()}.`);
+      }
+
+      await tx.payrollInputEntry.delete({ where: { id } });
+      await recordAudit(tx, actor, {
+        action: 'payrollInput.deleted',
+        entityType: 'PayrollInputEntry',
+        entityId: id,
+        reason: `Removed ${row.componentCode} of ${row.amount.toString()} for ${row.staff.fullName}`,
+      });
+      return { removed: true };
+    });
+  }
+
+  /**
+   * MATERIALISE UPSTREAM FEEDS.
+   *
+   * Attendance, leave and incentives were read LIVE inside the calculation, so
+   * no reviewable row existed, nothing recorded which attendance record produced
+   * an overtime figure, and a derived number could not be adjusted without
+   * editing the record behind it.
+   *
+   * Idempotent on `(staff, period, component, sourceRecordId)`, which the
+   * database also enforces with a partial unique index — so importing the same
+   * approved overtime twice cannot pay anybody twice.
+   */
+  async materialise(params: { period: string; clinicId?: string }) {
+    return withAdminTx(this.rawPrisma, 'hr.payroll.run', async (tx, actor) => {
+      const period = periodStart(params.period);
+      const periodEnd = new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth() + 1, 1));
+
+      const locked = await tx.payrollRun.findFirst({
+        where: { period, status: { in: ['APPROVED', 'PAID'] } },
+      });
+      if (locked) {
+        throw new ConflictException(`The payroll for ${params.period} is already ${locked.status.toLowerCase()}.`);
+      }
+
+      const incentives = await tx.incentiveResult.findMany({
+        where: { incentiveRun: { period, status: { in: ['APPROVED', 'PAID'] } } },
+        include: { staff: { select: { id: true, clinicId: true } } },
+      });
+
+      let created = 0;
+      let unchanged = 0;
+
+      for (const row of incentives) {
+        if (params.clinicId && row.staff.clinicId !== params.clinicId) continue;
+        const existing = await tx.payrollInputEntry.findFirst({
+          where: { staffId: row.staffId, period, componentCode: 'INCENTIVE', sourceRecordId: row.id },
+        });
+        if (existing) {
+          unchanged += 1;
+          continue;
+        }
+        await tx.payrollInputEntry.create({
+          data: {
+            tenantId: currentTenantId(),
+            clinicId: row.staff.clinicId,
+            staffId: row.staffId,
+            period,
+            componentCode: 'INCENTIVE',
+            label: 'Incentive',
+            amount: row.amount,
+            kind: 'ADDITIONAL',
+            source: 'INCENTIVE',
+            sourceRecordId: row.id,
+            createdByStaffId: actor.id,
+          },
+        });
+        created += 1;
+      }
+
+      await recordAudit(tx, actor, {
+        action: 'payrollInput.materialised',
+        entityType: 'PayrollInputEntry',
+        entityId: params.period,
+        reason: `Materialised upstream inputs for ${params.period}: ${created} created, ${unchanged} already present`,
+      });
+
+      return {
+        period: params.period,
+        created,
+        unchanged,
+        note:
+          unchanged > 0
+            ? 'Rows already present were left alone. Re-running this cannot pay anybody twice.'
+            : 'Every upstream figure for this period now has a reviewable input row.',
+        periodEnd: periodEnd.toISOString().slice(0, 10),
+      };
+    });
+  }
+}
