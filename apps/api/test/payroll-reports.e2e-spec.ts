@@ -125,6 +125,27 @@ describe('payroll reports (e2e)', () => {
     for (const row of register.rows) {
       expect(row.drill).toMatch(/^\/admin\/hr\/employees\//);
     }
+
+    /*
+     * THE ROW ADDS UP LEFT TO RIGHT.
+     *
+     * A register showing a RM4,200 salary beside a RM4,064.52 gross, with the
+     * unpaid-leave day that separates them not on the row, is a payslip that
+     * does not add up — and nobody would find it by looking, because both
+     * numbers are individually right.
+     */
+    for (const row of register.rows) {
+      const earnings =
+        Number(row.basicSalary) + Number(row.allowances) + Number(row.overtimePay) +
+        Number(row.incentives) + Number(row.bonus) - Number(row.unpaidLeaveDeduction);
+      expect(earnings).toBeCloseTo(Number(row.grossPay), 2);
+    }
+
+    // And every column foots, from the API rather than from the screen.
+    for (const field of ['basicSalary', 'allowances', 'overtimePay', 'unpaidLeaveDeduction'] as const) {
+      const summed = register.rows.reduce((total: number, row: Record<string, string>) => total + Number(row[field]), 0);
+      expect(Number(register.totals[field])).toBeCloseTo(summed, 2);
+    }
   });
 
   it('cost to the clinic is gross PLUS employer contributions, named separately from take-home pay', async () => {

@@ -43,7 +43,10 @@ async function signIn(page: Page) {
   await page.getByLabel(/email/i).fill(EMAIL);
   await page.getByLabel(/password/i).fill(PASSWORD);
   await page.getByRole('button', { name: /sign in|log in/i }).click();
-  await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 30_000 });
+  // The app routes client-side after a successful sign-in, so there is no
+  // navigation event for `waitForURL` to hang its default `load` wait on. Ask
+  // the page itself where it is instead.
+  await page.waitForFunction(() => !window.location.pathname.includes('/login'), null, { timeout: 30_000 });
 }
 
 async function go(page: Page, path: string) {
@@ -63,6 +66,19 @@ async function currentRunId(page: Page): Promise<string | null> {
   if (!href) return null;
   const match = href.match(/\/admin\/hr\/payroll\/([0-9a-f-]{36})/);
   return match ? match[1] : null;
+}
+
+/** The titles the API serves for each report, so the picker can be driven by key. */
+function reportLabel(key: string): string {
+  return (
+    {
+      PAYROLL_REGISTER: 'Payroll register',
+      EMPLOYER_COST: 'Cost to the clinic',
+      STATUTORY_TOTALS: 'Statutory totals',
+      VARIANCE: 'This month against last',
+      CLAIMS: 'Claims and reimbursements',
+    }[key] ?? key
+  );
 }
 
 async function main() {
@@ -124,6 +140,38 @@ async function main() {
 
   await go(page, '/admin/hr/settings');
   await capture(page, 'payroll-settings', 'Payroll settings — the six-step setup checklist');
+
+  // WHO IS ALLOWED TO APPROVE PAYROLL, and the honest warning when the chosen
+  // rule cannot take effect. Scrolled to, because it sits below the checklist.
+  const approvalHeading = page.getByText('Who can approve payroll', { exact: false }).first();
+  if (await approvalHeading.count()) {
+    await approvalHeading.scrollIntoViewIfNeeded();
+    await settle(page);
+    await capture(page, 'payroll-approval-rule', 'Payroll settings — who may approve, as a sentence not a mode name');
+  }
+
+  // THE FIVE REPORTS. Each is a view of rows the run already wrote.
+  for (const [key, file, caption] of [
+    ['PAYROLL_REGISTER', 'report-register', 'Report — payroll register, with the components behind each row'],
+    ['EMPLOYER_COST', 'report-employer-cost', 'Report — cost to the clinic, by branch and by employer'],
+    ['STATUTORY_TOTALS', 'report-statutory', 'Report — statutory totals, for checking, not a submission'],
+    ['VARIANCE', 'report-variance', 'Report — this month against last, every movement a subtraction'],
+    ['CLAIMS', 'report-claims', 'Report — claims and the one route each was paid by'],
+  ] as const) {
+    await go(page, '/admin/hr/reports');
+    // BY ITS LABEL, not by position: the shell's own branch picker is the first
+    // `.ant-select` on the page, so `.first()` opened that one and quietly
+    // photographed the same report five times.
+    await page.locator('.ant-select').filter({ has: page.locator('[aria-label="Report"]') }).first().click();
+    const option = page.locator('.ant-select-item-option').filter({ hasText: reportLabel(key) }).first();
+    if (await option.count()) {
+      await option.click();
+      await settle(page);
+      await capture(page, file, caption);
+    } else {
+      console.log(`  (report ${key} not offered by the picker — skipped)`);
+    }
+  }
 
   await go(page, '/admin/hr/attendance');
   await capture(page, 'timesheet', 'Timesheet — where overtime is corrected');

@@ -261,17 +261,29 @@ function SetupCard({ data }: { data: PayrollHome }) {
         </span>
       </div>
       <p className="kw-homeCard__body">
-        An employee is ready when their salary, bank account, date of birth and monthly tax details are on file.
+        An employee is ready when their salary, bank account and date of birth are on file. Set once, and true until
+        somebody changes them.
       </p>
       <ul className="kw-checkList">
         <CheckRow label="Salary on record" done={setup.salaryOnRecord === setup.total} value={`${setup.salaryOnRecord} / ${setup.total}`} />
         <CheckRow label="Bank account" done={setup.bankAccount === setup.total} value={`${setup.bankAccount} / ${setup.total}`} />
-        <CheckRow
-          label="Monthly tax information"
-          done={setup.pcbMissing === 0}
-          value={setup.pcbMissing === 0 ? 'All on file' : `${setup.pcbMissing} missing`}
-        />
+        <CheckRow label="Date of birth" done={setup.dateOfBirth === setup.total} value={`${setup.dateOfBirth} / ${setup.total}`} />
       </ul>
+      {/*
+        * MONTHLY TAX IS THIS MONTH'S DATA ENTRY, not a gap in an employee
+        * record — Kuwick does not work PCB out, so on the first of the month
+        * nobody has one yet. Counting it as setup made a fully set-up clinic
+        * read "0 of 8 ready" every month for a reason that was neither wrong
+        * nor anybody's fault. It is still outstanding and the run still blocks
+        * on it, so it is said here — separately, and as what it is.
+        */}
+      {setup.pcbMissing > 0 ? (
+        <p className="kw-homeCard__aside">
+          <strong>{setup.pcbMissing}</strong> {setup.pcbMissing === 1 ? 'employee needs' : 'employees need'} a monthly
+          tax figure for this month. Kuwick does not work PCB out, so it is entered each month and the run will not
+          finish without it.
+        </p>
+      ) : null}
       <Link to="/admin/hr/employees" className="kw-homeCard__link">
         Review employee setup
       </Link>

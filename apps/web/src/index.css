@@ -4720,6 +4720,19 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   margin: 8px 0 0;
 }
 
+/* Something outstanding that is NOT part of the card's own count — this
+ * month's data entry beside a standing set-up checklist. Toned as a note, not
+ * as an alarm: it is normal on the first of the month. */
+.kw-homeCard__aside {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .kw-homeCard__link {
   margin-top: auto;
   padding-top: 12px;
@@ -4850,6 +4863,19 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   background: var(--kw-teal);
   border-color: var(--kw-teal);
   color: #fff;
+}
+
+/* A STEP THAT STILL HOLDS A BLOCKER. Never a tick — the tick is the strongest
+ * "this is fine" the screen has, and spending it on a step somebody has merely
+ * scrolled past is how a row of green ticks ends up over a run that cannot be
+ * paid. Amber rather than red: it is work to do, not a failure. */
+.kw-stepper__step--blocked { color: #92400e; font-weight: 600; }
+
+.kw-stepper__step--blocked .kw-stepper__mark {
+  background: #fef3c7;
+  border-color: #f0c674;
+  color: #92400e;
+  font-weight: 700;
 }
 
 .kw-stepper__step--active .kw-stepper__mark {
@@ -5371,4 +5397,46 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   font-weight: 650;
   letter-spacing: -0.012em;
   color: var(--kw-text);
+}
+
+/* ---------------------------------------------------------------------------
+ * THE HUB HEADER, on a phone.
+ *
+ * The title and the branch picker sat in a bare flex row that could not wrap,
+ * so at 390px the browser hyphenated the title mid-word — "Administrati / on"
+ * above the picker. They stack instead, and the title never hyphenates.
+ * ------------------------------------------------------------------------- */
+.kw-hubShell__identity {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kw-hubShell__title.ant-typography {
+  overflow-wrap: normal;
+  word-break: keep-all;
+  hyphens: none;
+}
+
+@media (max-width: 560px) {
+  .kw-hubShell__identity {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .kw-hubShell__title.ant-typography {
+    font-size: 17px;
+  }
+}
+
+/* A settings choice and the switch beneath it share one reading measure. Two
+ * different widths in one section reads as a layout that got away from
+ * somebody, not as a deliberate emphasis. */
+.kw-choiceList,
+.kw-settingRow {
+  max-width: 760px;
 }

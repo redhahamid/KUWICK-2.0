@@ -136,12 +136,27 @@ export class PayrollJourneyService {
     );
     const withBank = active.filter((e) => Boolean(e.bankName && e.bankAccountNo));
     const needingPcb = active.filter((e) => e.pcbApplicable && !pcbByStaff.has(e.staffId));
+
+    /*
+     * SET-UP AND THIS MONTH'S ENTRY ARE DIFFERENT QUESTIONS.
+     *
+     * Readiness used to include the monthly tax figure. Kuwick does not work
+     * PCB out, so on the first of every month nobody has one yet — which made
+     * a fully set-up clinic read "0 of 8 ready" beside "Bank account 8/8",
+     * every month, for a reason that was neither wrong nor anybody's fault.
+     * A headline that alarms without informing is worse than no headline.
+     *
+     * Readiness is now the three STANDING facts: a salary in force, a bank
+     * account, a date of birth. Set once, true until somebody changes them.
+     * The monthly tax figure keeps its own line, because it IS outstanding and
+     * the run will block on it — but it is this month's data entry, not a gap
+     * in anybody's employee record.
+     */
     const fullyReady = active.filter(
       (e) =>
         withSalary.some((w) => w.staffId === e.staffId) &&
         Boolean(e.bankName && e.bankAccountNo) &&
-        Boolean(e.dateOfBirth) &&
-        !needingPcb.some((n) => n.staffId === e.staffId),
+        Boolean(e.dateOfBirth),
     );
 
     const timesheet = totalTimesheet(
@@ -189,6 +204,8 @@ export class PayrollJourneyService {
         ready: fullyReady.length,
         salaryOnRecord: withSalary.length,
         bankAccount: withBank.length,
+        dateOfBirth: active.filter((e) => Boolean(e.dateOfBirth)).length,
+        /** This month's entry, not a gap in an employee record. See above. */
         pcbMissing: needingPcb.length,
       },
       // WHAT IS FEEDING THIS MONTH. Named so the owner can see that payroll is

@@ -14,9 +14,15 @@
 14-claims.png — Staff claims — one payment route per claim
 15-locum.png — Locum sessions — a payable, never a payslip
 16-payroll-settings.png — Payroll settings — the six-step setup checklist
-17-timesheet.png — Timesheet — where overtime is corrected
-18-tablet-review.png — Tablet — Review
-19-tablet-employees.png — Tablet — employees
-20-mobile-home.png — Mobile — Payroll Home
-21-mobile-review.png — Mobile — Review (read and resolve, never finalise)
-22-mobile-claims.png — Mobile — claims
+17-payroll-approval-rule.png — Payroll settings — who may approve, as a sentence not a mode name
+18-report-register.png — Report — payroll register, with the components behind each row
+19-report-employer-cost.png — Report — cost to the clinic, by branch and by employer
+20-report-statutory.png — Report — statutory totals, for checking, not a submission
+21-report-variance.png — Report — this month against last, every movement a subtraction
+22-report-claims.png — Report — claims and the one route each was paid by
+23-timesheet.png — Timesheet — where overtime is corrected
+24-tablet-review.png — Tablet — Review
+25-tablet-employees.png — Tablet — employees
+26-mobile-home.png — Mobile — Payroll Home
+27-mobile-review.png — Mobile — Review (read and resolve, never finalise)
+28-mobile-claims.png — Mobile — claims

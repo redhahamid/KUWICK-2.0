@@ -12,7 +12,7 @@ import {
   usePayrollVariance,
 } from '../hooks/useAdmin';
 import { ProvisionalBanner } from './ProvisionalBanner';
-import { PayrollStepper, STEPS, type StepKey } from './PayrollStepper';
+import { PayrollStepper, STEPS, stepsWithProblems, type StepKey } from './PayrollStepper';
 import type { PayrollJourney } from '../types';
 
 const initials = (name: string) =>
@@ -60,7 +60,16 @@ export function PayrollRunPage() {
       }
     >
       <ProvisionalBanner statutoryStatus={data?.run.statutoryStatus} />
-      <PayrollStepper current={step} onChange={goTo} />
+      {/*
+        * A TICK MEANS SETTLED. The stepper reads the SAME exception rows the
+        * Review screen lists, so a step holding a blocker cannot show a green
+        * tick on one screen and a blocker on the next.
+        */}
+      <PayrollStepper
+        current={step}
+        onChange={goTo}
+        problemSteps={data ? stepsWithProblems(data.review.attention) : undefined}
+      />
 
       {data ? (
         <>

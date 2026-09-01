@@ -87,11 +87,31 @@ export class PayrollReportService {
       })),
     }));
 
+    /*
+     * EVERY COLUMN FOOTS, and the footing is computed HERE rather than on the
+     * screen — one source, so the report and the table under it cannot
+     * disagree. The run's own gross, net and employer-cost totals are used
+     * verbatim; the component columns are summed from the same `payroll_lines`
+     * rows the run wrote, which is the only place they exist.
+     *
+     * A column shown without a total under a column of numbers reads as a gap,
+     * and a total computed in React is the second engine this stage removed.
+     */
+    const column = (pick: (line: (typeof run.lines)[number]) => unknown) =>
+      formatCents(run.lines.reduce((sum, line) => sum + toCents(pick(line) as never), 0));
+
     return {
       report: 'PAYROLL_REGISTER',
       ...this.header(run),
       rows,
       totals: {
+        basicSalary: column((l) => l.basicSalary),
+        allowances: column((l) => l.allowances),
+        overtimePay: column((l) => l.overtimePay),
+        incentives: column((l) => l.incentives),
+        bonus: column((l) => l.bonus),
+        unpaidLeaveDeduction: column((l) => l.unpaidLeaveDeduction),
+        otherDeductions: column((l) => l.otherDeductions),
         grossPay: formatCents(toCents(run.grossTotal)),
         deductions: formatCents(toCents(run.deductionTotal)),
         netPay: formatCents(toCents(run.netTotal)),

@@ -94,8 +94,17 @@ export function HubShell({ title, categories, headerExtra, scopeClass }: HubShel
     >
       <div style={{ padding: '10px 24px 0', borderBottom: '1px solid #f0f0f0', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-            <Title level={4} style={{ margin: 0 }}>
+          {/*
+            * WRAPS RATHER THAN BREAKING A WORD.
+            *
+            * This row was a bare flex with no wrap, so on a 390px phone the
+            * hub title was squeezed until the browser hyphenated it mid-word
+            * — "Administrati / on" above the branch picker. The classes below
+            * let the responsive rules in index.css reach it; the title itself
+            * never hyphenates.
+            */}
+          <div className="kw-hubShell__identity">
+            <Title level={4} className="kw-hubShell__title" style={{ margin: 0 }}>
               {title}
             </Title>
             {showSelector ? (

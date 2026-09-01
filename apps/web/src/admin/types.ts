@@ -1809,6 +1809,12 @@ export interface PayrollHome {
     ready: number;
     salaryOnRecord: number;
     bankAccount: number;
+    dateOfBirth: number;
+    /**
+     * This month's data entry, NOT a gap in an employee record — Kuwick does
+     * not work PCB out, so nobody has one on the first of the month. Kept out
+     * of `ready` for that reason; see payroll-journey.service.ts.
+     */
     pcbMissing: number;
   };
   feeding: {
@@ -2004,7 +2010,15 @@ export interface PayrollRegisterReport extends PayrollReportHeader {
       reason: string | null;
     }[];
   }[];
+  /** Every column the report emits foots, computed by the API, never here. */
   totals: {
+    basicSalary: string;
+    allowances: string;
+    overtimePay: string;
+    incentives: string;
+    bonus: string;
+    unpaidLeaveDeduction: string;
+    otherDeductions: string;
     grossPay: string;
     deductions: string;
     netPay: string;

@@ -208,6 +208,27 @@ function RegisterReport({ runId }: { runId: string }) {
           { title: 'Salary', dataIndex: 'basicSalary', align: 'right' as const, width: 110, render: ringgit },
           { title: 'Allowances', dataIndex: 'allowances', align: 'right' as const, width: 110, render: ringgit },
           { title: 'Overtime', dataIndex: 'overtimePay', align: 'right' as const, width: 100, render: ringgit },
+          /*
+           * EVERY EARNING THE GROSS CONTAINS GETS A COLUMN.
+           *
+           * Two were missing and the row stopped adding up: a RM4,200 salary
+           * beside a RM4,064.52 gross with the unpaid day off screen, and a
+           * RM9,500 salary beside a RM9,760 gross with the incentive off
+           * screen. Both numbers are individually right in each case and the
+           * row is still wrong — which is the only kind of error nobody finds
+           * by looking. A column that is all zeroes costs a reader nothing; a
+           * missing one costs them the ability to check.
+           */
+          { title: 'Incentive', dataIndex: 'incentives', align: 'right' as const, width: 110, render: ringgit },
+          { title: 'Bonus', dataIndex: 'bonus', align: 'right' as const, width: 100, render: ringgit },
+          {
+            title: 'Unpaid leave',
+            dataIndex: 'unpaidLeaveDeduction',
+            align: 'right' as const,
+            width: 120,
+            render: (value: string) =>
+              Number(value) === 0 ? <span className="kw-muted">—</span> : <span>−{ringgit(value)}</span>,
+          },
           { title: 'Gross', dataIndex: 'grossPay', align: 'right' as const, width: 110, render: ringgit },
           {
             title: 'Statutory',
@@ -234,10 +255,15 @@ function RegisterReport({ runId }: { runId: string }) {
             cells={[
               { value: '', colSpan: 1, align: 'left' },
               { value: `${data.totals.employees} employee${data.totals.employees === 1 ? '' : 's'}`, align: 'left' },
-              { value: '' },
-              { value: '' },
-              { value: '' },
+              { value: ringgit(data.totals.basicSalary) },
+              { value: ringgit(data.totals.allowances) },
+              { value: ringgit(data.totals.overtimePay) },
+              { value: ringgit(data.totals.incentives) },
+              { value: ringgit(data.totals.bonus) },
+              { value: `−${ringgit(data.totals.unpaidLeaveDeduction)}` },
               { value: ringgit(data.totals.grossPay) },
+              // Deliberately no statutory total: a column carrying "Not worked
+              // out" for some rows has no honest sum.
               { value: '' },
               { value: ringgit(data.totals.netPay), strong: true },
               { value: ringgit(data.totals.employerCost) },

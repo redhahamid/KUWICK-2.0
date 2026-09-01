@@ -6,7 +6,7 @@ import runSource from './PayrollRunPage.tsx?raw';
 import homeSource from './PayrollHomePage.tsx?raw';
 import claimsSource from './ClaimsPage.tsx?raw';
 import locumSource from './LocumPage.tsx?raw';
-import { STEPS } from './PayrollStepper';
+import { STEPS, stepsWithProblems } from './PayrollStepper';
 import { money, ringgit, group } from '../components/DataTable';
 
 /** Comments name the defects deliberately; a guard must not read them as code. */
@@ -77,6 +77,44 @@ describe('the variance shown is a subtraction the API already did', () => {
     expect(code(runSource)).toMatch(/line\.deltaCents/);
     // The mockup defect: a comparison month carrying the current month's totals.
     expect(code(runSource)).not.toMatch(/currentCents\s*-\s*previousCents/);
+  });
+});
+
+/*
+ * A TICK MEANS SETTLED, NOT VISITED.
+ *
+ * The design review found a mockup showing a row of green ticks over a run
+ * that could not be paid. The running product did the same thing for the same
+ * reason: the stepper ticked every step behind the current one, so scrolling
+ * to Review put a green tick on an Employees step where somebody had no
+ * salary on file.
+ */
+describe('the stepper does not tick a step that still has a blocker', () => {
+  it('sends a blocking exception to the step it belongs to', () => {
+    const steps = stepsWithProblems([
+      { code: 'NO_SALARY', blocksApproval: true },
+      { code: 'PCB_MISSING', blocksApproval: true },
+      { code: 'MISSING_PUNCH', blocksApproval: false },
+    ]);
+    expect(steps.has('employees')).toBe(true);
+    expect(steps.has('deductions')).toBe(true);
+    // A warning does not block, so it does not take a tick away.
+    expect(steps.has('attendance')).toBe(false);
+  });
+
+  it('never loses an unrecognised code — it lands on Review, where everything is listed', () => {
+    const steps = stepsWithProblems([{ code: 'SOMETHING_ADDED_LATER', blocksApproval: true }]);
+    expect(steps.has('review')).toBe(true);
+  });
+
+  it('ticks nothing when a run is clean of blockers', () => {
+    expect(stepsWithProblems([{ code: 'MISSING_PUNCH', blocksApproval: false }]).size).toBe(0);
+  });
+
+  it('the run page hands the stepper the SAME rows the Review screen lists', () => {
+    // One source. A stepper reading its own count could tick a step the
+    // Review screen is showing a blocker on.
+    expect(code(runSource)).toMatch(/problemSteps=\{data \? stepsWithProblems\(data\.review\.attention\)/);
   });
 });
 
