@@ -20,3 +20,4 @@ test-results/
 # Holds a live database password — the staging/production rollback line.
 docs/ROLLBACK-*.txt
 e2e/.density-fixtures.json
+.design/hr-payroll/kuwick-hr-payroll-ux.html

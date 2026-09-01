@@ -1,0 +1,302 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 980,
+      "page": "page-1",
+      "title": "1 · Payroll home"
+    },
+    {
+      "file": "RunEmployees.dc.html",
+      "x": 1580,
+      "y": 0,
+      "w": 1440,
+      "h": 980,
+      "page": "page-1",
+      "title": "2 · Step 1 Employees"
+    },
+    {
+      "file": "RunAttendance.dc.html",
+      "x": 3160,
+      "y": 0,
+      "w": 1440,
+      "h": 980,
+      "page": "page-1",
+      "title": "3 · Step 2 Attendance & leave"
+    },
+    {
+      "file": "RunEarnings.dc.html",
+      "x": 0,
+      "y": 1320,
+      "w": 1440,
+      "h": 1060,
+      "page": "page-1",
+      "title": "4 · Step 3 Earnings"
+    },
+    {
+      "file": "RunDeductions.dc.html",
+      "x": 1580,
+      "y": 1320,
+      "w": 1440,
+      "h": 1020,
+      "page": "page-1",
+      "title": "5 · Step 4 Deductions"
+    },
+    {
+      "file": "RunReview.dc.html",
+      "x": 3160,
+      "y": 1320,
+      "w": 1440,
+      "h": 1120,
+      "page": "page-1",
+      "title": "6 · Step 5 Review"
+    },
+    {
+      "file": "RunApprove.dc.html",
+      "x": 0,
+      "y": 2740,
+      "w": 1440,
+      "h": 1020,
+      "page": "page-1",
+      "title": "7 · Step 6 Approve & finalise"
+    },
+    {
+      "file": "EmployeeProfile.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1020,
+      "page": "page-2",
+      "title": "8 · Employee profile"
+    },
+    {
+      "file": "EmployeeSalary.dc.html",
+      "x": 1580,
+      "y": 0,
+      "w": 1440,
+      "h": 960,
+      "page": "page-2",
+      "title": "9 · Employee salary"
+    },
+    {
+      "file": "PayrollSettings.dc.html",
+      "x": 3160,
+      "y": 0,
+      "w": 1440,
+      "h": 1020,
+      "page": "page-2",
+      "title": "10 · HR settings"
+    },
+    {
+      "file": "TabletReview.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1024,
+      "h": 1150,
+      "page": "page-3",
+      "title": "T1 · Payroll review (tablet)"
+    },
+    {
+      "file": "TabletEmployee.dc.html",
+      "x": 1164,
+      "y": 0,
+      "w": 1024,
+      "h": 1000,
+      "page": "page-3",
+      "title": "T2 · Employee (tablet)"
+    },
+    {
+      "file": "MobileHome.dc.html",
+      "x": 2328,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "page": "page-3",
+      "title": "M1 · Payroll home"
+    },
+    {
+      "file": "MobileAttention.dc.html",
+      "x": 2858,
+      "y": 0,
+      "w": 390,
+      "h": 950,
+      "page": "page-3",
+      "title": "M2 · Needs attention"
+    },
+    {
+      "file": "MobileEmployee.dc.html",
+      "x": 3388,
+      "y": 0,
+      "w": 390,
+      "h": 1010,
+      "page": "page-3",
+      "title": "M3 · Employee"
+    },
+    {
+      "file": "MobileReview.dc.html",
+      "x": 3918,
+      "y": 0,
+      "w": 390,
+      "h": 1010,
+      "page": "page-3",
+      "title": "M4 · Payroll review"
+    },
+    {
+      "file": "NavigationMap.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1220,
+      "page": "page-4",
+      "title": "A · Information architecture"
+    },
+    {
+      "file": "DataFlow.dc.html",
+      "x": 1580,
+      "y": 0,
+      "w": 1440,
+      "h": 1160,
+      "page": "page-4",
+      "title": "B · Where the figures come from"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "n-home",
+      "x": 0,
+      "y": -168,
+      "w": 1440,
+      "text": "PRIMARY USER  Clinic owner, once a month.\nPRIMARY JOB  Find out whether this month's payroll is done, and start it if not.\nPRIMARY CTA  Run payroll.\n\nDELIBERATELY HIDDEN\nRate tables, verification state, pay components, snapshot mechanics, the exception catalogue, every technical banner.\n\nAVAILABLE BY DRILL-DOWN\nView details on the safety line · a finished period's payslips and history · employee setup.",
+      "page": "page-1"
+    },
+    {
+      "id": "n-s1",
+      "x": 1580,
+      "y": -168,
+      "w": 1440,
+      "text": "PRIMARY USER  Clinic owner or HR admin.\nPRIMARY JOB  Confirm who is being paid, and catch anybody who cannot be.\nPRIMARY CTA  Continue to attendance.\n\nDELIBERATELY HIDDEN\nEmployment type internals, legal-employer ids, why the engine excluded somebody.\n\nAVAILABLE BY DRILL-DOWN\nOpen an employee's record · add somebody to the run · see why the locum is out.",
+      "page": "page-1"
+    },
+    {
+      "id": "n-s2",
+      "x": 3160,
+      "y": -168,
+      "w": 1440,
+      "text": "PRIMARY USER  Clinic owner or HR admin.\nPRIMARY JOB  See what people actually worked, and clear anything waiting on a manager.\nPRIMARY CTA  Continue to earnings.\n\nDELIBERATELY HIDDEN\nAttendance record ids, punch-level rows, the ORP formula.\n\nAVAILABLE BY DRILL-DOWN\nOpen the timesheet · approve overtime · open one person's month.",
+      "page": "page-1"
+    },
+    {
+      "id": "n-s3",
+      "x": 0,
+      "y": 1152,
+      "w": 1440,
+      "text": "PRIMARY USER  Clinic owner or HR admin.\nPRIMARY JOB  Check what each person earns, and add anything the system could not know.\nPRIMARY CTA  Continue to deductions.\n\nDELIBERATELY HIDDEN\nComponent codes, liability flags, proration basis, the ORP hourly rate derivation.\n\nAVAILABLE BY DRILL-DOWN\nExpand a person for every line and its origin · add an allowance · bulk-add for several people.",
+      "page": "page-1"
+    },
+    {
+      "id": "n-s4",
+      "x": 1580,
+      "y": 1152,
+      "w": 1440,
+      "text": "PRIMARY USER  Clinic owner or HR admin.\nPRIMARY JOB  Enter monthly tax, and see what else comes off pay.\nPRIMARY CTA  Continue to review.\n\nDELIBERATELY HIDDEN\nStatutory band tables, age-rule internals, EPF/SOCSO/EIS employer-side split.\n\nAVAILABLE BY DRILL-DOWN\nPer-person statutory breakdown · record an advance repayment · the age-60 explanation.",
+      "page": "page-1"
+    },
+    {
+      "id": "n-s5",
+      "x": 3160,
+      "y": 1152,
+      "w": 1440,
+      "text": "PRIMARY USER  Clinic OWNER. This is the screen the redesign is really for.\nPRIMARY JOB  Decide whether this month's payroll is right, and resolve whatever is not.\nPRIMARY CTA  Continue to approve — blocked until the must-fix items are cleared.\n\nDELIBERATELY HIDDEN\nSeverity taxonomy, override semantics, variance thresholds, exception codes.\n\nAVAILABLE BY DRILL-DOWN\nFull breakdown per person · compare with last month · each Fix opens the right screen inline.",
+      "page": "page-1"
+    },
+    {
+      "id": "n-s6",
+      "x": 0,
+      "y": 2572,
+      "w": 1440,
+      "text": "PRIMARY USER  Clinic owner, or a second approver where maker/checker is on.\nPRIMARY JOB  Understand exactly what is being signed off, and what happens next.\nPRIMARY CTA  Finalise September payroll.\n\nDELIBERATELY HIDDEN\nSnapshot version numbers and hashes, the approval-gate object, audit rows.\n\nAVAILABLE BY DRILL-DOWN\nHistory timeline · what is still outstanding on statutory setup · maker/checker settings.",
+      "page": "page-1"
+    },
+    {
+      "id": "n-emp",
+      "x": 0,
+      "y": -168,
+      "w": 1440,
+      "text": "PRIMARY USER  HR admin, and the owner when somebody asks a question about their pay.\nPRIMARY JOB  Answer anything about one person without opening five screens.\nPRIMARY CTA  Complete setup — the readiness checklist is the call to action.\n\nDELIBERATELY HIDDEN\nEffective-dated database rows, profile-vs-salary-table duality, permission internals.\n\nAVAILABLE BY DRILL-DOWN\nEight tabs: employment, salary, attendance, leave, claims, payroll, documents.",
+      "page": "page-2"
+    },
+    {
+      "id": "n-sal",
+      "x": 1580,
+      "y": -168,
+      "w": 1440,
+      "text": "PRIMARY USER  HR admin or owner.\nPRIMARY JOB  See what somebody is paid now, what they will be paid, and what they were paid before.\nPRIMARY CTA  Record salary change.\n\nDELIBERATELY HIDDEN\nEffective-from/effective-to row mechanics; the reader sees periods, not rows.\n\nAVAILABLE BY DRILL-DOWN\nFull history with reason and author · overtime and unpaid-leave day rates · bank account.",
+      "page": "page-2"
+    },
+    {
+      "id": "n-set",
+      "x": 3160,
+      "y": -168,
+      "w": 1440,
+      "text": "PRIMARY USER  Accountant, or a Kuwick specialist, at go-live. Almost never the owner.\nPRIMARY JOB  Get the clinic to the point where monthly payroll is boring.\nPRIMARY CTA  Continue the setup checklist — currently step 5, checking the statutory rates.\n\nDELIBERATELY HIDDEN\nNothing. This is where the complexity is allowed to live.\n\nAVAILABLE BY DRILL-DOWN\nThe full 16 × 12 component liability matrix · per-employer statutory readiness · rate verification.",
+      "page": "page-2"
+    },
+    {
+      "id": "n-tab",
+      "x": 0,
+      "y": -190,
+      "w": 1024,
+      "text": "PRIMARY USER  Clinic owner reviewing away from a desk.\nPRIMARY JOB  Everything the desktop review does — this is full processing, not a cut-down view.\nPRIMARY CTA  Continue to approve.\n\nDELIBERATELY HIDDEN\nThe person-by-person grid loses its per-component columns; the totals and the variance stay.\n\nAVAILABLE BY DRILL-DOWN\nTap a person for the full breakdown · each Fix opens the same inline flow as desktop.",
+      "page": "page-3"
+    },
+    {
+      "id": "n-mob",
+      "x": 2328,
+      "y": -190,
+      "w": 1400,
+      "text": "PRIMARY USER  Clinic owner between patients, on a phone.\nPRIMARY JOB  Know where payroll stands, clear a blocker, look somebody up, sanity-check the totals.\nPRIMARY CTA  Run payroll · Enter PCB · Complete setup · (Finalise stays locked).\n\nDELIBERATELY HIDDEN\nNo desktop grid is shrunk. Earnings and deductions per component are desktop and tablet work.\n\nAVAILABLE BY DRILL-DOWN\nEvery card opens the same screen the desktop uses. Approval is deliberately possible only where the numbers are legible.",
+      "page": "page-3"
+    },
+    {
+      "id": "n-ia",
+      "x": 0,
+      "y": -168,
+      "w": 1440,
+      "text": "PRIMARY USER  The owner, reviewing this proposal.\nPRIMARY JOB  Decide whether daily work and configuration are split in the right place.\nPRIMARY CTA  Approve the IA, or move an item between the two columns.\n\nDELIBERATELY HIDDEN\n—\n\nAVAILABLE BY DRILL-DOWN\nEvery item that leaves the daily nav is listed with where it goes and why.",
+      "page": "page-4"
+    },
+    {
+      "id": "n-flow",
+      "x": 1580,
+      "y": -168,
+      "w": 1440,
+      "text": "PRIMARY USER  The owner, reviewing this proposal.\nPRIMARY JOB  See where Kuwick beats a generic payroll product, and confirm nothing is duplicated.\nPRIMARY CTA  Approve the connections, or name one that is wrong.\n\nDELIBERATELY HIDDEN\n—\n\nAVAILABLE BY DRILL-DOWN\nFive chains, each ending in payroll or finance.",
+      "page": "page-4"
+    }
+  ],
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Monthly payroll journey"
+    },
+    {
+      "id": "page-2",
+      "name": "Employee & settings"
+    },
+    {
+      "id": "page-3",
+      "name": "Tablet & mobile"
+    },
+    {
+      "id": "page-4",
+      "name": "Architecture"
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-1"
+  }
+}

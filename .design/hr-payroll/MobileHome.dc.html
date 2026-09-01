@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #184a6b; text-decoration: none; } a:hover { color: #123a55; }
+    .num { font-variant-numeric: tabular-nums; }
+  </style>
+</helmet>
+
+<div style="width: 390px; min-height: 844px; background: #f4f7fa; color: #17212b; font-size: 13px; display: flex; flex-direction: column;">
+  <div style="background: #0e1c2f; padding: 14px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="#5eead4" stroke-width="1.8" stroke-linecap="round"><path d="M3 4v12M3 10l7-6M3 10l7 6M13 4v12"/></svg>
+    <div style="min-width: 0;"><div style="color: #fff; font-size: 15px; font-weight: 650; letter-spacing: -0.01em;">Payroll</div><div style="font-size: 11.5px; color: #8fa2b8; margin-top: 1px;">Klinik Contoh</div></div>
+    <div style="flex-grow: 1;"></div>
+    <div style="width: 28px; height: 28px; border-radius: 50%; background: #184a6b; color: #fff; font-size: 10.5px; font-weight: 650; display: flex; align-items: center; justify-content: center;">AR</div>
+  </div>
+  <div style="padding: 14px 16px 18px; display: flex; flex-direction: column; gap: 12px; flex-grow: 1;">
+    <div style="display: flex; align-items: center; gap: 9px; background: #fffbf2; border: 1px solid #ecd5a8; border-left: 3px solid #b45309; border-radius: 10px; padding: 10px 12px;">
+      <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="#b45309" stroke-width="1.8" stroke-linecap="round" style="flex-shrink: 0;"><path d="M10 6.5v4.2M10 13.8v.2"/><circle cx="10" cy="10" r="7.5"/></svg>
+      <span style="font-size: 11.5px; color: #7c4a10; line-height: 1.4;">Not ready for live payroll yet. <span style="font-weight: 600; color: #184a6b;">Details</span></span>
+    </div>
+
+    <div style="background: #fff; border: 1px solid #dce4ea; border-radius: 12px; padding: 18px 18px 20px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 17px; font-weight: 650; letter-spacing: -0.012em;">September 2026</span>
+        <span style="font-size: 10px; font-weight: 650; letter-spacing: 0.04em; color: #475467; background: #f2f4f7; border: 1px solid #e4e7ec; border-radius: 4px; padding: 2px 6px;">NOT STARTED</span>
+      </div>
+      <div style="font-size: 12px; color: #667085; margin-top: 4px;">5 employees · pay day Tue 29 Sep</div>
+      <div style="background: #184a6b; color: #fff; font-size: 14px; font-weight: 600; padding: 14px; border-radius: 9px; text-align: center; margin-top: 15px;">Run payroll</div>
+    </div>
+
+    <div style="background: #fff; border: 1px solid #dce4ea; border-radius: 12px; padding: 16px 18px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 13.5px; font-weight: 650;">Needs attention</span>
+        <span class="num" style="font-size: 11.5px; font-weight: 700; color: #fff; background: #b42318; border-radius: 999px; padding: 1px 8px;">3</span>
+        <div style="flex-grow: 1;"></div>
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#98a2b3" stroke-width="1.9" stroke-linecap="round"><path d="M7.5 4.5 13 10l-5.5 5.5"/></svg>
+      </div>
+      <div style="font-size: 12px; color: #667085; margin-top: 6px; line-height: 1.5;">Two people cannot be paid until their setup is finished, and 2 hours of overtime are waiting on you.</div>
+    </div>
+
+    <div style="background: #fff; border: 1px solid #dce4ea; border-radius: 12px; padding: 16px 18px;">
+      <div style="font-size: 13.5px; font-weight: 650;">August 2026</div>
+      <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 8px;">
+        <span class="num" style="font-size: 24px; font-weight: 650; letter-spacing: -0.02em;">RM31,418.45</span>
+      </div>
+      <div style="font-size: 12px; color: #667085; margin-top: 3px;">Take-home pay · 5 employees</div>
+      <div style="display: flex; align-items: center; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #f2f4f7;">
+        <span style="font-size: 10px; font-weight: 650; letter-spacing: 0.04em; color: #92400e; background: #fef3c7; border: 1px solid #f2dfa8; border-radius: 4px; padding: 2px 6px;">PROVISIONAL</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 12.5px; font-weight: 600; color: #184a6b;">View</span>
+      </div>
+    </div>
+
+    <div style="background: #fff; border: 1px solid #dce4ea; border-radius: 12px; padding: 16px 18px;">
+      <div style="font-size: 13.5px; font-weight: 650;">Feeding this month</div>
+      <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 12px;">
+        <div style="display: flex; align-items: center; gap: 10px;"><span style="font-size: 12.5px; color: #475467; width: 96px;">Overtime</span><span class="num" style="font-size: 12.5px; font-weight: 600;">7.5 hrs</span><div style="flex-grow: 1;"></div><span style="font-size: 11.5px; color: #b45309; font-weight: 600;">2 unapproved</span></div>
+        <div style="display: flex; align-items: center; gap: 10px;"><span style="font-size: 12.5px; color: #475467; width: 96px;">Unpaid leave</span><span class="num" style="font-size: 12.5px; font-weight: 600;">1 day</span><div style="flex-grow: 1;"></div><span style="font-size: 11.5px; color: #98a2b3;">from leave</span></div>
+        <div style="display: flex; align-items: center; gap: 10px;"><span style="font-size: 12.5px; color: #475467; width: 96px;">Claims</span><span class="num" style="font-size: 12.5px; font-weight: 600;">RM86.40</span><div style="flex-grow: 1;"></div><span style="font-size: 11.5px; color: #98a2b3;">1 approved</span></div>
+      </div>
+    </div>
+</div>
+  
+</div>
+</x-dc>
+</body>
+</html>
