@@ -12,6 +12,8 @@ import { EmployeeSalaryService } from './employee-salary.service';
 import { PayComponentService } from './pay-component.service';
 import { PayrollPolicyService } from './payroll-policy.service';
 import { PayrollInputService } from './payroll-input.service';
+import { StaffClaimService } from './staff-claim.service';
+import { LocumService } from './locum.service';
 
 /**
  * WAVE 4 of the admin programme.
@@ -40,6 +42,8 @@ import { PayrollInputService } from './payroll-input.service';
     PayComponentService,
     PayrollPolicyService,
     PayrollInputService,
+    StaffClaimService,
+    LocumService,
   ],
   exports: [
     EmployeeService,
@@ -53,6 +57,8 @@ import { PayrollInputService } from './payroll-input.service';
     PayComponentService,
     PayrollPolicyService,
     PayrollInputService,
+    StaffClaimService,
+    LocumService,
   ],
 })
 export class WorkforceModule {}

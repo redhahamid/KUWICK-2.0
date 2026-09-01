@@ -24,6 +24,15 @@ import { PayrollPolicyService } from './payroll-policy.service';
 import { PayrollInputService } from './payroll-input.service';
 import { UpsertLegalEmployerDto } from './dto/upsert-legal-employer.dto';
 import { RecordSalaryDto } from './dto/record-salary.dto';
+import { StaffClaimService } from './staff-claim.service';
+import { LocumService } from './locum.service';
+import { CreateStaffClaimDto, DecideStaffClaimDto, SettleStaffClaimDto } from './dto/staff-claim.dto';
+import {
+  ApproveLocumSessionDto,
+  RecordLocumSessionDto,
+  SettleLocumSessionDto,
+  UpdateLocumSessionDto,
+} from './dto/locum-session.dto';
 import { UpsertPayComponentDto } from './dto/upsert-pay-component.dto';
 import { UpsertPayrollPolicyDto } from './dto/upsert-payroll-policy.dto';
 import { UpsertPayrollInputDto } from './dto/upsert-payroll-input.dto';
@@ -42,6 +51,8 @@ export class WorkforceController {
     private readonly payComponents: PayComponentService,
     private readonly payrollPolicies: PayrollPolicyService,
     private readonly payrollInputs: PayrollInputService,
+    private readonly claims: StaffClaimService,
+    private readonly locum: LocumService,
   ) {}
 
   // =========================================================================
@@ -68,6 +79,92 @@ export class WorkforceController {
   @Patch('employees/:staffId/legal-employer')
   assignEmployer(@Param('staffId') staffId: string, @Body() body: { legalEmployerId: string | null }) {
     return this.legalEmployers.assignEmployee(staffId, body.legalEmployerId ?? null);
+  }
+
+  // =========================================================================
+  // STAGE 2.5 — STAFF CLAIMS
+  //
+  // A reimbursement is a workflow, not a number typed into a payroll run. Every
+  // approved claim has exactly one payment route, chosen at approval.
+  // =========================================================================
+
+  @Get('claims')
+  listClaims(
+    @Query('staffId') staffId?: string,
+    @Query('status') status?: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED',
+    @Query('period') period?: string,
+  ) {
+    return this.claims.list({ staffId, status, period });
+  }
+
+  @Get('claims/:id/history')
+  claimHistory(@Param('id') id: string) {
+    return this.claims.history(id);
+  }
+
+  @Post('claims')
+  createClaim(@Body() dto: CreateStaffClaimDto) {
+    return this.claims.create(dto);
+  }
+
+  @Post('claims/:id/decide')
+  decideClaim(@Param('id') id: string, @Body() dto: DecideStaffClaimDto) {
+    return this.claims.decide(id, dto);
+  }
+
+  /** Finance settled it. Refused for a claim routed to payroll. */
+  @Post('claims/:id/settle')
+  settleClaim(@Param('id') id: string, @Body() dto: SettleStaffClaimDto) {
+    return this.claims.settle(id, dto);
+  }
+
+  @Post('claims/:id/cancel')
+  cancelClaim(@Param('id') id: string, @Body() body: { reason: string }) {
+    return this.claims.cancel(id, body.reason);
+  }
+
+  // =========================================================================
+  // STAGE 2.5 — LOCUM SESSIONS
+  //
+  // Work done by somebody who is NOT an employee. A payable, never a payslip.
+  // =========================================================================
+
+  @Get('locum/sessions')
+  listLocumSessions(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('staffId') staffId?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.locum.list({ from, to, staffId, status });
+  }
+
+  @Get('locum/payable')
+  locumPayable(
+    @Query('from', RequiredDateParam) from: string,
+    @Query('to', RequiredDateParam) to: string,
+  ) {
+    return this.locum.payableSummary(from, to);
+  }
+
+  @Post('locum/sessions')
+  recordLocumSession(@Body() dto: RecordLocumSessionDto) {
+    return this.locum.record(dto);
+  }
+
+  @Patch('locum/sessions/:id')
+  updateLocumSession(@Param('id') id: string, @Body() dto: UpdateLocumSessionDto) {
+    return this.locum.update(id, dto);
+  }
+
+  @Post('locum/sessions/:id/approve')
+  approveLocumSession(@Param('id') id: string, @Body() dto: ApproveLocumSessionDto) {
+    return this.locum.approve(id, dto);
+  }
+
+  @Post('locum/sessions/:id/settle')
+  settleLocumSession(@Param('id') id: string, @Body() dto: SettleLocumSessionDto) {
+    return this.locum.settle(id, dto);
   }
 
   // --- Effective-dated salary ----------------------------------------------

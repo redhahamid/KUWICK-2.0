@@ -4467,3 +4467,80 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 @media (max-width: 900px) {
   .kw-benefitDetail { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   STAGE 2.5 — setup checklist and link rows
+   ========================================================================== */
+
+/* The payroll setup checklist. A list, not cards: six items in a column read
+   as a sequence, six cards read as six unrelated things. */
+.kw-setupList {
+  display: flex;
+  flex-direction: column;
+}
+
+.kw-setupList__row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--kw-border);
+}
+
+.kw-setupList__row:last-child {
+  border-bottom: none;
+}
+
+.kw-setupList__mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 650;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.kw-setupList__mark--done {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.kw-setupList__mark--todo {
+  background: var(--kw-surface-2);
+  border: 1px solid var(--kw-border-strong);
+  color: var(--kw-text-secondary);
+}
+
+.kw-setupList__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--kw-text);
+}
+
+.kw-setupList__detail {
+  font-size: 12.5px;
+  color: var(--kw-text-secondary);
+  line-height: 1.5;
+  margin-top: 2px;
+}
+
+.kw-setupList__action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* A row of links to configuration nobody opens twice. Deliberately plain: an
+   advanced surface should not compete with the work queue above it. */
+.kw-linkRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  font-size: 13px;
+}

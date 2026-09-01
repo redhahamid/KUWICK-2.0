@@ -85,6 +85,9 @@ import { LegalEmployersPage } from './admin/hr/LegalEmployersPage';
 import { IncentivesPage } from './admin/hr/IncentivesPage';
 import { BenefitsPage } from './admin/hr/BenefitsPage';
 import { AdminRosterPage } from './admin/hr/RosterPage';
+import { ClaimsPage } from './admin/hr/ClaimsPage';
+import { LocumPage } from './admin/hr/LocumPage';
+import { PayrollSettingsPage } from './admin/hr/PayrollSettingsPage';
 import { FinanceOverviewPage } from './admin/finance/FinanceOverviewPage';
 import { DayEndClosingPage } from './admin/finance/DayEndClosingPage';
 import { PaymentsPage } from './admin/finance/PaymentsPage';
@@ -250,6 +253,9 @@ export function App() {
             <Route path="/admin/hr/employers" element={<LegalEmployersPage />} />
             <Route path="/admin/hr/incentives" element={<IncentivesPage />} />
             <Route path="/admin/hr/benefits" element={<BenefitsPage />} />
+            <Route path="/admin/hr/claims" element={<ClaimsPage />} />
+            <Route path="/admin/hr/locum" element={<LocumPage />} />
+            <Route path="/admin/hr/settings" element={<PayrollSettingsPage />} />
             <Route path="/admin/hr/access" element={<RolesSettingsPage />} />
 
             <Route path="/admin/finance" element={<FinanceOverviewPage />} />

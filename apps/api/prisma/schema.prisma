@@ -363,6 +363,10 @@ model Tenant {
   payrollAdjustments         PayrollAdjustment[]
   staffPermissionGrants      StaffPermissionGrant[]
   payrollInputEntries        PayrollInputEntry[]
+  staffClaims                StaffClaim[]
+  staffClaimAttachments      StaffClaimAttachment[]
+  staffClaimEvents           StaffClaimEvent[]
+  locumSessions              LocumSession[]
   claimImportBatches         ClaimImportBatch[]
 
   // Malaysia payroll — Stage 1 + 2
@@ -463,6 +467,8 @@ model Clinic {
   dayEndClosings              DayEndClosing[]
   labelPrints                 LabelPrint[]
   payrollInputEntries         PayrollInputEntry[]
+  staffClaims                 StaffClaim[]
+  locumSessions               LocumSession[]
   newItemRequests             NewItemRequest[]
   claimImportBatches          ClaimImportBatch[]
 
@@ -1080,6 +1086,14 @@ model Staff {
   prescriptionsReviewed        Prescription[]               @relation("PrescriptionReviewer")
   payrollInputs                PayrollInputEntry[]          @relation("PayrollInputStaff")
   payrollInputsCreated         PayrollInputEntry[]          @relation("PayrollInputAuthor")
+  staffClaims                  StaffClaim[]                 @relation("StaffClaimSubject")
+  staffClaimsSubmitted         StaffClaim[]                 @relation("StaffClaimSubmitter")
+  staffClaimsDecided           StaffClaim[]                 @relation("StaffClaimDecider")
+  staffClaimAttachments        StaffClaimAttachment[]       @relation("StaffClaimAttachmentAuthor")
+  staffClaimEvents             StaffClaimEvent[]            @relation("StaffClaimEventActor")
+  locumSessions                LocumSession[]               @relation("LocumSessionSubject")
+  locumSessionsApproved        LocumSession[]               @relation("LocumSessionApprover")
+  locumSessionsCreated         LocumSession[]               @relation("LocumSessionAuthor")
   claimImportBatches           ClaimImportBatch[]           @relation("ClaimImportedBy")
 
   // Malaysia payroll — Stage 1 + 2
@@ -6366,6 +6380,11 @@ model EmployeeProfile {
   emergencyContactRelation String? @map("emergency_contact_relation")
 
   employmentType   EmploymentType   @default(PERMANENT) @map("employment_type")
+  /// STAGE 2.5 — EMPLOYEE OR CONTRACTOR. `employmentType` describes the shape
+  /// of the arrangement; this decides whether payroll and statutory treatment
+  /// apply at all. A CONTRACTOR is paid through locum sessions and a payable,
+  /// never through a payroll run.
+  engagement       EngagementType   @default(EMPLOYEE)
   employmentStatus EmploymentStatus @default(ACTIVE) @map("employment_status")
   department       String?
   position         String?
@@ -7069,8 +7088,21 @@ model PayrollInputEntry {
   clinic    Clinic? @relation(fields: [clinicId], references: [id])
   staff     Staff   @relation("PayrollInputStaff", fields: [staffId], references: [id])
   createdBy Staff   @relation("PayrollInputAuthor", fields: [createdByStaffId], references: [id])
+  /// At most one claim backs any input. See StaffClaim.payrollInputEntryId.
+  claim     StaffClaim? @relation("ClaimPayrollInput")
 
-  @@unique([tenantId, staffId, period, componentCode])
+  /// UNIQUENESS IS TWO PARTIAL INDEXES, NOT ONE KEY, and neither is expressible
+  /// here — both live in the migrations:
+  ///
+  ///   derived inputs  unique on (tenant, staff, period, component, source row)
+  ///                   where source_record_id IS NOT NULL   [Stage 1/2]
+  ///   hand-keyed      unique on (tenant, staff, period, component)
+  ///                   where source_record_id IS NULL       [Stage 2.5]
+  ///
+  /// A single four-column key said a component may appear at most once per
+  /// person per period, which is right for a PCB figure somebody typed and
+  /// wrong for two approved claims in the same month — the second overwrote
+  /// the first.
   @@index([tenantId, period])
   @@map("payroll_input_entries")
 }
@@ -7791,4 +7823,255 @@ model EmployeeYtd {
   @@unique([legalEmployerId, staffId, taxYear, month])
   @@index([tenantId, staffId, taxYear])
   @@map("employee_ytd")
+}
+
+// ===========================================================================
+// STAGE 2.5 — CROSS-MODULE PAYROLL INTEGRATION
+//
+// Payroll was becoming a second place to key facts the clinic already records
+// somewhere else. Overtime is approved on a timesheet and then typed into
+// payroll; a staff claim is approved in conversation and then typed into
+// payroll; a locum's sessions are rostered and then typed into payroll as
+// though the locum were an employee.
+//
+// Every one of those is a place where two records of the same fact can drift,
+// and one of them — the locum — silently applies employee statutory treatment
+// to somebody who is not an employee.
+//
+// What follows is the canonical upstream: an explicit engagement, a locum
+// session that is a payable rather than a payslip, and a staff claim with ONE
+// payment route. Each produces at most one PayrollInputEntry, and the link is
+// unique, so "paid twice" is a constraint violation rather than a discrepancy
+// somebody notices in a reconciliation.
+// ===========================================================================
+
+/// EMPLOYEE OR NOT. The question statutory treatment turns on.
+///
+/// `EmploymentType.LOCUM` conflated two different people: a locum who IS an
+/// employee paid by the hour, and a locum who is a self-employed contractor
+/// invoicing for sessions. EPF, SOCSO, EIS and PCB apply to the first and not
+/// the second, and the difference cannot be inferred from a job title — so it
+/// is recorded rather than guessed.
+enum EngagementType {
+  /// Paid under a contract OF service. Employee payroll, statutory treatment.
+  EMPLOYEE
+  /// Paid under a contract FOR services. A payable, never a payslip.
+  CONTRACTOR
+}
+
+/// Where an approved amount is actually paid from.
+///
+/// Exactly one route per record, chosen before payment and not changeable once
+/// the money has moved. A claim that could be paid through both is a claim
+/// that will eventually be paid twice.
+enum PaymentRoute {
+  /// Materialises into a PayrollInputEntry and is paid with the salary.
+  PAYROLL
+  /// Reimbursed separately by Finance.
+  FINANCE
+}
+
+enum StaffClaimStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum StaffClaimCategory {
+  MEDICAL
+  TRAVEL
+  MEAL
+  TRAINING
+  EQUIPMENT
+  PROFESSIONAL_FEE
+  OTHER
+}
+
+/// Where an approved amount has got to on its way out of the door.
+enum PayoutStatus {
+  /// Approved, not yet routed anywhere.
+  PENDING
+  /// A PayrollInputEntry exists for it. Payment happens when the run is paid.
+  IN_PAYROLL
+  /// Finance has settled it outside payroll.
+  PAID
+  /// Approved but deliberately not paid — superseded, withdrawn, written off.
+  VOID
+}
+
+/// A STAFF CLAIM — money an employee spent that the clinic agreed to give back.
+///
+/// This was a manual payroll amount somebody typed into a run, which meant the
+/// claim itself had no record: no category, no receipt, no approver, no way to
+/// tell a reimbursed claim from an allowance, and nothing stopping the same
+/// receipt being paid through payroll in September and by Finance in October.
+model StaffClaim {
+  id       String  @id @default(uuid())
+  tenantId String  @map("tenant_id")
+  clinicId String? @map("clinic_id")
+  staffId  String  @map("staff_id")
+
+  category    StaffClaimCategory
+  /// What the employee asked for.
+  amountClaimed Decimal   @map("amount_claimed") @db.Decimal(12, 2)
+  /// What was actually approved. NULL until a decision is made — never
+  /// defaulted to the claimed amount, or an unapproved claim looks approved.
+  amountApproved Decimal? @map("amount_approved") @db.Decimal(12, 2)
+  /// The day the expense was incurred, not the day it was submitted.
+  claimDate   DateTime  @map("claim_date") @db.Date
+  description String
+
+  status StaffClaimStatus @default(DRAFT)
+
+  submittedByStaffId String    @map("submitted_by_staff_id")
+  submittedAt        DateTime? @map("submitted_at")
+  decidedByStaffId   String?   @map("decided_by_staff_id")
+  decidedAt          DateTime? @map("decided_at")
+  decisionReason     String?   @map("decision_reason")
+
+  /// Chosen at approval. Immutable once the claim has been materialised or paid.
+  paymentRoute PaymentRoute? @map("payment_route")
+  payoutStatus PayoutStatus  @default(PENDING) @map("payout_status")
+  /// The period it was carried into, when the route is PAYROLL.
+  payrollPeriod DateTime?    @map("payroll_period") @db.Date
+  /// THE DUPLICATE GUARD. Unique, so one claim can back at most one payroll
+  /// input; a second materialisation is a constraint violation, not a
+  /// discrepancy somebody spots in a reconciliation months later.
+  payrollInputEntryId String? @unique @map("payroll_input_entry_id")
+  /// Finance's own reference once settled outside payroll.
+  financeReference    String? @map("finance_reference")
+  paidAt              DateTime? @map("paid_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant             @relation(fields: [tenantId], references: [id])
+  clinic      Clinic?            @relation(fields: [clinicId], references: [id])
+  staff       Staff              @relation("StaffClaimSubject", fields: [staffId], references: [id])
+  submittedBy Staff              @relation("StaffClaimSubmitter", fields: [submittedByStaffId], references: [id])
+  decidedBy   Staff?             @relation("StaffClaimDecider", fields: [decidedByStaffId], references: [id])
+  payrollInput PayrollInputEntry? @relation("ClaimPayrollInput", fields: [payrollInputEntryId], references: [id])
+  attachments StaffClaimAttachment[]
+  events      StaffClaimEvent[]
+
+  @@index([tenantId, staffId, status])
+  @@index([tenantId, status, payoutStatus])
+  @@index([tenantId, payrollPeriod])
+  @@map("staff_claims")
+}
+
+/// A receipt. A claim without one is a claim nobody can audit.
+model StaffClaimAttachment {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  staffClaimId String   @map("staff_claim_id")
+  fileName     String   @map("file_name")
+  filePath     String   @map("file_path")
+  mimeType     String   @map("mime_type")
+  fileSize     Int      @map("file_size")
+
+  uploadedByStaffId String   @map("uploaded_by_staff_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  staffClaim StaffClaim @relation(fields: [staffClaimId], references: [id], onDelete: Cascade)
+  uploadedBy Staff      @relation("StaffClaimAttachmentAuthor", fields: [uploadedByStaffId], references: [id])
+
+  @@index([tenantId, staffClaimId])
+  @@map("staff_claim_attachments")
+}
+
+/// Every state change, with an actor. The claim's own history, not the global
+/// audit log — a manager looking at a disputed claim should not have to search
+/// an audit table to find out who approved what and when.
+model StaffClaimEvent {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  staffClaimId String   @map("staff_claim_id")
+  event        String
+  detail       String?
+  fromStatus   StaffClaimStatus? @map("from_status")
+  toStatus     StaffClaimStatus? @map("to_status")
+
+  actorStaffId String   @map("actor_staff_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  staffClaim StaffClaim @relation(fields: [staffClaimId], references: [id], onDelete: Cascade)
+  actor      Staff      @relation("StaffClaimEventActor", fields: [actorStaffId], references: [id])
+
+  @@index([tenantId, staffClaimId])
+  @@map("staff_claim_events")
+}
+
+enum LocumSessionStatus {
+  /// Rostered or recorded, work not yet confirmed.
+  PLANNED
+  /// The session happened. Ready for a fee to be agreed and approved.
+  COMPLETED
+  /// The fee is approved and owed.
+  APPROVED
+  /// Did not happen. Kept rather than deleted so a roster gap has a reason.
+  CANCELLED
+}
+
+/// A LOCUM SESSION — work done by somebody who is NOT an employee.
+///
+/// The clinic pays for the session under a contract FOR services, so the money
+/// is a professional fee and a payable. It is not salary, it attracts no EPF,
+/// SOCSO or EIS, and it must never reach a payroll run: applying employee
+/// statutory treatment to a contractor is not a rounding error, it is
+/// contributing on somebody else's behalf to schemes they are not in.
+///
+/// A locum who genuinely IS an employee is engaged as EMPLOYEE and paid through
+/// payroll like anybody else. The distinction is recorded on the engagement,
+/// not inferred from the word "locum".
+model LocumSession {
+  id       String  @id @default(uuid())
+  tenantId String  @map("tenant_id")
+  /// Where the session was worked. A payable is still branch-attributable.
+  clinicId String  @map("clinic_id")
+  /// The person. A `Staff` row, because they hold a schedule and see patients —
+  /// but with `engagement = CONTRACTOR`, which is what keeps them out of payroll.
+  staffId  String  @map("staff_id")
+
+  sessionDate DateTime @map("session_date") @db.Date
+  /// Free text: "Morning", "On call", "Saturday clinic".
+  label       String?
+  /// Priced by the hour or as a flat session fee — both are used in practice.
+  hours       Decimal? @db.Decimal(6, 2)
+  hourlyRate  Decimal? @map("hourly_rate") @db.Decimal(10, 2)
+  sessionFee  Decimal? @map("session_fee") @db.Decimal(12, 2)
+
+  status LocumSessionStatus @default(PLANNED)
+
+  /// What the clinic agreed to pay. NULL until approved.
+  approvedAmount   Decimal? @map("approved_amount") @db.Decimal(12, 2)
+  approvedByStaffId String? @map("approved_by_staff_id")
+  approvedAt        DateTime? @map("approved_at")
+
+  /// Always FINANCE for a contractor. The column exists so the invariant is
+  /// visible in the data rather than only in the code that writes it.
+  paymentRoute PaymentRoute @default(FINANCE) @map("payment_route")
+  payoutStatus PayoutStatus @default(PENDING) @map("payout_status")
+  /// The clinic's own invoice or self-bill reference, once there is one.
+  invoiceReference String?  @map("invoice_reference")
+  paidAt           DateTime? @map("paid_at")
+
+  note             String?
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant  @relation(fields: [tenantId], references: [id])
+  clinic     Clinic  @relation(fields: [clinicId], references: [id])
+  staff      Staff   @relation("LocumSessionSubject", fields: [staffId], references: [id])
+  approvedBy Staff?  @relation("LocumSessionApprover", fields: [approvedByStaffId], references: [id])
+  createdBy  Staff   @relation("LocumSessionAuthor", fields: [createdByStaffId], references: [id])
+
+  @@index([tenantId, staffId, sessionDate])
+  @@index([tenantId, status, payoutStatus])
+  @@map("locum_sessions")
 }

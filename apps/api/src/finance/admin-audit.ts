@@ -105,6 +105,20 @@ export type AuditAction =
   | 'payrollSnapshot.created'
   | 'payroll.reopened'
   | 'incentiveRule.changed'
+  // Stage 2.5 — cross-module payroll integration. Every state change on a
+  // claim or a locum session is auditable, because these are the two records
+  // that decide whether somebody is paid twice or not at all.
+  | 'staffClaim.created'
+  | 'staffClaim.submitted'
+  | 'staffClaim.decided'
+  | 'staffClaim.cancelled'
+  | 'staffClaim.routedToPayroll'
+  | 'staffClaim.settledByFinance'
+  | 'locumSession.recorded'
+  | 'locumSession.updated'
+  | 'locumSession.approved'
+  | 'locumSession.settled'
+  | 'employee.engagementChanged'
   // Access
   | 'role.changed';
 

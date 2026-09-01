@@ -183,6 +183,27 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    * configured table has, or the table is incomplete where they sit. Distinct
    * from "no schedule is configured", which is a property of the run.
    */
+  /*
+   * INFO, and deliberately not a warning.
+   *
+   * A contractor is not an employee who cannot be paid — they are somebody this
+   * run is not about. Their fee is a payable. Raising a blocker for every locum
+   * every month would train the owner to click past blockers, which is how a
+   * real one eventually gets clicked past too. It is recorded so the run can
+   * account for everybody the clinic pays, not only everybody it payrolls.
+   */
+  CONTRACTOR_EXCLUDED: {
+    code: 'CONTRACTOR_EXCLUDED',
+    severity: 'INFO',
+    overridable: false,
+    cause: (c) => `${c.name} is engaged as a contractor, not an employee.`,
+    consequence:
+      'They are paid for their sessions as a professional fee through Finance, so they are not on this payroll ' +
+      'and no EPF, SOCSO or EIS is contributed for them.',
+    remediation:
+      'Nothing to do, unless this person should in fact be an employee — in which case change their engagement.',
+    deepLink: () => '/admin/hr/locum',
+  },
   STATUTORY_BAND_GAP: {
     code: 'STATUTORY_BAND_GAP',
     severity: 'BLOCKING',

@@ -19,6 +19,14 @@ import {
   unpaidLeaveDeductionCents,
 } from './payroll-calculation';
 import { totalTimesheet } from './attendance-hours';
+import {
+  MaterialisedInput,
+  materialiseClaim,
+  materialiseIncentives,
+  materialiseOvertime,
+  materialiseUnpaidLeave,
+  planMaterialisation,
+} from './payroll-materialisation';
 import { leaveDaysInYear } from './leave-balance';
 import { CreatePayrollRunDto } from './dto/create-payroll-run.dto';
 import { PayrollAdjustmentDto } from './dto/payroll-adjustment.dto';
@@ -27,12 +35,26 @@ import { approvalGate, BuiltException, buildException, ExceptionSeverity } from 
 import { resolveSalaryForPayroll, SalaryRow } from './salary-resolution';
 import { diffSnapshots, snapshotHash, SnapshotEmployeeLine, SnapshotPayload } from './payroll-snapshot';
 import { computeVariance, VarianceLine } from './payroll-variance';
+import {
+  EmployeeFigures,
+  checkMembership,
+  checkPayrollInvariants,
+  describeViolations,
+} from './payroll-invariants';
 
 /// Components that reduce pay whichever way the amount is entered. Everything
 /// else is an earning unless the amount itself is negative.
 const DEDUCTION_COMPONENTS = new Set([
   'UNPAID_LEAVE', 'ZAKAT', 'ADVANCE_RECOVERY', 'UNIFORM', 'OTHER_DEDUCTION',
 ]);
+
+/**
+ * The Employment Act's minimum for overtime on a normal working day. Rest-day
+ * and public-holiday tiers are supported by the engine and are clinic
+ * configuration; this is the only one applied automatically, and it is named
+ * rather than inlined so it is findable when the tiers become configurable.
+ */
+const OVERTIME_NORMAL_DAY_MULTIPLIER = 1.5;
 
 function monthStart(value: string | Date): Date {
   const date = typeof value === 'string' ? new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`) : value;
@@ -218,14 +240,38 @@ export class PayrollService {
         hoursPerDay: Number(run.orpHoursPerDay),
       };
 
+      // EMPLOYEES ONLY.
+      //
+      // A contractor is paid under a contract FOR services. Their fee is a
+      // payable, not salary; it attracts no EPF, SOCSO or EIS, and carrying
+      // one into a payroll run does not merely misclassify them — it
+      // contributes on their behalf to schemes they are not a member of.
+      //
+      // This is a WHERE clause rather than an exception on purpose. A
+      // contractor is not an employee who cannot be paid; they are somebody
+      // this run is not about, and a blocker for every locum every month would
+      // train the owner to click past blockers.
       const employees = await tx.employeeProfile.findMany({
         where: {
+          engagement: 'EMPLOYEE',
           employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
           ...(run.clinicId ? { staff: { clinicId: run.clinicId } } : {}),
         },
         include: { staff: { select: { id: true, fullName: true, active: true, clinicId: true, role: true } } },
         // Deterministic order, so two calculations of the same run produce the
         // same exception list in the same sequence.
+        orderBy: { staffId: 'asc' },
+      });
+
+      // Who was left out, and why — visible on the run rather than only in the
+      // absence of a payslip. An INFO row never blocks approval.
+      const contractors = await tx.employeeProfile.findMany({
+        where: {
+          engagement: 'CONTRACTOR',
+          employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
+          ...(run.clinicId ? { staff: { clinicId: run.clinicId } } : {}),
+        },
+        include: { staff: { select: { fullName: true, active: true } } },
         orderBy: { staffId: 'asc' },
       });
 
@@ -267,12 +313,30 @@ export class PayrollService {
         });
         salaryByStaff.set(row.staffId, list);
       }
+      // Overtime approvers, resolved once. A name per attendance row would be
+      // one query per employee per calculation for a value that repeats.
+      const approverNames = new Map<string, string>(
+        (
+          await tx.staff.findMany({
+            where: {
+              overtimeApprovals: {
+                some: { workDate: { gte: period, lt: periodEnd }, overtimeApproved: true },
+              },
+            },
+            select: { id: true, fullName: true },
+          })
+        ).map((row) => [row.id, row.fullName]),
+      );
+
       const lastDayOfPeriod = new Date(periodEnd.getTime() - 86400000);
       const periodLabel = period.toLocaleDateString('en-GB', {
         month: 'long',
         year: 'numeric',
         timeZone: 'UTC',
       });
+      // Every payslip's figures, kept so the run's own totals can be checked
+      // against the rows that produced them rather than trusted.
+      const paidEmployees: EmployeeFigures[] = [];
       let grossTotal = 0;
       let deductionTotal = 0;
       let netTotal = 0;
@@ -310,7 +374,7 @@ export class PayrollService {
           continue;
         }
 
-        const [attendance, leave, incentives, inputs] = await Promise.all([
+        const [attendance, leave, incentives, inputs, claims] = await Promise.all([
           tx.attendanceRecord.findMany({
             where: { staffId: employee.staffId, workDate: { gte: period, lt: periodEnd } },
           }),
@@ -321,16 +385,30 @@ export class PayrollService {
               startDate: { lt: periodEnd },
               endDate: { gte: period },
             },
+            include: { approvedBy: { select: { fullName: true } } },
           }),
           tx.incentiveResult.findMany({
             where: {
               staffId: employee.staffId,
               incentiveRun: { period, status: { in: ['APPROVED', 'PAID'] } },
             },
+            include: { incentiveRun: { select: { approvedBy: { select: { fullName: true } } } } },
           }),
-          // What a person supplied for this period: allowances, bonus, claims,
-          // and PCB — which this system does not calculate.
+          // What a person supplied for this period: allowances, bonus and PCB —
+          // which this system does not calculate.
           tx.payrollInputEntry.findMany({ where: { staffId: employee.staffId, period } }),
+          // APPROVED claims the approver routed to PAYROLL. A claim routed to
+          // FINANCE is deliberately not here: it is reimbursed separately, and
+          // reading it would be the double payment the route exists to prevent.
+          tx.staffClaim.findMany({
+            where: {
+              staffId: employee.staffId,
+              status: 'APPROVED',
+              paymentRoute: 'PAYROLL',
+              payrollPeriod: period,
+            },
+            include: { decidedBy: { select: { fullName: true } } },
+          }),
         ]);
 
         const timesheet = totalTimesheet(
@@ -367,74 +445,188 @@ export class PayrollService {
 
         // Unpaid leave, from the leave TYPE — a clinic's own policy decides
         // which types are unpaid, and this reads that rather than assuming.
+        //
+        // Kept PER REQUEST rather than summed straight to a number, so the
+        // materialised deduction can name the request behind it and the person
+        // who approved it. "1 unpaid day" with no way back to the leave record
+        // is what made payroll feel like a second place to key facts.
         const unpaidTypes = new Set(['UNPAID']);
-        const unpaidDays = leave
+        const unpaidLeaveRows = leave
           .filter((row) => unpaidTypes.has(row.leaveType))
-          .reduce(
-            (total, row) =>
-              total +
-              leaveDaysInYear(
-                {
-                  startDate: row.startDate > period ? row.startDate : period,
-                  endDate: row.endDate < periodEnd ? row.endDate : new Date(periodEnd.getTime() - 86400000),
-                },
-                period.getUTCFullYear(),
-              ),
-            0,
-          );
-
-        const incentiveCents = incentives.reduce((total, row) => total + toCents(row.amount), 0);
+          .map((row) => ({
+            id: row.id,
+            leaveType: row.leaveType,
+            startDate: row.startDate,
+            endDate: row.endDate,
+            approverName: row.approvedBy?.fullName ?? null,
+            days: leaveDaysInYear(
+              {
+                startDate: row.startDate > period ? row.startDate : period,
+                endDate: row.endDate < periodEnd ? row.endDate : new Date(periodEnd.getTime() - 86400000),
+              },
+              period.getUTCFullYear(),
+            ),
+          }));
+        const unpaidDays = unpaidLeaveRows.reduce((total, row) => total + row.days, 0);
 
         // The Ordinary Rate of Pay is built from the earnings that COUNT toward
         // it — basic and ORP-liable allowances — and never from overtime, or an
         // hour of overtime would raise the rate paid for the next one.
         const orpBase = basicCents;
         const rates = ordinaryRates(orpBase, orpConfig);
-        const unpaidCents = unpaidLeaveDeductionCents(unpaidDays, rates);
 
-        // Overtime from APPROVED minutes only, at the hourly ORP. The 1.5x
-        // multiplier is the Employment Act's normal-day minimum; rest-day and
-        // public-holiday tiers are supported by the engine and are configured
-        // per clinic rather than assumed here.
+        // -------------------------------------------------------------------
+        // MATERIALISATION — upstream facts become reviewable rows.
+        //
+        // Overtime, unpaid leave, incentives and approved claims were read live
+        // and turned straight into payslip lines, so the earnings step could
+        // show a figure and nothing on screen could say where it came from, who
+        // approved it, or when. Each is now a `payroll_input_entries` row
+        // carrying its source, the upstream record id and a sentence of
+        // provenance — and each is idempotent on that upstream row, so
+        // recalculating cannot pay anybody twice.
+        // -------------------------------------------------------------------
         const overtimeHours = timesheet.approvedOvertimeMinutes / 60;
-        const hourlyCents = employee.hourlyRate ? toCents(employee.hourlyRate) : rates.overtimeHourlyCents;
-        const overtime = computeOvertime(
-          [{ label: 'Normal day (1.5x)', hours: overtimeHours, multiplier: 1.5 }],
-          hourlyCents,
+        const hourlyCents = rates.overtimeHourlyCents;
+        const overtimeApprover =
+          attendance.find((row) => row.overtimeApproved && row.overtimeApprovedByStaffId)?.overtimeApprovedByStaffId ??
+          null;
+
+        const desiredInputs = [
+          materialiseOvertime({
+            staffId: employee.staffId,
+            approvedOvertimeMinutes: timesheet.approvedOvertimeMinutes,
+            overtimeHourlyCents: hourlyCents,
+            multiplier: OVERTIME_NORMAL_DAY_MULTIPLIER,
+            sourceRecordIds: attendance.filter((r) => r.overtimeApproved).map((r) => r.id),
+            approverName: overtimeApprover ? (approverNames.get(overtimeApprover) ?? null) : null,
+          }),
+          materialiseUnpaidLeave(
+            unpaidLeaveRows.map((row) => ({
+              staffId: employee.staffId,
+              leaveRequestId: row.id,
+              leaveType: row.leaveType,
+              unpaidDays: row.days,
+              dailyRateCents: rates.unpaidLeaveDailyCents,
+              approverName: row.approverName,
+              startDate: row.startDate,
+              endDate: row.endDate,
+            })),
+          ),
+          materialiseIncentives(
+            incentives.map((row) => ({
+              staffId: employee.staffId,
+              incentiveResultId: row.id,
+              incentiveRunId: row.incentiveRunId,
+              amountCents: toCents(row.amount),
+              earnedPeriod: period,
+              approverName: row.incentiveRun.approvedBy?.fullName ?? null,
+            })),
+          ),
+          ...claims.map((claim) =>
+            materialiseClaim({
+              staffId: employee.staffId,
+              claimId: claim.id,
+              category: claim.category,
+              amountCents: toCents(claim.amountApproved ?? 0),
+              claimDate: claim.claimDate,
+              approverName: claim.decidedBy?.fullName ?? null,
+            }),
+          ),
+        ].filter((row): row is MaterialisedInput => row !== null);
+
+        const plan = planMaterialisation(
+          desiredInputs,
+          inputs.map((row) => ({
+            id: row.id,
+            componentCode: row.componentCode,
+            source: row.source,
+            amountCents: toCents(row.amount),
+            sourceRecordId: row.sourceRecordId,
+          })),
         );
-        const overtimeCents = overtime.totalCents;
+
+        for (const want of plan.create) {
+          const created = await tx.payrollInputEntry.create({
+            data: {
+              tenantId: currentTenantId(),
+              clinicId: run.clinicId,
+              staffId: want.staffId,
+              period,
+              componentCode: want.componentCode,
+              label: want.label,
+              amount: fromCents(want.amountCents),
+              source: want.source,
+              sourceRecordId: want.sourceRecordId,
+              kind: 'ADDITIONAL',
+              reason: want.provenance,
+              earnedPeriod: want.earnedPeriod,
+              createdByStaffId: actor.id,
+            },
+          });
+          if (want.source === 'CLAIM' && want.sourceRecordId) {
+            await this.linkClaimToInput(tx, want.sourceRecordId, created.id, period);
+          }
+        }
+        for (const change of plan.update) {
+          await tx.payrollInputEntry.update({
+            where: { id: change.id },
+            data: {
+              amount: fromCents(change.input.amountCents),
+              label: change.input.label,
+              reason: change.input.provenance,
+              earnedPeriod: change.input.earnedPeriod,
+            },
+          });
+        }
+        if (plan.remove.length > 0) {
+          // An upstream fact that no longer justifies an input — overtime
+          // rejected after a first calculation, a claim withdrawn — must stop
+          // being paid. The claim link is released first so the claim can be
+          // routed again.
+          await tx.staffClaim.updateMany({
+            where: { payrollInputEntryId: { in: plan.remove } },
+            data: { payrollInputEntryId: null, payoutStatus: 'PENDING' },
+          });
+          await tx.payrollInputEntry.deleteMany({ where: { id: { in: plan.remove } } });
+        }
+
+        // Re-read: the payslip is built from the MATERIALISED rows, not from the
+        // in-memory derivation. One source of truth for what this period pays,
+        // and the same rows the earnings screen shows.
+        const materialised = await tx.payrollInputEntry.findMany({
+          where: { staffId: employee.staffId, period },
+        });
+
+        const overtimeCents = materialised
+          .filter((row) => row.componentCode === 'OVERTIME')
+          .reduce((sum, row) => sum + toCents(row.amount), 0);
+        const unpaidCents = materialised
+          .filter((row) => row.componentCode === 'UNPAID_LEAVE')
+          .reduce((sum, row) => sum + toCents(row.amount), 0);
+        const incentiveCents = materialised
+          .filter((row) => row.componentCode === 'INCENTIVE')
+          .reduce((sum, row) => sum + toCents(row.amount), 0);
 
         // Components carry their own statutory liability, so the three bases
         // come out different — overtime is SOCSO and EIS wages but not EPF
         // wages. See docs/HR_PAYROLL_EXCEL_REFERENCE_AUDIT.md section 1.3.
+        //
+        // EVERY LINE BUT BASIC PAY COMES FROM A MATERIALISED INPUT ROW. Overtime,
+        // unpaid leave and incentives used to be pushed here from in-memory
+        // derivations AND read again from the input table, which is how a
+        // derived figure could be counted twice the moment it also existed as a
+        // row. There is now one source: the rows.
         const componentLines: PayrollComponentLine[] = [
           { code: 'BASIC', label: 'Basic pay', kind: 'EARNING', amount: fromCents(basicCents), liability: DEFAULT_COMPONENT_LIABILITY.BASIC },
         ];
-        if (overtimeCents > 0) {
-          componentLines.push({
-            code: 'OVERTIME', label: 'Overtime', kind: 'EARNING',
-            amount: fromCents(overtimeCents), liability: DEFAULT_COMPONENT_LIABILITY.OVERTIME,
-          });
-        }
-        if (incentiveCents > 0) {
-          componentLines.push({
-            code: 'INCENTIVE', label: 'Incentives', kind: 'EARNING',
-            amount: fromCents(incentiveCents), liability: DEFAULT_COMPONENT_LIABILITY.INCENTIVE,
-          });
-        }
-        if (unpaidCents > 0) {
-          componentLines.push({
-            code: 'UNPAID_LEAVE', label: 'Unpaid leave', kind: 'DEDUCTION',
-            amount: fromCents(unpaidCents), liability: DEFAULT_COMPONENT_LIABILITY.UNPAID_LEAVE,
-          });
-        }
 
         // PCB is a supplied amount, not a computed one, so it is taken out of
         // the component list and applied as an override further down.
-        const pcbInput = inputs.find((row) => row.componentCode === 'PCB');
+        const pcbInput = materialised.find((row) => row.componentCode === 'PCB');
         const pcbOverrideCents = pcbInput ? toCents(pcbInput.amount) : null;
 
-        for (const input of inputs) {
+        for (const input of materialised) {
           if (input.componentCode === 'PCB') continue;
           const liability = DEFAULT_COMPONENT_LIABILITY[input.componentCode];
           if (!liability) {
@@ -562,10 +754,28 @@ export class PayrollService {
                 unpaidLeaveDaily: fromCents(rates.unpaidLeaveDailyCents),
                 overtimeHourly: fromCents(rates.overtimeHourlyCents),
               },
-              overtimeTiers: overtime.tiers.map((tier) => ({
-                label: tier.label, hours: tier.hours,
-                hourlyRate: fromCents(tier.hourlyRateCents), total: fromCents(tier.totalCents),
-              })),
+              overtimeTiers:
+                overtimeCents > 0
+                  ? [{
+                      label: `Normal day (${OVERTIME_NORMAL_DAY_MULTIPLIER}x)`,
+                      hours: Math.round(overtimeHours * 100) / 100,
+                      hourlyRate: fromCents(Math.round(hourlyCents * OVERTIME_NORMAL_DAY_MULTIPLIER)),
+                      total: fromCents(overtimeCents),
+                    }]
+                  : [],
+              // WHERE EVERY DERIVED FIGURE CAME FROM, on the payslip itself.
+              // The earnings screen reads the same rows; this is so a payslip
+              // printed today still explains itself in a year.
+              provenance: materialised
+                .filter((row) => row.source !== 'MANUAL')
+                .map((row) => ({
+                  component: row.componentCode,
+                  amount: fromCents(toCents(row.amount)),
+                  source: row.source,
+                  sourceRecordId: row.sourceRecordId,
+                  explanation: row.reason,
+                  earnedPeriod: row.earnedPeriod?.toISOString().slice(0, 10) ?? null,
+                })),
               age,
               statutoryNotes: {
                 epf: payslip.statutory.epf.note ?? null,
@@ -580,11 +790,62 @@ export class PayrollService {
           },
         });
 
+        paidEmployees.push({
+          staffId: employee.staffId,
+          name: employee.staff.fullName,
+          grossCents: payslip.grossCents,
+          employeeDeductionCents: payslip.employeeDeductionCents,
+          netCents: payslip.netCents,
+          employerContributionCents: payslip.employerContributionCents,
+          employerCostCents: payslip.employerCostCents,
+        });
+
         grossTotal += payslip.grossCents;
         deductionTotal += payslip.employeeDeductionCents;
         netTotal += payslip.netCents;
         employerCostTotal += payslip.employerCostCents;
         counted += 1;
+      }
+
+      // ---------------------------------------------------------------------
+      // INVARIANTS. The arithmetic the run asserts about itself.
+      //
+      // A violation here is a BUG in the calculation, not a data problem: it
+      // means the payslips and the totals written above them disagree. Failing
+      // loudly is the only safe response, because a wrong total is
+      // indistinguishable from a right one by looking at it.
+      // ---------------------------------------------------------------------
+      const violations = [
+        ...checkPayrollInvariants(paidEmployees, {
+          grossCents: grossTotal,
+          deductionCents: deductionTotal,
+          netCents: netTotal,
+          employerCostCents: employerCostTotal,
+          employeeCount: counted,
+        }),
+        ...checkMembership(
+          paidEmployees.map((e) => e.staffId),
+          exceptions.filter((e) => e.staffId).map((e) => ({ staffId: e.staffId as string, reason: e.code })),
+          employees.filter((e) => e.staff.active).map((e) => e.staffId),
+        ),
+      ];
+      if (violations.length > 0) {
+        throw new ConflictException(
+          `${describeViolations(violations)} ` +
+            violations.slice(0, 3).map((v) => v.message).join(' '),
+        );
+      }
+
+      for (const contractor of contractors) {
+        if (!contractor.staff.active) continue;
+        exceptions.push({
+          ...buildException('CONTRACTOR_EXCLUDED', contractor.staffId, {
+            staffId: contractor.staffId,
+            runId,
+            name: contractor.staff.fullName,
+          }),
+          name: contractor.staff.fullName,
+        });
       }
 
       const updated = await tx.payrollRun.update({
@@ -664,6 +925,34 @@ export class PayrollService {
       });
 
       return updated;
+    });
+  }
+
+  /**
+   * Bind a claim to the input that carries it.
+   *
+   * The link is UNIQUE in the database, so a second attempt to materialise the
+   * same claim — a re-run against a stale plan, two runs covering one period —
+   * fails on the constraint rather than quietly paying it twice. The failure is
+   * translated here into something a person can act on, because "unique
+   * constraint violated" tells a clinic manager nothing.
+   */
+  private async linkClaimToInput(tx: AdminTx, claimId: string, inputId: string, period: Date) {
+    const claim = await tx.staffClaim.findFirst({ where: { id: claimId } });
+    if (!claim) return;
+    if (claim.payrollInputEntryId && claim.payrollInputEntryId !== inputId) {
+      throw new ConflictException(
+        `Claim ${claimId} is already being paid through another payroll input. A claim is paid once, by one route.`,
+      );
+    }
+    if (claim.paymentRoute !== 'PAYROLL') {
+      throw new ConflictException(
+        `Claim ${claimId} was approved for separate reimbursement by Finance, so it must not reach a payslip.`,
+      );
+    }
+    await tx.staffClaim.update({
+      where: { id: claimId },
+      data: { payrollInputEntryId: inputId, payoutStatus: 'IN_PAYROLL', payrollPeriod: period },
     });
   }
 

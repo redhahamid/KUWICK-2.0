@@ -49,6 +49,10 @@ describe('payroll exceptions', () => {
       '/admin/hr/incentives',
       '/admin/hr/benefits',
       '/admin/hr/access',
+      // Stage 2.5
+      '/admin/hr/claims',
+      '/admin/hr/locum',
+      '/admin/hr/settings',
     ];
     const ctx = { staffId: 's1', runId: 'r1', hours: 1, days: 1, count: 2, percent: 50, net: '-1.00', componentCode: 'X' };
     for (const [code, template] of Object.entries(EXCEPTION_CATALOGUE)) {

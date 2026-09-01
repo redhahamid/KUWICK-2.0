@@ -55,6 +55,11 @@ import type {
   PayrollExceptionList,
   PayrollVarianceReport,
   PayrollSnapshotRow,
+  StaffClaimRow,
+  StaffClaimEventRow,
+  LocumSessionRow,
+  LocumPayableSummary,
+  SalaryParityReport,
 } from '../types';
 
 function qs(params: Record<string, string | number | boolean | undefined>): string {
@@ -983,4 +988,106 @@ export function useReopenPayroll() {
       apiClient.patch(`/workforce/payroll/runs/${id}/reopen`, { reason }),
     ['admin-hr'],
   );
+}
+
+// ===========================================================================
+// STAGE 2.5 — CROSS-MODULE PAYROLL INTEGRATION
+//
+// Claims and locum sessions are the two upstream records that decide whether
+// somebody is paid twice or not at all, so both have their own surfaces rather
+// than being numbers typed into a payroll run.
+// ===========================================================================
+
+export function useStaffClaims(params: { staffId?: string; status?: string; period?: string } = {}) {
+  return useQuery({
+    queryKey: ['admin-hr', 'staff-claims', params],
+    queryFn: () => apiClient.get<StaffClaimRow[]>(`/workforce/claims${qs(params)}`),
+  });
+}
+
+export function useStaffClaimHistory(id: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'staff-claim-history', id],
+    queryFn: () => apiClient.get<StaffClaimEventRow[]>(`/workforce/claims/${id}/history`),
+    enabled: Boolean(id),
+  });
+}
+
+export function useCreateStaffClaim() {
+  return useAdminMutation((body: Record<string, unknown>) => apiClient.post('/workforce/claims', body), ['admin-hr']);
+}
+
+export function useDecideStaffClaim() {
+  return useAdminMutation(
+    ({ id, ...body }: { id: string } & Record<string, unknown>) =>
+      apiClient.post(`/workforce/claims/${id}/decide`, body),
+    ['admin-hr'],
+  );
+}
+
+export function useSettleStaffClaim() {
+  return useAdminMutation(
+    ({ id, ...body }: { id: string } & Record<string, unknown>) =>
+      apiClient.post(`/workforce/claims/${id}/settle`, body),
+    ['admin-hr'],
+  );
+}
+
+export function useLocumSessions(params: { from?: string; to?: string; staffId?: string; status?: string } = {}) {
+  return useQuery({
+    queryKey: ['admin-hr', 'locum-sessions', params],
+    queryFn: () => apiClient.get<LocumSessionRow[]>(`/workforce/locum/sessions${qs(params)}`),
+  });
+}
+
+export function useLocumPayable(params: { from: string; to: string }) {
+  return useQuery({
+    queryKey: ['admin-hr', 'locum-payable', params],
+    queryFn: () => apiClient.get<LocumPayableSummary>(`/workforce/locum/payable${qs(params)}`),
+    enabled: Boolean(params.from && params.to),
+  });
+}
+
+export function useRecordLocumSession() {
+  return useAdminMutation(
+    (body: Record<string, unknown>) => apiClient.post('/workforce/locum/sessions', body),
+    ['admin-hr'],
+  );
+}
+
+export function useUpdateLocumSession() {
+  return useAdminMutation(
+    ({ id, ...body }: { id: string } & Record<string, unknown>) =>
+      apiClient.patch(`/workforce/locum/sessions/${id}`, body),
+    ['admin-hr'],
+  );
+}
+
+export function useApproveLocumSession() {
+  return useAdminMutation(
+    ({ id, ...body }: { id: string } & Record<string, unknown>) =>
+      apiClient.post(`/workforce/locum/sessions/${id}/approve`, body),
+    ['admin-hr'],
+  );
+}
+
+export function useSettleLocumSession() {
+  return useAdminMutation(
+    ({ id, ...body }: { id: string } & Record<string, unknown>) =>
+      apiClient.post(`/workforce/locum/sessions/${id}/settle`, body),
+    ['admin-hr'],
+  );
+}
+
+/**
+ * The canonical-salary cutover proof. Not a routine screen: it answers "does
+ * anybody get paid differently now that payroll reads the effective-dated
+ * table", and the answer has to be nobody before a run is trusted.
+ */
+export function useSalaryParity(period: string) {
+  return useQuery({
+    queryKey: ['admin-hr', 'salary-parity', period],
+    queryFn: () => apiClient.get<SalaryParityReport>(`/workforce/salary/parity${qs({ period })}`),
+    enabled: Boolean(period),
+  });
 }

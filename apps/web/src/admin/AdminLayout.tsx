@@ -88,16 +88,25 @@ const ADMIN_CATEGORIES: HubCategory[] = [
     key: 'hr',
     label: 'HR',
     items: [
+      // DAILY WORK ONLY.
+      //
+      // "Legal employers" and "Roles & access" used to sit here between Payroll
+      // and Staff benefits, which is how a monthly payroll navigation became an
+      // admin console: the owner had to walk past two configuration screens to
+      // reach the one they open every month. Both are still mounted and both
+      // are reachable from Payroll settings; neither is a step in paying
+      // anybody.
       { path: '/admin/hr', label: 'Today' },
       { path: '/admin/hr/employees', label: 'Employees' },
       { path: '/admin/hr/attendance', label: 'Timesheets' },
       { path: '/admin/hr/leave', label: 'Leave' },
+      { path: '/admin/hr/claims', label: 'Claims' },
       { path: '/admin/hr/roster', label: 'Roster' },
       { path: '/admin/hr/payroll', label: 'Payroll' },
-      { path: '/admin/hr/employers', label: 'Legal employers' },
       { path: '/admin/hr/incentives', label: 'Doctor incentives' },
+      { path: '/admin/hr/locum', label: 'Locum sessions' },
       { path: '/admin/hr/benefits', label: 'Staff benefits' },
-      { path: '/admin/hr/access', label: 'Roles & access' },
+      { path: '/admin/hr/settings', label: 'Payroll settings' },
     ],
   },
   {

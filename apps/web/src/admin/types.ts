@@ -1645,3 +1645,109 @@ export interface PayrollSnapshotRow {
     employeeCount: number;
   };
 }
+
+// ===========================================================================
+// STAGE 2.5 — CROSS-MODULE PAYROLL INTEGRATION
+// ===========================================================================
+
+export type PaymentRoute = 'PAYROLL' | 'FINANCE';
+export type PayoutStatus = 'PENDING' | 'IN_PAYROLL' | 'PAID' | 'VOID';
+export type StaffClaimStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+export interface StaffClaimRow {
+  id: string;
+  staffId: string;
+  staffName: string;
+  category: string;
+  amountClaimed: string;
+  amountApproved: string | null;
+  claimDate: string;
+  description: string;
+  status: StaffClaimStatus;
+  submittedBy: string;
+  submittedAt: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionReason: string | null;
+  paymentRoute: PaymentRoute | null;
+  payoutStatus: PayoutStatus;
+  payrollPeriod: string | null;
+  financeReference: string | null;
+  paidAt: string | null;
+  attachments: { id: string; fileName: string; mimeType: string; fileSize: number }[];
+  /** Where this claim is being paid from, said in words. */
+  routeExplanation: string;
+}
+
+export interface StaffClaimEventRow {
+  id: string;
+  event: string;
+  detail: string | null;
+  fromStatus: StaffClaimStatus | null;
+  toStatus: StaffClaimStatus | null;
+  actor: string;
+  at: string;
+}
+
+export interface LocumSessionRow {
+  id: string;
+  staffId: string;
+  staffName: string;
+  clinicId: string;
+  clinicName: string;
+  sessionDate: string;
+  label: string | null;
+  hours: number | null;
+  hourlyRate: string | null;
+  sessionFee: string | null;
+  computedFee: string | null;
+  status: 'PLANNED' | 'COMPLETED' | 'APPROVED' | 'CANCELLED';
+  approvedAmount: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  paymentRoute: PaymentRoute;
+  payoutStatus: PayoutStatus;
+  invoiceReference: string | null;
+  paidAt: string | null;
+  note: string | null;
+}
+
+export interface LocumPayableSummary {
+  from: string;
+  to: string;
+  route: 'FINANCE';
+  people: {
+    staffId: string;
+    name: string;
+    sessions: number;
+    awaitingApproval: number;
+    approved: string;
+    outstanding: string;
+  }[];
+  totalApproved: string;
+  totalOutstanding: string;
+  sessionsAwaitingApproval: number;
+}
+
+export type ParityVerdict =
+  | 'MATCH' | 'LEGACY_ONLY' | 'CANONICAL_ONLY' | 'AMOUNT_DIFFERS'
+  | 'CHANGED_MID_PERIOD' | 'BASIS_UNSUPPORTED' | 'NEITHER';
+
+export interface SalaryParityReport {
+  period: string;
+  total: number;
+  matched: number;
+  mismatched: number;
+  byVerdict: Record<ParityVerdict, number>;
+  lines: {
+    staffId: string;
+    name: string;
+    verdict: ParityVerdict;
+    legacyCents: number | null;
+    canonicalCents: number | null;
+    differenceCents: number | null;
+    explanation: string;
+  }[];
+  clean: boolean;
+  summary: string;
+}

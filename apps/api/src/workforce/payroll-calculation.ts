@@ -118,6 +118,18 @@ export const DEFAULT_COMPONENT_LIABILITY: Record<string, ComponentLiability> = {
   LOCUM_FEE: LIABILITY_BY_STATUS_CODE['1'],
   // Unpaid leave reduces every base as well as pay.
   UNPAID_LEAVE: LIABILITY_BY_STATUS_CODE['2'],
+  /*
+   * A REIMBURSEMENT OF ACTUAL EXPENDITURE, not remuneration — the clinic is
+   * giving back money the employee already spent on its behalf.
+   *
+   * Seeded to status code 1 (no EPF, SOCSO or EIS) because that reproduces the
+   * treatment the clinic already applies to reimbursements in its own workbook.
+   * THIS IS NOT A VERIFIED STATUTORY DETERMINATION. Whether a particular
+   * reimbursement is wages turns on what it reimburses, and settling that is
+   * Stage 3 work against KWSP's and PERKESO's own definitions. It ships
+   * unverified like every other flag in this table.
+   */
+  CLAIM_REIMBURSEMENT: LIABILITY_BY_STATUS_CODE['1'],
   // Pure deductions: they reduce net pay and nothing else.
   ZAKAT: LIABILITY_BY_STATUS_CODE['1'],
   ADVANCE_RECOVERY: LIABILITY_BY_STATUS_CODE['1'],
