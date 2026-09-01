@@ -5,7 +5,7 @@ import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { AdminTx, actorCan, requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
-import { fromCents, toCents } from '../finance/money';
+import { formatCents, fromCents, toCents } from '../finance/money';
 import {
   DEFAULT_COMPONENT_LIABILITY,
   LIABILITY_BY_STATUS_CODE,
@@ -23,7 +23,8 @@ import { leaveDaysInYear } from './leave-balance';
 import { CreatePayrollRunDto } from './dto/create-payroll-run.dto';
 import { PayrollAdjustmentDto } from './dto/payroll-adjustment.dto';
 import { UpsertStatutoryRulesDto } from './dto/upsert-statutory-rules.dto';
-import { approvalGate, buildException, ExceptionSeverity } from './payroll-exception';
+import { approvalGate, BuiltException, buildException, ExceptionSeverity } from './payroll-exception';
+import { resolveSalaryForPayroll, SalaryRow } from './salary-resolution';
 import { diffSnapshots, snapshotHash, SnapshotEmployeeLine, SnapshotPayload } from './payroll-snapshot';
 import { computeVariance, VarianceLine } from './payroll-variance';
 
@@ -228,7 +229,50 @@ export class PayrollService {
         orderBy: { staffId: 'asc' },
       });
 
-      const exceptions: { staffId: string; name: string; issue: string }[] = [];
+      // EXCEPTIONS ARE BUILT, NOT PARSED.
+      //
+      // They used to be free text that a regex mapped back onto the catalogue
+      // on the way to the database — so the severity, consequence and remedy of
+      // every blocker depended on a sentence surviving unchanged. A blocker
+      // that has to carry four facts (what the salary was, what it became, the
+      // day it changed, which month) cannot survive that round trip.
+      const exceptions: (BuiltException & { name: string })[] = [];
+      const raise = (
+        code: string,
+        employee: { staffId: string; staff: { fullName: string } },
+        ctx: Record<string, string | number> = {},
+      ) => {
+        exceptions.push({
+          ...buildException(code, employee.staffId, { staffId: employee.staffId, runId, ...ctx }),
+          name: employee.staff.fullName,
+        });
+      };
+
+      // CANONICAL SALARY. One query for the whole run rather than one per
+      // employee, and `EmployeeProfile.basicSalary` is no longer read: what
+      // somebody earned in March is the rate that was in force in March.
+      const salaryRows = await tx.employeeSalary.findMany({
+        where: { staffId: { in: employees.map((e) => e.staffId) } },
+        orderBy: { effectiveFrom: 'asc' },
+      });
+      const salaryByStaff = new Map<string, SalaryRow[]>();
+      for (const row of salaryRows) {
+        const list = salaryByStaff.get(row.staffId) ?? [];
+        list.push({
+          id: row.id,
+          basis: row.basis,
+          amountCents: toCents(row.amount),
+          effectiveFrom: row.effectiveFrom,
+          effectiveTo: row.effectiveTo,
+        });
+        salaryByStaff.set(row.staffId, list);
+      }
+      const lastDayOfPeriod = new Date(periodEnd.getTime() - 86400000);
+      const periodLabel = period.toLocaleDateString('en-GB', {
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      });
       let grossTotal = 0;
       let deductionTotal = 0;
       let netTotal = 0;
@@ -242,12 +286,27 @@ export class PayrollService {
       for (const employee of employees) {
         if (!employee.staff.active) continue;
 
-        if (employee.basicSalary === null && employee.hourlyRate === null) {
-          exceptions.push({
-            staffId: employee.staffId,
-            name: employee.staff.fullName,
-            issue: 'No salary or hourly rate on record — this employee cannot be paid until one is set.',
+        const salary = resolveSalaryForPayroll(
+          salaryByStaff.get(employee.staffId) ?? [],
+          period,
+          lastDayOfPeriod,
+        );
+        if (salary.kind === 'NO_SALARY') {
+          raise('NO_SALARY', employee);
+          continue;
+        }
+        if (salary.kind === 'CHANGED_MID_PERIOD') {
+          // Refuse rather than prorate. See SALARY_CHANGED_MID_PERIOD.
+          raise('SALARY_CHANGED_MID_PERIOD', employee, {
+            previousAmount: formatCents(salary.previous.amountCents),
+            nextAmount: formatCents(salary.next.amountCents),
+            changedOn: salary.changedOn.toISOString().slice(0, 10),
+            periodLabel,
           });
+          continue;
+        }
+        if (salary.row.basis !== 'MONTHLY') {
+          raise('SALARY_BASIS_UNSUPPORTED', employee, { basis: salary.row.basis });
           continue;
         }
 
@@ -285,21 +344,15 @@ export class PayrollService {
         );
 
         if (timesheet.unapprovedOvertimeMinutes > 0) {
-          exceptions.push({
-            staffId: employee.staffId,
-            name: employee.staff.fullName,
-            issue: `${Math.round(timesheet.unapprovedOvertimeMinutes / 6) / 10}h of overtime is claimed but not approved. It is NOT included in this payslip.`,
+          raise('UNAPPROVED_OVERTIME', employee, {
+            hours: Math.round(timesheet.unapprovedOvertimeMinutes / 6) / 10,
           });
         }
         if (timesheet.daysMissingPunch > 0) {
-          exceptions.push({
-            staffId: employee.staffId,
-            name: employee.staff.fullName,
-            issue: `${timesheet.daysMissingPunch} day(s) with a missing clock-in or clock-out.`,
-          });
+          raise('MISSING_PUNCH', employee, { days: timesheet.daysMissingPunch });
         }
 
-        const basicCents = toCents(employee.basicSalary ?? 0);
+        const basicCents = salary.row.amountCents;
 
         // AGE DRIVES THE SCHEME, not just the rate: at 60 the employee's EPF
         // share goes to nil and the employer's to 4%, SOCSO moves to the Second
@@ -308,11 +361,7 @@ export class PayrollService {
         // would under-contribute for the whole workforce and nobody would see it.
         const age = ageAt(employee.dateOfBirth, new Date(periodEnd.getTime() - 86400000));
         if (age === null) {
-          exceptions.push({
-            staffId: employee.staffId,
-            name: employee.staff.fullName,
-            issue: 'No date of birth on record. EPF, SOCSO and EIS all change at age 60, so this employee cannot be calculated.',
-          });
+          raise('NO_DOB', employee);
           continue;
         }
 
@@ -391,11 +440,7 @@ export class PayrollService {
           if (!liability) {
             // An input naming a component this build does not know would
             // otherwise be silently dropped from somebody's pay.
-            exceptions.push({
-              staffId: employee.staffId,
-              name: employee.staff.fullName,
-              issue: `Payroll input "${input.componentCode}" is not a known component and was NOT included.`,
-            });
+            raise('UNKNOWN_COMPONENT', employee, { componentCode: input.componentCode });
             continue;
           }
           const amountCents = toCents(input.amount);
@@ -423,13 +468,7 @@ export class PayrollService {
         // against. See docs/MALAYSIA_PAYROLL_STATUTORY_SOURCES.md section 4.
         if (payslip.statutory.pcbCents === null) {
           if (pcbOverrideCents === null) {
-            exceptions.push({
-              staffId: employee.staffId,
-              name: employee.staff.fullName,
-              issue:
-                'PCB (monthly tax deduction) is not calculated by this system and no amount has been entered. ' +
-                'Enter it as a payroll input, or record this employee as outside PCB.',
-            });
+            raise('PCB_MISSING', employee);
           } else {
             // A supplied figure completes the payslip. It is withheld from the
             // employee and reduces net pay exactly as a computed one would.
@@ -456,7 +495,14 @@ export class PayrollService {
         // outside every configured band.
         for (const note of payslip.notes) {
           if (!/incomplete|outside every configured/i.test(note)) continue;
-          exceptions.push({ staffId: employee.staffId, name: employee.staff.fullName, issue: note });
+          exceptions.push({
+            ...buildException('STATUTORY_BAND_GAP', employee.staffId, {
+              staffId: employee.staffId,
+              runId,
+              note,
+            }),
+            name: employee.staff.fullName,
+          });
         }
 
         await tx.payrollLine.create({
@@ -564,7 +610,13 @@ export class PayrollService {
           netTotal: fromCents(netTotal),
           employerCostTotal: fromCents(employerCostTotal),
           employeeCount: counted,
-          exceptions: exceptions as never,
+          // The legacy blob is DERIVED from the built exceptions rather than
+          // being their source, so the two cannot disagree.
+          exceptions: exceptions.map((e) => ({
+            staffId: e.staffId,
+            name: e.name,
+            issue: e.cause,
+          })) as never,
           calculatedAt: new Date(),
         },
       });
@@ -579,8 +631,7 @@ export class PayrollService {
       // The blob above is still written so that nothing reading it breaks; the
       // rows are what the approval gate now consults.
       await tx.payrollException.deleteMany({ where: { payrollRunId: runId } });
-      for (const raw of exceptions) {
-        const built = classifyLegacyException(raw.issue, raw.staffId, runId);
+      for (const built of exceptions) {
         await tx.payrollException.create({
           data: {
             tenantId: currentTenantId(),
@@ -1246,40 +1297,4 @@ function numberOrNull(value: { toString(): string } | null): number | null {
   return value === null ? null : Number(value);
 }
 
-/**
- * Map an existing exception string onto the catalogue.
- *
- * The calculation still produces its historical `{ staffId, name, issue }`
- * shape; this classifies it so the rows carry a severity, a consequence and a
- * remedy without rewriting the calculation in the same change. Anything
- * unrecognised stays BLOCKING, which is exactly what it was before.
- */
-function classifyLegacyException(issue: string, staffId: string | null, runId: string) {
-  const ctx = { staffId: staffId ?? '', runId };
-  if (/No salary or hourly rate/i.test(issue)) return buildException('NO_SALARY', staffId, ctx);
-  if (/date of birth/i.test(issue)) return buildException('NO_DOB', staffId, ctx);
-  if (/PCB \(monthly tax deduction\)/i.test(issue)) return buildException('PCB_MISSING', staffId, ctx);
-  if (/overtime is claimed but not approved/i.test(issue)) {
-    const hours = issue.match(/([\d.]+)h/)?.[1] ?? '?';
-    return buildException('UNAPPROVED_OVERTIME', staffId, { ...ctx, hours });
-  }
-  if (/missing clock-in or clock-out/i.test(issue)) {
-    const days = issue.match(/(\d+) day/)?.[1] ?? '?';
-    return buildException('MISSING_PUNCH', staffId, { ...ctx, days });
-  }
-  if (/is not a known component/i.test(issue)) {
-    const componentCode = issue.match(/"([^"]+)"/)?.[1] ?? 'unknown';
-    return buildException('UNKNOWN_COMPONENT', staffId, { ...ctx, componentCode });
-  }
-  return {
-    code: 'LEGACY',
-    severity: 'BLOCKING' as const,
-    staffId,
-    cause: issue,
-    consequence: 'This run cannot be approved until the issue is resolved.',
-    remediation: 'Resolve the underlying data and recalculate the run.',
-    deepLink: null,
-    overridable: false,
-  };
-}
 

@@ -6,6 +6,7 @@ import { requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { toCents, fromCents, formatCents } from '../finance/money';
 import { resolveSalaryForPeriod, SalaryRow } from './salary-resolution';
+import { ParityInput, ParityReport, salaryParity } from './salary-parity';
 import { RecordSalaryDto } from './dto/record-salary.dto';
 
 /** Inclusive first and last day of the month a date falls in, in UTC. */
@@ -77,6 +78,66 @@ export class EmployeeSalaryService {
       changedDuringPeriod: resolution.changedDuringPeriod,
       overlappingCount: resolution.overlapping.length,
       reason: resolution.reason,
+    };
+  }
+
+  /**
+   * THE CUTOVER PARITY REPORT.
+   *
+   * Payroll reads `employee_salaries` now. This says, for a given period,
+   * whether that changes what anybody is paid compared with the legacy
+   * `EmployeeProfile.basicSalary` column — and names every employee it would.
+   *
+   * It repairs nothing. An automatic reconciliation would be a silent salary
+   * change, which is what the effective-dated table exists to prevent.
+   */
+  async parity(period: Date | string): Promise<ParityReport> {
+    await requirePermission(this.rawPrisma, 'hr.salary.view');
+    const asDate = period instanceof Date ? period : new Date(`${period}T00:00:00.000Z`);
+    if (Number.isNaN(asDate.getTime())) throw new BadRequestException('period must be a YYYY-MM-DD date.');
+    const { start, end } = monthBounds(asDate);
+
+    const employees = await this.prisma.employeeProfile.findMany({
+      where: { employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] } },
+      include: { staff: { select: { fullName: true, active: true } } },
+      orderBy: { staffId: 'asc' },
+    });
+    const active = employees.filter((e) => e.staff.active);
+    const rows = await this.prisma.employeeSalary.findMany({
+      where: { staffId: { in: active.map((e) => e.staffId) } },
+      orderBy: { effectiveFrom: 'asc' },
+    });
+
+    const byStaff = new Map<string, SalaryRow[]>();
+    for (const row of rows) {
+      const list = byStaff.get(row.staffId) ?? [];
+      list.push({
+        id: row.id,
+        basis: row.basis,
+        amountCents: toCents(row.amount),
+        effectiveFrom: row.effectiveFrom,
+        effectiveTo: row.effectiveTo,
+      });
+      byStaff.set(row.staffId, list);
+    }
+
+    const inputs: ParityInput[] = active.map((e) => ({
+      staffId: e.staffId,
+      name: e.staff.fullName,
+      legacyCents: e.basicSalary === null ? null : toCents(e.basicSalary),
+      salaryRows: byStaff.get(e.staffId) ?? [],
+    }));
+
+    const report = salaryParity(inputs, start, end);
+    return {
+      ...report,
+      lines: report.lines.map((line) => ({
+        ...line,
+        // Money reaches the UI as a formatted string everywhere else in this
+        // module; cents on the wire would be the one exception.
+        legacyCents: line.legacyCents,
+        canonicalCents: line.canonicalCents,
+      })),
     };
   }
 

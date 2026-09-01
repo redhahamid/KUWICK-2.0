@@ -72,6 +72,16 @@ export class WorkforceController {
 
   // --- Effective-dated salary ----------------------------------------------
 
+  /**
+   * Cutover parity for a period. Deliberately NOT under `employees/:staffId`:
+   * the question is about the whole workforce, and asking it per employee is
+   * how a cutover gets signed off on a sample.
+   */
+  @Get('salary/parity')
+  salaryParity(@Query('period', RequiredDateParam) period: string) {
+    return this.salaries.parity(period);
+  }
+
   @Get('employees/:staffId/salary')
   salaryHistory(@Param('staffId') staffId: string) {
     return this.salaries.history(staffId);

@@ -127,14 +127,44 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     remediation: 'Reduce a deduction, or spread the recovery across periods.',
     deepLink: () => '/admin/hr/payroll',
   },
+  /*
+   * BLOCKING, and deliberately not overridable.
+   *
+   * This was a WARNING that let the run proceed on "the rate in force at the
+   * period end", which silently pays the new salary for days worked at the old
+   * one. Whether a mid-period change is prorated, paid forward or paid back is
+   * a policy this clinic has not decided, and Malaysian practice does not
+   * decide it for them. A prorated figure and a wrong one look identical on a
+   * payslip, so the run stops and asks.
+   */
   SALARY_CHANGED_MID_PERIOD: {
     code: 'SALARY_CHANGED_MID_PERIOD',
-    severity: 'WARNING',
-    overridable: true,
-    cause: (c) => `Salary changed during this period; ${c.count} rates overlap it.`,
+    severity: 'BLOCKING',
+    overridable: false,
+    cause: (c) =>
+      `Salary changed from ${c.previousAmount} to ${c.nextAmount} on ${c.changedOn}, part-way through ${c.periodLabel}.`,
     consequence:
-      'The rate in force at the period end was used for the whole period, so pay before the change may be overstated or understated.',
-    remediation: 'Confirm the intended treatment, or split the run.',
+      'How a mid-period change is paid has not been decided for this clinic, so payroll will not assume one. ' +
+      'This employee is left out of the run totals rather than paid a figure nobody chose.',
+    remediation:
+      'Decide the treatment for this employee: date the change from the start of a period, or split the run. ' +
+      'Kuwick does not prorate a mid-period salary change.',
+    deepLink: (c) => `/admin/hr/employees?staffId=${c.staffId}`,
+  },
+  /*
+   * The calculation models a MONTHLY salary. A daily or hourly rate needs a day
+   * or hour count for the period, and where that count comes from — roster,
+   * timesheet, or a contract minimum — is not settled. Paying a daily-rate
+   * employee a monthly figure would be a silent, plausible-looking error.
+   */
+  SALARY_BASIS_UNSUPPORTED: {
+    code: 'SALARY_BASIS_UNSUPPORTED',
+    severity: 'BLOCKING',
+    overridable: false,
+    cause: (c) => `This employee is on a ${c.basis} rate, and this build calculates monthly salaries only.`,
+    consequence: 'They are left out of the run rather than paid a monthly figure derived from a daily or hourly rate.',
+    remediation:
+      'Record a monthly salary for this employee, or leave them out of payroll until daily and hourly pay is implemented.',
     deepLink: (c) => `/admin/hr/employees?staffId=${c.staffId}`,
   },
   STATUTORY_UNVERIFIED: {
@@ -146,6 +176,20 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'Every EPF, SOCSO and EIS figure in this run rests on unverified tables, and the payslip says so on its face.',
     remediation:
       'Verify the seeded tables against KWSP and PERKESO and record who did so, or continue on the understanding that this run is provisional.',
+    deepLink: () => '/admin/hr/payroll',
+  },
+  /*
+   * An employee-specific statutory gap: their wage falls outside every band the
+   * configured table has, or the table is incomplete where they sit. Distinct
+   * from "no schedule is configured", which is a property of the run.
+   */
+  STATUTORY_BAND_GAP: {
+    code: 'STATUTORY_BAND_GAP',
+    severity: 'BLOCKING',
+    overridable: false,
+    cause: (c) => String(c.note),
+    consequence: 'A statutory figure for this employee could not be computed, so their payslip is incomplete.',
+    remediation: 'Complete the statutory rate table for this period, then recalculate.',
     deepLink: () => '/admin/hr/payroll',
   },
   VARIANCE_OUTSIDE_THRESHOLD: {
