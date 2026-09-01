@@ -12,6 +12,7 @@ import {
   computePayslip,
   ordinaryRates,
 } from '../src/workforce/payroll-calculation';
+import { buildException, ExceptionSeverity } from '../src/workforce/payroll-exception';
 
 config({ path: join(__dirname, '..', '.env') });
 
@@ -535,10 +536,28 @@ async function verify() {
     //      CONFIGURED      verified. Figures computed, run approvable.
     const runs = await tx.payrollRun.findMany({
       where: { tenantId: TENANT_ID },
-      select: { id: true, period: true, status: true, statutoryStatus: true, lines: { select: { epfEmployee: true, socsoEmployee: true, eisEmployee: true, pcb: true } } },
+      select: {
+        id: true, period: true, status: true, statutoryStatus: true, exceptions: true,
+        lines: { select: { epfEmployee: true, socsoEmployee: true, eisEmployee: true, pcb: true } },
+      },
     });
     for (const run of runs) {
       const label = run.period.toISOString().slice(0, 7);
+
+      // 5a. EVERY EXCEPTION EXISTS AS A ROW, not only in the JSON blob.
+      //
+      // The blob feeds a banner; the ROWS feed the approval gate. A run that
+      // carries five unpayable people in the blob and no rows is a run the
+      // Approve button will happily lock — which is exactly the failure this
+      // fixture exists to make visible, so it must never be the fixture's own
+      // state. Checked here rather than trusted, because the seed writes both
+      // and nothing else would notice if it stopped writing one.
+      const blob = Array.isArray(run.exceptions) ? (run.exceptions as unknown[]) : [];
+      const rowCount = await tx.payrollException.count({ where: { payrollRunId: run.id } });
+      if (rowCount !== blob.length) {
+        problems.push(`payroll ${label}: ${blob.length} exception(s) in the blob but ${rowCount} exception row(s) — the approval gate reads the rows`);
+      }
+
       if (run.statutoryStatus === 'PROVISIONAL' && (run.status === 'APPROVED' || run.status === 'PAID')) {
         problems.push(`payroll ${label}: approved against a rule set nobody has verified`);
         continue;
@@ -2337,14 +2356,23 @@ async function seedWorkforce(ids: Ids) {
       Object.entries(staff).map(([key, id]) => [key, byId.get(id) ?? key]),
     );
     const periodEndDay = new Date(Date.UTC(payrollPeriod.getUTCFullYear(), payrollPeriod.getUTCMonth() + 1, 0));
-    const exceptions: { staffId: string; name: string; issue: string }[] = [];
+    // THE CODE TRAVELS WITH THE EXCEPTION.
+    //
+    // The run carries exceptions twice over: the legacy JSON blob the banner
+    // reads, and the `payroll_exceptions` rows the APPROVAL GATE reads. The
+    // service writes both; this seed wrote only the blob, so it produced a run
+    // in a shape the engine never produces — five people who cannot be paid,
+    // and an Approve button that was happy to lock it. Keeping the catalogue
+    // code here is what lets the rows below be built from the same catalogue
+    // the service uses, rather than from a second copy of the wording.
+    const exceptions: { staffId: string; name: string; issue: string; code: string }[] = [];
     let gross = 0, deductions = 0, net = 0, employerCost = 0, counted = 0;
 
     for (const [index, profile] of profiles.entries()) {
       const staffId = staff[profile.key];
       const name = staffNames[profile.key] ?? profile.key;
       if (profile.salary === null) {
-        exceptions.push({ staffId, name, issue: 'No salary or hourly rate on record — this employee cannot be paid until one is set.' });
+        exceptions.push({ staffId, name, code: 'NO_SALARY', issue: 'No salary or hourly rate on record — this employee cannot be paid until one is set.' });
         continue;
       }
       const age = ageAt(new Date(Date.UTC(profile.born[0], profile.born[1], profile.born[2])), periodEndDay)!;
@@ -2380,7 +2408,7 @@ async function seedWorkforce(ids: Ids) {
       const pcb = pcbEntered[profile.key];
       if (pcb === undefined) {
         exceptions.push({
-          staffId, name,
+          staffId, name, code: 'PCB_MISSING',
           issue: 'PCB (monthly tax deduction) is not calculated by this system and no amount has been entered. Enter it as a payroll input, or record this employee as outside PCB.',
         });
       } else {
@@ -2438,6 +2466,32 @@ async function seedWorkforce(ids: Ids) {
         exceptions: exceptions as never,
       },
     });
+
+    // THE ROWS THE APPROVAL GATE ACTUALLY READS.
+    //
+    // Built from the shared catalogue, not from a second copy of the wording,
+    // so the fixture cannot drift from the service: a severity or a remedy
+    // changed in `payroll-exception.ts` changes here too. Without them the
+    // gate counts zero blocking exceptions and a run with five unpayable
+    // people can be approved and locked — which is what a payroll fixture is
+    // supposed to catch, not demonstrate.
+    for (const raw of exceptions) {
+      const built = buildException(raw.code, raw.staffId, { staffId: raw.staffId, runId: payroll.id });
+      await tx.payrollException.create({
+        data: {
+          tenantId: tenant.id,
+          payrollRunId: payroll.id,
+          staffId: built.staffId,
+          severity: built.severity as ExceptionSeverity,
+          code: built.code,
+          cause: built.cause,
+          consequence: built.consequence,
+          remediation: built.remediation,
+          deepLink: built.deepLink,
+          overridable: built.overridable,
+        },
+      });
+    }
 
     console.log(`  workforce: 8 employees, 20 days attendance, leave, incentive run, payroll CALCULATED against corroborated MY statutory tables (${exceptions.length} exceptions)`);
 

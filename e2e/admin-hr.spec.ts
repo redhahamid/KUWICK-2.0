@@ -123,8 +123,17 @@ test.describe('HR', () => {
     // is real: the 61-year-old contributes nothing himself and his employer
     // pays 4%. Asserting a number here is what stops the engine silently
     // regressing to zeros behind an honest-looking banner.
-    await expect(detail.getByRole('row', { name: /Dr Aisyah Rahman/ })).toContainText('1980.00');
-    await expect(detail.getByRole('row', { name: /Hafiz Osman/ })).toContainText('0.00');
+    //
+    // SCOPED TO THE LINES TABLE, by the one column only it has. The detail
+    // section holds three tables now — the pay lines, the exception centre and
+    // the variance panel — and every employee appears in two of them, so a
+    // bare name matches twice. It matched twice before this too: the variance
+    // panel loads on its own request, and the assertion below happened to run
+    // in the gap before it arrived. A test that passes on a race is not
+    // passing.
+    const lines = detail.locator('.ant-table-wrapper').filter({ hasText: 'EPF (emp)' });
+    await expect(lines.getByRole('row', { name: /Dr Aisyah Rahman/ })).toContainText('1980.00');
+    await expect(lines.getByRole('row', { name: /Hafiz Osman/ })).toContainText('0.00');
 
     // And approving is gated on resolving them, not merely warned about.
     const approve = page.getByRole('button', { name: /Approve/ });
