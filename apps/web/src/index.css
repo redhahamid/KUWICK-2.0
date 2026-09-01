@@ -3797,6 +3797,77 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 }
 
 .kw-muted { color: var(--kw-text-muted); }
+
+/* --- Payroll exception severity ------------------------------------------
+   One presentation of BLOCKING / WARNING / INFO, shared by the run banner and
+   the exception centre. Restrained on purpose: a tinted ground and a hairline,
+   not a saturated pill, because a payroll screen with five red badges reads as
+   an emergency when what it is describing is ordinary unfinished setup.
+
+   The left rule carries the severity as well as the colour does, so the three
+   are still separable in greyscale or by a reader who cannot tell red from
+   amber. -------------------------------------------------------------------- */
+
+.kw-sev {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px 1px 6px;
+  border: 1px solid var(--kw-border);
+  border-left-width: 3px;
+  border-radius: 3px;
+  background: var(--kw-surface-2);
+  color: var(--kw-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.kw-sev--blocking {
+  border-color: #f0c2bb;
+  border-left-color: var(--kw-danger-fg);
+  background: #fff7f6;
+  color: var(--kw-danger-fg);
+  font-weight: 650;
+}
+
+.kw-sev--warning {
+  border-color: #ecd5a8;
+  border-left-color: #b45309;
+  background: #fffbf2;
+  color: #b45309;
+}
+
+.kw-sev--info {
+  border-left-color: var(--kw-text-muted);
+}
+
+/* A blocking exception somebody passed on purpose is not blocking any more.
+   It keeps its severity word — the record must still say what it was — but it
+   stops shouting. */
+.kw-sev--passed {
+  border-left-color: var(--kw-text-muted);
+  background: var(--kw-surface-2);
+  color: var(--kw-text-muted);
+  font-weight: 550;
+}
+
+/* The run table's exception cell: the number that stops approval, then the
+   number that does not, in that order and at different weights. */
+.kw-runExceptions {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  justify-content: flex-end;
+}
+
+.kw-warnCount {
+  color: #b45309;
+  font-size: 11.5px;
+  font-weight: 550;
+}
+
 .kw-bad   { color: var(--kw-danger-fg); font-weight: 550; }
 .kw-good  { color: var(--kw-success-fg); }
 .kw-warn  { color: #b45309; }

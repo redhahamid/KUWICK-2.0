@@ -182,18 +182,50 @@ export function buildException(
  * only counts as resolved if it was overridable in the first place, which the
  * database also enforces.
  */
+export interface ExceptionGate {
+  canApprove: boolean;
+  /** Every exception row on the run, whatever its severity or override state. */
+  total: number;
+  /** BLOCKING rows that are still standing. These, and only these, stop approval. */
+  blocking: number;
+  warnings: number;
+  info: number;
+  overridden: number;
+  reason: string;
+}
+
+/**
+ * THE ONE PLACE EXCEPTION STATE IS COUNTED.
+ *
+ * Every surface that says anything about a run's exceptions — the banner, the
+ * run table's column, the exception centre, the approval button, the approval
+ * confirmation — takes its numbers from this function, applied to the
+ * `payroll_exceptions` ROWS. It returns the whole vocabulary those surfaces
+ * need rather than just the gate, so that none of them has to count anything
+ * for itself.
+ *
+ * That is not tidiness. The run's legacy `exceptions` JSON blob and the rows
+ * are two stores of the same fact, and while the banner read one and the gate
+ * read the other, a run could say "5 exceptions must be resolved" beside an
+ * enabled Approve button and an exception centre reading "No exceptions". A
+ * payroll screen that contradicts itself about who cannot be paid is worse
+ * than one that says nothing.
+ */
 export function approvalGate(
   exceptions: { severity: ExceptionSeverity; overridable: boolean; overriddenByStaffId: string | null }[],
-): { canApprove: boolean; blocking: number; warnings: number; overridden: number; reason: string } {
+): ExceptionGate {
   const blockingRows = exceptions.filter(
     (e) => e.severity === 'BLOCKING' && !(e.overridable && e.overriddenByStaffId),
   );
   const warnings = exceptions.filter((e) => e.severity === 'WARNING').length;
+  const info = exceptions.filter((e) => e.severity === 'INFO').length;
   const overridden = exceptions.filter((e) => e.overriddenByStaffId).length;
   return {
     canApprove: blockingRows.length === 0,
+    total: exceptions.length,
     blocking: blockingRows.length,
     warnings,
+    info,
     overridden,
     reason:
       blockingRows.length === 0

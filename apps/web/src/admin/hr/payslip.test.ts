@@ -50,7 +50,6 @@ const RUN: PayrollRunDetail = {
   netTotal: 2913.05,
   employerCostTotal: 3851.85,
   employeeCount: 1,
-  exceptions: [],
   calculatedAt: '2026-08-25T00:00:00.000Z',
   approvedAt: '2026-08-26T00:00:00.000Z',
   approvedBy: 'Dr Aisyah Rahman',

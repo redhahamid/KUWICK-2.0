@@ -788,6 +788,11 @@ export class PayrollService {
         approvedBy: { select: { fullName: true } },
         createdBy: { select: { fullName: true } },
         _count: { select: { lines: true, adjustments: true } },
+        // THE ROWS, not the blob. This column is the first thing anybody reads
+        // about a run, and it has to be the same fact the Approve button acts
+        // on. Selected down to the three fields the gate needs, so listing a
+        // year of runs does not drag every cause string across the wire.
+        exceptionRows: { select: { severity: true, overridable: true, overriddenByStaffId: true } },
       },
     });
     return runs.map((run) => ({
@@ -802,7 +807,7 @@ export class PayrollService {
       netTotal: Number(run.netTotal),
       employerCostTotal: Number(run.employerCostTotal),
       employeeCount: run.employeeCount,
-      exceptions: ((run.exceptions as unknown[] | null) ?? []).length,
+      exceptions: approvalGate(run.exceptionRows),
       lines: run._count.lines,
       adjustments: run._count.adjustments,
       calculatedAt: run.calculatedAt,
@@ -845,7 +850,14 @@ export class PayrollService {
       netTotal: Number(run.netTotal),
       employerCostTotal: Number(run.employerCostTotal),
       employeeCount: run.employeeCount,
-      exceptions: (run.exceptions as unknown[] | null) ?? [],
+      // NO EXCEPTION STATE HERE, deliberately.
+      //
+      // It used to return the legacy JSON blob, which the banner rendered while
+      // the approval gate read the `payroll_exceptions` rows — two stores of
+      // one fact, free to disagree, and they did. The detail payload no longer
+      // carries exceptions in any form, so the screen has nowhere to read them
+      // from except `GET /payroll/runs/:id/exceptions`. A second source cannot
+      // creep back in without adding a field back here first.
       calculatedAt: run.calculatedAt,
       approvedAt: run.approvedAt,
       approvedBy: run.approvedBy?.fullName ?? null,

@@ -9,6 +9,7 @@ import { useAuthStore } from '../../core/auth-store';
 import { isDraftRun, payslipTotals, printPayslip } from './payslip';
 import type { PayslipLine } from './payslip';
 import { useCan } from '../../core/hooks/useCan';
+import { SeverityTag } from './ExceptionSeverity';
 import { PayrollExceptionCentre } from './PayrollExceptionCentre';
 import { PayrollVariancePanel } from './PayrollVariancePanel';
 import { PayrollInputsDrawer } from './PayrollInputsDrawer';
@@ -23,6 +24,7 @@ import {
   usePayrollVariance,
   useReopenPayroll,
 } from '../hooks/useAdmin';
+import type { PayrollExceptionGate } from '../types';
 
 const RUN_STATUS: Record<string, string> = {
   DRAFT: 'default',
@@ -76,15 +78,30 @@ export function PayrollPage() {
 
   const run = detail.data;
   const locked = run?.status === 'APPROVED' || run?.status === 'PAID';
-  const hasExceptions = (run?.exceptions.length ?? 0) > 0;
   const statutoryGap = run?.statutoryStatus !== 'CONFIGURED';
 
-  // The gate now reads exception ROWS: BLOCKING stops approval, WARNING does
-  // not. `hasExceptions` remains for the legacy banner below.
+  /**
+   * ONE QUERY, READ BY EVERY SURFACE ON THIS SCREEN.
+   *
+   * The banner, the Approve button, the approval confirmation and the
+   * exception centre below all render this. `PayrollExceptionCentre` calls the
+   * same hook with the same key, so TanStack Query hands it this exact cache
+   * entry rather than fetching again — they cannot show different numbers
+   * because there is only one set of numbers.
+   *
+   * The run detail payload no longer carries exception state at all, so there
+   * is nothing here to fall back to. That is the point: the previous fallback
+   * (`gate ? !gate.canApprove : hasExceptions`) was a second derivation from a
+   * second store, and it is what let an enabled Approve button sit under a
+   * banner listing five people who could not be paid.
+   */
   const exceptionQuery = usePayrollExceptions(run?.id);
   const variance = usePayrollVariance(run?.id);
   const gate = exceptionQuery.data?.gate;
-  const gateBlocks = gate ? !gate.canApprove : hasExceptions;
+  const exceptionRows = exceptionQuery.data?.exceptions ?? [];
+  // FAIL CLOSED. Until the rows have arrived nobody knows whether this run can
+  // be approved, and "not yet known" must not read as "yes".
+  const gateBlocks = gate ? !gate.canApprove : true;
 
   /**
    * IS THIS PAYROLL FIT TO PAY MALAYSIAN STAFF WITH? Currently: no.
@@ -187,7 +204,28 @@ export function PayrollPage() {
               dataIndex: 'exceptions',
               key: 'exceptions',
               className: 'kw-num',
-              render: (count: number) => (count > 0 ? <span className="kw-bad">{count}</span> : '0'),
+              // Blocking and warning are different facts and the column says so
+              // in one glance: the number that stops approval, then the number
+              // that does not. Both come from the API's row-derived summary.
+              render: (gateSummary: PayrollExceptionGate | undefined) => {
+                if (!gateSummary || gateSummary.total === 0) return '0';
+                return (
+                  <span className="kw-runExceptions">
+                    {gateSummary.blocking > 0 ? (
+                      <span className="kw-bad" title="Blocking — approval is refused until these are resolved">
+                        {gateSummary.blocking}
+                      </span>
+                    ) : (
+                      <span className="kw-muted">0</span>
+                    )}
+                    {gateSummary.warnings > 0 ? (
+                      <span className="kw-warnCount" title="Warnings — on the record, but they do not stop approval">
+                        +{gateSummary.warnings}
+                      </span>
+                    ) : null}
+                  </span>
+                );
+              },
             },
             { title: 'Gross', dataIndex: 'grossTotal', key: 'grossTotal', className: 'kw-num', render: (v: number) => money(v) },
             { title: 'Deductions', dataIndex: 'deductionTotal', key: 'deductionTotal', className: 'kw-num', render: (v: number) => money(v) },
@@ -256,13 +294,22 @@ export function PayrollPage() {
         >
           <div style={{ padding: '12px 16px 0' }}>
             {run.statutoryNotice ? <AdminNotice tone="warn">{run.statutoryNotice}</AdminNotice> : null}
-            {hasExceptions ? (
-              <AdminNotice tone="warn">
-                <strong>{run.exceptions.length} exception(s) must be resolved before this run can be approved.</strong>
+            {gate && gate.total > 0 ? (
+              <AdminNotice tone={gate.canApprove ? 'info' : 'warn'}>
+                {/*
+                  THE HEADLINE IS THE GATE'S OWN SENTENCE, not a count this
+                  component worked out. When it says a run cannot be approved,
+                  the Approve button beside it is disabled by the same object.
+                */}
+                <strong>{gate.reason}</strong>
                 <ul style={{ margin: '6px 0 0 18px' }}>
-                  {run.exceptions.map((exception) => (
-                    <li key={`${exception.staffId}-${exception.issue}`}>
-                      <strong>{exception.name}</strong> — {exception.issue}
+                  {exceptionRows.map((exception) => (
+                    <li key={exception.id}>
+                      <SeverityTag severity={exception.severity} />{' '}
+                      <strong>{exception.staffName ?? 'This run'}</strong> — {exception.cause}
+                      {exception.overriddenBy ? (
+                        <span className="kw-muted"> · passed by {exception.overriddenBy}</span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

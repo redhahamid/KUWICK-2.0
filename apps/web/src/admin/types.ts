@@ -699,7 +699,8 @@ export interface PayrollRunRow {
   netTotal: number;
   employerCostTotal: number;
   employeeCount: number;
-  exceptions: number;
+  /** Derived from the exception ROWS by the API. Never a locally counted blob. */
+  exceptions: PayrollExceptionGate;
   lines: number;
   adjustments: number;
   calculatedAt: string | null;
@@ -735,7 +736,9 @@ export interface PayrollRunDetail {
   netTotal: number;
   employerCostTotal: number;
   employeeCount: number;
-  exceptions: { staffId: string; name: string; issue: string }[];
+  // No `exceptions` here on purpose — see the note in `payroll.service.ts`
+  // detail(). Exception state reaches this screen only through
+  // `usePayrollExceptions`, so there is no second store for it to drift from.
   calculatedAt: string | null;
   approvedAt: string | null;
   approvedBy: string | null;
@@ -1562,9 +1565,24 @@ export interface PayrollExceptionRow {
   overriddenAt: string | null;
 }
 
+/**
+ * THE CANONICAL EXCEPTION SUMMARY, computed by the API from the
+ * `payroll_exceptions` rows and by nothing else. Every surface that states a
+ * number about a run's exceptions renders one of these fields.
+ */
+export interface PayrollExceptionGate {
+  canApprove: boolean;
+  total: number;
+  blocking: number;
+  warnings: number;
+  info: number;
+  overridden: number;
+  reason: string;
+}
+
 export interface PayrollExceptionList {
   exceptions: PayrollExceptionRow[];
-  gate: { canApprove: boolean; blocking: number; warnings: number; overridden: number; reason: string };
+  gate: PayrollExceptionGate;
 }
 
 export interface PayrollVarianceRow {

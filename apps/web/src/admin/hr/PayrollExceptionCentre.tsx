@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { App, Button, Input, Modal, Table, Tag } from 'antd';
+import { App, Button, Input, Modal, Table } from 'antd';
 import { AdminNotice, AdminSection } from '../components/AdminShell';
 import { useOverrideException, usePayrollExceptions } from '../hooks/useAdmin';
 import type { PayrollExceptionRow } from '../types';
-
-const TONE: Record<string, string> = { BLOCKING: 'red', WARNING: 'orange', INFO: 'blue' };
+import { SeverityTag } from './ExceptionSeverity';
 
 /**
  * THE EXCEPTION CENTRE.
@@ -53,8 +52,10 @@ export function PayrollExceptionCentre({ runId, canOverride }: { runId: string; 
           {
             title: 'Severity',
             dataIndex: 'severity',
-            width: 110,
-            render: (s: string) => <Tag color={TONE[s]}>{s}</Tag>,
+            width: 120,
+            render: (_: unknown, row) => (
+              <SeverityTag severity={row.severity} overridden={Boolean(row.overriddenBy)} />
+            ),
           },
           { title: 'Employee', dataIndex: 'staffName', width: 150, render: (n: string | null) => n ?? '—' },
           {
