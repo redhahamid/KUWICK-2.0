@@ -23,6 +23,9 @@ import { leaveDaysInYear } from './leave-balance';
 import { CreatePayrollRunDto } from './dto/create-payroll-run.dto';
 import { PayrollAdjustmentDto } from './dto/payroll-adjustment.dto';
 import { UpsertStatutoryRulesDto } from './dto/upsert-statutory-rules.dto';
+import { approvalGate, buildException, ExceptionSeverity } from './payroll-exception';
+import { diffSnapshots, snapshotHash, SnapshotEmployeeLine, SnapshotPayload } from './payroll-snapshot';
+import { computeVariance, VarianceLine } from './payroll-variance';
 
 /// Components that reduce pay whichever way the amount is entered. Everything
 /// else is an earning unless the amount itself is negative.
@@ -566,6 +569,34 @@ export class PayrollService {
         },
       });
 
+      // EXCEPTIONS AS ROWS.
+      //
+      // They were a JSON blob, so they could not be queried, counted by
+      // severity, overridden individually or audited — and every one of them
+      // blocked approval, which gave an informational observation the same
+      // force as an unpayable employee.
+      //
+      // The blob above is still written so that nothing reading it breaks; the
+      // rows are what the approval gate now consults.
+      await tx.payrollException.deleteMany({ where: { payrollRunId: runId } });
+      for (const raw of exceptions) {
+        const built = classifyLegacyException(raw.issue, raw.staffId, runId);
+        await tx.payrollException.create({
+          data: {
+            tenantId: currentTenantId(),
+            payrollRunId: runId,
+            staffId: built.staffId,
+            severity: built.severity as ExceptionSeverity,
+            code: built.code,
+            cause: built.cause,
+            consequence: built.consequence,
+            remediation: built.remediation,
+            deepLink: built.deepLink,
+            overridable: built.overridable,
+          },
+        });
+      }
+
       await recordAudit(tx, actor, {
         action: 'payroll.calculated',
         entityType: 'PayrollRun',
@@ -605,10 +636,18 @@ export class PayrollService {
         throw new ForbiddenException('A payroll run must be approved by somebody other than the person who ran it.');
       }
 
-      const exceptions = (run.exceptions as { issue: string }[] | null) ?? [];
-      if (exceptions.length > 0) {
+      // THE APPROVAL GATE, from exception ROWS.
+      //
+      // A deliberate, specified change from "any exception blocks": BLOCKING
+      // gates approval, WARNING does not. That distinction is the entire reason
+      // severities exist — an unapproved-overtime note and an employee with no
+      // date of birth are not the same kind of problem, and treating them
+      // alike made a run unapprovable for a reason nobody needed to fix.
+      const exceptionRows = await tx.payrollException.findMany({ where: { payrollRunId: runId } });
+      const gate = approvalGate(exceptionRows);
+      if (!gate.canApprove) {
         throw new BadRequestException(
-          `${exceptions.length} exception(s) are unresolved. Fix them and recalculate, or the run will pay the wrong amounts.`,
+          `${gate.reason} Fix them and recalculate, or the run will pay the wrong amounts.`,
         );
       }
 
@@ -626,6 +665,36 @@ export class PayrollService {
       const approved = await tx.payrollRun.update({
         where: { id: runId },
         data: { status: PayrollRunStatus.APPROVED, approvedByStaffId: actor.id, approvedAt: new Date() },
+      });
+
+      // THE SNAPSHOT.
+      //
+      // The audited competitor freezes on approval and, on reopen, re-derives
+      // from CURRENT master data while holding no snapshot anybody can inspect
+      // — its own dialog warns the figures "could result in different amounts".
+      // That leaves "what exactly did we approve in January?" unanswerable.
+      //
+      // Everything the calculation consumed is frozen here and hashed, so the
+      // question has an answer years later and a correction can show a diff.
+      const payload = await this.buildSnapshotPayload(tx, runId);
+      const version = (await tx.payrollSnapshot.count({ where: { payrollRunId: runId } })) + 1;
+      const snapshot = await tx.payrollSnapshot.create({
+        data: {
+          tenantId: currentTenantId(),
+          payrollRunId: runId,
+          version,
+          hash: snapshotHash(payload),
+          payload: payload as never,
+          createdByStaffId: actor.id,
+        },
+      });
+
+      await recordAudit(tx, actor, {
+        action: 'payrollSnapshot.created',
+        entityType: 'PayrollSnapshot',
+        entityId: snapshot.id,
+        after: { version, hash: snapshot.hash, employees: payload.totals.employeeCount },
+        source: 'hr.payroll',
       });
 
       await recordAudit(tx, actor, {
@@ -825,6 +894,336 @@ export class PayrollService {
       })),
     };
   }
+
+  // =========================================================================
+  // STAGE 2 — snapshot, reopen with a diff, and variance
+  // =========================================================================
+
+  /**
+   * Freeze what the calculation consumed.
+   *
+   * Read from the run's own lines, so a snapshot is a picture of what was
+   * approved rather than a re-derivation from master data that may since have
+   * moved.
+   */
+  private async buildSnapshotPayload(tx: AdminTx, runId: string): Promise<SnapshotPayload> {
+    const run = await tx.payrollRun.findUniqueOrThrow({
+      where: { id: runId },
+      include: {
+        legalEmployer: { select: { id: true, name: true } },
+        lines: { orderBy: { staffId: 'asc' } },
+      },
+    });
+
+    const inputs = await tx.payrollInputEntry.findMany({ where: { period: run.period } });
+    const components = await tx.payComponent.findMany({ where: { active: true } });
+    const ruleSet = run.statutoryRuleSetId
+      ? await tx.statutoryRuleSet.findUnique({ where: { id: run.statutoryRuleSetId } })
+      : null;
+
+    const employees: SnapshotEmployeeLine[] = run.lines.map((line) => {
+      const snap = (line.employeeSnapshot ?? {}) as Record<string, unknown>;
+      const mine = inputs.filter((i) => i.staffId === line.staffId);
+      const breakdown = (line.breakdown ?? {}) as Record<string, unknown>;
+      const bases = (breakdown.bases ?? {}) as Record<string, number>;
+      return {
+        staffId: line.staffId,
+        name: String(snap.name ?? ''),
+        salaryRowId: (snap.salaryRowId as string | undefined) ?? null,
+        salaryBasis: (snap.salaryBasis as string | undefined) ?? null,
+        salaryAmountCents: toCents(line.basicSalary),
+        inputs: mine.map((i) => ({
+          componentCode: i.componentCode,
+          amountCents: toCents(i.amount),
+          source: i.source,
+          sourceRecordId: i.sourceRecordId,
+          kind: i.kind,
+        })),
+        componentVersions: components.map((c) => ({ code: c.code, version: c.version })),
+        bases: {
+          grossCents: bases.grossCents ?? toCents(line.grossPay),
+          epfCents: bases.epfCents ?? 0,
+          socsoCents: bases.socsoCents ?? 0,
+          eisCents: bases.eisCents ?? 0,
+          ordinaryRateBaseCents: bases.ordinaryRateBaseCents ?? toCents(line.basicSalary),
+        },
+        statutory: {
+          epfEmployeeCents: line.epfEmployee === null ? null : toCents(line.epfEmployee),
+          epfEmployerCents: line.epfEmployer === null ? null : toCents(line.epfEmployer),
+          socsoEmployeeCents: line.socsoEmployee === null ? null : toCents(line.socsoEmployee),
+          socsoEmployerCents: line.socsoEmployer === null ? null : toCents(line.socsoEmployer),
+          eisEmployeeCents: line.eisEmployee === null ? null : toCents(line.eisEmployee),
+          eisEmployerCents: line.eisEmployer === null ? null : toCents(line.eisEmployer),
+          pcbCents: line.pcb === null ? null : toCents(line.pcb),
+        },
+        netCents: toCents(line.netPay),
+        employerCostCents: toCents(line.employerCost),
+      };
+    });
+
+    return {
+      legalEmployerId: run.legalEmployer?.id ?? null,
+      legalEmployerName: run.legalEmployer?.name ?? null,
+      period: run.period.toISOString().slice(0, 10),
+      runType: run.runType,
+      sequence: run.sequence,
+      paymentDate: run.paymentDate ? run.paymentDate.toISOString().slice(0, 10) : null,
+      statutoryRuleSetId: run.statutoryRuleSetId,
+      statutoryVerificationStatus: ruleSet?.verificationStatus ?? null,
+      orp: {
+        overtimeDays: Number(run.orpOvertimeDays),
+        unpaidLeaveDays: Number(run.orpUnpaidLeaveDays),
+        hoursPerDay: Number(run.orpHoursPerDay),
+      },
+      employees,
+      totals: {
+        grossCents: toCents(run.grossTotal),
+        deductionCents: toCents(run.deductionTotal),
+        netCents: toCents(run.netTotal),
+        employerCostCents: toCents(run.employerCostTotal),
+        employeeCount: run.employeeCount,
+      },
+    };
+  }
+
+  /** Every snapshot ever taken of a run, newest first. */
+  async snapshots(runId: string) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    const rows = await this.prisma.payrollSnapshot.findMany({
+      where: { payrollRunId: runId },
+      orderBy: { version: 'desc' },
+      include: { createdBy: { select: { fullName: true } } },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      version: row.version,
+      hash: row.hash,
+      reason: row.reason,
+      createdBy: row.createdBy.fullName,
+      createdAt: row.createdAt.toISOString(),
+      totals: (row.payload as unknown as SnapshotPayload).totals,
+    }));
+  }
+
+  /**
+   * REOPEN AN APPROVED RUN.
+   *
+   * The prior snapshot is never erased. The run returns to CALCULATED so it can
+   * be recalculated, and the next approval writes a NEW snapshot version — so
+   * the history reads as a sequence of things that were true, not as one
+   * mutable present.
+   */
+  async reopen(runId: string, reason: string) {
+    return withAdminTx(this.rawPrisma, 'hr.payroll.reopen', async (tx, actor) => {
+      const run = await tx.payrollRun.findUnique({ where: { id: runId } });
+      if (!run) throw new NotFoundException('Payroll run not found');
+      if (run.status !== PayrollRunStatus.APPROVED) {
+        throw new ConflictException(
+          run.status === PayrollRunStatus.PAID
+            ? 'This run is marked paid. Money has left the clinic; correct it with an adjustment rather than reopening it.'
+            : `A ${run.status.toLowerCase()} run is not open to reopening.`,
+        );
+      }
+      if (!reason || reason.trim().length < 5) {
+        throw new BadRequestException('Say why this run is being reopened. It becomes part of the payroll record.');
+      }
+
+      const latest = await tx.payrollSnapshot.findFirst({
+        where: { payrollRunId: runId },
+        orderBy: { version: 'desc' },
+      });
+
+      const reopened = await tx.payrollRun.update({
+        where: { id: runId },
+        data: {
+          status: PayrollRunStatus.CALCULATED,
+          approvedByStaffId: null,
+          approvedAt: null,
+        },
+      });
+
+      await recordAudit(tx, actor, {
+        action: 'payroll.reopened',
+        entityType: 'PayrollRun',
+        entityId: runId,
+        before: { status: PayrollRunStatus.APPROVED, snapshotVersion: latest?.version ?? null, snapshotHash: latest?.hash ?? null },
+        after: { status: PayrollRunStatus.CALCULATED },
+        reason,
+        source: 'hr.payroll',
+      });
+
+      return {
+        run: reopened,
+        preservedSnapshot: latest ? { version: latest.version, hash: latest.hash } : null,
+        note: latest
+          ? `Snapshot v${latest.version} is preserved. Recalculate, review the difference, then approve again to write v${latest.version + 1}.`
+          : 'This run was approved before snapshots existed, so there is nothing to compare against.',
+      };
+    });
+  }
+
+  /**
+   * What a recalculation WOULD change, against the approved snapshot.
+   *
+   * Shown before anybody commits — which the audited competitor does not do:
+   * it warns that figures may change and then shows nobody what did.
+   */
+  async candidateDiff(runId: string) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    const latest = await this.prisma.payrollSnapshot.findFirst({
+      where: { payrollRunId: runId },
+      orderBy: { version: 'desc' },
+    });
+    if (!latest) {
+      return { hasSnapshot: false, note: 'This run has never been approved, so there is nothing to compare against.' };
+    }
+    const candidate = await this.buildSnapshotPayload(this.prisma as unknown as AdminTx, runId);
+    const before = latest.payload as unknown as SnapshotPayload;
+    const diff = diffSnapshots(before, candidate);
+    return {
+      hasSnapshot: true,
+      snapshotVersion: latest.version,
+      snapshotHash: latest.hash,
+      candidateHash: snapshotHash(candidate),
+      diff,
+      note: diff.identical
+        ? 'The recalculation produces exactly what was approved.'
+        : `${diff.changed.length} figure(s) differ from what was approved, across ${new Set(diff.changed.map((c) => c.staffId)).size} employee(s).`,
+    };
+  }
+
+  /**
+   * VARIANCE AGAINST THE PREVIOUS PERIOD.
+   *
+   * Payroll errors are rarely subtle in size and almost always invisible in a
+   * grid of plausible-looking rows. This says which people MOVED.
+   */
+  async variance(runId: string, thresholdPercent = 20) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    const run = await this.prisma.payrollRun.findFirst({
+      where: { id: runId },
+      include: { lines: true },
+    });
+    if (!run) throw new NotFoundException('Payroll run not found');
+
+    const previousPeriod = new Date(Date.UTC(run.period.getUTCFullYear(), run.period.getUTCMonth() - 1, 1));
+    const previous = await this.prisma.payrollRun.findFirst({
+      where: { period: previousPeriod, clinicId: run.clinicId, runType: run.runType },
+      include: { lines: true },
+    });
+
+    const byStaff = new Map<string, VarianceLine>();
+    for (const line of previous?.lines ?? []) {
+      const snap = (line.employeeSnapshot ?? {}) as Record<string, unknown>;
+      byStaff.set(line.staffId, {
+        staffId: line.staffId,
+        name: String(snap.name ?? ''),
+        previousNetCents: toCents(line.netPay),
+        currentNetCents: null,
+      });
+    }
+    for (const line of run.lines) {
+      const snap = (line.employeeSnapshot ?? {}) as Record<string, unknown>;
+      const found = byStaff.get(line.staffId);
+      if (found) found.currentNetCents = toCents(line.netPay);
+      else
+        byStaff.set(line.staffId, {
+          staffId: line.staffId,
+          name: String(snap.name ?? ''),
+          previousNetCents: null,
+          currentNetCents: toCents(line.netPay),
+        });
+    }
+
+    const report = computeVariance(
+      [...byStaff.values()],
+      previous
+        ? [
+            { field: 'grossCents', previous: toCents(previous.grossTotal), current: toCents(run.grossTotal) },
+            { field: 'netCents', previous: toCents(previous.netTotal), current: toCents(run.netTotal) },
+            {
+              field: 'employerCostCents',
+              previous: toCents(previous.employerCostTotal),
+              current: toCents(run.employerCostTotal),
+            },
+          ]
+        : [],
+      thresholdPercent,
+    );
+
+    return {
+      hasPrevious: Boolean(previous),
+      previousPeriod: previousPeriod.toISOString().slice(0, 10),
+      ...report,
+      note: previous
+        ? report.material.length === 0
+          ? 'Nobody moved by more than the threshold.'
+          : `${report.material.length} employee(s) moved beyond ${thresholdPercent}%. A movement that size is more often a data error than a real change.`
+        : 'There is no previous period to compare against, so nothing here is unusual by definition.',
+    };
+  }
+
+  /** The exception centre for a run. */
+  async exceptions(runId: string) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    const rows = await this.prisma.payrollException.findMany({
+      where: { payrollRunId: runId },
+      orderBy: [{ severity: 'asc' }, { code: 'asc' }],
+      include: {
+        staff: { select: { fullName: true } },
+        overriddenBy: { select: { fullName: true } },
+      },
+    });
+    const gate = approvalGate(rows);
+    return {
+      exceptions: rows.map((row) => ({
+        id: row.id,
+        severity: row.severity,
+        code: row.code,
+        staffId: row.staffId,
+        staffName: row.staff?.fullName ?? null,
+        cause: row.cause,
+        consequence: row.consequence,
+        remediation: row.remediation,
+        deepLink: row.deepLink,
+        overridable: row.overridable,
+        overriddenBy: row.overriddenBy?.fullName ?? null,
+        overrideReason: row.overrideReason,
+        overriddenAt: row.overriddenAt?.toISOString() ?? null,
+      })),
+      gate,
+    };
+  }
+
+  /** Pass a warning deliberately, with a reason that stays on the record. */
+  async overrideException(exceptionId: string, reason: string) {
+    return withAdminTx(this.rawPrisma, 'hr.payroll.approve', async (tx, actor) => {
+      const row = await tx.payrollException.findFirst({ where: { id: exceptionId } });
+      if (!row) throw new NotFoundException('Exception not found');
+      if (!row.overridable) {
+        throw new BadRequestException(
+          `"${row.code}" cannot be overridden. ${row.consequence} Resolve it rather than passing it.`,
+        );
+      }
+      if (!reason || reason.trim().length < 5) {
+        throw new BadRequestException('Say why this is being passed. It becomes part of the payroll record.');
+      }
+      const saved = await tx.payrollException.update({
+        where: { id: exceptionId },
+        data: { overriddenByStaffId: actor.id, overrideReason: reason, overriddenAt: new Date() },
+      });
+      await recordAudit(tx, actor, {
+        action: 'payrollException.overridden',
+        entityType: 'PayrollException',
+        entityId: exceptionId,
+        after: { code: row.code, severity: row.severity },
+        reason,
+        source: 'hr.payroll',
+      });
+      return saved;
+    });
+  }
+
 }
 
 function nullableCents(cents: number | null): number | null {
@@ -834,3 +1233,41 @@ function nullableCents(cents: number | null): number | null {
 function numberOrNull(value: { toString(): string } | null): number | null {
   return value === null ? null : Number(value);
 }
+
+/**
+ * Map an existing exception string onto the catalogue.
+ *
+ * The calculation still produces its historical `{ staffId, name, issue }`
+ * shape; this classifies it so the rows carry a severity, a consequence and a
+ * remedy without rewriting the calculation in the same change. Anything
+ * unrecognised stays BLOCKING, which is exactly what it was before.
+ */
+function classifyLegacyException(issue: string, staffId: string | null, runId: string) {
+  const ctx = { staffId: staffId ?? '', runId };
+  if (/No salary or hourly rate/i.test(issue)) return buildException('NO_SALARY', staffId, ctx);
+  if (/date of birth/i.test(issue)) return buildException('NO_DOB', staffId, ctx);
+  if (/PCB \(monthly tax deduction\)/i.test(issue)) return buildException('PCB_MISSING', staffId, ctx);
+  if (/overtime is claimed but not approved/i.test(issue)) {
+    const hours = issue.match(/([\d.]+)h/)?.[1] ?? '?';
+    return buildException('UNAPPROVED_OVERTIME', staffId, { ...ctx, hours });
+  }
+  if (/missing clock-in or clock-out/i.test(issue)) {
+    const days = issue.match(/(\d+) day/)?.[1] ?? '?';
+    return buildException('MISSING_PUNCH', staffId, { ...ctx, days });
+  }
+  if (/is not a known component/i.test(issue)) {
+    const componentCode = issue.match(/"([^"]+)"/)?.[1] ?? 'unknown';
+    return buildException('UNKNOWN_COMPONENT', staffId, { ...ctx, componentCode });
+  }
+  return {
+    code: 'LEGACY',
+    severity: 'BLOCKING' as const,
+    staffId,
+    cause: issue,
+    consequence: 'This run cannot be approved until the issue is resolved.',
+    remediation: 'Resolve the underlying data and recalculate the run.',
+    deepLink: null,
+    overridable: false,
+  };
+}
+

@@ -402,6 +402,79 @@ CREATE POLICY tenant_isolation ON "employee_ytd"
   WITH CHECK ("tenant_id" = current_setting('app.tenant_id', true));
 
 -- ---------------------------------------------------------------------------
+-- 10b. THE LOCK, TAUGHT TWO NEW MOVES.
+--
+-- `payroll_runs_locked()` refused EVERY update to an approved run except the
+-- PAID transition and cancellation. That was right when the only way to change
+-- a locked run was an adjustment. Two things now need to pass it, and both
+-- were found by the integration suite rather than by reading the code:
+--
+--   1. A REOPEN (APPROVED -> CALCULATED). Permitted only when a snapshot of
+--      what was approved already exists — you may unlock only what has been
+--      frozen, so reopening can never lose the record of what was paid. The
+--      service also demands a reason and the `hr.payroll.reopen` permission;
+--      this is the floor beneath both.
+--
+--   2. STAMPING NON-FINANCIAL METADATA on a locked run — the employer it
+--      belongs to, its payment date — where no figure moves. The backfill in
+--      section 11 does exactly this, and the old trigger refused it.
+--
+-- Every figure stays as protected as it was: gross, net, deduction, employer
+-- cost and statutory status must all be unchanged on any path except a fresh
+-- calculation of an unlocked run.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION payroll_runs_locked() RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.status NOT IN ('APPROVED', 'PAID') THEN
+    RETURN NEW;
+  END IF;
+
+  -- The one permitted transition after locking, plus its two stamps.
+  IF OLD.status = 'APPROVED' AND NEW.status = 'PAID'
+     AND NEW.gross_total = OLD.gross_total
+     AND NEW.net_total = OLD.net_total
+     AND NEW.deduction_total = OLD.deduction_total
+     AND NEW.employer_cost_total = OLD.employer_cost_total
+     AND NEW.statutory_status = OLD.statutory_status THEN
+    RETURN NEW;
+  END IF;
+
+  -- Cancelling a locked run is a deliberate, recorded act and stays available;
+  -- it changes no figure.
+  IF NEW.status = 'CANCELLED'
+     AND NEW.gross_total = OLD.gross_total
+     AND NEW.net_total = OLD.net_total THEN
+    RETURN NEW;
+  END IF;
+
+  -- REOPEN. Only from APPROVED, only back to CALCULATED, only when what was
+  -- approved has been snapshotted, and only with every figure still untouched
+  -- at the moment of unlocking.
+  IF OLD.status = 'APPROVED' AND NEW.status = 'CALCULATED'
+     AND NEW.gross_total = OLD.gross_total
+     AND NEW.net_total = OLD.net_total
+     AND NEW.deduction_total = OLD.deduction_total
+     AND NEW.employer_cost_total = OLD.employer_cost_total
+     AND EXISTS (SELECT 1 FROM "payroll_snapshots" ps WHERE ps."payroll_run_id" = OLD.id) THEN
+    RETURN NEW;
+  END IF;
+
+  -- Non-financial metadata on a locked run: same status, same every figure.
+  IF NEW.status = OLD.status
+     AND NEW.gross_total = OLD.gross_total
+     AND NEW.net_total = OLD.net_total
+     AND NEW.deduction_total = OLD.deduction_total
+     AND NEW.employer_cost_total = OLD.employer_cost_total
+     AND NEW.employee_count = OLD.employee_count
+     AND NEW.statutory_status = OLD.statutory_status THEN
+    RETURN NEW;
+  END IF;
+
+  RAISE EXCEPTION 'payroll run is locked: an approved run''s figures cannot change — record a payroll adjustment instead';
+END;
+$$ LANGUAGE plpgsql;
+
+-- ---------------------------------------------------------------------------
 -- 11. BACKFILL — reproduce today's state exactly.
 --
 -- One employer per tenant, named from the tenant. Every employee and every

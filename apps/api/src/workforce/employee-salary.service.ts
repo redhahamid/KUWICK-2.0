@@ -4,7 +4,7 @@ import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
-import { toCents, fromCents } from '../finance/money';
+import { toCents, fromCents, formatCents } from '../finance/money';
 import { resolveSalaryForPeriod, SalaryRow } from './salary-resolution';
 import { RecordSalaryDto } from './dto/record-salary.dto';
 
@@ -39,7 +39,8 @@ export class EmployeeSalaryService {
     return rows.map((row) => ({
       id: row.id,
       basis: row.basis,
-      amount: row.amount.toString(),
+      // Always two decimals: Decimal.toString() renders 300.00 as "300".
+      amount: formatCents(toCents(row.amount)),
       effectiveFrom: row.effectiveFrom.toISOString().slice(0, 10),
       effectiveTo: row.effectiveTo ? row.effectiveTo.toISOString().slice(0, 10) : null,
       reason: row.reason,
@@ -51,10 +52,12 @@ export class EmployeeSalaryService {
   }
 
   /** What a given period would resolve to, and why. Used by the run and the UI. */
-  async resolveForPeriod(staffId: string, period: Date) {
+  async resolveForPeriod(staffId: string, period: Date | string) {
     await requirePermission(this.rawPrisma, 'hr.salary.view');
     const rows = await this.prisma.employeeSalary.findMany({ where: { staffId } });
-    const { start, end } = monthBounds(period);
+    const asDate = period instanceof Date ? period : new Date(`${period}T00:00:00.000Z`);
+    if (Number.isNaN(asDate.getTime())) throw new BadRequestException('period must be a YYYY-MM-DD date.');
+    const { start, end } = monthBounds(asDate);
     const resolution = resolveSalaryForPeriod(
       rows.map<SalaryRow>((r) => ({
         id: r.id,
@@ -68,7 +71,7 @@ export class EmployeeSalaryService {
     );
     return {
       period: start.toISOString().slice(0, 10),
-      amount: resolution.row ? fromCents(resolution.row.amountCents) : null,
+      amount: resolution.row ? formatCents(resolution.row.amountCents) : null,
       basis: resolution.row?.basis ?? null,
       salaryRowId: resolution.row?.id ?? null,
       changedDuringPeriod: resolution.changedDuringPeriod,
@@ -150,8 +153,8 @@ export class EmployeeSalaryService {
         entityType: 'EmployeeSalary',
         entityId: saved.id,
         reason: `Recorded ${dto.basis ?? 'MONTHLY'} salary from ${dto.effectiveFrom}`,
-        before: open ? { amount: open.amount.toString(), effectiveTo: null } : null,
-        after: { amount: saved.amount.toString(), effectiveFrom: dto.effectiveFrom },
+        before: open ? { amount: formatCents(toCents(open.amount)), effectiveTo: null } : null,
+        after: { amount: formatCents(toCents(saved.amount)), effectiveFrom: dto.effectiveFrom },
       });
 
       return saved;

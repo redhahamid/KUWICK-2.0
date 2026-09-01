@@ -78,7 +78,8 @@ export class WorkforceController {
   }
 
   @Get('employees/:staffId/salary/resolve')
-  resolveSalary(@Param('staffId') staffId: string, @Query('period', RequiredDateParam) period: Date) {
+  resolveSalary(@Param('staffId') staffId: string, @Query('period', RequiredDateParam) period: string) {
+    // RequiredDateParam normalises to a YYYY-MM-DD STRING, not a Date.
     return this.salaries.resolveForPeriod(staffId, period);
   }
 
@@ -317,6 +318,36 @@ export class WorkforceController {
   @Patch('payroll/runs/:id/paid')
   markPayrollPaid(@Param('id') id: string) {
     return this.payroll.markPaid(id);
+  }
+
+  @Get('payroll/runs/:id/exceptions')
+  payrollExceptions(@Param('id') id: string) {
+    return this.payroll.exceptions(id);
+  }
+
+  @Patch('payroll/exceptions/:id/override')
+  overridePayrollException(@Param('id') id: string, @Body() body: { reason: string }) {
+    return this.payroll.overrideException(id, body.reason);
+  }
+
+  @Get('payroll/runs/:id/variance')
+  payrollVariance(@Param('id') id: string, @Query('threshold') threshold?: string) {
+    return this.payroll.variance(id, threshold ? Number(threshold) : undefined);
+  }
+
+  @Get('payroll/runs/:id/snapshots')
+  payrollSnapshots(@Param('id') id: string) {
+    return this.payroll.snapshots(id);
+  }
+
+  @Get('payroll/runs/:id/candidate-diff')
+  payrollCandidateDiff(@Param('id') id: string) {
+    return this.payroll.candidateDiff(id);
+  }
+
+  @Patch('payroll/runs/:id/reopen')
+  reopenPayrollRun(@Param('id') id: string, @Body() body: { reason: string }) {
+    return this.payroll.reopen(id, body.reason);
   }
 
   @Post('payroll/runs/:id/adjustments')

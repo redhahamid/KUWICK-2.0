@@ -4,7 +4,7 @@ import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
-import { toCents } from '../finance/money';
+import { toCents, formatCents } from '../finance/money';
 import { UpsertPayrollInputDto } from './dto/upsert-payroll-input.dto';
 
 function periodStart(period: string): Date {
@@ -60,7 +60,8 @@ export class PayrollInputService {
       staffName: row.staff.fullName,
       componentCode: row.componentCode,
       label: row.label,
-      amount: row.amount.toString(),
+      // Always two decimals: Decimal.toString() renders 300.00 as "300".
+      amount: formatCents(toCents(row.amount)),
       kind: row.kind,
       source: row.source,
       sourceRecordId: row.sourceRecordId,
@@ -186,7 +187,7 @@ export class PayrollInputService {
         action: 'payrollInput.deleted',
         entityType: 'PayrollInputEntry',
         entityId: id,
-        reason: `Removed ${row.componentCode} of ${row.amount.toString()} for ${row.staff.fullName}`,
+        reason: `Removed ${row.componentCode} of ${formatCents(toCents(row.amount))} for ${row.staff.fullName}`,
       });
       return { removed: true };
     });
