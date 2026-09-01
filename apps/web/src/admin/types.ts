@@ -1933,4 +1933,34 @@ export interface PayrollJourney {
     mustFix: number;
     worthALook: number;
   };
+  /**
+   * STEP 6 — who is allowed to approve, and whether this reader is one of them.
+   * Answered by the same rule the server enforces with, so the screen never
+   * offers a button the server is going to refuse.
+   */
+  approval: PayrollApprovalState;
+}
+
+export interface PayrollApprovalState {
+  /** The rule in one sentence, in the owner's words. */
+  rule: string;
+  required: number;
+  given: { name: string; at: string; sequence: number; wasOwnSelfApproval: boolean }[];
+  youMayApprove: boolean;
+  /** Why not — a different sentence from "this run has problems". */
+  whyNot: string | null;
+  /** Whether pressing Approve finishes the run or records one of two. */
+  completesTheRun: boolean;
+}
+
+/** Who is allowed to approve payroll in this clinic. Payroll settings. */
+export interface PayrollApprovalPolicy {
+  mode: 'STANDARD' | 'MAKER_CHECKER' | 'DUAL_APPROVAL';
+  allowOwnerSelfApproval: boolean;
+  approvalsRequired: number;
+  description: string;
+  approvers: { total: number; owners: number; names: string[] };
+  /** Empty when the chosen rule can actually take effect. */
+  inert: string[];
+  limits: string[];
 }

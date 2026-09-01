@@ -723,6 +723,7 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
   const warnings = data.review.attention.filter((item) => !item.blocksApproval && item.severity === 'WARNING');
   const provisional = data.run.statutoryStatus !== 'CONFIGURED';
   const alreadyApproved = data.run.status === 'APPROVED' || data.run.status === 'PAID';
+  const approval = data.approval;
 
   const checks = [
     {
@@ -837,6 +838,43 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
           </div>
         ) : null}
 
+        {/*
+          * WHO IS APPROVING THIS, and whether that is finished.
+          *
+          * Under a two-approval rule, one approval is not an approval — and a
+          * screen that says "approved" after the first one is how a run gets
+          * paid on half the sign-off the clinic asked for.
+          */}
+        {approval.required > 1 || approval.given.length > 0 ? (
+          <AdminSection title="Sign-off">
+            <p className="kw-muted" style={{ marginTop: 0 }}>{approval.rule}</p>
+            <div className="kw-signoffList">
+              {Array.from({ length: Math.max(approval.required, approval.given.length) }).map((_, index) => {
+                const person = approval.given[index];
+                return (
+                  <div key={index} className="kw-signoffList__row">
+                    <span
+                      className={`kw-signoffList__mark kw-signoffList__mark--${person ? 'done' : 'todo'}`}
+                    >
+                      {person ? '✓' : index + 1}
+                    </span>
+                    <div>
+                      <div className="kw-signoffList__title">
+                        {person ? person.name : 'Waiting for a second person'}
+                      </div>
+                      <div className="kw-signoffList__detail">
+                        {person
+                          ? `${dayjs(person.at).format('D MMM YYYY, HH:mm')}${person.wasOwnSelfApproval ? ' · approved their own run' : ''}`
+                          : 'The run stays open until they approve it.'}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </AdminSection>
+        ) : null}
+
         <AdminSection title="Finalise">
           {!canFinaliseHere && !alreadyApproved ? (
             <AdminNotice tone="info">
@@ -855,30 +893,48 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
             </p>
           ) : (
             <>
+              {/*
+                * TWO REASONS THE BUTTON MIGHT NOT WORK, kept apart. "This run
+                * has problems" and "you are not the one who may approve it"
+                * need different actions, and merging them sends somebody off
+                * to fix five exceptions they were never going to approve.
+                */}
               <p className="kw-muted" style={{ marginTop: 0 }}>
-                {gate.canApprove
-                  ? gate.reason
-                  : `${gate.blocking} thing${gate.blocking === 1 ? '' : 's'} must be sorted first. Kuwick will not finalise a run it cannot compute.`}
+                {!approval.youMayApprove && approval.whyNot
+                  ? approval.whyNot
+                  : gate.canApprove
+                    ? approval.completesTheRun
+                      ? gate.reason
+                      : 'Your approval will be recorded. The run stays open until a second person approves it.'
+                    : `${gate.blocking} thing${gate.blocking === 1 ? '' : 's'} must be sorted first. Kuwick will not finalise a run it cannot compute.`}
               </p>
               <Button
                 type="primary"
                 block
-                disabled={!gate.canApprove}
+                disabled={!gate.canApprove || !approval.youMayApprove}
                 loading={approve.isPending}
                 onClick={() =>
                   Modal.confirm({
-                    title: `Finalise ${data.run.periodLabel} payroll?`,
-                    content: provisional
-                      ? 'The statutory rates behind these figures have not been verified. This run will be locked and marked PROVISIONAL — it must not be used to pay staff or file a return.'
-                      : 'The figures will be locked. A correction afterwards is a recorded adjustment.',
-                    okText: 'Finalise',
+                    title: approval.completesTheRun
+                      ? `Finalise ${data.run.periodLabel} payroll?`
+                      : `Record your approval of ${data.run.periodLabel} payroll?`,
+                    content: !approval.completesTheRun
+                      ? `This clinic requires ${approval.required} approvals. Nothing locks until a second person approves it.`
+                      : provisional
+                        ? 'The statutory rates behind these figures have not been verified. This run will be locked and marked PROVISIONAL — it must not be used to pay staff or file a return.'
+                        : 'The figures will be locked. A correction afterwards is a recorded adjustment.',
+                    okText: approval.completesTheRun ? 'Finalise' : 'Approve',
                     onOk: () =>
                       new Promise<void>((resolve, reject) => {
                         approve.mutate(
                           { id: runId, acknowledgeStatutoryGap: provisional },
                           {
                             onSuccess: () => {
-                              message.success('Payroll finalised');
+                              message.success(
+                                approval.completesTheRun
+                                  ? 'Payroll finalised'
+                                  : 'Your approval is recorded. One more is needed.',
+                              );
                               resolve();
                             },
                             onError: (error: Error) => {
@@ -891,7 +947,9 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
                   })
                 }
               >
-                Finalise {data.run.periodLabel} payroll
+                {approval.completesTheRun
+                  ? `Finalise ${data.run.periodLabel} payroll`
+                  : `Approve ${data.run.periodLabel} payroll (1 of ${approval.required})`}
               </Button>
               {!gate.canApprove ? (
                 <div className="kw-muted" style={{ fontSize: 12, marginTop: 8, textAlign: 'center' }}>

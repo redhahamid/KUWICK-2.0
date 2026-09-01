@@ -660,6 +660,9 @@ async function reset() {
     // the claims themselves go before the inputs — otherwise the second run of
     // this seed fails on `staff_claims.payroll_input_entry_id`, and only then.
     'staff_claim_events', 'staff_claim_attachments', 'staff_claims', 'locum_sessions',
+    // Approvals point AT the run, so they go before it; the tenant-level
+    // approval rule points at nothing but the tenant.
+    'payroll_run_approvals', 'payroll_approval_policies',
     'payroll_adjustments', 'payroll_lines', 'payroll_runs', 'payroll_input_entries', 'statutory_rule_sets',
     'employee_recurring_items', 'employee_ytd', 'employee_salaries',
     'incentive_results', 'incentive_runs', 'incentive_rules',

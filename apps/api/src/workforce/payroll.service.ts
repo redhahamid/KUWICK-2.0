@@ -1,8 +1,20 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { PayrollRunStatus, StatutoryStatus, StatutoryVerificationStatus } from '@prisma/client';
+import {
+  PayrollApprovalMode as PayrollApprovalModeEnum,
+  PayrollRunStatus,
+  StatutoryStatus,
+  StatutoryVerificationStatus,
+  SystemRole,
+} from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
+import {
+  Permission,
+  can,
+  isCustomRoleGrantable,
+  isIndividuallyGrantable,
+} from '../core/permissions';
 import { AdminTx, actorCan, requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { formatCents, fromCents, toCents } from '../finance/money';
@@ -31,6 +43,13 @@ import { leaveDaysInYear } from './leave-balance';
 import { CreatePayrollRunDto } from './dto/create-payroll-run.dto';
 import { PayrollAdjustmentDto } from './dto/payroll-adjustment.dto';
 import { UpsertStatutoryRulesDto } from './dto/upsert-statutory-rules.dto';
+import {
+  ApprovalPolicy,
+  PayrollApprovalMode,
+  approvalsRequired,
+  decideApproval,
+  describeApprovalMode,
+} from './payroll-approval-rule';
 import { approvalGate, BuiltException, buildException, ExceptionSeverity } from './payroll-exception';
 import { resolveSalaryForPayroll, SalaryRow } from './salary-resolution';
 import { diffSnapshots, snapshotHash, SnapshotEmployeeLine, SnapshotPayload } from './payroll-snapshot';
@@ -987,11 +1006,32 @@ export class PayrollService {
       if (run.status !== PayrollRunStatus.CALCULATED) {
         throw new ConflictException(`A ${run.status.toLowerCase()} payroll run cannot be approved.`);
       }
-      // SEPARATION OF DUTIES, with the owner as the documented exception: in a
-      // clinic where the owner is the only person who touches payroll, refusing
-      // their approval would leave nobody able to pay anyone.
-      if (run.createdByStaffId === actor.id && !actorCan(actor, 'settings.manage')) {
-        throw new ForbiddenException('A payroll run must be approved by somebody other than the person who ran it.');
+      // SEPARATION OF DUTIES, from a setting rather than a hard-coded rule.
+      //
+      // This used to be "the maker cannot approve, unless they hold
+      // settings.manage" — right for a group with a finance department, wrong
+      // for a single-doctor clinic, and invisible to both. The clinic chooses
+      // now, and the rule in force is recorded on the approval so a run
+      // approved last year can still say what it was approved under.
+      //
+      // Read BEFORE the exception gate on purpose: "you may not approve your
+      // own run" is a different conversation from "this run has problems", and
+      // telling somebody to go fix five exceptions they were never going to be
+      // allowed to approve wastes their afternoon.
+      const policy = await this.readApprovalPolicy(tx);
+      const priorApprovals = await tx.payrollRunApproval.findMany({
+        where: { payrollRunId: runId },
+        orderBy: { sequence: 'asc' },
+        select: { staffId: true },
+      });
+      const decision = decideApproval(policy, {
+        actorStaffId: actor.id,
+        actorIsOwner: actorCan(actor, 'settings.manage'),
+        makerStaffId: run.createdByStaffId,
+        existing: priorApprovals,
+      });
+      if (decision.outcome === 'REFUSE') {
+        throw new ForbiddenException(decision.reason);
       }
 
       // THE APPROVAL GATE, from exception ROWS.
@@ -1018,6 +1058,49 @@ export class PayrollService {
             ? 'No statutory rates are configured for this period, so EPF, SOCSO, EIS and PCB have NOT been calculated. Confirm that this is intended before approving.'
             : 'The statutory rates used have not been verified against the authority’s published tables. Confirm before approving.',
         );
+      }
+
+      // ONE ROW PER APPROVER. Under DUAL_APPROVAL there are two, and the
+      // unique constraint on (run, staff) is what makes them two DIFFERENT
+      // people — approving twice cannot satisfy a rule whose entire purpose is
+      // a second pair of eyes.
+      await tx.payrollRunApproval.create({
+        data: {
+          tenantId: currentTenantId(),
+          payrollRunId: runId,
+          staffId: actor.id,
+          sequence: decision.sequence,
+          mode: policy.mode as PayrollApprovalModeEnum,
+          usedOwnerSelfApproval: decision.usedOwnerSelfApproval,
+          statutoryGapAcknowledged: acknowledgeStatutoryGap,
+        },
+      });
+
+      // A FIRST APPROVAL IS NOT AN APPROVAL. The run stays CALCULATED, nothing
+      // locks, no snapshot is taken, and the response says who is still needed
+      // — so nobody reads "approved" off a run one person has looked at.
+      if (decision.outcome === 'RECORD_AND_WAIT') {
+        await recordAudit(tx, actor, {
+          action: 'payrollApproval.recorded',
+          entityType: 'PayrollRun',
+          entityId: runId,
+          after: {
+            sequence: decision.sequence,
+            of: approvalsRequired(policy.mode),
+            mode: policy.mode,
+            usedOwnerSelfApproval: decision.usedOwnerSelfApproval,
+          },
+          source: 'hr.payroll',
+        });
+        return {
+          ...run,
+          approvalState: {
+            complete: false,
+            given: decision.sequence,
+            required: approvalsRequired(policy.mode),
+            message: decision.reason,
+          },
+        };
       }
 
       const approved = await tx.payrollRun.update({
@@ -1066,10 +1149,163 @@ export class PayrollService {
           employees: run.employeeCount,
           statutoryStatus: run.statutoryStatus,
           statutoryGapAcknowledged: acknowledgeStatutoryGap,
+          approvalMode: policy.mode,
+          approvals: decision.sequence,
+          usedOwnerSelfApproval: decision.usedOwnerSelfApproval,
         },
         source: 'hr.payroll',
       });
-      return approved;
+      return {
+        ...approved,
+        approvalState: {
+          complete: true,
+          given: decision.sequence,
+          required: approvalsRequired(policy.mode),
+          message: 'Approved and locked.',
+        },
+      };
+    });
+  }
+
+  /**
+   * THE APPROVAL RULE IN FORCE, created on first read.
+   *
+   * The defaults reproduce exactly what was hard-coded before the setting
+   * existed — one approval, by somebody other than the person who ran it,
+   * with the account owner exempt — so upgrading changes nobody's rule.
+   */
+  private async readApprovalPolicy(tx: AdminTx): Promise<ApprovalPolicy> {
+    const tenantId = currentTenantId();
+    const existing = await tx.payrollApprovalPolicy.findUnique({ where: { tenantId } });
+    if (existing) {
+      return { mode: existing.mode, allowOwnerSelfApproval: existing.allowOwnerSelfApproval };
+    }
+    const created = await tx.payrollApprovalPolicy.create({ data: { tenantId } });
+    return { mode: created.mode, allowOwnerSelfApproval: created.allowOwnerSelfApproval };
+  }
+
+  /** What the payroll settings screen shows, and what the run header reads. */
+  async approvalPolicy() {
+    return withAdminTx(this.rawPrisma, 'hr.payroll.view', async (tx) => {
+      const policy = await this.readApprovalPolicy(tx);
+      const approvers = await this.countApprovers(tx);
+
+      /*
+       * WHETHER THE RULE CAN ACTUALLY BITE, computed rather than assumed.
+       *
+       * Setting a rule that cannot take effect is worse than having no rule:
+       * the clinic believes two people are checking payroll and one is. Two
+       * things can make a chosen rule inert, and the screen says which:
+       *
+       *   * only one account can approve payroll at all, so a rule needing a
+       *     second person can never be satisfied; or
+       *   * every account that can approve payroll is an account holder, and
+       *     the owner exemption is on, so the separation never applies.
+       *
+       * The second is not a small print case today. `hr.payroll.approve` is
+       * carried by the OWNER role alone — it is not individually grantable and
+       * a custom role cannot hold it — so EVERY approver is an owner, and with
+       * the exemption on, MAKER_CHECKER behaves exactly like STANDARD.
+       */
+      const needsASecondPerson = approvalsRequired(policy.mode) > 1 || policy.mode === 'MAKER_CHECKER';
+      const inert: string[] = [];
+      if (needsASecondPerson && approvers.total < 2) {
+        inert.push(
+          `Only ${approvers.total === 1 ? 'one account' : 'no account'} in this clinic can approve payroll, so a rule that needs a second person cannot be met. Give a colleague the owner role first.`,
+        );
+      }
+      if (needsASecondPerson && policy.allowOwnerSelfApproval && approvers.total === approvers.owners) {
+        inert.push(
+          'Everybody who can approve payroll is an account holder, and account holders are allowed to approve their own runs, so this rule will not change who can approve anything. Turn that allowance off to make it take effect.',
+        );
+      }
+
+      return {
+        ...policy,
+        approvalsRequired: approvalsRequired(policy.mode),
+        description: describeApprovalMode(policy),
+        approvers,
+        /** Empty when the rule does what it says. */
+        inert,
+        /**
+         * WHAT THIS SETTING DOES NOT DO. Named on the screen rather than
+         * discovered by a clinic that assumed otherwise.
+         */
+        limits: [
+          'Nobody is notified that a run is waiting for them. The second approver finds it on the payroll list.',
+          'The rule does not vary by amount. A small correction run takes the same route as a full month.',
+          'It governs the payroll run only. Claims, leave, overtime and incentives each have their own approval.',
+          'Both approvers need the same permission. Kuwick has no notion of a more senior approver, so two approvals means two people, not two levels.',
+          'Only an account holder can approve payroll. It cannot be given to an HR or finance colleague on its own, so a second approver has to be a second account holder.',
+        ],
+      };
+    });
+  }
+
+  /**
+   * HOW MANY PEOPLE COULD APPROVE A RUN, and how many of those are account
+   * holders. Both numbers, because a rule needing two people and a clinic
+   * having one is a different problem from a clinic where everybody is exempt.
+   */
+  private async countApprovers(tx: AdminTx) {
+    const staff = await tx.staff.findMany({
+      where: { active: true },
+      include: {
+        roleAssignments: { select: { role: true, customRole: { select: { permissions: true } } } },
+        permissionGrants: { select: { permission: true } },
+      },
+    });
+    let total = 0;
+    let owners = 0;
+    const names: string[] = [];
+    for (const person of staff) {
+      const roles = person.roleAssignments
+        .map((row) => row.role)
+        .filter((role): role is SystemRole => role !== null);
+      const extra: Permission[] = [
+        ...person.permissionGrants.map((row) => row.permission).filter(isIndividuallyGrantable),
+        ...person.roleAssignments
+          .flatMap((row) => row.customRole?.permissions ?? [])
+          .filter(isCustomRoleGrantable),
+      ];
+      if (!can(person, 'hr.payroll.approve', roles, extra)) continue;
+      total += 1;
+      names.push(person.fullName);
+      if (can(person, 'settings.manage', roles, extra)) owners += 1;
+    }
+    return { total, owners, names };
+  }
+
+  /** Change the rule. Owner-level, and audited with both the old and new rule. */
+  async setApprovalPolicy(input: { mode?: PayrollApprovalMode; allowOwnerSelfApproval?: boolean }) {
+    return withAdminTx(this.rawPrisma, 'settings.manage', async (tx, actor) => {
+      const tenantId = currentTenantId();
+      const before = await this.readApprovalPolicy(tx);
+      const after: ApprovalPolicy = {
+        mode: input.mode ?? before.mode,
+        allowOwnerSelfApproval: input.allowOwnerSelfApproval ?? before.allowOwnerSelfApproval,
+      };
+      await tx.payrollApprovalPolicy.update({
+        where: { tenantId },
+        data: {
+          mode: after.mode as PayrollApprovalModeEnum,
+          allowOwnerSelfApproval: after.allowOwnerSelfApproval,
+          updatedByStaffId: actor.id,
+        },
+      });
+      await recordAudit(tx, actor, {
+        action: 'payrollApprovalPolicy.changed',
+        entityType: 'PayrollApprovalPolicy',
+        entityId: tenantId,
+        before: { mode: before.mode, allowOwnerSelfApproval: String(before.allowOwnerSelfApproval) },
+        after: { mode: after.mode, allowOwnerSelfApproval: String(after.allowOwnerSelfApproval) },
+        source: 'hr.payroll',
+      });
+      return {
+        ...after,
+        approvalsRequired: approvalsRequired(after.mode),
+        description: describeApprovalMode(after),
+      };
     });
   }
 

@@ -5178,3 +5178,158 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
     width: 100%;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * A CHOICE BETWEEN WAYS OF WORKING, not a dropdown of mode names.
+ *
+ * Used for the payroll approval rule: three options, each a sentence about
+ * how the clinic runs rather than a control-framework term the owner would
+ * have to look up. The whole row is the target — a radio dot alone is a
+ * 16px hit area for a decision about who may commit money.
+ * ------------------------------------------------------------------------- */
+.kw-choiceList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kw-choiceList__row {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.kw-choiceList__row:hover {
+  border-color: var(--kw-border-strong);
+}
+
+.kw-choiceList__row--on {
+  border-color: var(--kw-teal);
+  background: var(--kw-surface-2);
+}
+
+.kw-choiceList__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kw-choiceList__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--kw-text);
+}
+
+.kw-choiceList__detail {
+  font-size: 12.5px;
+  color: var(--kw-text-secondary);
+  line-height: 1.5;
+}
+
+/* One setting with a switch, and the sentence explaining what it costs. */
+.kw-settingRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--kw-border);
+  border-radius: 8px;
+  background: var(--kw-surface-2);
+}
+
+.kw-settingRow__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--kw-text);
+}
+
+.kw-settingRow__detail {
+  font-size: 12.5px;
+  color: var(--kw-text-secondary);
+  line-height: 1.5;
+  margin-top: 2px;
+  max-width: 62ch;
+}
+
+.kw-tightList {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.kw-tightList li + li {
+  margin-top: 2px;
+}
+
+@media (max-width: 640px) {
+  .kw-settingRow {
+    flex-direction: column;
+    gap: 12px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * SIGN-OFF. Who has approved, and who is still needed.
+ *
+ * Under a two-approval rule, one approval is not an approval, and a screen
+ * that reads "approved" after the first one is how a run gets paid on half
+ * the sign-off the clinic asked for.
+ * ------------------------------------------------------------------------- */
+.kw-signoffList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.kw-signoffList__row {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.kw-signoffList__mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11.5px;
+  font-weight: 650;
+  flex-shrink: 0;
+}
+
+.kw-signoffList__mark--done {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.kw-signoffList__mark--todo {
+  background: var(--kw-surface-2);
+  border: 1px solid var(--kw-border-strong);
+  color: var(--kw-text-muted);
+}
+
+.kw-signoffList__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--kw-text);
+}
+
+.kw-signoffList__detail {
+  font-size: 12px;
+  color: var(--kw-text-secondary);
+  line-height: 1.5;
+}

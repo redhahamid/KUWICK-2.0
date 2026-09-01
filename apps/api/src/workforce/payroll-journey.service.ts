@@ -1,8 +1,14 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
-import { requirePermission } from '../finance/admin-actor';
+import { actorCan, requirePermission } from '../finance/admin-actor';
 import { formatCents, toCents } from '../finance/money';
+import {
+  ApprovalPolicy,
+  approvalsRequired,
+  decideApproval,
+  describeApprovalMode,
+} from './payroll-approval-rule';
 import { approvalGate } from './payroll-exception';
 import { totalTimesheet } from './attendance-hours';
 import { resolveSalaryForPayroll, SalaryRow } from './salary-resolution';
@@ -217,7 +223,7 @@ export class PayrollJourneyService {
    * cannot disagree about who is in the month.
    */
   async journey(runId: string) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    const actor = await requirePermission(this.rawPrisma, 'hr.payroll.view');
     const run = await this.prisma.payrollRun.findUnique({
       where: { id: runId },
       include: {
@@ -226,6 +232,10 @@ export class PayrollJourneyService {
         exceptionRows: {
           include: { staff: { select: { fullName: true } } },
           orderBy: [{ severity: 'asc' }, { createdAt: 'asc' }],
+        },
+        approvals: {
+          include: { staff: { select: { fullName: true } } },
+          orderBy: { sequence: 'asc' },
         },
       },
     });
@@ -453,6 +463,42 @@ export class PayrollJourneyService {
       blocksApproval: row.severity === 'BLOCKING' && !(row.overridable && row.overriddenByStaffId),
     }));
 
+    // WHO HAS APPROVED, AND WHO STILL HAS TO.
+    const policyRow = await this.prisma.payrollApprovalPolicy.findFirst();
+    const policy: ApprovalPolicy = {
+      mode: policyRow?.mode ?? 'MAKER_CHECKER',
+      allowOwnerSelfApproval: policyRow?.allowOwnerSelfApproval ?? true,
+    };
+    const given = run.approvals.map((a) => ({
+      name: a.staff.fullName,
+      at: a.createdAt.toISOString(),
+      sequence: a.sequence,
+      wasOwnSelfApproval: a.usedOwnerSelfApproval,
+    }));
+    const decision = decideApproval(policy, {
+      actorStaffId: actor.id,
+      actorIsOwner: actorCan(actor, 'settings.manage'),
+      makerStaffId: run.createdByStaffId,
+      existing: run.approvals.map((a) => ({ staffId: a.staffId })),
+    });
+    const approval = {
+      rule: describeApprovalMode(policy),
+      required: approvalsRequired(policy.mode),
+      given,
+      // Two separate reasons somebody cannot approve, kept apart: the run has
+      // problems, or this person is not allowed to. Merging them tells a
+      // colleague to go fix five exceptions they were never going to approve.
+      youMayApprove: decision.outcome !== 'REFUSE' && actorCan(actor, 'hr.payroll.approve'),
+      whyNot:
+        decision.outcome === 'REFUSE'
+          ? decision.reason
+          : actorCan(actor, 'hr.payroll.approve')
+            ? null
+            : 'You do not have permission to approve payroll.',
+      /** What pressing Approve will do — finish the run, or record one of two. */
+      completesTheRun: decision.outcome === 'APPROVE',
+    };
+
     return {
       run: {
         id: run.id,
@@ -495,6 +541,15 @@ export class PayrollJourneyService {
         mustFix: attention.filter((a) => a.blocksApproval).length,
         worthALook: attention.filter((a) => !a.blocksApproval && a.severity !== 'INFO').length,
       },
+      // -------------------------------------------------------------------
+      // STEP 6 — APPROVE.
+      //
+      // The screen must not offer a button the server is going to refuse. It
+      // asks the SAME function the server enforces with, so "can I approve
+      // this?" has one answer rather than a hopeful one on the client and a
+      // real one in the service.
+      // -------------------------------------------------------------------
+      approval,
     };
   }
 }

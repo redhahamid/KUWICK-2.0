@@ -103,6 +103,8 @@ export type AuditAction =
   | 'payrollInput.materialised'
   | 'payrollException.overridden'
   | 'payrollSnapshot.created'
+  | 'payrollApproval.recorded'
+  | 'payrollApprovalPolicy.changed'
   | 'payroll.reopened'
   | 'incentiveRule.changed'
   // Stage 2.5 — cross-module payroll integration. Every state change on a

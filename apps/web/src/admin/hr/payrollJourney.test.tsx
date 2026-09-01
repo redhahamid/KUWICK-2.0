@@ -83,7 +83,28 @@ describe('the variance shown is a subtraction the API already did', () => {
 describe('the approval gate', () => {
   it('takes canApprove from the API gate, never from a count on the screen', () => {
     expect(code(runSource)).toMatch(/gate\.canApprove/);
-    expect(code(runSource)).toMatch(/disabled=\{!gate\.canApprove\}/);
+    // The button's disabled state derives from the server's gate. It may also
+    // read the approval rule (below), but it must never be computed from a
+    // count of rows the screen happens to be showing.
+    expect(code(runSource)).toMatch(/disabled=\{!gate\.canApprove/);
+  });
+
+  /*
+   * TWO REASONS THE BUTTON MIGHT NOT WORK, and they are different problems.
+   * "This run has problems" is work for the person looking at it; "you are not
+   * the one who may approve it" is not, and offering a button the server will
+   * refuse wastes a trip through a confirmation dialog to reach a 403.
+   */
+  it('obeys the approval rule as well as the exception gate, and says which one stopped it', () => {
+    expect(code(runSource)).toMatch(/!approval\.youMayApprove/);
+    expect(code(runSource)).toMatch(/approval\.whyNot/);
+  });
+
+  it('does not call a first-of-two approval a finalisation', () => {
+    // A screen that says "finalised" after one of two approvals is how a run
+    // gets paid on half the sign-off the clinic asked for.
+    expect(code(runSource)).toMatch(/approval\.completesTheRun/);
+    expect(code(runSource)).toMatch(/One more is needed/);
   });
 
   it('refuses to finalise from a phone', () => {

@@ -364,6 +364,8 @@ model Tenant {
   staffPermissionGrants      StaffPermissionGrant[]
   payrollInputEntries        PayrollInputEntry[]
   staffClaims                StaffClaim[]
+  payrollApprovalPolicy      PayrollApprovalPolicy?
+  payrollRunApprovals        PayrollRunApproval[]
   staffClaimAttachments      StaffClaimAttachment[]
   staffClaimEvents           StaffClaimEvent[]
   locumSessions              LocumSession[]
@@ -1086,6 +1088,8 @@ model Staff {
   prescriptionsReviewed        Prescription[]               @relation("PrescriptionReviewer")
   payrollInputs                PayrollInputEntry[]          @relation("PayrollInputStaff")
   payrollInputsCreated         PayrollInputEntry[]          @relation("PayrollInputAuthor")
+  payrollApprovalPolicies      PayrollApprovalPolicy[]      @relation("PayrollApprovalPolicyEditor")
+  payrollRunApprovals          PayrollRunApproval[]         @relation("PayrollRunApprovalApprover")
   staffClaims                  StaffClaim[]                 @relation("StaffClaimSubject")
   staffClaimsSubmitted         StaffClaim[]                 @relation("StaffClaimSubmitter")
   staffClaimsDecided           StaffClaim[]                 @relation("StaffClaimDecider")
@@ -6971,6 +6975,7 @@ model PayrollRun {
   legalEmployer LegalEmployer?      @relation(fields: [legalEmployerId], references: [id])
   snapshots     PayrollSnapshot[]
   exceptionRows PayrollException[]
+  approvals     PayrollRunApproval[]
 
   @@unique([tenantId, clinicId, period, runType, sequence])
   @@index([tenantId, period])
@@ -8074,4 +8079,84 @@ model LocumSession {
   @@index([tenantId, staffId, sessionDate])
   @@index([tenantId, status, payoutStatus])
   @@map("locum_sessions")
+}
+
+// ---------------------------------------------------------------------------
+// STAGE 2.5 — WHO IS ALLOWED TO APPROVE PAYROLL
+//
+// Separation of duties was a hard-coded rule: the person who ran the payroll
+// could not approve it, unless they held `settings.manage`. That rule is right
+// for a group with a finance department and wrong for a single-doctor clinic
+// where the owner does everything — and neither could say so, because there
+// was nothing to configure.
+//
+// It is a setting now, with three modes, and the mode in force is recorded on
+// every approval so a run approved last year can still say what rule it was
+// approved under.
+// ---------------------------------------------------------------------------
+
+enum PayrollApprovalMode {
+  /// One approval. The person who ran the payroll may approve it.
+  STANDARD
+  /// One approval, by somebody other than the person who ran the payroll.
+  MAKER_CHECKER
+  /// Two approvals, by two different people, neither of whom ran the payroll.
+  DUAL_APPROVAL
+}
+
+model PayrollApprovalPolicy {
+  id       String @id @default(uuid())
+  tenantId String @unique @map("tenant_id")
+
+  mode PayrollApprovalMode @default(MAKER_CHECKER)
+
+  /// THE OWNER EXEMPTION, made visible rather than assumed.
+  ///
+  /// Before this table existed, anybody holding `settings.manage` could
+  /// approve their own payroll run under what was otherwise a maker/checker
+  /// rule — silently, with nothing on screen saying so. It stays true by
+  /// default because turning it off would lock a one-person clinic out of
+  /// paying anybody; but it is a decision now, it is written down, and every
+  /// approval that used it is marked.
+  allowOwnerSelfApproval Boolean @default(true) @map("allow_owner_self_approval")
+
+  updatedByStaffId String?  @map("updated_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  updatedBy Staff? @relation("PayrollApprovalPolicyEditor", fields: [updatedByStaffId], references: [id])
+
+  @@map("payroll_approval_policies")
+}
+
+/// One row per person who approved a run. Under DUAL_APPROVAL there are two,
+/// and the unique constraint below is what makes them two DIFFERENT people:
+/// approving twice cannot satisfy a rule whose whole purpose is a second pair
+/// of eyes.
+model PayrollRunApproval {
+  id           String @id @default(uuid())
+  tenantId     String @map("tenant_id")
+  payrollRunId String @map("payroll_run_id")
+  staffId      String @map("staff_id")
+
+  /// 1 for the first approval, 2 for the second.
+  sequence Int
+  /// The rule in force AT THE TIME. A policy changed next year must not
+  /// rewrite what this approval meant.
+  mode     PayrollApprovalMode
+  /// Whether this approval used the owner exemption above.
+  usedOwnerSelfApproval    Boolean @default(false) @map("used_owner_self_approval")
+  /// Whether the approver confirmed that statutory figures were not computed.
+  statutoryGapAcknowledged Boolean @default(false) @map("statutory_gap_acknowledged")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  staff      Staff      @relation("PayrollRunApprovalApprover", fields: [staffId], references: [id])
+
+  @@unique([payrollRunId, staffId])
+  @@index([tenantId, payrollRunId])
+  @@map("payroll_run_approvals")
 }

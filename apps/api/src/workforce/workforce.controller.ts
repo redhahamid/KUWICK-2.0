@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { EmploymentStatus, LeaveType } from '@prisma/client';
 import { EmployeeService } from './employee.service';
 import { AttendanceRecordService } from './attendance-record.service';
@@ -37,6 +37,7 @@ import {
 import { UpsertPayComponentDto } from './dto/upsert-pay-component.dto';
 import { UpsertPayrollPolicyDto } from './dto/upsert-payroll-policy.dto';
 import { UpsertPayrollInputDto } from './dto/upsert-payroll-input.dto';
+import { SetApprovalPolicyDto } from './dto/set-approval-policy.dto';
 
 @Controller('workforce')
 export class WorkforceController {
@@ -441,6 +442,21 @@ export class WorkforceController {
   @Patch('payroll/runs/:id/approve')
   approvePayroll(@Param('id') id: string, @Body('acknowledgeStatutoryGap') acknowledge?: boolean) {
     return this.payroll.approve(id, acknowledge === true);
+  }
+
+  /**
+   * WHO IS ALLOWED TO APPROVE PAYROLL, as a setting. Reading it needs only the
+   * payroll permission — a screen has to be able to say what the rule is —
+   * while changing it is owner-level, enforced in the service.
+   */
+  @Get('payroll/approval-policy')
+  payrollApprovalPolicy() {
+    return this.payroll.approvalPolicy();
+  }
+
+  @Put('payroll/approval-policy')
+  setPayrollApprovalPolicy(@Body() dto: SetApprovalPolicyDto) {
+    return this.payroll.setApprovalPolicy(dto);
   }
 
   @Patch('payroll/runs/:id/paid')

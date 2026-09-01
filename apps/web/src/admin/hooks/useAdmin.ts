@@ -60,6 +60,7 @@ import type {
   LocumSessionRow,
   LocumPayableSummary,
   SalaryParityReport,
+  PayrollApprovalPolicy,
   PayrollHome,
   PayrollJourney,
 } from '../types';
@@ -1103,6 +1104,30 @@ export function usePayrollHome(params: { period?: string; clinicId?: string } = 
   return useQuery({
     queryKey: ['admin-hr', 'payroll-home', params],
     queryFn: () => apiClient.get<PayrollHome>(`/workforce/payroll/home${qs(params)}`),
+  });
+}
+
+/**
+ * WHO IS ALLOWED TO APPROVE PAYROLL. Reading it needs only the payroll
+ * permission — a screen has to be able to say what the rule is — while
+ * changing it is owner-level, enforced on the server.
+ */
+export function usePayrollApprovalPolicy() {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-approval-policy'],
+    queryFn: () => apiClient.get<PayrollApprovalPolicy>('/workforce/payroll/approval-policy'),
+  });
+}
+
+export function useSetPayrollApprovalPolicy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { mode?: string; allowOwnerSelfApproval?: boolean }) =>
+      apiClient.put<PayrollApprovalPolicy>('/workforce/payroll/approval-policy', body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-hr', 'payroll-approval-policy'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-hr', 'payroll-journey'] });
+    },
   });
 }
 
