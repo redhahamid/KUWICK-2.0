@@ -51,6 +51,7 @@ import type {
   SalaryHistoryRow,
   PayComponentList,
   PayrollInputRow,
+  PayrollCandidateDiff,
   PayrollExceptionList,
   PayrollVarianceReport,
   PayrollSnapshotRow,
@@ -959,6 +960,19 @@ export function usePayrollSnapshots(runId: string | undefined) {
   return useQuery({
     queryKey: ['admin-hr', 'payroll-snapshots', runId],
     queryFn: () => apiClient.get<PayrollSnapshotRow[]>(`/workforce/payroll/runs/${runId}/snapshots`),
+    enabled: Boolean(runId),
+  });
+}
+
+/**
+ * The diff between the approved snapshot and what a recalculation would
+ * produce. Only meaningful once a run has been approved at least once; the
+ * endpoint says so itself rather than erroring.
+ */
+export function useCandidateDiff(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-candidate-diff', runId],
+    queryFn: () => apiClient.get<PayrollCandidateDiff>(`/workforce/payroll/runs/${runId}/candidate-diff`),
     enabled: Boolean(runId),
   });
 }

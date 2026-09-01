@@ -25,6 +25,22 @@ export interface ExceptionTemplate {
   deepLink?: (ctx: Record<string, string | number>) => string;
 }
 
+/*
+ * A NOTE ON `deepLink`, after the Stage 1 + 2 visual UAT.
+ *
+ * Every link in this catalogue used to point at a route nobody had mounted:
+ * `/admin/hr/employees/:id/salary`, `/admin/hr/timesheet`,
+ * `/admin/hr/pay-components`, `/admin/hr/payroll/:id/inputs`,
+ * `/admin/hr/statutory`. The remedy sentence beside each exception told a
+ * clinic manager exactly what to do, and the link under it took them to a
+ * blank page — on the one screen whose whole job is getting blockers resolved.
+ *
+ * These now name routes that exist. `?staffId=` opens that person's record
+ * directly, so an employee link lands on the employee rather than on a
+ * directory to search. PCB_MISSING keeps a link for completeness, but the
+ * exception centre offers a button instead: its remedy is a keystroke on the
+ * screen the reader is already looking at.
+ */
 export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
   NO_SALARY: {
     code: 'NO_SALARY',
@@ -33,7 +49,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     cause: () => 'No salary or hourly rate is in force for this period.',
     consequence: 'This employee cannot be paid, and the run total excludes them.',
     remediation: 'Add an effective-dated salary that covers this period.',
-    deepLink: (c) => `/admin/hr/employees/${c.staffId}/salary`,
+    deepLink: (c) => `/admin/hr/employees?staffId=${c.staffId}`,
   },
   NO_DOB: {
     code: 'NO_DOB',
@@ -43,7 +59,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     consequence:
       'EPF, SOCSO and EIS all change treatment at age 60, so every statutory figure for this employee would be a guess.',
     remediation: 'Record the date of birth on the employee profile.',
-    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees?staffId=${c.staffId}`,
   },
   NO_LEGAL_EMPLOYER: {
     code: 'NO_LEGAL_EMPLOYER',
@@ -53,7 +69,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     consequence:
       'Nothing can be filed for them: EPF, SOCSO, EIS and PCB submissions are all made by an employer, and this employee has none.',
     remediation: 'Assign the employee to a legal employer.',
-    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees?staffId=${c.staffId}`,
   },
   PCB_MISSING: {
     code: 'PCB_MISSING',
@@ -64,7 +80,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'The payslip would understate the deduction and overstate net pay, and the employer would under-remit to LHDN.',
     remediation:
       'Enter the PCB amount as a payroll input, or record this employee as outside PCB if that is genuinely their status.',
-    deepLink: (c) => `/admin/hr/payroll/${c.runId}/inputs?staffId=${c.staffId}`,
+    deepLink: () => '/admin/hr/payroll',
   },
   UNAPPROVED_OVERTIME: {
     code: 'UNAPPROVED_OVERTIME',
@@ -73,7 +89,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     cause: (c) => `${c.hours}h of overtime is claimed but not approved.`,
     consequence: 'It is NOT included in this payslip, so the employee will be paid less than they claimed.',
     remediation: 'Approve or reject the overtime on the timesheet, then recalculate.',
-    deepLink: (c) => `/admin/hr/timesheet?staffId=${c.staffId}`,
+    deepLink: (c) => `/admin/hr/attendance?staffId=${c.staffId}`,
   },
   MISSING_PUNCH: {
     code: 'MISSING_PUNCH',
@@ -82,7 +98,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     cause: (c) => `${c.days} day(s) have a missing clock-in or clock-out.`,
     consequence: 'Hours for those days are incomplete, so overtime and attendance-based pay may be understated.',
     remediation: 'Correct the attendance records, then recalculate.',
-    deepLink: (c) => `/admin/hr/timesheet?staffId=${c.staffId}`,
+    deepLink: (c) => `/admin/hr/attendance?staffId=${c.staffId}`,
   },
   UNKNOWN_COMPONENT: {
     code: 'UNKNOWN_COMPONENT',
@@ -91,7 +107,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     cause: (c) => `Payroll input "${c.componentCode}" is not a known pay component.`,
     consequence: 'The amount was NOT included, so somebody is being paid less than was entered for them.',
     remediation: 'Add the component to the catalogue, or correct the input.',
-    deepLink: () => '/admin/hr/pay-components',
+    deepLink: () => '/admin/hr/employers',
   },
   NO_BANK_DETAILS: {
     code: 'NO_BANK_DETAILS',
@@ -100,7 +116,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     cause: () => 'No bank account is recorded for this employee.',
     consequence: 'They cannot be included in a bank payment file and will have to be paid by another means.',
     remediation: 'Record the bank name, account number and account name.',
-    deepLink: (c) => `/admin/hr/employees/${c.staffId}`,
+    deepLink: (c) => `/admin/hr/employees?staffId=${c.staffId}`,
   },
   NEGATIVE_NET: {
     code: 'NEGATIVE_NET',
@@ -109,7 +125,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     cause: (c) => `Deductions exceed earnings; net pay would be ${c.net}.`,
     consequence: 'A negative payslip cannot be paid, and would mean the employee owes the clinic money this month.',
     remediation: 'Reduce a deduction, or spread the recovery across periods.',
-    deepLink: (c) => `/admin/hr/payroll/${c.runId}/inputs?staffId=${c.staffId}`,
+    deepLink: () => '/admin/hr/payroll',
   },
   SALARY_CHANGED_MID_PERIOD: {
     code: 'SALARY_CHANGED_MID_PERIOD',
@@ -119,7 +135,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     consequence:
       'The rate in force at the period end was used for the whole period, so pay before the change may be overstated or understated.',
     remediation: 'Confirm the intended treatment, or split the run.',
-    deepLink: (c) => `/admin/hr/employees/${c.staffId}/salary`,
+    deepLink: (c) => `/admin/hr/employees?staffId=${c.staffId}`,
   },
   STATUTORY_UNVERIFIED: {
     code: 'STATUTORY_UNVERIFIED',
@@ -130,7 +146,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'Every EPF, SOCSO and EIS figure in this run rests on unverified tables, and the payslip says so on its face.',
     remediation:
       'Verify the seeded tables against KWSP and PERKESO and record who did so, or continue on the understanding that this run is provisional.',
-    deepLink: () => '/admin/hr/statutory',
+    deepLink: () => '/admin/hr/payroll',
   },
   VARIANCE_OUTSIDE_THRESHOLD: {
     code: 'VARIANCE_OUTSIDE_THRESHOLD',
@@ -139,7 +155,7 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     cause: (c) => `Net pay moved ${c.percent}% against the previous period.`,
     consequence: 'A movement this size is usually a data error rather than a real change.',
     remediation: 'Open the employee and check their inputs and salary for this period.',
-    deepLink: (c) => `/admin/hr/payroll/${c.runId}/inputs?staffId=${c.staffId}`,
+    deepLink: () => '/admin/hr/payroll',
   },
 };
 

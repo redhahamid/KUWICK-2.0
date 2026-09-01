@@ -12,6 +12,7 @@ import { useCan } from '../../core/hooks/useCan';
 import { SeverityTag } from './ExceptionSeverity';
 import { PayrollExceptionCentre } from './PayrollExceptionCentre';
 import { PayrollVariancePanel } from './PayrollVariancePanel';
+import { PayrollSnapshotPanel } from './PayrollSnapshotPanel';
 import { PayrollInputsDrawer } from './PayrollInputsDrawer';
 import {
   useApprovePayroll,
@@ -73,6 +74,11 @@ export function PayrollPage() {
   const [reopenOpen, setReopenOpen] = useState(false);
   const [reopenReason, setReopenReason] = useState('');
   const [inputsOpen, setInputsOpen] = useState(false);
+  // WHOSE inputs. The drawer's Add button only appears when it knows which
+  // employee a figure is for — without this it opened as a read-only list, and
+  // PCB, the one blocking exception a person can actually clear, could not be
+  // entered anywhere in the product.
+  const [inputsStaff, setInputsStaff] = useState<{ id: string; name: string | null } | undefined>();
   const [actionError, setActionError] = useState<string | null>(null);
   const [period, setPeriod] = useState(dayjs().format('YYYY-MM'));
 
@@ -186,7 +192,31 @@ export function PayrollPage() {
               title: 'Status',
               dataIndex: 'status',
               key: 'status',
-              render: (value: string) => <Tag color={RUN_STATUS[value]}>{value}</Tag>,
+              /*
+                APPROVED IS NOT THE SAME AS FIT TO PAY, and a green tag beside
+                "Unverified rates" invited exactly that reading. A run approved
+                against rate tables nobody has checked is approved as an
+                INTERNAL decision — it is locked, it is on the record, and it
+                still must not be used to pay anybody. The tag now says so
+                itself rather than leaving the qualification to the amber tag
+                in the next column and a banner further up the page.
+              */
+              render: (value: string, row) => {
+                const provisional =
+                  (value === 'APPROVED' || value === 'PAID') && row.statutoryStatus !== 'CONFIGURED';
+                return (
+                  <Tag
+                    color={provisional ? 'gold' : RUN_STATUS[value]}
+                    title={
+                      provisional
+                        ? 'Locked for internal purposes. The statutory rates behind it are not verified, so it is not fit to pay staff or file from.'
+                        : undefined
+                    }
+                  >
+                    {provisional ? `${value} · PROVISIONAL` : value}
+                  </Tag>
+                );
+              },
             },
             {
               title: 'Statutory',
@@ -265,7 +295,13 @@ export function PayrollPage() {
                 </Button>
               ) : null}
               {!locked && mayRun ? (
-                <Button size="small" onClick={() => setInputsOpen(true)}>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setInputsStaff(undefined);
+                    setInputsOpen(true);
+                  }}
+                >
                   Payroll inputs
                 </Button>
               ) : null}
@@ -372,20 +408,41 @@ export function PayrollPage() {
                   // will produce.
                   const totals = payslipTotals(row);
                   return (
-                    <Button
-                      size="small"
-                      type="link"
-                      danger={!totals.adds}
-                      onClick={() =>
-                        printPayslip(run, row, {
-                          employerName: tenantName ?? run.clinicName,
-                          branchName: run.clinicName,
-                          printedBy: me?.fullName ?? null,
-                        })
-                      }
-                    >
-                      {totals.adds ? (isDraftRun(run.status) ? 'Print draft' : 'Print payslip') : 'Does not add up'}
-                    </Button>
+                    <span style={{ display: 'inline-flex', gap: 2, whiteSpace: 'nowrap' }}>
+                      {/*
+                        INPUTS PER PERSON. A figure a human supplies — an
+                        allowance, a reimbursement, PCB — belongs to one
+                        employee, and the drawer can only offer its Add button
+                        when it knows which. Reaching it from the line the
+                        reader is looking at is the shortest honest path.
+                      */}
+                      {!locked && mayRun ? (
+                        <Button
+                          size="small"
+                          type="link"
+                          onClick={() => {
+                            setInputsStaff({ id: row.staffId, name: row.name });
+                            setInputsOpen(true);
+                          }}
+                        >
+                          Inputs
+                        </Button>
+                      ) : null}
+                      <Button
+                        size="small"
+                        type="link"
+                        danger={!totals.adds}
+                        onClick={() =>
+                          printPayslip(run, row, {
+                            employerName: tenantName ?? run.clinicName,
+                            branchName: run.clinicName,
+                            printedBy: me?.fullName ?? null,
+                          })
+                        }
+                      >
+                        {totals.adds ? (isDraftRun(run.status) ? 'Print draft' : 'Print payslip') : 'Does not add up'}
+                      </Button>
+                    </span>
                   );
                 },
               },
@@ -414,8 +471,16 @@ export function PayrollPage() {
             )}
           </AdminNotice>
 
-          <PayrollExceptionCentre runId={run.id} canOverride={mayApprove} />
+          <PayrollExceptionCentre
+            runId={run.id}
+            canOverride={mayApprove}
+            onFixInputs={(staffId, staffName) => {
+              setInputsStaff({ id: staffId, name: staffName });
+              setInputsOpen(true);
+            }}
+          />
           <PayrollVariancePanel runId={run.id} />
+          <PayrollSnapshotPanel runId={run.id} />
 
           {run.adjustments.length > 0 ? (
             <AdminSection title="Adjustments to this locked run" padded={false}>
@@ -568,6 +633,8 @@ export function PayrollPage() {
           open={inputsOpen}
           onClose={() => setInputsOpen(false)}
           period={`${run.period}-01`}
+          staffId={inputsStaff?.id}
+          staffName={inputsStaff?.name ?? undefined}
           clinicId={clinicId}
           canEdit={mayRun && !locked}
         />

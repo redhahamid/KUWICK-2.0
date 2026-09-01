@@ -138,7 +138,9 @@ vi.mock('../hooks/useAdmin', () => ({
   usePayrollInputs: () => ({ data: [], isLoading: false }),
   useUpsertPayrollInput: () => idle,
   useDeletePayrollInput: () => idle,
-  usePayComponents: () => ({ data: [], isLoading: false }),
+  usePayComponents: () => ({ data: { components: [], verificationNotice: { statement: '' } }, isLoading: false }),
+  usePayrollSnapshots: () => ({ data: [], isLoading: false }),
+  useCandidateDiff: () => ({ data: undefined, isLoading: false }),
 }));
 
 vi.mock('../../core/hooks/useClinicFilter', () => ({

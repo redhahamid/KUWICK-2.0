@@ -5,7 +5,9 @@ import { AdminNotice, AdminSection, AdminShell, firstError } from '../components
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, money } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
+import { useSearchParams } from 'react-router-dom';
 import { useEmployeeRecord, useEmployees } from '../hooks/useAdmin';
+import { EmployeeSalaryPanel } from './EmployeeSalaryPanel';
 import type { EmployeeRecord } from '../types';
 
 /**
@@ -30,7 +32,12 @@ import type { EmployeeRecord } from '../types';
 export function EmployeesPage() {
   const { clinicId } = useClinicFilter();
   const { data, isLoading, isError, error } = useEmployees({ clinicId });
-  const [openStaffId, setOpenStaffId] = useState<string | undefined>();
+  // ?staffId= OPENS THAT PERSON. Every remedy link on a payroll exception —
+  // "no salary is in force", "no date of birth is recorded" — points here, and
+  // landing on a directory to search through is not the same as landing on the
+  // employee the exception is about.
+  const [search] = useSearchParams();
+  const [openStaffId, setOpenStaffId] = useState<string | undefined>(search.get('staffId') ?? undefined);
   const record = useEmployeeRecord(openStaffId);
 
   const withProfile = data?.filter((row) => row.hasProfile) ?? [];
@@ -141,7 +148,7 @@ export function EmployeesPage() {
         {record.isError ? (
           <AdminNotice tone="warn">This employee record could not be loaded.</AdminNotice>
         ) : record.data ? (
-          <EmployeeRecordPanes record={record.data} />
+          <EmployeeRecordPanes record={record.data} staffId={openStaffId!} />
         ) : (
           <p className="kw-muted">Loading…</p>
         )}
@@ -159,7 +166,7 @@ export function EmployeesPage() {
  * "you may not see salaries" are different facts, and a screen that renders
  * them identically has told the reader nothing.
  */
-function EmployeeRecordPanes({ record }: { record: EmployeeRecord }) {
+function EmployeeRecordPanes({ record, staffId }: { record: EmployeeRecord; staffId: string }) {
   const { identity, employment, pay, statutory, attendance } = record;
 
   return (
@@ -170,6 +177,9 @@ function EmployeeRecordPanes({ record }: { record: EmployeeRecord }) {
             ['Employee no', employment.employeeNo],
             ['Position', employment.position],
             ['Department', employment.department],
+            // TWO DIFFERENT FACTS, next to each other on purpose: the employer
+            // files for them, the branch is where the work happens.
+            ['Legal employer', employment.legalEmployerName],
             ['Branch', employment.clinicName],
             ['Employment type', employment.employmentType],
             ['Status', employment.employmentStatus],
@@ -222,9 +232,19 @@ function EmployeeRecordPanes({ record }: { record: EmployeeRecord }) {
         )}
         {record.payVisible ? (
           <p className="kw-muted" style={{ margin: '6px 0 0', fontSize: 11.5 }}>
-            The bank account number itself is never returned by this endpoint. Change it in the employee form.
+            The bank account number itself is never returned by this endpoint, and there is no screen in this
+            release that edits it — the employee write endpoint exists, the form for it does not.
           </p>
         ) : null}
+      </RecordBlock>
+
+      {/*
+        SALARY HISTORY sits directly under the pay basis, because the block
+        above answers "what are they on?" and this one answers "since when, and
+        what before that?" — the second question every pay dispute turns into.
+      */}
+      <RecordBlock title="Salary history">
+        <EmployeeSalaryPanel staffId={staffId} canSeePay={record.payVisible} />
       </RecordBlock>
 
       <RecordBlock title="Statutory">

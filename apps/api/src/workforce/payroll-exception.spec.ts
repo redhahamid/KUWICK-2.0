@@ -20,7 +20,45 @@ describe('payroll exceptions', () => {
     const built = buildException('PCB_MISSING', 's1', { runId: 'r1', staffId: 's1' });
     expect(built.severity).toBe('BLOCKING');
     expect(built.consequence).toMatch(/under-remit/);
-    expect(built.deepLink).toBe('/admin/hr/payroll/r1/inputs?staffId=s1');
+    expect(built.deepLink).toBe('/admin/hr/payroll');
+  });
+
+  /**
+   * EVERY REMEDY LINK GOES SOMEWHERE THAT EXISTS.
+   *
+   * The Stage 1 + 2 visual UAT found that all twelve pointed at routes nobody
+   * had mounted — `/admin/hr/employees/:id/salary`, `/admin/hr/timesheet`,
+   * `/admin/hr/pay-components`, `/admin/hr/payroll/:id/inputs`,
+   * `/admin/hr/statutory`. A clinic manager following "Go and fix it" from a
+   * blocking exception landed on a blank page, on the one screen whose whole
+   * job is getting blockers cleared.
+   *
+   * This list is the set of admin HR routes mounted in `App.tsx`. A new
+   * exception pointing anywhere else fails here rather than in front of
+   * somebody trying to pay their staff.
+   */
+  it('links only to routes the application actually mounts', () => {
+    const MOUNTED = [
+      '/admin/hr',
+      '/admin/hr/employees',
+      '/admin/hr/attendance',
+      '/admin/hr/leave',
+      '/admin/hr/roster',
+      '/admin/hr/payroll',
+      '/admin/hr/employers',
+      '/admin/hr/incentives',
+      '/admin/hr/benefits',
+      '/admin/hr/access',
+    ];
+    const ctx = { staffId: 's1', runId: 'r1', hours: 1, days: 1, count: 2, percent: 50, net: '-1.00', componentCode: 'X' };
+    for (const [code, template] of Object.entries(EXCEPTION_CATALOGUE)) {
+      if (!template.deepLink) continue;
+      const link = template.deepLink(ctx);
+      const path = link.split('?')[0];
+      // The code is in the message so a failure names which exception is wrong.
+      expect(`${code} → ${path}`).toBe(`${code} → ${MOUNTED.find((m) => m === path) ?? path}`);
+      expect(MOUNTED).toContain(path);
+    }
   });
 
   it('interpolates context into the cause', () => {

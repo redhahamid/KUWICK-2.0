@@ -1045,6 +1045,8 @@ export interface EmployeeRecord {
     employmentType: string;
     employmentStatus: string;
     clinicName: string | null;
+    /** Who employs them. Not the same fact as which branch they work at. */
+    legalEmployerName: string | null;
     manager: string | null;
     startDate: string | null;
     confirmedDate: string | null;
@@ -1607,6 +1609,25 @@ export interface PayrollVarianceReport {
   material: PayrollVarianceRow[];
   thresholdPercent: number;
   note: string;
+}
+
+/**
+ * WHAT A RECALCULATION WOULD CHANGE against the snapshot that was approved.
+ * `hasSnapshot: false` is the ordinary case for a run nobody has approved yet.
+ */
+export interface PayrollCandidateDiff {
+  hasSnapshot: boolean;
+  note: string;
+  snapshotVersion?: number;
+  snapshotHash?: string;
+  candidateHash?: string;
+  diff?: {
+    changed: { staffId: string; name: string; field: string; before: number | null; after: number | null; deltaCents: number | null }[];
+    added: { staffId: string; name: string }[];
+    removed: { staffId: string; name: string }[];
+    totals: { field: string; before: number; after: number; deltaCents: number }[];
+    identical: boolean;
+  };
 }
 
 export interface PayrollSnapshotRow {

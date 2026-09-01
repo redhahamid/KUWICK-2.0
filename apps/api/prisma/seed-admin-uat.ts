@@ -13,6 +13,7 @@ import {
   ordinaryRates,
 } from '../src/workforce/payroll-calculation';
 import { buildException, ExceptionSeverity } from '../src/workforce/payroll-exception';
+import { SEED_PAY_COMPONENTS } from '../src/workforce/pay-component-catalogue';
 
 config({ path: join(__dirname, '..', '.env') });
 
@@ -544,18 +545,25 @@ async function verify() {
     for (const run of runs) {
       const label = run.period.toISOString().slice(0, 7);
 
-      // 5a. EVERY EXCEPTION EXISTS AS A ROW, not only in the JSON blob.
+      // 5a. EVERY BLOCKING EXCEPTION EXISTS AS A ROW, not only in the JSON blob.
       //
-      // The blob feeds a banner; the ROWS feed the approval gate. A run that
-      // carries five unpayable people in the blob and no rows is a run the
-      // Approve button will happily lock — which is exactly the failure this
-      // fixture exists to make visible, so it must never be the fixture's own
-      // state. Checked here rather than trusted, because the seed writes both
+      // The blob is legacy compatibility state and holds only blockers; the
+      // ROWS are what the approval gate, the banner and the exception centre
+      // all read, and they also carry warnings the blob never had. So the
+      // invariant is not equality — it is that every blocker in the blob is
+      // standing as a row.
+      //
+      // A run carrying five unpayable people in the blob and no rows is a run
+      // the Approve button will happily lock, which is exactly the failure
+      // this fixture exists to make visible: it must never be the fixture's
+      // own state. Checked rather than trusted, because the seed writes both
       // and nothing else would notice if it stopped writing one.
       const blob = Array.isArray(run.exceptions) ? (run.exceptions as unknown[]) : [];
-      const rowCount = await tx.payrollException.count({ where: { payrollRunId: run.id } });
-      if (rowCount !== blob.length) {
-        problems.push(`payroll ${label}: ${blob.length} exception(s) in the blob but ${rowCount} exception row(s) — the approval gate reads the rows`);
+      const blockingRows = await tx.payrollException.count({
+        where: { payrollRunId: run.id, severity: 'BLOCKING' },
+      });
+      if (blockingRows !== blob.length) {
+        problems.push(`payroll ${label}: ${blob.length} blocking exception(s) in the blob but ${blockingRows} blocking row(s) — the approval gate reads the rows`);
       }
 
       if (run.statutoryStatus === 'PROVISIONAL' && (run.status === 'APPROVED' || run.status === 'PAID')) {
@@ -645,11 +653,18 @@ async function reset() {
   const order = [
     'marketing_dispatches', 'marketing_templates', 'marketing_audiences',
     'programme_enrolments', 'clinic_programmes', 'segment_mapping_rules', 'business_segments',
+    // Stage 1 + 2. Children of the run first, then the run; the employer is
+    // deleted after `employee_profiles`, which points at it.
+    'payroll_snapshots', 'payroll_exceptions',
     'payroll_adjustments', 'payroll_lines', 'payroll_runs', 'payroll_input_entries', 'statutory_rule_sets',
+    'employee_recurring_items', 'employee_ytd', 'employee_salaries',
     'incentive_results', 'incentive_runs', 'incentive_rules',
     'staff_benefit_usages', 'staff_benefit_members', 'staff_benefit_accounts',
     'leave_balances', 'leave_policy_entitlements', 'leave_policies',
     'attendance_records', 'employee_profiles',
+    // AFTER the profiles that reference them, BEFORE the staff that authored
+    // them.
+    'payroll_policies', 'legal_employers', 'pay_components',
     'panel_remittance_allocations', 'panel_remittances', 'claim_events',
     'credit_note_lines', 'credit_notes', 'payments', 'day_end_closings',
     // Lines first, then the import batches they point at, then the claim
@@ -730,6 +745,62 @@ async function reset() {
         // Two tables do not carry `tenant_id`: the tenant row is keyed by `id`,
         // and user↔clinic access hangs off the clinic. Both are deleted before
         // what they point at, so the sub-select still resolves.
+        // EVERY TENANT TABLE IS ACCOUNTED FOR, asked of the database rather
+        // than trusted.
+        //
+        // The list went stale the moment the Stage 1 + 2 migration added eight
+        // tables. The first seed run passed — the new tables were still empty —
+        // and the SECOND failed on a foreign key from `employee_salaries` to
+        // `staff`. A failure that only appears once somebody has already used
+        // the fixture is the worst kind to leave to chance, so every table
+        // carrying `tenant_id` must now be either deleted above or named here.
+        //
+        // The exclusions are the catalogues and reference data this seed does
+        // not own: they belong to whichever seed loads them, and this synthetic
+        // tenant is never given any. That claim is CHECKED rather than
+        // asserted — if one of them ever does hold a row for this tenant, the
+        // `DELETE FROM tenants` at the end would fail on a foreign key, and a
+        // named error here beats that.
+        const NOT_THIS_SEEDS: string[] = [
+          'diagnosis_catalog', 'dosage_units', 'consumption_methods', 'stock_units',
+          'prescription_frequencies', 'indication_presets',
+          'form_templates', 'custom_document_templates',
+          'attachments', 'data_corrections', 'appointment_change_requests',
+          'tenant_subscriptions',
+        ];
+        const tenantTables = (
+          await tx.$queryRawUnsafe<{ table_name: string }[]>(
+            `SELECT table_name FROM information_schema.columns
+              WHERE table_schema = 'public' AND column_name = 'tenant_id'`,
+          )
+        ).map((row) => row.table_name);
+
+        const unaccounted = tenantTables.filter(
+          (name) => !order.includes(name) && !NOT_THIS_SEEDS.includes(name),
+        );
+        if (unaccounted.length > 0) {
+          throw new Error(
+            `The reset list does not cover ${unaccounted.length} tenant table(s): ${unaccounted.join(', ')}. ` +
+              'Add them in dependency order, or name them as a deliberate exclusion — otherwise this seed ' +
+              'fails the second time it is run, and only then.',
+          );
+        }
+
+        for (const table of NOT_THIS_SEEDS) {
+          if (!tenantTables.includes(table)) continue;
+          const [{ count }] = await tx.$queryRawUnsafe<{ count: bigint }[]>(
+            `SELECT count(*) FROM "${table}" WHERE tenant_id = $1`,
+            TENANT_ID,
+          );
+          if (Number(count) > 0) {
+            throw new Error(
+              `"${table}" is excluded from the reset because this seed does not own it, but it holds ` +
+                `${count} row(s) for the UAT tenant. Either it is now this seed's business — add it to the ` +
+                'delete list in dependency order — or something else is writing into this tenant.',
+            );
+          }
+        }
+
         const predicate: Record<string, string> = {
           tenants: 'id = $1',
           user_clinic_access: 'clinic_id IN (SELECT id FROM clinics WHERE tenant_id = $1)',
@@ -1952,6 +2023,94 @@ async function seedWorkforce(ids: Ids) {
     // change at 60, so an employee without one cannot be calculated. Hafiz is
     // deliberately 61 so the 60+ branch is exercised by the seeded run —
     // employee EPF nil, employer 4%, SOCSO Second Category, no EIS.
+    // --- STAGE 1: the employer, the catalogue and the policy ---------------
+    //
+    // A branch employs nobody and files nothing. These three exist so the
+    // Stage 1 screens have something real to show and so the payroll run has
+    // an employer to belong to.
+    //
+    // TWO EMPLOYERS, on purpose. One complete enough to file with, one that is
+    // not — the "Could it file?" column is the whole point of that screen and a
+    // fixture where every row is green tests nothing. The second also proves
+    // the group case the audited competitor cannot represent at all: two Sdn
+    // Bhds under one account.
+    const employer = await tx.legalEmployer.create({
+      data: {
+        tenantId: tenant.id,
+        name: 'Klinik Contoh Sdn Bhd',
+        registrationNo: '202601000001',
+        epfEmployerNo: 'E-0001-0001',
+        socsoEmployerNo: 'A1234567890',
+        lhdnEmployerNo: 'E 1234567890',
+        addressLine1: '12 Jalan Contoh',
+        postcode: '43000',
+        city: 'Kajang',
+        state: 'Selangor',
+        bankName: 'Bank Contoh',
+        bankAccountNo: '5551234567',
+        bankAccountName: 'KLINIK CONTOH SDN BHD',
+      },
+    });
+    const secondEmployer = await tx.legalEmployer.create({
+      data: {
+        tenantId: tenant.id,
+        name: 'Contoh Wellness Sdn Bhd',
+        registrationNo: '202601000002',
+        epfEmployerNo: 'E-0002-0001',
+        // SOCSO and LHDN deliberately absent: nothing could be filed for the
+        // people employed here, and the screen has to say so before a payroll
+        // run makes it somebody's problem.
+        addressLine1: '4 Jalan Sihat',
+        city: 'Kajang',
+        state: 'Selangor',
+      },
+    });
+
+    // The 15 components the engine knows, as rows. Every flag UNVERIFIED —
+    // seeding a catalogue is not the same as checking one.
+    for (const component of SEED_PAY_COMPONENTS) {
+      await tx.payComponent.create({
+        data: {
+          tenantId: tenant.id,
+          code: component.code,
+          name: component.name,
+          type: component.type,
+          category: component.category,
+          includeIn: component.includeIn,
+          pcbLiable: component.pcbLiable,
+          epfLiable: component.epfLiable,
+          socsoLiable: component.socsoLiable,
+          eisLiable: component.eisLiable,
+          hrdLiable: component.hrdLiable,
+          includeInOrpBase: component.includeInOrpBase,
+          includeInUnpaidLeaveBase: component.includeInUnpaidLeaveBase,
+          additionalRemuneration: component.additionalRemuneration,
+          prorated: component.prorated,
+          employerSide: component.employerSide,
+          systemControlled: true,
+          // DRAFT, not CORROBORATED and certainly not VERIFIED. Nobody has
+          // checked a single one of these flags against KWSP, PERKESO or HASiL.
+          verificationStatus: 'DRAFT',
+          effectiveFrom: new Date(Date.UTC(2026, 0, 1)),
+        },
+      });
+    }
+
+    await tx.payrollPolicy.create({
+      data: {
+        tenantId: tenant.id,
+        legalEmployerId: employer.id,
+        name: 'Klinik Contoh standard',
+        salaryProrationBasis: 'CALENDAR_DAYS',
+        overtimeBasis: 'FIXED_DAYS',
+        overtimeDays: 26,
+        overtimeHoursPerDay: 7.5,
+        unpaidLeaveBasis: 'CALENDAR_DAYS',
+        unpaidLeaveDays: 31,
+        isDefault: true,
+      },
+    });
+
     const profiles: { key: string; position: string; salary: number | null; type: 'PERMANENT' | 'LOCUM' | 'CONTRACT'; born: [number, number, number] }[] = [
       { key: 'owner', position: 'Principal Doctor / Owner', salary: 18000, type: 'PERMANENT', born: [1981, 3, 14] },
       { key: 'resident', position: 'Resident Medical Officer', salary: 9500, type: 'PERMANENT', born: [1990, 8, 2] },
@@ -1974,6 +2133,10 @@ async function seedWorkforce(ids: Ids) {
           department: profile.key.startsWith('counter') ? 'Front Office' : profile.key === 'stock' ? 'Pharmacy' : profile.key === 'finance' ? 'Finance' : 'Clinical',
           employmentType: profile.type,
           employmentStatus: 'ACTIVE',
+          // EMPLOYED BY the employer, WORKS AT the branch. The locum sits under
+          // the second entity, so the group case is visible and so the
+          // "could it file?" gap has somebody standing behind it.
+          legalEmployerId: profile.key === 'locum' ? secondEmployer.id : employer.id,
           startDate: day(-500 - index * 30),
           dateOfBirth: new Date(Date.UTC(profile.born[0], profile.born[1], profile.born[2])),
           basicSalary: profile.salary,
@@ -1989,6 +2152,54 @@ async function seedWorkforce(ids: Ids) {
           eisApplicable: profile.type !== 'LOCUM',
         },
       });
+
+      // --- STAGE 1: the salary, WITH A DATE ON IT -------------------------
+      //
+      // `employee_profiles.basic_salary` is the figure the old engine read.
+      // These rows are the effective-dated record that replaces it: a raise
+      // closes the previous row rather than overwriting it, so a payroll run
+      // for an earlier month still resolves the rate that was in force then.
+      if (profile.salary !== null) {
+        // ONE PERSON HAS A HISTORY, so the screen shows a closed row above an
+        // open one rather than a single line that could have been a column on
+        // the employee form. The senior clinic assistant was on 2,900 until a
+        // review six months ago.
+        const raised = profile.key === 'counter';
+        if (raised) {
+          await tx.employeeSalary.create({
+            data: {
+              tenantId: tenant.id, staffId: staff[profile.key], basis: 'MONTHLY',
+              amount: 2900,
+              effectiveFrom: day(-400),
+              effectiveTo: day(-181),
+              reason: 'Starting salary on appointment',
+              createdByStaffId: staff.owner,
+            },
+          });
+        }
+        await tx.employeeSalary.create({
+          data: {
+            tenantId: tenant.id, staffId: staff[profile.key], basis: 'MONTHLY',
+            amount: profile.salary,
+            effectiveFrom: raised ? day(-180) : day(-500 - index * 30),
+            reason: raised ? 'Annual review — moved to senior assistant' : 'Starting salary on appointment',
+            createdByStaffId: staff.owner,
+          },
+        });
+      } else if (profile.type === 'LOCUM') {
+        // A locum is paid by the hour, and the basis is part of the record.
+        await tx.employeeSalary.create({
+          data: {
+            tenantId: tenant.id, staffId: staff[profile.key], basis: 'HOURLY',
+            amount: 120,
+            effectiveFrom: day(-500 - index * 30),
+            reason: 'Locum session rate',
+            createdByStaffId: staff.owner,
+          },
+        });
+      }
+      // The panel claims executive gets NO salary row at all — that absence is
+      // what the payroll run's blocking exception is about.
     }
 
     // --- Attendance across the current month ------------------------------
@@ -2158,6 +2369,40 @@ async function seedWorkforce(ids: Ids) {
     });
     await tx.staffRoleAssignment.create({
       data: { tenantId: tenant.id, staffId: staff.panel, customRoleId: claimsClerk.id, assignedByStaffId: staff.owner },
+    });
+
+    // --- ATTENDANCE INSIDE THE PAYROLL PERIOD -----------------------------
+    //
+    // The payroll run is for LAST month, and a payroll run for a month with no
+    // attendance in it is a run nobody can check. These two days are also what
+    // make the run's warning exceptions TRUE rather than decorative: one person
+    // claimed overtime nobody has approved, one has a day with no clock-out.
+    const payrollPeriodDay = (dayOfMonth: number) => {
+      const period = monthStart(-1);
+      return new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth(), dayOfMonth));
+    };
+    const periodAt = (dayOfMonth: number, hour: number, minute = 0) =>
+      new Date(payrollPeriodDay(dayOfMonth).getTime() + hour * 3600000 + minute * 60000);
+
+    await tx.attendanceRecord.create({
+      data: {
+        tenantId: tenant.id, staffId: staff.counter, clinicId: central.id,
+        workDate: payrollPeriodDay(12),
+        clockInAt: periodAt(12, 1), clockOutAt: periodAt(12, 12), workedMinutes: 660,
+        scheduledStart: periodAt(12, 1), scheduledEnd: periodAt(12, 9),
+        status: 'PRESENT',
+        overtimeMinutes: 180,
+        // Claimed, not approved. This is the run's UNAPPROVED_OVERTIME warning.
+        overtimeApproved: false,
+      },
+    });
+    await tx.attendanceRecord.create({
+      data: {
+        tenantId: tenant.id, staffId: staff.counter2, clinicId: branch.id,
+        workDate: payrollPeriodDay(18),
+        clockInAt: periodAt(18, 1), clockOutAt: null, status: 'MISSING_PUNCH',
+        scheduledStart: periodAt(18, 1), scheduledEnd: periodAt(18, 9),
+      },
     });
 
     // A MISSING PUNCH, and a CORRECTED record.
@@ -2372,7 +2617,18 @@ async function seedWorkforce(ids: Ids) {
       const staffId = staff[profile.key];
       const name = staffNames[profile.key] ?? profile.key;
       if (profile.salary === null) {
-        exceptions.push({ staffId, name, code: 'NO_SALARY', issue: 'No salary or hourly rate on record — this employee cannot be paid until one is set.' });
+        // THE ENGINE'S OWN TEST, not a looser one. `calculate()` raises this
+        // only when there is neither a monthly salary NOR an hourly rate, so a
+        // fixture that raised it for an hourly locum described a run the
+        // product would never produce — and the first Recalculate on the
+        // screen would silently disagree with the seeded banner.
+        //
+        // The locum has a rate and is simply not priced by this seed: a
+        // session-based person is paid from sessions worked, which this
+        // fixture does not invent. The engine prices him on recalculation.
+        if (profile.type !== 'LOCUM') {
+          exceptions.push({ staffId, name, code: 'NO_SALARY', issue: 'No salary or hourly rate on record — this employee cannot be paid until one is set.' });
+        }
         continue;
       }
       const age = ageAt(new Date(Date.UTC(profile.born[0], profile.born[1], profile.born[2])), periodEndDay)!;
@@ -2475,6 +2731,20 @@ async function seedWorkforce(ids: Ids) {
     // gate counts zero blocking exceptions and a run with five unpayable
     // people can be approved and locked — which is what a payroll fixture is
     // supposed to catch, not demonstrate.
+    // WARNINGS AS WELL AS BLOCKERS, because the severity distinction is the
+    // whole reason the exception centre exists and a fixture carrying only
+    // blockers cannot show it. Both are true of the attendance seeded above:
+    // three unapproved overtime hours on the 12th, a missing clock-out on the
+    // 18th. One is left standing; the other has been passed deliberately, with
+    // a reason, so the "passed" state is reviewable too.
+    const warnings: { code: string; staffId: string; ctx: Record<string, string | number>; passed?: string }[] = [
+      { code: 'UNAPPROVED_OVERTIME', staffId: staff.counter, ctx: { hours: 3 } },
+      {
+        code: 'MISSING_PUNCH', staffId: staff.counter2, ctx: { days: 1 },
+        passed: 'Door log confirms an 18:00 departure; the reader was offline that evening.',
+      },
+    ];
+
     for (const raw of exceptions) {
       const built = buildException(raw.code, raw.staffId, { staffId: raw.staffId, runId: payroll.id });
       await tx.payrollException.create({
@@ -2489,6 +2759,35 @@ async function seedWorkforce(ids: Ids) {
           remediation: built.remediation,
           deepLink: built.deepLink,
           overridable: built.overridable,
+        },
+      });
+    }
+
+    for (const warning of warnings) {
+      const built = buildException(warning.code, warning.staffId, {
+        ...warning.ctx,
+        staffId: warning.staffId,
+        runId: payroll.id,
+      });
+      await tx.payrollException.create({
+        data: {
+          tenantId: tenant.id,
+          payrollRunId: payroll.id,
+          staffId: built.staffId,
+          severity: built.severity as ExceptionSeverity,
+          code: built.code,
+          cause: built.cause,
+          consequence: built.consequence,
+          remediation: built.remediation,
+          deepLink: built.deepLink,
+          overridable: built.overridable,
+          ...(warning.passed
+            ? {
+                overriddenByStaffId: staff.owner,
+                overrideReason: warning.passed,
+                overriddenAt: at(-2, 9),
+              }
+            : {}),
         },
       });
     }

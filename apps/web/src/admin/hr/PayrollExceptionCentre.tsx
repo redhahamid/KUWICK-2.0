@@ -18,7 +18,20 @@ import { SeverityTag } from './ExceptionSeverity';
  * the one genuinely excellent warning in that product: condition, consequence,
  * remedy.
  */
-export function PayrollExceptionCentre({ runId, canOverride }: { runId: string; canOverride: boolean }) {
+export function PayrollExceptionCentre({
+  runId,
+  canOverride,
+  onFixInputs,
+}: {
+  runId: string;
+  canOverride: boolean;
+  /**
+   * Open this run's payroll inputs FOR ONE PERSON. The remedy for a missing
+   * PCB is a keystroke on the screen the reader is already on, and routing
+   * them away to find it is how a blocker stays unresolved.
+   */
+  onFixInputs?: (staffId: string, staffName: string | null) => void;
+}) {
   const { message } = App.useApp();
   const query = usePayrollExceptions(runId);
   const override = useOverrideException();
@@ -79,21 +92,35 @@ export function PayrollExceptionCentre({ runId, canOverride }: { runId: string; 
             title: '',
             key: 'actions',
             width: 130,
-            render: (_: unknown, row) =>
-              row.overridable && !row.overriddenBy && canOverride ? (
-                <Button
-                  size="small"
-                  onClick={() => {
-                    setTarget(row);
-                    setReason('');
-                    setError(null);
-                  }}
-                >
-                  Pass with reason
-                </Button>
-              ) : row.deepLink ? (
-                <a href={row.deepLink}>Go and fix it</a>
-              ) : null,
+            render: (_: unknown, row) => {
+              if (row.overridable && !row.overriddenBy && canOverride) {
+                return (
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setTarget(row);
+                      setReason('');
+                      setError(null);
+                    }}
+                  >
+                    Pass with reason
+                  </Button>
+                );
+              }
+              // THE REMEDY, IN PLACE. `deepLink` pointed at
+              // /admin/hr/payroll/:runId/inputs, a route nobody ever mounted:
+              // the one blocking exception a person could actually clear sent
+              // them to a blank page instead. The inputs drawer is on this
+              // screen, so it opens here, for this employee.
+              if (row.code === 'PCB_MISSING' && row.staffId && onFixInputs) {
+                return (
+                  <Button size="small" type="primary" ghost onClick={() => onFixInputs(row.staffId!, row.staffName)}>
+                    Enter it now
+                  </Button>
+                );
+              }
+              return row.deepLink ? <a href={row.deepLink}>Go and fix it</a> : null;
+            },
           },
         ]}
       />

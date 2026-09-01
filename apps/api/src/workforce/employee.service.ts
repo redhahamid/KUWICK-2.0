@@ -122,6 +122,12 @@ export class EmployeeService {
         staff: { select: { id: true, fullName: true, role: true, active: true, clinicId: true } },
         manager: { select: { id: true, fullName: true } },
         leavePolicy: { select: { id: true, name: true } },
+        // WHO EMPLOYS THEM, which is not where they work. Stage 1 made the
+        // legal employer a real entity and assigned every person to one, and
+        // then this record showed only the branch — so the fact that decides
+        // whose EPF number an employee is filed under was invisible on the one
+        // screen that claims to hold their whole employment.
+        legalEmployer: { select: { id: true, name: true } },
       },
     });
     if (!profile) throw new NotFoundException('No employee profile for that staff member');
@@ -201,6 +207,7 @@ export class EmployeeService {
         employmentType: profile.employmentType,
         employmentStatus: profile.employmentStatus,
         clinicName: clinic?.name ?? null,
+        legalEmployerName: profile.legalEmployer?.name ?? null,
         manager: profile.manager?.fullName ?? null,
         startDate: profile.startDate,
         confirmedDate: profile.confirmedDate,
