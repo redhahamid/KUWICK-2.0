@@ -6436,9 +6436,24 @@ model EmployeeProfile {
   legalEmployerId   String? @map("legal_employer_id")
   /// STAGE 1 — proration policy. NO calculation reads this yet (EA-03 blocked).
   payrollPolicyId   String? @map("payroll_policy_id")
-  /// STAGE 1 — PCB residency. Coded, not free text. Nothing branches on it yet
-  /// (register PCB-06 blocked).
+  /// STAGE 1 — free-text residency, superseded by `taxResidence` below and
+  /// kept only so an existing value is not lost. Nothing reads it.
   residentialStatus String? @map("residential_status")
+
+  /// STAGE 3 — THE MTD TAX PROFILE. Residence and category are NULL until
+  /// somebody records them, and PCB refuses to compute without both: one
+  /// decides between a flat 30% and the progressive table, the other decides
+  /// which deductions apply, and neither can be inferred from anything else on
+  /// this record.
+  taxResidence       TaxResidence? @map("tax_residence")
+  pcbCategory        PcbCategory?  @map("pcb_category")
+  /// C — qualifying children. Defaults to none, which DEDUCTS MORE tax rather
+  /// than less: an employer withholds on the facts it holds, and the employee
+  /// recovers any excess on assessment. The opposite default would under-deduct
+  /// on a guess.
+  qualifyingChildren Int           @default(0) @map("qualifying_children")
+  disabledSelf       Boolean       @default(false) @map("disabled_self")
+  disabledSpouse     Boolean       @default(false) @map("disabled_spouse")
   leavePolicyId     String? @map("leave_policy_id")
   notes             String?
 
@@ -6838,6 +6853,28 @@ model StaffBenefitUsage {
 /// a payroll run be approved, and it means a person opened the authority's
 /// published schedule and compared it — not that the numbers look plausible,
 /// and not that they came from the clinic's own spreadsheet.
+/// Tax residence for MTD. Not citizenship and not immigration status: a
+/// non-citizen who meets the residence test is RESIDENT, and MTD for a
+/// non-resident is a flat 30% of remuneration with no deductions at all, so
+/// getting this wrong is not a rounding difference.
+enum TaxResidence {
+  RESIDENT
+  NON_RESIDENT
+}
+
+/// HASiL's own three MTD categories, numbered as the specification numbers
+/// them rather than relabelled "single/married" — category 3 covers a married
+/// employee with a working spouse, a divorcee, a widow or widower AND a single
+/// person with an adopted child, and no two-word label carries that.
+enum PcbCategory {
+  /// Category 1 — the individual deduction only. Qualifying children must be 0.
+  CATEGORY_1
+  /// Category 2 — individual plus spouse.
+  CATEGORY_2
+  /// Category 3 — individual plus children, spouse assessed separately.
+  CATEGORY_3
+}
+
 /// Which limb of the EPF Third Schedule an employee falls under.
 ///
 /// Coded rather than derived, because it cannot be derived. Part A covers

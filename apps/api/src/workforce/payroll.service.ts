@@ -885,15 +885,60 @@ export class PayrollService {
           });
         }
 
-        const payslip = computePayslip(componentLines, statutoryContext, {
-          age,
-          epfMembership: employee.epfMembership,
-          epfEmployeeRate: employee.epfEmployeeRate ? Number(employee.epfEmployeeRate) : 11,
-          epfApplicable: employee.epfApplicable,
-          socsoApplicable: employee.socsoApplicable,
-          eisApplicable: employee.eisApplicable,
-          pcbApplicable: employee.pcbApplicable,
-        });
+        // WHAT THE EMPLOYEE HAS ALREADY BEEN PAID AND TAXED THIS YEAR. The MTD
+        // method is cumulative, so this is not decoration: without it every
+        // month is computed as though it were January and the tax is wrong all
+        // year. Months EARLIER than this one only — recalculating August must
+        // not fold September's figures into August's cumulative base.
+        const priorMonths = employee.legalEmployerId
+          ? await tx.employeeYtd.findMany({
+              where: {
+                legalEmployerId: employee.legalEmployerId,
+                staffId: employee.staffId,
+                taxYear: period.getUTCFullYear(),
+                month: { lt: period.getUTCMonth() + 1 },
+              },
+            })
+          : [];
+        const ytdTotal = priorMonths.reduce(
+          (total, row) => ({
+            accumulatedGrossCents: total.accumulatedGrossCents + row.grossCents,
+            accumulatedEpfCents: total.accumulatedEpfCents + row.epfEmployeeCents,
+            // CP38 is tax paid under a direction and counts toward X alongside
+            // ordinary MTD; leaving it out would over-deduct for the rest of
+            // the year.
+            accumulatedMtdPaidCents: total.accumulatedMtdPaidCents + row.pcbCents + row.cp38Cents,
+            accumulatedZakatCents: total.accumulatedZakatCents + row.zakatCents,
+          }),
+          { accumulatedGrossCents: 0, accumulatedEpfCents: 0, accumulatedMtdPaidCents: 0, accumulatedZakatCents: 0 },
+        );
+
+        const payslip = computePayslip(
+          componentLines,
+          statutoryContext,
+          {
+            age,
+            epfMembership: employee.epfMembership,
+            epfEmployeeRate: employee.epfEmployeeRate ? Number(employee.epfEmployeeRate) : 11,
+            epfApplicable: employee.epfApplicable,
+            socsoApplicable: employee.socsoApplicable,
+            eisApplicable: employee.eisApplicable,
+            pcbApplicable: employee.pcbApplicable,
+            taxResidence: employee.taxResidence,
+            pcbCategory:
+              employee.pcbCategory === 'CATEGORY_1'
+                ? 1
+                : employee.pcbCategory === 'CATEGORY_2'
+                  ? 2
+                  : employee.pcbCategory === 'CATEGORY_3'
+                    ? 3
+                    : null,
+            qualifyingChildren: employee.qualifyingChildren,
+            disabledSelf: employee.disabledSelf,
+            disabledSpouse: employee.disabledSpouse,
+          },
+          ytdTotal,
+        );
 
         // PCB is not calculated by this system, and that is a BLOCKING
         // exception rather than a quiet null on a payslip somebody might pay

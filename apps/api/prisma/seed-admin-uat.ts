@@ -2160,6 +2160,12 @@ async function seedWorkforce(ids: Ids) {
           // visible demonstration that the age cliff is real rather than a
           // rate tweak.
           epfMembership: 'MALAYSIAN_CITIZEN',
+          // THE MTD PROFILE, synthetic like everything else here. Residence and
+          // category are what monthly tax refuses to compute without, so a seed
+          // that omits them produces a UAT clinic where every payroll blocks.
+          taxResidence: 'RESIDENT',
+          pcbCategory: profile.key === 'owner' ? 'CATEGORY_2' : 'CATEGORY_1',
+          qualifyingChildren: profile.key === 'owner' ? 2 : 0,
           epfApplicable: profile.type !== 'LOCUM',
           socsoApplicable: profile.type !== 'LOCUM',
           eisApplicable: profile.type !== 'LOCUM',

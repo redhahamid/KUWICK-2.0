@@ -2,6 +2,7 @@ import { MoneyLike, fromCents, toCents } from '../finance/money';
 import {
   Contribution,
   EmployeeStatutoryProfile,
+  PcbYearToDate,
   StatutoryBases,
   StatutoryContext,
   StatutoryResult,
@@ -161,6 +162,7 @@ export interface BasesResult extends StatutoryBases {
 export function computeBases(lines: PayrollComponentLine[]): BasesResult {
   let gross = 0;
   let epf = 0;
+  let epfNormal = 0;
   let socso = 0;
   let eis = 0;
   let orp = 0;
@@ -171,7 +173,12 @@ export function computeBases(lines: PayrollComponentLine[]): BasesResult {
     const amount = toCents(line.amount);
     const sign = line.kind === 'EARNING' ? 1 : -1;
     gross += sign * amount;
-    if (line.liability.epf) epf += sign * amount;
+    if (line.liability.epf) {
+      epf += sign * amount;
+      // EPF wages excluding additional remuneration, so the MTD method can ask
+      // for the contribution "in respect of Y1" on its own.
+      if (!line.liability.additionalRemuneration) epfNormal += sign * amount;
+    }
     if (line.liability.socso) socso += sign * amount;
     if (line.liability.eis) eis += sign * amount;
     if (line.liability.ordinaryRateOfPay) orp += sign * amount;
@@ -184,6 +191,7 @@ export function computeBases(lines: PayrollComponentLine[]): BasesResult {
   return {
     grossCents: gross,
     epfCents: Math.max(0, epf),
+    epfNormalCents: Math.max(0, epfNormal),
     socsoCents: Math.max(0, socso),
     eisCents: Math.max(0, eis),
     ordinaryRateBaseCents: Math.max(0, orp),
@@ -299,9 +307,16 @@ export function computePayslip(
   lines: PayrollComponentLine[],
   context: StatutoryContext,
   profile: EmployeeStatutoryProfile,
+  ytd?: PcbYearToDate,
 ): PayslipResult {
   const bases = computeBases(lines);
-  const statutory = computeStatutory(bases, context, profile);
+  // Zakat paid THIS month reduces this month's MTD, so it is read off the
+  // component rather than passed in separately — there is one place a zakat
+  // figure can come from and this is it.
+  const zakatThisMonthCents = lines
+    .filter((line) => line.code === 'ZAKAT' && line.kind === 'DEDUCTION')
+    .reduce((sum, line) => sum + toCents(line.amount), 0);
+  const statutory = computeStatutory(bases, context, profile, ytd, zakatThisMonthCents);
 
   const employeeStatutory =
     (statutory.epf.employeeCents ?? 0) +
@@ -355,4 +370,4 @@ export function ageAt(dateOfBirth: Date | null | undefined, on: Date): number | 
 }
 
 export { fromCents, toCents, statutoryStatusOf };
-export type { Contribution, StatutoryResult, StatutoryContext, EmployeeStatutoryProfile };
+export type { Contribution, StatutoryResult, StatutoryContext, EmployeeStatutoryProfile, PcbYearToDate };

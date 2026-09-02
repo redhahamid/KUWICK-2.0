@@ -281,13 +281,16 @@ export class EmployeeService {
         socsoNumberOnFile: Boolean(profile.socsoNumber),
         taxNumberOnFile: Boolean(profile.taxNumber),
         taxCategory: profile.taxCategory,
+        taxResidence: profile.taxResidence,
+        pcbCategory: profile.pcbCategory,
+        qualifyingChildren: profile.qualifyingChildren,
         epfMembership: profile.epfMembership,
         epfApplicable: profile.epfApplicable,
         socsoApplicable: profile.socsoApplicable,
         eisApplicable: profile.eisApplicable,
         pcbApplicable: profile.pcbApplicable,
         note:
-          'Identifiers, applicability and EPF membership. EPF, SOCSO and EIS are computed from the authorities’ own published schedules; PCB is not, and an employee inside it needs an amount entered.',
+          'Identifiers, applicability, EPF membership and the MTD tax profile. All four schemes are computed from the authorities’ own published schedules; TP1 deductions are not captured, so monthly tax is worked out as though none had been filed.',
       },
       /**
        * EMPLOYEE OR CONTRACTOR. The fact everything statutory turns on, and the
@@ -351,6 +354,11 @@ export class EmployeeService {
                   // Schedule Part decides what goes IN it, and without the Part
                   // there is no EPF figure to file at all.
                   const partUnknown = profile.epfApplicable && !profile.epfMembership;
+                  // Monthly tax cannot be worked out without both, and neither
+                  // can be inferred: residence chooses between a flat 30% and
+                  // the progressive table, category chooses the deductions.
+                  const taxProfileUnknown =
+                    profile.pcbApplicable && (!profile.taxResidence || !profile.pcbCategory);
                   const applies = [
                     profile.epfApplicable ? 'EPF' : null,
                     profile.socsoApplicable ? 'SOCSO' : null,
@@ -359,8 +367,10 @@ export class EmployeeService {
                   return {
                     key: 'statutory',
                     label: 'EPF, SOCSO and EIS',
-                    done: missing.length === 0 && !partUnknown,
-                    detail: partUnknown
+                    done: missing.length === 0 && !partUnknown && !taxProfileUnknown,
+                    detail: taxProfileUnknown
+                      ? 'Their tax residence or MTD category is not recorded. Monthly tax is a flat 30% for a non-resident and a table for everybody else, and the category decides which deductions apply, so neither can be guessed.'
+                      : partUnknown
                       ? 'Their EPF membership — Malaysian citizen, permanent resident or non-citizen — is not recorded. The Third Schedule has a different Part for each, so no EPF contribution can be worked out until it is.'
                       : missing.length > 0
                         ? `No ${missing.join(' or ')} membership number is on file, so nothing could be filed for them under ${missing.length === 1 ? 'that scheme' : 'those schemes'}.`

@@ -5,6 +5,7 @@ import {
   epfContribution,
   socsoContribution,
 } from '../statutory/contributions';
+import { PcbResult, computePcb as computeMtd } from '../statutory/pcb-2026';
 import {
   StatutoryScheme,
   StatutoryStamp,
@@ -127,6 +128,18 @@ export interface EmployeeStatutoryProfile {
   socsoApplicable?: boolean;
   eisApplicable?: boolean;
   pcbApplicable?: boolean;
+
+  /**
+   * THE MTD PROFILE. Residence chooses between a flat 30% and the progressive
+   * table; category chooses which deductions apply. Neither is derivable from
+   * anything else on an employee record, so both absent means PCB cannot be
+   * worked out — not that none is due.
+   */
+  taxResidence?: 'RESIDENT' | 'NON_RESIDENT' | null;
+  pcbCategory?: 1 | 2 | 3 | null;
+  qualifyingChildren?: number | null;
+  disabledSelf?: boolean | null;
+  disabledSpouse?: boolean | null;
 }
 
 /** What the schedules are resolved against. The period, never today. */
@@ -224,27 +237,136 @@ export function computeEis(wageCents: number, context: StatutoryContext, profile
 }
 
 /**
- * PCB / MTD.
+ * PCB / MTD — computed, at last, and refused rather than guessed.
  *
- * The engine exists and reproduces HASiL's own worked example (see
- * `src/statutory/pcb-2026.ts` and its spec). What it needs and does not yet
- * receive is the cumulative substrate the Computerised Calculation method is
- * built on: remuneration and MTD paid so far this year, a previous employer's
- * figures via TP3, TP1 deductions, and the employee's category and children.
+ * The engine is `src/statutory/pcb-2026.ts`, transcribed from HASiL's own
+ * specification and checked against the worked example the specification
+ * publishes with it (Exhibit 5), to the sen, across all twelve months.
  *
- * `EmployeeYtd` holds the first of those and nothing populates the rest, so
- * PCB stays absent — and absent means BLOCKING, not zero. Wiring the engine to
- * a half-filled input would produce a number that looks like tax and is not.
+ * What kept it unwired was never the formula. The Computerised Calculation
+ * method is CUMULATIVE: it needs what the employee has been paid, taxed and
+ * contributed since January, including under a previous employer. Kuwick held
+ * none of that, so a lawful MTD was impossible in principle rather than merely
+ * unimplemented. `EmployeeYtd` now carries it, written from approved runs and
+ * from a controlled opening import for a clinic that migrated mid-year.
+ *
+ * THREE THINGS THIS DOES NOT DO, stated here rather than discovered later:
+ *
+ *  - TP1 DEDUCTIONS ARE NOT CAPTURED, so LP and ∑LP are nil. That is the
+ *    correct treatment for an employee who has filed no TP1, which is most of
+ *    them, and it errs towards deducting MORE rather than less — an employee
+ *    who has filed one recovers the difference on assessment. It is not a
+ *    silent approximation: `tp1Captured: false` travels with the result.
+ *
+ *  - IT REFUSES WHAT THE SPECIFICATION EXCLUDES. Returning employees under the
+ *    REP scheme, knowledge workers and C-suite arrangements have their own
+ *    rates, and the engine names them rather than applying the ordinary table.
+ *
+ *  - IT NEVER GUESSES THE PROFILE. Residence decides between a flat 30% and
+ *    the progressive table; category decides which deductions apply. Neither is
+ *    derivable from anything else on an employee record, so both being absent
+ *    is an unanswerable question and blocks the run.
  */
-export const PCB_NOT_IMPLEMENTED =
-  'Monthly tax (PCB) is missing. The calculation needs this employee’s year-to-date remuneration, tax paid ' +
-  'so far, and their TP1/TP3 details, which are not recorded yet. Enter PCB as a payroll input or file it separately.';
 
-export function computePcb(profile: EmployeeStatutoryProfile): { cents: number | null; note: string } {
+export const PCB_NOT_IMPLEMENTED =
+  'Monthly tax (PCB) is missing. The calculation needs this employee’s tax residence and MTD category, ' +
+  'which are not recorded yet. Enter PCB as a payroll input or file it separately.';
+
+/** What the month contributes, over and above the employee's standing facts. */
+export interface PcbMonthInput {
+  /** 1-12. */
+  readonly month: number;
+  /** Y1 — this month's normal remuneration. */
+  readonly grossNormalCents: number;
+  /** K1 — EPF and other approved contributions in respect of Y1. */
+  readonly epfOnNormalCents: number;
+  /** Yt — bonus, arrears and other additional remuneration this month. */
+  readonly grossAdditionalCents: number;
+  /** Kt — contributions in respect of Yt. */
+  readonly epfOnAdditionalCents: number;
+  /** This month's zakat, which reduces this month's MTD. */
+  readonly zakatThisMonthCents: number;
+}
+
+/** What the year so far contributes. Every figure is a total, in cents. */
+export interface PcbYearToDate {
+  /** ∑Y — gross paid earlier this year, including a previous employer's. */
+  readonly accumulatedGrossCents: number;
+  /** ∑K — contributions in respect of ∑Y. */
+  readonly accumulatedEpfCents: number;
+  /** X — MTD already paid this year, CP38 included. */
+  readonly accumulatedMtdPaidCents: number;
+  /** Z — zakat paid this year other than this month's. */
+  readonly accumulatedZakatCents: number;
+}
+
+export interface PcbAnswer {
+  readonly cents: number | null;
+  readonly note: string;
+  /** False when MTD was computed as though no TP1 had been filed. */
+  readonly tp1Captured: boolean;
+  /** The specification's own working, for the payslip and an auditor. */
+  readonly working: PcbResult['working'] | null;
+}
+
+export function computePcb(
+  profile: EmployeeStatutoryProfile,
+  month: PcbMonthInput,
+  ytd: PcbYearToDate,
+  on: Date,
+): PcbAnswer {
   if (profile.pcbApplicable === false) {
-    return { cents: 0, note: 'This employee is recorded as outside PCB.' };
+    return { cents: 0, note: 'This employee is recorded as outside PCB.', tp1Captured: true, working: null };
   }
-  return { cents: null, note: PCB_NOT_IMPLEMENTED };
+  if (!scheduleFor('PCB', on)) {
+    return {
+      cents: null,
+      note: `No MTD specification is in force for ${on.toISOString().slice(0, 10)}, so monthly tax cannot be worked out.`,
+      tp1Captured: false,
+      working: null,
+    };
+  }
+  if (!profile.taxResidence || !profile.pcbCategory) {
+    return { cents: null, note: PCB_NOT_IMPLEMENTED, tp1Captured: false, working: null };
+  }
+
+  const outcome = computeMtd({
+    residence: profile.taxResidence,
+    category: profile.pcbCategory,
+    // The specification is explicit that category 1 carries no child
+    // deduction, so a stray count on a category 1 record is ignored rather
+    // than quietly changing somebody's tax.
+    qualifyingChildren: profile.pcbCategory === 1 ? 0 : (profile.qualifyingChildren ?? 0),
+    disabledSelf: profile.disabledSelf ?? false,
+    disabledSpouse: profile.disabledSpouse ?? false,
+    month: month.month,
+    accumulatedGrossCents: ytd.accumulatedGrossCents,
+    accumulatedEpfCents: ytd.accumulatedEpfCents,
+    grossNormalCents: month.grossNormalCents,
+    epfOnNormalCents: month.epfOnNormalCents,
+    grossAdditionalCents: month.grossAdditionalCents,
+    epfOnAdditionalCents: month.epfOnAdditionalCents,
+    // TP1 is not captured. Nil is the right figure for an employee who has
+    // filed none, and `tp1Captured` below says so rather than letting the
+    // absence pass for a decision.
+    accumulatedDeductionsCents: 0,
+    deductionsThisMonthCents: 0,
+    accumulatedMtdPaidCents: ytd.accumulatedMtdPaidCents,
+    accumulatedZakatCents: ytd.accumulatedZakatCents,
+    zakatThisMonthCents: month.zakatThisMonthCents,
+  });
+
+  if (outcome.kind === 'UNSUPPORTED') {
+    return { cents: null, note: outcome.reason, tp1Captured: false, working: null };
+  }
+  return {
+    cents: outcome.result.mtdCents,
+    note:
+      `Worked out by HASiL's Computerised Calculation method for month ${month.month}` +
+      (profile.taxResidence === 'NON_RESIDENT' ? ', at the non-resident rate.' : '.'),
+    tp1Captured: false,
+    working: outcome.result.working,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +377,18 @@ export interface StatutoryBases {
   epfCents: number;
   socsoCents: number;
   eisCents: number;
+  /**
+   * EPF wages EXCLUDING additional remuneration. The MTD method wants the
+   * contribution "in respect of Y1" separately from the one "in respect of
+   * Yt", and the Third Schedule is a lookup on the wage actually paid — so K1
+   * is the contribution on normal pay alone and Kt is what the bonus adds on
+   * top, rather than a proportional share of one figure.
+   */
+  epfNormalCents: number;
+  /** Y1 — remuneration liable to PCB that is not additional remuneration. */
+  pcbNormalCents: number;
+  /** Yt — bonus and other additional remuneration liable to PCB. */
+  pcbAdditionalCents: number;
 }
 
 export interface StatutoryResult {
@@ -263,6 +397,10 @@ export interface StatutoryResult {
   eis: Contribution;
   pcbCents: number | null;
   pcbNote: string;
+  /** False when MTD was computed as though no TP1 had been filed. */
+  pcbTp1Captured: boolean;
+  /** The specification's own working, for the payslip and an auditor. */
+  pcbWorking: PcbResult['working'] | null;
   bases: StatutoryBases;
   /** Which schedules produced these figures. Stamped onto the run. */
   stamp: StatutoryStamp;
@@ -271,18 +409,57 @@ export interface StatutoryResult {
 /** The schemes every employee payslip has to answer for. */
 const PAYSLIP_SCHEMES: readonly StatutoryScheme[] = ['EPF', 'SOCSO', 'EIS', 'PCB'];
 
+/** What the employee has been paid and taxed since January. */
+export const NO_YEAR_TO_DATE: PcbYearToDate = {
+  accumulatedGrossCents: 0,
+  accumulatedEpfCents: 0,
+  accumulatedMtdPaidCents: 0,
+  accumulatedZakatCents: 0,
+};
+
 export function computeStatutory(
   bases: StatutoryBases,
   context: StatutoryContext,
   profile: EmployeeStatutoryProfile,
+  ytd: PcbYearToDate = NO_YEAR_TO_DATE,
+  zakatThisMonthCents = 0,
 ): StatutoryResult {
-  const pcb = computePcb(profile);
+  const epf = computeEpf(bases.epfCents, context, profile);
+
+  // K1 and Kt. Computing EPF twice — once on normal pay, once on everything —
+  // and taking the difference keeps both figures on the Schedule's own bands.
+  // Apportioning a single figure would put K1 between two bands, which is a
+  // number the Schedule never produces.
+  const epfOnNormal = computeEpf(bases.epfNormalCents, context, profile);
+  const epfOnNormalCents = epfOnNormal.employeeCents ?? 0;
+  const epfOnAdditionalCents = Math.max(0, (epf.employeeCents ?? 0) - epfOnNormalCents);
+
+  const pcb = computePcb(
+    profile,
+    {
+      // `periodEnd` is EXCLUSIVE — the first day of the following month — so
+      // the month being paid is the one the last day of the period falls in.
+      // Taken from that day rather than from periodEnd's own month, which
+      // would be off by one and silently wrong every December.
+      month: new Date(context.periodEnd.getTime() - 86_400_000).getUTCMonth() + 1,
+      grossNormalCents: bases.pcbNormalCents,
+      epfOnNormalCents,
+      grossAdditionalCents: bases.pcbAdditionalCents,
+      epfOnAdditionalCents,
+      zakatThisMonthCents,
+    },
+    ytd,
+    context.periodEnd,
+  );
+
   return {
-    epf: computeEpf(bases.epfCents, context, profile),
+    epf,
     socso: computeSocso(bases.socsoCents, context, profile),
     eis: computeEis(bases.eisCents, context, profile),
     pcbCents: pcb.cents,
     pcbNote: pcb.note,
+    pcbTp1Captured: pcb.tp1Captured,
+    pcbWorking: pcb.working,
     bases,
     stamp: stampFor(PAYSLIP_SCHEMES, context.periodEnd),
   };

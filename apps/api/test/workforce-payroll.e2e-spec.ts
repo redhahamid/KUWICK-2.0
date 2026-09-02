@@ -68,7 +68,13 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
   async function makeEmployee(
     name: string,
     salary?: string,
-    opts: { pcbApplicable?: boolean; epfMembership?: string | null; startDate?: string; endDate?: string } = {},
+    opts: {
+      pcbApplicable?: boolean;
+      epfMembership?: string | null;
+      startDate?: string;
+      endDate?: string;
+      taxProfile?: boolean;
+    } = {},
   ) {
     const staff = await withTenantContext(prisma, tenantId, (tx) =>
       tx.staff.create({ data: { tenantId, role: Role.FRONT_DESK_CLINICAL_STAFF, fullName: name, clinicId } }),
@@ -91,6 +97,11 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         // PCB is not calculated by this system; an employee inside PCB with no
         // amount entered blocks the run, which is a separate test below.
         pcbApplicable: opts.pcbApplicable ?? false,
+        // Residence and MTD category. Without both, monthly tax cannot be
+        // worked out and the run blocks — which is its own test below.
+        ...(opts.taxProfile
+          ? { taxResidence: 'RESIDENT', pcbCategory: 'CATEGORY_1', qualifyingChildren: 0 }
+          : {}),
       })
       .expect(201);
 
@@ -519,6 +530,129 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       );
       expect(afterCorrection).toHaveLength(1);
       expect(afterCorrection[0].grossCents).toBe(300000);
+    });
+
+    it('works monthly tax out for an employee whose tax profile is complete', async () => {
+      const staffId = await makeEmployee('Taxpayer', '5000.00', { pcbApplicable: true, taxProfile: true });
+      // JANUARY, deliberately. The method projects the rest of the year from
+      // what it has seen: an August run for somebody with no year-to-date is
+      // an employee who appears to have earned nothing for seven months, and
+      // the correct MTD on five months of RM5,000 really is nil. That is the
+      // cumulative substrate doing its job, not a bug, and the test below
+      // exercises the mid-year case properly.
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: '2026-01', clinicId })
+        .expect(201);
+      const calculated = await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+
+      // No PCB_MISSING blocker any more: the figure is computed, not demanded.
+      const exceptions = calculated.body.exceptions as { name: string; issue: string }[];
+      expect(exceptions.some((row) => /Monthly tax \(PCB\) is missing/.test(row.issue))).toBe(false);
+
+      const detail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const line = detail.body.lines.find((row: { staffId: string }) => row.staffId === staffId);
+      expect(line.pcb).toBeGreaterThan(0);
+      expect(line.epfEmployee).toBe(550);
+
+      // And the run can now be approved without acknowledging a statutory gap,
+      // which was impossible for anybody inside PCB before this.
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/approve`)
+        .set('Authorization', bearer)
+        .send({})
+        .expect(200);
+    });
+
+    it('still BLOCKS an employee inside PCB whose residence and category are unknown', async () => {
+      // The fail-safe survives PCB becoming computable. An unknown profile is
+      // an unanswerable question, not a nil liability.
+      await makeEmployee('Unknown Profile', '5000.00', { pcbApplicable: true });
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/approve`)
+        .set('Authorization', bearer)
+        .send({ acknowledgeStatutoryGap: true })
+        .expect(400);
+    });
+
+    it('carries the year to date into the next month’s tax, from the database', async () => {
+      // The method is cumulative, and this is the path that has to prove it.
+      // Seven months of history — the mid-year migration case — then August.
+      const staffId = await makeEmployee('Cumulative', '5000.00', { pcbApplicable: true, taxProfile: true });
+      await request(app.getHttpServer())
+        .post('/workforce/payroll/ytd-opening')
+        .set('Authorization', bearer)
+        .send({
+          legalEmployerId,
+          source: 'Payslips from the previous system, January to July 2026',
+          months: [1, 2, 3, 4, 5, 6, 7].map((month) => ({
+            staffId,
+            taxYear: 2026,
+            month,
+            grossCents: 500000,
+            additionalRemunerationCents: 0,
+            pcbCents: 11000,
+            cp38Cents: 0,
+            zakatCents: 0,
+            epfEmployeeCents: 55000,
+            epfEmployerCents: 65000,
+            socsoEmployeeCents: 6190,
+            socsoEmployerCents: 8665,
+            eisEmployeeCents: 990,
+            eisEmployerCents: 990,
+          })),
+        })
+        .expect(201);
+
+      const august = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${august.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const detail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${august.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const line = detail.body.lines.find((row: { staffId: string }) => row.staffId === staffId);
+      // With the year behind them, August owes tax. Without the import it
+      // would have been nil — which is exactly the error a mid-year migration
+      // makes when it starts from zero.
+      expect(line.pcb).toBeGreaterThan(0);
+
+      // Approving August adds its own month to the record, alongside the seven
+      // that were imported.
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${august.body.id}/approve`)
+        .set('Authorization', bearer)
+        .send({})
+        .expect(200);
+      const ytd = await request(app.getHttpServer())
+        .get(`/workforce/payroll/employees/${staffId}/ytd?year=2026`)
+        .set('Authorization', bearer)
+        .expect(200);
+      expect(ytd.body.months).toHaveLength(8);
+      expect(ytd.body.imported).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(ytd.body.months[7]).toMatchObject({ month: 8, source: 'CALCULATED' });
     });
 
     it('takes OPENING year-to-date for a clinic that starts using Kuwick mid-year', async () => {

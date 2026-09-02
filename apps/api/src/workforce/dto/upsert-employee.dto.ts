@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
 import { EmploymentStatus, EmploymentType } from '@prisma/client';
 
 const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
@@ -63,6 +63,20 @@ export class UpsertEmployeeDto {
   @IsOptional() @IsBoolean() socsoApplicable?: boolean;
   @IsOptional() @IsBoolean() eisApplicable?: boolean;
   @IsOptional() @IsBoolean() pcbApplicable?: boolean;
+
+  /**
+   * THE MTD TAX PROFILE. Residence chooses between a flat 30% and the
+   * progressive table; category chooses which deductions apply. Neither is
+   * derivable from anything else on this record, so PCB refuses to compute
+   * until both are recorded.
+   */
+  @IsOptional() @IsIn(['RESIDENT', 'NON_RESIDENT']) taxResidence?: 'RESIDENT' | 'NON_RESIDENT';
+  @IsOptional()
+  @IsIn(['CATEGORY_1', 'CATEGORY_2', 'CATEGORY_3'])
+  pcbCategory?: 'CATEGORY_1' | 'CATEGORY_2' | 'CATEGORY_3';
+  @IsOptional() @IsInt() @Min(0) @Max(20) qualifyingChildren?: number;
+  @IsOptional() @IsBoolean() disabledSelf?: boolean;
+  @IsOptional() @IsBoolean() disabledSpouse?: boolean;
 
   @IsOptional() @IsUUID() leavePolicyId?: string;
   @IsOptional() @IsString() @MaxLength(2000) notes?: string;

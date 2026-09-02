@@ -39,6 +39,30 @@ by this session's egress policy, so these files are the sole Tier A evidence.
 
 ### PCB / MTD
 
+**Now wired into payroll**, from Stage 3. What kept the engine unwired was never
+the formula: the Computerised Calculation method is CUMULATIVE, and Kuwick held
+nothing cumulative. `EmployeeYtd` now carries it — written from approved runs
+and from a controlled opening import for a clinic that migrated mid-year — and
+`employee_profiles` carries the tax residence and MTD category the method
+branches on.
+
+Three limits, stated so nobody assumes otherwise:
+
+1. **TP1 deductions are not captured**, so LP and ∑LP are nil. That is the
+   correct treatment for an employee who has filed no TP1, and it errs towards
+   deducting MORE — an employee who has filed one recovers the difference on
+   assessment. It is not silent: `pcbTp1Captured: false` travels with every
+   computed figure.
+2. **Residence and category BLOCK when unknown.** Neither is derivable from
+   anything else on an employee record; residence alone is the difference
+   between a flat 30% and the progressive table.
+3. **A mid-year start with no imported history computes nil, correctly.** The
+   method projects the rest of the year from what it has been told, so an
+   August run for somebody with no year-to-date describes a five-month year
+   below the threshold. The figure is right for the facts given; what makes it
+   wrong in practice is missing history, which is what the opening import is
+   for. Pinned by test so it is not mistaken for a bug.
+
 | Field | Value |
 |---|---|
 | **Rule** | Monthly Tax Deduction, normal remuneration, resident employee |
@@ -262,6 +286,9 @@ schedule cannot change what an already-approved run computed.
 ## Still outstanding
 
 1. **LINDUNG 24 JAM** — PERKESO's own schedule and participation guidance.
+1. **TP1 and TP3 capture** — the forms themselves. MTD is computed as though no
+   TP1 had been filed, and TP3 previous-employment figures reach the engine only
+   through the opening year-to-date import.
 2. **A PCB verification letter** — the D2 answers can be produced from the
    engine and submitted to IRBM, but the letter is theirs to issue.
 3. **Statutory submission file formats** — EPF, SOCSO, EIS and CP39 layouts are

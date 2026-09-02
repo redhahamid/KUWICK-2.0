@@ -268,17 +268,100 @@ describe('ordinary rate of pay, overtime and unpaid leave', () => {
   });
 });
 
-describe('PCB is a blocking gap, not a guess', () => {
-  it('returns null and says why', () => {
-    const slip = computePayslip([earning('BASIC', 5000)], CTX, under60);
+describe('PCB — computed when the tax profile is there, refused when it is not', () => {
+  const JAN = { periodEnd: new Date('2026-02-01T00:00:00.000Z') };
+  const taxed = {
+    ...under60,
+    pcbApplicable: true,
+    taxResidence: 'RESIDENT' as const,
+    pcbCategory: 1 as const,
+    qualifyingChildren: 0,
+    disabledSelf: false,
+    disabledSpouse: false,
+  };
+
+  it('works the month out through HASiL’s method once residence and category are known', () => {
+    const slip = computePayslip([earning('BASIC', 5000)], JAN, taxed);
+    expect(slip.statutory.pcbCents).toBe(11000);
+    expect(slip.incomplete).toBe(false);
+    expect(slip.statutory.pcbNote).toMatch(/Computerised Calculation/);
+    // The specification's own working travels with the figure, so a payslip and
+    // an auditor can follow it rather than take it on trust.
+    expect(slip.statutory.pcbWorking).not.toBeNull();
+  });
+
+  it('charges a non-resident a flat 30% with no deductions at all', () => {
+    // Not a rate tweak — a different rule. Assuming residence for somebody who
+    // is not resident under-deducts by most of the liability.
+    const slip = computePayslip([earning('BASIC', 5000)], JAN, { ...taxed, taxResidence: 'NON_RESIDENT' });
+    expect(slip.statutory.pcbCents).toBe(150000);
+  });
+
+  it('refuses, rather than assuming resident, when residence is unknown', () => {
+    const slip = computePayslip([earning('BASIC', 5000)], JAN, { ...taxed, taxResidence: null });
     expect(slip.statutory.pcbCents).toBeNull();
     expect(slip.notes).toContain(PCB_NOT_IMPLEMENTED);
     expect(slip.incomplete).toBe(true);
   });
 
-  it('is zero — a fact — only for somebody recorded as outside PCB', () => {
-    const slip = computePayslip([earning('BASIC', 5000)], CTX, { ...under60, pcbApplicable: false });
+  it('refuses when the MTD category is unknown', () => {
+    const slip = computePayslip([earning('BASIC', 5000)], JAN, { ...taxed, pcbCategory: null });
+    expect(slip.statutory.pcbCents).toBeNull();
+    expect(slip.incomplete).toBe(true);
+  });
+
+  it('says out loud that TP1 deductions were not captured', () => {
+    // Nil LP is the right figure for an employee who has filed no TP1, and it
+    // errs towards deducting MORE. Saying so is what stops the absence passing
+    // for a decision somebody made.
+    const slip = computePayslip([earning('BASIC', 5000)], JAN, taxed);
+    expect(slip.statutory.pcbTp1Captured).toBe(false);
+  });
+
+  it('deducts NOTHING in August from somebody who appears to have earned nothing since January', () => {
+    // This looks like a bug and is not, so it is pinned. The method projects
+    // the rest of the year from what it has been told: an August run with no
+    // year-to-date describes an employee whose whole year is five months of
+    // RM5,000, which is below the threshold once the deductions are applied.
+    //
+    // The figure is right for the facts given. What makes it WRONG in practice
+    // is missing history, which is why a mid-year migration must import its
+    // opening months rather than starting from zero.
+    const AUG = { periodEnd: new Date('2026-09-01T00:00:00.000Z') };
+    expect(computePayslip([earning('BASIC', 5000)], AUG, taxed).statutory.pcbCents).toBe(0);
+  });
+
+  it('carries the year so far, so month eight is not computed as though it were January', () => {
+    // The method is cumulative. Seven months of pay and tax already behind the
+    // employee change what August owes.
+    const AUG = { periodEnd: new Date('2026-09-01T00:00:00.000Z') };
+    const asIfJanuary = computePayslip([earning('BASIC', 5000)], AUG, taxed);
+    const withHistory = computePayslip([earning('BASIC', 5000)], AUG, taxed, {
+      accumulatedGrossCents: 3500000, // seven months at RM5,000
+      accumulatedEpfCents: 385000,
+      accumulatedMtdPaidCents: 77000, // seven months of the January figure
+      accumulatedZakatCents: 0,
+    });
+    expect(withHistory.statutory.pcbCents).not.toBe(asIfJanuary.statutory.pcbCents);
+    expect(withHistory.statutory.pcbCents).not.toBeNull();
+  });
+
+  it('lets this month’s zakat reduce this month’s tax', () => {
+    const withZakat = computePayslip([earning('BASIC', 5000), deduction('ZAKAT', 50)], JAN, taxed);
+    const without = computePayslip([earning('BASIC', 5000)], JAN, taxed);
+    expect(withZakat.statutory.pcbCents).toBeLessThan(without.statutory.pcbCents as number);
+  });
+
+  it('is zero — a fact — for somebody recorded as outside PCB', () => {
+    const slip = computePayslip([earning('BASIC', 5000)], JAN, { ...taxed, pcbApplicable: false });
     expect(slip.statutory.pcbCents).toBe(0);
+  });
+
+  it('ignores a child count on a category 1 record rather than quietly changing the tax', () => {
+    // The specification is explicit that category 1 carries no child deduction.
+    const withChildren = computePayslip([earning('BASIC', 5000)], JAN, { ...taxed, qualifyingChildren: 3 });
+    const without = computePayslip([earning('BASIC', 5000)], JAN, taxed);
+    expect(withChildren.statutory.pcbCents).toBe(without.statutory.pcbCents);
   });
 });
 
