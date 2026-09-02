@@ -6422,6 +6422,10 @@ model EmployeeProfile {
   /// between two different Third Schedule tables, so it is a rate ELECTION and
   /// not a percentage this system multiplies by.
   epfEmployeeRate Decimal? @default(11) @map("epf_employee_rate") @db.Decimal(4, 2)
+  /// Decides the Third Schedule Part. NULL blocks EPF rather than defaulting:
+  /// guessing citizenship for a 60-year-old picks between 4% and 6% employer,
+  /// and picking wrong under-contributes silently for as long as nobody looks.
+  epfMembership   EpfMembership? @map("epf_membership")
   epfApplicable   Boolean  @default(true) @map("epf_applicable")
   socsoApplicable Boolean  @default(true) @map("socso_applicable")
   eisApplicable   Boolean  @default(true) @map("eis_applicable")
@@ -6834,6 +6838,23 @@ model StaffBenefitUsage {
 /// a payroll run be approved, and it means a person opened the authority's
 /// published schedule and compared it — not that the numbers look plausible,
 /// and not that they came from the clinic's own spreadsheet.
+/// Which limb of the EPF Third Schedule an employee falls under.
+///
+/// Coded rather than derived, because it cannot be derived. Part A covers
+/// citizens, permanent residents and pre-1998 electors alike while they are
+/// under 60; from 60 they split, citizens to Part E and the rest to Part C, at
+/// materially different rates (4%/0% against 6%/5.5%). A free-text nationality
+/// cannot tell those apart, and an IC number cannot either — permanent
+/// residents hold one too.
+enum EpfMembership {
+  MALAYSIAN_CITIZEN
+  PERMANENT_RESIDENT
+  /// A non-citizen who elected to contribute before 1 August 1998.
+  NON_CITIZEN_ELECTED_PRE_1998
+  /// Any other non-citizen. Part F, flat 2% each side.
+  NON_CITIZEN
+}
+
 enum StatutoryVerificationStatus {
   /// Entered, unchecked.
   DRAFT

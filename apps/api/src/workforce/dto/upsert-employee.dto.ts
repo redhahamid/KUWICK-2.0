@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsISO8601, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 import { EmploymentStatus, EmploymentType } from '@prisma/client';
 
 const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
@@ -51,6 +51,14 @@ export class UpsertEmployeeDto {
   @IsOptional() @IsString() @MaxLength(40) socsoNumber?: string;
   @IsOptional() @IsString() @MaxLength(40) taxNumber?: string;
   @IsOptional() @IsString() @MaxLength(20) taxCategory?: string;
+  /**
+   * Which limb of the EPF Third Schedule applies. Required before EPF can be
+   * calculated for anybody: Parts C and E both cover people aged 60 and over,
+   * at 6%/5.5% and 4%/0%, and only citizenship separates them.
+   */
+  @IsOptional()
+  @IsIn(['MALAYSIAN_CITIZEN', 'PERMANENT_RESIDENT', 'NON_CITIZEN_ELECTED_PRE_1998', 'NON_CITIZEN'])
+  epfMembership?: 'MALAYSIAN_CITIZEN' | 'PERMANENT_RESIDENT' | 'NON_CITIZEN_ELECTED_PRE_1998' | 'NON_CITIZEN';
   @IsOptional() @IsBoolean() epfApplicable?: boolean;
   @IsOptional() @IsBoolean() socsoApplicable?: boolean;
   @IsOptional() @IsBoolean() eisApplicable?: boolean;

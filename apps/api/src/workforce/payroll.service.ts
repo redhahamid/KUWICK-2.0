@@ -22,7 +22,7 @@ import {
   DEFAULT_COMPONENT_LIABILITY,
   LIABILITY_BY_STATUS_CODE,
   PayrollComponentLine,
-  StatutoryRules,
+  StatutoryContext,
   ageAt,
   computeOvertime,
   computePayslip,
@@ -30,6 +30,12 @@ import {
   statutoryStatusOf,
   unpaidLeaveDeductionCents,
 } from './payroll-calculation';
+import {
+  SCHEMES_WITHOUT_A_SCHEDULE,
+  STATUTORY_SCHEDULES,
+  meetsApprovalBar,
+  stampFor,
+} from '../statutory/registry';
 import { totalTimesheet } from './attendance-hours';
 import {
   MaterialisedInput,
@@ -111,98 +117,80 @@ export class PayrollService {
 
   // --- Statutory configuration ---------------------------------------------
 
+  /**
+   * The schedules that govern, which are no longer the tenant's to write.
+   *
+   * These rows used to come from `StatutoryRuleSet`: an effective-dated table a
+   * clinic administrator could type rates into. The shape was right and the
+   * ownership was wrong. EPF, SOCSO and EIS rates are not a tenant preference —
+   * they are identical for every employer in Malaysia, and a screen that lets
+   * one clinic enter different ones is a screen that lets a clinic under-
+   * contribute by accident and call it configuration.
+   *
+   * They now come from `src/statutory/registry.ts`, transcribed from the
+   * authorities' own documents and dated by when each took effect. The row
+   * shape is unchanged so the settings page keeps working; what changed is that
+   * `verified` is now a property of the evidence rather than a checkbox
+   * somebody ticked.
+   */
   async listStatutoryRuleSets() {
     await requirePermission(this.rawPrisma, 'hr.payroll.view');
-    const sets = await this.prisma.statutoryRuleSet.findMany({
-      orderBy: { effectiveFrom: 'desc' },
-      include: { verifiedBy: { select: { fullName: true } } },
-    });
-    return sets.map((set) => ({
-      id: set.id,
-      name: set.name,
-      jurisdiction: set.jurisdiction,
-      effectiveFrom: set.effectiveFrom.toISOString().slice(0, 10),
-      effectiveTo: set.effectiveTo?.toISOString().slice(0, 10) ?? null,
-      verified: set.verifiedAt !== null,
-      verifiedAt: set.verifiedAt,
-      verifiedBy: set.verifiedBy?.fullName ?? null,
-      verificationNote: set.verificationNote,
-      hasEpf: set.epfRules !== null,
-      hasSocso: set.socsoRules !== null,
-      hasEis: set.eisRules !== null,
-      hasPcb: set.pcbRules !== null,
-      status: statutoryStatusOf(set as unknown as StatutoryRules, set.verificationStatus),
+    return STATUTORY_SCHEDULES.map((schedule) => ({
+      id: schedule.id,
+      name: `${schedule.scheme} — ${schedule.section}`,
+      jurisdiction: 'MY',
+      effectiveFrom: schedule.effectiveFrom.toISOString().slice(0, 10),
+      effectiveTo: schedule.effectiveTo?.toISOString().slice(0, 10) ?? null,
+      verified: meetsApprovalBar(schedule.verification),
+      verifiedAt: null,
+      verifiedBy: schedule.authority,
+      verificationNote: schedule.evidence,
+      verification: schedule.verification,
+      authority: schedule.authority,
+      document: schedule.document,
+      contentHash: schedule.contentHash,
+      hasEpf: schedule.scheme === 'EPF',
+      hasSocso: schedule.scheme === 'SOCSO',
+      hasEis: schedule.scheme === 'EIS',
+      hasPcb: schedule.scheme === 'PCB',
+      status: meetsApprovalBar(schedule.verification)
+        ? ('CONFIGURED' as const)
+        : ('PROVISIONAL' as const),
     }));
   }
 
-  async upsertStatutoryRules(dto: UpsertStatutoryRulesDto) {
-    return withAdminTx(this.rawPrisma, 'hr.payroll.approve', async (tx, actor) => {
-      const effectiveFrom = new Date(`${dto.effectiveFrom}T00:00:00.000Z`);
-      const existing = dto.id ? await tx.statutoryRuleSet.findUnique({ where: { id: dto.id } }) : null;
-      if (dto.id && !existing) throw new NotFoundException('Statutory rule set not found');
-
-      const data = {
-        name: dto.name,
-        jurisdiction: dto.jurisdiction ?? 'MY',
-        effectiveFrom,
-        effectiveTo: dto.effectiveTo ? new Date(`${dto.effectiveTo}T00:00:00.000Z`) : null,
-        epfRules: (dto.epfRules ?? null) as never,
-        socsoRules: (dto.socsoRules ?? null) as never,
-        eisRules: (dto.eisRules ?? null) as never,
-        pcbRules: (dto.pcbRules ?? null) as never,
-        // MARKING A RULE SET VERIFIED IS A DELIBERATE, SEPARATE ACT. Editing the
-        // rates clears it, because a checked table that has since been edited is
-        // not a checked table.
-        //
-        // `verificationStatus` moves WITH `verifiedAt`. Setting one and not the
-        // other left a set that a person had signed off still reading DRAFT, so
-        // it could never reach CONFIGURED and every run against it stayed
-        // provisional however carefully somebody had checked the tables.
-        ...(dto.verified
-          ? {
-              verificationStatus: StatutoryVerificationStatus.VERIFIED,
-              verifiedAt: new Date(),
-              verifiedByStaffId: actor.id,
-              verificationNote: dto.verificationNote ?? null,
-            }
-          : {
-              // Back to DRAFT, not CORROBORATED: whatever corroboration a
-              // previous version had was corroboration of different numbers.
-              verificationStatus: StatutoryVerificationStatus.DRAFT,
-              verifiedAt: null,
-              verifiedByStaffId: null,
-              verificationNote: null,
-            }),
-      };
-
-      const saved = existing
-        ? await tx.statutoryRuleSet.update({ where: { id: existing.id }, data })
-        : await tx.statutoryRuleSet.create({
-            data: { ...data, tenantId: currentTenantId(), createdByStaffId: actor.id },
-          });
-
-      await recordAudit(tx, actor, {
-        action: 'payroll.approved',
-        entityType: 'StatutoryRuleSet',
-        entityId: saved.id,
-        before: existing ? { verifiedAt: existing.verifiedAt, effectiveFrom: existing.effectiveFrom } : null,
-        after: { name: dto.name, effectiveFrom: dto.effectiveFrom, verified: Boolean(dto.verified) },
-        reason: dto.verificationNote ?? null,
-        source: 'hr.statutory',
-      });
-      return saved;
-    });
+  /** Schemes with no schedule at all, so a screen can name the gap. */
+  async listStatutoryGaps() {
+    await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    return SCHEMES_WITHOUT_A_SCHEDULE.map((gap) => ({ ...gap }));
   }
 
-  private async rulesInForce(tx: AdminTx, period: Date) {
-    return tx.statutoryRuleSet.findFirst({
-      where: {
-        effectiveFrom: { lte: period },
-        OR: [{ effectiveTo: null }, { effectiveTo: { gte: period } }],
-      },
-      orderBy: { effectiveFrom: 'desc' },
-    });
+  /**
+   * Writing statutory rates is refused, and the refusal is the feature.
+   *
+   * This used to accept EPF, SOCSO, EIS and PCB tables as JSON and let whoever
+   * held `hr.payroll.approve` mark them verified. Two things were wrong with
+   * that. A clinic cannot legislate: the Third Schedule says what it says, and
+   * a tenant-entered variant of it is not a configuration choice but an error
+   * waiting to be discovered by KWSP. And "verified" meant a person had ticked
+   * a box, which is indistinguishable on screen from a figure actually checked
+   * against the authority's own document.
+   *
+   * Rates now come from `src/statutory/registry.ts`, so there is nothing here
+   * to write. The endpoint stays rather than disappearing, because a 404 would
+   * read as a bug to anyone who had bookmarked the old screen, while this says
+   * what happened and where the numbers went.
+   */
+  async upsertStatutoryRules(_dto: UpsertStatutoryRulesDto) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.approve');
+    throw new BadRequestException(
+      'Statutory rates are no longer entered by hand. EPF, SOCSO, EIS and PCB come from the ' +
+        'authorities’ own published schedules, which ship with Kuwick, are dated by when each took ' +
+        'effect, and are stamped onto every payroll run so a payslip can always be traced back to the ' +
+        'edition that produced it. Nothing here needs configuring.',
+    );
   }
+
 
   // --- The run --------------------------------------------------------------
 
@@ -246,11 +234,12 @@ export class PayrollService {
       const periodEnd = monthEnd(period);
       const days = daysInMonth(period);
 
-      const ruleSet = await this.rulesInForce(tx, period);
-      const statutoryStatus = statutoryStatusOf(
-        ruleSet as unknown as StatutoryRules | null,
-        ruleSet?.verificationStatus ?? null,
-      ) as StatutoryStatus;
+      // Which schedules govern is decided by the PERIOD, never by today: a
+      // September run re-calculated in December must not acquire December's
+      // rates.
+      const statutoryContext: StatutoryContext = { periodEnd };
+      const statutoryStatus = statutoryStatusOf(periodEnd) as StatutoryStatus;
+      const statutoryStamp = stampFor(['EPF', 'SOCSO', 'EIS', 'PCB'], periodEnd);
 
       // Ordinary Rate of Pay, frozen onto the run. Two divisors, on purpose.
       const orpConfig = {
@@ -683,8 +672,9 @@ export class PayrollService {
           });
         }
 
-        const payslip = computePayslip(componentLines, ruleSet as unknown as StatutoryRules | null, {
+        const payslip = computePayslip(componentLines, statutoryContext, {
           age,
+          epfMembership: employee.epfMembership,
           epfEmployeeRate: employee.epfEmployeeRate ? Number(employee.epfEmployeeRate) : 11,
           epfApplicable: employee.epfApplicable,
           socsoApplicable: employee.socsoApplicable,
@@ -711,24 +701,33 @@ export class PayrollService {
               payslip.statutory.eis.employeeCents === null;
           }
         }
-        // DELIBERATELY NOT every statutory note. "No EPF schedule is configured
-        // for this period" is a property of the RUN, already carried by
-        // `statutoryStatus` and already gated by the acknowledge-the-gap flow
-        // on approval. Repeating it once per employee per scheme buried the
-        // real exceptions under noise and, worse, made a NOT_CONFIGURED run
-        // unapprovable — closing off the documented case of a clinic that
-        // files EPF through its accountant.
+        // THE FAIL-SAFE. A statutory figure that came back NULL is unknown, not
+        // nil, and an unknown contribution must stop the run rather than reach
+        // a payslip as a blank somebody reads as zero.
         //
-        // What DOES belong here is anything specific to this employee: an
-        // incomplete band table that happens to exclude their wage, or a wage
-        // outside every configured band.
-        for (const note of payslip.notes) {
-          if (!/incomplete|outside every configured/i.test(note)) continue;
+        // Raised from the FIGURES rather than from the notes. The previous
+        // version matched a regex against the note text, which meant the gate
+        // depended on wording: rephrasing a message silently opened it, and
+        // that is exactly what happened when the engines began reporting
+        // "membership has to be recorded" instead of "the schedule is
+        // incomplete".
+        //
+        // Run-level gaps are NOT raised here. "No schedule is in force for this
+        // period" is a property of the run, carried by `statutoryStatus` and
+        // gated by the acknowledge-the-gap flow on approval; repeating it once
+        // per employee per scheme buried the real exceptions under noise.
+        for (const [scheme, contribution] of [
+          ['EPF', payslip.statutory.epf],
+          ['SOCSO', payslip.statutory.socso],
+          ['EIS', payslip.statutory.eis],
+        ] as const) {
+          if (contribution.employeeCents !== null && contribution.employerCents !== null) continue;
+          if (statutoryStatus === 'NOT_CONFIGURED') continue;
           exceptions.push({
-            ...buildException('STATUTORY_BAND_GAP', employee.staffId, {
+            ...buildException('STATUTORY_UNKNOWN', employee.staffId, {
               staffId: employee.staffId,
               runId,
-              note,
+              note: contribution.note ?? `${scheme} could not be worked out for this employee.`,
             }),
             name: employee.staff.fullName,
           });
@@ -890,19 +889,15 @@ export class PayrollService {
         data: {
           status: PayrollRunStatus.CALCULATED,
           statutoryStatus,
-          statutoryRuleSetId: ruleSet?.id ?? null,
-          statutorySnapshot: (ruleSet
-            ? {
-                name: ruleSet.name,
-                effectiveFrom: ruleSet.effectiveFrom,
-                verificationStatus: ruleSet.verificationStatus,
-                verified: ruleSet.verificationStatus === 'VERIFIED',
-                epfRules: ruleSet.epfRules,
-                socsoRules: ruleSet.socsoRules,
-                eisRules: ruleSet.eisRules,
-                pcbRules: ruleSet.pcbRules,
-              }
-            : null) as never,
+          // No tenant rule set drives a calculation any more; the column stays
+          // for the runs that were calculated when one did.
+          statutoryRuleSetId: null,
+          // WHICH schedules produced these figures — id, effective date,
+          // verification state and a hash of the actual bands, per scheme. The
+          // hash is the part that matters: a version string can be edited to
+          // say anything, whereas re-running a period against an edited table
+          // produces a different hash and the mismatch is visible.
+          statutorySnapshot: statutoryStamp as never,
           grossTotal: fromCents(grossTotal),
           deductionTotal: fromCents(deductionTotal),
           netTotal: fromCents(netTotal),
@@ -1439,6 +1434,10 @@ export class PayrollService {
           : run.statutoryStatus === StatutoryStatus.PROVISIONAL
             ? 'The statutory rates used have not been verified against the authority’s published tables. Treat these figures as provisional.'
             : null,
+      // WHICH SCHEDULES PRODUCED THESE FIGURES, as recorded at calculation.
+      // Read from the run rather than re-resolved, so a payslip reprinted next
+      // year shows the edition behind it and not the one in force at printing.
+      statutorySnapshot: run.statutorySnapshot,
       grossTotal: Number(run.grossTotal),
       deductionTotal: Number(run.deductionTotal),
       netTotal: Number(run.netTotal),

@@ -175,8 +175,51 @@ describe('payroll exceptions', () => {
   });
 
   it('never marks a data-integrity blocker overridable', () => {
-    for (const code of ['NO_SALARY', 'NO_DOB', 'NO_LEGAL_EMPLOYER', 'PCB_MISSING', 'NEGATIVE_NET', 'UNKNOWN_COMPONENT']) {
+    for (const code of [
+      'NO_SALARY',
+      'NO_DOB',
+      'NO_LEGAL_EMPLOYER',
+      'PCB_MISSING',
+      'NEGATIVE_NET',
+      'UNKNOWN_COMPONENT',
+      'STATUTORY_UNKNOWN',
+    ]) {
       expect(EXCEPTION_CATALOGUE[code].overridable).toBe(false);
     }
+  });
+
+  /*
+   * THE FAIL-SAFE, pinned.
+   *
+   * An unknown statutory figure has to stop the run, and for one release it
+   * silently did not: the exception was raised only when a note matched
+   * /incomplete|outside every configured/, so rewording an engine message
+   * opened the gate. It now fires off the figures themselves, and these tests
+   * exist so a future rewording cannot close it again.
+   */
+  it('treats an unknown statutory figure as blocking and never overridable', () => {
+    expect(EXCEPTION_CATALOGUE.STATUTORY_UNKNOWN.severity).toBe('BLOCKING');
+    expect(EXCEPTION_CATALOGUE.STATUTORY_UNKNOWN.overridable).toBe(false);
+    expect(
+      approvalGate([
+        {
+          severity: EXCEPTION_CATALOGUE.STATUTORY_UNKNOWN.severity,
+          overridable: EXCEPTION_CATALOGUE.STATUTORY_UNKNOWN.overridable,
+          overriddenByStaffId: 'approver-1',
+        },
+      ]).canApprove,
+    ).toBe(false);
+  });
+
+  it('says the contribution is unknown rather than nil, because the difference is the point', () => {
+    const built = buildException('STATUTORY_UNKNOWN', 'staff-1', {
+      staffId: 'staff-1',
+      runId: 'run-1',
+      note: 'Their EPF membership has not been recorded.',
+    });
+    expect(built.cause).toBe('Their EPF membership has not been recorded.');
+    expect(built.consequence).toMatch(/unknown — not nil/);
+    // And it points at the employee, because that is where the missing fact is.
+    expect(built.deepLink).toBe('/admin/hr/employees/staff-1');
   });
 });

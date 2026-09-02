@@ -54,7 +54,11 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
     clinicId = clinic.body.id;
   });
 
-  async function makeEmployee(name: string, salary?: string, opts: { pcbApplicable?: boolean } = {}) {
+  async function makeEmployee(
+    name: string,
+    salary?: string,
+    opts: { pcbApplicable?: boolean; epfMembership?: string | null } = {},
+  ) {
     const staff = await withTenantContext(prisma, tenantId, (tx) =>
       tx.staff.create({ data: { tenantId, role: Role.FRONT_DESK_CLINICAL_STAFF, fullName: name, clinicId } }),
     );
@@ -69,6 +73,9 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         startDate: '2024-01-01',
         // EPF, SOCSO and EIS all change at age 60, so payroll refuses to guess.
         dateOfBirth: '1990-06-15',
+        // Which Part of the EPF Third Schedule applies. Passing null exercises
+        // the blocking path; it is not a default.
+        ...(opts.epfMembership === null ? {} : { epfMembership: opts.epfMembership ?? 'MALAYSIAN_CITIZEN' }),
         // PCB is not calculated by this system; an employee inside PCB with no
         // amount entered blocks the run, which is a separate test below.
         pcbApplicable: opts.pcbApplicable ?? false,
@@ -224,8 +231,12 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
 
   // -------------------------------------------------------------------------
   describe('payroll', () => {
-    it('computes NOTHING statutory when no rule set is configured, and says so', async () => {
-      await makeEmployee('Salaried One', '3000.00');
+    it('leaves EPF NULL — not zero — when the employee’s Third Schedule Part is unknown', async () => {
+      // This used to be "no rule set is configured", which was a property of
+      // the TENANT. Schedules now ship with Kuwick, so the gap that remains is
+      // a property of the EMPLOYEE: without their EPF membership there is no
+      // Part, and without a Part there is no contribution to compute.
+      await makeEmployee('Salaried One', '3000.00', { epfMembership: null });
 
       const run = await request(app.getHttpServer())
         .post('/workforce/payroll/runs')
@@ -237,23 +248,26 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
         .set('Authorization', bearer)
         .expect(200);
-      expect(calculated.body.statutoryStatus).toBe('NOT_CONFIGURED');
+      // The schedules themselves are in force and verified for this period.
+      expect(calculated.body.statutoryStatus).toBe('CONFIGURED');
 
       const detail = await request(app.getHttpServer())
         .get(`/workforce/payroll/runs/${run.body.id}`)
         .set('Authorization', bearer)
         .expect(200);
-      expect(detail.body.statutoryNotice).toMatch(/have NOT been calculated/);
       // NULL, not zero. That distinction is the whole point.
       expect(detail.body.lines[0].epfEmployee).toBeNull();
-      expect(detail.body.lines[0].socsoEmployee).toBeNull();
+      // SOCSO and EIS need only the date of birth, which this employee has, so
+      // they ARE computed — the gap is confined to the scheme it belongs to
+      // rather than blanking the whole payslip.
+      expect(detail.body.lines[0].socsoEmployee).toBe(36.9);
+      expect(detail.body.lines[0].eisEmployee).toBe(5.9);
       // PCB is ZERO rather than null here, and the difference matters: this
       // employee is recorded as OUTSIDE PCB, which is a fact. Null would mean
       // "we do not know", which is what it says for somebody inside it.
       expect(detail.body.lines[0].pcb).toBe(0);
-      expect(detail.body.lines[0].netPay).toBe(3000);
 
-      // And it cannot be approved without acknowledging the gap.
+      // And it cannot be approved with a statutory figure still unknown.
       await request(app.getHttpServer())
         .patch(`/workforce/payroll/runs/${run.body.id}/approve`)
         .set('Authorization', bearer)
@@ -261,39 +275,18 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         .expect(400);
     });
 
-    it('computes statutory figures once the tenant configures and verifies a rule set', async () => {
+    it('computes statutory figures with nothing for the tenant to configure', async () => {
       await makeEmployee('Salaried Two', '3000.00');
 
-      await request(app.getHttpServer())
+      // AND THE OLD CONFIGURATION SCREEN IS REFUSED. A clinic cannot legislate:
+      // entering its own EPF table was a way to under-contribute by accident
+      // and call it a setting.
+      const refused = await request(app.getHttpServer())
         .post('/workforce/payroll/statutory-rules')
         .set('Authorization', bearer)
-        .send({
-          name: 'Test rates',
-          effectiveFrom: '2026-01-01',
-          // BAND TABLES, in cents, which is what the Third Schedule and the
-          // SOCSO/EIS schedules actually are. Deliberately synthetic and
-          // deliberately round: this test is about the plumbing — does a
-          // configured, verified rule set reach a payslip — and not about
-          // Malaysian rates, which are covered by the unit suite against the
-          // clinic's own figures.
-          epfRules: {
-            under60: {
-              '11': { bands: [{ min: 0, max: null, employer: 36000, employee: 30000 }] },
-            },
-            over60: { bands: [{ min: 0, max: null, employer: 12000, employee: 0 }] },
-          },
-          socsoRules: {
-            firstCategory: { bands: [{ min: 0, max: null, employer: 7000, employee: 2000 }] },
-            secondCategory: { bands: [{ min: 0, max: null, employer: 5000, employee: 0 }] },
-          },
-          eisRules: {
-            under60: { bands: [{ min: 0, max: null, employer: 500, employee: 500 }] },
-            over60: { bands: [{ min: 0, max: null, employer: 0, employee: 0 }] },
-          },
-          verified: true,
-          verificationNote: 'Checked against the published schedule',
-        })
-        .expect(201);
+        .send({ name: 'Test rates', effectiveFrom: '2026-01-01', verified: true })
+        .expect(400);
+      expect(refused.body.message).toMatch(/no longer entered by hand/i);
 
       const run = await request(app.getHttpServer())
         .post('/workforce/payroll/runs')
@@ -311,14 +304,26 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         .set('Authorization', bearer)
         .expect(200);
       const line = detail.body.lines[0];
-      expect(line.epfEmployee).toBe(300);
-      expect(line.epfEmployer).toBe(360);
-      expect(line.socsoEmployee).toBe(20);
-      // Outside PCB, so zero. Configuring EPF does not manufacture a tax
+      // The EPF Third Schedule's own figures for the RM3,000 band — computed
+      // on the band ceiling, not as 11% of the wage.
+      expect(line.epfEmployee).toBe(330);
+      expect(line.epfEmployer).toBe(390);
+      // SOCSO First Category, invalidity plus SKBBK.
+      expect(line.socsoEmployee).toBe(36.9);
+      // Outside PCB, so zero. Shipping the schedules does not manufacture a tax
       // figure for anybody who is inside it — see the blocking test below.
       expect(line.pcb).toBe(0);
-      expect(line.netPay).toBe(3000 - 300 - 20 - 5);
+      expect(line.netPay).toBe(2627.2);
       expect(detail.body.statutoryNotice).toBeNull();
+
+      // THE RUN RECORDS WHICH SCHEDULES PRODUCED THESE FIGURES, so a payslip
+      // reprinted next year can be traced to the edition behind it.
+      const stamp = detail.body.statutorySnapshot;
+      expect(stamp.approvable).toBe(true);
+      const epf = stamp.schedules.find((entry: { scheme: string }) => entry.scheme === 'EPF');
+      expect(epf.scheduleId).toBe('EPF_THIRD_SCHEDULE_2025_10');
+      expect(epf.verification).toBe('OFFICIAL_TEST_VECTOR_VERIFIED');
+      expect(epf.contentHash).toMatch(/^[0-9a-f]{16}$/);
     });
 
     it('BLOCKS the run for an employee inside PCB, because this system does not calculate it', async () => {
@@ -394,9 +399,11 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         .set('Authorization', bearer)
         .expect(200);
       const line = detail.body.lines[0];
-      // The entered figure is withheld exactly as a computed one would be.
+      // The entered figure is withheld exactly as a computed one would be —
+      // alongside the EPF, SOCSO and EIS this system DOES compute.
       expect(line.pcb).toBe(412.5);
-      expect(line.netPay).toBe(5000 - 412.5);
+      expect(line.epfEmployee).toBe(550);
+      expect(line.netPay).toBe(3965.7); // 5000 − 412.50 − 550 − 61.90 − 9.90
     });
 
     it('surfaces an employee with no salary as an EXCEPTION and blocks approval', async () => {

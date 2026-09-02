@@ -281,12 +281,13 @@ export class EmployeeService {
         socsoNumberOnFile: Boolean(profile.socsoNumber),
         taxNumberOnFile: Boolean(profile.taxNumber),
         taxCategory: profile.taxCategory,
+        epfMembership: profile.epfMembership,
         epfApplicable: profile.epfApplicable,
         socsoApplicable: profile.socsoApplicable,
         eisApplicable: profile.eisApplicable,
         pcbApplicable: profile.pcbApplicable,
         note:
-          'Identifiers and applicability flags only. Malaysian EPF/SOCSO/EIS/PCB rate schedules are not implemented in this system, so no contribution shown anywhere is derived from these fields.',
+          'Identifiers, applicability and EPF membership. EPF, SOCSO and EIS are computed from the authorities’ own published schedules; PCB is not, and an employee inside it needs an amount entered.',
       },
       /**
        * EMPLOYEE OR CONTRACTOR. The fact everything statutory turns on, and the
@@ -346,6 +347,10 @@ export class EmployeeService {
                     profile.epfApplicable && !profile.epfNumber ? 'EPF' : null,
                     profile.socsoApplicable && !profile.socsoNumber ? 'SOCSO' : null,
                   ].filter((name): name is string => name !== null);
+                  // A membership number lets a filing be addressed; the Third
+                  // Schedule Part decides what goes IN it, and without the Part
+                  // there is no EPF figure to file at all.
+                  const partUnknown = profile.epfApplicable && !profile.epfMembership;
                   const applies = [
                     profile.epfApplicable ? 'EPF' : null,
                     profile.socsoApplicable ? 'SOCSO' : null,
@@ -354,9 +359,10 @@ export class EmployeeService {
                   return {
                     key: 'statutory',
                     label: 'EPF, SOCSO and EIS',
-                    done: missing.length === 0,
-                    detail:
-                      missing.length > 0
+                    done: missing.length === 0 && !partUnknown,
+                    detail: partUnknown
+                      ? 'Their EPF membership — Malaysian citizen, permanent resident or non-citizen — is not recorded. The Third Schedule has a different Part for each, so no EPF contribution can be worked out until it is.'
+                      : missing.length > 0
                         ? `No ${missing.join(' or ')} membership number is on file, so nothing could be filed for them under ${missing.length === 1 ? 'that scheme' : 'those schemes'}.`
                         : applies.length === 0
                           ? 'None of the three applies to this person.'

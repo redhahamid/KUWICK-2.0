@@ -79,6 +79,21 @@ jobs:
       - name: Web typecheck
         run: npx tsc --noEmit -p tsconfig.json
         working-directory: apps/web
+      # A NAMED GATE, RUN BEFORE THE REST, so that a statutory regression is
+      # never reported as "12 tests failed somewhere in the API suite".
+      #
+      # These specs reproduce figures published by HASiL, KWSP and PERKESO —
+      # the MTD specification's own worked example to the sen across twelve
+      # months, and the printed rows of the EPF Third Schedule, the Act 4 table
+      # and the Act 800 table. They are the only evidence that Kuwick computes
+      # Malaysian statutory deductions correctly, so they get their own step and
+      # their own red cross.
+      #
+      # A failure here is never "update the expected value". It means either the
+      # engine drifted or a schedule was edited, and both need a person.
+      - name: Official statutory vectors (HASiL, KWSP, PERKESO)
+        run: npx jest src/statutory --ci
+        working-directory: apps/api
       - name: API unit suite
         run: npx jest --ci
         working-directory: apps/api

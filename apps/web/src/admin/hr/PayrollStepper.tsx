@@ -57,7 +57,7 @@ const STEP_OF_CODE: Record<string, StepKey> = {
   MISSING_PUNCH: 'attendance',
   UNKNOWN_COMPONENT: 'earnings',
   PCB_MISSING: 'deductions',
-  STATUTORY_BAND_GAP: 'deductions',
+  STATUTORY_UNKNOWN: 'deductions',
 };
 
 export function stepsWithProblems(

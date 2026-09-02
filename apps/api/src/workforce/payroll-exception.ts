@@ -179,11 +179,6 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     deepLink: () => '/admin/hr/payroll',
   },
   /*
-   * An employee-specific statutory gap: their wage falls outside every band the
-   * configured table has, or the table is incomplete where they sit. Distinct
-   * from "no schedule is configured", which is a property of the run.
-   */
-  /*
    * INFO, and deliberately not a warning.
    *
    * A contractor is not an employee who cannot be paid — they are somebody this
@@ -204,14 +199,29 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'Nothing to do, unless this person should in fact be an employee — in which case change their engagement.',
     deepLink: () => '/admin/hr/locum',
   },
-  STATUTORY_BAND_GAP: {
-    code: 'STATUTORY_BAND_GAP',
+  /*
+   * AN EMPLOYEE-SPECIFIC STATUTORY UNKNOWN — the fail-safe, and the one
+   * exception that must never become overridable.
+   *
+   * It used to fire only when a note matched /incomplete|outside every
+   * configured/, which was a regex over prose and therefore a gate that any
+   * rewording could open. It is now raised from the figures themselves: if EPF,
+   * SOCSO or EIS came back NULL for this employee, this is raised, whatever the
+   * reason and whatever the wording.
+   *
+   * Distinct from a run-level gap ("no schedule is in force for this period"),
+   * which `statutoryStatus` carries.
+   */
+  STATUTORY_UNKNOWN: {
+    code: 'STATUTORY_UNKNOWN',
     severity: 'BLOCKING',
     overridable: false,
     cause: (c) => String(c.note),
-    consequence: 'A statutory figure for this employee could not be computed, so their payslip is incomplete.',
-    remediation: 'Complete the statutory rate table for this period, then recalculate.',
-    deepLink: () => '/admin/hr/payroll',
+    consequence:
+      'A statutory figure for this employee could not be worked out, so their payslip is incomplete and the ' +
+      'contribution that would be filed for them is unknown — not nil.',
+    remediation: 'Record what is missing on the employee, then recalculate the run.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
   },
   VARIANCE_OUTSIDE_THRESHOLD: {
     code: 'VARIANCE_OUTSIDE_THRESHOLD',

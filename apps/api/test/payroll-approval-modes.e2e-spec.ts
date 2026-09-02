@@ -68,6 +68,9 @@ describe('payroll approval modes (e2e)', () => {
         employmentStatus: 'ACTIVE',
         startDate: '2024-01-01',
         dateOfBirth: '1990-06-15',
+        // Which Part of the EPF Third Schedule applies. Without it EPF is
+        // unknown rather than nil, and an unknown blocks approval.
+        epfMembership: 'MALAYSIAN_CITIZEN',
         pcbApplicable: false,
       })
       .expect(201);

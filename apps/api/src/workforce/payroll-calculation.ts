@@ -3,8 +3,8 @@ import {
   Contribution,
   EmployeeStatutoryProfile,
   StatutoryBases,
+  StatutoryContext,
   StatutoryResult,
-  StatutoryRules,
   computeStatutory,
   statutoryStatusOf,
 } from './statutory';
@@ -297,11 +297,11 @@ export interface PayslipResult {
  */
 export function computePayslip(
   lines: PayrollComponentLine[],
-  rules: StatutoryRules | null | undefined,
+  context: StatutoryContext,
   profile: EmployeeStatutoryProfile,
 ): PayslipResult {
   const bases = computeBases(lines);
-  const statutory = computeStatutory(bases, rules, profile);
+  const statutory = computeStatutory(bases, context, profile);
 
   const employeeStatutory =
     (statutory.epf.employeeCents ?? 0) +
@@ -355,4 +355,4 @@ export function ageAt(dateOfBirth: Date | null | undefined, on: Date): number | 
 }
 
 export { fromCents, toCents, statutoryStatusOf };
-export type { Contribution, StatutoryResult, StatutoryRules, EmployeeStatutoryProfile };
+export type { Contribution, StatutoryResult, StatutoryContext, EmployeeStatutoryProfile };

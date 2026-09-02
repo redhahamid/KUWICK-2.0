@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import {
   DEFAULT_COMPONENT_LIABILITY,
   LIABILITY_BY_STATUS_CODE,
@@ -11,7 +9,7 @@ import {
   unpaidLeaveDeductionCents,
   ageAt,
 } from './payroll-calculation';
-import { PCB_NOT_IMPLEMENTED, StatutoryRules, computeEpf, computeEis, computeSocso, statutoryStatusOf } from './statutory';
+import { PCB_NOT_IMPLEMENTED, computeEpf, computeEis, computeSocso, statutoryStatusOf } from './statutory';
 
 /**
  * THESE TESTS ARE THE RECONCILIATION.
@@ -21,17 +19,23 @@ import { PCB_NOT_IMPLEMENTED, StatutoryRules, computeEpf, computeEis, computeSoc
  * engine and the spreadsheet disagree on any of these, one of them is wrong
  * and somebody has to decide which; see docs/HR_PAYROLL_RECONCILIATION.md.
  *
- * The previous version of this file tested SYNTHETIC rates ("employeeRate: 5")
- * against a percentage engine. It passed, and it proved nothing about whether
- * this system could pay a Malaysian employee correctly.
+ * The rates used to come from a seeded 2024 JSON file that nobody had checked
+ * against KWSP or PERKESO. They now come from `src/statutory/`, transcribed
+ * from the authorities' own documents, and are resolved by the PERIOD rather
+ * than by a rule-set row.
+ *
+ * Where the workbook and the official schedule still agree, the expected figure
+ * below is unchanged — which is most of them, and is the reassuring result. The
+ * two places they no longer agree are marked, and in both the schedule wins.
  */
 
-const RULES = JSON.parse(
-  readFileSync(join(__dirname, '..', '..', 'prisma', 'statutory-my-2024-10.json'), 'utf8'),
-) as StatutoryRules & { verificationStatus: string };
+/** January 2026 — after every schedule in the registry took effect. */
+const CTX = { periodEnd: new Date('2026-01-31T00:00:00.000Z') };
+/** Before the EPF Third Schedule edition this system holds. */
+const BEFORE_ANY_SCHEDULE = { periodEnd: new Date('2020-01-31T00:00:00.000Z') };
 
-const under60 = { age: 34, epfEmployeeRate: 11 };
-const at60 = { age: 61, epfEmployeeRate: 11 };
+const under60 = { age: 34, epfEmployeeRate: 11, epfMembership: 'MALAYSIAN_CITIZEN' as const };
+const at60 = { age: 61, epfEmployeeRate: 11, epfMembership: 'MALAYSIAN_CITIZEN' as const };
 
 const earning = (code: string, amount: number): PayrollComponentLine => ({
   code,
@@ -58,7 +62,7 @@ describe('EPF — the Third Schedule is a table, not a percentage', () => {
     [1741.94, 194, 229, 'row 18 — basic 1800 less 58.06 unpaid leave'],
     [9750, 1078, 1176, 'row 29 — above RM5,000, so employer drops to 12%'],
   ])('RM%s contributes %s / %s (%s)', (wage, employee, employer) => {
-    const result = computeEpf(Math.round((wage as number) * 100), RULES.epfRules, under60);
+    const result = computeEpf(Math.round((wage as number) * 100), CTX, under60);
     expect(result.employeeCents).toBe(Math.round((employee as number) * 100));
     expect(result.employerCents).toBe(Math.round((employer as number) * 100));
   });
@@ -66,66 +70,109 @@ describe('EPF — the Third Schedule is a table, not a percentage', () => {
   it('is computed on the band ceiling, so it disagrees with naive percentage arithmetic', () => {
     const wage = 145161; // RM1,451.61
     const naive = Math.round(wage * 0.11); // RM159.68 — what the old engine returned
-    const actual = computeEpf(wage, RULES.epfRules, under60).employeeCents;
+    const actual = computeEpf(wage, CTX, under60).employeeCents;
     expect(actual).toBe(16100);
     expect(actual).not.toBe(naive);
   });
 
   it('steps the employer rate from 13% to 12% at exactly RM5,000', () => {
-    expect(computeEpf(500000, RULES.epfRules, under60).employerCents).toBe(65000); // 13%
-    expect(computeEpf(500001, RULES.epfRules, under60).employerCents).toBe(61200); // 12% of 5,100
+    expect(computeEpf(500000, CTX, under60).employerCents).toBe(65000); // 13%
+    expect(computeEpf(500001, CTX, under60).employerCents).toBe(61200); // 12% of 5,100
   });
 
   it('reverts to an exact percentage above RM20,000, rounded up to the ringgit', () => {
-    const result = computeEpf(2500000, RULES.epfRules, under60); // RM25,000
+    const result = computeEpf(2500000, CTX, under60); // RM25,000
     expect(result.employeeCents).toBe(275000); // 11%
     expect(result.employerCents).toBe(300000); // 12%
   });
 
-  it('honours the 9% employee election', () => {
-    expect(computeEpf(210000, RULES.epfRules, { age: 34, epfEmployeeRate: 9 }).employeeCents).toBe(18900);
+  it('refuses an employee election away from the Schedule rather than approximating it', () => {
+    // The 9% option was a separate statutory instrument, and an election under
+    // Borang KWSP 17A is another. The Third Schedule prints ONE employee column
+    // per Part, so a 9% figure could only be produced by multiplying — which is
+    // exactly the percentage arithmetic this engine exists to stop.
+    const result = computeEpf(210000, CTX, { ...under60, epfEmployeeRate: 9 });
+    expect(result.employeeCents).toBeNull();
+    expect(result.note).toMatch(/17A/);
+  });
+
+  it('cannot pick a Part without the employee’s EPF membership', () => {
+    // Part C and Part E both cover people aged 60 and over, at 6%/5.5% and
+    // 4%/0%. Nationality free text cannot choose between them.
+    const result = computeEpf(210000, CTX, { age: 61, epfEmployeeRate: 11 });
+    expect(result.employeeCents).toBeNull();
+    expect(result.note).toMatch(/membership/i);
+  });
+
+  it('puts a non-citizen in Part F at a flat 2% each side', () => {
+    const result = computeEpf(210000, CTX, { age: 34, epfEmployeeRate: 11, epfMembership: 'NON_CITIZEN' });
+    expect(result.note).toMatch(/Part F/);
   });
 
   it('drops the employee share to nil and the employer to 4% at age 60', () => {
-    const result = computeEpf(210000, RULES.epfRules, at60);
+    const result = computeEpf(210000, CTX, at60);
     expect(result.employeeCents).toBe(0);
     expect(result.employerCents).toBe(8400); // 4% of RM2,100
   });
 
   it('refuses to guess when the date of birth is unknown', () => {
-    const result = computeEpf(210000, RULES.epfRules, { age: null });
+    const result = computeEpf(210000, CTX, { ...under60, age: null });
     expect(result.employeeCents).toBeNull();
     expect(result.note).toMatch(/date of birth/i);
   });
 });
 
 describe('SOCSO and EIS — different wages, different categories', () => {
-  it('matches the clinic listing at RM2,229.24 (basic plus overtime)', () => {
-    const socso = computeSocso(222924, RULES.socsoRules, under60);
-    expect(socso.employeeCents).toBe(1125);
-    expect(socso.employerCents).toBe(3935);
-    const eis = computeEis(222924, RULES.eisRules, under60);
+  /*
+   * THE ONE PLACE THE WORKBOOK IS NOW WRONG, and it is worth being precise
+   * about because a clinic reconciling last year's spreadsheet will meet it on
+   * every single row.
+   *
+   * The EMPLOYER figures below are exactly the workbook's — RM39.35 and
+   * RM104.15, unchanged. The EMPLOYEE figures have roughly doubled, and the
+   * whole of the difference is one new column: PERKESO's current Act 4 table
+   * (D6) charges the employee for the Non-Employment Injury Scheme (SKBBK) on
+   * top of Invalidity, where the workbook has Invalidity alone.
+   *
+   *   RM2,229.24  employee  11.25  ->  28.10   (11.25 invalidity + 16.85 SKBBK)
+   *   RM6,000     employee  29.75  ->  74.40   (29.75 invalidity + 44.65 SKBBK)
+   *
+   * This is the law changing, not the engine drifting. The split is asserted
+   * as well as the total so a payslip can show it the way the Act's own table
+   * prints it.
+   */
+  it('matches the clinic listing at RM2,229.24 on the employer side, and adds SKBBK on the employee side', () => {
+    const socso = computeSocso(222924, CTX, under60);
+    expect(socso.employerCents).toBe(3935); // unchanged from the workbook
+    expect(socso.employeeCents).toBe(2810); // was 1125 before SKBBK
+    expect(socso.note).toMatch(/invalidity 11\.25 \+ non-employment injury 16\.85/i);
+    const eis = computeEis(222924, CTX, under60);
     expect(eis.employeeCents).toBe(450);
     expect(eis.employerCents).toBe(450);
   });
 
   it('caps at the RM6,000 ceiling for any wage above it', () => {
-    const top = computeSocso(600000, RULES.socsoRules, under60);
-    expect(top.employeeCents).toBe(2975);
-    expect(top.employerCents).toBe(10415);
+    const top = computeSocso(600000, CTX, under60);
+    expect(top.employerCents).toBe(10415); // unchanged from the workbook
+    expect(top.employeeCents).toBe(7440); // 29.75 invalidity + 44.65 SKBBK
     // A doctor on RM9,750 pays the same as one on RM6,000.
-    expect(computeSocso(975000, RULES.socsoRules, under60)).toEqual(top);
-    expect(computeEis(975000, RULES.eisRules, under60).employeeCents).toBe(1190);
+    expect(computeSocso(975000, CTX, under60)).toEqual(top);
+    expect(computeEis(975000, CTX, under60).employeeCents).toBe(1190);
   });
 
-  it('moves to the Second Category at 60 — employer only', () => {
-    const result = computeSocso(600000, RULES.socsoRules, at60);
-    expect(result.employeeCents).toBe(0);
+  it('moves to the Second Category at 60, which SKBBK made non-nil for the employee', () => {
+    // THE CLINIC'S WORKBOOK SAYS ZERO HERE AND IS NOW OUT OF DATE. The Second
+    // Category used to be employer-only; PERKESO's current Act 4 table (D6)
+    // adds a Non-Employment Injury employee share. A reconciliation against an
+    // older spreadsheet will show this difference, and the schedule is right.
+    const result = computeSocso(600000, CTX, at60);
     expect(result.employerCents).toBe(7440);
+    expect(result.employeeCents).toBe(4465);
+    expect(result.note).toMatch(/Second Category/);
   });
 
   it('ceases EIS entirely at 60', () => {
-    const result = computeEis(600000, RULES.eisRules, at60);
+    const result = computeEis(600000, CTX, at60);
     expect(result.employeeCents).toBe(0);
     expect(result.employerCents).toBe(0);
   });
@@ -140,11 +187,13 @@ describe('the three bases are different, which is the whole point', () => {
   });
 
   it('reproduces the clinic listing row 5 end to end', () => {
-    const slip = computePayslip([earning('BASIC', 2100), earning('OVERTIME', 129.24)], RULES, under60);
+    const slip = computePayslip([earning('BASIC', 2100), earning('OVERTIME', 129.24)], CTX, under60);
     expect(slip.statutory.epf.employeeCents).toBe(23100);
     expect(slip.statutory.epf.employerCents).toBe(27300);
-    expect(slip.statutory.socso.employeeCents).toBe(1125);
+    // Employer as the workbook has it; employee now carries SKBBK too. See
+    // the note above the SOCSO block.
     expect(slip.statutory.socso.employerCents).toBe(3935);
+    expect(slip.statutory.socso.employeeCents).toBe(2810);
     expect(slip.statutory.eis.employeeCents).toBe(450);
   });
 
@@ -221,21 +270,24 @@ describe('ordinary rate of pay, overtime and unpaid leave', () => {
 
 describe('PCB is a blocking gap, not a guess', () => {
   it('returns null and says why', () => {
-    const slip = computePayslip([earning('BASIC', 5000)], RULES, under60);
+    const slip = computePayslip([earning('BASIC', 5000)], CTX, under60);
     expect(slip.statutory.pcbCents).toBeNull();
     expect(slip.notes).toContain(PCB_NOT_IMPLEMENTED);
     expect(slip.incomplete).toBe(true);
   });
 
   it('is zero — a fact — only for somebody recorded as outside PCB', () => {
-    const slip = computePayslip([earning('BASIC', 5000)], RULES, { ...under60, pcbApplicable: false });
+    const slip = computePayslip([earning('BASIC', 5000)], CTX, { ...under60, pcbApplicable: false });
     expect(slip.statutory.pcbCents).toBe(0);
   });
 });
 
 describe('absent is not zero', () => {
-  it('leaves statutory figures null when no rule set covers the period', () => {
-    const slip = computePayslip([earning('BASIC', 3000)], null, under60);
+  it('leaves statutory figures null for a period no schedule reaches', () => {
+    // Not the nearest schedule, and not zero. A 2020 period predates every
+    // edition this system holds, and reaching for the closest one is how a
+    // historical run silently acquires today's rates.
+    const slip = computePayslip([earning('BASIC', 3000)], BEFORE_ANY_SCHEDULE, under60);
     expect(slip.statutory.epf.employeeCents).toBeNull();
     expect(slip.statutory.socso.employeeCents).toBeNull();
     expect(slip.incomplete).toBe(true);
@@ -244,33 +296,29 @@ describe('absent is not zero', () => {
   });
 
   it('reports zero — a fact — for somebody recorded as outside a scheme', () => {
-    const slip = computePayslip([earning('BASIC', 3000)], RULES, { ...under60, epfApplicable: false });
+    const slip = computePayslip([earning('BASIC', 3000)], CTX, { ...under60, epfApplicable: false });
     expect(slip.statutory.epf.employeeCents).toBe(0);
     expect(slip.statutory.epf.note).toMatch(/outside EPF/);
   });
 
-  it('refuses a wage outside every configured band rather than flooring it', () => {
-    const truncated = { socsoRules: { firstCategory: { bands: [{ min: 0, max: 100000, employer: 100, employee: 50 }] } } };
-    const result = computeSocso(500000, truncated.socsoRules, under60);
-    expect(result.employeeCents).toBeNull();
-    expect(result.note).toMatch(/incomplete/i);
+  it('refuses EPF for an employee whose date of birth is unknown, rather than assuming under 60', () => {
+    const slip = computePayslip([earning('BASIC', 3000)], CTX, { ...under60, age: null });
+    expect(slip.statutory.epf.employeeCents).toBeNull();
+    expect(slip.statutory.socso.employeeCents).toBeNull();
+    expect(slip.statutory.eis.employeeCents).toBeNull();
+    expect(slip.incomplete).toBe(true);
   });
 });
 
-describe('a run cannot be approved against unverified rates', () => {
-  it('is PROVISIONAL while the seeded set is only corroborated', () => {
-    expect(RULES.verificationStatus).toBe('CORROBORATED');
-    expect(statutoryStatusOf(RULES, 'CORROBORATED')).toBe('PROVISIONAL');
-    expect(statutoryStatusOf(RULES, 'DRAFT')).toBe('PROVISIONAL');
+describe('a run cannot be approved against rates nobody checked', () => {
+  it('is CONFIGURED for a period the official schedules govern', () => {
+    // Verification is now a property of the transcription and its evidence,
+    // not a checkbox somebody ticked on a rule-set row.
+    expect(statutoryStatusOf(CTX.periodEnd)).toBe('CONFIGURED');
   });
 
-  it('is CONFIGURED only once a person has verified it against the authority', () => {
-    expect(statutoryStatusOf(RULES, 'VERIFIED')).toBe('CONFIGURED');
-  });
-
-  it('is NOT_CONFIGURED when there are no tables at all', () => {
-    expect(statutoryStatusOf(null, 'VERIFIED')).toBe('NOT_CONFIGURED');
-    expect(statutoryStatusOf({}, 'VERIFIED')).toBe('NOT_CONFIGURED');
+  it('is NOT_CONFIGURED for a period no schedule reaches', () => {
+    expect(statutoryStatusOf(BEFORE_ANY_SCHEDULE.periodEnd)).toBe('NOT_CONFIGURED');
   });
 });
 

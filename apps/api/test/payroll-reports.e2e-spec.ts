@@ -49,6 +49,9 @@ describe('payroll reports (e2e)', () => {
         employmentStatus: 'ACTIVE',
         startDate: '2024-01-01',
         dateOfBirth: '1990-06-15',
+        // Which Part of the EPF Third Schedule applies. Without it EPF is
+        // unknown rather than nil, and an unknown blocks approval.
+        epfMembership: 'MALAYSIAN_CITIZEN',
         pcbApplicable: false,
       })
       .expect(201);
@@ -192,11 +195,23 @@ describe('payroll reports (e2e)', () => {
     expect(statutory.notASubmission).toMatch(/nothing here has been filed/i);
   });
 
-  it('a provisional run says so ON the report, not only on the screen it came from', async () => {
+  it('a run whose period no schedule reaches says so ON the report, not only on the screen', async () => {
+    // This used to be every run, because the seeded rate tables were only ever
+    // CORROBORATED. The official schedules ship verified, so a current run is
+    // no longer provisional — and the honest test of the mechanism is a period
+    // the schedules do not reach at all.
     await employee('Nurul Aina', '3000.00');
-    const run = await runFor('2026-08-01');
+
+    const current = await runFor('2026-08-01');
     for (const path of ['register', 'employer-cost', 'statutory', 'variance']) {
-      const body = await report(`/workforce/payroll/runs/${run.id}/reports/${path}`);
+      const body = await report(`/workforce/payroll/runs/${current.id}/reports/${path}`);
+      expect(body.provisional).toBe(false);
+      expect(body.provisionalNote).toBeNull();
+    }
+
+    const historical = await runFor('2025-06-01');
+    for (const path of ['register', 'employer-cost', 'statutory', 'variance']) {
+      const body = await report(`/workforce/payroll/runs/${historical.id}/reports/${path}`);
       expect(body.provisional).toBe(true);
       expect(body.provisionalNote).toMatch(/have not been checked against KWSP/);
     }

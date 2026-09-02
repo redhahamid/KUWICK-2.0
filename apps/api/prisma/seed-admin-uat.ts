@@ -2154,6 +2154,12 @@ async function seedWorkforce(ids: Ids) {
           email: `${profile.key}@${DOMAIN}`,
           bankName: 'Bank Contoh',
           bankAccountNo: `1234567${index}`,
+          // SYNTHETIC, like every other fact in this seed. All Malaysian
+          // citizens, which makes the stock controller (born 1964, so past 60)
+          // a Part E employee — employer 4%, employee nil — and therefore a
+          // visible demonstration that the age cliff is real rather than a
+          // rate tweak.
+          epfMembership: 'MALAYSIAN_CITIZEN',
           epfApplicable: profile.type !== 'LOCUM',
           socsoApplicable: profile.type !== 'LOCUM',
           eisApplicable: profile.type !== 'LOCUM',

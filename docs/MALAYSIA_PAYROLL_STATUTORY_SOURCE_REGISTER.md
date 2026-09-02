@@ -207,6 +207,53 @@ own LINDUNG 24 JAM contribution schedule and participation guidance.**
 
 ---
 
+## Versioning, effective dating and what a run records
+
+`apps/api/src/statutory/registry.ts` holds each schedule as a dated, hashed,
+verification-stamped entry, and `stampFor(schemes, periodEnd)` resolves them
+**against the payroll period rather than against today**. Every calculated run
+stores the result in `payroll_runs.statutory_snapshot`.
+
+Each line of that stamp carries the schedule id, its effective date, its
+verification state, the document it was transcribed from, and a SHA-256 over
+the actual band arrays. The hash is the part that makes the record hold: a
+version string can be edited to say anything, whereas changing one sen in a
+1,203-row table changes the stamp on every run calculated afterwards, and a
+reconciliation against an earlier run stops matching.
+
+Two consequences worth stating plainly:
+
+- **A period no schedule reaches resolves to nothing, not to the nearest
+  edition.** A 2025 run does not acquire the 2026 MTD specification, and a run
+  before October 2025 gets no EPF schedule at all — its statutory status is
+  `NOT_CONFIGURED`, its figures stay null, and its reports are marked
+  provisional.
+- **Rates are no longer tenant configuration.** `POST /workforce/payroll/
+  statutory-rules` is refused. A clinic cannot legislate, and a screen that let
+  one enter its own EPF table was a way to under-contribute by accident and call
+  it a setting.
+
+## Where Kuwick and the clinic's workbook now disagree
+
+One material difference, and it is the law changing rather than the engine
+drifting. **SOCSO employee contributions have roughly doubled under SKBBK.**
+PERKESO's current Act 4 table charges the employee for the Non-Employment
+Injury Scheme on top of Invalidity; the workbook has Invalidity alone.
+
+| Monthly wages | Employer | Employee (workbook) | Employee (Act 4, D6) |
+|---|---|---|---|
+| RM2,229.24 | RM39.35 — unchanged | RM11.25 | **RM28.10** (11.25 + 16.85) |
+| RM6,000.00 | RM104.15 — unchanged | RM29.75 | **RM74.40** (29.75 + 44.65) |
+
+The employer side matches the workbook exactly at every row tested. EPF and EIS
+reconcile against the workbook unchanged.
+
+A second, smaller difference: an employee who has elected an EPF share other
+than the Third Schedule's own rate (Borang KWSP 17A) is **refused rather than
+approximated**, because the Schedule prints one employee column per Part and a
+9% figure could only be produced by the percentage arithmetic this engine exists
+to remove.
+
 ## Historical versions
 
 A payroll run freezes the statutory version it used. A later correction to a
