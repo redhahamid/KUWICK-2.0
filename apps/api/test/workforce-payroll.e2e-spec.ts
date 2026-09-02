@@ -521,6 +521,105 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       expect(afterCorrection[0].grossCents).toBe(300000);
     });
 
+    it('takes OPENING year-to-date for a clinic that starts using Kuwick mid-year', async () => {
+      // Without these the rest of the year is computed as though the employee
+      // had earned nothing and paid no tax, so PCB charges them from scratch on
+      // income they have already been taxed on.
+      const staffId = await makeEmployee('Mid Year Joiner', '4000.00');
+
+      const imported = await request(app.getHttpServer())
+        .post('/workforce/payroll/ytd-opening')
+        .set('Authorization', bearer)
+        .send({
+          legalEmployerId,
+          source: 'Payslips from the previous system, January to July 2026',
+          months: [1, 2, 3].map((month) => ({
+            staffId,
+            taxYear: 2026,
+            month,
+            grossCents: 400000,
+            additionalRemunerationCents: 0,
+            pcbCents: 12000,
+            cp38Cents: 0,
+            zakatCents: 0,
+            epfEmployeeCents: 44000,
+            epfEmployerCents: 52000,
+            socsoEmployeeCents: 4990,
+            socsoEmployerCents: 6965,
+            eisEmployeeCents: 790,
+            eisEmployerCents: 790,
+          })),
+        })
+        .expect(201);
+      expect(imported.body).toMatchObject({ employees: 1, months: 3 });
+
+      const ytd = await request(app.getHttpServer())
+        .get(`/workforce/payroll/employees/${staffId}/ytd?year=2026`)
+        .set('Authorization', bearer)
+        .expect(200);
+      expect(ytd.body.total).toMatchObject({ grossCents: 1200000, pcbCents: 36000, epfEmployeeCents: 132000 });
+      // Which months were typed in and which Kuwick computed. A PCB built on
+      // top of an import is only as good as the import, and a screen that
+      // cannot tell them apart cannot say so.
+      expect(ytd.body.imported).toEqual([1, 2, 3]);
+    });
+
+    it('refuses to let an opening balance overwrite a month Kuwick itself paid', async () => {
+      const staffId = await makeEmployee('Already Paid', '3000.00');
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/approve`)
+        .set('Authorization', bearer)
+        .send({})
+        .expect(200);
+
+      // That month is backed by an approved run, a snapshot and a hash. An
+      // import replacing it would make the year-to-date disagree with the
+      // payslip the employee is holding.
+      const refused = await request(app.getHttpServer())
+        .post('/workforce/payroll/ytd-opening')
+        .set('Authorization', bearer)
+        .send({
+          legalEmployerId,
+          source: 'A spreadsheet somebody found',
+          months: [
+            {
+              staffId,
+              taxYear: 2026,
+              month: 8,
+              grossCents: 999900,
+              additionalRemunerationCents: 0,
+              pcbCents: 0,
+              cp38Cents: 0,
+              zakatCents: 0,
+              epfEmployeeCents: 0,
+              epfEmployerCents: 0,
+              socsoEmployeeCents: 0,
+              socsoEmployerCents: 0,
+              eisEmployeeCents: 0,
+              eisEmployerCents: 0,
+            },
+          ],
+        })
+        .expect(409);
+      expect(refused.body.message).toMatch(/cannot replace a month this system paid/i);
+
+      // And the run's own figure is untouched.
+      const ytd = await request(app.getHttpServer())
+        .get(`/workforce/payroll/employees/${staffId}/ytd?year=2026`)
+        .set('Authorization', bearer)
+        .expect(200);
+      expect(ytd.body.total.grossCents).toBe(300000);
+    });
+
     it('pays a mid-month joiner by days under s.18A, and prices their overtime on the full month', async () => {
       // August 2026 has 31 days. Somebody who starts on the 20th served 12 of
       // them, both ends inclusive.

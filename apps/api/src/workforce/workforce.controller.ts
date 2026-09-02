@@ -13,6 +13,7 @@ import { AdjustLeaveBalanceDto } from './dto/adjust-leave-balance.dto';
 import { UpsertIncentiveRuleDto } from './dto/upsert-incentive-rule.dto';
 import { CreatePayrollRunDto } from './dto/create-payroll-run.dto';
 import { PayrollAdjustmentDto } from './dto/payroll-adjustment.dto';
+import { ImportYtdOpeningDto } from './dto/import-ytd-opening.dto';
 import { UpsertStatutoryRulesDto } from './dto/upsert-statutory-rules.dto';
 import { OptionalDateParam, RequiredDateParam } from '../core/date-param.pipe';
 import { assertDateOrder } from '../core/query-dates';
@@ -453,6 +454,16 @@ export class WorkforceController {
   }
 
   // --- Payroll --------------------------------------------------------------
+
+  @Get('payroll/employees/:staffId/ytd')
+  employeeYtd(@Param('staffId') staffId: string, @Query('year') year?: string) {
+    return this.payroll.yearToDate(staffId, year ? Number(year) : new Date().getUTCFullYear());
+  }
+
+  @Post('payroll/ytd-opening')
+  importYtdOpening(@Body() dto: ImportYtdOpeningDto) {
+    return this.payroll.importYtdOpening(dto);
+  }
 
   @Get('payroll/statutory-rules')
   statutoryRules() {

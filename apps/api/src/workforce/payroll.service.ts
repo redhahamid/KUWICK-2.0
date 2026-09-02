@@ -49,6 +49,7 @@ import { leaveDaysInYear } from './leave-balance';
 import { describeProration, proratedBasicCents, prorationFor } from './proration';
 import { CreatePayrollRunDto } from './dto/create-payroll-run.dto';
 import { PayrollAdjustmentDto } from './dto/payroll-adjustment.dto';
+import { ImportYtdOpeningDto } from './dto/import-ytd-opening.dto';
 import { UpsertStatutoryRulesDto } from './dto/upsert-statutory-rules.dto';
 import {
   ApprovalPolicy,
@@ -115,6 +116,170 @@ export class PayrollService {
     @Inject(TENANT_SCOPED_PRISMA) private readonly prisma: TenantScopedPrismaClient,
     private readonly rawPrisma: PrismaService,
   ) {}
+
+  // --- Year to date ---------------------------------------------------------
+
+  /**
+   * What an employee has been paid and taxed so far this year.
+   *
+   * The substrate for PCB, Form EA and the mid-year migration, read in one
+   * place so all three agree. Months are returned as they were recorded — the
+   * running total is derived by the caller, because a stored running total is a
+   * figure that can disagree with the months it came from.
+   */
+  async yearToDate(staffId: string, taxYear: number) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    const months = await this.prisma.employeeYtd.findMany({
+      where: { staffId, taxYear },
+      orderBy: { month: 'asc' },
+    });
+    const sum = (pick: (row: (typeof months)[number]) => number) =>
+      months.reduce((total, row) => total + pick(row), 0);
+    return {
+      staffId,
+      taxYear,
+      months: months.map((row) => ({
+        month: row.month,
+        source: row.source,
+        payrollRunId: row.payrollRunId,
+        note: row.note,
+        grossCents: row.grossCents,
+        additionalRemunerationCents: row.additionalRemunerationCents,
+        pcbCents: row.pcbCents,
+        cp38Cents: row.cp38Cents,
+        zakatCents: row.zakatCents,
+        epfEmployeeCents: row.epfEmployeeCents,
+        socsoEmployeeCents: row.socsoEmployeeCents,
+        eisEmployeeCents: row.eisEmployeeCents,
+      })),
+      total: {
+        grossCents: sum((row) => row.grossCents),
+        additionalRemunerationCents: sum((row) => row.additionalRemunerationCents),
+        pcbCents: sum((row) => row.pcbCents + row.cp38Cents),
+        zakatCents: sum((row) => row.zakatCents),
+        epfEmployeeCents: sum((row) => row.epfEmployeeCents),
+        socsoEmployeeCents: sum((row) => row.socsoEmployeeCents),
+        eisEmployeeCents: sum((row) => row.eisEmployeeCents),
+      },
+      /**
+       * Which months came from a Kuwick run and which were typed in. A PCB
+       * computed on top of imported figures is only as good as the import, and
+       * a screen that cannot tell the two apart cannot say so.
+       */
+      imported: months.filter((row) => row.source === 'OPENING_IMPORT').map((row) => row.month),
+    };
+  }
+
+  /**
+   * OPENING BALANCES for a clinic that starts using Kuwick mid-year.
+   *
+   * Without these, the rest of the year is computed as though the employee had
+   * earned nothing and paid no tax — so PCB charges them from scratch on
+   * income they have already been taxed on, and the Form EA at year end is
+   * short by however many months the clinic ran elsewhere.
+   *
+   * TWO REFUSALS, both deliberate:
+   *
+   *  - A MONTH KUWICK ITSELF CALCULATED IS NEVER OVERWRITTEN. That row is
+   *    backed by an approved run, a snapshot and a hash. Letting an import
+   *    replace it would make the year-to-date disagree with the payslips
+   *    underneath it, and the payslips are the ones the employee holds.
+   *
+   *  - AN EMPLOYEE ATTACHED TO A DIFFERENT EMPLOYER IS REFUSED. Year-to-date
+   *    is keyed by employer because that is who files it; importing somebody
+   *    else's months under this entity would put the figures on the wrong
+   *    return.
+   */
+  async importYtdOpening(dto: ImportYtdOpeningDto) {
+    return withAdminTx(this.rawPrisma, 'hr.payroll.approve', async (tx, actor) => {
+      const employer = await tx.legalEmployer.findUnique({ where: { id: dto.legalEmployerId } });
+      if (!employer) throw new NotFoundException('That employing company is not on file.');
+
+      const staffIds = [...new Set(dto.months.map((row) => row.staffId))];
+      const profiles = await tx.employeeProfile.findMany({
+        where: { staffId: { in: staffIds } },
+        select: { staffId: true, legalEmployerId: true, staff: { select: { fullName: true } } },
+      });
+      const profileOf = new Map(profiles.map((row) => [row.staffId, row]));
+
+      for (const staffId of staffIds) {
+        const profile = profileOf.get(staffId);
+        if (!profile) {
+          throw new BadRequestException(`One of these rows names somebody with no employee record (${staffId}).`);
+        }
+        if (profile.legalEmployerId !== dto.legalEmployerId) {
+          throw new BadRequestException(
+            `${profile.staff.fullName} is employed by a different company, so their year-to-date cannot be imported under ${employer.name}. Statutory returns are filed by the employing entity.`,
+          );
+        }
+      }
+
+      const existing = await tx.employeeYtd.findMany({
+        where: {
+          legalEmployerId: dto.legalEmployerId,
+          staffId: { in: staffIds },
+          OR: dto.months.map((row) => ({ taxYear: row.taxYear, month: row.month })),
+        },
+      });
+      const calculated = existing.filter((row) => row.source === 'CALCULATED');
+      if (calculated.length > 0) {
+        const worst = calculated[0];
+        throw new ConflictException(
+          `${profileOf.get(worst.staffId)?.staff.fullName ?? 'An employee'} already has ${worst.taxYear}-${String(worst.month).padStart(2, '0')} from a payroll run Kuwick approved. An opening balance cannot replace a month this system paid — the payslips behind it would stop agreeing with the year-to-date.`,
+        );
+      }
+
+      let written = 0;
+      for (const row of dto.months) {
+        const data = {
+          tenantId: currentTenantId(),
+          legalEmployerId: dto.legalEmployerId,
+          staffId: row.staffId,
+          taxYear: row.taxYear,
+          month: row.month,
+          grossCents: row.grossCents,
+          additionalRemunerationCents: row.additionalRemunerationCents,
+          pcbCents: row.pcbCents,
+          cp38Cents: row.cp38Cents,
+          zakatCents: row.zakatCents,
+          epfEmployeeCents: row.epfEmployeeCents,
+          epfEmployerCents: row.epfEmployerCents,
+          socsoEmployeeCents: row.socsoEmployeeCents,
+          socsoEmployerCents: row.socsoEmployerCents,
+          eisEmployeeCents: row.eisEmployeeCents,
+          eisEmployerCents: row.eisEmployerCents,
+          source: 'OPENING_IMPORT' as const,
+          payrollRunId: null,
+          note: dto.note ? `${dto.source} — ${dto.note}` : dto.source,
+          createdByStaffId: actor.id,
+        };
+        await tx.employeeYtd.upsert({
+          where: {
+            legalEmployerId_staffId_taxYear_month: {
+              legalEmployerId: dto.legalEmployerId,
+              staffId: row.staffId,
+              taxYear: row.taxYear,
+              month: row.month,
+            },
+          },
+          update: data,
+          create: data,
+        });
+        written += 1;
+      }
+
+      await recordAudit(tx, actor, {
+        action: 'payroll.ytdImported',
+        entityType: 'EmployeeYtd',
+        entityId: dto.legalEmployerId,
+        after: { employees: staffIds.length, months: written, source: dto.source },
+        reason: dto.note ?? dto.source,
+        source: 'hr.payroll',
+      });
+
+      return { employees: staffIds.length, months: written, source: dto.source };
+    });
+  }
 
   // --- Statutory configuration ---------------------------------------------
 
