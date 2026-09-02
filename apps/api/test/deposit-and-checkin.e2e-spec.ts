@@ -24,6 +24,19 @@ import { createTestPrismaClient, randomId, withTenantContext } from './test-db';
 // refused by the two atomic claims inside checkIn().
 //
 // NO cleanup (append-only history; disposable DB; fresh random tenants).
+
+// Every seed books its own hour of ONE day, because appointments_no_overlap
+// EXCLUDEs two live bookings of the same doctor from sharing a moment. That
+// day is derived from today rather than pinned to a calendar date: a fixed
+// date books into the past the morning it arrives, and the reschedule test
+// then fails on a 409 that says nothing about deposits.
+const SEED_DAY_MS = (() => {
+  const d = new Date(Date.now() + 30 * 24 * 3600 * 1000);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+})();
+const seedAt = (hour: number, minute: number) =>
+  new Date(SEED_DAY_MS + hour * 3600 * 1000 + minute * 60 * 1000);
+
 describe('Deposit lifecycle and check-in concurrency (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaClient;
@@ -104,10 +117,8 @@ describe('Deposit lifecycle and check-in concurrency (e2e)', () => {
           serviceId,
           source: 'ONLINE_PORTAL',
           status: AppointmentStatus.CONFIRMED,
-          // Its own hour per seed: appointments_no_overlap EXCLUDEs any two
-          // live bookings of one doctor from sharing a moment.
-          scheduledStart: new Date(Date.UTC(2026, 8, 2, seq, 0, 0)),
-          scheduledEnd: new Date(Date.UTC(2026, 8, 2, seq, 30, 0)),
+          scheduledStart: seedAt(seq, 0),
+          scheduledEnd: seedAt(seq, 30),
           bookingFeeAmount: options.fee ?? 50,
           // The DB refuses paid_at with a zero fee ("a payment that names no
           // amount is not a payment"), so a zero-fee seed is simply unpaid.
@@ -228,8 +239,8 @@ describe('Deposit lifecycle and check-in concurrency (e2e)', () => {
       .set('Authorization', ownerBearer)
       // Into the free half of its own hour — no other seed can collide.
       .send({
-        scheduledStart: new Date(Date.UTC(2026, 8, 2, patientSeq, 30, 0)).toISOString(),
-        scheduledEnd: new Date(Date.UTC(2026, 8, 2, patientSeq + 1, 0, 0)).toISOString(),
+        scheduledStart: seedAt(patientSeq, 30).toISOString(),
+        scheduledEnd: seedAt(patientSeq + 1, 0).toISOString(),
       })
       .expect(200);
     const replacementId = moved.body.id as string;

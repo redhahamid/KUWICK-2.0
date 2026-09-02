@@ -670,6 +670,10 @@ describe('RC — the patient’s link survives an approved move', () => {
     // still holds the ORIGINAL link. manage() must show the moved booking —
     // and the request that moved it — and an action through the old token
     // must land on the live row, never the cancelled shell.
+    // The live row has to sit beyond the change cutoff, so it is derived from
+    // NOW rather than pinned: a hardcoded instant silently turns this into a
+    // cutoff test the day it passes, which is not what pin 33 is about.
+    const LIVE_START = new Date(Date.now() + 3 * 24 * 3600 * 1000);
     const OLD = {
       id: 'appt-old',
       status: 'CANCELLED',
@@ -692,8 +696,8 @@ describe('RC — the patient’s link survives an approved move', () => {
       id: 'appt-live',
       status: 'CONFIRMED',
       cancellationReason: null,
-      scheduledStart: new Date('2026-09-02T06:00:00.000Z'),
-      scheduledEnd: new Date('2026-09-02T06:30:00.000Z'),
+      scheduledStart: LIVE_START,
+      scheduledEnd: new Date(LIVE_START.getTime() + 30 * 60000),
     };
     const byWhere = async ({ where }: { where: Record<string, unknown> }) => {
       if (where.manageToken) return { ...OLD };
@@ -717,7 +721,7 @@ describe('RC — the patient’s link survives an approved move', () => {
     const managed = await ctx.service.manage(SLUG, 'token-old');
     expect(managed.appointment.status).toBe('CONFIRMED');
     expect(new Date(managed.appointment.scheduledStart).toISOString()).toBe(
-      '2026-09-02T06:00:00.000Z',
+      LIVE_START.toISOString(),
     );
     // The APPROVED request lives on the old id — the history must not vanish
     // the moment it succeeds.
