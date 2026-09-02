@@ -284,6 +284,7 @@ export class EmployeeService {
         taxResidence: profile.taxResidence,
         pcbCategory: profile.pcbCategory,
         qualifyingChildren: profile.qualifyingChildren,
+        restDayOfWeek: profile.restDayOfWeek,
         epfMembership: profile.epfMembership,
         epfApplicable: profile.epfApplicable,
         socsoApplicable: profile.socsoApplicable,
@@ -322,6 +323,15 @@ export class EmployeeService {
                     salary.kind === 'RESOLVED'
                       ? `RM${money(salary.row.amountCents)} a ${salary.row.basis === 'MONTHLY' ? 'month' : salary.row.basis.toLowerCase()}, since ${longDate(salary.row.effectiveFrom)}`
                       : salary.reason,
+                },
+                {
+                  key: 'restDay',
+                  label: 'Rest day',
+                  done: profile.restDayOfWeek !== null && profile.restDayOfWeek !== undefined,
+                  detail:
+                    profile.restDayOfWeek === null || profile.restDayOfWeek === undefined
+                      ? 'No rest day is designated. The Employment Act requires one a week, and working it is paid in days at the ordinary rate rather than as hours of overtime — so without it their extra hours cannot be priced.'
+                      : `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][profile.restDayOfWeek]}. Work on it is paid under s.60(3), not as ordinary overtime.`,
                 },
                 {
                   key: 'bank',

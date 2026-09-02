@@ -6447,6 +6447,15 @@ model EmployeeProfile {
   /// this record.
   taxResidence       TaxResidence? @map("tax_residence")
   pcbCategory        PcbCategory?  @map("pcb_category")
+  /// s.59 — THE REST DAY THE EMPLOYER DESIGNATED, 0 Sunday to 6 Saturday.
+  ///
+  /// Not inferable: a rest day is designated by the employer and told to the
+  /// employee, and it is neither the day the clinic is shut nor a default of
+  /// Sunday. Working one is paid in DAYS of ordinary rate under s.60(3), not
+  /// as hours of overtime, so guessing it wrong underpays or overpays by a
+  /// whole day. NULL blocks overtime rather than pricing it as a normal day.
+  restDayOfWeek      Int?          @map("rest_day_of_week")
+
   /// C — qualifying children. Defaults to none, which DEDUCTS MORE tax rather
   /// than less: an employer withholds on the facts it holds, and the employee
   /// recovers any excess on assessment. The opposite default would under-deduct

@@ -3,7 +3,7 @@ import {
   MaterialisedInput,
   materialiseClaim,
   materialiseIncentives,
-  materialiseOvertime,
+  materialiseOvertimeDays,
   materialiseUnpaidLeave,
   planMaterialisation,
 } from './payroll-materialisation';
@@ -11,41 +11,40 @@ import {
 const SEP = new Date('2026-09-01T00:00:00.000Z');
 
 describe('materialising overtime', () => {
-  it('carries approved minutes at the hourly rate times the multiplier', () => {
-    const out = materialiseOvertime({
-      staffId: 's1',
-      approvedOvertimeMinutes: 330, // 5.5 hours
-      overtimeHourlyCents: 1641,
-      multiplier: 1.5,
-      sourceRecordIds: ['att-1'],
-      approverName: 'Dr Aisyah Rahman',
-    });
-    expect(out).not.toBeNull();
-    // 1641 x 1.5 = 2462 (rounded before multiplying by hours, as the clinic's
-    // own workbook does), x 5.5 = 13541
-    expect(out!.amountCents).toBe(13541);
-    expect(out!.source).toBe('ATTENDANCE');
-    expect(out!.sourceRecordId).toBe('att-1');
+  const day = (over = {}) => ({
+    staffId: 's1',
+    attendanceId: 'att-1',
+    amountCents: 13541,
+    description: '2026-08-12: 5.50h overtime at 1.5× (Employment Act 1955, s.60A(3)(a)).',
+    approverName: 'Dr Aisyah Rahman',
+    ...over,
   });
 
-  it('says where the figure came from, in words, including the approver', () => {
-    const out = materialiseOvertime({
-      staffId: 's1', approvedOvertimeMinutes: 330, overtimeHourlyCents: 1641,
-      multiplier: 1.5, sourceRecordIds: ['a', 'b'], approverName: 'Dr Aisyah Rahman',
-    });
-    expect(out!.provenance).toMatch(/5\.5 approved hours from the timesheet/);
-    expect(out!.provenance).toMatch(/approved by Dr Aisyah Rahman/);
-    // Many rows behind one figure: the id is not a single row's.
-    expect(out!.sourceRecordId).toBeNull();
+  it('makes ONE input per day, each naming the attendance row that earned it', () => {
+    // A single monthly row could name only one attendance record, and the
+    // database requires a derived input to say where it came from — so an
+    // employee with overtime on two days violated that constraint and the run
+    // died with a 500. Per-day rows also make idempotency per attendance
+    // record rather than per month.
+    const out = materialiseOvertimeDays([
+      day(),
+      day({ attendanceId: 'att-2', amountCents: 12000, description: '2026-08-16: worked a rest day — 1 day at the ordinary rate (Employment Act 1955, s.60(3)(b) and s.60(3)(c)).' }),
+    ]);
+    expect(out).toHaveLength(2);
+    expect(out.map((row) => row.sourceRecordId)).toEqual(['att-1', 'att-2']);
+    expect(out[0].amountCents).toBe(13541);
+    expect(out[0].source).toBe('ATTENDANCE');
   });
 
-  it('carries NOTHING when no overtime was approved — unapproved hours are not paid', () => {
-    expect(
-      materialiseOvertime({
-        staffId: 's1', approvedOvertimeMinutes: 0, overtimeHourlyCents: 1641,
-        multiplier: 1.5, sourceRecordIds: [], approverName: null,
-      }),
-    ).toBeNull();
+  it('names the section that priced the day, and the approver', () => {
+    const [out] = materialiseOvertimeDays([day({ attendanceId: 'att-3' })]);
+    expect(out.provenance).toMatch(/s\.60A\(3\)\(a\)/);
+    expect(out.provenance).toMatch(/Approved by Dr Aisyah Rahman/);
+  });
+
+  it('carries NOTHING for a day that priced to nil', () => {
+    expect(materialiseOvertimeDays([day({ amountCents: 0 })])).toHaveLength(0);
+    expect(materialiseOvertimeDays([])).toHaveLength(0);
   });
 });
 

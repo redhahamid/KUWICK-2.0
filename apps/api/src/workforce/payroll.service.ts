@@ -41,12 +41,14 @@ import {
   MaterialisedInput,
   materialiseClaim,
   materialiseIncentives,
-  materialiseOvertime,
+  materialiseOvertimeDays,
   materialiseUnpaidLeave,
   planMaterialisation,
 } from './payroll-materialisation';
 import { leaveDaysInYear } from './leave-balance';
 import { describeProration, proratedBasicCents, prorationFor } from './proration';
+import { classifyDay, describePricedDay, priceOvertime } from './overtime-pricing';
+import { MAX_HOURS_PER_DAY, checkOrdinaryRatePolicy } from '../statutory/employment-act';
 import { CreatePayrollRunDto } from './dto/create-payroll-run.dto';
 import { PayrollAdjustmentDto } from './dto/payroll-adjustment.dto';
 import { ImportYtdOpeningDto } from './dto/import-ytd-opening.dto';
@@ -74,14 +76,6 @@ import {
 const DEDUCTION_COMPONENTS = new Set([
   'UNPAID_LEAVE', 'ZAKAT', 'ADVANCE_RECOVERY', 'UNIFORM', 'OTHER_DEDUCTION',
 ]);
-
-/**
- * The Employment Act's minimum for overtime on a normal working day. Rest-day
- * and public-holiday tiers are supported by the engine and are clinic
- * configuration; this is the only one applied automatically, and it is named
- * rather than inlined so it is findable when the tiers become configurable.
- */
-const OVERTIME_NORMAL_DAY_MULTIPLIER = 1.5;
 
 function monthStart(value: string | Date): Date {
   const date = typeof value === 'string' ? new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`) : value;
@@ -407,12 +401,44 @@ export class PayrollService {
       const statutoryStatus = statutoryStatusOf(periodEnd) as StatutoryStatus;
       const statutoryStamp = stampFor(['EPF', 'SOCSO', 'EIS', 'PCB'], periodEnd);
 
+      // The month's public holidays, read ONCE for the run rather than per
+      // employee. Work on one is paid at two days' ordinary rate under
+      // s.60D(3), so this is not a display concern.
+      const publicHolidayDates = new Set(
+        (
+          await tx.publicHoliday.findMany({
+            where: { date: { gte: period, lt: periodEnd } },
+            select: { date: true },
+          })
+        ).map((row) => row.date.toISOString().slice(0, 10)),
+      );
+
       // Ordinary Rate of Pay, frozen onto the run. Two divisors, on purpose.
       const orpConfig = {
         overtimeDaysPerMonth: Number(run.orpOvertimeDays),
         unpaidLeaveDaysPerMonth: Number(run.orpUnpaidLeaveDays),
         hoursPerDay: Number(run.orpHoursPerDay),
       };
+
+      // s.60I(2) — A CLINIC MAY USE ITS OWN METHOD, BUT NOT A WORSE ONE.
+      //
+      // The Act lets an employer adopt another formula for the ordinary rate
+      // of pay "but the adoption of any other method or formula shall not
+      // result in a rate which is less than" the statutory one. A divisor above
+      // 26 makes each day worth less and underpays every hour of overtime,
+      // every rest day and every public holiday priced from it.
+      //
+      // Refused at the run rather than raised per employee: it is one
+      // configuration error affecting everybody, and a hundred identical
+      // exceptions would bury the ones that are about people.
+      const orpPolicyProblem = checkOrdinaryRatePolicy('MONTHLY', orpConfig.overtimeDaysPerMonth);
+      if (orpPolicyProblem) throw new BadRequestException(orpPolicyProblem);
+      if (orpConfig.hoursPerDay > MAX_HOURS_PER_DAY) {
+        throw new BadRequestException(
+          `Normal hours are set to ${orpConfig.hoursPerDay} a day. Section 60A(1) of the Employment Act caps them at ` +
+            `${MAX_HOURS_PER_DAY}, and a longer normal day both breaches that and shrinks the hourly rate overtime is priced from.`,
+        );
+      }
 
       // EMPLOYEES ONLY.
       //
@@ -663,6 +689,17 @@ export class PayrollService {
         // Category, and EIS ceases. An unknown date of birth is therefore a
         // BLOCKING exception, not a reason to assume "under 60" — assuming
         // would under-contribute for the whole workforce and nobody would see it.
+        // WITHOUT A DESIGNATED REST DAY, A DAY WORKED CANNOT BE PRICED.
+        //
+        // s.59 makes the rest day the employer's to designate and to tell the
+        // employee; it is not the day the clinic is shut and it is not a
+        // default of Sunday. Raised only where there is something to price, so
+        // a clinic whose staff never work extra days is not nagged about a
+        // field that would change nothing.
+        if (!employee.restDayOfWeek && attendance.some((row) => (row.workedMinutes ?? 0) > 0)) {
+          raise('NO_REST_DAY', employee);
+        }
+
         // NO EMPLOYING COMPANY, NO FILING. EPF, SOCSO, EIS and PCB are all
         // submitted BY an entity, so an employee attached to none of them
         // produces a payslip whose contributions could never be filed.
@@ -725,21 +762,46 @@ export class PayrollService {
         // provenance — and each is idempotent on that upstream row, so
         // recalculating cannot pay anybody twice.
         // -------------------------------------------------------------------
-        const overtimeHours = timesheet.approvedOvertimeMinutes / 60;
-        const hourlyCents = rates.overtimeHourlyCents;
         const overtimeApprover =
           attendance.find((row) => row.overtimeApproved && row.overtimeApprovedByStaffId)?.overtimeApprovedByStaffId ??
           null;
 
+        // WHICH KIND OF DAY EACH ONE WAS, and therefore what it is worth.
+        //
+        // Every approved minute in the month used to be pooled and paid at
+        // 1.5×. The Act prices a rest day in DAYS of ordinary rate (s.60(3))
+        // and a public holiday at two days regardless of hours worked
+        // (s.60D(3)), so somebody who came in for two hours on Hari Raya was
+        // paid three hours' worth against two days owed — an underpayment, and
+        // the employer's liability.
+        const pricing = priceOvertime(
+          attendance.map((row) => ({
+            attendanceId: row.id,
+            date: row.workDate,
+            workedMinutes: row.workedMinutes ?? 0,
+            overtimeMinutes: row.overtimeMinutes,
+            overtimeApproved: row.overtimeApproved,
+          })),
+          (date) => classifyDay(date, { publicHolidayDates, restDayOfWeek: employee.restDayOfWeek }),
+          {
+            basis: 'MONTHLY',
+            normalHoursPerDay: orpConfig.hoursPerDay,
+            dailyOrpCents: rates.overtimeDailyCents,
+            hourlyOrpCents: rates.overtimeHourlyCents,
+          },
+        );
+        const overtimeHours = pricing.normalDayHours;
+
         const desiredInputs = [
-          materialiseOvertime({
-            staffId: employee.staffId,
-            approvedOvertimeMinutes: timesheet.approvedOvertimeMinutes,
-            overtimeHourlyCents: hourlyCents,
-            multiplier: OVERTIME_NORMAL_DAY_MULTIPLIER,
-            sourceRecordIds: attendance.filter((r) => r.overtimeApproved).map((r) => r.id),
-            approverName: overtimeApprover ? (approverNames.get(overtimeApprover) ?? null) : null,
-          }),
+          ...materialiseOvertimeDays(
+            pricing.days.map((row) => ({
+              staffId: employee.staffId,
+              attendanceId: row.attendanceId,
+              amountCents: row.totalCents,
+              description: describePricedDay(row),
+              approverName: overtimeApprover ? (approverNames.get(overtimeApprover) ?? null) : null,
+            })),
+          ),
           materialiseUnpaidLeave(
             unpaidLeaveRows.map((row) => ({
               staffId: employee.staffId,
@@ -1048,15 +1110,27 @@ export class PayrollService {
                 unpaidLeaveDaily: fromCents(rates.unpaidLeaveDailyCents),
                 overtimeHourly: fromCents(rates.overtimeHourlyCents),
               },
-              overtimeTiers:
-                overtimeCents > 0
-                  ? [{
-                      label: `Normal day (${OVERTIME_NORMAL_DAY_MULTIPLIER}x)`,
-                      hours: Math.round(overtimeHours * 100) / 100,
-                      hourlyRate: fromCents(Math.round(hourlyCents * OVERTIME_NORMAL_DAY_MULTIPLIER)),
-                      total: fromCents(overtimeCents),
-                    }]
-                  : [],
+              // ONE ROW PER DAY, naming the section that priced it. This used
+              // to be a single synthesised "Normal day (1.5x)" line, which
+              // could not explain why a two-hour public holiday is worth two
+              // days — and a figure nobody can explain is a figure nobody can
+              // check.
+              overtimeTiers: pricing.days
+                .filter((row) => row.totalCents > 0)
+                .map((row) => ({
+                  label: `${row.date.toISOString().slice(0, 10)} — ${
+                    row.dayType === 'NORMAL_DAY'
+                      ? 'normal day'
+                      : row.dayType === 'REST_DAY'
+                        ? 'rest day'
+                        : 'public holiday'
+                  }`,
+                  hours: Math.round(row.excessHours * 100) / 100,
+                  ordinaryRateDays: row.ordinaryRateDays,
+                  hourlyRate: fromCents(Math.round(rates.overtimeHourlyCents * row.excessMultiplier)),
+                  total: fromCents(row.totalCents),
+                  provision: row.provision,
+                })),
               // WHERE EVERY DERIVED FIGURE CAME FROM, on the payslip itself.
               // The earnings screen reads the same rows; this is so a payslip
               // printed today still explains itself in a year.
@@ -1078,7 +1152,7 @@ export class PayrollService {
                 pcb: payslip.statutory.pcbNote ?? null,
               },
               incomplete: payslip.incomplete,
-              hourlyRateUsed: fromCents(hourlyCents),
+              hourlyRateUsed: fromCents(rates.overtimeHourlyCents),
               timesheet,
             } as never,
           },

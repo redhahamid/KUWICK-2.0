@@ -226,8 +226,18 @@ own LINDUNG 24 JAM contribution schedule and participation guidance.**
 | **Authority / document** | AGC, D9, ss. 60A(3)(a), 60(3)(a)-(c), 60D(3)(a)-(aa) |
 | **Rates** | Normal day ≥ 1.5× hourly. Rest day, monthly-rated: ≤ half normal hours = 0.5 day ORP, more = 1 day ORP; excess ≥ 2× hourly. Public holiday: 2 days ORP regardless of hours worked, in addition to holiday pay; excess ≥ 3× hourly |
 | **Limits** | s.60A(1): 8 hours a day, 45 a week, 10-hour spread-over, 5 consecutive hours without a 30-minute break |
-| **Implementation** | `employment-act.ts` — `OVERTIME_MULTIPLIERS`, `restDayEntitlement`, `publicHolidayEntitlement`, `checkNormalHours` |
+| **Implementation** | `employment-act.ts` — `OVERTIME_MULTIPLIERS`, `restDayEntitlement`, `publicHolidayEntitlement`, `checkNormalHours`; applied per day by `workforce/overtime-pricing.ts` |
+| **Test** | `overtime-pricing.spec.ts`; end to end in `workforce-payroll.e2e-spec.ts` |
+| **Expected** | RM3,120/month, ORP RM120/day: two hours on a public holiday = RM240 (2 days), five hours on a rest day = RM120 (1 day). The pooled 1.5× engine paid RM168 for both — an underpayment of RM192 |
 | **Status** | **`OFFICIAL_SOURCE_VERIFIED`** |
+
+| Field | Value |
+|---|---|
+| **Rule** | Divisor for a deduction in respect of UNPAID LEAVE within a complete month |
+| **Authority / document** | **None held.** D9 covers ss. 18A, 60, 60A, 60D and 60I. s.18A governs an incomplete month of SERVICE — a joiner or a leaver — and opens "Notwithstanding section 60I"; it does not address an absence within a month the employee served throughout |
+| **Current behaviour** | Clinic policy, frozen onto each run (`orp_unpaid_leave_days`, default 31). A larger divisor deducts LESS, so the current default errs in the employee's favour rather than the employer's |
+| **Why it is not resolved** | Choosing ÷26 (the ordinary rate) or ÷actual days would be a legal determination from a document this system does not hold. Either is defensible and neither is evidenced here |
+| **Status** | **`UNVERIFIED`** — policy, not law, and labelled as such wherever it is shown |
 
 ---
 

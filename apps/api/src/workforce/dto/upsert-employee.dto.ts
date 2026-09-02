@@ -78,6 +78,13 @@ export class UpsertEmployeeDto {
   @IsOptional() @IsBoolean() disabledSelf?: boolean;
   @IsOptional() @IsBoolean() disabledSpouse?: boolean;
 
+  /**
+   * s.59 — the rest day the employer designated, 0 Sunday to 6 Saturday.
+   * Working one is paid in DAYS of ordinary rate under s.60(3), not as hours,
+   * so it cannot be inferred from a roster or defaulted to Sunday.
+   */
+  @IsOptional() @IsInt() @Min(0) @Max(6) restDayOfWeek?: number;
+
   @IsOptional() @IsUUID() leavePolicyId?: string;
   @IsOptional() @IsString() @MaxLength(2000) notes?: string;
 }

@@ -2163,6 +2163,10 @@ async function seedWorkforce(ids: Ids) {
           // THE MTD PROFILE, synthetic like everything else here. Residence and
           // category are what monthly tax refuses to compute without, so a seed
           // that omits them produces a UAT clinic where every payroll blocks.
+          // s.59 — the designated rest day. Sunday for everybody in this
+          // synthetic clinic. Without it, anybody who worked blocks the run,
+          // because a rest day priced as an ordinary day is an underpayment.
+          restDayOfWeek: 0,
           taxResidence: 'RESIDENT',
           pcbCategory: profile.key === 'owner' ? 'CATEGORY_2' : 'CATEGORY_1',
           qualifyingChildren: profile.key === 'owner' ? 2 : 0,

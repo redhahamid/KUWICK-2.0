@@ -74,6 +74,7 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       startDate?: string;
       endDate?: string;
       taxProfile?: boolean;
+      restDayOfWeek?: number | null;
     } = {},
   ) {
     const staff = await withTenantContext(prisma, tenantId, (tx) =>
@@ -102,6 +103,8 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         ...(opts.taxProfile
           ? { taxResidence: 'RESIDENT', pcbCategory: 'CATEGORY_1', qualifyingChildren: 0 }
           : {}),
+        // s.59 rest day. Passing null exercises the blocking path.
+        ...(opts.restDayOfWeek === null ? {} : { restDayOfWeek: opts.restDayOfWeek ?? 0 }),
       })
       .expect(201);
 
@@ -801,6 +804,102 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         .set('Authorization', bearer)
         .expect(200);
       expect(detail.body.lines.some((row: { name: string }) => row.name === 'Left In July')).toBe(false);
+    });
+
+    it('prices a public holiday at two days and a rest day in days, not as 1.5× overtime', async () => {
+      // THE UNDERPAYMENT THIS REPLACES. Every approved minute in the month used
+      // to be pooled and paid at 1.5×, so two hours on a public holiday was
+      // worth three hours' pay against the two DAYS the Act owes.
+      //
+      // RM3,120 a month: ORP = 3120/26 = RM120 a day, hourly = 120/7.5 = RM16.
+      const staffId = await makeEmployee('Holiday Worker', '3120.00', { restDayOfWeek: 0 });
+
+      await withTenantContext(prisma, tenantId, async (tx) => {
+        await tx.publicHoliday.create({
+          data: { tenantId, date: new Date('2026-08-31T00:00:00.000Z'), name: 'Hari Kebangsaan' },
+        });
+        // Two hours on the public holiday…
+        await tx.attendanceRecord.create({
+          data: {
+            tenantId,
+            staffId,
+            clinicId,
+            workDate: new Date('2026-08-31T00:00:00.000Z'),
+            status: 'PRESENT',
+            workedMinutes: 120,
+          },
+        });
+        // …and a full rest day (Sunday the 16th).
+        await tx.attendanceRecord.create({
+          data: {
+            tenantId,
+            staffId,
+            clinicId,
+            workDate: new Date('2026-08-16T00:00:00.000Z'),
+            status: 'PRESENT',
+            workedMinutes: 300,
+          },
+        });
+      });
+
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+
+      const detail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const line = detail.body.lines.find((row: { staffId: string }) => row.staffId === staffId);
+      // Public holiday: 2 days × RM120 = RM240. Rest day, 5h of a 7.5h day, so
+      // more than half: 1 day × RM120 = RM120. Total RM360.
+      //
+      // The old engine paid (2h + 5h) × RM16 × 1.5 = RM168 — an underpayment of
+      // RM192 on one employee in one month.
+      expect(line.overtimePay).toBe(360);
+    });
+
+    it('BLOCKS somebody who worked when no rest day is designated for them', async () => {
+      // Without the designation a rest day cannot be told from an ordinary
+      // working day, and pricing it as ordinary underpays. s.59 makes it the
+      // employer's to designate, so it is asked for rather than assumed.
+      const staffId = await makeEmployee('No Rest Day', '3120.00', { restDayOfWeek: null });
+      await withTenantContext(prisma, tenantId, (tx) =>
+        tx.attendanceRecord.create({
+          data: {
+            tenantId,
+            staffId,
+            clinicId,
+            workDate: new Date('2026-08-12T00:00:00.000Z'),
+            status: 'PRESENT',
+            workedMinutes: 450,
+          },
+        }),
+      );
+
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      const calculated = await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const exceptions = calculated.body.exceptions as { name: string; issue: string }[];
+      expect(exceptions.some((row) => /No rest day is designated/.test(row.issue))).toBe(true);
+
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/approve`)
+        .set('Authorization', bearer)
+        .send({ acknowledgeStatutoryGap: true })
+        .expect(400);
     });
 
     it('LOCKS an approved run — the database refuses to change a payslip line', async () => {

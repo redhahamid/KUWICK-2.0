@@ -220,6 +220,27 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    * is a prorated figure appearing with nothing on screen saying why it is
    * smaller than the contract, which is indistinguishable from a bug.
    */
+  /*
+   * s.59 — no designated rest day, and somebody worked.
+   *
+   * BLOCKING, because the alternative is pricing a rest day as an ordinary
+   * working day: 1.5× the hourly rate where the Act owes half a day or a whole
+   * day at the ordinary rate, plus 2× beyond normal hours. That is an
+   * underpayment, and an underpayment is the employer's liability rather than
+   * a discrepancy somebody notices later.
+   */
+  NO_REST_DAY: {
+    code: 'NO_REST_DAY',
+    severity: 'BLOCKING',
+    overridable: false,
+    cause: () => 'No rest day is designated for this employee.',
+    consequence:
+      'Work on a rest day is paid in days at the ordinary rate under s.60(3), not as hours of overtime, so ' +
+      'without knowing which day it is their extra hours cannot be priced correctly.',
+    remediation:
+      'Set the rest day on their employee record. The Employment Act requires one a week, chosen by the employer and told to the employee.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+  },
   PART_MONTH: {
     code: 'PART_MONTH',
     severity: 'INFO',

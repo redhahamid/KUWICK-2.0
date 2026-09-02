@@ -47,15 +47,13 @@ export interface MaterialisedInput {
   approvedBy: string | null;
 }
 
-export interface AttendanceFact {
+export interface PricedDayFact {
   staffId: string;
-  approvedOvertimeMinutes: number;
-  /** The rate this period prices overtime at, already resolved from ORP. */
-  overtimeHourlyCents: number;
-  /** Multiplier for a normal working day. Configured, never assumed here. */
-  multiplier: number;
-  /** The attendance rows behind it, so the input can point back at something. */
-  sourceRecordIds: string[];
+  /** The attendance row this day's pay came from. One input per day. */
+  attendanceId: string;
+  amountCents: number;
+  /** One line of plain English naming the section of the Act that priced it. */
+  description: string;
   approverName: string | null;
 }
 
@@ -94,34 +92,35 @@ export interface ClaimFact {
  * elsewhere and is deliberately not carried, because paying for hours nobody
  * approved is worse than paying late.
  */
-export function materialiseOvertime(fact: AttendanceFact): MaterialisedInput | null {
-  if (fact.approvedOvertimeMinutes <= 0) return null;
-  const hours = fact.approvedOvertimeMinutes / 60;
-  // Round the hourly rate before multiplying, matching the clinic's own
-  // spreadsheet. Rounding at the end instead is a sen or two out on most rows,
-  // which makes a reconciliation against the old workbook impossible to sign off.
-  const rateCents = Math.round(fact.overtimeHourlyCents * fact.multiplier);
-  const amountCents = Math.round(rateCents * hours);
-  if (amountCents <= 0) return null;
-
-  const roundedHours = Math.round(hours * 100) / 100;
-  return {
-    staffId: fact.staffId,
-    componentCode: 'OVERTIME',
-    label: 'Overtime',
-    amountCents,
-    source: 'ATTENDANCE',
-    // One input covers many attendance rows, so the identity is the period
-    // rather than a single row. The rows are named in the provenance.
-    sourceRecordId: fact.sourceRecordIds.length === 1 ? fact.sourceRecordIds[0] : null,
-    earnedPeriod: null,
-    provenance:
-      `${roundedHours} approved hour${roundedHours === 1 ? '' : 's'} from the timesheet, at ` +
-      `${(rateCents / 100).toFixed(2)} an hour` +
-      (fact.approverName ? `, approved by ${fact.approverName}` : ''),
-    approvedBy: fact.approverName,
-  };
+/**
+ * ONE INPUT PER DAY WORKED, not one per month.
+ *
+ * A single monthly row could name only one attendance record, and the database
+ * requires a derived input to say where it came from — so any employee with
+ * approved overtime on two or more days violated that constraint and the run
+ * died with a 500. The bug was latent for as long as no test gave anybody two
+ * overtime days.
+ *
+ * Per-day rows fix that and are the better model regardless: each figure points
+ * at the day that earned it, idempotency is per attendance record rather than
+ * per month, and a payslip can show why a Sunday was worth a day's wages.
+ */
+export function materialiseOvertimeDays(days: readonly PricedDayFact[]): MaterialisedInput[] {
+  return days
+    .filter((day) => day.amountCents > 0)
+    .map((day) => ({
+      staffId: day.staffId,
+      componentCode: 'OVERTIME',
+      label: 'Overtime and day-rate work',
+      amountCents: day.amountCents,
+      source: 'ATTENDANCE' as const,
+      sourceRecordId: day.attendanceId,
+      earnedPeriod: null,
+      provenance: day.description + (day.approverName ? ` Approved by ${day.approverName}.` : ''),
+      approvedBy: day.approverName,
+    }));
 }
+
 
 /**
  * Unpaid leave. Only APPROVED leave of an unpaid type reaches pay; paid annual
