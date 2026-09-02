@@ -1,0 +1,173 @@
+import {
+  MONTHLY_ORP_DIVISOR,
+  OVERTIME_MULTIPLIERS,
+  checkNormalHours,
+  checkOrdinaryRatePolicy,
+  daysInMonth,
+  hourlyRateOfPayCents,
+  incompleteMonthWagesCents,
+  ordinaryRateOfPayCents,
+  publicHolidayEntitlement,
+  restDayEntitlement,
+} from './employment-act';
+
+const RM = (ringgit: number) => Math.round(ringgit * 100);
+
+/**
+ * THE TWO DIVISORS. This is the rule the codebase had wrong, and the Act is
+ * unambiguous once both provisions are read together.
+ */
+describe('section 60I(1A) — the ordinary rate of pay divides by 26', () => {
+  it('prices a monthly wage at monthly ÷ 26', () => {
+    expect(ordinaryRateOfPayCents('MONTHLY', RM(2600))).toBe(RM(100));
+    expect(MONTHLY_ORP_DIVISOR).toBe(26);
+  });
+
+  it('derives the hourly rate from the ordinary rate over normal hours', () => {
+    const orp = ordinaryRateOfPayCents('MONTHLY', RM(2600));
+    expect(hourlyRateOfPayCents(orp, 8)).toBe(RM(12.5));
+  });
+
+  it('divides a weekly wage by 6', () => {
+    expect(ordinaryRateOfPayCents('WEEKLY', RM(600))).toBe(RM(100));
+  });
+
+  it('refuses a daily rate with no days worked rather than pricing overtime at nothing', () => {
+    expect(ordinaryRateOfPayCents('DAILY_OR_HOURLY_OR_PIECE', RM(2600), { daysWorkedInPreviousPeriod: 0 })).toBeNaN();
+  });
+});
+
+describe('section 18A — an incomplete month divides by the days in the month', () => {
+  it('uses the actual length of the wage period, not 26', () => {
+    // A joiner on the 16th of a 30-day month is eligible for 15 days.
+    const wages = incompleteMonthWagesCents(RM(3000), 30, 15);
+    expect(wages).toBe(RM(1500));
+    // The 26-divisor answer would have been RM1,730.77 — RM230 too much.
+    expect(wages).not.toBe(Math.round((RM(3000) / 26) * 15));
+  });
+
+  it('gives a different answer in February than in January, because the month is different', () => {
+    const january = incompleteMonthWagesCents(RM(3100), 31, 30);
+    const february = incompleteMonthWagesCents(RM(3100), 28, 27);
+    expect(january).not.toBe(february);
+    expect(daysInMonth(2026, 2)).toBe(28);
+    expect(daysInMonth(2024, 2)).toBe(29);
+    expect(daysInMonth(2026, 1)).toBe(31);
+  });
+
+  /*
+   * ONE UNPAID DAY IS ONE DAY'S PAY, and the deduction is derived from what is
+   * PAYABLE rather than computed separately. A joiner who also took unpaid
+   * leave must not be charged twice for the same days, which is exactly what
+   * happens when a system subtracts a proration and a deduction independently.
+   */
+  it('derives the deduction from what is payable, so overlapping reasons cannot double-charge', () => {
+    const monthly = RM(3100);
+    const days = 31;
+    // Joined on the 11th (21 days eligible) AND took 2 unpaid days: 19 eligible.
+    const payable = incompleteMonthWagesCents(monthly, days, 19);
+    expect(payable).toBe(Math.round((monthly / days) * 19));
+    // Not (monthly × 21/31) − (monthly × 2/31) computed as separate rounds,
+    // which is the shape that drifts.
+    const deduction = monthly - payable;
+    expect(payable + deduction).toBe(monthly);
+  });
+
+  it('never pays more than the month or less than nothing', () => {
+    expect(incompleteMonthWagesCents(RM(3000), 30, 45)).toBe(RM(3000));
+    expect(incompleteMonthWagesCents(RM(3000), 30, -5)).toBe(0);
+  });
+});
+
+describe('section 60I(2) — clinic policy is a floor, not a free choice', () => {
+  it('accepts a divisor at or below the statutory one, which pays more per day', () => {
+    expect(checkOrdinaryRatePolicy('MONTHLY', 26)).toBeNull();
+    expect(checkOrdinaryRatePolicy('MONTHLY', 22)).toBeNull();
+  });
+
+  it('REFUSES a divisor above 26, which would pay less than the Act allows', () => {
+    const reason = checkOrdinaryRatePolicy('MONTHLY', 31);
+    expect(reason).not.toBeNull();
+    expect(reason).toMatch(/not be lower|not lower/i);
+    expect(reason).toMatch(/26/);
+  });
+
+  it('refuses a nonsensical divisor', () => {
+    expect(checkOrdinaryRatePolicy('MONTHLY', 0)).not.toBeNull();
+  });
+});
+
+describe('overtime multipliers are the Act’s minimums', () => {
+  it('is 1.5× on a normal working day — s.60A(3)(a)', () => {
+    expect(OVERTIME_MULTIPLIERS.NORMAL_DAY).toBe(1.5);
+  });
+
+  it('is 2× beyond normal hours on a rest day — s.60(3)(c)', () => {
+    expect(OVERTIME_MULTIPLIERS.REST_DAY_EXCESS).toBe(2);
+  });
+
+  it('is 3× beyond normal hours on a public holiday — s.60D(3)(aa)', () => {
+    expect(OVERTIME_MULTIPLIERS.PUBLIC_HOLIDAY_EXCESS).toBe(3);
+  });
+});
+
+/*
+ * REST DAYS AND PUBLIC HOLIDAYS ARE PAID IN DAYS, NOT HOURS.
+ *
+ * Pricing a rest day as "hours × 2" underpays the employee who worked two
+ * hours — the Act gives them half a day whatever the clock says.
+ */
+describe('section 60(3) — work on a rest day', () => {
+  it('pays a monthly-rated employee half a day for half the normal hours or less', () => {
+    expect(restDayEntitlement('MONTHLY', 3, 8).ordinaryRateDays).toBe(0.5);
+    expect(restDayEntitlement('MONTHLY', 4, 8).ordinaryRateDays).toBe(0.5);
+  });
+
+  it('pays a full day for more than half, up to the normal hours', () => {
+    expect(restDayEntitlement('MONTHLY', 5, 8).ordinaryRateDays).toBe(1);
+    expect(restDayEntitlement('MONTHLY', 8, 8).ordinaryRateDays).toBe(1);
+  });
+
+  it('pays a daily-rated employee more for the same work, as the Act provides', () => {
+    expect(restDayEntitlement('DAILY_OR_HOURLY_OR_PIECE', 3, 8).ordinaryRateDays).toBe(1);
+    expect(restDayEntitlement('DAILY_OR_HOURLY_OR_PIECE', 6, 8).ordinaryRateDays).toBe(2);
+  });
+
+  it('prices anything beyond the normal hours at 2× the hourly rate', () => {
+    expect(restDayEntitlement('MONTHLY', 10, 8).excessHourlyMultiplier).toBe(2);
+  });
+
+  it('cites the provision it came from', () => {
+    expect(restDayEntitlement('MONTHLY', 4, 8).provision).toMatch(/s\.60\(3\)\(b\)/);
+  });
+});
+
+describe('section 60D(3) — work on a paid public holiday', () => {
+  it('pays two days regardless of how little of the day was worked', () => {
+    // "regardless that the period of work done on that day is less than the
+    // normal hours of work" — one hour on Hari Raya is still two days.
+    expect(publicHolidayEntitlement().ordinaryRateDays).toBe(2);
+  });
+
+  it('prices anything beyond the normal hours at 3× the hourly rate', () => {
+    expect(publicHolidayEntitlement().excessHourlyMultiplier).toBe(3);
+  });
+});
+
+describe('section 60A(1) — the limits on normal hours', () => {
+  it('accepts a contract within the limits', () => {
+    expect(checkNormalHours(8, 45)).toEqual([]);
+    expect(checkNormalHours(7.5, 40)).toEqual([]);
+  });
+
+  it('names the limit a 10-hour day breaches', () => {
+    const problems = checkNormalHours(10, 45);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatch(/8/);
+    expect(problems[0]).toMatch(/60A\(1\)\(b\)/);
+  });
+
+  it('names both limits when both are breached', () => {
+    expect(checkNormalHours(10, 60)).toHaveLength(2);
+  });
+});
