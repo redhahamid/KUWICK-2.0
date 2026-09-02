@@ -22,6 +22,7 @@ describe('payroll approval modes (e2e)', () => {
   let prisma: PrismaClient;
   let tenantId: string;
   let clinicId: string;
+  let legalEmployerId: string;
   /** The account holder who runs the payroll. */
   let makerId: string;
   let maker: string;
@@ -74,6 +75,13 @@ describe('payroll approval modes (e2e)', () => {
         pcbApplicable: false,
       })
       .expect(201);
+    // The employing company. Statutory contributions are filed by an entity,
+    // so an employee attached to none of them blocks approval.
+    await request(server())
+      .patch(`/workforce/employees/${staff.id}/legal-employer`)
+      .set('Authorization', maker)
+      .send({ legalEmployerId })
+      .expect(200);
     await request(server())
       .post(`/workforce/employees/${staff.id}/salary`)
       .set('Authorization', maker)
@@ -122,6 +130,12 @@ describe('payroll approval modes (e2e)', () => {
       .send({ name: 'Branch A' })
       .expect(201);
     clinicId = clinic.body.id;
+    const employer = await request(server())
+      .post('/workforce/legal-employers')
+      .set('Authorization', maker)
+      .send({ name: `Approval Employer ${randomId().slice(0, 8)}` })
+      .expect(201);
+    legalEmployerId = employer.body.id;
     await request(server()).post('/workforce/pay-components/seed').set('Authorization', maker).expect(201);
 
     const second = await accountHolder('Second Account Holder');
@@ -310,5 +324,44 @@ describe('payroll approval modes (e2e)', () => {
       .expect(200);
     expect(asThird.body.approval.youMayApprove).toBe(true);
     expect(asThird.body.approval.completesTheRun).toBe(true);
+  });
+
+  it('clears the approvals when a run is reopened, so a correction is signed off again from the start', async () => {
+    // THE CONTROL THIS PROTECTS. Approvals used to survive a reopen, and under
+    // DUAL_APPROVAL the two existing sign-offs then counted toward the
+    // CORRECTED run — so a payroll could be changed after approval and reach
+    // APPROVED again with nobody having looked at the change. The second pair
+    // of eyes was bypassed by the very workflow meant to preserve it.
+    await setMode({ mode: 'DUAL_APPROVAL' }).expect(200);
+    const runId = await calculatedRun();
+    await approve(runId, maker).expect(200);
+    const second = await accountHolder('Second Approver');
+    await approve(runId, second.bearer).expect(200);
+
+    const approvedRun = await withTenantContext(prisma, tenantId, (tx) =>
+      tx.payrollRun.findUniqueOrThrow({ where: { id: runId } }),
+    );
+    expect(approvedRun.status).toBe('APPROVED');
+
+    await request(server())
+      .patch(`/workforce/payroll/runs/${runId}/reopen`)
+      .set('Authorization', maker)
+      .send({ reason: 'An allowance was keyed against the wrong month' })
+      .expect(200);
+
+    const held = await withTenantContext(prisma, tenantId, (tx) =>
+      tx.payrollRunApproval.findMany({ where: { payrollRunId: runId } }),
+    );
+    expect(held).toHaveLength(0);
+
+    // So the corrected run needs BOTH signatures again, not nought and not one.
+    await request(server())
+      .patch(`/workforce/payroll/runs/${runId}/calculate`)
+      .set('Authorization', maker)
+      .expect(200);
+    const first = await approve(runId, maker).expect(200);
+    expect(first.body.approvalState).toMatchObject({ complete: false, given: 1, required: 2 });
+    const finished = await approve(runId, second.bearer).expect(200);
+    expect(finished.body.approvalState).toMatchObject({ complete: true, given: 2, required: 2 });
   });
 });

@@ -26,6 +26,7 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
   let bearer: string;
   let ownerStaffId: string;
   let clinicId: string;
+  let legalEmployerId: string;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -52,12 +53,22 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       .send({ name: 'HR Clinic' })
       .expect(201);
     clinicId = clinic.body.id;
+
+    // THE EMPLOYING COMPANY, which is not the branch. EPF, SOCSO, EIS and PCB
+    // are all filed by an entity, so an employee attached to none of them
+    // blocks approval — see NO_LEGAL_EMPLOYER.
+    const employer = await request(app.getHttpServer())
+      .post('/workforce/legal-employers')
+      .set('Authorization', bearer)
+      .send({ name: `HR Employer ${randomId().slice(0, 8)}` })
+      .expect(201);
+    legalEmployerId = employer.body.id;
   });
 
   async function makeEmployee(
     name: string,
     salary?: string,
-    opts: { pcbApplicable?: boolean; epfMembership?: string | null } = {},
+    opts: { pcbApplicable?: boolean; epfMembership?: string | null; startDate?: string; endDate?: string } = {},
   ) {
     const staff = await withTenantContext(prisma, tenantId, (tx) =>
       tx.staff.create({ data: { tenantId, role: Role.FRONT_DESK_CLINICAL_STAFF, fullName: name, clinicId } }),
@@ -70,7 +81,8 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         position: 'Clinic Assistant',
         employmentType: 'PERMANENT',
         employmentStatus: 'ACTIVE',
-        startDate: '2024-01-01',
+        startDate: opts.startDate ?? '2024-01-01',
+        ...(opts.endDate ? { endDate: opts.endDate } : {}),
         // EPF, SOCSO and EIS all change at age 60, so payroll refuses to guess.
         dateOfBirth: '1990-06-15',
         // Which Part of the EPF Third Schedule applies. Passing null exercises
@@ -81,6 +93,12 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         pcbApplicable: opts.pcbApplicable ?? false,
       })
       .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`/workforce/employees/${staff.id}/legal-employer`)
+      .set('Authorization', bearer)
+      .send({ legalEmployerId })
+      .expect(200);
 
     // SALARY IS RECORDED WITH THE DATE IT TAKES EFFECT FROM. It used to be a
     // field on the employee form, which meant payroll and the profile could
@@ -432,6 +450,124 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         .set('Authorization', bearer)
         .send({ acknowledgeStatutoryGap: true })
         .expect(400);
+    });
+
+    it('writes YEAR-TO-DATE from an approved run, and a correction replaces the month rather than doubling it', async () => {
+      // The cumulative substrate PCB needs. The table existed and nothing ever
+      // wrote to it, which is why a lawful MTD was impossible in principle
+      // rather than merely unimplemented.
+      const staffId = await makeEmployee('Ytd Employee', '3000.00');
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+
+      // NOTHING is written while the run is only calculated: a draft that may
+      // be run five times must not move a year-to-date figure.
+      const beforeApproval = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.employeeYtd.findMany({ where: { staffId } }),
+      );
+      expect(beforeApproval).toHaveLength(0);
+
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/approve`)
+        .set('Authorization', bearer)
+        .send({})
+        .expect(200);
+
+      const written = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.employeeYtd.findMany({ where: { staffId } }),
+      );
+      expect(written).toHaveLength(1);
+      expect(written[0]).toMatchObject({
+        taxYear: 2026,
+        month: 8,
+        grossCents: 300000,
+        epfEmployeeCents: 33000,
+        socsoEmployeeCents: 3690,
+        eisEmployeeCents: 590,
+        source: 'CALCULATED',
+        payrollRunId: run.body.id,
+      });
+
+      // REOPEN, RECALCULATE, RE-APPROVE. The month must be REPLACED. Adding to
+      // it would double the year-to-date the first time a clinic corrected a
+      // payroll, and the error would surface at year end in a Form EA nobody
+      // could reconcile.
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/reopen`)
+        .set('Authorization', bearer)
+        .send({ reason: 'Correcting an allowance' })
+        .expect(200);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/approve`)
+        .set('Authorization', bearer)
+        .send({})
+        .expect(200);
+
+      const afterCorrection = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.employeeYtd.findMany({ where: { staffId } }),
+      );
+      expect(afterCorrection).toHaveLength(1);
+      expect(afterCorrection[0].grossCents).toBe(300000);
+    });
+
+    it('pays a mid-month joiner by days under s.18A, and prices their overtime on the full month', async () => {
+      // August 2026 has 31 days. Somebody who starts on the 20th served 12 of
+      // them, both ends inclusive.
+      const staffId = await makeEmployee('August Joiner', '3100.00', { startDate: '2026-08-20' });
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      const calculated = await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+
+      const detail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const line = detail.body.lines.find((row: { staffId: string }) => row.staffId === staffId);
+      // RM3,100 x 12/31 = RM1,200 exactly. Not a whole month, and not the
+      // 26-day divisor that prices overtime.
+      expect(line.basicSalary).toBe(1200);
+
+      // Said out loud rather than left as an unexplained smaller number.
+      const exceptions = calculated.body.exceptions as { name: string; issue: string }[];
+      expect(exceptions.some((row) => /Paid for 12 of 31 days/.test(row.issue))).toBe(true);
+    });
+
+    it('leaves somebody who was not employed during the month OFF the run rather than paying them', async () => {
+      await makeEmployee('Left In July', '3000.00', { endDate: '2026-07-31' });
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      const calculated = await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+
+      const exceptions = calculated.body.exceptions as { name: string; issue: string }[];
+      expect(exceptions.some((row) => /not employed during this month/i.test(row.issue))).toBe(true);
+      const detail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      expect(detail.body.lines.some((row: { name: string }) => row.name === 'Left In July')).toBe(false);
     });
 
     it('LOCKS an approved run — the database refuses to change a payslip line', async () => {

@@ -46,6 +46,7 @@ import {
   planMaterialisation,
 } from './payroll-materialisation';
 import { leaveDaysInYear } from './leave-balance';
+import { describeProration, proratedBasicCents, prorationFor } from './proration';
 import { CreatePayrollRunDto } from './dto/create-payroll-run.dto';
 import { PayrollAdjustmentDto } from './dto/payroll-adjustment.dto';
 import { UpsertStatutoryRulesDto } from './dto/upsert-statutory-rules.dto';
@@ -456,13 +457,59 @@ export class PayrollService {
           raise('MISSING_PUNCH', employee, { days: timesheet.daysMissingPunch });
         }
 
-        const basicCents = salary.row.amountCents;
+        // s.18A — AN INCOMPLETE MONTH IS PAID BY DAYS.
+        //
+        // Nothing here consulted the date somebody started or finished, so a
+        // joiner on the 20th was paid a whole month and so was a leaver who
+        // went on the 3rd. Both figures reached a payslip looking correct.
+        //
+        // The divisor is the days in THIS wage period, not 26: s.60I(1A)'s 26
+        // prices an hour of overtime and answers a different question. The
+        // ordinary rate below therefore keeps using the FULL monthly wage, or a
+        // joiner's first month of overtime would be cheaper than every month
+        // after it.
+        const proration = prorationFor({
+          periodStart: period,
+          periodEnd,
+          daysInPeriod: days,
+          startDate: employee.startDate,
+          endDate: employee.endDate,
+        });
+        if (proration.outsidePeriod) {
+          // Not a payslip for nought days — they simply are not on this
+          // payroll. Usually a leaver whose record is still marked active.
+          exclude('NOT_EMPLOYED_IN_PERIOD', employee, {
+            startDate: employee.startDate?.toISOString().slice(0, 10) ?? '',
+            endDate: employee.endDate?.toISOString().slice(0, 10) ?? '',
+          });
+          continue;
+        }
+        const fullMonthlyCents = salary.row.amountCents;
+        const basicCents = proratedBasicCents(fullMonthlyCents, proration, days);
+        const prorationNote = describeProration(proration, days);
+        if (prorationNote) {
+          // INFO, not a blocker. A part-month is a normal event; what is not
+          // acceptable is it happening invisibly.
+          raise('PART_MONTH', employee, { note: prorationNote });
+        }
 
         // AGE DRIVES THE SCHEME, not just the rate: at 60 the employee's EPF
         // share goes to nil and the employer's to 4%, SOCSO moves to the Second
         // Category, and EIS ceases. An unknown date of birth is therefore a
         // BLOCKING exception, not a reason to assume "under 60" — assuming
         // would under-contribute for the whole workforce and nobody would see it.
+        // NO EMPLOYING COMPANY, NO FILING. EPF, SOCSO, EIS and PCB are all
+        // submitted BY an entity, so an employee attached to none of them
+        // produces a payslip whose contributions could never be filed.
+        //
+        // The exception has been in the catalogue as BLOCKING since Stage 1 and
+        // nothing ever raised it, so the rule the system claimed to enforce was
+        // enforced nowhere. Found while writing year-to-date, which has to be
+        // keyed by employer and was silently skipping anybody without one.
+        if (!employee.legalEmployerId) {
+          raise('NO_LEGAL_EMPLOYER', employee);
+        }
+
         const age = ageAt(employee.dateOfBirth, new Date(periodEnd.getTime() - 86400000));
         if (age === null) {
           exclude('NO_DOB', employee);
@@ -498,7 +545,8 @@ export class PayrollService {
         // The Ordinary Rate of Pay is built from the earnings that COUNT toward
         // it — basic and ORP-liable allowances — and never from overtime, or an
         // hour of overtime would raise the rate paid for the next one.
-        const orpBase = basicCents;
+        // THE FULL monthly wage, never the prorated one — see the s.18A note.
+        const orpBase = fullMonthlyCents;
         const rates = ordinaryRates(orpBase, orpConfig);
 
         // -------------------------------------------------------------------
@@ -988,6 +1036,79 @@ export class PayrollService {
     });
   }
 
+
+  /**
+   * One `EmployeeYtd` row per employee per month, from an approved run.
+   *
+   * IDEMPOTENT BY CONSTRUCTION. `payrollRunId` is stored on the row and the
+   * unique key is (employer, staff, year, month), so reopening a run,
+   * correcting it and approving again REPLACES the month rather than adding to
+   * it. Accumulating instead would double somebody's year-to-date the first
+   * time a clinic corrected a payroll, and the error would only surface at
+   * year end in a Form EA nobody could reconcile.
+   *
+   * A NULL statutory figure is stored as it was computed — nought — but the
+   * run that carried it could not have been approved without somebody
+   * acknowledging the gap, and that acknowledgement is on the approval row.
+   * The alternative, refusing to write YTD at all for such a run, leaves a hole
+   * in the cumulative record that every later month would silently inherit.
+   */
+  private async writeYearToDate(tx: AdminTx, runId: string, period: Date, actorStaffId: string) {
+    const lines = await tx.payrollLine.findMany({ where: { payrollRunId: runId } });
+    if (lines.length === 0) return;
+
+    const taxYear = period.getUTCFullYear();
+    const month = period.getUTCMonth() + 1;
+    const employers = await tx.employeeProfile.findMany({
+      where: { staffId: { in: lines.map((line) => line.staffId) } },
+      select: { staffId: true, legalEmployerId: true },
+    });
+    const employerOf = new Map(employers.map((row) => [row.staffId, row.legalEmployerId]));
+
+    for (const line of lines) {
+      const legalEmployerId = employerOf.get(line.staffId);
+      // An employee with no legal employer cannot reach an approved run — the
+      // calculation raises NO_LEGAL_EMPLOYER, which is blocking — so this is a
+      // guard rather than a case.
+      if (!legalEmployerId) continue;
+
+      const breakdown = (line.breakdown ?? {}) as { additionalRemunerationCents?: number };
+      const cents = (value: unknown) => (value === null || value === undefined ? 0 : toCents(value as never));
+
+      const data = {
+        tenantId: currentTenantId(),
+        legalEmployerId,
+        staffId: line.staffId,
+        taxYear,
+        month,
+        grossCents: cents(line.grossPay),
+        // Bonus and incentive are ADDITIONAL remuneration for tax and are taxed
+        // by a different part of the MTD method from normal monthly pay, so the
+        // year-to-date has to keep them apart rather than only carrying a total.
+        additionalRemunerationCents: breakdown.additionalRemunerationCents ?? cents(line.bonus) + cents(line.incentives),
+        pcbCents: cents(line.pcb),
+        zakatCents: 0,
+        epfEmployeeCents: cents(line.epfEmployee),
+        epfEmployerCents: cents(line.epfEmployer),
+        socsoEmployeeCents: cents(line.socsoEmployee),
+        socsoEmployerCents: cents(line.socsoEmployer),
+        eisEmployeeCents: cents(line.eisEmployee),
+        eisEmployerCents: cents(line.eisEmployer),
+        source: 'CALCULATED' as const,
+        payrollRunId: runId,
+        createdByStaffId: actorStaffId,
+      };
+
+      await tx.employeeYtd.upsert({
+        where: {
+          legalEmployerId_staffId_taxYear_month: { legalEmployerId, staffId: line.staffId, taxYear, month },
+        },
+        update: data,
+        create: data,
+      });
+    }
+  }
+
   /**
    * Approve and LOCK.
    *
@@ -1132,6 +1253,18 @@ export class PayrollService {
         after: { version, hash: snapshot.hash, employees: payload.totals.employeeCount },
         source: 'hr.payroll',
       });
+
+      // YEAR TO DATE, written from the run that was just approved.
+      //
+      // The table existed and nothing ever wrote to it, which is why a lawful
+      // PCB was impossible in principle rather than merely unimplemented: the
+      // Computerised Calculation method is cumulative, and there was no
+      // cumulative anything.
+      //
+      // Written on APPROVAL rather than on calculation, because a calculation
+      // is a draft that may be run five times before anybody agrees with it,
+      // and year-to-date figures that move under a draft are worse than none.
+      await this.writeYearToDate(tx, runId, run.period, actor.id);
 
       await recordAudit(tx, actor, {
         action: 'payroll.approved',
@@ -1638,6 +1771,24 @@ export class PayrollService {
         orderBy: { version: 'desc' },
       });
 
+      /*
+       * THE APPROVALS GO WITH THE FIGURES THEY APPROVED.
+       *
+       * They used to survive a reopen, and under every mode that was wrong.
+       * Under DUAL_APPROVAL the two existing sign-offs counted toward the
+       * CORRECTED run, so a run could be changed after approval and reach
+       * APPROVED again with nobody having looked at the change — the exact
+       * control the second pair of eyes exists to provide, bypassed by the
+       * workflow meant to preserve it. Under STANDARD the unique key on
+       * (run, approver) meant the person who approved it could never approve
+       * their own correction, so the run was stuck instead.
+       *
+       * Cleared here, therefore. The history is not lost: the audit log keeps
+       * every `payroll.approved` entry, and the preserved snapshot keeps the
+       * figures that were approved and their hash.
+       */
+      const cleared = await tx.payrollRunApproval.deleteMany({ where: { payrollRunId: runId } });
+
       const reopened = await tx.payrollRun.update({
         where: { id: runId },
         data: {
@@ -1651,8 +1802,13 @@ export class PayrollService {
         action: 'payroll.reopened',
         entityType: 'PayrollRun',
         entityId: runId,
-        before: { status: PayrollRunStatus.APPROVED, snapshotVersion: latest?.version ?? null, snapshotHash: latest?.hash ?? null },
-        after: { status: PayrollRunStatus.CALCULATED },
+        before: {
+          status: PayrollRunStatus.APPROVED,
+          snapshotVersion: latest?.version ?? null,
+          snapshotHash: latest?.hash ?? null,
+          approvalsHeld: cleared.count,
+        },
+        after: { status: PayrollRunStatus.CALCULATED, approvalsHeld: 0 },
         reason,
         source: 'hr.payroll',
       });
@@ -1661,7 +1817,7 @@ export class PayrollService {
         run: reopened,
         preservedSnapshot: latest ? { version: latest.version, hash: latest.hash } : null,
         note: latest
-          ? `Snapshot v${latest.version} is preserved. Recalculate, review the difference, then approve again to write v${latest.version + 1}.`
+          ? `Snapshot v${latest.version} is preserved. Recalculate, review the difference, then approve again to write v${latest.version + 1}. This run needs approving from the start again — the previous sign-offs were of figures that have now changed.`
           : 'This run was approved before snapshots existed, so there is nothing to compare against.',
       };
     });

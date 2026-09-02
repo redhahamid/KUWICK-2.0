@@ -212,6 +212,42 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    * Distinct from a run-level gap ("no schedule is in force for this period"),
    * which `statutoryStatus` carries.
    */
+  /*
+   * s.18A — a part-month, stated rather than silent.
+   *
+   * INFO, deliberately. A joiner or a leaver is an ordinary event and blocking
+   * on one would train somebody to click past blockers. What is not acceptable
+   * is a prorated figure appearing with nothing on screen saying why it is
+   * smaller than the contract, which is indistinguishable from a bug.
+   */
+  PART_MONTH: {
+    code: 'PART_MONTH',
+    severity: 'INFO',
+    overridable: false,
+    cause: (c) => String(c.note),
+    consequence:
+      'Their basic pay is worked out under s.18A of the Employment Act — the monthly wage divided by the days ' +
+      'in this month, times the days they served. Overtime is still priced on their full monthly wage.',
+    remediation: 'Nothing to do, unless the start or end date on their record is wrong.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+  },
+  /*
+   * Somebody the run would otherwise have paid a whole month, who was not
+   * employed for a single day of it. Almost always a leaver whose record is
+   * still marked ACTIVE, which is a data problem rather than a pay problem —
+   * so they are excluded and named, not paid nought and listed.
+   */
+  NOT_EMPLOYED_IN_PERIOD: {
+    code: 'NOT_EMPLOYED_IN_PERIOD',
+    severity: 'WARNING',
+    overridable: true,
+    cause: (c) =>
+      `They were not employed during this month${c.endDate ? ` — they left on ${String(c.endDate)}` : c.startDate ? ` — they start on ${String(c.startDate)}` : ''}.`,
+    consequence: 'They are left off this payroll entirely rather than paid a part-month of nought.',
+    remediation:
+      'If that is right, nothing to do. If they did work this month, correct their start or end date and recalculate.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+  },
   STATUTORY_UNKNOWN: {
     code: 'STATUTORY_UNKNOWN',
     severity: 'BLOCKING',
