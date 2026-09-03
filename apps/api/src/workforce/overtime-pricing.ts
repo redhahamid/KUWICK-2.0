@@ -1,5 +1,7 @@
 import {
   OVERTIME_MULTIPLIERS,
+  OvertimeEntitlementBasis,
+  OvertimeScope,
   PayBasis,
   publicHolidayEntitlement,
   restDayEntitlement,
@@ -29,6 +31,14 @@ import {
  * hours' worth (2 × 1.5) where the Act owes them two days. Every one of those
  * errors was an UNDERPAYMENT, which is the employer's liability to settle.
  *
+ * NOT EVERY EMPLOYEE WITH OVERTIME ON A TIMESHEET IS OWED OVERTIME PAY. The
+ * First Schedule limits ss.60, 60A and 60D to employees whose wages do not
+ * exceed RM4,000 a month. Above that the Act requires nothing, and whatever is
+ * paid is a company benefit the employer undertook — a different obligation
+ * with different consequences. Each priced day therefore carries the BASIS it
+ * was paid on, and an employee out of statutory scope with no undertaking
+ * recorded is paid nothing rather than silently given the Act's rates.
+ *
  * APPROVAL AND ENTITLEMENT ARE DIFFERENT QUESTIONS, and the split below is
  * deliberate. The day-rate entitlement arises from having worked the day at
  * all, which the clock recorded, so it is paid whether or not anybody ticked
@@ -49,6 +59,12 @@ export interface WorkedDay {
 
 export interface PricingContext {
   readonly basis: PayBasis;
+  /**
+   * Whether the Act reaches this employee, and on what footing anything is
+   * owed. Resolved once per employee from their wages and the employer's
+   * undertaking — see `overtimeScope`.
+   */
+  readonly scope: OvertimeScope;
   /** Contractual normal hours in a working day. Bounded by s.60A(1). */
   readonly normalHoursPerDay: number;
   /** One day at the ordinary rate of pay, in cents. */
@@ -70,6 +86,12 @@ export interface PricedDay {
   readonly totalCents: number;
   /** Which section of the Act produced this, verbatim, for the payslip. */
   readonly provision: string;
+  /**
+   * STATUTORY, CONTRACTUAL or NONE. A payslip that cannot say which is a
+   * payslip that cannot distinguish what the law requires from what the
+   * employer promised.
+   */
+  readonly entitlement: OvertimeEntitlementBasis;
   /** Set when hours were worked beyond normal hours but nobody approved them. */
   readonly unapprovedExcessHours: number;
 }
@@ -99,6 +121,28 @@ export function classifyDay(
 export function priceDay(day: WorkedDay, dayType: DayType, context: PricingContext): PricedDay {
   const workedHours = day.workedMinutes / 60;
   const approvedExcessHours = day.overtimeApproved ? day.overtimeMinutes / 60 : 0;
+  const entitlement = context.scope.basis;
+
+  // NOTHING IS OWED, and the hours are still recorded. An employee outside the
+  // First Schedule whose employer undertook nothing is not underpaid by being
+  // paid nil — they were never entitled — but the day must still appear, or
+  // the timesheet and the payslip stop agreeing about what happened.
+  if (entitlement === 'NONE') {
+    return {
+      attendanceId: day.attendanceId,
+      date: day.date,
+      dayType,
+      ordinaryRateDays: 0,
+      dayPayCents: 0,
+      excessHours: 0,
+      excessMultiplier: 0,
+      excessPayCents: 0,
+      totalCents: 0,
+      provision: context.scope.reason,
+      entitlement,
+      unapprovedExcessHours: 0,
+    };
+  }
 
   if (dayType === 'NORMAL_DAY') {
     // The salary already covers the day. Only approved overtime is paid, and
@@ -114,12 +158,16 @@ export function priceDay(day: WorkedDay, dayType: DayType, context: PricingConte
       excessMultiplier: OVERTIME_MULTIPLIERS.NORMAL_DAY,
       excessPayCents,
       totalCents: excessPayCents,
-      provision: 'Employment Act 1955, s.60A(3)(a)',
+      provision:
+        entitlement === 'STATUTORY'
+          ? 'Employment Act 1955, s.60A(3)(a)'
+          : 'Company benefit at s.60A(3)(a) rates — outside the First Schedule limit',
+      entitlement,
       unapprovedExcessHours: day.overtimeApproved ? 0 : day.overtimeMinutes / 60,
     };
   }
 
-  const entitlement =
+  const dayRate =
     dayType === 'PUBLIC_HOLIDAY'
       ? publicHolidayEntitlement()
       : restDayEntitlement(context.basis, workedHours, context.normalHoursPerDay);
@@ -130,20 +178,22 @@ export function priceDay(day: WorkedDay, dayType: DayType, context: PricingConte
   const excessWorked = Math.max(0, workedHours - context.normalHoursPerDay);
   const excessHours = day.overtimeApproved ? excessWorked : 0;
 
-  const dayPayCents = Math.round(entitlement.ordinaryRateDays * context.dailyOrpCents);
-  const excessPayCents = Math.round(excessHours * context.hourlyOrpCents * entitlement.excessHourlyMultiplier);
+  const dayPayCents = Math.round(dayRate.ordinaryRateDays * context.dailyOrpCents);
+  const excessPayCents = Math.round(excessHours * context.hourlyOrpCents * dayRate.excessHourlyMultiplier);
 
   return {
     attendanceId: day.attendanceId,
     date: day.date,
     dayType,
-    ordinaryRateDays: entitlement.ordinaryRateDays,
+    ordinaryRateDays: dayRate.ordinaryRateDays,
     dayPayCents,
     excessHours,
-    excessMultiplier: entitlement.excessHourlyMultiplier,
+    excessMultiplier: dayRate.excessHourlyMultiplier,
     excessPayCents,
     totalCents: dayPayCents + excessPayCents,
-    provision: entitlement.provision,
+    provision:
+      entitlement === 'STATUTORY' ? dayRate.provision : `Company benefit at ${dayRate.provision} rates — outside the First Schedule limit`,
+    entitlement,
     unapprovedExcessHours: day.overtimeApproved ? 0 : excessWorked,
   };
 }
@@ -189,6 +239,9 @@ export function priceOvertime(
 /** One line of plain English naming what was paid and under which section. */
 export function describePricedDay(day: PricedDay): string {
   const when = iso(day.date);
+  if (day.entitlement === 'NONE') {
+    return `${when}: worked, nothing payable — ${day.provision}`;
+  }
   if (day.dayType === 'NORMAL_DAY') {
     return `${when}: ${day.excessHours.toFixed(2)}h overtime at ${day.excessMultiplier}× (${day.provision}).`;
   }

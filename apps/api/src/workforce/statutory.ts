@@ -406,8 +406,22 @@ export interface StatutoryResult {
   stamp: StatutoryStamp;
 }
 
-/** The schemes every employee payslip has to answer for. */
-const PAYSLIP_SCHEMES: readonly StatutoryScheme[] = ['EPF', 'SOCSO', 'EIS', 'PCB'];
+/**
+ * The schemes every employee payslip has to answer for.
+ *
+ * The Employment Act and its First Schedule are here as well as the three
+ * contribution schemes, because a payslip's overtime and part-month figures
+ * rest on them as squarely as its EPF does — and a run that cannot name the
+ * edition that priced a Sunday cannot defend the figure a year later.
+ */
+const PAYSLIP_SCHEMES: readonly StatutoryScheme[] = [
+  'EPF',
+  'SOCSO',
+  'EIS',
+  'PCB',
+  'EMPLOYMENT_ACT',
+  'EA_FIRST_SCHEDULE',
+];
 
 /** What the employee has been paid and taxed since January. */
 export const NO_YEAR_TO_DATE: PcbYearToDate = {

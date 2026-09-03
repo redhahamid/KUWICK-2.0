@@ -19,7 +19,15 @@ const BEFORE_EVERYTHING = new Date('2019-01-31T00:00:00.000Z');
 
 describe('resolving a schedule', () => {
   it('resolves each scheme to exactly one schedule for a current period', () => {
-    for (const scheme of ['EPF', 'SOCSO', 'EIS', 'PCB', 'HRD_LEVY', 'EMPLOYMENT_ACT'] as const) {
+    for (const scheme of [
+      'EPF',
+      'SOCSO',
+      'EIS',
+      'PCB',
+      'HRD_LEVY',
+      'EMPLOYMENT_ACT',
+      'EA_FIRST_SCHEDULE',
+    ] as const) {
       expect(scheduleFor(scheme, JAN_2026)).not.toBeNull();
     }
   });
@@ -106,6 +114,7 @@ describe('what may drive an approved run', () => {
     // they stop at source-verified however carefully they were transcribed.
     const byScheme = Object.fromEntries(STATUTORY_SCHEDULES.map((s) => [s.scheme, s.verification]));
     expect(byScheme.HRD_LEVY).toBe('OFFICIAL_SOURCE_VERIFIED');
+    expect(byScheme.EA_FIRST_SCHEDULE).toBe('OFFICIAL_SOURCE_VERIFIED');
     expect(byScheme.EMPLOYMENT_ACT).toBe('OFFICIAL_SOURCE_VERIFIED');
     expect(byScheme.PCB).toBe('OFFICIAL_TEST_VECTOR_VERIFIED');
   });
@@ -119,5 +128,25 @@ describe('what is missing is named, not left blank', () => {
     // And it is genuinely absent from the registry rather than present as a
     // zero-rate placeholder, which is the failure mode this guards.
     expect(STATUTORY_SCHEDULES.some((s) => String(s.scheme).includes('LINDUNG'))).toBe(false);
+  });
+});
+
+describe('two rules under one Act, dated apart', () => {
+  it('keeps the First Schedule limitation separate from the sections it limits', () => {
+    // They took effect on different dates and answer different questions —
+    // what the Act says, and who it says it to. A run stamps both, so a
+    // figure can be defended on either front a year later.
+    const stamp = stampFor(['EMPLOYMENT_ACT', 'EA_FIRST_SCHEDULE'], JAN_2026);
+    expect(stamp.schedules.map((line) => line.scheduleId)).toEqual([
+      'EMPLOYMENT_ACT_1955',
+      'EA_FIRST_SCHEDULE_2023_01',
+    ]);
+    expect(stamp.approvable).toBe(true);
+  });
+
+  it('resolves the First Schedule for a 2023 period the Act extract does not reach', () => {
+    const early = new Date('2023-06-30T00:00:00.000Z');
+    expect(scheduleFor('EA_FIRST_SCHEDULE', early)).not.toBeNull();
+    expect(scheduleFor('EMPLOYMENT_ACT', early)).toBeNull();
   });
 });

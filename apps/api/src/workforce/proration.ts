@@ -104,6 +104,30 @@ export function proratedBasicCents(monthlyCents: number, proration: Proration, d
   return Math.round(incompleteMonthWagesCents(monthlyCents, daysInPeriod, proration.daysEligible));
 }
 
+/**
+ * WHAT A DAY OF UNPAID LEAVE COSTS — s.18A, not clinic policy.
+ *
+ * Section 18A reaches ANY incomplete month, expressly including leave of
+ * absence without pay for one or more days. So the divisor is the actual
+ * length of the wage period — 28, 29, 30 or 31 — and the deduction is
+ * `monthly wages × unpaid days / days in the period`.
+ *
+ * Kuwick deducted on a FIXED 31 as configurable clinic policy. In February that
+ * under-deducts by 10%, and in every month shorter than 31 days by something.
+ * More to the point it was never the employer's to configure: s.18A is the
+ * rule, and a policy divisor cannot displace it.
+ *
+ * Derived as a deduction rather than by reducing basic pay so the payslip can
+ * show it as a line somebody can question. Arithmetically it is the same thing:
+ * `monthly × served/days − monthly × unpaid/days` is `monthly × eligible/days`,
+ * which is exactly what s.18A says the wages are.
+ */
+export function unpaidLeaveDeductionCents(monthlyCents: number, unpaidDays: number, daysInPeriod: number): number {
+  if (daysInPeriod <= 0 || unpaidDays <= 0) return 0;
+  const clamped = Math.min(unpaidDays, daysInPeriod);
+  return Math.round((monthlyCents / daysInPeriod) * clamped);
+}
+
 /** One line of plain English for the payslip and the exception list. */
 export function describeProration(proration: Proration, daysInPeriod: number): string | null {
   if (proration.complete || proration.outsidePeriod) return null;

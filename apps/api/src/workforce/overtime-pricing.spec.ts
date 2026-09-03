@@ -1,3 +1,4 @@
+import { overtimeScope } from '../statutory/employment-act';
 import { classifyDay, describePricedDay, priceDay, priceOvertime, WorkedDay } from './overtime-pricing';
 
 /**
@@ -5,8 +6,13 @@ import { classifyDay, describePricedDay, priceDay, priceOvertime, WorkedDay } fr
  * so the arithmetic is checkable: ORP = 3120 / 26 = RM120 a day, and the hourly
  * rate = 120 / 8 = RM15.
  */
+const AUGUST = new Date('2026-09-01T00:00:00.000Z');
+/** RM3,120 a month — inside the First Schedule's RM4,000 limit. */
+const STATUTORY = overtimeScope(312000, AUGUST, null);
+
 const ctx = {
   basis: 'MONTHLY' as const,
+  scope: STATUTORY,
   normalHoursPerDay: 8,
   dailyOrpCents: 12000,
   hourlyOrpCents: 1500,
@@ -169,5 +175,60 @@ describe('what the payslip says', () => {
     );
     const normal = priceDay(day({ overtimeMinutes: 120, overtimeApproved: true }), 'NORMAL_DAY', ctx);
     expect(describePricedDay(normal)).toBe('2026-08-12: 2.00h overtime at 1.5× (Employment Act 1955, s.60A(3)(a)).');
+  });
+});
+
+describe('who the Act actually reaches — the First Schedule', () => {
+  it('applies ss.60, 60A and 60D up to RM4,000 a month', () => {
+    expect(overtimeScope(400000, AUGUST, null)).toMatchObject({ withinFirstSchedule: true, basis: 'STATUTORY' });
+  });
+
+  it('stops applying one sen above the limit', () => {
+    // "not exceeding" is exact. A boundary tested only at round numbers is a
+    // boundary nobody has tested.
+    const above = overtimeScope(400001, AUGUST, null);
+    expect(above.withinFirstSchedule).toBe(false);
+    expect(above.basis).toBe('NONE');
+  });
+
+  it('pays NOTHING above the limit when the employer undertook nothing', () => {
+    // Not an underpayment: there is no entitlement to underpay. What would be
+    // wrong is inventing one, or paying nil without anybody having decided.
+    const scope = overtimeScope(900000, AUGUST, null);
+    const priced = priceDay(day({ workedMinutes: 300 }), 'REST_DAY', { ...ctx, scope });
+    expect(priced.totalCents).toBe(0);
+    expect(priced.entitlement).toBe('NONE');
+    expect(describePricedDay(priced)).toMatch(/nothing payable/);
+  });
+
+  it('pays above the limit as a COMPANY BENEFIT when the employer undertook to', () => {
+    const scope = overtimeScope(900000, AUGUST, 'PAY_AT_STATUTORY_RATES');
+    const priced = priceDay(day({ workedMinutes: 300 }), 'REST_DAY', { ...ctx, scope });
+    expect(priced.entitlement).toBe('CONTRACTUAL');
+    // Same money, different footing — and the payslip says which.
+    expect(priced.totalCents).toBe(12000);
+    expect(priced.provision).toMatch(/Company benefit/);
+    expect(priced.provision).toMatch(/outside the First Schedule limit/);
+  });
+
+  it('pays nothing above the limit when the employer said it does not', () => {
+    const scope = overtimeScope(900000, AUGUST, 'NOT_PAID');
+    expect(priceDay(day({ workedMinutes: 300 }), 'REST_DAY', { ...ctx, scope }).totalCents).toBe(0);
+  });
+
+  it('ignores a contract that would pay LESS than the Act to somebody the Act reaches', () => {
+    // s.60I(2): a contract may better the Act and may never worsen it, so
+    // NOT_PAID cannot take statutory overtime away from a RM3,120 employee.
+    const scope = overtimeScope(312000, AUGUST, 'NOT_PAID');
+    expect(scope.basis).toBe('STATUTORY');
+    expect(priceDay(day({ workedMinutes: 300 }), 'REST_DAY', { ...ctx, scope }).totalCents).toBe(12000);
+  });
+
+  it('refuses to judge a period before the limitation took its current form', () => {
+    // The First Schedule limit dates from 1 January 2023. A 2022 run is not
+    // re-judged against it.
+    const scope = overtimeScope(312000, new Date('2022-06-30T00:00:00.000Z'), null);
+    expect(scope.basis).toBe('NONE');
+    expect(scope.reason).toMatch(/predates/);
   });
 });

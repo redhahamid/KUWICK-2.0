@@ -34,7 +34,21 @@ import {
 // Components and their statutory treatment
 // ---------------------------------------------------------------------------
 
-export type ComponentKind = 'EARNING' | 'DEDUCTION';
+/**
+ * THREE KINDS, NOT TWO — and the third is the one s.18A forced into the open.
+ *
+ * A day of unpaid leave REDUCES THE WAGES. Section 18A says what an incomplete
+ * month's wages ARE; it does not describe something withheld from a full
+ * month's. Zakat, a uniform charge or an advance recovery are the opposite:
+ * the wages are whole and something is taken out of them.
+ *
+ * Both were modelled as `DEDUCTION`, which made the payslip's own arithmetic
+ * contradict itself — gross was quietly reduced by the leave AND the leave was
+ * counted again among the deductions, so gross minus deductions did not equal
+ * net. The run-level invariant caught it the first time a full run met an
+ * employee with unpaid leave.
+ */
+export type ComponentKind = 'EARNING' | 'DEDUCTION' | 'WAGE_REDUCTION';
 
 /**
  * What a component is liable to.
@@ -172,7 +186,9 @@ export function computeBases(lines: PayrollComponentLine[]): BasesResult {
   for (const line of lines) {
     const amount = toCents(line.amount);
     const sign = line.kind === 'EARNING' ? 1 : -1;
-    gross += sign * amount;
+    // A withholding does NOT reduce the wages — it comes out of them. Only an
+    // earning or a wage reduction moves gross.
+    if (line.kind !== 'DEDUCTION') gross += sign * amount;
     if (line.liability.epf) {
       epf += sign * amount;
       // EPF wages excluding additional remuneration, so the MTD method can ask
@@ -205,19 +221,32 @@ export function computeBases(lines: PayrollComponentLine[]): BasesResult {
 // ---------------------------------------------------------------------------
 
 /**
- * The divisors are CLINIC POLICY, not law, and the clinic uses two different
- * ones on purpose: overtime is priced on a 26-day month and unpaid leave is
- * deducted on a 31-day month. Both are configurable per employer and neither
- * has a default baked in here.
+ * ONE OF THESE IS POLICY AND THE OTHER IS NOT, which is why they are commented
+ * apart rather than presented as a matched pair of settings.
+ *
+ * `overtimeDaysPerMonth` prices the ordinary rate under s.60I(1A). The Act
+ * fixes it at 26 and s.60I(2) lets an employer use another method only where
+ * the result is no lower, so this is a floor a clinic may better and never
+ * worsen.
+ *
+ * `unpaidLeaveDaysPerMonth` is GONE from the calculation. It configured a fixed
+ * divisor for unpaid leave, and s.18A leaves nothing to configure: an
+ * incomplete month — expressly including leave of absence without pay — is
+ * priced on the actual days in that wage period. The field remains on the run
+ * so historical runs still say what they applied, and nothing reads it.
  */
 export interface OrdinaryRateConfig {
   overtimeDaysPerMonth: number;
+  /** @deprecated s.18A governs unpaid leave; kept only on historical runs. */
   unpaidLeaveDaysPerMonth: number;
   hoursPerDay: number;
 }
 
 export interface OrdinaryRates {
-  /** Daily rate used to deduct unpaid leave. */
+  /**
+   * Daily rate for unpaid leave, from s.18A — monthly wages over the ACTUAL
+   * days in this wage period, not a configured divisor.
+   */
   unpaidLeaveDailyCents: number;
   /** Daily rate used to price overtime. */
   overtimeDailyCents: number;
@@ -232,8 +261,13 @@ export interface OrdinaryRates {
  * most rows, which is exactly the kind of difference that makes a
  * reconciliation against the old spreadsheet impossible to sign off.
  */
-export function ordinaryRates(orpBaseCents: number, config: OrdinaryRateConfig): OrdinaryRates {
-  const upl = config.unpaidLeaveDaysPerMonth > 0 ? orpBaseCents / config.unpaidLeaveDaysPerMonth : 0;
+export function ordinaryRates(
+  orpBaseCents: number,
+  config: OrdinaryRateConfig,
+  daysInWagePeriod: number,
+): OrdinaryRates {
+  // s.18A, not policy: the divisor is the length of THIS month.
+  const upl = daysInWagePeriod > 0 ? orpBaseCents / daysInWagePeriod : 0;
   const otDaily = config.overtimeDaysPerMonth > 0 ? orpBaseCents / config.overtimeDaysPerMonth : 0;
   const otHourly = config.hoursPerDay > 0 ? Math.round(otDaily / config.hoursPerDay) : 0;
   return {
@@ -269,6 +303,13 @@ export function computeOvertime(tiers: OvertimeTier[], hourlyOrpCents: number): 
   return { tiers: results, totalCents: results.reduce((sum, t) => sum + t.totalCents, 0) };
 }
 
+/**
+ * s.18A — the wages a day of unpaid leave costs.
+ *
+ * `rates.unpaidLeaveDailyCents` is already `monthly / days in this month`, so
+ * this is the Act's formula expressed as a deduction. Rounding happens once,
+ * here, on the total rather than per day.
+ */
 export function unpaidLeaveDeductionCents(days: number, rates: OrdinaryRates): number {
   return Math.round(days * rates.unpaidLeaveDailyCents);
 }
@@ -324,6 +365,8 @@ export function computePayslip(
     (statutory.eis.employeeCents ?? 0) +
     (statutory.pcbCents ?? 0);
 
+  // Withholdings only. A wage reduction has already come off gross and
+  // counting it here as well would take it twice.
   const nonStatutoryDeductions = lines
     .filter((line) => line.kind === 'DEDUCTION')
     .reduce((sum, line) => sum + toCents(line.amount), 0);
@@ -340,9 +383,9 @@ export function computePayslip(
     statutory.eis.employeeCents === null ||
     statutory.pcbCents === null;
 
-  // `bases.grossCents` is already net of the deduction lines, so the employee's
-  // statutory share is the only further withholding.
-  const netCents = bases.grossCents - employeeStatutory;
+  // `bases.grossCents` is wages — earnings less any WAGE REDUCTION such as
+  // unpaid leave. Everything withheld comes off it once, here.
+  const netCents = bases.grossCents - employeeStatutory - nonStatutoryDeductions;
 
   return {
     lines,

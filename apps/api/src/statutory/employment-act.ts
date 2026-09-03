@@ -18,9 +18,16 @@
  *     with "Notwithstanding section 60I". So the divisor is the actual number
  *     of days in that month — 28, 29, 30 or 31 — and never 26.
  *
+ * AND SECTION 18A COVERS UNPAID LEAVE, not only joiners and leavers. It reaches
+ * any incomplete month, expressly including "leave of absence without pay for
+ * one or more days" — so a day of unpaid leave is priced at monthly wages over
+ * the DAYS IN THAT MONTH, exactly as a part-month of service is.
+ *
  * A clinic spreadsheet that deducts unpaid leave on a fixed 26-day month is
  * over-deducting by roughly a fifth of a day's pay per day absent. One that
- * uses a fixed 31 is under-deducting in every short month. Neither is the Act.
+ * uses a fixed 31 is under-deducting in every month shorter than 31 days, and
+ * by 10% in February. Neither is the Act, and neither is a policy an employer
+ * is free to adopt where s.18A governs.
  *
  * WHAT AN EMPLOYER MAY CHANGE, AND WHAT IT MAY NOT.
  *
@@ -32,6 +39,112 @@
  * distinction between legal requirement and clinic policy is kept visible
  * rather than blended into one configurable number.
  */
+
+/**
+ * THE FIRST SCHEDULE — WHO THE OVERTIME PROVISIONS ACTUALLY REACH.
+ *
+ * Since the Employment (Amendment) Act 2022 came into force on 1 January 2023
+ * the Act applies to ALL employees, but not every section does. The First
+ * Schedule limits the hours-and-overtime provisions — s.60(3) rest-day pay,
+ * s.60A overtime, s.60D(3) public-holiday pay — to employees whose WAGES DO
+ * NOT EXCEED RM4,000 A MONTH.
+ *
+ * So an employee above the threshold who works a Sunday has NO STATUTORY
+ * entitlement to rest-day pay. Whatever they are paid for it is a contractual
+ * or company benefit, owed because the employer promised it and not because
+ * the Act requires it. Those are different obligations with different
+ * consequences, and a payroll that cannot tell them apart will either invent
+ * an entitlement nobody has or withhold a benefit somebody was promised.
+ *
+ * WAGES, not gross pay. Section 2 excludes overtime and travelling allowance
+ * from wages, so the threshold is tested against the contractual monthly wage
+ * rather than against what the month happened to total.
+ */
+export const FIRST_SCHEDULE_WAGE_CEILING_CENTS = 400_000;
+
+/**
+ * When that limitation took its current form. Resolved by the PERIOD, so a
+ * historical run is not re-judged against a rule that came later.
+ */
+export const FIRST_SCHEDULE_EFFECTIVE_FROM = new Date('2023-01-01T00:00:00.000Z');
+
+/**
+ * WHY AN EMPLOYEE IS OR IS NOT PAID FOR EXTRA HOURS.
+ *
+ * Three answers, and they are not degrees of the same thing:
+ *
+ *  - STATUTORY — the Act requires it, at its own rates, as a floor.
+ *  - CONTRACTUAL — the Act does not reach this employee, and the employer has
+ *    undertaken to pay it anyway. The rates are the employer's.
+ *  - NONE — the Act does not reach them and the employer has undertaken
+ *    nothing. Hours are recorded; no money is owed.
+ */
+export type OvertimeEntitlementBasis = 'STATUTORY' | 'CONTRACTUAL' | 'NONE';
+
+export interface OvertimeScope {
+  readonly withinFirstSchedule: boolean;
+  readonly basis: OvertimeEntitlementBasis;
+  /** One line for the payslip and the exception list. */
+  readonly reason: string;
+}
+
+/**
+ * Whether the Act's overtime provisions reach this employee, and on what basis
+ * anything is owed.
+ *
+ * `contractualPolicy` is what the EMPLOYER has undertaken for employees the Act
+ * does not reach. It is deliberately not defaulted: an employer either promised
+ * overtime pay to a senior employee or did not, and neither answer can be
+ * guessed from a salary figure.
+ */
+export function overtimeScope(
+  monthlyWagesCents: number,
+  on: Date,
+  contractualPolicy: 'PAY_AT_STATUTORY_RATES' | 'NOT_PAID' | null,
+): OvertimeScope {
+  // Before the limitation took its current form this system holds no rule to
+  // apply, so it says so rather than assuming today's threshold applied then.
+  if (on < FIRST_SCHEDULE_EFFECTIVE_FROM) {
+    return {
+      withinFirstSchedule: false,
+      basis: 'NONE',
+      reason:
+        'This period predates the First Schedule limitation this system holds (1 January 2023), so overtime entitlement cannot be determined for it.',
+    };
+  }
+
+  if (monthlyWagesCents <= FIRST_SCHEDULE_WAGE_CEILING_CENTS) {
+    return {
+      withinFirstSchedule: true,
+      basis: 'STATUTORY',
+      reason:
+        'Wages are within the First Schedule limit of RM4,000 a month, so ss.60, 60A and 60D apply and their rates are a floor.',
+    };
+  }
+
+  if (contractualPolicy === 'PAY_AT_STATUTORY_RATES') {
+    return {
+      withinFirstSchedule: false,
+      basis: 'CONTRACTUAL',
+      reason:
+        'Wages exceed the First Schedule limit of RM4,000 a month, so the Act’s overtime provisions do not apply. This is paid as a company benefit at the same rates.',
+    };
+  }
+  if (contractualPolicy === 'NOT_PAID') {
+    return {
+      withinFirstSchedule: false,
+      basis: 'NONE',
+      reason:
+        'Wages exceed the First Schedule limit of RM4,000 a month and no overtime benefit is contracted, so no payment is due for extra hours.',
+    };
+  }
+  return {
+    withinFirstSchedule: false,
+    basis: 'NONE',
+    reason:
+      'Wages exceed the First Schedule limit of RM4,000 a month, so the Act’s overtime provisions do not reach this employee. Whether they are paid anything is the employer’s undertaking, and none is recorded.',
+  };
+}
 
 /** Section 60I(1A)-(1C): the divisor depends on how pay is fixed. */
 export type PayBasis = 'MONTHLY' | 'WEEKLY' | 'DAILY_OR_HOURLY_OR_PIECE';

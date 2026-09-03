@@ -75,6 +75,7 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       endDate?: string;
       taxProfile?: boolean;
       restDayOfWeek?: number | null;
+      overtimeContractPolicy?: 'PAY_AT_STATUTORY_RATES' | 'NOT_PAID';
     } = {},
   ) {
     const staff = await withTenantContext(prisma, tenantId, (tx) =>
@@ -105,6 +106,7 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
           : {}),
         // s.59 rest day. Passing null exercises the blocking path.
         ...(opts.restDayOfWeek === null ? {} : { restDayOfWeek: opts.restDayOfWeek ?? 0 }),
+        ...(opts.overtimeContractPolicy ? { overtimeContractPolicy: opts.overtimeContractPolicy } : {}),
       })
       .expect(201);
 
@@ -863,6 +865,156 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       // The old engine paid (2h + 5h) × RM16 × 1.5 = RM168 — an underpayment of
       // RM192 on one employee in one month.
       expect(line.overtimePay).toBe(360);
+    });
+
+    it('deducts unpaid leave on the month’s own length, not a configured 31', async () => {
+      // s.18A covers leave of absence without pay, not only joiners and
+      // leavers, so the divisor is the days in THAT wage period. February at a
+      // fixed 31 under-deducts by a tenth.
+      const staffId = await makeEmployee('February Absentee', '3100.00');
+      const leave = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.leaveRequest.create({
+          data: {
+            tenantId,
+            staffId,
+            leaveType: 'UNPAID',
+            startDate: new Date('2026-02-10T00:00:00.000Z'),
+            endDate: new Date('2026-02-10T00:00:00.000Z'),
+            status: 'APPROVED',
+            reason: 'Personal',
+          },
+        }),
+      );
+      expect(leave.id).toBeTruthy();
+
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: '2026-02', clinicId })
+        .expect(201);
+      const calc = await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer);
+      if (calc.status !== 200) throw new Error(`calculate ${calc.status}: ${JSON.stringify(calc.body)}`);
+      const detail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const line = detail.body.lines.find((row: { staffId: string }) => row.staffId === staffId);
+      // RM3,100 / 28 = RM110.71. The old fixed 31 said RM100.00.
+      expect(line.unpaidLeaveDeduction).toBe(110.71);
+    });
+
+    it('pays no statutory overtime above the First Schedule limit, and says why', async () => {
+      // The Act reaches all employees, but ss.60, 60A and 60D are limited to
+      // wages of RM4,000 a month or less. A RM9,000 doctor who works a Sunday
+      // has no statutory rest-day entitlement — and inventing one would be as
+      // wrong as withholding a benefit they were promised.
+      const staffId = await makeEmployee('Senior Doctor', '9000.00', { overtimeContractPolicy: 'NOT_PAID' });
+      await withTenantContext(prisma, tenantId, (tx) =>
+        tx.attendanceRecord.create({
+          data: {
+            tenantId,
+            staffId,
+            clinicId,
+            workDate: new Date('2026-08-16T00:00:00.000Z'), // a Sunday
+            status: 'PRESENT',
+            workedMinutes: 300,
+          },
+        }),
+      );
+
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const detail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const line = detail.body.lines.find((row: { staffId: string }) => row.staffId === staffId);
+      expect(line.overtimePay).toBe(0);
+    });
+
+    it('pays the same money as a COMPANY BENEFIT when the employer undertook to', async () => {
+      const staffId = await makeEmployee('Senior With Benefit', '9000.00', {
+        overtimeContractPolicy: 'PAY_AT_STATUTORY_RATES',
+      });
+      await withTenantContext(prisma, tenantId, (tx) =>
+        tx.attendanceRecord.create({
+          data: {
+            tenantId,
+            staffId,
+            clinicId,
+            workDate: new Date('2026-08-16T00:00:00.000Z'),
+            status: 'PRESENT',
+            workedMinutes: 300,
+          },
+        }),
+      );
+
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const detail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const line = detail.body.lines.find((row: { staffId: string }) => row.staffId === staffId);
+      // RM9,000 / 26 = RM346.15 for the day.
+      expect(line.overtimePay).toBe(346.15);
+      // And the payslip says it is a benefit, not an entitlement.
+      const entry = detail.body.lines
+        .find((row: { staffId: string }) => row.staffId === staffId)
+        .breakdown.provenance.find((row: { component: string }) => row.component === 'OVERTIME');
+      expect(entry.explanation).toMatch(/Company benefit/);
+      expect(entry.explanation).toMatch(/outside the First Schedule limit/);
+    });
+
+    it('BLOCKS an above-threshold employee when nobody recorded what they are owed', async () => {
+      // Not because they are owed something — they may not be. Because nobody
+      // has decided, and paying nil by default is as much a decision as paying
+      // 1.5×.
+      const staffId = await makeEmployee('Undecided Senior', '9000.00');
+      await withTenantContext(prisma, tenantId, (tx) =>
+        tx.attendanceRecord.create({
+          data: {
+            tenantId,
+            staffId,
+            clinicId,
+            workDate: new Date('2026-08-12T00:00:00.000Z'),
+            status: 'PRESENT',
+            workedMinutes: 450,
+          },
+        }),
+      );
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      const calculated = await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const exceptions = calculated.body.exceptions as { name: string; issue: string }[];
+      expect(exceptions.some((row) => /overtime provisions do not reach them/.test(row.issue))).toBe(true);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/approve`)
+        .set('Authorization', bearer)
+        .send({ acknowledgeStatutoryGap: true })
+        .expect(400);
     });
 
     it('BLOCKS somebody who worked when no rest day is designated for them', async () => {

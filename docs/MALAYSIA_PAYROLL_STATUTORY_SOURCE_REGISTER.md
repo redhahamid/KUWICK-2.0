@@ -233,11 +233,30 @@ own LINDUNG 24 JAM contribution schedule and participation guidance.**
 
 | Field | Value |
 |---|---|
-| **Rule** | Divisor for a deduction in respect of UNPAID LEAVE within a complete month |
-| **Authority / document** | **None held.** D9 covers ss. 18A, 60, 60A, 60D and 60I. s.18A governs an incomplete month of SERVICE — a joiner or a leaver — and opens "Notwithstanding section 60I"; it does not address an absence within a month the employee served throughout |
-| **Current behaviour** | Clinic policy, frozen onto each run (`orp_unpaid_leave_days`, default 31). A larger divisor deducts LESS, so the current default errs in the employee's favour rather than the employer's |
-| **Why it is not resolved** | Choosing ÷26 (the ordinary rate) or ÷actual days would be a legal determination from a document this system does not hold. Either is defensible and neither is evidenced here |
-| **Status** | **`UNVERIFIED`** — policy, not law, and labelled as such wherever it is shown |
+| **Rule** | Wages for an incomplete month, INCLUDING leave of absence without pay |
+| **Authority / document** | AGC / JTKSM, D9 s.18A, with the scope confirmed from current JTKSM material |
+| **Formula** | `monthly wages ÷ days in the particular wage period × eligible days` |
+| **Scope** | A joiner after the first of the month, a leaver before the end of it, **one or more days of leave without pay**, and national service. It opens "Notwithstanding section 60I", so the ÷26 ordinary rate does not apply |
+| **Divisor** | The actual length of that wage period — 28, 29, 30 or 31. Never 26 and never a fixed 31 |
+| **Implementation** | `workforce/proration.ts` — `prorationFor`, `proratedBasicCents`, `unpaidLeaveDeductionCents`; `payroll-calculation.ts` — `ordinaryRates` takes the month's length |
+| **Test** | `proration.spec.ts` — parameterised across 28, 29, 30 and 31-day periods; end to end in `workforce-payroll.e2e-spec.ts` (February) |
+| **Expected** | RM3,100/month, one day of unpaid leave: February RM110.71, leap February RM106.90, September RM103.33, August RM100.00. A fixed 31 said RM100.00 in every month — under-deducting by RM10.71 in February |
+| **Status** | **`OFFICIAL_SOURCE_VERIFIED`** |
+
+### Employment Act First Schedule — who the overtime provisions reach
+
+| Field | Value |
+|---|---|
+| **Rule** | Limitation of ss. 60, 60A and 60D by wages |
+| **Authority / document** | D10 — First Schedule as amended by the Employment (Amendment) Act 2022; current JTKSM material, relayed by the account holder |
+| **Effective** | 1 January 2023. The Act reaches all employees from that date; the hours-and-overtime provisions do not |
+| **Threshold** | Wages **not exceeding RM4,000 a month**. Tested on the contractual monthly wage, because s.2 excludes overtime and travelling allowance from "wages" |
+| **Above the threshold** | No statutory entitlement to rest-day pay, public-holiday pay or overtime. Anything paid is a contractual or company benefit, and Kuwick will not pay it unless the employer's undertaking is recorded |
+| **Below the threshold** | The Act's rates apply and s.60I(2) makes them a floor, so a contract saying "no overtime" cannot take them away |
+| **Implementation** | `statutory/employment-act.ts` — `FIRST_SCHEDULE_WAGE_CEILING_CENTS`, `overtimeScope`; `workforce/overtime-pricing.ts` carries the basis onto every priced day |
+| **Test** | `overtime-pricing.spec.ts` — "who the Act actually reaches"; end to end for RM9,000 both with and without an undertaking |
+| **Expected** | RM4,000.00 → STATUTORY. RM4,000.01 → not within the Schedule. RM9,000 with no undertaking → nil and a blocking exception. RM9,000 with one → the same money, marked a company benefit |
+| **Status** | **`OFFICIAL_SOURCE_VERIFIED`** |
 
 ---
 
@@ -296,6 +315,13 @@ schedule cannot change what an already-approved run computed.
 ## Still outstanding
 
 1. **LINDUNG 24 JAM** — PERKESO's own schedule and participation guidance.
+1. **The First Schedule's full exception list.** The RM4,000 wage limitation on
+   ss. 60, 60A and 60D is implemented. Other First Schedule exceptions — the
+   treatment of domestic employees, and of employees engaged in specified
+   categories of work regardless of wages — are **not** modelled, and no
+   employee is currently classified into them. A clinic employing anybody in
+   those categories would need that added before relying on the overtime
+   figures for them.
 1. **TP1 and TP3 capture** — the forms themselves. MTD is computed as though no
    TP1 had been filed, and TP3 previous-employment figures reach the engine only
    through the opening year-to-date import.

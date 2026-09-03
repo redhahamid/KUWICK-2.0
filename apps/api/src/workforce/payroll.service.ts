@@ -48,7 +48,12 @@ import {
 import { leaveDaysInYear } from './leave-balance';
 import { describeProration, proratedBasicCents, prorationFor } from './proration';
 import { classifyDay, describePricedDay, priceOvertime } from './overtime-pricing';
-import { MAX_HOURS_PER_DAY, checkOrdinaryRatePolicy } from '../statutory/employment-act';
+import {
+  FIRST_SCHEDULE_WAGE_CEILING_CENTS,
+  MAX_HOURS_PER_DAY,
+  checkOrdinaryRatePolicy,
+  overtimeScope,
+} from '../statutory/employment-act';
 import { CreatePayrollRunDto } from './dto/create-payroll-run.dto';
 import { PayrollAdjustmentDto } from './dto/payroll-adjustment.dto';
 import { ImportYtdOpeningDto } from './dto/import-ytd-opening.dto';
@@ -73,6 +78,14 @@ import {
 
 /// Components that reduce pay whichever way the amount is entered. Everything
 /// else is an earning unless the amount itself is negative.
+/**
+ * WHAT REDUCES THE WAGES, as against what is withheld from them.
+ *
+ * Unpaid leave is the first: s.18A says what an incomplete month's wages ARE,
+ * so a day of it makes the wage smaller rather than taking something out of a
+ * whole one. Everything else here is withheld from wages that are complete.
+ */
+const WAGE_REDUCTION_COMPONENTS = new Set(['UNPAID_LEAVE']);
 const DEDUCTION_COMPONENTS = new Set([
   'UNPAID_LEAVE', 'ZAKAT', 'ADVANCE_RECOVERY', 'UNIFORM', 'OTHER_DEDUCTION',
 ]);
@@ -399,7 +412,7 @@ export class PayrollService {
       // rates.
       const statutoryContext: StatutoryContext = { periodEnd };
       const statutoryStatus = statutoryStatusOf(periodEnd) as StatutoryStatus;
-      const statutoryStamp = stampFor(['EPF', 'SOCSO', 'EIS', 'PCB'], periodEnd);
+      const statutoryStamp = stampFor(['EPF', 'SOCSO', 'EIS', 'PCB', 'EMPLOYMENT_ACT', 'EA_FIRST_SCHEDULE'], periodEnd);
 
       // The month's public holidays, read ONCE for the run rather than per
       // employee. Work on one is paid at two days' ordinary rate under
@@ -696,7 +709,13 @@ export class PayrollService {
         // default of Sunday. Raised only where there is something to price, so
         // a clinic whose staff never work extra days is not nagged about a
         // field that would change nothing.
-        if (!employee.restDayOfWeek && attendance.some((row) => (row.workedMinutes ?? 0) > 0)) {
+        // Only where it changes an entitlement: an employee the Act does not
+        // reach has no statutory rest-day pay to get wrong.
+        if (
+          employee.restDayOfWeek === null &&
+          fullMonthlyCents <= FIRST_SCHEDULE_WAGE_CEILING_CENTS &&
+          attendance.some((row) => (row.workedMinutes ?? 0) > 0)
+        ) {
           raise('NO_REST_DAY', employee);
         }
 
@@ -749,7 +768,9 @@ export class PayrollService {
         // hour of overtime would raise the rate paid for the next one.
         // THE FULL monthly wage, never the prorated one — see the s.18A note.
         const orpBase = fullMonthlyCents;
-        const rates = ordinaryRates(orpBase, orpConfig);
+        // s.18A governs the unpaid-leave divisor, so the month's own length
+        // goes in rather than a configured 31.
+        const rates = ordinaryRates(orpBase, orpConfig, days);
 
         // -------------------------------------------------------------------
         // MATERIALISATION — upstream facts become reviewable rows.
@@ -774,6 +795,19 @@ export class PayrollService {
         // (s.60D(3)), so somebody who came in for two hours on Hari Raya was
         // paid three hours' worth against two days owed — an underpayment, and
         // the employer's liability.
+        // DOES THE ACT REACH THIS EMPLOYEE AT ALL? The First Schedule limits
+        // ss.60, 60A and 60D to wages not exceeding RM4,000 a month. Above
+        // that, anything paid is the employer's undertaking rather than the
+        // Act's requirement, and the two must not be presented as the same
+        // thing on a payslip or in a dispute.
+        const scope = overtimeScope(fullMonthlyCents, periodEnd, employee.overtimeContractPolicy);
+        const workedAnyDay = attendance.some((row) => (row.workedMinutes ?? 0) > 0);
+        if (workedAnyDay && !scope.withinFirstSchedule && !employee.overtimeContractPolicy) {
+          raise('OVERTIME_ENTITLEMENT_UNRECORDED', employee, {
+            wages: formatCents(fullMonthlyCents),
+          });
+        }
+
         const pricing = priceOvertime(
           attendance.map((row) => ({
             attendanceId: row.id,
@@ -785,6 +819,7 @@ export class PayrollService {
           (date) => classifyDay(date, { publicHolidayDates, restDayOfWeek: employee.restDayOfWeek }),
           {
             basis: 'MONTHLY',
+            scope,
             normalHoursPerDay: orpConfig.hoursPerDay,
             dailyOrpCents: rates.overtimeDailyCents,
             hourlyOrpCents: rates.overtimeHourlyCents,
@@ -941,7 +976,11 @@ export class PayrollService {
           componentLines.push({
             code: input.componentCode,
             label: input.label ?? input.componentCode,
-            kind: amountCents < 0 ? 'DEDUCTION' : DEDUCTION_COMPONENTS.has(input.componentCode) ? 'DEDUCTION' : 'EARNING',
+            kind: WAGE_REDUCTION_COMPONENTS.has(input.componentCode)
+              ? 'WAGE_REDUCTION'
+              : amountCents < 0 || DEDUCTION_COMPONENTS.has(input.componentCode)
+                ? 'DEDUCTION'
+                : 'EARNING',
             amount: fromCents(Math.abs(amountCents)),
             liability,
           });

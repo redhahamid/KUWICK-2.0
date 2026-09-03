@@ -6447,6 +6447,11 @@ model EmployeeProfile {
   /// this record.
   taxResidence       TaxResidence? @map("tax_residence")
   pcbCategory        PcbCategory?  @map("pcb_category")
+  /// What the employer undertook for extra hours when the Act does not reach
+  /// this employee (wages above the First Schedule's RM4,000). Ignored while
+  /// they are within the limit, where the Act's rates are a floor regardless.
+  overtimeContractPolicy OvertimeContractPolicy? @map("overtime_contract_policy")
+
   /// s.59 — THE REST DAY THE EMPLOYER DESIGNATED, 0 Sunday to 6 Saturday.
   ///
   /// Not inferable: a rest day is designated by the employer and told to the
@@ -6862,6 +6867,21 @@ model StaffBenefitUsage {
 /// a payroll run be approved, and it means a person opened the authority's
 /// published schedule and compared it — not that the numbers look plausible,
 /// and not that they came from the clinic's own spreadsheet.
+/// WHAT THE EMPLOYER UNDERTOOK for an employee the Employment Act's overtime
+/// provisions do not reach.
+///
+/// The First Schedule limits ss.60, 60A and 60D to employees whose wages do not
+/// exceed RM4,000 a month. Above that the Act requires nothing, so whether
+/// anything is paid for a Sunday or a public holiday is a matter of contract.
+/// NULL means nobody has said, and nothing is paid — recorded as an exception
+/// rather than resolved by assuming either answer.
+enum OvertimeContractPolicy {
+  /// The employer pays the Act's rates as a company benefit.
+  PAY_AT_STATUTORY_RATES
+  /// No overtime pay. Common for senior and professional staff.
+  NOT_PAID
+}
+
 /// Tax residence for MTD. Not citizenship and not immigration status: a
 /// non-citizen who meets the residence test is RESIDENT, and MTD for a
 /// non-resident is a flat 30% of remuneration with no deductions at all, so

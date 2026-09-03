@@ -51,6 +51,14 @@ const deduction = (code: string, amount: number): PayrollComponentLine => ({
   amount,
   liability: DEFAULT_COMPONENT_LIABILITY[code] ?? LIABILITY_BY_STATUS_CODE['1'],
 });
+/** s.18A — unpaid leave makes the WAGES smaller; it is not withheld from them. */
+const wageReduction = (code: string, amount: number): PayrollComponentLine => ({
+  code,
+  label: code,
+  kind: 'WAGE_REDUCTION',
+  amount,
+  liability: DEFAULT_COMPONENT_LIABILITY[code] ?? LIABILITY_BY_STATUS_CODE['2'],
+});
 
 describe('EPF — the Third Schedule is a table, not a percentage', () => {
   // payroll_listing.xlsx JAN 26, rows 5, 6, 10, 18 and 29.
@@ -198,10 +206,31 @@ describe('the three bases are different, which is the whole point', () => {
   });
 
   it('lets unpaid leave reduce every base, while a uniform charge reduces none', () => {
-    const bases = computeBases([earning('BASIC', 1800), deduction('UNPAID_LEAVE', 58.06), deduction('UNIFORM', 65.35)]);
+    const bases = computeBases([
+      earning('BASIC', 1800),
+      wageReduction('UNPAID_LEAVE', 58.06),
+      deduction('UNIFORM', 65.35),
+    ]);
     expect(bases.epfCents).toBe(174194); // 1800 - 58.06
     expect(bases.socsoCents).toBe(174194);
-    expect(bases.grossCents).toBe(167659); // both deductions reduce pay
+    // GROSS IS WAGES. s.18A makes an incomplete month's wages smaller, so the
+    // leave comes off here; the uniform is withheld FROM those wages and comes
+    // off net instead. Both used to reduce gross AND both were counted again
+    // among the deductions, so gross minus deductions did not equal net.
+    expect(bases.grossCents).toBe(174194);
+  });
+
+  it('takes a withholding out of net exactly once, and not out of gross', () => {
+    const slip = computePayslip(
+      [earning('BASIC', 1800), wageReduction('UNPAID_LEAVE', 58.06), deduction('UNIFORM', 65.35)],
+      CTX,
+      { ...under60, epfApplicable: false, socsoApplicable: false, eisApplicable: false, pcbApplicable: false },
+    );
+    expect(slip.grossCents).toBe(174194);
+    expect(slip.employeeDeductionCents).toBe(6535);
+    expect(slip.netCents).toBe(174194 - 6535);
+    // The invariant the run enforces: gross − deductions = net.
+    expect(slip.grossCents - slip.employeeDeductionCents).toBe(slip.netCents);
   });
 
   it('keeps mileage out of every statutory base but inside gross', () => {
@@ -229,18 +258,31 @@ describe('the three bases are different, which is the whole point', () => {
 });
 
 describe('ordinary rate of pay, overtime and unpaid leave', () => {
-  // AAS Summary: OT divisor 26 days, UPL divisor 31 days, 7.5 hours a day.
+  // `unpaidLeaveDaysPerMonth` is no longer read: s.18A fixes that divisor at
+  // the month's own length. It stays in the shape so historical runs can still
+  // say what they applied.
   const config = { overtimeDaysPerMonth: 26, unpaidLeaveDaysPerMonth: 31, hoursPerDay: 7.5 };
 
-  it('uses two different day divisors, as the clinic does', () => {
-    const rates = ordinaryRates(210000, config);
-    expect(rates.unpaidLeaveDailyCents).toBe(6774); // 2100 / 31
+  it('uses two different divisors for two different questions', () => {
+    // s.60I(1A) fixes 26 for the ordinary rate; s.18A uses the days in the
+    // wage period. They are not a matched pair of clinic settings.
+    const rates = ordinaryRates(210000, config, 31);
+    expect(rates.unpaidLeaveDailyCents).toBe(6774); // 2100 / 31, an August day
     expect(rates.overtimeDailyCents).toBe(8077); // 2100 / 26
     expect(rates.overtimeHourlyCents).toBe(1077); // and then / 7.5, to the sen
   });
 
+  it('follows the month for unpaid leave, and ignores the configured divisor', () => {
+    // The same wage in February. A configured 31 would have said 67.74 here,
+    // under-deducting by a tenth, and the config says 31.
+    const february = ordinaryRates(210000, config, 28);
+    expect(february.unpaidLeaveDailyCents).toBe(7500); // 2100 / 28
+    // The ordinary rate does NOT move with the month — s.60I(1A) is fixed.
+    expect(february.overtimeDailyCents).toBe(8077);
+  });
+
   it('rounds the hourly rate to the sen BEFORE applying the multiplier', () => {
-    const rates = ordinaryRates(210000, config);
+    const rates = ordinaryRates(210000, config, 31);
     const { totalCents } = computeOvertime([{ label: '1.5x', hours: 3, multiplier: 1.5 }], rates.overtimeHourlyCents);
     // 10.77 x 1.5 = 16.155 -> 16.16 per hour, x3
     expect(totalCents).toBe(4848);
@@ -262,9 +304,9 @@ describe('ordinary rate of pay, overtime and unpaid leave', () => {
     expect(DEFAULT_COMPONENT_LIABILITY.OVERTIME.ordinaryRateOfPay).toBe(false);
   });
 
-  it('deducts unpaid leave on the 31-day divisor', () => {
-    const rates = ordinaryRates(180000, config);
-    expect(unpaidLeaveDeductionCents(1, rates)).toBe(5806); // matches listing row 18
+  it('deducts unpaid leave at the s.18A rate for the month in hand', () => {
+    const august = ordinaryRates(180000, config, 31);
+    expect(unpaidLeaveDeductionCents(1, august)).toBe(5806); // matches listing row 18
   });
 });
 

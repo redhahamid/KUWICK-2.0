@@ -285,6 +285,7 @@ export class EmployeeService {
         pcbCategory: profile.pcbCategory,
         qualifyingChildren: profile.qualifyingChildren,
         restDayOfWeek: profile.restDayOfWeek,
+        overtimeContractPolicy: profile.overtimeContractPolicy,
         epfMembership: profile.epfMembership,
         epfApplicable: profile.epfApplicable,
         socsoApplicable: profile.socsoApplicable,

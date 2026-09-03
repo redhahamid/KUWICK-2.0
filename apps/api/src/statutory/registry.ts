@@ -4,7 +4,13 @@ import { EPF_PARTS, EPF_TABLE_CEILING_CENTS } from './epf-third-schedule';
 import { HRD_LEVY_RATE_MANDATORY_PERCENT, HRD_LEVY_RATE_OPTIONAL_PERCENT } from './hrd-levy';
 import { PCB_TABLE_1, DEDUCTION_INDIVIDUAL_CENTS, NON_RESIDENT_RATE_PERCENT } from './pcb-2026';
 import { SOCSO_BANDS, SOCSO_WAGE_CEILING_CENTS } from './socso-act4';
-import { MONTHLY_ORP_DIVISOR, OVERTIME_MULTIPLIERS, WEEKLY_ORP_DIVISOR } from './employment-act';
+import {
+  FIRST_SCHEDULE_EFFECTIVE_FROM,
+  FIRST_SCHEDULE_WAGE_CEILING_CENTS,
+  MONTHLY_ORP_DIVISOR,
+  OVERTIME_MULTIPLIERS,
+  WEEKLY_ORP_DIVISOR,
+} from './employment-act';
 
 /**
  * WHICH SCHEDULE A RUN WAS CALCULATED AGAINST — named, dated and hashed.
@@ -75,7 +81,20 @@ export function meetsApprovalBar(state: VerificationState): boolean {
 }
 
 /** The schemes a Malaysian payroll run has to answer for. */
-export type StatutoryScheme = 'EPF' | 'SOCSO' | 'EIS' | 'PCB' | 'HRD_LEVY' | 'EMPLOYMENT_ACT';
+export type StatutoryScheme =
+  | 'EPF'
+  | 'SOCSO'
+  | 'EIS'
+  | 'PCB'
+  | 'HRD_LEVY'
+  | 'EMPLOYMENT_ACT'
+  /**
+   * WHO the Act's hours-and-overtime provisions reach, which is a separate rule
+   * from what they say and took effect on a different date. Kept apart so a run
+   * stamps both — the edition that priced the day AND the limitation that
+   * decided whether it was payable at all.
+   */
+  | 'EA_FIRST_SCHEDULE';
 
 export interface StatutorySchedule {
   /** Stable identifier, stamped onto runs. Never reused for different content. */
@@ -200,12 +219,25 @@ export const STATUTORY_SCHEDULES: readonly StatutorySchedule[] = [
     effectiveTo: null,
     verification: 'OFFICIAL_SOURCE_VERIFIED',
     evidence:
-      'Divisors and multipliers read off the sections themselves — s.60I(1A) ÷26 for the ordinary rate, s.18A for an incomplete month. The Act publishes no worked example.',
+      'Divisors and multipliers read off the sections themselves — s.60I(1A) ÷26 for the ordinary rate, s.18A for an incomplete month, which JTKSM confirms covers leave of absence without pay as well as joiners and leavers. The Act publishes no worked example.',
     contentHash: hashOf({
       monthly: MONTHLY_ORP_DIVISOR,
       weekly: WEEKLY_ORP_DIVISOR,
       overtime: OVERTIME_MULTIPLIERS,
     }),
+  },
+  {
+    id: 'EA_FIRST_SCHEDULE_2023_01',
+    scheme: 'EA_FIRST_SCHEDULE',
+    authority: 'AGC / JTKSM',
+    document: 'D10 — Employment Act 1955, First Schedule, as amended by the Employment (Amendment) Act 2022',
+    section: 'First Schedule — limitation of ss. 60, 60A and 60D by wages',
+    effectiveFrom: FIRST_SCHEDULE_EFFECTIVE_FROM,
+    effectiveTo: null,
+    verification: 'OFFICIAL_SOURCE_VERIFIED',
+    evidence:
+      'Current JTKSM material, relayed by the account holder: the Act reaches all employees from 1 January 2023, but the hours-and-overtime provisions are limited to wages not exceeding RM4,000 a month.',
+    contentHash: hashOf({ ceiling: FIRST_SCHEDULE_WAGE_CEILING_CENTS, from: FIRST_SCHEDULE_EFFECTIVE_FROM.toISOString() }),
   },
 ];
 

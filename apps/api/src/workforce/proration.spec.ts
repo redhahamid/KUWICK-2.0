@@ -1,4 +1,4 @@
-import { describeProration, proratedBasicCents, prorationFor } from './proration';
+import { describeProration, proratedBasicCents, prorationFor, unpaidLeaveDeductionCents } from './proration';
 
 /** August 2026 — 31 days. */
 const AUG = {
@@ -103,5 +103,55 @@ describe('a stored timestamp with a time on it', () => {
       endDate: null,
     });
     expect(p.daysEligible).toBe(12);
+  });
+});
+
+describe('unpaid leave is s.18A too, not clinic policy', () => {
+  /*
+   * THE CORRECTION THIS PINS.
+   *
+   * Section 18A reaches ANY incomplete month, expressly including leave of
+   * absence without pay for one or more days — not only joiners and leavers.
+   * Kuwick deducted on a configured, fixed 31-day divisor, which under-deducts
+   * in every month shorter than 31 days and by a tenth in February.
+   *
+   * RM3,100 a month makes the arithmetic checkable at a glance.
+   */
+  it.each([
+    // [days in the wage period, month, one day's deduction in cents]
+    [28, 'February 2026', 11071],
+    [29, 'February 2028 (a leap year)', 10690],
+    [30, 'September 2026', 10333],
+    [31, 'August 2026', 10000],
+  ])('divides by %s — %s — giving %s cents a day', (days, _month, expected) => {
+    expect(unpaidLeaveDeductionCents(310000, 1, days as number)).toBe(expected);
+  });
+
+  it('costs a tenth more in February than the fixed 31 did', () => {
+    // The whole of the defect, in one comparison: the same day of leave.
+    const underTheAct = unpaidLeaveDeductionCents(310000, 1, 28);
+    const underTheOldPolicy = Math.round(310000 / 31);
+    expect(underTheAct).toBe(11071);
+    expect(underTheOldPolicy).toBe(10000);
+    expect(underTheAct - underTheOldPolicy).toBe(1071);
+  });
+
+  it('never deducts more than the month contains', () => {
+    // Somebody absent every day of the period is owed nothing, not less than
+    // nothing, and a run that produced a negative deduction would add pay.
+    expect(unpaidLeaveDeductionCents(310000, 40, 31)).toBe(310000);
+    expect(unpaidLeaveDeductionCents(310000, 0, 31)).toBe(0);
+    expect(unpaidLeaveDeductionCents(310000, -3, 31)).toBe(0);
+  });
+
+  it('composes with a part-month of service without charging the same days twice', () => {
+    // s.18A gives ONE formula: monthly x eligible / days. A joiner on the 20th
+    // who then took a day of unpaid leave has 11 eligible days of 31, and
+    // "prorate, then deduct" must land on exactly that.
+    const p = prorationFor({ ...AUG, startDate: on('2026-08-20'), endDate: null });
+    const prorated = proratedBasicCents(310000, p, 31); // 12 days served
+    const afterLeave = prorated - unpaidLeaveDeductionCents(310000, 1, 31);
+    const directly = Math.round((310000 / 31) * 11);
+    expect(afterLeave).toBe(directly);
   });
 });

@@ -85,6 +85,15 @@ export class UpsertEmployeeDto {
    */
   @IsOptional() @IsInt() @Min(0) @Max(6) restDayOfWeek?: number;
 
+  /**
+   * What the employer undertook for extra hours when the Act does not reach
+   * this employee — wages above the First Schedule's RM4,000 a month. Ignored
+   * below that limit, where the Act's rates are a floor regardless.
+   */
+  @IsOptional()
+  @IsIn(['PAY_AT_STATUTORY_RATES', 'NOT_PAID'])
+  overtimeContractPolicy?: 'PAY_AT_STATUTORY_RATES' | 'NOT_PAID';
+
   @IsOptional() @IsUUID() leavePolicyId?: string;
   @IsOptional() @IsString() @MaxLength(2000) notes?: string;
 }

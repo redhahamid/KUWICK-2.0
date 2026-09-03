@@ -229,6 +229,28 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    * underpayment, and an underpayment is the employer's liability rather than
    * a discrepancy somebody notices later.
    */
+  /*
+   * Above the First Schedule limit, with nothing recorded about what the
+   * employer undertook.
+   *
+   * BLOCKING, and NOT because the employee is owed something — they may well
+   * not be. It blocks because nobody has decided, and paying nil by default is
+   * as much a decision as paying 1.5×. An employer that does not pay overtime
+   * to senior staff says so once and never sees this again.
+   */
+  OVERTIME_ENTITLEMENT_UNRECORDED: {
+    code: 'OVERTIME_ENTITLEMENT_UNRECORDED',
+    severity: 'BLOCKING',
+    overridable: false,
+    cause: (c) =>
+      `They worked extra hours, and on wages of ${String(c.wages)} a month the Employment Act's overtime provisions do not reach them.`,
+    consequence:
+      'The First Schedule limits ss.60, 60A and 60D to wages of RM4,000 a month or less, so nothing is owed ' +
+      'statutorily. Whether they are paid anything is what the employer undertook, and nothing is recorded.',
+    remediation:
+      'Say on their employee record whether overtime is paid as a company benefit or not paid at all. Either answer settles it; leaving it blank does not.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+  },
   NO_REST_DAY: {
     code: 'NO_REST_DAY',
     severity: 'BLOCKING',
