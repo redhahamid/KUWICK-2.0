@@ -312,6 +312,36 @@ to remove.
 A payroll run freezes the statutory version it used. A later correction to a
 schedule cannot change what an already-approved run computed.
 
+## Where a component's statutory treatment comes from
+
+`pay_components` — the clinic's own effective-dated rows — and nowhere else.
+The payroll calculation used to read a hardcoded map instead, so the screen
+where a clinic records that an allowance is EPF-exempt drove nothing. The two
+disagreed in **eight of sixteen entries**, and two of those moved money:
+
+| Component | Engine map | Catalogue | Effect |
+|---|---|---|---|
+| `ALLOWANCE`, `ATTENDANCE_ALLOWANCE` | in the ordinary-rate base | not in it | prices overtime differently |
+| `ZAKAT` | PCB-liable | not PCB-liable | **under-deducted tax twice over** |
+| `UNPAID_LEAVE` | — | in the ordinary-rate base | shrank the overtime rate for an absent employee |
+| `CLAIM_REIMBURSEMENT` | present | absent | a component the clinic could not see |
+| `PCB` | absent | present | handled as an override |
+
+The zakat one is the worst: the deduction reduced the taxable base **and** the
+MTD engine applied zakat as relief against the month's tax. RM200 of zakat
+under-deducted PCB by **RM38.00** in the month measured. Under-deducted tax is
+the employee's bill at assessment.
+
+The engine's map is now derived from the catalogue, so they cannot diverge
+again, and the run resolves treatments **as at the period** — correcting a
+component today cannot reprice a month already paid. A run with no catalogue
+covering its period refuses rather than paying money nothing can say the
+liability of.
+
+`UNPAID_LEAVE` has also left the ordinary-rate base. s.60I(1A) builds the rate
+from the monthly RATE of pay — what the contract says, not what the month paid —
+so a month with unpaid leave still prices overtime from the full wage.
+
 ## Still outstanding
 
 1. **LINDUNG 24 JAM** — PERKESO's own schedule and participation guidance.

@@ -143,10 +143,23 @@ export const SEED_PAY_COMPONENTS: SeedPayComponent[] = [
     additionalRemuneration: false, prorated: false, employerSide: false,
   },
   {
+    // GROSS_AND_NET because s.18A makes an incomplete month's WAGES smaller —
+    // this is not withheld from whole wages the way zakat or a uniform charge
+    // is. That distinction is what `kindOf` reads to tell the two apart.
     code: 'UNPAID_LEAVE', name: 'Unpaid leave', type: 'DEDUCTION', category: 'PAYROLL_DEDUCTION',
     includeIn: 'GROSS_AND_NET',
     pcbLiable: true, epfLiable: true, socsoLiable: true, eisLiable: true, hrdLiable: true,
-    includeInOrpBase: true, includeInUnpaidLeaveBase: true,
+    /*
+     * NOT in the ordinary-rate base, and the correction matters.
+     *
+     * s.60I(1A) builds the rate from the MONTHLY RATE OF PAY — what the
+     * contract says, not what this month happened to pay. A month with three
+     * days of unpaid leave still prices overtime from the full monthly wage.
+     * Marked `true` here, it would have shrunk the rate an hour of overtime is
+     * paid at because the employee had been absent, which the Act does not say
+     * and which compounds one deduction into another.
+     */
+    includeInOrpBase: false, includeInUnpaidLeaveBase: true,
     additionalRemuneration: false, prorated: false, employerSide: false,
   },
   {
@@ -180,6 +193,27 @@ export const SEED_PAY_COMPONENTS: SeedPayComponent[] = [
   {
     code: 'PCB', name: 'PCB (monthly tax deduction)', type: 'DEDUCTION', category: 'TAX_DEDUCTION',
     includeIn: 'NET_ONLY',
+    pcbLiable: false, epfLiable: false, socsoLiable: false, eisLiable: false, hrdLiable: false,
+    includeInOrpBase: false, includeInUnpaidLeaveBase: false,
+    additionalRemuneration: false, prorated: false, employerSide: false,
+  },
+  {
+    /*
+     * A REIMBURSEMENT OF ACTUAL EXPENDITURE, not remuneration — the clinic is
+     * giving back money the employee already spent on its behalf.
+     *
+     * It was in the engine's hardcoded map and NOT in this catalogue, so a
+     * component the payroll knew about was one the clinic could neither see nor
+     * configure. Seeded here at the treatment the engine applied, which is what
+     * the clinic's own workbook does. THAT IS NOT A VERIFIED STATUTORY
+     * DETERMINATION: whether a particular reimbursement is wages turns on what
+     * it reimburses, and settling it needs KWSP's and PERKESO's own
+     * definitions. It ships with the same provenance as every other flag here.
+     */
+    // PERQUISITE is the nearest category this schema has; a reimbursement is
+    // not really one, and the mismatch is recorded rather than papered over.
+    code: 'CLAIM_REIMBURSEMENT', name: 'Claim reimbursement', type: 'ADDITION', category: 'PERQUISITE',
+    includeIn: 'GROSS_AND_NET',
     pcbLiable: false, epfLiable: false, socsoLiable: false, eisLiable: false, hrdLiable: false,
     includeInOrpBase: false, includeInUnpaidLeaveBase: false,
     additionalRemuneration: false, prorated: false, employerSide: false,

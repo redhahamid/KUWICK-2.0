@@ -63,6 +63,14 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       .send({ name: `HR Employer ${randomId().slice(0, 8)}` })
       .expect(201);
     legalEmployerId = employer.body.id;
+
+    // THE PAY COMPONENT CATALOGUE. Payroll reads each component's statutory
+    // treatment from these effective-dated rows, so a run without them refuses
+    // rather than paying money nothing can say the liability of.
+    await request(app.getHttpServer())
+      .post('/workforce/pay-components/seed')
+      .set('Authorization', bearer)
+      .expect(201);
   });
 
   async function makeEmployee(
@@ -1052,6 +1060,62 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         .set('Authorization', bearer)
         .send({ acknowledgeStatutoryGap: true })
         .expect(400);
+    });
+
+    it('refuses to run at all when no pay component catalogue covers the period', async () => {
+      // THE DEFECT THIS GUARDS. Payroll used to read a hardcoded map of
+      // component treatments, so it would happily pay an allowance with no
+      // catalogue row behind it — silently EPF-exempt, silently untaxed,
+      // configurable nowhere. It now reads the clinic's own effective-dated
+      // rows, and no rows means no run.
+      await makeEmployee('No Catalogue', '3000.00');
+      await withTenantContext(prisma, tenantId, (tx) => tx.payComponent.deleteMany({}));
+
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      const refused = await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(400);
+      expect(refused.body.message).toMatch(/No pay components are configured/);
+    });
+
+    it('takes a component’s statutory treatment from the CATALOGUE, not from the engine', async () => {
+      // The proof that the clinic's configuration actually drives the payslip.
+      // Mark the standard allowance EPF-exempt from this period and the EPF
+      // figure has to move; under the hardcoded map it could not.
+      const staffId = await makeEmployee('Allowance Earner', '3000.00');
+      await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payComponent.updateMany({ where: { code: 'ALLOWANCE' }, data: { epfLiable: false } }),
+      );
+      await request(app.getHttpServer())
+        .post('/workforce/payroll/inputs')
+        .set('Authorization', bearer)
+        .send({ staffId, period: PERIOD, componentCode: 'ALLOWANCE', amount: '500.00', label: 'Fixed allowance' })
+        .expect(201);
+
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const detail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const line = detail.body.lines.find((row: { staffId: string }) => row.staffId === staffId);
+      // EPF wages are RM3,000, not RM3,500: the allowance is out of the base
+      // because the CATALOGUE says so.
+      expect(line.epfEmployee).toBe(330);
+      // And it is still in gross, and still taxed.
+      expect(line.grossPay).toBe(3500);
     });
 
     it('LOCKS an approved run — the database refuses to change a payslip line', async () => {

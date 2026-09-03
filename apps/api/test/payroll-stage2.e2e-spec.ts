@@ -359,13 +359,23 @@ describe('Malaysia payroll: employer, salary history, inputs and snapshots (e2e)
     expect(list.body.components.every((c: { verificationStatus: string }) => c.verificationStatus === 'DRAFT')).toBe(true);
   });
 
-  it('reproduces today’s ORP base exactly: basic pay only, and the question stays open', async () => {
+  it('puts BASIC PAY ALONE in the ordinary-rate base, now that s.60I has been read', async () => {
+    // This asserted ['BASIC', 'UNPAID_LEAVE'] while its own comment said s.60I
+    // had not been read. It has now: s.60I(1A) builds the rate from the
+    // MONTHLY RATE OF PAY — what the contract says, not what this month paid —
+    // so a month with unpaid leave still prices overtime from the full wage.
+    // Leaving unpaid leave in the base shrank the rate an hour of overtime is
+    // paid at because the employee had been absent, compounding one deduction
+    // into another.
     const list = await request(server()).get('/workforce/pay-components').set('Authorization', bearer).expect(200);
     const inOrp = list.body.components.filter((c: { includeInOrpBase: boolean }) => c.includeInOrpBase);
-    expect(inOrp.map((c: { code: string }) => c.code).sort()).toEqual(['BASIC', 'UNPAID_LEAVE']);
-    // Allowance is EPF wages but is NOT seeded into the ordinary-rate base,
-    // because s60I has not been read and switching it on would move every
-    // overtime figure on a guess.
+    expect(inOrp.map((c: { code: string }) => c.code).sort()).toEqual(['BASIC']);
+
+    // Allowance is EPF wages and is still NOT in the ordinary-rate base. That
+    // remains open: the run takes the contractual monthly salary rather than
+    // assembling the base from recurring components, so marking an allowance in
+    // would say one thing while the calculation did another — and the run
+    // refuses rather than ignoring it. See `checkOrdinaryRateBase`.
     const allowance = list.body.components.find((c: { code: string }) => c.code === 'ALLOWANCE');
     expect(allowance.epfLiable).toBe(true);
     expect(allowance.includeInOrpBase).toBe(false);

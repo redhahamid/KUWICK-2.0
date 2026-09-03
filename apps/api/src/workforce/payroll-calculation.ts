@@ -1,4 +1,5 @@
 import { MoneyLike, fromCents, toCents } from '../finance/money';
+import { SEED_PAY_COMPONENTS } from './pay-component-catalogue';
 import {
   Contribution,
   EmployeeStatutoryProfile,
@@ -103,54 +104,31 @@ export const LIABILITY_BY_STATUS_CODE: Record<string, ComponentLiability> = {
 };
 
 /**
- * Defaults for the components a Malaysian clinic actually runs.
+ * THE SAME TREATMENT THE CATALOGUE HOLDS, derived from it rather than restated.
  *
- * NOTE ON ALLOWANCE, ATTENDANCE AND COMMISSION. The clinic's spreadsheet
- * currently exempts all three from EPF. The EPF Act's definition of wages has a
- * CLOSED list of exclusions — service charge, overtime, gratuity, retirement
- * and retrenchment benefits, travelling allowance, and anything gazetted — and
- * commission, bonus and fixed or attendance allowances are not on it. So they
- * default to EPF-liable here. A clinic that believes otherwise must say so
- * deliberately, and that choice is dated and audited rather than inherited from
- * a spreadsheet.
+ * This used to be a hand-maintained map, and it drifted: eight of its sixteen
+ * entries disagreed with the catalogue rows a clinic can actually see and
+ * configure. Two of those disagreements moved money — the ordinary-rate base
+ * for allowances, and a zakat deduction that reduced the taxable base while the
+ * MTD engine ALSO applied zakat as relief, under-deducting tax twice over.
  *
- * Mileage is exempt because travelling allowance IS an express exclusion.
+ * Derived now, so the two cannot diverge again. The RUN reads the effective-
+ * dated `pay_components` rows; this exists for the basic-pay line and for tests
+ * that need a treatment without a database.
  */
-export const DEFAULT_COMPONENT_LIABILITY: Record<string, ComponentLiability> = {
-  BASIC: LIABILITY_BY_STATUS_CODE['2'],
-  ALLOWANCE: LIABILITY_BY_STATUS_CODE['2'],
-  ATTENDANCE_ALLOWANCE: LIABILITY_BY_STATUS_CODE['2'],
-  COMMISSION: LIABILITY_BY_STATUS_CODE['5'],
-  // Overtime: SOCSO and EIS wages, NOT EPF wages, and never part of ORP.
-  OVERTIME: LIABILITY_BY_STATUS_CODE['3'],
-  // Travelling allowance is an express EPF exclusion, and SOCSO excludes it too.
-  MILEAGE: LIABILITY_BY_STATUS_CODE['1'],
-  // Bonus is EPF wages, but is additional remuneration for tax.
-  BONUS: { ...LIABILITY_BY_STATUS_CODE['5'], additionalRemuneration: true },
-  INCENTIVE: { ...LIABILITY_BY_STATUS_CODE['5'], additionalRemuneration: true },
-  // Director's fee is not paid under a contract of service.
-  DIRECTOR_FEE: LIABILITY_BY_STATUS_CODE['1'],
-  LOCUM_FEE: LIABILITY_BY_STATUS_CODE['1'],
-  // Unpaid leave reduces every base as well as pay.
-  UNPAID_LEAVE: LIABILITY_BY_STATUS_CODE['2'],
-  /*
-   * A REIMBURSEMENT OF ACTUAL EXPENDITURE, not remuneration — the clinic is
-   * giving back money the employee already spent on its behalf.
-   *
-   * Seeded to status code 1 (no EPF, SOCSO or EIS) because that reproduces the
-   * treatment the clinic already applies to reimbursements in its own workbook.
-   * THIS IS NOT A VERIFIED STATUTORY DETERMINATION. Whether a particular
-   * reimbursement is wages turns on what it reimburses, and settling that is
-   * Stage 3 work against KWSP's and PERKESO's own definitions. It ships
-   * unverified like every other flag in this table.
-   */
-  CLAIM_REIMBURSEMENT: LIABILITY_BY_STATUS_CODE['1'],
-  // Pure deductions: they reduce net pay and nothing else.
-  ZAKAT: LIABILITY_BY_STATUS_CODE['1'],
-  ADVANCE_RECOVERY: LIABILITY_BY_STATUS_CODE['1'],
-  UNIFORM: LIABILITY_BY_STATUS_CODE['1'],
-  OTHER_DEDUCTION: LIABILITY_BY_STATUS_CODE['1'],
-};
+export const DEFAULT_COMPONENT_LIABILITY: Record<string, ComponentLiability> = Object.fromEntries(
+  SEED_PAY_COMPONENTS.map((component) => [
+    component.code,
+    {
+      epf: component.epfLiable,
+      socso: component.socsoLiable,
+      eis: component.eisLiable,
+      pcb: component.pcbLiable,
+      ordinaryRateOfPay: component.includeInOrpBase,
+      additionalRemuneration: component.additionalRemuneration,
+    },
+  ]),
+);
 
 // ---------------------------------------------------------------------------
 // Bases

@@ -19,7 +19,6 @@ import { AdminTx, actorCan, requirePermission, withAdminTx } from '../finance/ad
 import { recordAudit } from '../finance/admin-audit';
 import { formatCents, fromCents, toCents } from '../finance/money';
 import {
-  DEFAULT_COMPONENT_LIABILITY,
   LIABILITY_BY_STATUS_CODE,
   PayrollComponentLine,
   StatutoryContext,
@@ -48,6 +47,7 @@ import {
 import { leaveDaysInYear } from './leave-balance';
 import { describeProration, proratedBasicCents, prorationFor } from './proration';
 import { classifyDay, describePricedDay, priceOvertime } from './overtime-pricing';
+import { CatalogueRow, ResolvedComponent, catalogueFor, checkOrdinaryRateBase } from './component-liability';
 import {
   FIRST_SCHEDULE_WAGE_CEILING_CENTS,
   MAX_HOURS_PER_DAY,
@@ -75,20 +75,6 @@ import {
   checkPayrollInvariants,
   describeViolations,
 } from './payroll-invariants';
-
-/// Components that reduce pay whichever way the amount is entered. Everything
-/// else is an earning unless the amount itself is negative.
-/**
- * WHAT REDUCES THE WAGES, as against what is withheld from them.
- *
- * Unpaid leave is the first: s.18A says what an incomplete month's wages ARE,
- * so a day of it makes the wage smaller rather than taking something out of a
- * whole one. Everything else here is withheld from wages that are complete.
- */
-const WAGE_REDUCTION_COMPONENTS = new Set(['UNPAID_LEAVE']);
-const DEDUCTION_COMPONENTS = new Set([
-  'UNPAID_LEAVE', 'ZAKAT', 'ADVANCE_RECOVERY', 'UNIFORM', 'OTHER_DEDUCTION',
-]);
 
 function monthStart(value: string | Date): Date {
   const date = typeof value === 'string' ? new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`) : value;
@@ -417,6 +403,24 @@ export class PayrollService {
       // The month's public holidays, read ONCE for the run rather than per
       // employee. Work on one is paid at two days' ordinary rate under
       // s.60D(3), so this is not a display concern.
+      // THE PAY COMPONENT CATALOGUE AS AT THIS PERIOD.
+      //
+      // The clinic's own effective-dated rows, not a hardcoded map. Read once
+      // for the run: a correction to a component's EPF liability today must not
+      // reprice a month already paid, so the resolution is by period.
+      const catalogue = catalogueFor(
+        (await tx.payComponent.findMany()) as unknown as CatalogueRow[],
+        new Date(periodEnd.getTime() - 86_400_000),
+      );
+      if (catalogue.size === 0) {
+        throw new BadRequestException(
+          'No pay components are configured for this period, so nothing on a payslip could say what it is liable to. ' +
+            'Seed the component catalogue in Payroll settings before running payroll.',
+        );
+      }
+      const orpBaseProblem = checkOrdinaryRateBase(catalogue);
+      if (orpBaseProblem) throw new BadRequestException(orpBaseProblem);
+
       const publicHolidayDates = new Set(
         (
           await tx.publicHoliday.findMany({
@@ -954,7 +958,15 @@ export class PayrollService {
         // derived figure could be counted twice the moment it also existed as a
         // row. There is now one source: the rows.
         const componentLines: PayrollComponentLine[] = [
-          { code: 'BASIC', label: 'Basic pay', kind: 'EARNING', amount: fromCents(basicCents), liability: DEFAULT_COMPONENT_LIABILITY.BASIC },
+          {
+            code: 'BASIC',
+            label: catalogue.get('BASIC')?.label ?? 'Basic pay',
+            kind: 'EARNING',
+            amount: fromCents(basicCents),
+            // From the catalogue like every other line. BASIC is guaranteed
+            // present: `checkOrdinaryRateBase` above refuses a run without it.
+            liability: (catalogue.get('BASIC') as ResolvedComponent).liability,
+          },
         ];
 
         // PCB is a supplied amount, not a computed one, so it is taken out of
@@ -964,10 +976,11 @@ export class PayrollService {
 
         for (const input of materialised) {
           if (input.componentCode === 'PCB') continue;
-          const liability = DEFAULT_COMPONENT_LIABILITY[input.componentCode];
-          if (!liability) {
-            // An input naming a component this build does not know would
-            // otherwise be silently dropped from somebody's pay.
+          const component = catalogue.get(input.componentCode);
+          if (!component) {
+            // An input naming a component the CATALOGUE does not cover for this
+            // period would otherwise be paid with no statutory treatment behind
+            // it — silently EPF-exempt, silently untaxed.
             raise('UNKNOWN_COMPONENT', employee, { componentCode: input.componentCode });
             continue;
           }
@@ -975,14 +988,12 @@ export class PayrollService {
           if (amountCents === 0) continue;
           componentLines.push({
             code: input.componentCode,
-            label: input.label ?? input.componentCode,
-            kind: WAGE_REDUCTION_COMPONENTS.has(input.componentCode)
-              ? 'WAGE_REDUCTION'
-              : amountCents < 0 || DEDUCTION_COMPONENTS.has(input.componentCode)
-                ? 'DEDUCTION'
-                : 'EARNING',
+            label: input.label ?? component.label,
+            // The catalogue decides whether this reduces the wages or is
+            // withheld from them; a negative amount still forces a withholding.
+            kind: amountCents < 0 ? 'DEDUCTION' : component.kind,
             amount: fromCents(Math.abs(amountCents)),
-            liability,
+            liability: component.liability,
           });
         }
 

@@ -242,17 +242,50 @@ export const STATUTORY_SCHEDULES: readonly StatutorySchedule[] = [
 ];
 
 /**
- * SCHEMES WITH NO SCHEDULE, and why.
+ * WHAT IS NOT SETTLED, named rather than left silent.
  *
- * Listed so a screen can say what is missing rather than leaving a silent gap.
- * A scheme named here has no entry above, so anything that needs it cannot be
- * calculated and must block.
+ * Two different shapes of gap, and both matter enough to be data rather than a
+ * comment in a document nobody opens:
+ *
+ *  - A SCHEME with no schedule at all. Anything needing it cannot be
+ *    calculated and must block.
+ *  - A RULE that is implemented in part, where the unimplemented part could
+ *    change an answer for some employees and silently does not. That is the
+ *    more dangerous kind, because the figure it produces looks finished.
+ *
+ * Nothing here may be resolved by generalising from what IS implemented. A gap
+ * closes when a document settles it, and not before.
  */
-export const SCHEMES_WITHOUT_A_SCHEDULE: readonly { scheme: string; reason: string }[] = [
+export type StatutoryGapKind = 'NO_SCHEDULE' | 'PARTIAL_RULE';
+
+export interface StatutoryGap {
+  readonly scheme: string;
+  readonly kind: StatutoryGapKind;
+  readonly reason: string;
+  /** What would close it. Named so the gap is actionable rather than a lament. */
+  readonly needs: string;
+  /** Who it could affect, so a clinic can tell whether it touches them. */
+  readonly affects: string;
+}
+
+export const SCHEMES_WITHOUT_A_SCHEDULE: readonly StatutoryGap[] = [
   {
     scheme: 'LINDUNG 24 JAM',
+    kind: 'NO_SCHEDULE',
     reason:
       'No PERKESO document for it was supplied. D6 covers SKBBK as an Act 4 column, which is implemented; whether LINDUNG 24 JAM is that same programme under a public-facing name or a separate scheme with its own participation rules is not established, and guessing either way would be a fabricated contribution.',
+    needs: 'PERKESO’s own schedule and participation guidance for the programme.',
+    affects: 'Any employee, if it is a separate scheme. Nothing is contributed for it today.',
+  },
+  {
+    scheme: 'Employment Act First Schedule — special categories',
+    kind: 'PARTIAL_RULE',
+    reason:
+      'The RM4,000 wage limitation on ss.60, 60A and 60D is implemented and tested. The First Schedule ALSO reaches employees by the KIND of work they do regardless of what they earn, and it treats domestic employees separately again. Neither is modelled, and no employee can be classified into them — so an employee who falls in one is currently judged by wages alone. That produces a finished-looking overtime figure that may be wrong in either direction, which is worse than a blank.',
+    needs:
+      'The First Schedule’s own text for the work-category paragraphs and the domestic-employee provisions, so each can be transcribed rather than inferred from the wage limb that is held.',
+    affects:
+      'Employees engaged in the specified categories of work, and domestic employees. A clinic employing nobody in those categories is unaffected; one that does must not rely on their overtime figures until this is closed.',
   },
 ];
 

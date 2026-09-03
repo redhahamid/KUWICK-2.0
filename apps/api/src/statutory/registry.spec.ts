@@ -121,6 +121,25 @@ describe('what may drive an approved run', () => {
 });
 
 describe('what is missing is named, not left blank', () => {
+  it('tracks the First Schedule’s special categories as a PARTIAL rule, not a closed one', () => {
+    // The dangerous shape of gap: the wage limb is implemented, so an employee
+    // in a special category gets a finished-looking overtime figure judged by
+    // wages alone. Recorded as data so it cannot quietly become "done" by
+    // generalising from the limb that IS held.
+    const gap = SCHEMES_WITHOUT_A_SCHEDULE.find((row) => row.scheme.includes('First Schedule'));
+    expect(gap).toBeDefined();
+    expect(gap?.kind).toBe('PARTIAL_RULE');
+    expect(gap?.needs).toMatch(/First Schedule’s own text/);
+    expect(gap?.affects).toMatch(/specified categories of work/);
+  });
+
+  it('says what would close every gap, so none is merely a lament', () => {
+    for (const gap of SCHEMES_WITHOUT_A_SCHEDULE) {
+      expect(gap.needs.length).toBeGreaterThan(20);
+      expect(gap.affects.length).toBeGreaterThan(20);
+    }
+  });
+
   it('records LINDUNG 24 JAM as a scheme with no supplied document', () => {
     const lindung = SCHEMES_WITHOUT_A_SCHEDULE.find((gap) => gap.scheme.includes('LINDUNG'));
     expect(lindung).toBeDefined();
