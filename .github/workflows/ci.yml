@@ -76,6 +76,15 @@ jobs:
       - name: API typecheck
         run: npx tsc --noEmit -p tsconfig.json
         working-directory: apps/api
+      # THE UAT SEED, WHICH THE API TYPECHECK DOES NOT REACH.
+      #
+      # `tsconfig.json` includes only `src/**/*`, so prisma/ was never checked.
+      # `ordinaryRates` gained a third argument and the seed's call was left at
+      # two — silently, for as long as nobody ran it. The seed builds the demo
+      # clinic every owner UAT is judged on, so it gets a gate of its own.
+      - name: UAT seed typecheck
+        run: npx tsc --noEmit -p tsconfig.seed.json
+        working-directory: apps/api
       - name: Web typecheck
         run: npx tsc --noEmit -p tsconfig.json
         working-directory: apps/web

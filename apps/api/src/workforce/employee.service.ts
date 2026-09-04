@@ -8,6 +8,8 @@ import { diffOf, recordAudit } from '../finance/admin-audit';
 import { UpsertEmployeeDto } from './dto/upsert-employee.dto';
 import { formatCents, fromCents, toCents } from '../finance/money';
 import { resolveSalaryForPayroll } from './salary-resolution';
+import { resolveClassificationForPayroll } from './statutory-classification';
+import { toClassificationRow } from './statutory-classification.service';
 
 /**
  * THE EMPLOYEE PROFILE — the employment half of a person.
@@ -144,7 +146,8 @@ export class EmployeeService {
     const period = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
     const periodEnd = new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth() + 1, 0));
 
-    const [clinic, attendance, payrollLines, salaryRows, pcbInput, claims] = await Promise.all([
+    const [clinic, attendance, payrollLines, salaryRows, classificationRows, pcbInput, claims] =
+      await Promise.all([
       profile.staff.clinicId
         ? this.prisma.clinic.findUnique({ where: { id: profile.staff.clinicId }, select: { name: true } })
         : Promise.resolve(null),
@@ -181,6 +184,10 @@ export class EmployeeService {
         },
       }),
       this.prisma.employeeSalary.findMany({ where: { staffId }, orderBy: { effectiveFrom: 'desc' } }),
+      // The DATED statutory standing, not the profile columns. Payroll stopped
+      // reading those, so a checklist that still read them would report a
+      // readiness the run does not share.
+      this.prisma.employeeStatutoryClassification.findMany({ where: { staffId } }),
       this.prisma.payrollInputEntry.findFirst({ where: { staffId, period, componentCode: 'PCB' } }),
       this.prisma.staffClaim.findMany({
         where: { staffId },
@@ -201,6 +208,39 @@ export class EmployeeService {
       period,
       periodEnd,
     );
+
+    /*
+     * THE STANDING IN FORCE FOR THIS MONTH.
+     *
+     * `statutory` is what the run would resolve, so "ready" here means "the run
+     * can pay them". Where nothing is on record, or two versions overlap the
+     * month, every classification reads as unknown — which is what the run
+     * does too, and is the only answer that does not overstate readiness.
+     */
+    const classificationOutcome = resolveClassificationForPayroll(
+      classificationRows.map(toClassificationRow),
+      period,
+      periodEnd,
+    );
+    const statutory =
+      classificationOutcome.kind === 'RESOLVED'
+        ? classificationOutcome.row
+        : {
+            epfApplicable: true,
+            epfMembership: null,
+            epfEmployeeRate: null,
+            socsoApplicable: true,
+            eisApplicable: true,
+            lindungParticipation: null,
+            pcbApplicable: true,
+            taxResidence: null,
+            pcbCategory: null,
+            qualifyingChildren: 0,
+            disabledSelf: false,
+            disabledSpouse: false,
+            restDayOfWeek: null,
+            overtimeContractPolicy: null,
+          };
 
     const worked = attendance.filter((row) => row.workedMinutes !== null);
     const approvedOvertime = attendance.reduce(
@@ -281,19 +321,29 @@ export class EmployeeService {
         socsoNumberOnFile: Boolean(profile.socsoNumber),
         taxNumberOnFile: Boolean(profile.taxNumber),
         taxCategory: profile.taxCategory,
-        taxResidence: profile.taxResidence,
-        pcbCategory: profile.pcbCategory,
-        qualifyingChildren: profile.qualifyingChildren,
-        restDayOfWeek: profile.restDayOfWeek,
-        overtimeContractPolicy: profile.overtimeContractPolicy,
-        epfMembership: profile.epfMembership,
-        lindungParticipation: profile.lindungParticipation,
-        epfApplicable: profile.epfApplicable,
-        socsoApplicable: profile.socsoApplicable,
-        eisApplicable: profile.eisApplicable,
-        pcbApplicable: profile.pcbApplicable,
+        // EVERY CLASSIFICATION BELOW IS THE VERSION IN FORCE FOR THIS MONTH,
+        // not the profile column. `classificationState` says which — RESOLVED,
+        // NONE_ON_RECORD, or two versions overlapping the month — so a screen
+        // never has to guess whether a nil means "no" or "nobody said".
+        classificationState: classificationOutcome.kind,
+        classificationNote: classificationOutcome.reason,
+        classificationEffectiveFrom:
+          classificationOutcome.kind === 'RESOLVED'
+            ? classificationOutcome.row.effectiveFrom.toISOString().slice(0, 10)
+            : null,
+        taxResidence: statutory.taxResidence,
+        pcbCategory: statutory.pcbCategory,
+        qualifyingChildren: statutory.qualifyingChildren,
+        restDayOfWeek: statutory.restDayOfWeek,
+        overtimeContractPolicy: statutory.overtimeContractPolicy,
+        epfMembership: statutory.epfMembership,
+        lindungParticipation: statutory.lindungParticipation,
+        epfApplicable: statutory.epfApplicable,
+        socsoApplicable: statutory.socsoApplicable,
+        eisApplicable: statutory.eisApplicable,
+        pcbApplicable: statutory.pcbApplicable,
         note:
-          'Identifiers, applicability, EPF membership and the MTD tax profile. All four schemes are computed from the authorities’ own published schedules; TP1 deductions are not captured, so monthly tax is worked out as though none had been filed.',
+          'Membership numbers are corrections of one lifelong fact each, so they are not dated — the March submission wants the correct number, not the one that was on file in March. Everything that SELECTS a rule — EPF Part, scheme applicability, LINDUNG participation, the MTD profile, the rest day — is a dated version instead, and the values here are the version in force for this month. All four schemes are computed from the authorities’ own published schedules; TP1 deductions are not captured, so monthly tax is worked out as though none had been filed.',
       },
       /**
        * EMPLOYEE OR CONTRACTOR. The fact everything statutory turns on, and the
@@ -329,11 +379,11 @@ export class EmployeeService {
                 {
                   key: 'restDay',
                   label: 'Rest day',
-                  done: profile.restDayOfWeek !== null && profile.restDayOfWeek !== undefined,
+                  done: statutory.restDayOfWeek !== null && statutory.restDayOfWeek !== undefined,
                   detail:
-                    profile.restDayOfWeek === null || profile.restDayOfWeek === undefined
+                    statutory.restDayOfWeek === null || statutory.restDayOfWeek === undefined
                       ? 'No rest day is designated. The Employment Act requires one a week, and working it is paid in days at the ordinary rate rather than as hours of overtime — so without it their extra hours cannot be priced.'
-                      : `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][profile.restDayOfWeek]}. Work on it is paid under s.60(3), not as ordinary overtime.`,
+                      : `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][statutory.restDayOfWeek]}. Work on it is paid under s.60(3), not as ordinary overtime.`,
                 },
                 {
                   key: 'bank',
@@ -346,8 +396,8 @@ export class EmployeeService {
                 {
                   key: 'pcb',
                   label: 'Monthly tax (PCB) information',
-                  done: !profile.pcbApplicable || Boolean(pcbInput),
-                  detail: !profile.pcbApplicable
+                  done: !statutory.pcbApplicable || Boolean(pcbInput),
+                  detail: !statutory.pcbApplicable
                     ? 'Recorded as not paying PCB.'
                     : pcbInput
                       ? `RM${money(toCents(pcbInput.amount))} entered for this month.`
@@ -359,25 +409,25 @@ export class EmployeeService {
                   // needs no SOCSO number, and demanding one would be an amber
                   // mark against a record that is complete.
                   const missing = [
-                    profile.epfApplicable && !profile.epfNumber ? 'EPF' : null,
-                    profile.socsoApplicable && !profile.socsoNumber ? 'SOCSO' : null,
+                    statutory.epfApplicable && !profile.epfNumber ? 'EPF' : null,
+                    statutory.socsoApplicable && !profile.socsoNumber ? 'SOCSO' : null,
                   ].filter((name): name is string => name !== null);
                   // A membership number lets a filing be addressed; the Third
                   // Schedule Part decides what goes IN it, and without the Part
                   // there is no EPF figure to file at all.
-                  const partUnknown = profile.epfApplicable && !profile.epfMembership;
+                  const partUnknown = statutory.epfApplicable && !statutory.epfMembership;
                   // Monthly tax cannot be worked out without both, and neither
                   // can be inferred: residence chooses between a flat 30% and
                   // the progressive table, category chooses the deductions.
                   // LINDUNG 24 JAM: voluntary for locals, mandatory for
                   // foreign workers, and not readable off anything else.
-                  const lindungUnknown = !profile.lindungParticipation;
+                  const lindungUnknown = !statutory.lindungParticipation;
                   const taxProfileUnknown =
-                    profile.pcbApplicable && (!profile.taxResidence || !profile.pcbCategory);
+                    statutory.pcbApplicable && (!statutory.taxResidence || !statutory.pcbCategory);
                   const applies = [
-                    profile.epfApplicable ? 'EPF' : null,
-                    profile.socsoApplicable ? 'SOCSO' : null,
-                    profile.eisApplicable ? 'EIS' : null,
+                    statutory.epfApplicable ? 'EPF' : null,
+                    statutory.socsoApplicable ? 'SOCSO' : null,
+                    statutory.eisApplicable ? 'EIS' : null,
                   ].filter((name): name is string => name !== null);
                   return {
                     key: 'statutory',
@@ -569,6 +619,31 @@ export class EmployeeService {
         );
       }
 
+      /*
+       * STATUTORY CLASSIFICATION IS CLOSED FOR WRITING HERE TOO, and for the
+       * same reason one step further on.
+       *
+       * Payroll resolves `employee_statutory_classifications` now. A Third
+       * Schedule Part written on this form would be a Part nobody contributed
+       * under: the profile would show one and the run would resolve another,
+       * silently, which is precisely what dating the record prevents.
+       *
+       * Refused rather than forwarded "from today", because a classification
+       * has a date it became TRUE — the day permanent residence was granted,
+       * the day an opt-in was signed — and this endpoint does not carry it.
+       */
+      const classificationFieldsSent = STATUTORY_CLASSIFICATION_FIELDS.filter(
+        (field) => (dto as Record<string, unknown>)[field] !== undefined,
+      );
+      if (classificationFieldsSent.length > 0) {
+        throw new BadRequestException(
+          `${classificationFieldsSent.join(', ')} ${classificationFieldsSent.length === 1 ? 'is' : 'are'} recorded ` +
+            'with the date they take effect from, at POST /workforce/employees/:staffId/statutory-classification. ' +
+            'Setting them here would leave the employee record and the payroll run disagreeing about which ' +
+            'statutory rules somebody was contributed under.',
+        );
+      }
+
       // Bank details are still a SEPARATE permission inside this one write. An
       // HR clerk maintaining records must not change where somebody's pay goes
       // by including it in the same form submission.
@@ -604,6 +679,30 @@ export class EmployeeService {
     });
   }
 }
+
+/**
+ * The classifications that now live on `employee_statutory_classifications`.
+ *
+ * Named here rather than derived from the DTO so that adding one to the DTO
+ * without adding it to the dated table is a compile-time-visible omission
+ * rather than a field that silently goes back to being untraceable.
+ */
+const STATUTORY_CLASSIFICATION_FIELDS = [
+  'epfApplicable',
+  'epfMembership',
+  'epfEmployeeRate',
+  'socsoApplicable',
+  'eisApplicable',
+  'lindungParticipation',
+  'pcbApplicable',
+  'taxResidence',
+  'pcbCategory',
+  'qualifyingChildren',
+  'disabledSelf',
+  'disabledSpouse',
+  'restDayOfWeek',
+  'overtimeContractPolicy',
+] as const satisfies readonly (keyof UpsertEmployeeDto)[];
 
 const SENSITIVE = new Set([
   'basicSalary',

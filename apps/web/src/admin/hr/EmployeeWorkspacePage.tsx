@@ -233,7 +233,57 @@ function EmploymentTab({ data }: { data: EmployeeRecord }) {
           {data.statutory.note}
         </p>
       </AdminSection>
+
+      <StatutoryStandingSection data={data} />
     </>
+  );
+}
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/**
+ * STATUTORY STANDING — a record with a date on it, shown as one.
+ *
+ * These were columns on the employee form, so editing one changed what every
+ * unapproved period computed. They are versions now, and this says WHICH
+ * version this month resolves to: an unknown that is displayed as "Not
+ * recorded" is a payroll that will block, and it is better read here than
+ * discovered on run day.
+ */
+export function StatutoryStandingSection({ data }: { data: EmployeeRecord }) {
+  const s = data.statutory;
+  const resolved = s.classificationState === 'RESOLVED';
+  const since = s.classificationEffectiveFrom ? dayjs(s.classificationEffectiveFrom).format('D MMM YYYY') : null;
+  // An unresolved standing has no values to show — showing the fallbacks as
+  // though they were answers is exactly the overstatement dating this removed.
+  const value = (v: string | null | undefined) => (resolved && v ? v : 'Not recorded');
+
+  return (
+    <AdminSection
+      title="Statutory standing"
+      description={
+        resolved && since
+          ? `What applies to this employee, in force since ${since}. Changing any of it is a new dated version, so an earlier month keeps what was true then.`
+          : 'What applies to this employee. Recorded from the date it takes effect, so an earlier month keeps what was true then.'
+      }
+    >
+      {resolved ? null : (
+        <p className="kw-muted" style={{ marginTop: 0, marginBottom: 12, fontSize: 12 }}>
+          {s.classificationNote}
+        </p>
+      )}
+      <div className="kw-factGrid">
+        <Fact label="EPF THIRD SCHEDULE PART" value={value(s.epfMembership)} />
+        <Fact label="LINDUNG 24 JAM" value={value(s.lindungParticipation)} />
+        <Fact label="TAX RESIDENCE" value={value(s.taxResidence)} />
+        <Fact label="MTD CATEGORY" value={value(s.pcbCategory)} />
+        <Fact
+          label="REST DAY"
+          value={resolved && s.restDayOfWeek !== null ? DAY_NAMES[s.restDayOfWeek] : 'Not recorded'}
+        />
+        <Fact label="QUALIFYING CHILDREN" value={resolved ? String(s.qualifyingChildren) : 'Not recorded'} />
+      </div>
+    </AdminSection>
   );
 }
 

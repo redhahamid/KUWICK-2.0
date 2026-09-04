@@ -92,6 +92,8 @@ export type AuditAction =
   | 'legalEmployer.updated'
   | 'employee.employerAssigned'
   | 'employeeSalary.recorded'
+  | 'employeeStatutoryClassification.recorded'
+  | 'legalEmployerStatutory.recorded'
   | 'payComponent.seeded'
   | 'payComponent.created'
   | 'payComponent.updated'

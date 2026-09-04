@@ -1101,6 +1101,24 @@ export interface EmployeeRecord {
     socsoNumberOnFile: boolean;
     taxNumberOnFile: boolean;
     taxCategory: string | null;
+    /**
+     * WHICH VERSION OF THE STANDING THIS MONTH RESOLVES TO.
+     *
+     * Everything below it is a fact about a DATE, not a field on a form: the
+     * classification in force for the current period. `RESOLVED` means one
+     * version covered the whole month; anything else means payroll would
+     * refuse, and the values below read as unknown rather than as answers.
+     */
+    classificationState: 'RESOLVED' | 'NONE_ON_RECORD' | 'CHANGED_MID_PERIOD';
+    classificationNote: string;
+    classificationEffectiveFrom: string | null;
+    epfMembership: string | null;
+    lindungParticipation: string | null;
+    taxResidence: string | null;
+    pcbCategory: string | null;
+    qualifyingChildren: number;
+    restDayOfWeek: number | null;
+    overtimeContractPolicy: string | null;
     epfApplicable: boolean;
     socsoApplicable: boolean;
     eisApplicable: boolean;
@@ -1508,8 +1526,12 @@ export interface LegalEmployerRow {
   socsoEmployerNo: string | null;
   lhdnEmployerNo: string | null;
   hrdRegistrationNo: string | null;
-  hrdCategory: string | null;
-  hrdLevyRate: number | null;
+  /** Superseded by the dated class below; kept for reconciliation only. */
+  legacyHrdCategory: string | null;
+  legacyHrdLevyRate: number | null;
+  /** The HRD Corp class in force today, and the Act's rate for it. */
+  hrdRegistration: 'MANDATORY_SECTION_14' | 'OPTIONAL_SECTION_15' | 'NOT_REGISTERED' | null;
+  hrdLevyRatePercent: number | null;
   addressLine1: string | null;
   city: string | null;
   state: string | null;

@@ -33,11 +33,12 @@ import {
  * Act 800 EIS table. `src/statutory/registry.ts` dates and hashes each one, so
  * a run records not merely THAT it applied EPF but WHICH EPF.
  *
- * That cutover changes real figures. The most consequential: under SKBBK a
- * Second Category employee (60 and over) now contributes to Non-Employment
- * Injury, where the seeded table had them at nil. A clinic reconciling against
- * last year's spreadsheet will see that difference and should — it is the law
- * changing, not the engine drifting.
+ * SKBBK IS NOT PART OF ACT 4, and an earlier version of this module treated it
+ * as though it were — adding its column to every employee's SOCSO deduction.
+ * LINDUNG 24 JAM is a scheme of its own, in force from 1 June 2026, voluntary
+ * for local employees and mandatory for foreign workers, and it lives in
+ * `lindung-24-jam.ts` behind an explicit participation record. A First
+ * Category employee's Act 4 share is invalidity alone.
  *
  * WHAT HAS NOT CHANGED is the discipline the previous version got right, and
  * it is worth restating because everything else here depends on it:
@@ -451,7 +452,7 @@ export interface StatutoryResult {
  * rest on them as squarely as its EPF does — and a run that cannot name the
  * edition that priced a Sunday cannot defend the figure a year later.
  */
-const PAYSLIP_SCHEMES: readonly StatutoryScheme[] = [
+export const PAYSLIP_SCHEMES: readonly StatutoryScheme[] = [
   'EPF',
   'SOCSO',
   'EIS',

@@ -69,12 +69,23 @@ describe('payroll approval modes (e2e)', () => {
         employmentStatus: 'ACTIVE',
         startDate: '2024-01-01',
         dateOfBirth: '1990-06-15',
+      })
+      .expect(201);
+    // STATUTORY CLASSIFICATION IS A DATED RECORD, not a field on the employee
+    // form: changing an EPF Part today used to change what an unapproved past
+    // period computed.
+    await request(server())
+      .post(`/workforce/employees/${staff.id}/statutory-classification`)
+      .set('Authorization', maker)
+      .send({
+        effectiveFrom: '2020-01-01',
         // Which Part of the EPF Third Schedule applies. Without it EPF is
         // unknown rather than nil, and an unknown blocks approval.
         epfMembership: 'MALAYSIAN_CITIZEN',
         // LINDUNG 24 JAM is voluntary for locals; unrecorded would block.
         lindungParticipation: 'NOT_PARTICIPATING',
         pcbApplicable: false,
+        reason: 'Recorded at hire',
       })
       .expect(201);
     // The employing company. Statutory contributions are filed by an entity,

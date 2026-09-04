@@ -20,11 +20,16 @@ import { assertDateOrder } from '../core/query-dates';
 import { BenefitService } from './benefit.service';
 import { LegalEmployerService } from './legal-employer.service';
 import { EmployeeSalaryService } from './employee-salary.service';
+import { StatutoryClassificationService } from './statutory-classification.service';
 import { PayComponentService } from './pay-component.service';
 import { PayrollPolicyService } from './payroll-policy.service';
 import { PayrollInputService } from './payroll-input.service';
 import { UpsertLegalEmployerDto } from './dto/upsert-legal-employer.dto';
 import { RecordSalaryDto } from './dto/record-salary.dto';
+import {
+  RecordEmployerStatutoryDto,
+  RecordStatutoryClassificationDto,
+} from './dto/record-statutory-classification.dto';
 import { StaffClaimService } from './staff-claim.service';
 import { LocumService } from './locum.service';
 import { PayrollJourneyService } from './payroll-journey.service';
@@ -52,6 +57,7 @@ export class WorkforceController {
     private readonly benefits_: BenefitService,
     private readonly legalEmployers: LegalEmployerService,
     private readonly salaries: EmployeeSalaryService,
+    private readonly classifications: StatutoryClassificationService,
     private readonly payComponents: PayComponentService,
     private readonly payrollPolicies: PayrollPolicyService,
     private readonly payrollInputs: PayrollInputService,
@@ -261,6 +267,43 @@ export class WorkforceController {
   @Post('employees/:staffId/salary')
   recordSalary(@Param('staffId') staffId: string, @Body() dto: RecordSalaryDto) {
     return this.salaries.record(staffId, dto);
+  }
+
+  // --- Effective-dated statutory classification -----------------------------
+  //
+  // Which EPF Third Schedule Part somebody falls under, whether they joined
+  // LINDUNG, their MTD category and their designated rest day are FACTS WITH
+  // DATES, not form fields: recording a permanent residence in September used
+  // to reprice March. These endpoints are the only way to change them.
+
+  @Get('employees/:staffId/statutory-classification')
+  classificationHistory(@Param('staffId') staffId: string) {
+    return this.classifications.history(staffId);
+  }
+
+  @Get('employees/:staffId/statutory-classification/resolve')
+  resolveClassification(@Param('staffId') staffId: string, @Query('period', RequiredDateParam) period: string) {
+    return this.classifications.resolveForPeriod(staffId, period);
+  }
+
+  @Post('employees/:staffId/statutory-classification')
+  recordClassification(@Param('staffId') staffId: string, @Body() dto: RecordStatutoryClassificationDto) {
+    return this.classifications.record(staffId, dto);
+  }
+
+  @Get('legal-employers/:id/statutory-profile')
+  employerStatutoryHistory(@Param('id') id: string) {
+    return this.classifications.employerHistory(id);
+  }
+
+  @Get('legal-employers/:id/statutory-profile/resolve')
+  resolveEmployerStatutory(@Param('id') id: string, @Query('period', RequiredDateParam) period: string) {
+    return this.classifications.resolveEmployerForPeriod(id, period);
+  }
+
+  @Post('legal-employers/:id/statutory-profile')
+  recordEmployerStatutory(@Param('id') id: string, @Body() dto: RecordEmployerStatutoryDto) {
+    return this.classifications.recordEmployer(id, dto);
   }
 
   // --- Pay components -------------------------------------------------------

@@ -2073,6 +2073,29 @@ async function seedWorkforce(ids: Ids) {
       },
     });
 
+    // HRD CORP REGISTRATION, DATED — and the levy RATE is not stored beside it:
+    // 1% (s.14) and 0.5% (s.15) are the PSMB Act's numbers, derived from the
+    // class. The main company is above the section 14 headcount; the second is
+    // not registered, so the UAT clinic shows both answers.
+    await tx.legalEmployerStatutoryProfile.createMany({
+      data: [
+        {
+          tenantId: tenant.id,
+          legalEmployerId: employer.id,
+          hrdRegistration: 'MANDATORY_SECTION_14',
+          effectiveFrom: day(-720),
+          reason: 'Registered under section 14',
+        },
+        {
+          tenantId: tenant.id,
+          legalEmployerId: secondEmployer.id,
+          hrdRegistration: 'NOT_REGISTERED',
+          effectiveFrom: day(-720),
+          reason: 'Below the section 14 headcount and has not opted in',
+        },
+      ],
+    });
+
     // The 15 components the engine knows, as rows. Every flag UNVERIFIED —
     // seeding a catalogue is not the same as checking one.
     for (const component of SEED_PAY_COMPONENTS) {
@@ -2154,15 +2177,26 @@ async function seedWorkforce(ids: Ids) {
           email: `${profile.key}@${DOMAIN}`,
           bankName: 'Bank Contoh',
           bankAccountNo: `1234567${index}`,
-          // SYNTHETIC, like every other fact in this seed. All Malaysian
-          // citizens, which makes the stock controller (born 1964, so past 60)
-          // a Part E employee — employer 4%, employee nil — and therefore a
-          // visible demonstration that the age cliff is real rather than a
-          // rate tweak.
+        },
+      });
+
+      // --- STATUTORY STANDING, WITH A DATE ON IT ---------------------------
+      //
+      // These were columns on the profile above. A column is edited; a
+      // classification CHANGED, on a day, and every unapproved period before
+      // that day must keep using what was true then. Dated from hire so the
+      // whole UAT year resolves one version.
+      //
+      // SYNTHETIC, like every other fact in this seed. All Malaysian citizens,
+      // which makes the stock controller (born 1964, so past 60) a Part E
+      // employee — employer 4%, employee nil — and therefore a visible
+      // demonstration that the age cliff is real rather than a rate tweak.
+      await tx.employeeStatutoryClassification.create({
+        data: {
+          tenantId: tenant.id,
+          staffId: staff[profile.key],
+          effectiveFrom: day(-500 - index * 30),
           epfMembership: 'MALAYSIAN_CITIZEN',
-          // THE MTD PROFILE, synthetic like everything else here. Residence and
-          // category are what monthly tax refuses to compute without, so a seed
-          // that omits them produces a UAT clinic where every payroll blocks.
           // s.59 — the designated rest day. Sunday for everybody in this
           // synthetic clinic. Without it, anybody who worked blocks the run,
           // because a rest day priced as an ordinary day is an underpayment.
@@ -2177,12 +2211,16 @@ async function seedWorkforce(ids: Ids) {
               : profile.key === 'counter2'
                 ? 'NOT_PARTICIPATING'
                 : 'VOLUNTARY_OPTED_IN',
+          // THE MTD PROFILE. Residence and category are what monthly tax
+          // refuses to compute without, so a seed that omits them produces a
+          // UAT clinic where every payroll blocks.
           taxResidence: 'RESIDENT',
           pcbCategory: profile.key === 'owner' ? 'CATEGORY_2' : 'CATEGORY_1',
           qualifyingChildren: profile.key === 'owner' ? 2 : 0,
           epfApplicable: profile.type !== 'LOCUM',
           socsoApplicable: profile.type !== 'LOCUM',
           eisApplicable: profile.type !== 'LOCUM',
+          reason: 'Recorded at hire',
         },
       });
 
@@ -2790,7 +2828,11 @@ async function seedWorkforce(ids: Ids) {
       }
       const age = ageAt(new Date(Date.UTC(profile.born[0], profile.born[1], profile.born[2])), periodEndDay)!;
       const basicCents = Math.round(profile.salary * 100);
-      const rates = ordinaryRates(basicCents, orp);
+      // s.18A — the unpaid-leave divisor is the length of THIS wage period, so
+      // `ordinaryRates` takes it as a third argument. This call was left at two
+      // when that changed, and nothing caught it because prisma/ was outside
+      // the typecheck. `npm run typecheck:seed` now covers this file.
+      const rates = ordinaryRates(basicCents, orp, periodEndDay.getUTCDate());
 
       const lines: PayrollComponentLine[] = [
         { code: 'BASIC', label: 'Basic pay', kind: 'EARNING', amount: profile.salary, liability: DEFAULT_COMPONENT_LIABILITY.BASIC },
@@ -2810,13 +2852,42 @@ async function seedWorkforce(ids: Ids) {
         lines.push({ code: 'UNPAID_LEAVE', label: 'Unpaid leave (1 day)', kind: 'DEDUCTION', amount: rates.unpaidLeaveDailyCents / 100, liability: DEFAULT_COMPONENT_LIABILITY.UNPAID_LEAVE });
       }
 
-      const slip = computePayslip(lines, statutoryTables as never, {
-        age, epfEmployeeRate: 11,
-        epfApplicable: profile.type !== 'LOCUM',
-        socsoApplicable: profile.type !== 'LOCUM',
-        eisApplicable: profile.type !== 'LOCUM',
-        pcbApplicable: true,
-      });
+      /*
+       * THE SEED COMPUTES A PAYSLIP THE SAME WAY THE RUN DOES.
+       *
+       * It used to hand `statutoryTables` — a StatutoryRuleSet row — where a
+       * StatutoryContext belongs, cast through `as never`, and crashed on the
+       * first employee once the engine started resolving schedules by period.
+       * Nothing caught it because prisma/ was outside the typecheck and nobody
+       * had run the seed since.
+       *
+       * The classification values below are the SAME ones written to
+       * `employee_statutory_classifications` above; a payslip computed on a
+       * different standing from the record behind it would be a demo clinic
+       * that contradicts itself.
+       */
+      const slip = computePayslip(
+        lines,
+        { periodEnd: new Date(Date.UTC(payrollPeriod.getUTCFullYear(), payrollPeriod.getUTCMonth() + 1, 1)) },
+        {
+          age,
+          epfEmployeeRate: 11,
+          epfMembership: 'MALAYSIAN_CITIZEN',
+          epfApplicable: profile.type !== 'LOCUM',
+          socsoApplicable: profile.type !== 'LOCUM',
+          eisApplicable: profile.type !== 'LOCUM',
+          lindungParticipation:
+            profile.key === 'locum'
+              ? 'MANDATORY_FOREIGN_WORKER'
+              : profile.key === 'counter2'
+                ? 'NOT_PARTICIPATING'
+                : 'VOLUNTARY_OPTED_IN',
+          pcbApplicable: true,
+          taxResidence: 'RESIDENT',
+          pcbCategory: profile.key === 'owner' ? 2 : 1,
+          qualifyingChildren: profile.key === 'owner' ? 2 : 0,
+        },
+      );
 
       const pcb = pcbEntered[profile.key];
       if (pcb === undefined) {
@@ -2834,7 +2905,37 @@ async function seedWorkforce(ids: Ids) {
       await tx.payrollLine.create({
         data: {
           tenantId: tenant.id, payrollRunId: payroll.id, staffId,
-          employeeSnapshot: { name, position: profile.position, employmentType: profile.type, bankName: 'Bank Contoh' } as never,
+          // The same shape a real run writes, so the UAT payslip and workspace
+          // can show which statutory standing produced these figures rather
+          // than falling back to today's employee record.
+          employeeSnapshot: {
+            name,
+            position: profile.position,
+            employmentType: profile.type,
+            bankName: 'Bank Contoh',
+            statutoryClassification: {
+              effectiveFrom: day(-500 - index * 30).toISOString().slice(0, 10),
+              epfApplicable: profile.type !== 'LOCUM',
+              epfMembership: 'MALAYSIAN_CITIZEN',
+              epfEmployeeRate: 11,
+              socsoApplicable: profile.type !== 'LOCUM',
+              eisApplicable: profile.type !== 'LOCUM',
+              lindungParticipation:
+                profile.key === 'locum'
+                  ? 'MANDATORY_FOREIGN_WORKER'
+                  : profile.key === 'counter2'
+                    ? 'NOT_PARTICIPATING'
+                    : 'VOLUNTARY_OPTED_IN',
+              pcbApplicable: true,
+              taxResidence: 'RESIDENT',
+              pcbCategory: profile.key === 'owner' ? 'CATEGORY_2' : 'CATEGORY_1',
+              qualifyingChildren: profile.key === 'owner' ? 2 : 0,
+              disabledSelf: false,
+              disabledSpouse: false,
+              restDayOfWeek: 0,
+              overtimeContractPolicy: null,
+            },
+          } as never,
           basicSalary: profile.salary,
           allowances: profile.key === 'counter' ? 250 : profile.key === 'counter2' ? 86.4 : 0,
           overtimePay: Number(lines.find((l) => l.code === 'OVERTIME')?.amount ?? 0),

@@ -5,6 +5,7 @@ import { currentTenantId } from '../core/tenant-context';
 import { requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { UpsertLegalEmployerDto } from './dto/upsert-legal-employer.dto';
+import { hrdLevyRatePercent } from '../statutory/hrd-levy';
 
 /**
  * THE LEGAL EMPLOYER.
@@ -34,6 +35,15 @@ export class LegalEmployerService {
       orderBy: { name: 'asc' },
       include: { _count: { select: { employees: true, runs: true } } },
     });
+    // The OPEN statutory version per employer — the class in force today.
+    // Read in one query rather than per row.
+    const open = await this.prisma.legalEmployerStatutoryProfile.findMany({
+      where: { legalEmployerId: { in: rows.map((row) => row.id) }, effectiveTo: null },
+      select: { legalEmployerId: true, hrdRegistration: true },
+    });
+    const hrdByEmployer = new Map(open.map((row) => [row.legalEmployerId, row.hrdRegistration]));
+    const currentHrdOf = (id: string) => hrdByEmployer.get(id) ?? null;
+
     return rows.map((row) => ({
       id: row.id,
       name: row.name,
@@ -42,8 +52,22 @@ export class LegalEmployerService {
       socsoEmployerNo: row.socsoEmployerNo,
       lhdnEmployerNo: row.lhdnEmployerNo,
       hrdRegistrationNo: row.hrdRegistrationNo,
-      hrdCategory: row.hrdCategory,
-      hrdLevyRate: row.hrdLevyRate ? Number(row.hrdLevyRate) : null,
+      /**
+       * LEGACY, AND UNREAD. `hrd_category` was free text beside a hand-typed
+       * `hrd_levy_rate`, neither dated, and no calculation ever used either.
+       * The class now lives on `legal_employer_statutory_profiles` and the rate
+       * is derived from it — 1% (s.14) and 0.5% (s.15) are the PSMB Act's
+       * numbers. Kept visible so anyone reconciling against a pre-cutover
+       * export can see both.
+       */
+      legacyHrdCategory: row.hrdCategory,
+      legacyHrdLevyRate: row.hrdLevyRate ? Number(row.hrdLevyRate) : null,
+      /** The class in force today, and what it costs. Null means none recorded. */
+      hrdRegistration: currentHrdOf(row.id),
+      hrdLevyRatePercent: (() => {
+        const current = currentHrdOf(row.id);
+        return current ? hrdLevyRatePercent(current) : null;
+      })(),
       addressLine1: row.addressLine1,
       addressLine2: row.addressLine2,
       postcode: row.postcode,
@@ -99,6 +123,23 @@ export class LegalEmployerService {
       const existing = dto.id ? await tx.legalEmployer.findFirst({ where: { id: dto.id } }) : null;
       if (dto.id && !existing) throw new NotFoundException('Legal employer not found');
 
+      /*
+       * THE HRD CLASS IS CLOSED FOR WRITING HERE.
+       *
+       * It was free text (`hrdCategory`) beside a hand-typed rate
+       * (`hrdLevyRate`), neither dated. Section 14 is 1% and section 15 is
+       * 0.5% — the PSMB Act's numbers, not the clinic's — and an employer
+       * crossing the section 14 headcount moves class ON A DATE, so a levy
+       * return for the months before it must keep the old class.
+       */
+      if (dto.hrdCategory !== undefined || dto.hrdLevyRate !== undefined) {
+        throw new BadRequestException(
+          'HRD Corp registration is recorded as a class with the date it takes effect from, at ' +
+            'POST /workforce/legal-employers/:id/statutory-profile. The levy rate follows from the class — ' +
+            '1% under section 14, 0.5% under section 15 — and is not typed in.',
+        );
+      }
+
       const clash = await tx.legalEmployer.findFirst({
         where: { name: dto.name, ...(dto.id ? { id: { not: dto.id } } : {}) },
       });
@@ -115,8 +156,9 @@ export class LegalEmployerService {
         socsoEmployerNo: dto.socsoEmployerNo ?? null,
         lhdnEmployerNo: dto.lhdnEmployerNo ?? null,
         hrdRegistrationNo: dto.hrdRegistrationNo ?? null,
-        hrdCategory: dto.hrdCategory ?? null,
-        hrdLevyRate: dto.hrdLevyRate ?? null,
+        // NOT written from this form any more. See the refusal above.
+        hrdCategory: null,
+        hrdLevyRate: null,
         addressLine1: dto.addressLine1 ?? null,
         addressLine2: dto.addressLine2 ?? null,
         postcode: dto.postcode ?? null,

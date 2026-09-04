@@ -9,6 +9,7 @@ import { PayrollService } from './payroll.service';
 import { BenefitService } from './benefit.service';
 import { LegalEmployerService } from './legal-employer.service';
 import { EmployeeSalaryService } from './employee-salary.service';
+import { StatutoryClassificationService } from './statutory-classification.service';
 import { PayComponentService } from './pay-component.service';
 import { PayrollPolicyService } from './payroll-policy.service';
 import { PayrollInputService } from './payroll-input.service';
@@ -41,6 +42,7 @@ import { PayrollReportService } from './payroll-report.service';
     BenefitService,
     LegalEmployerService,
     EmployeeSalaryService,
+    StatutoryClassificationService,
     PayComponentService,
     PayrollPolicyService,
     PayrollInputService,
@@ -58,6 +60,7 @@ import { PayrollReportService } from './payroll-report.service';
     BenefitService,
     LegalEmployerService,
     EmployeeSalaryService,
+    StatutoryClassificationService,
     PayComponentService,
     PayrollPolicyService,
     PayrollInputService,

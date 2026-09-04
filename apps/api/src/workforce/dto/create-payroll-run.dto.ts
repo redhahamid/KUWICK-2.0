@@ -8,5 +8,15 @@ export class CreatePayrollRunDto {
   /** Omit to run across every branch. */
   @IsOptional() @IsUUID() clinicId?: string;
 
+  /**
+   * THE EMPLOYING COMPANY THIS RUN FILES UNDER.
+   *
+   * Optional, and derived when omitted — but only where there is exactly one
+   * answer. EPF, SOCSO, EIS and PCB are all submitted BY an entity, so a run
+   * that spans two of them cannot be filed at all, and a clinic with one
+   * company should never have to think about the concept.
+   */
+  @IsOptional() @IsUUID() legalEmployerId?: string;
+
   @IsOptional() @IsString() @MaxLength(1000) notes?: string;
 }

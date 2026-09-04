@@ -319,6 +319,55 @@ Two consequences worth stating plainly:
   one enter its own EPF table was a way to under-contribute by accident and call
   it a setting.
 
+### The other half of the provenance: who the rules were applied to
+
+Dating the SCHEDULES is only half the record. A payslip is a schedule applied
+to a CLASSIFICATION, and until now every classification that selects between
+schedules lived as a mutable column on `employee_profiles`: which Part of the
+EPF Third Schedule the employee falls under, their rate election, whether each
+scheme applies, LINDUNG participation, tax residence, MTD category, qualifying
+children, the disability reliefs, the designated rest day, and the contractual
+overtime policy above the First Schedule limit.
+
+Editing one changed the answer for **every period not yet approved**, including
+periods already calculated and looked at. Recording a permanent residence in
+September repriced March, silently, and nothing on the payslip said which
+standing had been used. That is the same class of defect as an unversioned rate
+table, on the other side of the same multiplication.
+
+`employee_statutory_classifications` now holds those as dated versions,
+resolved by period exactly as `employee_salaries` is, and the profile columns
+are no longer read by the calculation. `POST /workforce/employees/:staffId`
+refuses a classification and names the endpoint that takes one. Each payslip
+line's `employee_snapshot.statutoryClassification` records the version id, its
+effective date and every value used, so "which EPF Part was this figure
+computed under?" is answerable from the payslip rather than from today's
+employee record.
+
+**What is versioned and what is corrected.** A STATE that genuinely changed is
+versioned — permanent residence is granted on a date, a KWSP 17A election takes
+effect from one, a LINDUNG opt-in is dated, residence turns on the 183-day test,
+a rest day is redesignated. An IDENTITY that was mis-keyed is corrected, not
+versioned: an EPF member number, a SOCSO number and an LHDN reference are one
+lifelong fact each, and effective-dating them would freeze a typo into a filed
+return, because the March submission wants the CORRECT number and not the wrong
+one that happened to be on file in March. Those stay mutable, deliberately.
+
+**A mid-period change is refused, not apportioned.** If the standing changed on
+the 15th, the month's contribution is genuinely ambiguous, nothing in Malaysian
+practice settles it, and both possible figures look correct on a payslip. The
+run raises `STATUTORY_CLASSIFICATION_CHANGED_MID_PERIOD`, names the fields that
+moved, and leaves the employee out of the totals. The one exception is a version
+recorded mid-month that changed no money-affecting field — proved by the field
+list, not by a judgement — which resolves normally.
+
+**The employer side.** `legal_employers.hrd_category` was free text beside a
+hand-typed `hrd_levy_rate` decimal, neither dated.
+`legal_employer_statutory_profiles` holds the HRD Corp registration class as a
+dated enum the levy engine already understands, and the rate is DERIVED from it:
+1% under section 14 and 0.5% under section 15 are the PSMB Act's numbers, not a
+field somebody types.
+
 ## Where Kuwick and the clinic's workbook disagree
 
 **On SOCSO, they do not.** This section previously claimed employee
@@ -372,7 +421,22 @@ so a month with unpaid leave still prices overtime from the full wage.
 
 ## Still outstanding
 
-1. **LINDUNG 24 JAM** — PERKESO's own schedule and participation guidance.
+1. **LINDUNG 24 JAM phases 2 and 3** — the 1.00% and 1.25% schedules and the
+   dates they commence. Phase 1 is implemented; the later phases are a tracked
+   `PARTIAL_RULE` gap in `SCHEMES_WITHOUT_A_SCHEDULE` and are **not** guessed at
+   from the phase 1 date.
+1. **Employer identity as a dated record.** The employing entity's NAME and
+   ADDRESS as they must appear on a payslip and a Form EA are still mutable
+   columns. An approved run's snapshot freezes what was used, so a rename cannot
+   alter an issued payslip; a company that renames between calculating and
+   approving would still see the new name. The HRD registration class, which is
+   the only part of the employer record that moves money, IS dated.
+1. **Employer transfer history.** Which company employs somebody is a single
+   mutable field, so a mid-year transfer between two entities in a group is not
+   recorded as two employment periods. The run now refuses to compute an
+   employee of another company (`EMPLOYED_BY_ANOTHER_COMPANY`) and refuses to
+   write a year-to-date under an entity that disagrees with the run's, so the
+   figures cannot silently split — but the HISTORY of the transfer is not held.
 1. **The First Schedule's full exception list.** The RM4,000 wage limitation on
    ss. 60, 60A and 60D is implemented. Other First Schedule exceptions — the
    treatment of domestic employees, and of employees engaged in specified

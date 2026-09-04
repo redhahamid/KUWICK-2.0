@@ -8,6 +8,11 @@ export class UpsertLegalEmployerDto {
   @IsOptional() @IsString() @Length(1, 50) socsoEmployerNo?: string;
   @IsOptional() @IsString() @Length(1, 50) lhdnEmployerNo?: string;
   @IsOptional() @IsString() @Length(1, 50) hrdRegistrationNo?: string;
+  /**
+   * LEGACY, AND REFUSED. Declared so a caller that still sends it gets a
+   * sentence saying where the HRD class goes, rather than having it silently
+   * whitelisted away by the global validation pipe.
+   */
   @IsOptional() @IsString() @Length(1, 50) hrdCategory?: string;
   /** Stored only. NO calculation applies it — HRD is a blocked statutory item. */
   @IsOptional() @IsNumber() @Min(0) @Max(1) hrdLevyRate?: number;

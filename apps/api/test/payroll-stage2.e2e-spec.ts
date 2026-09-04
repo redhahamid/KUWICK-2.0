@@ -83,8 +83,21 @@ describe('Malaysia payroll: employer, salary history, inputs and snapshots (e2e)
         employmentStatus: 'ACTIVE',
         startDate: '2024-01-01',
         dateOfBirth: '1990-06-15',
-        pcbApplicable: opts.pcbApplicable ?? false,
+      })
+      .expect(201);
 
+    // STATUTORY CLASSIFICATION IS A DATED RECORD, not a field on the employee
+    // form. EPF membership is deliberately left unrecorded in this suite: the
+    // gap it produces is what several of these tests are about.
+    await request(server())
+      .post(`/workforce/employees/${staff.id}/statutory-classification`)
+      .set('Authorization', bearer)
+      .send({
+        effectiveFrom: '2020-01-01',
+        pcbApplicable: opts.pcbApplicable ?? false,
+        lindungParticipation: 'NOT_PARTICIPATING',
+        restDayOfWeek: 0,
+        reason: 'Recorded at hire',
       })
       .expect(201);
 

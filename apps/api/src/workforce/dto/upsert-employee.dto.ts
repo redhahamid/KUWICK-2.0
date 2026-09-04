@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsEnum, IsNumber, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
 import { EmploymentStatus, EmploymentType } from '@prisma/client';
 
 const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
@@ -52,13 +52,26 @@ export class UpsertEmployeeDto {
   @IsOptional() @IsString() @MaxLength(40) taxNumber?: string;
   @IsOptional() @IsString() @MaxLength(20) taxCategory?: string;
   /**
-   * Which limb of the EPF Third Schedule applies. Required before EPF can be
-   * calculated for anybody: Parts C and E both cover people aged 60 and over,
-   * at 6%/5.5% and 4%/0%, and only citizenship separates them.
+   * FROM HERE DOWN: STATUTORY CLASSIFICATION, LEGACY AND REFUSED.
+   *
+   * These now live on `employee_statutory_classifications`, dated, because
+   * editing one of them used to change what EVERY unapproved period computed —
+   * recording a permanent residence in September repriced March.
+   *
+   * They stay DECLARED on this DTO for the same reason `basicSalary` does: the
+   * global pipe whitelists, so removing them would silently DROP a caller's EPF
+   * Part and answer 200. Declared, they reach the service and get a sentence
+   * saying where classification goes.
+   *
+   * Which limb of the EPF Third Schedule applies. Parts C and E both cover
+   * people aged 60 and over, at 6%/5.5% and 4%/0%, and only citizenship
+   * separates them.
    */
   @IsOptional()
   @IsIn(['MALAYSIAN_CITIZEN', 'PERMANENT_RESIDENT', 'NON_CITIZEN_ELECTED_PRE_1998', 'NON_CITIZEN'])
   epfMembership?: 'MALAYSIAN_CITIZEN' | 'PERMANENT_RESIDENT' | 'NON_CITIZEN_ELECTED_PRE_1998' | 'NON_CITIZEN';
+  /** An election under Borang KWSP 17A. Anything but 11 is refused downstream. */
+  @IsOptional() @IsNumber() @Min(0) @Max(30) epfEmployeeRate?: number;
   @IsOptional() @IsBoolean() epfApplicable?: boolean;
   @IsOptional() @IsBoolean() socsoApplicable?: boolean;
   /**

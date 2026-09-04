@@ -35,6 +35,7 @@ import {
   meetsApprovalBar,
   stampFor,
 } from '../statutory/registry';
+import { PAYSLIP_SCHEMES } from './statutory';
 import { totalTimesheet } from './attendance-hours';
 import {
   MaterialisedInput,
@@ -68,6 +69,12 @@ import {
 } from './payroll-approval-rule';
 import { approvalGate, BuiltException, buildException, ExceptionSeverity } from './payroll-exception';
 import { resolveSalaryForPayroll, SalaryRow } from './salary-resolution';
+import {
+  CLASSIFICATION_FIELDS,
+  StatutoryClassificationRow,
+  resolveClassificationForPayroll,
+} from './statutory-classification';
+import { toClassificationRow } from './statutory-classification.service';
 import { diffSnapshots, snapshotHash, SnapshotEmployeeLine, SnapshotPayload } from './payroll-snapshot';
 import { computeVariance, VarianceLine } from './payroll-variance';
 import {
@@ -363,10 +370,54 @@ export class PayrollService {
       if (existing) {
         throw new ConflictException(`A payroll run for ${dto.period} already exists at this branch.`);
       }
+
+      /*
+       * WHICH COMPANY IS THIS RUN FOR?
+       *
+       * `PayrollRun.legalEmployerId` has been the scope for every statutory
+       * output since Stage 1 and NOTHING EVER SET IT — every run was created
+       * with it null, so the field that decides whose EPF number a submission
+       * carries was empty on every run in the system. The calculation then
+       * selected employees by BRANCH, and a group running two entities out of
+       * one clinic had both companies' people in one run.
+       *
+       * Derived where there is exactly one answer, which is every single-entity
+       * clinic. Where employees at this branch belong to more than one company
+       * it is REFUSED rather than picked: the run would produce a submission
+       * that no entity could file.
+       */
+      const employers = await tx.employeeProfile.findMany({
+        where: {
+          engagement: 'EMPLOYEE',
+          employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
+          ...(dto.clinicId ? { staff: { clinicId: dto.clinicId } } : {}),
+        },
+        select: { legalEmployerId: true, legalEmployer: { select: { name: true } } },
+      });
+      const distinct = new Map(
+        employers
+          .filter((row): row is typeof row & { legalEmployerId: string } => row.legalEmployerId !== null)
+          .map((row) => [row.legalEmployerId, row.legalEmployer?.name ?? row.legalEmployerId]),
+      );
+
+      let legalEmployerId = dto.legalEmployerId ?? null;
+      if (legalEmployerId) {
+        const named = await tx.legalEmployer.findUnique({ where: { id: legalEmployerId } });
+        if (!named) throw new NotFoundException('That employing company is not on file.');
+      } else if (distinct.size === 1) {
+        legalEmployerId = [...distinct.keys()][0];
+      } else if (distinct.size > 1) {
+        throw new BadRequestException(
+          `Employees here are employed by ${distinct.size} different companies (${[...distinct.values()].join(', ')}). ` +
+            'Statutory returns are filed by the employing entity, so a run has to name one — pick the company this run is for.',
+        );
+      }
+
       return tx.payrollRun.create({
         data: {
           tenantId: currentTenantId(),
           clinicId: dto.clinicId ?? null,
+          legalEmployerId,
           period,
           notes: dto.notes ?? null,
           createdByStaffId: actor.id,
@@ -399,7 +450,11 @@ export class PayrollService {
       // rates.
       const statutoryContext: StatutoryContext = { periodEnd };
       const statutoryStatus = statutoryStatusOf(periodEnd) as StatutoryStatus;
-      const statutoryStamp = stampFor(['EPF', 'SOCSO', 'EIS', 'PCB', 'EMPLOYMENT_ACT', 'EA_FIRST_SCHEDULE'], periodEnd);
+      // The schemes a payslip depends on, named ONCE in `statutory.ts`. This
+      // list was written out again here and had drifted: LINDUNG was missing,
+      // so a run stamped its provenance without recording which LINDUNG
+      // schedule it had applied.
+      const statutoryStamp = stampFor(PAYSLIP_SCHEMES, periodEnd);
 
       // The month's public holidays, read ONCE for the run rather than per
       // employee. Work on one is paid at two days' ordinary rate under
@@ -549,6 +604,23 @@ export class PayrollService {
         });
         salaryByStaff.set(row.staffId, list);
       }
+
+      // CANONICAL STATUTORY CLASSIFICATION. Same discipline as salary, for
+      // figures of the same size: which EPF Third Schedule Part an employee
+      // falls under, whether they joined LINDUNG, their MTD category and the
+      // rest day the employer designated are all facts WITH DATES now, and the
+      // profile columns that used to hold them are no longer read here.
+      // Recording somebody's permanent residence in September repriced March.
+      const classificationRows = await tx.employeeStatutoryClassification.findMany({
+        where: { staffId: { in: employees.map((e) => e.staffId) } },
+        orderBy: { effectiveFrom: 'asc' },
+      });
+      const classificationByStaff = new Map<string, StatutoryClassificationRow[]>();
+      for (const row of classificationRows) {
+        const list = classificationByStaff.get(row.staffId) ?? [];
+        list.push(toClassificationRow(row));
+        classificationByStaff.set(row.staffId, list);
+      }
       // Overtime approvers, resolved once. A name per attendance row would be
       // one query per employee per calculation for a value that repeats.
       const approverNames = new Map<string, string>(
@@ -562,6 +634,11 @@ export class PayrollService {
             select: { id: true, fullName: true },
           })
         ).map((row) => [row.id, row.fullName]),
+      );
+
+      // Employing companies by id, for the sentence an excluded employee gets.
+      const employerNames = new Map<string, string>(
+        (await tx.legalEmployer.findMany({ select: { id: true, name: true } })).map((row) => [row.id, row.name]),
       );
 
       const lastDayOfPeriod = new Date(periodEnd.getTime() - 86400000);
@@ -586,6 +663,31 @@ export class PayrollService {
       for (const employee of employees) {
         if (!employee.staff.active) continue;
 
+        /*
+         * A RUN BELONGS TO AN EMPLOYING COMPANY, AND THE SELECTION ABOVE ASKS
+         * ONLY WHICH BRANCH.
+         *
+         * `PayrollRun.legalEmployerId` has scoped every statutory output since
+         * Stage 1, and the calculation never filtered on it: it filtered on
+         * `clinicId`. For a group running two Sdn Bhds out of one clinic, every
+         * employee of company B was computed into company A's run — and then
+         * `writeYearToDate` keyed their months off THEIR OWN employer, so the
+         * run said one entity and the year-to-date said another. The YTD
+         * opening import has refused exactly this since it was written; the
+         * calculation did not.
+         *
+         * EXCLUDED VISIBLY rather than filtered out of the query. Somebody
+         * whose payslip is missing needs to be told which run they are in, and
+         * an employee absent from a WHERE clause tells nobody anything.
+         */
+        if (run.legalEmployerId && employee.legalEmployerId && employee.legalEmployerId !== run.legalEmployerId) {
+          exclude('EMPLOYED_BY_ANOTHER_COMPANY', employee, {
+            employerName: employerNames.get(employee.legalEmployerId) ?? 'another company',
+            runEmployerName: employerNames.get(run.legalEmployerId) ?? 'this run’s company',
+          });
+          continue;
+        }
+
         const salary = resolveSalaryForPayroll(
           salaryByStaff.get(employee.staffId) ?? [],
           period,
@@ -609,6 +711,27 @@ export class PayrollService {
           exclude('SALARY_BASIS_UNSUPPORTED', employee, { basis: salary.row.basis });
           continue;
         }
+
+        const classificationOutcome = resolveClassificationForPayroll(
+          classificationByStaff.get(employee.staffId) ?? [],
+          period,
+          lastDayOfPeriod,
+        );
+        if (classificationOutcome.kind === 'NONE_ON_RECORD') {
+          exclude('NO_STATUTORY_CLASSIFICATION', employee, { periodLabel });
+          continue;
+        }
+        if (classificationOutcome.kind === 'CHANGED_MID_PERIOD') {
+          // Refuse rather than pick one. Same reasoning as a mid-period salary
+          // change: both possible contributions look correct on a payslip.
+          exclude('STATUTORY_CLASSIFICATION_CHANGED_MID_PERIOD', employee, {
+            changed: classificationOutcome.changed.map((key) => CLASSIFICATION_FIELDS[key]).join(', '),
+            changedOn: classificationOutcome.changedOn.toISOString().slice(0, 10),
+            periodLabel,
+          });
+          continue;
+        }
+        const classification = classificationOutcome.row;
 
         const [attendance, leave, incentives, inputs, claims] = await Promise.all([
           tx.attendanceRecord.findMany({
@@ -717,7 +840,7 @@ export class PayrollService {
         // Only where it changes an entitlement: an employee the Act does not
         // reach has no statutory rest-day pay to get wrong.
         if (
-          employee.restDayOfWeek === null &&
+          classification.restDayOfWeek === null &&
           fullMonthlyCents <= FIRST_SCHEDULE_WAGE_CEILING_CENTS &&
           attendance.some((row) => (row.workedMinutes ?? 0) > 0)
         ) {
@@ -729,7 +852,7 @@ export class PayrollService {
         // with nothing recorded is an open question rather than a nil.
         // Raised only once the scheme is in force, so historical runs are not
         // blocked by a rule that did not exist for them.
-        if (!employee.lindungParticipation && periodEnd > LINDUNG_EFFECTIVE_FROM) {
+        if (!classification.lindungParticipation && periodEnd > LINDUNG_EFFECTIVE_FROM) {
           raise('LINDUNG_PARTICIPATION_UNRECORDED', employee);
         }
 
@@ -814,9 +937,9 @@ export class PayrollService {
         // that, anything paid is the employer's undertaking rather than the
         // Act's requirement, and the two must not be presented as the same
         // thing on a payslip or in a dispute.
-        const scope = overtimeScope(fullMonthlyCents, periodEnd, employee.overtimeContractPolicy);
+        const scope = overtimeScope(fullMonthlyCents, periodEnd, classification.overtimeContractPolicy);
         const workedAnyDay = attendance.some((row) => (row.workedMinutes ?? 0) > 0);
-        if (workedAnyDay && !scope.withinFirstSchedule && !employee.overtimeContractPolicy) {
+        if (workedAnyDay && !scope.withinFirstSchedule && !classification.overtimeContractPolicy) {
           raise('OVERTIME_ENTITLEMENT_UNRECORDED', employee, {
             wages: formatCents(fullMonthlyCents),
           });
@@ -830,7 +953,7 @@ export class PayrollService {
             overtimeMinutes: row.overtimeMinutes,
             overtimeApproved: row.overtimeApproved,
           })),
-          (date) => classifyDay(date, { publicHolidayDates, restDayOfWeek: employee.restDayOfWeek }),
+          (date) => classifyDay(date, { publicHolidayDates, restDayOfWeek: classification.restDayOfWeek }),
           {
             basis: 'MONTHLY',
             scope,
@@ -1040,25 +1163,30 @@ export class PayrollService {
           statutoryContext,
           {
             age,
-            epfMembership: employee.epfMembership,
-            epfEmployeeRate: employee.epfEmployeeRate ? Number(employee.epfEmployeeRate) : 11,
-            epfApplicable: employee.epfApplicable,
-            socsoApplicable: employee.socsoApplicable,
-            eisApplicable: employee.eisApplicable,
-            pcbApplicable: employee.pcbApplicable,
-            lindungParticipation: employee.lindungParticipation,
-            taxResidence: employee.taxResidence,
+            // EVERY CLASSIFICATION COMES FROM THE VERSION IN FORCE FOR THIS
+            // PERIOD, never from the employee profile. `?? 11` rather than
+            // `? … : 11`: an election recorded as 0% is a real election, and
+            // reading it as the Schedule's 11% would contribute against a
+            // figure nobody chose. Anything but 11 is refused downstream.
+            epfMembership: classification.epfMembership,
+            epfEmployeeRate: classification.epfEmployeeRate ?? 11,
+            epfApplicable: classification.epfApplicable,
+            socsoApplicable: classification.socsoApplicable,
+            eisApplicable: classification.eisApplicable,
+            pcbApplicable: classification.pcbApplicable,
+            lindungParticipation: classification.lindungParticipation,
+            taxResidence: classification.taxResidence,
             pcbCategory:
-              employee.pcbCategory === 'CATEGORY_1'
+              classification.pcbCategory === 'CATEGORY_1'
                 ? 1
-                : employee.pcbCategory === 'CATEGORY_2'
+                : classification.pcbCategory === 'CATEGORY_2'
                   ? 2
-                  : employee.pcbCategory === 'CATEGORY_3'
+                  : classification.pcbCategory === 'CATEGORY_3'
                     ? 3
                     : null,
-            qualifyingChildren: employee.qualifyingChildren,
-            disabledSelf: employee.disabledSelf,
-            disabledSpouse: employee.disabledSpouse,
+            qualifyingChildren: classification.qualifyingChildren,
+            disabledSelf: classification.disabledSelf,
+            disabledSpouse: classification.disabledSpouse,
           },
           ytdTotal,
         );
@@ -1128,11 +1256,38 @@ export class PayrollService {
               bankName: employee.bankName,
               // The account number is NOT snapshotted: a payslip does not need
               // it, and a JSON column is one more place it could leak from.
+              /**
+               * THE STATUTORY STANDING THIS PAYSLIP WAS COMPUTED ON, frozen.
+               *
+               * The version id and its effective date are here so the figures
+               * can be traced to the record that produced them: "which EPF
+               * Part was this?" is answerable from the payslip, not by reading
+               * today's employee profile and hoping it never changed.
+               */
+              statutoryClassification: {
+                id: classification.id,
+                effectiveFrom: classification.effectiveFrom.toISOString().slice(0, 10),
+                epfApplicable: classification.epfApplicable,
+                epfMembership: classification.epfMembership,
+                epfEmployeeRate: classification.epfEmployeeRate,
+                socsoApplicable: classification.socsoApplicable,
+                eisApplicable: classification.eisApplicable,
+                lindungParticipation: classification.lindungParticipation,
+                pcbApplicable: classification.pcbApplicable,
+                taxResidence: classification.taxResidence,
+                pcbCategory: classification.pcbCategory,
+                qualifyingChildren: classification.qualifyingChildren,
+                disabledSelf: classification.disabledSelf,
+                disabledSpouse: classification.disabledSpouse,
+                restDayOfWeek: classification.restDayOfWeek,
+                overtimeContractPolicy: classification.overtimeContractPolicy,
+              },
+              /** Kept under its old key so existing readers do not break. */
               statutoryApplicability: {
-                epf: employee.epfApplicable,
-                socso: employee.socsoApplicable,
-                eis: employee.eisApplicable,
-                pcb: employee.pcbApplicable,
+                epf: classification.epfApplicable,
+                socso: classification.socsoApplicable,
+                eis: classification.eisApplicable,
+                pcb: classification.pcbApplicable,
               },
             } as never,
             basicSalary: fromCents(basicCents),
@@ -1413,12 +1568,31 @@ export class PayrollService {
     });
     const employerOf = new Map(employers.map((row) => [row.staffId, row.legalEmployerId]));
 
+    /*
+     * ONE RUN, ONE FILING ENTITY.
+     *
+     * Year-to-date used to be keyed off each EMPLOYEE'S employer while the run
+     * carried its own, so a person computed into the wrong company's run had
+     * their months filed under a third answer. The calculation now excludes
+     * anybody employed elsewhere, and this refuses rather than trusting that:
+     * a split year-to-date surfaces at year end, in a Form EA nobody can
+     * reconcile, long after the run that caused it.
+     */
+    const run = await tx.payrollRun.findUnique({ where: { id: runId }, select: { legalEmployerId: true } });
+
     for (const line of lines) {
-      const legalEmployerId = employerOf.get(line.staffId);
+      const employeeEmployerId = employerOf.get(line.staffId);
       // An employee with no legal employer cannot reach an approved run — the
       // calculation raises NO_LEGAL_EMPLOYER, which is blocking — so this is a
       // guard rather than a case.
-      if (!legalEmployerId) continue;
+      if (!employeeEmployerId) continue;
+      if (run?.legalEmployerId && employeeEmployerId !== run.legalEmployerId) {
+        throw new ConflictException(
+          'A payslip in this run belongs to an employee of a different company. Year-to-date is filed by the ' +
+            'employing entity, so approving this would split their year across two returns. Recalculate the run.',
+        );
+      }
+      const legalEmployerId = run?.legalEmployerId ?? employeeEmployerId;
 
       const breakdown = (line.breakdown ?? {}) as { additionalRemunerationCents?: number };
       const cents = (value: unknown) => (value === null || value === undefined ? 0 : toCents(value as never));

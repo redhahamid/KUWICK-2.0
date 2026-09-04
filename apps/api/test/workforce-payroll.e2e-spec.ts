@@ -85,6 +85,10 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       restDayOfWeek?: number | null;
       overtimeContractPolicy?: 'PAY_AT_STATUTORY_RATES' | 'NOT_PAID';
       lindungParticipation?: string | null;
+      /** Which company employs them. Defaults to the suite's one employer. */
+      legalEmployerId?: string;
+      /** `false` records NO statutory classification at all — the run blocks. */
+      classification?: boolean;
     } = {},
   ) {
     const staff = await withTenantContext(prisma, tenantId, (tx) =>
@@ -102,6 +106,23 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         ...(opts.endDate ? { endDate: opts.endDate } : {}),
         // EPF, SOCSO and EIS all change at age 60, so payroll refuses to guess.
         dateOfBirth: '1990-06-15',
+      })
+      .expect(201);
+
+    /*
+     * STATUTORY CLASSIFICATION IS A DATED RECORD, NOT A FIELD ON THIS FORM.
+     *
+     * Every one of these used to be a column on the employee profile, so
+     * changing an EPF Part in September changed what an unapproved March run
+     * computed. Backdated well before every period in this suite so a run for
+     * any month resolves exactly one version.
+     */
+    if (opts.classification !== false)
+      await request(app.getHttpServer())
+      .post(`/workforce/employees/${staff.id}/statutory-classification`)
+      .set('Authorization', bearer)
+      .send({
+        effectiveFrom: '2020-01-01',
         // Which Part of the EPF Third Schedule applies. Passing null exercises
         // the blocking path; it is not a default.
         ...(opts.epfMembership === null ? {} : { epfMembership: opts.epfMembership ?? 'MALAYSIAN_CITIZEN' }),
@@ -121,13 +142,14 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         ...(opts.lindungParticipation === null
           ? {}
           : { lindungParticipation: opts.lindungParticipation ?? 'NOT_PARTICIPATING' }),
+        reason: 'Recorded at hire',
       })
       .expect(201);
 
     await request(app.getHttpServer())
       .patch(`/workforce/employees/${staff.id}/legal-employer`)
       .set('Authorization', bearer)
-      .send({ legalEmployerId })
+      .send({ legalEmployerId: opts.legalEmployerId ?? legalEmployerId })
       .expect(200);
 
     // SALARY IS RECORDED WITH THE DATE IT TAKES EFFECT FROM. It used to be a
@@ -274,6 +296,351 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         .set('Authorization', bearer)
         .send({ minutes: 60 })
         .expect(400);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  describe('statutory classification, with a date on it', () => {
+    /*
+     * THE DEFECT THIS SUITE GUARDS.
+     *
+     * Which EPF Third Schedule Part somebody falls under, whether they joined
+     * LINDUNG, their MTD category and the rest day their employer designated
+     * were plain mutable columns on the employee profile. Editing one changed
+     * what EVERY unapproved period computed — recording a permanent residence
+     * in September repriced March, silently, with nothing on the payslip
+     * saying which standing had been used.
+     */
+
+    it('REFUSES a statutory classification sent to the employee form, and says where it goes instead', async () => {
+      const staffId = await makeEmployee('Form Writer', '3000.00');
+      const refused = await request(app.getHttpServer())
+        .post(`/workforce/employees/${staffId}`)
+        .set('Authorization', bearer)
+        .send({ epfMembership: 'PERMANENT_RESIDENT' })
+        .expect(400);
+      expect(refused.body.message).toMatch(/statutory-classification/);
+      expect(refused.body.message).toMatch(/epfMembership/);
+    });
+
+    it('does not reprice an already-calculated month when the standing changes later', async () => {
+      // The proof, in money. August is calculated with LINDUNG declined, so
+      // nothing is taken. The employee then opts in from 1 September. August
+      // recalculated must still take nothing; September must take the
+      // contribution. One record, two answers, each true of its own month.
+      const staffId = await makeEmployee('Opts In Later', '6000.00', {
+        lindungParticipation: 'NOT_PARTICIPATING',
+      });
+
+      const august = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${august.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const beforeDetail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${august.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const beforeLine = beforeDetail.body.lines.find((l: { staffId: string }) => l.staffId === staffId);
+      expect(Number(beforeLine.lindungEmployee ?? 0)).toBe(0);
+
+      await request(app.getHttpServer())
+        .post(`/workforce/employees/${staffId}/statutory-classification`)
+        .set('Authorization', bearer)
+        .send({
+          effectiveFrom: '2026-09-01',
+          lindungParticipation: 'VOLUNTARY_OPTED_IN',
+          reason: 'Signed up during the September enrolment window',
+        })
+        .expect(201);
+
+      // AUGUST, RECALCULATED AFTER THE CHANGE. Unmoved.
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${august.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const afterDetail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${august.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const afterLine = afterDetail.body.lines.find((l: { staffId: string }) => l.staffId === staffId);
+      expect(Number(afterLine.lindungEmployee ?? 0)).toBe(0);
+      // And the payslip carries the version it was computed on, so the answer
+      // is provable from the line rather than from today's employee record.
+      expect(afterLine.snapshot.statutoryClassification.lindungParticipation).toBe('NOT_PARTICIPATING');
+
+      // SEPTEMBER takes it.
+      const september = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: '2026-09', clinicId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${september.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const septDetail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${september.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const septLine = septDetail.body.lines.find((l: { staffId: string }) => l.staffId === staffId);
+      expect(Number(septLine.lindungEmployee)).toBeGreaterThan(0);
+      expect(septLine.snapshot.statutoryClassification.lindungParticipation).toBe('VOLUNTARY_OPTED_IN');
+    });
+
+    it('BLOCKS the month when the standing changed part-way through it', async () => {
+      const staffId = await makeEmployee('Mid Month Change', '6000.00');
+      await request(app.getHttpServer())
+        .post(`/workforce/employees/${staffId}/statutory-classification`)
+        .set('Authorization', bearer)
+        .send({ effectiveFrom: '2026-08-15', epfMembership: 'PERMANENT_RESIDENT' })
+        .expect(201);
+
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      const calculated = await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const exceptions = calculated.body.exceptions as { name: string; issue: string }[];
+      expect(exceptions.some((row) => /statutory classification changed on 2026-08-15/.test(row.issue))).toBe(true);
+      // The FIELD is named, not merely that something moved.
+      expect(exceptions.some((row) => /EPF Third Schedule Part/.test(row.issue))).toBe(true);
+
+      // Left out of the totals rather than paid on a standing nobody chose.
+      const detail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      expect(detail.body.lines.some((l: { staffId: string }) => l.staffId === staffId)).toBe(false);
+
+      const gate = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}/exceptions`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const blocker = (gate.body.exceptions as { code: string; overridable: boolean }[]).find(
+        (row) => row.code === 'STATUTORY_CLASSIFICATION_CHANGED_MID_PERIOD',
+      );
+      expect(blocker).toBeDefined();
+      expect(blocker!.overridable).toBe(false);
+    });
+
+    it('BLOCKS an employee with no statutory standing on record at all', async () => {
+      const staffId = await makeEmployee('Never Classified', '3000.00', { classification: false });
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      const calculated = await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const exceptions = calculated.body.exceptions as { name: string; issue: string }[];
+      expect(exceptions.some((row) => row.name === 'Never Classified' && /No statutory classification/.test(row.issue))).toBe(
+        true,
+      );
+      const detail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      expect(detail.body.lines.some((l: { staffId: string }) => l.staffId === staffId)).toBe(false);
+    });
+
+    it('refuses a change dated into a month that has already been approved', async () => {
+      const staffId = await makeEmployee('Settled Month', '3000.00');
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/approve`)
+        .set('Authorization', bearer)
+        .send({})
+        .expect(200);
+
+      const refused = await request(app.getHttpServer())
+        .post(`/workforce/employees/${staffId}/statutory-classification`)
+        .set('Authorization', bearer)
+        .send({ effectiveFrom: '2026-08-01', epfMembership: 'PERMANENT_RESIDENT' })
+        .expect(409);
+      expect(refused.body.message).toMatch(/approved payroll run/);
+    });
+
+    it('refuses a version that states nothing new', async () => {
+      const staffId = await makeEmployee('Same Again', '3000.00');
+      const refused = await request(app.getHttpServer())
+        .post(`/workforce/employees/${staffId}/statutory-classification`)
+        .set('Authorization', bearer)
+        .send({ effectiveFrom: '2026-01-01', epfMembership: 'MALAYSIAN_CITIZEN' })
+        .expect(400);
+      expect(refused.body.message).toMatch(/no new fact to record/);
+    });
+
+    it('carries the standing forward, so changing one classification does not blank the rest', async () => {
+      const staffId = await makeEmployee('Carry Forward', '3000.00', { taxProfile: true, pcbApplicable: true });
+      await request(app.getHttpServer())
+        .post(`/workforce/employees/${staffId}/statutory-classification`)
+        .set('Authorization', bearer)
+        .send({ effectiveFrom: '2026-01-01', qualifyingChildren: 2 })
+        .expect(201);
+
+      const history = await request(app.getHttpServer())
+        .get(`/workforce/employees/${staffId}/statutory-classification`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const current = history.body.find((row: { current: boolean }) => row.current);
+      expect(current.qualifyingChildren).toBe(2);
+      // Untouched by this version, and still true.
+      expect(current.epfMembership).toBe('MALAYSIAN_CITIZEN');
+      expect(current.taxResidence).toBe('RESIDENT');
+      expect(current.restDayOfWeek).toBe(0);
+      // And the history says exactly what moved.
+      expect(current.changed).toEqual(['qualifying children']);
+      // The previous version is CLOSED the day before, not deleted.
+      const previous = history.body.find((row: { current: boolean }) => !row.current);
+      expect(previous.effectiveTo).toBe('2025-12-31');
+      expect(previous.qualifyingChildren).toBe(0);
+    });
+
+    it('leaves an employee of another company out of the run, and names the company that pays them', async () => {
+      // A GROUP RUNNING TWO ENTITIES FROM ONE CLINIC. The run is scoped to an
+      // employing company; the calculation used to select on BRANCH alone, so
+      // company B's people were computed into company A's run and then had
+      // their year-to-date filed under B — one month, two entities.
+      const other = await request(app.getHttpServer())
+        .post('/workforce/legal-employers')
+        .set('Authorization', bearer)
+        .send({ name: `Other Employer ${randomId().slice(0, 8)}` })
+        .expect(201);
+      const outsider = await makeEmployee('Other Company Staff', '3000.00', {
+        legalEmployerId: other.body.id,
+      });
+      await makeEmployee('This Company Staff', '3000.00');
+
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId, legalEmployerId })
+        .expect(201);
+      const calculated = await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+
+      const detail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      expect(detail.body.lines.some((l: { staffId: string }) => l.staffId === outsider)).toBe(false);
+      expect(detail.body.lines).toHaveLength(1);
+
+      // Said out loud. A missing payslip is only safe if somebody can find out
+      // which run pays it.
+      const exceptions = calculated.body.exceptions as { name: string; issue: string }[];
+      expect(
+        exceptions.some((row) => row.name === 'Other Company Staff' && /Employed by Other Employer/.test(row.issue)),
+      ).toBe(true);
+      // INFO — another company's employee is not this run's blocker.
+      const gate = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}/exceptions`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const row = (gate.body.exceptions as { code: string; severity: string }[]).find(
+        (e) => e.code === 'EMPLOYED_BY_ANOTHER_COMPANY',
+      );
+      expect(row!.severity).toBe('INFO');
+    });
+
+    it('names the employing company on the run without being asked, when there is only one', async () => {
+      // `PayrollRun.legalEmployerId` scoped every statutory output since Stage 1
+      // and NOTHING EVER SET IT: every run was created with it null. A clinic
+      // with one company should never meet the concept, so it is derived.
+      await makeEmployee('Only Company', '3000.00');
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      expect(run.body.legalEmployerId).toBe(legalEmployerId);
+    });
+
+    it('REFUSES to guess the employing company when the branch has two', async () => {
+      const other = await request(app.getHttpServer())
+        .post('/workforce/legal-employers')
+        .set('Authorization', bearer)
+        .send({ name: `Second Employer ${randomId().slice(0, 8)}` })
+        .expect(201);
+      await makeEmployee('Company A Staff', '3000.00');
+      await makeEmployee('Company B Staff', '3000.00', { legalEmployerId: other.body.id });
+
+      const refused = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(400);
+      expect(refused.body.message).toMatch(/2 different companies/);
+      // Naming one is accepted.
+      await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId, legalEmployerId })
+        .expect(201);
+    });
+
+    it('records the employer HRD class as a dated fact, and derives the rate from it', async () => {
+      // The old form took a free-text category and a typed rate. Both refused:
+      // 1% and 0.5% are the PSMB Act's numbers, and neither was dated.
+      const refused = await request(app.getHttpServer())
+        .post('/workforce/legal-employers')
+        .set('Authorization', bearer)
+        .send({ id: legalEmployerId, name: `HRD Typed ${randomId().slice(0, 8)}`, hrdLevyRate: 0.01 })
+        .expect(400);
+      expect(refused.body.message).toMatch(/statutory-profile/);
+
+      // The rate was a hand-typed decimal beside free text. 1% (s.14) and 0.5%
+      // (s.15) are the PSMB Act's numbers, so the class is recorded and the
+      // rate follows.
+      await request(app.getHttpServer())
+        .post(`/workforce/legal-employers/${legalEmployerId}/statutory-profile`)
+        .set('Authorization', bearer)
+        .send({ effectiveFrom: '2026-01-01', hrdRegistration: 'MANDATORY_SECTION_14' })
+        .expect(201);
+      const history = await request(app.getHttpServer())
+        .get(`/workforce/legal-employers/${legalEmployerId}/statutory-profile`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const current = history.body.find((row: { current: boolean }) => row.current);
+      expect(current.hrdRegistration).toBe('MANDATORY_SECTION_14');
+      expect(current.hrdLevyRatePercent).toBe(1);
+
+      const resolved = await request(app.getHttpServer())
+        .get(`/workforce/legal-employers/${legalEmployerId}/statutory-profile/resolve?period=2026-08-01`)
+        .set('Authorization', bearer)
+        .expect(200);
+      expect(resolved.body.state).toBe('RESOLVED');
+      expect(resolved.body.hrdLevyRatePercent).toBe(1);
+
+      // A period before the class was recorded resolves to nothing, not to
+      // NOT_REGISTERED — "we hold no answer" is not "no levy is due".
+      const earlier = await request(app.getHttpServer())
+        .get(`/workforce/legal-employers/${legalEmployerId}/statutory-profile/resolve?period=2025-06-01`)
+        .set('Authorization', bearer)
+        .expect(200);
+      expect(earlier.body.state).toBe('NONE_ON_RECORD');
+      expect(earlier.body.hrdLevyRatePercent).toBeNull();
     });
   });
 

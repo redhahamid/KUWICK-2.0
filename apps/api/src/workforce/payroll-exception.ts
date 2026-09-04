@@ -274,6 +274,65 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'Record their LINDUNG 24 JAM participation on the employee record — foreign worker, opted in, or not participating.',
     deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
   },
+  /**
+   * NOTHING SAYS WHAT THIS PERSON'S STATUTORY STANDING WAS THAT MONTH.
+   *
+   * Distinct from a MISSING classification field. EPF membership unrecorded is
+   * one unknown answer inside a standing that exists; this is no standing on
+   * record at all for the period — usually somebody hired after the last
+   * version was written, or a period before their first version starts.
+   */
+  /**
+   * THE RUN IS SCOPED TO AN EMPLOYING COMPANY; THE BRANCH IS NOT THE COMPANY.
+   *
+   * Raised where somebody works at this run's branch but is employed by a
+   * different entity. Excluded, and said out loud: a missing payslip is only
+   * safe if the person can be told which run they are in.
+   */
+  EMPLOYED_BY_ANOTHER_COMPANY: {
+    code: 'EMPLOYED_BY_ANOTHER_COMPANY',
+    severity: 'INFO',
+    overridable: false,
+    cause: (c) => `Employed by ${c.employerName}, not ${c.runEmployerName}.`,
+    consequence:
+      'EPF, SOCSO, EIS and monthly tax are filed by the employing entity, so they are paid in that company’s ' +
+      'run and left out of this one. Nothing is owed to them here.',
+    remediation:
+      'Nothing, if that is right. If they moved company, change the employing company on their employee record ' +
+      'before this month is calculated.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+  },
+  NO_STATUTORY_CLASSIFICATION: {
+    code: 'NO_STATUTORY_CLASSIFICATION',
+    severity: 'BLOCKING',
+    overridable: false,
+    cause: (c) => `No statutory classification is on record for this employee for ${c.periodLabel}.`,
+    consequence:
+      'EPF, SOCSO, EIS, LINDUNG and PCB all turn on classifications that are recorded from a date. With none in ' +
+      'force for this month there is nothing to compute from, and a payslip would be contributing on assumptions.',
+    remediation:
+      'Record their statutory classification from a date on or before the start of this period, on the employee record.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+  },
+  /**
+   * The classification analogue of SALARY_CHANGED_MID_PERIOD, and refused for
+   * the same reason: two lawful answers, no rule choosing between them, and
+   * both look like a correct figure on a payslip.
+   */
+  STATUTORY_CLASSIFICATION_CHANGED_MID_PERIOD: {
+    code: 'STATUTORY_CLASSIFICATION_CHANGED_MID_PERIOD',
+    severity: 'BLOCKING',
+    overridable: false,
+    cause: (c) =>
+      `This employee's statutory classification changed on ${c.changedOn}, part-way through ${c.periodLabel} (${c.changed}).`,
+    consequence:
+      'A contribution is worked out for a whole wage period, and nothing decides whether the month follows the ' +
+      'old standing or the new one. Kuwick will not pick, so this employee is left out of the run totals.',
+    remediation:
+      'Date the change from the start of a period, or split the run. Kuwick does not apportion a mid-period ' +
+      'classification change across two rates.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+  },
   NO_REST_DAY: {
     code: 'NO_REST_DAY',
     severity: 'BLOCKING',

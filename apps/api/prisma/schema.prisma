@@ -372,14 +372,16 @@ model Tenant {
   claimImportBatches         ClaimImportBatch[]
 
   // Malaysia payroll — Stage 1 + 2
-  legalEmployers         LegalEmployer[]
-  employeeSalaries       EmployeeSalary[]
-  payComponents          PayComponent[]
-  payrollPolicies        PayrollPolicy[]
-  employeeRecurringItems EmployeeRecurringItem[]
-  payrollSnapshots       PayrollSnapshot[]
-  payrollExceptions      PayrollException[]
-  employeeYtdRows        EmployeeYtd[]
+  legalEmployers                   LegalEmployer[]
+  employeeSalaries                 EmployeeSalary[]
+  employeeStatutoryClassifications EmployeeStatutoryClassification[]
+  legalEmployerStatutoryProfiles   LegalEmployerStatutoryProfile[]
+  payComponents                    PayComponent[]
+  payrollPolicies                  PayrollPolicy[]
+  employeeRecurringItems           EmployeeRecurringItem[]
+  payrollSnapshots                 PayrollSnapshot[]
+  payrollExceptions                PayrollException[]
+  employeeYtdRows                  EmployeeYtd[]
 
   @@map("tenants")
 }
@@ -1101,15 +1103,18 @@ model Staff {
   claimImportBatches           ClaimImportBatch[]           @relation("ClaimImportedBy")
 
   // Malaysia payroll — Stage 1 + 2
-  salaryHistory               EmployeeSalary[]        @relation("EmployeeSalaryStaff")
-  salaryHistoryAuthored       EmployeeSalary[]        @relation("EmployeeSalaryAuthor")
-  recurringItems              EmployeeRecurringItem[] @relation("RecurringItemStaff")
-  recurringItemsAuthored      EmployeeRecurringItem[] @relation("RecurringItemAuthor")
-  payrollSnapshotsAuthored    PayrollSnapshot[]       @relation("PayrollSnapshotAuthor")
-  payrollExceptions           PayrollException[]      @relation("PayrollExceptionStaff")
-  payrollExceptionsOverridden PayrollException[]      @relation("PayrollExceptionOverrider")
-  ytdRows                     EmployeeYtd[]           @relation("EmployeeYtdStaff")
-  ytdRowsAuthored             EmployeeYtd[]           @relation("EmployeeYtdAuthor")
+  salaryHistory                    EmployeeSalary[]                  @relation("EmployeeSalaryStaff")
+  salaryHistoryAuthored            EmployeeSalary[]                  @relation("EmployeeSalaryAuthor")
+  statutoryClassifications         EmployeeStatutoryClassification[] @relation("EmployeeStatutoryStaff")
+  statutoryClassificationsAuthored EmployeeStatutoryClassification[] @relation("EmployeeStatutoryAuthor")
+  employerStatutoryAuthored        LegalEmployerStatutoryProfile[]   @relation("EmployerStatutoryAuthor")
+  recurringItems                   EmployeeRecurringItem[]           @relation("RecurringItemStaff")
+  recurringItemsAuthored           EmployeeRecurringItem[]           @relation("RecurringItemAuthor")
+  payrollSnapshotsAuthored         PayrollSnapshot[]                 @relation("PayrollSnapshotAuthor")
+  payrollExceptions                PayrollException[]                @relation("PayrollExceptionStaff")
+  payrollExceptionsOverridden      PayrollException[]                @relation("PayrollExceptionOverrider")
+  ytdRows                          EmployeeYtd[]                     @relation("EmployeeYtdStaff")
+  ytdRowsAuthored                  EmployeeYtd[]                     @relation("EmployeeYtdAuthor")
 
   @@index([tenantId])
   @@index([tenantId, role])
@@ -6410,26 +6415,26 @@ model EmployeeProfile {
 
   /// Statutory identifiers. Stored, never used to derive a RATE — rates come
   /// only from StatutoryRuleSet.
-  epfNumber       String?  @map("epf_number")
-  socsoNumber     String?  @map("socso_number")
-  taxNumber       String?  @map("tax_number")
+  epfNumber       String?        @map("epf_number")
+  socsoNumber     String?        @map("socso_number")
+  taxNumber       String?        @map("tax_number")
   /// PCB category ("S", "TP1"…). Free text: the categories are the tenant's
   /// configuration, not this schema's opinion.
-  taxCategory     String?  @map("tax_category")
+  taxCategory     String?        @map("tax_category")
   /// Whether statutory contributions apply at all. A foreign locum on a
   /// service contract may be outside EPF/SOCSO entirely.
   /// The employee's elected EPF share: 11 (statutory) or 9 (reduced). Selects
   /// between two different Third Schedule tables, so it is a rate ELECTION and
   /// not a percentage this system multiplies by.
-  epfEmployeeRate Decimal? @default(11) @map("epf_employee_rate") @db.Decimal(4, 2)
+  epfEmployeeRate Decimal?       @default(11) @map("epf_employee_rate") @db.Decimal(4, 2)
   /// Decides the Third Schedule Part. NULL blocks EPF rather than defaulting:
   /// guessing citizenship for a 60-year-old picks between 4% and 6% employer,
   /// and picking wrong under-contributes silently for as long as nobody looks.
   epfMembership   EpfMembership? @map("epf_membership")
-  epfApplicable   Boolean  @default(true) @map("epf_applicable")
-  socsoApplicable Boolean  @default(true) @map("socso_applicable")
-  eisApplicable   Boolean  @default(true) @map("eis_applicable")
-  pcbApplicable   Boolean  @default(true) @map("pcb_applicable")
+  epfApplicable   Boolean        @default(true) @map("epf_applicable")
+  socsoApplicable Boolean        @default(true) @map("socso_applicable")
+  eisApplicable   Boolean        @default(true) @map("eis_applicable")
+  pcbApplicable   Boolean        @default(true) @map("pcb_applicable")
 
   /// STAGE 1 — the employer, which is NOT the branch. Nullable while the
   /// backfill runs; a payroll run refuses to include an employee without one.
@@ -6445,12 +6450,12 @@ model EmployeeProfile {
   /// decides between a flat 30% and the progressive table, the other decides
   /// which deductions apply, and neither can be inferred from anything else on
   /// this record.
-  taxResidence       TaxResidence? @map("tax_residence")
-  pcbCategory        PcbCategory?  @map("pcb_category")
+  taxResidence         TaxResidence?         @map("tax_residence")
+  pcbCategory          PcbCategory?          @map("pcb_category")
   /// LINDUNG 24 JAM participation. NULL blocks the contribution rather than
   /// defaulting: "not recorded" and "declined" are different answers, and only
   /// one of them is a fact.
-  lindungParticipation   LindungParticipation? @map("lindung_participation")
+  lindungParticipation LindungParticipation? @map("lindung_participation")
 
   /// What the employer undertook for extra hours when the Act does not reach
   /// this employee (wages above the First Schedule's RM4,000). Ignored while
@@ -6464,17 +6469,17 @@ model EmployeeProfile {
   /// Sunday. Working one is paid in DAYS of ordinary rate under s.60(3), not
   /// as hours of overtime, so guessing it wrong underpays or overpays by a
   /// whole day. NULL blocks overtime rather than pricing it as a normal day.
-  restDayOfWeek      Int?          @map("rest_day_of_week")
+  restDayOfWeek Int? @map("rest_day_of_week")
 
   /// C — qualifying children. Defaults to none, which DEDUCTS MORE tax rather
   /// than less: an employer withholds on the facts it holds, and the employee
   /// recovers any excess on assessment. The opposite default would under-deduct
   /// on a guess.
-  qualifyingChildren Int           @default(0) @map("qualifying_children")
-  disabledSelf       Boolean       @default(false) @map("disabled_self")
-  disabledSpouse     Boolean       @default(false) @map("disabled_spouse")
-  leavePolicyId     String? @map("leave_policy_id")
-  notes             String?
+  qualifyingChildren Int     @default(0) @map("qualifying_children")
+  disabledSelf       Boolean @default(false) @map("disabled_self")
+  disabledSpouse     Boolean @default(false) @map("disabled_spouse")
+  leavePolicyId      String? @map("leave_policy_id")
+  notes              String?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -7077,13 +7082,13 @@ model PayrollRun {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  tenant        Tenant              @relation(fields: [tenantId], references: [id])
-  clinic        Clinic?             @relation(fields: [clinicId], references: [id])
-  createdBy     Staff               @relation("PayrollRunAuthor", fields: [createdByStaffId], references: [id])
-  approvedBy    Staff?              @relation("PayrollRunApprover", fields: [approvedByStaffId], references: [id])
+  tenant        Tenant               @relation(fields: [tenantId], references: [id])
+  clinic        Clinic?              @relation(fields: [clinicId], references: [id])
+  createdBy     Staff                @relation("PayrollRunAuthor", fields: [createdByStaffId], references: [id])
+  approvedBy    Staff?               @relation("PayrollRunApprover", fields: [approvedByStaffId], references: [id])
   lines         PayrollLine[]
   adjustments   PayrollAdjustment[]
-  legalEmployer LegalEmployer?      @relation(fields: [legalEmployerId], references: [id])
+  legalEmployer LegalEmployer?       @relation(fields: [legalEmployerId], references: [id])
   snapshots     PayrollSnapshot[]
   exceptionRows PayrollException[]
   approvals     PayrollRunApproval[]
@@ -7116,17 +7121,17 @@ model PayrollLine {
 
   /// NULL — not zero — when the run is NOT_CONFIGURED. The difference is the
   /// whole reason `StatutoryStatus` exists.
-  epfEmployee   Decimal? @map("epf_employee") @db.Decimal(12, 2)
-  epfEmployer   Decimal? @map("epf_employer") @db.Decimal(12, 2)
-  socsoEmployee Decimal? @map("socso_employee") @db.Decimal(12, 2)
-  socsoEmployer Decimal? @map("socso_employer") @db.Decimal(12, 2)
-  eisEmployee   Decimal? @map("eis_employee") @db.Decimal(12, 2)
-  eisEmployer   Decimal? @map("eis_employer") @db.Decimal(12, 2)
+  epfEmployee     Decimal? @map("epf_employee") @db.Decimal(12, 2)
+  epfEmployer     Decimal? @map("epf_employer") @db.Decimal(12, 2)
+  socsoEmployee   Decimal? @map("socso_employee") @db.Decimal(12, 2)
+  socsoEmployer   Decimal? @map("socso_employer") @db.Decimal(12, 2)
+  eisEmployee     Decimal? @map("eis_employee") @db.Decimal(12, 2)
+  eisEmployer     Decimal? @map("eis_employer") @db.Decimal(12, 2)
   /// LINDUNG 24 JAM (SKBBK). EMPLOYEE-BORNE — there is no employer share, and
   /// the absence of an employer column here is the point: the employer remits
   /// this money without paying it, and a payslip must not imply otherwise.
   lindungEmployee Decimal? @map("lindung_employee") @db.Decimal(12, 2)
-  pcb           Decimal? @db.Decimal(12, 2)
+  pcb             Decimal? @db.Decimal(12, 2)
 
   netPay       Decimal @default(0) @map("net_pay") @db.Decimal(12, 2)
   employerCost Decimal @default(0) @map("employer_cost") @db.Decimal(12, 2)
@@ -7204,10 +7209,10 @@ model PayrollInputEntry {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  tenant    Tenant  @relation(fields: [tenantId], references: [id])
-  clinic    Clinic? @relation(fields: [clinicId], references: [id])
-  staff     Staff   @relation("PayrollInputStaff", fields: [staffId], references: [id])
-  createdBy Staff   @relation("PayrollInputAuthor", fields: [createdByStaffId], references: [id])
+  tenant    Tenant      @relation(fields: [tenantId], references: [id])
+  clinic    Clinic?     @relation(fields: [clinicId], references: [id])
+  staff     Staff       @relation("PayrollInputStaff", fields: [staffId], references: [id])
+  createdBy Staff       @relation("PayrollInputAuthor", fields: [createdByStaffId], references: [id])
   /// At most one claim backs any input. See StaffClaim.payrollInputEntryId.
   claim     StaffClaim? @relation("ClaimPayrollInput")
 
@@ -7525,11 +7530,12 @@ model LegalEmployer {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant    Tenant            @relation(fields: [tenantId], references: [id])
-  employees EmployeeProfile[]
-  policies  PayrollPolicy[]
-  runs      PayrollRun[]
-  ytd       EmployeeYtd[]
+  tenant            Tenant                          @relation(fields: [tenantId], references: [id])
+  employees         EmployeeProfile[]
+  policies          PayrollPolicy[]
+  runs              PayrollRun[]
+  ytd               EmployeeYtd[]
+  statutoryProfiles LegalEmployerStatutoryProfile[]
 
   @@unique([tenantId, name])
   @@index([tenantId, active])
@@ -7576,6 +7582,104 @@ model EmployeeSalary {
   @@unique([staffId, effectiveFrom])
   @@index([tenantId, staffId, effectiveFrom])
   @@map("employee_salaries")
+}
+
+/// Section 14 (mandatory) or section 15 (opted in below the headcount) of the
+/// Pembangunan Sumber Manusia Berhad Act 2001, or neither. The RATE follows
+/// from the class — 1% and 0.5% are the Act's numbers, not a field somebody
+/// types — so `hrdLevyRatePercent()` derives it and nothing stores it.
+enum HrdRegistrationClass {
+  MANDATORY_SECTION_14
+  OPTIONAL_SECTION_15
+  NOT_REGISTERED
+}
+
+/// STATUTORY STANDING, WITH A DATE ON IT — the employer side.
+///
+/// `legal_employers.hrd_category` was free text beside a hand-typed
+/// `hrd_levy_rate` decimal, and neither was dated. An employer crossing the
+/// section 14 headcount moves class on a date, and a levy return for the
+/// months before it must keep the old class.
+model LegalEmployerStatutoryProfile {
+  id              String @id @default(uuid())
+  tenantId        String @map("tenant_id")
+  legalEmployerId String @map("legal_employer_id")
+
+  hrdRegistration HrdRegistrationClass @map("hrd_registration")
+
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+
+  reason String?
+  note   String?
+
+  createdByStaffId String?  @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  legalEmployer LegalEmployer @relation(fields: [legalEmployerId], references: [id], onDelete: Cascade)
+  createdBy     Staff?        @relation("EmployerStatutoryAuthor", fields: [createdByStaffId], references: [id])
+
+  @@unique([legalEmployerId, effectiveFrom])
+  @@index([tenantId, legalEmployerId, effectiveFrom])
+  @@map("legal_employer_statutory_profiles")
+}
+
+/// STATUTORY STANDING, WITH A DATE ON IT — the employee side.
+///
+/// Every classification that decides a statutory figure used to be a mutable
+/// column on `employee_profiles`, so recording somebody's permanent residence
+/// in September repriced March. This is the same fix `employee_salaries` was,
+/// for figures of the same size: two percentage points of employer EPF turn on
+/// which Third Schedule Part applies, and no payslip says which one was used.
+///
+/// A ROW IS A COMPLETE STATEMENT, not a patch. "What was this person's
+/// statutory standing in March" must be one row, not a replay of every change
+/// since hire.
+///
+/// IDENTIFIERS ARE NOT HERE, on purpose. An EPF member number is one lifelong
+/// fact; dating it would freeze a mis-key into a filed return, because the
+/// March submission wants the CORRECT number and not the wrong one that
+/// happened to be on file in March. Those stay mutable on the profile.
+model EmployeeStatutoryClassification {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  staffId  String @map("staff_id")
+
+  epfApplicable   Boolean        @default(true) @map("epf_applicable")
+  epfMembership   EpfMembership? @map("epf_membership")
+  epfEmployeeRate Decimal?       @map("epf_employee_rate") @db.Decimal(4, 2)
+  socsoApplicable Boolean        @default(true) @map("socso_applicable")
+  eisApplicable   Boolean        @default(true) @map("eis_applicable")
+
+  lindungParticipation LindungParticipation? @map("lindung_participation")
+
+  pcbApplicable      Boolean       @default(true) @map("pcb_applicable")
+  taxResidence       TaxResidence? @map("tax_residence")
+  pcbCategory        PcbCategory?  @map("pcb_category")
+  qualifyingChildren Int           @default(0) @map("qualifying_children")
+  disabledSelf       Boolean       @default(false) @map("disabled_self")
+  disabledSpouse     Boolean       @default(false) @map("disabled_spouse")
+
+  restDayOfWeek          Int?                    @map("rest_day_of_week")
+  overtimeContractPolicy OvertimeContractPolicy? @map("overtime_contract_policy")
+
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+
+  reason String?
+  note   String?
+
+  createdByStaffId String?  @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  staff     Staff  @relation("EmployeeStatutoryStaff", fields: [staffId], references: [id], onDelete: Cascade)
+  createdBy Staff? @relation("EmployeeStatutoryAuthor", fields: [createdByStaffId], references: [id])
+
+  @@unique([staffId, effectiveFrom])
+  @@index([tenantId, staffId, effectiveFrom])
+  @@map("employee_statutory_classifications")
 }
 
 enum PayComponentType {
@@ -8033,15 +8137,15 @@ model StaffClaim {
   clinicId String? @map("clinic_id")
   staffId  String  @map("staff_id")
 
-  category    StaffClaimCategory
+  category       StaffClaimCategory
   /// What the employee asked for.
-  amountClaimed Decimal   @map("amount_claimed") @db.Decimal(12, 2)
+  amountClaimed  Decimal            @map("amount_claimed") @db.Decimal(12, 2)
   /// What was actually approved. NULL until a decision is made — never
   /// defaulted to the claimed amount, or an unapproved claim looks approved.
-  amountApproved Decimal? @map("amount_approved") @db.Decimal(12, 2)
+  amountApproved Decimal?           @map("amount_approved") @db.Decimal(12, 2)
   /// The day the expense was incurred, not the day it was submitted.
-  claimDate   DateTime  @map("claim_date") @db.Date
-  description String
+  claimDate      DateTime           @map("claim_date") @db.Date
+  description    String
 
   status StaffClaimStatus @default(DRAFT)
 
@@ -8052,29 +8156,29 @@ model StaffClaim {
   decisionReason     String?   @map("decision_reason")
 
   /// Chosen at approval. Immutable once the claim has been materialised or paid.
-  paymentRoute PaymentRoute? @map("payment_route")
-  payoutStatus PayoutStatus  @default(PENDING) @map("payout_status")
+  paymentRoute        PaymentRoute? @map("payment_route")
+  payoutStatus        PayoutStatus  @default(PENDING) @map("payout_status")
   /// The period it was carried into, when the route is PAYROLL.
-  payrollPeriod DateTime?    @map("payroll_period") @db.Date
+  payrollPeriod       DateTime?     @map("payroll_period") @db.Date
   /// THE DUPLICATE GUARD. Unique, so one claim can back at most one payroll
   /// input; a second materialisation is a constraint violation, not a
   /// discrepancy somebody spots in a reconciliation months later.
-  payrollInputEntryId String? @unique @map("payroll_input_entry_id")
+  payrollInputEntryId String?       @unique @map("payroll_input_entry_id")
   /// Finance's own reference once settled outside payroll.
-  financeReference    String? @map("finance_reference")
-  paidAt              DateTime? @map("paid_at")
+  financeReference    String?       @map("finance_reference")
+  paidAt              DateTime?     @map("paid_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant      Tenant             @relation(fields: [tenantId], references: [id])
-  clinic      Clinic?            @relation(fields: [clinicId], references: [id])
-  staff       Staff              @relation("StaffClaimSubject", fields: [staffId], references: [id])
-  submittedBy Staff              @relation("StaffClaimSubmitter", fields: [submittedByStaffId], references: [id])
-  decidedBy   Staff?             @relation("StaffClaimDecider", fields: [decidedByStaffId], references: [id])
-  payrollInput PayrollInputEntry? @relation("ClaimPayrollInput", fields: [payrollInputEntryId], references: [id])
-  attachments StaffClaimAttachment[]
-  events      StaffClaimEvent[]
+  tenant       Tenant                 @relation(fields: [tenantId], references: [id])
+  clinic       Clinic?                @relation(fields: [clinicId], references: [id])
+  staff        Staff                  @relation("StaffClaimSubject", fields: [staffId], references: [id])
+  submittedBy  Staff                  @relation("StaffClaimSubmitter", fields: [submittedByStaffId], references: [id])
+  decidedBy    Staff?                 @relation("StaffClaimDecider", fields: [decidedByStaffId], references: [id])
+  payrollInput PayrollInputEntry?     @relation("ClaimPayrollInput", fields: [payrollInputEntryId], references: [id])
+  attachments  StaffClaimAttachment[]
+  events       StaffClaimEvent[]
 
   @@index([tenantId, staffId, status])
   @@index([tenantId, status, payoutStatus])
@@ -8084,13 +8188,13 @@ model StaffClaim {
 
 /// A receipt. A claim without one is a claim nobody can audit.
 model StaffClaimAttachment {
-  id           String   @id @default(uuid())
-  tenantId     String   @map("tenant_id")
-  staffClaimId String   @map("staff_claim_id")
-  fileName     String   @map("file_name")
-  filePath     String   @map("file_path")
-  mimeType     String   @map("mime_type")
-  fileSize     Int      @map("file_size")
+  id           String @id @default(uuid())
+  tenantId     String @map("tenant_id")
+  staffClaimId String @map("staff_claim_id")
+  fileName     String @map("file_name")
+  filePath     String @map("file_path")
+  mimeType     String @map("mime_type")
+  fileSize     Int    @map("file_size")
 
   uploadedByStaffId String   @map("uploaded_by_staff_id")
   createdAt         DateTime @default(now()) @map("created_at")
@@ -8107,9 +8211,9 @@ model StaffClaimAttachment {
 /// audit log — a manager looking at a disputed claim should not have to search
 /// an audit table to find out who approved what and when.
 model StaffClaimEvent {
-  id           String   @id @default(uuid())
-  tenantId     String   @map("tenant_id")
-  staffClaimId String   @map("staff_claim_id")
+  id           String            @id @default(uuid())
+  tenantId     String            @map("tenant_id")
+  staffClaimId String            @map("staff_claim_id")
   event        String
   detail       String?
   fromStatus   StaffClaimStatus? @map("from_status")
@@ -8149,13 +8253,13 @@ enum LocumSessionStatus {
 /// payroll like anybody else. The distinction is recorded on the engagement,
 /// not inferred from the word "locum".
 model LocumSession {
-  id       String  @id @default(uuid())
-  tenantId String  @map("tenant_id")
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
   /// Where the session was worked. A payable is still branch-attributable.
-  clinicId String  @map("clinic_id")
+  clinicId String @map("clinic_id")
   /// The person. A `Staff` row, because they hold a schedule and see patients —
   /// but with `engagement = CONTRACTOR`, which is what keeps them out of payroll.
-  staffId  String  @map("staff_id")
+  staffId  String @map("staff_id")
 
   sessionDate DateTime @map("session_date") @db.Date
   /// Free text: "Morning", "On call", "Saturday clinic".
@@ -8168,28 +8272,28 @@ model LocumSession {
   status LocumSessionStatus @default(PLANNED)
 
   /// What the clinic agreed to pay. NULL until approved.
-  approvedAmount   Decimal? @map("approved_amount") @db.Decimal(12, 2)
-  approvedByStaffId String? @map("approved_by_staff_id")
+  approvedAmount    Decimal?  @map("approved_amount") @db.Decimal(12, 2)
+  approvedByStaffId String?   @map("approved_by_staff_id")
   approvedAt        DateTime? @map("approved_at")
 
   /// Always FINANCE for a contractor. The column exists so the invariant is
   /// visible in the data rather than only in the code that writes it.
-  paymentRoute PaymentRoute @default(FINANCE) @map("payment_route")
-  payoutStatus PayoutStatus @default(PENDING) @map("payout_status")
+  paymentRoute     PaymentRoute @default(FINANCE) @map("payment_route")
+  payoutStatus     PayoutStatus @default(PENDING) @map("payout_status")
   /// The clinic's own invoice or self-bill reference, once there is one.
-  invoiceReference String?  @map("invoice_reference")
-  paidAt           DateTime? @map("paid_at")
+  invoiceReference String?      @map("invoice_reference")
+  paidAt           DateTime?    @map("paid_at")
 
   note             String?
   createdByStaffId String   @map("created_by_staff_id")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  tenant     Tenant  @relation(fields: [tenantId], references: [id])
-  clinic     Clinic  @relation(fields: [clinicId], references: [id])
-  staff      Staff   @relation("LocumSessionSubject", fields: [staffId], references: [id])
-  approvedBy Staff?  @relation("LocumSessionApprover", fields: [approvedByStaffId], references: [id])
-  createdBy  Staff   @relation("LocumSessionAuthor", fields: [createdByStaffId], references: [id])
+  tenant     Tenant @relation(fields: [tenantId], references: [id])
+  clinic     Clinic @relation(fields: [clinicId], references: [id])
+  staff      Staff  @relation("LocumSessionSubject", fields: [staffId], references: [id])
+  approvedBy Staff? @relation("LocumSessionApprover", fields: [approvedByStaffId], references: [id])
+  createdBy  Staff  @relation("LocumSessionAuthor", fields: [createdByStaffId], references: [id])
 
   @@index([tenantId, staffId, sessionDate])
   @@index([tenantId, status, payoutStatus])
@@ -8256,14 +8360,14 @@ model PayrollRunApproval {
   staffId      String @map("staff_id")
 
   /// 1 for the first approval, 2 for the second.
-  sequence Int
+  sequence                 Int
   /// The rule in force AT THE TIME. A policy changed next year must not
   /// rewrite what this approval meant.
-  mode     PayrollApprovalMode
+  mode                     PayrollApprovalMode
   /// Whether this approval used the owner exemption above.
-  usedOwnerSelfApproval    Boolean @default(false) @map("used_owner_self_approval")
+  usedOwnerSelfApproval    Boolean             @default(false) @map("used_owner_self_approval")
   /// Whether the approver confirmed that statutory figures were not computed.
-  statutoryGapAcknowledged Boolean @default(false) @map("statutory_gap_acknowledged")
+  statutoryGapAcknowledged Boolean             @default(false) @map("statutory_gap_acknowledged")
 
   createdAt DateTime @default(now()) @map("created_at")
 
