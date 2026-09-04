@@ -10,6 +10,28 @@ import { UpsertPayComponentDto } from './dto/upsert-pay-component.dto';
 const EPOCH = new Date('1970-01-01T00:00:00.000Z');
 
 /**
+ * The attributes that decide what a component is LIABLE TO — everything the
+ * calculation reads. A change to one of these is a change to the money and
+ * gets a dated version; a change to the name or the active flag does not.
+ */
+const TREATMENT_FIELDS = [
+  'type',
+  'category',
+  'includeIn',
+  'pcbLiable',
+  'epfLiable',
+  'socsoLiable',
+  'eisLiable',
+  'hrdLiable',
+  'includeInOrpBase',
+  'includeInUnpaidLeaveBase',
+  'additionalRemuneration',
+  'pcbExemptionLimitCents',
+  'prorated',
+  'employerSide',
+] as const;
+
+/**
  * PAY COMPONENTS AS CONFIGURATION.
  *
  * The statutory treatment of a kind of money was a TypeScript constant, so a
@@ -167,10 +189,14 @@ export class PayComponentService {
         );
       }
 
-      const clash = await tx.payComponent.findFirst({
-        where: { code: dto.code, ...(dto.id ? { id: { not: dto.id } } : {}) },
-      });
-      if (clash) throw new ConflictException(`A pay component with the code "${dto.code}" already exists.`);
+      // The OPEN version of this code, which is what an edit is against. A
+      // closed earlier version is history and never clashes.
+      const open =
+        existing ??
+        (await tx.payComponent.findFirst({
+          where: { code: dto.code, effectiveTo: null },
+          orderBy: { effectiveFrom: 'desc' },
+        }));
 
       const data = {
         code: dto.code,
@@ -195,24 +221,103 @@ export class PayComponentService {
         verificationStatus: 'DRAFT' as const,
       };
 
-      const saved = existing
-        ? await tx.payComponent.update({ where: { id: existing.id }, data })
+      /*
+       * A TREATMENT CHANGE IS A NEW VERSION, NOT AN EDIT.
+       *
+       * `catalogueFor` resolves this table BY PERIOD, and this service
+       * overwrote the row in place — so marking an allowance EPF-exempt today
+       * changed what EVERY unapproved period computed, including months
+       * already calculated and looked at. The same defect the salary and
+       * statutory-classification tables were built to remove, in the third
+       * place it could reach a payslip.
+       *
+       * A LABEL is still an edit. Correcting a component's name is not a
+       * change to what it is liable to, and forcing a date onto it would make
+       * a typo into a version.
+       */
+      const movedTreatment =
+        open !== null &&
+        TREATMENT_FIELDS.some(
+          (field) => (data as Record<string, unknown>)[field] !== (open as unknown as Record<string, unknown>)[field],
+        );
+
+      if (open && movedTreatment) {
+        if (!dto.effectiveFrom) {
+          throw new BadRequestException(
+            `The statutory treatment of "${dto.code}" is changing, and that is recorded from the date it takes ` +
+              'effect. Send effectiveFrom: without it, this month and every earlier unapproved month would be ' +
+              'recalculated under a rule that was not in force for them.',
+          );
+        }
+        const from = new Date(`${dto.effectiveFrom.slice(0, 10)}T00:00:00.000Z`);
+        if (from <= open.effectiveFrom) {
+          throw new BadRequestException(
+            `The current version of "${dto.code}" starts on ${open.effectiveFrom.toISOString().slice(0, 10)}, ` +
+              `which is not before ${dto.effectiveFrom.slice(0, 10)}.`,
+          );
+        }
+        const approvedCovering = await tx.payrollRun.count({
+          where: {
+            status: { in: ['APPROVED', 'PAID'] },
+            period: { gte: new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1)) },
+          },
+        });
+        if (approvedCovering > 0) {
+          throw new ConflictException(
+            `${approvedCovering} approved payroll run(s) cover this date or later. What was paid under the current ` +
+              'treatment is settled; date the change from a period that has not been approved.',
+          );
+        }
+
+        await tx.payComponent.update({
+          where: { id: open.id },
+          data: { effectiveTo: new Date(from.getTime() - 86_400_000) },
+        });
+        const saved = await tx.payComponent.create({
+          data: {
+            ...data,
+            tenantId: currentTenantId(),
+            systemControlled: open.systemControlled,
+            version: open.version + 1,
+            effectiveFrom: from,
+            sourceRef: open.sourceRef,
+            createdByStaffId: actor.id,
+          },
+        });
+        await recordAudit(tx, actor, {
+          action: 'payComponent.updated',
+          entityType: 'PayComponent',
+          entityId: saved.id,
+          reason:
+            dto.reason ??
+            `New version ${saved.version} of pay component ${saved.code} from ${dto.effectiveFrom.slice(0, 10)} ` +
+              '(statutory treatment UNVERIFIED)',
+          before: open,
+          after: saved,
+        });
+        return saved;
+      }
+
+      const saved = open
+        ? await tx.payComponent.update({ where: { id: open.id }, data })
         : await tx.payComponent.create({
             data: {
               ...data,
               tenantId: currentTenantId(),
               systemControlled: false,
-              effectiveFrom: EPOCH,
+              effectiveFrom: dto.effectiveFrom
+                ? new Date(`${dto.effectiveFrom.slice(0, 10)}T00:00:00.000Z`)
+                : EPOCH,
               createdByStaffId: actor.id,
             },
           });
 
       await recordAudit(tx, actor, {
-        action: existing ? 'payComponent.updated' : 'payComponent.created',
+        action: open ? 'payComponent.updated' : 'payComponent.created',
         entityType: 'PayComponent',
         entityId: saved.id,
-        reason: `${existing ? 'Updated' : 'Created'} pay component ${saved.code} (statutory treatment UNVERIFIED)`,
-        ...(existing ? { before: existing, after: saved } : { after: saved }),
+        reason: `${open ? 'Updated' : 'Created'} pay component ${saved.code} (statutory treatment UNVERIFIED)`,
+        ...(open ? { before: open, after: saved } : { after: saved }),
       });
 
       return saved;

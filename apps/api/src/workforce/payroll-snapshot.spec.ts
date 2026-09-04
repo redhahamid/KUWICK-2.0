@@ -1,4 +1,12 @@
-import { canonicalise, diffSnapshots, snapshotHash, SnapshotPayload, SnapshotEmployeeLine } from './payroll-snapshot';
+import {
+  SNAPSHOT_SCHEMA_VERSION,
+  SnapshotEmployeeLine,
+  SnapshotPayload,
+  canonicalise,
+  diffSnapshots,
+  snapshotHash,
+  verifySnapshot,
+} from './payroll-snapshot';
 
 const line = (over: Partial<SnapshotEmployeeLine> = {}): SnapshotEmployeeLine => ({
   staffId: 's1',
@@ -7,14 +15,17 @@ const line = (over: Partial<SnapshotEmployeeLine> = {}): SnapshotEmployeeLine =>
   salaryBasis: 'MONTHLY',
   salaryAmountCents: 300000,
   inputs: [],
-  componentVersions: [{ code: 'BASIC', version: 1 }],
+  classification: null,
   bases: { grossCents: 300000, epfCents: 300000, socsoCents: 300000, eisCents: 300000, ordinaryRateBaseCents: 300000 },
   statutory: {
     epfEmployeeCents: 33000, epfEmployerCents: 39000,
     socsoEmployeeCents: 1475, socsoEmployerCents: 5165,
     eisEmployeeCents: 590, eisEmployerCents: 590,
+    lindungEmployeeCents: null,
     pcbCents: null,
   },
+  deductionCents: 35065,
+  employerContributionCents: 44755,
   netCents: 264935,
   employerCostCents: 344755,
   ...over,
@@ -104,5 +115,238 @@ describe('payroll snapshot', () => {
     const before = payload({ employees: [line({ statutory: { ...line().statutory, pcbCents: null } })] });
     const after = payload({ employees: [line({ statutory: { ...line().statutory, pcbCents: null } })] });
     expect(diffSnapshots(before, after).changed).toHaveLength(0);
+  });
+});
+
+
+describe('verifySnapshot', () => {
+  /*
+   * A snapshot is a claim about the past. It is worth nothing unless it can be
+   * checked, and checking is TWO questions that must not be run together: is
+   * this the payload that was approved, and does that payload add up?
+   */
+  const sound = (): SnapshotPayload =>
+    payload({
+      schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+      employees: [line()],
+      totals: {
+        grossCents: 300000,
+        deductionCents: 35065,
+        netCents: 264935,
+        employerCostCents: 344755,
+        employeeCount: 1,
+      },
+    });
+
+  it('passes a payload that hashes to its own hash and adds up', () => {
+    const p = sound();
+    const result = verifySnapshot(p, snapshotHash(p));
+    expect(result.verdict).toBe('VERIFIED');
+    expect(result.hashMatches).toBe(true);
+    expect(result.violations).toEqual([]);
+  });
+
+  it('calls a payload TAMPERED when it no longer hashes to the hash stored with it', () => {
+    const p = sound();
+    const storedHash = snapshotHash(p);
+    // What a direct database write would look like: a figure moved, the hash
+    // left behind. The table refuses UPDATE, so this should be impossible —
+    // which is exactly why it is worth being able to detect.
+    p.totals.netCents = 999999;
+    const result = verifySnapshot(p, storedHash);
+    expect(result.verdict).toBe('TAMPERED');
+    expect(result.hashMatches).toBe(false);
+    expect(result.reason).toMatch(/not the payload that was approved/);
+  });
+
+  it('calls a payload INCONSISTENT when it is intact but does not add up', () => {
+    // Stored faithfully, hashed correctly, and the totals do not follow from
+    // the rows. A hash proves storage, never arithmetic.
+    const p = payload({
+      schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+      employees: [line()],
+      totals: {
+        grossCents: 300000,
+        deductionCents: 35065,
+        netCents: 111111,
+        employerCostCents: 344755,
+        employeeCount: 1,
+      },
+    });
+    const result = verifySnapshot(p, snapshotHash(p));
+    expect(result.verdict).toBe('INCONSISTENT');
+    expect(result.hashMatches).toBe(true);
+    expect(result.violations.map((v) => v.code)).toContain('RUN_NET_MISMATCH');
+  });
+
+  it('catches a headcount that drifted from the rows', () => {
+    const p = sound();
+    p.totals.employeeCount = 4;
+    const result = verifySnapshot(p, snapshotHash(p));
+    expect(result.verdict).toBe('INCONSISTENT');
+    expect(result.violations.map((v) => v.code)).toContain('RUN_HEADCOUNT_MISMATCH');
+  });
+
+  it('catches an employee whose own gross, deductions and net disagree', () => {
+    const p = payload({
+      schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+      employees: [line({ deductionCents: 1 })],
+      totals: {
+        grossCents: 300000,
+        deductionCents: 1,
+        netCents: 264935,
+        employerCostCents: 344755,
+        employeeCount: 1,
+      },
+    });
+    const result = verifySnapshot(p, snapshotHash(p));
+    expect(result.verdict).toBe('INCONSISTENT');
+    expect(result.violations.map((v) => v.code)).toContain('EMPLOYEE_NET_MISMATCH');
+  });
+
+  /*
+   * A version-1 payload recorded no per-employee deduction or employer
+   * contribution, so its arithmetic cannot be re-derived. Reporting it VERIFIED
+   * on the strength of an intact hash would claim a check that never ran.
+   */
+  it('refuses to certify a version-1 payload it cannot re-check', () => {
+    const p = sound();
+    delete p.schemaVersion;
+    const result = verifySnapshot(p, snapshotHash(p));
+    expect(result.verdict).toBe('UNVERIFIABLE_SCHEMA');
+    expect(result.hashMatches).toBe(true);
+    expect(result.schemaVersion).toBe(1);
+    expect(result.reason).toMatch(/cannot be re-checked/);
+  });
+
+  it('reports TAMPERED ahead of the schema, because a broken hash settles it', () => {
+    const p = sound();
+    const storedHash = snapshotHash(p);
+    delete p.schemaVersion;
+    expect(verifySnapshot(p, storedHash).verdict).toBe('TAMPERED');
+  });
+
+  /*
+   * THE HASH MUST COVER THE PROVENANCE.
+   *
+   * Version 1 hashed the figures and not the schedules that produced them, so
+   * two runs computed against different EPF editions hashed identically. The
+   * question an auditor asks first — which schedule was this? — was outside
+   * the thing that proved the record had not moved.
+   */
+  it('hashes differently when the statutory schedules differ', () => {
+    const a = sound();
+    const b = sound();
+    b.statutory = {
+      resolvedAt: '2026-09-01',
+      approvable: true,
+      blockers: [],
+      schedules: [
+        {
+          scheme: 'EPF',
+          scheduleId: 'EPF_THIRD_SCHEDULE_2025_10',
+          effectiveFrom: '2025-10-01',
+          verification: 'OFFICIAL_SOURCE_VERIFIED',
+          document: 'KWSP Third Schedule',
+          contentHash: 'abc123',
+          missing: false,
+          notYetInForce: false,
+        },
+      ],
+    };
+    expect(snapshotHash(a)).not.toBe(snapshotHash(b));
+  });
+
+  it('hashes differently when a component treatment differs', () => {
+    const a = sound();
+    const b = sound();
+    const treatment = {
+      code: 'ALLOWANCE',
+      label: 'Allowance',
+      version: 1,
+      effectiveFrom: '2026-01-01',
+      effectiveTo: null,
+      kind: 'EARNING',
+      liability: {
+        epfLiable: true,
+        socsoLiable: true,
+        eisLiable: true,
+        pcbLiable: true,
+        includeInOrpBase: false,
+        additionalRemuneration: false,
+      },
+      verification: 'UNVERIFIED',
+      sourceRef: null,
+    };
+    a.components = [treatment];
+    b.components = [{ ...treatment, liability: { ...treatment.liability, epfLiable: false } }];
+    expect(snapshotHash(a)).not.toBe(snapshotHash(b));
+  });
+
+  it('hashes differently when the classification a payslip used differs', () => {
+    const a = sound();
+    const b = payload({
+      schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+      employees: [
+        line({
+          classification: {
+            id: 'c1',
+            effectiveFrom: '2024-01-01',
+            epfApplicable: true,
+            epfMembership: 'PERMANENT_RESIDENT',
+            epfEmployeeRate: 11,
+            socsoApplicable: true,
+            eisApplicable: true,
+            lindungParticipation: 'NOT_PARTICIPATING',
+            pcbApplicable: true,
+            taxResidence: 'RESIDENT',
+            pcbCategory: 'CATEGORY_1',
+            qualifyingChildren: 0,
+            disabledSelf: false,
+            disabledSpouse: false,
+            restDayOfWeek: 0,
+            overtimeContractPolicy: null,
+          },
+        }),
+      ],
+      totals: a.totals,
+    });
+    expect(snapshotHash(a)).not.toBe(snapshotHash(b));
+  });
+
+  it('hashes differently when the approvals differ', () => {
+    const a = sound();
+    const b = sound();
+    b.approvals = [
+      {
+        staffId: 's9',
+        name: 'Somebody Else',
+        sequence: 1,
+        mode: 'STANDARD',
+        usedOwnerSelfApproval: false,
+        statutoryGapAcknowledged: false,
+        at: '2026-09-01T00:00:00.000Z',
+      },
+    ];
+    expect(snapshotHash(a)).not.toBe(snapshotHash(b));
+  });
+
+  it('hashes differently when an exception was overridden rather than resolved', () => {
+    const a = sound();
+    const b = sound();
+    const exception = {
+      code: 'MISSING_PUNCH',
+      severity: 'WARNING',
+      staffId: 's1',
+      cause: '2 day(s) have no clock-in or clock-out.',
+      overridden: false,
+      overriddenByStaffId: null,
+      overrideReason: null,
+    };
+    a.exceptions = [exception];
+    b.exceptions = [
+      { ...exception, overridden: true, overriddenByStaffId: 's2', overrideReason: 'Confirmed with the employee' },
+    ];
+    expect(snapshotHash(a)).not.toBe(snapshotHash(b));
   });
 });

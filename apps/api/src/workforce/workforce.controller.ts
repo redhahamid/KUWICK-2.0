@@ -583,6 +583,18 @@ export class WorkforceController {
     return this.payroll.snapshots(id);
   }
 
+  /**
+   * ONE FROZEN APPROVAL, with a FRESH verification of it.
+   *
+   * The record of what a clinic approved is only worth something if it can be
+   * checked, so this re-hashes the stored payload and re-runs the run's own
+   * invariants over the frozen figures on every read.
+   */
+  @Get('payroll/runs/:id/snapshots/:version')
+  payrollSnapshot(@Param('id') id: string, @Param('version') version: string) {
+    return this.payroll.snapshot(id, Number(version));
+  }
+
   @Get('payroll/runs/:id/candidate-diff')
   payrollCandidateDiff(@Param('id') id: string) {
     return this.payroll.candidateDiff(id);

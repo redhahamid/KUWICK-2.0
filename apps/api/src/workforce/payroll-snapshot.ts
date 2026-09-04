@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { EmployeeFigures, InvariantViolation, RunTotals, checkPayrollInvariants } from './payroll-invariants';
 
 /**
  * THE APPROVED SNAPSHOT, AND ITS HASH.
@@ -15,20 +16,136 @@ import { createHash } from 'node:crypto';
  * its own frozen inputs must reproduce its own totals — spec §52 invariant 5.
  */
 
+/**
+ * THE PAYLOAD SHAPE, VERSIONED.
+ *
+ * Version 1 froze the figures but not what produced them: no statutory
+ * schedules, no employee classification, no component treatment, no approvals,
+ * no overridden exceptions. The hash therefore did not cover which EPF Third
+ * Schedule the contributions came out of — the one thing an auditor asks.
+ *
+ * A stored version-1 payload is still readable and still hashes to what it
+ * hashed to. It is reported as UNVERIFIABLE by `verifySnapshot` rather than
+ * quietly passing a check it was never built to satisfy.
+ */
+export const SNAPSHOT_SCHEMA_VERSION = 2;
+
+/** The statutory standing the payslip was computed on, frozen. */
+export interface SnapshotClassification {
+  id: string | null;
+  effectiveFrom: string | null;
+  epfApplicable: boolean | null;
+  epfMembership: string | null;
+  epfEmployeeRate: number | null;
+  socsoApplicable: boolean | null;
+  eisApplicable: boolean | null;
+  lindungParticipation: string | null;
+  pcbApplicable: boolean | null;
+  taxResidence: string | null;
+  pcbCategory: string | null;
+  qualifyingChildren: number | null;
+  disabledSelf: boolean | null;
+  disabledSpouse: boolean | null;
+  restDayOfWeek: number | null;
+  overtimeContractPolicy: string | null;
+}
+
+/**
+ * A pay component AS APPLIED — the version, its window, and every liability
+ * flag that decided which bases the money entered.
+ *
+ * Was `componentVersions: {code, version}[]`, repeated on every employee line,
+ * read from `active: true` TODAY rather than resolved for the period. A
+ * component deactivated after approval vanished from a rebuilt snapshot and one
+ * added later appeared in it, and the flags — which are the treatment — were
+ * never captured at all.
+ */
+export interface SnapshotComponent {
+  code: string;
+  label: string;
+  version: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  kind: string;
+  liability: {
+    epfLiable: boolean;
+    socsoLiable: boolean;
+    eisLiable: boolean;
+    pcbLiable: boolean;
+    /** Whether it enters the s.60I(1A) ordinary-rate base, which prices overtime. */
+    includeInOrpBase: boolean;
+    /** Bonus and once-yearly incentive: taxed by a different part of the MTD method. */
+    additionalRemuneration: boolean;
+  };
+  verification: string;
+  sourceRef: string | null;
+}
+
+/** One schedule the run was calculated against. Mirrors `ScheduleStamp`. */
+export interface SnapshotSchedule {
+  scheme: string;
+  scheduleId: string | null;
+  effectiveFrom: string | null;
+  verification: string | null;
+  /** The document it was transcribed from, so the hash can be traced to paper. */
+  document: string | null;
+  contentHash: string | null;
+  missing: boolean;
+  notYetInForce: boolean;
+}
+
+export interface SnapshotStatutory {
+  /** The date the schedules were resolved against — the period end, not today. */
+  resolvedAt: string;
+  approvable: boolean;
+  blockers: string[];
+  schedules: SnapshotSchedule[];
+}
+
+/** Who signed, in what order, under which policy. */
+export interface SnapshotApproval {
+  staffId: string;
+  name: string;
+  sequence: number;
+  mode: string;
+  usedOwnerSelfApproval: boolean;
+  statutoryGapAcknowledged: boolean;
+  at: string;
+}
+
+/**
+ * What was outstanding at approval, and what somebody waved through.
+ *
+ * An approval is only meaningful beside the exceptions it was given over. A
+ * snapshot that froze the figures and dropped the overrides answers "what did
+ * we pay" and not "what did we know when we agreed to pay it".
+ */
+export interface SnapshotException {
+  code: string;
+  severity: string;
+  staffId: string | null;
+  cause: string;
+  overridden: boolean;
+  overriddenByStaffId: string | null;
+  overrideReason: string | null;
+}
+
 export interface SnapshotEmployeeLine {
   staffId: string;
   name: string;
   salaryRowId: string | null;
   salaryBasis: string | null;
   salaryAmountCents: number;
+  /** The statutory standing in force for the period, frozen. */
+  classification: SnapshotClassification | null;
   inputs: {
+    id: string | null;
     componentCode: string;
     amountCents: number;
     source: string;
     sourceRecordId: string | null;
     kind: string;
   }[];
-  componentVersions: { code: string; version: number }[];
   bases: {
     grossCents: number;
     epfCents: number;
@@ -43,21 +160,39 @@ export interface SnapshotEmployeeLine {
     socsoEmployerCents: number | null;
     eisEmployeeCents: number | null;
     eisEmployerCents: number | null;
+    /** Employee-borne; there is no employer share to freeze. */
+    lindungEmployeeCents: number | null;
     pcbCents: number | null;
   };
+  /** Everything withheld from the employee, so the snapshot can check itself. */
+  deductionCents: number;
+  /** Everything the employer paid on top, likewise. */
+  employerContributionCents: number;
   netCents: number;
   employerCostCents: number;
 }
 
 export interface SnapshotPayload {
+  schemaVersion?: number;
   legalEmployerId: string | null;
   legalEmployerName: string | null;
   period: string;
   runType: string;
   sequence: number;
   paymentDate: string | null;
+  /**
+   * LEGACY. `StatutoryRuleSet` was a tenant-configurable rate table the engine
+   * no longer reads; kept so a version-1 snapshot still parses. The real
+   * provenance is `statutory` below.
+   */
   statutoryRuleSetId: string | null;
   statutoryVerificationStatus: string | null;
+  /** The schedules, their editions and their content hashes, AS APPLIED. */
+  statutory?: SnapshotStatutory | null;
+  /** The component catalogue resolved for the period, with its treatment. */
+  components?: SnapshotComponent[];
+  approvals?: SnapshotApproval[];
+  exceptions?: SnapshotException[];
   orp: { overtimeDays: number; unpaidLeaveDays: number; hoursPerDay: number };
   employees: SnapshotEmployeeLine[];
   totals: {
@@ -112,6 +247,9 @@ const COMPARED_FIELDS: (keyof SnapshotEmployeeLine['statutory'] | 'netCents' | '
   'socsoEmployerCents',
   'eisEmployeeCents',
   'eisEmployerCents',
+  // Employee-borne, and a real deduction: a reopen that changed it and said
+  // nothing would be a payslip moving with no diff row to show for it.
+  'lindungEmployeeCents',
   'pcbCents',
 ];
 
@@ -174,5 +312,122 @@ export function diffSnapshots(before: SnapshotPayload, after: SnapshotPayload): 
     removed,
     totals,
     identical: changed.length === 0 && added.length === 0 && removed.length === 0 && totals.length === 0,
+  };
+}
+
+
+// ---------------------------------------------------------------------------
+// Does the snapshot still say what it said, and does it add up?
+// ---------------------------------------------------------------------------
+
+export type SnapshotVerdict = 'VERIFIED' | 'TAMPERED' | 'INCONSISTENT' | 'UNVERIFIABLE_SCHEMA';
+
+export interface SnapshotVerification {
+  verdict: SnapshotVerdict;
+  /** True only when the stored hash matches a fresh hash of the stored payload. */
+  hashMatches: boolean;
+  storedHash: string;
+  computedHash: string;
+  /** Relationships the frozen figures must satisfy among themselves. */
+  violations: InvariantViolation[];
+  schemaVersion: number;
+  reason: string;
+}
+
+/**
+ * VERIFY A SNAPSHOT AGAINST ITSELF.
+ *
+ * Two independent questions, and conflating them would hide one behind the
+ * other:
+ *
+ *  - IS IT THE PAYLOAD THAT WAS APPROVED? Re-hash the stored payload and
+ *    compare with the stored hash. The database refuses UPDATE and DELETE on
+ *    `payroll_snapshots`, so a mismatch means the row was changed by something
+ *    that bypassed the trigger — a restore, a migration, a direct superuser
+ *    write. That is worth saying out loud rather than assuming it cannot
+ *    happen.
+ *
+ *  - DOES IT ADD UP? Recompute the run's relationships from the FROZEN
+ *    per-employee figures with the same `checkPayrollInvariants` the run uses,
+ *    so there is no second implementation to drift. A snapshot whose totals do
+ *    not follow from its own rows cannot be reconciled to anything, however
+ *    faithfully it was stored.
+ *
+ * A version-1 payload carries no per-employee deduction or employer
+ * contribution, so the arithmetic cannot be checked. It is reported
+ * UNVERIFIABLE_SCHEMA — never VERIFIED on the strength of a hash alone.
+ */
+export function verifySnapshot(payload: SnapshotPayload, storedHash: string): SnapshotVerification {
+  const computedHash = snapshotHash(payload);
+  const hashMatches = computedHash === storedHash;
+  const schemaVersion = payload.schemaVersion ?? 1;
+
+  if (!hashMatches) {
+    return {
+      verdict: 'TAMPERED',
+      hashMatches,
+      storedHash,
+      computedHash,
+      violations: [],
+      schemaVersion,
+      reason:
+        'The stored payload does not hash to the hash recorded with it, so this is not the payload that was ' +
+        'approved. The database refuses updates to this table, so something bypassed it.',
+    };
+  }
+
+  if (schemaVersion < SNAPSHOT_SCHEMA_VERSION) {
+    return {
+      verdict: 'UNVERIFIABLE_SCHEMA',
+      hashMatches,
+      storedHash,
+      computedHash,
+      violations: [],
+      schemaVersion,
+      reason:
+        `This snapshot was written in format ${schemaVersion}, which did not record per-employee deductions or ` +
+        'employer contributions. Its hash is intact, but its arithmetic cannot be re-checked from what it holds.',
+    };
+  }
+
+  const employees: EmployeeFigures[] = payload.employees.map((line) => ({
+    staffId: line.staffId,
+    name: line.name,
+    grossCents: line.bases.grossCents,
+    employeeDeductionCents: line.deductionCents,
+    netCents: line.netCents,
+    employerContributionCents: line.employerContributionCents,
+    employerCostCents: line.employerCostCents,
+  }));
+  const totals: RunTotals = {
+    grossCents: payload.totals.grossCents,
+    deductionCents: payload.totals.deductionCents,
+    netCents: payload.totals.netCents,
+    employerCostCents: payload.totals.employerCostCents,
+    employeeCount: payload.totals.employeeCount,
+  };
+  const violations = checkPayrollInvariants(employees, totals);
+
+  if (violations.length > 0) {
+    return {
+      verdict: 'INCONSISTENT',
+      hashMatches,
+      storedHash,
+      computedHash,
+      violations,
+      schemaVersion,
+      reason: `The payload is intact but does not add up: ${violations.length} relationship(s) fail.`,
+    };
+  }
+
+  return {
+    verdict: 'VERIFIED',
+    hashMatches,
+    storedHash,
+    computedHash,
+    violations: [],
+    schemaVersion,
+    reason:
+      'The payload hashes to the hash recorded with it, and its totals follow from its own employee rows.',
   };
 }

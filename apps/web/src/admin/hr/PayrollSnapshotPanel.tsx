@@ -111,11 +111,42 @@ export function PayrollSnapshotPanel({ runId }: { runId: string }) {
             // short enough not to dominate the row.
             render: (h: string) => <code className="kw-hash">{h.slice(0, 12)}</code>,
           },
+          {
+            /*
+             * A HASH IS NOT A PROOF UNTIL SOMEBODY CHECKS IT.
+             *
+             * The panel showed a stored hash and left the reader to assume it
+             * still matched. It is re-computed on every read now, and the
+             * frozen figures are re-run through the same invariants the
+             * calculation uses, so this column reports a check rather than a
+             * claim.
+             */
+            title: 'Checks out',
+            key: 'verdict',
+            width: 130,
+            render: (_: unknown, row) => <SnapshotVerdict row={row} />,
+          },
         ]}
       />
 
       <CandidateDiff data={diff.data} />
     </AdminSection>
+  );
+}
+
+const VERDICT_LABEL: Record<PayrollSnapshotRow['verdict'], { text: string; tone: string }> = {
+  VERIFIED: { text: 'Verified', tone: 'kw-verdict--ok' },
+  TAMPERED: { text: 'Does not match', tone: 'kw-verdict--bad' },
+  INCONSISTENT: { text: 'Does not add up', tone: 'kw-verdict--bad' },
+  UNVERIFIABLE_SCHEMA: { text: 'Older format', tone: 'kw-verdict--warn' },
+};
+
+function SnapshotVerdict({ row }: { row: PayrollSnapshotRow }) {
+  const label = VERDICT_LABEL[row.verdict] ?? { text: row.verdict, tone: 'kw-verdict--warn' };
+  return (
+    <span className={`kw-verdict ${label.tone}`} title={row.verificationNote}>
+      {label.text}
+    </span>
   );
 }
 

@@ -1692,6 +1692,16 @@ export interface PayrollSnapshotRow {
   reason: string | null;
   createdBy: string;
   createdAt: string;
+  /**
+   * CHECKED ON EVERY READ, never stored. `VERIFIED` means the payload still
+   * hashes to the hash recorded with it AND its totals follow from its own
+   * employee rows; `TAMPERED` means it does not hash; `INCONSISTENT` means it
+   * is intact but does not add up; `UNVERIFIABLE_SCHEMA` means it was written
+   * before the payload carried enough to re-check the arithmetic.
+   */
+  verdict: 'VERIFIED' | 'TAMPERED' | 'INCONSISTENT' | 'UNVERIFIABLE_SCHEMA';
+  verificationNote: string;
+  schemaVersion: number;
   totals: {
     grossCents: number;
     deductionCents: number;

@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Length, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsISO8601, IsInt, IsOptional, IsString, Length, Min } from 'class-validator';
 
 export class UpsertPayComponentDto {
   @IsOptional() @IsString() id?: string;
@@ -25,4 +25,16 @@ export class UpsertPayComponentDto {
   @IsOptional() @IsBoolean() prorated?: boolean;
   @IsOptional() @IsBoolean() employerSide?: boolean;
   @IsOptional() @IsBoolean() active?: boolean;
+
+  /**
+   * THE DATE A CHANGED TREATMENT TAKES EFFECT.
+   *
+   * Required when any of the statutory attributes above changes on an existing
+   * component, because the change is a NEW VERSION and not an edit: the
+   * calculation resolves the catalogue BY PERIOD, so overwriting a row would
+   * reprice every period that has not been approved yet. Optional on a new
+   * component, which starts from the epoch so no period is left uncovered.
+   */
+  @IsOptional() @IsISO8601() effectiveFrom?: string;
+  @IsOptional() @IsString() @Length(1, 500) reason?: string;
 }

@@ -368,6 +368,57 @@ dated enum the levy engine already understands, and the rate is DERIVED from it:
 1% under section 14 and 0.5% under section 15 are the PSMB Act's numbers, not a
 field somebody types.
 
+### The third place a rule could change under a payslip
+
+Pay components are effective-dated in the schema and `catalogueFor` resolves
+them by period, and the write path overwrote the row in place. So marking an
+allowance EPF-exempt today changed what every period not yet approved computed
+— the same defect as an unversioned salary or classification, in the place that
+decides which of the three statutory BASES a sum of money enters.
+
+A change to any of the fourteen attributes that decide liability now closes the
+open row and opens a new version from a date, and is refused into a period an
+approved run covers. A change to the NAME is still an edit: correcting a typo
+is not a change to what something is liable to, and forcing a date onto it
+would turn a correction into a version.
+
+### What the approved snapshot proves
+
+`payroll_snapshots` freezes the calculation on approval and hashes it, and the
+database refuses UPDATE and DELETE on the table. Version 1 of the payload froze
+the FIGURES and little of what produced them: no statutory schedules — so the
+hash did not cover which EPF Third Schedule the contributions came out of — no
+employee classification, no component treatment beyond a code and a version
+number read from whatever was active *today*, no approvals, and none of the
+blockers somebody overrode to get there. It also scoped payroll inputs by
+period alone, so a snapshot could carry money keyed for somebody the run never
+paid.
+
+Version 2 records the six things an approval actually rested on:
+
+| | What is frozen |
+|---|---|
+| Inputs | Every payroll input for the employees this run paid, with its id, source and upstream record |
+| Classifications | The statutory standing each payslip was computed on — version id, effective date, every value |
+| Component treatments | The catalogue resolved for the PERIOD, each with its version, window and all six liability flags |
+| Statutory rule versions | Every schedule the run applied: id, effective date, verification state, source document and SHA-256 content hash |
+| Calculations | Bases, per-scheme contributions, deductions, employer contributions, net and employer cost |
+| Approvals | Who signed, in what order, under which mode, with self-approval and statutory-gap acknowledgement flagged — beside the exceptions they signed over |
+
+Two consequences:
+
+- **The hash now covers the provenance.** Two runs computed against different
+  EPF editions no longer hash identically.
+- **A snapshot is checked, not asserted.** `verifySnapshot` re-hashes the
+  stored payload and re-runs the run's own `checkPayrollInvariants` over the
+  frozen figures on every read, and reports four states: `VERIFIED`,
+  `TAMPERED` (does not hash to its stored hash), `INCONSISTENT` (intact but the
+  totals do not follow from its own rows), and `UNVERIFIABLE_SCHEMA` (a
+  version-1 payload, whose arithmetic cannot be re-derived from what it holds
+  — reported as unverifiable rather than passed on the strength of a hash).
+  An approval whose snapshot would not verify is REFUSED, because the table is
+  append-only and an unreconcilable record would be permanent.
+
 ## Where Kuwick and the clinic's workbook disagree
 
 **On SOCSO, they do not.** This section previously claimed employee

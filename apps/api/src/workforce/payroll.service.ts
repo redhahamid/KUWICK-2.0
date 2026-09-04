@@ -36,6 +36,7 @@ import {
   stampFor,
 } from '../statutory/registry';
 import { PAYSLIP_SCHEMES } from './statutory';
+import type { StatutoryStamp } from '../statutory/registry';
 import { totalTimesheet } from './attendance-hours';
 import {
   MaterialisedInput,
@@ -75,7 +76,17 @@ import {
   resolveClassificationForPayroll,
 } from './statutory-classification';
 import { toClassificationRow } from './statutory-classification.service';
-import { diffSnapshots, snapshotHash, SnapshotEmployeeLine, SnapshotPayload } from './payroll-snapshot';
+import {
+  SNAPSHOT_SCHEMA_VERSION,
+  SnapshotClassification,
+  SnapshotComponent,
+  SnapshotEmployeeLine,
+  SnapshotPayload,
+  SnapshotStatutory,
+  diffSnapshots,
+  snapshotHash,
+  verifySnapshot,
+} from './payroll-snapshot';
 import { computeVariance, VarianceLine } from './payroll-variance';
 import {
   EmployeeFigures,
@@ -1756,13 +1767,35 @@ export class PayrollService {
       // Everything the calculation consumed is frozen here and hashed, so the
       // question has an answer years later and a correction can show a diff.
       const payload = await this.buildSnapshotPayload(tx, runId);
+      const hash = snapshotHash(payload);
+
+      /*
+       * A SNAPSHOT THAT DOES NOT ADD UP IS NOT A RECORD OF ANYTHING.
+       *
+       * Checked BEFORE it is written, and the approval fails with it. The
+       * database refuses to update or delete this table, so a snapshot whose
+       * totals do not follow from its own rows would be permanently
+       * unreconcilable — an approved payroll nobody could ever prove. Better
+       * to refuse the approval and say which relationship failed.
+       *
+       * The same `checkPayrollInvariants` the calculation uses, so there is no
+       * second implementation to drift from the first.
+       */
+      const verification = verifySnapshot(payload, hash);
+      if (verification.verdict !== 'VERIFIED') {
+        throw new ConflictException(
+          `This run cannot be approved: the record of it would not reconcile with itself. ${verification.reason} ` +
+            verification.violations.map((v) => v.message).join(' '),
+        );
+      }
+
       const version = (await tx.payrollSnapshot.count({ where: { payrollRunId: runId } })) + 1;
       const snapshot = await tx.payrollSnapshot.create({
         data: {
           tenantId: currentTenantId(),
           payrollRunId: runId,
           version,
-          hash: snapshotHash(payload),
+          hash,
           payload: payload as never,
           createdByStaffId: actor.id,
         },
@@ -2167,19 +2200,118 @@ export class PayrollService {
    * approved rather than a re-derivation from master data that may since have
    * moved.
    */
+  /**
+   * EVERYTHING THE APPROVAL WAS MADE ON, FROZEN AND HASHED.
+   *
+   * Version 1 froze the FIGURES and almost nothing that produced them. It
+   * recorded no statutory schedules — so the hash did not cover which EPF Third
+   * Schedule the contributions came out of, which is the first question an
+   * auditor asks; no employee classification, so which Part applied was
+   * unanswerable; no component treatment, only a code and a version number
+   * read from whatever was `active: true` TODAY rather than resolved for the
+   * period; no approvals; and none of the blocking exceptions somebody had to
+   * override to get here. It also scoped payroll inputs by PERIOD alone, so an
+   * off-cycle run's snapshot carried the regular run's inputs and vice versa.
+   *
+   * Version 2 records the six things the approval actually rested on: the
+   * inputs, the classifications, the component treatments, the statutory rule
+   * versions and their content hashes, the calculations, and the approvals.
+   */
   private async buildSnapshotPayload(tx: AdminTx, runId: string): Promise<SnapshotPayload> {
     const run = await tx.payrollRun.findUniqueOrThrow({
       where: { id: runId },
       include: {
         legalEmployer: { select: { id: true, name: true } },
         lines: { orderBy: { staffId: 'asc' } },
+        approvals: { orderBy: { sequence: 'asc' }, include: { staff: { select: { fullName: true } } } },
+        exceptionRows: { orderBy: [{ severity: 'asc' }, { code: 'asc' }, { staffId: 'asc' }] },
       },
     });
 
-    const inputs = await tx.payrollInputEntry.findMany({ where: { period: run.period } });
-    const components = await tx.payComponent.findMany({ where: { active: true } });
-    const ruleSet = run.statutoryRuleSetId
-      ? await tx.statutoryRuleSet.findUnique({ where: { id: run.statutoryRuleSetId } })
+    /*
+     * INPUTS BELONGING TO THIS RUN, not to this month.
+     *
+     * A clinic paying a bonus off-cycle has two runs over one period. Filtering
+     * on the period alone put every input in both snapshots, so each claimed to
+     * have consumed money the other paid.
+     *
+     * An input carries no run reference — it belongs to a person and a month —
+     * so the scope that IS right is the period plus the employees this run
+     * actually paid. Two runs over one period with different people now get
+     * different inputs; a correction run over the same people legitimately
+     * reprices the same ones.
+     */
+    const paidStaffIds = run.lines.map((line) => line.staffId);
+    const inputs = await tx.payrollInputEntry.findMany({
+      where: { period: run.period, staffId: { in: paidStaffIds } },
+      orderBy: [{ staffId: 'asc' }, { componentCode: 'asc' }, { id: 'asc' }],
+    });
+
+    /*
+     * THE COMPONENT CATALOGUE AS AT THE PERIOD, WITH ITS TREATMENT.
+     *
+     * Resolved the same way the calculation resolves it — by period, not by
+     * `active` today — and carrying the liability flags, which ARE the
+     * treatment. A version number alone says a row changed, not what it said.
+     */
+    const componentRows = (await tx.payComponent.findMany({
+      orderBy: [{ code: 'asc' }, { effectiveFrom: 'asc' }],
+    })) as unknown as CatalogueRow[];
+    const lastDay = new Date(monthEnd(run.period).getTime() - 86_400_000);
+    const resolvedCatalogue = catalogueFor(componentRows, lastDay);
+    const components: SnapshotComponent[] = [...resolvedCatalogue.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([code, resolved]) => {
+        const row = componentRows.find(
+          (candidate) =>
+            candidate.code === code &&
+            candidate.effectiveFrom <= lastDay &&
+            (!candidate.effectiveTo || candidate.effectiveTo >= lastDay),
+        );
+        return {
+          code,
+          label: resolved.label,
+          version: (row as unknown as { version?: number })?.version ?? 0,
+          effectiveFrom: (row?.effectiveFrom ?? run.period).toISOString().slice(0, 10),
+          effectiveTo: row?.effectiveTo ? row.effectiveTo.toISOString().slice(0, 10) : null,
+          kind: resolved.kind,
+          liability: {
+            epfLiable: resolved.liability.epf,
+            socsoLiable: resolved.liability.socso,
+            eisLiable: resolved.liability.eis,
+            pcbLiable: resolved.liability.pcb,
+            includeInOrpBase: resolved.liability.ordinaryRateOfPay,
+            additionalRemuneration: resolved.liability.additionalRemuneration ?? false,
+          },
+          verification: resolved.verification,
+          sourceRef: resolved.sourceRef,
+        };
+      });
+
+    /*
+     * THE SCHEDULES, AS APPLIED. Written onto the run at calculation by
+     * `stampFor` and copied here so the HASH COVERS THEM: a snapshot that does
+     * not say which EPF edition produced its figures cannot be reconciled to
+     * anything years later, and re-deriving the stamp at read time would answer
+     * with today's registry rather than the run's.
+     */
+    const stamp = (run.statutorySnapshot ?? null) as unknown as StatutoryStamp | null;
+    const statutory: SnapshotStatutory | null = stamp
+      ? {
+          resolvedAt: stamp.resolvedAt,
+          approvable: stamp.approvable,
+          blockers: [...stamp.blockers],
+          schedules: stamp.schedules.map((schedule) => ({
+            scheme: schedule.scheme,
+            scheduleId: schedule.scheduleId ?? null,
+            effectiveFrom: schedule.effectiveFrom ?? null,
+            verification: schedule.verification ?? null,
+            document: schedule.document ?? null,
+            contentHash: schedule.contentHash ?? null,
+            missing: schedule.missing,
+            notYetInForce: schedule.notYetInForce,
+          })),
+        }
       : null;
 
     const employees: SnapshotEmployeeLine[] = run.lines.map((line) => {
@@ -2187,50 +2319,99 @@ export class PayrollService {
       const mine = inputs.filter((i) => i.staffId === line.staffId);
       const breakdown = (line.breakdown ?? {}) as Record<string, unknown>;
       const bases = (breakdown.bases ?? {}) as Record<string, number>;
+      const cents = (value: unknown) => (value === null || value === undefined ? null : toCents(value as never));
+
+      const epfEmployeeCents = cents(line.epfEmployee);
+      const epfEmployerCents = cents(line.epfEmployer);
+      const socsoEmployeeCents = cents(line.socsoEmployee);
+      const socsoEmployerCents = cents(line.socsoEmployer);
+      const eisEmployeeCents = cents(line.eisEmployee);
+      const eisEmployerCents = cents(line.eisEmployer);
+      const lindungEmployeeCents = cents(line.lindungEmployee);
+      const pcbCents = cents(line.pcb);
+
+      const grossCents = bases.grossCents ?? toCents(line.grossPay);
+      const netCents = toCents(line.netPay);
+      const employerCostCents = toCents(line.employerCost);
+
       return {
         staffId: line.staffId,
         name: String(snap.name ?? ''),
         salaryRowId: (snap.salaryRowId as string | undefined) ?? null,
         salaryBasis: (snap.salaryBasis as string | undefined) ?? null,
         salaryAmountCents: toCents(line.basicSalary),
+        // The statutory standing this payslip was computed on, taken from the
+        // line rather than from the employee record: the record moves, and the
+        // whole point of freezing is that this must not.
+        classification: (snap.statutoryClassification as SnapshotClassification | undefined) ?? null,
         inputs: mine.map((i) => ({
+          id: i.id,
           componentCode: i.componentCode,
           amountCents: toCents(i.amount),
           source: i.source,
           sourceRecordId: i.sourceRecordId,
           kind: i.kind,
         })),
-        componentVersions: components.map((c) => ({ code: c.code, version: c.version })),
         bases: {
-          grossCents: bases.grossCents ?? toCents(line.grossPay),
+          grossCents,
           epfCents: bases.epfCents ?? 0,
           socsoCents: bases.socsoCents ?? 0,
           eisCents: bases.eisCents ?? 0,
           ordinaryRateBaseCents: bases.ordinaryRateBaseCents ?? toCents(line.basicSalary),
         },
         statutory: {
-          epfEmployeeCents: line.epfEmployee === null ? null : toCents(line.epfEmployee),
-          epfEmployerCents: line.epfEmployer === null ? null : toCents(line.epfEmployer),
-          socsoEmployeeCents: line.socsoEmployee === null ? null : toCents(line.socsoEmployee),
-          socsoEmployerCents: line.socsoEmployer === null ? null : toCents(line.socsoEmployer),
-          eisEmployeeCents: line.eisEmployee === null ? null : toCents(line.eisEmployee),
-          eisEmployerCents: line.eisEmployer === null ? null : toCents(line.eisEmployer),
-          pcbCents: line.pcb === null ? null : toCents(line.pcb),
+          epfEmployeeCents,
+          epfEmployerCents,
+          socsoEmployeeCents,
+          socsoEmployerCents,
+          eisEmployeeCents,
+          eisEmployerCents,
+          lindungEmployeeCents,
+          pcbCents,
         },
-        netCents: toCents(line.netPay),
-        employerCostCents: toCents(line.employerCost),
+        // DERIVED FROM THE STORED FIGURES, so the snapshot can be checked
+        // against itself years later without the run that made it.
+        deductionCents: grossCents - netCents,
+        employerContributionCents: employerCostCents - grossCents,
+        netCents,
+        employerCostCents,
       };
     });
 
     return {
+      schemaVersion: SNAPSHOT_SCHEMA_VERSION,
       legalEmployerId: run.legalEmployer?.id ?? null,
       legalEmployerName: run.legalEmployer?.name ?? null,
       period: run.period.toISOString().slice(0, 10),
       runType: run.runType,
       sequence: run.sequence,
       paymentDate: run.paymentDate ? run.paymentDate.toISOString().slice(0, 10) : null,
+      // Legacy, and null on every run this engine calculates. Kept so a
+      // version-1 payload and a version-2 one have the same key set.
       statutoryRuleSetId: run.statutoryRuleSetId,
-      statutoryVerificationStatus: ruleSet?.verificationStatus ?? null,
+      statutoryVerificationStatus: null,
+      statutory,
+      components,
+      approvals: run.approvals.map((approval) => ({
+        staffId: approval.staffId,
+        name: approval.staff.fullName,
+        sequence: approval.sequence,
+        mode: approval.mode,
+        usedOwnerSelfApproval: approval.usedOwnerSelfApproval,
+        statutoryGapAcknowledged: approval.statutoryGapAcknowledged,
+        at: approval.createdAt.toISOString(),
+      })),
+      // WHAT WAS KNOWN WHEN SOMEBODY AGREED TO PAY IT. An approval read without
+      // the blockers it was given over is an approval of an unstated thing.
+      exceptions: run.exceptionRows.map((row) => ({
+        code: row.code,
+        severity: row.severity,
+        staffId: row.staffId,
+        cause: row.cause,
+        overridden: row.overriddenAt !== null,
+        overriddenByStaffId: row.overriddenByStaffId,
+        overrideReason: row.overrideReason,
+      })),
       orp: {
         overtimeDays: Number(run.orpOvertimeDays),
         unpaidLeaveDays: Number(run.orpUnpaidLeaveDays),
@@ -2255,15 +2436,53 @@ export class PayrollService {
       orderBy: { version: 'desc' },
       include: { createdBy: { select: { fullName: true } } },
     });
-    return rows.map((row) => ({
+    return rows.map((row) => {
+      const payload = row.payload as unknown as SnapshotPayload;
+      const verification = verifySnapshot(payload, row.hash);
+      return {
+        id: row.id,
+        version: row.version,
+        hash: row.hash,
+        reason: row.reason,
+        createdBy: row.createdBy.fullName,
+        createdAt: row.createdAt.toISOString(),
+        totals: payload.totals,
+        // CHECKED ON EVERY READ, not stored. A verdict written once and read
+        // forever would be the assertion, not the evidence.
+        verdict: verification.verdict,
+        verificationNote: verification.reason,
+        schemaVersion: verification.schemaVersion,
+      };
+    });
+  }
+
+  /**
+   * THE FULL RECORD OF ONE APPROVAL, AND WHETHER IT STILL HOLDS.
+   *
+   * Returns the frozen payload beside a fresh verification of it. Two separate
+   * questions answered separately: is this the payload that was approved (the
+   * hash), and does it add up (the invariants). A screen that showed the
+   * figures without the verdict would present a stored blob as a proof.
+   */
+  async snapshot(runId: string, version: number) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    const row = await this.prisma.payrollSnapshot.findFirst({
+      where: { payrollRunId: runId, version },
+      include: { createdBy: { select: { fullName: true } } },
+    });
+    if (!row) throw new NotFoundException(`No snapshot version ${version} for this payroll run.`);
+
+    const payload = row.payload as unknown as SnapshotPayload;
+    return {
       id: row.id,
       version: row.version,
       hash: row.hash,
       reason: row.reason,
       createdBy: row.createdBy.fullName,
       createdAt: row.createdAt.toISOString(),
-      totals: (row.payload as unknown as SnapshotPayload).totals,
-    }));
+      verification: verifySnapshot(payload, row.hash),
+      payload,
+    };
   }
 
   /**
