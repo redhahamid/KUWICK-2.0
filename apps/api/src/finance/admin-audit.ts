@@ -110,6 +110,8 @@ export type AuditAction =
   | 'payrollApproval.recorded'
   | 'payrollApprovalPolicy.changed'
   | 'payroll.reopened'
+  /** A payslip PDF left the system — who took whose slip, for which version. */
+  | 'payrollPayslip.downloaded'
   | 'incentiveRule.changed'
   // Stage 2.5 — cross-module payroll integration. Every state change on a
   // claim or a locum session is auditable, because these are the two records

@@ -722,6 +722,8 @@ export interface PayslipEmployeeSnapshot {
   employmentType?: string | null;
   bankName?: string | null;
   statutoryApplicability?: { epf?: boolean; socso?: boolean; eis?: boolean; pcb?: boolean };
+  /** The dated standing the line was computed on, frozen with it. */
+  statutoryClassification?: { lindungParticipation?: string | null } & Record<string, unknown>;
 }
 
 export interface PayrollRunDetail {
@@ -764,6 +766,8 @@ export interface PayrollRunDetail {
     socsoEmployer: number | null;
     eisEmployee: number | null;
     eisEmployer: number | null;
+    /** SKBBK. Employee-borne, withheld from pay; null = participation unknown. */
+    lindungEmployee: number | null;
     pcb: number | null;
     netPay: number;
     employerCost: number;
@@ -773,6 +777,126 @@ export interface PayrollRunDetail {
     breakdown: unknown;
   }[];
   adjustments: { id: string; staffName: string; description: string; amount: number; reason: string; by: string; at: string }[];
+}
+
+// ---------------------------------------------------------------------------
+// PAYSLIPS FROM THE APPROVED SNAPSHOT. Composed server-side from the frozen
+// record; the screen renders these fields and computes nothing. All money in
+// integer cents.
+// ---------------------------------------------------------------------------
+
+export interface PayslipListEntry {
+  staffId: string;
+  name: string;
+  netCents: number;
+  grossCents: number;
+  itemised: boolean;
+}
+
+export interface PayslipList {
+  runId: string;
+  period: string;
+  snapshotVersion: number;
+  versions: number;
+  verdict: string;
+  reopenedSinceApproval: boolean;
+  payslips: PayslipListEntry[];
+}
+
+export interface PayslipStatutoryRow {
+  key: string;
+  label: string;
+  amountCents: number | null;
+  applicable: boolean;
+  note: string | null;
+}
+
+export interface PayslipDoc {
+  runId: string;
+  period: string;
+  periodLabel: string;
+  runType: string;
+  sequence: number;
+  paymentDate: string | null;
+  runStatus: string;
+  statutoryStatus: string;
+  clinicName: string | null;
+  revision: {
+    version: number;
+    of: number;
+    approvedAt: string;
+    approvedBy: string[];
+    superseded: boolean;
+    reopenedSinceApproval: boolean;
+  };
+  verification: { verdict: string; hash: string; schemaVersion: number };
+  employer: {
+    name: string | null;
+    registrationNo: string | null;
+    epfEmployerNo: string | null;
+    socsoEmployerNo: string | null;
+    lhdnEmployerNo: string | null;
+    addressLines: string[];
+    detailsAsAt: 'CURRENT';
+  };
+  employee: {
+    staffId: string;
+    name: string;
+    employeeNo: string | null;
+    position: string | null;
+    department: string | null;
+    employmentType: string | null;
+    bankName: string | null;
+    epfNumber: string | null;
+    socsoNumber: string | null;
+    taxNumber: string | null;
+    identifiersAsAt: 'CURRENT';
+  };
+  attendance: { workedDays: number | null; unpaidDays: number | null; overtimeHours: number | null } | null;
+  itemised: boolean;
+  earnings: { code: string; label: string; amountCents: number }[] | null;
+  wageReductions: { code: string; label: string; amountCents: number }[] | null;
+  otherDeductionLines: { code: string; label: string; amountCents: number }[] | null;
+  overtimeDetail: { label: string; hours: number; hourlyRate: number; total: number }[] | null;
+  statutoryDeductions: PayslipStatutoryRow[];
+  employerContributions: { key: string; label: string; amountCents: number | null }[];
+  figures: {
+    salaryBasis: string | null;
+    salaryAmountCents: number;
+    grossCents: number;
+    deductionCents: number;
+    netCents: number;
+    employerContributionCents: number;
+    employerCostCents: number;
+    derivedNetCents: number;
+    adds: boolean;
+  };
+  bases: { epfCents: number; socsoCents: number; eisCents: number };
+  statutoryNotes: {
+    epf: string | null;
+    socso: string | null;
+    eis: string | null;
+    lindung: string | null;
+    pcb: string | null;
+  } | null;
+  classification: {
+    epfMembership: string | null;
+    lindungParticipation: string | null;
+    taxResidence: string | null;
+    effectiveFrom: string | null;
+  } | null;
+  schedules: { scheme: string; scheduleId: string | null; verification: string | null; document: string | null }[];
+  ytd: {
+    months: number;
+    importedMonths: number;
+    grossCents: number;
+    epfEmployeeCents: number;
+    socsoEmployeeCents: number;
+    eisEmployeeCents: number;
+    lindungEmployeeCents: number;
+    pcbCents: number;
+    zakatCents: number;
+  } | null;
 }
 
 export interface IncentiveRunRow {

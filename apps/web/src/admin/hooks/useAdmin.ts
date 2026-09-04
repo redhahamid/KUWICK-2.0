@@ -65,6 +65,8 @@ import type {
   PayrollEmployerCostReport,
   PayrollHome,
   PayrollReadiness,
+  PayslipDoc,
+  PayslipList,
   PayrollRegisterReport,
   PayrollReportCatalogue,
   PayrollStatutoryReport,
@@ -1112,6 +1114,36 @@ export function usePayrollHome(params: { period?: string; clinicId?: string } = 
     queryKey: ['admin-hr', 'payroll-home', params],
     queryFn: () => apiClient.get<PayrollHome>(`/workforce/payroll/home${qs(params)}`),
   });
+}
+
+/**
+ * PAYSLIPS, FROM THE APPROVED SNAPSHOT. The list refuses (409) for a run
+ * nobody has approved — the UI offers a watermarked DRAFT preview instead.
+ */
+export function usePayslips(runId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payslips', runId],
+    queryFn: () => apiClient.get<PayslipList>(`/workforce/payroll/runs/${runId}/payslips`),
+    enabled: Boolean(runId) && enabled,
+    retry: false,
+  });
+}
+
+export function usePayslip(runId: string | undefined, staffId: string | undefined, version?: number) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payslip', runId, staffId, version ?? 'latest'],
+    queryFn: () =>
+      apiClient.get<PayslipDoc>(
+        `/workforce/payroll/runs/${runId}/payslips/${staffId}${version ? `?version=${version}` : ''}`,
+      ),
+    enabled: Boolean(runId && staffId),
+    retry: false,
+  });
+}
+
+/** The PDF leaves through the audited server route, never assembled client-side. */
+export function payslipPdfPath(runId: string, staffId: string, version?: number): string {
+  return `/workforce/payroll/runs/${runId}/payslips/${staffId}/pdf${version ? `?version=${version}` : ''}`;
 }
 
 /**

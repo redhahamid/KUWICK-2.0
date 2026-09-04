@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { EmploymentStatus, LeaveType } from '@prisma/client';
 import { EmployeeService } from './employee.service';
 import { AttendanceRecordService } from './attendance-record.service';
@@ -34,6 +35,8 @@ import { StaffClaimService } from './staff-claim.service';
 import { LocumService } from './locum.service';
 import { PayrollJourneyService } from './payroll-journey.service';
 import { PayrollReadinessService } from './payroll-readiness.service';
+import { PayrollPayslipService } from './payroll-payslip.service';
+import { renderPayslipPdf } from './payroll-payslip-pdf';
 import { PayrollReportService } from './payroll-report.service';
 import { CreateStaffClaimDto, DecideStaffClaimDto, SettleStaffClaimDto } from './dto/staff-claim.dto';
 import {
@@ -66,6 +69,7 @@ export class WorkforceController {
     private readonly locum: LocumService,
     private readonly journey: PayrollJourneyService,
     private readonly readiness: PayrollReadinessService,
+    private readonly payslipService: PayrollPayslipService,
     private readonly reports: PayrollReportService,
   ) {}
 
@@ -621,6 +625,40 @@ export class WorkforceController {
   @Get('payroll/runs/:id/candidate-diff')
   payrollCandidateDiff(@Param('id') id: string) {
     return this.payroll.candidateDiff(id);
+  }
+
+  // --- Payslips, from the approved snapshot and nowhere else ----------------
+
+  @Get('payroll/runs/:id/payslips')
+  payslips(@Param('id') id: string) {
+    return this.payslipService.list(id);
+  }
+
+  @Get('payroll/runs/:id/payslips/:staffId')
+  payslip(
+    @Param('id') id: string,
+    @Param('staffId') staffId: string,
+    @Query('version') version?: string,
+  ) {
+    return this.payslipService.payslip(id, staffId, version ? Number(version) : undefined);
+  }
+
+  /** The PDF. Audited: a payslip leaving the system has a who and a when. */
+  @Get('payroll/runs/:id/payslips/:staffId/pdf')
+  async payslipPdf(
+    @Param('id') id: string,
+    @Param('staffId') staffId: string,
+    @Res() res: Response,
+    @Query('version') version?: string,
+  ) {
+    const slip = await this.payslipService.payslipForDownload(id, staffId, version ? Number(version) : undefined);
+    const pdf = await renderPayslipPdf(slip);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="payslip-${slip.period}-${(slip.employee.name || 'employee').replace(/[^A-Za-z0-9-]+/g, '-')}-r${slip.revision.version}.pdf"`,
+    );
+    res.send(pdf);
   }
 
   @Patch('payroll/runs/:id/reopen')

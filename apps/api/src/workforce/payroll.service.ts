@@ -80,6 +80,7 @@ import { toClassificationRow } from './statutory-classification.service';
 import {
   SNAPSHOT_SCHEMA_VERSION,
   SnapshotClassification,
+  SnapshotPayslipDetail,
   SnapshotComponent,
   SnapshotEmployeeLine,
   SnapshotPayload,
@@ -2421,12 +2422,69 @@ export class PayrollService {
       const netCents = toCents(line.netPay);
       const employerCostCents = toCents(line.employerCost);
 
+      // VERSION 3 — the payslip detail. A payslip issued years later must come
+      // from the snapshot alone: a reopen rewrites the run's lines while the
+      // approved snapshot stands, and a slip drawn from the lines at that
+      // moment would show candidate figures under an approved letterhead.
+      const componentRows = (breakdown.components ?? []) as {
+        code: string;
+        label: string;
+        kind: string;
+        amount: unknown;
+      }[];
+      const statutoryNoteRows = (breakdown.statutoryNotes ?? {}) as Record<string, string | null>;
+      const overtimeRows = (breakdown.overtimeTiers ?? []) as {
+        label: string;
+        hours: number;
+        hourlyRate: number;
+        total: number;
+      }[];
+      const payslipDetail: SnapshotPayslipDetail = {
+        employeeNo: (snap.employeeNo as string | undefined) ?? null,
+        position: (snap.position as string | undefined) ?? null,
+        department: (snap.department as string | undefined) ?? null,
+        employmentType: (snap.employmentType as string | undefined) ?? null,
+        bankName: (snap.bankName as string | undefined) ?? null,
+        workedDays: line.workedDays === null ? null : Number(line.workedDays),
+        unpaidDays: line.unpaidDays === null ? null : Number(line.unpaidDays),
+        overtimeHours: line.overtimeHours === null ? null : Number(line.overtimeHours),
+        figures: {
+          basicCents: toCents(line.basicSalary),
+          allowancesCents: toCents(line.allowances),
+          overtimeCents: toCents(line.overtimePay),
+          incentivesCents: toCents(line.incentives),
+          bonusCents: toCents(line.bonus),
+          unpaidLeaveCents: toCents(line.unpaidLeaveDeduction),
+          otherDeductionsCents: toCents(line.otherDeductions),
+        },
+        componentLines: componentRows.map((row) => ({
+          code: row.code,
+          label: row.label,
+          kind: row.kind,
+          amountCents: toCents(row.amount as never),
+        })),
+        statutoryNotes: {
+          epf: statutoryNoteRows.epf ?? null,
+          socso: statutoryNoteRows.socso ?? null,
+          eis: statutoryNoteRows.eis ?? null,
+          lindung: statutoryNoteRows.lindung ?? null,
+          pcb: statutoryNoteRows.pcb ?? null,
+        },
+        overtime: overtimeRows.map((row) => ({
+          label: row.label,
+          hours: row.hours,
+          hourlyRate: row.hourlyRate,
+          total: row.total,
+        })),
+      };
+
       return {
         staffId: line.staffId,
         name: String(snap.name ?? ''),
         salaryRowId: (snap.salaryRowId as string | undefined) ?? null,
         salaryBasis: (snap.salaryBasis as string | undefined) ?? null,
         salaryAmountCents: toCents(line.basicSalary),
+        payslip: payslipDetail,
         // The statutory standing this payslip was computed on, taken from the
         // line rather than from the employee record: the record moves, and the
         // whole point of freezing is that this must not.

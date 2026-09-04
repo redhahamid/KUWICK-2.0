@@ -29,6 +29,7 @@ const LINE: PayrollRunDetail['lines'][number] = {
   socsoEmployer: 58.65,
   eisEmployee: 6.7,
   eisEmployer: 6.7,
+  lindungEmployee: 0,
   pcb: 45,
   netPay: 2913.05,
   employerCost: 3851.85,
@@ -169,11 +170,39 @@ describe('the slip checks its own arithmetic', () => {
     expect(html).toContain('not safe to issue');
   });
 
-  it('11. unpaid leave and other deductions are inside the total', () => {
-    const line = { ...LINE, unpaidLeaveDeduction: 115.38, otherDeductions: 50, netPay: 2747.67 };
+  it('11. unpaid leave reduces the WAGES; it is not taken again as a deduction', () => {
+    // s.18A makes an incomplete month's gross smaller — the engine stores
+    // gross already net of the reduction. This slip used to subtract it a
+    // second time among the deductions, so every real unpaid-leave payslip
+    // printed the "does not add up" refusal.
+    const line = {
+      ...LINE,
+      unpaidLeaveDeduction: 115.38,
+      otherDeductions: 50,
+      grossPay: 3234.62, // 3350 less the s.18A reduction, as the engine stores it
+      netPay: 2747.67,
+    };
     const totals = payslipTotals(line);
-    expect(totals.deductions).toBe(602.33);
+    expect(totals.deductions).toBe(486.95); // statutory + other; no unpaid leave
     expect(totals.adds).toBe(true);
+
+    // And the reduction is visible on the EARNINGS side, beside the wages it
+    // made smaller, not hidden in an unexplained gross.
+    const html = renderPayslipHtml({ ...RUN, grossTotal: 3234.62, netTotal: 2747.67 }, line, CONTEXT);
+    expect(html).toContain('Unpaid leave (s.18A wage reduction)');
+  });
+
+  it('11b. a LINDUNG participant’s contribution is on the slip and inside the total', () => {
+    const line = {
+      ...LINE,
+      lindungEmployee: 16.55,
+      netPay: 2896.5,
+      snapshot: { ...LINE.snapshot!, statutoryClassification: { lindungParticipation: 'VOLUNTARY_OPTED_IN' } },
+    };
+    const totals = payslipTotals(line);
+    expect(totals.deductions).toBe(453.5);
+    expect(totals.adds).toBe(true);
+    expect(renderPayslipHtml({ ...RUN, netTotal: 2896.5 }, line, CONTEXT)).toContain('LINDUNG 24 JAM');
   });
 
   it('12. employer contributions are shown but never deducted', () => {

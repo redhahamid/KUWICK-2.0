@@ -227,6 +227,21 @@ describe('verifySnapshot', () => {
   });
 
   /*
+   * VERSION 2 STAYS VERIFIABLE UNDER VERSION 3. Version 3 added payslip
+   * itemisation, which the arithmetic check does not read — so bumping the
+   * current format must not turn every existing approved record UNVERIFIABLE.
+   * Only version 1, which lacks the per-employee figures, is beyond checking.
+   */
+  it('still certifies a version-2 payload written before the payslip detail existed', () => {
+    const p = sound();
+    p.schemaVersion = 2;
+    for (const employee of p.employees) delete (employee as { payslip?: unknown }).payslip;
+    const result = verifySnapshot(p, snapshotHash(p));
+    expect(result.verdict).toBe('VERIFIED');
+    expect(result.schemaVersion).toBe(2);
+  });
+
+  /*
    * THE HASH MUST COVER THE PROVENANCE.
    *
    * Version 1 hashed the figures and not the schedules that produced them, so

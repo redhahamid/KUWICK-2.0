@@ -27,8 +27,16 @@ import { EmployeeFigures, InvariantViolation, RunTotals, checkPayrollInvariants 
  * A stored version-1 payload is still readable and still hashes to what it
  * hashed to. It is reported as UNVERIFIABLE by `verifySnapshot` rather than
  * quietly passing a check it was never built to satisfy.
+ *
+ * Version 3 adds the PAYSLIP DETAIL: the itemised lines, hours and identity a
+ * printed payslip needs, so a payslip can be issued from the snapshot alone.
+ * Version 2 froze every FIGURE but not the itemisation — a version-2 payslip
+ * can state gross, each statutory deduction and net, and says its earnings
+ * cannot be itemised, rather than borrowing rows from the mutable run.
+ * Version 2 remains fully verifiable: the fields the arithmetic check reads
+ * are unchanged.
  */
-export const SNAPSHOT_SCHEMA_VERSION = 2;
+export const SNAPSHOT_SCHEMA_VERSION = 3;
 
 /** The statutory standing the payslip was computed on, frozen. */
 export interface SnapshotClassification {
@@ -130,12 +138,56 @@ export interface SnapshotException {
   overrideReason: string | null;
 }
 
+/**
+ * VERSION 3 — what a printed payslip needs beyond the figures.
+ *
+ * The itemised component lines are the calculation's own rows (code, label,
+ * kind, amount), so an earnings section can be reproduced from the snapshot
+ * without touching the run's mutable lines — which a reopen rewrites while
+ * the approved snapshot stands.
+ */
+export interface SnapshotPayslipDetail {
+  employeeNo: string | null;
+  position: string | null;
+  department: string | null;
+  employmentType: string | null;
+  /** The bank the pay goes to. The account NUMBER is deliberately not frozen. */
+  bankName: string | null;
+  workedDays: number | null;
+  unpaidDays: number | null;
+  overtimeHours: number | null;
+  /** The line's own column splits, as paid. */
+  figures: {
+    basicCents: number;
+    allowancesCents: number;
+    overtimeCents: number;
+    incentivesCents: number;
+    bonusCents: number;
+    unpaidLeaveCents: number;
+    otherDeductionsCents: number;
+  };
+  /** Every calculation line: earnings, wage reductions and deductions. */
+  componentLines: { code: string; label: string; kind: string; amountCents: number }[];
+  /** Why a statutory figure is what it is — or why it is absent. Verbatim. */
+  statutoryNotes: {
+    epf: string | null;
+    socso: string | null;
+    eis: string | null;
+    lindung: string | null;
+    pcb: string | null;
+  };
+  /** The overtime working, tier by tier, as the run priced it. */
+  overtime: { label: string; hours: number; hourlyRate: number; total: number }[];
+}
+
 export interface SnapshotEmployeeLine {
   staffId: string;
   name: string;
   salaryRowId: string | null;
   salaryBasis: string | null;
   salaryAmountCents: number;
+  /** Version 3+. Absent on older snapshots, whose payslips say so. */
+  payslip?: SnapshotPayslipDetail;
   /** The statutory standing in force for the period, frozen. */
   classification: SnapshotClassification | null;
   inputs: {
@@ -376,7 +428,11 @@ export function verifySnapshot(payload: SnapshotPayload, storedHash: string): Sn
     };
   }
 
-  if (schemaVersion < SNAPSHOT_SCHEMA_VERSION) {
+  // Version 2 added the per-employee deduction and employer-contribution
+  // figures the arithmetic check reads; version 3 added payslip itemisation,
+  // which the check does not read. So 2 and 3 verify identically, and only a
+  // version-1 payload is beyond re-checking.
+  if (schemaVersion < 2) {
     return {
       verdict: 'UNVERIFIABLE_SCHEMA',
       hashMatches,

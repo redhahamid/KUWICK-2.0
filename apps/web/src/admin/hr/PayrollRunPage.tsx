@@ -15,6 +15,7 @@ import { ProvisionalBanner } from './ProvisionalBanner';
 import { PayrollStepper, STEPS, stepsWithProblems, type StepKey } from './PayrollStepper';
 import { PayrollExceptionCentre } from './PayrollExceptionCentre';
 import { PayrollInputsDrawer } from './PayrollInputsDrawer';
+import { PayslipsPanel } from './PayslipsPanel';
 import { useCan } from '../../core/hooks/useCan';
 import type { PayrollJourney } from '../types';
 
@@ -978,6 +979,17 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
           )}
         </AdminSection>
       </div>
+
+      {/*
+        * PAYSLIPS, the moment there is an approved record to issue them from.
+        * They come from the frozen snapshot — never from the lines this page
+        * shows, which a reopen would rewrite.
+        */}
+      {alreadyApproved ? (
+        <div style={{ gridColumn: '1 / -1' }}>
+          <PayslipsPanel runId={runId} />
+        </div>
+      ) : null}
     </div>
   );
 }

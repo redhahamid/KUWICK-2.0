@@ -1,4 +1,4 @@
-import type { PayrollRunDetail, PayslipEmployeeSnapshot } from '../types';
+import type { PayrollRunDetail, PayslipDoc, PayslipEmployeeSnapshot } from '../types';
 
 /**
  * THE PAYSLIP.
@@ -63,7 +63,13 @@ export interface StatutoryDisplay {
 }
 
 interface Breakdown {
-  statutoryNotes?: { epf?: string | null; socso?: string | null; eis?: string | null; pcb?: string | null };
+  statutoryNotes?: {
+    epf?: string | null;
+    socso?: string | null;
+    eis?: string | null;
+    lindung?: string | null;
+    pcb?: string | null;
+  };
   bases?: { epf?: number; socso?: number; eis?: number };
   ordinaryRateOfPay?: { overtimeDays?: number; unpaidLeaveDays?: number; hoursPerDay?: number };
   overtimeTiers?: { label: string; hours: number; hourlyRate: number; total: number }[];
@@ -97,10 +103,21 @@ export function employeeStatutory(line: PayslipLine): StatutoryDisplay[] {
   const breakdown = (line.breakdown ?? {}) as Breakdown;
   const notes = breakdown.statutoryNotes ?? {};
   const applicability = (line.snapshot ?? {}).statutoryApplicability ?? {};
+  const classification = (line.snapshot ?? {}).statutoryClassification as
+    | { lindungParticipation?: string | null }
+    | undefined;
   return [
     { label: 'EPF (employee)', amount: line.epfEmployee, note: notes.epf ?? null, applicable: applicability.epf !== false },
     { label: 'SOCSO (employee)', amount: line.socsoEmployee, note: notes.socso ?? null, applicable: applicability.socso !== false },
     { label: 'EIS (employee)', amount: line.eisEmployee, note: notes.eis ?? null, applicable: applicability.eis !== false },
+    {
+      // Employee-borne, employer-remitted — it comes out of the pay, so a
+      // slip that omitted it would not reach its own net.
+      label: 'LINDUNG 24 JAM',
+      amount: line.lindungEmployee,
+      note: notes.lindung ?? null,
+      applicable: classification?.lindungParticipation !== 'NOT_PARTICIPATING',
+    },
     { label: 'PCB / MTD', amount: line.pcb, note: notes.pcb ?? null, applicable: applicability.pcb !== false },
   ];
 }
@@ -124,8 +141,11 @@ export interface PayslipTotals {
 export function payslipTotals(line: PayslipLine): PayslipTotals {
   const statutory = employeeStatutory(line);
   const statutoryTotal = statutory.reduce((sum, item) => sum + (item.amount ?? 0), 0);
-  const deductions =
-    Math.round((statutoryTotal + line.unpaidLeaveDeduction + line.otherDeductions) * 100) / 100;
+  // UNPAID LEAVE IS NOT HERE. Under s.18A an incomplete month's WAGES are
+  // smaller — the engine's stored gross already has the reduction off — so
+  // taking it again among the deductions double-counted it, and every real
+  // unpaid-leave payslip printed the "does not add up" refusal.
+  const deductions = Math.round((statutoryTotal + line.otherDeductions) * 100) / 100;
   const derivedNet = Math.round((line.grossPay - deductions) * 100) / 100;
   return {
     grossPay: line.grossPay,
@@ -161,6 +181,18 @@ export function renderPayslipHtml(
   ]
     .filter(([, amount]) => (amount as number) !== 0)
     .map(([label, amount]) => row(label as string, money(amount as number)))
+    .concat(
+      // The s.18A reduction belongs on the WAGES side: it makes gross smaller,
+      // and hiding it here while gross quietly shrank left an earnings column
+      // that did not reach its own total.
+      line.unpaidLeaveDeduction !== 0
+        ? [
+            `<tr><th>Unpaid leave (s.18A wage reduction)</th><td class="num" style="color:#a8071a">−${money(
+              line.unpaidLeaveDeduction,
+            )}</td></tr>`,
+          ]
+        : [],
+    )
     .join('');
 
   const statutoryRows = statutory
@@ -180,10 +212,7 @@ export function renderPayslipHtml(
     })
     .join('');
 
-  const otherDeductionRows = [
-    ['Unpaid leave', line.unpaidLeaveDeduction],
-    ['Other deductions', line.otherDeductions],
-  ]
+  const otherDeductionRows = [['Other deductions', line.otherDeductions]]
     .filter(([, amount]) => (amount as number) !== 0)
     .map(([label, amount]) => row(label as string, money(amount as number)))
     .join('');
@@ -375,6 +404,263 @@ export function printPayslip(run: PayrollRunDetail, line: PayslipLine, context: 
   const win = window.open('', '_blank', 'width=900,height=1000');
   if (!win) return;
   win.document.write(renderPayslipHtml(run, line, context));
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 250);
+}
+
+// ---------------------------------------------------------------------------
+// THE APPROVED PAYSLIP — rendered from the server's snapshot-composed dataset.
+//
+// Every figure below arrives frozen from the approved snapshot; this renderer
+// formats and REFUSES, it never derives. The server's own PDF route renders
+// the same dataset, so screen, print and PDF cannot disagree.
+// ---------------------------------------------------------------------------
+
+const rm = (cents: number) =>
+  (cents / 100).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+export function renderApprovedPayslipHtml(slip: PayslipDoc, printedBy?: string | null): string {
+  const row = (label: string, value: string, strong = false) =>
+    `<tr><th${strong ? ' class="strong"' : ''}>${escapeHtml(label)}</th><td class="num${strong ? ' strong' : ''}">${value}</td></tr>`;
+  const naRow = (label: string, text: string, note?: string | null) =>
+    `<tr><th>${escapeHtml(label)}</th><td class="na">${escapeHtml(text)}${
+      note ? `<div class="note">${escapeHtml(note)}</div>` : ''
+    }</td></tr>`;
+
+  const banners: string[] = [];
+  if (slip.revision.superseded) {
+    banners.push(
+      `<div class="banner bad"><strong>SUPERSEDED.</strong> This is revision ${slip.revision.version} of
+       ${slip.revision.of}; a later approved revision of this run exists.</div>`,
+    );
+  }
+  if (slip.revision.reopenedSinceApproval) {
+    banners.push(
+      `<div class="banner warn">This run has been <strong>reopened</strong> since this payslip was approved.
+       A corrected revision may follow; this document remains the record of what was approved.</div>`,
+    );
+  }
+  if (slip.statutoryStatus === 'PROVISIONAL') {
+    banners.push(
+      `<div class="banner warn"><strong>Statutory figures:</strong> the schedules behind these figures had not met
+       the approval bar when this run was approved.</div>`,
+    );
+  }
+  const uncalculated = slip.statutoryDeductions.filter((item) => item.applicable && item.amountCents === null).length;
+  if (uncalculated > 0) {
+    banners.push(
+      `<div class="banner warn">${uncalculated} statutory deduction(s) were <strong>not calculated</strong>. They are
+       shown as words rather than zero, and this payslip is not a complete statement of deductions.</div>`,
+    );
+  }
+  if (!slip.itemised) {
+    banners.push(
+      `<div class="banner warn">Issued from a format-2 approved record, which froze every figure but not the itemised
+       earnings. The totals are the approved figures; the earnings cannot be itemised.</div>`,
+    );
+  }
+
+  const earnings = slip.itemised
+    ? (slip.earnings ?? [])
+        .filter((item) => item.amountCents !== 0)
+        .map((item) => row(item.label, rm(item.amountCents)))
+        .concat(
+          (slip.wageReductions ?? [])
+            .filter((item) => item.amountCents !== 0)
+            .map(
+              (item) =>
+                `<tr><th>${escapeHtml(item.label)} (s.18A wage reduction)</th><td class="num" style="color:#a8071a">−${rm(item.amountCents)}</td></tr>`,
+            ),
+        )
+        .join('')
+    : row('Gross wages as approved (not itemised in this record format)', rm(slip.figures.grossCents));
+
+  const statutoryRows = slip.statutoryDeductions
+    .map((item) => {
+      if (!item.applicable) return naRow(item.label, 'Not applicable to this employee');
+      if (item.amountCents === null) return naRow(item.label, 'Not calculated', item.note);
+      if (item.amountCents === 0 && item.key === 'LINDUNG') return '';
+      return `<tr><th>${escapeHtml(item.label)}</th><td class="num">${rm(item.amountCents)}${
+        item.key === 'PCB' && item.note ? `<div class="note">${escapeHtml(item.note)}</div>` : ''
+      }</td></tr>`;
+    })
+    .join('');
+
+  const otherDeductions = (slip.otherDeductionLines ?? [])
+    .filter((item) => item.amountCents !== 0)
+    .map((item) => row(item.label, rm(item.amountCents)))
+    .join('');
+
+  const employerRows = slip.employerContributions
+    .map((item) => (item.amountCents === null ? naRow(item.label, 'Not calculated') : row(item.label, rm(item.amountCents))))
+    .join('');
+
+  const netCell = slip.figures.adds
+    ? `<td class="num strong">${rm(slip.figures.netCents)}</td>`
+    : `<td class="na"><strong>These figures do not add up.</strong> Gross ${rm(slip.figures.grossCents)} less deductions
+       ${rm(slip.figures.deductionCents)} is ${rm(slip.figures.derivedNetCents)}, but the approved net is
+       ${rm(slip.figures.netCents)}. This payslip is not safe to issue.</td>`;
+
+  const overtimeSection =
+    slip.overtimeDetail && slip.overtimeDetail.length > 0
+      ? `<div class="section">
+      <h2>Overtime working</h2>
+      <table>${slip.overtimeDetail
+        .map((tier) => row(`${tier.label} — ${tier.hours} h @ RM${tier.hourlyRate.toFixed(2)}`, money(tier.total)))
+        .join('')}</table>
+    </div>`
+      : '';
+
+  const ytdSection = slip.ytd
+    ? `<div class="section">
+    <h2>Year to date — ${escapeHtml(slip.period.slice(0, 4))}</h2>
+    <table>
+      ${row('Gross wages', rm(slip.ytd.grossCents))}
+      ${row('EPF (employee)', rm(slip.ytd.epfEmployeeCents))}
+      ${row('SOCSO (employee)', rm(slip.ytd.socsoEmployeeCents))}
+      ${row('EIS (employee)', rm(slip.ytd.eisEmployeeCents))}
+      ${slip.ytd.lindungEmployeeCents > 0 ? row('LINDUNG 24 JAM', rm(slip.ytd.lindungEmployeeCents)) : ''}
+      ${row('PCB / MTD', rm(slip.ytd.pcbCents))}
+      ${slip.ytd.zakatCents > 0 ? row('Zakat', rm(slip.ytd.zakatCents)) : ''}
+    </table>
+    ${
+      slip.ytd.importedMonths > 0
+        ? `<div class="note" style="text-align:left">Includes ${slip.ytd.importedMonths} month(s) imported as opening balances at onboarding.</div>`
+        : ''
+    }
+  </div>`
+    : '';
+
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Payslip — ${escapeHtml(slip.employee.name)} — ${escapeHtml(slip.periodLabel)}</title>
+<style>
+  @page { margin: 16mm; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111; margin: 0; }
+  h1 { font-size: 17px; margin: 0 0 2px; }
+  .muted { color: #555; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px;
+          border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 14px; }
+  .banner { border-left: 4px solid; padding: 8px 12px; margin-bottom: 10px; line-height: 1.5; }
+  .banner.bad { border-color: #a8071a; background: #fff1f0; }
+  .banner.warn { border-color: #d46b08; background: #fff7e6; }
+  .grid { display: flex; gap: 24px; margin-bottom: 14px; }
+  .grid > div { flex: 1; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th, td { text-align: left; padding: 4px 0; vertical-align: top; font-weight: normal; }
+  th { width: 56%; padding-right: 10px; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.na { text-align: right; color: #874d00; font-style: italic; white-space: normal; }
+  td.strong, th.strong { font-weight: bold; }
+  .section { margin-bottom: 12px; }
+  .section > h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+                  border-bottom: 1px solid #999; padding-bottom: 3px; margin: 0 0 4px; }
+  .total { border-top: 1px solid #111; }
+  .note { font-size: 10px; color: #874d00; font-style: italic; white-space: normal; text-align: right; }
+  .foot { margin-top: 18px; padding-top: 8px; border-top: 1px solid #999; font-size: 10px; color: #444; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="head">
+  <div>
+    <h1>${escapeHtml(slip.employer.name ?? 'Employer')}</h1>
+    ${slip.employer.registrationNo ? `<div class="muted">Reg. ${escapeHtml(slip.employer.registrationNo)}</div>` : ''}
+    ${slip.employer.addressLines.map((line) => `<div class="muted">${escapeHtml(line)}</div>`).join('')}
+  </div>
+  <div style="text-align:right">
+    <h1>Payslip</h1>
+    <div class="muted">${escapeHtml(slip.periodLabel)}</div>
+    ${slip.runType !== 'REGULAR' ? `<div class="muted">${escapeHtml(slip.runType.replace(/_/g, ' '))} run ${slip.sequence}</div>` : ''}
+  </div>
+</div>
+
+${banners.join('\n')}
+
+<div class="grid">
+  <div class="section">
+    <h2>Employee</h2>
+    <table>
+      <tr><th>Name</th><td>${escapeHtml(slip.employee.name)}</td></tr>
+      ${slip.employee.employeeNo ? `<tr><th>Employee no.</th><td>${escapeHtml(slip.employee.employeeNo)}</td></tr>` : ''}
+      ${slip.employee.position ? `<tr><th>Position</th><td>${escapeHtml(slip.employee.position)}</td></tr>` : ''}
+      ${slip.employee.bankName ? `<tr><th>Paid to</th><td>${escapeHtml(slip.employee.bankName)}</td></tr>` : ''}
+      ${slip.employee.epfNumber ? `<tr><th>EPF no.</th><td>${escapeHtml(slip.employee.epfNumber)}</td></tr>` : ''}
+      ${slip.employee.socsoNumber ? `<tr><th>SOCSO no.</th><td>${escapeHtml(slip.employee.socsoNumber)}</td></tr>` : ''}
+    </table>
+  </div>
+  <div class="section">
+    <h2>This period</h2>
+    <table>
+      ${slip.attendance?.workedDays !== null && slip.attendance?.workedDays !== undefined ? `<tr><th>Days worked</th><td class="num">${slip.attendance.workedDays}</td></tr>` : ''}
+      ${slip.attendance?.unpaidDays ? `<tr><th>Unpaid days</th><td class="num">${slip.attendance.unpaidDays}</td></tr>` : ''}
+      ${slip.attendance?.overtimeHours ? `<tr><th>Overtime hours</th><td class="num">${slip.attendance.overtimeHours}</td></tr>` : ''}
+      <tr><th>Approved</th><td>${escapeHtml(new Date(slip.revision.approvedAt).toLocaleDateString('en-MY'))}${
+        slip.revision.approvedBy.length > 0 ? ` by ${escapeHtml(slip.revision.approvedBy.join(', '))}` : ''
+      }</td></tr>
+      ${slip.paymentDate ? `<tr><th>Payment date</th><td>${escapeHtml(slip.paymentDate)}</td></tr>` : ''}
+      <tr><th>Revision</th><td>${slip.revision.version} of ${slip.revision.of}</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="section">
+    <h2>Earnings</h2>
+    <table>
+      ${earnings}
+      <tr class="total">${row('Gross wages', rm(slip.figures.grossCents), true)}</tr>
+    </table>
+  </div>
+  <div class="section">
+    <h2>Deductions</h2>
+    <table>
+      ${statutoryRows}
+      ${otherDeductions}
+      <tr class="total">${row('Total deductions', rm(slip.figures.deductionCents), true)}</tr>
+    </table>
+  </div>
+</div>
+
+${overtimeSection}
+
+<div class="section">
+  <h2>Net pay</h2>
+  <table><tr><th class="strong">Net pay</th>${netCell}</tr></table>
+</div>
+
+<div class="section">
+  <h2>Employer contributions — not deducted from your pay</h2>
+  <table>
+    ${employerRows}
+    <tr class="total">${row('Total cost to the employer', rm(slip.figures.employerCostCents))}</tr>
+  </table>
+</div>
+
+${ytdSection}
+
+<div class="foot">
+  Issued from approved payroll record ${escapeHtml(slip.verification.hash.slice(0, 16))}… (format
+  ${slip.verification.schemaVersion}), verification ${escapeHtml(slip.verification.verdict)}.
+  Statutory schedules: ${escapeHtml(
+    slip.schedules
+      .filter((schedule) => schedule.scheduleId)
+      .map((schedule) => `${schedule.scheme} ${schedule.scheduleId}`)
+      .join(' · ') || 'none recorded',
+  )}.<br />
+  Printed ${escapeHtml(new Date().toLocaleString('en-MY'))}${printedBy ? ` by ${escapeHtml(printedBy)}` : ''}.
+  This is a computer-generated statement of wages. Employer address and membership numbers are as on file at issue.
+</div>
+</body>
+</html>`;
+}
+
+export function printApprovedPayslip(slip: PayslipDoc, printedBy?: string | null): void {
+  const win = window.open('', '_blank', 'width=900,height=1000');
+  if (!win) return;
+  win.document.write(renderApprovedPayslipHtml(slip, printedBy));
   win.document.close();
   win.focus();
   setTimeout(() => win.print(), 250);

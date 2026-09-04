@@ -6,8 +6,10 @@ import { StatStrip } from '../components/StatStrip';
 import { DataTable, money, moneyOrDash } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useAuthStore } from '../../core/auth-store';
-import { isDraftRun, payslipTotals, printPayslip } from './payslip';
+import { isDraftRun, payslipTotals, printApprovedPayslip, printPayslip } from './payslip';
 import type { PayslipLine } from './payslip';
+import { apiClient } from '../../core/api-client';
+import type { PayslipDoc } from '../types';
 import { useCan } from '../../core/hooks/useCan';
 import { SeverityTag } from './ExceptionSeverity';
 import { PayrollExceptionCentre } from './PayrollExceptionCentre';
@@ -432,13 +434,31 @@ export function PayrollPage() {
                         size="small"
                         type="link"
                         danger={!totals.adds}
-                        onClick={() =>
+                        onClick={() => {
+                          // AN APPROVED RUN PRINTS FROM THE SNAPSHOT. The
+                          // lines happen to agree with it today, but the
+                          // snapshot-composed document carries what they
+                          // cannot: the revision, the verification verdict,
+                          // year-to-date, and the schedule provenance.
+                          if (!isDraftRun(run.status)) {
+                            void apiClient
+                              .get<PayslipDoc>(`/workforce/payroll/runs/${run.id}/payslips/${row.staffId}`)
+                              .then((slip) => printApprovedPayslip(slip, me?.fullName ?? null))
+                              .catch((e) =>
+                                message.error(
+                                  e && typeof e === 'object' && 'message' in e
+                                    ? String((e as { message?: unknown }).message)
+                                    : 'The server refused the payslip.',
+                                ),
+                              );
+                            return;
+                          }
                           printPayslip(run, row, {
                             employerName: tenantName ?? run.clinicName,
                             branchName: run.clinicName,
                             printedBy: me?.fullName ?? null,
-                          })
-                        }
+                          });
+                        }}
                       >
                         {totals.adds ? (isDraftRun(run.status) ? 'Print draft' : 'Print payslip') : 'Does not add up'}
                       </Button>
