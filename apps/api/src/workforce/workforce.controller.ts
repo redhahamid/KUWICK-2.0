@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { EmploymentStatus, LeaveType } from '@prisma/client';
 import { EmployeeService } from './employee.service';
@@ -41,6 +41,7 @@ import { PayrollStatutoryOutputService } from './payroll-statutory-output.servic
 import { PayrollTaxService } from './payroll-tax.service';
 import { renderPayslipPdf } from './payroll-payslip-pdf';
 import { PayrollReportService } from './payroll-report.service';
+import { PayrollFinanceService } from './payroll-finance.service';
 import { CreateStaffClaimDto, DecideStaffClaimDto, SettleStaffClaimDto } from './dto/staff-claim.dto';
 import {
   ApproveLocumSessionDto,
@@ -77,6 +78,7 @@ export class WorkforceController {
     private readonly statutoryOutputs_: PayrollStatutoryOutputService,
     private readonly tax: PayrollTaxService,
     private readonly reports: PayrollReportService,
+    private readonly financeContract: PayrollFinanceService,
   ) {}
 
   // =========================================================================
@@ -252,6 +254,63 @@ export class WorkforceController {
   @Get('payroll/runs/:id/reports/variance')
   reportVariance(@Param('id') id: string) {
     return this.reports.variance(id);
+  }
+
+  @Get('payroll/reports/history')
+  reportHistory(@Query('staffId') staffId?: string, @Query('year') year?: string) {
+    if (!staffId) throw new BadRequestException('staffId is required — this report is one employee’s history.');
+    const parsedYear = year ? Number(year) : undefined;
+    if (year && !Number.isInteger(parsedYear)) throw new BadRequestException('year must be a whole year, e.g. 2026.');
+    return this.reports.history(staffId, parsedYear);
+  }
+
+  @Get('payroll/reports/ytd')
+  reportYtd(@Query('year') year?: string, @Query('legalEmployerId') legalEmployerId?: string) {
+    const parsedYear = Number(year);
+    if (!Number.isInteger(parsedYear)) throw new BadRequestException('year must be a whole year, e.g. 2026.');
+    return this.reports.ytd(parsedYear, legalEmployerId || undefined);
+  }
+
+  @Get('payroll/runs/:id/reports/pcb')
+  reportPcbSummary(@Param('id') id: string) {
+    return this.reports.pcbSummary(id);
+  }
+
+  @Get('payroll/runs/:id/reports/overtime')
+  reportOvertime(@Param('id') id: string) {
+    return this.reports.overtime(id);
+  }
+
+  @Get('payroll/runs/:id/reports/unpaid-leave')
+  reportUnpaidLeave(@Param('id') id: string) {
+    return this.reports.unpaidLeave(id);
+  }
+
+  @Get('payroll/runs/:id/reports/incentives')
+  reportIncentives(@Param('id') id: string) {
+    return this.reports.incentives(id);
+  }
+
+  @Get('payroll/runs/:id/reports/exceptions')
+  reportExceptions(@Param('id') id: string) {
+    return this.reports.exceptions(id);
+  }
+
+  @Get('payroll/runs/:id/reports/payment-status')
+  reportPaymentStatus(@Param('id') id: string) {
+    return this.reports.paymentStatus(id);
+  }
+
+  /**
+   * THE FINANCE CONTRACT. Gated by `finance.view`, NOT `hr.*` — the accounts
+   * side reads canonical approved liabilities and payment state without ever
+   * holding an HR permission or seeing a person's pay. Aggregates only.
+   */
+  @Get('payroll/finance/liabilities')
+  financeLiabilities(@Query('year') year?: string) {
+    const parsedYear = Number(year);
+    if (!Number.isInteger(parsedYear)) throw new BadRequestException('year must be a whole year, e.g. 2026.');
+    return this.financeContract.liabilities(parsedYear);
   }
 
   @Get('payroll/reports/claims')

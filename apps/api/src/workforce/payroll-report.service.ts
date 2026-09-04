@@ -8,12 +8,12 @@ import { checkVariance } from './payroll-invariants';
 /**
  * PAYROLL REPORTS.
  *
- * FIVE REPORTS, ONE SOURCE. Every figure below is read from the same
- * `payroll_lines`, `payroll_input_entries` and `staff_claims` rows the run
- * itself wrote. Nothing is recomputed here, and no report performs arithmetic
- * the calculation did not already do — a report that adds up salaries its own
- * way is a second engine, and the two will disagree in the month somebody
- * finally checks.
+ * THIRTEEN REPORTS, ONE SOURCE. Every figure below is read from the same
+ * `payroll_lines`, `payroll_input_entries`, `employee_ytd`, exception and
+ * payment rows the run itself wrote. Nothing is recomputed here, and no report
+ * performs arithmetic the calculation did not already do — a report that adds
+ * up salaries its own way is a second engine, and the two will disagree in the
+ * month somebody finally checks.
  *
  * DRILL-DOWN IS THE POINT, not a feature. A total nobody can open is a number
  * you have to trust; every row carries `drill`, a link to the canonical record
@@ -71,7 +71,11 @@ export class PayrollReportService {
       grossPay: formatCents(toCents(line.grossPay)),
       unpaidLeaveDeduction: formatCents(toCents(line.unpaidLeaveDeduction)),
       otherDeductions: formatCents(toCents(line.otherDeductions)),
-      statutoryEmployee: sumOrNull([line.epfEmployee, line.socsoEmployee, line.eisEmployee, line.pcb]),
+      // Everything withheld from the employee under a statute — LINDUNG
+      // included, because it comes out of their pay even though the employer
+      // remits it. Leaving it out made the row stop adding up in the first
+      // month somebody opted in.
+      statutoryEmployee: sumOrNull([line.epfEmployee, line.socsoEmployee, line.eisEmployee, line.lindungEmployee, line.pcb]),
       netPay: formatCents(toCents(line.netPay)),
       employerCost: formatCents(toCents(line.employerCost)),
       /** The canonical record behind this row. */
@@ -247,6 +251,8 @@ export class PayrollReportService {
       epf: Scheme;
       socso: Scheme;
       eis: Scheme;
+      lindung: { employeeCents: number; missing: number };
+      hrd: { employerCents: number; missing: number };
       pcb: { employeeCents: number; missing: number };
     };
     const groups = new Map<string, Group>();
@@ -266,12 +272,18 @@ export class PayrollReportService {
         epf: { employeeCents: 0, employerCents: 0, missing: 0 },
         socso: { employeeCents: 0, employerCents: 0, missing: 0 },
         eis: { employeeCents: 0, employerCents: 0, missing: 0 },
+        lindung: { employeeCents: 0, missing: 0 },
+        hrd: { employerCents: 0, missing: 0 },
         pcb: { employeeCents: 0, missing: 0 },
       };
       group.employees += 1;
       accumulate(group.epf, line.epfEmployee, line.epfEmployer);
       accumulate(group.socso, line.socsoEmployee, line.socsoEmployer);
       accumulate(group.eis, line.eisEmployee, line.eisEmployer);
+      if (line.lindungEmployee === null) group.lindung.missing += 1;
+      else group.lindung.employeeCents += toCents(line.lindungEmployee);
+      if (line.hrdLevy === null) group.hrd.missing += 1;
+      else group.hrd.employerCents += toCents(line.hrdLevy);
       if (line.pcb === null) group.pcb.missing += 1;
       else group.pcb.employeeCents += toCents(line.pcb);
       groups.set(key, group);
@@ -310,6 +322,28 @@ export class PayrollReportService {
           scheme('SOCSO', group.socso, group.employees),
           scheme('EIS', group.eis, group.employees),
           {
+            scheme: 'LINDUNG',
+            employee: group.lindung.missing > 0 ? null : formatCents(group.lindung.employeeCents),
+            employer: group.lindung.missing > 0 ? null : formatCents(0),
+            total: group.lindung.missing > 0 ? null : formatCents(group.lindung.employeeCents),
+            notComputed: group.lindung.missing,
+            note:
+              group.lindung.missing > 0
+                ? `Not worked out for ${group.lindung.missing} of ${group.employees} employees — participation is unrecorded — so there is no total to remit.`
+                : 'Employee-borne; the employer remits it with no share of its own.',
+          },
+          {
+            scheme: 'HRD',
+            employee: null,
+            employer: group.hrd.missing > 0 ? null : formatCents(group.hrd.employerCents),
+            total: group.hrd.missing > 0 ? null : formatCents(group.hrd.employerCents),
+            notComputed: group.hrd.missing,
+            note:
+              group.hrd.missing > 0
+                ? `Not worked out for ${group.hrd.missing} of ${group.employees} employees — the registration class or a citizenship-bearing EPF membership is unrecorded.`
+                : 'Employer-borne levy under the PSMB Act; never deducted from pay.',
+          },
+          {
             scheme: 'PCB',
             employee: group.pcb.missing > 0 ? null : formatCents(group.pcb.employeeCents),
             employer: null,
@@ -317,8 +351,8 @@ export class PayrollReportService {
             notComputed: group.pcb.missing,
             note:
               group.pcb.missing > 0
-                ? `Monthly tax is missing for ${group.pcb.missing} of ${group.employees} employees. Kuwick does not work PCB out; it has to be entered.`
-                : 'Every figure here was entered by hand. Kuwick does not work monthly tax out.',
+                ? `Monthly tax is missing for ${group.pcb.missing} of ${group.employees} employees — record their tax residence and MTD category so it can be calculated, or enter the figure.`
+                : 'Calculated from HASiL’s Computerised Calculation specification where the tax profile is recorded, or entered by hand where it is not — each payslip’s note says which.',
           },
         ],
       })),
@@ -525,6 +559,679 @@ export class PayrollReportService {
     };
   }
 
+  /**
+   * 6. PAYROLL HISTORY — one employee, every run that ever paid them.
+   *
+   * The corrections trail is the point. An approved run that was reopened and
+   * re-approved holds several snapshot versions, and this report says so on
+   * the row — because "what did we pay Aminah in March" has a different answer
+   * before and after the correction, and both answers are kept.
+   */
+  async history(staffId: string, year?: number) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    const staff = await this.prisma.staff.findUnique({ where: { id: staffId }, select: { fullName: true } });
+    if (!staff) throw new NotFoundException('Employee not found');
+
+    const lines = await this.prisma.payrollLine.findMany({
+      where: {
+        staffId,
+        ...(year
+          ? {
+              payrollRun: {
+                period: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) },
+              },
+            }
+          : {}),
+      },
+      include: {
+        payrollRun: {
+          select: {
+            id: true,
+            period: true,
+            runType: true,
+            sequence: true,
+            status: true,
+            statutoryStatus: true,
+            approvedAt: true,
+            paidAt: true,
+            clinic: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: [{ payrollRun: { period: 'desc' } }, { payrollRun: { sequence: 'desc' } }],
+    });
+
+    // How many approved versions each run holds. More than one means the run
+    // was corrected after approval; a run back at CALCULATED with a snapshot
+    // means a correction is IN PROGRESS and the line's figures are candidates.
+    const snapshots = await this.prisma.payrollSnapshot.findMany({
+      where: { payrollRunId: { in: lines.map((l) => l.payrollRunId) } },
+      select: { payrollRunId: true },
+    });
+    const versionsByRun = new Map<string, number>();
+    for (const row of snapshots) {
+      versionsByRun.set(row.payrollRunId, (versionsByRun.get(row.payrollRunId) ?? 0) + 1);
+    }
+
+    const rows = lines.map((line) => {
+      const run = line.payrollRun;
+      const approvedVersions = versionsByRun.get(run.id) ?? 0;
+      const reopened = run.status === 'CALCULATED' && approvedVersions > 0;
+      return {
+        runId: run.id,
+        period: run.period.toISOString().slice(0, 7),
+        periodLabel: monthLabel(run.period),
+        clinicName: run.clinic?.name ?? 'All branches',
+        runType: run.runType,
+        sequence: run.sequence,
+        status: run.status,
+        gross: formatCents(toCents(line.grossPay)),
+        statutoryEmployee: sumOrNull([
+          line.epfEmployee,
+          line.socsoEmployee,
+          line.eisEmployee,
+          line.lindungEmployee,
+          line.pcb,
+        ]),
+        otherDeductions: formatCents(toCents(line.otherDeductions)),
+        net: formatCents(toCents(line.netPay)),
+        employerCost: formatCents(toCents(line.employerCost)),
+        approvedAt: run.approvedAt?.toISOString() ?? null,
+        paidAt: run.paidAt?.toISOString() ?? null,
+        approvedVersions,
+        /**
+         * CANDIDATE FIGURES, SAID SO. After a reopen the line carries the
+         * recalculation while the approved payslip still stands at the last
+         * snapshot — a history that showed the candidate as history would be
+         * showing money nobody has approved.
+         */
+        note: reopened
+          ? `Reopened for correction. These are candidate figures; the approved payslip still stands at version ${approvedVersions}.`
+          : approvedVersions > 1
+            ? `Corrected after first approval — ${approvedVersions} approved versions are kept, every one still readable.`
+            : run.status === 'CALCULATED'
+              ? 'Calculated, not yet approved. These figures can still change.'
+              : null,
+        drill: `/admin/hr/payroll/${run.id}`,
+      };
+    });
+
+    // ONLY MONEY THAT WAS APPROVED IS SUMMED. A candidate month in the total
+    // would be a figure this employer never signed.
+    const settled = lines.filter((l) => l.payrollRun.status === 'APPROVED' || l.payrollRun.status === 'PAID');
+    return {
+      report: 'PAYROLL_HISTORY',
+      staffId,
+      name: staff.fullName,
+      year: year ?? null,
+      rows,
+      totals: {
+        runs: rows.length,
+        approvedRuns: settled.length,
+        approvedGross: formatCents(settled.reduce((sum, l) => sum + toCents(l.grossPay), 0)),
+        approvedNet: formatCents(settled.reduce((sum, l) => sum + toCents(l.netPay), 0)),
+        totalsMean: 'Approved and paid runs only. Draft and calculated figures are listed but never summed.',
+      },
+    };
+  }
+
+  /**
+   * 7. MONTHLY TAX (PCB / MTD) SUMMARY — the month's tax per employee, and
+   * where each figure came from.
+   *
+   * CALCULATED or ENTERED is read from the line's own `pcbSource` marker, the
+   * one the calculation wrote — never inferred from the wording of a note.
+   * Zakat paid through payroll and the month's TP1 sit beside the tax because
+   * they are the two things that lawfully changed it.
+   */
+  async pcbSummary(runId: string) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    const run = await this.loadRun(runId);
+    const staffIds = run.lines.map((l) => l.staffId);
+    const profiles = await this.prisma.employeeProfile.findMany({
+      where: { staffId: { in: staffIds } },
+      select: { staffId: true, taxNumber: true, identifierValue: true },
+    });
+    const profileByStaff = new Map(profiles.map((p) => [p.staffId, p]));
+    const tp1Rows = await this.prisma.employeeTp1Entry.findMany({
+      where: { period: run.period, staffId: { in: staffIds } },
+    });
+    const tp1ByStaff = new Map(tp1Rows.map((row) => [row.staffId, row]));
+
+    let missing = 0;
+    let calculated = 0;
+    let entered = 0;
+    const rows = run.lines.map((line) => {
+      const breakdown = (line.breakdown ?? {}) as {
+        components?: { code: string; kind: string; amount: number }[];
+        statutoryNotes?: { pcb?: string | null };
+        pcbSource?: 'CALCULATED' | 'ENTERED' | null;
+      };
+      const source = line.pcb === null ? null : (breakdown.pcbSource ?? null);
+      if (line.pcb === null) missing += 1;
+      else if (source === 'ENTERED') entered += 1;
+      else calculated += 1;
+      // Zakat withheld through payroll — a ZAKAT deduction line. It reduces
+      // the tax under the MTD method, which is why it belongs on this report.
+      const zakatCents = (breakdown.components ?? [])
+        .filter((component) => component.code === 'ZAKAT' && component.kind === 'DEDUCTION')
+        .reduce((sum, component) => sum + toCents(component.amount), 0);
+      const tp1 = tp1ByStaff.get(line.staffId) ?? null;
+      const profile = profileByStaff.get(line.staffId);
+      return {
+        staffId: line.staffId,
+        name: line.staff.fullName,
+        identifier: profile?.identifierValue ?? null,
+        taxNumber: profile?.taxNumber ?? null,
+        pcb: line.pcb === null ? null : formatCents(toCents(line.pcb)),
+        source,
+        /** The payslip's own explanation, verbatim. */
+        note: breakdown.statutoryNotes?.pcb ?? null,
+        zakatViaPayroll: formatCents(zakatCents),
+        tp1:
+          tp1 === null
+            ? null
+            : {
+                deductions: formatCents(tp1.deductionsCents),
+                zakatSelfPaid: formatCents(tp1.zakatSelfPaidCents),
+                receivedDate: tp1.receivedDate?.toISOString().slice(0, 10) ?? null,
+              },
+        drill: `/admin/hr/employees/${line.staffId}`,
+      };
+    });
+
+    return {
+      report: 'PCB_SUMMARY',
+      ...this.header(run),
+      rows,
+      totals: {
+        employees: run.lines.length,
+        pcb: sumOrNull(run.lines.map((l) => l.pcb)),
+        zakatViaPayroll: formatCents(rows.reduce((sum, row) => sum + toCents(row.zakatViaPayroll), 0)),
+        calculated,
+        entered,
+        missing,
+        tp1Applied: tp1Rows.length,
+      },
+      note:
+        missing > 0
+          ? `Monthly tax is missing for ${missing} of ${run.lines.length} employees, so there is no total to remit. Record their tax residence and MTD category, or enter the figure.`
+          : 'Every employee on this run has a monthly tax figure — the source column says whether it was calculated from HASiL’s specification or entered by a person.',
+    };
+  }
+
+  /**
+   * 8. YEAR TO DATE — the cumulative ledger, per employee per employer.
+   *
+   * These are the rows approved runs and the opening import wrote — the same
+   * rows next month's PCB reads. A previous employer's TP3 figures are listed
+   * SEPARATELY: they enter the tax calculation but they are not this
+   * employer's money, and a YTD that folded them in would misstate what this
+   * employer paid.
+   */
+  async ytd(year: number, legalEmployerId?: string) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    const months = await this.prisma.employeeYtd.findMany({
+      where: { taxYear: year, ...(legalEmployerId ? { legalEmployerId } : {}) },
+      orderBy: [{ staffId: 'asc' }, { month: 'asc' }],
+    });
+    const staffIds = [...new Set(months.map((row) => row.staffId))];
+    const employerIds = [...new Set(months.map((row) => row.legalEmployerId))];
+    const [staffRows, employers, tp3Rows] = await Promise.all([
+      this.prisma.staff.findMany({ where: { id: { in: staffIds } }, select: { id: true, fullName: true } }),
+      this.prisma.legalEmployer.findMany({ where: { id: { in: employerIds } }, select: { id: true, name: true } }),
+      this.prisma.employeeTp3Record.findMany({
+        where: { taxYear: year, ...(legalEmployerId ? { legalEmployerId } : {}) },
+      }),
+    ]);
+    const nameOf = new Map(staffRows.map((row) => [row.id, row.fullName]));
+    const employerOf = new Map(employers.map((row) => [row.id, row.name]));
+
+    type YtdBucket = {
+      staffId: string;
+      legalEmployerId: string;
+      months: { month: number; source: string }[];
+      grossCents: number;
+      additionalRemunerationCents: number;
+      pcbCents: number;
+      cp38Cents: number;
+      zakatCents: number;
+      epfEmployeeCents: number;
+      epfEmployerCents: number;
+      socsoEmployeeCents: number;
+      socsoEmployerCents: number;
+      eisEmployeeCents: number;
+      eisEmployerCents: number;
+      lindungEmployeeCents: number;
+      deductionsCents: number;
+      imported: number;
+    };
+    const buckets = new Map<string, YtdBucket>();
+    for (const row of months) {
+      const key = `${row.legalEmployerId}:${row.staffId}`;
+      const bucket = buckets.get(key) ?? {
+        staffId: row.staffId,
+        legalEmployerId: row.legalEmployerId,
+        months: [],
+        grossCents: 0,
+        additionalRemunerationCents: 0,
+        pcbCents: 0,
+        cp38Cents: 0,
+        zakatCents: 0,
+        epfEmployeeCents: 0,
+        epfEmployerCents: 0,
+        socsoEmployeeCents: 0,
+        socsoEmployerCents: 0,
+        eisEmployeeCents: 0,
+        eisEmployerCents: 0,
+        lindungEmployeeCents: 0,
+        deductionsCents: 0,
+        imported: 0,
+      };
+      bucket.months.push({ month: row.month, source: row.source });
+      bucket.grossCents += row.grossCents;
+      bucket.additionalRemunerationCents += row.additionalRemunerationCents;
+      bucket.pcbCents += row.pcbCents;
+      bucket.cp38Cents += row.cp38Cents;
+      bucket.zakatCents += row.zakatCents;
+      bucket.epfEmployeeCents += row.epfEmployeeCents;
+      bucket.epfEmployerCents += row.epfEmployerCents;
+      bucket.socsoEmployeeCents += row.socsoEmployeeCents;
+      bucket.socsoEmployerCents += row.socsoEmployerCents;
+      bucket.eisEmployeeCents += row.eisEmployeeCents;
+      bucket.eisEmployerCents += row.eisEmployerCents;
+      bucket.lindungEmployeeCents += row.lindungEmployeeCents;
+      bucket.deductionsCents += row.deductionsCents;
+      if (row.source === 'OPENING_IMPORT') bucket.imported += 1;
+      buckets.set(key, bucket);
+    }
+
+    const rows = [...buckets.values()]
+      .map((bucket) => ({
+        staffId: bucket.staffId,
+        name: nameOf.get(bucket.staffId) ?? 'Unknown employee',
+        legalEmployerId: bucket.legalEmployerId,
+        employerName: employerOf.get(bucket.legalEmployerId) ?? 'Unknown employer',
+        monthsRecorded: bucket.months.length,
+        months: bucket.months,
+        gross: formatCents(bucket.grossCents),
+        additionalRemuneration: formatCents(bucket.additionalRemunerationCents),
+        pcb: formatCents(bucket.pcbCents),
+        cp38: formatCents(bucket.cp38Cents),
+        zakat: formatCents(bucket.zakatCents),
+        epfEmployee: formatCents(bucket.epfEmployeeCents),
+        epfEmployer: formatCents(bucket.epfEmployerCents),
+        socsoEmployee: formatCents(bucket.socsoEmployeeCents),
+        socsoEmployer: formatCents(bucket.socsoEmployerCents),
+        eisEmployee: formatCents(bucket.eisEmployeeCents),
+        eisEmployer: formatCents(bucket.eisEmployerCents),
+        lindungEmployee: formatCents(bucket.lindungEmployeeCents),
+        /** ∑LP — allowable deductions applied via TP1, feeding next month's tax. */
+        deductionsApplied: formatCents(bucket.deductionsCents),
+        // "8 recorded months, 3 of them imported" — an imported month is a
+        // declared figure, not one this system calculated, and a reader
+        // checking against old payslips needs to know which is which.
+        note:
+          bucket.imported > 0
+            ? `${bucket.imported} of ${bucket.months.length} months are imported opening balances from before this system ran payroll.`
+            : null,
+        drill: `/admin/hr/employees/${bucket.staffId}`,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const total = (pick: (bucket: YtdBucket) => number) =>
+      formatCents([...buckets.values()].reduce((sum, bucket) => sum + pick(bucket), 0));
+
+    return {
+      report: 'YTD',
+      taxYear: year,
+      legalEmployerId: legalEmployerId ?? null,
+      rows,
+      /** Previous employment this year, as declared on Form TP3 — NOT summed above. */
+      previousEmployment: tp3Rows.map((row) => ({
+        staffId: row.staffId,
+        name: nameOf.get(row.staffId) ?? 'Unknown employee',
+        previousEmployerName: row.previousEmployerName,
+        gross: formatCents(row.grossCents),
+        epf: formatCents(row.epfCents),
+        mtdPaid: formatCents(row.mtdPaidCents),
+        zakat: formatCents(row.zakatCents),
+        source: row.source,
+      })),
+      totals: {
+        employees: buckets.size,
+        gross: total((b) => b.grossCents),
+        pcb: total((b) => b.pcbCents),
+        zakat: total((b) => b.zakatCents),
+        epfEmployee: total((b) => b.epfEmployeeCents),
+        epfEmployer: total((b) => b.epfEmployerCents),
+        socsoEmployee: total((b) => b.socsoEmployeeCents),
+        socsoEmployer: total((b) => b.socsoEmployerCents),
+        eisEmployee: total((b) => b.eisEmployeeCents),
+        eisEmployer: total((b) => b.eisEmployerCents),
+        lindungEmployee: total((b) => b.lindungEmployeeCents),
+      },
+      note:
+        'The cumulative ledger approved runs write and next month’s PCB reads. Previous employment declared on Form TP3 is listed separately — it enters the tax calculation but it is not this employer’s money.',
+    };
+  }
+
+  /**
+   * 9. OVERTIME — every priced hour, tier by tier, with the provision that
+   * priced it.
+   *
+   * The tiers are the calculation's own day rows — a normal-day hour under
+   * s.60A(3), a rest day under s.60(3), a public holiday under s.60D — never a
+   * synthesised "1.5x" line. The ORP divisors the pricing used travel with the
+   * report because they are clinic policy, not law, and a checker needs them.
+   */
+  async overtime(runId: string) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    const run = await this.loadRun(runId);
+
+    const rows = run.lines
+      .filter((line) => Number(line.overtimeHours ?? 0) > 0 || toCents(line.overtimePay) !== 0)
+      .map((line) => {
+        const breakdown = (line.breakdown ?? {}) as {
+          overtimeTiers?: { label: string; hours: number; ordinaryRateDays: number; hourlyRate: number; total: number; provision: string }[];
+          hourlyRateUsed?: number;
+        };
+        return {
+          staffId: line.staffId,
+          name: line.staff.fullName,
+          hours: Number(line.overtimeHours ?? 0),
+          pay: formatCents(toCents(line.overtimePay)),
+          hourlyRateUsed: breakdown.hourlyRateUsed ?? null,
+          tiers: (breakdown.overtimeTiers ?? []).map((tier) => ({
+            label: tier.label,
+            hours: tier.hours,
+            ordinaryRateDays: tier.ordinaryRateDays,
+            hourlyRate: tier.hourlyRate,
+            total: tier.total,
+            provision: tier.provision,
+          })),
+          drill: `/admin/hr/employees/${line.staffId}`,
+        };
+      });
+
+    return {
+      report: 'OVERTIME',
+      ...this.header(run),
+      orp: {
+        overtimeDays: Number(run.orpOvertimeDays),
+        hoursPerDay: Number(run.orpHoursPerDay),
+        meaning: `Ordinary rate = monthly wages ÷ ${Number(run.orpOvertimeDays)} days ÷ ${Number(run.orpHoursPerDay)} hours. Clinic policy, frozen on this run.`,
+      },
+      rows,
+      totals: {
+        employees: rows.length,
+        hours: Math.round(rows.reduce((sum, row) => sum + row.hours, 0) * 100) / 100,
+        pay: formatCents(run.lines.reduce((sum, line) => sum + toCents(line.overtimePay), 0)),
+      },
+      note:
+        rows.length === 0
+          ? 'No overtime was priced on this run.'
+          : 'Each tier row names the Employment Act provision that priced it. Rest-day and public-holiday work is paid in days at the ordinary rate, not as multiplied hours.',
+    };
+  }
+
+  /**
+   * 10. UNPAID LEAVE — days not worked, and the wages the month never included.
+   *
+   * Section 18A: an absence reduces the WAGES EARNED. It is not a deduction
+   * from wages, which is why gross pay everywhere in this system is already
+   * after it and why this report has no deductions column at all.
+   */
+  async unpaidLeave(runId: string) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    const run = await this.loadRun(runId);
+
+    const rows = run.lines
+      .filter((line) => Number(line.unpaidDays ?? 0) > 0 || toCents(line.unpaidLeaveDeduction) !== 0)
+      .map((line) => {
+        const breakdown = (line.breakdown ?? {}) as {
+          ordinaryRateOfPay?: { unpaidLeaveDaily?: number };
+        };
+        return {
+          staffId: line.staffId,
+          name: line.staff.fullName,
+          days: Number(line.unpaidDays ?? 0),
+          dailyRate: breakdown.ordinaryRateOfPay?.unpaidLeaveDaily ?? null,
+          reduction: formatCents(toCents(line.unpaidLeaveDeduction)),
+          grossAfter: formatCents(toCents(line.grossPay)),
+          drill: `/admin/hr/employees/${line.staffId}`,
+        };
+      });
+
+    return {
+      report: 'UNPAID_LEAVE',
+      ...this.header(run),
+      divisor: {
+        unpaidLeaveDays: Number(run.orpUnpaidLeaveDays),
+        meaning: `A day of unpaid leave reduces wages by monthly salary ÷ ${Number(run.orpUnpaidLeaveDays)}. Clinic policy, frozen on this run.`,
+      },
+      rows,
+      totals: {
+        employees: rows.length,
+        days: Math.round(rows.reduce((sum, row) => sum + row.days, 0) * 10) / 10,
+        reduction: formatCents(run.lines.reduce((sum, line) => sum + toCents(line.unpaidLeaveDeduction), 0)),
+      },
+      note: 'Under s.18A of the Employment Act an absence reduces the wages earned — it is a wage reduction, not a deduction. Gross pay in this report is already after it, and every statutory contribution was computed on the reduced wage.',
+    };
+  }
+
+  /**
+   * 11. INCENTIVES AND BONUSES — what was paid on top of salary, and where
+   * each figure came from.
+   *
+   * Every row is a payroll input with its provenance: the incentive rule or
+   * hand entry behind it, and the period the money was EARNED when that is
+   * not the month it was paid. Both components are ADDITIONAL REMUNERATION
+   * under the MTD method — taxed by the annualised formula, not as ordinary
+   * monthly wages — which is why they are worth a report of their own.
+   */
+  async incentives(runId: string) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    const run = await this.loadRun(runId);
+    const entries = await this.prisma.payrollInputEntry.findMany({
+      where: {
+        period: run.period,
+        staffId: { in: run.lines.map((l) => l.staffId) },
+        componentCode: { in: ['INCENTIVE', 'BONUS'] },
+      },
+      orderBy: [{ staffId: 'asc' }, { componentCode: 'asc' }],
+    });
+    const nameOf = new Map(run.lines.map((line) => [line.staffId, line.staff.fullName]));
+
+    const rows = entries.map((entry) => ({
+      staffId: entry.staffId,
+      name: nameOf.get(entry.staffId) ?? 'Unknown employee',
+      component: entry.componentCode,
+      label: entry.label ?? entry.componentCode,
+      amount: formatCents(toCents(entry.amount)),
+      source: entry.source,
+      sourceRecordId: entry.sourceRecordId,
+      reason: entry.reason,
+      earnedPeriod: entry.earnedPeriod?.toISOString().slice(0, 7) ?? null,
+      drill: `/admin/hr/employees/${entry.staffId}`,
+    }));
+
+    const totalFor = (code: string) =>
+      formatCents(entries.filter((e) => e.componentCode === code).reduce((sum, e) => sum + toCents(e.amount), 0));
+
+    return {
+      report: 'INCENTIVES',
+      ...this.header(run),
+      rows,
+      totals: {
+        entries: rows.length,
+        employees: new Set(entries.map((e) => e.staffId)).size,
+        incentives: totalFor('INCENTIVE'),
+        bonus: totalFor('BONUS'),
+      },
+      note: 'Incentives and bonuses are additional remuneration under the MTD method — taxed by the annualised formula, not as ordinary monthly wages. Each row names the record it came from.',
+    };
+  }
+
+  /**
+   * 12. EXCEPTIONS — what the run raised, and what somebody waved through.
+   *
+   * The exception centre shows this live; the report is the RECORD. An
+   * approval only means anything beside the exceptions it was given over, so
+   * the override — who, why, when — is on the row, not in an audit table
+   * nobody prints.
+   */
+  async exceptions(runId: string) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    const run = await this.loadRun(runId);
+    const exceptionRows = await this.prisma.payrollException.findMany({
+      where: { payrollRunId: runId },
+      include: { staff: { select: { fullName: true } } },
+      orderBy: [{ severity: 'asc' }, { createdAt: 'asc' }],
+    });
+    const overriderIds = [
+      ...new Set(exceptionRows.map((row) => row.overriddenByStaffId).filter((id): id is string => id !== null)),
+    ];
+    const overriders = await this.prisma.staff.findMany({
+      where: { id: { in: overriderIds } },
+      select: { id: true, fullName: true },
+    });
+    const overriderOf = new Map(overriders.map((row) => [row.id, row.fullName]));
+
+    const rows = exceptionRows.map((row) => ({
+      id: row.id,
+      severity: row.severity,
+      code: row.code,
+      staffId: row.staffId,
+      name: row.staff?.fullName ?? null,
+      cause: row.cause,
+      consequence: row.consequence,
+      remediation: row.remediation,
+      overridable: row.overridable,
+      overridden: row.overriddenAt !== null,
+      overriddenBy: row.overriddenByStaffId ? (overriderOf.get(row.overriddenByStaffId) ?? null) : null,
+      overrideReason: row.overrideReason,
+      overriddenAt: row.overriddenAt?.toISOString() ?? null,
+      deepLink: row.deepLink,
+    }));
+
+    const blocking = rows.filter((row) => row.severity === 'BLOCKING');
+    return {
+      report: 'EXCEPTIONS',
+      ...this.header(run),
+      rows,
+      totals: {
+        exceptions: rows.length,
+        blocking: blocking.length,
+        blockingOpen: blocking.filter((row) => !row.overridden).length,
+        warnings: rows.filter((row) => row.severity === 'WARNING').length,
+        overridden: rows.filter((row) => row.overridden).length,
+      },
+      note:
+        rows.length === 0
+          ? 'The run raised no exceptions.'
+          : 'A blocking exception stops the run paying that person until it is fixed or — where the catalogue allows it — overridden with a named reason. The override is part of the record.',
+    };
+  }
+
+  /**
+   * 13. PAYMENT STATUS — where the money actually stands, in the language of
+   * the evidence.
+   *
+   * GENERATED means a listing was prepared. DOWNLOADED means somebody took a
+   * copy. Neither is evidence any money moved: only RECORDED PAID — a person
+   * recording the payment with its date and reference — says that, and this
+   * report never uses the word "paid" for anything less.
+   */
+  async paymentStatus(runId: string) {
+    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    const run = await this.loadRun(runId);
+    const batches = await this.prisma.payrollPaymentBatch.findMany({
+      where: { payrollRunId: runId },
+      include: { lines: true },
+      orderBy: { version: 'desc' },
+    });
+    const staffIds = [
+      ...new Set(
+        batches.flatMap((batch) => [
+          batch.createdByStaffId,
+          batch.downloadedByStaffId,
+          batch.paidRecordedByStaffId,
+        ]),
+      ),
+    ].filter((id): id is string => id !== null);
+    const people = await this.prisma.staff.findMany({
+      where: { id: { in: staffIds } },
+      select: { id: true, fullName: true },
+    });
+    const personOf = new Map(people.map((row) => [row.id, row.fullName]));
+
+    const current = batches.find((batch) => batch.status !== 'SUPERSEDED') ?? null;
+    const describe = (status: string) =>
+      status === 'RECORDED_PAID'
+        ? 'A person recorded that this payment was made. That record — not the file — is the evidence.'
+        : status === 'DOWNLOADED'
+          ? 'The listing was downloaded. That is not evidence any money moved.'
+          : status === 'GENERATED'
+            ? 'A listing was prepared. No money has moved.'
+            : 'Superseded by a newer listing after the run changed.';
+
+    return {
+      report: 'PAYMENT_STATUS',
+      ...this.header(run),
+      runPaidAt: run.paidAt?.toISOString() ?? null,
+      current:
+        current === null
+          ? null
+          : {
+              batchId: current.id,
+              version: current.version,
+              status: current.status,
+              statusMeans: describe(current.status),
+              total: formatCents(current.totalCents),
+              includedCount: current.includedCount,
+              excludedCount: current.excludedCount,
+              snapshotVersion: current.snapshotVersion,
+              preparedBy: personOf.get(current.createdByStaffId) ?? null,
+              preparedAt: current.createdAt.toISOString(),
+              downloadedBy: current.downloadedByStaffId ? (personOf.get(current.downloadedByStaffId) ?? null) : null,
+              downloadedAt: current.downloadedAt?.toISOString() ?? null,
+              paidRecordedBy: current.paidRecordedByStaffId
+                ? (personOf.get(current.paidRecordedByStaffId) ?? null)
+                : null,
+              paidRecordedAt: current.paidRecordedAt?.toISOString() ?? null,
+              paymentDate: current.paymentDate?.toISOString().slice(0, 10) ?? null,
+              paymentReference: current.paymentReference,
+              lines: current.lines
+                .map((line) => ({
+                  staffId: line.staffId,
+                  name: line.name,
+                  bankName: line.bankName,
+                  accountEnding: line.bankAccountNo ? line.bankAccountNo.slice(-4) : null,
+                  amount: formatCents(line.amountCents),
+                  included: line.included,
+                  exclusionReason: line.exclusionReason,
+                }))
+                .sort((a, b) => Number(a.included) - Number(b.included) || a.name.localeCompare(b.name)),
+            },
+      supersededBatches: batches
+        .filter((batch) => batch.id !== current?.id)
+        .map((batch) => ({
+          batchId: batch.id,
+          version: batch.version,
+          status: batch.status,
+          total: formatCents(batch.totalCents),
+          preparedAt: batch.createdAt.toISOString(),
+        })),
+      note:
+        current === null
+          ? run.status === 'APPROVED' || run.status === 'PAID'
+            ? 'No payment listing has been prepared for this run yet.'
+            : 'Payment is prepared from an APPROVED run. This run is not approved, so there is nothing to pay yet.'
+          : null,
+    };
+  }
+
   // -------------------------------------------------------------------------
 
   private async loadRun(runId: string) {
@@ -625,6 +1332,54 @@ export const REPORT_CATALOGUE = {
       description: 'Approved claims, the route each was paid by, and whether it has been settled.',
       scope: 'DATE_RANGE' as const,
     },
+    {
+      key: 'PAYROLL_HISTORY',
+      title: 'Payroll history and corrections',
+      description: 'One employee across every run — with each correction and its kept versions named.',
+      scope: 'EMPLOYEE' as const,
+    },
+    {
+      key: 'PCB_SUMMARY',
+      title: 'Monthly tax (PCB) summary',
+      description: 'The month’s tax per employee — calculated or entered by hand — with zakat and TP1 beside it.',
+      scope: 'RUN' as const,
+    },
+    {
+      key: 'YTD',
+      title: 'Year to date',
+      description: 'The cumulative ledger per employee and employer — the rows next month’s tax reads.',
+      scope: 'YEAR' as const,
+    },
+    {
+      key: 'OVERTIME',
+      title: 'Overtime',
+      description: 'Every priced hour, tier by tier, with the Employment Act provision that priced it.',
+      scope: 'RUN' as const,
+    },
+    {
+      key: 'UNPAID_LEAVE',
+      title: 'Unpaid leave',
+      description: 'Days not worked and the wages the month never included. A wage reduction, not a deduction.',
+      scope: 'RUN' as const,
+    },
+    {
+      key: 'INCENTIVES',
+      title: 'Incentives and bonuses',
+      description: 'What was paid on top of salary, each row naming the record it came from.',
+      scope: 'RUN' as const,
+    },
+    {
+      key: 'EXCEPTIONS',
+      title: 'Exceptions and overrides',
+      description: 'What the run raised, what was fixed, and what somebody waved through — with their reason.',
+      scope: 'RUN' as const,
+    },
+    {
+      key: 'PAYMENT_STATUS',
+      title: 'Payment status',
+      description: 'Where the money stands: prepared, downloaded, or recorded paid. Never claims more than the evidence.',
+      scope: 'RUN' as const,
+    },
   ],
   /**
    * NAMED ABSENCES. The spec lists more reports than this build serves, and
@@ -635,17 +1390,12 @@ export const REPORT_CATALOGUE = {
     {
       key: 'STATUTORY_RECONCILIATION',
       title: 'Statutory reconciliation',
-      why: 'Needs what was actually filed and paid to each authority. Kuwick does not record submissions, so there is nothing to reconcile against.',
+      why: 'Recorded submissions now exist per run and scheme, but what each authority actually RECEIVED — the receipt amounts — is not captured, so there is nothing independent to reconcile the computed totals against. The statutory totals and payment status reports carry what is known.',
     },
     {
       key: 'PAYMENT_RECONCILIATION',
       title: 'Payment reconciliation',
-      why: 'Needs the bank payment file and the returned statement. Neither exists until the statutory rates are checked and a bank format is agreed.',
-    },
-    {
-      key: 'PAYROLL_HISTORY',
-      title: 'Payroll history and corrections',
-      why: 'Approved runs are frozen with a snapshot and corrections are recorded adjustments, so the data exists. The report over them is not built.',
+      why: 'The payment listing reconciles against the approved snapshot at preparation, and a person records when it was paid. The returned bank statement is not imported, so a reconciliation against what the bank says it paid cannot be built yet.',
     },
   ],
 } as const;

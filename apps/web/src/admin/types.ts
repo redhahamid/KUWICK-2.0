@@ -2251,9 +2251,9 @@ export interface PayrollApprovalState {
 // ---------------------------------------------------------------------------
 // PAYROLL REPORTS.
 //
-// Five reports over the SAME rows the run wrote. Nothing recomputes a figure,
-// and every row carries `drill` — the canonical record behind it — because a
-// total nobody can open is a number you have to trust.
+// Thirteen reports over the SAME rows the run wrote. Nothing recomputes a
+// figure, and every row carries `drill` — the canonical record behind it —
+// because a total nobody can open is a number you have to trust.
 // ---------------------------------------------------------------------------
 
 export interface PayrollReportHeader {
@@ -2267,7 +2267,7 @@ export interface PayrollReportHeader {
 }
 
 export interface PayrollReportCatalogue {
-  available: { key: string; title: string; description: string; scope: 'RUN' | 'DATE_RANGE' }[];
+  available: { key: string; title: string; description: string; scope: 'RUN' | 'DATE_RANGE' | 'EMPLOYEE' | 'YEAR' }[];
   /** Named absences carrying a reason, not a "coming soon". */
   notAvailableYet: { key: string; title: string; why: string }[];
 }
@@ -2404,6 +2404,239 @@ export interface PayrollClaimsReport {
     awaitingPayment: number;
   };
   doublePaymentCheck: string;
+}
+
+export interface PayrollHistoryReport {
+  report: 'PAYROLL_HISTORY';
+  staffId: string;
+  name: string;
+  year: number | null;
+  rows: {
+    runId: string;
+    period: string;
+    periodLabel: string;
+    clinicName: string;
+    runType: string;
+    sequence: number;
+    status: string;
+    gross: string;
+    statutoryEmployee: string | null;
+    otherDeductions: string;
+    net: string;
+    employerCost: string;
+    approvedAt: string | null;
+    paidAt: string | null;
+    approvedVersions: number;
+    /** Candidate-figures / corrected-run annotation, from the API. */
+    note: string | null;
+    drill: string;
+  }[];
+  totals: {
+    runs: number;
+    approvedRuns: number;
+    approvedGross: string;
+    approvedNet: string;
+    totalsMean: string;
+  };
+}
+
+export interface PayrollPcbSummaryReport extends PayrollReportHeader {
+  report: 'PCB_SUMMARY';
+  rows: {
+    staffId: string;
+    name: string;
+    identifier: string | null;
+    taxNumber: string | null;
+    pcb: string | null;
+    /** From the calculation's own marker — never inferred from the prose. */
+    source: 'CALCULATED' | 'ENTERED' | null;
+    note: string | null;
+    zakatViaPayroll: string;
+    tp1: { deductions: string; zakatSelfPaid: string; receivedDate: string | null } | null;
+    drill: string;
+  }[];
+  totals: {
+    employees: number;
+    pcb: string | null;
+    zakatViaPayroll: string;
+    calculated: number;
+    entered: number;
+    missing: number;
+    tp1Applied: number;
+  };
+  note: string;
+}
+
+export interface PayrollYtdReport {
+  report: 'YTD';
+  taxYear: number;
+  legalEmployerId: string | null;
+  rows: {
+    staffId: string;
+    name: string;
+    legalEmployerId: string;
+    employerName: string;
+    monthsRecorded: number;
+    months: { month: number; source: string }[];
+    gross: string;
+    additionalRemuneration: string;
+    pcb: string;
+    cp38: string;
+    zakat: string;
+    epfEmployee: string;
+    epfEmployer: string;
+    socsoEmployee: string;
+    socsoEmployer: string;
+    eisEmployee: string;
+    eisEmployer: string;
+    lindungEmployee: string;
+    deductionsApplied: string;
+    note: string | null;
+    drill: string;
+  }[];
+  previousEmployment: {
+    staffId: string;
+    name: string;
+    previousEmployerName: string;
+    gross: string;
+    epf: string;
+    mtdPaid: string;
+    zakat: string;
+    source: string;
+  }[];
+  totals: {
+    employees: number;
+    gross: string;
+    pcb: string;
+    zakat: string;
+    epfEmployee: string;
+    epfEmployer: string;
+    socsoEmployee: string;
+    socsoEmployer: string;
+    eisEmployee: string;
+    eisEmployer: string;
+    lindungEmployee: string;
+  };
+  note: string;
+}
+
+export interface PayrollOvertimeReport extends PayrollReportHeader {
+  report: 'OVERTIME';
+  orp: { overtimeDays: number; hoursPerDay: number; meaning: string };
+  rows: {
+    staffId: string;
+    name: string;
+    hours: number;
+    pay: string;
+    hourlyRateUsed: number | null;
+    tiers: {
+      label: string;
+      hours: number;
+      ordinaryRateDays: number;
+      hourlyRate: number;
+      total: number;
+      provision: string;
+    }[];
+    drill: string;
+  }[];
+  totals: { employees: number; hours: number; pay: string };
+  note: string;
+}
+
+export interface PayrollUnpaidLeaveReport extends PayrollReportHeader {
+  report: 'UNPAID_LEAVE';
+  divisor: { unpaidLeaveDays: number; meaning: string };
+  rows: {
+    staffId: string;
+    name: string;
+    days: number;
+    dailyRate: number | null;
+    reduction: string;
+    grossAfter: string;
+    drill: string;
+  }[];
+  totals: { employees: number; days: number; reduction: string };
+  note: string;
+}
+
+export interface PayrollIncentivesReport extends PayrollReportHeader {
+  report: 'INCENTIVES';
+  rows: {
+    staffId: string;
+    name: string;
+    component: string;
+    label: string;
+    amount: string;
+    source: string;
+    sourceRecordId: string | null;
+    reason: string | null;
+    earnedPeriod: string | null;
+    drill: string;
+  }[];
+  totals: { entries: number; employees: number; incentives: string; bonus: string };
+  note: string;
+}
+
+export interface PayrollExceptionsReport extends PayrollReportHeader {
+  report: 'EXCEPTIONS';
+  rows: {
+    id: string;
+    severity: string;
+    code: string;
+    staffId: string | null;
+    name: string | null;
+    cause: string;
+    consequence: string;
+    remediation: string;
+    overridable: boolean;
+    overridden: boolean;
+    overriddenBy: string | null;
+    overrideReason: string | null;
+    overriddenAt: string | null;
+    deepLink: string | null;
+  }[];
+  totals: {
+    exceptions: number;
+    blocking: number;
+    blockingOpen: number;
+    warnings: number;
+    overridden: number;
+  };
+  note: string;
+}
+
+export interface PayrollPaymentStatusReport extends PayrollReportHeader {
+  report: 'PAYMENT_STATUS';
+  runPaidAt: string | null;
+  current: {
+    batchId: string;
+    version: number;
+    status: string;
+    statusMeans: string;
+    total: string;
+    includedCount: number;
+    excludedCount: number;
+    snapshotVersion: number;
+    preparedBy: string | null;
+    preparedAt: string;
+    downloadedBy: string | null;
+    downloadedAt: string | null;
+    paidRecordedBy: string | null;
+    paidRecordedAt: string | null;
+    paymentDate: string | null;
+    paymentReference: string | null;
+    lines: {
+      staffId: string;
+      name: string;
+      bankName: string | null;
+      accountEnding: string | null;
+      amount: string;
+      included: boolean;
+      exclusionReason: string | null;
+    }[];
+  } | null;
+  supersededBatches: { batchId: string; version: number; status: string; total: string; preparedAt: string }[];
+  note: string | null;
 }
 
 /** Who is allowed to approve payroll in this clinic. Payroll settings. */

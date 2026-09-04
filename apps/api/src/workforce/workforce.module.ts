@@ -22,6 +22,7 @@ import { PayrollPaymentService } from './payroll-payment.service';
 import { PayrollStatutoryOutputService } from './payroll-statutory-output.service';
 import { PayrollTaxService } from './payroll-tax.service';
 import { PayrollReportService } from './payroll-report.service';
+import { PayrollFinanceService } from './payroll-finance.service';
 
 /**
  * WAVE 4 of the admin programme.
@@ -60,6 +61,7 @@ import { PayrollReportService } from './payroll-report.service';
     PayrollStatutoryOutputService,
     PayrollTaxService,
     PayrollReportService,
+    PayrollFinanceService,
   ],
   exports: [
     EmployeeService,
@@ -83,6 +85,7 @@ import { PayrollReportService } from './payroll-report.service';
     PayrollStatutoryOutputService,
     PayrollTaxService,
     PayrollReportService,
+    PayrollFinanceService,
   ],
 })
 export class WorkforceModule {}

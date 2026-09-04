@@ -1405,12 +1405,18 @@ export class PayrollService {
         // PCB is not calculated by this system, and that is a BLOCKING
         // exception rather than a quiet null on a payslip somebody might pay
         // against. See docs/MALAYSIA_PAYROLL_STATUTORY_SOURCES.md section 4.
+        //
+        // Which path produced the figure is recorded as DATA, not only in the
+        // note's wording — a report that derives "entered by hand" by pattern-
+        // matching prose breaks the day the prose is rephrased.
+        let pcbEnteredByHand = false;
         if (payslip.statutory.pcbCents === null) {
           if (pcbOverrideCents === null) {
             raise('PCB_MISSING', employee);
           } else {
             // A supplied figure completes the payslip. It is withheld from the
             // employee and reduces net pay exactly as a computed one would.
+            pcbEnteredByHand = true;
             payslip.statutory.pcbCents = pcbOverrideCents;
             payslip.statutory.pcbNote = `PCB of ${pcbInput?.label ?? 'this amount'} was entered by hand, not calculated.`;
             payslip.employeeDeductionCents += pcbOverrideCents;
@@ -1590,6 +1596,10 @@ export class PayrollService {
                 pcb: payslip.statutory.pcbNote ?? null,
                 hrd: payslip.hrdNote ?? null,
               },
+              // CALCULATED from the official specification, or ENTERED by a
+              // person. Null when there is no figure at all.
+              pcbSource:
+                payslip.statutory.pcbCents === null ? null : pcbEnteredByHand ? 'ENTERED' : 'CALCULATED',
               incomplete: payslip.incomplete,
               hourlyRateUsed: fromCents(rates.overtimeHourlyCents),
               timesheet,

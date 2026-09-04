@@ -62,6 +62,14 @@ import type {
   SalaryParityReport,
   PayrollApprovalPolicy,
   PayrollClaimsReport,
+  PayrollExceptionsReport,
+  PayrollHistoryReport,
+  PayrollIncentivesReport,
+  PayrollOvertimeReport,
+  PayrollPaymentStatusReport,
+  PayrollPcbSummaryReport,
+  PayrollUnpaidLeaveReport,
+  PayrollYtdReport,
   PayrollEmployerCostReport,
   PayrollHome,
   PayrollReadiness,
@@ -1233,6 +1241,75 @@ export function usePayrollClaimsReport(params: { from: string; to: string }) {
   return useQuery({
     queryKey: ['admin-hr', 'payroll-report', 'claims', params],
     queryFn: () => apiClient.get<PayrollClaimsReport>(`/workforce/payroll/reports/claims${qs(params)}`),
+  });
+}
+
+export function usePayrollHistoryReport(staffId: string | undefined, year?: number) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-report', 'history', staffId, year],
+    queryFn: () =>
+      apiClient.get<PayrollHistoryReport>(
+        `/workforce/payroll/reports/history?staffId=${staffId}${year ? `&year=${year}` : ''}`,
+      ),
+    enabled: Boolean(staffId),
+  });
+}
+
+export function usePayrollPcbSummaryReport(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-report', 'pcb', runId],
+    queryFn: () => apiClient.get<PayrollPcbSummaryReport>(`/workforce/payroll/runs/${runId}/reports/pcb`),
+    enabled: Boolean(runId),
+  });
+}
+
+export function usePayrollYtdReport(year: number, legalEmployerId?: string) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-report', 'ytd', year, legalEmployerId],
+    queryFn: () =>
+      apiClient.get<PayrollYtdReport>(
+        `/workforce/payroll/reports/ytd?year=${year}${legalEmployerId ? `&legalEmployerId=${legalEmployerId}` : ''}`,
+      ),
+  });
+}
+
+export function usePayrollOvertimeReport(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-report', 'overtime', runId],
+    queryFn: () => apiClient.get<PayrollOvertimeReport>(`/workforce/payroll/runs/${runId}/reports/overtime`),
+    enabled: Boolean(runId),
+  });
+}
+
+export function usePayrollUnpaidLeaveReport(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-report', 'unpaid-leave', runId],
+    queryFn: () => apiClient.get<PayrollUnpaidLeaveReport>(`/workforce/payroll/runs/${runId}/reports/unpaid-leave`),
+    enabled: Boolean(runId),
+  });
+}
+
+export function usePayrollIncentivesReport(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-report', 'incentives', runId],
+    queryFn: () => apiClient.get<PayrollIncentivesReport>(`/workforce/payroll/runs/${runId}/reports/incentives`),
+    enabled: Boolean(runId),
+  });
+}
+
+export function usePayrollExceptionsReport(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-report', 'exceptions-report', runId],
+    queryFn: () => apiClient.get<PayrollExceptionsReport>(`/workforce/payroll/runs/${runId}/reports/exceptions`),
+    enabled: Boolean(runId),
+  });
+}
+
+export function usePayrollPaymentStatusReport(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-report', 'payment-status', runId],
+    queryFn: () => apiClient.get<PayrollPaymentStatusReport>(`/workforce/payroll/runs/${runId}/reports/payment-status`),
+    enabled: Boolean(runId),
   });
 }
 

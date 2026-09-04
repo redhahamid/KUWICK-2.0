@@ -116,6 +116,14 @@ describe('payroll reports (e2e)', () => {
       'STATUTORY_TOTALS',
       'VARIANCE',
       'CLAIMS',
+      'PAYROLL_HISTORY',
+      'PCB_SUMMARY',
+      'YTD',
+      'OVERTIME',
+      'UNPAID_LEAVE',
+      'INCENTIVES',
+      'EXCEPTIONS',
+      'PAYMENT_STATUS',
     ]);
     // The named absences carry a reason, not a "coming soon".
     expect(catalogue.notAvailableYet.length).toBeGreaterThan(0);
@@ -189,9 +197,12 @@ describe('payroll reports (e2e)', () => {
 
     const employer = statutory.byEmployer[0];
     const pcb = employer.schemes.find((s: { scheme: string }) => s.scheme === 'PCB');
-    // Nobody in this fixture pays PCB, so it IS computable — as nil entered by
-    // nobody, which the note has to be honest about.
-    expect(pcb.note).toMatch(/does not work monthly tax out/i);
+    // Nobody in this fixture pays PCB, so every figure IS computed — as nil —
+    // and the note says where a computed figure comes from. The old wording
+    // ("Kuwick does not work monthly tax out") described the build before the
+    // MTD engine was wired, and keeping it would have been a false statement
+    // on every report.
+    expect(pcb.note).toMatch(/Calculated from HASiL/i);
 
     // Whatever the state, a scheme is either fully totalled or null — never a
     // partial sum presented as a total.
