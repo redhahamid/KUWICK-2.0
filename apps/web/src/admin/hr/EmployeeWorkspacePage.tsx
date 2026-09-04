@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Button, Segmented, Tag } from 'antd';
 import dayjs from 'dayjs';
@@ -7,6 +8,7 @@ import { DataTable, ringgit } from '../components/DataTable';
 import { useEmployeeRecord } from '../hooks/useAdmin';
 import { EmployeeSalaryPanel } from './EmployeeSalaryPanel';
 import { EmployeeTaxPanel } from './EmployeeTaxPanel';
+import { StatutoryStandingManager } from './StatutoryStandingManager';
 import type { EmployeeRecord } from '../types';
 
 type TabKey = 'overview' | 'employment' | 'salary' | 'attendance' | 'leave' | 'claims' | 'payroll' | 'tax' | 'documents';
@@ -254,12 +256,32 @@ function EmploymentTab({ data }: { data: EmployeeRecord }) {
         </p>
       </AdminSection>
 
-      <StatutoryStandingSection data={data} />
+      <StatutoryStandingManager data={data} />
     </>
   );
 }
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/**
+ * The standing's stored codes, in the words the editor uses. A screen that
+ * prints MALAYSIAN_CITIZEN is talking to a developer; the reader is a clinic
+ * manager, and the same value must read the same on the form and the record.
+ */
+const STANDING_LABELS: Record<string, string> = {
+  MALAYSIAN_CITIZEN: 'Malaysian citizen',
+  PERMANENT_RESIDENT: 'Permanent resident',
+  NON_CITIZEN_ELECTED_PRE_1998: 'Non-citizen, elected before 1 Aug 1998',
+  NON_CITIZEN: 'Non-citizen',
+  NOT_PARTICIPATING: 'Not participating',
+  VOLUNTARY_OPTED_IN: 'Joined voluntarily',
+  MANDATORY_FOREIGN_WORKER: 'Mandatory — foreign worker',
+  RESIDENT: 'Resident',
+  NON_RESIDENT: 'Non-resident',
+  CATEGORY_1: 'Category 1 — single',
+  CATEGORY_2: 'Category 2 — married, spouse not working',
+  CATEGORY_3: 'Category 3 — married, spouse working',
+};
 
 /**
  * STATUTORY STANDING — a record with a date on it, shown as one.
@@ -270,17 +292,18 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
  * recorded" is a payroll that will block, and it is better read here than
  * discovered on run day.
  */
-export function StatutoryStandingSection({ data }: { data: EmployeeRecord }) {
+export function StatutoryStandingSection({ data, actions }: { data: EmployeeRecord; actions?: ReactNode }) {
   const s = data.statutory;
   const resolved = s.classificationState === 'RESOLVED';
   const since = s.classificationEffectiveFrom ? dayjs(s.classificationEffectiveFrom).format('D MMM YYYY') : null;
   // An unresolved standing has no values to show — showing the fallbacks as
   // though they were answers is exactly the overstatement dating this removed.
-  const value = (v: string | null | undefined) => (resolved && v ? v : 'Not recorded');
+  const value = (v: string | null | undefined) => (resolved && v ? (STANDING_LABELS[v] ?? v) : 'Not recorded');
 
   return (
     <AdminSection
       title="Statutory standing"
+      actions={actions}
       description={
         resolved && since
           ? `What applies to this employee, in force since ${since}. Changing any of it is a new dated version, so an earlier month keeps what was true then.`

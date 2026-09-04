@@ -3854,6 +3854,16 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   margin-bottom: 3px;
 }
 
+/* Two-column field grid for dense record forms; single column under 640px. */
+.kw-formGrid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+}
+@media (max-width: 640px) {
+  .kw-formGrid2 { grid-template-columns: 1fr; }
+}
+
 .kw-hash {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;

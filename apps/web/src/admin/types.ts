@@ -2639,6 +2639,76 @@ export interface PayrollPaymentStatusReport extends PayrollReportHeader {
   note: string | null;
 }
 
+/**
+ * One dated version of an employee's statutory standing, with what it changed
+ * against the version before it — the record the classification editor shows.
+ */
+export interface StatutoryClassificationVersion {
+  id: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  current: boolean;
+  epfApplicable: boolean;
+  epfMembership: string | null;
+  epfEmployeeRate: number | null;
+  socsoApplicable: boolean;
+  eisApplicable: boolean;
+  lindungParticipation: string | null;
+  pcbApplicable: boolean;
+  taxResidence: string | null;
+  pcbCategory: string | null;
+  qualifyingChildren: number;
+  disabledSelf: boolean;
+  disabledSpouse: boolean;
+  restDayOfWeek: number | null;
+  overtimeContractPolicy: string | null;
+  reason: string | null;
+  note: string | null;
+  recordedBy: string | null;
+  recordedAt: string;
+  /** What this version changed, in words, from the API's own diff. */
+  changed: string[];
+}
+
+/** The body POST /statutory-classification accepts — a statement from a date. */
+export interface RecordStatutoryClassificationBody {
+  effectiveFrom: string;
+  epfApplicable?: boolean;
+  epfMembership?: string | null;
+  socsoApplicable?: boolean;
+  eisApplicable?: boolean;
+  lindungParticipation?: string | null;
+  pcbApplicable?: boolean;
+  taxResidence?: string | null;
+  pcbCategory?: string | null;
+  qualifyingChildren?: number;
+  disabledSelf?: boolean;
+  disabledSpouse?: boolean;
+  restDayOfWeek?: number | null;
+  overtimeContractPolicy?: string | null;
+  reason?: string;
+}
+
+/** One month of opening year-to-date, in cents, as the import endpoint takes it. */
+export interface YtdOpeningMonthBody {
+  staffId: string;
+  taxYear: number;
+  month: number;
+  grossCents: number;
+  additionalRemunerationCents?: number;
+  pcbCents?: number;
+  cp38Cents?: number;
+  zakatCents?: number;
+  epfEmployeeCents?: number;
+  epfEmployerCents?: number;
+  socsoEmployeeCents?: number;
+  socsoEmployerCents?: number;
+  eisEmployeeCents?: number;
+  eisEmployerCents?: number;
+  lindungEmployeeCents?: number;
+  deductionsCents?: number;
+}
+
 /** Who is allowed to approve payroll in this clinic. Payroll settings. */
 export interface PayrollApprovalPolicy {
   mode: 'STANDARD' | 'MAKER_CHECKER' | 'DUAL_APPROVAL';

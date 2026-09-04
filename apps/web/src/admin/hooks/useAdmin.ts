@@ -70,6 +70,9 @@ import type {
   PayrollPcbSummaryReport,
   PayrollUnpaidLeaveReport,
   PayrollYtdReport,
+  RecordStatutoryClassificationBody,
+  StatutoryClassificationVersion,
+  YtdOpeningMonthBody,
   PayrollEmployerCostReport,
   PayrollHome,
   PayrollReadiness,
@@ -1242,6 +1245,32 @@ export function usePayrollClaimsReport(params: { from: string; to: string }) {
     queryKey: ['admin-hr', 'payroll-report', 'claims', params],
     queryFn: () => apiClient.get<PayrollClaimsReport>(`/workforce/payroll/reports/claims${qs(params)}`),
   });
+}
+
+/** Every dated version of an employee's statutory standing, newest first. */
+export function useStatutoryClassifications(staffId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'statutory-classifications', staffId],
+    queryFn: () =>
+      apiClient.get<StatutoryClassificationVersion[]>(`/workforce/employees/${staffId}/statutory-classification`),
+    enabled: Boolean(staffId),
+  });
+}
+
+export function useRecordStatutoryClassification() {
+  return useAdminMutation(
+    ({ staffId, ...body }: RecordStatutoryClassificationBody & { staffId: string }) =>
+      apiClient.post(`/workforce/employees/${staffId}/statutory-classification`, body),
+    ['admin-hr'],
+  );
+}
+
+export function useImportYtdOpening() {
+  return useAdminMutation(
+    (body: { legalEmployerId: string; source: string; note?: string; months: YtdOpeningMonthBody[] }) =>
+      apiClient.post<{ employees: number; months: number; source: string }>('/workforce/payroll/ytd-opening', body),
+    ['admin-hr'],
+  );
 }
 
 export function usePayrollHistoryReport(staffId: string | undefined, year?: number) {

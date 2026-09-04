@@ -44,8 +44,10 @@ function record(over: Partial<EmployeeRecord['statutory']>): EmployeeRecord {
 describe('the statutory standing panel', () => {
   it('shows the version in force and the date it applied from', () => {
     render(<StatutoryStandingSection data={record({})} />);
-    expect(screen.getByText('MALAYSIAN_CITIZEN')).toBeTruthy();
-    expect(screen.getByText('NOT_PARTICIPATING')).toBeTruthy();
+    // In the reader's words, not the database's — the same labels the editor
+    // form offers, so the record and the form cannot disagree about a value.
+    expect(screen.getByText('Malaysian citizen')).toBeTruthy();
+    expect(screen.getByText('Not participating')).toBeTruthy();
     expect(screen.getByText('Sunday')).toBeTruthy();
     expect(screen.getByText('2')).toBeTruthy();
     expect(screen.getByText(/in force since 1 Jan 2024/)).toBeTruthy();
@@ -64,7 +66,7 @@ describe('the statutory standing panel', () => {
     // Six facts, all unknown — not one of the API's readiness fallbacks.
     expect(screen.getAllByText('Not recorded')).toHaveLength(6);
     expect(screen.queryByText('Sunday')).toBeNull();
-    expect(screen.queryByText('MALAYSIAN_CITIZEN')).toBeNull();
+    expect(screen.queryByText('Malaysian citizen')).toBeNull();
     expect(screen.getByText(/No statutory classification is recorded/)).toBeTruthy();
   });
 

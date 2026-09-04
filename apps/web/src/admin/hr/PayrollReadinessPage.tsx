@@ -48,6 +48,9 @@ export function PayrollReadinessPage() {
           >
             {dayjs(`${period}-01`).add(1, 'month').format('MMM YYYY')} →
           </Button>
+          <Link to="/admin/hr/payroll/ytd-opening">
+            <Button size="small">Opening balances</Button>
+          </Link>
           <Link to="/admin/hr/payroll">
             <Button size="small">Payroll home</Button>
           </Link>
