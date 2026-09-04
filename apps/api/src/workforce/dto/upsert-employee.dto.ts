@@ -61,6 +61,14 @@ export class UpsertEmployeeDto {
   epfMembership?: 'MALAYSIAN_CITIZEN' | 'PERMANENT_RESIDENT' | 'NON_CITIZEN_ELECTED_PRE_1998' | 'NON_CITIZEN';
   @IsOptional() @IsBoolean() epfApplicable?: boolean;
   @IsOptional() @IsBoolean() socsoApplicable?: boolean;
+  /**
+   * LINDUNG 24 JAM (SKBBK) participation — voluntary for locals, mandatory for
+   * foreign workers. Recorded explicitly; never inferred from EPF membership,
+   * tax residence or nationality, which answer different questions.
+   */
+  @IsOptional()
+  @IsIn(['MANDATORY_FOREIGN_WORKER', 'VOLUNTARY_OPTED_IN', 'NOT_PARTICIPATING'])
+  lindungParticipation?: 'MANDATORY_FOREIGN_WORKER' | 'VOLUNTARY_OPTED_IN' | 'NOT_PARTICIPATING';
   @IsOptional() @IsBoolean() eisApplicable?: boolean;
   @IsOptional() @IsBoolean() pcbApplicable?: boolean;
 

@@ -140,10 +140,18 @@ export type SocsoCategory = 'FIRST' | 'SECOND';
 
 export interface SocsoContribution {
   readonly employerCents: number;
+  /**
+   * The employee's share of ACT 4 ALONE — the Invalidity Scheme.
+   *
+   * D6 prints the Non-Employment Injury Scheme (SKBBK / LINDUNG 24 JAM) as a
+   * further column of the same table, and this used to add it in. It is a
+   * SEPARATE SCHEME with its own start date, its own voluntary participation
+   * for locals and no employer share, so folding it in here charged locals who
+   * had never joined and charged everybody for periods before it existed. It
+   * now lives in `lindung-24-jam.ts`.
+   */
   readonly employeeCents: number;
-  /** The employee's share, split as the Act's own columns split it. */
   readonly employeeInvalidityCents: number;
-  readonly employeeNonEmploymentInjuryCents: number;
   readonly category: SocsoCategory;
   readonly atCeiling: boolean;
 }
@@ -153,13 +161,12 @@ export function socsoContribution(wagesCents: number, category: SocsoCategory): 
     return {
       kind: 'COMPUTED',
       value: {
-        employerCents: 0, employeeCents: 0, employeeInvalidityCents: 0,
-        employeeNonEmploymentInjuryCents: 0, category, atCeiling: false,
+        employerCents: 0, employeeCents: 0, employeeInvalidityCents: 0, category, atCeiling: false,
       },
     };
   }
   const atCeiling = wagesCents > SOCSO_WAGE_CEILING_CENTS;
-  for (const [fromCents, toCents, c1Er, c1Inv, c1Nei, c2Er, c2Nei] of SOCSO_BANDS) {
+  for (const [fromCents, toCents, c1Er, c1Inv, , c2Er] of SOCSO_BANDS) {
     const matches = toCents === null ? wagesCents > fromCents : wagesCents > fromCents || fromCents === 0;
     const withinUpper = toCents === null || wagesCents <= toCents;
     if (matches && withinUpper) {
@@ -169,17 +176,18 @@ export function socsoContribution(wagesCents: number, category: SocsoCategory): 
           category === 'FIRST'
             ? {
                 employerCents: c1Er,
-                employeeCents: c1Inv + c1Nei,
+                employeeCents: c1Inv,
                 employeeInvalidityCents: c1Inv,
-                employeeNonEmploymentInjuryCents: c1Nei,
                 category,
                 atCeiling,
               }
             : {
+                // SECOND CATEGORY IS EMPLOYER-ONLY under Act 4. The employee
+                // figure that used to appear here was the SKBBK column, which
+                // belongs to a different scheme entirely.
                 employerCents: c2Er,
-                employeeCents: c2Nei,
+                employeeCents: 0,
                 employeeInvalidityCents: 0,
-                employeeNonEmploymentInjuryCents: c2Nei,
                 category,
                 atCeiling,
               },

@@ -2167,6 +2167,16 @@ async function seedWorkforce(ids: Ids) {
           // synthetic clinic. Without it, anybody who worked blocks the run,
           // because a rest day priced as an ordinary day is an underpayment.
           restDayOfWeek: 0,
+          // LINDUNG 24 JAM, synthetic like everything else. The locum is the
+          // foreign worker, for whom it is mandatory; one clinic assistant has
+          // declined, so the UAT clinic shows all three answers rather than a
+          // uniform one that proves nothing.
+          lindungParticipation:
+            profile.key === 'locum'
+              ? 'MANDATORY_FOREIGN_WORKER'
+              : profile.key === 'counter2'
+                ? 'NOT_PARTICIPATING'
+                : 'VOLUNTARY_OPTED_IN',
           taxResidence: 'RESIDENT',
           pcbCategory: profile.key === 'owner' ? 'CATEGORY_2' : 'CATEGORY_1',
           qualifyingChildren: profile.key === 'owner' ? 2 : 0,

@@ -169,21 +169,54 @@ nothing is marked verified on their strength.
 | **Expected** | At RM6,000: RM11.90 each side, RM23.80 total |
 | **Status** | **`OFFICIAL_TEST_VECTOR_VERIFIED`** |
 
-### LINDUNG 24 JAM
+### LINDUNG 24 JAM — Non-Employment Injury Security Scheme (SKBBK)
 
 | Field | Value |
 |---|---|
-| **Rule** | Participation, contribution and remittance |
-| **Authority / document** | **Not supplied.** D6 covers the Non-Employment Injury Security Scheme (SKBBK) as an integrated column of the Act 4 table |
-| **Status** | **`UNVERIFIED`** |
+| **Rule** | Phase 1 contribution, participation and commencement |
+| **Authority / document** | D11 — current PERKESO guidance, read with D6's Act 4 rate table |
+| **Effective** | **1 June 2026.** Nothing is due for any earlier period |
+| **Who bears it** | The **employee**. There is **no employer share**; the employer remits it on the employee's behalf, which is not the same as paying it |
+| **Participation** | **Voluntary** for local employees. **Mandatory** for foreign workers. Recorded per employee and never inferred |
+| **Rate** | Phase 1 **0.75%**, applied from D6's printed band column, which converges on 0.744% of the band ceiling |
+| **Ceiling** | RM6,000, as Act 4 |
+| **Implementation** | `statutory/lindung-24-jam.ts` — `lindungContribution`; a separate scheme, not an Act 4 column |
+| **Test** | `lindung-24-jam.spec.ts` — 21 tests covering commencement boundary, participation, employee-borne, band vectors, ceiling and the Act 4 reconciliation; end to end in `workforce-payroll.e2e-spec.ts` |
+| **Expected** | RM6,000: RM44.65 employee, RM0.00 employer. Not participating: RM0.00. Before 1 June 2026: RM0.00 whatever the classification. Unrecorded: **blocks** |
+| **Status** | **`OFFICIAL_SOURCE_VERIFIED`** — no official worked example is published, so it stops short of test-vector verification |
 
-D6 gives the SKBBK contribution as part of Act 4, and that column IS
-implemented and tested. What is **not** established by any document held is
-whether "LINDUNG 24 JAM" is the same programme under a public-facing name, or a
-separate scheme with its own participation rules, opt-in/opt-out, foreign-worker
-phases and effective dates. Those elements are therefore **not implemented**,
-and no assumption has been made either way. **To close this, supply PERKESO's
-own LINDUNG 24 JAM contribution schedule and participation guidance.**
+#### AUTHORITY CONFLICT, AND HOW IT WAS RESOLVED
+
+D6 prints SKBBK as a **column of the Act 4 rate table**. Read that way — and
+this codebase did read it that way — it looks like part of SOCSO, and the
+column was added to every employee's SOCSO deduction in every period,
+unconditionally.
+
+Current PERKESO guidance says it is a **separate scheme**. Reconciling by
+effective date and current status rather than by which document arrived first:
+
+| Question | D6 alone | Current guidance | Implemented |
+|---|---|---|---|
+| Amount at RM6,000 | RM44.65 | 0.75% ≈ RM44.65 | **RM44.65** — they agree |
+| Who bears it | column beside employer and employee columns; ambiguous | employee only | **employee only** |
+| When it starts | not stated | 1 June 2026 | **1 June 2026** |
+| Who participates | not stated | voluntary (local) / mandatory (foreign) | **recorded per employee** |
+
+**The two sources agree on the money and only the current guidance settles the
+rest.** D6 is not wrong; it is a rate table, and rate tables do not carry
+commencement or eligibility. The error was mine, in treating silence as
+permission.
+
+**Consequence of the error, measured.** A local employee on RM6,000 who never
+joined a voluntary scheme was over-deducted **RM44.65 a month**, and every
+period before June 2026 was over-deducted for everyone.
+
+**A correction to an earlier finding in this register.** This document
+previously recorded that "SOCSO employee contributions have roughly doubled
+under SKBBK" and that the clinic's workbook was out of date. **That was wrong.**
+The workbook's RM29.75 at RM6,000 is the Act 4 invalidity share and is correct
+for a local who has not joined. The apparent doubling was this system folding a
+separate voluntary scheme into a mandatory one.
 
 ### HRD levy
 
@@ -286,26 +319,21 @@ Two consequences worth stating plainly:
   one enter its own EPF table was a way to under-contribute by accident and call
   it a setting.
 
-## Where Kuwick and the clinic's workbook now disagree
+## Where Kuwick and the clinic's workbook disagree
 
-One material difference, and it is the law changing rather than the engine
-drifting. **SOCSO employee contributions have roughly doubled under SKBBK.**
-PERKESO's current Act 4 table charges the employee for the Non-Employment
-Injury Scheme on top of Invalidity; the workbook has Invalidity alone.
+**On SOCSO, they do not.** This section previously claimed employee
+contributions had roughly doubled under SKBBK and that the workbook was stale.
+That was an error of mine — see the LINDUNG 24 JAM entry above. Act 4's employee
+share at RM6,000 is RM29.75, exactly as the workbook has it, and the RM44.65
+that appeared to double it belongs to a separate voluntary scheme.
 
-| Monthly wages | Employer | Employee (workbook) | Employee (Act 4, D6) |
-|---|---|---|---|
-| RM2,229.24 | RM39.35 — unchanged | RM11.25 | **RM28.10** (11.25 + 16.85) |
-| RM6,000.00 | RM104.15 — unchanged | RM29.75 | **RM74.40** (29.75 + 44.65) |
+EPF and EIS reconcile against the workbook unchanged, on both sides.
 
-The employer side matches the workbook exactly at every row tested. EPF and EIS
-reconcile against the workbook unchanged.
-
-A second, smaller difference: an employee who has elected an EPF share other
-than the Third Schedule's own rate (Borang KWSP 17A) is **refused rather than
-approximated**, because the Schedule prints one employee column per Part and a
-9% figure could only be produced by the percentage arithmetic this engine exists
-to remove.
+One difference remains, and it is not about rates: an employee who has elected
+an EPF share other than the Third Schedule's own rate (Borang KWSP 17A) is
+**refused rather than approximated**, because the Schedule prints one employee
+column per Part and a 9% figure could only be produced by the percentage
+arithmetic this engine exists to remove.
 
 ## Historical versions
 

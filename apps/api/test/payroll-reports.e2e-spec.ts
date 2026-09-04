@@ -52,6 +52,7 @@ describe('payroll reports (e2e)', () => {
         // Which Part of the EPF Third Schedule applies. Without it EPF is
         // unknown rather than nil, and an unknown blocks approval.
         epfMembership: 'MALAYSIAN_CITIZEN',
+        lindungParticipation: 'NOT_PARTICIPATING',
         pcbApplicable: false,
       })
       .expect(201);

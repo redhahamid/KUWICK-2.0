@@ -5,6 +5,7 @@ import {
   epfContribution,
   socsoContribution,
 } from '../statutory/contributions';
+import { LindungParticipation, lindungContribution } from '../statutory/lindung-24-jam';
 import { PcbResult, computePcb as computeMtd } from '../statutory/pcb-2026';
 import {
   StatutoryScheme,
@@ -135,6 +136,12 @@ export interface EmployeeStatutoryProfile {
    * anything else on an employee record, so both absent means PCB cannot be
    * worked out — not that none is due.
    */
+  /**
+   * LINDUNG 24 JAM participation. Never inferred from EPF membership, tax
+   * residence or nationality — those answer different questions, and reading
+   * one off another charges a local for a scheme they declined.
+   */
+  lindungParticipation?: LindungParticipation | null;
   taxResidence?: 'RESIDENT' | 'NON_RESIDENT' | null;
   pcbCategory?: 1 | 2 | 3 | null;
   qualifyingChildren?: number | null;
@@ -213,8 +220,8 @@ export function computeSocso(wageCents: number, context: StatutoryContext, profi
   const category = age >= 60 ? 'SECOND' : 'FIRST';
   return fromOutcome(socsoContribution(wageCents, category), (value) =>
     category === 'FIRST'
-      ? `First Category — Employment Injury, Invalidity and Non-Employment Injury. Employee share: invalidity ${(value.employeeInvalidityCents / 100).toFixed(2)} + non-employment injury ${(value.employeeNonEmploymentInjuryCents / 100).toFixed(2)}.`
-      : 'Second Category — Employment Injury and Non-Employment Injury.',
+      ? `First Category — Employment Injury and Invalidity. Employee share: invalidity ${(value.employeeInvalidityCents / 100).toFixed(2)}.`
+      : 'Second Category — Employment Injury only. No employee share under Act 4.',
   );
 }
 
@@ -234,6 +241,34 @@ export function computeEis(wageCents: number, context: StatutoryContext, profile
     return { employeeCents: 0, employerCents: 0, note: 'EIS does not apply from age 60.' };
   }
   return fromOutcome(eisContribution(wageCents));
+}
+
+/**
+ * LINDUNG 24 JAM (SKBBK) — a scheme of its own, not a column of Act 4.
+ *
+ * Employee-borne with no employer share, in force from 1 June 2026, voluntary
+ * for locals and mandatory for foreign workers. The employer remits it; it does
+ * not pay it, and the payslip has to be able to say so.
+ */
+export function computeLindung(
+  wagesCents: number,
+  context: StatutoryContext,
+  profile: EmployeeStatutoryProfile,
+): Contribution {
+  if (!scheduleFor('LINDUNG', context.periodEnd)) {
+    return {
+      employeeCents: 0,
+      employerCents: 0,
+      note: `LINDUNG 24 JAM is not in force for ${context.periodEnd.toISOString().slice(0, 10)}.`,
+    };
+  }
+  return fromOutcome(
+    lindungContribution(wagesCents, profile.lindungParticipation, context.periodEnd),
+    (value) =>
+      value.participation === 'MANDATORY_FOREIGN_WORKER'
+        ? 'Non-Employment Injury Scheme, phase 1 — mandatory for foreign workers. Borne by the employee and remitted by the employer.'
+        : 'Non-Employment Injury Scheme, phase 1 — joined voluntarily. Borne by the employee and remitted by the employer.',
+  );
 }
 
 /**
@@ -395,6 +430,8 @@ export interface StatutoryResult {
   epf: Contribution;
   socso: Contribution;
   eis: Contribution;
+  /** SKBBK. Employee-borne; the employer share is always nil. */
+  lindung: Contribution;
   pcbCents: number | null;
   pcbNote: string;
   /** False when MTD was computed as though no TP1 had been filed. */
@@ -418,6 +455,7 @@ const PAYSLIP_SCHEMES: readonly StatutoryScheme[] = [
   'EPF',
   'SOCSO',
   'EIS',
+  'LINDUNG',
   'PCB',
   'EMPLOYMENT_ACT',
   'EA_FIRST_SCHEDULE',
@@ -470,6 +508,8 @@ export function computeStatutory(
     epf,
     socso: computeSocso(bases.socsoCents, context, profile),
     eis: computeEis(bases.eisCents, context, profile),
+    // Priced on the SOCSO wage base — the same Act 4 table carries its column.
+    lindung: computeLindung(bases.socsoCents, context, profile),
     pcbCents: pcb.cents,
     pcbNote: pcb.note,
     pcbTp1Captured: pcb.tp1Captured,
@@ -496,9 +536,13 @@ export type StatutoryStatus = 'CONFIGURED' | 'NOT_CONFIGURED' | 'PROVISIONAL';
  * own document, so it may be calculated with and not paid against.
  */
 export function statutoryStatusOf(on: Date): StatutoryStatus {
-  const resolved = PAYSLIP_SCHEMES.filter((scheme) => scheme !== 'PCB').map((scheme) => scheduleFor(scheme, on));
+  // PCB is excluded because it may legitimately be entered by hand; LINDUNG
+  // because a period before it commenced is not a period missing a schedule.
+  const resolved = PAYSLIP_SCHEMES.filter((scheme) => scheme !== 'PCB' && scheme !== 'LINDUNG').map((scheme) =>
+    scheduleFor(scheme, on),
+  );
   if (resolved.some((schedule) => schedule === null)) return 'NOT_CONFIGURED';
   return resolved.every((schedule) => schedule && meetsApprovalBar(schedule.verification)) ? 'CONFIGURED' : 'PROVISIONAL';
 }
 
-export type { EpfMembership, StatutoryStamp, VerificationState };
+export type { EpfMembership, LindungParticipation, StatutoryStamp, VerificationState };

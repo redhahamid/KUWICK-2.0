@@ -84,6 +84,7 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       taxProfile?: boolean;
       restDayOfWeek?: number | null;
       overtimeContractPolicy?: 'PAY_AT_STATUTORY_RATES' | 'NOT_PAID';
+      lindungParticipation?: string | null;
     } = {},
   ) {
     const staff = await withTenantContext(prisma, tenantId, (tx) =>
@@ -115,6 +116,11 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         // s.59 rest day. Passing null exercises the blocking path.
         ...(opts.restDayOfWeek === null ? {} : { restDayOfWeek: opts.restDayOfWeek ?? 0 }),
         ...(opts.overtimeContractPolicy ? { overtimeContractPolicy: opts.overtimeContractPolicy } : {}),
+        // LINDUNG 24 JAM. Passing null exercises the blocking path; it is not
+        // a default, and it is never inferred from anything else here.
+        ...(opts.lindungParticipation === null
+          ? {}
+          : { lindungParticipation: opts.lindungParticipation ?? 'NOT_PARTICIPATING' }),
       })
       .expect(201);
 
@@ -302,7 +308,9 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       // SOCSO and EIS need only the date of birth, which this employee has, so
       // they ARE computed — the gap is confined to the scheme it belongs to
       // rather than blanking the whole payslip.
-      expect(detail.body.lines[0].socsoEmployee).toBe(36.9);
+      // Act 4 invalidity alone. SKBBK is a separate voluntary scheme and this
+      // employee has not joined it.
+      expect(detail.body.lines[0].socsoEmployee).toBe(14.75);
       expect(detail.body.lines[0].eisEmployee).toBe(5.9);
       // PCB is ZERO rather than null here, and the difference matters: this
       // employee is recorded as OUTSIDE PCB, which is a fact. Null would mean
@@ -350,12 +358,12 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       // on the band ceiling, not as 11% of the wage.
       expect(line.epfEmployee).toBe(330);
       expect(line.epfEmployer).toBe(390);
-      // SOCSO First Category, invalidity plus SKBBK.
-      expect(line.socsoEmployee).toBe(36.9);
+      // SOCSO First Category — invalidity alone under Act 4.
+      expect(line.socsoEmployee).toBe(14.75);
       // Outside PCB, so zero. Shipping the schedules does not manufacture a tax
       // figure for anybody who is inside it — see the blocking test below.
       expect(line.pcb).toBe(0);
-      expect(line.netPay).toBe(2627.2);
+      expect(line.netPay).toBe(2649.35); // 3000 − 330 EPF − 14.75 SOCSO − 5.90 EIS
       expect(detail.body.statutoryNotice).toBeNull();
 
       // THE RUN RECORDS WHICH SCHEDULES PRODUCED THESE FIGURES, so a payslip
@@ -445,7 +453,7 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       // alongside the EPF, SOCSO and EIS this system DOES compute.
       expect(line.pcb).toBe(412.5);
       expect(line.epfEmployee).toBe(550);
-      expect(line.netPay).toBe(3965.7); // 5000 − 412.50 − 550 − 61.90 − 9.90
+      expect(line.netPay).toBe(4002.85); // 5000 − 412.50 PCB − 550 EPF − 24.75 SOCSO − 9.90 EIS
     });
 
     it('surfaces an employee with no salary as an EXCEPTION and blocks approval', async () => {
@@ -513,7 +521,7 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         month: 8,
         grossCents: 300000,
         epfEmployeeCents: 33000,
-        socsoEmployeeCents: 3690,
+        socsoEmployeeCents: 1475,
         eisEmployeeCents: 590,
         source: 'CALCULATED',
         payrollRunId: run.body.id,
@@ -1116,6 +1124,81 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       expect(line.epfEmployee).toBe(330);
       // And it is still in gross, and still taxed.
       expect(line.grossPay).toBe(3500);
+    });
+
+    it('takes nothing for LINDUNG from a local who has not joined it', async () => {
+      // THE OVER-DEDUCTION THIS FIXES. SKBBK was read as an Act 4 column and
+      // added to every employee's SOCSO deduction, so a RM6,000 local who never
+      // joined a voluntary scheme lost RM44.65 a month to it.
+      const staffId = await makeEmployee('Declined Lindung', '6000.00', { lindungParticipation: 'NOT_PARTICIPATING' });
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const detail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const line = detail.body.lines.find((row: { staffId: string }) => row.staffId === staffId);
+      expect(line.lindungEmployee).toBe(0);
+      // And SOCSO is the Act 4 figure alone — the invalidity share the clinic's
+      // own workbook has always shown.
+      expect(line.socsoEmployee).toBe(29.75);
+      expect(line.socsoEmployer).toBe(104.15);
+    });
+
+    it('takes it from a foreign worker, for whom it is mandatory, with no employer share', async () => {
+      const staffId = await makeEmployee('Foreign Worker', '6000.00', {
+        lindungParticipation: 'MANDATORY_FOREIGN_WORKER',
+      });
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const detail = await request(app.getHttpServer())
+        .get(`/workforce/payroll/runs/${run.body.id}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const line = detail.body.lines.find((row: { staffId: string }) => row.staffId === staffId);
+      expect(line.lindungEmployee).toBe(44.65);
+      // Act 4 is untouched by it, and the employer bears none of it.
+      expect(line.socsoEmployee).toBe(29.75);
+      expect(line.socsoEmployer).toBe(104.15);
+      expect(line.breakdown.statutoryNotes.lindung).toMatch(/mandatory for foreign workers/i);
+      expect(line.breakdown.statutoryNotes.lindung).toMatch(/remitted by the employer/i);
+    });
+
+    it('BLOCKS when nobody has recorded whether the employee is in LINDUNG', async () => {
+      // "Declined" and "nobody asked" are different answers, and only one is a
+      // fact. Paying nil for the second is cheap for the clinic and wrong for
+      // a foreign worker.
+      await makeEmployee('Unrecorded Lindung', '6000.00', { lindungParticipation: null });
+      const run = await request(app.getHttpServer())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: PERIOD, clinicId })
+        .expect(201);
+      const calculated = await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/calculate`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const exceptions = calculated.body.exceptions as { name: string; issue: string }[];
+      expect(exceptions.some((row) => /not recorded whether this employee is in LINDUNG/i.test(row.issue))).toBe(true);
+      await request(app.getHttpServer())
+        .patch(`/workforce/payroll/runs/${run.body.id}/approve`)
+        .set('Authorization', bearer)
+        .send({ acknowledgeStatutoryGap: true })
+        .expect(400);
     });
 
     it('LOCKS an approved run — the database refuses to change a payslip line', async () => {

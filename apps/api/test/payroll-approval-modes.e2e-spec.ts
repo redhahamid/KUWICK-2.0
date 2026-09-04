@@ -72,6 +72,8 @@ describe('payroll approval modes (e2e)', () => {
         // Which Part of the EPF Third Schedule applies. Without it EPF is
         // unknown rather than nil, and an unknown blocks approval.
         epfMembership: 'MALAYSIAN_CITIZEN',
+        // LINDUNG 24 JAM is voluntary for locals; unrecorded would block.
+        lindungParticipation: 'NOT_PARTICIPATING',
         pcbApplicable: false,
       })
       .expect(201);

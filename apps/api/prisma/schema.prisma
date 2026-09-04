@@ -6447,6 +6447,11 @@ model EmployeeProfile {
   /// this record.
   taxResidence       TaxResidence? @map("tax_residence")
   pcbCategory        PcbCategory?  @map("pcb_category")
+  /// LINDUNG 24 JAM participation. NULL blocks the contribution rather than
+  /// defaulting: "not recorded" and "declined" are different answers, and only
+  /// one of them is a fact.
+  lindungParticipation   LindungParticipation? @map("lindung_participation")
+
   /// What the employer undertook for extra hours when the Act does not reach
   /// this employee (wages above the First Schedule's RM4,000). Ignored while
   /// they are within the limit, where the Act's rates are a floor regardless.
@@ -6867,6 +6872,25 @@ model StaffBenefitUsage {
 /// a payroll run be approved, and it means a person opened the authority's
 /// published schedule and compared it — not that the numbers look plausible,
 /// and not that they came from the clinic's own spreadsheet.
+/// LINDUNG 24 JAM — the Non-Employment Injury Security Scheme (SKBBK).
+///
+/// In force from 1 June 2026, borne by the EMPLOYEE with no employer share,
+/// remitted by the employer on their behalf. VOLUNTARY for local employees and
+/// MANDATORY for foreign workers.
+///
+/// Recorded per employee and never inferred. Foreign-worker status is a
+/// PERKESO classification and is not the same question as EPF membership, tax
+/// residence, or a nationality typed into a text box — reading one off another
+/// is how a local ends up charged for a scheme they declined.
+enum LindungParticipation {
+  /// A foreign worker. Participation is mandatory.
+  MANDATORY_FOREIGN_WORKER
+  /// A local employee who has opted in.
+  VOLUNTARY_OPTED_IN
+  /// A local employee who has not opted in. Nothing is due.
+  NOT_PARTICIPATING
+}
+
 /// WHAT THE EMPLOYER UNDERTOOK for an employee the Employment Act's overtime
 /// provisions do not reach.
 ///
@@ -7098,6 +7122,10 @@ model PayrollLine {
   socsoEmployer Decimal? @map("socso_employer") @db.Decimal(12, 2)
   eisEmployee   Decimal? @map("eis_employee") @db.Decimal(12, 2)
   eisEmployer   Decimal? @map("eis_employer") @db.Decimal(12, 2)
+  /// LINDUNG 24 JAM (SKBBK). EMPLOYEE-BORNE — there is no employer share, and
+  /// the absence of an employer column here is the point: the employer remits
+  /// this money without paying it, and a payslip must not imply otherwise.
+  lindungEmployee Decimal? @map("lindung_employee") @db.Decimal(12, 2)
   pcb           Decimal? @db.Decimal(12, 2)
 
   netPay       Decimal @default(0) @map("net_pay") @db.Decimal(12, 2)

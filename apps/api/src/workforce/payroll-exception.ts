@@ -251,6 +251,29 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'Say on their employee record whether overtime is paid as a company benefit or not paid at all. Either answer settles it; leaving it blank does not.',
     deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
   },
+  /*
+   * LINDUNG 24 JAM with no participation recorded.
+   *
+   * BLOCKING, and the reason is the distinction the scheme itself turns on:
+   * "declined" and "nobody asked" are different answers, and only the first is
+   * a fact. Paying nil for the second is a guess that happens to be cheap for
+   * the clinic and wrong for a foreign worker, for whom it is mandatory.
+   *
+   * Never inferred. Foreign-worker status is a PERKESO classification, not EPF
+   * membership, tax residence or a nationality typed into a text box.
+   */
+  LINDUNG_PARTICIPATION_UNRECORDED: {
+    code: 'LINDUNG_PARTICIPATION_UNRECORDED',
+    severity: 'BLOCKING',
+    overridable: false,
+    cause: () => 'It is not recorded whether this employee is in LINDUNG 24 JAM.',
+    consequence:
+      'The Non-Employment Injury Scheme is voluntary for local employees and mandatory for foreign workers, and ' +
+      'the contribution is borne by the employee. Without knowing which they are, the deduction cannot be worked out.',
+    remediation:
+      'Record their LINDUNG 24 JAM participation on the employee record — foreign worker, opted in, or not participating.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+  },
   NO_REST_DAY: {
     code: 'NO_REST_DAY',
     severity: 'BLOCKING',

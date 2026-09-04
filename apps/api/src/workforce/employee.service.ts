@@ -287,6 +287,7 @@ export class EmployeeService {
         restDayOfWeek: profile.restDayOfWeek,
         overtimeContractPolicy: profile.overtimeContractPolicy,
         epfMembership: profile.epfMembership,
+        lindungParticipation: profile.lindungParticipation,
         epfApplicable: profile.epfApplicable,
         socsoApplicable: profile.socsoApplicable,
         eisApplicable: profile.eisApplicable,
@@ -368,6 +369,9 @@ export class EmployeeService {
                   // Monthly tax cannot be worked out without both, and neither
                   // can be inferred: residence chooses between a flat 30% and
                   // the progressive table, category chooses the deductions.
+                  // LINDUNG 24 JAM: voluntary for locals, mandatory for
+                  // foreign workers, and not readable off anything else.
+                  const lindungUnknown = !profile.lindungParticipation;
                   const taxProfileUnknown =
                     profile.pcbApplicable && (!profile.taxResidence || !profile.pcbCategory);
                   const applies = [
@@ -378,8 +382,10 @@ export class EmployeeService {
                   return {
                     key: 'statutory',
                     label: 'EPF, SOCSO and EIS',
-                    done: missing.length === 0 && !partUnknown && !taxProfileUnknown,
-                    detail: taxProfileUnknown
+                    done: missing.length === 0 && !partUnknown && !taxProfileUnknown && !lindungUnknown,
+                    detail: lindungUnknown
+                      ? 'Their LINDUNG 24 JAM participation is not recorded. The scheme is voluntary for local employees and mandatory for foreign workers, and the contribution comes out of their pay — so it cannot be guessed either way.'
+                      : taxProfileUnknown
                       ? 'Their tax residence or MTD category is not recorded. Monthly tax is a flat 30% for a non-resident and a table for everybody else, and the category decides which deductions apply, so neither can be guessed.'
                       : partUnknown
                       ? 'Their EPF membership — Malaysian citizen, permanent resident or non-citizen — is not recorded. The Third Schedule has a different Part for each, so no EPF contribution can be worked out until it is.'

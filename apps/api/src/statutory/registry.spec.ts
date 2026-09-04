@@ -140,13 +140,20 @@ describe('what is missing is named, not left blank', () => {
     }
   });
 
-  it('records LINDUNG 24 JAM as a scheme with no supplied document', () => {
-    const lindung = SCHEMES_WITHOUT_A_SCHEDULE.find((gap) => gap.scheme.includes('LINDUNG'));
-    expect(lindung).toBeDefined();
-    expect(lindung?.reason).toMatch(/not established/i);
-    // And it is genuinely absent from the registry rather than present as a
-    // zero-rate placeholder, which is the failure mode this guards.
-    expect(STATUTORY_SCHEDULES.some((s) => String(s.scheme).includes('LINDUNG'))).toBe(false);
+  it('now HAS a LINDUNG schedule, dated from when the scheme starts', () => {
+    // It was a NO_SCHEDULE gap until current PERKESO guidance supplied the
+    // commencement, who bears it and who may decline. The rate had been in D6
+    // all along, printed as a column of the Act 4 table.
+    const schedule = STATUTORY_SCHEDULES.find((entry) => entry.scheme === 'LINDUNG');
+    expect(schedule).toBeDefined();
+    expect(schedule?.effectiveFrom.toISOString().slice(0, 10)).toBe('2026-06-01');
+    expect(schedule?.verification).toBe('OFFICIAL_SOURCE_VERIFIED');
+  });
+
+  it('keeps LINDUNG’s later phases as a PARTIAL gap, because their schedules are not held', () => {
+    const gap = SCHEMES_WITHOUT_A_SCHEDULE.find((entry) => entry.scheme.includes('LINDUNG'));
+    expect(gap?.kind).toBe('PARTIAL_RULE');
+    expect(gap?.needs).toMatch(/phase 2 and phase 3/i);
   });
 });
 
@@ -167,5 +174,36 @@ describe('two rules under one Act, dated apart', () => {
     const early = new Date('2023-06-30T00:00:00.000Z');
     expect(scheduleFor('EA_FIRST_SCHEDULE', early)).not.toBeNull();
     expect(scheduleFor('EMPLOYMENT_ACT', early)).toBeNull();
+  });
+});
+
+describe('a scheme that has not started is not a scheme that is missing', () => {
+  /*
+   * Conflating the two makes either an unfileable historical run look
+   * finished, or an honest current one look broken. The discriminator is
+   * explicit — `commencesScheme` — and never derived from the earliest date on
+   * file, because that is the edition we hold rather than the day the rule
+   * began.
+   */
+  it('treats LINDUNG before June 2026 as not yet begun, and does not block on it', () => {
+    const stamp = stampFor(['LINDUNG'], new Date('2026-01-31T00:00:00.000Z'));
+    expect(stamp.schedules[0]).toMatchObject({ notYetInForce: true, missing: false });
+    expect(stamp.blockers).toEqual([]);
+    expect(stamp.approvable).toBe(true);
+  });
+
+  it('treats EPF before October 2025 as MISSING, because EPF did not begin then', () => {
+    // The registry holds the October 2025 edition of a Schedule that has
+    // existed since 1991. A 2019 period is one this system cannot speak to.
+    const stamp = stampFor(['EPF'], new Date('2019-06-30T00:00:00.000Z'));
+    expect(stamp.schedules[0]).toMatchObject({ notYetInForce: false, missing: true });
+    expect(stamp.approvable).toBe(false);
+  });
+
+  it('marks exactly one schedule as commencing its scheme', () => {
+    // A flag set carelessly across the registry would silently stop historical
+    // runs blocking, so the set is asserted rather than spot-checked.
+    const commencing = STATUTORY_SCHEDULES.filter((entry) => entry.commencesScheme).map((entry) => entry.id);
+    expect(commencing).toEqual(['LINDUNG_SKBBK_PHASE_1_2026_06']);
   });
 });

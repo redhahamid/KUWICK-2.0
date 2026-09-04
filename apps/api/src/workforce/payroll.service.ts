@@ -47,6 +47,7 @@ import {
 import { leaveDaysInYear } from './leave-balance';
 import { describeProration, proratedBasicCents, prorationFor } from './proration';
 import { classifyDay, describePricedDay, priceOvertime } from './overtime-pricing';
+import { LINDUNG_EFFECTIVE_FROM } from '../statutory/lindung-24-jam';
 import { CatalogueRow, ResolvedComponent, catalogueFor, checkOrdinaryRateBase } from './component-liability';
 import {
   FIRST_SCHEDULE_WAGE_CEILING_CENTS,
@@ -723,6 +724,15 @@ export class PayrollService {
           raise('NO_REST_DAY', employee);
         }
 
+        // LINDUNG 24 JAM. Voluntary for locals, mandatory for foreign workers,
+        // and neither answer is readable off any other field — so an employee
+        // with nothing recorded is an open question rather than a nil.
+        // Raised only once the scheme is in force, so historical runs are not
+        // blocked by a rule that did not exist for them.
+        if (!employee.lindungParticipation && periodEnd > LINDUNG_EFFECTIVE_FROM) {
+          raise('LINDUNG_PARTICIPATION_UNRECORDED', employee);
+        }
+
         // NO EMPLOYING COMPANY, NO FILING. EPF, SOCSO, EIS and PCB are all
         // submitted BY an entity, so an employee attached to none of them
         // produces a payslip whose contributions could never be filed.
@@ -1036,6 +1046,7 @@ export class PayrollService {
             socsoApplicable: employee.socsoApplicable,
             eisApplicable: employee.eisApplicable,
             pcbApplicable: employee.pcbApplicable,
+            lindungParticipation: employee.lindungParticipation,
             taxResidence: employee.taxResidence,
             pcbCategory:
               employee.pcbCategory === 'CATEGORY_1'
@@ -1134,6 +1145,8 @@ export class PayrollService {
             socsoEmployee: nullableCents(payslip.statutory.socso.employeeCents),
             socsoEmployer: nullableCents(payslip.statutory.socso.employerCents),
             eisEmployee: nullableCents(payslip.statutory.eis.employeeCents),
+            // Employee-borne, so there is no employer figure to write.
+            lindungEmployee: nullableCents(payslip.statutory.lindung.employeeCents),
             eisEmployer: nullableCents(payslip.statutory.eis.employerCents),
             pcb: nullableCents(payslip.statutory.pcbCents),
             netPay: fromCents(payslip.netCents),
@@ -1199,6 +1212,7 @@ export class PayrollService {
                 epf: payslip.statutory.epf.note ?? null,
                 socso: payslip.statutory.socso.note ?? null,
                 eis: payslip.statutory.eis.note ?? null,
+                lindung: payslip.statutory.lindung.note ?? null,
                 pcb: payslip.statutory.pcbNote ?? null,
               },
               incomplete: payslip.incomplete,
@@ -1946,6 +1960,7 @@ export class PayrollService {
         socsoEmployee: numberOrNull(line.socsoEmployee),
         socsoEmployer: numberOrNull(line.socsoEmployer),
         eisEmployee: numberOrNull(line.eisEmployee),
+        lindungEmployee: numberOrNull(line.lindungEmployee),
         eisEmployer: numberOrNull(line.eisEmployer),
         pcb: numberOrNull(line.pcb),
         netPay: Number(line.netPay),

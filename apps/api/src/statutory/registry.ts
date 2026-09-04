@@ -3,6 +3,7 @@ import { EIS_BANDS, EIS_WAGE_CEILING_CENTS } from './eis-act800';
 import { EPF_PARTS, EPF_TABLE_CEILING_CENTS } from './epf-third-schedule';
 import { HRD_LEVY_RATE_MANDATORY_PERCENT, HRD_LEVY_RATE_OPTIONAL_PERCENT } from './hrd-levy';
 import { PCB_TABLE_1, DEDUCTION_INDIVIDUAL_CENTS, NON_RESIDENT_RATE_PERCENT } from './pcb-2026';
+import { LINDUNG_EFFECTIVE_FROM, LINDUNG_PHASE_RATES_PERCENT } from './lindung-24-jam';
 import { SOCSO_BANDS, SOCSO_WAGE_CEILING_CENTS } from './socso-act4';
 import {
   FIRST_SCHEDULE_EFFECTIVE_FROM,
@@ -86,6 +87,8 @@ export type StatutoryScheme =
   | 'SOCSO'
   | 'EIS'
   | 'PCB'
+  /** LINDUNG 24 JAM / SKBBK — a scheme of its own, not a column of Act 4. */
+  | 'LINDUNG'
   | 'HRD_LEVY'
   | 'EMPLOYMENT_ACT'
   /**
@@ -106,6 +109,19 @@ export interface StatutorySchedule {
   readonly section: string;
   /** In force from this instant. Resolution is by the payroll period, not today. */
   readonly effectiveFrom: Date;
+  /**
+   * TRUE when `effectiveFrom` is when the SCHEME ITSELF BEGAN, not merely when
+   * the edition held here took over.
+   *
+   * The difference decides whether a period earlier than every schedule is a
+   * gap or a fact. EPF has existed since 1991 and this registry holds its
+   * October 2025 edition, so a 2019 run is a period we cannot speak to and must
+   * block. LINDUNG 24 JAM commences on 1 June 2026, so a January run owes
+   * nothing to it and is complete without it. Deriving one from the other
+   * would make either an unfileable historical run look finished, or an honest
+   * current one look broken.
+   */
+  readonly commencesScheme: boolean;
   /** Superseded from this instant, when a later edition is held. */
   readonly effectiveTo: Date | null;
   readonly verification: VerificationState;
@@ -146,6 +162,7 @@ export const STATUTORY_SCHEDULES: readonly StatutorySchedule[] = [
     section: 'Third Schedule, Parts A, C, E, F',
     effectiveFrom: OCT_2025,
     effectiveTo: null,
+    commencesScheme: false,
     verification: 'OFFICIAL_TEST_VECTOR_VERIFIED',
     evidence:
       'Transcribed band by band from the Schedule; reproduces its own printed figures, including the employer rate stepping 13% → 12% across RM5,000.',
@@ -156,12 +173,13 @@ export const STATUTORY_SCHEDULES: readonly StatutorySchedule[] = [
     scheme: 'SOCSO',
     authority: 'PERKESO',
     document: 'D6 — Act 4, New Contribution Rate Including the Non-Employment Injury Security Scheme (SKBBK)',
-    section: 'First and Second Category rate table',
+    section: 'First and Second Category rate table — Act 4 columns only; the SKBBK column is a separate scheme',
     effectiveFrom: SKBBK,
     effectiveTo: null,
+    commencesScheme: false,
     verification: 'OFFICIAL_TEST_VECTOR_VERIFIED',
     evidence:
-      'Transcribed from the published rate table; reproduces its RM6,000 row on both categories, including the Second Category employee share that SKBBK made non-nil.',
+      'Transcribed from the published rate table; reproduces its RM6,000 row on both categories. The SKBBK column printed alongside is NOT Act 4 and is resolved separately — see LINDUNG_SKBBK_PHASE_1_2026_06.',
     contentHash: hashOf({ bands: SOCSO_BANDS, ceiling: SOCSO_WAGE_CEILING_CENTS }),
   },
   {
@@ -172,6 +190,7 @@ export const STATUTORY_SCHEDULES: readonly StatutorySchedule[] = [
     section: 'Rate table',
     effectiveFrom: SKBBK,
     effectiveTo: null,
+    commencesScheme: false,
     verification: 'OFFICIAL_TEST_VECTOR_VERIFIED',
     evidence: 'Transcribed from the published rate table; reproduces its RM6,000 row (RM11.90 each side).',
     contentHash: hashOf({ bands: EIS_BANDS, ceiling: EIS_WAGE_CEILING_CENTS }),
@@ -184,6 +203,7 @@ export const STATUTORY_SCHEDULES: readonly StatutorySchedule[] = [
     section: 'Computerised Calculation Method, Table 1',
     effectiveFrom: JAN_2026,
     effectiveTo: null,
+    commencesScheme: false,
     verification: 'OFFICIAL_TEST_VECTOR_VERIFIED',
     evidence:
       'Reproduces the specification’s own worked example (Exhibit 5) to the sen across all twelve months, including the two-step treatment of additional remuneration.',
@@ -201,6 +221,7 @@ export const STATUTORY_SCHEDULES: readonly StatutorySchedule[] = [
     section: 'ss. 2, 14, 15',
     effectiveFrom: OCT_2025,
     effectiveTo: null,
+    commencesScheme: false,
     verification: 'OFFICIAL_SOURCE_VERIFIED',
     evidence:
       'Rates and the leviable-wages definition read off the guideline. No official worked example is published with it, so it stops short of test-vector verification.',
@@ -217,6 +238,7 @@ export const STATUTORY_SCHEDULES: readonly StatutorySchedule[] = [
     section: 'ss. 18A, 60, 60A, 60D, 60I',
     effectiveFrom: OCT_2025,
     effectiveTo: null,
+    commencesScheme: false,
     verification: 'OFFICIAL_SOURCE_VERIFIED',
     evidence:
       'Divisors and multipliers read off the sections themselves — s.60I(1A) ÷26 for the ordinary rate, s.18A for an incomplete month, which JTKSM confirms covers leave of absence without pay as well as joiners and leavers. The Act publishes no worked example.',
@@ -227,6 +249,26 @@ export const STATUTORY_SCHEDULES: readonly StatutorySchedule[] = [
     }),
   },
   {
+    id: 'LINDUNG_SKBBK_PHASE_1_2026_06',
+    scheme: 'LINDUNG',
+    authority: 'PERKESO',
+    document:
+      'D11 — current PERKESO guidance on the Non-Employment Injury Security Scheme (SKBBK / LINDUNG 24 JAM), read with D6’s Act 4 rate table',
+    section: 'Phase 1 contribution, participation and commencement',
+    effectiveFrom: LINDUNG_EFFECTIVE_FROM,
+    effectiveTo: null,
+    // 1 June 2026 is when the scheme starts, not when our copy of it starts.
+    commencesScheme: true,
+    verification: 'OFFICIAL_SOURCE_VERIFIED',
+    evidence:
+      'Rate from D6’s printed column, which converges on 0.744% of the band ceiling — the 0.75% phase-1 rate expressed as bands. Commencement (1 June 2026), employee-borne with no employer share, voluntary for locals and mandatory for foreign workers, all from current PERKESO guidance. No official worked example is published, so it stops short of test-vector verification.',
+    contentHash: hashOf({
+      from: LINDUNG_EFFECTIVE_FROM.toISOString(),
+      phases: LINDUNG_PHASE_RATES_PERCENT,
+      bands: SOCSO_BANDS.map((band) => band[4]),
+    }),
+  },
+  {
     id: 'EA_FIRST_SCHEDULE_2023_01',
     scheme: 'EA_FIRST_SCHEDULE',
     authority: 'AGC / JTKSM',
@@ -234,6 +276,7 @@ export const STATUTORY_SCHEDULES: readonly StatutorySchedule[] = [
     section: 'First Schedule — limitation of ss. 60, 60A and 60D by wages',
     effectiveFrom: FIRST_SCHEDULE_EFFECTIVE_FROM,
     effectiveTo: null,
+    commencesScheme: false,
     verification: 'OFFICIAL_SOURCE_VERIFIED',
     evidence:
       'Current JTKSM material, relayed by the account holder: the Act reaches all employees from 1 January 2023, but the hours-and-overtime provisions are limited to wages not exceeding RM4,000 a month.',
@@ -270,12 +313,13 @@ export interface StatutoryGap {
 
 export const SCHEMES_WITHOUT_A_SCHEDULE: readonly StatutoryGap[] = [
   {
-    scheme: 'LINDUNG 24 JAM',
-    kind: 'NO_SCHEDULE',
+    scheme: 'LINDUNG 24 JAM — phases 2 and 3',
+    kind: 'PARTIAL_RULE',
     reason:
-      'No PERKESO document for it was supplied. D6 covers SKBBK as an Act 4 column, which is implemented; whether LINDUNG 24 JAM is that same programme under a public-facing name or a separate scheme with its own participation rules is not established, and guessing either way would be a fabricated contribution.',
-    needs: 'PERKESO’s own schedule and participation guidance for the programme.',
-    affects: 'Any employee, if it is a separate scheme. Nothing is contributed for it today.',
+      'Phase 1 (0.75%) is implemented from its own schedule and effective date. The published phases continue at 1.00% and 1.25%, and neither the dates they take effect nor their band tables are held — so a period governed by a later phase would be computed at phase 1 rates if it were computed at all.',
+    needs: 'PERKESO’s phase 2 and phase 3 contribution schedules and the dates each takes effect.',
+    affects:
+      'Every participating employee, once a later phase begins. Until then phase 1 governs and the figures are correct; the engine names the phase it applied so a run cannot silently outlive it.',
   },
   {
     scheme: 'Employment Act First Schedule — special categories',
@@ -318,6 +362,13 @@ export interface ScheduleStamp {
   readonly effectiveFrom: string | null;
   /** Absent when no schedule governs the period; the reason belongs on screen. */
   readonly missing: boolean;
+  /**
+   * NOT THE SAME AS MISSING, and conflating them would make an honest run look
+   * broken. A scheme that has not commenced yet — LINDUNG 24 JAM before
+   * 1 June 2026 — is correctly absent, and a January run is not incomplete for
+   * failing to contribute to something that did not exist.
+   */
+  readonly notYetInForce: boolean;
 }
 
 export interface StatutoryStamp {
@@ -342,15 +393,26 @@ export function stampFor(schemes: readonly StatutoryScheme[], on: Date): Statuto
   const schedules = schemes.map<ScheduleStamp>((scheme) => {
     const schedule = scheduleFor(scheme, on);
     if (!schedule) {
-      blockers.push(`No ${scheme} schedule is in force for ${on.toISOString().slice(0, 10)}.`);
+      // A scheme with a LATER start has not gone missing; it has not begun.
+      const earliest = STATUTORY_SCHEDULES.filter((entry) => entry.scheme === scheme).sort(
+        (a, b) => a.effectiveFrom.getTime() - b.effectiveFrom.getTime(),
+      )[0];
+      // Only a scheme whose earliest schedule COMMENCES it is legitimately
+      // absent before that date. Everything else is a period this registry
+      // cannot speak to, and must block.
+      const notYetInForce = Boolean(earliest?.commencesScheme && earliest.effectiveFrom > on);
+      if (!notYetInForce) {
+        blockers.push(`No ${scheme} schedule is in force for ${on.toISOString().slice(0, 10)}.`);
+      }
       return {
         scheme,
         scheduleId: null,
         contentHash: null,
         verification: null,
-        document: null,
+        document: notYetInForce ? `${scheme} commences ${earliest!.effectiveFrom.toISOString().slice(0, 10)}.` : null,
         effectiveFrom: null,
-        missing: true,
+        missing: !notYetInForce,
+        notYetInForce,
       };
     }
     if (!meetsApprovalBar(schedule.verification)) {
@@ -366,6 +428,7 @@ export function stampFor(schemes: readonly StatutoryScheme[], on: Date): Statuto
       document: schedule.document,
       effectiveFrom: schedule.effectiveFrom.toISOString(),
       missing: false,
+      notYetInForce: false,
     };
   });
   return { resolvedAt: on.toISOString(), schedules, approvable: blockers.length === 0, blockers };

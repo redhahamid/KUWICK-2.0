@@ -128,48 +128,35 @@ describe('EPF refuses rather than assuming an age', () => {
 
 // ---------------------------------------------------------------------------
 
-describe('SOCSO keeps its schemes apart', () => {
-  it('splits the First Category employee share into Invalidity and Non-Employment Injury', () => {
-    // Band 65, at the ceiling: 29.75 Invalidity + 44.65 Non-Employment Injury.
+describe('SOCSO keeps its schemes apart — and SKBBK is not one of them', () => {
+  /*
+   * THESE TWO TESTS USED TO ASSERT THE OVER-CHARGE.
+   *
+   * D6 prints the Non-Employment Injury Scheme (SKBBK / LINDUNG 24 JAM) as a
+   * column beside the Act 4 columns, and reading it as part of Act 4 is the
+   * obvious mistake. These tests pinned that mistake: they asserted that a
+   * First Category employee owes 74.40 and a Second Category employee 44.65,
+   * both of which fold in a SEPARATE scheme that starts on 1 June 2026, is
+   * borne by the employee, and is VOLUNTARY for locals.
+   *
+   * Act 4 alone is what these now assert. LINDUNG has its own spec.
+   */
+  it('charges a First Category employee the INVALIDITY share alone', () => {
+    // Band 65, at the ceiling. 29.75 invalidity — the 44.65 that used to be
+    // added is SKBBK, and belongs to whoever actually joined it.
     const value = computed(socsoContribution(RM(6000), 'FIRST'));
     expect(value.employeeInvalidityCents).toBe(RM(29.75));
-    expect(value.employeeNonEmploymentInjuryCents).toBe(RM(44.65));
-    expect(value.employeeCents).toBe(RM(74.4));
+    expect(value.employeeCents).toBe(RM(29.75));
     expect(value.employerCents).toBe(RM(104.15));
   });
 
-  /*
-   * SKBBK CHANGED THE SECOND CATEGORY. It used to charge the employee nothing;
-   * it now charges the Non-Employment Injury share. An implementation carrying
-   * the old assumption under-deducts every second-category employee.
-   */
-  it('charges a Second Category employee the non-employment injury share, which is no longer nil', () => {
+  it('leaves the Second Category employer-only, as Act 4 has it', () => {
+    // This asserted 44.65 from the employee, which was SKBBK charged to
+    // everybody including locals who had never joined a voluntary scheme.
     const value = computed(socsoContribution(RM(6000), 'SECOND'));
     expect(value.employeeInvalidityCents).toBe(0);
-    expect(value.employeeNonEmploymentInjuryCents).toBe(RM(44.65));
-    expect(value.employeeCents).toBe(RM(44.65));
-    expect(value.employeeCents).toBeGreaterThan(0);
-  });
-
-  it('holds at the RM6,000 ceiling', () => {
-    const at = computed(socsoContribution(RM(6000), 'FIRST'));
-    const above = computed(socsoContribution(RM(50000), 'FIRST'));
-    expect(above.employerCents).toBe(at.employerCents);
-    expect(above.employeeCents).toBe(at.employeeCents);
-    expect(above.atCeiling).toBe(true);
-    expect(at.atCeiling).toBe(false);
-  });
-
-  it('reads the first band inclusively — "Wages up to RM30"', () => {
-    const value = computed(socsoContribution(RM(30), 'FIRST'));
-    expect(value.employerCents).toBe(RM(0.4));
-    expect(value.employeeCents).toBe(RM(0.3));
-  });
-
-  it('steps at a band edge', () => {
-    const inside = computed(socsoContribution(RM(30), 'FIRST'));
-    const next = computed(socsoContribution(RM(30.01), 'FIRST'));
-    expect(next.employerCents).toBeGreaterThan(inside.employerCents);
+    expect(value.employeeCents).toBe(0);
+    expect(value.employerCents).toBe(RM(74.4));
   });
 });
 

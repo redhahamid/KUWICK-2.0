@@ -132,28 +132,23 @@ describe('EPF — the Third Schedule is a table, not a percentage', () => {
 
 describe('SOCSO and EIS — different wages, different categories', () => {
   /*
-   * THE ONE PLACE THE WORKBOOK IS NOW WRONG, and it is worth being precise
-   * about because a clinic reconciling last year's spreadsheet will meet it on
-   * every single row.
+   * THE WORKBOOK WAS RIGHT, AND MY EARLIER READING OF D6 WAS NOT.
    *
-   * The EMPLOYER figures below are exactly the workbook's — RM39.35 and
-   * RM104.15, unchanged. The EMPLOYEE figures have roughly doubled, and the
-   * whole of the difference is one new column: PERKESO's current Act 4 table
-   * (D6) charges the employee for the Non-Employment Injury Scheme (SKBBK) on
-   * top of Invalidity, where the workbook has Invalidity alone.
+   * D6 prints the Non-Employment Injury Scheme beside the Act 4 columns, and
+   * this suite briefly asserted that its figures were part of SOCSO — that a
+   * RM6,000 employee owed 74.40 rather than 29.75. That "the law changed and
+   * the spreadsheet is out of date" conclusion was wrong.
    *
-   *   RM2,229.24  employee  11.25  ->  28.10   (11.25 invalidity + 16.85 SKBBK)
-   *   RM6,000     employee  29.75  ->  74.40   (29.75 invalidity + 44.65 SKBBK)
-   *
-   * This is the law changing, not the engine drifting. The split is asserted
-   * as well as the total so a payslip can show it the way the Act's own table
-   * prints it.
+   * SKBBK / LINDUNG 24 JAM is a separate scheme: in force from 1 June 2026,
+   * borne by the employee, VOLUNTARY for locals. A local who has not joined
+   * owes the workbook's 29.75 and nothing more. Act 4 is asserted here; the
+   * other scheme has its own spec.
    */
-  it('matches the clinic listing at RM2,229.24 on the employer side, and adds SKBBK on the employee side', () => {
+  it('matches the clinic listing at RM2,229.24 on both sides', () => {
     const socso = computeSocso(222924, CTX, under60);
-    expect(socso.employerCents).toBe(3935); // unchanged from the workbook
-    expect(socso.employeeCents).toBe(2810); // was 1125 before SKBBK
-    expect(socso.note).toMatch(/invalidity 11\.25 \+ non-employment injury 16\.85/i);
+    expect(socso.employerCents).toBe(3935);
+    expect(socso.employeeCents).toBe(1125); // invalidity alone, as the workbook has it
+    expect(socso.note).toMatch(/invalidity 11\.25/i);
     const eis = computeEis(222924, CTX, under60);
     expect(eis.employeeCents).toBe(450);
     expect(eis.employerCents).toBe(450);
@@ -161,21 +156,17 @@ describe('SOCSO and EIS — different wages, different categories', () => {
 
   it('caps at the RM6,000 ceiling for any wage above it', () => {
     const top = computeSocso(600000, CTX, under60);
-    expect(top.employerCents).toBe(10415); // unchanged from the workbook
-    expect(top.employeeCents).toBe(7440); // 29.75 invalidity + 44.65 SKBBK
+    expect(top.employerCents).toBe(10415);
+    expect(top.employeeCents).toBe(2975);
     // A doctor on RM9,750 pays the same as one on RM6,000.
     expect(computeSocso(975000, CTX, under60)).toEqual(top);
     expect(computeEis(975000, CTX, under60).employeeCents).toBe(1190);
   });
 
-  it('moves to the Second Category at 60, which SKBBK made non-nil for the employee', () => {
-    // THE CLINIC'S WORKBOOK SAYS ZERO HERE AND IS NOW OUT OF DATE. The Second
-    // Category used to be employer-only; PERKESO's current Act 4 table (D6)
-    // adds a Non-Employment Injury employee share. A reconciliation against an
-    // older spreadsheet will show this difference, and the schedule is right.
+  it('moves to the Second Category at 60, which Act 4 makes employer-only', () => {
     const result = computeSocso(600000, CTX, at60);
     expect(result.employerCents).toBe(7440);
-    expect(result.employeeCents).toBe(4465);
+    expect(result.employeeCents).toBe(0);
     expect(result.note).toMatch(/Second Category/);
   });
 
@@ -198,10 +189,9 @@ describe('the three bases are different, which is the whole point', () => {
     const slip = computePayslip([earning('BASIC', 2100), earning('OVERTIME', 129.24)], CTX, under60);
     expect(slip.statutory.epf.employeeCents).toBe(23100);
     expect(slip.statutory.epf.employerCents).toBe(27300);
-    // Employer as the workbook has it; employee now carries SKBBK too. See
-    // the note above the SOCSO block.
+    // Both sides as the workbook has them — see the note above the SOCSO block.
     expect(slip.statutory.socso.employerCents).toBe(3935);
-    expect(slip.statutory.socso.employeeCents).toBe(2810);
+    expect(slip.statutory.socso.employeeCents).toBe(1125);
     expect(slip.statutory.eis.employeeCents).toBe(450);
   });
 
