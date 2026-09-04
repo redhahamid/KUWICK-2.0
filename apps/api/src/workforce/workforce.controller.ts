@@ -513,6 +513,17 @@ export class WorkforceController {
     return this.payroll.listStatutoryRuleSets();
   }
 
+  /**
+   * Schemes Kuwick KNOWS it cannot price — LINDUNG phases 2–3, the Employment
+   * Act First Schedule special categories. The service has said this since the
+   * registry was built; nothing ever mounted it, so the gap register was
+   * unreachable from every screen.
+   */
+  @Get('payroll/statutory-gaps')
+  statutoryGaps() {
+    return this.payroll.listStatutoryGaps();
+  }
+
   @Post('payroll/statutory-rules')
   upsertStatutoryRules(@Body() dto: UpsertStatutoryRulesDto) {
     return this.payroll.upsertStatutoryRules(dto);

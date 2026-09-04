@@ -337,10 +337,16 @@ export function computePayslip(
     .reduce((sum, line) => sum + toCents(line.amount), 0);
   const statutory = computeStatutory(bases, context, profile, ytd, zakatThisMonthCents);
 
+  // LINDUNG is EMPLOYEE-borne and EMPLOYER-remitted — both statements are only
+  // true at once if the contribution is withheld from pay. It used to be
+  // recorded on the line and left out of this sum, so a participating
+  // employee's net was overstated by exactly the amount the employer went on
+  // to remit for them.
   const employeeStatutory =
     (statutory.epf.employeeCents ?? 0) +
     (statutory.socso.employeeCents ?? 0) +
     (statutory.eis.employeeCents ?? 0) +
+    (statutory.lindung.employeeCents ?? 0) +
     (statutory.pcbCents ?? 0);
 
   // Withholdings only. A wage reduction has already come off gross and
@@ -352,13 +358,19 @@ export function computePayslip(
   const employerContributionCents =
     (statutory.epf.employerCents ?? 0) + (statutory.socso.employerCents ?? 0) + (statutory.eis.employerCents ?? 0);
 
-  const notes = [statutory.epf.note, statutory.socso.note, statutory.eis.note, statutory.pcbCents === null ? statutory.pcbNote : undefined]
-    .filter((note): note is string => Boolean(note));
+  const notes = [
+    statutory.epf.note,
+    statutory.socso.note,
+    statutory.eis.note,
+    statutory.lindung.employeeCents === null ? statutory.lindung.note : undefined,
+    statutory.pcbCents === null ? statutory.pcbNote : undefined,
+  ].filter((note): note is string => Boolean(note));
 
   const incomplete =
     statutory.epf.employeeCents === null ||
     statutory.socso.employeeCents === null ||
     statutory.eis.employeeCents === null ||
+    statutory.lindung.employeeCents === null ||
     statutory.pcbCents === null;
 
   // `bases.grossCents` is wages — earnings less any WAGE REDUCTION such as

@@ -416,35 +416,88 @@ export class PayrollJourneyService {
       inputsByStaff.set(row.staffId, list);
     }
 
+    // THE GROUPING THE TWO MONEY STEPS RENDER, worked out HERE and nowhere
+    // else. The earnings and deductions screens used to derive these figures
+    // themselves — salary-after-unpaid-leave, a residual "other" column,
+    // statutory and tax subtotals — which made the browser a second place
+    // payroll arithmetic lived, and it summed a missing statutory figure as
+    // zero. The screens now render these fields; they do not compute any.
+    //
+    // Everything still comes from THE PAYSLIP'S OWN FIELDS, never from a
+    // re-derivation of the input rows: the line is what was paid, the input
+    // rows explain it and serve the drill-down only. The one derived column,
+    // `otherEarnings`, is deliberately a RESIDUAL of the line's own gross, so
+    // the row cannot fail to add up and anything unexpected surfaces as a
+    // number in a named column rather than vanishing.
+    const sums = {
+      basic: 0, unpaidLeave: 0, salaryEarned: 0, allowances: 0, overtime: 0,
+      incentive: 0, otherEarnings: 0, gross: 0,
+      statutory: 0, pcb: 0, lindung: 0, otherDeductions: 0, deductions: 0, net: 0,
+      statutoryNotCalculated: 0, pcbMissing: 0, lindungNotDetermined: 0,
+    };
     const paidRows = run.lines.map((line) => {
       const own = inputsByStaff.get(line.staffId) ?? [];
+      const basicCents = toCents(line.basicSalary);
+      const unpaidCents = toCents(line.unpaidLeaveDeduction);
+      const allowanceCents = toCents(line.allowances);
+      const overtimeCents = toCents(line.overtimePay);
+      const incentiveCents = toCents(line.incentives) + toCents(line.bonus);
+      const grossCents = toCents(line.grossPay);
+      const netCents = toCents(line.netPay);
+      const salaryEarnedCents = basicCents - unpaidCents;
+      const otherEarningsCents = grossCents - salaryEarnedCents - allowanceCents - overtimeCents - incentiveCents;
+      const statutoryMissing =
+        line.epfEmployee === null && line.socsoEmployee === null && line.eisEmployee === null;
+      const statutoryCents = statutoryMissing
+        ? null
+        : toCents(line.epfEmployee ?? 0) + toCents(line.socsoEmployee ?? 0) + toCents(line.eisEmployee ?? 0);
+      const pcbCents = line.pcb === null ? null : toCents(line.pcb);
+      const lindungCents = line.lindungEmployee === null ? null : toCents(line.lindungEmployee);
+      const otherDeductionCents = toCents(line.otherDeductions);
+      // What actually came off this person's pay — the gap between the line's
+      // own gross and its own net, not a re-run of the engine.
+      const deductionCents = grossCents - netCents;
+
+      sums.basic += basicCents;
+      sums.unpaidLeave += unpaidCents;
+      sums.salaryEarned += salaryEarnedCents;
+      sums.allowances += allowanceCents;
+      sums.overtime += overtimeCents;
+      sums.incentive += incentiveCents;
+      sums.otherEarnings += otherEarningsCents;
+      sums.gross += grossCents;
+      sums.net += netCents;
+      sums.deductions += deductionCents;
+      sums.otherDeductions += otherDeductionCents;
+      if (statutoryCents === null) sums.statutoryNotCalculated += 1;
+      else sums.statutory += statutoryCents;
+      if (pcbCents === null) sums.pcbMissing += 1;
+      else sums.pcb += pcbCents;
+      if (lindungCents === null) sums.lindungNotDetermined += 1;
+      else sums.lindung += lindungCents;
+
       return {
         staffId: line.staffId,
         name: line.staff.fullName,
-        // THE PAYSLIP'S OWN FIELDS, not a re-derivation from the input rows.
-        //
-        // The earnings table's columns were built from `payroll_input_entries`
-        // while its total came from the line, so any run not produced by the
-        // current calculation — a seeded one, an imported one — showed columns
-        // that did not add up to their own total. The line is what was paid;
-        // the input rows explain it, and are used for the drill-down only.
-        basicSalary: formatCents(toCents(line.basicSalary)),
-        allowances: formatCents(toCents(line.allowances)),
-        overtimePay: formatCents(toCents(line.overtimePay)),
+        basicSalary: formatCents(basicCents),
+        allowances: formatCents(allowanceCents),
+        overtimePay: formatCents(overtimeCents),
         incentives: formatCents(toCents(line.incentives)),
         bonus: formatCents(toCents(line.bonus)),
-        grossPay: formatCents(toCents(line.grossPay)),
-        otherDeductions: formatCents(toCents(line.otherDeductions)),
-        unpaidLeaveDeduction: formatCents(toCents(line.unpaidLeaveDeduction)),
-        netPay: formatCents(toCents(line.netPay)),
+        grossPay: formatCents(grossCents),
+        otherDeductions: formatCents(otherDeductionCents),
+        unpaidLeaveDeduction: formatCents(unpaidCents),
+        netPay: formatCents(netCents),
         employerCost: formatCents(toCents(line.employerCost)),
-        statutoryEmployee:
-          line.epfEmployee === null && line.socsoEmployee === null && line.eisEmployee === null
-            ? null
-            : formatCents(
-                toCents(line.epfEmployee ?? 0) + toCents(line.socsoEmployee ?? 0) + toCents(line.eisEmployee ?? 0),
-              ),
-        pcb: line.pcb === null ? null : formatCents(toCents(line.pcb)),
+        statutoryEmployee: statutoryCents === null ? null : formatCents(statutoryCents),
+        pcb: pcbCents === null ? null : formatCents(pcbCents),
+        /** SKBBK. Employee-borne, employer-remitted; null means participation is unrecorded. */
+        lindungEmployee: lindungCents === null ? null : formatCents(lindungCents),
+        salaryEarned: formatCents(salaryEarnedCents),
+        /** Incentives and bonus as one column — the grouping the screen shows. */
+        incentive: formatCents(incentiveCents),
+        otherEarnings: formatCents(otherEarningsCents),
+        deductionTotal: formatCents(deductionCents),
         items: own.map((row) => ({
           id: row.id,
           componentCode: row.componentCode,
@@ -460,6 +513,40 @@ export class PayrollJourneyService {
         })),
       };
     });
+
+    // The lines must agree with the run's own stored totals. They always do
+    // for a run this engine calculated — the calculation asserts it — but a
+    // seeded or imported run is exactly the kind of run this screen must not
+    // silently tidy up.
+    const paysAddUp =
+      sums.gross === toCents(run.grossTotal) &&
+      sums.net === toCents(run.netTotal) &&
+      sums.deductions === toCents(run.deductionTotal);
+    const payTotals = {
+      basic: formatCents(sums.basic),
+      unpaidLeave: formatCents(sums.unpaidLeave),
+      salaryEarned: formatCents(sums.salaryEarned),
+      allowances: formatCents(sums.allowances),
+      overtime: formatCents(sums.overtime),
+      incentive: formatCents(sums.incentive),
+      otherEarnings: formatCents(sums.otherEarnings),
+      additions: formatCents(sums.allowances + sums.overtime + sums.incentive + sums.otherEarnings),
+      gross: formatCents(sums.gross),
+      /** Sum of what was actually worked out. Beside it, the count that was not. */
+      statutoryEmployee: formatCents(sums.statutory),
+      statutoryNotCalculated: sums.statutoryNotCalculated,
+      pcb: formatCents(sums.pcb),
+      pcbMissing: sums.pcbMissing,
+      lindung: formatCents(sums.lindung),
+      lindungNotDetermined: sums.lindungNotDetermined,
+      otherDeductions: formatCents(sums.otherDeductions),
+      deductions: formatCents(sums.deductions),
+      net: formatCents(sums.net),
+      addsUp: paysAddUp,
+      discrepancy: paysAddUp
+        ? null
+        : 'The employee lines do not add up to the run’s stored totals. This run was not produced by the current calculation — recalculate it before relying on any figure here.',
+    };
 
     // ---------------------------------------------------------------------
     // STEP 5 AND 6 — review and approve, from ONE gate.
@@ -551,7 +638,7 @@ export class PayrollJourneyService {
         totalUnpaidLeaveDays: Math.round(step2.reduce((s, r) => s + r.unpaidLeaveDays, 0) * 10) / 10,
         totalMissingPunchDays: step2.reduce((s, r) => s + r.missingPunchDays, 0),
       },
-      pay: { rows: paidRows },
+      pay: { rows: paidRows, totals: payTotals },
       review: {
         gate,
         attention,

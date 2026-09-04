@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { App, Button, Input, Modal, Table } from 'antd';
+import { App, Button, Input, Modal } from 'antd';
+import { Link } from 'react-router-dom';
 import { AdminNotice, AdminSection } from '../components/AdminShell';
 import { useOverrideException, usePayrollExceptions } from '../hooks/useAdmin';
 import type { PayrollExceptionRow } from '../types';
@@ -17,6 +18,11 @@ import { SeverityTag } from './ExceptionSeverity';
  * Each row names the CONSEQUENCE as well as the cause, which is the shape of
  * the one genuinely excellent warning in that product: condition, consequence,
  * remedy.
+ *
+ * One component serves the run journey's Review step and the dense payroll
+ * page, so "what is wrong with this run" cannot read differently in two
+ * places. It fetches the same `payroll_exceptions` rows every other surface
+ * uses — the gate banner, the stepper's markers, the approve button.
  */
 export function PayrollExceptionCentre({
   runId,
@@ -43,87 +49,94 @@ export function PayrollExceptionCentre({
   if (!data) return null;
 
   const { gate, exceptions } = data;
+  // Blocking first, then warnings, then the informational rows — the reading
+  // order of somebody deciding whether this month can be finished.
+  const ordered = [...exceptions].sort((a, b) => {
+    const rank = { BLOCKING: 0, WARNING: 1, INFO: 2 } as const;
+    return rank[a.severity] - rank[b.severity];
+  });
+
+  const action = (row: PayrollExceptionRow) => {
+    if (row.overridable && !row.overriddenBy && canOverride) {
+      return (
+        <Button
+          size="small"
+          onClick={() => {
+            setTarget(row);
+            setReason('');
+            setError(null);
+          }}
+        >
+          Pass with reason
+        </Button>
+      );
+    }
+    // THE REMEDY, IN PLACE. `deepLink` pointed at
+    // /admin/hr/payroll/:runId/inputs, a route nobody ever mounted:
+    // the one blocking exception a person could actually clear sent
+    // them to a blank page instead. The inputs drawer is on this
+    // screen, so it opens here, for this employee.
+    if (row.code === 'PCB_MISSING' && row.staffId && onFixInputs) {
+      return (
+        <Button size="small" type="primary" ghost onClick={() => onFixInputs(row.staffId!, row.staffName)}>
+          Enter it now
+        </Button>
+      );
+    }
+    if (!row.deepLink) return null;
+    return (
+      <Link to={row.deepLink}>
+        <Button size="small" type={row.severity === 'BLOCKING' ? 'primary' : 'default'}>
+          Go and fix it
+        </Button>
+      </Link>
+    );
+  };
 
   return (
     <AdminSection
       title="Exceptions"
       description="Blocking items must be resolved before approval. Warnings do not stop a run, but they are on the record."
-      padded={false}
     >
       <AdminNotice tone={gate.canApprove ? 'info' : 'warn'}>
         {gate.reason}
         {gate.overridden > 0 ? ` ${gate.overridden} passed deliberately, with a reason recorded.` : ''}
       </AdminNotice>
 
-      <Table<PayrollExceptionRow>
-        rowKey="id"
-        size="small"
-        pagination={false}
-        dataSource={exceptions}
-        locale={{ emptyText: 'No exceptions. Every employee in this run could be calculated.' }}
-        columns={[
-          {
-            title: 'Severity',
-            dataIndex: 'severity',
-            width: 120,
-            render: (_: unknown, row) => (
-              <SeverityTag severity={row.severity} overridden={Boolean(row.overriddenBy)} />
-            ),
-          },
-          { title: 'Employee', dataIndex: 'staffName', width: 150, render: (n: string | null) => n ?? '—' },
-          {
-            title: 'What is wrong, and what it would do',
-            key: 'detail',
-            render: (_: unknown, row) => (
-              <div>
-                <div>{row.cause}</div>
-                {/* The consequence, which is the part that makes it actionable. */}
-                <div style={{ color: '#a8071a', marginTop: 2 }}>{row.consequence}</div>
-                <div style={{ color: '#888', marginTop: 2 }}>{row.remediation}</div>
+      <div className="kw-exceptionCentre">
+        {ordered.length === 0 ? (
+          <p className="kw-muted" style={{ margin: 0 }}>
+            No exceptions. Every employee in this run could be calculated.
+          </p>
+        ) : (
+          ordered.map((row) => (
+            <div
+              key={row.id}
+              className={`kw-attention${row.severity === 'BLOCKING' && !row.overriddenBy ? ' kw-attention--blocking' : ''}`}
+            >
+              <div className="kw-attention__severity">
+                <SeverityTag severity={row.severity} overridden={Boolean(row.overriddenBy)} />
+              </div>
+              <div className="kw-attention__body">
+                <div className="kw-attention__what">
+                  {row.staffName ? `${row.staffName} — ` : ''}
+                  {row.cause}
+                </div>
+                <div className="kw-attention__why">{row.consequence}</div>
+                <div className="kw-attention__todo">
+                  <strong>What to do:</strong> {row.remediation}
+                </div>
                 {row.overriddenBy ? (
-                  <div style={{ color: '#888', marginTop: 4 }}>
+                  <div className="kw-attention__overridden">
                     Passed by {row.overriddenBy} — “{row.overrideReason}”
                   </div>
                 ) : null}
               </div>
-            ),
-          },
-          {
-            title: '',
-            key: 'actions',
-            width: 130,
-            render: (_: unknown, row) => {
-              if (row.overridable && !row.overriddenBy && canOverride) {
-                return (
-                  <Button
-                    size="small"
-                    onClick={() => {
-                      setTarget(row);
-                      setReason('');
-                      setError(null);
-                    }}
-                  >
-                    Pass with reason
-                  </Button>
-                );
-              }
-              // THE REMEDY, IN PLACE. `deepLink` pointed at
-              // /admin/hr/payroll/:runId/inputs, a route nobody ever mounted:
-              // the one blocking exception a person could actually clear sent
-              // them to a blank page instead. The inputs drawer is on this
-              // screen, so it opens here, for this employee.
-              if (row.code === 'PCB_MISSING' && row.staffId && onFixInputs) {
-                return (
-                  <Button size="small" type="primary" ghost onClick={() => onFixInputs(row.staffId!, row.staffName)}>
-                    Enter it now
-                  </Button>
-                );
-              }
-              return row.deepLink ? <a href={row.deepLink}>Go and fix it</a> : null;
-            },
-          },
-        ]}
-      />
+              <div className="kw-attention__action">{action(row)}</div>
+            </div>
+          ))
+        )}
+      </div>
 
       <Modal
         open={Boolean(target)}

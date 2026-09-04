@@ -13,6 +13,9 @@ import {
 } from '../hooks/useAdmin';
 import { ProvisionalBanner } from './ProvisionalBanner';
 import { PayrollStepper, STEPS, stepsWithProblems, type StepKey } from './PayrollStepper';
+import { PayrollExceptionCentre } from './PayrollExceptionCentre';
+import { PayrollInputsDrawer } from './PayrollInputsDrawer';
+import { useCan } from '../../core/hooks/useCan';
 import type { PayrollJourney } from '../types';
 
 const initials = (name: string) =>
@@ -42,10 +45,22 @@ export function PayrollRunPage() {
   const step = (search.get('step') as StepKey) ?? 'employees';
   const stepMeta = STEPS.find((s) => s.key === step) ?? STEPS[0];
   const data = journey.data;
+  const mayApprove = useCan('hr.payroll.approve');
+  const mayRun = useCan('hr.payroll.run');
+
+  // The inputs drawer, hosted here so the exception centre's "Enter it now"
+  // opens on this screen, for this employee, instead of routing away.
+  const [inputsOpen, setInputsOpen] = useState(false);
+  const [inputsStaff, setInputsStaff] = useState<{ id: string; name: string | null } | null>(null);
+  const locked = data?.run.status === 'APPROVED' || data?.run.status === 'PAID';
 
   const goTo = (key: StepKey) => {
     search.set('step', key);
     setSearch(search, { replace: true });
+  };
+  const onFixInputs = (staffId: string, staffName: string | null) => {
+    setInputsStaff({ id: staffId, name: staffName });
+    setInputsOpen(true);
   };
 
   return (
@@ -77,9 +92,19 @@ export function PayrollRunPage() {
           {step === 'attendance' ? <AttendanceStep data={data} /> : null}
           {step === 'earnings' ? <EarningsStep data={data} /> : null}
           {step === 'deductions' ? <DeductionsStep data={data} /> : null}
-          {step === 'review' ? <ReviewStep data={data} runId={id!} /> : null}
+          {step === 'review' ? (
+            <ReviewStep data={data} runId={id!} mayApprove={mayApprove} onFixInputs={onFixInputs} />
+          ) : null}
           {step === 'approve' ? <ApproveStep data={data} runId={id!} /> : null}
           <StepFooter data={data} step={step} onChange={goTo} runId={id!} />
+          <PayrollInputsDrawer
+            open={inputsOpen}
+            onClose={() => setInputsOpen(false)}
+            period={`${data.run.period}-01`}
+            staffId={inputsStaff?.id}
+            staffName={inputsStaff?.name ?? undefined}
+            canEdit={mayRun && !locked}
+          />
         </>
       ) : null}
     </AdminShell>
@@ -285,120 +310,78 @@ function AttendanceStep({ data }: { data: PayrollJourney }) {
 // ---------------------------------------------------------------------------
 
 /**
- * THE EARNINGS COLUMNS COME FROM THE PAYSLIP, NOT FROM A RE-DERIVATION.
+ * EVERY FIGURE ON THE TWO MONEY STEPS COMES FROM THE SERVER.
  *
- * Two versions of this table were wrong in the same way. The first showed only
- * Salary, Overtime and Incentive, so an employee with a fixed allowance had a
- * row whose visible figures did not reach its own total — RM3,200 plus RM98.48
- * arriving at RM3,548.48, with the missing RM250 nowhere on the screen. The
- * second built the columns from the materialised input rows while the total
- * still came from the payroll line, so any run those rows did not fully explain
- * — a seeded one, an imported one — showed columns totalling nothing beside a
- * five-figure gross.
+ * Two versions of this table were wrong in the same way: columns that did not
+ * reach their own row total. A third version fixed that with a residual — but
+ * computed it, and every subtotal, IN THE BROWSER, from `Number()`-parsed
+ * strings. That made this screen a second place payroll arithmetic lived, and
+ * on the deductions step it summed a statutory figure that was never
+ * calculated as zero.
  *
- * Both are the defect the run's own invariants exist to catch, committed by the
- * UI instead of the engine. So the columns are the payslip's own fields, and
- * the last addition column is a RESIDUAL: whatever gross is that the named
- * columns have not accounted for. The row cannot fail to add up, and anything
- * unexpected shows up as a number in a column called "Other" rather than
- * silently vanishing.
+ * The journey payload now carries the grouping — `salaryEarned`,
+ * `otherEarnings` (still a residual of the line's own gross, so a row cannot
+ * fail to add up), and `pay.totals` with not-calculated COUNTS kept apart from
+ * the sums. These components render those fields and compute nothing.
  */
 const EARNING_CODES = new Set([
   'BASIC', 'ALLOWANCE', 'ATTENDANCE_ALLOWANCE', 'OVERTIME', 'INCENTIVE',
   'COMMISSION', 'BONUS', 'MILEAGE', 'CLAIM_REIMBURSEMENT',
 ]);
 
-// `allowances` on the payload is a formatted string; here it is a number, so
-// the payload's version is dropped rather than shadowed.
-type EarningRow = Omit<PayrollJourney['pay']['rows'][number], 'allowances'> & {
-  /** Basic pay less any unpaid leave — what the month's salary actually is. */
-  salaryEarned: number;
-  allowances: number;
-  overtime: number;
-  incentive: number;
-  /** Gross the named columns do not account for: claims, bonuses, anything new. */
-  other: number;
-  unpaid: number;
-  gross: number;
-};
+type PayRow = PayrollJourney['pay']['rows'][number];
 
-function toEarningRows(rows: PayrollJourney['pay']['rows']): EarningRow[] {
-  return rows.map((row) => {
-    const unpaid = Number(row.unpaidLeaveDeduction);
-    const salaryEarned = Number(row.basicSalary) - unpaid;
-    const allowances = Number(row.allowances);
-    const overtime = Number(row.overtimePay);
-    const incentive = Number(row.incentives) + Number(row.bonus);
-    const gross = Number(row.grossPay);
-    // Rounded to the sen: these are two-decimal strings from the API, and a
-    // residual of 0.0000000001 would render as a column of RM0.00 that is not
-    // really there.
-    const other = Math.round((gross - salaryEarned - allowances - overtime - incentive) * 100) / 100;
-    return { ...row, salaryEarned, allowances, overtime, incentive, other, unpaid, gross };
-  });
-}
+/** A zero prints as a dash: a column of RM0.00 reads as figures that exist. */
+const dashZero = (value: string) =>
+  Number(value) !== 0 ? ringgit(value) : <span className="kw-muted">—</span>;
 
 function EarningsStep({ data }: { data: PayrollJourney }) {
-  const rows = useMemo(() => toEarningRows(data.pay.rows), [data.pay.rows]);
-  const sum = (pick: (row: EarningRow) => number) =>
-    Math.round(rows.reduce((total, row) => total + pick(row), 0) * 100) / 100;
-  const totals = {
-    salary: sum((row) => row.salaryEarned),
-    allowances: sum((row) => row.allowances),
-    overtime: sum((row) => row.overtime),
-    incentive: sum((row) => row.incentive),
-    other: sum((row) => row.other),
-    unpaid: sum((row) => row.unpaid),
-    gross: sum((row) => row.gross),
-  };
-  const additions = Math.round((totals.allowances + totals.overtime + totals.incentive + totals.other) * 100) / 100;
+  const rows = data.pay.rows;
+  const totals = data.pay.totals;
 
-  const amountColumn = (title: string, pick: (row: EarningRow) => number) => ({
+  const amountColumn = (title: string, pick: (row: PayRow) => string) => ({
     title,
     width: 125,
     align: 'right' as const,
-    render: (_: unknown, row: EarningRow) => {
-      const value = pick(row);
-      return value !== 0 ? ringgit(value.toFixed(2)) : <span className="kw-muted">—</span>;
-    },
+    render: (_: unknown, row: PayRow) => dashZero(pick(row)),
   });
 
   return (
     <>
       <StatStrip
         stats={[
-          { label: 'Total earnings', value: ringgit(totals.gross.toFixed(2)) },
-          { label: 'Salary earned', value: ringgit(totals.salary.toFixed(2)), hint: 'after unpaid leave' },
+          { label: 'Total earnings', value: ringgit(totals.gross) },
+          { label: 'Salary earned', value: ringgit(totals.salaryEarned), hint: 'after unpaid leave' },
           {
             label: 'Additions',
-            value: ringgit(additions.toFixed(2)),
+            value: ringgit(totals.additions),
             hint: 'allowances, overtime, incentives, claims',
           },
           {
             label: 'Unpaid leave',
-            value: `−${ringgit(totals.unpaid.toFixed(2))}`,
-            tone: totals.unpaid > 0 ? 'warn' : 'neutral',
+            value: `−${ringgit(totals.unpaidLeave)}`,
+            tone: Number(totals.unpaidLeave) > 0 ? 'warn' : 'neutral',
           },
         ]}
       />
+
+      {!totals.addsUp && totals.discrepancy ? <AdminNotice tone="warn">{totals.discrepancy}</AdminNotice> : null}
 
       <AdminSection
         title="What each person earns this month"
         description="Open a row to see where every figure came from. A figure that came from the timesheet, a leave record, an incentive run or a claim is corrected there, not here."
       >
-        <DataTable<EarningRow>
+        <DataTable<PayRow>
           rowKey="staffId"
           rows={rows}
           emptyText="Nothing has been calculated yet."
           expandable={{
-            expandedRowRender: (row: EarningRow) => (
+            expandedRowRender: (row: PayRow) => (
               <ItemBreakdown items={row.items.filter((item) => EARNING_CODES.has(item.componentCode))} name={row.name} />
             ),
           }}
           summary={(shown) => {
-            const s = shown as readonly EarningRow[];
-            const total = (pick: (row: EarningRow) => number) =>
-              ringgit((Math.round(s.reduce((t, row) => t + pick(row), 0) * 100) / 100).toFixed(2));
+            const s = shown as readonly PayRow[];
             return (
               <DataTableTotalRow
                 cells={[
@@ -407,12 +390,12 @@ function EarningsStep({ data }: { data: PayrollJourney }) {
                   // lands under the wrong heading.
                   { value: '', colSpan: 1, align: 'left' },
                   { value: `${s.length} employee${s.length === 1 ? '' : 's'}`, align: 'left' },
-                  { value: total((row) => row.salaryEarned) },
-                  { value: total((row) => row.allowances) },
-                  { value: total((row) => row.overtime) },
-                  { value: total((row) => row.incentive) },
-                  { value: total((row) => row.other) },
-                  { value: total((row) => row.gross), strong: true },
+                  { value: ringgit(totals.salaryEarned) },
+                  { value: ringgit(totals.allowances) },
+                  { value: ringgit(totals.overtime) },
+                  { value: ringgit(totals.incentive) },
+                  { value: ringgit(totals.otherEarnings) },
+                  { value: ringgit(totals.gross), strong: true },
                 ]}
               />
             );
@@ -423,26 +406,26 @@ function EarningsStep({ data }: { data: PayrollJourney }) {
               title: 'Salary earned',
               width: 165,
               align: 'right' as const,
-              render: (_: unknown, row: EarningRow) => (
+              render: (_: unknown, row: PayRow) => (
                 <div>
-                  {ringgit(row.salaryEarned.toFixed(2))}
-                  {row.unpaid > 0 ? (
+                  {ringgit(row.salaryEarned)}
+                  {Number(row.unpaidLeaveDeduction) > 0 ? (
                     <div className="kw-provenance" style={{ color: '#b42318' }}>
-                      {ringgit(Number(row.basicSalary).toFixed(2))} less {ringgit(row.unpaid.toFixed(2))} unpaid leave
+                      {ringgit(row.basicSalary)} less {ringgit(row.unpaidLeaveDeduction)} unpaid leave
                     </div>
                   ) : null}
                 </div>
               ),
             },
             amountColumn('Allowances', (row) => row.allowances),
-            amountColumn('Overtime', (row) => row.overtime),
+            amountColumn('Overtime', (row) => row.overtimePay),
             amountColumn('Incentive', (row) => row.incentive),
-            amountColumn('Claims & other', (row) => row.other),
+            amountColumn('Claims & other', (row) => row.otherEarnings),
             {
               title: 'Earnings',
               width: 145,
               align: 'right' as const,
-              render: (_: unknown, row: EarningRow) => <strong>{ringgit(row.gross.toFixed(2))}</strong>,
+              render: (_: unknown, row: PayRow) => <strong>{ringgit(row.grossPay)}</strong>,
             },
           ]}
         />
@@ -485,30 +468,41 @@ function ItemBreakdown({ items, name }: { items: PayrollJourney['pay']['rows'][n
 
 function DeductionsStep({ data }: { data: PayrollJourney }) {
   const rows = data.pay.rows;
-  const pcbMissing = rows.filter((row) => row.pcb === null).length;
-  const statutoryTotal = rows.reduce((sum, row) => sum + Number(row.statutoryEmployee ?? 0), 0);
-  const pcbTotal = rows.reduce((sum, row) => sum + Number(row.pcb ?? 0), 0);
-  const deductionTotal = Number(data.run.deductionTotal);
+  const totals = data.pay.totals;
+  const pcbMissing = totals.pcbMissing;
+  // A LINDUNG column only where the scheme is in the month at all — a clinic
+  // with nobody participating should not carry an empty statutory column.
+  const showLindung = rows.some((row) => row.lindungEmployee === null || Number(row.lindungEmployee) > 0);
 
   return (
     <>
       <StatStrip
         stats={[
-          { label: 'Total deductions', value: ringgit(deductionTotal.toFixed(2)) },
-          { label: 'Statutory', value: ringgit(statutoryTotal.toFixed(2)), hint: 'EPF, SOCSO, EIS' },
+          { label: 'Total deductions', value: ringgit(totals.deductions) },
+          {
+            label: 'Statutory',
+            value:
+              totals.statutoryNotCalculated > 0
+                ? `${totals.statutoryNotCalculated} not calculated`
+                : ringgit(totals.statutoryEmployee),
+            hint: showLindung ? 'EPF, SOCSO, EIS, LINDUNG' : 'EPF, SOCSO, EIS',
+            tone: totals.statutoryNotCalculated > 0 ? 'bad' : 'neutral',
+          },
           {
             label: 'Monthly tax (PCB)',
-            value: pcbMissing > 0 ? `${pcbMissing} missing` : ringgit(pcbTotal.toFixed(2)),
+            value: pcbMissing > 0 ? `${pcbMissing} missing` : ringgit(totals.pcb),
             hint: 'entered by hand',
             tone: pcbMissing > 0 ? 'bad' : 'neutral',
           },
           {
             label: 'Other',
-            value: ringgit((deductionTotal - statutoryTotal - pcbTotal).toFixed(2)),
-            hint: 'unpaid leave, advances',
+            value: ringgit(totals.otherDeductions),
+            hint: 'zakat, advances, uniforms',
           },
         ]}
       />
+
+      {!totals.addsUp && totals.discrepancy ? <AdminNotice tone="warn">{totals.discrepancy}</AdminNotice> : null}
 
       {pcbMissing > 0 ? (
         <AdminNotice tone="warn">
@@ -520,7 +514,7 @@ function DeductionsStep({ data }: { data: PayrollJourney }) {
       ) : null}
 
       <AdminSection title="What comes off each person's pay">
-        <DataTable
+        <DataTable<PayRow>
           rowKey="staffId"
           rows={rows}
           emptyText="Nothing has been calculated yet."
@@ -530,7 +524,7 @@ function DeductionsStep({ data }: { data: PayrollJourney }) {
               title: 'EPF · SOCSO · EIS',
               width: 170,
               align: 'right' as const,
-              render: (_: unknown, row: PayrollJourney['pay']['rows'][number]) =>
+              render: (_: unknown, row: PayRow) =>
                 row.statutoryEmployee === null ? (
                   <Tooltip title="No statutory rates are configured for this period, so these are blank rather than zero.">
                     <span className="kw-muted">Not calculated</span>
@@ -539,11 +533,28 @@ function DeductionsStep({ data }: { data: PayrollJourney }) {
                   ringgit(row.statutoryEmployee)
                 ),
             },
+            ...(showLindung
+              ? [
+                  {
+                    title: 'LINDUNG',
+                    width: 120,
+                    align: 'right' as const,
+                    render: (_: unknown, row: PayRow) =>
+                      row.lindungEmployee === null ? (
+                        <Tooltip title="Whether this employee joined LINDUNG 24 JAM has not been recorded, so nothing can be worked out.">
+                          <span style={{ color: '#b45309', fontWeight: 600 }}>Not recorded</span>
+                        </Tooltip>
+                      ) : (
+                        dashZero(row.lindungEmployee)
+                      ),
+                  },
+                ]
+              : []),
             {
               title: 'Monthly tax',
               width: 150,
               align: 'right' as const,
-              render: (_: unknown, row: PayrollJourney['pay']['rows'][number]) =>
+              render: (_: unknown, row: PayRow) =>
                 row.pcb === null ? (
                   <span style={{ color: '#b45309', fontWeight: 600 }}>Not entered</span>
                 ) : (
@@ -551,11 +562,11 @@ function DeductionsStep({ data }: { data: PayrollJourney }) {
                 ),
             },
             {
-              title: 'Unpaid leave',
-              dataIndex: 'unpaidLeaveDeduction',
-              width: 140,
+              title: 'Other deductions',
+              dataIndex: 'otherDeductions',
+              width: 150,
               align: 'right' as const,
-              render: (value: string) => (Number(value) > 0 ? ringgit(value) : <span className="kw-muted">—</span>),
+              render: (value: string) => dashZero(value),
             },
             {
               title: 'Take-home',
@@ -567,6 +578,29 @@ function DeductionsStep({ data }: { data: PayrollJourney }) {
           ]}
         />
       </AdminSection>
+
+      {rows.some((row) => Number(row.unpaidLeaveDeduction) > 0) ? (
+        <AdminSection
+          title="Unpaid leave is not a deduction"
+          description="An incomplete month's wages are smaller under s.18A — the reduction has already come off the earnings step's salary column, so it is not taken again here."
+        >
+          <DataTable<PayRow>
+            rowKey="staffId"
+            rows={rows.filter((row) => Number(row.unpaidLeaveDeduction) > 0)}
+            emptyText="Nobody took unpaid leave this month."
+            columns={[
+              { title: 'Employee', dataIndex: 'name' },
+              {
+                title: 'Wages reduced by',
+                dataIndex: 'unpaidLeaveDeduction',
+                width: 160,
+                align: 'right' as const,
+                render: (value: string) => ringgit(value),
+              },
+            ]}
+          />
+        </AdminSection>
+      ) : null}
     </>
   );
 }
@@ -575,9 +609,18 @@ function DeductionsStep({ data }: { data: PayrollJourney }) {
 // STEP 5 — Review. The primary owner control screen.
 // ---------------------------------------------------------------------------
 
-function ReviewStep({ data, runId }: { data: PayrollJourney; runId: string }) {
+function ReviewStep({
+  data,
+  runId,
+  mayApprove,
+  onFixInputs,
+}: {
+  data: PayrollJourney;
+  runId: string;
+  mayApprove: boolean;
+  onFixInputs: (staffId: string, staffName: string | null) => void;
+}) {
   const variance = usePayrollVariance(runId);
-  const attention = data.review.attention.filter((item) => item.severity !== 'INFO');
   const [whole, cents] = data.run.netTotal.split('.');
 
   return (
@@ -613,51 +656,14 @@ function ReviewStep({ data, runId }: { data: PayrollJourney; runId: string }) {
         </div>
       </div>
 
-      <AdminSection
-        title="Needs attention"
-        actions={
-          <span className="kw-muted" style={{ fontSize: 12.5 }}>
-            {data.review.mustFix > 0
-              ? `${data.review.mustFix} must be sorted before this run can be finished`
-              : 'Nothing is stopping this run'}
-          </span>
-        }
-      >
-        {attention.length === 0 ? (
-          <p className="kw-muted" style={{ margin: 0 }}>
-            Nothing needs your attention this month.
-          </p>
-        ) : (
-          attention.map((item) => (
-            <div
-              key={item.id}
-              className={`kw-attention${item.blocksApproval ? ' kw-attention--blocking' : ''}`}
-            >
-              <div className="kw-attention__avatar">{item.name ? initials(item.name) : '!'}</div>
-              <div className="kw-attention__body">
-                <div className="kw-attention__what">
-                  {item.name ? `${item.name} — ` : ''}
-                  {item.what}
-                </div>
-                <div className="kw-attention__why">{item.why}</div>
-                <div className="kw-attention__todo">
-                  <strong>What to do:</strong> {item.whatToDo}
-                  {!item.blocksApproval ? ' This does not block the run.' : ''}
-                </div>
-              </div>
-              <div>
-                {item.link ? (
-                  <Link to={item.link}>
-                    <Button type={item.blocksApproval ? 'primary' : 'default'} size="small">
-                      Fix
-                    </Button>
-                  </Link>
-                ) : null}
-              </div>
-            </div>
-          ))
-        )}
-      </AdminSection>
+      {/*
+        * THE EXCEPTION CENTRE, on the run it belongs to. The same
+        * `payroll_exceptions` rows every other surface reads — the stepper's
+        * markers, the gate, the approve button — with the two remedies the
+        * review used to lack: passing a warning with a recorded reason, and
+        * entering a missing PCB without leaving the run.
+        */}
+      <PayrollExceptionCentre runId={runId} canOverride={mayApprove} onFixInputs={onFixInputs} />
 
       <AdminSection
         title="Take-home pay, person by person"

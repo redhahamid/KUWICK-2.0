@@ -223,6 +223,34 @@ describe('the three bases are different, which is the whole point', () => {
     expect(slip.grossCents - slip.employeeDeductionCents).toBe(slip.netCents);
   });
 
+  it('withholds LINDUNG from a participant, and from nobody else', () => {
+    // Employee-borne, employer-remitted — so it must come off the pay it is
+    // remitted on behalf of. It used to be recorded on the line and left out
+    // of the withholdings, which overstated a participant's net by exactly
+    // what the employer then remitted for them.
+    const july = { periodEnd: new Date('2026-07-31T00:00:00.000Z') }; // after 1 June 2026 commencement
+    const optedIn = computePayslip([earning('BASIC', 2100)], july, {
+      ...under60,
+      lindungParticipation: 'VOLUNTARY_OPTED_IN',
+    });
+    const notParticipating = computePayslip([earning('BASIC', 2100)], july, {
+      ...under60,
+      lindungParticipation: 'NOT_PARTICIPATING',
+    });
+    const contribution = optedIn.statutory.lindung.employeeCents ?? 0;
+    expect(contribution).toBeGreaterThan(0);
+    // The scheme has no employer share, so participation moves net pay and
+    // nothing else: not gross, not the employer's cost.
+    expect(optedIn.statutory.lindung.employerCents).toBe(0);
+    expect(optedIn.grossCents).toBe(notParticipating.grossCents);
+    expect(optedIn.employerCostCents).toBe(notParticipating.employerCostCents);
+    expect(notParticipating.statutory.lindung.employeeCents).toBe(0);
+    expect(optedIn.netCents).toBe(notParticipating.netCents - contribution);
+    expect(optedIn.employeeDeductionCents).toBe(notParticipating.employeeDeductionCents + contribution);
+    // The invariant the run enforces still holds with the scheme withheld.
+    expect(optedIn.grossCents - optedIn.employeeDeductionCents).toBe(optedIn.netCents);
+  });
+
   it('keeps mileage out of every statutory base but inside gross', () => {
     const bases = computeBases([earning('BASIC', 2100), earning('MILEAGE', 14.34)]);
     expect(bases.epfCents).toBe(210000);

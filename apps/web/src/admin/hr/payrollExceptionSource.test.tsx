@@ -186,9 +186,9 @@ describe('exception state has exactly one source', () => {
     expect(screen.queryByText(/No exceptions\. Every employee in this run could be calculated\./)).toBeNull();
 
     // Three blocking and two warning, counted separately inside the CENTRE's
-    // table and inside the BANNER. Both must land on the same 3/2 — the two
+    // cards and inside the BANNER. Both must land on the same 3/2 — the two
     // renderings walk the same array.
-    const centre = document.querySelectorAll('.ant-table-tbody .kw-sev');
+    const centre = document.querySelectorAll('.kw-exceptionCentre .kw-sev');
     const banner = document.querySelectorAll('.kw-adminNotice .kw-sev');
     const tally = (nodes: NodeListOf<Element>, severity: string) =>
       Array.from(nodes).filter((n) => n.classList.contains(`kw-sev--${severity}`)).length;

@@ -5002,6 +5002,17 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 
 .kw-attention__todo strong { color: #344054; }
 
+/* The exception centre's cards lead with the severity, not an avatar. */
+.kw-attention__severity { padding-top: 2px; min-width: 84px; }
+.kw-attention__action { display: flex; align-items: flex-start; }
+.kw-attention__overridden {
+  font-size: 12.5px;
+  color: var(--kw-text-secondary);
+  font-style: italic;
+  margin-top: 4px;
+}
+.kw-exceptionCentre .kw-attention { grid-template-columns: 92px 1fr auto; }
+
 /* Three numbers an owner actually wants. */
 .kw-reviewFigures {
   display: grid;

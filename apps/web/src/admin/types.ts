@@ -1949,8 +1949,45 @@ export interface PayrollJourney {
       employerCost: string;
       statutoryEmployee: string | null;
       pcb: string | null;
+      /** SKBBK. Employee-borne, employer-remitted; null = participation unrecorded. */
+      lindungEmployee: string | null;
+      /** Basic less unpaid leave — the engine's grouping, not the screen's. */
+      salaryEarned: string;
+      /** Incentives plus bonus, grouped the way the earnings step shows them. */
+      incentive: string;
+      /** Residual of the line's own gross, so the row cannot fail to add up. */
+      otherEarnings: string;
+      /** The line's own gross minus its own net. */
+      deductionTotal: string;
       items: PayrollJourneyPayItem[];
     }[];
+    /**
+     * THE FIGURES THE MONEY STEPS RENDER. Worked out by the server from the
+     * payslip lines; the screens display them and compute nothing. A scheme
+     * that was not calculated is a COUNT here, never a zero in a total.
+     */
+    totals: {
+      basic: string;
+      unpaidLeave: string;
+      salaryEarned: string;
+      allowances: string;
+      overtime: string;
+      incentive: string;
+      otherEarnings: string;
+      additions: string;
+      gross: string;
+      statutoryEmployee: string;
+      statutoryNotCalculated: number;
+      pcb: string;
+      pcbMissing: number;
+      lindung: string;
+      lindungNotDetermined: number;
+      otherDeductions: string;
+      deductions: string;
+      net: string;
+      addsUp: boolean;
+      discrepancy: string | null;
+    };
   };
   review: {
     gate: PayrollExceptionGate;

@@ -50,25 +50,54 @@ describe('money is grouped', () => {
   });
 });
 
-describe('the earnings table cannot fail to add up', () => {
+describe('the money steps render the engine and compute nothing', () => {
   /**
-   * Two earlier versions of this table were wrong in the same way: columns
-   * that did not reach their own row total. The fix is a RESIDUAL last
-   * addition column, so this asserts the residual is still computed from gross
-   * rather than from a named list of components.
+   * Two earlier versions of the earnings table were wrong in the same way:
+   * columns that did not reach their own row total. A third fixed that with a
+   * residual — computed IN THE BROWSER, along with every subtotal, and on the
+   * deductions step a statutory figure that was never calculated was summed
+   * as zero. The grouping now comes from the journey payload; these guards
+   * assert the screens read it and no longer do arithmetic of their own.
    */
-  it('derives the last addition column as the residual of gross', () => {
-    expect(code(runSource)).toMatch(/gross - salaryEarned - allowances - overtime - incentive/);
+  it('renders the residual and the salary-after-unpaid-leave the server derived', () => {
+    expect(code(runSource)).toMatch(/row\.otherEarnings/);
+    expect(code(runSource)).toMatch(/row\.salaryEarned/);
+    expect(code(runSource)).toMatch(/totals\.otherEarnings/);
   });
 
-  it('takes its figures from the payslip fields, not from a re-derivation of the input rows', () => {
-    expect(code(runSource)).toMatch(/Number\(row\.grossPay\)/);
-    expect(code(runSource)).toMatch(/Number\(row\.allowances\)/);
+  it('takes every total from data.pay.totals, never from a sum over the rows on screen', () => {
+    expect(code(runSource)).toMatch(/data\.pay\.totals/);
+    expect(code(runSource)).toMatch(/totals\.gross/);
+    expect(code(runSource)).toMatch(/totals\.deductions/);
+    // The exact shapes the browser arithmetic lived in. If either comes back,
+    // the screen is a second payroll implementation again.
+    expect(code(runSource)).not.toMatch(/\.reduce\(\(sum/);
+    expect(code(runSource)).not.toMatch(/\?\? 0\)/);
+  });
+
+  it('says how many statutory figures were NOT calculated instead of summing them as zero', () => {
+    expect(code(runSource)).toMatch(/statutoryNotCalculated/);
+    expect(code(runSource)).toMatch(/not calculated/);
   });
 
   it('shows unpaid leave as a reduction of salary, never as an invisible difference', () => {
-    expect(code(runSource)).toMatch(/salaryEarned = Number\(row\.basicSalary\) - unpaid/);
-    expect(code(runSource)).toMatch(/unpaid leave/);
+    expect(code(runSource)).toMatch(/less \{ringgit\(row\.unpaidLeaveDeduction\)\} unpaid leave/);
+    expect(code(runSource)).toMatch(/Unpaid leave is not a deduction/);
+  });
+
+  it('surfaces a run whose lines do not reach its own totals rather than tidying it up', () => {
+    expect(code(runSource)).toMatch(/totals\.addsUp/);
+    expect(code(runSource)).toMatch(/totals\.discrepancy/);
+  });
+});
+
+describe('the exception centre is on the run itself', () => {
+  it('the review step renders the centre, wired to the same rows as the stepper and the gate', () => {
+    expect(code(runSource)).toMatch(/<PayrollExceptionCentre/);
+    // And the remedy for a missing PCB opens the inputs drawer on this
+    // screen, for this employee, instead of routing the reader away.
+    expect(code(runSource)).toMatch(/<PayrollInputsDrawer/);
+    expect(code(runSource)).toMatch(/onFixInputs/);
   });
 });
 

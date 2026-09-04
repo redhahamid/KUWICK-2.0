@@ -1300,7 +1300,8 @@ export class PayrollService {
             payslip.incomplete =
               payslip.statutory.epf.employeeCents === null ||
               payslip.statutory.socso.employeeCents === null ||
-              payslip.statutory.eis.employeeCents === null;
+              payslip.statutory.eis.employeeCents === null ||
+              payslip.statutory.lindung.employeeCents === null;
           }
         }
         // THE FAIL-SAFE. A statutory figure that came back NULL is unknown, not
