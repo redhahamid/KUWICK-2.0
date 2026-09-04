@@ -4563,6 +4563,9 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
   font-size: 13.5px;
   font-weight: 600;
   color: var(--kw-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .kw-setupList__detail {
@@ -5001,6 +5004,33 @@ body:has(.kw-canvas-shell) .kw-chat-launcher {
 }
 
 .kw-attention__todo strong { color: #344054; }
+
+/* GET READY — the pre-run checklist rows. */
+.kw-readyList { display: flex; flex-direction: column; gap: 2px; }
+.kw-readyList__row {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--kw-border);
+}
+.kw-readyList__row:last-child { border-bottom: none; }
+.kw-readyList__mark {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 1px;
+}
+.kw-readyList__mark--done { background: #ecfdf3; color: #166534; }
+.kw-readyList__mark--blocking { background: #fef3f2; color: #b42318; }
+.kw-readyList__mark--advisory { background: #fffaeb; color: #b45309; }
+.kw-readyList__label { font-size: 13px; font-weight: 650; color: var(--kw-text); display: flex; align-items: center; gap: 8px; }
+.kw-readyList__detail { font-size: 12.5px; color: var(--kw-text-secondary); line-height: 1.5; margin-top: 2px; }
 
 /* The exception centre's cards lead with the severity, not an avatar. */
 .kw-attention__severity { padding-top: 2px; min-width: 84px; }

@@ -16,6 +16,7 @@ import { PayrollInputService } from './payroll-input.service';
 import { StaffClaimService } from './staff-claim.service';
 import { LocumService } from './locum.service';
 import { PayrollJourneyService } from './payroll-journey.service';
+import { PayrollReadinessService } from './payroll-readiness.service';
 import { PayrollReportService } from './payroll-report.service';
 
 /**
@@ -49,6 +50,7 @@ import { PayrollReportService } from './payroll-report.service';
     StaffClaimService,
     LocumService,
     PayrollJourneyService,
+    PayrollReadinessService,
     PayrollReportService,
   ],
   exports: [
@@ -67,6 +69,7 @@ import { PayrollReportService } from './payroll-report.service';
     StaffClaimService,
     LocumService,
     PayrollJourneyService,
+    PayrollReadinessService,
     PayrollReportService,
   ],
 })

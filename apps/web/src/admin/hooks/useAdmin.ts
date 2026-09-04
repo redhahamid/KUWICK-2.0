@@ -64,6 +64,7 @@ import type {
   PayrollClaimsReport,
   PayrollEmployerCostReport,
   PayrollHome,
+  PayrollReadiness,
   PayrollRegisterReport,
   PayrollReportCatalogue,
   PayrollStatutoryReport,
@@ -1110,6 +1111,17 @@ export function usePayrollHome(params: { period?: string; clinicId?: string } = 
   return useQuery({
     queryKey: ['admin-hr', 'payroll-home', params],
     queryFn: () => apiClient.get<PayrollHome>(`/workforce/payroll/home${qs(params)}`),
+  });
+}
+
+/**
+ * WHO CAN BE PAID, BEFORE A RUN EXISTS. Per-employee checklists from the same
+ * builder the employee record uses, plus the employers' filing readiness.
+ */
+export function usePayrollReadiness(params: { period?: string; clinicId?: string } = {}) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payroll-readiness', params],
+    queryFn: () => apiClient.get<PayrollReadiness>(`/workforce/payroll/readiness${qs(params)}`),
   });
 }
 

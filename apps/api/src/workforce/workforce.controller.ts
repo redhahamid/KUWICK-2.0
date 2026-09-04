@@ -33,6 +33,7 @@ import {
 import { StaffClaimService } from './staff-claim.service';
 import { LocumService } from './locum.service';
 import { PayrollJourneyService } from './payroll-journey.service';
+import { PayrollReadinessService } from './payroll-readiness.service';
 import { PayrollReportService } from './payroll-report.service';
 import { CreateStaffClaimDto, DecideStaffClaimDto, SettleStaffClaimDto } from './dto/staff-claim.dto';
 import {
@@ -64,6 +65,7 @@ export class WorkforceController {
     private readonly claims: StaffClaimService,
     private readonly locum: LocumService,
     private readonly journey: PayrollJourneyService,
+    private readonly readiness: PayrollReadinessService,
     private readonly reports: PayrollReportService,
   ) {}
 
@@ -105,6 +107,16 @@ export class WorkforceController {
   @Get('payroll/home')
   payrollHome(@Query('period') period?: string, @Query('clinicId') clinicId?: string) {
     return this.journey.home({ period, clinicId });
+  }
+
+  /**
+   * WHO CAN BE PAID, BEFORE A RUN EXISTS. Per-employee checklists built by the
+   * same code the employee record uses, from the same facts the run blocks on
+   * — plus the employing companies' own filing readiness.
+   */
+  @Get('payroll/readiness')
+  payrollReadiness(@Query('period') period?: string, @Query('clinicId') clinicId?: string) {
+    return this.readiness.list({ period, clinicId });
   }
 
   @Get('payroll/runs/:id/journey')

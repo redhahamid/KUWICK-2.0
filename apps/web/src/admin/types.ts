@@ -1026,9 +1026,11 @@ export interface EmployeeRecord {
   engagement: 'EMPLOYEE' | 'CONTRACTOR';
   /** NULL for a contractor: they are not on payroll, so it does not apply. */
   payrollReadiness: {
-    items: { key: string; label: string; done: boolean; detail: string }[];
+    items: PayrollReadinessItem[];
     done: number;
     total: number;
+    blockersOutstanding: number;
+    ready: boolean;
   } | null;
   /** Salary as PERIODS, not effective-dated rows. NULL when pay is not visible. */
   salaryPeriods:
@@ -1818,6 +1820,60 @@ export interface SalaryParityReport {
 }
 
 export type PayrollHomeState = 'NOT_STARTED' | 'STARTED' | 'READY_TO_REVIEW' | 'APPROVED' | 'PAID';
+
+// ---------------------------------------------------------------------------
+// PAYROLL READINESS — who can be paid, before a run exists. Built by the same
+// server code as the employee record's checklist, from the same facts the
+// calculation blocks on.
+// ---------------------------------------------------------------------------
+
+export interface PayrollReadinessItem {
+  key: string;
+  label: string;
+  /** BLOCKING mirrors the run's own exceptions; ADVISORY is real but non-gating. */
+  severity: 'BLOCKING' | 'ADVISORY';
+  done: boolean;
+  detail: string;
+}
+
+export interface PayrollReadiness {
+  period: string;
+  periodLabel: string;
+  summary: {
+    total: number;
+    ready: number;
+    withBlockers: number;
+    withAdvisories: number;
+    withoutEmployer: number;
+  };
+  employers: {
+    id: string;
+    name: string;
+    registrationNo: string | null;
+    employees: number;
+    epfEmployerNoOnFile: boolean;
+    socsoEmployerNoOnFile: boolean;
+    lhdnEmployerNoOnFile: boolean;
+    bankAccountOnFile: boolean;
+    missing: string[];
+    ready: boolean;
+  }[];
+  employees: {
+    staffId: string;
+    name: string;
+    position: string | null;
+    legalEmployerId: string | null;
+    employerName: string | null;
+    startDate: string | null;
+    readiness: {
+      items: PayrollReadinessItem[];
+      done: number;
+      total: number;
+      blockersOutstanding: number;
+      ready: boolean;
+    };
+  }[];
+}
 
 export interface PayrollHome {
   period: string;

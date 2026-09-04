@@ -163,7 +163,16 @@ function OverviewTab({ data }: { data: EmployeeRecord }) {
                   {item.done ? '✓' : '!'}
                 </span>
                 <div className="kw-setupList__body">
-                  <div className="kw-setupList__title">{item.label}</div>
+                  <div className="kw-setupList__title">
+                    {item.label}
+                    {/* BLOCKING mirrors the run's own refusals; an advisory item
+                        is real work that does not stop this person being paid. */}
+                    {!item.done ? (
+                      <span className={`kw-sev kw-sev--${item.severity === 'BLOCKING' ? 'blocking' : 'warning'}`}>
+                        {item.severity === 'BLOCKING' ? 'Blocks payroll' : 'Advisory'}
+                      </span>
+                    ) : null}
+                  </div>
                   <div className="kw-setupList__detail">{item.detail}</div>
                 </div>
               </div>

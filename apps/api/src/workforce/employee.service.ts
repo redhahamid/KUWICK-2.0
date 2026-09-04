@@ -10,6 +10,7 @@ import { formatCents, fromCents, toCents } from '../finance/money';
 import { resolveSalaryForPayroll } from './salary-resolution';
 import { resolveClassificationForPayroll } from './statutory-classification';
 import { toClassificationRow } from './statutory-classification.service';
+import { buildPayrollReadiness } from './payroll-readiness';
 
 /**
  * THE EMPLOYEE PROFILE — the employment half of a person.
@@ -146,7 +147,7 @@ export class EmployeeService {
     const period = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
     const periodEnd = new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth() + 1, 0));
 
-    const [clinic, attendance, payrollLines, salaryRows, classificationRows, pcbInput, claims] =
+    const [clinic, attendance, payrollLines, salaryRows, classificationRows, pcbInput, claims, priorYtdMonths] =
       await Promise.all([
       profile.staff.clinicId
         ? this.prisma.clinic.findUnique({ where: { id: profile.staff.clinicId }, select: { name: true } })
@@ -194,6 +195,12 @@ export class EmployeeService {
         orderBy: { claimDate: 'desc' },
         take: 12,
         include: { decidedBy: { select: { fullName: true } } },
+      }),
+      // Whether any pay for the tax year is on record before this month —
+      // approved runs or an opening import both count. Feeds the readiness
+      // item that says monthly tax would treat the earlier months as unpaid.
+      this.prisma.employeeYtd.count({
+        where: { staffId, taxYear: period.getUTCFullYear(), month: { lt: period.getUTCMonth() + 1 } },
       }),
     ]);
 
@@ -365,98 +372,28 @@ export class EmployeeService {
       payrollReadiness:
         profile.engagement === 'CONTRACTOR'
           ? null
-          : (() => {
-              const items = [
-                {
-                  key: 'salary',
-                  label: 'Salary',
-                  done: salary.kind === 'RESOLVED',
-                  detail:
-                    salary.kind === 'RESOLVED'
-                      ? `RM${money(salary.row.amountCents)} a ${salary.row.basis === 'MONTHLY' ? 'month' : salary.row.basis.toLowerCase()}, since ${longDate(salary.row.effectiveFrom)}`
-                      : salary.reason,
-                },
-                {
-                  key: 'restDay',
-                  label: 'Rest day',
-                  done: statutory.restDayOfWeek !== null && statutory.restDayOfWeek !== undefined,
-                  detail:
-                    statutory.restDayOfWeek === null || statutory.restDayOfWeek === undefined
-                      ? 'No rest day is designated. The Employment Act requires one a week, and working it is paid in days at the ordinary rate rather than as hours of overtime — so without it their extra hours cannot be priced.'
-                      : `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][statutory.restDayOfWeek]}. Work on it is paid under s.60(3), not as ordinary overtime.`,
-                },
-                {
-                  key: 'bank',
-                  label: 'Bank account',
-                  done: Boolean(profile.bankName && profile.bankAccountNo),
-                  detail: profile.bankName
-                    ? `${profile.bankName}${profile.bankAccountNo ? ` · ending ${profile.bankAccountNo.slice(-4)}` : ''}`
-                    : 'No bank account is recorded, so they cannot be included in a payment file.',
-                },
-                {
-                  key: 'pcb',
-                  label: 'Monthly tax (PCB) information',
-                  done: !statutory.pcbApplicable || Boolean(pcbInput),
-                  detail: !statutory.pcbApplicable
-                    ? 'Recorded as not paying PCB.'
-                    : pcbInput
-                      ? `RM${money(toCents(pcbInput.amount))} entered for this month.`
-                      : 'Needed before this month can be finalised. Kuwick does not work out monthly tax.',
-                },
-                (() => {
-                  // The membership numbers a filing is made under. Only the
-                  // schemes that APPLY are required: a person outside SOCSO
-                  // needs no SOCSO number, and demanding one would be an amber
-                  // mark against a record that is complete.
-                  const missing = [
-                    statutory.epfApplicable && !profile.epfNumber ? 'EPF' : null,
-                    statutory.socsoApplicable && !profile.socsoNumber ? 'SOCSO' : null,
-                  ].filter((name): name is string => name !== null);
-                  // A membership number lets a filing be addressed; the Third
-                  // Schedule Part decides what goes IN it, and without the Part
-                  // there is no EPF figure to file at all.
-                  const partUnknown = statutory.epfApplicable && !statutory.epfMembership;
-                  // Monthly tax cannot be worked out without both, and neither
-                  // can be inferred: residence chooses between a flat 30% and
-                  // the progressive table, category chooses the deductions.
-                  // LINDUNG 24 JAM: voluntary for locals, mandatory for
-                  // foreign workers, and not readable off anything else.
-                  const lindungUnknown = !statutory.lindungParticipation;
-                  const taxProfileUnknown =
-                    statutory.pcbApplicable && (!statutory.taxResidence || !statutory.pcbCategory);
-                  const applies = [
-                    statutory.epfApplicable ? 'EPF' : null,
-                    statutory.socsoApplicable ? 'SOCSO' : null,
-                    statutory.eisApplicable ? 'EIS' : null,
-                  ].filter((name): name is string => name !== null);
-                  return {
-                    key: 'statutory',
-                    label: 'EPF, SOCSO and EIS',
-                    done: missing.length === 0 && !partUnknown && !taxProfileUnknown && !lindungUnknown,
-                    detail: lindungUnknown
-                      ? 'Their LINDUNG 24 JAM participation is not recorded. The scheme is voluntary for local employees and mandatory for foreign workers, and the contribution comes out of their pay — so it cannot be guessed either way.'
-                      : taxProfileUnknown
-                      ? 'Their tax residence or MTD category is not recorded. Monthly tax is a flat 30% for a non-resident and a table for everybody else, and the category decides which deductions apply, so neither can be guessed.'
-                      : partUnknown
-                      ? 'Their EPF membership — Malaysian citizen, permanent resident or non-citizen — is not recorded. The Third Schedule has a different Part for each, so no EPF contribution can be worked out until it is.'
-                      : missing.length > 0
-                        ? `No ${missing.join(' or ')} membership number is on file, so nothing could be filed for them under ${missing.length === 1 ? 'that scheme' : 'those schemes'}.`
-                        : applies.length === 0
-                          ? 'None of the three applies to this person.'
-                          : `${applies.join(', ')} apply, and the membership numbers are on file.`,
-                  };
-                })(),
-                {
-                  key: 'dob',
-                  label: 'Date of birth',
-                  done: Boolean(profile.dateOfBirth),
-                  detail: profile.dateOfBirth
-                    ? 'Sets the age-related statutory rates.'
-                    : 'EPF, SOCSO and EIS all change at 60, so this is needed before they can be calculated.',
-                },
-              ];
-              return { items, done: items.filter((item) => item.done).length, total: items.length };
-            })(),
+          : buildPayrollReadiness({
+              salary,
+              // The salary AMOUNT rides on the pay permission. The checklist
+              // used to print it into the salary item for anybody with
+              // `hr.view`, which handed out the one figure `hr.salary.view`
+              // exists to protect.
+              mayReadPay,
+              standing: statutory,
+              legalEmployerName: profile.legalEmployer?.name ?? null,
+              bankName: profile.bankName,
+              bankAccountNo: profile.bankAccountNo,
+              dateOfBirth: profile.dateOfBirth,
+              epfNumberOnFile: Boolean(profile.epfNumber),
+              socsoNumberOnFile: Boolean(profile.socsoNumber),
+              pcbInputAmountCents: pcbInput ? toCents(pcbInput.amount) : null,
+              ytd: {
+                periodMonth: period.getUTCMonth() + 1,
+                taxYear: period.getUTCFullYear(),
+                hasPriorMonths: priorYtdMonths > 0,
+                employedBeforePeriod: Boolean(profile.startDate && profile.startDate < period),
+              },
+            }),
       /**
        * SALARY AS PERIODS, not as effective-dated rows. "5 Mar 2026 → 30 Sep
        * 2026 · RM3,200" is a fact about somebody's employment; "effective_from

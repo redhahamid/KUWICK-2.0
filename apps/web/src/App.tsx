@@ -90,6 +90,7 @@ import { LocumPage } from './admin/hr/LocumPage';
 import { PayrollReportsPage } from './admin/hr/PayrollReportsPage';
 import { PayrollSettingsPage } from './admin/hr/PayrollSettingsPage';
 import { PayrollHomePage } from './admin/hr/PayrollHomePage';
+import { PayrollReadinessPage } from './admin/hr/PayrollReadinessPage';
 import { PayrollRunPage } from './admin/hr/PayrollRunPage';
 import { EmployeeWorkspacePage } from './admin/hr/EmployeeWorkspacePage';
 import { FinanceOverviewPage } from './admin/finance/FinanceOverviewPage';
@@ -262,6 +263,7 @@ export function App() {
                 combined page stays mounted at /admin/hr/payroll/all so an
                 existing bookmark still reaches the run table it expects. */}
             <Route path="/admin/hr/payroll" element={<PayrollHomePage />} />
+            <Route path="/admin/hr/payroll/readiness" element={<PayrollReadinessPage />} />
             <Route path="/admin/hr/payroll/all" element={<PayrollPage />} />
             <Route path="/admin/hr/payroll/:id" element={<PayrollRunPage />} />
             <Route path="/admin/hr/employers" element={<LegalEmployersPage />} />

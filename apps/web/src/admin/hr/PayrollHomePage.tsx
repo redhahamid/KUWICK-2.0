@@ -270,22 +270,22 @@ function SetupCard({ data }: { data: PayrollHome }) {
         <CheckRow label="Date of birth" done={setup.dateOfBirth === setup.total} value={`${setup.dateOfBirth} / ${setup.total}`} />
       </ul>
       {/*
-        * MONTHLY TAX IS THIS MONTH'S DATA ENTRY, not a gap in an employee
-        * record — Kuwick does not work PCB out, so on the first of the month
-        * nobody has one yet. Counting it as setup made a fully set-up clinic
-        * read "0 of 8 ready" every month for a reason that was neither wrong
-        * nor anybody's fault. It is still outstanding and the run still blocks
-        * on it, so it is said here — separately, and as what it is.
+        * MONTHLY TAX IS SAID SEPARATELY, and only for the people it is truly
+        * outstanding for. Counting it as setup once made a fully set-up clinic
+        * read "0 of 8 ready" every month; and after the MTD engine landed,
+        * counting everyone without a hand-keyed figure alarmed clinics whose
+        * tax profiles let the run CALCULATE it. The server now counts only
+        * employees whose figure can neither be calculated nor found entered.
         */}
       {setup.pcbMissing > 0 ? (
         <p className="kw-homeCard__aside">
-          <strong>{setup.pcbMissing}</strong> {setup.pcbMissing === 1 ? 'employee needs' : 'employees need'} a monthly
-          tax figure for this month. Kuwick does not work PCB out, so it is entered each month and the run will not
-          finish without it.
+          <strong>{setup.pcbMissing}</strong> {setup.pcbMissing === 1 ? 'employee has' : 'employees have'} no monthly
+          tax figure and no tax profile to calculate one from. Record their tax residence and MTD category, or enter
+          the month's PCB by hand — the run will not finish without one or the other.
         </p>
       ) : null}
-      <Link to="/admin/hr/employees" className="kw-homeCard__link">
-        Review employee setup
+      <Link to="/admin/hr/payroll/readiness" className="kw-homeCard__link">
+        Get ready for payroll
       </Link>
     </div>
   );

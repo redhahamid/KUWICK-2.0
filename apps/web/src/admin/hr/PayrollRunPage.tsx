@@ -491,7 +491,7 @@ function DeductionsStep({ data }: { data: PayrollJourney }) {
           {
             label: 'Monthly tax (PCB)',
             value: pcbMissing > 0 ? `${pcbMissing} missing` : ringgit(totals.pcb),
-            hint: 'entered by hand',
+            hint: 'calculated, or entered by hand',
             tone: pcbMissing > 0 ? 'bad' : 'neutral',
           },
           {
@@ -506,10 +506,13 @@ function DeductionsStep({ data }: { data: PayrollJourney }) {
 
       {pcbMissing > 0 ? (
         <AdminNotice tone="warn">
-          <strong>Kuwick does not work out monthly tax for you.</strong> PCB has to be entered for each employee who
-          pays it — from your accountant, or from LHDN's own calculator. {pcbMissing} person
-          {pcbMissing === 1 ? '' : 's'} still {pcbMissing === 1 ? 'needs' : 'need'} a figure, and the run cannot be
-          finished without {pcbMissing === 1 ? 'it' : 'them'}.
+          <strong>
+            Monthly tax could not be worked out for {pcbMissing} {pcbMissing === 1 ? 'person' : 'people'}.
+          </strong>{' '}
+          Kuwick calculates PCB from the official specification when an employee's tax residence and MTD category are
+          recorded. For {pcbMissing === 1 ? 'this person' : 'these people'}, record those on their statutory standing —
+          or enter the month's figure by hand from your accountant or LHDN's calculator. The run cannot be finished
+          without one or the other.
         </AdminNotice>
       ) : null}
 

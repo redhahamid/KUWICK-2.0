@@ -12,6 +12,8 @@ import {
 import { approvalGate } from './payroll-exception';
 import { totalTimesheet } from './attendance-hours';
 import { resolveSalaryForPayroll, SalaryRow } from './salary-resolution';
+import { resolveClassificationForPayroll } from './statutory-classification';
+import { toClassificationRow } from './statutory-classification.service';
 
 function monthStart(value: string | Date): Date {
   const date = typeof value === 'string' ? new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`) : value;
@@ -90,7 +92,7 @@ export class PayrollJourneyService {
     const active = employees.filter((e) => e.staff.active);
     const staffIds = active.map((e) => e.staffId);
 
-    const [salaryRows, inputs, attendance, leave, incentives, claims] = await Promise.all([
+    const [salaryRows, inputs, attendance, leave, incentives, claims, classificationRows] = await Promise.all([
       this.prisma.employeeSalary.findMany({ where: { staffId: { in: staffIds } } }),
       this.prisma.payrollInputEntry.findMany({ where: { staffId: { in: staffIds }, period } }),
       this.prisma.attendanceRecord.findMany({
@@ -111,6 +113,10 @@ export class PayrollJourneyService {
       this.prisma.staffClaim.findMany({
         where: { staffId: { in: staffIds }, status: 'APPROVED', paymentRoute: 'PAYROLL', payrollPeriod: period },
       }),
+      // The DATED standing, not the profile columns — the run stopped reading
+      // those, and a home screen counting from them would report a month the
+      // run does not see.
+      this.prisma.employeeStatutoryClassification.findMany({ where: { staffId: { in: staffIds } } }),
     ]);
 
     // EMPLOYEE SETUP. "Ready" means the four things a payslip needs, said as
@@ -131,11 +137,33 @@ export class PayrollJourneyService {
     const lastDay = new Date(periodEnd.getTime() - 86400000);
     const pcbByStaff = new Set(inputs.filter((i) => i.componentCode === 'PCB').map((i) => i.staffId));
 
+    const classificationsByStaff = new Map<string, typeof classificationRows>();
+    for (const row of classificationRows) {
+      const list = classificationsByStaff.get(row.staffId) ?? [];
+      list.push(row);
+      classificationsByStaff.set(row.staffId, list);
+    }
+
     const withSalary = active.filter(
       (e) => resolveSalaryForPayroll(salaryByStaff.get(e.staffId) ?? [], period, lastDay).kind === 'RESOLVED',
     );
     const withBank = active.filter((e) => Boolean(e.bankName && e.bankAccountNo));
-    const needingPcb = active.filter((e) => e.pcbApplicable && !pcbByStaff.has(e.staffId));
+    // MONTHLY TAX IS CALCULATED NOW. An employee whose dated standing carries
+    // a tax residence and an MTD category needs nothing entered — the run
+    // works the figure out from the official specification. This used to count
+    // everyone without a hand-keyed PCB row, from the profile's legacy
+    // column, which alarmed a fully set-up clinic every first of the month.
+    const needingPcb = active.filter((e) => {
+      const outcome = resolveClassificationForPayroll(
+        (classificationsByStaff.get(e.staffId) ?? []).map(toClassificationRow),
+        period,
+        lastDay,
+      );
+      const standing = outcome.kind === 'RESOLVED' ? outcome.row : null;
+      const pcbApplicable = standing ? standing.pcbApplicable : true;
+      const computable = Boolean(standing && standing.taxResidence && standing.pcbCategory);
+      return pcbApplicable && !computable && !pcbByStaff.has(e.staffId);
+    });
 
     /*
      * SET-UP AND THIS MONTH'S ENTRY ARE DIFFERENT QUESTIONS.
