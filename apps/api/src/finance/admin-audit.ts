@@ -121,6 +121,12 @@ export type AuditAction =
   // was actually made at the authority's portal — the only "submitted" there is.
   | 'payrollStatutory.listingDownloaded'
   | 'payrollStatutory.submissionRecorded'
+  // TP1/TP3 — the two LHDN forms that change a month's tax. Recording and
+  // deleting are both acts on somebody's cumulative tax position.
+  | 'payrollTax.tp1Recorded'
+  | 'payrollTax.tp1Deleted'
+  | 'payrollTax.tp3Recorded'
+  | 'payrollTax.tp3Deleted'
   | 'incentiveRule.changed'
   // Stage 2.5 — cross-module payroll integration. Every state change on a
   // claim or a locum session is auditable, because these are the two records

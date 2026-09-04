@@ -8,6 +8,7 @@ import {
   StatutoryBases,
   StatutoryContext,
   StatutoryResult,
+  Tp1MonthCapture,
   computeStatutory,
   statutoryStatusOf,
 } from './statutory';
@@ -399,15 +400,17 @@ export function computePayslip(
   context: StatutoryContext,
   profile: EmployeeStatutoryProfile,
   ytd?: PcbYearToDate,
+  tp1: Tp1MonthCapture | null = null,
 ): PayslipResult {
   const bases = computeBases(lines);
   // Zakat paid THIS month reduces this month's MTD, so it is read off the
-  // component rather than passed in separately — there is one place a zakat
-  // figure can come from and this is it.
+  // component rather than passed in separately — there is one place a
+  // payroll-deducted zakat figure can come from and this is it. Zakat the
+  // employee paid THEMSELVES rides in on the TP1 capture instead.
   const zakatThisMonthCents = lines
     .filter((line) => line.code === 'ZAKAT' && line.kind === 'DEDUCTION')
     .reduce((sum, line) => sum + toCents(line.amount), 0);
-  const statutory = computeStatutory(bases, context, profile, ytd, zakatThisMonthCents);
+  const statutory = computeStatutory(bases, context, profile, ytd, zakatThisMonthCents, tp1);
 
   // LINDUNG is EMPLOYEE-borne and EMPLOYER-remitted — both statements are only
   // true at once if the contribution is withheld from pay. It used to be

@@ -188,6 +188,8 @@ export interface SnapshotEmployeeLine {
   salaryAmountCents: number;
   /** Version 3+. Absent on older snapshots, whose payslips say so. */
   payslip?: SnapshotPayslipDetail;
+  /** The month's TP1 as applied — LP1 and self-paid zakat. Version 3+. */
+  tp1?: { deductionsCents: number; zakatSelfPaidCents: number } | null;
   /** The statutory standing in force for the period, frozen. */
   classification: SnapshotClassification | null;
   inputs: {

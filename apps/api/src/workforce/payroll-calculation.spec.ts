@@ -479,6 +479,7 @@ describe('PCB — computed when the tax profile is there, refused when it is not
       accumulatedEpfCents: 385000,
       accumulatedMtdPaidCents: 77000, // seven months of the January figure
       accumulatedZakatCents: 0,
+      accumulatedDeductionsCents: 0,
     });
     expect(withHistory.statutory.pcbCents).not.toBe(asIfJanuary.statutory.pcbCents);
     expect(withHistory.statutory.pcbCents).not.toBeNull();

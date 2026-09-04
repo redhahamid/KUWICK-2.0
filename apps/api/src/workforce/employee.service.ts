@@ -350,7 +350,7 @@ export class EmployeeService {
         eisApplicable: statutory.eisApplicable,
         pcbApplicable: statutory.pcbApplicable,
         note:
-          'Membership numbers are corrections of one lifelong fact each, so they are not dated — the March submission wants the correct number, not the one that was on file in March. Everything that SELECTS a rule — EPF Part, scheme applicability, LINDUNG participation, the MTD profile, the rest day — is a dated version instead, and the values here are the version in force for this month. All four schemes are computed from the authorities’ own published schedules; TP1 deductions are not captured, so monthly tax is worked out as though none had been filed.',
+          'Membership numbers are corrections of one lifelong fact each, so they are not dated — the March submission wants the correct number, not the one that was on file in March. Everything that SELECTS a rule — EPF Part, scheme applicability, LINDUNG participation, the MTD profile, the rest day — is a dated version instead, and the values here are the version in force for this month. All four schemes are computed from the authorities’ own published schedules; a recorded TP1 enters the month as LP1, and a mid-year joiner’s TP3 carries their previous employment into the cumulative calculation.',
       },
       /**
        * EMPLOYEE OR CONTRACTOR. The fact everything statutory turns on, and the

@@ -38,6 +38,7 @@ import { PayrollReadinessService } from './payroll-readiness.service';
 import { PayrollPayslipService } from './payroll-payslip.service';
 import { PayrollPaymentService } from './payroll-payment.service';
 import { PayrollStatutoryOutputService } from './payroll-statutory-output.service';
+import { PayrollTaxService } from './payroll-tax.service';
 import { renderPayslipPdf } from './payroll-payslip-pdf';
 import { PayrollReportService } from './payroll-report.service';
 import { CreateStaffClaimDto, DecideStaffClaimDto, SettleStaffClaimDto } from './dto/staff-claim.dto';
@@ -74,6 +75,7 @@ export class WorkforceController {
     private readonly payslipService: PayrollPayslipService,
     private readonly payments: PayrollPaymentService,
     private readonly statutoryOutputs_: PayrollStatutoryOutputService,
+    private readonly tax: PayrollTaxService,
     private readonly reports: PayrollReportService,
   ) {}
 
@@ -514,6 +516,60 @@ export class WorkforceController {
   @Patch('incentives/runs/:id/approve')
   approveIncentiveRun(@Param('id') id: string) {
     return this.incentives.approve(id);
+  }
+
+  // --- TP1 / TP3 — the forms that change a month's tax ----------------------
+
+  @Get('employees/:staffId/tax-records')
+  taxRecords(@Param('staffId') staffId: string, @Query('year') year?: string) {
+    return this.tax.taxRecords(staffId, year ? Number(year) : undefined);
+  }
+
+  @Post('employees/:staffId/tp1')
+  recordTp1(
+    @Param('staffId') staffId: string,
+    @Body()
+    body: {
+      period: string;
+      deductionsCents: number;
+      zakatSelfPaidCents?: number;
+      items?: { label: string; amountCents: number }[];
+      receivedDate?: string;
+      note?: string;
+    },
+  ) {
+    return this.tax.recordTp1(staffId, body);
+  }
+
+  @Delete('payroll/tp1/:id')
+  deleteTp1(@Param('id') id: string) {
+    return this.tax.deleteTp1(id);
+  }
+
+  @Post('employees/:staffId/tp3')
+  recordTp3(
+    @Param('staffId') staffId: string,
+    @Body()
+    body: {
+      taxYear: number;
+      previousEmployerName: string;
+      employmentFrom?: string;
+      employmentTo?: string;
+      grossCents: number;
+      epfCents: number;
+      mtdPaidCents: number;
+      zakatCents?: number;
+      deductionsCents?: number;
+      source: string;
+      note?: string;
+    },
+  ) {
+    return this.tax.recordTp3(staffId, body);
+  }
+
+  @Delete('payroll/tp3/:id')
+  deleteTp3(@Param('id') id: string) {
+    return this.tax.deleteTp3(id);
   }
 
   // --- Payroll --------------------------------------------------------------

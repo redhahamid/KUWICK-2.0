@@ -220,7 +220,8 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
       detail:
         `No pay before this month is on record for ${facts.ytd.taxYear}. Monthly tax is cumulative over the year, ` +
         'so it will be worked out as though nothing was paid in the earlier months. If this employer paid them ' +
-        'before this system did, import the opening balances first.',
+        'before this system did, import the opening balances; if a previous employer paid them this year, record ' +
+        'their Form TP3.',
     });
   }
 

@@ -338,6 +338,22 @@ export interface PcbMonthInput {
   readonly epfOnAdditionalCents: number;
   /** This month's zakat, which reduces this month's MTD. */
   readonly zakatThisMonthCents: number;
+  /**
+   * LP1 — this month's allowable deductions, from the employee's Form TP1 as
+   * the employer approved it. The 2026 specification changes the relief ITEMS
+   * on the form, not the formula: the figure enters here and in ∑LP.
+   */
+  readonly deductionsThisMonthCents: number;
+  /** Whether a TP1 capture exists for this month — nil-with-form is a fact. */
+  readonly tp1Captured: boolean;
+}
+
+/** One month's TP1 capture, as the employer approved it off the form. */
+export interface Tp1MonthCapture {
+  /** LP1 — the month's allowable deductions. */
+  readonly deductionsCents: number;
+  /** Zakat the employee paid OUTSIDE payroll and claimed on the form. */
+  readonly zakatSelfPaidCents: number;
 }
 
 /** What the year so far contributes. Every figure is a total, in cents. */
@@ -350,6 +366,8 @@ export interface PcbYearToDate {
   readonly accumulatedMtdPaidCents: number;
   /** Z — zakat paid this year other than this month's. */
   readonly accumulatedZakatCents: number;
+  /** ∑LP — allowable deductions accumulated: applied TP1 months, and TP3's. */
+  readonly accumulatedDeductionsCents: number;
 }
 
 export interface PcbAnswer {
@@ -398,11 +416,12 @@ export function computePcb(
     epfOnNormalCents: month.epfOnNormalCents,
     grossAdditionalCents: month.grossAdditionalCents,
     epfOnAdditionalCents: month.epfOnAdditionalCents,
-    // TP1 is not captured. Nil is the right figure for an employee who has
-    // filed none, and `tp1Captured` below says so rather than letting the
-    // absence pass for a decision.
-    accumulatedDeductionsCents: 0,
-    deductionsThisMonthCents: 0,
+    // TP1 reaches the formula as the spec wrote it: LP1 for the month, ∑LP
+    // for the year (applied TP1 months plus TP3's previous-employer figure).
+    // Nil stays the right figure for an employee who filed none, and
+    // `tp1Captured` says which of the two truths the nil is.
+    accumulatedDeductionsCents: ytd.accumulatedDeductionsCents,
+    deductionsThisMonthCents: month.deductionsThisMonthCents,
     accumulatedMtdPaidCents: ytd.accumulatedMtdPaidCents,
     accumulatedZakatCents: ytd.accumulatedZakatCents,
     zakatThisMonthCents: month.zakatThisMonthCents,
@@ -415,8 +434,12 @@ export function computePcb(
     cents: outcome.result.mtdCents,
     note:
       `Worked out by HASiL's Computerised Calculation method for month ${month.month}` +
-      (profile.taxResidence === 'NON_RESIDENT' ? ', at the non-resident rate.' : '.'),
-    tp1Captured: false,
+      (profile.taxResidence === 'NON_RESIDENT'
+        ? ', at the non-resident rate.'
+        : month.tp1Captured
+          ? `, applying RM${(month.deductionsThisMonthCents / 100).toFixed(2)} of TP1 deductions for the month.`
+          : '.'),
+    tp1Captured: month.tp1Captured,
     working: outcome.result.working,
   };
 }
@@ -484,6 +507,7 @@ export const NO_YEAR_TO_DATE: PcbYearToDate = {
   accumulatedEpfCents: 0,
   accumulatedMtdPaidCents: 0,
   accumulatedZakatCents: 0,
+  accumulatedDeductionsCents: 0,
 };
 
 export function computeStatutory(
@@ -492,6 +516,7 @@ export function computeStatutory(
   profile: EmployeeStatutoryProfile,
   ytd: PcbYearToDate = NO_YEAR_TO_DATE,
   zakatThisMonthCents = 0,
+  tp1: Tp1MonthCapture | null = null,
 ): StatutoryResult {
   const epf = computeEpf(bases.epfCents, context, profile);
 
@@ -515,7 +540,11 @@ export function computeStatutory(
       epfOnNormalCents,
       grossAdditionalCents: bases.pcbAdditionalCents,
       epfOnAdditionalCents,
-      zakatThisMonthCents,
+      // Zakat this month: what payroll deducted, plus what the employee paid
+      // themselves and claimed on the TP1 — both are the month's zakat to Z.
+      zakatThisMonthCents: zakatThisMonthCents + (tp1?.zakatSelfPaidCents ?? 0),
+      deductionsThisMonthCents: tp1?.deductionsCents ?? 0,
+      tp1Captured: tp1 !== null,
     },
     ytd,
     context.periodEnd,

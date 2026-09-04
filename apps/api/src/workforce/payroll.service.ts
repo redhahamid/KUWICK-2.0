@@ -213,7 +213,7 @@ export class PayrollService {
       const staffIds = [...new Set(dto.months.map((row) => row.staffId))];
       const profiles = await tx.employeeProfile.findMany({
         where: { staffId: { in: staffIds } },
-        select: { staffId: true, legalEmployerId: true, staff: { select: { fullName: true } } },
+        select: { staffId: true, legalEmployerId: true, startDate: true, staff: { select: { fullName: true } } },
       });
       const profileOf = new Map(profiles.map((row) => [row.staffId, row]));
 
@@ -225,6 +225,27 @@ export class PayrollService {
         if (profile.legalEmployerId !== dto.legalEmployerId) {
           throw new BadRequestException(
             `${profile.staff.fullName} is employed by a different company, so their year-to-date cannot be imported under ${employer.name}. Statutory returns are filed by the employing entity.`,
+          );
+        }
+      }
+
+      /*
+       * THIS EMPLOYER'S OWN MONTHS ONLY. A month before somebody's start date
+       * cannot be this employer's payroll — it is previous-employer money,
+       * and its place is a TP3 record. Letting it in here is how the same
+       * ringgit reaches the accumulators twice: once as an "opening month"
+       * and once on the TP3, halving the remaining year's tax.
+       */
+      for (const row of dto.months) {
+        const profile = profileOf.get(row.staffId)!;
+        if (!profile.startDate) continue;
+        const startYear = profile.startDate.getUTCFullYear();
+        const startMonth = profile.startDate.getUTCMonth() + 1;
+        if (row.taxYear < startYear || (row.taxYear === startYear && row.month < startMonth)) {
+          throw new BadRequestException(
+            `${profile.staff.fullName} started on ${profile.startDate.toISOString().slice(0, 10)}, so ` +
+              `${row.taxYear}-${String(row.month).padStart(2, '0')} cannot be this employer's payroll. Pay from a ` +
+              'previous employer is declared on Form TP3, not imported as an opening balance.',
           );
         }
       }
@@ -263,6 +284,8 @@ export class PayrollService {
           socsoEmployerCents: row.socsoEmployerCents,
           eisEmployeeCents: row.eisEmployeeCents,
           eisEmployerCents: row.eisEmployerCents,
+          lindungEmployeeCents: row.lindungEmployeeCents,
+          deductionsCents: row.deductionsCents,
           source: 'OPENING_IMPORT' as const,
           payrollRunId: null,
           note: dto.note ? `${dto.source} — ${dto.note}` : dto.source,
@@ -689,6 +712,23 @@ export class PayrollService {
         where: { staffId: { in: employees.map((e) => e.staffId) } },
         orderBy: { effectiveFrom: 'asc' },
       });
+
+      // TP1 FOR THE MONTH, TP3 FOR THE YEAR. The MTD engine has carried the
+      // LP slots since it was transcribed; these are the records that fill
+      // them. Loaded once for the run, resolved per employee below.
+      const tp1Entries = await tx.employeeTp1Entry.findMany({
+        where: { staffId: { in: employees.map((e) => e.staffId) }, period },
+      });
+      const tp1ByStaff = new Map(tp1Entries.map((row) => [row.staffId, row]));
+      const tp3Records = await tx.employeeTp3Record.findMany({
+        where: { staffId: { in: employees.map((e) => e.staffId) }, taxYear: period.getUTCFullYear() },
+      });
+      const tp3ByStaff = new Map<string, typeof tp3Records>();
+      for (const row of tp3Records) {
+        const list = tp3ByStaff.get(row.staffId) ?? [];
+        list.push(row);
+        tp3ByStaff.set(row.staffId, list);
+      }
       const classificationByStaff = new Map<string, StatutoryClassificationRow[]>();
       for (const row of classificationRows) {
         const list = classificationByStaff.get(row.staffId) ?? [];
@@ -1290,6 +1330,12 @@ export class PayrollService {
               },
             })
           : [];
+        // THE YEAR SO FAR = this employer's recorded months (approved runs
+        // and the opening import) PLUS a mid-year joiner's previous
+        // employment, declared on Form TP3. The two are different tables so
+        // the same ringgit cannot arrive twice — the write paths refuse the
+        // overlap at capture.
+        const tp3Rows = tp3ByStaff.get(employee.staffId) ?? [];
         const ytdTotal = priorMonths.reduce(
           (total, row) => ({
             accumulatedGrossCents: total.accumulatedGrossCents + row.grossCents,
@@ -1299,9 +1345,21 @@ export class PayrollService {
             // the year.
             accumulatedMtdPaidCents: total.accumulatedMtdPaidCents + row.pcbCents + row.cp38Cents,
             accumulatedZakatCents: total.accumulatedZakatCents + row.zakatCents,
+            accumulatedDeductionsCents: total.accumulatedDeductionsCents + row.deductionsCents,
           }),
-          { accumulatedGrossCents: 0, accumulatedEpfCents: 0, accumulatedMtdPaidCents: 0, accumulatedZakatCents: 0 },
+          {
+            accumulatedGrossCents: tp3Rows.reduce((sum, row) => sum + row.grossCents, 0),
+            accumulatedEpfCents: tp3Rows.reduce((sum, row) => sum + row.epfCents, 0),
+            accumulatedMtdPaidCents: tp3Rows.reduce((sum, row) => sum + row.mtdPaidCents, 0),
+            accumulatedZakatCents: tp3Rows.reduce((sum, row) => sum + row.zakatCents, 0),
+            accumulatedDeductionsCents: tp3Rows.reduce((sum, row) => sum + row.deductionsCents, 0),
+          },
         );
+
+        const tp1Entry = tp1ByStaff.get(employee.staffId) ?? null;
+        const tp1Capture = tp1Entry
+          ? { deductionsCents: tp1Entry.deductionsCents, zakatSelfPaidCents: tp1Entry.zakatSelfPaidCents }
+          : null;
 
         const payslip = computePayslip(
           componentLines,
@@ -1341,6 +1399,7 @@ export class PayrollService {
               employee.employmentType === 'PERMANENT' || employee.employmentType === 'CONTRACT',
           },
           ytdTotal,
+          tp1Capture,
         );
 
         // PCB is not calculated by this system, and that is a BLOCKING
@@ -1741,6 +1800,13 @@ export class PayrollService {
      */
     const run = await tx.payrollRun.findUnique({ where: { id: runId }, select: { legalEmployerId: true } });
 
+    // The month's TP1 captures: the LP each payslip applied, and zakat the
+    // employee paid outside payroll — both feed the NEXT month's accumulators.
+    const tp1Rows = await tx.employeeTp1Entry.findMany({
+      where: { staffId: { in: lines.map((line) => line.staffId) }, period },
+    });
+    const tp1ByStaff = new Map(tp1Rows.map((row) => [row.staffId, row]));
+
     for (const line of lines) {
       const employeeEmployerId = employerOf.get(line.staffId);
       // An employee with no legal employer cannot reach an approved run — the
@@ -1755,8 +1821,24 @@ export class PayrollService {
       }
       const legalEmployerId = run?.legalEmployerId ?? employeeEmployerId;
 
-      const breakdown = (line.breakdown ?? {}) as { additionalRemunerationCents?: number };
+      const breakdown = (line.breakdown ?? {}) as {
+        additionalRemunerationCents?: number;
+        components?: { code: string; kind: string; amount: unknown }[];
+      };
       const cents = (value: unknown) => (value === null || value === undefined ? 0 : toCents(value as never));
+
+      /*
+       * ZAKAT CONTINUITY. Zakat deducted through payroll reduced THIS month's
+       * MTD, and the following months' Z must carry it — the specification
+       * accumulates zakat exactly as it accumulates tax paid. This wrote a
+       * literal 0, so every month after a zakat month over-deducted tax by
+       * the rebate the year had already earned. Self-paid zakat claimed on
+       * the month's TP1 joins it, for the same reason.
+       */
+      const zakatViaPayrollCents = (breakdown.components ?? [])
+        .filter((row) => row.code === 'ZAKAT' && row.kind === 'DEDUCTION')
+        .reduce((sum, row) => sum + cents(row.amount), 0);
+      const tp1 = tp1ByStaff.get(line.staffId);
 
       const data = {
         tenantId: currentTenantId(),
@@ -1770,13 +1852,18 @@ export class PayrollService {
         // year-to-date has to keep them apart rather than only carrying a total.
         additionalRemunerationCents: breakdown.additionalRemunerationCents ?? cents(line.bonus) + cents(line.incentives),
         pcbCents: cents(line.pcb),
-        zakatCents: 0,
+        zakatCents: zakatViaPayrollCents + (tp1?.zakatSelfPaidCents ?? 0),
         epfEmployeeCents: cents(line.epfEmployee),
         epfEmployerCents: cents(line.epfEmployer),
         socsoEmployeeCents: cents(line.socsoEmployee),
         socsoEmployerCents: cents(line.socsoEmployer),
         eisEmployeeCents: cents(line.eisEmployee),
         eisEmployerCents: cents(line.eisEmployer),
+        // LINDUNG's column existed since the scheme landed and was never
+        // written; the payslip's year-to-date block read a permanent zero.
+        lindungEmployeeCents: cents(line.lindungEmployee),
+        // The LP this month applied, so ∑LP is read from the approved record.
+        deductionsCents: tp1?.deductionsCents ?? 0,
         source: 'CALCULATED' as const,
         payrollRunId: runId,
         createdByStaffId: actorStaffId,
@@ -2397,6 +2484,12 @@ export class PayrollService {
       where: { period: run.period, staffId: { in: paidStaffIds } },
       orderBy: [{ staffId: 'asc' }, { componentCode: 'asc' }, { id: 'asc' }],
     });
+    // The TP1 each payslip applied, frozen with it: the LP is inside the PCB
+    // figure, and a record that cannot say so cannot defend the tax.
+    const snapshotTp1Rows = await tx.employeeTp1Entry.findMany({
+      where: { period: run.period, staffId: { in: paidStaffIds } },
+    });
+    const snapshotTp1ByStaff = new Map(snapshotTp1Rows.map((row) => [row.staffId, row]));
 
     /*
      * THE COMPONENT CATALOGUE AS AT THE PERIOD, WITH ITS TREATMENT.
@@ -2549,6 +2642,10 @@ export class PayrollService {
         salaryBasis: (snap.salaryBasis as string | undefined) ?? null,
         salaryAmountCents: toCents(line.basicSalary),
         payslip: payslipDetail,
+        tp1: (() => {
+          const row = snapshotTp1ByStaff.get(line.staffId);
+          return row ? { deductionsCents: row.deductionsCents, zakatSelfPaidCents: row.zakatSelfPaidCents } : null;
+        })(),
         // The statutory standing this payslip was computed on, taken from the
         // line rather than from the employee record: the record moves, and the
         // whole point of freezing is that this must not.

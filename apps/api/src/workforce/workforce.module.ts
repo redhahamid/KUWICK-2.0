@@ -20,6 +20,7 @@ import { PayrollReadinessService } from './payroll-readiness.service';
 import { PayrollPayslipService } from './payroll-payslip.service';
 import { PayrollPaymentService } from './payroll-payment.service';
 import { PayrollStatutoryOutputService } from './payroll-statutory-output.service';
+import { PayrollTaxService } from './payroll-tax.service';
 import { PayrollReportService } from './payroll-report.service';
 
 /**
@@ -57,6 +58,7 @@ import { PayrollReportService } from './payroll-report.service';
     PayrollPayslipService,
     PayrollPaymentService,
     PayrollStatutoryOutputService,
+    PayrollTaxService,
     PayrollReportService,
   ],
   exports: [
@@ -79,6 +81,7 @@ import { PayrollReportService } from './payroll-report.service';
     PayrollPayslipService,
     PayrollPaymentService,
     PayrollStatutoryOutputService,
+    PayrollTaxService,
     PayrollReportService,
   ],
 })

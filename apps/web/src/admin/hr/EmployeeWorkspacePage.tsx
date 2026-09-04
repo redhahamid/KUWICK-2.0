@@ -6,9 +6,10 @@ import { AdminNotice, AdminSection, AdminShell, firstError } from '../components
 import { DataTable, ringgit } from '../components/DataTable';
 import { useEmployeeRecord } from '../hooks/useAdmin';
 import { EmployeeSalaryPanel } from './EmployeeSalaryPanel';
+import { EmployeeTaxPanel } from './EmployeeTaxPanel';
 import type { EmployeeRecord } from '../types';
 
-type TabKey = 'overview' | 'employment' | 'salary' | 'attendance' | 'leave' | 'claims' | 'payroll' | 'documents';
+type TabKey = 'overview' | 'employment' | 'salary' | 'attendance' | 'leave' | 'claims' | 'payroll' | 'tax' | 'documents';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'overview', label: 'Overview' },
@@ -18,6 +19,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'leave', label: 'Leave' },
   { key: 'claims', label: 'Claims' },
   { key: 'payroll', label: 'Payroll' },
+  { key: 'tax', label: 'Tax (TP1/TP3)' },
   { key: 'documents', label: 'Documents' },
 ];
 
@@ -80,6 +82,15 @@ export function EmployeeWorkspacePage() {
           {tab === 'leave' ? <LeaveTab data={data} /> : null}
           {tab === 'claims' ? <ClaimsTab data={data} /> : null}
           {tab === 'payroll' ? <PayrollTab data={data} /> : null}
+          {tab === 'tax' ? (
+            data.payVisible ? (
+              <EmployeeTaxPanel staffId={staffId!} />
+            ) : (
+              <AdminNotice tone="info">
+                Tax records ride with pay visibility. You do not have permission to see pay.
+              </AdminNotice>
+            )
+          ) : null}
           {tab === 'documents' ? <DocumentsTab data={data} /> : null}
         </>
       ) : null}

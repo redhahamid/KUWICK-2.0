@@ -385,6 +385,8 @@ model Tenant {
   payrollPaymentBatches            PayrollPaymentBatch[]
   payrollPaymentLines              PayrollPaymentLine[]
   payrollStatutorySubmissions      PayrollStatutorySubmission[]
+  employeeTp1Entries               EmployeeTp1Entry[]
+  employeeTp3Records               EmployeeTp3Record[]
 
   @@map("tenants")
 }
@@ -1117,6 +1119,10 @@ model Staff {
   paymentBatchesCreated            PayrollPaymentBatch[]             @relation("PaymentBatchAuthor")
   paymentLines                     PayrollPaymentLine[]              @relation("PaymentLineStaff")
   statutorySubmissionsRecorded     PayrollStatutorySubmission[]      @relation("StatutorySubmissionAuthor")
+  tp1Entries                       EmployeeTp1Entry[]                @relation("Tp1Staff")
+  tp1EntriesRecorded               EmployeeTp1Entry[]                @relation("Tp1Author")
+  tp3Records                       EmployeeTp3Record[]               @relation("Tp3Staff")
+  tp3RecordsRecorded               EmployeeTp3Record[]               @relation("Tp3Author")
   payrollExceptions                PayrollException[]                @relation("PayrollExceptionStaff")
   payrollExceptionsOverridden      PayrollException[]                @relation("PayrollExceptionOverrider")
   ytdRows                          EmployeeYtd[]                     @relation("EmployeeYtdStaff")
@@ -7551,6 +7557,8 @@ model LegalEmployer {
 
   @@unique([tenantId, name])
   @@index([tenantId, active])
+  tp1Entries           EmployeeTp1Entry[]
+  tp3Records           EmployeeTp3Record[]
   @@map("legal_employers")
 }
 
@@ -8073,6 +8081,95 @@ model PayrollStatutorySubmission {
   @@map("payroll_statutory_submissions")
 }
 
+/// FORM TP1 — the employee's claim for monthly-tax deductions and rebates,
+/// as the EMPLOYER approved it off the form. One entry per employee per
+/// month; the amount enters the MTD formula as LP1 and accumulates into ∑LP.
+/// The relief ITEM CATALOGUE and its annual caps are the register's
+/// TP1 rules, still UNVERIFIED — so Kuwick records what the employer
+/// approved, itemised for the audit trail, and does not police caps it has
+/// no authoritative table for. The employer is the form's approver in law;
+/// this is their decision with a date and a name on it.
+model EmployeeTp1Entry {
+  id              String @id @default(uuid())
+  tenantId        String @map("tenant_id")
+  staffId         String @map("staff_id")
+  legalEmployerId String @map("legal_employer_id")
+
+  /// First day of the month the deduction applies to.
+  period DateTime @db.Date
+
+  /// LP1 — allowable deductions for the month, total.
+  deductionsCents Int @map("deductions_cents")
+  /// Zakat the employee paid THEMSELVES (not through payroll) and claimed.
+  zakatSelfPaidCents Int @default(0) @map("zakat_self_paid_cents")
+
+  /// The form's items, for the record: [{label, amountCents}]. Their sum must
+  /// equal deductionsCents — validated at capture.
+  items Json?
+
+  /// When the signed form reached the employer.
+  receivedDate DateTime? @map("received_date") @db.Date
+  note         String?
+
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  staff         Staff         @relation("Tp1Staff", fields: [staffId], references: [id])
+  legalEmployer LegalEmployer @relation(fields: [legalEmployerId], references: [id])
+  createdBy     Staff         @relation("Tp1Author", fields: [createdByStaffId], references: [id])
+
+  @@unique([staffId, period])
+  @@index([tenantId, staffId, period])
+  @@map("employee_tp1_entries")
+}
+
+/// FORM TP3 — what a PREVIOUS employer paid and deducted this tax year,
+/// declared by a mid-year joiner so cumulative monthly tax carries on from
+/// where it stood. Feeds the MTD accumulators (∑Y, ∑K, X, Z, ∑LP) for every
+/// month at THIS employer. Distinct from the opening-balance import, which is
+/// THIS employer's own pre-Kuwick months — the two must never carry the same
+/// money, and the write paths refuse the overlap.
+model EmployeeTp3Record {
+  id              String @id @default(uuid())
+  tenantId        String @map("tenant_id")
+  staffId         String @map("staff_id")
+  legalEmployerId String @map("legal_employer_id")
+
+  taxYear Int @map("tax_year")
+
+  previousEmployerName String    @map("previous_employer_name")
+  employmentFrom       DateTime? @map("employment_from") @db.Date
+  employmentTo         DateTime? @map("employment_to") @db.Date
+
+  /// ∑Y contribution — gross remuneration paid by the previous employer.
+  grossCents Int @map("gross_cents")
+  /// ∑K — EPF and other approved contributions there.
+  epfCents Int @map("epf_cents")
+  /// X — MTD (and CP38) already deducted there.
+  mtdPaidCents Int @map("mtd_paid_cents")
+  /// Z — zakat paid via that employment.
+  zakatCents Int @default(0) @map("zakat_cents")
+  /// ∑LP — allowable deductions the previous employer applied.
+  deductionsCents Int @default(0) @map("deductions_cents")
+
+  /// Where the figures came from — "Borang TP3 dated …" — never blank.
+  source String
+  note   String?
+
+  createdByStaffId String   @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  staff         Staff         @relation("Tp3Staff", fields: [staffId], references: [id])
+  legalEmployer LegalEmployer @relation(fields: [legalEmployerId], references: [id])
+  createdBy     Staff         @relation("Tp3Author", fields: [createdByStaffId], references: [id])
+
+  @@unique([staffId, taxYear, previousEmployerName])
+  @@index([tenantId, staffId, taxYear])
+  @@map("employee_tp3_records")
+}
+
 enum PayrollExceptionSeverity {
   BLOCKING
   WARNING
@@ -8156,6 +8253,10 @@ model EmployeeYtd {
   /// LINDUNG 24 Jam. Column exists; NO calculation writes it in this stage.
   lindungEmployeeCents        Int @default(0) @map("lindung_employee_cents")
   lindungEmployerCents        Int @default(0) @map("lindung_employer_cents")
+  /// LP applied in the month — TP1 allowable deductions as the MTD engine
+  /// consumed them (or the employer's own calculation did, for a hand-entered
+  /// PCB). Feeds the next month's cumulative ∑LP.
+  deductionsCents             Int @default(0) @map("deductions_cents")
 
   source       YtdSource @default(CALCULATED)
   /// Set when the row came from an approved run, so a recalculation replaces

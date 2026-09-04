@@ -45,6 +45,10 @@ export class YtdOpeningMonthDto {
   @IsInt() @Min(0) socsoEmployerCents = 0;
   @IsInt() @Min(0) eisEmployeeCents = 0;
   @IsInt() @Min(0) eisEmployerCents = 0;
+  /** LINDUNG 24 JAM withheld in the month, where the previous system took it. */
+  @IsInt() @Min(0) lindungEmployeeCents = 0;
+  /** LP the month applied — TP1 allowable deductions, feeding ∑LP. */
+  @IsInt() @Min(0) deductionsCents = 0;
 }
 
 export class ImportYtdOpeningDto {
