@@ -112,6 +112,15 @@ export type AuditAction =
   | 'payroll.reopened'
   /** A payslip PDF left the system — who took whose slip, for which version. */
   | 'payrollPayslip.downloaded'
+  // Payment preparation. Three separate events, because "a document exists",
+  // "somebody took it" and "money moved" are three different claims.
+  | 'payrollPayment.batchPrepared'
+  | 'payrollPayment.listingDownloaded'
+  | 'payrollPayment.recordedPaid'
+  // Statutory outputs: a listing leaving, and a human recording that a filing
+  // was actually made at the authority's portal — the only "submitted" there is.
+  | 'payrollStatutory.listingDownloaded'
+  | 'payrollStatutory.submissionRecorded'
   | 'incentiveRule.changed'
   // Stage 2.5 — cross-module payroll integration. Every state change on a
   // claim or a locum session is auditable, because these are the two records

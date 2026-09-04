@@ -228,6 +228,8 @@ export interface ResolvedLiability {
   pcb: boolean;
   ordinaryRateOfPay: boolean;
   additionalRemuneration?: boolean;
+  /** Inside HRD Corp's leviable wage. See the flag's note on ComponentLiability. */
+  hrd?: boolean;
 }
 
 /**
@@ -243,6 +245,7 @@ export function liabilityOf(component: {
   pcbLiable: boolean;
   includeInOrpBase: boolean;
   additionalRemuneration: boolean;
+  hrdLiable: boolean;
 }): ResolvedLiability {
   return {
     epf: component.epfLiable,
@@ -251,5 +254,6 @@ export function liabilityOf(component: {
     pcb: component.pcbLiable,
     ordinaryRateOfPay: component.includeInOrpBase,
     additionalRemuneration: component.additionalRemuneration,
+    hrd: component.hrdLiable,
   };
 }

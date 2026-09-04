@@ -18,6 +18,8 @@ import { LocumService } from './locum.service';
 import { PayrollJourneyService } from './payroll-journey.service';
 import { PayrollReadinessService } from './payroll-readiness.service';
 import { PayrollPayslipService } from './payroll-payslip.service';
+import { PayrollPaymentService } from './payroll-payment.service';
+import { PayrollStatutoryOutputService } from './payroll-statutory-output.service';
 import { PayrollReportService } from './payroll-report.service';
 
 /**
@@ -53,6 +55,8 @@ import { PayrollReportService } from './payroll-report.service';
     PayrollJourneyService,
     PayrollReadinessService,
     PayrollPayslipService,
+    PayrollPaymentService,
+    PayrollStatutoryOutputService,
     PayrollReportService,
   ],
   exports: [
@@ -73,6 +77,8 @@ import { PayrollReportService } from './payroll-report.service';
     PayrollJourneyService,
     PayrollReadinessService,
     PayrollPayslipService,
+    PayrollPaymentService,
+    PayrollStatutoryOutputService,
     PayrollReportService,
   ],
 })

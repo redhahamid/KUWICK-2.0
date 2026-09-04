@@ -262,6 +262,45 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    * Never inferred. Foreign-worker status is a PERKESO classification, not EPF
    * membership, tax residence or a nationality typed into a text box.
    */
+  /**
+   * THE EMPLOYER'S OWN STANDING, unrecorded. Run-level (no staffId): the levy
+   * is 1% or 0.5% of every leviable wage in the month, so the gap belongs to
+   * the run, not to a person — and repeating it per employee would bury the
+   * real per-person exceptions under one fact.
+   *
+   * A WARNING, not a blocker: a clinic below the s.14 headcount that never
+   * registered owes nothing, and stopping its payroll to say so would punish
+   * the common case. The consequence is stated instead: if the employer IS
+   * registered, the month's cost is understated and the levy still falls due.
+   */
+  HRD_REGISTRATION_UNRECORDED: {
+    code: 'HRD_REGISTRATION_UNRECORDED',
+    severity: 'WARNING',
+    overridable: true,
+    cause: (c) => `Whether ${String(c.employerName)} is registered with HRD Corp is not recorded.`,
+    consequence:
+      'The HRD levy is not included in this month’s employer cost. If the employer is registered, the cost is ' +
+      'understated and the levy still falls due to HRD Corp.',
+    remediation:
+      'Record the employer’s HRD Corp registration class — mandatory under s.14, optional under s.15, or not ' +
+      'registered — on the legal employer, then recalculate. "Not registered" is an answer; leaving it blank is not.',
+    deepLink: () => '/admin/hr/employers',
+  },
+  /** Mirrors a mid-month classification change: either figure looks correct. */
+  HRD_REGISTRATION_CHANGED_MID_PERIOD: {
+    code: 'HRD_REGISTRATION_CHANGED_MID_PERIOD',
+    severity: 'BLOCKING',
+    overridable: false,
+    cause: (c) =>
+      `${String(c.employerName)}’s HRD Corp registration class changed on ${String(c.changedOn)}, part-way through this period.`,
+    consequence:
+      'Nothing decides whether the month’s levy follows the old class or the new one, and both figures would look ' +
+      'correct on the employer cost.',
+    remediation:
+      'Set the change to take effect from the first day of a month — the recorded date can be corrected on the ' +
+      'legal employer’s statutory profile — then recalculate.',
+    deepLink: () => '/admin/hr/employers',
+  },
   LINDUNG_PARTICIPATION_UNRECORDED: {
     code: 'LINDUNG_PARTICIPATION_UNRECORDED',
     severity: 'BLOCKING',

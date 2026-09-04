@@ -63,6 +63,15 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       .send({ name: `HR Employer ${randomId().slice(0, 8)}` })
       .expect(201);
     legalEmployerId = employer.body.id;
+    // HRD Corp registration is a FACT the run now asks for: unrecorded raises
+    // a run-level warning. This suite's clinic is below the s.14 headcount and
+    // has not opted in, and saying so is the answer that keeps every test here
+    // about what it is actually testing.
+    await request(app.getHttpServer())
+      .post(`/workforce/legal-employers/${legalEmployerId}/statutory-profile`)
+      .set('Authorization', bearer)
+      .send({ effectiveFrom: '2024-01-01', hrdRegistration: 'NOT_REGISTERED', reason: 'Below the s.14 headcount' })
+      .expect(201);
 
     // THE PAY COMPONENT CATALOGUE. Payroll reads each component's statutory
     // treatment from these effective-dated rows, so a run without them refuses
@@ -633,10 +642,12 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
       expect(resolved.body.state).toBe('RESOLVED');
       expect(resolved.body.hrdLevyRatePercent).toBe(1);
 
-      // A period before the class was recorded resolves to nothing, not to
-      // NOT_REGISTERED — "we hold no answer" is not "no levy is due".
+      // A period before ANY class was recorded resolves to nothing, not to
+      // NOT_REGISTERED — "we hold no answer" is not "no levy is due". (The
+      // suite's bootstrap records NOT_REGISTERED from 2024, so the truly
+      // unrecorded period is earlier still.)
       const earlier = await request(app.getHttpServer())
-        .get(`/workforce/legal-employers/${legalEmployerId}/statutory-profile/resolve?period=2025-06-01`)
+        .get(`/workforce/legal-employers/${legalEmployerId}/statutory-profile/resolve?period=2023-06-01`)
         .set('Authorization', bearer)
         .expect(200);
       expect(earlier.body.state).toBe('NONE_ON_RECORD');

@@ -214,6 +214,8 @@ export interface SnapshotEmployeeLine {
     eisEmployerCents: number | null;
     /** Employee-borne; there is no employer share to freeze. */
     lindungEmployeeCents: number | null;
+    /** Employer-borne HRD Corp levy. Version 3+; null = not workable-out. */
+    hrdLevyCents?: number | null;
     pcbCents: number | null;
   };
   /** Everything withheld from the employee, so the snapshot can check itself. */
@@ -302,6 +304,9 @@ const COMPARED_FIELDS: (keyof SnapshotEmployeeLine['statutory'] | 'netCents' | '
   // Employee-borne, and a real deduction: a reopen that changed it and said
   // nothing would be a payslip moving with no diff row to show for it.
   'lindungEmployeeCents',
+  // Employer-borne, and inside employer cost — same reasoning from the
+  // employer's side of the sheet.
+  'hrdLevyCents',
   'pcbCents',
 ];
 

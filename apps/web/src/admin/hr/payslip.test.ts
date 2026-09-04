@@ -30,6 +30,7 @@ const LINE: PayrollRunDetail['lines'][number] = {
   eisEmployee: 6.7,
   eisEmployer: 6.7,
   lindungEmployee: 0,
+  hrdLevy: null,
   pcb: 45,
   netPay: 2913.05,
   employerCost: 3851.85,

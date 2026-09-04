@@ -31,6 +31,7 @@ export interface LiabilityFlags {
   readonly eisLiable: boolean;
   readonly includeInOrpBase: boolean;
   readonly additionalRemuneration: boolean;
+  readonly hrdLiable: boolean;
 }
 
 export function liabilityOf(row: LiabilityFlags): ComponentLiability {
@@ -41,6 +42,7 @@ export function liabilityOf(row: LiabilityFlags): ComponentLiability {
     pcb: row.pcbLiable,
     ordinaryRateOfPay: row.includeInOrpBase,
     additionalRemuneration: row.additionalRemuneration,
+    hrd: row.hrdLiable,
   };
 }
 

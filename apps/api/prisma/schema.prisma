@@ -382,6 +382,9 @@ model Tenant {
   payrollSnapshots                 PayrollSnapshot[]
   payrollExceptions                PayrollException[]
   employeeYtdRows                  EmployeeYtd[]
+  payrollPaymentBatches            PayrollPaymentBatch[]
+  payrollPaymentLines              PayrollPaymentLine[]
+  payrollStatutorySubmissions      PayrollStatutorySubmission[]
 
   @@map("tenants")
 }
@@ -1111,6 +1114,9 @@ model Staff {
   recurringItems                   EmployeeRecurringItem[]           @relation("RecurringItemStaff")
   recurringItemsAuthored           EmployeeRecurringItem[]           @relation("RecurringItemAuthor")
   payrollSnapshotsAuthored         PayrollSnapshot[]                 @relation("PayrollSnapshotAuthor")
+  paymentBatchesCreated            PayrollPaymentBatch[]             @relation("PaymentBatchAuthor")
+  paymentLines                     PayrollPaymentLine[]              @relation("PaymentLineStaff")
+  statutorySubmissionsRecorded     PayrollStatutorySubmission[]      @relation("StatutorySubmissionAuthor")
   payrollExceptions                PayrollException[]                @relation("PayrollExceptionStaff")
   payrollExceptionsOverridden      PayrollException[]                @relation("PayrollExceptionOverrider")
   ytdRows                          EmployeeYtd[]                     @relation("EmployeeYtdStaff")
@@ -7092,6 +7098,8 @@ model PayrollRun {
   snapshots     PayrollSnapshot[]
   exceptionRows PayrollException[]
   approvals     PayrollRunApproval[]
+  paymentBatches PayrollPaymentBatch[]
+  statutorySubmissions PayrollStatutorySubmission[]
 
   @@unique([tenantId, clinicId, period, runType, sequence])
   @@index([tenantId, period])
@@ -7131,6 +7139,10 @@ model PayrollLine {
   /// the absence of an employer column here is the point: the employer remits
   /// this money without paying it, and a payslip must not imply otherwise.
   lindungEmployee Decimal? @map("lindung_employee") @db.Decimal(12, 2)
+  /// HRD Corp levy for this employee's leviable wages. EMPLOYER cost, never a
+  /// deduction. NULL when it could not be worked out (registration or the
+  /// citizenship-bearing EPF membership unrecorded) — never zero standing in.
+  hrdLevy         Decimal? @map("hrd_levy") @db.Decimal(12, 2)
   pcb             Decimal? @db.Decimal(12, 2)
 
   netPay       Decimal @default(0) @map("net_pay") @db.Decimal(12, 2)
@@ -7943,6 +7955,122 @@ model PayrollSnapshot {
   @@unique([payrollRunId, version])
   @@index([tenantId, payrollRunId])
   @@map("payroll_snapshots")
+}
+
+/// PAYMENT PREPARATION AND ITS TRUTH. A batch is composed from an APPROVED
+/// run's verified snapshot — amounts frozen, bank details as on file at
+/// generation and labelled so. Its status says exactly what has happened:
+/// GENERATED is a document, DOWNLOADED is a document somebody took, and only
+/// RECORDED_PAID — a human recording a transfer with a date and a reference —
+/// claims money moved. Nothing here talks to a bank.
+enum PaymentBatchStatus {
+  GENERATED
+  DOWNLOADED
+  RECORDED_PAID
+  /// Regenerated after a correction or a bank-detail fix; kept for the record.
+  SUPERSEDED
+}
+
+model PayrollPaymentBatch {
+  id           String @id @default(uuid())
+  tenantId     String @map("tenant_id")
+  payrollRunId String @map("payroll_run_id")
+
+  /// Monotonic per run. Regeneration supersedes, never overwrites.
+  version Int @default(1)
+
+  /// The approved record this batch pays: version and hash, so the batch can
+  /// always be traced to the exact frozen figures behind it.
+  snapshotVersion Int    @map("snapshot_version")
+  snapshotHash    String @map("snapshot_hash")
+
+  status PaymentBatchStatus @default(GENERATED)
+
+  /// Sum of the INCLUDED lines, reconciled against the snapshot's net total
+  /// plus exclusions at generation — a batch that does not reconcile is
+  /// refused, not stored.
+  totalCents    Int @map("total_cents")
+  includedCount Int @map("included_count")
+  excludedCount Int @map("excluded_count")
+
+  createdByStaffId      String    @map("created_by_staff_id")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  downloadedAt          DateTime? @map("downloaded_at")
+  downloadedByStaffId   String?   @map("downloaded_by_staff_id")
+  /// The human record that money actually moved — never set by generation.
+  paidRecordedAt        DateTime? @map("paid_recorded_at")
+  paidRecordedByStaffId String?   @map("paid_recorded_by_staff_id")
+  paymentDate           DateTime? @map("payment_date")
+  paymentReference      String?   @map("payment_reference")
+  note                  String?
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id])
+  payrollRun PayrollRun          @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  createdBy  Staff               @relation("PaymentBatchAuthor", fields: [createdByStaffId], references: [id])
+  lines      PayrollPaymentLine[]
+
+  @@unique([payrollRunId, version])
+  @@index([tenantId, payrollRunId])
+  @@map("payroll_payment_batches")
+}
+
+model PayrollPaymentLine {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  batchId  String @map("batch_id")
+  staffId  String @map("staff_id")
+
+  /// Name frozen at generation, so the listing keeps saying who it paid.
+  name          String
+  bankName      String? @map("bank_name")
+  bankAccountNo String? @map("bank_account_no")
+  amountCents   Int     @map("amount_cents")
+
+  /// FALSE rows are the truth the total excludes: named, with the reason,
+  /// never silently dropped.
+  included        Boolean
+  exclusionReason String? @map("exclusion_reason")
+
+  tenant Tenant              @relation(fields: [tenantId], references: [id])
+  batch  PayrollPaymentBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  staff  Staff               @relation("PaymentLineStaff", fields: [staffId], references: [id])
+
+  @@index([tenantId, batchId])
+  @@map("payroll_payment_lines")
+}
+
+/// A HUMAN RECORDED THAT A STATUTORY FILING WAS ACTUALLY MADE — at the
+/// authority's own portal, by the clinic or its agent — for one scheme of one
+/// approved run. Kuwick prepares and reconciles; it never submits, so this
+/// row with its date, reference and actor is the ONLY thing that may ever
+/// read as "submitted". One row per (run, scheme): a correction is a new
+/// note, not a second submission claim.
+model PayrollStatutorySubmission {
+  id           String @id @default(uuid())
+  tenantId     String @map("tenant_id")
+  payrollRunId String @map("payroll_run_id")
+
+  /// EPF | SOCSO | EIS | LINDUNG | PCB | HRD — the run's own scheme keys.
+  scheme String
+
+  /// The approved record the filed figures came from.
+  snapshotVersion Int    @map("snapshot_version")
+  snapshotHash    String @map("snapshot_hash")
+
+  submittedDate DateTime @map("submitted_date") @db.Date
+  reference     String
+  note          String?
+
+  recordedByStaffId String   @map("recorded_by_staff_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  recordedBy Staff      @relation("StatutorySubmissionAuthor", fields: [recordedByStaffId], references: [id])
+
+  @@unique([payrollRunId, scheme])
+  @@index([tenantId, payrollRunId])
+  @@map("payroll_statutory_submissions")
 }
 
 enum PayrollExceptionSeverity {

@@ -132,6 +132,22 @@ export interface EmployeeStatutoryProfile {
   pcbApplicable?: boolean;
 
   /**
+   * THE EMPLOYER'S HRD CORP REGISTRATION CLASS, resolved for the period —
+   * employer-level context riding on the employee profile because the levy is
+   * computed per employee on their leviable wages. Undefined/null means
+   * UNRECORDED, which is not the same answer as NOT_REGISTERED: one is a gap,
+   * the other is a fact, and only the fact yields a figure (of zero).
+   */
+  hrdRegistration?: 'MANDATORY_SECTION_14' | 'OPTIONAL_SECTION_15' | 'NOT_REGISTERED' | null;
+  /**
+   * Section 2 covers FULL-TIME employment, contract or permanent. Derived by
+   * the caller from the employment type — PERMANENT and CONTRACT qualify;
+   * part-timers, interns (apprentice contracts are on the guideline's own
+   * excluded list) and locums do not.
+   */
+  hrdFullTimeEmployment?: boolean | null;
+
+  /**
    * THE MTD PROFILE. Residence chooses between a flat 30% and the progressive
    * table; category chooses which deductions apply. Neither is derivable from
    * anything else on an employee record, so both absent means PCB cannot be

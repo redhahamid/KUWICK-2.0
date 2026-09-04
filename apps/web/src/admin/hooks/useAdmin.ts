@@ -65,6 +65,7 @@ import type {
   PayrollEmployerCostReport,
   PayrollHome,
   PayrollReadiness,
+  PaymentStatus,
   PayslipDoc,
   PayslipList,
   PayrollRegisterReport,
@@ -1144,6 +1145,34 @@ export function usePayslip(runId: string | undefined, staffId: string | undefine
 /** The PDF leaves through the audited server route, never assembled client-side. */
 export function payslipPdfPath(runId: string, staffId: string, version?: number): string {
   return `/workforce/payroll/runs/${runId}/payslips/${staffId}/pdf${version ? `?version=${version}` : ''}`;
+}
+
+/** Payment state of a run. Read needs payroll view; preparing needs export.bank. */
+export function usePaymentStatus(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['admin-hr', 'payment', runId],
+    queryFn: () => apiClient.get<PaymentStatus>(`/workforce/payroll/runs/${runId}/payment`),
+    enabled: Boolean(runId),
+  });
+}
+
+export function usePreparePayment() {
+  return useAdminMutation(
+    (runId: string) => apiClient.post<PaymentStatus>(`/workforce/payroll/runs/${runId}/payment/prepare`),
+    ['admin-hr'],
+  );
+}
+
+export function useRecordPaymentPaid() {
+  return useAdminMutation(
+    (input: { runId: string; paymentDate: string; reference: string; note?: string }) =>
+      apiClient.post<PaymentStatus>(`/workforce/payroll/runs/${input.runId}/payment/record-paid`, {
+        paymentDate: input.paymentDate,
+        reference: input.reference,
+        note: input.note,
+      }),
+    ['admin-hr'],
+  );
 }
 
 /**

@@ -75,6 +75,7 @@ import {
   CLASSIFICATION_FIELDS,
   StatutoryClassificationRow,
   resolveClassificationForPayroll,
+  resolveEmployerProfileForPayroll,
 } from './statutory-classification';
 import { toClassificationRow } from './statutory-classification.service';
 import {
@@ -715,6 +716,56 @@ export class PayrollService {
       );
 
       const lastDayOfPeriod = new Date(periodEnd.getTime() - 86400000);
+
+      /*
+       * THE EMPLOYER'S OWN DATED STANDING — today that is the HRD Corp
+       * registration class, resolved for the period exactly as an employee's
+       * classification is. The levy engine has existed since Stage 3 and was
+       * wired into nothing, so a registered employer's cost was short by 1% of
+       * leviable wages every month — an omission indistinguishable on screen
+       * from a clinic that simply is not registered.
+       *
+       * UNRECORDED is not NOT_REGISTERED. No profile on record leaves the levy
+       * uncomputed (null, with the reason) and raises one run-level WARNING; a
+       * registration that CHANGED mid-period blocks like any other mid-month
+       * statutory change, because either answer looks correct on the total.
+       */
+      const employerProfileRows = run.legalEmployerId
+        ? await tx.legalEmployerStatutoryProfile.findMany({
+            where: { legalEmployerId: run.legalEmployerId },
+            orderBy: { effectiveFrom: 'asc' },
+          })
+        : [];
+      const employerProfileOutcome = resolveEmployerProfileForPayroll(
+        employerProfileRows.map((row) => ({
+          id: row.id,
+          effectiveFrom: row.effectiveFrom,
+          effectiveTo: row.effectiveTo,
+          hrdRegistration: row.hrdRegistration,
+        })),
+        period,
+        lastDayOfPeriod,
+      );
+      const hrdRegistration =
+        employerProfileOutcome.kind === 'RESOLVED' ? employerProfileOutcome.row.hrdRegistration : null;
+      if (employerProfileOutcome.kind === 'NONE_ON_RECORD' && run.legalEmployerId) {
+        const employerName = employerNames.get(run.legalEmployerId) ?? 'this employer';
+        exceptions.push({
+          ...buildException('HRD_REGISTRATION_UNRECORDED', null, { runId, employerName }),
+          name: employerName,
+        });
+      }
+      if (employerProfileOutcome.kind === 'CHANGED_MID_PERIOD' && run.legalEmployerId) {
+        const employerName = employerNames.get(run.legalEmployerId) ?? 'this employer';
+        exceptions.push({
+          ...buildException('HRD_REGISTRATION_CHANGED_MID_PERIOD', null, {
+            runId,
+            employerName,
+            changedOn: employerProfileOutcome.changedOn.toISOString().slice(0, 10),
+          }),
+          name: employerName,
+        });
+      }
       const periodLabel = period.toLocaleDateString('en-GB', {
         month: 'long',
         year: 'numeric',
@@ -1281,6 +1332,13 @@ export class PayrollService {
             qualifyingChildren: classification.qualifyingChildren,
             disabledSelf: classification.disabledSelf,
             disabledSpouse: classification.disabledSpouse,
+            // EMPLOYER-LEVEL CONTEXT FOR THE LEVY, resolved once for the run.
+            // Full-time per PSMB s.2: permanent and contract staff qualify;
+            // part-timers, interns (apprentice contracts are on the
+            // guideline's excluded list) and locums do not.
+            hrdRegistration,
+            hrdFullTimeEmployment:
+              employee.employmentType === 'PERMANENT' || employee.employmentType === 'CONTRACT',
           },
           ytdTotal,
         );
@@ -1402,6 +1460,9 @@ export class PayrollService {
             // Employee-borne, so there is no employer figure to write.
             lindungEmployee: nullableCents(payslip.statutory.lindung.employeeCents),
             eisEmployer: nullableCents(payslip.statutory.eis.employerCents),
+            // Employer cost, never a deduction. NULL means "could not be
+            // worked out", and the reason is in the statutory notes below.
+            hrdLevy: nullableCents(payslip.hrdLevyCents),
             pcb: nullableCents(payslip.statutory.pcbCents),
             netPay: fromCents(payslip.netCents),
             employerCost: fromCents(payslip.employerCostCents),
@@ -1468,6 +1529,7 @@ export class PayrollService {
                 eis: payslip.statutory.eis.note ?? null,
                 lindung: payslip.statutory.lindung.note ?? null,
                 pcb: payslip.statutory.pcbNote ?? null,
+                hrd: payslip.hrdNote ?? null,
               },
               incomplete: payslip.incomplete,
               hourlyRateUsed: fromCents(rates.overtimeHourlyCents),
@@ -2256,6 +2318,7 @@ export class PayrollService {
         socsoEmployer: numberOrNull(line.socsoEmployer),
         eisEmployee: numberOrNull(line.eisEmployee),
         lindungEmployee: numberOrNull(line.lindungEmployee),
+        hrdLevy: numberOrNull(line.hrdLevy),
         eisEmployer: numberOrNull(line.eisEmployer),
         pcb: numberOrNull(line.pcb),
         netPay: Number(line.netPay),
@@ -2416,6 +2479,7 @@ export class PayrollService {
       const eisEmployeeCents = cents(line.eisEmployee);
       const eisEmployerCents = cents(line.eisEmployer);
       const lindungEmployeeCents = cents(line.lindungEmployee);
+      const hrdLevyCents = cents(line.hrdLevy);
       const pcbCents = cents(line.pcb);
 
       const grossCents = bases.grossCents ?? toCents(line.grossPay);
@@ -2512,6 +2576,7 @@ export class PayrollService {
           eisEmployeeCents,
           eisEmployerCents,
           lindungEmployeeCents,
+          hrdLevyCents,
           pcbCents,
         },
         // DERIVED FROM THE STORED FIGURES, so the snapshot can be checked

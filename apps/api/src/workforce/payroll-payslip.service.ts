@@ -340,6 +340,14 @@ export class PayrollPayslipService {
       { key: 'EPF', label: 'EPF (employer)', amountCents: line.statutory.epfEmployerCents },
       { key: 'SOCSO', label: 'SOCSO (employer)', amountCents: line.statutory.socsoEmployerCents },
       { key: 'EIS', label: 'EIS (employer)', amountCents: line.statutory.eisEmployerCents },
+      // Only where the snapshot recorded it (version 3+) and it is real money:
+      // a nil levy row on every slip of an unregistered clinic is noise, and a
+      // pre-levy snapshot has nothing truthful to print here.
+      ...(line.statutory.hrdLevyCents !== undefined &&
+      line.statutory.hrdLevyCents !== null &&
+      line.statutory.hrdLevyCents > 0
+        ? [{ key: 'HRD', label: 'HRD Corp levy (employer)', amountCents: line.statutory.hrdLevyCents }]
+        : []),
     ];
     return { employee, employer };
   }

@@ -251,6 +251,84 @@ describe('the three bases are different, which is the whole point', () => {
     expect(optedIn.grossCents - optedIn.employeeDeductionCents).toBe(optedIn.netCents);
   });
 
+  it('builds the HRD base from the guideline: basic less unpaid leave, plus FIXED allowances only', () => {
+    const bases = computeBases([
+      earning('BASIC', 3000),
+      earning('ALLOWANCE', 200), // fixed — inside
+      earning('ATTENDANCE_ALLOWANCE', 100), // variable — the guideline's own exclusion
+      earning('OVERTIME', 150), // excluded
+      wageReduction('UNPAID_LEAVE', 100),
+    ]);
+    expect(bases.hrdCents).toBe(310000); // 3,000 − 100 + 200
+  });
+
+  describe('the HRD levy reaches employer cost, and only where it truthfully can', () => {
+    const july = { periodEnd: new Date('2026-07-31T00:00:00.000Z') };
+    const registered = {
+      ...under60,
+      hrdRegistration: 'MANDATORY_SECTION_14' as const,
+      hrdFullTimeEmployment: true,
+    };
+
+    it('levies 1% of the leviable wage for a s.14 employer, inside employer cost', () => {
+      const slip = computePayslip([earning('BASIC', 3000), earning('OVERTIME', 150)], july, registered);
+      expect(slip.hrdLevyCents).toBe(3000); // 1% of 3,000 — overtime outside the base
+      const without = computePayslip([earning('BASIC', 3000), earning('OVERTIME', 150)], july, {
+        ...registered,
+        hrdRegistration: 'NOT_REGISTERED',
+      });
+      expect(slip.employerCostCents).toBe(without.employerCostCents + 3000);
+      // Never the employee's money.
+      expect(slip.netCents).toBe(without.netCents);
+      expect(slip.employeeDeductionCents).toBe(without.employeeDeductionCents);
+      // Invariant 3 holds with the levy inside the contribution.
+      expect(slip.employerCostCents).toBe(slip.grossCents + slip.employerContributionCents);
+    });
+
+    it('levies 0.5% for a s.15 opt-in employer', () => {
+      const slip = computePayslip([earning('BASIC', 3000)], july, {
+        ...registered,
+        hrdRegistration: 'OPTIONAL_SECTION_15',
+      });
+      expect(slip.hrdLevyCents).toBe(1500);
+    });
+
+    it('levies nothing for a part-timer, and says why', () => {
+      const slip = computePayslip([earning('BASIC', 3000)], july, {
+        ...registered,
+        hrdFullTimeEmployment: false,
+      });
+      expect(slip.hrdLevyCents).toBe(0);
+      expect(slip.hrdNote).toMatch(/full-time/);
+    });
+
+    it('levies nothing for a non-citizen — the opposite of EPF Part F', () => {
+      const slip = computePayslip([earning('BASIC', 3000)], july, {
+        ...registered,
+        epfMembership: 'NON_CITIZEN',
+      });
+      expect(slip.hrdLevyCents).toBe(0);
+      expect(slip.hrdNote).toMatch(/citizens only/);
+    });
+
+    it('returns NULL — never a quiet zero — when the registration is unrecorded', () => {
+      const slip = computePayslip([earning('BASIC', 3000)], july, { ...under60, hrdFullTimeEmployment: true });
+      expect(slip.hrdLevyCents).toBeNull();
+      expect(slip.hrdNote).toMatch(/not recorded/);
+      // And employer cost is computed without it, which the note declares.
+      expect(slip.employerCostCents).toBe(slip.grossCents + slip.employerContributionCents);
+    });
+
+    it('a recorded NOT_REGISTERED is a fact worth zero, not a gap', () => {
+      const slip = computePayslip([earning('BASIC', 3000)], july, {
+        ...registered,
+        hrdRegistration: 'NOT_REGISTERED',
+      });
+      expect(slip.hrdLevyCents).toBe(0);
+      expect(slip.hrdNote).toMatch(/not registered/);
+    });
+  });
+
   it('keeps mileage out of every statutory base but inside gross', () => {
     const bases = computeBases([earning('BASIC', 2100), earning('MILEAGE', 14.34)]);
     expect(bases.epfCents).toBe(210000);

@@ -1,4 +1,5 @@
 import { MoneyLike, fromCents, toCents } from '../finance/money';
+import { hrdLevyCents } from '../statutory/hrd-levy';
 import { SEED_PAY_COMPONENTS } from './pay-component-catalogue';
 import {
   Contribution,
@@ -67,6 +68,13 @@ export interface ComponentLiability {
   pcb: boolean;
   ordinaryRateOfPay: boolean;
   /**
+   * Inside HRD Corp's leviable wage — (basic − unpaid leave) + FIXED
+   * allowances. Overtime, variable allowances, bonuses and commissions are
+   * outside it by the guideline's own list, so this is NOT "everything EPF
+   * takes". Optional because the levy postdates the shape; absent reads false.
+   */
+  hrd?: boolean;
+  /**
    * LHDN treats bonus and once- or twice-yearly incentives as ADDITIONAL
    * remuneration, taxed by a different part of the MTD method from normal
    * monthly remuneration. Carried so that a PCB engine can be implemented
@@ -126,6 +134,7 @@ export const DEFAULT_COMPONENT_LIABILITY: Record<string, ComponentLiability> = O
       pcb: component.pcbLiable,
       ordinaryRateOfPay: component.includeInOrpBase,
       additionalRemuneration: component.additionalRemuneration,
+      hrd: component.hrdLiable,
     },
   ]),
 );
@@ -140,6 +149,8 @@ export interface BasesResult extends StatutoryBases {
   ordinaryRateBaseCents: number;
   pcbNormalCents: number;
   pcbAdditionalCents: number;
+  /** HRD Corp's leviable wage: (basic − unpaid leave) + fixed allowances. */
+  hrdCents: number;
 }
 
 /**
@@ -160,6 +171,7 @@ export function computeBases(lines: PayrollComponentLine[]): BasesResult {
   let orp = 0;
   let pcbNormal = 0;
   let pcbAdditional = 0;
+  let hrd = 0;
 
   for (const line of lines) {
     const amount = toCents(line.amount);
@@ -180,6 +192,10 @@ export function computeBases(lines: PayrollComponentLine[]): BasesResult {
       if (line.liability.additionalRemuneration) pcbAdditional += sign * amount;
       else pcbNormal += sign * amount;
     }
+    // The unpaid-leave wage reduction is hrd-liable, so its −1 sign is what
+    // makes this base "(basic − unpaid leave) + fixed allowances" — the
+    // guideline's own formula — rather than a fifth per-scheme special case.
+    if (line.liability.hrd) hrd += sign * amount;
   }
 
   return {
@@ -191,6 +207,7 @@ export function computeBases(lines: PayrollComponentLine[]): BasesResult {
     ordinaryRateBaseCents: Math.max(0, orp),
     pcbNormalCents: Math.max(0, pcbNormal),
     pcbAdditionalCents: Math.max(0, pcbAdditional),
+    hrdCents: Math.max(0, hrd),
   };
 }
 
@@ -303,15 +320,70 @@ export interface PayslipResult {
   grossCents: number;
   /** Everything withheld from the employee, statutory and otherwise. */
   employeeDeductionCents: number;
-  /** Employer EPF + SOCSO + EIS. Never withheld from the employee. */
+  /** Employer EPF + SOCSO + EIS, plus the HRD levy. Never withheld. */
   employerContributionCents: number;
   netCents: number;
   /** Gross plus employer contributions plus any other employer-borne cost. */
   employerCostCents: number;
+  /**
+   * HRD Corp levy on this employee's leviable wages. Employer cost. NULL when
+   * it could not be worked out — the registration or the citizenship-bearing
+   * EPF membership is unrecorded — and the reason is in `hrdNote`.
+   */
+  hrdLevyCents: number | null;
+  hrdNote: string | null;
   /** True when any statutory figure could not be computed. */
   incomplete: boolean;
   /** Every reason a figure is missing, for the exception list and the payslip. */
   notes: string[];
+}
+
+/**
+ * The levy for one payslip. The FORMULA lives in `statutory/hrd-levy.ts`;
+ * this resolves the two context questions the engine cannot answer — is the
+ * employer's registration on record, and does the employee's recorded EPF
+ * membership carry the citizenship the Act's s.2 turns on.
+ *
+ * Domestic servants and directors paid fees only are outside this product's
+ * employee model: everyone on a run is clinic staff engaged as an EMPLOYEE
+ * under a contract of service (a fee-only director or locum is a CONTRACTOR
+ * and never reaches a payroll line), so those two engine flags are false by
+ * construction rather than by guess.
+ */
+function hrdLevyForPayslip(
+  leviableCents: number,
+  profile: EmployeeStatutoryProfile,
+): { cents: number | null; note: string | null } {
+  const registration = profile.hrdRegistration;
+  if (registration === undefined || registration === null) {
+    return {
+      cents: null,
+      note:
+        'Whether this employer is registered with HRD Corp is not recorded, so the levy is not included in ' +
+        'employer cost. Record the registration class and recalculate.',
+    };
+  }
+  if (registration !== 'NOT_REGISTERED' && !profile.epfMembership) {
+    return {
+      cents: null,
+      note:
+        'The levy covers Malaysian citizens only, and this employee’s EPF membership — which records ' +
+        'citizenship — is not on file.',
+    };
+  }
+  const result = hrdLevyCents({
+    registration,
+    eligibility: {
+      isMalaysianCitizen: profile.epfMembership === 'MALAYSIAN_CITIZEN',
+      isFullTime: profile.hrdFullTimeEmployment ?? false,
+      isDomesticServant: false,
+      isDirectorPaidFeesOnly: false,
+    },
+    basicSalaryCents: leviableCents,
+    unpaidLeaveCents: 0,
+    fixedAllowanceCents: 0,
+  });
+  return { cents: result.levyCents, note: result.reason };
 }
 
 /**
@@ -355,8 +427,17 @@ export function computePayslip(
     .filter((line) => line.kind === 'DEDUCTION')
     .reduce((sum, line) => sum + toCents(line.amount), 0);
 
+  // The HRD levy is employer-borne money the run owes on this employee's
+  // leviable wages, so it rides in the employer contribution — which is what
+  // keeps invariant 3, employerCost = gross + employerContribution, true
+  // without a side channel.
+  const hrd = hrdLevyForPayslip(bases.hrdCents, profile);
+
   const employerContributionCents =
-    (statutory.epf.employerCents ?? 0) + (statutory.socso.employerCents ?? 0) + (statutory.eis.employerCents ?? 0);
+    (statutory.epf.employerCents ?? 0) +
+    (statutory.socso.employerCents ?? 0) +
+    (statutory.eis.employerCents ?? 0) +
+    (hrd.cents ?? 0);
 
   const notes = [
     statutory.epf.note,
@@ -386,6 +467,8 @@ export function computePayslip(
     employerContributionCents,
     netCents,
     employerCostCents: bases.grossCents + employerContributionCents,
+    hrdLevyCents: hrd.cents,
+    hrdNote: hrd.note,
     incomplete,
     notes,
   };

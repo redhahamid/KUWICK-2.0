@@ -36,6 +36,8 @@ import { LocumService } from './locum.service';
 import { PayrollJourneyService } from './payroll-journey.service';
 import { PayrollReadinessService } from './payroll-readiness.service';
 import { PayrollPayslipService } from './payroll-payslip.service';
+import { PayrollPaymentService } from './payroll-payment.service';
+import { PayrollStatutoryOutputService } from './payroll-statutory-output.service';
 import { renderPayslipPdf } from './payroll-payslip-pdf';
 import { PayrollReportService } from './payroll-report.service';
 import { CreateStaffClaimDto, DecideStaffClaimDto, SettleStaffClaimDto } from './dto/staff-claim.dto';
@@ -70,6 +72,8 @@ export class WorkforceController {
     private readonly journey: PayrollJourneyService,
     private readonly readiness: PayrollReadinessService,
     private readonly payslipService: PayrollPayslipService,
+    private readonly payments: PayrollPaymentService,
+    private readonly statutoryOutputs_: PayrollStatutoryOutputService,
     private readonly reports: PayrollReportService,
   ) {}
 
@@ -625,6 +629,60 @@ export class WorkforceController {
   @Get('payroll/runs/:id/candidate-diff')
   payrollCandidateDiff(@Param('id') id: string) {
     return this.payroll.candidateDiff(id);
+  }
+
+  // --- Payment preparation — a document is not a transfer -------------------
+
+  @Get('payroll/runs/:id/payment')
+  paymentStatus(@Param('id') id: string) {
+    return this.payments.status(id);
+  }
+
+  @Post('payroll/runs/:id/payment/prepare')
+  preparePayment(@Param('id') id: string) {
+    return this.payments.prepare(id);
+  }
+
+  /** A CSV instruction listing for keying into a bank portal. NOT a bank file. */
+  @Get('payroll/runs/:id/payment/listing')
+  async paymentListing(@Param('id') id: string, @Res() res: Response) {
+    const file = await this.payments.download(id);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
+    res.send(file.content);
+  }
+
+  @Post('payroll/runs/:id/payment/record-paid')
+  recordPaymentPaid(
+    @Param('id') id: string,
+    @Body() body: { paymentDate: string; reference: string; note?: string },
+  ) {
+    return this.payments.recordPaid(id, body);
+  }
+
+  // --- Statutory outputs — prepared and reconciled, never submitted ---------
+
+  @Get('payroll/runs/:id/statutory-outputs')
+  statutoryOutputs(@Param('id') id: string) {
+    return this.statutoryOutputs_.outputs(id);
+  }
+
+  /** One scheme's rows as CSV — a listing, not any authority's file format. */
+  @Get('payroll/runs/:id/statutory-outputs/:scheme/listing')
+  async statutoryListing(@Param('id') id: string, @Param('scheme') scheme: string, @Res() res: Response) {
+    const file = await this.statutoryOutputs_.listing(id, scheme);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
+    res.send(file.content);
+  }
+
+  @Post('payroll/runs/:id/statutory-outputs/:scheme/record-submission')
+  recordStatutorySubmission(
+    @Param('id') id: string,
+    @Param('scheme') scheme: string,
+    @Body() body: { submittedDate: string; reference: string; note?: string },
+  ) {
+    return this.statutoryOutputs_.recordSubmission(id, scheme, body);
   }
 
   // --- Payslips, from the approved snapshot and nowhere else ----------------

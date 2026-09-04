@@ -18,6 +18,7 @@ const row = (over: Partial<CatalogueRow> = {}): CatalogueRow => ({
   eisLiable: true,
   includeInOrpBase: false,
   additionalRemuneration: false,
+  hrdLiable: false,
   ...over,
 });
 

@@ -16,6 +16,8 @@ import { PayrollStepper, STEPS, stepsWithProblems, type StepKey } from './Payrol
 import { PayrollExceptionCentre } from './PayrollExceptionCentre';
 import { PayrollInputsDrawer } from './PayrollInputsDrawer';
 import { PayslipsPanel } from './PayslipsPanel';
+import { PaymentPanel } from './PaymentPanel';
+import { StatutoryOutputsPanel } from './StatutoryOutputsPanel';
 import { useCan } from '../../core/hooks/useCan';
 import type { PayrollJourney } from '../types';
 
@@ -987,7 +989,9 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
         */}
       {alreadyApproved ? (
         <div style={{ gridColumn: '1 / -1' }}>
+          <PaymentPanel runId={runId} />
           <PayslipsPanel runId={runId} />
+          <StatutoryOutputsPanel runId={runId} />
         </div>
       ) : null}
     </div>

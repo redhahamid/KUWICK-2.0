@@ -768,6 +768,8 @@ export interface PayrollRunDetail {
     eisEmployer: number | null;
     /** SKBBK. Employee-borne, withheld from pay; null = participation unknown. */
     lindungEmployee: number | null;
+    /** HRD Corp levy — employer cost, never a deduction; null = not workable-out. */
+    hrdLevy: number | null;
     pcb: number | null;
     netPay: number;
     employerCost: number;
@@ -896,6 +898,44 @@ export interface PayslipDoc {
     lindungEmployeeCents: number;
     pcbCents: number;
     zakatCents: number;
+  } | null;
+}
+
+// ---------------------------------------------------------------------------
+// PAYMENT PREPARATION. A document is not a transfer: only RECORDED_PAID — a
+// human recording the bank reference and date — claims money moved.
+// ---------------------------------------------------------------------------
+
+export interface PaymentBatchLine {
+  staffId: string;
+  name: string;
+  bankName: string | null;
+  /** Last four digits only; the full number lives in the export permission. */
+  accountEnding: string | null;
+  amountCents: number;
+  included: boolean;
+  exclusionReason: string | null;
+}
+
+export interface PaymentStatus {
+  runStatus: string;
+  runPaidAt: string | null;
+  mayPrepare: boolean;
+  batch: {
+    id: string;
+    version: number;
+    status: 'GENERATED' | 'DOWNLOADED' | 'RECORDED_PAID' | 'SUPERSEDED';
+    snapshotVersion: number;
+    totalCents: number;
+    includedCount: number;
+    excludedCount: number;
+    createdBy: string;
+    createdAt: string;
+    downloadedAt: string | null;
+    paidRecordedAt: string | null;
+    paymentDate: string | null;
+    paymentReference: string | null;
+    lines: PaymentBatchLine[];
   } | null;
 }
 
