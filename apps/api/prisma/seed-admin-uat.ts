@@ -656,6 +656,9 @@ async function reset() {
     // Stage 1 + 2. Children of the run first, then the run; the employer is
     // deleted after `employee_profiles`, which points at it.
     'payroll_snapshots', 'payroll_exceptions',
+    // P1. Payment lines point at their batch, the batch and the submissions at
+    // the run — all three before `payroll_runs`.
+    'payroll_payment_lines', 'payroll_payment_batches', 'payroll_statutory_submissions',
     // Stage 2.5. Claims point AT payroll inputs, so the claim's children and
     // the claims themselves go before the inputs — otherwise the second run of
     // this seed fails on `staff_claims.payroll_input_entry_id`, and only then.
@@ -665,13 +668,17 @@ async function reset() {
     'payroll_run_approvals', 'payroll_approval_policies',
     'payroll_adjustments', 'payroll_lines', 'payroll_runs', 'payroll_input_entries', 'statutory_rule_sets',
     'employee_recurring_items', 'employee_ytd', 'employee_salaries',
+    // TP1/TP3 point at staff and the legal employer; the dated classification
+    // versions at staff. All before `legal_employers` and the staff rows.
+    'employee_tp1_entries', 'employee_tp3_records', 'employee_statutory_classifications',
     'incentive_results', 'incentive_runs', 'incentive_rules',
     'staff_benefit_usages', 'staff_benefit_members', 'staff_benefit_accounts',
     'leave_balances', 'leave_policy_entitlements', 'leave_policies',
     'attendance_records', 'employee_profiles',
     // AFTER the profiles that reference them, BEFORE the staff that authored
     // them.
-    'payroll_policies', 'legal_employers', 'pay_components',
+    // The employer's dated statutory profile before the employer it points at.
+    'payroll_policies', 'legal_employer_statutory_profiles', 'legal_employers', 'pay_components',
     'panel_remittance_allocations', 'panel_remittances', 'claim_events',
     'credit_note_lines', 'credit_notes', 'payments', 'day_end_closings',
     // Lines first, then the import batches they point at, then the claim

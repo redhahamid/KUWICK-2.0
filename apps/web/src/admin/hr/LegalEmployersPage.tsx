@@ -1,9 +1,23 @@
 import { useState } from 'react';
-import { App, Button, Input, Modal, Table, Tag } from 'antd';
+import { App, Button, DatePicker, Input, Modal, Select, Table, Tag } from 'antd';
+import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
-import { useLegalEmployers, usePayComponents, useSeedPayComponents, useUpsertLegalEmployer } from '../hooks/useAdmin';
+import {
+  useLegalEmployers,
+  usePayComponents,
+  useRecordEmployerHrd,
+  useSeedPayComponents,
+  useUpsertLegalEmployer,
+} from '../hooks/useAdmin';
 import { useCan } from '../../core/hooks/useCan';
 import type { LegalEmployerRow, PayComponentRow } from '../types';
+
+/** The Act's own words for each class, and the rate the Act fixes for it. */
+const HRD_LABELS: Record<string, string> = {
+  MANDATORY_SECTION_14: 'Registered — s.14 mandatory (1%)',
+  OPTIONAL_SECTION_15: 'Registered — s.15 optional (0.5%)',
+  NOT_REGISTERED: 'Not registered',
+};
 
 /**
  * THE EMPLOYER, AND THE COMPONENTS IT PAYS.
@@ -22,12 +36,22 @@ export function LegalEmployersPage() {
   const components = usePayComponents();
   const upsert = useUpsertLegalEmployer();
   const seed = useSeedPayComponents();
+  const recordHrd = useRecordEmployerHrd();
   const mayManage = useCan('hr.statutory.manage');
+  // The HRD class is recorded under the same permission as an employee's
+  // standing — it is a dated employment-record fact, not configuration.
+  const mayRecordHrd = useCan('hr.employee.manage');
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<LegalEmployerRow | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+
+  const [hrdFor, setHrdFor] = useState<LegalEmployerRow | null>(null);
+  const [hrdClass, setHrdClass] = useState<string | undefined>();
+  const [hrdFrom, setHrdFrom] = useState(dayjs().startOf('month'));
+  const [hrdReason, setHrdReason] = useState('');
+  const [hrdError, setHrdError] = useState<string | null>(null);
 
   function edit(row: LegalEmployerRow | null) {
     setEditing(row);
@@ -80,6 +104,24 @@ export function LegalEmployersPage() {
             { title: 'EPF', dataIndex: 'epfEmployerNo', render: (v: string | null) => v ?? '—' },
             { title: 'SOCSO', dataIndex: 'socsoEmployerNo', render: (v: string | null) => v ?? '—' },
             { title: 'LHDN (E)', dataIndex: 'lhdnEmployerNo', render: (v: string | null) => v ?? '—' },
+            {
+              /*
+               * THE LEVY CLASS IS A FACT WITH A DATE, and until it is recorded
+               * the levy on every payslip is a warning, not a figure. This
+               * column and its action are the remediation path the run's
+               * HRD_REGISTRATION_UNRECORDED warning deep-links to — a warning
+               * whose fix has no screen is a dead end.
+               */
+              title: 'HRD Corp',
+              key: 'hrd',
+              width: 210,
+              render: (_: unknown, row: LegalEmployerRow) =>
+                row.hrdRegistration ? (
+                  HRD_LABELS[row.hrdRegistration] ?? row.hrdRegistration
+                ) : (
+                  <Tag color="warning">Not recorded</Tag>
+                ),
+            },
             { title: 'Employees', dataIndex: 'employeeCount', align: 'right', width: 100 },
             {
               title: 'Could it file?',
@@ -94,16 +136,34 @@ export function LegalEmployersPage() {
                   </span>
                 ),
             },
-            ...(mayManage
+            ...(mayManage || mayRecordHrd
               ? [
                   {
                     title: '',
                     key: 'a',
-                    width: 70,
+                    width: 170,
                     render: (_: unknown, row: LegalEmployerRow) => (
-                      <Button size="small" onClick={() => edit(row)}>
-                        Edit
-                      </Button>
+                      <span style={{ display: 'inline-flex', gap: 6 }}>
+                        {mayManage ? (
+                          <Button size="small" onClick={() => edit(row)}>
+                            Edit
+                          </Button>
+                        ) : null}
+                        {mayRecordHrd ? (
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              setHrdFor(row);
+                              setHrdClass(row.hrdRegistration ?? undefined);
+                              setHrdFrom(dayjs().startOf('month'));
+                              setHrdReason('');
+                              setHrdError(null);
+                            }}
+                          >
+                            HRD class
+                          </Button>
+                        ) : null}
+                      </span>
                     ),
                   },
                 ]
@@ -216,6 +276,68 @@ export function LegalEmployersPage() {
               />
             </label>
           ))}
+        </div>
+      </Modal>
+
+      <Modal
+        open={hrdFor !== null}
+        title={hrdFor ? `HRD Corp registration — ${hrdFor.name}` : ''}
+        okText="Record"
+        confirmLoading={recordHrd.isPending}
+        onCancel={() => setHrdFor(null)}
+        onOk={async () => {
+          setHrdError(null);
+          if (!hrdClass) {
+            setHrdError('Choose the registration class. The Act fixes the rate — 1% under s.14, 0.5% under s.15.');
+            return;
+          }
+          if (!hrdReason.trim()) {
+            setHrdError('Say why this is being recorded — registration confirmed, headcount crossed, exemption…');
+            return;
+          }
+          try {
+            await recordHrd.mutateAsync({
+              legalEmployerId: hrdFor!.id,
+              effectiveFrom: hrdFrom.format('YYYY-MM-DD'),
+              hrdRegistration: hrdClass,
+              reason: hrdReason.trim(),
+            });
+            message.success('Recorded. The levy computes from the date it takes effect.');
+            setHrdFor(null);
+          } catch (e) {
+            setHrdError(e instanceof Error ? e.message : 'The server refused the change and did not say why.');
+          }
+        }}
+      >
+        {hrdError ? <AdminNotice tone="warn">{hrdError}</AdminNotice> : null}
+        <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
+          <label>
+            <div className="kw-fieldLabel">In force from</div>
+            <DatePicker value={hrdFrom} onChange={(v) => v && setHrdFrom(v)} style={{ width: '100%' }} allowClear={false} format="D MMM YYYY" />
+          </label>
+          <label>
+            <div className="kw-fieldLabel">Registration class</div>
+            <Select
+              value={hrdClass}
+              onChange={setHrdClass}
+              style={{ width: '100%' }}
+              placeholder="Not recorded"
+              options={Object.entries(HRD_LABELS).map(([value, label]) => ({ value, label }))}
+            />
+          </label>
+          <label>
+            <div className="kw-fieldLabel">Reason</div>
+            <Input.TextArea
+              rows={2}
+              value={hrdReason}
+              onChange={(e) => setHrdReason(e.target.value)}
+              placeholder="HRD Corp registration letter dated…"
+            />
+          </label>
+          <p className="kw-muted" style={{ margin: 0, fontSize: 11.5 }}>
+            The rate is never typed here: 1% (section 14) and 0.5% (section 15) are the PSMB Act&apos;s own numbers.
+            A change is a new dated version — an earlier month&apos;s levy keeps the class that was true then.
+          </p>
         </div>
       </Modal>
     </AdminShell>

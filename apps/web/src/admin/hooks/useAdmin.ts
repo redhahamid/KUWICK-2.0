@@ -1247,6 +1247,18 @@ export function usePayrollClaimsReport(params: { from: string; to: string }) {
   });
 }
 
+/**
+ * Record the employer's HRD Corp registration class from a date. The RATE is
+ * never sent — 1% (s.14) and 0.5% (s.15) are the PSMB Act's own numbers.
+ */
+export function useRecordEmployerHrd() {
+  return useAdminMutation(
+    ({ legalEmployerId, ...body }: { legalEmployerId: string; effectiveFrom: string; hrdRegistration: string; reason?: string }) =>
+      apiClient.post(`/workforce/legal-employers/${legalEmployerId}/statutory-profile`, body),
+    ['admin-hr'],
+  );
+}
+
 /** Every dated version of an employee's statutory standing, newest first. */
 export function useStatutoryClassifications(staffId: string | undefined) {
   return useQuery({

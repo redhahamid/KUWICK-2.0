@@ -1460,6 +1460,29 @@ export class PayrollService {
           });
         }
 
+        /*
+         * THE COLUMNS PARTITION GROSS. Every earning line lands in exactly one
+         * of the five earning columns and every withholding line in the
+         * deductions column, summed from the same component lines the payslip
+         * itemises. These three stayed at their schema default of 0 — so a
+         * bonus month's register showed a gross no column explained, a claim
+         * paid with salary was in no column at all, a zakat month's take-home
+         * was lower than the columns could account for, and the year-to-date's
+         * additional-remuneration split (which falls back to this bonus
+         * column) recorded a bonus month as ordinary pay. The synthetic-month
+         * reconciliation is what caught it.
+         */
+        const columnCents = (kind: 'EARNING' | 'DEDUCTION', accepts: (code: string) => boolean) =>
+          componentLines
+            .filter((row) => row.kind === kind && accepts(row.code))
+            .reduce((sum, row) => sum + toCents(row.amount), 0);
+        const allowanceColumnCents = columnCents(
+          'EARNING',
+          (code) => !['BASIC', 'OVERTIME', 'INCENTIVE', 'BONUS'].includes(code),
+        );
+        const bonusColumnCents = columnCents('EARNING', (code) => code === 'BONUS');
+        const otherDeductionColumnCents = columnCents('DEDUCTION', () => true);
+
         await tx.payrollLine.create({
           data: {
             tenantId: currentTenantId(),
@@ -1515,6 +1538,9 @@ export class PayrollService {
             basicSalary: fromCents(isBonusRun ? 0 : basicCents),
             overtimePay: fromCents(isBonusRun ? 0 : overtimeCents),
             incentives: fromCents(incentiveCents),
+            allowances: fromCents(allowanceColumnCents),
+            bonus: fromCents(bonusColumnCents),
+            otherDeductions: fromCents(otherDeductionColumnCents),
             grossPay: fromCents(payslip.grossCents),
             unpaidLeaveDeduction: fromCents(unpaidCents),
             epfEmployee: nullableCents(payslip.statutory.epf.employeeCents),

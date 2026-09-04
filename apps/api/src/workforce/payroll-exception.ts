@@ -78,8 +78,12 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
     cause: () => 'Monthly tax (PCB) is missing.',
     consequence:
       'Their payslip would show more take-home pay than they are really owed, and the clinic would pay LHDN too little for this month.',
+    // "Kuwick does not work out monthly tax for you" survived here after the
+    // MTD engine shipped — a false statement raised on the exact screen where
+    // somebody decides what to do about the missing figure. The truthful remedy
+    // comes first: complete the tax profile and the figure is CALCULATED.
     remediation:
-      'Enter their PCB figure, or record them as not paying PCB if that is genuinely their situation. Kuwick does not work out monthly tax for you.',
+      'Record their tax residence and MTD category so the figure is calculated from HASiL’s specification, enter the month’s PCB by hand, or record them as not paying PCB if that is genuinely their situation.',
     deepLink: () => '/admin/hr/payroll',
   },
   UNAPPROVED_OVERTIME: {

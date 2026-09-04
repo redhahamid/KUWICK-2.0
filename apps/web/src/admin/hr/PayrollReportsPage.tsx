@@ -128,6 +128,11 @@ export function PayrollReportsPage() {
             style={{ minWidth: 260 }}
             value={report}
             onChange={(value) => setReport(value as ReportKey)}
+            // Thirteen options: without this the list virtualises and the ones
+            // below the fold are not even in the DOM for a reader (or a UAT
+            // script) to find.
+            virtual={false}
+            listHeight={420}
             options={(catalogue.data?.available ?? []).map((entry) => ({
               value: entry.key,
               label: entry.title,
@@ -313,7 +318,16 @@ function RegisterReport({ runId }: { runId: string }) {
         columns={[
           { title: 'Employee', dataIndex: 'name' },
           { title: 'Salary', dataIndex: 'basicSalary', align: 'right' as const, width: 110, render: ringgit },
-          { title: 'Allowances', dataIndex: 'allowances', align: 'right' as const, width: 110, render: ringgit },
+          {
+            // Allowances AND any other earning without a column of its own — a
+            // claim reimbursed with salary lands here, so the row keeps adding
+            // up left to right.
+            title: 'Allowances / other',
+            dataIndex: 'allowances',
+            align: 'right' as const,
+            width: 130,
+            render: ringgit,
+          },
           { title: 'Overtime', dataIndex: 'overtimePay', align: 'right' as const, width: 100, render: ringgit },
           /*
            * EVERY EARNING THE GROSS CONTAINS GETS A COLUMN.

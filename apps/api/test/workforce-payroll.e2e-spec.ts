@@ -780,7 +780,9 @@ describe('Workforce: employees, attendance and payroll (e2e)', () => {
         (row) => row.code === 'PCB_MISSING',
       );
       expect(pcb).toBeDefined();
-      expect(pcb!.remediation).toMatch(/does not work out monthly tax/);
+      // The remedy leads with the truthful path — complete the tax profile and
+      // the figure is calculated; the old text still claimed Kuwick could not.
+      expect(pcb!.remediation).toMatch(/calculated from HASiL/);
 
       // Not approvable, and acknowledging the statutory gap does not get past
       // it — an unresolved exception is a harder stop than an unverified rate.
