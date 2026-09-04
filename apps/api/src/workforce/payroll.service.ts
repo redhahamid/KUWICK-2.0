@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Inject, Inj
 import {
   PayrollApprovalMode as PayrollApprovalModeEnum,
   PayrollRunStatus,
+  PayrollRunType as PayrollRunTypeEnum,
   StatutoryStatus,
   StatutoryVerificationStatus,
   SystemRole,
@@ -375,12 +376,42 @@ export class PayrollService {
   async create(dto: CreatePayrollRunDto) {
     return withAdminTx(this.rawPrisma, 'hr.payroll.run', async (tx, actor) => {
       const period = monthStart(dto.period);
-      const existing = await tx.payrollRun.findFirst({
-        where: { period, clinicId: dto.clinicId ?? null, status: { not: PayrollRunStatus.CANCELLED } },
-      });
-      if (existing) {
-        throw new ConflictException(`A payroll run for ${dto.period} already exists at this branch.`);
+      const runType = (dto.runType ?? 'REGULAR') as PayrollRunTypeEnum;
+
+      /*
+       * ONE REGULAR PAYROLL A MONTH; THE OTHER KINDS SIT BESIDE IT.
+       *
+       * The check used to refuse a SECOND RUN OF ANY KIND for the month, which
+       * is right for the regular payroll and wrong for everything else — and
+       * since nothing ever set `runType`, the effect was that a bonus paid
+       * off-cycle, a correction beside an approved month and a leaver's final
+       * pay could not be created at all. The enum has been in the schema since
+       * Stage 2 with no way to reach three of its four values.
+       */
+      if (runType === 'REGULAR') {
+        const existing = await tx.payrollRun.findFirst({
+          where: {
+            period,
+            clinicId: dto.clinicId ?? null,
+            runType: 'REGULAR',
+            status: { not: PayrollRunStatus.CANCELLED },
+          },
+        });
+        if (existing) {
+          throw new ConflictException(`A payroll run for ${dto.period} already exists at this branch.`);
+        }
       }
+
+      // Several runs of one kind in a month are legitimate — two bonus rounds,
+      // two leavers — so the sequence distinguishes them rather than a refusal.
+      const sequence =
+        ((
+          await tx.payrollRun.findFirst({
+            where: { period, clinicId: dto.clinicId ?? null, runType },
+            orderBy: { sequence: 'desc' },
+            select: { sequence: true },
+          })
+        )?.sequence ?? 0) + 1;
 
       /*
        * WHICH COMPANY IS THIS RUN FOR?
@@ -430,6 +461,8 @@ export class PayrollService {
           clinicId: dto.clinicId ?? null,
           legalEmployerId,
           period,
+          runType,
+          sequence,
           notes: dto.notes ?? null,
           createdByStaffId: actor.id,
         },
@@ -450,6 +483,34 @@ export class PayrollService {
       if (!run) throw new NotFoundException('Payroll run not found');
       if (run.status === PayrollRunStatus.APPROVED || run.status === PayrollRunStatus.PAID) {
         throw new ConflictException('This payroll run is locked. Record an adjustment instead.');
+      }
+
+      /*
+       * WHAT KIND OF RUN THIS IS CHANGES WHAT IS COMPUTED.
+       *
+       *  - REGULAR and CORRECTION compute the whole month. A correction is the
+       *    same arithmetic over the same period; what makes it a correction is
+       *    that it sits beside a run already approved, and the snapshot of that
+       *    one is untouched.
+       *
+       *  - OFF_CYCLE_BONUS pays only what was keyed for the period. It must NOT
+       *    push a BASIC line or materialise attendance and leave: doing so pays
+       *    somebody their salary twice in a month, and the second payslip would
+       *    look exactly like the first.
+       *
+       *  - FINAL_PAY is REFUSED. A leaver's last payment is not a normal month:
+       *    s.60E accrued annual leave must be paid out and notice pay may be
+       *    due, and neither is modelled here. A final payment that quietly
+       *    omitted them would be short by a real amount and look correct.
+       */
+      const isBonusRun = run.runType === 'OFF_CYCLE_BONUS';
+      if (run.runType === 'FINAL_PAY') {
+        throw new BadRequestException(
+          'A final payment is not calculated by Kuwick yet. Accrued annual leave under section 60E of the ' +
+            'Employment Act and any notice pay are not modelled, so this run would produce a figure that is short ' +
+            'by a real amount and looks correct. Pay the final month as a regular run and record the leave payout ' +
+            'and notice pay as payroll inputs, so both appear on the payslip with a reason.',
+        );
       }
 
       const period = run.period;
@@ -851,6 +912,7 @@ export class PayrollService {
         // Only where it changes an entitlement: an employee the Act does not
         // reach has no statutory rest-day pay to get wrong.
         if (
+          !isBonusRun &&
           classification.restDayOfWeek === null &&
           fullMonthlyCents <= FIRST_SCHEDULE_WAGE_CEILING_CENTS &&
           attendance.some((row) => (row.workedMinutes ?? 0) > 0)
@@ -950,7 +1012,7 @@ export class PayrollService {
         // thing on a payslip or in a dispute.
         const scope = overtimeScope(fullMonthlyCents, periodEnd, classification.overtimeContractPolicy);
         const workedAnyDay = attendance.some((row) => (row.workedMinutes ?? 0) > 0);
-        if (workedAnyDay && !scope.withinFirstSchedule && !classification.overtimeContractPolicy) {
+        if (!isBonusRun && workedAnyDay && !scope.withinFirstSchedule && !classification.overtimeContractPolicy) {
           raise('OVERTIME_ENTITLEMENT_UNRECORDED', employee, {
             wages: formatCents(fullMonthlyCents),
           });
@@ -975,7 +1037,12 @@ export class PayrollService {
         );
         const overtimeHours = pricing.normalDayHours;
 
-        const desiredInputs = [
+        // A BONUS RUN CARRIES NO ATTENDANCE. Overtime, unpaid leave and
+        // incentives belong to the month's regular payroll and are already on
+        // it; materialising them again here would pay them a second time.
+        const desiredInputs = isBonusRun
+          ? []
+          : [
           ...materialiseOvertimeDays(
             pricing.days.map((row) => ({
               staffId: employee.staffId,
@@ -1101,17 +1168,32 @@ export class PayrollService {
         // derivations AND read again from the input table, which is how a
         // derived figure could be counted twice the moment it also existed as a
         // row. There is now one source: the rows.
-        const componentLines: PayrollComponentLine[] = [
-          {
-            code: 'BASIC',
-            label: catalogue.get('BASIC')?.label ?? 'Basic pay',
-            kind: 'EARNING',
-            amount: fromCents(basicCents),
-            // From the catalogue like every other line. BASIC is guaranteed
-            // present: `checkOrdinaryRateBase` above refuses a run without it.
-            liability: (catalogue.get('BASIC') as ResolvedComponent).liability,
-          },
-        ];
+        const componentLines: PayrollComponentLine[] = isBonusRun
+          ? []
+          : [
+              {
+                code: 'BASIC',
+                label: catalogue.get('BASIC')?.label ?? 'Basic pay',
+                kind: 'EARNING',
+                amount: fromCents(basicCents),
+                // From the catalogue like every other line. BASIC is guaranteed
+                // present: `checkOrdinaryRateBase` refuses a run without it.
+                liability: (catalogue.get('BASIC') as ResolvedComponent).liability,
+              },
+            ];
+
+        /*
+         * NOBODY IS PAID NOUGHT.
+         *
+         * On an off-cycle run an employee with nothing keyed for them has no
+         * payslip to produce, and a zero one would sit in the register looking
+         * like a payment that failed. Left out and said so, rather than
+         * filtered out of a query where nobody could see the decision.
+         */
+        if (isBonusRun && materialised.every((row) => row.componentCode === 'PCB' || toCents(row.amount) === 0)) {
+          exclude('NOTHING_TO_PAY_OFF_CYCLE', employee, { periodLabel });
+          continue;
+        }
 
         // PCB is a supplied amount, not a computed one, so it is taken out of
         // the component list and applied as an override further down.
@@ -1301,8 +1383,12 @@ export class PayrollService {
                 pcb: classification.pcbApplicable,
               },
             } as never,
-            basicSalary: fromCents(basicCents),
-            overtimePay: fromCents(overtimeCents),
+            // NOUGHT ON A BONUS RUN. `basicCents` is still resolved above — the
+            // ordinary rate of pay is priced from the full monthly wage — but
+            // it is not paid here, and a payslip reading "Basic pay 3,000"
+            // above a gross of 1,500 is a payslip that does not add up.
+            basicSalary: fromCents(isBonusRun ? 0 : basicCents),
+            overtimePay: fromCents(isBonusRun ? 0 : overtimeCents),
             incentives: fromCents(incentiveCents),
             grossPay: fromCents(payslip.grossCents),
             unpaidLeaveDeduction: fromCents(unpaidCents),

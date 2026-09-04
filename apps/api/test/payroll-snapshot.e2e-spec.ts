@@ -547,3 +547,214 @@ describe('a pay component treatment change is a dated version (e2e)', () => {
     expect(refused.body.message).toMatch(/which is not before/);
   });
 });
+
+describe('payroll run types (e2e)', () => {
+  /*
+   * `PayrollRunType` has been in the schema since Stage 2 and NOTHING EVER SET
+   * IT: every run was REGULAR, and the duplicate check refused a second run of
+   * any kind for the month — so a bonus paid off-cycle, a correction beside an
+   * approved month and a leaver's final pay were unreachable. The types are not
+   * labels: an off-cycle run that re-paid basic salary would pay somebody twice
+   * in a month, and the second payslip would look exactly like the first.
+   */
+  let app: INestApplication;
+  let prisma: PrismaClient;
+  let tenantId: string;
+  let bearer: string;
+  let clinicId: string;
+  let legalEmployerId: string;
+  const server = () => app.getHttpServer();
+  const PERIOD = '2026-08';
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = moduleRef.createNestApplication();
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    await app.init();
+    prisma = createTestPrismaClient();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+    await app.close();
+  });
+
+  beforeEach(async () => {
+    tenantId = randomId();
+    await withTenantContext(prisma, tenantId, (tx) =>
+      tx.tenant.create({ data: { id: tenantId, name: 'Run Type Tenant' } }),
+    );
+    bearer = (await createOwnerAndBearer(prisma, tenantId)).bearer;
+    clinicId = (
+      await request(server()).post('/clinics').set('Authorization', bearer).send({ name: 'Branch A' }).expect(201)
+    ).body.id;
+    legalEmployerId = (
+      await request(server())
+        .post('/workforce/legal-employers')
+        .set('Authorization', bearer)
+        .send({ name: `Run Type Employer ${randomId().slice(0, 8)}` })
+        .expect(201)
+    ).body.id;
+    await request(server()).post('/workforce/pay-components/seed').set('Authorization', bearer).expect(201);
+  });
+
+  async function person(name: string, salary: string) {
+    const staff = await withTenantContext(prisma, tenantId, (tx) =>
+      tx.staff.create({ data: { tenantId, role: Role.FRONT_DESK_CLINICAL_STAFF, fullName: name, clinicId } }),
+    );
+    await request(server())
+      .post(`/workforce/employees/${staff.id}`)
+      .set('Authorization', bearer)
+      .send({ position: 'Clinic Assistant', employmentStatus: 'ACTIVE', startDate: '2024-01-01', dateOfBirth: '1990-06-15' })
+      .expect(201);
+    await request(server())
+      .post(`/workforce/employees/${staff.id}/statutory-classification`)
+      .set('Authorization', bearer)
+      .send({
+        effectiveFrom: '2020-01-01',
+        epfMembership: 'MALAYSIAN_CITIZEN',
+        lindungParticipation: 'NOT_PARTICIPATING',
+        restDayOfWeek: 0,
+        pcbApplicable: false,
+      })
+      .expect(201);
+    await request(server())
+      .patch(`/workforce/employees/${staff.id}/legal-employer`)
+      .set('Authorization', bearer)
+      .send({ legalEmployerId })
+      .expect(200);
+    await request(server())
+      .post(`/workforce/employees/${staff.id}/salary`)
+      .set('Authorization', bearer)
+      .send({ amount: salary, basis: 'MONTHLY', effectiveFrom: '2024-01-01' })
+      .expect(201);
+    return staff.id;
+  }
+
+  const createRun = (runType?: string) =>
+    request(server())
+      .post('/workforce/payroll/runs')
+      .set('Authorization', bearer)
+      .send({ period: PERIOD, clinicId, ...(runType ? { runType } : {}) });
+
+  const calculate = (id: string) =>
+    request(server()).patch(`/workforce/payroll/runs/${id}/calculate`).set('Authorization', bearer);
+
+  const detail = async (id: string) =>
+    (await request(server()).get(`/workforce/payroll/runs/${id}`).set('Authorization', bearer).expect(200)).body;
+
+  it('still allows exactly one REGULAR payroll a month at a branch', async () => {
+    await person('Nurul Aina', '3000.00');
+    await createRun().expect(201);
+    const second = await createRun().expect(409);
+    expect(second.body.message).toMatch(/already exists at this branch/);
+  });
+
+  it('allows an off-cycle bonus run BESIDE the regular one, and numbers them', async () => {
+    await person('Nurul Aina', '3000.00');
+    await createRun().expect(201);
+    const bonus = await createRun('OFF_CYCLE_BONUS').expect(201);
+    expect(bonus.body.runType).toBe('OFF_CYCLE_BONUS');
+    expect(bonus.body.sequence).toBe(1);
+    // A second bonus round in the same month is legitimate.
+    const secondBonus = await createRun('OFF_CYCLE_BONUS').expect(201);
+    expect(secondBonus.body.sequence).toBe(2);
+  });
+
+  it('pays ONLY what was keyed on an off-cycle run — never basic salary a second time', async () => {
+    const staffId = await person('Nurul Aina', '3000.00');
+    const regular = await createRun().expect(201);
+    await calculate(regular.body.id).expect(200);
+    const regularDetail = await detail(regular.body.id);
+    expect(Number(regularDetail.lines[0].basicSalary)).toBe(3000);
+
+    await request(server())
+      .post('/workforce/payroll/inputs')
+      .set('Authorization', bearer)
+      .send({
+        staffId,
+        period: `${PERIOD}-01`,
+        componentCode: 'BONUS',
+        amount: '1500.00',
+        kind: 'ADDITIONAL',
+        reason: 'Half-year bonus',
+      })
+      .expect(201);
+
+    const bonus = await createRun('OFF_CYCLE_BONUS').expect(201);
+    await calculate(bonus.body.id).expect(200);
+    const bonusDetail = await detail(bonus.body.id);
+    const line = bonusDetail.lines.find((l: { staffId: string }) => l.staffId === staffId);
+
+    expect(Number(line.basicSalary)).toBe(0);
+    expect(Number(line.grossPay)).toBe(1500);
+    // Statutory still applies to what IS paid — a bonus is EPF wages.
+    expect(Number(line.epfEmployee)).toBeGreaterThan(0);
+  });
+
+  it('leaves somebody with nothing keyed OFF an off-cycle run, and says so', async () => {
+    const paid = await person('Gets A Bonus', '3000.00');
+    await person('Gets Nothing', '2800.00');
+    await request(server())
+      .post('/workforce/payroll/inputs')
+      .set('Authorization', bearer)
+      .send({ staffId: paid, period: `${PERIOD}-01`, componentCode: 'BONUS', amount: '900.00', kind: 'ADDITIONAL' })
+      .expect(201);
+
+    const bonus = await createRun('OFF_CYCLE_BONUS').expect(201);
+    const calculated = await calculate(bonus.body.id).expect(200);
+    const bonusDetail = await detail(bonus.body.id);
+
+    expect(bonusDetail.lines).toHaveLength(1);
+    expect(bonusDetail.lines[0].staffId).toBe(paid);
+    const exceptions = calculated.body.exceptions as { name: string; issue: string }[];
+    expect(exceptions.some((row) => row.name === 'Gets Nothing' && /Nothing is keyed/.test(row.issue))).toBe(true);
+
+    // INFO — an empty bonus round for most of the workforce is normal, and a
+    // screen of blockers over it would train people to click past blockers.
+    const gate = await request(server())
+      .get(`/workforce/payroll/runs/${bonus.body.id}/exceptions`)
+      .set('Authorization', bearer)
+      .expect(200);
+    const row = (gate.body.exceptions as { code: string; severity: string }[]).find(
+      (e) => e.code === 'NOTHING_TO_PAY_OFF_CYCLE',
+    );
+    expect(row!.severity).toBe('INFO');
+  });
+
+  it('REFUSES a final payment rather than producing one that is short', async () => {
+    await person('Leaving Soon', '3000.00');
+    const final = await createRun('FINAL_PAY').expect(201);
+    const refused = await calculate(final.body.id).expect(400);
+    // Named, with the sections that are missing and what to do instead.
+    expect(refused.body.message).toMatch(/section 60E/);
+    expect(refused.body.message).toMatch(/notice pay/);
+    expect(refused.body.message).toMatch(/payroll inputs/);
+  });
+
+  it('carries the run type into the frozen record', async () => {
+    const staffId = await person('Nurul Aina', '3000.00');
+    await request(server())
+      .post('/workforce/payroll/inputs')
+      .set('Authorization', bearer)
+      .send({ staffId, period: `${PERIOD}-01`, componentCode: 'BONUS', amount: '1000.00', kind: 'ADDITIONAL' })
+      .expect(201);
+    const bonus = await createRun('OFF_CYCLE_BONUS').expect(201);
+    await calculate(bonus.body.id).expect(200);
+    await request(server())
+      .patch(`/workforce/payroll/runs/${bonus.body.id}/approve`)
+      .set('Authorization', bearer)
+      .send({})
+      .expect(200);
+
+    const snapshot = (
+      await request(server())
+        .get(`/workforce/payroll/runs/${bonus.body.id}/snapshots/1`)
+        .set('Authorization', bearer)
+        .expect(200)
+    ).body;
+    expect(snapshot.payload.runType).toBe('OFF_CYCLE_BONUS');
+    expect(snapshot.payload.sequence).toBe(1);
+    expect(snapshot.verification.verdict).toBe('VERIFIED');
+  });
+});

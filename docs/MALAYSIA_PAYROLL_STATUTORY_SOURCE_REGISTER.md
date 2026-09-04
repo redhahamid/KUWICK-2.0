@@ -409,6 +409,16 @@ Two consequences:
 
 - **The hash now covers the provenance.** Two runs computed against different
   EPF editions no longer hash identically.
+- **The run type is part of the record.** `PayrollRunType` had been in the
+  schema since Stage 2 and nothing ever set it, so every run was REGULAR and
+  the duplicate check refused a second run of any kind in a month — an
+  off-cycle bonus, a correction beside an approved month and a leaver's final
+  pay were all unreachable. An OFF_CYCLE_BONUS run now pays only what was keyed
+  for the period, with no BASIC line and no attendance or leave materialised;
+  paying salary a second time in a month would produce a payslip that looks
+  exactly like the first. FINAL_PAY is REFUSED at calculation and says why:
+  accrued annual leave under s.60E and notice pay are not modelled, and a final
+  payment that quietly omitted them would be short by a real amount.
 - **A snapshot is checked, not asserted.** `verifySnapshot` re-hashes the
   stored payload and re-runs the run's own `checkPayrollInvariants` over the
   frozen figures on every read, and reports four states: `VERIFIED`,
@@ -488,6 +498,11 @@ so a month with unpaid leave still prices overtime from the full wage.
    employee of another company (`EMPLOYED_BY_ANOTHER_COMPANY`) and refuses to
    write a year-to-date under an entity that disagrees with the run's, so the
    figures cannot silently split — but the HISTORY of the transfer is not held.
+1. **Final pay — s.60E leave encashment and notice pay.** A FINAL_PAY run is
+   created but refuses to calculate. Paying out accrued annual leave requires
+   the accrual rules and the balance at termination; notice pay requires the
+   contractual notice period. Neither is held, so the run refuses rather than
+   producing a plausible figure that is short.
 1. **The First Schedule's full exception list.** The RM4,000 wage limitation on
    ss. 60, 60A and 60D is implemented. Other First Schedule exceptions — the
    treatment of domestic employees, and of employees engaged in specified

@@ -302,6 +302,22 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'before this month is calculated.',
     deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
   },
+  /**
+   * An off-cycle run pays what was keyed for the period and nothing else. Most
+   * of the workforce will have nothing in a bonus round, and that is normal —
+   * INFO, so it is visible without burying the rows that need attention.
+   */
+  NOTHING_TO_PAY_OFF_CYCLE: {
+    code: 'NOTHING_TO_PAY_OFF_CYCLE',
+    severity: 'INFO',
+    overridable: false,
+    cause: (c) => `Nothing is keyed for this employee in ${c.periodLabel}.`,
+    consequence:
+      'An off-cycle run pays only what was entered for it, so there is no payslip to produce for them. A zero ' +
+      'payslip would sit in the register looking like a payment that failed.',
+    remediation: 'Nothing, unless they were meant to be included — then enter their amount and recalculate.',
+    deepLink: () => '/admin/hr/payroll',
+  },
   NO_STATUTORY_CLASSIFICATION: {
     code: 'NO_STATUTORY_CLASSIFICATION',
     severity: 'BLOCKING',
