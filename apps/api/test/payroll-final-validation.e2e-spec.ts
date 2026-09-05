@@ -435,11 +435,13 @@ describe('Payroll final-validation guards (e2e)', () => {
     beforeAll(async () => {
       // The registration the levy turns on, recorded the way the product
       // records it. Done last in this file so the earlier describes keep
-      // exercising the UNRECORDED world they were written against.
+      // exercising the UNRECORDED world they were written against — and
+      // dated after the last APPROVED month above, because the product
+      // correctly refuses a registration that would re-base an approved run.
       await request(server())
         .post(`/workforce/legal-employers/${legalEmployerId}/statutory-profile`)
         .set('Authorization', bearer)
-        .send({ effectiveFrom: '2024-01-01', hrdRegistration: 'MANDATORY_SECTION_14', reason: 'Registered under s.14' })
+        .send({ effectiveFrom: '2026-08-01', hrdRegistration: 'MANDATORY_SECTION_14', reason: 'Registered under s.14' })
         .expect(201);
       linaId = await makeEmployee('Levy Lina', clinicB, '3000.00');
     });

@@ -80,23 +80,26 @@ test.describe('HR', () => {
 
     await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible();
 
-    /*
-     * THE ONE SAFETY INDICATOR. The seeded tenant's rates were never checked
-     * against the authorities, so the one-line banner is present and says the
-     * consequence, not a wall of warnings. This spec used to assert a page of
-     * red copy including "PCB is not calculated at all" and "no payslip and no
-     * bank payment file" — statements that became FALSE when the MTD engine,
-     * the snapshot payslip and the payment listing shipped. A warning that
-     * overstates is the same defect as one that understates: the reader who
-     * catches it wrong once stops believing the rest of it.
-     */
-    await expect(page.getByText(/Payroll statutory setup is not yet production-ready/i)).toBeVisible();
-    await expect(page.getByText(/must not be used to pay staff or file a return/i)).toBeVisible();
-
     // The month in progress reads as a status, not a promise: CALCULATED. An
     // approved run on unchecked rates would read Provisional here instead of a
     // plain green APPROVED — that substitution is the row-level admission.
     await expect(page.locator('.ant-tag', { hasText: 'CALCULATED' }).first()).toBeVisible();
+
+    /*
+     * THE ONE SAFETY INDICATOR — honest in BOTH directions. This spec used to
+     * assert a page of red copy including "PCB is not calculated at all" —
+     * statements that became FALSE when the MTD engine shipped. It then
+     * asserted the one-line "not yet production-ready" banner, which became
+     * the same defect the other way up: the banner read the run's STORED
+     * status while the registry's schedules covered the period in full, so it
+     * cried wolf over every fully covered month. The landing now serves the
+     * period's own registry answer, and for the seeded month — every schedule
+     * OFFICIAL_SOURCE_VERIFIED — the banner must be ABSENT. A warning that
+     * overstates is the same defect as one that understates: the reader who
+     * catches it wrong once stops believing the rest of it.
+     */
+    await expect(page.getByText(/Payroll statutory setup is not yet production-ready/i)).toHaveCount(0);
+    await expect(page.getByText(/must not be used to pay staff or file a return/i)).toHaveCount(0);
 
     // --- THE MONTH, BLOCKED — the exception centre names people, not counts.
     // The home page also links readiness and the archive under /payroll/, so
