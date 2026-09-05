@@ -11,6 +11,7 @@ import { resolveSalaryForPayroll } from './salary-resolution';
 import { resolveClassificationForPayroll } from './statutory-classification';
 import { toClassificationRow } from './statutory-classification.service';
 import { buildPayrollReadiness } from './payroll-readiness';
+import { LINDUNG_EFFECTIVE_FROM } from '../statutory/lindung-24-jam';
 
 /**
  * THE EMPLOYEE PROFILE — the employment half of a person.
@@ -390,6 +391,8 @@ export class EmployeeService {
               epfNumberOnFile: Boolean(profile.epfNumber),
               socsoNumberOnFile: Boolean(profile.socsoNumber),
               pcbInputAmountCents: pcbInput ? toCents(pcbInput.amount) : null,
+              lindungInForce:
+                new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth() + 1, 0)) >= LINDUNG_EFFECTIVE_FROM,
               ytd: {
                 periodMonth: period.getUTCMonth() + 1,
                 taxYear: period.getUTCFullYear(),

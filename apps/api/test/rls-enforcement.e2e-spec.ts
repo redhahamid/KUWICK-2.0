@@ -41,16 +41,17 @@ describe('Row-Level Security enforcement (e2e, DB-level)', () => {
 
   afterEach(async () => {
     for (const tenantId of [tenantA, tenantB]) {
-      // Audit rows hold a foreign key to their tenant and the application role
-      // has no DELETE on them — the append-only guarantee working as intended.
-      await withTenantContext(owner, tenantId, (tx) => tx.auditLog.deleteMany({ where: { tenantId } }));
+      // The audit trail is append-only FOR EVERY ROLE now — the table owner
+      // included — so audit rows cannot be cleaned up, and the tenant row
+      // they reference stays behind with them. That is the guarantee working,
+      // not a leak worth defeating: these are random-id tenants in a test
+      // database, exactly like the ones every other suite leaves in place.
       await withTenantContext(prisma, tenantId, async (tx) => {
         await tx.visit.deleteMany({ where: { tenantId } });
         await tx.patient.deleteMany({ where: { tenantId } });
         await tx.clinic.deleteMany({ where: { tenantId } });
         await tx.item.deleteMany({ where: { tenantId } });
         await tx.staff.deleteMany({ where: { tenantId } });
-        await tx.tenant.deleteMany({ where: { id: tenantId } });
       });
     }
   });

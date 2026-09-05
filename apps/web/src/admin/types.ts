@@ -2048,6 +2048,12 @@ export interface PayrollReadiness {
 export interface PayrollHome {
   period: string;
   periodLabel: string;
+  /**
+   * The registry's own answer for this period, run or no run — what the
+   * safety banner reads when nothing has been started, so a fully covered
+   * month is not painted "not production-ready" for being unopened.
+   */
+  periodStatutoryStatus: 'CONFIGURED' | 'PROVISIONAL' | 'NOT_CONFIGURED';
   run: {
     id: string;
     status: string;

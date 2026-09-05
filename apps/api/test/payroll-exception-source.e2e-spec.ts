@@ -27,6 +27,8 @@ describe('payroll exception state has one canonical source (e2e)', () => {
   let bearer: string;
   let clinicId: string;
   let runId: string;
+  let noSalaryStaff: string[] = [];
+  let pcbStaff: string[] = [];
 
   const PERIOD = '2026-08';
   const server = () => app.getHttpServer();
@@ -114,11 +116,12 @@ describe('payroll exception state has one canonical source (e2e)', () => {
 
     // Three people who cannot be paid, for two different reasons — the shape
     // the admin UAT clinic seeds and the one the screen is reviewed against.
-    await employee('No Salary One');
-    await employee('No Salary Two');
-    await employee('Needs PCB One', { salary: '3200', pcbApplicable: true });
-    await employee('Needs PCB Two', { salary: '2600', pcbApplicable: true });
-    await employee('Needs PCB Three', { salary: '2900', pcbApplicable: true });
+    noSalaryStaff = [await employee('No Salary One'), await employee('No Salary Two')];
+    pcbStaff = [
+      await employee('Needs PCB One', { salary: '3200', pcbApplicable: true }),
+      await employee('Needs PCB Two', { salary: '2600', pcbApplicable: true }),
+      await employee('Needs PCB Three', { salary: '2900', pcbApplicable: true }),
+    ];
 
     const run = await request(server())
       .post('/workforce/payroll/runs')
@@ -265,10 +268,55 @@ describe('payroll exception state has one canonical source (e2e)', () => {
     expect((await gateOf()).gate.overridden).toBe(0);
   });
 
-  it('9. once every blocker is resolved, the same three surfaces all say approvable', async () => {
-    await withTenantContext(prisma, tenantId, (tx) =>
-      tx.payrollException.deleteMany({ where: { payrollRunId: runId, severity: 'BLOCKING' } }),
-    );
+  it('9. once every blocker is resolved THE LEGITIMATE WAY, the same three surfaces all say approvable', async () => {
+    // This used to delete the blocking exception ROWS and approve — proving
+    // only that the gate read the rows. The approve gate now also reads the
+    // FIGURES (an incomplete payslip refuses even with no exception row
+    // naming it), so the blockers are resolved the way a clinic would:
+    // an employing company, salaries, memberships, PCB, then recalculate.
+    const employer = await request(server())
+      .post('/workforce/legal-employers')
+      .set('Authorization', bearer)
+      .send({ name: 'Exception Source Sdn Bhd' })
+      .expect(201);
+    for (const staffId of [...noSalaryStaff, ...pcbStaff]) {
+      await request(server())
+        .patch(`/workforce/employees/${staffId}/legal-employer`)
+        .set('Authorization', bearer)
+        .send({ legalEmployerId: employer.body.id })
+        .expect(200);
+    }
+    for (const staffId of noSalaryStaff) {
+      await request(server())
+        .post(`/workforce/employees/${staffId}/salary`)
+        .set('Authorization', bearer)
+        .send({ amount: '2500.00', basis: 'MONTHLY', effectiveFrom: '2024-01-01', reason: 'Recorded late' })
+        .expect(201);
+      await request(server())
+        .post(`/workforce/employees/${staffId}/statutory-classification`)
+        .set('Authorization', bearer)
+        .send({ effectiveFrom: '2020-06-01', epfMembership: 'MALAYSIAN_CITIZEN', reason: 'Membership recorded' })
+        .expect(201);
+      await request(server())
+        .post('/workforce/payroll/inputs')
+        .set('Authorization', bearer)
+        .send({ staffId, period: `${PERIOD}-01`, componentCode: 'PCB', amount: '45.00', label: 'PCB per agent' })
+        .expect(201);
+    }
+    for (const staffId of pcbStaff) {
+      await request(server())
+        .post(`/workforce/employees/${staffId}/statutory-classification`)
+        .set('Authorization', bearer)
+        .send({ effectiveFrom: '2020-06-01', epfMembership: 'MALAYSIAN_CITIZEN', reason: 'Membership recorded' })
+        .expect(201);
+      await request(server())
+        .post('/workforce/payroll/inputs')
+        .set('Authorization', bearer)
+        .send({ staffId, period: `${PERIOD}-01`, componentCode: 'PCB', amount: '95.00', label: 'PCB per agent' })
+        .expect(201);
+    }
+    await request(server()).patch(`/workforce/payroll/runs/${runId}/calculate`).set('Authorization', bearer).expect(200);
+
     const { gate } = await gateOf();
     expect(gate.canApprove).toBe(true);
     expect((await listedRun()).exceptions).toEqual(gate);
@@ -276,7 +324,7 @@ describe('payroll exception state has one canonical source (e2e)', () => {
     await request(server())
       .patch(`/workforce/payroll/runs/${runId}/approve`)
       .set('Authorization', bearer)
-      .send({ acknowledgeStatutoryGap: true })
+      .send({})
       .expect(200);
   });
 });

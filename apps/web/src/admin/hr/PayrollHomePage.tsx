@@ -45,7 +45,7 @@ export function PayrollHomePage() {
         />
       }
     >
-      <ProvisionalBanner statutoryStatus={data?.run?.statutoryStatus} />
+      <ProvisionalBanner statutoryStatus={data?.run?.statutoryStatus ?? data?.periodStatutoryStatus} />
 
       {data ? (
         <>
@@ -97,7 +97,7 @@ export function PayrollHomePage() {
             },
             { title: 'Employees', dataIndex: 'employeeCount', width: 110, align: 'right' as const },
             {
-              title: 'Net paid',
+              title: 'Net pay',
               dataIndex: 'netTotal',
               width: 140,
               align: 'right' as const,
@@ -182,7 +182,13 @@ function PeriodHero({
         </div>
       ) : data.recent[0] ? (
         <div className="kw-periodHero__figure">
-          <span className="kw-periodHero__figureLabel">LAST MONTH'S NET</span>
+          {/* An unapproved month's figure is a working number, and the label
+              says so — "LAST MONTH'S NET" over a draft read as a paid fact. */}
+          <span className="kw-periodHero__figureLabel">
+            {data.recent[0].status === 'APPROVED' || data.recent[0].status === 'PAID'
+              ? "LAST MONTH'S NET"
+              : "LAST MONTH'S NET (not approved yet)"}
+          </span>
           <span className="kw-periodHero__figureValue">{ringgit(data.recent[0].netTotal)}</span>
         </div>
       ) : null}

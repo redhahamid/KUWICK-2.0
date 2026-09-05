@@ -185,3 +185,39 @@ describe('the statutory standing item', () => {
     expect(statutory.done).toBe(true);
   });
 });
+
+describe('severity follows the run — this page promises blocking means the run refuses', () => {
+  it('a missing membership NUMBER is advisory: it gates the filing, not the calculation', () => {
+    // Seven people sat in red over missing EPF/SOCSO numbers while the run
+    // itself calculated and approved the month — two answers to one question
+    // from the screen built to prevent that. The employer section already
+    // states the doctrine: registrations gate the filings.
+    const result = buildPayrollReadiness({ ...COMPLETE, epfNumberOnFile: false, socsoNumberOnFile: false });
+    const statutory = result.items.find((item) => item.key === 'statutory')!;
+    expect(statutory.severity).toBe('ADVISORY');
+    expect(statutory.done).toBe(false);
+    expect(statutory.detail).toContain('membership number');
+    expect(result.ready).toBe(true); // ready to PAY; the note travels with them
+  });
+
+  it('an unknown Part, tax profile or LINDUNG answer stays BLOCKING — those stop the calculation', () => {
+    const result = buildPayrollReadiness({
+      ...COMPLETE,
+      standing: { ...COMPLETE.standing, epfMembership: null },
+    });
+    const statutory = result.items.find((item) => item.key === 'statutory')!;
+    expect(statutory.severity).toBe('BLOCKING');
+    expect(result.ready).toBe(false);
+  });
+
+  it('before LINDUNG commenced, an unrecorded participation asks nobody anything', () => {
+    const result = buildPayrollReadiness({
+      ...COMPLETE,
+      lindungInForce: false,
+      standing: { ...COMPLETE.standing, lindungParticipation: null },
+    });
+    const statutory = result.items.find((item) => item.key === 'statutory')!;
+    expect(statutory.done).toBe(true);
+    expect(statutory.severity).toBe('ADVISORY');
+  });
+});

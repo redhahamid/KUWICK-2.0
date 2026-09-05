@@ -81,6 +81,13 @@ export interface ReadinessFacts {
   /** The hand-entered PCB input for the period, if any. */
   pcbInputAmountCents: number | null;
   /**
+   * Whether LINDUNG 24 JAM has commenced for the period being readied.
+   * Absent reads TRUE (fail closed); a caller readying a pre-June-2026
+   * month passes false, so a scheme that does not exist yet asks nobody
+   * anything.
+   */
+  lindungInForce?: boolean;
+  /**
    * Year-to-date context for the period being readied. Null when the question
    * does not arise — January, or an employee who starts this month.
    */
@@ -173,7 +180,10 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
       // the progressive table, category chooses the deductions.
       // LINDUNG 24 JAM: voluntary for locals, mandatory for
       // foreign workers, and not readable off anything else.
-      const lindungUnknown = !standing.lindungParticipation;
+      // A scheme that has not commenced asks no question: before 1 June 2026
+      // an unrecorded participation is not a gap, and the run does not treat
+      // it as one either.
+      const lindungUnknown = (facts.lindungInForce ?? true) && !standing.lindungParticipation;
       const taxProfileUnknown =
         standing.pcbApplicable && (!standing.taxResidence || !standing.pcbCategory) && facts.pcbInputAmountCents === null;
       const applies = [
@@ -181,11 +191,24 @@ export function buildPayrollReadiness(facts: ReadinessFacts): ReadinessResult {
         standing.socsoApplicable ? 'SOCSO' : null,
         standing.eisApplicable ? 'EIS' : null,
       ].filter((name): name is string => name !== null);
+      /*
+       * SEVERITY FOLLOWS THE RUN, because this page's own header promises
+       * "blocking items are the ones the run itself will refuse on". An
+       * unknown Part, tax profile or LINDUNG answer stops the CALCULATION,
+       * so those are BLOCKING. A missing membership NUMBER stops nothing the
+       * run does — it stops the FILING being addressed, exactly like the
+       * employer's own missing SOCSO code, which the section above calls
+       * out as gating the filings and not the calculation. Marking it
+       * BLOCKING put seven people in red on a month the run itself
+       * calculated and approved — two answers to one question, from the
+       * screen built to prevent that.
+       */
+      const calculationBlocked = partUnknown || taxProfileUnknown || lindungUnknown;
       return {
         key: 'statutory',
         label: 'EPF, SOCSO and EIS',
-        severity: 'BLOCKING' as const,
-        done: missing.length === 0 && !partUnknown && !taxProfileUnknown && !lindungUnknown,
+        severity: (calculationBlocked ? 'BLOCKING' : 'ADVISORY') as ReadinessSeverity,
+        done: missing.length === 0 && !calculationBlocked,
         detail: lindungUnknown
           ? 'Their LINDUNG 24 JAM participation is not recorded. The scheme is voluntary for local employees and mandatory for foreign workers, and the contribution comes out of their pay — so it cannot be guessed either way.'
           : taxProfileUnknown

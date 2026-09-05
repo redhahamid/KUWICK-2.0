@@ -163,9 +163,11 @@ describe('the approved payroll snapshot (e2e)', () => {
 
     const statutory = snapshot.payload.statutory;
     expect(statutory).not.toBeNull();
-    // The period end, not today. A September run re-read in December must not
-    // acquire December's schedules.
-    expect(statutory.resolvedAt.slice(0, 10)).toBe('2026-09-01');
+    // The LAST DAY INSIDE the period, not today and not the exclusive first
+    // of the next month. A September run re-read in December must not acquire
+    // December's schedules — and resolving on 1 September made every
+    // schedule commencing that exact day reach back into August.
+    expect(statutory.resolvedAt.slice(0, 10)).toBe('2026-08-31');
 
     const epf = statutory.schedules.find((s: { scheme: string }) => s.scheme === 'EPF');
     expect(epf.scheduleId).toBe('EPF_THIRD_SCHEDULE_2025_10');

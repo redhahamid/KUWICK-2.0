@@ -133,7 +133,7 @@ nothing is marked verified on their strength.
 | **Wage basis** | Wages for the month |
 | **Employer / employee** | Per band, ringgit amounts, to RM20,000. Above: A 12%/11%, C 6%/5.5%, E 4%/0%, F 2%/2% |
 | **Ceiling** | Table ends at RM20,000; percentages apply above it |
-| **Rounding** | Bands are whole ringgit. Above the table, the TOTAL including cents is rounded to the next ringgit |
+| **Rounding** | Bands are whole ringgit. Above the table, the TOTAL including cents is rounded to the next ringgit. The document is silent on which side bears the rounding-up residue; the implementation rounds each share to the sen and assigns the residue to the EMPLOYER — an implementation choice, recorded here until an authority worked example settles it. Reachable only above RM20,000 (Parts A/C/E) or at any wage under Part F |
 | **Implementation** | `epf-third-schedule.ts` (1,203 bands), `contributions.ts` — `epfContribution` |
 | **Test** | `contributions.spec.ts` |
 | **Expected** | RM3,000.50 → employee RM333, employer RM393 (Part A band 3,000.01-3,020.00). Employer rate steps 13% → 12% across RM5,000 (RM650 → RM612) |

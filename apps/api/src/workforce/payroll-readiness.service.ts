@@ -7,6 +7,7 @@ import { resolveSalaryForPayroll, SalaryRow } from './salary-resolution';
 import { resolveClassificationForPayroll } from './statutory-classification';
 import { toClassificationRow } from './statutory-classification.service';
 import { buildPayrollReadiness } from './payroll-readiness';
+import { LINDUNG_EFFECTIVE_FROM } from '../statutory/lindung-24-jam';
 
 function monthStart(value: string | Date): Date {
   const date = typeof value === 'string' ? new Date(`${value.slice(0, 7)}-01T00:00:00.000Z`) : value;
@@ -150,6 +151,7 @@ export class PayrollReadinessService {
         epfNumberOnFile: Boolean(employee.epfNumber),
         socsoNumberOnFile: Boolean(employee.socsoNumber),
         pcbInputAmountCents: pcbInput ? toCents(pcbInput.amount) : null,
+        lindungInForce: lastDay >= LINDUNG_EFFECTIVE_FROM,
         ytd: {
           periodMonth: month,
           taxYear,

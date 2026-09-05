@@ -13,6 +13,7 @@ import { approvalGate } from './payroll-exception';
 import { totalTimesheet } from './attendance-hours';
 import { resolveSalaryForPayroll, SalaryRow } from './salary-resolution';
 import { resolveClassificationForPayroll } from './statutory-classification';
+import { statutoryStatusOf } from './statutory';
 import { toClassificationRow } from './statutory-classification.service';
 
 function monthStart(value: string | Date): Date {
@@ -206,6 +207,14 @@ export class PayrollJourneyService {
     return {
       period: period.toISOString().slice(0, 7),
       periodLabel: period.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
+      /**
+       * THE PERIOD'S OWN ANSWER, run or no run. The safety banner used to
+       * read only the run's stored status, so a month nobody had started
+       * showed "statutory setup is not yet production-ready" — a false
+       * sentence about a period the registry fully covers. The registry is
+       * the source of truth and it answers for any date.
+       */
+      periodStatutoryStatus: statutoryStatusOf(new Date(periodEnd.getTime() - 86_400_000)),
       run: run
         ? {
             id: run.id,
