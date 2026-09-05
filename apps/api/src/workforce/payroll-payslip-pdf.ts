@@ -162,7 +162,16 @@ export function renderPayslipPdf(slip: PayslipData): Promise<Buffer> {
   if (slip.overtimeDetail && slip.overtimeDetail.length > 0) {
     section('Overtime working');
     for (const tier of slip.overtimeDetail) {
-      row(`${tier.label} — ${tier.hours} h @ RM${tier.hourlyRate.toFixed(2)}`, RM(Math.round(tier.total * 100)));
+      // A rest day or public holiday is priced in DAYS (s.60(3), s.60D), with
+      // hourly pay only for the excess. "0 h @ RM33.00 … 200.00" is what this
+      // line read before the days travelled with the row — a statement of
+      // wages the person holding it could not multiply out.
+      const days = tier.ordinaryRateDays ?? 0;
+      const parts: string[] = [];
+      if (days > 0) parts.push(`${days} day${days === 1 ? '' : 's'} at ordinary rate`);
+      if (tier.hours > 0) parts.push(`${tier.hours} h @ RM${tier.hourlyRate.toFixed(2)}`);
+      if (parts.length === 0) parts.push(`${tier.hours} h @ RM${tier.hourlyRate.toFixed(2)}`);
+      row(`${tier.label} — ${parts.join(' + ')}`, RM(Math.round(tier.total * 100)));
     }
     doc.moveDown(0.5);
   }

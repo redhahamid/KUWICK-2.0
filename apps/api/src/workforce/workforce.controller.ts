@@ -704,10 +704,11 @@ export class WorkforceController {
     return this.payroll.setApprovalPolicy(dto);
   }
 
-  @Patch('payroll/runs/:id/paid')
-  markPayrollPaid(@Param('id') id: string) {
-    return this.payroll.markPaid(id);
-  }
+  // `PATCH payroll/runs/:id/paid` is GONE, deliberately. It set a run to PAID
+  // with no payment batch, no date, no reference and no reconciliation
+  // against the approved net — a second, unrecorded path to the one word the
+  // payment ladder exists to protect. Recording a payment is
+  // `POST payroll/runs/:id/payment/record-paid`, which demands all three.
 
   @Get('payroll/runs/:id/exceptions')
   payrollExceptions(@Param('id') id: string) {

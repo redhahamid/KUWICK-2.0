@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
-import { requirePermission } from '../finance/admin-actor';
+import { requirePermission, requireScope } from '../finance/admin-actor';
 import { fromCents, toCents } from '../finance/money';
 
 /**
@@ -27,12 +27,12 @@ export class BenefitService {
 
   async list(params: { year?: number; clinicId?: string }) {
     // hr.view, not hr.payroll.view: an allowance balance is not a salary.
-    const actor = await requirePermission(this.rawPrisma, 'hr.view');
+    // The branch goes through the actor's scope like every other admin list.
+    const { scope } = await requireScope(this.rawPrisma, 'hr.view');
     const year = params.year ?? new Date().getUTCFullYear();
-    const clinicId = params.clinicId ?? actor.clinicId ?? undefined;
 
     const accounts = await this.prisma.staffBenefitAccount.findMany({
-      where: { benefitYear: year, ...(clinicId ? { staff: { clinicId } } : {}) },
+      where: { benefitYear: year, staff: scope.where(params.clinicId) },
       include: {
         staff: { select: { id: true, fullName: true, role: true, clinic: { select: { name: true } } } },
         members: {
@@ -58,7 +58,7 @@ export class BenefitService {
 
     return {
       year,
-      clinicId: clinicId ?? null,
+      clinicId: params.clinicId ?? null,
       note:
         'The balance is the allowance less every recorded use. Uses are recorded at billing, against the invoice they paid for, which is why this screen reads rather than writes.',
       accounts: accounts.map((account) => {

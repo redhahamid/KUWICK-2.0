@@ -16,7 +16,14 @@ import {
   isCustomRoleGrantable,
   isIndividuallyGrantable,
 } from '../core/permissions';
-import { AdminTx, actorCan, requirePermission, withAdminTx } from '../finance/admin-actor';
+import {
+  AdminTx,
+  actorCan,
+  requirePermission,
+  requireScope,
+  withAdminTx,
+  withScopedAdminTx,
+} from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { formatCents, fromCents, toCents } from '../finance/money';
 import {
@@ -112,11 +119,14 @@ function daysInMonth(start: Date): number {
 /**
  * PAYROLL — a run, its exceptions, and the lock.
  *
- * THE STATUTORY RULE governs everything here. Malaysian EPF, SOCSO, EIS and PCB
- * rates are not hardcoded; they come from a tenant-configured, effective-dated
- * `StatutoryRuleSet`. A run over a period with no rule set is NOT_CONFIGURED,
- * its statutory columns stay NULL rather than zero, and the payslip says so —
- * because a wrong EPF figure that looks right is worse than none.
+ * THE SCHEDULES GOVERN EVERYTHING HERE. Malaysian EPF, SOCSO, EIS, LINDUNG,
+ * PCB and the HRD levy resolve from `src/statutory/registry.ts` — dated,
+ * content-hashed transcriptions of the authorities' own documents — by the
+ * period's last day, never by today. (They came from a tenant-configured
+ * `StatutoryRuleSet` once; that table survives read-only for history.) A run
+ * over a period no schedule reaches is NOT_CONFIGURED, its statutory columns
+ * stay NULL rather than zero, and the payslip says so — because a wrong EPF
+ * figure that looks right is worse than none.
  *
  * EXCEPTIONS ARE SURFACED BEFORE APPROVAL, never silently zeroed. An employee
  * with no salary on record, or with an unapproved overtime claim, appears in
@@ -399,7 +409,20 @@ export class PayrollService {
   // --- The run --------------------------------------------------------------
 
   async create(dto: CreatePayrollRunDto) {
-    return withAdminTx(this.rawPrisma, 'hr.payroll.run', async (tx, actor) => {
+    return withScopedAdminTx(this.rawPrisma, 'hr.payroll.run', async (tx, actor, scope) => {
+      // THE BRANCH IS AUTHORISED, NOT JUST NAMED. Payroll was the one admin
+      // module that took `clinicId` straight off the request — the exact
+      // failure `admin-actor.ts` documents Finance and Stock being cured of —
+      // so an account scoped to one branch could open, calculate and drive
+      // another branch's payroll. A run for EVERY branch is a tenant-wide
+      // act and needs tenant-wide scope.
+      if (dto.clinicId) {
+        scope.require(dto.clinicId);
+      } else if (!scope.everyBranch) {
+        throw new ForbiddenException(
+          'A payroll run across every branch needs tenant-wide access. Name your branch, or ask the account owner.',
+        );
+      }
       const period = monthStart(dto.period);
       const runType = (dto.runType ?? 'REGULAR') as PayrollRunTypeEnum;
 
@@ -541,17 +564,27 @@ export class PayrollService {
       const period = run.period;
       const periodEnd = monthEnd(period);
       const days = daysInMonth(period);
+      // The last day INSIDE the wage period. `periodEnd` above is exclusive —
+      // the first day of the following month — which is the right shape for a
+      // range query (`lt: periodEnd`) and the wrong one for resolving an
+      // effective-dated rule: `scheduleFor(…, periodEnd)` matched a schedule
+      // commencing on that exact day, so a September 2025 run acquired the
+      // October Third Schedule instead of blocking, and a May 2026 run charged
+      // LINDUNG a month before the scheme existed. Salary, classification,
+      // the employer profile and the catalogue already resolve on this day;
+      // the statutory schedules now do too.
+      const statutoryResolutionDay = new Date(periodEnd.getTime() - 86_400_000);
 
       // Which schedules govern is decided by the PERIOD, never by today: a
       // September run re-calculated in December must not acquire December's
       // rates.
-      const statutoryContext: StatutoryContext = { periodEnd };
-      const statutoryStatus = statutoryStatusOf(periodEnd) as StatutoryStatus;
+      const statutoryContext: StatutoryContext = { periodEnd: statutoryResolutionDay };
+      const statutoryStatus = statutoryStatusOf(statutoryResolutionDay) as StatutoryStatus;
       // The schemes a payslip depends on, named ONCE in `statutory.ts`. This
       // list was written out again here and had drifted: LINDUNG was missing,
       // so a run stamped its provenance without recording which LINDUNG
       // schedule it had applied.
-      const statutoryStamp = stampFor(PAYSLIP_SCHEMES, periodEnd);
+      const statutoryStamp = stampFor(PAYSLIP_SCHEMES, statutoryResolutionDay);
 
       // The month's public holidays, read ONCE for the run rather than per
       // employee. Work on one is paid at two days' ordinary rate under
@@ -824,6 +857,30 @@ export class PayrollService {
       // run is locked, so a locked run can never reach here.
       await tx.payrollLine.deleteMany({ where: { payrollRunId: runId } });
 
+      /*
+       * THE APPROVALS GO WITH THE FIGURES THEY APPROVED — on recalculation
+       * exactly as on reopen. Under DUAL_APPROVAL a run holds its first
+       * sign-off while it waits for the second, and it stays CALCULATED, so
+       * it could be recalculated — inputs changed, exceptions overridden —
+       * with approval #1 still attached to figures that no longer existed.
+       * The second approver then locked a run half of whose review never
+       * happened: the exact control the second pair of eyes exists to
+       * provide, bypassed without passing through reopen(). The audit log
+       * keeps who had approved; the run needs approving from the start.
+       */
+      const staleApprovals = await tx.payrollRunApproval.deleteMany({ where: { payrollRunId: runId } });
+      if (staleApprovals.count > 0) {
+        await recordAudit(tx, actor, {
+          action: 'payroll.calculated',
+          entityType: 'PayrollRun',
+          entityId: runId,
+          before: { approvalsHeld: staleApprovals.count },
+          after: { approvalsHeld: 0 },
+          reason: 'Recalculation replaced the figures, so the approvals recorded against the old figures were cleared.',
+          source: 'hr.payroll',
+        });
+      }
+
       for (const employee of employees) {
         if (!employee.staff.active) continue;
 
@@ -1017,7 +1074,7 @@ export class PayrollService {
         // with nothing recorded is an open question rather than a nil.
         // Raised only once the scheme is in force, so historical runs are not
         // blocked by a rule that did not exist for them.
-        if (!classification.lindungParticipation && periodEnd > LINDUNG_EFFECTIVE_FROM) {
+        if (!classification.lindungParticipation && statutoryResolutionDay >= LINDUNG_EFFECTIVE_FROM) {
           raise('LINDUNG_PARTICIPATION_UNRECORDED', employee);
         }
 
@@ -1102,7 +1159,7 @@ export class PayrollService {
         // that, anything paid is the employer's undertaking rather than the
         // Act's requirement, and the two must not be presented as the same
         // thing on a payslip or in a dispute.
-        const scope = overtimeScope(fullMonthlyCents, periodEnd, classification.overtimeContractPolicy);
+        const scope = overtimeScope(fullMonthlyCents, statutoryResolutionDay, classification.overtimeContractPolicy);
         const workedAnyDay = attendance.some((row) => (row.workedMinutes ?? 0) > 0);
         if (!isBonusRun && workedAnyDay && !scope.withinFirstSchedule && !classification.overtimeContractPolicy) {
           raise('OVERTIME_ENTITLEMENT_UNRECORDED', employee, {
@@ -1367,12 +1424,15 @@ export class PayrollService {
           {
             age,
             // EVERY CLASSIFICATION COMES FROM THE VERSION IN FORCE FOR THIS
-            // PERIOD, never from the employee profile. `?? 11` rather than
-            // `? … : 11`: an election recorded as 0% is a real election, and
-            // reading it as the Schedule's 11% would contribute against a
-            // figure nobody chose. Anything but 11 is refused downstream.
+            // PERIOD, never from the employee profile. The rate passes
+            // through AS RECORDED: null means no election and the Schedule's
+            // own Part rate applies; a recorded figure — 0% included — is a
+            // real election, judged downstream against the Part's printed
+            // rate (11/5.5/0/2), not against a hardcoded 11. The old `?? 11`
+            // default would have refused every Part E and Part F employee
+            // the moment the guard learned the real Part rates.
             epfMembership: classification.epfMembership,
-            epfEmployeeRate: classification.epfEmployeeRate ?? 11,
+            epfEmployeeRate: classification.epfEmployeeRate,
             epfApplicable: classification.epfApplicable,
             socsoApplicable: classification.socsoApplicable,
             eisApplicable: classification.eisApplicable,
@@ -1402,9 +1462,11 @@ export class PayrollService {
           tp1Capture,
         );
 
-        // PCB is not calculated by this system, and that is a BLOCKING
+        // PCB IS calculated by the MTD engine when the tax profile is on
+        // record; a null here means it could not be — profile missing, or a
+        // K1 the EPF question left unknowable — and that is a BLOCKING
         // exception rather than a quiet null on a payslip somebody might pay
-        // against. See docs/MALAYSIA_PAYROLL_STATUTORY_SOURCES.md section 4.
+        // against. A hand-entered figure below completes the slip instead.
         //
         // Which path produced the figure is recorded as DATA, not only in the
         // note's wording — a report that derives "entered by hand" by pattern-
@@ -1443,13 +1505,22 @@ export class PayrollService {
         // period" is a property of the run, carried by `statutoryStatus` and
         // gated by the acknowledge-the-gap flow on approval; repeating it once
         // per employee per scheme buried the real exceptions under noise.
+        // LINDUNG rides in the same fail-safe. Its usual null — participation
+        // unrecorded while the scheme is in force — is already named by the
+        // more specific LINDUNG_PARTICIPATION_UNRECORDED above, so that case
+        // is skipped here rather than raised twice for the same person. Any
+        // OTHER null (a wage no band covers, a future regression) still
+        // blocks: before this, a null LINDUNG raised nothing, and a run
+        // could be approved with the withholding silently left out of net.
         for (const [scheme, contribution] of [
           ['EPF', payslip.statutory.epf],
           ['SOCSO', payslip.statutory.socso],
           ['EIS', payslip.statutory.eis],
+          ['LINDUNG', payslip.statutory.lindung],
         ] as const) {
           if (contribution.employeeCents !== null && contribution.employerCents !== null) continue;
           if (statutoryStatus === 'NOT_CONFIGURED') continue;
+          if (scheme === 'LINDUNG' && !classification.lindungParticipation) continue;
           exceptions.push({
             ...buildException('STATUTORY_UNKNOWN', employee.staffId, {
               staffId: employee.staffId,
@@ -1563,10 +1634,21 @@ export class PayrollService {
             breakdown: {
               // The THREE bases, not one. A payslip that shows a single
               // "statutory wage" cannot explain why EPF and SOCSO differ.
+              //
+              // Written in CENTS under the keys the snapshot builder reads.
+              // They were ringgit under `epf`/`socso`/`eis` while the builder
+              // read `epfCents ?? 0` — so every approved snapshot froze the
+              // wage bases as zero, and the statutory listings printed a
+              // wages column of 0.00 beside real contributions. The ringgit
+              // keys stay for anything already reading them.
               bases: {
                 epf: fromCents(payslip.bases.epfCents),
                 socso: fromCents(payslip.bases.socsoCents),
                 eis: fromCents(payslip.bases.eisCents),
+                epfCents: payslip.bases.epfCents,
+                socsoCents: payslip.bases.socsoCents,
+                eisCents: payslip.bases.eisCents,
+                ordinaryRateBaseCents: payslip.bases.ordinaryRateBaseCents,
               },
               components: payslip.lines.map((line) => ({
                 code: line.code, label: line.label, kind: line.kind,
@@ -1971,6 +2053,40 @@ export class PayrollService {
         );
       }
 
+      /*
+       * THE INCOMPLETE-LINE GATE, from the FIGURES rather than the exception
+       * rows. `computePayslip` has promised since it was written that "the run
+       * cannot be approved while any line is incomplete" — and nothing
+       * enforced it: the only gate was the exception rows, so a null figure
+       * whose case the exception taxonomy missed (LINDUNG was one) sailed
+       * through, net was paid without the withholding, and the null was
+       * laundered into a zero in the year-to-date. Under an acknowledged
+       * statutory gap incomplete lines are the point — the clinic's
+       * accountant computes what Kuwick could not, on the record — so the
+       * hard refusal binds only where the schedules say everything WAS
+       * computable.
+       */
+      if (run.statutoryStatus === StatutoryStatus.CONFIGURED) {
+        const lines = await tx.payrollLine.findMany({
+          where: { payrollRunId: runId },
+          select: { breakdown: true, staff: { select: { fullName: true } } },
+        });
+        const incomplete = lines.filter(
+          (line) => Boolean((line.breakdown as { incomplete?: boolean } | null)?.incomplete),
+        );
+        if (incomplete.length > 0) {
+          const names = incomplete
+            .slice(0, 3)
+            .map((line) => line.staff.fullName)
+            .join(', ');
+          throw new BadRequestException(
+            `${incomplete.length} payslip(s) have a statutory figure that could not be worked out ` +
+              `(${names}${incomplete.length > 3 ? ', …' : ''}) even though the period's schedules are in force. ` +
+              'Recalculate and resolve the exceptions; a figure that is unknown must not be approved as though it were zero.',
+          );
+        }
+      }
+
       // A run whose statutory figures could not be computed CAN be approved —
       // a clinic that files EPF through its accountant is a real case — but
       // only deliberately, and the acknowledgement is on the record.
@@ -2298,36 +2414,20 @@ export class PayrollService {
     });
   }
 
-  async markPaid(runId: string) {
-    return withAdminTx(this.rawPrisma, 'hr.payroll.approve', async (tx, actor) => {
-      const run = await tx.payrollRun.findUnique({ where: { id: runId } });
-      if (!run) throw new NotFoundException('Payroll run not found');
-      if (run.status !== PayrollRunStatus.APPROVED) {
-        throw new ConflictException('Only an approved run can be marked paid.');
-      }
-      // NO BANK INTEGRATION. This records that a human paid it, and nothing
-      // here claims to have moved money (owner brief §5I).
-      const paid = await tx.payrollRun.update({
-        where: { id: runId },
-        data: { status: PayrollRunStatus.PAID, paidAt: new Date() },
-      });
-      await recordAudit(tx, actor, {
-        action: 'payroll.approved',
-        entityType: 'PayrollRun',
-        entityId: runId,
-        before: { status: PayrollRunStatus.APPROVED },
-        after: { status: PayrollRunStatus.PAID, paidAt: paid.paidAt },
-        source: 'hr.payroll',
-      });
-      return paid;
-    });
-  }
+  // `markPaid` is gone. It reached PAID with no batch, no payment date, no
+  // reference and no reconciliation — everything `recordPaid` on the payment
+  // service exists to demand — and a run marked paid that way could never be
+  // reopened or explained. The word "paid" has exactly one path now.
 
   async list(params: { clinicId?: string; year?: number } = {}) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    const { scope } = await requireScope(this.rawPrisma, 'hr.payroll.view');
     const runs = await this.prisma.payrollRun.findMany({
       where: {
-        ...(params.clinicId ? { clinicId: params.clinicId } : {}),
+        // A requested branch is validated against the actor's scope; nothing
+        // requested means "the branches this account manages", not "all".
+        // Tenant-wide (clinicId null) runs stay visible only to tenant-wide
+        // accounts, which is what the empty fragment resolves to for them.
+        ...scope.where(params.clinicId),
         ...(params.year
           ? { period: { gte: new Date(Date.UTC(params.year, 0, 1)), lt: new Date(Date.UTC(params.year + 1, 0, 1)) } }
           : {}),
@@ -2631,6 +2731,8 @@ export class PayrollService {
         hours: number;
         hourlyRate: number;
         total: number;
+        ordinaryRateDays?: number;
+        provision?: string;
       }[];
       const payslipDetail: SnapshotPayslipDetail = {
         employeeNo: (snap.employeeNo as string | undefined) ?? null,
@@ -2663,11 +2765,16 @@ export class PayrollService {
           lindung: statutoryNoteRows.lindung ?? null,
           pcb: statutoryNoteRows.pcb ?? null,
         },
+        // Day-priced rows (s.60(3), s.60D) carry their days: a frozen row of
+        // "0 h @ RM33.00 … 200.00" was unexplainable to the person holding
+        // the payslip it printed on.
         overtime: overtimeRows.map((row) => ({
           label: row.label,
           hours: row.hours,
           hourlyRate: row.hourlyRate,
           total: row.total,
+          ...(row.ordinaryRateDays !== undefined ? { ordinaryRateDays: row.ordinaryRateDays } : {}),
+          ...(row.provision !== undefined ? { provision: row.provision } : {}),
         })),
       };
 
@@ -2694,11 +2801,16 @@ export class PayrollService {
           sourceRecordId: i.sourceRecordId,
           kind: i.kind,
         })),
+        // The wage bases the schemes were computed on. The breakdown writes
+        // them in cents; lines calculated before that change carried only the
+        // ringgit keys, so those are the fallback — never a silent zero. A
+        // zero here printed a wages column of 0.00 on every statutory listing
+        // while the contributions beside it were real.
         bases: {
           grossCents,
-          epfCents: bases.epfCents ?? 0,
-          socsoCents: bases.socsoCents ?? 0,
-          eisCents: bases.eisCents ?? 0,
+          epfCents: bases.epfCents ?? (bases.epf !== undefined ? toCents(bases.epf) : 0),
+          socsoCents: bases.socsoCents ?? (bases.socso !== undefined ? toCents(bases.socso) : 0),
+          eisCents: bases.eisCents ?? (bases.eis !== undefined ? toCents(bases.eis) : 0),
           ordinaryRateBaseCents: bases.ordinaryRateBaseCents ?? toCents(line.basicSalary),
         },
         statutory: {
@@ -2808,24 +2920,35 @@ export class PayrollService {
    * figures without the verdict would present a stored blob as a proof.
    */
   async snapshot(runId: string, version: number) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.view');
-    const row = await this.prisma.payrollSnapshot.findFirst({
-      where: { payrollRunId: runId, version },
-      include: { createdBy: { select: { fullName: true } } },
-    });
-    if (!row) throw new NotFoundException(`No snapshot version ${version} for this payroll run.`);
+    // The payload is every employee's frozen figures at once — audited, as
+    // the payslip PDF and the listings are, because it is the largest single
+    // pay disclosure the API serves.
+    return withAdminTx(this.rawPrisma, 'hr.payroll.view', async (tx, actor) => {
+      const row = await tx.payrollSnapshot.findFirst({
+        where: { payrollRunId: runId, version },
+        include: { createdBy: { select: { fullName: true } } },
+      });
+      if (!row) throw new NotFoundException(`No snapshot version ${version} for this payroll run.`);
 
-    const payload = row.payload as unknown as SnapshotPayload;
-    return {
-      id: row.id,
-      version: row.version,
-      hash: row.hash,
-      reason: row.reason,
-      createdBy: row.createdBy.fullName,
-      createdAt: row.createdAt.toISOString(),
-      verification: verifySnapshot(payload, row.hash),
-      payload,
-    };
+      const payload = row.payload as unknown as SnapshotPayload;
+      await recordAudit(tx, actor, {
+        action: 'payrollSnapshot.read',
+        entityType: 'PayrollRun',
+        entityId: runId,
+        after: { version, employees: payload.employees.length },
+        source: 'hr.payroll',
+      });
+      return {
+        id: row.id,
+        version: row.version,
+        hash: row.hash,
+        reason: row.reason,
+        createdBy: row.createdBy.fullName,
+        createdAt: row.createdAt.toISOString(),
+        verification: verifySnapshot(payload, row.hash),
+        payload,
+      };
+    });
   }
 
   /**
@@ -2953,8 +3076,17 @@ export class PayrollService {
     if (!run) throw new NotFoundException('Payroll run not found');
 
     const previousPeriod = new Date(Date.UTC(run.period.getUTCFullYear(), run.period.getUTCMonth() - 1, 1));
+    // Calculated figures or better, the same rule the variance REPORT uses.
+    // Without the status filter this compared against a DRAFT — a run whose
+    // lines may be empty or half-keyed — so the two variance surfaces could
+    // answer "who moved" differently from the same data.
     const previous = await this.prisma.payrollRun.findFirst({
-      where: { period: previousPeriod, clinicId: run.clinicId, runType: run.runType },
+      where: {
+        period: previousPeriod,
+        clinicId: run.clinicId,
+        runType: run.runType,
+        status: { in: [PayrollRunStatus.CALCULATED, PayrollRunStatus.APPROVED, PayrollRunStatus.PAID] },
+      },
       include: { lines: true },
     });
 

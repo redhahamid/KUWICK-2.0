@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
-import { requirePermission } from '../finance/admin-actor';
+import { actorCan, requireScope } from '../finance/admin-actor';
 import { toCents } from '../finance/money';
 import { resolveSalaryForPayroll, SalaryRow } from './salary-resolution';
 import { resolveClassificationForPayroll } from './statutory-classification';
@@ -36,7 +36,12 @@ export class PayrollReadinessService {
   async list(params: { period?: string; clinicId?: string } = {}) {
     // `hr.payroll.view` is the pay gate, so readiness details here may carry
     // the salary amount — unlike the employee record, which `hr.view` opens.
-    await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    // The actor's OWN check is threaded into the builder below rather than a
+    // literal `true`, so if the gate on this method is ever widened the
+    // salary line degrades to "on record, amount withheld" instead of
+    // silently travelling with it.
+    const { actor, scope } = await requireScope(this.rawPrisma, 'hr.payroll.view');
+    const mayReadPay = actorCan(actor, 'hr.payroll.view');
     const period = monthStart(params.period ?? new Date());
     const periodEnd = new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth() + 1, 1));
     const lastDay = new Date(periodEnd.getTime() - 86400000);
@@ -47,7 +52,10 @@ export class PayrollReadinessService {
       where: {
         engagement: 'EMPLOYEE',
         employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
-        ...(params.clinicId ? { staff: { clinicId: params.clinicId } } : {}),
+        // Salary-bearing rows filter by the actor's BRANCH SCOPE — a
+        // requested branch is validated, and nothing requested means the
+        // branches this account manages, never the whole tenant by default.
+        staff: scope.where(params.clinicId),
       },
       include: {
         staff: { select: { fullName: true, active: true } },
@@ -133,7 +141,7 @@ export class PayrollReadinessService {
       const pcbInput = pcbByStaff.get(employee.staffId);
       const readiness = buildPayrollReadiness({
         salary,
-        mayReadPay: true,
+        mayReadPay,
         standing,
         legalEmployerName: employee.legalEmployer?.name ?? null,
         bankName: employee.bankName,

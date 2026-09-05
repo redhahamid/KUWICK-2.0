@@ -31,9 +31,20 @@ export class PayrollStatutoryOutputService {
   ) {}
 
   async outputs(runId: string) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.export.statutory');
-    const composed = await this.compose(runId);
-    return composed.view;
+    // Audited like the CSV listing: the JSON view carries the same
+    // per-employee identifiers and amounts, and an exit that skips the trail
+    // because of its content type is not a trail.
+    return withAdminTx(this.rawPrisma, 'hr.payroll.export.statutory', async (tx, actor) => {
+      const composed = await this.compose(runId);
+      await recordAudit(tx, actor, {
+        action: 'payrollStatutory.outputsViewed',
+        entityType: 'PayrollRun',
+        entityId: runId,
+        after: { schemes: composed.view.schemes.map((row) => row.scheme) },
+        source: 'hr.payroll',
+      });
+      return composed.view;
+    });
   }
 
   /** One scheme's rows as CSV — a listing, not any authority's file format. */
@@ -69,14 +80,26 @@ export class PayrollStatutoryOutputService {
             row.employerCents === null ? '' : (row.employerCents / 100).toFixed(2),
           ].join(','),
         ),
-        [
-          'TOTAL',
-          '',
-          '',
-          '',
-          (block.employeeTotalCents / 100).toFixed(2),
-          (block.employerTotalCents / 100).toFixed(2),
-        ].join(','),
+        // A file whose rows include "not calculated" must not print a smaller
+        // TOTAL as though it were the whole one — the reader is keying this
+        // into an authority's portal.
+        block.employeeTotalCents === null || block.employerTotalCents === null
+          ? [
+              'TOTAL',
+              '',
+              '',
+              '',
+              `NOT CALCULABLE — ${block.notComputed} employee(s) not calculated`,
+              '',
+            ].join(',')
+          : [
+              'TOTAL',
+              '',
+              '',
+              '',
+              (block.employeeTotalCents / 100).toFixed(2),
+              (block.employerTotalCents / 100).toFixed(2),
+            ].join(','),
       ];
       return {
         fileName: `${upper.toLowerCase()}-listing-${composed.view.period}.csv`,
@@ -238,19 +261,30 @@ export class PayrollStatutoryOutputService {
       });
       // Rows where the scheme genuinely takes nothing (0/0) stay visible: an
       // authority reconciles headcount as well as ringgit.
-      const employeeTotalCents = rows.reduce((sum, row) => sum + (row.employeeCents ?? 0), 0);
-      const employerTotalCents = rows.reduce((sum, row) => sum + (row.employerCents ?? 0), 0);
+      //
+      // A total over rows the run could not calculate is NOT a smaller total —
+      // it is no total. Summing `?? 0` here printed an understated TOTAL line
+      // on the very document a clinic keys into an authority's portal, while
+      // the row's own note said "not calculated". Null survives instead, the
+      // same rule the reports and the finance contract already follow.
+      const notComputedRows = rows.filter((row) => row.note !== null).length;
+      const employeeTotalCents =
+        notComputedRows > 0 ? null : rows.reduce((sum, row) => sum + (row.employeeCents ?? 0), 0);
+      const employerTotalCents =
+        notComputedRows > 0 ? null : rows.reduce((sum, row) => sum + (row.employerCents ?? 0), 0);
       const submission = submissionByScheme.get(scheme);
-      // The HRD levy has no banded schedule to stamp — its rate is the
-      // employer's registration class — so its block carries none.
-      const schedule = scheduleFor(scheme);
+      // The stamp records the levy under the registry's own scheme name.
+      const schedule = scheduleFor(scheme === 'HRD' ? 'HRD_LEVY' : scheme);
       return {
         scheme,
         rows,
         employeeTotalCents,
         employerTotalCents,
-        totalCents: employeeTotalCents + employerTotalCents,
-        notComputed: rows.filter((row) => row.note !== null).length,
+        totalCents:
+          employeeTotalCents === null || employerTotalCents === null
+            ? null
+            : employeeTotalCents + employerTotalCents,
+        notComputed: notComputedRows,
         schedule: schedule
           ? {
               scheduleId: schedule.scheduleId,

@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Inject, Injectable, NotFoundExc
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { requirePermission, withAdminTx } from '../finance/admin-actor';
+import { requirePermission, requireScope, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { toCents, formatCents } from '../finance/money';
 import { UpsertPayrollInputDto } from './dto/upsert-payroll-input.dto';
@@ -39,13 +39,17 @@ export class PayrollInputService {
   ) {}
 
   async list(params: { period: string; staffId?: string; clinicId?: string }) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    // Inputs are pay figures with names on them; a requested branch is
+    // validated against the actor's scope like every other admin read. Rows
+    // carry the STAFF's branch through the relation, so entries keyed with
+    // no branch of their own still filter correctly.
+    const { scope } = await requireScope(this.rawPrisma, 'hr.payroll.view');
     const period = periodStart(params.period);
     const rows = await this.prisma.payrollInputEntry.findMany({
       where: {
         period,
         ...(params.staffId ? { staffId: params.staffId } : {}),
-        ...(params.clinicId ? { clinicId: params.clinicId } : {}),
+        staff: scope.where(params.clinicId),
       },
       orderBy: [{ staffId: 'asc' }, { componentCode: 'asc' }],
       include: {

@@ -112,6 +112,14 @@ export type AuditAction =
   | 'payroll.reopened'
   /** A payslip PDF left the system — who took whose slip, for which version. */
   | 'payrollPayslip.downloaded'
+  /** The JSON payslip read — same figures as the PDF, so the same trail. */
+  | 'payrollPayslip.viewed'
+  /** A full-pay report was served — the register and its twelve siblings. */
+  | 'payrollReport.served'
+  /** The frozen snapshot payload was read — every employee's figures at once. */
+  | 'payrollSnapshot.read'
+  /** The statutory outputs view — per-employee figures per scheme. */
+  | 'payrollStatutory.outputsViewed'
   // Payment preparation. Three separate events, because "a document exists",
   // "somebody took it" and "money moved" are three different claims.
   | 'payrollPayment.batchPrepared'

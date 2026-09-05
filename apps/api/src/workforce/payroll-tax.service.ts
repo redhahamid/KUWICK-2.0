@@ -304,6 +304,35 @@ export class PayrollTaxService {
         }
       }
 
+      /*
+       * ONE PERIOD OF PREVIOUS EMPLOYMENT, DECLARED ONCE. The unique key is
+       * (staff, year, employer NAME) — which a spelling variation defeats,
+       * and two records for the same months would then both feed ∑Y, ∑K and
+       * X, halving the remaining year's tax. Two TP3 records for one year are
+       * legitimate only when they are two different jobs, and the only way to
+       * SHOW that is dated, non-overlapping employment periods on both.
+       */
+      const existingTp3 = await tx.employeeTp3Record.findMany({
+        where: { staffId, taxYear },
+        select: { previousEmployerName: true, employmentFrom: true, employmentTo: true },
+      });
+      if (existingTp3.length > 0) {
+        const newFrom = body.employmentFrom ? new Date(`${body.employmentFrom}T00:00:00.000Z`) : null;
+        const newTo = body.employmentTo ? new Date(`${body.employmentTo}T00:00:00.000Z`) : null;
+        for (const prior of existingTp3) {
+          const undatable = !newFrom || !newTo || !prior.employmentFrom || !prior.employmentTo;
+          const overlaps =
+            !undatable && newFrom! <= prior.employmentTo! && prior.employmentFrom! <= newTo!;
+          if (undatable || overlaps) {
+            throw new ConflictException(
+              `A TP3 for ${taxYear} is already recorded from "${prior.previousEmployerName}". A second one is ` +
+                'accepted only when both declare dated employment periods that do not overlap — otherwise the same ' +
+                'months would enter the cumulative tax twice. Correct the existing record instead.',
+            );
+          }
+        }
+      }
+
       const created = await tx.employeeTp3Record.create({
         data: {
           tenantId: currentTenantId(),
@@ -344,6 +373,29 @@ export class PayrollTaxService {
     await withAdminTx(this.rawPrisma, 'hr.payroll.run', async (tx, actor) => {
       const record = await tx.employeeTp3Record.findUnique({ where: { id } });
       if (!record) throw new NotFoundException('No such TP3 record.');
+      // Same discipline as TP1: a cumulative position an approved month was
+      // computed on cannot be quietly pulled out from under it — the
+      // approved PCB would become unexplainable. TP3 feeds every month of
+      // its year, so ANY approved run in the year pins it.
+      const approvedLine = await tx.payrollLine.findFirst({
+        where: {
+          staffId: record.staffId,
+          payrollRun: {
+            status: { in: [PayrollRunStatus.APPROVED, PayrollRunStatus.PAID] },
+            period: {
+              gte: new Date(Date.UTC(record.taxYear, 0, 1)),
+              lt: new Date(Date.UTC(record.taxYear + 1, 0, 1)),
+            },
+          },
+        },
+        select: { id: true },
+      });
+      if (approvedLine) {
+        throw new ConflictException(
+          'An approved payroll month was calculated with this TP3 in the cumulative position. The record stays; ' +
+            'correct the months through a correction run.',
+        );
+      }
       await tx.employeeTp3Record.delete({ where: { id } });
       await recordAudit(tx, actor, {
         action: 'payrollTax.tp3Deleted',

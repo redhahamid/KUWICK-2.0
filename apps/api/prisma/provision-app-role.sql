@@ -99,7 +99,12 @@ BEGIN
     'claim_events',
     -- Wave-4 payroll: the correction mechanism for a locked run. Reversing an
     -- adjustment is another adjustment.
-    'payroll_adjustments'
+    'payroll_adjustments',
+    -- The audit trail itself. Every append-only guarantee above is ultimately
+    -- attested by rows in this table, so it gets the same treatment — the
+    -- trigger (20260905090000) refuses for every role, and the grant is
+    -- trimmed here so the application role cannot even ask.
+    'audit_logs'
   ] LOOP
     IF to_regclass('public.' || t) IS NOT NULL THEN
       IF t = 'payments' THEN

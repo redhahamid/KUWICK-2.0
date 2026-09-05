@@ -1,8 +1,15 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { requirePermission, withAdminTx } from '../finance/admin-actor';
+import { actorCan, requirePermission, withAdminTx } from '../finance/admin-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { toCents, fromCents, formatCents } from '../finance/money';
 import { resolveSalaryForPeriod, SalaryRow } from './salary-resolution';
@@ -149,6 +156,17 @@ export class EmployeeSalaryService {
    */
   async record(staffId: string, dto: RecordSalaryDto) {
     return withAdminTx(this.rawPrisma, 'hr.employee.manage', async (tx, actor) => {
+      // Setting a salary is pay-bearing, exactly as editing the bank account
+      // is on the employee form — and it carried no second check, so the
+      // legacy HR-clerk role (which this module's own header says must not
+      // READ pay) could WRITE anybody's, and the next run would pay it. Same
+      // rule as the bank field: `hr.employee.manage` says who maintains
+      // employee records, `hr.payroll.view` says who may touch the money.
+      if (!actorCan(actor, 'hr.payroll.view')) {
+        throw new ForbiddenException(
+          'Recording a salary needs payroll access, not employee-record access alone. Ask somebody who can view payroll to record it.',
+        );
+      }
       const profile = await tx.employeeProfile.findFirst({ where: { staffId } });
       if (!profile) throw new NotFoundException('Employee not found');
 

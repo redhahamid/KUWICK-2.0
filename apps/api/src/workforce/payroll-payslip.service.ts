@@ -65,10 +65,23 @@ export class PayrollPayslipService {
     };
   }
 
-  /** One employee's payslip dataset, composed entirely from the snapshot. */
+  /**
+   * One employee's payslip dataset, composed entirely from the snapshot.
+   * Audited like the PDF: it is the same figures through a different door,
+   * and a trail that records only one of two identical exits records neither.
+   */
   async payslip(runId: string, staffId: string, version?: number) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.view');
-    return this.compose(runId, staffId, version);
+    return withAdminTx(this.rawPrisma, 'hr.payroll.view', async (tx, actor) => {
+      const composed = await this.compose(runId, staffId, version);
+      await recordAudit(tx, actor, {
+        action: 'payrollPayslip.viewed',
+        entityType: 'PayrollRun',
+        entityId: runId,
+        after: { staffId, snapshotVersion: composed.revision.version },
+        source: 'hr.payroll',
+      });
+      return composed;
+    });
   }
 
   /**

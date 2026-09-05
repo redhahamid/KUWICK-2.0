@@ -1,7 +1,8 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
-import { requirePermission } from '../finance/admin-actor';
+import { requirePermission, withAdminTx } from '../finance/admin-actor';
+import { recordAudit } from '../finance/admin-audit';
 import { formatCents, toCents } from '../finance/money';
 import { checkVariance } from './payroll-invariants';
 
@@ -37,8 +38,32 @@ export class PayrollReportService {
   ) {}
 
   /** Every report this build serves, so a screen lists what exists rather than guessing. */
-  catalogue() {
+  async catalogue() {
+    // Static content, but gated: it was the one payroll route with no
+    // permission check at all, and in a module where authorization lives in
+    // the service (not a guard), an ungated method is the pattern a future
+    // data-bearing route copies.
+    await requirePermission(this.rawPrisma, 'hr.payroll.view');
     return REPORT_CATALOGUE;
+  }
+
+  /**
+   * Authorise AND record that a full-pay report was served. These routes
+   * carry every employee's pay, the permission is literally named "export",
+   * and the download-shaped exits (payment listing, statutory listing,
+   * payslip PDF) already write audit rows — the reports were the unrecorded
+   * way out of the building.
+   */
+  private async requireReportActor(report: string, scope: Record<string, unknown>) {
+    await withAdminTx(this.rawPrisma, 'hr.payroll.export.reports', async (tx, actor) => {
+      await recordAudit(tx, actor, {
+        action: 'payrollReport.served',
+        entityType: 'PayrollReport',
+        entityId: report,
+        after: scope,
+        source: 'hr.payroll',
+      });
+    });
   }
 
   /**
@@ -49,7 +74,7 @@ export class PayrollReportService {
    * behind each row available by opening it.
    */
   async register(runId: string) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    await this.requireReportActor('register', { runId });
     const run = await this.loadRun(runId);
     const inputs = await this.prisma.payrollInputEntry.findMany({
       where: { period: run.period, staffId: { in: run.lines.map((l) => l.staffId) } },
@@ -134,7 +159,7 @@ export class PayrollReportService {
    * why the two are named separately in every row here.
    */
   async employerCost(runId: string) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    await this.requireReportActor('employer-cost', { runId });
     const run = await this.loadRun(runId);
     const profiles = await this.prisma.employeeProfile.findMany({
       where: { staffId: { in: run.lines.map((l) => l.staffId) } },
@@ -168,7 +193,13 @@ export class PayrollReportService {
         employerCostCents: 0,
         notComputed: 0,
       };
-      const employer = [line.epfEmployer, line.socsoEmployer, line.eisEmployer];
+      // FOUR terms, exactly the ones the engine put into employer cost. The
+      // HRD levy was left out of this list, so on a registered employer's
+      // report gross + employerContributions came up short of employerCost by
+      // exactly the levy — the report deriving its own answer beside the
+      // canonical one. A null levy counts as not-computed like the others:
+      // "unrecorded registration" is a gap, not a zero.
+      const employer = [line.epfEmployer, line.socsoEmployer, line.eisEmployer, line.hrdLevy];
       bucket.employees += 1;
       bucket.grossCents += toCents(line.grossPay);
       bucket.employerCostCents += toCents(line.employerCost);
@@ -234,7 +265,7 @@ export class PayrollReportService {
    * "nil" is a return filed for less than the clinic owes.
    */
   async statutory(runId: string) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    await this.requireReportActor('statutory-totals', { runId });
     const run = await this.loadRun(runId);
     const profiles = await this.prisma.employeeProfile.findMany({
       where: { staffId: { in: run.lines.map((l) => l.staffId) } },
@@ -368,7 +399,7 @@ export class PayrollReportService {
    * engine uses, so that defect cannot reach a screen.
    */
   async variance(runId: string) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    await this.requireReportActor('variance', { runId });
     const run = await this.loadRun(runId);
     const previous = await this.prisma.payrollRun.findFirst({
       where: {
@@ -476,7 +507,7 @@ export class PayrollReportService {
    * approver chose, and whether it has actually been settled that way.
    */
   async claims(params: { from: string; to: string }) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    await this.requireReportActor('claims', { from: params.from, to: params.to });
     const from = new Date(`${params.from}T00:00:00.000Z`);
     const to = new Date(`${params.to}T23:59:59.999Z`);
 
@@ -568,7 +599,7 @@ export class PayrollReportService {
    * before and after the correction, and both answers are kept.
    */
   async history(staffId: string, year?: number) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    await this.requireReportActor('history', { staffId, year: year ?? null });
     const staff = await this.prisma.staff.findUnique({ where: { id: staffId }, select: { fullName: true } });
     if (!staff) throw new NotFoundException('Employee not found');
 
@@ -685,7 +716,7 @@ export class PayrollReportService {
    * they are the two things that lawfully changed it.
    */
   async pcbSummary(runId: string) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    await this.requireReportActor('pcb-summary', { runId });
     const run = await this.loadRun(runId);
     const staffIds = run.lines.map((l) => l.staffId);
     const profiles = await this.prisma.employeeProfile.findMany({
@@ -770,7 +801,7 @@ export class PayrollReportService {
    * employer paid.
    */
   async ytd(year: number, legalEmployerId?: string) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    await this.requireReportActor('ytd', { year, legalEmployerId: legalEmployerId ?? null });
     const months = await this.prisma.employeeYtd.findMany({
       where: { taxYear: year, ...(legalEmployerId ? { legalEmployerId } : {}) },
       orderBy: [{ staffId: 'asc' }, { month: 'asc' }],
@@ -926,7 +957,7 @@ export class PayrollReportService {
    * report because they are clinic policy, not law, and a checker needs them.
    */
   async overtime(runId: string) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    await this.requireReportActor('overtime', { runId });
     const run = await this.loadRun(runId);
 
     const rows = run.lines
@@ -983,7 +1014,7 @@ export class PayrollReportService {
    * after it and why this report has no deductions column at all.
    */
   async unpaidLeave(runId: string) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    await this.requireReportActor('unpaid-leave', { runId });
     const run = await this.loadRun(runId);
 
     const rows = run.lines
@@ -1031,7 +1062,7 @@ export class PayrollReportService {
    * monthly wages — which is why they are worth a report of their own.
    */
   async incentives(runId: string) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    await this.requireReportActor('incentives', { runId });
     const run = await this.loadRun(runId);
     const entries = await this.prisma.payrollInputEntry.findMany({
       where: {
@@ -1082,7 +1113,7 @@ export class PayrollReportService {
    * nobody prints.
    */
   async exceptions(runId: string) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    await this.requireReportActor('exceptions', { runId });
     const run = await this.loadRun(runId);
     const exceptionRows = await this.prisma.payrollException.findMany({
       where: { payrollRunId: runId },
@@ -1144,7 +1175,7 @@ export class PayrollReportService {
    * report never uses the word "paid" for anything less.
    */
   async paymentStatus(runId: string) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.export.reports');
+    await this.requireReportActor('payment-status', { runId });
     const run = await this.loadRun(runId);
     const batches = await this.prisma.payrollPaymentBatch.findMany({
       where: { payrollRunId: runId },
@@ -1246,7 +1277,21 @@ export class PayrollReportService {
       },
     });
     if (!run) throw new NotFoundException('Payroll run not found');
-    return run;
+    // Reports read the LIVE lines — the right source for a month being
+    // worked on, and a different answer from the approved snapshot while a
+    // reopened month is being corrected. Only the history report used to say
+    // so; every run report needs to, or the statutory-totals report serves
+    // candidate figures while the filing listing serves the approved ones
+    // and nothing on either page explains the difference.
+    const approvedSnapshot =
+      run.status === 'CALCULATED'
+        ? await this.prisma.payrollSnapshot.findFirst({
+            where: { payrollRunId: runId },
+            orderBy: { version: 'desc' },
+            select: { version: true },
+          })
+        : null;
+    return { ...run, reopenedSnapshotVersion: approvedSnapshot?.version ?? null };
   }
 
   /** The same header on every run-scoped report, so two of them cannot disagree. */
@@ -1256,7 +1301,9 @@ export class PayrollReportService {
     status: string;
     statutoryStatus: string;
     clinic: { name: string } | null;
+    reopenedSnapshotVersion?: number | null;
   }) {
+    const reopened = run.status === 'CALCULATED' && (run.reopenedSnapshotVersion ?? null) !== null;
     return {
       runId: run.id,
       period: run.period.toISOString().slice(0, 7),
@@ -1273,6 +1320,18 @@ export class PayrollReportService {
         run.statutoryStatus !== 'CONFIGURED'
           ? 'The statutory rates behind these figures have not been checked against KWSP, PERKESO and LHDN. Treat every figure here as a working number.'
           : null,
+      /**
+       * A REOPENED MONTH SERVES CANDIDATE FIGURES HERE while the approved
+       * snapshot keeps serving the payslips, the payment and the statutory
+       * listings. Both are true at once and a report that does not say which
+       * one it is will be reconciled against the wrong one.
+       */
+      reopened,
+      reopenedNote: reopened
+        ? `This run was reopened for correction: the figures below are candidates. The approved record ` +
+          `(version ${run.reopenedSnapshotVersion}) still stands behind payslips, payment and statutory listings ` +
+          `until the correction is approved.`
+        : null,
     };
   }
 }

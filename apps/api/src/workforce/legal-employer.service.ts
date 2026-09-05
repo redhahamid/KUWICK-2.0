@@ -74,7 +74,15 @@ export class LegalEmployerService {
       city: row.city,
       state: row.state,
       bankName: row.bankName,
-      bankAccountNo: row.bankAccountNo,
+      /**
+       * PRESENCE AND THE LAST FOUR, never the number. This list is `hr.view`
+       * — the permission the legacy HR-clerk role holds — and a full employer
+       * account number under it is a screenshot away from being a leak. The
+       * full number is written here and read only by the audited bank-listing
+       * export.
+       */
+      bankAccountOnFile: Boolean(row.bankAccountNo),
+      bankAccountLastFour: row.bankAccountNo ? row.bankAccountNo.slice(-4) : null,
       bankAccountName: row.bankAccountName,
       active: row.active,
       employeeCount: row._count.employees,
@@ -115,7 +123,14 @@ export class LegalEmployerService {
     await requirePermission(this.rawPrisma, 'hr.view');
     const row = await this.prisma.legalEmployer.findFirst({ where: { id } });
     if (!row) throw new NotFoundException('Legal employer not found');
-    return row;
+    // Same rule as the list: `return row` handed out the full account number
+    // under `hr.view`, with no projection at all.
+    const { bankAccountNo, ...safe } = row;
+    return {
+      ...safe,
+      bankAccountOnFile: Boolean(bankAccountNo),
+      bankAccountLastFour: bankAccountNo ? bankAccountNo.slice(-4) : null,
+    };
   }
 
   async upsert(dto: UpsertLegalEmployerDto) {
@@ -165,7 +180,15 @@ export class LegalEmployerService {
         city: dto.city ?? null,
         state: dto.state ?? null,
         bankName: dto.bankName ?? null,
-        bankAccountNo: dto.bankAccountNo ?? null,
+        /**
+         * WRITE-ONLY. The account number is never sent back out of this
+         * service (the reads carry presence and the last four), so the form
+         * cannot prefill it — and an edit that does not mention the field
+         * must keep the number, not clear it. Absent = unchanged; a value =
+         * replaced; an explicit empty string = cleared on purpose.
+         */
+        bankAccountNo:
+          dto.bankAccountNo === undefined ? (existing?.bankAccountNo ?? null) : dto.bankAccountNo || null,
         bankAccountName: dto.bankAccountName ?? null,
         active: dto.active ?? true,
       };
@@ -179,10 +202,22 @@ export class LegalEmployerService {
         entityType: 'LegalEmployer',
         entityId: saved.id,
         reason: `${existing ? 'Updated' : 'Created'} legal employer ${saved.name}`,
-        ...(existing ? { before: existing, after: saved } : { after: saved }),
+        // Presence, not the number — an audit row is readable by more seats
+        // than may see an account number, and "changed" is the fact it needs.
+        ...(existing
+          ? {
+              before: { ...existing, bankAccountNo: existing.bankAccountNo ? `on file (…${existing.bankAccountNo.slice(-4)})` : null },
+              after: { ...saved, bankAccountNo: saved.bankAccountNo ? `on file (…${saved.bankAccountNo.slice(-4)})` : null },
+            }
+          : { after: { ...saved, bankAccountNo: saved.bankAccountNo ? `on file (…${saved.bankAccountNo.slice(-4)})` : null } }),
       });
 
-      return saved;
+      const { bankAccountNo: savedAccount, ...safeSaved } = saved;
+      return {
+        ...safeSaved,
+        bankAccountOnFile: Boolean(savedAccount),
+        bankAccountLastFour: savedAccount ? savedAccount.slice(-4) : null,
+      };
     });
   }
 

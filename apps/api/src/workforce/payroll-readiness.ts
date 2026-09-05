@@ -23,10 +23,15 @@ function money(cents: number): string {
  *
  * THE SALARY AMOUNT IS CONFIDENTIAL. The employee record needs only `hr.view`,
  * and this checklist used to print "RM3,200.00 a month" into the salary item's
- * detail regardless — which handed the one figure `hr.salary.view` exists to
- * protect to anybody who could open the record. The amount now appears only
- * when the caller says the reader may see pay; the item is exactly as
- * actionable without it.
+ * detail regardless — handing the figure to anybody who could open the
+ * record. The amount now appears only when the caller says the reader may
+ * see pay; the item is exactly as actionable without it.
+ *
+ * WHICH PERMISSION says the reader may see pay: `hr.payroll.view` is the
+ * enforced pay gate on every payroll surface — a run's lines, the journey,
+ * this checklist — because running payroll IS seeing the figures.
+ * `hr.salary.view` gates the standing salary register and parity screens on
+ * top of it, and stays owner-only. The caller passes its own check in.
  */
 
 export type ReadinessSeverity = 'BLOCKING' | 'ADVISORY';

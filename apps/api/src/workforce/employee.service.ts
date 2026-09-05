@@ -3,7 +3,7 @@ import { EmploymentStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
-import { actorCan, requirePermission, withAdminTx } from '../finance/admin-actor';
+import { actorCan, requirePermission, requireScope, withAdminTx } from '../finance/admin-actor';
 import { diffOf, recordAudit } from '../finance/admin-audit';
 import { UpsertEmployeeDto } from './dto/upsert-employee.dto';
 import { formatCents, fromCents, toCents } from '../finance/money';
@@ -33,12 +33,15 @@ export class EmployeeService {
   ) {}
 
   async list(params: { clinicId?: string; status?: EmploymentStatus; search?: string } = {}) {
-    const actor = await requirePermission(this.rawPrisma, 'hr.view');
-    const clinicId = params.clinicId ?? actor.clinicId ?? undefined;
+    // The branch comes through the actor's SCOPE: a requested branch outside
+    // it is refused, and no request means the branches this account manages.
+    // The old `params.clinicId ?? actor.clinicId` accepted any branch the
+    // request cared to name.
+    const { scope } = await requireScope(this.rawPrisma, 'hr.view');
 
     const staff = await this.prisma.staff.findMany({
       where: {
-        ...(clinicId ? { clinicId } : {}),
+        ...scope.where(params.clinicId),
         ...(params.search
           ? { fullName: { contains: params.search, mode: 'insensitive' } }
           : {}),
@@ -491,11 +494,41 @@ export class EmployeeService {
    */
   async payrollView(staffId: string) {
     await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    // A DELIBERATE projection, not `...profile`. Spreading the whole row sent
+    // the full bank account number, the NRIC/passport value and everything
+    // else on the profile to any `hr.payroll.view` holder — the exact fields
+    // the `hr.view` read two methods up strips out on purpose. What payroll
+    // needs is the salary resolution, the filing identifiers, and PRESENCE
+    // plus last-four for the bank account; the full number lives only in the
+    // audited bank-listing export.
     const [profile, salaryRows] = await Promise.all([
-      this.prisma.employeeProfile.findUnique({ where: { staffId } }),
+      this.prisma.employeeProfile.findUnique({
+        where: { staffId },
+        select: {
+          staffId: true,
+          employeeNo: true,
+          position: true,
+          department: true,
+          employmentType: true,
+          employmentStatus: true,
+          startDate: true,
+          endDate: true,
+          legalEmployerId: true,
+          identifierType: true,
+          epfNumber: true,
+          socsoNumber: true,
+          taxNumber: true,
+          bankName: true,
+          bankAccountName: true,
+          bankAccountNo: true,
+          basicSalary: true,
+          hourlyRate: true,
+        },
+      }),
       this.prisma.employeeSalary.findMany({ where: { staffId }, orderBy: { effectiveFrom: 'desc' } }),
     ]);
     if (!profile) throw new NotFoundException('No employee profile for that staff member');
+    const { bankAccountNo, basicSalary: legacyBasic, hourlyRate: legacyHourly, ...safeProfile } = profile;
 
     const today = new Date();
     const salary = resolveSalaryForPayroll(
@@ -512,7 +545,9 @@ export class EmployeeService {
     const resolved = salary.kind === 'RESOLVED' ? salary.row : null;
 
     return {
-      ...profile,
+      ...safeProfile,
+      bankAccountOnFile: Boolean(bankAccountNo),
+      bankAccountLastFour: bankAccountNo ? bankAccountNo.slice(-4) : null,
       basicSalary: resolved && resolved.basis === 'MONTHLY' ? fromCents(resolved.amountCents) : null,
       hourlyRate: resolved && resolved.basis === 'HOURLY' ? fromCents(resolved.amountCents) : null,
       payBasis: resolved?.basis ?? null,
@@ -524,8 +559,8 @@ export class EmployeeService {
        * anyone reconciling against a pre-cutover export can see both numbers
        * and which one is now paid; nothing computes from it.
        */
-      legacyBasicSalary: profile.basicSalary,
-      legacyHourlyRate: profile.hourlyRate,
+      legacyBasicSalary: legacyBasic,
+      legacyHourlyRate: legacyHourly,
     };
   }
 

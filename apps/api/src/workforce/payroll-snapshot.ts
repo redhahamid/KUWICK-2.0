@@ -176,8 +176,20 @@ export interface SnapshotPayslipDetail {
     lindung: string | null;
     pcb: string | null;
   };
-  /** The overtime working, tier by tier, as the run priced it. */
-  overtime: { label: string; hours: number; hourlyRate: number; total: number }[];
+  /**
+   * The overtime working, tier by tier, as the run priced it. A day priced in
+   * DAYS (s.60(3), s.60D) carries `ordinaryRateDays`; without it the frozen
+   * row read "0 h @ RM33.00 … 200.00" — a statement of wages nobody could
+   * multiply out. Absent on rows frozen before the field existed.
+   */
+  overtime: {
+    label: string;
+    hours: number;
+    hourlyRate: number;
+    total: number;
+    ordinaryRateDays?: number;
+    provision?: string;
+  }[];
 }
 
 export interface SnapshotEmployeeLine {
@@ -470,6 +482,71 @@ export function verifySnapshot(payload: SnapshotPayload, storedHash: string): Sn
     employeeCount: payload.totals.employeeCount,
   };
   const violations = checkPayrollInvariants(employees, totals);
+
+  /*
+   * THE INDEPENDENT PER-ROW IDENTITY. `deductionCents` and
+   * `employerContributionCents` above are DERIVED at freeze time by
+   * subtraction, so `gross − deduction = net` holds for any payload by
+   * construction and proves nothing about a single row. What CAN fail is the
+   * identity across columns frozen from different sources: the statutory
+   * figures, the itemised other-deductions, net and employer cost. A row a
+   * bug wrote inconsistently — a withholding recorded but not taken, a levy
+   * in employer cost but not on the row — fails here and nowhere else.
+   *
+   * Rows carrying a null statutory figure (an acknowledged-gap month) or no
+   * v3 payslip detail are skipped for the side the null sits on: an unknown
+   * is not a zero, and pretending so is the exact laundering this check
+   * exists to catch.
+   */
+  for (const line of payload.employees) {
+    const s = line.statutory;
+    const other = line.payslip?.figures?.otherDeductionsCents;
+    if (
+      other !== undefined &&
+      s.epfEmployeeCents !== null &&
+      s.socsoEmployeeCents !== null &&
+      s.eisEmployeeCents !== null &&
+      s.lindungEmployeeCents !== null &&
+      s.pcbCents !== null
+    ) {
+      const expectedNet =
+        line.bases.grossCents -
+        (s.epfEmployeeCents + s.socsoEmployeeCents + s.eisEmployeeCents + s.lindungEmployeeCents + s.pcbCents + other);
+      if (expectedNet !== line.netCents) {
+        violations.push({
+          code: 'SNAPSHOT_NET_VS_STATUTORY_COLUMNS',
+          staffId: line.staffId,
+          message:
+            `${line.name}: gross less the frozen statutory withholdings and other deductions is ` +
+            `${(expectedNet / 100).toFixed(2)}, but the frozen net is ${(line.netCents / 100).toFixed(2)}.`,
+          expectedCents: expectedNet,
+          actualCents: line.netCents,
+        });
+      }
+    }
+    const hrd = s.hrdLevyCents;
+    if (
+      s.epfEmployerCents !== null &&
+      s.socsoEmployerCents !== null &&
+      s.eisEmployerCents !== null &&
+      hrd !== undefined &&
+      hrd !== null
+    ) {
+      const expectedCost =
+        line.bases.grossCents + s.epfEmployerCents + s.socsoEmployerCents + s.eisEmployerCents + hrd;
+      if (expectedCost !== line.employerCostCents) {
+        violations.push({
+          code: 'SNAPSHOT_EMPLOYER_COST_VS_COLUMNS',
+          staffId: line.staffId,
+          message:
+            `${line.name}: gross plus the frozen employer contributions is ${(expectedCost / 100).toFixed(2)}, ` +
+            `but the frozen employer cost is ${(line.employerCostCents / 100).toFixed(2)}.`,
+          expectedCents: expectedCost,
+          actualCents: line.employerCostCents,
+        });
+      }
+    }
+  }
 
   if (violations.length > 0) {
     return {

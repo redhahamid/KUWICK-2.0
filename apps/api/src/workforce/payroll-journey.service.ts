@@ -1,7 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
-import { actorCan, requirePermission } from '../finance/admin-actor';
+import { actorCan, requirePermission, requireScope } from '../finance/admin-actor';
 import { formatCents, toCents } from '../finance/money';
 import {
   ApprovalPolicy,
@@ -56,10 +56,14 @@ export class PayrollJourneyService {
    * screen that can only describe a run cannot describe that.
    */
   async home(params: { period?: string; clinicId?: string } = {}) {
-    await requirePermission(this.rawPrisma, 'hr.payroll.view');
+    const { scope } = await requireScope(this.rawPrisma, 'hr.payroll.view');
     const period = monthStart(params.period ?? new Date());
     const periodEnd = monthEnd(period);
-    const clinicFilter = params.clinicId ? { clinicId: params.clinicId } : {};
+    // The landing page answers for the branches this account MANAGES — a
+    // requested branch is validated against the scope, and no request means
+    // the managed set, never the whole tenant by default.
+    const clinicFilter = scope.where(params.clinicId);
+    const staffScope = { staff: scope.where(params.clinicId) };
 
     const [run, recent, employees, contractors] = await Promise.all([
       this.prisma.payrollRun.findFirst({
@@ -76,7 +80,7 @@ export class PayrollJourneyService {
         where: {
           engagement: 'EMPLOYEE',
           employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
-          ...(params.clinicId ? { staff: { clinicId: params.clinicId } } : {}),
+          ...staffScope,
         },
         include: { staff: { select: { fullName: true, active: true } } },
       }),
@@ -84,7 +88,7 @@ export class PayrollJourneyService {
         where: {
           engagement: 'CONTRACTOR',
           employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
-          ...(params.clinicId ? { staff: { clinicId: params.clinicId } } : {}),
+          ...staffScope,
         },
       }),
     ]);
@@ -474,10 +478,15 @@ export class PayrollJourneyService {
       const netCents = toCents(line.netPay);
       const salaryEarnedCents = basicCents - unpaidCents;
       const otherEarningsCents = grossCents - salaryEarnedCents - allowanceCents - overtimeCents - incentiveCents;
+      // ANY unknown makes the subtotal unknown — null in, null out. This was
+      // `&&`, so an employee with EPF null but SOCSO and EIS computed had
+      // their unknown EPF summed as RM0.00 on the review screen: a
+      // complete-looking subtotal, with the missing money invisible on the
+      // exact surface a person reads before approving.
       const statutoryMissing =
-        line.epfEmployee === null && line.socsoEmployee === null && line.eisEmployee === null;
+        line.epfEmployee === null || line.socsoEmployee === null || line.eisEmployee === null;
       const statutoryCents = statutoryMissing
-        ? null
+        ? null // the guard above proves the three are non-null on this branch
         : toCents(line.epfEmployee ?? 0) + toCents(line.socsoEmployee ?? 0) + toCents(line.eisEmployee ?? 0);
       const pcbCents = line.pcb === null ? null : toCents(line.pcb);
       const lindungCents = line.lindungEmployee === null ? null : toCents(line.lindungEmployee);

@@ -288,9 +288,10 @@ export class PayrollPaymentService {
   }
 
   /**
-   * A human records that money moved. The only path to RECORDED_PAID, and it
-   * demands the two facts a reconciliation needs: when, and under what
-   * reference. Marks the run PAID through the same rule markPaid enforces.
+   * A human records that money moved. The only path to RECORDED_PAID — and,
+   * since the unreconciled `markPaid` endpoint was removed, the only path to
+   * a run reading PAID at all. It demands the two facts a reconciliation
+   * needs: when, and under what reference.
    */
   async recordPaid(runId: string, body: { paymentDate: string; reference: string; note?: string }) {
     await withAdminTx(this.rawPrisma, 'hr.payroll.approve', async (tx, actor) => {
