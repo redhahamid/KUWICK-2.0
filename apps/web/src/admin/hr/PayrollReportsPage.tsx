@@ -793,8 +793,8 @@ function PcbSummaryReport({ runId }: { runId: string }) {
               {row.note ? <p style={{ margin: 0 }}>{row.note}</p> : null}
               {row.tp1 ? (
                 <p className="kw-muted" style={{ margin: row.note ? '6px 0 0' : 0 }}>
-                  TP1 for this month: RM{row.tp1.deductions} of approved deductions
-                  {Number(row.tp1.zakatSelfPaid) > 0 ? `, RM${row.tp1.zakatSelfPaid} of self-paid zakat` : ''}
+                  TP1 for this month: {ringgit(row.tp1.deductions)} of approved deductions
+                  {Number(row.tp1.zakatSelfPaid) > 0 ? `, ${ringgit(row.tp1.zakatSelfPaid)} of self-paid zakat` : ''}
                   {row.tp1.receivedDate ? ` — received ${dayjs(row.tp1.receivedDate).format('D MMM YYYY')}` : ''}.
                 </p>
               ) : null}

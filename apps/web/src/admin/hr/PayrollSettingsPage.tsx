@@ -334,9 +334,11 @@ export function PayrollSettingsPage() {
           <Link to="/admin/hr/benefits">Staff benefit schemes</Link>
         </div>
         <p className="kw-muted" style={{ marginTop: 12, marginBottom: 0 }}>
-          {componentCount} pay components are configured, each carrying what it counts towards. Opening balances,
-          year-to-date import and the bank payment format are not implemented yet and are listed here so their absence
-          is visible rather than assumed.
+          {componentCount} pay components are configured, each carrying what it counts towards. Opening balances and
+          the year-to-date import live under <Link to="/admin/hr/payroll/ytd-opening">Payroll → Opening balances</Link>.
+          What remains outside Kuwick: no bank payment file in any bank’s format (the payment listing says so on its
+          face), and no authority submission files — filings are performed at each authority’s portal and recorded
+          here.
         </p>
       </AdminSection>
     </AdminShell>

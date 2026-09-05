@@ -28,6 +28,12 @@ export function BenefitsPage() {
 
   const allowance = accounts.reduce((total, row) => total + row.allowance, 0);
   const used = accounts.reduce((total, row) => total + row.used, 0);
+  // ONE derivation of "remaining": the sum of the API's own per-account
+  // figures (each clamped at zero server-side). The strip used to clamp ONCE
+  // across the clinic — max(0, Σallowance − Σused) — so with one overdrawn
+  // account the strip and the table footer showed two different ringgit
+  // answers to the same question, and neither said which scope it meant.
+  const remaining = accounts.reduce((total, row) => total + row.remaining, 0);
   const overdrawn = accounts.filter((row) => row.overdrawn > 0);
 
   return (
@@ -52,7 +58,7 @@ export function BenefitsPage() {
           { label: 'Accounts', value: String(accounts.length), hint: `benefit year ${year}` },
           { label: 'Allowance', value: money(allowance) },
           { label: 'Used', value: money(used), tone: 'neutral' },
-          { label: 'Remaining', value: money(Math.max(0, allowance - used)), tone: 'good' },
+          { label: 'Remaining', value: money(remaining), hint: 'sum of each account’s balance', tone: 'good' },
           {
             label: 'Overdrawn',
             value: String(overdrawn.length),

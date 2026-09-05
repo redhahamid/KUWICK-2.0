@@ -342,8 +342,12 @@ function EarningsStep({ data }: { data: PayrollJourney }) {
   const rows = data.pay.rows;
   const totals = data.pay.totals;
 
-  const amountColumn = (title: string, pick: (row: PayRow) => string) => ({
+  // Each column carries a KEY of its own: without one, antd derives
+  // String(undefined) for every column built here, React sees duplicate
+  // keys, and hiding one column through the picker hides them all.
+  const amountColumn = (title: string, key: string, pick: (row: PayRow) => string) => ({
     title,
+    key,
     width: 125,
     align: 'right' as const,
     render: (_: unknown, row: PayRow) => dashZero(pick(row)),
@@ -420,10 +424,10 @@ function EarningsStep({ data }: { data: PayrollJourney }) {
                 </div>
               ),
             },
-            amountColumn('Allowances', (row) => row.allowances),
-            amountColumn('Overtime', (row) => row.overtimePay),
-            amountColumn('Incentive', (row) => row.incentive),
-            amountColumn('Claims & other', (row) => row.otherEarnings),
+            amountColumn('Allowances', 'allowances', (row) => row.allowances),
+            amountColumn('Overtime', 'overtime', (row) => row.overtimePay),
+            amountColumn('Incentive', 'incentive', (row) => row.incentive),
+            amountColumn('Claims & other', 'claims-other', (row) => row.otherEarnings),
             {
               title: 'Earnings',
               width: 145,
@@ -694,6 +698,7 @@ function ReviewStep({
             },
             {
               title: 'vs last period',
+              key: 'vs-last-period',
               width: 160,
               align: 'right' as const,
               render: (_: unknown, row: PayrollJourney['pay']['rows'][number]) => {

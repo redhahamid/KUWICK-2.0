@@ -159,6 +159,23 @@ describe('the slip checks its own arithmetic', () => {
     expect(totals.adds).toBe(true);
   });
 
+  it('9b. an uncalculated statutory line makes the totals UNKNOWN, not smaller', () => {
+    // `?? 0` used to print "Total deductions" over a sum that quietly skipped
+    // the uncalculated lines — a finished-looking figure on a document whose
+    // own banner says it is not a complete statement of deductions.
+    const line = { ...LINE, pcb: null };
+    const totals = payslipTotals(line);
+    expect(totals.uncalculated).toBe(1);
+    expect(totals.deductions).toBeNull();
+    expect(totals.derivedNet).toBeNull();
+    expect(totals.adds).toBe(false);
+
+    const html = renderPayslipHtml(RUN, line, CONTEXT);
+    expect(html).toContain('Not calculable');
+    expect(html).toContain('Not stated');
+    expect(html).not.toContain('These figures do not add up');
+  });
+
   it('10. a slip that does not add up refuses to show a net, and says why', () => {
     // Somebody will pay whatever the net says, so a net that does not follow
     // from the figures above it is the one thing this document must not print.

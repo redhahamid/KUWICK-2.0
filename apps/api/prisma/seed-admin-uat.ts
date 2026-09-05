@@ -2218,12 +2218,20 @@ async function seedWorkforce(ids: Ids) {
               : profile.key === 'counter2'
                 ? 'NOT_PARTICIPATING'
                 : 'VOLUNTARY_OPTED_IN',
-          // THE MTD PROFILE. Residence and category are what monthly tax
-          // refuses to compute without, so a seed that omits them produces a
-          // UAT clinic where every payroll blocks.
-          taxResidence: 'RESIDENT',
-          pcbCategory: profile.key === 'owner' ? 'CATEGORY_2' : 'CATEGORY_1',
-          qualifyingChildren: profile.key === 'owner' ? 2 : 0,
+          // THE MTD PROFILE — for MOST of the clinic. The three the UAT
+          // journey "fixes the legitimate way" (both clinic assistants and
+          // the stock keeper) genuinely have none recorded, so the run's
+          // PCB-missing blockers are true of the records behind them; the
+          // seed used to write RESIDENT for everybody while still raising
+          // the blockers, a world that contradicted itself and healed into a
+          // different story on the first recalculate.
+          ...(['counter', 'counter2', 'stock'].includes(profile.key)
+            ? {}
+            : {
+                taxResidence: 'RESIDENT',
+                pcbCategory: profile.key === 'owner' ? 'CATEGORY_2' : 'CATEGORY_1',
+                qualifyingChildren: profile.key === 'owner' ? 2 : 0,
+              }),
           epfApplicable: profile.type !== 'LOCUM',
           socsoApplicable: profile.type !== 'LOCUM',
           eisApplicable: profile.type !== 'LOCUM',
@@ -2787,10 +2795,16 @@ async function seedWorkforce(ids: Ids) {
     const payroll = await tx.payrollRun.create({
       data: {
         tenantId: tenant.id, clinicId: central.id, period: payrollPeriod, status: 'CALCULATED',
-        statutoryStatus: 'PROVISIONAL', statutoryRuleSetId: ruleSet.id,
+        // What the engine itself would write for this period: every schedule
+        // in the registry meets the approval bar, so the world's banner state
+        // is CONFIGURED. The seed used to hand-write PROVISIONAL with a
+        // CORROBORATED legacy blob — a state the product no longer produces,
+        // which put a false "not production-ready" banner on every screen
+        // until the first recalculate quietly disagreed with it.
+        statutoryStatus: 'CONFIGURED', statutoryRuleSetId: ruleSet.id,
         statutorySnapshot: {
           name: ruleSet.name, effectiveFrom: ruleSet.effectiveFrom,
-          verificationStatus: 'CORROBORATED', verified: false,
+          verificationStatus: 'OFFICIAL_SOURCE_VERIFIED', verified: true,
         } as never,
         createdByStaffId: staff.finance, calculatedAt: at(-2, 8),
       },
@@ -2856,7 +2870,11 @@ async function seedWorkforce(ids: Ids) {
         lines.push({ code: 'INCENTIVE', label: 'Procedure incentive', kind: 'EARNING', amount: 260, liability: DEFAULT_COMPONENT_LIABILITY.INCENTIVE });
       }
       if (profile.key === 'finance') {
-        lines.push({ code: 'UNPAID_LEAVE', label: 'Unpaid leave (1 day)', kind: 'DEDUCTION', amount: rates.unpaidLeaveDailyCents / 100, liability: DEFAULT_COMPONENT_LIABILITY.UNPAID_LEAVE });
+        // WAGE_REDUCTION, exactly as the catalogue classifies it: seeding it
+        // as a DEDUCTION left gross un-reduced AND counted the day among the
+        // withholdings, so every seeded line failed the client's own
+        // arithmetic check with "Does not add up" before anybody touched it.
+        lines.push({ code: 'UNPAID_LEAVE', label: 'Unpaid leave (1 day)', kind: 'WAGE_REDUCTION', amount: rates.unpaidLeaveDailyCents / 100, liability: DEFAULT_COMPONENT_LIABILITY.UNPAID_LEAVE });
       }
 
       /*
@@ -2875,7 +2893,8 @@ async function seedWorkforce(ids: Ids) {
        */
       const slip = computePayslip(
         lines,
-        { periodEnd: new Date(Date.UTC(payrollPeriod.getUTCFullYear(), payrollPeriod.getUTCMonth() + 1, 1)) },
+        // The last day INSIDE the period — the engine's own convention.
+        { periodEnd: periodEndDay },
         {
           age,
           epfEmployeeRate: 11,
@@ -2890,9 +2909,15 @@ async function seedWorkforce(ids: Ids) {
                 ? 'NOT_PARTICIPATING'
                 : 'VOLUNTARY_OPTED_IN',
           pcbApplicable: true,
-          taxResidence: 'RESIDENT',
-          pcbCategory: profile.key === 'owner' ? 2 : 1,
-          qualifyingChildren: profile.key === 'owner' ? 2 : 0,
+          // The same three unrecorded profiles as the classification rows
+          // above, so the engine's own null is what raises the blocker.
+          ...(['counter', 'counter2', 'stock'].includes(profile.key)
+            ? { taxResidence: null, pcbCategory: null, qualifyingChildren: 0 }
+            : {
+                taxResidence: 'RESIDENT' as const,
+                pcbCategory: (profile.key === 'owner' ? 2 : 1) as 1 | 2 | 3,
+                qualifyingChildren: profile.key === 'owner' ? 2 : 0,
+              }),
         },
       );
 
@@ -2900,7 +2925,7 @@ async function seedWorkforce(ids: Ids) {
       if (pcb === undefined) {
         exceptions.push({
           staffId, name, code: 'PCB_MISSING',
-          issue: 'PCB (monthly tax deduction) is not calculated by this system and no amount has been entered. Enter it as a payroll input, or record this employee as outside PCB.',
+          issue: 'Monthly tax (PCB) is missing. Record the tax profile and Kuwick calculates it, or enter the figure as a payroll input.',
         });
       } else {
         slip.statutory.pcbCents = Math.round(pcb * 100);
@@ -2934,9 +2959,15 @@ async function seedWorkforce(ids: Ids) {
                     ? 'NOT_PARTICIPATING'
                     : 'VOLUNTARY_OPTED_IN',
               pcbApplicable: true,
-              taxResidence: 'RESIDENT',
-              pcbCategory: profile.key === 'owner' ? 'CATEGORY_2' : 'CATEGORY_1',
-              qualifyingChildren: profile.key === 'owner' ? 2 : 0,
+              // Mirrors the classification rows: the three the UAT journey
+              // fixes have no tax profile recorded.
+              ...(['counter', 'counter2', 'stock'].includes(profile.key)
+                ? { taxResidence: null, pcbCategory: null, qualifyingChildren: 0 }
+                : {
+                    taxResidence: 'RESIDENT',
+                    pcbCategory: profile.key === 'owner' ? 'CATEGORY_2' : 'CATEGORY_1',
+                    qualifyingChildren: profile.key === 'owner' ? 2 : 0,
+                  }),
               disabledSelf: false,
               disabledSpouse: false,
               restDayOfWeek: 0,

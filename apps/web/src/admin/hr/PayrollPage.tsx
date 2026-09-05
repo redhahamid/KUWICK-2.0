@@ -37,6 +37,16 @@ const RUN_STATUS: Record<string, string> = {
   CANCELLED: 'default',
 };
 
+// Words for sentences. The map above is antd TAG COLOURS, and interpolating
+// it into prose printed "This run is blue." on every draft.
+const RUN_STATUS_WORDS: Record<string, string> = {
+  DRAFT: 'a draft — nothing has been calculated yet',
+  CALCULATED: 'calculated but not approved',
+  APPROVED: 'approved',
+  PAID: 'recorded as paid',
+  CANCELLED: 'cancelled',
+};
+
 /**
  * PAYROLL.
  *
@@ -112,18 +122,15 @@ export function PayrollPage() {
   const gateBlocks = gate ? !gate.canApprove : true;
 
   /**
-   * IS THIS PAYROLL FIT TO PAY MALAYSIAN STAFF WITH? Currently: no.
+   * IS THIS PAYROLL FIT TO PAY MALAYSIAN STAFF WITH?
    *
-   * The engine computes gross, allowances, unpaid-leave proration, deductions
-   * it was given, and net. It does NOT contain EPF/KWSP, SOCSO/PERKESO, EIS or
-   * PCB schedules — nobody has entered them, and this system will not guess a
-   * statutory table. Guessing is the one failure here with a legal consequence
-   * attached: an under-deducted PCB is the employer's liability, not a bug
-   * report.
-   *
-   * So the answer is READY only when a rate set exists AND somebody has marked
-   * it checked against the authority's published tables. Anything else is the
-   * banner below, in the brief's own words, above everything on the page.
+   * The schedules come from the statutory registry — the authorities' own
+   * documents, transcribed and dated — and each row's `verified` is a
+   * property of its evidence, not a checkbox. READY means at least one
+   * schedule meets the approval bar; anything else (an empty registry, a
+   * period no schedule reaches) shows the banner below, above everything on
+   * the page. The deeper honesty lives on the run itself: `statutoryStatus`
+   * is computed per period, and an approval over a gap asks first.
    */
   const verifiedRates = statutory.data?.filter((set) => set.verified) ?? [];
   const payrollReady = verifiedRates.length > 0;
@@ -148,20 +155,16 @@ export function PayrollPage() {
         <div className="kw-payrollBlock" role="alert">
           <p className="kw-payrollBlock__headline">NOT READY FOR LIVE MALAYSIAN PAYROLL</p>
           <p className="kw-payrollBlock__body">
-            <strong>EPF, SOCSO and EIS are calculated</strong> here, from dated band tables, with the age-60 rules and
-            the different wage bases each scheme uses. What is missing is the part nobody can do for you:{' '}
-            <strong>nobody has checked those tables against KWSP’s and PERKESO’s own published schedules.</strong> Until
-            somebody does, every figure below is provisional.
+            <strong>EPF, SOCSO, EIS, LINDUNG, PCB and the HRD levy are calculated</strong> from the authorities’ own
+            schedules, transcribed and dated in the statutory registry — but the schedules governing this period have
+            not met the approval bar, so every figure below is provisional and the run will ask before it can be
+            approved.
           </p>
           <p className="kw-payrollBlock__body">
-            <strong>PCB is not calculated at all.</strong> Monthly tax deduction requires LHDN’s Computerised
-            Calculation method, which is not implemented, and no approximation has been put in its place. An employee
-            with no PCB entered blocks the run.
-          </p>
-          <p className="kw-payrollBlock__body">
-            Runs may be produced and reviewed for internal costing. They must not be used to pay staff, to file a
-            statutory return, or as the basis of a payslip, until the rate tables are verified and PCB is entered or
-            implemented. There is also <strong>no payslip and no bank payment file</strong> in this system yet.
+            Runs may be produced and reviewed for internal costing. They must not be used to pay staff or to file a
+            statutory return until the registry’s schedules for the period are verified. Payslips issue only from an
+            approved, verified record; there is still <strong>no bank payment file</strong> — the payment listing says
+            so on its face.
           </p>
         </div>
       )}
@@ -357,10 +360,10 @@ export function PayrollPage() {
 
           <StatStrip
             stats={[
-              { label: 'Employees paid', value: run.employeeCount },
+              { label: 'Employees', value: run.employeeCount },
               { label: 'Gross', value: money(run.grossTotal) },
               { label: 'Deductions', value: money(run.deductionTotal) },
-              { label: 'Net paid', value: money(run.netTotal), tone: 'good' },
+              { label: locked ? 'Net paid' : 'Net pay', value: money(run.netTotal), tone: 'good' },
               { label: 'Total cost to clinic', value: money(run.employerCostTotal), explain: 'Gross plus employer statutory contributions.' },
             ]}
           />
@@ -460,7 +463,16 @@ export function PayrollPage() {
                           });
                         }}
                       >
-                        {totals.adds ? (isDraftRun(run.status) ? 'Print draft' : 'Print payslip') : 'Does not add up'}
+                        {!isDraftRun(run.status)
+                          ? // The approved document comes from the snapshot,
+                            // which carries its own verified arithmetic — the
+                            // live-line totals here must not veto or bless it.
+                            'Print payslip'
+                          : totals.uncalculated > 0
+                            ? 'Incomplete'
+                            : totals.adds
+                              ? 'Print draft'
+                              : 'Does not add up'}
                       </Button>
                     </span>
                   );
@@ -478,7 +490,7 @@ export function PayrollPage() {
           <AdminNotice tone={isDraftRun(run.status) ? 'warn' : 'info'}>
             {isDraftRun(run.status) ? (
               <>
-                <strong>This run is {RUN_STATUS[run.status] ?? run.status}.</strong> Payslips printed
+                <strong>This run is {RUN_STATUS_WORDS[run.status] ?? run.status.toLowerCase()}.</strong> Payslips printed
                 from it carry a DRAFT watermark and say they are not payslips. Approve the run first
                 if you intend to hand these out.
               </>

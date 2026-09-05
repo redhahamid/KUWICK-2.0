@@ -15,19 +15,20 @@ import type { PayrollRunDetail, PayslipDoc, PayslipEmployeeSnapshot } from '../t
  *     watermark on the paper and a banner naming the status. A payslip handed
  *     to somebody from a run nobody has approved is a promise the clinic has
  *     not made.
- *  2. **PROVISIONAL statutory rates say so on the slip.** The seeded Malaysian
- *     tables are `CORROBORATED` — taken from the clinic's own workbook and
- *     checked against no authority. An employee is entitled to know that the
- *     EPF line on their payslip has not been verified against the Third
- *     Schedule.
+ *  2. **PROVISIONAL statutory rates say so on the slip.** The schedules come
+ *     from the statutory registry — the authorities' own documents — and a
+ *     period whose schedules fall short of the approval bar prints the
+ *     warning. An employee is entitled to know when the EPF line on their
+ *     payslip rests on anything less.
  *  3. **A statutory figure that was not calculated prints as "not calculated",
  *     with the reason, and NEVER as 0.00.** Zero is a statement that nothing is
  *     owed. Blank is a statement that nobody worked it out. On a statutory
  *     document those are different, and printing the first when the second is
  *     true is a false statement.
- *  4. **PCB entered by hand says it was entered by hand.** Kuwick does not
- *     calculate monthly tax deduction; a figure it merely stored must not read
- *     as one it computed.
+ *  4. **PCB entered by hand says it was entered by hand.** Kuwick calculates
+ *     monthly tax where the profile is on record; where somebody typed the
+ *     figure instead, a figure it merely stored must not read as one it
+ *     computed.
  *
  * And one arithmetic rule: **the slip checks itself.** Gross minus the
  * deductions actually printed must equal the net actually printed. If they
@@ -124,11 +125,15 @@ export function employeeStatutory(line: PayslipLine): StatutoryDisplay[] {
 
 export interface PayslipTotals {
   grossPay: number;
-  /** Only what is actually printed as a deduction. */
-  deductions: number;
+  /**
+   * Only what is actually printed as a deduction — and NULL when a statutory
+   * line is uncalculated: a "total" summing an unknown as zero is not a
+   * total, and this slip must not print one.
+   */
+  deductions: number | null;
   netPay: number;
-  /** The net the slip WOULD show from its own figures. */
-  derivedNet: number;
+  /** The net the slip WOULD show from its own figures. Null when unknowable. */
+  derivedNet: number | null;
   /**
    * TRUE when the stored net and the printed arithmetic agree. FALSE puts a
    * refusal on the page instead of a total.
@@ -140,6 +145,21 @@ export interface PayslipTotals {
 
 export function payslipTotals(line: PayslipLine): PayslipTotals {
   const statutory = employeeStatutory(line);
+  const uncalculated = statutory.filter((item) => item.applicable && item.amount === null).length;
+  // AN UNKNOWN IS NOT A ZERO. `?? 0` here printed "Total deductions" over a
+  // sum that quietly skipped the uncalculated lines — a finished-looking
+  // figure on the exact document that says, two banners up, that it is not a
+  // complete statement of deductions.
+  if (uncalculated > 0) {
+    return {
+      grossPay: line.grossPay,
+      deductions: null,
+      netPay: line.netPay,
+      derivedNet: null,
+      adds: false,
+      uncalculated,
+    };
+  }
   const statutoryTotal = statutory.reduce((sum, item) => sum + (item.amount ?? 0), 0);
   // UNPAID LEAVE IS NOT HERE. Under s.18A an incomplete month's WAGES are
   // smaller — the engine's stored gross already has the reduction off — so
@@ -154,7 +174,7 @@ export function payslipTotals(line: PayslipLine): PayslipTotals {
     derivedNet,
     // A cent of tolerance: the engine works in cents and the display rounds.
     adds: Math.abs(derivedNet - line.netPay) < 0.005,
-    uncalculated: statutory.filter((item) => item.applicable && item.amount === null).length,
+    uncalculated,
   };
 }
 
@@ -254,10 +274,14 @@ export function renderPayslipHtml(
   // payslip, because somebody will pay it.
   const netCell = totals.adds
     ? `<td class="num strong">${money(totals.netPay)}</td>`
+    : totals.uncalculated > 0
+    ? `<td class="na"><strong>Not stated.</strong> ${totals.uncalculated} statutory deduction(s) were not
+       calculated, so a take-home figure cannot be printed from this slip's own lines. Resolve the
+       exceptions and recalculate.</td>`
     : `<td class="na"><strong>These figures do not add up.</strong> Gross ${money(
         totals.grossPay,
-      )} less deductions ${money(totals.deductions)} is ${money(
-        totals.derivedNet,
+      )} less deductions ${money(totals.deductions ?? 0)} is ${money(
+        totals.derivedNet ?? 0,
       )}, but the run stored ${money(
         totals.netPay,
       )}. This payslip is not safe to issue — recalculate the run.</td>`;
@@ -363,7 +387,9 @@ ${banners.join('\n')}
     <table>
       ${statutoryRows}
       ${otherDeductionRows}
-      <tr class="total"><th class="strong">Total deductions</th><td class="num strong">${money(totals.deductions)}</td></tr>
+      <tr class="total"><th class="strong">Total deductions</th><td class="num strong">${
+        totals.deductions === null ? 'Not calculable — see above' : money(totals.deductions)
+      }</td></tr>
     </table>
   </div>
 </div>

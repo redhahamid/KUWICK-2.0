@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { App, Button, Checkbox, DatePicker, Input, InputNumber, Modal, Select, Table } from 'antd';
+import { App, Button, DatePicker, Input, InputNumber, Modal, Select, Table } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection } from '../components/AdminShell';
 import { useRecordStatutoryClassification, useStatutoryClassifications } from '../hooks/useAdmin';
@@ -44,9 +44,13 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
   const [lindung, setLindung] = useState<string | undefined>();
   const [taxResidence, setTaxResidence] = useState<string | undefined>();
   const [pcbCategory, setPcbCategory] = useState<string | undefined>();
-  const [children, setChildren] = useState<number>(0);
-  const [disabledSelf, setDisabledSelf] = useState(false);
-  const [disabledSpouse, setDisabledSpouse] = useState(false);
+  // NULLABLE, deliberately. These three are MTD relief inputs, and "not
+  // recorded" is not a default: initialising them to 0/false and sending them
+  // unconditionally asserted "no children, not disabled" for an employee
+  // whose form never said so — over-deducting tax by facts nobody entered.
+  const [children, setChildren] = useState<number | null>(null);
+  const [disabledSelf, setDisabledSelf] = useState<boolean | null>(null);
+  const [disabledSpouse, setDisabledSpouse] = useState<boolean | null>(null);
   const [restDay, setRestDay] = useState<number | undefined>();
   const [otPolicy, setOtPolicy] = useState<string | undefined>();
   const [reason, setReason] = useState('');
@@ -63,9 +67,9 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
     setLindung(current?.lindungParticipation ?? s.lindungParticipation ?? undefined);
     setTaxResidence(current?.taxResidence ?? s.taxResidence ?? undefined);
     setPcbCategory(current?.pcbCategory ?? s.pcbCategory ?? undefined);
-    setChildren(current?.qualifyingChildren ?? s.qualifyingChildren ?? 0);
-    setDisabledSelf(current?.disabledSelf ?? false);
-    setDisabledSpouse(current?.disabledSpouse ?? false);
+    setChildren(current?.qualifyingChildren ?? s.qualifyingChildren ?? null);
+    setDisabledSelf(current?.disabledSelf ?? null);
+    setDisabledSpouse(current?.disabledSpouse ?? null);
     setRestDay(current?.restDayOfWeek ?? s.restDayOfWeek ?? undefined);
     setOtPolicy(current?.overtimeContractPolicy ?? s.overtimeContractPolicy ?? undefined);
     setReason('');
@@ -154,9 +158,11 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
               ...(lindung !== undefined ? { lindungParticipation: lindung } : {}),
               ...(taxResidence !== undefined ? { taxResidence } : {}),
               ...(pcbCategory !== undefined ? { pcbCategory } : {}),
-              qualifyingChildren: children,
-              disabledSelf,
-              disabledSpouse,
+              // Only what the form actually says: an untouched relief field
+              // is carried forward by the service, never asserted as 0/No.
+              ...(children !== null ? { qualifyingChildren: children } : {}),
+              ...(disabledSelf !== null ? { disabledSelf } : {}),
+              ...(disabledSpouse !== null ? { disabledSpouse } : {}),
               ...(restDay !== undefined ? { restDayOfWeek: restDay } : {}),
               ...(otPolicy !== undefined ? { overtimeContractPolicy: otPolicy } : {}),
               reason: reason.trim(),
@@ -240,7 +246,14 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
             </label>
             <label>
               <div className="kw-fieldLabel">Qualifying children</div>
-              <InputNumber min={0} max={20} value={children} onChange={(v) => setChildren(v ?? 0)} style={{ width: '100%' }} />
+              <InputNumber
+                min={0}
+                max={20}
+                value={children}
+                onChange={(v) => setChildren(v)}
+                placeholder="Not recorded"
+                style={{ width: '100%' }}
+              />
             </label>
             <label>
               <div className="kw-fieldLabel">Rest day</div>
@@ -256,13 +269,33 @@ export function StatutoryStandingManager({ data }: { data: EmployeeRecord }) {
             </label>
           </div>
 
-          <div style={{ display: 'flex', gap: 16 }}>
-            <Checkbox checked={disabledSelf} onChange={(e) => setDisabledSelf(e.target.checked)}>
-              Disabled (self)
-            </Checkbox>
-            <Checkbox checked={disabledSpouse} onChange={(e) => setDisabledSpouse(e.target.checked)}>
-              Disabled spouse
-            </Checkbox>
+          <div className="kw-formGrid2">
+            <label>
+              <div className="kw-fieldLabel">Disabled (self) — MTD relief</div>
+              <Select
+                value={disabledSelf === null ? undefined : disabledSelf ? 'YES' : 'NO'}
+                onChange={(v) => setDisabledSelf(v === 'YES')}
+                placeholder="Not recorded"
+                style={{ width: '100%' }}
+                options={[
+                  { value: 'NO', label: 'No' },
+                  { value: 'YES', label: 'Yes — registered disabled person' },
+                ]}
+              />
+            </label>
+            <label>
+              <div className="kw-fieldLabel">Disabled spouse — MTD relief</div>
+              <Select
+                value={disabledSpouse === null ? undefined : disabledSpouse ? 'YES' : 'NO'}
+                onChange={(v) => setDisabledSpouse(v === 'YES')}
+                placeholder="Not recorded"
+                style={{ width: '100%' }}
+                options={[
+                  { value: 'NO', label: 'No' },
+                  { value: 'YES', label: 'Yes — spouse is a registered disabled person' },
+                ]}
+              />
+            </label>
           </div>
 
           <label>

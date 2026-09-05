@@ -20,9 +20,9 @@ interface OutputRow {
 interface SchemeBlock {
   scheme: string;
   rows: OutputRow[];
-  employeeTotalCents: number;
-  employerTotalCents: number;
-  totalCents: number;
+  employeeTotalCents: number | null;
+  employerTotalCents: number | null;
+  totalCents: number | null;
   notComputed: number;
   schedule: { scheduleId: string | null; verification: string | null; document: string | null } | null;
   submission: {
@@ -143,7 +143,9 @@ export function StatutoryOutputsPanel({ runId }: { runId: string }) {
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 650 }}>
-                  {money(block.totalCents / 100)}
+                  {block.totalCents === null
+                    ? `Not calculable — ${block.notComputed} not calculated`
+                    : money(block.totalCents / 100)}
                 </span>
                 {block.submission ? (
                   <Tooltip

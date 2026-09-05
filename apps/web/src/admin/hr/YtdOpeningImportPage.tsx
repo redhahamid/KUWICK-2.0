@@ -62,12 +62,52 @@ export function YtdOpeningImportPage() {
   );
   const nameOf = useMemo(() => new Map(employeeOptions.map((o) => [o.value, o.label])), [employeeOptions]);
 
+  /**
+   * EVERY FIGURE IS TYPED, NONE ASSUMED. `?? 0` here used to turn a box the
+   * operator never touched into "this month deducted RM0.00 tax" — written
+   * straight into the cumulative MTD ledger, where a fake zero under-states
+   * X and over-deducts every later month. A blank now refuses by name, and
+   * the button below fills genuine zeros deliberately, in one visible act.
+   */
+  const MONEY_FIELDS: [string, string][] = [
+    ['gross', 'Gross'],
+    ['additional', 'Additional remuneration'],
+    ['pcb', 'PCB'],
+    ['cp38', 'CP38'],
+    ['zakat', 'Zakat'],
+    ['epfEmployee', 'EPF (employee)'],
+    ['epfEmployer', 'EPF (employer)'],
+    ['socsoEmployee', 'SOCSO (employee)'],
+    ['socsoEmployer', 'SOCSO (employer)'],
+    ['eisEmployee', 'EIS (employee)'],
+    ['eisEmployer', 'EIS (employer)'],
+    ['lindung', 'LINDUNG'],
+    ['deductions', 'TP1 deductions applied'],
+  ];
+  const blankFields = MONEY_FIELDS.filter(([key]) => figures[key] === null || figures[key] === undefined);
   const cents = (key: string) => Math.round((figures[key] ?? 0) * 100);
+
+  const fillBlanksWithZero = () => {
+    setFigures((prev) => {
+      const next = { ...prev };
+      for (const [key] of MONEY_FIELDS) if (next[key] === null || next[key] === undefined) next[key] = 0;
+      return next;
+    });
+    setError(null);
+  };
 
   const addMonth = () => {
     setError(null);
     if (!staffId || !month) {
       setError('Choose the employee and the month.');
+      return;
+    }
+    if (blankFields.length > 0) {
+      setError(
+        `Every figure is typed, none assumed — a blank box is not RM0.00. Still blank: ${blankFields
+          .map(([, label]) => label)
+          .join(', ')}. Type each figure off the old payslip, or use “Fill the blanks with RM0.00” if they are genuinely nil.`,
+      );
       return;
     }
     if ((figures.gross ?? 0) <= 0) {
@@ -249,8 +289,13 @@ export function YtdOpeningImportPage() {
           {numberField('eisEmployer', 'EIS — employer')}
           {numberField('lindung', 'LINDUNG 24 JAM withheld')}
         </div>
-        <div style={{ marginTop: 12 }}>
+        <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
           <Button onClick={addMonth}>Add to the import</Button>
+          {blankFields.length > 0 && blankFields.length < MONEY_FIELDS.length ? (
+            <Button onClick={fillBlanksWithZero}>
+              Fill the {blankFields.length} blank figure{blankFields.length === 1 ? '' : 's'} with RM0.00
+            </Button>
+          ) : null}
         </div>
       </AdminSection>
 

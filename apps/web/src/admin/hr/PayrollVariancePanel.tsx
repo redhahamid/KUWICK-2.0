@@ -15,8 +15,19 @@ function rm(cents: number | null): string {
   if (cents === null) return '—';
   const sign = cents < 0 ? '-' : '';
   const abs = Math.abs(cents);
-  return `${sign}${Math.floor(abs / 100).toLocaleString()}.${String(abs % 100).padStart(2, '0')}`;
+  // en-MY explicitly: bare toLocaleString() follows the MACHINE's locale, and
+  // a de-DE browser would print RM34.171,20 in a Malaysian clinic. And the
+  // RM itself — this is a panel of pay figures, not abstract numbers.
+  return `${sign}RM${Math.floor(abs / 100).toLocaleString('en-MY')}.${String(abs % 100).padStart(2, '0')}`;
 }
+
+/** API field name → words a reader knows. */
+const FIELD_WORDS: Record<string, string> = {
+  netCents: 'net pay',
+  grossCents: 'gross',
+  employerCostCents: 'employer cost',
+  deductionCents: 'deductions',
+};
 
 /**
  * VARIANCE AGAINST THE PREVIOUS PERIOD.
@@ -52,7 +63,7 @@ export function PayrollVariancePanel({ runId }: { runId: string }) {
           <span>Leavers <strong>{report.leavers}</strong></span>
           {report.totals.map((t) => (
             <span key={t.field}>
-              {t.field.replace('Cents', '')}{' '}
+              {FIELD_WORDS[t.field] ?? t.field.replace('Cents', '')}{' '}
               <strong>
                 {rm(t.deltaCents)}
                 {t.percent !== null ? ` (${t.percent > 0 ? '+' : ''}${t.percent}%)` : ''}

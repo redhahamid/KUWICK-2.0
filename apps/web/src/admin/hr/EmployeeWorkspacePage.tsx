@@ -207,11 +207,17 @@ function OverviewTab({ data }: { data: EmployeeRecord }) {
           <Fact label="LATE DAYS" value={String(data.attendance.lateDays)} />
           <Fact
             label="LAST PAID"
-            value={
-              data.payrollHistory[0]?.net !== null && data.payrollHistory[0]
-                ? `${ringgit(String(data.payrollHistory[0].net))} · ${dayjs(data.payrollHistory[0].period).format('MMM YYYY')}`
-                : '—'
-            }
+            value={(() => {
+              // The newest APPROVED or PAID month — never a draft. On run
+              // day the in-progress calculation used to be history[0], so
+              // this fact labelled an unapproved figure "PAID".
+              const paid = data.payrollHistory.find(
+                (row) => (row.runStatus === 'APPROVED' || row.runStatus === 'PAID') && row.net !== null,
+              );
+              return paid
+                ? `${ringgit(Number(paid.net).toFixed(2))} · ${dayjs(paid.period).format('MMM YYYY')}`
+                : '—';
+            })()}
           />
         </div>
       </AdminSection>
@@ -534,14 +540,17 @@ function PayrollTab({ data }: { data: EmployeeRecord }) {
             dataIndex: 'gross',
             width: 130,
             align: 'right' as const,
-            render: (value: number | null) => (value === null ? '—' : ringgit(String(value))),
+            // toFixed(2), because the API sends a NUMBER here and
+            // String(3200.5) is "3200.5" — which printed take-homes with one
+            // decimal on this tab for any amount ending in a whole ten sen.
+            render: (value: number | null) => (value === null ? '—' : ringgit(value.toFixed(2))),
           },
           {
             title: 'Take-home',
             dataIndex: 'net',
             width: 130,
             align: 'right' as const,
-            render: (value: number | null) => (value === null ? '—' : <strong>{ringgit(String(value))}</strong>),
+            render: (value: number | null) => (value === null ? '—' : <strong>{ringgit(value.toFixed(2))}</strong>),
           },
           {
             title: '',

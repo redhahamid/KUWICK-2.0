@@ -112,9 +112,9 @@ export function LocumPage() {
               width: 190,
               render: (_: unknown, row: LocumSessionRow) =>
                 row.sessionFee
-                  ? `Flat fee RM${row.sessionFee}`
+                  ? `Flat fee ${ringgit(String(row.sessionFee))}`
                   : row.hours && row.hourlyRate
-                    ? `${row.hours} hrs x RM${row.hourlyRate}`
+                    ? `${row.hours} hrs x ${ringgit(String(row.hourlyRate))}`
                     : '—',
             },
             {

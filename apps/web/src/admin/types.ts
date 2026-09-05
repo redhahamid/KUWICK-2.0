@@ -1702,7 +1702,13 @@ export interface LegalEmployerRow {
   city: string | null;
   state: string | null;
   bankName: string | null;
-  bankAccountNo: string | null;
+  /**
+   * PRESENCE AND THE LAST FOUR, never the number. The full account is
+   * write-only through the form; only the audited bank-listing export
+   * carries it.
+   */
+  bankAccountOnFile: boolean;
+  bankAccountLastFour: string | null;
   bankAccountName: string | null;
   active: boolean;
   employeeCount: number;
@@ -2063,9 +2069,10 @@ export interface PayrollHome {
     bankAccount: number;
     dateOfBirth: number;
     /**
-     * This month's data entry, NOT a gap in an employee record — Kuwick does
-     * not work PCB out, so nobody has one on the first of the month. Kept out
-     * of `ready` for that reason; see payroll-journey.service.ts.
+     * Who still needs monthly tax ANSWERED for this month: no tax profile on
+     * their standing (Kuwick would calculate it from one) and no hand-keyed
+     * figure either. Kept out of `ready` because it is this month's work,
+     * not a gap in the employee record; see payroll-journey.service.ts.
      */
     pcbMissing: number;
   };

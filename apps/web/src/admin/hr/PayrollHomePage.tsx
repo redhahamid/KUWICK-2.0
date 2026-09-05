@@ -204,6 +204,10 @@ function PeriodHero({
 }
 
 function AttentionCard({ data }: { data: PayrollHome }) {
+  // FAIL CLOSED, exactly as PayrollPage documents for the same fact: a null
+  // gate on an existing run means "not yet known", and "not yet known" must
+  // not read as "nothing is blocking".
+  const gateKnown = data.gate !== null && data.gate !== undefined;
   const blocking = data.gate?.blocking ?? 0;
   const warnings = data.gate?.warnings ?? 0;
 
@@ -222,6 +226,8 @@ function AttentionCard({ data }: { data: PayrollHome }) {
           Nothing has been worked out for {dayjs(`${data.period}-01`).format('MMMM')} yet. Start the run and Kuwick will
           tell you what is standing in the way.
         </p>
+      ) : !gateKnown ? (
+        <p className="kw-homeCard__body">Whether anything is blocking this month has not been worked out yet — open the run to see.</p>
       ) : blocking === 0 && warnings === 0 ? (
         <p className="kw-homeCard__body">Nothing is standing in the way of finishing this month.</p>
       ) : (

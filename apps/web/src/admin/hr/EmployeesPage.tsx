@@ -3,7 +3,7 @@ import { Tag } from 'antd';
 import dayjs from 'dayjs';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
-import { DataTable, money } from '../components/DataTable';
+import { DataTable } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useEmployees } from '../hooks/useAdmin';

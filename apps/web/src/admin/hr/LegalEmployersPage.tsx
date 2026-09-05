@@ -67,7 +67,9 @@ export function LegalEmployersPage() {
             city: row.city ?? '',
             state: row.state ?? '',
             bankName: row.bankName ?? '',
-            bankAccountNo: row.bankAccountNo ?? '',
+            // WRITE-ONLY: the server never sends the number back, so there is
+            // nothing to prefill. Blank means "leave the one on file alone".
+            bankAccountNo: '',
             bankAccountName: row.bankAccountName ?? '',
           }
         : { name: '' },
@@ -245,7 +247,15 @@ export function LegalEmployersPage() {
             return;
           }
           try {
-            await upsert.mutateAsync({ ...(editing ? { id: editing.id } : {}), ...form });
+            // A blank bank-account box means "leave the one on file alone" —
+            // the field is write-only, so blank is its resting state, and
+            // sending '' would clear a number the operator never saw.
+            const { bankAccountNo, ...rest } = form;
+            await upsert.mutateAsync({
+              ...(editing ? { id: editing.id } : {}),
+              ...rest,
+              ...(bankAccountNo && bankAccountNo.trim() !== '' ? { bankAccountNo: bankAccountNo.trim() } : {}),
+            });
             message.success('Saved.');
             setOpen(false);
           } catch (e) {
@@ -273,6 +283,11 @@ export function LegalEmployersPage() {
               <Input
                 value={form[key] ?? ''}
                 onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                placeholder={
+                  key === 'bankAccountNo' && editing?.bankAccountOnFile
+                    ? `On file, ends ${editing.bankAccountLastFour} — type only to replace`
+                    : undefined
+                }
               />
             </label>
           ))}

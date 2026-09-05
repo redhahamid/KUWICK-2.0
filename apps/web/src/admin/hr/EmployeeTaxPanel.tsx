@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { App, Button, DatePicker, Input, InputNumber, Modal, Tooltip } from 'antd';
+import { App, Button, DatePicker, Input, InputNumber, Modal, Select, Space, Tooltip } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { AdminNotice, AdminSection } from '../components/AdminShell';
 import { DataTable, money } from '../components/DataTable';
@@ -55,7 +55,11 @@ export function EmployeeTaxPanel({ staffId }: { staffId: string }) {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const mayRun = useCan('hr.payroll.run');
-  const year = new Date().getFullYear();
+  // A picker, not `new Date()` alone: in January, last year's TP1/TP3 — the
+  // records an assessment question is most likely to be about — were
+  // unreachable, with nothing on screen to say another year existed.
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState(currentYear);
   const query = useQuery({
     queryKey: ['admin-hr', 'tax-records', staffId, year],
     queryFn: () => apiClient.get<TaxRecords>(`/workforce/employees/${staffId}/tax-records?year=${year}`),
@@ -93,8 +97,20 @@ export function EmployeeTaxPanel({ staffId }: { staffId: string }) {
   const saveTp1 = () => {
     setError(null);
     if (!tp1Period) return setError('Which month does the form cover?');
-    const cents = Math.round((tp1Amount ?? 0) * 100);
-    const zakatCents = Math.round((tp1Zakat ?? 0) * 100);
+    // Typed, never assumed: a blank box is not RM0.00. A TP1 recorded off an
+    // untouched form would write "the employer approved RM0.00 of reliefs"
+    // into the month — a statement nobody made.
+    if (tp1Amount === null || tp1Amount === undefined) {
+      return setError('Enter the month’s approved deductions off the form — RM0.00 only if the form really claims none.');
+    }
+    if (tp1Zakat === null || tp1Zakat === undefined) {
+      return setError('Enter the self-paid zakat off the form — RM0.00 if the form claims none.');
+    }
+    if (tp1Amount === 0 && tp1Zakat === 0) {
+      return setError('A TP1 claiming no deductions and no zakat changes nothing — there is nothing to record.');
+    }
+    const cents = Math.round(tp1Amount * 100);
+    const zakatCents = Math.round(tp1Zakat * 100);
     // Items: one per line, "label amount" with the amount last.
     const items = tp1Items
       .split('\n')
@@ -129,6 +145,24 @@ export function EmployeeTaxPanel({ staffId }: { staffId: string }) {
 
   const saveTp3 = () => {
     setError(null);
+    // The three figures the cumulative method reads are typed off the form,
+    // never assumed: `?? 0` here declared "the previous employer paid RM0
+    // gross and deducted RM0 tax" for any box left untouched — feeding ∑Y,
+    // ∑K and X with statements nobody made.
+    if (tp3Employer.trim().length < 2) return setError('Name the previous employer as the form does.');
+    if (tp3Gross === null || tp3Gross === undefined) {
+      return setError('Enter the gross the previous employer paid, off the TP3.');
+    }
+    if (tp3Gross <= 0) return setError('A TP3 with no gross pay declares nothing — there is nothing to record.');
+    if (tp3Epf === null || tp3Epf === undefined) {
+      return setError('Enter the EPF the previous employer deducted — RM0.00 only if the form really says none.');
+    }
+    if (tp3Mtd === null || tp3Mtd === undefined) {
+      return setError('Enter the MTD the previous employer deducted — RM0.00 only if the form really says none.');
+    }
+    if (tp3Source.trim().length < 5) {
+      return setError('Say where the figures came from — “Borang TP3 dated 12 May 2026”, for instance.');
+    }
     setSaving(true);
     apiClient
       .post(`/workforce/employees/${staffId}/tp3`, {
@@ -136,9 +170,11 @@ export function EmployeeTaxPanel({ staffId }: { staffId: string }) {
         previousEmployerName: tp3Employer.trim(),
         employmentFrom: tp3From?.format('YYYY-MM-DD'),
         employmentTo: tp3To?.format('YYYY-MM-DD'),
-        grossCents: Math.round((tp3Gross ?? 0) * 100),
-        epfCents: Math.round((tp3Epf ?? 0) * 100),
-        mtdPaidCents: Math.round((tp3Mtd ?? 0) * 100),
+        grossCents: Math.round(tp3Gross * 100),
+        epfCents: Math.round(tp3Epf * 100),
+        mtdPaidCents: Math.round(tp3Mtd * 100),
+        // Genuinely optional on the form; left blank they are recorded as the
+        // nils the form's own blanks mean.
         zakatCents: Math.round((tp3Zakat ?? 0) * 100),
         deductionsCents: Math.round((tp3Lp ?? 0) * 100),
         source: tp3Source.trim(),
@@ -180,11 +216,20 @@ export function EmployeeTaxPanel({ staffId }: { staffId: string }) {
         title={`TP1 — monthly deduction claims, ${year}`}
         description="The employer's approved figure off the employee's Form TP1. It enters that month's tax as LP1; the relief catalogue's annual caps are not verified against LHDN, so approving the form remains the employer's own act."
         actions={
-          mayRun ? (
-            <Button size="small" type="primary" ghost onClick={() => { setError(null); setTp1Open(true); }}>
-              Record a TP1
-            </Button>
-          ) : undefined
+          <Space>
+            <Select
+              size="small"
+              value={year}
+              onChange={setYear}
+              options={[currentYear, currentYear - 1, currentYear - 2].map((y) => ({ value: y, label: String(y) }))}
+              style={{ width: 90 }}
+            />
+            {mayRun ? (
+              <Button size="small" type="primary" ghost onClick={() => { setError(null); setTp1Open(true); }}>
+                Record a TP1
+              </Button>
+            ) : null}
+          </Space>
         }
       >
         <DataTable<Tp1Row>
