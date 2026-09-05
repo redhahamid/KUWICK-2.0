@@ -177,7 +177,8 @@ recorded filing, eight reports, the reopen/correction cycle to revision 2, the e
 editor, TP1/TP3, opening balances (including the blank-refusal), settings and employers. Frames and captions:
 `docs/payroll-final-uat/README.md`. Findings that materially impaired safe use were fixed (section 2, items
 23–31) and re-photographed; the pack shows the fixed product, with the found-defective states kept under
-`docs/payroll-final-uat/before/`.
+`docs/payroll-final-uat/before/`. Frames 11–13 walk the owner-controlled EPF basis added this cycle (section
+6): the owner's own selection blocking the month, the panel it was made on, and the corrected row.
 
 Answers a clinic owner needs are on screen and truthful: what to do (landing hero + attention card), what is
 blocking and why and how to fix it (readiness + exception centre, remediation with deep links), what the
@@ -203,7 +204,58 @@ Two independent layers, on top of the synthetic-month e2e (which re-ran green un
    count) and priced at s.14's 1% in integer cents, half-up — nothing here trusts the engine's stored base.
    The final run: 86 checks, 0 failures.
 
-## 6 · Remaining statutory gaps, by design (fail closed, named in the registry)
+## 6 · Owner-controlled EPF contribution basis (product change, this cycle)
+
+A deliberate product change landed inside this validation cycle: the clinic owner may now SELECT which of an
+employee's wages EPF is contributed on, without any part of the statutory engine, catalogue, provenance,
+effective dating, exception system, audit trail or fail-closed behaviour being weakened to allow it. Two
+concepts are kept apart on purpose, and the product never lets them blur:
+
+| | Where it lives | Who decides | What it can do |
+| --- | --- | --- | --- |
+| **Kuwick's statutory assessment** | the effective-dated pay-component catalogue, per component, with a verification status and a source reference | the Act, transcribed | decides what EPF wages ARE (s.2) |
+| **The employer's selection** | `employee_contribution_bases` — per employee, per scheme, effective-dated, reasoned, authored, audited | the clinic owner | decides which of those wages they contribute on |
+
+**The selection is an intersection, never an expansion.** Ticking a component the assessment excludes adds
+nothing (it is reported as ineffective, in words, rather than silently dropped); a selection that leaves
+ASSESSED wages out computes exactly what the owner asked for and raises the discrepancy below. The applied
+EPF base can never exceed the assessed one, by construction — and the independent reconciliation asserts it.
+
+Worked example from the validated synthetic month (Nurul Hidayah, August 2026 — the beat the pack photographs
+at frames 11–13):
+
+| | Figure | Where it is stated |
+| --- | --- | --- |
+| Total earnings (gross) | RM3,450.00 — basic 3,200 + fixed allowance 250 | earnings step, register, payslip |
+| Kuwick's statutory EPF assessment | RM3,450.00 — both components are EPF wages by s.2 | pay-component catalogue |
+| Employer-selected basis (the experiment) | Basic salary only → RM3,200.00 | the employee's EPF basis panel |
+| **Discrepancy** | RM250.00 of assessed wages left out — Fixed monthly allowance | run exception, named to the sen |
+| Approval behaviour | BLOCKING and **not overridable**: s.43 does not make the employer's share optional | run cannot be approved |
+| After the correction (basic + allowance) | applied = assessed = RM3,450.00, no discrepancy | month approves |
+
+Total earnings and the EPF basis reconcile SEPARATELY and are never implied to be equal: the same month has a
+locum-session fee inside gross and outside EPF wages entirely — by the Act, not by anybody's tick. SOCSO, EIS,
+PCB and the HRD levy keep their own bases untouched by an EPF selection; the resident's MTD follows the
+contribution actually made (K1 on the applied base), which is the only defensible reading of the relief.
+
+**Historical snapshots.** A basis is refused into any month an approved run covers (same guard as a salary
+change), so today's selection cannot reprice a paid month. Each approved snapshot freezes the mode, the codes
+that governed, the assessed figure beside the applied one, and the exclusion list; `verifySnapshot` refuses
+any approved record carrying a non-empty exclusion list, so a bypassed gate would be caught by the verifier
+rather than believed. A reopen re-opens the question and revision 2 freezes the new answer while revision 1
+keeps serving payslips and filings — proven end to end in the e2e suite.
+
+**Correction road.** What is recorded from a day replaces the recorded story from that day on: rows starting
+on or after it are superseded — closed into empty intervals that resolution ignores and history keeps — so a
+selection tried, blocked and reverted leaves a truthful trail instead of a permanently blocked month. A basis
+that genuinely changes part-way through a period blocks that month exactly as a mid-month salary or HRD-class
+change does.
+
+**Architecture.** The row is scheme-keyed and only EPF accepts a selection today; SOCSO, EIS, PCB, HRD and
+LINDUNG deliberately do NOT inherit the same three choices, because each scheme's base is its own Act's
+question. Extending it anywhere else is a decision to be taken on that scheme's own legal footing.
+
+## 7 · Remaining statutory gaps, by design (fail closed, named in the registry)
 
 Unchanged from P1, plus the two newly declared:
 
@@ -223,28 +275,28 @@ Unchanged from P1, plus the two newly declared:
 - EPF above-RM20,000 rounding residue side is an implementation choice (employer bears it), recorded in the
   source register pending an authority worked example.
 
-## 7 · Test matrix (final state of this branch)
+## 8 · Test matrix (final state of this branch)
 
 | Suite | Result |
 | --- | --- |
-| API unit (`npx jest`) | 125 suites, 2,689 tests — all green |
-| API integration (`jest-e2e`, serial) | 31 suites, 347 tests — all green, including the `payroll-final-validation` negative suite (15) and the synthetic month |
-| Web (`vitest run`) | 97 files, 1,694 tests — all green |
+| API unit (`npx jest`) | 125 suites, 2,696 tests — all green |
+| API integration (`jest-e2e`, serial) | 32 suites, 358 tests — all green, including the `payroll-final-validation` negative suite (15), the `payroll-epf-basis` suite (11) and the synthetic month |
+| Web (`vitest run`) | 98 files, 1,699 tests — all green |
 | Typechecks (api `tsc --noEmit`, web `tsc -b`, seed `typecheck:seed`) | clean |
 | Root Playwright `admin-hr` journey (freshly seeded world, `CHROME_PATH` chromium) | 5/5 green |
-| Independent reconciliation (section 5, walked world) | 86 checks, 0 failures |
+| Independent reconciliation (sections 5–6, walked world) | 92 checks, 0 failures |
 
 Green tests prove the named invariants; they are not the human acceptance — that is section 4, and the next
 gate is still a human one.
 
-## 8 · Verdict for Step 2
+## 9 · Verdict for Step 2
 
 **Ready to proceed to the controlled historical parallel-run**, with eyes open:
 
 - The parallel-run months are HISTORICAL — the schedule-commencement fix (defect 1) existed precisely because
   those months cross boundaries; any month before October 2025 will now refuse rather than borrow later
   schedules, which is correct and must be expected.
-- Populations in section 6 (special-category employees, REP/knowledge-worker tax, terminations, mid-year
+- Populations in section 7 (special-category employees, REP/knowledge-worker tax, terminations, mid-year
   employer transfers) cannot be parallel-run; a month containing them needs those people handled outside and
   the difference explained in the reconciliation.
 - The parallel-run's reconciliation should use the register and statutory-totals reports against the incumbent

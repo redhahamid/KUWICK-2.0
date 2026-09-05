@@ -10,36 +10,39 @@
 - 08-step3-earnings.png — Step 3 — earnings: server figures only, every column the gross contains
 - 09-step4-deductions.png — Step 4 — deductions: EPF/SOCSO/EIS, LINDUNG apart, PCB with its source
 - 10-step5-review-clean.png — Step 5 — review with nothing left blocking
-- 11-step6-approve.png — Step 6 — the approval, its rule named, nothing overstated
-- 12-approved.png — Approved — the frozen, hashed record; the month is now a fact
-- 13-payslips-panel.png — Payslips — issued only from the approved snapshot, revision named
-- 14-report-register.png — Report — the register, every column footing to the run’s own totals
-- 15-report-employer-cost.png — Report — cost to the clinic; gross plus contributions equals employer cost, levy included
-- 16-report-statutory.png — Report — statutory totals by scheme, nulls surviving as nulls
-- 17-report-pcb.png — Report — monthly tax: calculated vs entered, from the marker not the wording
-- 18-report-ytd.png — Report — the cumulative ledger, TP3 listed apart from this employer’s months
-- 19-report-overtime.png — Report — overtime day by day, naming the Employment Act provision that priced it
-- 20-report-unpaid-leave.png — Report — absence as a wage reduction, never a deduction
-- 21-report-payment-status.png — Report — where the money stands, in the language of evidence
-- 22-reopened-review.png — Reopened — the month back at review; the approved record still stands behind payslips and filings
-- 23-reopened-report-banner.png — Reopened — the register says these are candidate figures while revision 1 keeps serving
-- 24-reapproved-v2.png — Approved again — revision 2 beside revision 1; nothing overwritten, everything dated
-- 25-payment-generated.png — Payment — a listing EXISTS and says it is not a bank file; nothing claims to be paid
-- 26-payment-recorded.png — Payment — RECORDED PAID, by a person, with the date and reference
-- 27-statutory-outputs.png — Statutory outputs — per-scheme listings with wages; EPF recorded as filed, the rest prepared only
-- 28-employees.png — Employees — the directory: no salary column, by design
-- 29-employee-workspace.png — Employee workspace — LAST PAID reads only an approved month
-- 30-statutory-standing.png — Statutory standing — the dated record and its version history
-- 31-standing-editor.png — Standing editor — relief facts read “Not recorded” until somebody records them
-- 32-employee-tax.png — Tax (TP1/TP3) — captured with provenance, a year picker for last year’s questions
-- 33-ytd-opening-refuses-blanks.png — Opening balances — a blank box is not RM0.00: the blanks are named, and zero is one deliberate click
-- 34-settings.png — Payroll settings — the schedules with their evidence, and what remains outside Kuwick, stated
-- 35-employers.png — Legal employers — filing identities; the bank account shows presence and last four only
-- 36-tablet-home.png — Tablet — the payroll landing
-- 37-tablet-readiness.png — Tablet — Get ready
-- 38-tablet-deductions.png — Tablet — step 4, the statutory columns
-- 39-tablet-approved.png — Tablet — the approved month
-- 40-tablet-payment.png — Tablet — the payment honesty ladder
-- 41-tablet-outputs.png — Tablet — statutory outputs
-- 42-tablet-report-pcb.png — Tablet — monthly tax summary
-- 43-phone-home.png — Phone — the landing stays readable at 390px; wide tables scroll inside their own panels
+- 11-epf-basis-discrepancy.png — EPF basis — the selection leaves assessed wages out: blocking, named to the sen, not overridable
+- 12-epf-basis-panel.png — EPF basis panel — the selection in words, the assessment beside every tick, the consequence said before saving
+- 13-epf-basis-selected-row.png — Deductions — the row says which EPF basis governs it; the detour survives only in the basis history
+- 14-step6-approve.png — Step 6 — the approval, its rule named, nothing overstated
+- 15-approved.png — Approved — the frozen, hashed record; the month is now a fact
+- 16-payslips-panel.png — Payslips — issued only from the approved snapshot, revision named
+- 17-report-register.png — Report — the register, every column footing to the run’s own totals
+- 18-report-employer-cost.png — Report — cost to the clinic; gross plus contributions equals employer cost, levy included
+- 19-report-statutory.png — Report — statutory totals by scheme, nulls surviving as nulls
+- 20-report-pcb.png — Report — monthly tax: calculated vs entered, from the marker not the wording
+- 21-report-ytd.png — Report — the cumulative ledger, TP3 listed apart from this employer’s months
+- 22-report-overtime.png — Report — overtime day by day, naming the Employment Act provision that priced it
+- 23-report-unpaid-leave.png — Report — absence as a wage reduction, never a deduction
+- 24-report-payment-status.png — Report — where the money stands, in the language of evidence
+- 25-reopened-review.png — Reopened — the month back at review; the approved record still stands behind payslips and filings
+- 26-reopened-report-banner.png — Reopened — the register says these are candidate figures while revision 1 keeps serving
+- 27-reapproved-v2.png — Approved again — revision 2 beside revision 1; nothing overwritten, everything dated
+- 28-payment-generated.png — Payment — a listing EXISTS and says it is not a bank file; nothing claims to be paid
+- 29-payment-recorded.png — Payment — RECORDED PAID, by a person, with the date and reference
+- 30-statutory-outputs.png — Statutory outputs — per-scheme listings with wages; EPF recorded as filed, the rest prepared only
+- 31-employees.png — Employees — the directory: no salary column, by design
+- 32-employee-workspace.png — Employee workspace — LAST PAID reads only an approved month
+- 33-statutory-standing.png — Statutory standing — the dated record and its version history
+- 34-standing-editor.png — Standing editor — relief facts read “Not recorded” until somebody records them
+- 35-employee-tax.png — Tax (TP1/TP3) — captured with provenance, a year picker for last year’s questions
+- 36-ytd-opening-refuses-blanks.png — Opening balances — a blank box is not RM0.00: the blanks are named, and zero is one deliberate click
+- 37-settings.png — Payroll settings — the schedules with their evidence, and what remains outside Kuwick, stated
+- 38-employers.png — Legal employers — filing identities; the bank account shows presence and last four only
+- 39-tablet-home.png — Tablet — the payroll landing
+- 40-tablet-readiness.png — Tablet — Get ready
+- 41-tablet-deductions.png — Tablet — step 4, the statutory columns
+- 42-tablet-approved.png — Tablet — the approved month
+- 43-tablet-payment.png — Tablet — the payment honesty ladder
+- 44-tablet-outputs.png — Tablet — statutory outputs
+- 45-tablet-report-pcb.png — Tablet — monthly tax summary
+- 46-phone-home.png — Phone — the landing stays readable at 390px; wide tables scroll inside their own panels

@@ -227,6 +227,59 @@ async function desktopWalk(page: Page): Promise<{ runId: string | null; approved
   await capture(page, 'step4-deductions', 'Step 4 — deductions: EPF/SOCSO/EIS, LINDUNG apart, PCB with its source');
   await go(page, `/admin/hr/payroll/${run.id}?step=review`);
   await capture(page, 'step5-review-clean', 'Step 5 — review with nothing left blocking');
+
+  /*
+   * 5b · THE OWNER-SELECTED EPF BASIS — the experiment, the block, the road
+   * back. The owner tries "basic salary only" for the senior clinic
+   * assistant; the month goes loud with a statutory discrepancy nobody can
+   * override; recording the intended selection from the intended day clears
+   * it. The resident doctor's seeded clean selection captions her deductions
+   * row throughout.
+   */
+  const journeyForBasis = await api<{ pay: { rows: { staffId: string; name: string }[] } }>(
+    'GET',
+    `/workforce/payroll/runs/${run.id}/journey`,
+  );
+  const nurul = journeyForBasis.body.pay.rows.find((row) => row.name === 'Nurul Hidayah');
+  if (nurul) {
+    await api('POST', `/workforce/employees/${nurul.staffId}/contribution-basis`, {
+      scheme: 'EPF',
+      mode: 'BASIC_ONLY',
+      effectiveFrom: `${period}-01`,
+      reason: 'UAT — the owner tries contributing on basic salary only',
+    });
+    await api('PATCH', `/workforce/payroll/runs/${run.id}/calculate`);
+    await go(page, `/admin/hr/payroll/${run.id}?step=review`);
+    await capture(
+      page,
+      'epf-basis-discrepancy',
+      'EPF basis — the selection leaves assessed wages out: blocking, named to the sen, not overridable',
+    );
+    await go(page, `/admin/hr/employees/${nurul.staffId}`);
+    await page.getByText('Salary', { exact: true }).first().click().catch(() => {});
+    await page.waitForTimeout(600);
+    await scrollTo(page, 'EPF contribution basis');
+    await capture(
+      page,
+      'epf-basis-panel',
+      'EPF basis panel — the selection in words, the assessment beside every tick, the consequence said before saving',
+    );
+    await api('POST', `/workforce/employees/${nurul.staffId}/contribution-basis`, {
+      scheme: 'EPF',
+      mode: 'BASIC_PLUS_SELECTED',
+      includedComponentCodes: ['ALLOWANCE'],
+      effectiveFrom: `${period}-01`,
+      reason: 'UAT — corrected: EPF on basic and the fixed allowance, everything the assessment marks liable',
+    });
+    await api('PATCH', `/workforce/payroll/runs/${run.id}/calculate`);
+    await go(page, `/admin/hr/payroll/${run.id}?step=deductions`);
+    await capture(
+      page,
+      'epf-basis-selected-row',
+      'Deductions — the row says which EPF basis governs it; the detour survives only in the basis history',
+    );
+  }
+
   await go(page, `/admin/hr/payroll/${run.id}?step=approve`);
   await capture(page, 'step6-approve', 'Step 6 — the approval, its rule named, nothing overstated');
 

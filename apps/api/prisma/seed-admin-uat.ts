@@ -672,8 +672,10 @@ async function reset() {
     'payroll_adjustments', 'payroll_lines', 'payroll_runs', 'payroll_input_entries', 'statutory_rule_sets',
     'employee_recurring_items', 'employee_ytd', 'employee_salaries',
     // TP1/TP3 point at staff and the legal employer; the dated classification
-    // versions at staff. All before `legal_employers` and the staff rows.
+    // versions and the employer-selected contribution bases at staff. All
+    // before `legal_employers` and the staff rows.
     'employee_tp1_entries', 'employee_tp3_records', 'employee_statutory_classifications',
+    'employee_contribution_bases',
     'incentive_results', 'incentive_runs', 'incentive_rules',
     'staff_benefit_usages', 'staff_benefit_members', 'staff_benefit_accounts',
     'leave_balances', 'leave_policy_entitlements', 'leave_policies',
@@ -2242,6 +2244,28 @@ async function seedWorkforce(ids: Ids) {
         },
       });
 
+      // THE EMPLOYER-SELECTED EPF BASIS, demonstrated on one employee. The
+      // resident doctor's contract says EPF on basic and the monthly
+      // incentive — which is also everything the assessment marks liable in
+      // her months, so the world stays clean and approvable while the panel,
+      // the deductions row and the snapshot all have a real selection to
+      // show. Everyone else has no row: the assessment governs alone, which
+      // is the default worth demonstrating too.
+      if (profile.key === 'resident') {
+        await tx.employeeContributionBasis.create({
+          data: {
+            tenantId: tenant.id,
+            staffId: staff[profile.key],
+            scheme: 'EPF',
+            mode: 'BASIC_PLUS_SELECTED',
+            includedComponentCodes: ['INCENTIVE'],
+            effectiveFrom: day(-400),
+            reason: 'Contract states EPF on basic salary and the monthly incentive',
+            createdByStaffId: staff.owner,
+          },
+        });
+      }
+
       // --- STAGE 1: the salary, WITH A DATE ON IT -------------------------
       //
       // `employee_profiles.basic_salary` is the figure the old engine read.
@@ -2935,6 +2959,14 @@ async function seedWorkforce(ids: Ids) {
                 qualifyingChildren: profile.key === 'owner' ? 2 : 0,
               }),
         },
+        undefined,
+        null,
+        // The resident's recorded EPF basis — the same selection the
+        // employee_contribution_bases row above records, threaded exactly as
+        // the run's own calculation threads it.
+        profile.key === 'resident'
+          ? { mode: 'BASIC_PLUS_SELECTED', includedComponentCodes: ['INCENTIVE'] }
+          : null,
       );
 
       const pcb = pcbEntered[profile.key];
@@ -3019,6 +3051,22 @@ async function seedWorkforce(ids: Ids) {
             components: lines.map((l) => ({ code: l.code, label: l.label, kind: l.kind, amount: l.amount, liability: l.liability })),
             ordinaryRateOfPay: { overtimeDays: 26, unpaidLeaveDays: 31, hoursPerDay: 7.5, overtimeHourly: rates.overtimeHourlyCents / 100, unpaidLeaveDaily: rates.unpaidLeaveDailyCents / 100 },
             statutoryNotes: { epf: slip.statutory.epf.note ?? null, socso: slip.statutory.socso.note ?? null, eis: slip.statutory.eis.note ?? null, pcb: slip.statutory.pcbNote, lindung: slip.statutory.lindung.note ?? null, hrd: slip.hrdNote ?? null },
+            // The applied EPF basis, as the service writes it — so the seeded
+            // world's one recorded selection survives into the line the same
+            // way a real calculation would freeze it.
+            ...(slip.epfBasis
+              ? {
+                  epfBasis: {
+                    mode: slip.epfBasis.mode,
+                    includedCodes: slip.epfBasis.includedCodes,
+                    assessedEpfCents: slip.epfBasis.assessedEpfCents,
+                    appliedEpfCents: slip.epfBasis.appliedEpfCents,
+                    excluded: slip.epfBasis.excluded,
+                    ineffective: slip.epfBasis.ineffective,
+                    basisRowId: null,
+                  },
+                }
+              : {}),
             incomplete: slip.incomplete,
           } as never,
         },

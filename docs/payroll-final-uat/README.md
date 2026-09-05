@@ -18,39 +18,42 @@ the defective states this validation fixed are preserved under before/.
 | `08-step3-earnings.png` | `/admin/hr/payroll/:id?step=earnings` | CALCULATED, clean | Desktop 1680×1050 | Earnings: server figures only; every column the gross contains, unpaid leave on the wages side |
 | `09-step4-deductions.png` | `/admin/hr/payroll/:id?step=deductions` | CALCULATED, clean | Desktop 1680×1050 | Deductions: EPF/SOCSO/EIS, LINDUNG apart, PCB with its source named |
 | `10-step5-review-clean.png` | `/admin/hr/payroll/:id?step=review` | CALCULATED, clean | Desktop 1680×1050 | Review with nothing blocking; two warnings that gate nothing |
-| `11-step6-approve.png` | `/admin/hr/payroll/:id?step=approve` | CALCULATED, clean | Desktop 1680×1050 | The approval step: the rule in force named before anybody clicks |
-| `12-approved.png` | `/admin/hr/payroll/:id?step=approve` | APPROVED (v1) | Desktop 1680×1050 | The frozen, hashed record — the month is now a fact |
-| `13-payslips-panel.png` | `/admin/hr/payroll/:id?step=approve` | APPROVED | Desktop 1680×1050 | Payslips issued only from the approved snapshot, revision named |
-| `14-report-register.png` | `/admin/hr/reports` | PAID | Desktop 1680×1050 | The register: every column footing to the run’s own totals |
-| `15-report-employer-cost.png` | `/admin/hr/reports` | PAID | Desktop 1680×1050 | Cost to the clinic: gross + contributions = employer cost, HRD levy included |
-| `16-report-statutory.png` | `/admin/hr/reports` | PAID | Desktop 1680×1050 | Statutory totals by scheme; a null survives as a null |
-| `17-report-pcb.png` | `/admin/hr/reports` | PAID | Desktop 1680×1050 | Monthly tax: calculated vs entered, decided by the marker, never the wording |
-| `18-report-ytd.png` | `/admin/hr/reports` | PAID | Desktop 1680×1050 | The cumulative ledger; TP3 money listed apart from this employer’s months |
-| `19-report-overtime.png` | `/admin/hr/reports` | PAID | Desktop 1680×1050 | Overtime day by day, naming the Employment Act provision that priced each |
-| `20-report-unpaid-leave.png` | `/admin/hr/reports` | PAID | Desktop 1680×1050 | Absence as a wage reduction — deliberately no deductions column |
-| `21-report-payment-status.png` | `/admin/hr/reports` | PAID | Desktop 1680×1050 | Where the money stands, in the language of evidence |
-| `22-reopened-review.png` | `/admin/hr/payroll/:id?step=review` | Reopened (CALCULATED, snapshot v1 stands) | Desktop 1680×1050 | The correction cycle: back at review while revision 1 keeps serving payslips and filings |
-| `23-reopened-report-banner.png` | `/admin/hr/reports (Payroll register)` | Reopened | Desktop 1680×1050 | The register says these are candidate figures while the approved record stands — every run report carries this now |
-| `24-reapproved-v2.png` | `/admin/hr/payroll/:id?step=approve` | APPROVED (v2) | Desktop 1680×1050 | Approved again: revision 2 beside revision 1, nothing overwritten, everything dated |
-| `25-payment-generated.png` | `/admin/hr/payroll/:id?step=approve` | APPROVED v2, listing prepared | Desktop 1680×1050 | The honesty ladder, rung 1: a listing exists, says it is NOT a bank file, and nothing claims paid |
-| `26-payment-recorded.png` | `/admin/hr/payroll/:id?step=approve` | PAID (recorded) | Desktop 1680×1050 | Rung 3: a person recorded the transfer with date and reference — the only place "paid" is ever said |
-| `27-statutory-outputs.png` | `/admin/hr/payroll/:id?step=approve` | PAID, one filing recorded | Desktop 1680×1050 | Per-scheme amounts from the approved record, each schedule named with its verification; EPF "Filed" with its reference, every other scheme "Not filed — prepared only"; missing membership numbers say so in words (wages ride in the downloadable listing) |
-| `28-employees.png` | `/admin/hr/employees` | Directory | Desktop 1680×1050 | No salary column, by design |
-| `29-employee-workspace.png` | `/admin/hr/employees/:staffId` | Overview tab | Desktop 1680×1050 | LAST PAID reads only an approved month; money always two decimals |
-| `30-statutory-standing.png` | `/admin/hr/employees/:staffId (Employment tab)` | Standing recorded | Desktop 1680×1050 | The dated statutory standing and its version history |
-| `31-standing-editor.png` | `/admin/hr/employees/:staffId (modal)` | Editor open | Desktop 1680×1050 | Relief facts rest at “Not recorded” — nothing asserted that nobody entered |
-| `32-employee-tax.png` | `/admin/hr/employees/:staffId (Tax tab)` | TP1/TP3 captured | Desktop 1680×1050 | The month’s reliefs and previous employment with provenance; a year picker for January’s questions |
-| `33-ytd-opening-refuses-blanks.png` | `/admin/hr/payroll/ytd-opening` | Add-month refused | Desktop 1680×1050 | A blank box is not RM0.00: the blank figures are named, and genuine zeros are one deliberate click |
-| `34-settings.png` | `/admin/hr/settings` | Configured | Desktop 1680×1050 | The schedules with their evidence and verification; what remains outside Kuwick, stated in words |
-| `35-employers.png` | `/admin/hr/employers` | Configured | Desktop 1680×1050 | Filing identities; the employer bank account shows presence and last four only |
-| `36-tablet-home.png` | `/admin/hr/payroll` | PAID month | iPad 1024×1366 | iPad: the landing |
-| `37-tablet-readiness.png` | `/admin/hr/payroll/readiness` | Clean | iPad 1024×1366 | iPad: Get ready |
-| `38-tablet-deductions.png` | `/admin/hr/payroll/:id?step=deductions` | PAID | iPad 1024×1366 | iPad: the statutory columns scroll inside the panel, never the page |
-| `39-tablet-approved.png` | `/admin/hr/payroll/:id?step=approve` | PAID | iPad 1024×1366 | iPad: the approved month |
-| `40-tablet-payment.png` | `/admin/hr/payroll/:id?step=approve` | PAID | iPad 1024×1366 | iPad: the payment ladder |
-| `41-tablet-outputs.png` | `/admin/hr/payroll/:id?step=approve` | PAID | iPad 1024×1366 | iPad: statutory filings — scheme blocks stack; the page never scrolls sideways |
-| `42-tablet-report-pcb.png` | `/admin/hr/reports` | PAID | iPad 1024×1366 | iPad: the monthly tax summary |
-| `43-phone-home.png` | `/admin/hr/payroll` | PAID month | Phone 390×844 | Phone (390px): the landing stays readable; wide content scrolls in its own panel |
+| `11-epf-basis-discrepancy.png` | `/admin/hr/payroll/:id?step=review` | Blocked by the owner’s own selection | Desktop 1680×1050 | The owner tries "basic only": the discrepancy names the person, the component and the ringgit; blocking, and deliberately not overridable |
+| `12-epf-basis-panel.png` | `/admin/hr/employees/:staffId (Salary tab)` | Selection recorded | Desktop 1680×1050 | The EPF basis panel, beside the salary it prices: the selection in words, since when, by whom and why — and the dated history a payroll run resolves against |
+| `13-epf-basis-selected-row.png` | `/admin/hr/payroll/:id?step=deductions` | CALCULATED, clean again | Desktop 1680×1050 | The deductions row says which EPF basis governs it — “EPF on RM… — selected basis”; the detour survives only in history |
+| `14-step6-approve.png` | `/admin/hr/payroll/:id?step=approve` | CALCULATED, clean | Desktop 1680×1050 | The approval step: the rule in force named before anybody clicks |
+| `15-approved.png` | `/admin/hr/payroll/:id?step=approve` | APPROVED (v1) | Desktop 1680×1050 | The frozen, hashed record — the month is now a fact |
+| `16-payslips-panel.png` | `/admin/hr/payroll/:id?step=approve` | APPROVED | Desktop 1680×1050 | Payslips issued only from the approved snapshot, revision named |
+| `17-report-register.png` | `/admin/hr/reports` | PAID | Desktop 1680×1050 | The register: every column footing to the run’s own totals |
+| `18-report-employer-cost.png` | `/admin/hr/reports` | PAID | Desktop 1680×1050 | Cost to the clinic: gross + contributions = employer cost, HRD levy included |
+| `19-report-statutory.png` | `/admin/hr/reports` | PAID | Desktop 1680×1050 | Statutory totals by scheme; a null survives as a null |
+| `20-report-pcb.png` | `/admin/hr/reports` | PAID | Desktop 1680×1050 | Monthly tax: calculated vs entered, decided by the marker, never the wording |
+| `21-report-ytd.png` | `/admin/hr/reports` | PAID | Desktop 1680×1050 | The cumulative ledger; TP3 money listed apart from this employer’s months |
+| `22-report-overtime.png` | `/admin/hr/reports` | PAID | Desktop 1680×1050 | Overtime day by day, naming the Employment Act provision that priced each |
+| `23-report-unpaid-leave.png` | `/admin/hr/reports` | PAID | Desktop 1680×1050 | Absence as a wage reduction — deliberately no deductions column |
+| `24-report-payment-status.png` | `/admin/hr/reports` | PAID | Desktop 1680×1050 | Where the money stands, in the language of evidence |
+| `25-reopened-review.png` | `/admin/hr/payroll/:id?step=review` | Reopened (CALCULATED, snapshot v1 stands) | Desktop 1680×1050 | The correction cycle: back at review while revision 1 keeps serving payslips and filings |
+| `26-reopened-report-banner.png` | `/admin/hr/reports (Payroll register)` | Reopened | Desktop 1680×1050 | The register says these are candidate figures while the approved record stands — every run report carries this now |
+| `27-reapproved-v2.png` | `/admin/hr/payroll/:id?step=approve` | APPROVED (v2) | Desktop 1680×1050 | Approved again: revision 2 beside revision 1, nothing overwritten, everything dated |
+| `28-payment-generated.png` | `/admin/hr/payroll/:id?step=approve` | APPROVED v2, listing prepared | Desktop 1680×1050 | The honesty ladder, rung 1: a listing exists, says it is NOT a bank file, and nothing claims paid |
+| `29-payment-recorded.png` | `/admin/hr/payroll/:id?step=approve` | PAID (recorded) | Desktop 1680×1050 | Rung 3: a person recorded the transfer with date and reference — the only place "paid" is ever said |
+| `30-statutory-outputs.png` | `/admin/hr/payroll/:id?step=approve` | PAID, one filing recorded | Desktop 1680×1050 | Per-scheme amounts from the approved record, each schedule named with its verification; EPF "Filed" with its reference, every other scheme "Not filed — prepared only"; missing membership numbers say so in words (wages ride in the downloadable listing) |
+| `31-employees.png` | `/admin/hr/employees` | Directory | Desktop 1680×1050 | No salary column, by design |
+| `32-employee-workspace.png` | `/admin/hr/employees/:staffId` | Overview tab | Desktop 1680×1050 | LAST PAID reads only an approved month; money always two decimals |
+| `33-statutory-standing.png` | `/admin/hr/employees/:staffId (Employment tab)` | Standing recorded | Desktop 1680×1050 | The dated statutory standing and its version history |
+| `34-standing-editor.png` | `/admin/hr/employees/:staffId (modal)` | Editor open | Desktop 1680×1050 | Relief facts rest at “Not recorded” — nothing asserted that nobody entered |
+| `35-employee-tax.png` | `/admin/hr/employees/:staffId (Tax tab)` | TP1/TP3 captured | Desktop 1680×1050 | The month’s reliefs and previous employment with provenance; a year picker for January’s questions |
+| `36-ytd-opening-refuses-blanks.png` | `/admin/hr/payroll/ytd-opening` | Add-month refused | Desktop 1680×1050 | A blank box is not RM0.00: the blank figures are named, and genuine zeros are one deliberate click |
+| `37-settings.png` | `/admin/hr/settings` | Configured | Desktop 1680×1050 | The schedules with their evidence and verification; what remains outside Kuwick, stated in words |
+| `38-employers.png` | `/admin/hr/employers` | Configured | Desktop 1680×1050 | Filing identities; the employer bank account shows presence and last four only |
+| `39-tablet-home.png` | `/admin/hr/payroll` | PAID month | iPad 1024×1366 | iPad: the landing |
+| `40-tablet-readiness.png` | `/admin/hr/payroll/readiness` | Clean | iPad 1024×1366 | iPad: Get ready |
+| `41-tablet-deductions.png` | `/admin/hr/payroll/:id?step=deductions` | PAID | iPad 1024×1366 | iPad: the statutory columns scroll inside the panel, never the page |
+| `42-tablet-approved.png` | `/admin/hr/payroll/:id?step=approve` | PAID | iPad 1024×1366 | iPad: the approved month |
+| `43-tablet-payment.png` | `/admin/hr/payroll/:id?step=approve` | PAID | iPad 1024×1366 | iPad: the payment ladder |
+| `44-tablet-outputs.png` | `/admin/hr/payroll/:id?step=approve` | PAID | iPad 1024×1366 | iPad: statutory filings — scheme blocks stack; the page never scrolls sideways |
+| `45-tablet-report-pcb.png` | `/admin/hr/reports` | PAID | iPad 1024×1366 | iPad: the monthly tax summary |
+| `46-phone-home.png` | `/admin/hr/payroll` | PAID month | Phone 390×844 | Phone (390px): the landing stays readable; wide content scrolls in its own panel |
 
 ## before/ — the found-defective states
 
