@@ -35,7 +35,10 @@ const CTX = { periodEnd: new Date('2026-01-31T00:00:00.000Z') };
 const BEFORE_ANY_SCHEDULE = { periodEnd: new Date('2020-01-31T00:00:00.000Z') };
 
 const under60 = { age: 34, epfEmployeeRate: 11, epfMembership: 'MALAYSIAN_CITIZEN' as const };
-const at60 = { age: 61, epfEmployeeRate: 11, epfMembership: 'MALAYSIAN_CITIZEN' as const };
+// No recorded election: Part E's own printed employee rate (0%) applies. The
+// fixture used to carry `epfEmployeeRate: 11` because the old guard demanded
+// 11 from every Part — the exact defect the election tests below pin.
+const at60 = { age: 61, epfMembership: 'MALAYSIAN_CITIZEN' as const };
 
 const earning = (code: string, amount: number): PayrollComponentLine => ({
   code,
@@ -113,8 +116,31 @@ describe('EPF — the Third Schedule is a table, not a percentage', () => {
   });
 
   it('puts a non-citizen in Part F at a flat 2% each side', () => {
-    const result = computeEpf(210000, CTX, { age: 34, epfEmployeeRate: 11, epfMembership: 'NON_CITIZEN' });
+    const result = computeEpf(210000, CTX, { age: 34, epfMembership: 'NON_CITIZEN' });
     expect(result.note).toMatch(/Part F/);
+    expect(result.employeeCents).toBe(4200); // 2% of RM2,100 (before the total rounding rule)
+    expect(result.employeeCents).not.toBeNull();
+  });
+
+  it('judges a recorded election against the PART’s printed rate, not against 11', () => {
+    // A 61-year-old citizen is Part E, whose printed employee share is 0%. A
+    // faithfully recorded 0% must compute; the old guard refused it with a
+    // message asserting the Schedule's rate is 11%, which is false for Part E.
+    const partE = computeEpf(210000, CTX, { age: 61, epfEmployeeRate: 0, epfMembership: 'MALAYSIAN_CITIZEN' });
+    expect(partE.employeeCents).toBe(0);
+    expect(partE.employerCents).toBe(8400);
+
+    // Part A with a rate that is not 11 is a real election away from the
+    // Schedule — refused, naming the part's own rate.
+    const partA = computeEpf(210000, CTX, { age: 34, epfEmployeeRate: 5.5, epfMembership: 'MALAYSIAN_CITIZEN' });
+    expect(partA.employeeCents).toBeNull();
+    expect(partA.note).toMatch(/Part A/);
+    expect(partA.note).toMatch(/11%/);
+
+    // Part C (permanent resident, 60+) prints 5.5% — recorded 5.5 computes.
+    const partC = computeEpf(210000, CTX, { age: 61, epfEmployeeRate: 5.5, epfMembership: 'PERMANENT_RESIDENT' });
+    expect(partC.employeeCents).not.toBeNull();
+    expect(partC.note).toMatch(/Part C/);
   });
 
   it('drops the employee share to nil and the employer to 4% at age 60', () => {
@@ -407,7 +433,9 @@ describe('ordinary rate of pay, overtime and unpaid leave', () => {
 });
 
 describe('PCB — computed when the tax profile is there, refused when it is not', () => {
-  const JAN = { periodEnd: new Date('2026-02-01T00:00:00.000Z') };
+  // The context's periodEnd is the last day INSIDE the period — the same
+  // convention the run resolves schedules on.
+  const JAN = { periodEnd: new Date('2026-01-31T00:00:00.000Z') };
   const taxed = {
     ...under60,
     pcbApplicable: true,
@@ -448,6 +476,23 @@ describe('PCB — computed when the tax profile is there, refused when it is not
     expect(slip.incomplete).toBe(true);
   });
 
+  it('refuses a resident’s MTD when EPF itself could not be worked out — K1 is not zero, it is unknown', () => {
+    // Membership unrecorded → EPF null. The MTD used to proceed with K1 = 0
+    // and print a finished-looking (over-deducted) figure beside an EPF that
+    // said "could not be worked out".
+    const slip = computePayslip([earning('BASIC', 5000)], JAN, { ...taxed, epfMembership: null });
+    expect(slip.statutory.epf.employeeCents).toBeNull();
+    expect(slip.statutory.pcbCents).toBeNull();
+    expect(slip.statutory.pcbNote).toMatch(/K1/);
+    // A non-resident's flat 30% uses no K1 and still computes.
+    const nonResident = computePayslip([earning('BASIC', 5000)], JAN, {
+      ...taxed,
+      epfMembership: null,
+      taxResidence: 'NON_RESIDENT',
+    });
+    expect(nonResident.statutory.pcbCents).toBe(150000);
+  });
+
   it('says out loud that TP1 deductions were not captured', () => {
     // Nil LP is the right figure for an employee who has filed no TP1, and it
     // errs towards deducting MORE. Saying so is what stops the absence passing
@@ -465,14 +510,14 @@ describe('PCB — computed when the tax profile is there, refused when it is not
     // The figure is right for the facts given. What makes it WRONG in practice
     // is missing history, which is why a mid-year migration must import its
     // opening months rather than starting from zero.
-    const AUG = { periodEnd: new Date('2026-09-01T00:00:00.000Z') };
+    const AUG = { periodEnd: new Date('2026-08-31T00:00:00.000Z') };
     expect(computePayslip([earning('BASIC', 5000)], AUG, taxed).statutory.pcbCents).toBe(0);
   });
 
   it('carries the year so far, so month eight is not computed as though it were January', () => {
     // The method is cumulative. Seven months of pay and tax already behind the
     // employee change what August owes.
-    const AUG = { periodEnd: new Date('2026-09-01T00:00:00.000Z') };
+    const AUG = { periodEnd: new Date('2026-08-31T00:00:00.000Z') };
     const asIfJanuary = computePayslip([earning('BASIC', 5000)], AUG, taxed);
     const withHistory = computePayslip([earning('BASIC', 5000)], AUG, taxed, {
       accumulatedGrossCents: 3500000, // seven months at RM5,000
@@ -549,5 +594,99 @@ describe('age', () => {
     expect(ageAt(new Date(Date.UTC(1966, 7, 30)), new Date(Date.UTC(2026, 7, 29)))).toBe(59);
     expect(ageAt(new Date(Date.UTC(1966, 7, 30)), new Date(Date.UTC(2026, 7, 30)))).toBe(60);
     expect(ageAt(null, new Date())).toBeNull();
+  });
+});
+
+describe('schedule commencement boundaries — resolved on the last day INSIDE the period', () => {
+  /**
+   * THE OFF-BY-ONE-MONTH REGRESSION. The run used to hand `scheduleFor` the
+   * EXCLUSIVE period end — the first day of the following month — and
+   * `effectiveFrom <= on` then matched a schedule commencing on that exact
+   * day. Every commencement arrived one period early: a September 2025 run
+   * acquired the October Third Schedule instead of blocking, a December 2025
+   * run computed MTD under the 2026 specification, and a May 2026 run
+   * charged LINDUNG a month before the scheme existed. These pin the
+   * inclusive convention at each boundary the registry holds.
+   */
+  const MAY_2026 = { periodEnd: new Date('2026-05-31T00:00:00.000Z') };
+  const JUNE_2026 = { periodEnd: new Date('2026-06-30T00:00:00.000Z') };
+  const SEPT_2025 = { periodEnd: new Date('2025-09-30T00:00:00.000Z') };
+  const DEC_2025 = { periodEnd: new Date('2025-12-31T00:00:00.000Z') };
+
+  const taxed = {
+    ...under60,
+    pcbApplicable: true,
+    taxResidence: 'RESIDENT' as const,
+    pcbCategory: 1 as const,
+    qualifyingChildren: 0,
+    disabledSelf: false,
+    disabledSpouse: false,
+  };
+
+  it('May 2026 owes LINDUNG nothing, even for somebody opted in', () => {
+    const slip = computePayslip([earning('BASIC', 6000)], MAY_2026, {
+      ...taxed,
+      lindungParticipation: 'VOLUNTARY_OPTED_IN',
+    });
+    expect(slip.statutory.lindung.employeeCents).toBe(0);
+    expect(slip.statutory.lindung.note).toMatch(/not in force/i);
+    expect(slip.incomplete).toBe(false);
+  });
+
+  it('May 2026 with participation unrecorded is complete — a scheme that has not commenced asks no question', () => {
+    const slip = computePayslip([earning('BASIC', 6000)], MAY_2026, { ...taxed, lindungParticipation: null });
+    expect(slip.statutory.lindung.employeeCents).toBe(0);
+    expect(slip.incomplete).toBe(false);
+  });
+
+  it('June 2026 — the commencement month itself — charges a participant', () => {
+    const slip = computePayslip([earning('BASIC', 6000)], JUNE_2026, {
+      ...taxed,
+      lindungParticipation: 'VOLUNTARY_OPTED_IN',
+    });
+    expect(slip.statutory.lindung.employeeCents).toBeGreaterThan(0);
+  });
+
+  it('September 2025 is NOT_CONFIGURED — the October edition must not arrive a month early', () => {
+    expect(statutoryStatusOf(SEPT_2025.periodEnd)).toBe('NOT_CONFIGURED');
+    expect(computeEpf(500000, SEPT_2025, under60).employeeCents).toBeNull();
+  });
+
+  it('October 2025 — the edition’s own first month — computes', () => {
+    expect(statutoryStatusOf(new Date('2025-10-31T00:00:00.000Z'))).toBe('CONFIGURED');
+  });
+
+  it('September 2025 leaves the HRD levy unworked — the guideline held here is not in force yet', () => {
+    // The levy was the one scheme with no date resolution at all: any period,
+    // however early, was levied. It resolves like the rest now, and rides in
+    // the run's provenance stamp.
+    const slip = computePayslip([earning('BASIC', 3900)], SEPT_2025, {
+      ...taxed,
+      hrdRegistration: 'MANDATORY_SECTION_14',
+      hrdFullTimeEmployment: true,
+    });
+    expect(slip.hrdLevyCents).toBeNull();
+    expect(slip.hrdNote).toMatch(/No HRD levy schedule/);
+
+    const october = computePayslip([earning('BASIC', 3900)], { periodEnd: new Date('2025-10-31T00:00:00.000Z') }, {
+      ...taxed,
+      hrdRegistration: 'MANDATORY_SECTION_14',
+      hrdFullTimeEmployment: true,
+    });
+    expect(october.hrdLevyCents).toBe(3900);
+  });
+
+  it('December 2025 refuses PCB rather than borrowing the 2026 specification', () => {
+    const slip = computePayslip([earning('BASIC', 5000)], DEC_2025, taxed);
+    expect(slip.statutory.pcbCents).toBeNull();
+    expect(slip.statutory.pcbNote).toMatch(/No MTD specification is in force/);
+  });
+
+  it('derives the MTD month from the period’s own last day', () => {
+    const january = computePayslip([earning('BASIC', 5000)], CTX, taxed);
+    expect(january.statutory.pcbWorking).not.toBeNull();
+    // Month 1 of the year: the cumulative method's n leaves eleven months
+    // ahead, which only holds if 31 January is read as January.
+    expect((january.statutory.pcbWorking as { n: number }).n).toBe(11);
   });
 });

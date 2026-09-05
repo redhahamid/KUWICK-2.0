@@ -3,8 +3,10 @@ import {
   EpfMembership,
   eisContribution,
   epfContribution,
+  epfPartFor,
   socsoContribution,
 } from '../statutory/contributions';
+import { EPF_PARTS } from '../statutory/epf-third-schedule';
 import { LindungParticipation, lindungContribution } from '../statutory/lindung-24-jam';
 import { PcbResult, computePcb as computeMtd } from '../statutory/pcb-2026';
 import {
@@ -168,7 +170,13 @@ export interface EmployeeStatutoryProfile {
 
 /** What the schedules are resolved against. The period, never today. */
 export interface StatutoryContext {
-  /** Last day of the pay period. */
+  /**
+   * The last day INSIDE the pay period — 31 July for a July run, never
+   * 1 August. `scheduleFor` matches `effectiveFrom <= on`, so an exclusive
+   * first-of-next-month here made every schedule commence one period early:
+   * a September 2025 run acquired the October Third Schedule instead of
+   * blocking, and a May 2026 run charged LINDUNG before the scheme existed.
+   */
   periodEnd: Date;
 }
 
@@ -200,18 +208,32 @@ export function computeEpf(wageCents: number, context: StatutoryContext, profile
     };
   }
 
-  // The Schedule prints one employee column per Part. An election away from it
-  // is lawful but is a different instrument, and this system holds no document
-  // for it — so it is refused rather than approximated as a percentage.
+  // The Schedule prints one employee column per Part — 11% (A), 5.5% (C),
+  // 0% (E), 2% (F) — and an election away from THE PART'S OWN rate is a
+  // different instrument (Borang KWSP 17A) this system holds no document
+  // for, so that is refused rather than approximated. The old guard compared
+  // every election against a hardcoded 11: a Part E citizen of 61 whose true
+  // 0% was faithfully recorded was refused with a message asserting the
+  // Schedule's rate is 11%, which is false for their Part.
   const elected = profile.epfEmployeeRate;
-  if (elected !== null && elected !== undefined && Number(elected) !== 11) {
-    return {
-      employeeCents: null,
-      employerCents: null,
-      note:
-        `This employee has elected an EPF share of ${elected}%, which is not the Third Schedule rate. ` +
-        'An election under Borang KWSP 17A is not covered by the Schedule this system holds, so the contribution must be entered as a payroll input.',
-    };
+  if (elected !== null && elected !== undefined) {
+    const electionAge = ageOrNull(profile.age);
+    // With no age the Part is unknowable and the contribution below refuses
+    // on the age itself — the election cannot be judged before that.
+    if (electionAge !== null) {
+      const partLetter = epfPartFor(membership, electionAge);
+      const scheduleRate = EPF_PARTS.find((part) => part.part === partLetter)?.aboveCeiling.employeePercent;
+      if (scheduleRate !== undefined && Number(elected) !== scheduleRate) {
+        return {
+          employeeCents: null,
+          employerCents: null,
+          note:
+            `This employee has an elected EPF share of ${elected}% on record, but Third Schedule Part ${partLetter} ` +
+            `prints ${scheduleRate}% for them. An election under Borang KWSP 17A is not covered by the Schedule ` +
+            'this system holds, so the contribution must be entered as a payroll input.',
+        };
+      }
+    }
   }
 
   return fromOutcome(epfContribution(wageCents, membership, ageOrNull(profile.age)), (value) =>
@@ -497,6 +519,11 @@ export const PAYSLIP_SCHEMES: readonly StatutoryScheme[] = [
   'EIS',
   'LINDUNG',
   'PCB',
+  // The levy is employer cost on the same payslip's leviable wages, resolved
+  // from the same registry — it was left off this list, so a run's stamp
+  // could not say which levy guideline priced its employer cost, and the
+  // levy engine ran undated (a pre-October-2025 period was levied anyway).
+  'HRD_LEVY',
   'EMPLOYMENT_ACT',
   'EA_FIRST_SCHEDULE',
 ];
@@ -528,14 +555,31 @@ export function computeStatutory(
   const epfOnNormalCents = epfOnNormal.employeeCents ?? 0;
   const epfOnAdditionalCents = Math.max(0, (epf.employeeCents ?? 0) - epfOnNormalCents);
 
-  const pcb = computePcb(
+  // A RESIDENT'S MTD RESTS ON K1 — the EPF contribution in respect of this
+  // month's normal pay. With EPF itself unknowable the `?? 0` below would
+  // compute a finished-looking tax figure on K1 = 0, over-deducting, and the
+  // payslip would show it beside an EPF that says "could not be worked out".
+  // The run blocked either way (on the EPF null); the FIGURE was still wrong
+  // on screen. A non-resident's flat 30% uses no K1 and is unaffected.
+  const pcb =
+    epf.employeeCents === null && profile.taxResidence === 'RESIDENT' && profile.pcbCategory
+      ? {
+          cents: null,
+          note:
+            'Monthly tax could not be worked out: the Computerised Calculation needs the EPF contribution on this ' +
+            'month’s pay (K1), and EPF itself could not be worked out. Resolve the EPF question and recalculate.',
+          tp1Captured: false,
+          working: null,
+        }
+      : computePcb(
     profile,
     {
-      // `periodEnd` is EXCLUSIVE — the first day of the following month — so
-      // the month being paid is the one the last day of the period falls in.
-      // Taken from that day rather than from periodEnd's own month, which
-      // would be off by one and silently wrong every December.
-      month: new Date(context.periodEnd.getTime() - 86_400_000).getUTCMonth() + 1,
+      // `periodEnd` is the last day INSIDE the pay period — the same day the
+      // schedules resolve on — so the month being paid is its own month. It
+      // was the exclusive first-of-next-month for a while, and that convention
+      // made every schedule commence one period early (a September 2025 run
+      // acquired the October Third Schedule; a May 2026 run charged LINDUNG).
+      month: context.periodEnd.getUTCMonth() + 1,
       grossNormalCents: bases.pcbNormalCents,
       epfOnNormalCents,
       grossAdditionalCents: bases.pcbAdditionalCents,

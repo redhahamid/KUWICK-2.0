@@ -1,3 +1,25 @@
+# ⚠️ SUPERSEDED — historical record only
+
+**This document describes the system as it stood BEFORE the statutory engines
+landed, and its claims are no longer true.** EPF, SOCSO and EIS are now
+transcribed from the authorities' own documents and verified against their
+printed figures; PCB/MTD is fully calculated by HASiL's Computerised
+Calculation method and reproduces the specification's own worked example; the
+tenant-configured `StatutoryRuleSet` it describes has been retired in favour of
+the code registry.
+
+The **current** source of truth is:
+
+- `docs/MALAYSIA_PAYROLL_STATUTORY_SOURCE_REGISTER.md` — every source document,
+  its verification state, and every open gap;
+- `apps/api/src/statutory/registry.ts` — the dated, content-hashed schedules the
+  runs actually resolve, and `SCHEMES_WITHOUT_A_SCHEDULE`, the named gaps.
+
+This file is kept unedited below as the historical record of what was known
+when the structure was first built.
+
+---
+
 # Malaysian statutory payroll — sources, and what is actually verified
 
 **Read the verification status before trusting any number in this system.**

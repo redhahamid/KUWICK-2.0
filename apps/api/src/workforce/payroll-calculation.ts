@@ -1,5 +1,6 @@
 import { MoneyLike, fromCents, toCents } from '../finance/money';
 import { hrdLevyCents } from '../statutory/hrd-levy';
+import { scheduleFor } from '../statutory/registry';
 import { SEED_PAY_COMPONENTS } from './pay-component-catalogue';
 import {
   Contribution,
@@ -353,8 +354,19 @@ export interface PayslipResult {
  */
 function hrdLevyForPayslip(
   leviableCents: number,
+  context: StatutoryContext,
   profile: EmployeeStatutoryProfile,
 ): { cents: number | null; note: string | null } {
+  // The levy resolves by the period like every other scheme. It ran undated
+  // for a while — the only scheme that did — so a period before the guideline
+  // this registry holds was levied anyway, with nothing on the stamp to say
+  // which edition had priced it.
+  if (!scheduleFor('HRD_LEVY', context.periodEnd)) {
+    return {
+      cents: null,
+      note: `No HRD levy schedule is in force for ${context.periodEnd.toISOString().slice(0, 10)}, so the levy cannot be worked out.`,
+    };
+  }
   const registration = profile.hrdRegistration;
   if (registration === undefined || registration === null) {
     return {
@@ -434,7 +446,7 @@ export function computePayslip(
   // leviable wages, so it rides in the employer contribution — which is what
   // keeps invariant 3, employerCost = gross + employerContribution, true
   // without a side channel.
-  const hrd = hrdLevyForPayslip(bases.hrdCents, profile);
+  const hrd = hrdLevyForPayslip(bases.hrdCents, context, profile);
 
   const employerContributionCents =
     (statutory.epf.employerCents ?? 0) +

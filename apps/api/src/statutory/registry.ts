@@ -322,6 +322,36 @@ export const SCHEMES_WITHOUT_A_SCHEDULE: readonly StatutoryGap[] = [
       'Every participating employee, once a later phase begins. Until then phase 1 governs and the figures are correct; the engine names the phase it applied so a run cannot silently outlive it.',
   },
   {
+    scheme: 'PCB — special MTD schemes (REP, knowledge workers, C-suite)',
+    kind: 'PARTIAL_RULE',
+    reason:
+      'The MTD engine can name and refuse the Returning Expert Programme, knowledge-worker and C-suite rates, but no ' +
+      'field on the employee’s statutory standing can say somebody is under one — so the refusal is unreachable and ' +
+      'such an employee is taxed by the ordinary progressive table, producing a finished-looking figure that is wrong.',
+    needs:
+      'A special-scheme marker on the statutory standing, wired through to the engine’s existing refusal — and the ' +
+      'scheme’s own rate schedule if calculation rather than refusal is wanted.',
+    affects:
+      'Employees approved under REP (15% flat), or engaged as knowledge workers in specified regions or C-suite ' +
+      'positions with their own rates. A clinic employing none of these is unaffected; one that does must enter ' +
+      'their PCB by hand and disregard the calculated figure.',
+  },
+  {
+    scheme: 'Pay component statutory treatment — verification',
+    kind: 'PARTIAL_RULE',
+    reason:
+      'The rate tables are held to OFFICIAL_SOURCE_VERIFIED or better before approval, but the OTHER half of every ' +
+      'contribution — which money enters each statutory base, decided by the pay-component catalogue’s liability ' +
+      'flags — ships as DRAFT rows a clinic can edit, and nothing compares their verification state to any bar.',
+    needs:
+      'A per-component sign-off against the authorities’ wage definitions (EPF Act s.2, Act 4 s.2, the MTD ' +
+      'specification’s remuneration list), recorded on the component rows the way the schedules record theirs.',
+    affects:
+      'Every calculated figure, through its wage base. The seeded treatments follow the clinic’s own reconciled ' +
+      'workbook and the Excel reference audit, but that is provenance, not verification — and CLAIM_REIMBURSEMENT ' +
+      'says outright its exemption is not a verified statutory determination.',
+  },
+  {
     scheme: 'Employment Act First Schedule — special categories',
     kind: 'PARTIAL_RULE',
     reason:
