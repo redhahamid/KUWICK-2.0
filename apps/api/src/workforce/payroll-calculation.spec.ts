@@ -690,3 +690,115 @@ describe('schedule commencement boundaries — resolved on the last day INSIDE t
     expect((january.statutory.pcbWorking as { n: number }).n).toBe(11);
   });
 });
+
+describe('the employer-selected EPF basis — a preference, never an assessment', () => {
+  // BASIC 3000 (EPF wages) + COMMISSION 500 (EPF wages, s.2) + OVERTIME 200
+  // (expressly OUTSIDE EPF wages by s.2's own list). Assessed EPF base 3500;
+  // SOCSO and EIS keep 3700 whatever the employer selects.
+  const LINES = () => [earning('BASIC', 3000), earning('COMMISSION', 500), earning('OVERTIME', 200)];
+
+  it('with no selection recorded, the assessment governs alone and nothing extra is claimed', () => {
+    const slip = computePayslip(LINES(), CTX, under60);
+    expect(slip.epfBasis).toBeNull();
+    expect(slip.bases.epfCents).toBe(350000);
+    expect(slip.statutory.epf.employeeCents).toBe(38500); // 11% of a round band
+    expect(slip.statutory.epf.employerCents).toBe(45500);
+  });
+
+  it('ALL_APPLICABLE is the recorded form of the same default — applied equals assessed, nothing excluded', () => {
+    const slip = computePayslip(LINES(), CTX, under60, undefined, null, {
+      mode: 'ALL_APPLICABLE',
+      includedComponentCodes: [],
+    });
+    expect(slip.epfBasis).not.toBeNull();
+    expect(slip.epfBasis?.appliedEpfCents).toBe(350000);
+    expect(slip.epfBasis?.assessedEpfCents).toBe(350000);
+    expect(slip.epfBasis?.excluded).toEqual([]);
+    expect(slip.statutory.epf.employeeCents).toBe(38500);
+  });
+
+  it('BASIC_ONLY contributes on basic alone and NAMES the assessed wages it leaves out', () => {
+    const slip = computePayslip(LINES(), CTX, under60, undefined, null, {
+      mode: 'BASIC_ONLY',
+      includedComponentCodes: [],
+    });
+    // The selection drives the calculation…
+    expect(slip.bases.epfCents).toBe(300000);
+    expect(slip.statutory.epf.employeeCents).toBe(33000);
+    expect(slip.statutory.epf.employerCents).toBe(39000);
+    // …and the discrepancy is a named fact, not a silent one. Overtime is NOT
+    // in it: the Act itself keeps overtime out of EPF wages, so leaving it out
+    // is the assessment's doing, not the employer's.
+    expect(slip.epfBasis?.assessedEpfCents).toBe(350000);
+    expect(slip.epfBasis?.excluded).toEqual([{ code: 'COMMISSION', label: 'COMMISSION', amountCents: 50000 }]);
+    // SOCSO and EIS are untouched by an EPF selection.
+    expect(slip.bases.socsoCents).toBe(370000);
+    expect(slip.bases.eisCents).toBe(370000);
+    // Total earnings and the payslip identity are untouched too: the basis
+    // changes what EPF sits on, never what the person earned.
+    expect(slip.grossCents).toBe(370000);
+    expect(slip.grossCents - slip.employeeDeductionCents).toBe(slip.netCents);
+  });
+
+  it('BASIC_PLUS_SELECTED includes exactly the ticked wages — and a tick cannot expand past the Act', () => {
+    const commissionIn = computePayslip(LINES(), CTX, under60, undefined, null, {
+      mode: 'BASIC_PLUS_SELECTED',
+      includedComponentCodes: ['COMMISSION'],
+    });
+    expect(commissionIn.bases.epfCents).toBe(350000);
+    expect(commissionIn.epfBasis?.excluded).toEqual([]);
+
+    // Ticking overtime changes NOTHING except that the slip says so: s.2
+    // keeps it outside EPF wages whatever the employer would prefer.
+    const overtimeTicked = computePayslip(LINES(), CTX, under60, undefined, null, {
+      mode: 'BASIC_PLUS_SELECTED',
+      includedComponentCodes: ['COMMISSION', 'OVERTIME'],
+    });
+    expect(overtimeTicked.bases.epfCents).toBe(350000);
+    expect(overtimeTicked.epfBasis?.appliedEpfCents).toBe(350000);
+    expect(overtimeTicked.epfBasis?.ineffective).toEqual([
+      { code: 'OVERTIME', label: 'OVERTIME', amountCents: 20000 },
+    ]);
+    // Applied can never exceed assessed, by construction.
+    expect(overtimeTicked.epfBasis!.appliedEpfCents).toBeLessThanOrEqual(overtimeTicked.epfBasis!.assessedEpfCents);
+  });
+
+  it('a wage reduction keeps reducing the SELECTED base — s.18A is not optional either', () => {
+    const slip = computePayslip(
+      [...LINES(), wageReduction('UNPAID_LEAVE', 135.48)],
+      CTX,
+      under60,
+      undefined,
+      null,
+      { mode: 'BASIC_ONLY', includedComponentCodes: [] },
+    );
+    expect(slip.bases.epfCents).toBe(300000 - 13548);
+    // The contribution is the Schedule's own answer for the reduced base —
+    // derived from the same lookup, never re-percentaged here.
+    expect(slip.statutory.epf.employeeCents).toBe(computeEpf(286452, CTX, under60).employeeCents);
+  });
+
+  it('with several income rows, each follows its own tick', () => {
+    const slip = computePayslip(
+      [earning('BASIC', 3000), earning('COMMISSION', 500), earning('ALLOWANCE', 250)],
+      CTX,
+      under60,
+      undefined,
+      null,
+      { mode: 'BASIC_PLUS_SELECTED', includedComponentCodes: ['ALLOWANCE'] },
+    );
+    expect(slip.bases.epfCents).toBe(325000);
+    expect(slip.epfBasis?.excluded).toEqual([{ code: 'COMMISSION', label: 'COMMISSION', amountCents: 50000 }]);
+  });
+
+  it('the statutory result computes ON the applied base — the MTD chain follows the contribution actually made', () => {
+    const slip = computePayslip(LINES(), CTX, under60, undefined, null, {
+      mode: 'BASIC_ONLY',
+      includedComponentCodes: [],
+    });
+    // statutory.bases is what the schemes were computed on; the assessed
+    // figure survives inside epfBasis for the comparison surfaces.
+    expect(slip.statutory.bases.epfCents).toBe(300000);
+    expect(slip.epfBasis?.assessedEpfCents).toBe(350000);
+  });
+});

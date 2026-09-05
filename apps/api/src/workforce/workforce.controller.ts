@@ -21,12 +21,14 @@ import { assertDateOrder } from '../core/query-dates';
 import { BenefitService } from './benefit.service';
 import { LegalEmployerService } from './legal-employer.service';
 import { EmployeeSalaryService } from './employee-salary.service';
+import { ContributionBasisService } from './contribution-basis.service';
 import { StatutoryClassificationService } from './statutory-classification.service';
 import { PayComponentService } from './pay-component.service';
 import { PayrollPolicyService } from './payroll-policy.service';
 import { PayrollInputService } from './payroll-input.service';
 import { UpsertLegalEmployerDto } from './dto/upsert-legal-employer.dto';
 import { RecordSalaryDto } from './dto/record-salary.dto';
+import { RecordContributionBasisDto } from './dto/record-contribution-basis.dto';
 import {
   RecordEmployerStatutoryDto,
   RecordStatutoryClassificationDto,
@@ -65,6 +67,7 @@ export class WorkforceController {
     private readonly benefits_: BenefitService,
     private readonly legalEmployers: LegalEmployerService,
     private readonly salaries: EmployeeSalaryService,
+    private readonly contributionBases: ContributionBasisService,
     private readonly classifications: StatutoryClassificationService,
     private readonly payComponents: PayComponentService,
     private readonly payrollPolicies: PayrollPolicyService,
@@ -348,6 +351,23 @@ export class WorkforceController {
   @Post('employees/:staffId/salary')
   recordSalary(@Param('staffId') staffId: string, @Body() dto: RecordSalaryDto) {
     return this.salaries.record(staffId, dto);
+  }
+
+  // --- Employer-selected contribution basis ---------------------------------
+  //
+  // Which of the assessed wages the employer has CHOSEN to contribute EPF on.
+  // A preference with a date, a reason and a name — never an assessment: the
+  // catalogue keeps deciding what EPF wages ARE, and a month whose selection
+  // leaves assessed wages out blocks at the run.
+
+  @Get('employees/:staffId/contribution-basis')
+  contributionBasisHistory(@Param('staffId') staffId: string) {
+    return this.contributionBases.history(staffId);
+  }
+
+  @Post('employees/:staffId/contribution-basis')
+  recordContributionBasis(@Param('staffId') staffId: string, @Body() dto: RecordContributionBasisDto) {
+    return this.contributionBases.record(staffId, dto);
   }
 
   // --- Effective-dated statutory classification -----------------------------

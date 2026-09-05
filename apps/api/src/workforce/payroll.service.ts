@@ -80,8 +80,10 @@ import { approvalGate, BuiltException, buildException, ExceptionSeverity } from 
 import { resolveSalaryForPayroll, SalaryRow } from './salary-resolution';
 import {
   CLASSIFICATION_FIELDS,
+  ContributionBasisRow,
   StatutoryClassificationRow,
   resolveClassificationForPayroll,
+  resolveContributionBasisForPayroll,
   resolveEmployerProfileForPayroll,
 } from './statutory-classification';
 import { toClassificationRow } from './statutory-classification.service';
@@ -766,6 +768,27 @@ export class PayrollService {
 
       // TP1 FOR THE MONTH, TP3 FOR THE YEAR. The MTD engine has carried the
       // LP slots since it was transcribed; these are the records that fill
+      // THE EMPLOYER-SELECTED EPF BASIS, where one is recorded — a dated
+      // preference resolved like the salary beside it. No row means the
+      // statutory assessment governs alone, which is every employee until
+      // somebody deliberately selects otherwise.
+      const basisRows = await tx.employeeContributionBasis.findMany({
+        where: { staffId: { in: employees.map((e) => e.staffId) }, scheme: 'EPF' },
+        orderBy: { effectiveFrom: 'asc' },
+      });
+      const basisByStaff = new Map<string, ContributionBasisRow[]>();
+      for (const row of basisRows) {
+        const list = basisByStaff.get(row.staffId) ?? [];
+        list.push({
+          id: row.id,
+          mode: row.mode,
+          includedComponentCodes: row.includedComponentCodes,
+          effectiveFrom: row.effectiveFrom,
+          effectiveTo: row.effectiveTo,
+        });
+        basisByStaff.set(row.staffId, list);
+      }
+
       // them. Loaded once for the run, resolved per employee below.
       const tp1Entries = await tx.employeeTp1Entry.findMany({
         where: { staffId: { in: employees.map((e) => e.staffId) }, period },
@@ -1468,6 +1491,34 @@ export class PayrollService {
         const levyEmployerId = run.legalEmployerId ?? employee.legalEmployerId;
         const hrdRegistration = levyEmployerId ? (hrdRegistrationByEmployer.get(levyEmployerId) ?? null) : null;
 
+        /*
+         * THE EMPLOYER-SELECTED EPF BASIS, resolved for the period. A change
+         * part-way through the month blocks like a mid-month salary change —
+         * either figure would look right on the total — and the month then
+         * computes on the assessment so its figures stay determinate while
+         * the block stands. A resolved selection DRIVES the calculation: the
+         * month shows exactly what the owner asked for, and if that leaves
+         * assessed wages out, the discrepancy below is what stops approval —
+         * the preference is preserved, not obeyed into an under-contribution.
+         */
+        const basisOutcome = resolveContributionBasisForPayroll(
+          basisByStaff.get(employee.staffId) ?? [],
+          period,
+          lastDayOfPeriod,
+        );
+        if (basisOutcome.kind === 'CHANGED_MID_PERIOD') {
+          raise('EPF_BASIS_CHANGED_MID_PERIOD', employee, {
+            changedOn: basisOutcome.changedOn.toISOString().slice(0, 10),
+          });
+        }
+        const epfBasisSelection =
+          basisOutcome.kind === 'RESOLVED'
+            ? {
+                mode: basisOutcome.row.mode,
+                includedComponentCodes: basisOutcome.row.includedComponentCodes,
+              }
+            : null;
+
         const payslip = computePayslip(
           componentLines,
           statutoryContext,
@@ -1510,7 +1561,23 @@ export class PayrollService {
           },
           ytdTotal,
           tp1Capture,
+          epfBasisSelection,
         );
+
+        /*
+         * THE STATUTORY DISCREPANCY, where the selection left assessed wages
+         * out. Blocking and NOT overridable: s.43 does not make the employer
+         * share optional, so a preference that under-contributes is preserved
+         * on the record and stops the month — never waved through.
+         */
+        if (payslip.epfBasis && payslip.epfBasis.excluded.length > 0) {
+          raise('EPF_BASIS_DISCREPANCY', employee, {
+            components: payslip.epfBasis.excluded.map((row) => row.label).join(', '),
+            excludedAmount: fromCents(
+              payslip.epfBasis.excluded.reduce((sum, row) => sum + row.amountCents, 0),
+            ).toFixed(2),
+          });
+        }
 
         // PCB IS calculated by the MTD engine when the tax profile is on
         // record; a null here means it could not be — profile missing, or a
@@ -1700,6 +1767,30 @@ export class PayrollService {
                 eisCents: payslip.bases.eisCents,
                 ordinaryRateBaseCents: payslip.bases.ordinaryRateBaseCents,
               },
+              /*
+               * THE EMPLOYER'S SELECTED EPF BASIS AS APPLIED — mode, the
+               * codes that governed, the assessed wages beside the applied
+               * wages, and every component the selection left out or ticked
+               * to no effect. Absent when no selection is recorded: the
+               * assessment governed alone and there is no second story to
+               * tell. `bases.epfCents` above is the APPLIED figure — the
+               * wages the contribution actually sits on — and the assessed
+               * figure lives here, so the two can be compared for as long
+               * as the row exists.
+               */
+              ...(payslip.epfBasis
+                ? {
+                    epfBasis: {
+                      mode: payslip.epfBasis.mode,
+                      includedCodes: payslip.epfBasis.includedCodes,
+                      assessedEpfCents: payslip.epfBasis.assessedEpfCents,
+                      appliedEpfCents: payslip.epfBasis.appliedEpfCents,
+                      excluded: payslip.epfBasis.excluded,
+                      ineffective: payslip.epfBasis.ineffective,
+                      basisRowId: basisOutcome.kind === 'RESOLVED' ? basisOutcome.row.id : null,
+                    },
+                  }
+                : {}),
               components: payslip.lines.map((line) => ({
                 code: line.code, label: line.label, kind: line.kind,
                 amount: line.amount, liability: line.liability,
@@ -2795,6 +2886,10 @@ export class PayrollService {
         ordinaryRateDays?: number;
         provision?: string;
       }[];
+      // The employer-selected EPF basis as the calculation applied it. Frozen
+      // verbatim: an approved month must still say, years later, which wages
+      // the employer chose to contribute on and what the assessment said.
+      const epfBasisRow = breakdown.epfBasis as SnapshotPayslipDetail['epfBasis'] | undefined;
       const payslipDetail: SnapshotPayslipDetail = {
         employeeNo: (snap.employeeNo as string | undefined) ?? null,
         position: (snap.position as string | undefined) ?? null,
@@ -2837,6 +2932,7 @@ export class PayrollService {
           ...(row.ordinaryRateDays !== undefined ? { ordinaryRateDays: row.ordinaryRateDays } : {}),
           ...(row.provision !== undefined ? { provision: row.provision } : {}),
         })),
+        ...(epfBasisRow ? { epfBasis: epfBasisRow } : {}),
       };
 
       return {

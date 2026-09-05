@@ -190,6 +190,24 @@ export interface SnapshotPayslipDetail {
     ordinaryRateDays?: number;
     provision?: string;
   }[];
+  /**
+   * The employer-selected EPF contribution basis AS APPLIED to this payslip —
+   * mode, the codes that governed, assessed beside applied wages, and every
+   * component the selection left out. Absent on rows frozen before the field
+   * existed and on employees with no selection recorded, where the statutory
+   * assessment governed alone. An APPROVED snapshot can only ever carry an
+   * empty `excluded` list: a non-empty one raises a blocking exception the
+   * approval gate refuses, and `verifySnapshot` re-checks the invariant.
+   */
+  epfBasis?: {
+    mode: string;
+    includedCodes: string[];
+    assessedEpfCents: number;
+    appliedEpfCents: number;
+    excluded: { code: string; label: string; amountCents: number }[];
+    ineffective: { code: string; label: string; amountCents: number }[];
+    basisRowId: string | null;
+  };
 }
 
 export interface SnapshotEmployeeLine {
@@ -545,6 +563,25 @@ export function verifySnapshot(payload: SnapshotPayload, storedHash: string): Sn
           actualCents: line.employerCostCents,
         });
       }
+    }
+
+    // AN APPROVED MONTH NEVER CARRIES AN UNRESOLVED BASIS DISCREPANCY. The
+    // approval gate refuses the blocking exception, so a frozen `excluded`
+    // list with anything in it means the gate was bypassed — which is exactly
+    // the kind of statement this verifier exists to make out loud.
+    const basis = line.payslip?.epfBasis;
+    if (basis && basis.excluded.length > 0) {
+      const excludedCents = basis.excluded.reduce((sum, row) => sum + row.amountCents, 0);
+      violations.push({
+        code: 'SNAPSHOT_EPF_BASIS_DISCREPANCY_FROZEN',
+        staffId: line.staffId,
+        message:
+          `${line.name}: the approved record froze an EPF basis that leaves out RM${(excludedCents / 100).toFixed(2)} ` +
+          `of assessed EPF wages (${basis.excluded.map((row) => row.label).join(', ')}). A month with an ` +
+          'unresolved statutory discrepancy must never have been approvable.',
+        expectedCents: basis.assessedEpfCents,
+        actualCents: basis.appliedEpfCents,
+      });
     }
   }
 

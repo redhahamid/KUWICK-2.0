@@ -2184,6 +2184,18 @@ export interface PayrollJourney {
       pcb: string | null;
       /** SKBBK. Employee-borne, employer-remitted; null = participation unrecorded. */
       lindungEmployee: string | null;
+      /**
+       * The employer-selected EPF basis as APPLIED — null when no selection
+       * is recorded and the statutory assessment governs alone. A non-empty
+       * `excluded` means the month carries a blocking statutory discrepancy.
+       */
+      epfBasis: {
+        mode: string;
+        applied: string;
+        assessed: string;
+        excluded: { label: string; amount: string }[];
+        ineffective: { label: string; amount: string }[];
+      } | null;
       /** Basic less unpaid leave — the engine's grouping, not the screen's. */
       salaryEarned: string;
       /** Incentives plus bonus, grouped the way the earnings step shows them. */

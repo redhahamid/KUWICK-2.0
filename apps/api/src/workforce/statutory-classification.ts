@@ -329,3 +329,110 @@ export function resolveEmployerProfileForPayroll(
 
   return { kind: 'RESOLVED', row: atEnd, reason: 'One employer statutory profile was in force for the whole period.' };
 }
+
+// ---------------------------------------------------------------------------
+// The employer-selected contribution basis
+// ---------------------------------------------------------------------------
+
+/**
+ * WHICH CONTRIBUTION BASIS GOVERNS A PERIOD — resolved with the same rules as
+ * every other dated statutory question, because it prices the same money.
+ *
+ * A basis that CHANGES part-way through the month blocks exactly as a salary
+ * or an HRD class change does: the month's EPF would look correct computed on
+ * either selection, and nothing here decides which one the employer meant the
+ * month to follow. No row on record is not an error — it is the default, and
+ * it means the statutory assessment governs alone.
+ */
+export interface ContributionBasisRow {
+  readonly id: string;
+  readonly effectiveFrom: Date;
+  readonly effectiveTo: Date | null;
+  readonly mode: 'BASIC_ONLY' | 'BASIC_PLUS_SELECTED' | 'ALL_APPLICABLE';
+  readonly includedComponentCodes: readonly string[];
+}
+
+export type ContributionBasisOutcome =
+  | { kind: 'RESOLVED'; row: ContributionBasisRow; reason: string }
+  | { kind: 'NONE_ON_RECORD'; reason: string }
+  | {
+      kind: 'CHANGED_MID_PERIOD';
+      overlapping: ContributionBasisRow[];
+      previous: ContributionBasisRow;
+      next: ContributionBasisRow;
+      changedOn: Date;
+      reason: string;
+    };
+
+function basisContentDiffers(a: ContributionBasisRow, b: ContributionBasisRow): boolean {
+  if (a.mode !== b.mode) return true;
+  const left = [...a.includedComponentCodes].sort().join(',');
+  const right = [...b.includedComponentCodes].sort().join(',');
+  return left !== right;
+}
+
+export function resolveContributionBasisForPayroll(
+  rows: readonly ContributionBasisRow[],
+  periodStart: Date,
+  periodEnd: Date,
+): ContributionBasisOutcome {
+  const start = atDayStart(periodStart);
+  const end = atDayStart(periodEnd);
+
+  // A SUPERSEDED row is closed into an EMPTY interval — effectiveTo before
+  // its own effectiveFrom. It was never in force for any day and must be
+  // invisible here; the naive overlap test below would otherwise catch an
+  // empty interval sitting wholly inside the period.
+  const sorted = [...rows]
+    .filter((row) => row.effectiveTo === null || atDayStart(row.effectiveTo) >= atDayStart(row.effectiveFrom))
+    .sort((a, b) => atDayStart(a.effectiveFrom) - atDayStart(b.effectiveFrom));
+  const overlapping = sorted.filter((row) => {
+    const from = atDayStart(row.effectiveFrom);
+    const to = row.effectiveTo ? atDayStart(row.effectiveTo) : Number.POSITIVE_INFINITY;
+    return from <= end && to >= start;
+  });
+  const atEnd =
+    [...sorted]
+      .reverse()
+      .find((row) => {
+        if (atDayStart(row.effectiveFrom) > end) return false;
+        if (row.effectiveTo && atDayStart(row.effectiveTo) < end) return false;
+        return true;
+      }) ?? null;
+
+  if (overlapping.length > 1) {
+    const first = overlapping[0];
+    if (overlapping.slice(1).some((row) => basisContentDiffers(first, row))) {
+      const next = overlapping[overlapping.length - 1];
+      return {
+        kind: 'CHANGED_MID_PERIOD',
+        overlapping,
+        previous: first,
+        next,
+        changedOn: next.effectiveFrom,
+        reason:
+          'The EPF contribution basis changed part-way through this period. The month would look correct ' +
+          'computed on either selection, and nothing here decides which.',
+      };
+    }
+    if (atEnd) {
+      return {
+        kind: 'RESOLVED',
+        row: atEnd,
+        reason: 'Several basis versions overlap this period, all selecting the same thing.',
+      };
+    }
+  }
+
+  if (!atEnd) {
+    return {
+      kind: 'NONE_ON_RECORD',
+      reason:
+        overlapping.length > 0
+          ? 'A contribution basis is recorded for part of this period but none was in force at the period end.'
+          : 'No contribution basis is recorded for this period; the statutory assessment governs alone.',
+    };
+  }
+
+  return { kind: 'RESOLVED', row: atEnd, reason: 'One contribution basis was in force for the whole period.' };
+}

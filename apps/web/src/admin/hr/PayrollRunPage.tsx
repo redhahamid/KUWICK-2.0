@@ -532,7 +532,7 @@ function DeductionsStep({ data }: { data: PayrollJourney }) {
             { title: 'Employee', dataIndex: 'name' },
             {
               title: 'EPF · SOCSO · EIS',
-              width: 170,
+              width: 190,
               align: 'right' as const,
               render: (_: unknown, row: PayRow) =>
                 row.statutoryEmployee === null ? (
@@ -540,7 +540,34 @@ function DeductionsStep({ data }: { data: PayrollJourney }) {
                     <span className="kw-muted">Not calculated</span>
                   </Tooltip>
                 ) : (
-                  ringgit(row.statutoryEmployee)
+                  <div>
+                    {ringgit(row.statutoryEmployee)}
+                    {/*
+                      * THE SELECTED EPF BASIS, said in the row it changes.
+                      * Absent for the ordinary employee: no selection means
+                      * the assessment governs and there is nothing to add.
+                      * A selection that leaves assessed wages out is the
+                      * month's blocking discrepancy — red here, and named in
+                      * full in the exception centre.
+                      */}
+                    {row.epfBasis && row.epfBasis.mode !== 'ALL_APPLICABLE' ? (
+                      row.epfBasis.excluded.length > 0 ? (
+                        <Tooltip
+                          title={`Kuwick assesses EPF wages of RM${row.epfBasis.assessed}. The selected basis leaves out ${row.epfBasis.excluded.map((x) => x.label).join(', ')} — this blocks approval.`}
+                        >
+                          <div className="kw-provenance" style={{ color: '#b42318' }}>
+                            EPF on {ringgit(row.epfBasis.applied)} — selection leaves wages out
+                          </div>
+                        </Tooltip>
+                      ) : (
+                        <Tooltip
+                          title={`Employer-selected basis (${row.epfBasis.mode === 'BASIC_ONLY' ? 'basic salary only' : 'basic + selected income'}); it matches everything Kuwick assesses as EPF wages this month.`}
+                        >
+                          <div className="kw-provenance">EPF on {ringgit(row.epfBasis.applied)} — selected basis</div>
+                        </Tooltip>
+                      )
+                    ) : null}
+                  </div>
                 ),
             },
             ...(showLindung

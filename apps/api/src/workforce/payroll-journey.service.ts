@@ -539,6 +539,32 @@ export class PayrollJourneyService {
         pcb: pcbCents === null ? null : formatCents(pcbCents),
         /** SKBBK. Employee-borne, employer-remitted; null means participation is unrecorded. */
         lindungEmployee: lindungCents === null ? null : formatCents(lindungCents),
+        /*
+         * THE EMPLOYER-SELECTED EPF BASIS as the calculation applied it —
+         * read from the line's own breakdown, never re-derived. Null for the
+         * ordinary employee with no selection, whose EPF simply follows the
+         * assessment; present so the deductions step can answer "what EPF
+         * basis is Kuwick using?" in the row itself.
+         */
+        epfBasis: (() => {
+          const basis = ((line.breakdown ?? {}) as {
+            epfBasis?: {
+              mode: string;
+              appliedEpfCents: number;
+              assessedEpfCents: number;
+              excluded: { label: string; amountCents: number }[];
+              ineffective: { label: string; amountCents: number }[];
+            };
+          }).epfBasis;
+          if (!basis) return null;
+          return {
+            mode: basis.mode,
+            applied: formatCents(basis.appliedEpfCents),
+            assessed: formatCents(basis.assessedEpfCents),
+            excluded: basis.excluded.map((row) => ({ label: row.label, amount: formatCents(row.amountCents) })),
+            ineffective: basis.ineffective.map((row) => ({ label: row.label, amount: formatCents(row.amountCents) })),
+          };
+        })(),
         salaryEarned: formatCents(salaryEarnedCents),
         /** Incentives and bonus as one column — the grouping the screen shows. */
         incentive: formatCents(incentiveCents),

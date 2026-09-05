@@ -312,6 +312,117 @@ export function unpaidLeaveDeductionCents(days: number, rates: OrdinaryRates): n
 }
 
 // ---------------------------------------------------------------------------
+// The employer-selected contribution basis
+// ---------------------------------------------------------------------------
+
+/**
+ * THE EMPLOYER'S SELECTION IS NOT THE ASSESSMENT.
+ *
+ * The catalogue answers which components ARE EPF wages (s.2, EPF Act 1991) —
+ * that is the statutory assessment, and nothing here touches it. This answers
+ * a different question the employer is allowed to hold an opinion on: which of
+ * those wages they have CHOSEN to contribute on.
+ *
+ * The selection is an INTERSECTION, never an expansion:
+ *
+ *  - A component the assessment excludes (overtime, by s.2's own list) never
+ *    enters the applied base, ticked or not — it lands in `ineffective` with
+ *    the fact stated, because a tick that quietly did nothing would teach the
+ *    owner the panel lies.
+ *  - A component the assessment INCLUDES but the selection leaves out comes
+ *    off the applied base and lands in `excluded` — the statutory
+ *    discrepancy the run raises against the month, because s.43 does not
+ *    make the employer's share optional.
+ *
+ * Wage reductions and deductions keep their statutory treatment untouched:
+ * the selection picks EARNINGS, and a day of unpaid leave reduces whatever
+ * base is left exactly as it reduces the assessed one.
+ */
+export type ContributionBasisModeCode = 'BASIC_ONLY' | 'BASIC_PLUS_SELECTED' | 'ALL_APPLICABLE';
+
+export interface EpfBasisSelection {
+  mode: ContributionBasisModeCode;
+  /** Ticked codes under BASIC_PLUS_SELECTED. BASIC is always in, never listed. */
+  includedComponentCodes: readonly string[];
+}
+
+export interface EpfBasisComponentAmount {
+  code: string;
+  label: string;
+  amountCents: number;
+}
+
+export interface EpfBasisApplication {
+  mode: ContributionBasisModeCode;
+  /** The codes that actually governed the applied base, BASIC included. */
+  includedCodes: string[];
+  /** What the statutory assessment says the EPF wages are. */
+  assessedEpfCents: number;
+  assessedEpfNormalCents: number;
+  /** What the selection contributes on. Never more than assessed. */
+  appliedEpfCents: number;
+  appliedEpfNormalCents: number;
+  /** Assessed-liable earnings the selection leaves out — the discrepancy. */
+  excluded: EpfBasisComponentAmount[];
+  /** Ticked earnings the assessment keeps out anyway. Informational. */
+  ineffective: EpfBasisComponentAmount[];
+}
+
+/** The one component every basis contains. The run refuses months without it. */
+const BASIC_CODE = 'BASIC';
+
+export function applyEpfBasis(
+  lines: PayrollComponentLine[],
+  bases: BasesResult,
+  selection: EpfBasisSelection,
+): EpfBasisApplication {
+  const included = new Set<string>([BASIC_CODE]);
+  if (selection.mode === 'BASIC_PLUS_SELECTED') {
+    for (const code of selection.includedComponentCodes) included.add(code);
+  }
+  const filtering = selection.mode !== 'ALL_APPLICABLE';
+
+  let epf = 0;
+  let epfNormal = 0;
+  const excluded: EpfBasisComponentAmount[] = [];
+  const ineffective: EpfBasisComponentAmount[] = [];
+
+  for (const line of lines) {
+    const amountCents = toCents(line.amount);
+    if (amountCents === 0) continue;
+
+    if (line.kind === 'EARNING' && !line.liability.epf) {
+      // Ticking it cannot make it wages. Said, not silently dropped.
+      if (filtering && included.has(line.code) && line.code !== BASIC_CODE) {
+        ineffective.push({ code: line.code, label: line.label, amountCents });
+      }
+      continue;
+    }
+    if (!line.liability.epf) continue;
+
+    if (line.kind === 'EARNING' && filtering && !included.has(line.code)) {
+      excluded.push({ code: line.code, label: line.label, amountCents });
+      continue;
+    }
+
+    const sign = line.kind === 'EARNING' ? 1 : -1;
+    epf += sign * amountCents;
+    if (!line.liability.additionalRemuneration) epfNormal += sign * amountCents;
+  }
+
+  return {
+    mode: selection.mode,
+    includedCodes: filtering ? [...included] : [],
+    assessedEpfCents: bases.epfCents,
+    assessedEpfNormalCents: bases.epfNormalCents,
+    appliedEpfCents: Math.max(0, epf),
+    appliedEpfNormalCents: Math.max(0, epfNormal),
+    excluded,
+    ineffective,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // The payslip
 // ---------------------------------------------------------------------------
 
@@ -334,6 +445,12 @@ export interface PayslipResult {
    */
   hrdLevyCents: number | null;
   hrdNote: string | null;
+  /**
+   * The employer-selected EPF basis as APPLIED to this payslip — modes,
+   * governed codes, assessed vs applied wages, and what the selection left
+   * out. Null when no selection is recorded: the assessment governs alone.
+   */
+  epfBasis: EpfBasisApplication | null;
   /** True when any statutory figure could not be computed. */
   incomplete: boolean;
   /** Every reason a figure is missing, for the exception list and the payslip. */
@@ -413,8 +530,19 @@ export function computePayslip(
   profile: EmployeeStatutoryProfile,
   ytd?: PcbYearToDate,
   tp1: Tp1MonthCapture | null = null,
+  epfBasisSelection: EpfBasisSelection | null = null,
 ): PayslipResult {
   const bases = computeBases(lines);
+  // THE EMPLOYER'S SELECTED EPF BASIS, where one is recorded. The assessment
+  // in `bases` stands untouched for comparison; the SELECTED wages are what
+  // EPF is computed on — and, through K1, what the resident's MTD relief
+  // follows, because the relief is the contribution actually made. Whether
+  // the selection is LAWFUL is not decided here: the run raises the
+  // discrepancy in `epfBasis.excluded` as a blocking exception.
+  const epfBasis = epfBasisSelection ? applyEpfBasis(lines, bases, epfBasisSelection) : null;
+  const statutoryBases = epfBasis
+    ? { ...bases, epfCents: epfBasis.appliedEpfCents, epfNormalCents: epfBasis.appliedEpfNormalCents }
+    : bases;
   // Zakat paid THIS month reduces this month's MTD, so it is read off the
   // component rather than passed in separately — there is one place a
   // payroll-deducted zakat figure can come from and this is it. Zakat the
@@ -422,7 +550,7 @@ export function computePayslip(
   const zakatThisMonthCents = lines
     .filter((line) => line.code === 'ZAKAT' && line.kind === 'DEDUCTION')
     .reduce((sum, line) => sum + toCents(line.amount), 0);
-  const statutory = computeStatutory(bases, context, profile, ytd, zakatThisMonthCents, tp1);
+  const statutory = computeStatutory(statutoryBases, context, profile, ytd, zakatThisMonthCents, tp1);
 
   // LINDUNG is EMPLOYEE-borne and EMPLOYER-remitted — both statements are only
   // true at once if the contribution is withheld from pay. It used to be
@@ -475,7 +603,11 @@ export function computePayslip(
 
   return {
     lines,
-    bases,
+    // The bases the statutory figures were actually computed ON — the wages
+    // column beside a contribution must always explain that contribution, so
+    // a selected EPF basis rides here and the ASSESSED figure stays inside
+    // `epfBasis` for the comparison surfaces.
+    bases: statutoryBases,
     statutory,
     grossCents: bases.grossCents,
     employeeDeductionCents: employeeStatutory + nonStatutoryDeductions,
@@ -484,6 +616,7 @@ export function computePayslip(
     employerCostCents: bases.grossCents + employerContributionCents,
     hrdLevyCents: hrd.cents,
     hrdNote: hrd.note,
+    epfBasis,
     incomplete,
     notes,
   };

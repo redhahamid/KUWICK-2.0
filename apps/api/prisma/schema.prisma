@@ -374,6 +374,7 @@ model Tenant {
   // Malaysia payroll — Stage 1 + 2
   legalEmployers                   LegalEmployer[]
   employeeSalaries                 EmployeeSalary[]
+  employeeContributionBases        EmployeeContributionBasis[]
   employeeStatutoryClassifications EmployeeStatutoryClassification[]
   legalEmployerStatutoryProfiles   LegalEmployerStatutoryProfile[]
   payComponents                    PayComponent[]
@@ -1110,6 +1111,8 @@ model Staff {
   // Malaysia payroll — Stage 1 + 2
   salaryHistory                    EmployeeSalary[]                  @relation("EmployeeSalaryStaff")
   salaryHistoryAuthored            EmployeeSalary[]                  @relation("EmployeeSalaryAuthor")
+  contributionBases                EmployeeContributionBasis[]       @relation("ContributionBasisStaff")
+  contributionBasesAuthored        EmployeeContributionBasis[]       @relation("ContributionBasisAuthor")
   statutoryClassifications         EmployeeStatutoryClassification[] @relation("EmployeeStatutoryStaff")
   statutoryClassificationsAuthored EmployeeStatutoryClassification[] @relation("EmployeeStatutoryAuthor")
   employerStatutoryAuthored        LegalEmployerStatutoryProfile[]   @relation("EmployerStatutoryAuthor")
@@ -7700,6 +7703,74 @@ model EmployeeStatutoryClassification {
   @@unique([staffId, effectiveFrom])
   @@index([tenantId, staffId, effectiveFrom])
   @@map("employee_statutory_classifications")
+}
+
+/// How much of the pay the employer has CHOSEN to contribute a scheme on.
+enum ContributionBasisMode {
+  /// Basic salary alone, whatever else the month pays.
+  BASIC_ONLY
+  /// Basic salary plus the components ticked in `includedComponentCodes`.
+  BASIC_PLUS_SELECTED
+  /// Everything the statutory assessment marks liable — the default, and the
+  /// behaviour of every employee with no row here.
+  ALL_APPLICABLE
+}
+
+/// THE EMPLOYER'S SELECTED CONTRIBUTION BASIS — a preference, never an
+/// assessment.
+///
+/// Which components ARE a scheme's wages is the pay-component catalogue's
+/// question, answered per component with a verification status and a source.
+/// This table answers a different one: which of those wages the employer has
+/// chosen to contribute on. The two must never collapse into each other — a
+/// selection cannot make a component liable (the engine never contributes on
+/// wages the assessment excludes), and a selection that leaves ASSESSED wages
+/// out does not amend the assessment: it stands on the record as the
+/// employer's preference and raises a statutory discrepancy against it.
+///
+/// Effective-dated like the salary beside it, so choosing differently today
+/// cannot silently reprice an approved month.
+model EmployeeContributionBasis {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  staffId  String @map("staff_id")
+
+  /// The scheme this selection speaks for. Only 'EPF' accepts one today;
+  /// the column exists so other schemes can carry their own rules later
+  /// without inheriting EPF's choices.
+  scheme String @default("EPF")
+
+  mode ContributionBasisMode
+
+  /// Component codes ticked under BASIC_PLUS_SELECTED. BASIC itself is always
+  /// in the basis and never stored here. Meaningless under the other modes.
+  includedComponentCodes String[] @map("included_component_codes")
+
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+
+  /// Why the employer selected this. Required at capture: restricting a
+  /// contribution basis is a decision somebody made, and the record keeps
+  /// their reason with their name and the date.
+  reason String?
+  note   String?
+
+  createdByStaffId String?  @map("created_by_staff_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  staff     Staff  @relation("ContributionBasisStaff", fields: [staffId], references: [id], onDelete: Cascade)
+  createdBy Staff? @relation("ContributionBasisAuthor", fields: [createdByStaffId], references: [id])
+
+  /// Deliberately NOT unique on (staffId, scheme, effectiveFrom): recording a
+  /// basis from the same day SUPERSEDES the same-day row — the old row is
+  /// closed into an empty interval (effectiveTo before effectiveFrom) that
+  /// resolution ignores and history keeps. An owner who tries a selection,
+  /// sees the discrepancy block, and reverts the same month must have a road
+  /// back that does not require deleting a record.
+  @@index([staffId, scheme, effectiveFrom])
+  @@index([tenantId, staffId, effectiveFrom])
+  @@map("employee_contribution_bases")
 }
 
 enum PayComponentType {

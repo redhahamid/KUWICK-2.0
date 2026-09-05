@@ -311,6 +311,46 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'registered — on the legal employer, then recalculate. "Not registered" is an answer; leaving it blank is not.',
     deepLink: () => '/admin/hr/employers',
   },
+  /**
+   * THE EMPLOYER'S SELECTED EPF BASIS LEAVES ASSESSED WAGES OUT.
+   *
+   * Not overridable, deliberately: s.43 of the EPF Act 1991 makes the
+   * contribution due on wages as s.2 defines them, and an employer's
+   * preference cannot reduce a statutory obligation. The preference itself
+   * is preserved — recorded, dated, with the reason and the name of whoever
+   * selected it — and the month computes ON it so the owner can see exactly
+   * what they asked for. What the selection cannot do is get approved.
+   */
+  EPF_BASIS_DISCREPANCY: {
+    code: 'EPF_BASIS_DISCREPANCY',
+    severity: 'BLOCKING',
+    overridable: false,
+    cause: (c) =>
+      `The selected EPF basis leaves out ${String(c.components)} — RM${String(c.excludedAmount)} of wages Kuwick assesses as EPF-liable.`,
+    consequence:
+      'EPF would be contributed on less than the assessed wages — the employee’s share and the clinic’s. Under ' +
+      'the EPF Act the contribution is due on the wages as the Act defines them, so this is an under-contribution ' +
+      'the employer remains liable for, with the shortfall claimable against the employer later.',
+    remediation:
+      'Tick the component into the EPF basis (or set the basis back to “All applicable earnings”) and recalculate. ' +
+      'If the component genuinely sits outside EPF wages, that is a fact about the COMPONENT: correct its statutory ' +
+      'treatment in the pay-component catalogue, with the authority reference, and the assessment follows.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+  },
+  /** Mirrors a mid-month salary change: either figure looks correct. */
+  EPF_BASIS_CHANGED_MID_PERIOD: {
+    code: 'EPF_BASIS_CHANGED_MID_PERIOD',
+    severity: 'BLOCKING',
+    overridable: false,
+    cause: (c) => `The EPF contribution basis changed on ${String(c.changedOn)}, part-way through this period.`,
+    consequence:
+      'The month’s EPF would look correct computed on either selection, and nothing decides which one the month ' +
+      'should follow.',
+    remediation:
+      'Set the change to take effect from the first day of a month — the recorded date can be corrected on the ' +
+      'employee’s EPF basis history — then recalculate.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+  },
   /** Mirrors a mid-month classification change: either figure looks correct. */
   HRD_REGISTRATION_CHANGED_MID_PERIOD: {
     code: 'HRD_REGISTRATION_CHANGED_MID_PERIOD',

@@ -92,6 +92,8 @@ export type AuditAction =
   | 'legalEmployer.updated'
   | 'employee.employerAssigned'
   | 'employeeSalary.recorded'
+  /** The employer selected which wages EPF is contributed on — a dated preference. */
+  | 'employeeContributionBasis.recorded'
   | 'employeeStatutoryClassification.recorded'
   | 'legalEmployerStatutory.recorded'
   | 'payComponent.seeded'

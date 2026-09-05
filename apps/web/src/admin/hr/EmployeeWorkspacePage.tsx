@@ -7,6 +7,7 @@ import { AdminNotice, AdminSection, AdminShell, firstError } from '../components
 import { DataTable, ringgit } from '../components/DataTable';
 import { useEmployeeRecord } from '../hooks/useAdmin';
 import { EmployeeSalaryPanel } from './EmployeeSalaryPanel';
+import { EpfBasisPanel } from './EpfBasisPanel';
 import { EmployeeTaxPanel } from './EmployeeTaxPanel';
 import { StatutoryStandingManager } from './StatutoryStandingManager';
 import type { EmployeeRecord } from '../types';
@@ -372,6 +373,12 @@ function SalaryTab({ data, staffId }: { data: EmployeeRecord; staffId: string })
         the person who recorded each, and it owns the action that adds one.
       */}
       <EmployeeSalaryPanel staffId={staffId} canSeePay={data.payVisible} />
+      {/*
+        THE EPF BASIS LIVES BESIDE THE SALARY IT PRICES: what the employee is
+        paid, then which of it the employer contributes EPF on. Same pay
+        gate — the basis reveals the shape of somebody's income.
+      */}
+      <EpfBasisPanel staffId={staffId} canSeePay={data.payVisible} />
     </>
   );
 }
