@@ -374,4 +374,45 @@ describe('Payroll final-validation guards (e2e)', () => {
       expect([403, 404, 409]).toContain(payslips.status);
     });
   });
+
+  describe('nobody vanishes from payroll silently', () => {
+    it('a branch run NAMES an employee who has no home branch — in no branch’s run at all', async () => {
+      const orphanStaff = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.staff.create({ data: { tenantId, role: Role.FRONT_DESK_CLINICAL_STAFF, fullName: 'No Branch Nadia', clinicId: null } }),
+      );
+      await request(server())
+        .post(`/workforce/employees/${orphanStaff.id}`)
+        .set('Authorization', bearer)
+        .send({
+          employeeNo: `V-${Math.floor(Math.random() * 1000000)}`,
+          position: 'Clinic Assistant',
+          employmentType: 'PERMANENT',
+          employmentStatus: 'ACTIVE',
+          startDate: '2024-01-01',
+          dateOfBirth: '1994-02-02',
+        })
+        .expect(201);
+
+      const run = await request(server())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: '2026-09', clinicId: clinicA })
+        .expect(201);
+      await request(server()).patch(`/workforce/payroll/runs/${run.body.id}/calculate`).set('Authorization', bearer).expect(200);
+
+      const exceptions = await request(server())
+        .get(`/workforce/payroll/runs/${run.body.id}/exceptions`)
+        .set('Authorization', bearer)
+        .expect(200);
+      const rows = exceptions.body.exceptions ?? exceptions.body.rows ?? [];
+      const named = rows.find(
+        (row: { code: string; staffName?: string }) =>
+          row.code === 'EMPLOYEE_IN_NO_BRANCH' && row.staffName === 'No Branch Nadia',
+      );
+      expect(named).toBeDefined();
+      // A WARNING, not a blocker: the month can still be finished, but the
+      // absence has a name on it instead of a silent missing line.
+      expect(named.severity).toBe('WARNING');
+    });
+  });
 });

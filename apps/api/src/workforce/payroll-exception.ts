@@ -277,6 +277,27 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
    * the common case. The consequence is stated instead: if the employer IS
    * registered, the month's cost is understated and the levy still falls due.
    */
+  /**
+   * A branch-scoped run pays its branch. An employee whose STAFF record has
+   * no home branch is therefore in NO branch's run — not this one, not any
+   * other — and without this warning their absence was silent: the run
+   * simply had one line fewer, month after month, and the register footed
+   * perfectly around the person it was missing.
+   */
+  EMPLOYEE_IN_NO_BRANCH: {
+    code: 'EMPLOYEE_IN_NO_BRANCH',
+    severity: 'WARNING',
+    overridable: true,
+    cause: () => 'This employee has no home branch on their staff record, and this payroll run covers one branch.',
+    consequence:
+      'A branch payroll pays the people of its branch, so somebody with no branch is in NO branch’s run — this ' +
+      'month and every month — and nothing else would say so. They will not be paid through Kuwick until this ' +
+      'is resolved.',
+    remediation:
+      'Set their home branch on the staff record so their branch’s run picks them up, or run payroll for every ' +
+      'branch at once (a run with no branch selected), which pays everybody regardless.',
+    deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
+  },
   HRD_REGISTRATION_UNRECORDED: {
     code: 'HRD_REGISTRATION_UNRECORDED',
     severity: 'WARNING',

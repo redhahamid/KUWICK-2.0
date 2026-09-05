@@ -678,6 +678,24 @@ export class PayrollService {
         orderBy: { staffId: 'asc' },
       });
 
+      // An employee with NO home branch is in no branch's run at all — this
+      // one or any other — and their absence was previously silent: the run
+      // was simply one line short, and the register footed perfectly around
+      // the person it was missing. Named on every branch-scoped run until
+      // resolved. A tenant-wide run (no branch) pays them, so it raises
+      // nothing.
+      const branchless = run.clinicId
+        ? await tx.employeeProfile.findMany({
+            where: {
+              engagement: 'EMPLOYEE',
+              employmentStatus: { in: ['ACTIVE', 'PROBATION', 'NOTICE'] },
+              staff: { clinicId: null, active: true },
+            },
+            include: { staff: { select: { id: true, fullName: true } } },
+            orderBy: { staffId: 'asc' },
+          })
+        : [];
+
       // EXCEPTIONS ARE BUILT, NOT PARSED.
       //
       // They used to be free text that a regex mapped back onto the catalogue
@@ -1770,6 +1788,17 @@ export class PayrollService {
             name: contractor.staff.fullName,
           }),
           name: contractor.staff.fullName,
+        });
+      }
+
+      for (const orphan of branchless) {
+        exceptions.push({
+          ...buildException('EMPLOYEE_IN_NO_BRANCH', orphan.staffId, {
+            staffId: orphan.staffId,
+            runId,
+            name: orphan.staff.fullName,
+          }),
+          name: orphan.staff.fullName,
         });
       }
 

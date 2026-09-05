@@ -240,29 +240,8 @@ async function desktopWalk(page: Page): Promise<{ runId: string | null; approved
   await go(page, `/admin/hr/payroll/${run.id}?step=approve`);
   await capture(page, 'approved', 'Approved — the frozen, hashed record; the month is now a fact');
 
-  await api('POST', `/workforce/payroll/runs/${run.id}/payment/prepare`);
-  await go(page, `/admin/hr/payroll/${run.id}?step=approve`);
-  await scrollTo(page, 'Payment');
-  await capture(page, 'payment-generated', 'Payment — a listing EXISTS and says it is not a bank file; nothing claims to be paid');
-  await api('GET', `/workforce/payroll/runs/${run.id}/payment/listing`);
-  await api('POST', `/workforce/payroll/runs/${run.id}/payment/record-paid`, {
-    paymentDate: `${period}-28`,
-    reference: 'IBG-UAT-0001',
-  });
-  await go(page, `/admin/hr/payroll/${run.id}?step=approve`);
-  await scrollTo(page, 'Payment');
-  await capture(page, 'payment-recorded', 'Payment — RECORDED PAID, by a person, with the date and reference');
-
   await scrollTo(page, 'Payslips');
   await capture(page, 'payslips-panel', 'Payslips — issued only from the approved snapshot, revision named');
-
-  await api('POST', `/workforce/payroll/runs/${run.id}/statutory-outputs/epf/record-submission`, {
-    submittedDate: `${period}-28`,
-    reference: 'KWSP-UAT-0001',
-  });
-  await go(page, `/admin/hr/payroll/${run.id}?step=approve`);
-  await scrollTo(page, 'Statutory outputs');
-  await capture(page, 'statutory-outputs', 'Statutory outputs — per-scheme listings with wages; EPF recorded as filed, the rest prepared only');
 
   // 7 · The reports.
   for (const [key, file, caption] of [
@@ -279,18 +258,45 @@ async function desktopWalk(page: Page): Promise<{ runId: string | null; approved
   }
 
   // 8 · REOPEN — the correction cycle, which is where payroll products lie.
-  await api('PATCH', `/workforce/payroll/runs/${run.id}/reopen`, {
+  // BEFORE any payment is recorded: a PAID month refuses reopening (money
+  // has left; corrections are adjustments), and this pack must not imply
+  // otherwise.
+  const reopened = await api('PATCH', `/workforce/payroll/runs/${run.id}/reopen`, {
     reason: 'UAT — reopened to prove the correction cycle keeps its history',
   });
+  if (reopened.status >= 400) console.log(`  (reopen refused: ${JSON.stringify(reopened.body).slice(0, 160)})`);
   await go(page, `/admin/hr/payroll/${run.id}?step=review`);
   await capture(page, 'reopened-review', 'Reopened — the month back at review; the approved record still stands behind payslips and filings');
   if (await openReport(page, 'PAYROLL_REGISTER')) {
     await capture(page, 'reopened-report-banner', 'Reopened — the register says these are candidate figures while revision 1 keeps serving');
   }
   await api('PATCH', `/workforce/payroll/runs/${run.id}/calculate`);
-  await api('PATCH', `/workforce/payroll/runs/${run.id}/approve`, {});
+  const reapproval = await api('PATCH', `/workforce/payroll/runs/${run.id}/approve`, {});
+  if (reapproval.status >= 400) console.log(`  (re-approval refused: ${JSON.stringify(reapproval.body).slice(0, 160)})`);
   await go(page, `/admin/hr/payroll/${run.id}?step=approve`);
   await capture(page, 'reapproved-v2', 'Approved again — revision 2 beside revision 1; nothing overwritten, everything dated');
+
+  // 8b · Payment, on the CORRECTED record: the honesty ladder end to end.
+  await api('POST', `/workforce/payroll/runs/${run.id}/payment/prepare`);
+  await go(page, `/admin/hr/payroll/${run.id}?step=approve`);
+  await scrollTo(page, 'Payment');
+  await capture(page, 'payment-generated', 'Payment — a listing EXISTS and says it is not a bank file; nothing claims to be paid');
+  await api('GET', `/workforce/payroll/runs/${run.id}/payment/listing`);
+  await api('POST', `/workforce/payroll/runs/${run.id}/payment/record-paid`, {
+    paymentDate: `${period}-28`,
+    reference: 'IBG-UAT-0001',
+  });
+  await go(page, `/admin/hr/payroll/${run.id}?step=approve`);
+  await scrollTo(page, 'Payment');
+  await capture(page, 'payment-recorded', 'Payment — RECORDED PAID, by a person, with the date and reference');
+
+  await api('POST', `/workforce/payroll/runs/${run.id}/statutory-outputs/epf/record-submission`, {
+    submittedDate: `${period}-28`,
+    reference: 'KWSP-UAT-0001',
+  });
+  await go(page, `/admin/hr/payroll/${run.id}?step=approve`);
+  await scrollTo(page, 'Statutory outputs');
+  await capture(page, 'statutory-outputs', 'Statutory outputs — per-scheme listings with wages; EPF recorded as filed, the rest prepared only');
 
   // 9 · The employee’s own record.
   await go(page, '/admin/hr/employees');

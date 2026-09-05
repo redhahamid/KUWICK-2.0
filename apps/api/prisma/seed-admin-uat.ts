@@ -158,7 +158,10 @@ async function main() {
       { key: 'counter', name: 'Nurul Hidayah', role: 'FRONT_DESK_CLINICAL_STAFF' as const, clinic: central.id, doctor: false },
       { key: 'counter2', name: 'Siti Zaleha', role: 'FRONT_DESK_CLINICAL_STAFF' as const, clinic: branch.id, doctor: false },
       { key: 'stock', name: 'Hafiz Osman', role: 'STOCK_STAFF' as const, clinic: central.id, doctor: false },
-      { key: 'finance', name: 'Chandra Devi', role: 'FINANCE_STAFF' as const, clinic: null, doctor: false },
+      // Central is her HOME branch — where she is employed and paid. Her
+      // finance MODULE reach is a permission question, not this column: a
+      // null here put her in NO branch's payroll run, silently, every month.
+      { key: 'finance', name: 'Chandra Devi', role: 'FINANCE_STAFF' as const, clinic: central.id, doctor: false },
       { key: 'panel', name: 'Wan Azman', role: 'PANEL_STAFF' as const, clinic: central.id, doctor: false },
     ];
 
