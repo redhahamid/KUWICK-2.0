@@ -295,7 +295,7 @@ async function desktopWalk(page: Page): Promise<{ runId: string | null; approved
     reference: 'KWSP-UAT-0001',
   });
   await go(page, `/admin/hr/payroll/${run.id}?step=approve`);
-  await scrollTo(page, 'Statutory outputs');
+  await scrollTo(page, 'Statutory filings');
   await capture(page, 'statutory-outputs', 'Statutory outputs — per-scheme listings with wages; EPF recorded as filed, the rest prepared only');
 
   // 9 · The employee’s own record.
@@ -373,7 +373,7 @@ async function tabletWalk(context: BrowserContext, runId: string | null) {
     await capture(page, 'tablet-approved', 'Tablet — the approved month');
     await scrollTo(page, 'Payment');
     await capture(page, 'tablet-payment', 'Tablet — the payment honesty ladder');
-    await scrollTo(page, 'Statutory outputs');
+    await scrollTo(page, 'Statutory filings');
     await capture(page, 'tablet-outputs', 'Tablet — statutory outputs');
   }
   if (await openReport(page, 'PCB_SUMMARY')) {

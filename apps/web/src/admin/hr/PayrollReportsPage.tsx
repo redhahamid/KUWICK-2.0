@@ -485,16 +485,29 @@ function StatutoryReport({ runId }: { runId: string }) {
                 dataIndex: 'employee',
                 align: 'right' as const,
                 width: 170,
-                render: (value: string | null) =>
-                  value === null ? <span className="kw-muted">Not worked out</span> : ringgit(value),
+                // A null means two different things by scheme: the HRD levy
+                // HAS no employee share (—), while a missing figure on any
+                // other scheme is one nobody worked out.
+                render: (value: string | null, row: Scheme) =>
+                  value === null ? (
+                    <span className="kw-muted">{row.scheme === 'HRD' ? '—' : 'Not worked out'}</span>
+                  ) : (
+                    ringgit(value)
+                  ),
               },
               {
                 title: 'From the employer',
                 dataIndex: 'employer',
                 align: 'right' as const,
                 width: 170,
-                render: (value: string | null) =>
-                  value === null ? <span className="kw-muted">—</span> : ringgit(value),
+                // Mirror image: PCB has no employer share (—); an HRD null
+                // here means the registration is unrecorded — unknown, not nil.
+                render: (value: string | null, row: Scheme) =>
+                  value === null ? (
+                    <span className="kw-muted">{row.scheme === 'PCB' ? '—' : 'Not worked out'}</span>
+                  ) : (
+                    ringgit(value)
+                  ),
               },
               {
                 title: 'Total',

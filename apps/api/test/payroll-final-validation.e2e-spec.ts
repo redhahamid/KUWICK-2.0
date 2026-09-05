@@ -65,7 +65,12 @@ describe('Payroll final-validation guards (e2e)', () => {
     await app.close();
   });
 
-  async function makeEmployee(name: string, clinicId: string, salary = '3000.00'): Promise<string> {
+  async function makeEmployee(
+    name: string,
+    clinicId: string,
+    salary = '3000.00',
+    employerId?: string,
+  ): Promise<string> {
     const staff = await withTenantContext(prisma, tenantId, (tx) =>
       tx.staff.create({ data: { tenantId, role: Role.FRONT_DESK_CLINICAL_STAFF, fullName: name, clinicId } }),
     );
@@ -103,7 +108,7 @@ describe('Payroll final-validation guards (e2e)', () => {
     await request(server())
       .patch(`/workforce/employees/${staff.id}/legal-employer`)
       .set('Authorization', bearer)
-      .send({ legalEmployerId })
+      .send({ legalEmployerId: employerId ?? legalEmployerId })
       .expect(200);
     await request(server())
       .post(`/workforce/employees/${staff.id}/salary`)
@@ -413,6 +418,106 @@ describe('Payroll final-validation guards (e2e)', () => {
       // A WARNING, not a blocker: the month can still be finished, but the
       // absence has a name on it instead of a silent missing line.
       expect(named.severity).toBe('WARNING');
+    });
+  });
+
+  describe('the HRD levy follows the employing company', () => {
+    let linaId: string;
+
+    const exceptionRows = async (runId: string) => {
+      const res = await request(server())
+        .get(`/workforce/payroll/runs/${runId}/exceptions`)
+        .set('Authorization', bearer)
+        .expect(200);
+      return (res.body.exceptions ?? res.body.rows ?? []) as { code: string; staffName?: string; cause?: string }[];
+    };
+
+    beforeAll(async () => {
+      // The registration the levy turns on, recorded the way the product
+      // records it. Done last in this file so the earlier describes keep
+      // exercising the UNRECORDED world they were written against.
+      await request(server())
+        .post(`/workforce/legal-employers/${legalEmployerId}/statutory-profile`)
+        .set('Authorization', bearer)
+        .send({ effectiveFrom: '2024-01-01', hrdRegistration: 'MANDATORY_SECTION_14', reason: 'Registered under s.14' })
+        .expect(201);
+      linaId = await makeEmployee('Levy Lina', clinicB, '3000.00');
+    });
+
+    it('a run scoped to the company prices the levy and raises no registration warning', async () => {
+      const run = await request(server())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: '2026-10', clinicId: clinicB })
+        .expect(201);
+      await request(server()).patch(`/workforce/payroll/runs/${run.body.id}/calculate`).set('Authorization', bearer).expect(200);
+
+      const line = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payrollLine.findFirst({ where: { payrollRunId: run.body.id, staffId: linaId } }),
+      );
+      // 1% of RM3,000 leviable wages, s.14.
+      expect(Number(line?.hrdLevy)).toBe(30);
+      const rows = await exceptionRows(run.body.id);
+      expect(rows.filter((row) => row.code === 'HRD_REGISTRATION_UNRECORDED')).toHaveLength(0);
+
+      /*
+       * THE LEGACY SHAPE: every run created before runs carried a company has
+       * legalEmployerId null, and recalculating one is an ordinary event. The
+       * takeover audit found such a run pricing the levy as "not recorded" on
+       * EVERY line — a silent employer-cost understatement, because the
+       * warning that should have said so was suppressed by the same null.
+       * The levy must follow the company employing each person instead.
+       */
+      await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payrollRun.update({ where: { id: run.body.id }, data: { legalEmployerId: null } }),
+      );
+      await request(server()).patch(`/workforce/payroll/runs/${run.body.id}/calculate`).set('Authorization', bearer).expect(200);
+
+      const legacyLine = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payrollLine.findFirst({ where: { payrollRunId: run.body.id, staffId: linaId } }),
+      );
+      expect(Number(legacyLine?.hrdLevy)).toBe(30);
+      const legacyRows = await exceptionRows(run.body.id);
+      expect(legacyRows.filter((row) => row.code === 'HRD_REGISTRATION_UNRECORDED')).toHaveLength(0);
+    });
+
+    it('on a legacy run, a company with no registration on record is warned about BY NAME — not silently null', async () => {
+      const unregistered = await request(server())
+        .post('/workforce/legal-employers')
+        .set('Authorization', bearer)
+        .send({ name: 'Unregistered Sdn Bhd' })
+        .expect(201);
+      const ursulaId = await makeEmployee('Unregistered Ursula', clinicB, '2500.00', unregistered.body.id);
+
+      // Two companies now share the branch, so the run must name one to be
+      // created at all — and the legacy shape is then forced by hand.
+      const run = await request(server())
+        .post('/workforce/payroll/runs')
+        .set('Authorization', bearer)
+        .send({ period: '2026-11', clinicId: clinicB, legalEmployerId })
+        .expect(201);
+      await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payrollRun.update({ where: { id: run.body.id }, data: { legalEmployerId: null } }),
+      );
+      await request(server()).patch(`/workforce/payroll/runs/${run.body.id}/calculate`).set('Authorization', bearer).expect(200);
+
+      // Each line follows its OWN employer: Lina's levy prices, Ursula's is
+      // null for a reason the run now states out loud.
+      const lina = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payrollLine.findFirst({ where: { payrollRunId: run.body.id, staffId: linaId } }),
+      );
+      const ursula = await withTenantContext(prisma, tenantId, (tx) =>
+        tx.payrollLine.findFirst({ where: { payrollRunId: run.body.id, staffId: ursulaId } }),
+      );
+      expect(Number(lina?.hrdLevy)).toBe(30);
+      expect(ursula?.hrdLevy).toBeNull();
+
+      const rows = await exceptionRows(run.body.id);
+      const warnings = rows.filter((row) => row.code === 'HRD_REGISTRATION_UNRECORDED');
+      expect(warnings).toHaveLength(1);
+      // A run-level exception has no staff row; the company is named in the
+      // catalogue's own sentence.
+      expect(warnings[0].cause).toContain('Unregistered Sdn Bhd');
     });
   });
 });

@@ -662,7 +662,7 @@ function ReviewStep({
             RM{group(data.run.employerCostTotal.split('.')[0])}
             <span className="kw-reviewFigure__cents">.{data.run.employerCostTotal.split('.')[1]}</span>
           </div>
-          <div className="kw-reviewFigure__hint">Pay plus the clinic's own EPF, SOCSO and EIS.</div>
+          <div className="kw-reviewFigure__hint">Pay plus the clinic's own EPF, SOCSO, EIS and HRD levy.</div>
         </div>
       </div>
 
@@ -844,8 +844,10 @@ function ApproveStep({ data, runId }: { data: PayrollJourney; runId: string }) {
               <strong>Posts the cost to Finance.</strong> Employer cost and the statutory you owe.
             </li>
             <li className="kw-muted">
-              <strong>Bank payment file and statutory files are not available yet.</strong> They are generated once the
-              statutory rates have been checked. Kuwick will not produce a file it cannot stand behind.
+              <strong>No bank payment file and no authority submission files.</strong> No bank’s format and no
+              authority’s upload format is on record, and Kuwick will not produce a file it cannot stand behind —
+              what downloads is a listing for keying or cross-checking at the bank’s and each authority’s own
+              portal, and the filing you make there is recorded here with its reference.
             </li>
           </ul>
         </AdminSection>

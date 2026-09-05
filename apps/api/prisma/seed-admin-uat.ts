@@ -2797,7 +2797,13 @@ async function seedWorkforce(ids: Ids) {
     // produces — including the two blocking PCB exceptions.
     const payroll = await tx.payrollRun.create({
       data: {
-        tenantId: tenant.id, clinicId: central.id, period: payrollPeriod, status: 'CALCULATED',
+        // The employing company, exactly as create() derives it for a
+        // single-entity branch: every Central employee is Klinik Contoh's.
+        // Seeding it null made a legacy-shaped run the product no longer
+        // creates — and priced the HRD levy "not recorded" for a company
+        // whose s.14 registration this very seed records.
+        tenantId: tenant.id, clinicId: central.id, legalEmployerId: employer.id,
+        period: payrollPeriod, status: 'CALCULATED',
         // What the engine itself would write for this period: every schedule
         // in the registry meets the approval bar, so the world's banner state
         // is CONFIGURED. The seed used to hand-write PROVISIONAL with a
@@ -2911,6 +2917,13 @@ async function seedWorkforce(ids: Ids) {
               : profile.key === 'counter2'
                 ? 'NOT_PARTICIPATING'
                 : 'VOLUNTARY_OPTED_IN',
+          // The employing company's registration — the same s.14 fact the
+          // legalEmployerStatutoryProfile row above records, threaded exactly
+          // as the run's own calculation threads it. Omitting it priced the
+          // levy "not recorded" on lines seeded by the very file that
+          // records the registration.
+          hrdRegistration: 'MANDATORY_SECTION_14',
+          hrdFullTimeEmployment: profile.type === 'PERMANENT' || profile.type === 'CONTRACT',
           pcbApplicable: true,
           // The same three unrecorded profiles as the classification rows
           // above, so the engine's own null is what raises the blocker.
@@ -2990,6 +3003,11 @@ async function seedWorkforce(ids: Ids) {
           eisEmployee: slip.statutory.eis.employeeCents === null ? null : slip.statutory.eis.employeeCents / 100,
           eisEmployer: slip.statutory.eis.employerCents === null ? null : slip.statutory.eis.employerCents / 100,
           pcb: slip.statutory.pcbCents === null ? null : slip.statutory.pcbCents / 100,
+          // Both computed by the slip above and previously DROPPED on write:
+          // net already included LINDUNG and employer cost the levy, so the
+          // row disagreed with its own columns until the first recalculate.
+          lindungEmployee: slip.statutory.lindung.employeeCents === null ? null : slip.statutory.lindung.employeeCents / 100,
+          hrdLevy: slip.hrdLevyCents === null ? null : slip.hrdLevyCents / 100,
           netPay: slip.netCents / 100,
           employerCost: slip.employerCostCents / 100,
           workedDays: 20,
@@ -3000,7 +3018,7 @@ async function seedWorkforce(ids: Ids) {
             bases: { epf: slip.bases.epfCents / 100, socso: slip.bases.socsoCents / 100, eis: slip.bases.eisCents / 100 },
             components: lines.map((l) => ({ code: l.code, label: l.label, kind: l.kind, amount: l.amount, liability: l.liability })),
             ordinaryRateOfPay: { overtimeDays: 26, unpaidLeaveDays: 31, hoursPerDay: 7.5, overtimeHourly: rates.overtimeHourlyCents / 100, unpaidLeaveDaily: rates.unpaidLeaveDailyCents / 100 },
-            statutoryNotes: { epf: slip.statutory.epf.note ?? null, socso: slip.statutory.socso.note ?? null, eis: slip.statutory.eis.note ?? null, pcb: slip.statutory.pcbNote },
+            statutoryNotes: { epf: slip.statutory.epf.note ?? null, socso: slip.statutory.socso.note ?? null, eis: slip.statutory.eis.note ?? null, pcb: slip.statutory.pcbNote, lindung: slip.statutory.lindung.note ?? null, hrd: slip.hrdNote ?? null },
             incomplete: slip.incomplete,
           } as never,
         },

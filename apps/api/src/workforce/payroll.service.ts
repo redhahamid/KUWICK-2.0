@@ -816,46 +816,72 @@ export class PayrollService {
        * leviable wages every month — an omission indistinguishable on screen
        * from a clinic that simply is not registered.
        *
+       * Resolved PER EMPLOYING COMPANY, not from the run's own scope alone. A
+       * run created before runs carried a company (every legacy run) has
+       * legalEmployerId null, and resolving from that null priced the levy as
+       * "not recorded" on every line — silently, because the warning below was
+       * suppressed by the same null. Each employee's levy follows the company
+       * that employs THEM where the run names none, exactly as writeYearToDate
+       * keys their months; a scoped run resolves its own company as before
+       * (its guard already excludes anyone employed elsewhere).
+       *
        * UNRECORDED is not NOT_REGISTERED. No profile on record leaves the levy
-       * uncomputed (null, with the reason) and raises one run-level WARNING; a
-       * registration that CHANGED mid-period blocks like any other mid-month
-       * statutory change, because either answer looks correct on the total.
+       * uncomputed (null, with the reason) and raises one WARNING per affected
+       * company; a registration that CHANGED mid-period blocks like any other
+       * mid-month statutory change, because either answer looks correct on the
+       * total.
        */
-      const employerProfileRows = run.legalEmployerId
+      const employerIdsToResolve = new Set<string>();
+      if (run.legalEmployerId) {
+        employerIdsToResolve.add(run.legalEmployerId);
+      } else {
+        for (const employee of employees) {
+          if (employee.staff.active && employee.legalEmployerId) {
+            employerIdsToResolve.add(employee.legalEmployerId);
+          }
+        }
+      }
+      const employerProfileRows = employerIdsToResolve.size
         ? await tx.legalEmployerStatutoryProfile.findMany({
-            where: { legalEmployerId: run.legalEmployerId },
+            where: { legalEmployerId: { in: [...employerIdsToResolve] } },
             orderBy: { effectiveFrom: 'asc' },
           })
         : [];
-      const employerProfileOutcome = resolveEmployerProfileForPayroll(
-        employerProfileRows.map((row) => ({
-          id: row.id,
-          effectiveFrom: row.effectiveFrom,
-          effectiveTo: row.effectiveTo,
-          hrdRegistration: row.hrdRegistration,
-        })),
-        period,
-        lastDayOfPeriod,
-      );
-      const hrdRegistration =
-        employerProfileOutcome.kind === 'RESOLVED' ? employerProfileOutcome.row.hrdRegistration : null;
-      if (employerProfileOutcome.kind === 'NONE_ON_RECORD' && run.legalEmployerId) {
-        const employerName = employerNames.get(run.legalEmployerId) ?? 'this employer';
-        exceptions.push({
-          ...buildException('HRD_REGISTRATION_UNRECORDED', null, { runId, employerName }),
-          name: employerName,
-        });
-      }
-      if (employerProfileOutcome.kind === 'CHANGED_MID_PERIOD' && run.legalEmployerId) {
-        const employerName = employerNames.get(run.legalEmployerId) ?? 'this employer';
-        exceptions.push({
-          ...buildException('HRD_REGISTRATION_CHANGED_MID_PERIOD', null, {
-            runId,
-            employerName,
-            changedOn: employerProfileOutcome.changedOn.toISOString().slice(0, 10),
-          }),
-          name: employerName,
-        });
+      const hrdRegistrationByEmployer = new Map<
+        string,
+        'MANDATORY_SECTION_14' | 'OPTIONAL_SECTION_15' | 'NOT_REGISTERED' | null
+      >();
+      for (const employerId of employerIdsToResolve) {
+        const outcome = resolveEmployerProfileForPayroll(
+          employerProfileRows
+            .filter((row) => row.legalEmployerId === employerId)
+            .map((row) => ({
+              id: row.id,
+              effectiveFrom: row.effectiveFrom,
+              effectiveTo: row.effectiveTo,
+              hrdRegistration: row.hrdRegistration,
+            })),
+          period,
+          lastDayOfPeriod,
+        );
+        hrdRegistrationByEmployer.set(employerId, outcome.kind === 'RESOLVED' ? outcome.row.hrdRegistration : null);
+        const employerName = employerNames.get(employerId) ?? 'this employer';
+        if (outcome.kind === 'NONE_ON_RECORD') {
+          exceptions.push({
+            ...buildException('HRD_REGISTRATION_UNRECORDED', null, { runId, employerName }),
+            name: employerName,
+          });
+        }
+        if (outcome.kind === 'CHANGED_MID_PERIOD') {
+          exceptions.push({
+            ...buildException('HRD_REGISTRATION_CHANGED_MID_PERIOD', null, {
+              runId,
+              employerName,
+              changedOn: outcome.changedOn.toISOString().slice(0, 10),
+            }),
+            name: employerName,
+          });
+        }
       }
       const periodLabel = period.toLocaleDateString('en-GB', {
         month: 'long',
@@ -1436,6 +1462,12 @@ export class PayrollService {
           ? { deductionsCents: tp1Entry.deductionsCents, zakatSelfPaidCents: tp1Entry.zakatSelfPaidCents }
           : null;
 
+        // The levy follows the employing company: the run's where the run
+        // names one, otherwise the company employing THIS employee — a legacy
+        // run carries none, and its people are no less employed for it.
+        const levyEmployerId = run.legalEmployerId ?? employee.legalEmployerId;
+        const hrdRegistration = levyEmployerId ? (hrdRegistrationByEmployer.get(levyEmployerId) ?? null) : null;
+
         const payslip = computePayslip(
           componentLines,
           statutoryContext,
@@ -1468,10 +1500,10 @@ export class PayrollService {
             qualifyingChildren: classification.qualifyingChildren,
             disabledSelf: classification.disabledSelf,
             disabledSpouse: classification.disabledSpouse,
-            // EMPLOYER-LEVEL CONTEXT FOR THE LEVY, resolved once for the run.
-            // Full-time per PSMB s.2: permanent and contract staff qualify;
-            // part-timers, interns (apprentice contracts are on the
-            // guideline's excluded list) and locums do not.
+            // EMPLOYER-LEVEL CONTEXT FOR THE LEVY, resolved per employing
+            // company above. Full-time per PSMB s.2: permanent and contract
+            // staff qualify; part-timers, interns (apprentice contracts are
+            // on the guideline's excluded list) and locums do not.
             hrdRegistration,
             hrdFullTimeEmployment:
               employee.employmentType === 'PERMANENT' || employee.employmentType === 'CONTRACT',
