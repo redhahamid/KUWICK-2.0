@@ -10,8 +10,13 @@ describe('payroll exceptions', () => {
   it('every catalogue entry names a cause, a consequence and a remedy', () => {
     for (const [code, t] of Object.entries(EXCEPTION_CATALOGUE)) {
       expect(t.code).toBe(code);
-      expect(t.cause({ staffId: 'x', runId: 'r', hours: 1, days: 1, count: 2, percent: 50, net: '-1.00', componentCode: 'X' })).toBeTruthy();
-      expect(t.consequence.length).toBeGreaterThan(20);
+      const ctx = { staffId: 'x', runId: 'r', hours: 1, days: 1, count: 2, percent: 50, net: '-1.00', componentCode: 'X' };
+      expect(t.cause(ctx)).toBeTruthy();
+      // A consequence may be BUILT from the month's own figures — a shortfall
+      // stated in the abstract is one a reader cannot check — so resolve it
+      // the way `buildException` does before judging it.
+      const consequence = typeof t.consequence === 'function' ? t.consequence(ctx) : t.consequence;
+      expect(consequence.length).toBeGreaterThan(20);
       expect(t.remediation.length).toBeGreaterThan(10);
     }
   });
@@ -68,9 +73,13 @@ describe('payroll exceptions', () => {
       /endpoint/i,
       /\bnull\b/i,
     ];
-    const ctx = { staffId: 's1', runId: 'r1', hours: 1, days: 1, count: 2, percent: 50, net: '-1.00', componentCode: 'X', name: 'A', basis: 'DAILY', note: 'n', previousAmount: '1.00', nextAmount: '2.00', changedOn: '2026-09-15', periodLabel: 'September 2026' };
+    const ctx = { staffId: 's1', runId: 'r1', hours: 1, days: 1, count: 2, percent: 50, net: '-1.00', componentCode: 'X', name: 'A', basis: 'DAILY', note: 'n', previousAmount: '1.00', nextAmount: '2.00', changedOn: '2026-09-15', periodLabel: 'September 2026', components: 'Allowance RM250.00', gross: '3450.00', assessedBasis: '3450.00', selectedBasis: '3200.00', difference: '250.00', effectiveFrom: '2026-08-01', selectedBy: 'Dr A', selectionReason: 'contract says basic only', employerName: 'A Sdn Bhd' };
     for (const [code, template] of Object.entries(EXCEPTION_CATALOGUE)) {
-      const sentences = [template.cause(ctx), template.consequence, template.remediation];
+      const sentences = [
+        template.cause(ctx),
+        typeof template.consequence === 'function' ? template.consequence(ctx) : template.consequence,
+        template.remediation,
+      ];
       for (const sentence of sentences) {
         for (const word of ENGINE_WORDS) {
           expect(`${code}: ${sentence}`).not.toMatch(word);

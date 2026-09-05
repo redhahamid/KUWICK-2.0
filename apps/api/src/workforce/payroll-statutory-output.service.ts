@@ -69,7 +69,11 @@ export class PayrollStatutoryOutputService {
       const escape = (value: string | null) =>
         value === null ? '' : /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
       const rows = [
-        ['employee', 'identifier', 'membership_no', 'wages_rm', 'employee_rm', 'employer_rm'].join(','),
+        // `basis_note` is empty for everybody whose wages column is Kuwick's
+        // own assessment, and states the difference for anybody whose employer
+        // selected a lower EPF basis — so the person keying this into the
+        // portal can see which figures are a decision rather than a reading.
+        ['employee', 'identifier', 'membership_no', 'wages_rm', 'employee_rm', 'employer_rm', 'basis_note'].join(','),
         ...block.rows.map((row) =>
           [
             escape(row.name),
@@ -78,6 +82,7 @@ export class PayrollStatutoryOutputService {
             row.wagesCents === null ? '' : (row.wagesCents / 100).toFixed(2),
             row.employeeCents === null ? '' : (row.employeeCents / 100).toFixed(2),
             row.employerCents === null ? '' : (row.employerCents / 100).toFixed(2),
+            escape(row.basisNote),
           ].join(','),
         ),
         // A file whose rows include "not calculated" must not print a smaller
@@ -91,6 +96,7 @@ export class PayrollStatutoryOutputService {
               '',
               `NOT CALCULABLE — ${block.notComputed} employee(s) not calculated`,
               '',
+              '',
             ].join(',')
           : [
               'TOTAL',
@@ -99,6 +105,7 @@ export class PayrollStatutoryOutputService {
               '',
               (block.employeeTotalCents / 100).toFixed(2),
               (block.employerTotalCents / 100).toFixed(2),
+              '',
             ].join(','),
       ];
       return {
@@ -230,7 +237,34 @@ export class PayrollStatutoryOutputService {
       employeeCents: number | null;
       employerCents: number | null;
       note: string | null;
+      /**
+       * EPF only: set where the employer SELECTED a contribution basis below
+       * Kuwick's assessment, so the person keying this listing into KWSP can
+       * see whose wages column is a deliberate selection rather than the
+       * assessed figure. Deliberately NOT the `note` field above — that one
+       * counts rows the run could not calculate, and a selected basis IS
+       * calculated.
+       */
+      basisNote: string | null;
     }
+
+    /**
+     * Whose EPF wages column is an employer SELECTION rather than Kuwick's
+     * assessment — read from the frozen snapshot, never recomputed, so the
+     * listing says the same thing years later that the approved month did.
+     */
+    const basisNoteFor = (scheme: OutputScheme, line: SnapshotPayload['employees'][number]): string | null => {
+      if (scheme !== 'EPF') return null;
+      const basis = line.payslip?.epfBasis;
+      if (!basis || basis.excluded.length === 0) return null;
+      const assessed = (basis.assessedEpfCents / 100).toFixed(2);
+      const applied = (basis.appliedEpfCents / 100).toFixed(2);
+      const difference = ((basis.assessedEpfCents - basis.appliedEpfCents) / 100).toFixed(2);
+      return (
+        `Employer-selected basis RM${applied}; Kuwick assesses RM${assessed} (difference RM${difference}, ` +
+        `excluding ${basis.excluded.map((row) => row.label).join(', ')}).`
+      );
+    };
 
     const buildScheme = (
       scheme: OutputScheme,
@@ -257,6 +291,7 @@ export class PayrollStatutoryOutputService {
             picked.employee === null && picked.employer === null
               ? 'Not calculated for this employee — see the run’s exceptions.'
               : null,
+          basisNote: basisNoteFor(scheme, line),
         };
       });
       // Rows where the scheme genuinely takes nothing (0/0) stay visible: an

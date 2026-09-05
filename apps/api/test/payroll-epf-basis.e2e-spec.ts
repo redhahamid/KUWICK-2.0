@@ -13,7 +13,8 @@ const randomId = () => crypto.randomUUID();
  *
  * One employee, two months, every rule the product requirement names: the
  * selection drives the calculation; the assessment never bends to it; a
- * discrepancy is loud, audited, blocking and non-overridable; the correction
+ * selection below the assessment is an ADVISORY that states every figure and
+ * lets the month proceed, while a missing FACT still blocks; the correction
  * road exists and leaves a truthful trail; approved history is untouchable;
  * a reopen re-opens the question; and the whole thing stays confidential.
  */
@@ -46,9 +47,31 @@ describe('EPF contribution basis (e2e)', () => {
       severity: string;
       staffName: string | null;
       cause: string;
+      consequence: string;
       overridable: boolean;
     }[];
   };
+  /**
+   * The LATEST snapshot version, resolved rather than assumed. July is
+   * approved more than once in this file — once on the employer's selection
+   * and again after the correction — so a hard-coded version number would
+   * silently start asserting against the wrong revision.
+   */
+  const snapshotVersions = async (runId: string): Promise<number[]> => {
+    const res = await request(server())
+      .get(`/workforce/payroll/runs/${runId}/snapshots`)
+      .set('Authorization', bearer)
+      .expect(200);
+    return (res.body as { version: number }[]).map((row) => row.version).sort((a, b) => a - b);
+  };
+  const snapshotAt = async (runId: string, version: number) => {
+    const res = await request(server())
+      .get(`/workforce/payroll/runs/${runId}/snapshots/${version}`)
+      .set('Authorization', bearer)
+      .expect(200);
+    return res.body;
+  };
+
   const recordBasis = (body: Record<string, unknown>) =>
     request(server()).post(`/workforce/employees/${bettyId}/contribution-basis`).set('Authorization', bearer).send(body);
 
@@ -234,7 +257,7 @@ describe('EPF contribution basis (e2e)', () => {
     expect(betty.payslip.epfBasis).toBeUndefined();
   });
 
-  it('a discrepancy month computes ON the selection, names what it leaves out, and can be neither approved nor overridden', async () => {
+  it('a discrepancy month computes ON the selection, states every figure, and CAN still be approved', async () => {
     const run = await request(server())
       .post('/workforce/payroll/runs')
       .set('Authorization', bearer)
@@ -261,29 +284,84 @@ describe('EPF contribution basis (e2e)', () => {
     expect(breakdown.epfBasis.appliedEpfCents).toBe(300000);
     expect(breakdown.epfBasis.excluded.map((row) => row.code)).toEqual(['COMMISSION']);
 
-    // Loud, named, blocking — and not overridable, because s.43 is not a
-    // preference.
+    /*
+     * ADVISORY, NOT BLOCKING — the product decision. The employer chose this
+     * basis deliberately, so the month proceeds; what Kuwick owes the reader
+     * is every figure behind the difference, and the name of whoever chose it.
+     */
     const rows = await exceptionsOf(julyRunId);
     const discrepancy = rows.find((row) => row.code === 'EPF_BASIS_DISCREPANCY');
     expect(discrepancy).toBeDefined();
-    expect(discrepancy?.severity).toBe('BLOCKING');
+    expect(discrepancy?.severity).toBe('WARNING');
     expect(discrepancy?.staffName).toBe('Basis Betty');
-    expect(discrepancy?.cause).toContain('Commission');
-    expect(discrepancy?.cause).toContain('500.00');
-    expect(discrepancy?.overridable).toBe(false);
+    // Gross, assessed, selected, the difference, the components, the date,
+    // the author and their reason — all of it, in the row itself.
+    expect(discrepancy?.cause).toContain('3000.00');
+    expect(discrepancy?.consequence).toContain('Gross earnings RM3700.00');
+    expect(discrepancy?.consequence).toContain('assesses EPF wages of RM3500.00');
+    expect(discrepancy?.consequence).toContain('basis is RM3000.00');
+    expect(discrepancy?.consequence).toContain('difference of RM500.00');
+    expect(discrepancy?.consequence).toContain('Commission RM500.00');
+    expect(discrepancy?.consequence).toContain('2026-07-01');
+    expect(discrepancy?.consequence).toContain('Owner wants EPF on basic only');
+    // And it never claims the selection is lawful.
+    expect(discrepancy?.consequence).toMatch(/does not treat it as meeting the Act/i);
+    expect(discrepancy?.consequence).toMatch(/stays the employer.s to make good/i);
 
-    const approve = await request(server())
-      .patch(`/workforce/payroll/runs/${julyRunId}/approve`)
-      .set('Authorization', bearer)
-      .send({});
-    expect(approve.status).toBe(400);
+    // Nothing blocking stands in the way, and the month approves.
+    const blocking = rows.filter((row) => row.severity === 'BLOCKING');
+    expect(blocking).toEqual([]);
 
-    const override = await request(server())
+    // The advisory may also be acknowledged deliberately, on the record.
+    expect(discrepancy?.overridable).toBe(true);
+    await request(server())
       .patch(`/workforce/payroll/exceptions/${discrepancy?.id}/override`)
       .set('Authorization', bearer)
-      .send({ reason: 'Owner insists' });
-    expect(override.status).toBe(400);
-    expect(override.body.message).toMatch(/cannot be overridden/i);
+      .send({ reason: 'Owner has confirmed the selection is intended' })
+      .expect(200);
+
+    await request(server()).patch(`/workforce/payroll/runs/${julyRunId}/approve`).set('Authorization', bearer).expect(200);
+
+    // The approved record freezes the whole story — including the difference,
+    // which is never quietly resolved — and still verifies.
+    const snap = await request(server())
+      .get(`/workforce/payroll/runs/${julyRunId}/snapshots/1`)
+      .set('Authorization', bearer)
+      .expect(200);
+    expect(snap.body.verification.verdict).toBe('VERIFIED');
+    const betty = snap.body.payload.employees.find((row: { staffId: string }) => row.staffId === bettyId);
+    expect(betty.statutory.epfEmployeeCents).toBe(33000);
+    expect(betty.payslip.epfBasis.mode).toBe('BASIC_ONLY');
+    expect(betty.payslip.epfBasis.assessedEpfCents).toBe(350000);
+    expect(betty.payslip.epfBasis.appliedEpfCents).toBe(300000);
+    expect(betty.payslip.epfBasis.excluded.map((row: { code: string }) => row.code)).toEqual(['COMMISSION']);
+    expect(betty.payslip.epfBasis.selectedBy).toBeTruthy();
+    expect(betty.payslip.epfBasis.selectionReason).toBe('Owner wants EPF on basic only');
+    expect(betty.payslip.epfBasis.effectiveFrom).toBe('2026-07-01');
+
+    // The EPF filing listing names it too, without disturbing the totals.
+    const outputs = await request(server())
+      .get(`/workforce/payroll/runs/${julyRunId}/statutory-outputs`)
+      .set('Authorization', bearer)
+      .expect(200);
+    const epf = outputs.body.schemes.find((block: { scheme: string }) => block.scheme === 'EPF');
+    const bettyRow = epf.rows.find((row: { staffId: string }) => row.staffId === bettyId);
+    expect(bettyRow.basisNote).toContain('Employer-selected basis RM3000.00');
+    expect(bettyRow.basisNote).toContain('Kuwick assesses RM3500.00');
+    expect(epf.employeeTotalCents).not.toBeNull();
+
+    // Other schemes are untouched by an EPF selection.
+    const socso = outputs.body.schemes.find((block: { scheme: string }) => block.scheme === 'SOCSO');
+    const bettySocso = socso.rows.find((row: { staffId: string }) => row.staffId === bettyId);
+    expect(bettySocso.wagesCents).toBe(350000);
+    expect(bettySocso.basisNote).toBeNull();
+
+    // Reopen, so the rest of the file continues from an unapproved month.
+    await request(server())
+      .patch(`/workforce/payroll/runs/${julyRunId}/reopen`)
+      .set('Authorization', bearer)
+      .send({ reason: 'Continuing the basis story' })
+      .expect(200);
   });
 
   it('a mid-month change blocks the month rather than letting Kuwick pick a half', async () => {
@@ -345,12 +423,10 @@ describe('EPF contribution basis (e2e)', () => {
 
     // The approved snapshot preserves the whole story: mode, codes, assessed
     // beside applied, and an empty discrepancy list — verified independently.
-    const snap = await request(server())
-      .get(`/workforce/payroll/runs/${julyRunId}/snapshots/1`)
-      .set('Authorization', bearer)
-      .expect(200);
-    expect(snap.body.verification.verdict).toBe('VERIFIED');
-    const betty = snap.body.payload.employees.find((row: { staffId: string }) => row.staffId === bettyId);
+    const versions = await snapshotVersions(julyRunId);
+    const snap = await snapshotAt(julyRunId, versions[versions.length - 1]);
+    expect(snap.verification.verdict).toBe('VERIFIED');
+    const betty = snap.payload.employees.find((row: { staffId: string }) => row.staffId === bettyId);
     expect(betty.payslip.epfBasis.mode).toBe('BASIC_PLUS_SELECTED');
     expect(betty.payslip.epfBasis.includedCodes).toContain('COMMISSION');
     expect(betty.payslip.epfBasis.assessedEpfCents).toBe(350000);
@@ -377,19 +453,167 @@ describe('EPF contribution basis (e2e)', () => {
     expect(blocking).toEqual([]);
     await request(server()).patch(`/workforce/payroll/runs/${julyRunId}/approve`).set('Authorization', bearer).expect(200);
 
-    const v2 = await request(server())
-      .get(`/workforce/payroll/runs/${julyRunId}/snapshots/2`)
-      .set('Authorization', bearer)
-      .expect(200);
-    const bettyV2 = v2.body.payload.employees.find((row: { staffId: string }) => row.staffId === bettyId);
-    expect(bettyV2.payslip.epfBasis.mode).toBe('ALL_APPLICABLE');
+    // The NEWEST revision holds the new answer; every earlier one still holds
+    // the answer it was approved on, including the employer's own selection.
+    const versions = await snapshotVersions(julyRunId);
+    expect(versions.length).toBeGreaterThanOrEqual(3);
+    const newest = await snapshotAt(julyRunId, versions[versions.length - 1]);
+    const bettyNewest = newest.payload.employees.find((row: { staffId: string }) => row.staffId === bettyId);
+    expect(bettyNewest.payslip.epfBasis.mode).toBe('ALL_APPLICABLE');
+    expect(bettyNewest.payslip.epfBasis.excluded).toEqual([]);
 
-    const v1 = await request(server())
-      .get(`/workforce/payroll/runs/${julyRunId}/snapshots/1`)
+    const first = await snapshotAt(julyRunId, versions[0]);
+    const bettyFirst = first.payload.employees.find((row: { staffId: string }) => row.staffId === bettyId);
+    expect(bettyFirst.payslip.epfBasis.mode).toBe('BASIC_ONLY');
+    expect(bettyFirst.payslip.epfBasis.appliedEpfCents).toBe(300000);
+    // The month approved on a lower basis keeps saying so, for ever.
+    expect(bettyFirst.payslip.epfBasis.excluded.map((row: { code: string }) => row.code)).toEqual(['COMMISSION']);
+    expect(bettyFirst.statutory.epfEmployeeCents).toBe(33000);
+
+    const middle = await snapshotAt(julyRunId, versions[1]);
+    const bettyMiddle = middle.payload.employees.find((row: { staffId: string }) => row.staffId === bettyId);
+    expect(bettyMiddle.payslip.epfBasis.mode).toBe('BASIC_PLUS_SELECTED');
+  });
+
+  it('ALL_APPLICABLE raises no advisory at all — the selected basis IS the assessment', async () => {
+    const rows = await exceptionsOf(julyRunId);
+    expect(rows.filter((row) => row.code === 'EPF_BASIS_DISCREPANCY')).toEqual([]);
+    const line = await lineOf(julyRunId, bettyId);
+    const breakdown = line?.breakdown as {
+      epfBasis: { mode: string; assessedEpfCents: number; appliedEpfCents: number; excluded: unknown[] };
+    };
+    expect(breakdown.epfBasis.mode).toBe('ALL_APPLICABLE');
+    expect(breakdown.epfBasis.appliedEpfCents).toBe(breakdown.epfBasis.assessedEpfCents);
+    expect(breakdown.epfBasis.excluded).toEqual([]);
+  });
+
+  it('every other scheme is untouched by the EPF selection, in the run and at the filing', async () => {
+    // July stands approved from the reopen test above, and an approved month
+    // refuses a basis change — as it must. Reopen it deliberately, which is
+    // the product's own correction road, and leave it open for what follows.
+    await request(server())
+      .patch(`/workforce/payroll/runs/${julyRunId}/reopen`)
       .set('Authorization', bearer)
+      .send({ reason: 'Proving scheme independence on an open month' })
       .expect(200);
-    const bettyV1 = v1.body.payload.employees.find((row: { staffId: string }) => row.staffId === bettyId);
-    expect(bettyV1.payslip.epfBasis.mode).toBe('BASIC_PLUS_SELECTED');
+
+    // Re-select a lower EPF basis and prove ONLY EPF moves. SOCSO, EIS, PCB
+    // and the levy answer to their own Acts, and an EPF preference is not
+    // one of their inputs.
+    const before = await lineOf(julyRunId, bettyId);
+    await recordBasis({
+      scheme: 'EPF',
+      mode: 'BASIC_ONLY',
+      effectiveFrom: '2026-07-01',
+      reason: 'Proving the other schemes do not follow EPF',
+    }).expect(201);
+    await calc(julyRunId);
+    const after = await lineOf(julyRunId, bettyId);
+
+    expect(Number(after?.epfEmployee)).toBeLessThan(Number(before?.epfEmployee));
+    expect(Number(after?.socsoEmployee)).toBe(Number(before?.socsoEmployee));
+    expect(Number(after?.socsoEmployer)).toBe(Number(before?.socsoEmployer));
+    expect(Number(after?.eisEmployee)).toBe(Number(before?.eisEmployee));
+    expect(Number(after?.eisEmployer)).toBe(Number(before?.eisEmployer));
+    expect(Number(after?.hrdLevy)).toBe(Number(before?.hrdLevy));
+    expect(Number(after?.grossPay)).toBe(Number(before?.grossPay));
+    const bases = (after?.breakdown as { bases: { socsoCents: number; eisCents: number } }).bases;
+    expect(bases.socsoCents).toBe(350000);
+    expect(bases.eisCents).toBe(350000);
+    // PCB follows the contribution actually made (K1), which is the one
+    // legitimate onward effect — and it is a tax relief, not another scheme's
+    // base: the PCB REMUNERATION base is unmoved.
+    const pcbBases = (after?.breakdown as { bases: Record<string, number> }).bases;
+    expect(pcbBases.epfCents).toBe(300000);
+  });
+
+  it('an approved month never moves when the basis changes later — prospective only', async () => {
+    // June was approved on the full assessment before any selection existed,
+    // and every July experiment since has left it exactly where it was.
+    const june = await lineOf(juneRunId, bettyId);
+    expect(Number(june?.epfEmployee)).toBe(385);
+    expect(Number(june?.epfEmployer)).toBe(455);
+    const snap = await snapshotAt(juneRunId, 1);
+    expect(snap.verification.verdict).toBe('VERIFIED');
+    const betty = snap.payload.employees.find((row: { staffId: string }) => row.staffId === bettyId);
+    expect(betty.statutory.epfEmployeeCents).toBe(38500);
+    expect(betty.payslip.epfBasis).toBeUndefined();
+  });
+
+  it('a fact that prevents calculation still BLOCKS — a selection is not a substitute for one', async () => {
+    // An employee whose EPF membership is unrecorded cannot have EPF worked
+    // out at all. That is an UNKNOWN, not a decision, and no contribution
+    // basis makes it knowable: the run must refuse.
+    const staff = await withTenantContext(prisma, tenantId, (tx) =>
+      tx.staff.create({ data: { tenantId, role: Role.FRONT_DESK_CLINICAL_STAFF, fullName: 'Unknown Uma', clinicId } }),
+    );
+    await request(server())
+      .post(`/workforce/employees/${staff.id}`)
+      .set('Authorization', bearer)
+      .send({
+        employeeNo: 'UU-1',
+        position: 'Clinic Assistant',
+        employmentType: 'PERMANENT',
+        employmentStatus: 'ACTIVE',
+        startDate: '2024-01-01',
+        dateOfBirth: '1995-05-05',
+      })
+      .expect(201);
+    await request(server())
+      .patch(`/workforce/employees/${staff.id}/legal-employer`)
+      .set('Authorization', bearer)
+      .send({ legalEmployerId: employerId })
+      .expect(200);
+    await request(server())
+      .post(`/workforce/employees/${staff.id}/salary`)
+      .set('Authorization', bearer)
+      .send({ amount: '2500.00', basis: 'MONTHLY', effectiveFrom: '2024-01-01', reason: 'Starting salary' })
+      .expect(201);
+    // A basis IS recorded for her — and changes nothing about the unknown.
+    await request(server())
+      .post(`/workforce/employees/${staff.id}/contribution-basis`)
+      .set('Authorization', bearer)
+      .send({
+        scheme: 'EPF',
+        mode: 'BASIC_ONLY',
+        effectiveFrom: '2026-07-01',
+        reason: 'Selected, but the membership question is still open',
+      })
+      .expect(201);
+
+    await calc(julyRunId);
+    const rows = await exceptionsOf(julyRunId);
+    const blocking = rows.filter((row) => row.severity === 'BLOCKING');
+    expect(blocking.length).toBeGreaterThan(0);
+    expect(blocking.some((row) => row.staffName === 'Unknown Uma')).toBe(true);
+    const approve = await request(server())
+      .patch(`/workforce/payroll/runs/${julyRunId}/approve`)
+      .set('Authorization', bearer)
+      .send({});
+    expect(approve.status).toBe(400);
+  });
+
+  it('a basis naming a component that does not exist is refused — invalid input is not a preference', async () => {
+    const refused = await recordBasis({
+      scheme: 'EPF',
+      mode: 'BASIC_PLUS_SELECTED',
+      includedComponentCodes: ['NOT_A_COMPONENT'],
+      effectiveFrom: '2026-08-01',
+      reason: 'Should be refused',
+    });
+    expect(refused.status).toBe(400);
+    expect(refused.body.message).toMatch(/not a pay component/i);
+
+    // Nor may a deduction be selected as though it were income.
+    const deduction = await recordBasis({
+      scheme: 'EPF',
+      mode: 'BASIC_PLUS_SELECTED',
+      includedComponentCodes: ['ZAKAT'],
+      effectiveFrom: '2026-08-01',
+      reason: 'Should be refused',
+    });
+    expect(deduction.status).toBe(400);
+    expect(deduction.body.message).toMatch(/not an earning/i);
   });
 
   it('pay confidentiality holds: an HR clerk can neither read nor select a contribution basis', async () => {

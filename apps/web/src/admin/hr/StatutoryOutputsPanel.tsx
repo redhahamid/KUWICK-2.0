@@ -15,6 +15,8 @@ interface OutputRow {
   employeeCents: number | null;
   employerCents: number | null;
   note: string | null;
+  /** EPF only: the wages column is an employer selection, not the assessment. */
+  basisNote: string | null;
 }
 
 interface SchemeBlock {
@@ -194,7 +196,20 @@ export function StatutoryOutputsPanel({ runId }: { runId: string }) {
               rows={block.rows}
               emptyText="Nobody in the approved record."
               columns={[
-                { title: 'Employee', dataIndex: 'name' },
+                {
+                  title: 'Employee',
+                  // The name carries the basis note beneath it: whoever keys
+                  // this listing into KWSP has to be able to see which wages
+                  // columns are a deliberate employer selection.
+                  render: (_: unknown, row: OutputRow) => (
+                    <div>
+                      {row.name}
+                      {row.basisNote ? (
+                        <div className="kw-provenance" style={{ color: '#b45309' }}>{row.basisNote}</div>
+                      ) : null}
+                    </div>
+                  ),
+                },
                 {
                   title: 'Membership no.',
                   dataIndex: 'membershipNo',

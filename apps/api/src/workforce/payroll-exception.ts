@@ -20,7 +20,14 @@ export interface ExceptionTemplate {
   /** Whether a permitted actor may pass it with a recorded reason. */
   overridable: boolean;
   cause: (ctx: Record<string, string | number>) => string;
-  consequence: string;
+  /**
+   * What follows from it. A STRING for the overwhelming majority; a builder
+   * where the consequence is only meaningful with the month's own figures in
+   * it — the employer-selected EPF basis has to state gross, the assessment,
+   * the selection and the difference, and a reader cannot check a shortfall
+   * that is described in the abstract.
+   */
+  consequence: string | ((ctx: Record<string, string | number>) => string);
   remediation: string;
   deepLink?: (ctx: Record<string, string | number>) => string;
 }
@@ -311,30 +318,43 @@ export const EXCEPTION_CATALOGUE: Record<string, ExceptionTemplate> = {
       'registered — on the legal employer, then recalculate. "Not registered" is an answer; leaving it blank is not.',
     deepLink: () => '/admin/hr/employers',
   },
-  /**
-   * THE EMPLOYER'S SELECTED EPF BASIS LEAVES ASSESSED WAGES OUT.
+  /*
+   * THE EMPLOYER'S SELECTED EPF BASIS IS LOWER THAN KUWICK'S ASSESSMENT.
    *
-   * Not overridable, deliberately: s.43 of the EPF Act 1991 makes the
-   * contribution due on wages as s.2 defines them, and an employer's
-   * preference cannot reduce a statutory obligation. The preference itself
-   * is preserved — recorded, dated, with the reason and the name of whoever
-   * selected it — and the month computes ON it so the owner can see exactly
-   * what they asked for. What the selection cannot do is get approved.
+   * ADVISORY, not blocking — a deliberate product decision. The employer is
+   * entitled to run their payroll on the basis they have explicitly chosen,
+   * recorded, dated and signed; Kuwick's job is to compute it faithfully, say
+   * plainly and permanently how it differs from the Act as Kuwick reads it,
+   * and let the month proceed. A missing FACT still blocks (see the codes
+   * above): the distinction is a deliberate difference versus an unknown.
+   *
+   * What this must never do is call the selection compliant. The consequence
+   * below states the shortfall in ringgit and says whose liability it remains,
+   * in the same breath as letting the run continue — that is the honest
+   * version of owner control, and the exception survives into the approved
+   * snapshot so the statement cannot be lost afterwards.
    */
   EPF_BASIS_DISCREPANCY: {
     code: 'EPF_BASIS_DISCREPANCY',
-    severity: 'BLOCKING',
-    overridable: false,
+    severity: 'WARNING',
+    overridable: true,
     cause: (c) =>
-      `The selected EPF basis leaves out ${String(c.components)} — RM${String(c.excludedAmount)} of wages Kuwick assesses as EPF-liable.`,
-    consequence:
-      'EPF would be contributed on less than the assessed wages — the employee’s share and the clinic’s. Under ' +
-      'the EPF Act the contribution is due on the wages as the Act defines them, so this is an under-contribution ' +
-      'the employer remains liable for, with the shortfall claimable against the employer later.',
+      `EPF is being contributed on the employer-selected basis of RM${String(c.selectedBasis)}, ` +
+      `RM${String(c.difference)} below the wages Kuwick assesses as EPF-liable.`,
+    consequence: (c) =>
+      `Gross earnings RM${String(c.gross)}. Kuwick assesses EPF wages of RM${String(c.assessedBasis)}; the ` +
+      `employer-selected contribution basis is RM${String(c.selectedBasis)}, a difference of RM${String(c.difference)} ` +
+      `— excluding ${String(c.components)}. Selected from ${String(c.effectiveFrom)} by ${String(c.selectedBy)}: ` +
+      `“${String(c.selectionReason)}”. Both the employee's share and the clinic's are calculated on the ` +
+      'selected basis, so they are lower than Kuwick assesses as due. This is the employer’s decision and it is ' +
+      'recorded as one: Kuwick does not treat it as meeting the Act, and any shortfall against the Act stays the ' +
+      'employer’s to make good.',
     remediation:
-      'Tick the component into the EPF basis (or set the basis back to “All applicable earnings”) and recalculate. ' +
-      'If the component genuinely sits outside EPF wages, that is a fact about the COMPONENT: correct its statutory ' +
-      'treatment in the pay-component catalogue, with the authority reference, and the assessment follows.',
+      'Nothing is required — the month can be approved as it stands. If the difference was not intended, tick the ' +
+      'component into the EPF basis (or set the basis to “All applicable earnings”) and recalculate. If the ' +
+      'component genuinely sits outside EPF wages, that is a fact about the COMPONENT rather than about this ' +
+      'employee: correct its statutory treatment in the pay-component catalogue, with the authority reference, and ' +
+      'Kuwick’s assessment follows.',
     deepLink: (c) => `/admin/hr/employees/${String(c.staffId)}`,
   },
   /** Mirrors a mid-month salary change: either figure looks correct. */
@@ -538,7 +558,7 @@ export function buildException(
     severity: t.severity,
     staffId,
     cause: t.cause(ctx),
-    consequence: t.consequence,
+    consequence: typeof t.consequence === 'function' ? t.consequence(ctx) : t.consequence,
     remediation: t.remediation,
     deepLink: t.deepLink ? t.deepLink(ctx) : null,
     overridable: t.overridable,

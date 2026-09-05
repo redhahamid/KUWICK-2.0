@@ -206,54 +206,99 @@ Two independent layers, on top of the synthetic-month e2e (which re-ran green un
 
 ## 6 · Owner-controlled EPF contribution basis (product change, this cycle)
 
-A deliberate product change landed inside this validation cycle: the clinic owner may now SELECT which of an
-employee's wages EPF is contributed on, without any part of the statutory engine, catalogue, provenance,
-effective dating, exception system, audit trail or fail-closed behaviour being weakened to allow it. Two
-concepts are kept apart on purpose, and the product never lets them blur:
+A deliberate product change landed inside this validation cycle: the clinic owner may SELECT which of an
+employee's wages EPF is contributed on, and that selection is operationally usable — it does not block the
+month. No part of the statutory engine, catalogue, provenance, effective dating, exception system, audit trail
+or fail-closed behaviour was weakened to allow it. Two concepts are kept apart on purpose, and the product
+never lets them blur:
 
 | | Where it lives | Who decides | What it can do |
 | --- | --- | --- | --- |
 | **Kuwick's statutory assessment** | the effective-dated pay-component catalogue, per component, with a verification status and a source reference | the Act, transcribed | decides what EPF wages ARE (s.2) |
 | **The employer's selection** | `employee_contribution_bases` — per employee, per scheme, effective-dated, reasoned, authored, audited | the clinic owner | decides which of those wages they contribute on |
 
-**The selection is an intersection, never an expansion.** Ticking a component the assessment excludes adds
-nothing (it is reported as ineffective, in words, rather than silently dropped); a selection that leaves
-ASSESSED wages out computes exactly what the owner asked for and raises the discrepancy below. The applied
-EPF base can never exceed the assessed one, by construction — and the independent reconciliation asserts it.
+**The selection drives the calculation, and is an intersection rather than an expansion.** Ticking a component
+the assessment excludes adds nothing (it is reported as ineffective, in words, rather than silently dropped);
+a selection that leaves ASSESSED wages out computes exactly what the owner asked for. The applied EPF base can
+never exceed the assessed one, by construction — and the independent reconciliation asserts it.
 
-Worked example from the validated synthetic month (Nurul Hidayah, August 2026 — the beat the pack photographs
-at frames 11–13):
+### Advisory, not blocking
 
-| | Figure | Where it is stated |
+A deliberate employer selection below the assessment raises `EPF_BASIS_DISCREPANCY` at **WARNING** severity.
+The month calculates on the selection, the run can be reviewed, approved and finalised, and the advisory is
+overridable so an owner may acknowledge it explicitly on the record. What Kuwick will not do is describe the
+selection as compliant: the advisory states, verbatim, that Kuwick "does not treat it as meeting the Act, and
+any shortfall against the Act stays the employer's to make good".
+
+The advisory carries every figure the decision rests on — this is the live text from the validated synthetic
+month (Nurul Hidayah, August 2026, frame 11):
+
+> **Nurul Hidayah — EPF is being contributed on the employer-selected basis of RM3200.00, RM250.00 below the
+> wages Kuwick assesses as EPF-liable.**
+> Gross earnings RM3450.00. Kuwick assesses EPF wages of RM3450.00; the employer-selected contribution basis is
+> RM3200.00, a difference of RM250.00 — excluding Fixed monthly allowance RM250.00. Selected from 2026-08-01 by
+> Dr Aisyah Rahman: "UAT — the owner tries contributing on basic salary only". […] Kuwick does not treat it as
+> meeting the Act, and any shortfall against the Act stays the employer's to make good.
+> **What to do:** Nothing is required — the month can be approved as it stands. […]
+
+The run's own gate agrees: `canApprove: true, blocking: 0, warnings: 3`. That month was then approved, paid,
+and filed in the walked world — the pack shows an approved month carrying a deliberate difference, not a
+hypothetical one.
+
+### What still blocks
+
+The distinction is a deliberate difference versus an unknown. Unchanged and re-proven this cycle: a statutory
+figure that could not be worked out at all (missing EPF membership, missing tax profile, missing salary, no
+employing company, no date of birth), a mid-period change of basis or salary or employer class, an unknown
+component, a negative net, an incomplete line at approval, a snapshot integrity failure, and every permission
+and scoping refusal. An e2e test pins the pairing directly: an employee with a recorded basis but an
+unrecorded EPF membership still blocks the run, because a selection is not a substitute for a fact.
+
+### The figures, per mode
+
+| Mode | Applied EPF base | Advisory |
 | --- | --- | --- |
-| Total earnings (gross) | RM3,450.00 — basic 3,200 + fixed allowance 250 | earnings step, register, payslip |
-| Kuwick's statutory EPF assessment | RM3,450.00 — both components are EPF wages by s.2 | pay-component catalogue |
-| Employer-selected basis (the experiment) | Basic salary only → RM3,200.00 | the employee's EPF basis panel |
-| **Discrepancy** | RM250.00 of assessed wages left out — Fixed monthly allowance | run exception, named to the sen |
-| Approval behaviour | BLOCKING and **not overridable**: s.43 does not make the employer's share optional | run cannot be approved |
-| After the correction (basic + allowance) | applied = assessed = RM3,450.00, no discrepancy | month approves |
+| No selection recorded (the default for every employee) | the assessment | none |
+| `ALL_APPLICABLE` | the assessment | none |
+| `BASIC_PLUS_SELECTED`, ticks covering every assessed component | the assessment | none |
+| `BASIC_PLUS_SELECTED`, ticks short of the assessment | basic + ticked assessed earnings | WARNING, naming the gap |
+| `BASIC_ONLY` | basic (less any wage reduction) | WARNING, naming the gap |
 
 Total earnings and the EPF basis reconcile SEPARATELY and are never implied to be equal: the same month has a
-locum-session fee inside gross and outside EPF wages entirely — by the Act, not by anybody's tick. SOCSO, EIS,
-PCB and the HRD levy keep their own bases untouched by an EPF selection; the resident's MTD follows the
-contribution actually made (K1 on the applied base), which is the only defensible reading of the relief.
+locum-session fee inside gross and outside EPF wages entirely — by the Act, not by anybody's tick. The
+payslip's EPF note states the basis the contribution sits on, and says when it is below the assessment.
 
-**Historical snapshots.** A basis is refused into any month an approved run covers (same guard as a salary
-change), so today's selection cannot reprice a paid month. Each approved snapshot freezes the mode, the codes
-that governed, the assessed figure beside the applied one, and the exclusion list; `verifySnapshot` refuses
-any approved record carrying a non-empty exclusion list, so a bypassed gate would be caught by the verifier
-rather than believed. A reopen re-opens the question and revision 2 freezes the new answer while revision 1
-keeps serving payslips and filings — proven end to end in the e2e suite.
+### Every other scheme is untouched
 
-**Correction road.** What is recorded from a day replaces the recorded story from that day on: rows starting
-on or after it are superseded — closed into empty intervals that resolution ignores and history keeps — so a
-selection tried, blocked and reverted leaves a truthful trail instead of a permanently blocked month. A basis
-that genuinely changes part-way through a period blocks that month exactly as a mid-month salary or HRD-class
-change does.
+SOCSO, EIS, PCB and the HRD levy keep their own bases; an e2e test re-selects a lower EPF basis and asserts
+each of their figures is byte-identical before and after. The one legitimate onward effect is PCB's K1 relief,
+which follows the contribution actually made — the relief is the contribution, so a smaller contribution is a
+smaller relief. The PCB remuneration base itself does not move.
 
-**Architecture.** The row is scheme-keyed and only EPF accepts a selection today; SOCSO, EIS, PCB, HRD and
-LINDUNG deliberately do NOT inherit the same three choices, because each scheme's base is its own Act's
-question. Extending it anywhere else is a decision to be taken on that scheme's own legal footing.
+### Snapshots, history and audit
+
+A basis is refused into any month an approved run covers (same guard as a salary change), so today's selection
+cannot reprice a paid month — pinned by a test that re-reads June after every July experiment. Each approved
+snapshot freezes the mode, the codes that governed, the assessed figure beside the applied one, the exclusion
+list, and **who selected it, from when, and why**. The difference is preserved rather than resolved: an
+approved month that ran on a lower basis keeps saying so for ever, and `verifySnapshot` no longer treats that
+as corruption (the rule written when the discrepancy was blocking has been removed). A reopen re-opens the
+question; revision 2 freezes the new answer while revision 1 keeps serving payslips and filings, and both are
+readable side by side.
+
+### Identifying divergence without blocking
+
+The run's exception centre and exceptions report list every affected employee by name. At filing time the EPF
+listing — the document a clinic keys into KWSP — flags the row itself: "Employer-selected basis RM3200.00;
+Kuwick assesses RM3450.00 (difference RM250.00, excluding Fixed monthly allowance)", on screen (frame 30) and
+as a `basis_note` column in the downloadable CSV. It is deliberately not the `note` field that counts
+uncalculated rows, so scheme totals are unaffected.
+
+### Architecture
+
+The row is scheme-keyed and only EPF accepts a selection today; SOCSO, EIS, PCB, HRD and LINDUNG deliberately
+do NOT inherit the same three choices, because each scheme's base is its own Act's question. Extending it
+anywhere else is a decision to be taken on that scheme's own legal footing.
 
 ## 7 · Remaining statutory gaps, by design (fail closed, named in the registry)
 
@@ -279,8 +324,8 @@ Unchanged from P1, plus the two newly declared:
 
 | Suite | Result |
 | --- | --- |
-| API unit (`npx jest`) | 125 suites, 2,696 tests — all green |
-| API integration (`jest-e2e`, serial) | 32 suites, 358 tests — all green, including the `payroll-final-validation` negative suite (15), the `payroll-epf-basis` suite (11) and the synthetic month |
+| API unit (`npx jest`) | 125 suites, 2,697 tests — all green |
+| API integration (`jest-e2e`, serial) | 32 suites, 363 tests — all green, including the `payroll-final-validation` negative suite (15), the `payroll-epf-basis` suite (16) and the synthetic month |
 | Web (`vitest run`) | 98 files, 1,699 tests — all green |
 | Typechecks (api `tsc --noEmit`, web `tsc -b`, seed `typecheck:seed`) | clean |
 | Root Playwright `admin-hr` journey (freshly seeded world, `CHROME_PATH` chromium) | 5/5 green |

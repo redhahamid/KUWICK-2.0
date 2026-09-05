@@ -229,12 +229,15 @@ async function desktopWalk(page: Page): Promise<{ runId: string | null; approved
   await capture(page, 'step5-review-clean', 'Step 5 — review with nothing left blocking');
 
   /*
-   * 5b · THE OWNER-SELECTED EPF BASIS — the experiment, the block, the road
-   * back. The owner tries "basic salary only" for the senior clinic
-   * assistant; the month goes loud with a statutory discrepancy nobody can
-   * override; recording the intended selection from the intended day clears
-   * it. The resident doctor's seeded clean selection captions her deductions
-   * row throughout.
+   * 5b · THE OWNER-SELECTED EPF BASIS — chosen, advised, and carried through.
+   * The owner puts the senior clinic assistant's EPF on basic salary only;
+   * Kuwick computes exactly that, states the difference against its own
+   * assessment in full — and lets the month be approved, because the
+   * selection is the employer's to make. The selection STAYS in force
+   * through approval, payment and the statutory listing, so the pack shows
+   * what an approved month carrying a deliberate difference actually looks
+   * like. The resident doctor's seeded selection, which matches the
+   * assessment, captions her row alongside.
    */
   const journeyForBasis = await api<{ pay: { rows: { staffId: string; name: string }[] } }>(
     'GET',
@@ -253,7 +256,7 @@ async function desktopWalk(page: Page): Promise<{ runId: string | null; approved
     await capture(
       page,
       'epf-basis-discrepancy',
-      'EPF basis — the selection leaves assessed wages out: blocking, named to the sen, not overridable',
+      'EPF basis — the selection sits below Kuwick’s assessment: an advisory stating gross, assessed, selected, the difference and who chose it; the month can still be approved',
     );
     await go(page, `/admin/hr/employees/${nurul.staffId}`);
     await page.getByText('Salary', { exact: true }).first().click().catch(() => {});
@@ -262,21 +265,13 @@ async function desktopWalk(page: Page): Promise<{ runId: string | null; approved
     await capture(
       page,
       'epf-basis-panel',
-      'EPF basis panel — the selection in words, the assessment beside every tick, the consequence said before saving',
+      'EPF basis panel — the selection in words, since when, by whom and why; the dated history a payroll run resolves against',
     );
-    await api('POST', `/workforce/employees/${nurul.staffId}/contribution-basis`, {
-      scheme: 'EPF',
-      mode: 'BASIC_PLUS_SELECTED',
-      includedComponentCodes: ['ALLOWANCE'],
-      effectiveFrom: `${period}-01`,
-      reason: 'UAT — corrected: EPF on basic and the fixed allowance, everything the assessment marks liable',
-    });
-    await api('PATCH', `/workforce/payroll/runs/${run.id}/calculate`);
     await go(page, `/admin/hr/payroll/${run.id}?step=deductions`);
     await capture(
       page,
       'epf-basis-selected-row',
-      'Deductions — the row says which EPF basis governs it; the detour survives only in the basis history',
+      'Deductions — the row names the basis its EPF sits on and the assessed figure beside it, in amber: a decision, not a fault',
     );
   }
 

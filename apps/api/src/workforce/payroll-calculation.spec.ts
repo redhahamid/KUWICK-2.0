@@ -791,6 +791,32 @@ describe('the employer-selected EPF basis — a preference, never an assessment'
     expect(slip.epfBasis?.excluded).toEqual([{ code: 'COMMISSION', label: 'COMMISSION', amountCents: 50000 }]);
   });
 
+  it('the payslip note names the basis the contribution sits on, so gross is never read as the EPF base', () => {
+    const selected = computePayslip(LINES(), CTX, under60, undefined, null, {
+      mode: 'BASIC_ONLY',
+      includedComponentCodes: [],
+    });
+    // RM3,700 of earnings, EPF on RM3,000 — the slip says which, and says the
+    // assessment is higher. It does not editorialise beyond the two figures.
+    expect(selected.grossCents).toBe(370000);
+    expect(selected.statutory.epf.note).toContain('RM3000.00');
+    expect(selected.statutory.epf.note).toContain('basic salary only');
+    expect(selected.statutory.epf.note).toContain('below the RM3500.00 Kuwick assesses');
+
+    // A selection that matches the assessment states the basis and stops —
+    // there is no difference to report.
+    const matching = computePayslip(LINES(), CTX, under60, undefined, null, {
+      mode: 'BASIC_PLUS_SELECTED',
+      includedComponentCodes: ['COMMISSION'],
+    });
+    expect(matching.statutory.epf.note).toContain('RM3500.00');
+    expect(matching.statutory.epf.note).not.toContain('below');
+
+    // No selection: the note is the Schedule's own sentence, untouched.
+    const assessed = computePayslip(LINES(), CTX, under60);
+    expect(assessed.statutory.epf.note).not.toContain('employer-selected');
+  });
+
   it('the statutory result computes ON the applied base — the MTD chain follows the contribution actually made', () => {
     const slip = computePayslip(LINES(), CTX, under60, undefined, null, {
       mode: 'BASIC_ONLY',

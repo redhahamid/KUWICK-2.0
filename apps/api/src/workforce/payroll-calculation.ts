@@ -552,6 +552,30 @@ export function computePayslip(
     .reduce((sum, line) => sum + toCents(line.amount), 0);
   const statutory = computeStatutory(statutoryBases, context, profile, ytd, zakatThisMonthCents, tp1);
 
+  /*
+   * THE PAYSLIP MUST NOT IMPLY THAT GROSS IS THE EPF BASE.
+   *
+   * Where the employer selected a basis, the EPF note says which wages the
+   * contribution actually sits on, and — when that is below Kuwick's own
+   * assessment — says so in the same sentence. This is the one place the
+   * difference reaches the person whose contribution it is, so it states the
+   * fact and attributes nothing: whether the selection is right is the
+   * advisory's business, on the run.
+   */
+  if (epfBasis && epfBasis.mode !== 'ALL_APPLICABLE' && statutory.epf.employeeCents !== null) {
+    const applied = (epfBasis.appliedEpfCents / 100).toFixed(2);
+    const assessed = (epfBasis.assessedEpfCents / 100).toFixed(2);
+    const selected =
+      epfBasis.mode === 'BASIC_ONLY'
+        ? 'basic salary only'
+        : 'basic salary and the selected additional income';
+    statutory.epf.note =
+      `${statutory.epf.note ?? ''} Contributed on the employer-selected basis of RM${applied} (${selected})` +
+      (epfBasis.excluded.length > 0
+        ? `, which is below the RM${assessed} Kuwick assesses as EPF wages for this month.`
+        : '.');
+  }
+
   // LINDUNG is EMPLOYEE-borne and EMPLOYER-remitted — both statements are only
   // true at once if the contribution is withheld from pay. It used to be
   // recorded on the line and left out of this sum, so a participating

@@ -775,8 +775,14 @@ export class PayrollService {
       const basisRows = await tx.employeeContributionBasis.findMany({
         where: { staffId: { in: employees.map((e) => e.staffId) }, scheme: 'EPF' },
         orderBy: { effectiveFrom: 'asc' },
+        include: { createdBy: { select: { fullName: true } } },
       });
       const basisByStaff = new Map<string, ContributionBasisRow[]>();
+      // WHO CHOSE IT, WHEN, AND WHY — carried beside the resolution because a
+      // selection that departs from the assessment has to be attributable on
+      // the run itself, not only in an audit table somebody has to go and
+      // find. Frozen into the line and the snapshot further down.
+      const basisProvenance = new Map<string, { reason: string | null; selectedBy: string | null }>();
       for (const row of basisRows) {
         const list = basisByStaff.get(row.staffId) ?? [];
         list.push({
@@ -787,6 +793,10 @@ export class PayrollService {
           effectiveTo: row.effectiveTo,
         });
         basisByStaff.set(row.staffId, list);
+        basisProvenance.set(row.id, {
+          reason: row.reason,
+          selectedBy: row.createdBy?.fullName ?? null,
+        });
       }
 
       // them. Loaded once for the run, resolved per employee below.
@@ -1565,17 +1575,33 @@ export class PayrollService {
         );
 
         /*
-         * THE STATUTORY DISCREPANCY, where the selection left assessed wages
-         * out. Blocking and NOT overridable: s.43 does not make the employer
-         * share optional, so a preference that under-contributes is preserved
-         * on the record and stops the month — never waved through.
+         * THE STATUTORY DISCREPANCY, where the employer's selection sits below
+         * Kuwick's assessment. ADVISORY: the owner is entitled to run on the
+         * basis they explicitly recorded, so this states the difference in
+         * full — gross, assessed, selected, the gap, the components, and who
+         * chose it when and why — and lets the month proceed. It never says
+         * the selection is compliant, and it rides into the snapshot so the
+         * statement survives with the approved record.
          */
         if (payslip.epfBasis && payslip.epfBasis.excluded.length > 0) {
+          const provenance =
+            basisOutcome.kind === 'RESOLVED' ? basisProvenance.get(basisOutcome.row.id) : undefined;
           raise('EPF_BASIS_DISCREPANCY', employee, {
-            components: payslip.epfBasis.excluded.map((row) => row.label).join(', '),
-            excludedAmount: fromCents(
-              payslip.epfBasis.excluded.reduce((sum, row) => sum + row.amountCents, 0),
+            components: payslip.epfBasis.excluded
+              .map((row) => `${row.label} RM${fromCents(row.amountCents).toFixed(2)}`)
+              .join(', '),
+            gross: fromCents(payslip.grossCents).toFixed(2),
+            assessedBasis: fromCents(payslip.epfBasis.assessedEpfCents).toFixed(2),
+            selectedBasis: fromCents(payslip.epfBasis.appliedEpfCents).toFixed(2),
+            difference: fromCents(
+              payslip.epfBasis.assessedEpfCents - payslip.epfBasis.appliedEpfCents,
             ).toFixed(2),
+            effectiveFrom:
+              basisOutcome.kind === 'RESOLVED'
+                ? basisOutcome.row.effectiveFrom.toISOString().slice(0, 10)
+                : 'an unrecorded date',
+            selectedBy: provenance?.selectedBy ?? 'somebody no longer on the staff list',
+            selectionReason: provenance?.reason ?? 'no reason recorded',
           });
         }
 
@@ -1788,6 +1814,22 @@ export class PayrollService {
                       excluded: payslip.epfBasis.excluded,
                       ineffective: payslip.epfBasis.ineffective,
                       basisRowId: basisOutcome.kind === 'RESOLVED' ? basisOutcome.row.id : null,
+                      // Attribution, frozen with the figures it explains: a
+                      // month approved on a selection lower than the
+                      // assessment must still name who chose it, from when,
+                      // and why — years later, from the record alone.
+                      effectiveFrom:
+                        basisOutcome.kind === 'RESOLVED'
+                          ? basisOutcome.row.effectiveFrom.toISOString().slice(0, 10)
+                          : null,
+                      selectedBy:
+                        (basisOutcome.kind === 'RESOLVED'
+                          ? basisProvenance.get(basisOutcome.row.id)?.selectedBy
+                          : null) ?? null,
+                      selectionReason:
+                        (basisOutcome.kind === 'RESOLVED'
+                          ? basisProvenance.get(basisOutcome.row.id)?.reason
+                          : null) ?? null,
                     },
                   }
                 : {}),

@@ -553,10 +553,16 @@ function DeductionsStep({ data }: { data: PayrollJourney }) {
                     {row.epfBasis && row.epfBasis.mode !== 'ALL_APPLICABLE' ? (
                       row.epfBasis.excluded.length > 0 ? (
                         <Tooltip
-                          title={`Kuwick assesses EPF wages of RM${row.epfBasis.assessed}. The selected basis leaves out ${row.epfBasis.excluded.map((x) => x.label).join(', ')} — this blocks approval.`}
+                          title={`Kuwick assesses EPF wages of RM${row.epfBasis.assessed}; the employer-selected basis is RM${row.epfBasis.applied}, leaving out ${row.epfBasis.excluded.map((x) => x.label).join(', ')}. The month can still be approved — see the advisory on the review step for who selected it and why.`}
                         >
-                          <div className="kw-provenance" style={{ color: '#b42318' }}>
-                            EPF on {ringgit(row.epfBasis.applied)} — selection leaves wages out
+                          {/*
+                            * AMBER, NOT RED. A deliberate employer selection is
+                            * not a fault in the month: it is a decision, and
+                            * the row states it with the assessed figure beside
+                            * it rather than dressing it as a blocker.
+                            */}
+                          <div className="kw-provenance" style={{ color: '#b45309' }}>
+                            EPF on {ringgit(row.epfBasis.applied)} — selected basis, RM{row.epfBasis.assessed} assessed
                           </div>
                         </Tooltip>
                       ) : (

@@ -10,9 +10,9 @@
 - 08-step3-earnings.png — Step 3 — earnings: server figures only, every column the gross contains
 - 09-step4-deductions.png — Step 4 — deductions: EPF/SOCSO/EIS, LINDUNG apart, PCB with its source
 - 10-step5-review-clean.png — Step 5 — review with nothing left blocking
-- 11-epf-basis-discrepancy.png — EPF basis — the selection leaves assessed wages out: blocking, named to the sen, not overridable
+- 11-epf-basis-discrepancy.png — EPF basis — the selection sits below Kuwick’s assessment: an advisory stating gross, assessed, selected, the difference and who chose it; the month can still be approved
 - 12-epf-basis-panel.png — EPF basis panel — the selection in words, the assessment beside every tick, the consequence said before saving
-- 13-epf-basis-selected-row.png — Deductions — the row says which EPF basis governs it; the detour survives only in the basis history
+- 13-epf-basis-selected-row.png — Deductions — the row names the basis its EPF sits on and the assessed figure beside it, in amber: a decision, not a fault
 - 14-step6-approve.png — Step 6 — the approval, its rule named, nothing overstated
 - 15-approved.png — Approved — the frozen, hashed record; the month is now a fact
 - 16-payslips-panel.png — Payslips — issued only from the approved snapshot, revision named

@@ -30,15 +30,20 @@ interface BasisHistory {
 
 /**
  * WHICH WAGES EPF IS CONTRIBUTED ON — the employer's selection, beside the
- * statutory assessment it is judged against.
+ * statutory assessment it is compared against.
  *
  * Two different statements share this panel and are never allowed to blur:
  * the CATALOGUE says which components ARE EPF wages (that is the assessment,
  * edited on the pay-components screen with a source and a verification
  * status); this panel records which of those wages the employer has CHOSEN
- * to contribute on. A choice that leaves assessed wages out is stored
- * faithfully, shown as a discrepancy, and blocks the month at approval — the
- * form says so before the save, not after the surprise.
+ * to contribute on.
+ *
+ * A choice that leaves assessed wages out is the employer's to make: it is
+ * computed faithfully and the month can be approved. What it is never
+ * allowed to be is silent or flattering — the difference is shown here
+ * before the save, raised as an advisory on every month it touches, and
+ * frozen into the approved record with the name of whoever chose it. Kuwick
+ * does not call it compliant, and does not stand in the way.
  */
 export function EpfBasisPanel({ staffId, canSeePay }: { staffId: string; canSeePay: boolean }) {
   const { message } = App.useApp();
@@ -106,7 +111,7 @@ export function EpfBasisPanel({ staffId, canSeePay }: { staffId: string; canSeeP
   return (
     <AdminSection
       title="EPF contribution basis"
-      description="Which of this employee's wages EPF is contributed on. Kuwick's statutory assessment stays separate: choosing to leave assessed wages out is recorded as the employer's selection, shows as a discrepancy, and blocks the month's approval."
+      description="Which of this employee's wages EPF is contributed on. Kuwick's statutory assessment stays separate: choosing to leave assessed wages out is recorded as the employer's selection and raises an advisory on the month — payroll still runs, and Kuwick does not treat the selection as statutory compliance."
       actions={
         mayManage ? (
           <Button size="small" onClick={openForm}>
@@ -241,8 +246,9 @@ export function EpfBasisPanel({ staffId, canSeePay }: { staffId: string; canSeeP
             <AdminNotice tone="warn">
               <strong>This selection leaves out {preview.excludedLiable.map((c) => c.label).join(', ')}</strong> —
               wages Kuwick assesses as EPF-liable. Any month that pays {preview.excludedLiable.length === 1 ? 'it' : 'them'}{' '}
-              will show a statutory discrepancy and cannot be approved while it stands. The selection is still recorded,
-              as yours.
+              will contribute EPF on the lower figure and show an advisory naming the difference. Payroll can still be
+              approved: this is your decision, recorded as yours, with your name and reason on it. Kuwick does not treat
+              it as meeting the Act, and any shortfall against the Act stays the employer's to make good.
             </AdminNotice>
           ) : null}
           {preview.ineffective.length > 0 ? (
