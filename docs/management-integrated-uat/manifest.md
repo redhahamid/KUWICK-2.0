@@ -1,0 +1,42 @@
+- 01-admin-home.png — Administration — the Management landing and its five areas
+- 02-operation-overview.png — Operation — visits, patients, mix and workload for the period
+- 03-operation-doctors.png — Operation — provider workload, described rather than ranked punitively
+- 04-operation-patients.png — Operation — new vs returning and the patient-flow view
+- 05-operation-procedures.png — Operation — service and procedure volume
+- 06-operation-wait-times.png — Operation — waiting-time indicators and their coverage
+- 07-stock-overview.png — Stock — the inventory position and what needs attention
+- 08-stock-items.png — Stock — the item master with unit and balance
+- 09-stock-movements.png — Stock — the movement ledger: every quantity change with its cause
+- 10-stock-purchase-orders.png — Stock — purchase orders and their receiving state
+- 11-stock-near-expiry.png — Stock — batch and expiry watch (FEFO support)
+- 12-stock-valuation.png — Stock — valuation, stating its costing method rather than implying precision
+- 13-stock-take.png — Stock — stock takes and the variance they record
+- 14-panel-workspace.png — Panel — the claim workspace: what is claimable, claimed, awaiting and outstanding
+- 15-panel-companies.png — Panel — the panel master
+- 16-panel-configuration.png — Panel — fee treatment: withheld, added, none, or deliberately unconfigured
+- 17-panel-batches.png — Panel — claim batches and their submission record
+- 18-hr-today.png — HR — the day at a glance
+- 19-hr-employees.png — HR — the employee directory, deliberately without a salary column
+- 20-hr-attendance.png — HR — timesheets, with unapproved overtime shown apart and unpaid
+- 21-hr-leave.png — HR — leave and its balances
+- 22-hr-claims.png — HR — staff claims and their payment route
+- 23-hr-incentives.png — HR — doctor incentives
+- 24-hr-locum.png — HR — locum sessions
+- 25-hr-roster.png — HR — the roster
+- 26-hr-payroll-home.png — HR → Payroll — the month, and what it needs before anybody is paid
+- 27-hr-reports.png — HR → Payroll — the report catalogue
+- 28-finance-overview.png — Finance — the overview: billed, collected, and what is still owed
+- 29-finance-sales.png — Finance — sales, cash vs panel
+- 30-finance-payments.png — Finance — collections and their tender
+- 31-finance-receivables.png — Finance — patient receivables
+- 32-finance-panel-money.png — Finance — the panel position, consumed from Panel rather than recomputed
+- 33-finance-day-end.png — Finance — day end: counted, closed, reopenable with a reason
+- 34-finance-payables.png — Finance — supplier payables from procurement
+- 35-finance-credit-notes.png — Finance — credit notes
+- 36-finance-profitability.png — Finance — profitability, and what it does not claim to include
+- 37-tablet-admin-home.png — iPad — the Management landing
+- 38-tablet-operation.png — iPad — Operation
+- 39-tablet-stock.png — iPad — Stock
+- 40-tablet-panel.png — iPad — Panel
+- 41-tablet-hr-payroll.png — iPad — HR → Payroll
+- 42-tablet-finance.png — iPad — Finance

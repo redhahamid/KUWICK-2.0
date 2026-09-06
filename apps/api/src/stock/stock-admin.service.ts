@@ -310,15 +310,16 @@ export class StockAdminService {
       case 'slow-moving': {
         const cutoff = new Date(now.getTime() - SLOW_MOVING_DAYS * 86400000);
         const rows = await this.prisma.$queryRaw<
-          { item_id: string; clinic_id: string; quantity_on_hand: number; name: string; code: string | null; cost: string | null; last_dispensed: Date | null }[]
+          { item_id: string; clinic_id: string; clinic_name: string; quantity_on_hand: number; name: string; code: string | null; cost: string | null; last_dispensed: Date | null }[]
         >`
-          SELECT sl."item_id", sl."clinic_id", sl."quantity_on_hand",
+          SELECT sl."item_id", sl."clinic_id", c."name" AS clinic_name, sl."quantity_on_hand",
                  i."name", i."code", i."cost",
                  (SELECT MAX(sm."created_at") FROM "stock_movements" sm
                    WHERE sm."item_id" = sl."item_id" AND sm."clinic_id" = sl."clinic_id"
                      AND sm."movement_type" = 'DISPENSED') AS last_dispensed
           FROM "stock_levels" sl
           JOIN "items" i ON i."id" = sl."item_id"
+          JOIN "clinics" c ON c."id" = sl."clinic_id"
           WHERE sl."quantity_on_hand" > 0
             ${branchClause(scope, clinicId, "sl")}
             AND NOT EXISTS (
@@ -332,6 +333,10 @@ export class StockAdminService {
         return rows.map((row) => ({
           itemId: row.item_id,
           clinicId: row.clinic_id,
+          // Slow movers are one row per item PER BRANCH. Without the branch's
+          // name the board showed the same item twice with no way to tell the
+          // two apart — the column exists and simply had nothing to render.
+          clinicName: row.clinic_name,
           itemName: row.name,
           itemCode: row.code,
           quantityOnHand: Number(row.quantity_on_hand),

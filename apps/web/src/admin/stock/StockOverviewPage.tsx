@@ -170,7 +170,19 @@ function ExceptionRowsTable({
     <DataTable
       rows={rows.data as never}
       loading={rows.isLoading}
-      rowKey={(row) => String((row as { itemId?: string; batchId?: string }).batchId ?? (row as { itemId?: string }).itemId)}
+      /*
+       * THE KEY MUST CARRY EVERY DIMENSION THAT MAKES A ROW DISTINCT.
+       *
+       * It was `batchId ?? itemId`, and the slow-movers view is one row per
+       * ITEM PER BRANCH: the same discontinued syrup sitting at two branches
+       * produced two rows with one key, so React was free to omit one of them
+       * and an entire branch's stock could disappear from the board without a
+       * word. Branch and batch both belong in the identity.
+       */
+      rowKey={(row) => {
+        const r = row as { itemId?: string; batchId?: string; clinicId?: string };
+        return [r.itemId, r.clinicId, r.batchId].filter(Boolean).join(':');
+      }}
       exportName={`stock-${view}`}
       searchFields={['itemName' as never, 'itemCode' as never, 'clinicName' as never]}
       searchPlaceholder="Search item or branch…"
