@@ -3,7 +3,7 @@
 The record of converging Operation, Stock, Panel, HR, Payroll and Finance into one Management build,
 validating it, and preparing it for owner UAT.
 
-**Convergence SHA:** see §9 · **Payroll checkpoint honoured:** `393ebb9` is an ancestor of this build ·
+**Convergence SHA:** `3661e3b` (§13) · **Payroll checkpoint honoured:** `393ebb9` is an ancestor of this build ·
 **Screenshots:** `docs/management-integrated-uat/` (43) and `docs/payroll-final-uat/` (46) ·
 **Owner guide:** `docs/KUWICK_MANAGEMENT_A_TO_Z_USER_UAT_GUIDE.md`
 
@@ -251,6 +251,34 @@ proof and is not claimed as such.
 1. Both services' **Source** branch is the branch this build was pushed to.
 2. A new deployment started, and its build log ends in success rather than a restart loop.
 3. `GET /health` on the API returns `{"status":"ok","database":"connected","build":"<sha>"}` and the SHA
-   matches §9's convergence SHA.
+   matches `3661e3b` (§13).
 4. The web service loads and reaches the API (CORS_ORIGINS must name the web origin).
 5. The UAT clinic is seeded (`seed-admin-uat`), or seed it per `docs/STAGING_DEPLOYMENT.md`.
+
+## 13 · The convergence SHA, and what was pushed where
+
+| | |
+| --- | --- |
+| **Convergence SHA** | `3661e3b6faf4c2035f88d44b1209afcd388ac2da` |
+| **Short** | `3661e3b` |
+| **Contains** | `a8d6cba` (previous `master`) and `393ebb9` (the payroll checkpoint), both as strict ancestors |
+
+Pushed to three refs, each a **fast-forward**. No force push, no history rewritten, nothing deleted:
+
+| Ref | Was | Now |
+| --- | --- | --- |
+| `master` | `a8d6cba` | `3661e3b` |
+| `claude/kuwick-malaysia-payroll-prod-7vfncl` (the trunk this was built on) | `b5d4f5b` | `3661e3b` |
+| `claude/malaysia-payroll-final-validation-h1h6xi` (this session's designated branch) | `393ebb9` | `3661e3b` |
+
+`master` is the owner-visible UAT line for this repository (§12), and it was strictly behind the converged
+build, so bringing it up to date only adds commits.
+
+A document cannot carry its own hash, so the three refs above moved once more, by one commit, to add this
+section. `git log -1` on any of them is the authority on the tip; `3661e3b` is the build every figure,
+frame and test result in this checkpoint was produced from, and this section is the only change after it.
+
+**What this section does NOT claim.** That a deployment happened. Git push is not deployment proof, and the
+Railway dashboard, its API and the deployed hosts are unreachable from the container this work was done in
+(§12). The Railway API status, the Railway web status, the SHA actually running and the live UAT URL are
+**unverified**, and the owner has to confirm them in the Railway dashboard using the five checks in §12.
