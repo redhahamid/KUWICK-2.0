@@ -12,6 +12,14 @@ yourself rather than taking a report's word for it.
 accounts (`finance@`, `stock@`, `panel@`, same password) exist so permission
 boundaries can be checked from the other side.
 
+These flows are written against the **local** Management fixture
+(`seed-admin-uat.ts`, clinic "Klinik Contoh (UAT)", two branches). A Railway UAT
+deployment is seeded by `seed-staging-uat.ts` instead — different clinic, single
+branch, and the owner there is `owner@uat.kuwick.invalid`. Check the clinic name
+in the header before concluding a credential is broken; the
+[Management A–Z guide](./KUWICK_MANAGEMENT_A_TO_Z_USER_UAT_GUIDE.md#1-before-you-start)
+has the full table.
+
 **Every figure below is synthetic.** The seeded clinic is fictional and none of
 it comes from the workbooks; see
 [`MIGRATION_AND_IMPORT_SAFETY.md`](./MIGRATION_AND_IMPORT_SAFETY.md).

@@ -122,6 +122,35 @@ responsibility splits.
 To choose the password rather than have one generated, add
 `STAGING_SEED_PASSWORD=...` to that command. It is printed once either way.
 
+The five accounts are `owner@`, `frontdesk@`, `finance@`, `doctor@` and `stock@`
+at `uat.kuwick.invalid`, and **one password covers all five** — so if any of them
+signs in, the owner's does too. `owner@uat.kuwick.invalid` is the only one that
+can open Management (Operation, Stock, Panel, HR, Payroll, Finance); `doctor@`
+is correctly refused every one of them, which reads as a broken deployment if
+you are signed in as the doctor without realising it.
+
+#### Lost the password? Reset the OWNER only — never re-run the seed
+
+Re-running `seed:staging` resets all five passwords, but it also rebuilds
+patients, visits, invoices and stock positions on the way past. Doing that
+mid-UAT erases the findings the round exists to produce.
+
+```bash
+railway run --service kuwick-api \
+  bash -c 'KUWICK_UAT_OWNER_RESET=yes UAT_OWNER_PASSWORD="<choose one>" \
+           npm run reset:uat-owner --workspace=apps/api'
+```
+
+`prisma/reset-uat-owner.ts` writes exactly two rows — the owner's `users` row and
+the `staff` row behind it — inside one transaction, creating the account if it is
+missing and otherwise only resetting its password, its `active` flag and its
+`OWNER_ADMIN` role. It deletes nothing, reads no patient, and leaves every other
+account's password alone. It refuses to run unless `KUWICK_UAT_OWNER_RESET=yes`,
+refuses any address outside the reserved `.invalid` TLD, and refuses outright if
+the database holds a tenant that is not marked synthetic. Omit
+`UAT_OWNER_PASSWORD` and it generates one and prints it once; the hash is never
+printed.
+
 #### The clinical catalogues — SEPARATE, and not optional
 
 `seed:staging` builds the clinic, its staff and a handful of demo medicines.

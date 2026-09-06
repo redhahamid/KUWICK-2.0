@@ -107,7 +107,8 @@ are recorded because a future reader will hit them too:
 | 2 | UAT-blocking (same screen) | Those two rows were also **indistinguishable**: the slow-movers projection returned `clinicId` but no branch name, so the branch column had nothing to render | The projection now joins `clinics` and returns `clinicName`; the column appears |
 | 3 | **UAT-blocking, and materially misleading** | **Finance reported five unclosed days as none.** `GET /finance/day-end/open` resolved its branch with `scope.require()`, which refuses when more than one branch is in scope and none is named. The Finance overview opens on *All branches*, so on this two-branch clinic the call 404'd with `No branch selected for this request.` The screen then did two wrong things at once: it painted a red *"This page could not load its figures — every number below is missing rather than zero"* banner over five figures that had loaded perfectly (received, patient receivable, panel receivable, service tax), **and** it drew the failed list as an empty one — the tile read **"Unreconciled days: 0 · Every day closed"**, in green, while **five** days stood unclosed across the two branches (RM84.80 at Contoh Bandar; RM200.00, RM101.40, −RM60.00 and RM190.80 at Contoh Central) | The **listing** is now a group question and the **closing** stays a branch act. `openDays` (and `listRange`) span the branches in scope and name the branch on every row, keyed by branch **and** date so one branch closing the 3rd cannot strike the other's 3rd off the list. `view`/`count`/`close`/`reopen` still require exactly one branch, because a drawer is physical |
 | 4 | UAT-blocking (same root cause) | **Day-End Closing offered to close a drawer it could not see.** On *All branches* the same refusal reached the closing screen, which rendered the red banner **and** an enabled "Close the day" button over a fabricated RM0.00 expected total | The screen now asks which branch, and fires no request until it has one. A branch named in the URL (from the overview's *Close this day*) wins over the header filter, and the branch appears under the title so nobody counts the wrong drawer |
-| 5 | Test-fixture drift (not a product defect) | The Admin integration spec asserted a **"Roles & access" sub-tab** that was deliberately removed from the HR rail on 2026-09-01 (`75ac9f0`) — the rail is the monthly payroll walk, and the screen is still mounted and still reached from Payroll settings. The fixture was describing a rail that no longer exists | The route moved to a new `ADMIN_LINKED_ROUTES` list with a test that asserts what is actually true: the rail is intact, the **HR module** is lit, the screen draws, and the link from Payroll settings still reaches it |
+| 5 | **Documentation, and it reached the owner** | **The guide handed out a credential that was never in the deployed database.** §1 of the A–Z guide said to sign in as `owner@admin-uat.kuwick.invalid` / `AdminUat!2026` without saying which of the two synthetic worlds that belongs to. It is the LOCAL fixture's owner (`seed-admin-uat.ts`, clinic "Klinik Contoh (UAT)", two branches). The Railway UAT is built by `seed-staging-uat.ts` — different tenant, single branch, owner `owner@uat.kuwick.invalid` — so the address simply does not exist there and login returns 401 on a perfectly healthy deployment. The only account the owner could get in with was the synthetic **doctor**, from which every Management module is correctly refused, which reads as "Management is broken" | The guide now leads with a table keyed on **the clinic name in the header**, which is the one thing a person can see before they have signed in to anything, and states plainly that the staging world does not contain the two-branch Management history this guide's figures come from. `docs/MANAGEMENT_UAT_FLOWS.md` and §12 of this checkpoint carry the same distinction. `prisma/reset-uat-owner.ts` recovers a lost staging owner password by writing **two rows** — the owner's login and the staff record behind it — instead of re-running a seed that would rebuild patients, visits and stock mid-review. New e2e `uat-owner-management-access.e2e-spec.ts` (17 cases) holds the claim the guide is making: `OWNER_ADMIN` opens all six Management domains, `DOCTOR_RESIDENT` is refused all six |
+| 6 | Test-fixture drift (not a product defect) | The Admin integration spec asserted a **"Roles & access" sub-tab** that was deliberately removed from the HR rail on 2026-09-01 (`75ac9f0`) — the rail is the monthly payroll walk, and the screen is still mounted and still reached from Payroll settings. The fixture was describing a rail that no longer exists | The route moved to a new `ADMIN_LINKED_ROUTES` list with a test that asserts what is actually true: the rail is intact, the **HR module** is lit, the screen draws, and the link from Payroll settings still reaches it |
 
 Defects 1–2 were found by the Management walk's own console-error capture, proven against the API and the
 database (18 units at Contoh Central, 10 at Contoh Bandar), fixed, and re-walked: **0 duplicate-key
@@ -156,11 +157,11 @@ Run at the converged HEAD, on the integrated world.
 | API typecheck (`tsc --noEmit`) | clean |
 | Seed typecheck (`typecheck:seed`) | clean |
 | Web typecheck (`tsc -b`) | clean |
-| API unit (`jest`) | **125 suites · 2,702 tests · all green** |
-| API integration (`jest-e2e`, serial) | **32 suites · 364 tests · all green** |
+| API unit (`jest`) | **126 suites · 2,713 tests · all green** |
+| API integration (`jest-e2e`, serial) | **33 suites · 381 tests · all green** |
 | Web unit (`vitest`) | **98 files · 1,699 tests · all green** |
 | Administration Playwright (shell, operation, stock, panel, finance, hr, integration) | **30 tests · all green** — see §8a |
-| Payroll statutory vectors, synthetic month, reports suite | inside the 364 above |
+| Payroll statutory vectors, synthetic month, reports suite | inside the 381 above |
 | Management walk (43 frames, desktop + iPad) | no dead screens, no key collisions |
 | Cross-module reconciliation | 19/0 pristine · 22/0 with payroll approved |
 
@@ -174,7 +175,7 @@ did **not** pass: **26 passed, 3 failed**. All three failures were real and all 
 | --- | --- |
 | `admin-shell.spec.ts:17` — *every page in the five modules loads, in one frame, with no console errors* | `.kw-adminError` present on Day-End Closing. The **same** Finance branch-scope defect the pack's frame 28 showed (§6, defects 3–4) |
 | `admin-integration.spec.ts:110` — *counting short forces an explanation, and closing freezes the day* | Expected cash `> 20`, got `0` — the day-end screen was drawing zeros because its call had 404'd. Same root cause |
-| `admin-integration.spec.ts:26` — *every mounted screen renders inside the Admin shell with its rail intact* | A **stale fixture** (§6, defect 5), not a product defect: it asserted a sub-tab removed from the HR rail by an earlier, deliberate product decision |
+| `admin-integration.spec.ts:26` — *every mounted screen renders inside the Admin shell with its rail intact* | A **stale fixture** (§6, defect 6), not a product defect: it asserted a sub-tab removed from the HR rail by an earlier, deliberate product decision |
 
 Two independent signals — a screenshot read by eye and a browser suite — found the same Finance defect.
 That is the argument for keeping both.
@@ -253,7 +254,13 @@ proof and is not claimed as such.
 3. `GET /health` on the API returns `{"status":"ok","database":"connected","build":"<sha>"}` and the SHA
    matches `3661e3b` (§13).
 4. The web service loads and reaches the API (CORS_ORIGINS must name the web origin).
-5. The UAT clinic is seeded (`seed-admin-uat`), or seed it per `docs/STAGING_DEPLOYMENT.md`.
+5. The UAT clinic is seeded — and **which seed ran decides the sign-in**. `seed-staging-uat.ts`
+   (`npm run seed:staging`, the one `docs/STAGING_DEPLOYMENT.md` documents for Railway) builds clinic
+   "Klinik UAT Staging (Synthetic)" with owner `owner@uat.kuwick.invalid`; `seed-admin-uat.ts` builds the
+   two-branch "Klinik Contoh (UAT)" this checkpoint's figures come from, with owner
+   `owner@admin-uat.kuwick.invalid`. The two are not interchangeable, and the A–Z guide now leads with
+   that table. If the staging password was lost, `prisma/reset-uat-owner.ts` restores the owner login
+   alone rather than rebuilding the world.
 
 ## 13 · The convergence SHA, and what was pushed where
 

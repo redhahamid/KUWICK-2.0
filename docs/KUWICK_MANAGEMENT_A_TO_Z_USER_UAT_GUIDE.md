@@ -37,11 +37,45 @@ asked to test them here.
 
 ## 1 · Before you start
 
-### Signing in
+### Signing in — WHICH SYNTHETIC CLINIC ARE YOU LOOKING AT?
 
-The test clinic is **Klinik Contoh (UAT)** with two branches, **Contoh Central** and **Contoh Bandar**.
-Everything in it is synthetic — invented people, invented money. There is no real patient, employee,
-identity-card number, bank account or supplier anywhere in it.
+**Read this first.** There are **two** synthetic UAT worlds in this repository, built by two different
+seeds, with **different sign-ins**. Using the wrong one gives "Invalid credentials" on a perfectly healthy
+deployment — which is exactly what happened once, and cost an afternoon.
+
+Look at the clinic name in the header. It tells you which world you are in and therefore which
+address to use:
+
+| The header says | Seeded by | Owner sign-in |
+| --- | --- | --- |
+| **Kuwick / Klinik UAT Staging (Synthetic)** — a single branch | `seed-staging-uat.ts` (`npm run seed:staging`) — **this is what a Railway UAT deployment gets** | `owner@uat.kuwick.invalid` |
+| **Klinik Contoh (UAT)** — two branches, Contoh Central and Contoh Bandar | `seed-admin-uat.ts` (`KUWICK_ADMIN_UAT_SEED=yes`) — the local Management fixture | `owner@admin-uat.kuwick.invalid` |
+
+**Passwords are never committed.** `seed-staging-uat.ts` prints its password once at the end of the seed
+run — it is whatever `STAGING_SEED_PASSWORD` was set to, or a generated one. One password covers all five
+staging accounts, so if any of them works, the owner's works too. `seed-admin-uat.ts` uses
+`AdminUat!2026` (or `$ADMIN_UAT_PASSWORD`).
+
+If the staging password has been lost, **do not re-run the seed** — that rebuilds patients, visits and
+stock positions and would erase UAT findings mid-review. Reset the owner alone:
+
+```bash
+railway run --service kuwick-api \
+  bash -c 'KUWICK_UAT_OWNER_RESET=yes UAT_OWNER_PASSWORD="<choose one>" \
+           npx tsx prisma/reset-uat-owner.ts --workspace=apps/api'
+```
+
+It writes two rows — the owner's login and the staff record behind it — and refuses to run against any
+database holding a tenant that is not marked synthetic. Every other account keeps the password it has.
+
+#### The accounts in each world
+
+**Staging (a Railway UAT deployment)** — `owner@`, `frontdesk@`, `finance@`, `doctor@`, `stock@`, all
+`@uat.kuwick.invalid`. **`doctor@` is a doctor, not an administrator: every Management module correctly
+refuses it.** If Management looks locked, check which account you are signed in as before anything else.
+
+**Local Management fixture** — the clinic is **Klinik Contoh (UAT)** with two branches, **Contoh Central**
+and **Contoh Bandar**:
 
 | Account | What it is for |
 | --- | --- |
@@ -50,7 +84,17 @@ identity-card number, bank account or supplier anywhere in it.
 | `stock@admin-uat.kuwick.invalid` | Stock staff |
 | `panel@admin-uat.kuwick.invalid` | Panel staff |
 
-Password for all four: `AdminUat!2026`
+Everything in both worlds is synthetic — invented people, invented money. There is no real patient,
+employee, identity-card number, bank account or supplier anywhere in either of them.
+
+> **What the two worlds contain is not the same, and this guide describes the second one.** The staging
+> seed builds a clinic, its staff, a medicine catalogue, a panel and eight clinical/queue scenarios with
+> their invoices. It does **not** build the two-branch Management history this guide's figures come from:
+> no payroll run, no attendance month, no stock transfers or stock takes, no panel claim workspace with a
+> rejection and a re-claim. On a staging-seeded environment the Management screens will open and be
+> correct, but many will be **empty or thin**, and the specific amounts quoted throughout this guide will
+> not appear. To follow this guide figure for figure, the environment has to be seeded with
+> `seed-admin-uat.ts`.
 
 After signing in, go to **Administration**. You will see five areas across the top:
 

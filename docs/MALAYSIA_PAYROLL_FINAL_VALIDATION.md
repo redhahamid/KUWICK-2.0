@@ -324,16 +324,18 @@ Unchanged from P1, plus the two newly declared:
 
 | Suite | Result |
 | --- | --- |
-| API unit (`npx jest`) | 125 suites, 2,702 tests — all green |
-| API integration (`jest-e2e`, serial) | 32 suites, 364 tests — all green, including the `payroll-final-validation` negative suite (15), the `payroll-epf-basis` suite (16) and the synthetic month |
+| API unit (`npx jest`) | 126 suites, 2,713 tests — all green |
+| API integration (`jest-e2e`, serial) | 33 suites, 381 tests — all green, including the `payroll-final-validation` negative suite (15), the `payroll-epf-basis` suite (16) and the synthetic month |
 | Web (`vitest run`) | 98 files, 1,699 tests — all green |
 | Typechecks (api `tsc --noEmit`, web `tsc -b`, seed `typecheck:seed`) | clean |
 | Root Playwright `admin-hr` journey (freshly seeded world, `CHROME_PATH` chromium) | 5/5 green |
 | Independent reconciliation (sections 5–6, walked world) | 92 checks, 0 failures |
 
-Counts as at the Management convergence, which added six tests to this branch after the payroll validation
-above was completed (five unit for `branchClause`, one integration for the Finance day-end listing). None of
-them touches payroll; the payroll figures in this document are unchanged and were re-run at these counts.
+Counts as at the Management convergence and the UAT-credential round that followed, which together added 34
+tests to this branch after the payroll validation above was completed: five unit for `branchClause`, eleven
+unit for the synthetic-tenant guard, one integration for the Finance day-end listing, and seventeen
+integration for who may open Management. None of them touches payroll; the payroll figures in this document
+are unchanged and were re-run at these counts.
 
 Green tests prove the named invariants; they are not the human acceptance — that is section 4, and the next
 gate is still a human one.
