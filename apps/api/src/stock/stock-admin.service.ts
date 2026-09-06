@@ -1,10 +1,10 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, StockTransferStatus } from '@prisma/client';
+import { StockTransferStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { requirePermission, requireScope, resolveClinicId, withAdminTx, withScopedAdminTx } from '../finance/admin-actor';
-import { BranchScope } from '../core/branch-scope';
+import { branchClause } from '../core/branch-scope';
 import { recordAudit } from '../finance/admin-audit';
 import { fromCents, toCents } from '../finance/money';
 import { batchExposure, batchExposureValueCents } from '../inventory/batch-exposure';
@@ -24,20 +24,6 @@ export const NEAR_EXPIRY_DAYS = 90;
  * each with a stated threshold rather than a magic number buried in a query,
  * and each linking to the record that needs the work.
  */
-
-/**
- * THE BRANCH CLAUSE FOR A RAW QUERY.
- *
- * These fragments used to read `clinicId ? AND clinic_id = ... : empty`, so an
- * account that named no branch got NO clause and read the whole tenant. The
- * scope decides now: a named branch it validated, otherwise the branches the
- * account may manage, and only a genuinely tenant-wide actor gets no clause.
- */
-function branchClause(scope: BranchScope, requested: string | null | undefined, alias: string) {
-  const ids = scope.sqlClinicIds(requested);
-  if (ids === null) return Prisma.empty;
-  return Prisma.sql`AND ${Prisma.raw(`"${alias}"`)}."clinic_id" = ANY(${ids})`;
-}
 
 @Injectable()
 export class StockAdminService {

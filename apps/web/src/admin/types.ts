@@ -91,6 +91,9 @@ export interface DayEndView {
 }
 
 export interface OpenDayRow {
+  /** One row per BRANCH per day: two branches can both have the 3rd open. */
+  clinicId: string;
+  clinicName: string;
   businessDate: string;
   expectedTotal: number;
   paymentCount: number;

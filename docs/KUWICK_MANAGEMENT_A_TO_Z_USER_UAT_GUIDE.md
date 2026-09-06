@@ -685,7 +685,7 @@ owe others.
 | --- | --- | --- |
 | **Overview** | The money position at a glance | |
 | **Sales** | What was billed, split cash vs panel | See the box above |
-| **Day-end closing** | Counting the drawer and closing the day | A closed day can be reopened, with a reason, on the record |
+| **Day-end closing** | Counting the drawer and closing the day | **One branch at a time** — see the box below. A closed day can be reopened, with a reason, on the record |
 | **Payments** | Every collection and its tender | |
 | **Invoices** | The invoice list | |
 | **Outstanding** | Patient receivables | |
@@ -704,6 +704,13 @@ owe others.
 > cost the clinic today, use HR → Reports → *Cost to the clinic*. This is recorded as a known gap in
 > [section 12](#12-support-status).
 
+> **A drawer belongs to one branch; the list of open days belongs to the group.** Finance answers these
+> two questions differently and deliberately. **Overview → Days not yet closed** spans every branch you can
+> see, and each row names its branch — so a day left open at the *other* clinic cannot hide from you.
+> **Day-end closing** counts one physical drawer, so it needs to know whose: on "All branches" it asks you
+> to pick one rather than showing you somebody's zeros. The fastest route is Overview → **Close this day**,
+> which carries the branch with it.
+
 <a name="finance-tests"></a>
 ### Finance tests
 
@@ -715,7 +722,9 @@ owe others.
 | **FIN-04** | Finance → Outstanding | Patient receivables | |
 | **FIN-05** | Finance → Panel money | The panel position and its aging | The same outstanding figure Panel shows |
 | **FIN-06** | Finance → Supplier payables | What is owed to suppliers | Traceable to goods received in Stock |
-| **FIN-07** | Finance → Day-end closing | Closed days, and today open | Closing needs a counted amount; reopening needs a reason |
+| **FIN-07** | Finance → Day-end closing, on "All branches" | A note asking which branch — **not** an error, and **not** a screen of zeros | Choosing a branch in the header loads that branch's drawer, and the branch name appears under the title |
+| **FIN-07b** | Finance → Overview → *Days not yet closed* → **Close this day** | The day-end screen for **that row's branch**, on that date | The BRANCH column names each branch; the unreconciled-days tile counts every branch's open days, not just one |
+| **FIN-07c** | Count the drawer short, then close | The close is refused until you explain the difference | Reopening a closed day needs a reason, and the reopen is on the record |
 | **FIN-08** | Finance → Credit notes | Credit notes and their state | An approved credit note affects what is collectable |
 | **FIN-09** | Finance → Profitability | Revenue against cost | It states what it does not include |
 | **FIN-10** | Finance → e-Invoice | The screen loads | It states plainly that it does **not** submit to MyInvois |
@@ -869,7 +878,7 @@ Read this before you decide something is broken.
 
 | | |
 | --- | --- |
-| Management screenshots (42, desktop + iPad) | `docs/management-integrated-uat/` |
+| Management screenshots (43, desktop + iPad) | `docs/management-integrated-uat/` |
 | Payroll journey screenshots (46) | `docs/payroll-final-uat/` |
 | Payroll validation record | `docs/MALAYSIA_PAYROLL_FINAL_VALIDATION.md` |
 | What was converged, and from where | `docs/MANAGEMENT_CONVERGENCE_SOURCE_MAP.md` |

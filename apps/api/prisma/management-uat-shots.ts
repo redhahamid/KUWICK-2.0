@@ -70,6 +70,15 @@ async function healthOf(page: Page, path: string): Promise<string> {
   return 'ok';
 }
 
+/** Pick a branch in the hub header, the way a person does. */
+async function chooseBranch(page: Page, name: string) {
+  const picker = page.getByRole('combobox', { name: 'Branch' }).first();
+  if ((await picker.count()) === 0) return;
+  await picker.click();
+  await page.locator('.ant-select-item-option', { hasText: name }).first().click();
+  await settle(page);
+}
+
 const problems: string[] = [];
 
 async function walk(page: Page, path: string, name: string, note: string) {
@@ -133,7 +142,18 @@ async function main() {
   await walk(page, '/admin/finance/payments', 'finance-payments', 'Finance — collections and their tender');
   await walk(page, '/admin/finance/receivables', 'finance-receivables', 'Finance — patient receivables');
   await walk(page, '/admin/finance/panel-money', 'finance-panel-money', 'Finance — the panel position, consumed from Panel rather than recomputed');
-  await walk(page, '/admin/finance/day-end', 'finance-day-end', 'Finance — day end: counted, closed, reopenable with a reason');
+  await walk(
+    page,
+    '/admin/finance/day-end',
+    'finance-day-end-choose-branch',
+    'Finance — day end on "All branches": a drawer belongs to ONE branch, so the screen asks which rather than drawing somebody\u2019s zeros',
+  );
+  // …and then the screen doing its job, with a branch named. Both frames are
+  // in the pack deliberately: the first is what an owner sees on landing, the
+  // second is the one they will actually work in.
+  await chooseBranch(page, 'Contoh Central');
+  await capture(page, 'finance-day-end', 'Finance — day end: counted, closed, reopenable with a reason');
+  await chooseBranch(page, 'All branches');
   await walk(page, '/admin/finance/payables', 'finance-payables', 'Finance — supplier payables from procurement');
   await walk(page, '/admin/finance/credit-notes', 'finance-credit-notes', 'Finance — credit notes');
   await walk(page, '/admin/finance/profitability', 'finance-profitability', 'Finance — profitability, and what it does not claim to include');

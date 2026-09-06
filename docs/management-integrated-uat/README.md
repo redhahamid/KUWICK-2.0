@@ -9,8 +9,15 @@ and is not repeated here.
 
 The walk is also the smoke test — `prisma/management-uat-shots.ts` fails any route that renders an error
 boundary or a near-empty body, and reports every browser console error it sees. On the run that produced
-these frames: **no dead screens, and no React key collisions** (the one that existed on Stock was found by
-this walk and fixed — see the checkpoint document).
+these frames: **no dead screens, and no React key collisions.** Two real defects were found by this walk
+and fixed before these frames were taken:
+
+- **Stock** collapsed two branches' rows for the same item into one React key, so one branch's slow-moving
+  stock could be dropped from the board. The key now carries the branch, and the board names it.
+- **Finance** asked a group question with a single-branch call: the unclosed-days list demanded one branch,
+  so a two-branch owner on "All branches" — the default — got `No branch selected for this request.`, a red
+  banner over five figures that had loaded fine, and the tile "Unreconciled days: 0. Every day closed."
+  while **five** days stood unclosed. Frames 28 and 33–34 are the corrected screens.
 
 | Frame | Area | Viewport | What it shows |
 | --- | --- | --- | --- |
@@ -46,13 +53,14 @@ this walk and fixed — see the checkpoint document).
 | `30-finance-payments.png` | Finance | Desktop 1680×1050 | Finance — collections and their tender |
 | `31-finance-receivables.png` | Finance | Desktop 1680×1050 | Finance — patient receivables |
 | `32-finance-panel-money.png` | Finance | Desktop 1680×1050 | Finance — the panel position, consumed from Panel rather than recomputed |
-| `33-finance-day-end.png` | Finance | Desktop 1680×1050 | Finance — day end: counted, closed, reopenable with a reason |
-| `34-finance-payables.png` | Finance | Desktop 1680×1050 | Finance — supplier payables from procurement |
-| `35-finance-credit-notes.png` | Finance | Desktop 1680×1050 | Finance — credit notes |
-| `36-finance-profitability.png` | Finance | Desktop 1680×1050 | Finance — profitability, and what it does not claim to include |
-| `37-tablet-admin-home.png` | Shell | iPad 1024×1366 | iPad — the Management landing |
-| `38-tablet-operation.png` | Operation | iPad 1024×1366 | iPad — Operation |
-| `39-tablet-stock.png` | Stock | iPad 1024×1366 | iPad — Stock |
-| `40-tablet-panel.png` | Panel | iPad 1024×1366 | iPad — Panel |
-| `41-tablet-hr-payroll.png` | HR / Payroll | iPad 1024×1366 | iPad — HR → Payroll |
-| `42-tablet-finance.png` | Finance | iPad 1024×1366 | iPad — Finance |
+| `33-finance-day-end-choose-branch.png` | Finance | Desktop 1680×1050 | Finance — day end on "All branches": a drawer belongs to ONE branch, so the screen asks which rather than drawing somebody’s zeros |
+| `34-finance-day-end.png` | Finance | Desktop 1680×1050 | Finance — day end: counted, closed, reopenable with a reason |
+| `35-finance-payables.png` | Finance | Desktop 1680×1050 | Finance — supplier payables from procurement |
+| `36-finance-credit-notes.png` | Finance | Desktop 1680×1050 | Finance — credit notes |
+| `37-finance-profitability.png` | Finance | Desktop 1680×1050 | Finance — profitability, and what it does not claim to include |
+| `38-tablet-admin-home.png` | Shell | iPad 1024×1366 | iPad — the Management landing |
+| `39-tablet-operation.png` | Operation | iPad 1024×1366 | iPad — Operation |
+| `40-tablet-stock.png` | Stock | iPad 1024×1366 | iPad — Stock |
+| `41-tablet-panel.png` | Panel | iPad 1024×1366 | iPad — Panel |
+| `42-tablet-hr-payroll.png` | HR / Payroll | iPad 1024×1366 | iPad — HR → Payroll |
+| `43-tablet-finance.png` | Finance | iPad 1024×1366 | iPad — Finance |

@@ -199,6 +199,21 @@ function buildScope(clinicIds: string[], everyBranch: boolean): BranchScope {
 }
 
 /**
+ * THE BRANCH CLAUSE FOR A RAW QUERY.
+ *
+ * `AND "<alias>"."clinic_id" = ANY(...)`, or nothing at all when the account
+ * is genuinely tenant-wide. Lives here rather than beside any one caller
+ * because "which branches may this read see" has to have exactly one answer:
+ * a second copy of this fragment is how two screens end up disagreeing about
+ * whose money they are showing.
+ */
+export function branchClause(scope: BranchScope, requested: string | null | undefined, alias: string): Prisma.Sql {
+  const ids = scope.sqlClinicIds(requested);
+  if (ids === null) return Prisma.empty;
+  return Prisma.sql`AND ${Prisma.raw(`"${alias}"`)}."clinic_id" = ANY(${ids})`;
+}
+
+/**
  * The database-backed source. `tx` is any Prisma client already inside the
  * tenant context, so RLS bounds both reads.
  */

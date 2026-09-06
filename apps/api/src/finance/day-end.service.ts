@@ -4,6 +4,7 @@ import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-s
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { AdminTx, requirePermission, requireScope, resolveClinicId, withAdminTx, withScopedAdminTx } from './admin-actor';
+import { NO_BRANCH_REFUSAL, branchClause, BranchScope } from '../core/branch-scope';
 import { recordAudit } from './admin-audit';
 import { fromCents, toCents } from './money';
 import { CountDayEndDto } from './dto/count-day-end.dto';
@@ -471,17 +472,40 @@ export class DayEndService {
     });
   }
 
-  /** The month's closings — the finance homepage's "did every day reconcile" strip. */
+  /**
+   * AUTHORISED FOR NO BRANCH IS A REFUSAL, NOT AN EMPTY LIST.
+   *
+   * `scope.require()` used to say this for us. These two listings no longer
+   * demand a single branch, and without this an account granted `finance.view`
+   * but no branch at all would read "no days are open" — the exact
+   * missing-drawn-as-zero failure the module exists to prevent.
+   */
+  private assertSomeBranch(scope: BranchScope) {
+    if (!scope.everyBranch && scope.clinicIds.length === 0) throw new ForbiddenException(NO_BRANCH_REFUSAL);
+  }
+
+  /**
+   * The month's closings — the finance homepage's "did every day reconcile" strip.
+   *
+   * READING spans the branches in scope; naming a branch narrows it. Only the
+   * ACT of closing is tied to one drawer.
+   */
   async listRange(clinicIdInput: string | undefined, from: string, to: string) {
     const { scope } = await requireScope(this.rawPrisma, 'finance.view');
-    const clinicId = resolveClinicId(scope, clinicIdInput);
+    this.assertSomeBranch(scope);
     const closings = await this.prisma.dayEndClosing.findMany({
-      where: { clinicId, businessDate: { gte: utcDate(from), lte: utcDate(to) } },
-      orderBy: { businessDate: 'desc' },
-      include: { closedBy: { select: { fullName: true } }, countedBy: { select: { fullName: true } } },
+      where: { ...scope.where(clinicIdInput), businessDate: { gte: utcDate(from), lte: utcDate(to) } },
+      orderBy: [{ businessDate: 'desc' }, { clinicId: 'asc' }],
+      include: {
+        closedBy: { select: { fullName: true } },
+        countedBy: { select: { fullName: true } },
+        clinic: { select: { name: true } },
+      },
     });
     return closings.map((closing) => ({
       id: closing.id,
+      clinicId: closing.clinicId,
+      clinicName: closing.clinic?.name ?? null,
       businessDate: closing.businessDate.toISOString().slice(0, 10),
       status: closing.status,
       expectedTotal: Number(closing.expectedTotal),
@@ -499,53 +523,77 @@ export class DayEndService {
    *
    * The finance module's first question — "did yesterday reconcile" — is
    * answered by this being empty.
+   *
+   * ONE ROW PER BRANCH PER DAY, ACROSS THE SCOPE. Closing a day is one
+   * branch's drawer, so `view`/`count`/`close`/`reopen` still insist on a
+   * single branch and always will. But ASKING which days are still open is a
+   * question about the whole group, and requiring a branch here meant the
+   * Finance overview of a two-branch clinic — which opens on "All branches" —
+   * could not answer its own headline question at all: the call returned
+   * "No branch selected for this request." and the page put a red banner over
+   * five figures that had loaded perfectly well. Worse, the answer it could
+   * not give is the one that matters: a day left open at the OTHER branch is
+   * exactly what this list exists to surface.
+   *
+   * So the branch is named on every row instead of being demanded up front.
    */
   async openDays(clinicIdInput: string | undefined, lookbackDays = 30) {
     const { scope } = await requireScope(this.rawPrisma, 'finance.view');
-    const clinicId = resolveClinicId(scope, clinicIdInput);
+    this.assertSomeBranch(scope);
     const today = utcDate(new Date());
     const since = new Date(today.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
 
     // Days with money taken, and what has been closed. The gap between the two
     // is the work queue — a day nobody opened a closing for is exactly as
     // unreconciled as one left half-counted.
-    const payments = await this.prisma.payment.groupBy({
-      by: ['clinicId'],
-      where: { clinicId, receivedAt: { gte: since, lt: today }, reversedAt: null },
-      _count: true,
-    });
-    if (payments.length === 0) return [];
-
-    const rows = await this.prisma.$queryRaw<{ business_date: Date; total: string; count: bigint }[]>`
-      SELECT date_trunc('day', p."received_at")::date AS business_date,
+    const rows = await this.prisma.$queryRaw<
+      { clinic_id: string; clinic_name: string; business_date: Date; total: string; count: bigint }[]
+    >`
+      SELECT p."clinic_id" AS clinic_id,
+             c."name" AS clinic_name,
+             date_trunc('day', p."received_at")::date AS business_date,
              SUM(CASE WHEN p."kind" = 'REFUND' THEN -p."amount" ELSE p."amount" END) AS total,
              COUNT(*) AS count
       FROM "payments" p
-      WHERE p."clinic_id" = ${clinicId}
-        AND p."received_at" >= ${since}
+      JOIN "clinics" c ON c."id" = p."clinic_id"
+      WHERE p."received_at" >= ${since}
         AND p."received_at" < ${today}
         AND p."reversed_at" IS NULL
         AND p."tender" <> 'PANEL'
-      GROUP BY 1
-      ORDER BY 1 DESC
+        ${branchClause(scope, clinicIdInput, 'p')}
+      GROUP BY 1, 2, 3
+      ORDER BY 3 DESC, 2 ASC
     `;
+    if (rows.length === 0) return [];
 
     const closed = await this.prisma.dayEndClosing.findMany({
-      where: { clinicId, businessDate: { gte: since, lt: today } },
-      select: { businessDate: true, status: true },
+      where: { ...scope.where(clinicIdInput), businessDate: { gte: since, lt: today } },
+      select: { clinicId: true, businessDate: true, status: true },
     });
-    const closedDates = new Set(
-      closed.filter((row) => row.status === DayEndStatus.CLOSED).map((row) => row.businessDate.toISOString().slice(0, 10)),
+    // Keyed by BRANCH AND DAY. Keyed by day alone, one branch closing the 3rd
+    // would have struck the other branch's open 3rd off the list.
+    const key = (clinic: string, date: string) => `${clinic}|${date}`;
+    const closedDays = new Set(
+      closed
+        .filter((row) => row.status === DayEndStatus.CLOSED)
+        .map((row) => key(row.clinicId, row.businessDate.toISOString().slice(0, 10))),
     );
-    const statusByDate = new Map(closed.map((row) => [row.businessDate.toISOString().slice(0, 10), row.status]));
+    const statusByDay = new Map(
+      closed.map((row) => [key(row.clinicId, row.businessDate.toISOString().slice(0, 10)), row.status]),
+    );
 
     return rows
-      .map((row) => ({
-        businessDate: new Date(row.business_date).toISOString().slice(0, 10),
-        expectedTotal: Number(row.total),
-        paymentCount: Number(row.count),
-        status: statusByDate.get(new Date(row.business_date).toISOString().slice(0, 10)) ?? DayEndStatus.OPEN,
-      }))
-      .filter((row) => !closedDates.has(row.businessDate));
+      .map((row) => {
+        const businessDate = new Date(row.business_date).toISOString().slice(0, 10);
+        return {
+          clinicId: row.clinic_id,
+          clinicName: row.clinic_name,
+          businessDate,
+          expectedTotal: Number(row.total),
+          paymentCount: Number(row.count),
+          status: statusByDay.get(key(row.clinic_id, businessDate)) ?? DayEndStatus.OPEN,
+        };
+      })
+      .filter((row) => !closedDays.has(key(row.clinicId, row.businessDate)));
   }
 }

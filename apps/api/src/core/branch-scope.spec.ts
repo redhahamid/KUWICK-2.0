@@ -1,9 +1,11 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import {
   NO_BRANCH_REFUSAL,
   SCOPE_REFUSAL,
   ScopeActor,
   ScopeSource,
+  branchClause,
   resolveBranchScope,
 } from './branch-scope';
 
@@ -163,5 +165,43 @@ describe('require() — an operation that must name one branch', () => {
   it('still refuses a branch outside the scope', async () => {
     const scope = await resolveBranchScope(actor({ clinicId: A }), source([A, B]), holdsNothing);
     expect(() => scope.require(B)).toThrow(ForbiddenException);
+  });
+});
+
+/*
+ * THE RAW-SQL HALF OF THE SAME RULE.
+ *
+ * `branchClause` used to live beside one caller in Stock. It is here now
+ * because a second copy of "which branches may this read see" is how two
+ * screens end up disagreeing about whose money they are showing — and Finance
+ * needed it the day its unclosed-days list stopped demanding a single branch.
+ */
+describe('branchClause() — the same scope, in a raw query', () => {
+  it('adds nothing for a genuinely tenant-wide account; RLS already bounds it', async () => {
+    const scope = await resolveBranchScope(actor(), source([A, B, C]), isAccountHolder as never);
+    expect(branchClause(scope, undefined, 'p')).toBe(Prisma.empty);
+  });
+
+  it('narrows to the branches the account holds when none is named', async () => {
+    const scope = await resolveBranchScope(actor({ clinicId: A }), source([A, B]), holdsNothing);
+    expect(branchClause(scope, undefined, 'p').values).toEqual([[A]]);
+  });
+
+  it('narrows to the ONE branch that was named', async () => {
+    const scope = await resolveBranchScope(actor(), source([A, B, C]), isAccountHolder as never);
+    expect(branchClause(scope, B, 'p').values).toEqual([[B]]);
+  });
+
+  it('REFUSES a branch outside the scope rather than filtering it away', async () => {
+    const scope = await resolveBranchScope(actor({ clinicId: A }), source([A, B]), holdsNothing);
+    expect(() => branchClause(scope, B, 'p')).toThrow(SCOPE_REFUSAL);
+  });
+
+  it('matches nothing for an account holding no branch, so a caller must refuse first', async () => {
+    const scope = await resolveBranchScope(actor({ clinicId: null }), source([A, B]), holdsNothing);
+    // An empty ANY() is a query that returns nothing — which reads as "no
+    // open days" rather than "you are not authorised". `DayEndService`
+    // refuses on `clinicIds.length === 0` before it ever gets here.
+    expect(branchClause(scope, undefined, 'p').values).toEqual([[]]);
   });
 });

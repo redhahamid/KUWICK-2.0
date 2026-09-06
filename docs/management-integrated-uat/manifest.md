@@ -30,13 +30,14 @@
 - 30-finance-payments.png — Finance — collections and their tender
 - 31-finance-receivables.png — Finance — patient receivables
 - 32-finance-panel-money.png — Finance — the panel position, consumed from Panel rather than recomputed
-- 33-finance-day-end.png — Finance — day end: counted, closed, reopenable with a reason
-- 34-finance-payables.png — Finance — supplier payables from procurement
-- 35-finance-credit-notes.png — Finance — credit notes
-- 36-finance-profitability.png — Finance — profitability, and what it does not claim to include
-- 37-tablet-admin-home.png — iPad — the Management landing
-- 38-tablet-operation.png — iPad — Operation
-- 39-tablet-stock.png — iPad — Stock
-- 40-tablet-panel.png — iPad — Panel
-- 41-tablet-hr-payroll.png — iPad — HR → Payroll
-- 42-tablet-finance.png — iPad — Finance
+- 33-finance-day-end-choose-branch.png — Finance — day end on "All branches": a drawer belongs to ONE branch, so the screen asks which rather than drawing somebody’s zeros
+- 34-finance-day-end.png — Finance — day end: counted, closed, reopenable with a reason
+- 35-finance-payables.png — Finance — supplier payables from procurement
+- 36-finance-credit-notes.png — Finance — credit notes
+- 37-finance-profitability.png — Finance — profitability, and what it does not claim to include
+- 38-tablet-admin-home.png — iPad — the Management landing
+- 39-tablet-operation.png — iPad — Operation
+- 40-tablet-stock.png — iPad — Stock
+- 41-tablet-panel.png — iPad — Panel
+- 42-tablet-hr-payroll.png — iPad — HR → Payroll
+- 43-tablet-finance.png — iPad — Finance

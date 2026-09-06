@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test';
 import {
+  ADMIN_LINKED_ROUTES,
   ADMIN_MOUNTED_ROUTES,
   ADMIN_VIEW_ROUTES,
+  chooseBranch,
   collectAdminConsoleErrors,
   gotoAdmin,
   loginAdmin,
@@ -53,6 +55,41 @@ test.describe('Admin integration', () => {
     }
 
     expect(errors).toEqual([]);
+  });
+
+  test('a screen reached by link, not by the rail, still arrives inside Admin', async ({ page }) => {
+    await loginAdmin(page);
+
+    for (const route of ADMIN_LINKED_ROUTES) {
+      // `page.goto` rather than `gotoAdmin`: like the mounted routes above,
+      // this screen was written for another hub and has no `.kw-admin` frame
+      // of its own. The Admin rail around it is what has to be there.
+      await page.goto(route.path);
+      await expect(page.getByRole('heading', { name: 'Administration', exact: true })).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(page.locator('.ant-spin-spinning')).toHaveCount(0, { timeout: 30_000 });
+      // The rail is intact and the right MODULE is lit, even though this
+      // screen deliberately has no sub-tab of its own.
+      for (const module of ['Operation', 'Stock', 'Panel', 'HR', 'Finance']) {
+        await expect(page.getByRole('tab', { name: module, exact: true })).toBeVisible();
+      }
+      await expect(page.getByRole('tab', { name: route.module, exact: true })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await expect(page.getByText(route.marker).first()).toBeVisible({ timeout: 20_000 });
+
+      // AND IT IS ACTUALLY REACHABLE. A screen with no rail entry is only
+      // mounted if the link that replaced the rail entry still works.
+      await gotoAdmin(page, route.from);
+      const link = page.getByRole('link', { name: 'Who can do what' });
+      await expect(link).toBeVisible({ timeout: 20_000 });
+      await link.click();
+      await expect(page).toHaveURL(new RegExp(`${route.path}$`));
+      await expect(page.locator('.ant-spin-spinning')).toHaveCount(0, { timeout: 30_000 });
+      await expect(page.getByText(route.marker).first()).toBeVisible({ timeout: 20_000 });
+    }
   });
 
   test('near expiry and slow moving are views of the attention board, not copies of it', async ({ page }) => {
@@ -110,6 +147,10 @@ test.describe('Day-end closing, end to end', () => {
   test('counting short forces an explanation, and closing freezes the day', async ({ page }) => {
     await loginAdmin(page);
     await gotoAdmin(page, '/admin/finance/day-end');
+    // A DRAWER BELONGS TO A BRANCH, and this owner has two. Landing on "All
+    // branches" the screen now asks which one rather than drawing somebody's
+    // zeros, so the spec answers it exactly as a person would.
+    await chooseBranch(page, 'Contoh Central');
 
     // The seed leaves TODAY open at Contoh Central with takings in all four
     // buckets and a refund already netted off card.

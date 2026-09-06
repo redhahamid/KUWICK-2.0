@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { App, Button, DatePicker, Input, InputNumber, Modal, Tag } from 'antd';
 import dayjs from 'dayjs';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { AdminNotice, AdminSection, AdminShell, firstError } from '../components/AdminShell';
 import { StatStrip } from '../components/StatStrip';
 import { DataTable, money, moneyOrDash } from '../components/DataTable';
@@ -21,10 +21,27 @@ import type { DayEndView } from '../types';
 export function DayEndClosingPage() {
   const { message } = App.useApp();
   const [params, setParams] = useSearchParams();
-  const { clinicId } = useClinicFilter();
+  const { clinicId: filterClinicId, clinics } = useClinicFilter();
   const date = params.get('date') ?? dayjs().format('YYYY-MM-DD');
+  // A DRAWER BELONGS TO A BRANCH. The Finance overview links here with the
+  // branch already named, because "close the 3rd" is not an instruction until
+  // somebody says whose 3rd. A named branch in the URL wins over the header
+  // filter for exactly that reason.
+  const clinicId = params.get('clinicId') ?? filterClinicId;
+  const branchName = clinics?.find((clinic) => clinic.id === clinicId)?.name;
 
-  const { data, isLoading, isError, error } = useDayEnd(date, clinicId);
+  // A multi-branch group looking at "All branches" has not named a drawer.
+  // The screen must ASK for one rather than fire a request that cannot be
+  // answered and then paint the refusal red over a set of zeros.
+  //
+  // Nothing is asked until the branch list has actually arrived. Firing on the
+  // first render and apologising once `clinics` resolves is how the red banner
+  // got here in the first place, and a race that happens to lose today is not
+  // a fix.
+  const branchesKnown = clinics !== undefined;
+  const needsBranch = !clinicId && branchesKnown && clinics.length > 1;
+  const mayAsk = Boolean(clinicId) || (branchesKnown && clinics.length <= 1);
+  const { data, isLoading, isError, error } = useDayEnd(date, clinicId, { enabled: mayAsk });
   const count = useCountDayEnd(date, clinicId);
   const close = useCloseDayEnd(date, clinicId);
   const reopen = useReopenDayEnd(date, clinicId);
@@ -66,17 +83,44 @@ export function DayEndClosingPage() {
     { key: 'other', label: 'Other', hint: 'Transfers, cheques, e-wallets' },
   ];
 
+  if (!mayAsk) {
+    return (
+      <AdminShell
+        title="Day-End Closing"
+        subtitle="What the ledger expects, what a person counted, and the difference explained before anyone signs it off."
+      >
+        {needsBranch ? (
+          <>
+            <AdminNotice tone="warn">
+              Closing a day counts one branch’s drawer, so this screen needs to know whose. Choose a branch in the
+              header — or open the day from Finance ▸ Overview, where each unclosed day already carries its branch.
+            </AdminNotice>
+            <p className="kw-adminSection__desc">
+              <Link to="/admin/finance">Back to the Finance overview →</Link>
+            </p>
+          </>
+        ) : null}
+      </AdminShell>
+    );
+  }
+
   return (
     <AdminShell
       error={firstError({ isError, error })}
       title="Day-End Closing"
-      subtitle="What the ledger expects, what a person counted, and the difference explained before anyone signs it off."
+      subtitle={
+        branchName
+          ? `${branchName} — what the ledger expects, what a person counted, and the difference explained before anyone signs it off.`
+          : 'What the ledger expects, what a person counted, and the difference explained before anyone signs it off.'
+      }
       actions={
         <DatePicker
           allowClear={false}
           size="small"
           value={dayjs(date)}
-          onChange={(value) => value && setParams({ date: value.format('YYYY-MM-DD') })}
+          onChange={(value) =>
+            value && setParams(clinicId ? { date: value.format('YYYY-MM-DD'), clinicId } : { date: value.format('YYYY-MM-DD') })
+          }
         />
       }
     >

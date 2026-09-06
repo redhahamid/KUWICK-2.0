@@ -84,9 +84,28 @@ export const ADMIN_MOUNTED_ROUTES = [
   { path: '/admin/panel/batches', module: 'Panel', tab: 'Claim batches', marker: 'Panel Claims', owns: 'management' },
   { path: '/admin/panel/companies', module: 'Panel', tab: 'Panel companies', marker: 'Panel Companies', owns: 'management' },
   { path: '/admin/hr/leave', module: 'HR', tab: 'Leave', marker: 'Leave Requests', owns: 'management' },
-  { path: '/admin/hr/access', module: 'HR', tab: 'Roles & access', marker: 'Roles & permissions', owns: 'settings' },
   { path: '/admin/finance/sales', module: 'Finance', tab: 'Sales', marker: 'Total Sales', owns: 'management' },
   { path: '/admin/finance/invoices', module: 'Finance', tab: 'Invoices', marker: 'Invoice', owns: 'management' },
+] as const;
+
+/**
+ * MOUNTED, BUT REACHED BY LINK RATHER THAN BY THE RAIL.
+ *
+ * `/admin/hr/access` used to sit in the HR rail between Payroll and Staff
+ * benefits. It was taken out deliberately — see the comment in
+ * `AdminLayout.tsx`: the HR rail is the monthly payroll walk, and making the
+ * owner pass two configuration screens to reach the one they open every month
+ * was turning it into an admin console. The screen is still mounted and still
+ * reachable, from Payroll settings.
+ *
+ * So there is no sub-tab to light, and asserting one was this fixture
+ * describing a rail that no longer exists. What still has to be true is
+ * everything else: the route resolves, the Admin rail is intact, the right
+ * MODULE is lit, and the screen draws. The sub-tab that lights is the module's
+ * landing page, which is the honest answer for a leaf with no rail entry.
+ */
+export const ADMIN_LINKED_ROUTES = [
+  { path: '/admin/hr/access', module: 'HR', marker: 'Roles & permissions', from: '/admin/hr/settings', owns: 'settings' },
 ] as const;
 
 /**

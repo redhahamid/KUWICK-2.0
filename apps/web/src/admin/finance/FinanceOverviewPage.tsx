@@ -32,6 +32,9 @@ export function FinanceOverviewPage() {
   const panel = usePanelReconciliation({});
 
   const unreconciled = openDays.data ?? [];
+  // Only worth a column when there is more than one branch in the answer;
+  // a single-branch clinic does not need to be told which branch it is.
+  const showBranchColumn = new Set(unreconciled.map((row) => row.clinicId)).size > 1;
   const aging = receivables.data?.aging;
   const agingCounts = receivables.data?.agingCounts ?? { current: 0, d31_60: 0, d61_90: 0, d90_plus: 0 };
 
@@ -100,11 +103,17 @@ export function FinanceOverviewPage() {
         <DataTable
           rows={unreconciled}
           loading={openDays.isLoading}
-          rowKey="businessDate"
+          // BRANCH AND DAY, because both are needed to name a drawer. Keyed by
+          // the date alone, two branches with the same day open would collapse
+          // into one row and one of them would silently never be closed.
+          rowKey={(row) => `${row.clinicId}:${row.businessDate}`}
           emptyText="Every day with takings has been closed"
           emptyHint="Nothing here is the state you want."
           columns={[
             { title: 'Business date', dataIndex: 'businessDate', key: 'businessDate' },
+            ...(showBranchColumn
+              ? [{ title: 'Branch', dataIndex: 'clinicName', key: 'clinicName' }]
+              : []),
             {
               title: 'Status',
               dataIndex: 'status',
@@ -125,8 +134,15 @@ export function FinanceOverviewPage() {
               title: '',
               key: 'action',
               noExport: true,
-              render: (_: unknown, row: { businessDate: string }) => (
-                <Button size="small" type="link" onClick={() => navigate(`/admin/finance/day-end?date=${row.businessDate}`)}>
+              // The link carries the BRANCH as well as the date. Day-end
+              // closing counts one drawer, so arriving there without knowing
+              // whose drawer it is would be arriving nowhere.
+              render: (_: unknown, row: { businessDate: string; clinicId: string }) => (
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={() => navigate(`/admin/finance/day-end?date=${row.businessDate}&clinicId=${row.clinicId}`)}
+                >
                   Close this day
                 </Button>
               ),

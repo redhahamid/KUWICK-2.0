@@ -4,7 +4,7 @@ The record of converging Operation, Stock, Panel, HR, Payroll and Finance into o
 validating it, and preparing it for owner UAT.
 
 **Convergence SHA:** see §9 · **Payroll checkpoint honoured:** `393ebb9` is an ancestor of this build ·
-**Screenshots:** `docs/management-integrated-uat/` (42) and `docs/payroll-final-uat/` (46) ·
+**Screenshots:** `docs/management-integrated-uat/` (43) and `docs/payroll-final-uat/` (46) ·
 **Owner guide:** `docs/KUWICK_MANAGEMENT_A_TO_Z_USER_UAT_GUIDE.md`
 
 ---
@@ -105,9 +105,26 @@ are recorded because a future reader will hit them too:
 | --- | --- | --- | --- |
 | 1 | **UAT-blocking** | **Stock could silently hide a whole branch's stock.** The exception board keyed rows on `batchId ?? itemId`, but slow-movers are one row *per item per branch* — the same discontinued item at two branches produced two rows with one React key, and React is free to omit one. RM95 of stock at the second branch could vanish from the board without a word | The row key now carries item, branch **and** batch |
 | 2 | UAT-blocking (same screen) | Those two rows were also **indistinguishable**: the slow-movers projection returned `clinicId` but no branch name, so the branch column had nothing to render | The projection now joins `clinics` and returns `clinicName`; the column appears |
+| 3 | **UAT-blocking, and materially misleading** | **Finance reported five unclosed days as none.** `GET /finance/day-end/open` resolved its branch with `scope.require()`, which refuses when more than one branch is in scope and none is named. The Finance overview opens on *All branches*, so on this two-branch clinic the call 404'd with `No branch selected for this request.` The screen then did two wrong things at once: it painted a red *"This page could not load its figures — every number below is missing rather than zero"* banner over five figures that had loaded perfectly (received, patient receivable, panel receivable, service tax), **and** it drew the failed list as an empty one — the tile read **"Unreconciled days: 0 · Every day closed"**, in green, while **five** days stood unclosed across the two branches (RM84.80 at Contoh Bandar; RM200.00, RM101.40, −RM60.00 and RM190.80 at Contoh Central) | The **listing** is now a group question and the **closing** stays a branch act. `openDays` (and `listRange`) span the branches in scope and name the branch on every row, keyed by branch **and** date so one branch closing the 3rd cannot strike the other's 3rd off the list. `view`/`count`/`close`/`reopen` still require exactly one branch, because a drawer is physical |
+| 4 | UAT-blocking (same root cause) | **Day-End Closing offered to close a drawer it could not see.** On *All branches* the same refusal reached the closing screen, which rendered the red banner **and** an enabled "Close the day" button over a fabricated RM0.00 expected total | The screen now asks which branch, and fires no request until it has one. A branch named in the URL (from the overview's *Close this day*) wins over the header filter, and the branch appears under the title so nobody counts the wrong drawer |
+| 5 | Test-fixture drift (not a product defect) | The Admin integration spec asserted a **"Roles & access" sub-tab** that was deliberately removed from the HR rail on 2026-09-01 (`75ac9f0`) — the rail is the monthly payroll walk, and the screen is still mounted and still reached from Payroll settings. The fixture was describing a rail that no longer exists | The route moved to a new `ADMIN_LINKED_ROUTES` list with a test that asserts what is actually true: the rail is intact, the **HR module** is lit, the screen draws, and the link from Payroll settings still reaches it |
 
-Found by the Management walk's own console-error capture, proven against the API and the database
-(18 units at Contoh Central, 10 at Contoh Bandar), fixed, and re-walked: **0 duplicate-key warnings**.
+Defects 1–2 were found by the Management walk's own console-error capture, proven against the API and the
+database (18 units at Contoh Central, 10 at Contoh Bandar), fixed, and re-walked: **0 duplicate-key
+warnings**.
+
+Defects 3–4 were found by reading frame 28 of the pack — a red banner sitting above correct figures — then
+probed endpoint by endpoint (`/finance/day-end/open` and `/finance/day-end` 404; `/finance/receivables/patients`,
+`/finance/panel-money`, `/finance/tax/report`, `/finance/payments` all 200), traced to
+`apps/api/src/core/branch-scope.ts` `require()`, and fixed. The Administration Playwright suite had
+independently caught the same two screens (`admin-shell.spec.ts:17` and `admin-integration.spec.ts:110`);
+both are green now. Regression coverage: `finance-payments-dayend.e2e-spec.ts` — *"lists every branch's
+unclosed days, and closing one branch's day leaves the other's standing"* — asserts one row per branch per
+day, that naming a branch narrows it, and that closing one branch's day does not strike the other's off.
+
+The raw-SQL branch clause was duplicated in `stock-admin.service.ts`; it now lives once in
+`core/branch-scope.ts` as `branchClause()` and both callers use it. Two copies of "which branches may this
+read see" is how two screens end up disagreeing about whose money they are showing.
 
 Everything else the walk reported was antd library deprecation noise (`Drawer width`, `Button.Group`,
 `Space direction`, `Statistic valueStyle`) — invisible to the owner and out of scope for a UAT round that
@@ -139,13 +156,31 @@ Run at the converged HEAD, on the integrated world.
 | API typecheck (`tsc --noEmit`) | clean |
 | Seed typecheck (`typecheck:seed`) | clean |
 | Web typecheck (`tsc -b`) | clean |
-| API unit (`jest`) | **125 suites · 2,697 tests · all green** |
-| API integration (`jest-e2e`, serial) | **32 suites · 363 tests · all green** |
+| API unit (`jest`) | **125 suites · 2,702 tests · all green** |
+| API integration (`jest-e2e`, serial) | **32 suites · 364 tests · all green** |
 | Web unit (`vitest`) | **98 files · 1,699 tests · all green** |
-| Administration Playwright (shell, operation, stock, panel, finance, hr, integration) | see §8a |
-| Payroll statutory vectors, synthetic month, reports suite | inside the 363 above |
-| Management walk (42 frames, desktop + iPad) | no dead screens, no key collisions |
+| Administration Playwright (shell, operation, stock, panel, finance, hr, integration) | **30 tests · all green** — see §8a |
+| Payroll statutory vectors, synthetic month, reports suite | inside the 364 above |
+| Management walk (43 frames, desktop + iPad) | no dead screens, no key collisions |
 | Cross-module reconciliation | 19/0 pristine · 22/0 with payroll approved |
+
+<a name="8a"></a>
+### 8a · The Administration browser suite, and what its first run found
+
+The seven Administration Playwright suites are the gate this checkpoint waited on, and the first full run
+did **not** pass: **26 passed, 3 failed**. All three failures were real and all three are fixed:
+
+| Failing test | What it was telling us |
+| --- | --- |
+| `admin-shell.spec.ts:17` — *every page in the five modules loads, in one frame, with no console errors* | `.kw-adminError` present on Day-End Closing. The **same** Finance branch-scope defect the pack's frame 28 showed (§6, defects 3–4) |
+| `admin-integration.spec.ts:110` — *counting short forces an explanation, and closing freezes the day* | Expected cash `> 20`, got `0` — the day-end screen was drawing zeros because its call had 404'd. Same root cause |
+| `admin-integration.spec.ts:26` — *every mounted screen renders inside the Admin shell with its rail intact* | A **stale fixture** (§6, defect 5), not a product defect: it asserted a sub-tab removed from the HR rail by an earlier, deliberate product decision |
+
+Two independent signals — a screenshot read by eye and a browser suite — found the same Finance defect.
+That is the argument for keeping both.
+
+**Re-run after the fixes: 30 tests, 0 failures** (30 rather than 29 because the stale assertion was
+replaced with a test of what is actually true, and a new one added for the linked route).
 
 ## 9 · Module readiness — a verdict each
 
@@ -159,7 +194,7 @@ production-rollout approval.
 | **Panel** | **PILOT/UAT READY** | The reconciliation identity balances exactly, fee direction is implemented in both directions, and an unconfigured direction is refused rather than guessed. Electronic submission does not exist and the product says so |
 | **HR** | **PILOT/UAT READY** | Employee, salary, standing, attendance, leave, claims, incentives, locum and roster all populated; pay confidentiality enforced |
 | **Payroll** | **CONDITIONALLY READY** | The most validated module in the build — its own programme, 46-frame pack, 92-check independent reconciliation. **Conditional** because it is awaiting the historical parallel-run that this session was told not to perform, and because it prepares but never submits statutory returns |
-| **Finance** | **CONDITIONALLY READY** | Overview, sales, collections, receivables, payables, day-end, credit notes and panel money all work on canonical facts. **Conditional** on two stated gaps: payroll cost is not surfaced in Finance, and e-Invoice/MyInvois is not connected |
+| **Finance** | **CONDITIONALLY READY** | Overview, sales, collections, receivables, payables, day-end, credit notes and panel money all work on canonical facts. The two defects that made the default multi-branch view lie about reconciliation were found and fixed this cycle (§6, 3–4). **Conditional** on two stated gaps: payroll cost is not surfaced in Finance, and e-Invoice/MyInvois is not connected |
 
 ## 10 · Known limitations
 

@@ -147,11 +147,17 @@ export function useReversePayment() {
   );
 }
 
-export function useDayEnd(date: string, clinicId?: string) {
+/**
+ * One branch's day. `enabled` is a parameter because the caller knows something
+ * this hook cannot: on a multi-branch tenant with no branch chosen there is no
+ * drawer to ask about, and asking anyway returns "No branch selected for this
+ * request." — an error the screen would then have to explain away.
+ */
+export function useDayEnd(date: string, clinicId?: string, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['admin-finance', 'day-end', date, clinicId],
     queryFn: () => apiClient.get<DayEndView>(`/finance/day-end${qs({ date, clinicId })}`),
-    enabled: Boolean(date),
+    enabled: Boolean(date) && (options?.enabled ?? true),
   });
 }
 

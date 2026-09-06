@@ -69,12 +69,12 @@ describe('Finance: payments, refunds and day-end closing (e2e)', () => {
   // fresh random tenant, so leftover rows collide with nothing.
 
   /** A self-pay visit with one RM100 line, ready to be paid. */
-  async function makeInvoice(total = 100): Promise<string> {
+  async function makeInvoice(total = 100, atClinicId = clinicId): Promise<string> {
     const invoice = await withTenantContext(prisma, tenantId, async (tx) => {
       const visit = await tx.visit.create({
         data: {
           tenantId,
-          clinicId,
+          clinicId: atClinicId,
           patientId,
           visitNumber: `V-${Math.floor(Math.random() * 1_000_000)}`,
           billingType: 'SELF_PAY',
@@ -360,6 +360,100 @@ describe('Finance: payments, refunds and day-end closing (e2e)', () => {
         .set('Authorization', counterBearer)
         .send({ reason: 'I would like to change yesterday' })
         .expect(403);
+    });
+
+    /**
+     * THE UNCLOSED-DAYS LIST IS A GROUP QUESTION.
+     *
+     * Closing a day counts one branch's drawer, so `view`/`count`/`close`
+     * rightly insist on a branch. Asking WHICH days are still open does not:
+     * this list used to demand a branch too, so a two-branch group looking at
+     * "All branches" — the Finance overview's own default — got
+     * "No branch selected for this request." and the screen drew the resulting
+     * nothing as "Unreconciled days: 0. Every day closed." Five unclosed days
+     * reported as none is the exact failure the module exists to prevent.
+     */
+    it('lists every branch’s unclosed days, and closing one branch’s day leaves the other’s standing', async () => {
+      const second = await request(app.getHttpServer())
+        .post('/clinics')
+        .set('Authorization', bearer)
+        .send({ name: 'Finance Clinic Two' })
+        .expect(201);
+      const secondClinicId = second.body.id as string;
+
+      // Yesterday, so the day is closeable — today is deliberately excluded
+      // from the list until it is over.
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const businessDate = yesterday.toISOString().slice(0, 10);
+
+      // Written straight into the table rather than through the API, because
+      // the API stamps `receivedAt` with now and `payments` is append-only —
+      // the trigger refuses to let a test move a payment's date afterwards,
+      // which is exactly the protection this suite asserts elsewhere.
+      async function takeMoneyYesterday(clinic: string, amount: number) {
+        const invoiceId = await makeInvoice(amount, clinic);
+        await withTenantContext(prisma, tenantId, (tx) =>
+          tx.payment.create({
+            data: {
+              tenantId,
+              clinicId: clinic,
+              invoiceId,
+              tender: 'CASH',
+              amount,
+              receivedAt: new Date(`${businessDate}T04:00:00.000Z`),
+              receivedByStaffId: ownerStaffId,
+            },
+          }),
+        );
+      }
+
+      await takeMoneyYesterday(clinicId, 100);
+      await takeMoneyYesterday(secondClinicId, 250);
+
+      const group = await request(app.getHttpServer())
+        .get('/finance/day-end/open')
+        .set('Authorization', bearer)
+        .expect(200);
+      const forDate = (body: unknown[]) =>
+        (body as { clinicId: string; businessDate: string; expectedTotal: number; clinicName: string }[]).filter(
+          (row) => row.businessDate === businessDate,
+        );
+
+      // ONE ROW PER BRANCH PER DAY, each naming its own branch. Keyed by the
+      // date alone these two would have collapsed into one.
+      const both = forDate(group.body);
+      expect(both).toHaveLength(2);
+      expect(new Set(both.map((row) => row.clinicId))).toEqual(new Set([clinicId, secondClinicId]));
+      expect(both.map((row) => row.clinicName).sort()).toEqual(['Finance Clinic', 'Finance Clinic Two']);
+      expect(both.find((row) => row.clinicId === secondClinicId)?.expectedTotal).toBe(250);
+
+      // Naming a branch narrows it to that branch and nothing else.
+      const narrowed = await request(app.getHttpServer())
+        .get(`/finance/day-end/open?clinicId=${secondClinicId}`)
+        .set('Authorization', bearer)
+        .expect(200);
+      expect(forDate(narrowed.body)).toHaveLength(1);
+      expect(forDate(narrowed.body)[0].clinicId).toBe(secondClinicId);
+
+      // Closing ONE branch's day must not strike the other branch's off.
+      await request(app.getHttpServer())
+        .post(`/finance/day-end/count?date=${businessDate}&clinicId=${secondClinicId}`)
+        .set('Authorization', bearer)
+        .send({ cash: '250.00' })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/finance/day-end/close?date=${businessDate}&clinicId=${secondClinicId}`)
+        .set('Authorization', bearer)
+        .send({})
+        .expect(201);
+
+      const after = await request(app.getHttpServer())
+        .get('/finance/day-end/open')
+        .set('Authorization', bearer)
+        .expect(200);
+      const left = forDate(after.body);
+      expect(left).toHaveLength(1);
+      expect(left[0].clinicId).toBe(clinicId);
     });
   });
 
