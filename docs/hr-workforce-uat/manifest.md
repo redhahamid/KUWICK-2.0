@@ -1,0 +1,23 @@
+- 01-my-home-phone.png — My Kuwick — the home screen: clock in, today, what is waiting · iPhone 390×844
+- 02-my-schedule-phone.png — My Kuwick — my shifts, read from the one canonical roster · iPhone 390×844
+- 03-my-attendance-phone.png — My Kuwick — what the clock recorded, and how to ask for a fix · iPhone 390×844
+- 04-my-leave-phone.png — My Kuwick — my leave and its decisions · iPhone 390×844
+- 05-my-claims-phone.png — My Kuwick — my claims, with where the money is in plain words · iPhone 390×844
+- 06-my-payslips-phone.png — My Kuwick — my payslips, approved months only · iPhone 390×844
+- 07-my-profile-phone.png — My Kuwick — who Kuwick thinks I am, and no salary on it · iPhone 390×844
+- 08-my-leave-request-phone.png — My Kuwick — the leave request drawer on a phone
+- 09-my-claim-new-phone.png — My Kuwick — the claim form, with the receipt camera button
+- 10-my-home-ipad.png — My Kuwick — the home screen: clock in, today, what is waiting · iPad portrait 834×1112
+- 11-my-schedule-ipad.png — My Kuwick — my shifts, read from the one canonical roster · iPad portrait 834×1112
+- 12-my-attendance-ipad.png — My Kuwick — what the clock recorded, and how to ask for a fix · iPad portrait 834×1112
+- 13-my-leave-ipad.png — My Kuwick — my leave and its decisions · iPad portrait 834×1112
+- 14-my-claims-ipad.png — My Kuwick — my claims, with where the money is in plain words · iPad portrait 834×1112
+- 15-my-payslips-ipad.png — My Kuwick — my payslips, approved months only · iPad portrait 834×1112
+- 16-my-profile-ipad.png — My Kuwick — who Kuwick thinks I am, and no salary on it · iPad portrait 834×1112
+- 17-my-home-desktop.png — My Kuwick — the home screen: clock in, today, what is waiting · Desktop 1440×900
+- 18-my-schedule-desktop.png — My Kuwick — my shifts, read from the one canonical roster · Desktop 1440×900
+- 19-my-attendance-desktop.png — My Kuwick — what the clock recorded, and how to ask for a fix · Desktop 1440×900
+- 20-my-leave-desktop.png — My Kuwick — my leave and its decisions · Desktop 1440×900
+- 21-my-claims-desktop.png — My Kuwick — my claims, with where the money is in plain words · Desktop 1440×900
+- 22-my-payslips-desktop.png — My Kuwick — my payslips, approved months only · Desktop 1440×900
+- 23-my-profile-desktop.png — My Kuwick — who Kuwick thinks I am, and no salary on it · Desktop 1440×900

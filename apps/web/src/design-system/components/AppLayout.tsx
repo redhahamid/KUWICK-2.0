@@ -116,6 +116,16 @@ export function AppLayout() {
       inHub
         ? [
             { key: 'back', icon: <ArrowLeftOutlined />, label: 'Back to Main Menu', onClick: () => navigate('/appointments') },
+            {
+              // FIRST, and in both branches, because it is the only entry here
+              // that every member of staff can actually use. Administration,
+              // Management and Settings all depend on permissions somebody may
+              // not hold; their own schedule, leave and payslips do not.
+              key: 'my-kuwick',
+              icon: <UserOutlined />,
+              label: 'My Kuwick',
+              onClick: () => navigate('/my'),
+            },
             inAdmin
               ? { key: 'management', icon: <BarChartOutlined />, label: 'Management Reports', onClick: () => navigate('/management/reports') }
               : { key: 'admin', icon: <AppstoreOutlined />, label: 'Administration', onClick: () => navigate('/admin/operation') },
@@ -132,6 +142,16 @@ export function AppLayout() {
             { key: 'logout', icon: <LogoutOutlined />, label: 'Logout', onClick: handleLogout },
           ]
         : [
+            {
+              // FIRST, and in both branches, because it is the only entry here
+              // that every member of staff can actually use. Administration,
+              // Management and Settings all depend on permissions somebody may
+              // not hold; their own schedule, leave and payslips do not.
+              key: 'my-kuwick',
+              icon: <UserOutlined />,
+              label: 'My Kuwick',
+              onClick: () => navigate('/my'),
+            },
             {
               key: 'admin',
               icon: <AppstoreOutlined />,

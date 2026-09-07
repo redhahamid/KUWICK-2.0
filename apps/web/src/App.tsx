@@ -5,6 +5,14 @@ import { SettingsLayout } from './design-system/components/SettingsLayout';
 import { StockHealthPage } from './inventory/StockHealthPage';
 import { LoginPage } from './auth/LoginPage';
 import { RequireAuth } from './auth/RequireAuth';
+import { MyKuwickLayout } from './me/MyKuwickLayout';
+import { MyHomePage } from './me/MyHomePage';
+import { MySchedulePage } from './me/MySchedulePage';
+import { MyAttendancePage } from './me/MyAttendancePage';
+import { MyLeavePage } from './me/MyLeavePage';
+import { MyClaimsPage } from './me/MyClaimsPage';
+import { MyPayslipsPage } from './me/MyPayslipsPage';
+import { MyProfilePage } from './me/MyProfilePage';
 import { RequirePlatformAuth } from './auth/RequirePlatformAuth';
 import { PlatformLayout } from './platform/PlatformLayout';
 import { PlatformDashboardPage } from './platform/PlatformDashboardPage';
@@ -136,6 +144,29 @@ export function App() {
           <Route path="/platform/procedures" element={<PlatformProceduresPage />} />
           <Route path="/platform/document-templates" element={<PlatformDocumentTemplatesPage />} />
           <Route path="/platform/settings" element={<PlatformSettingsPage />} />
+        </Route>
+      </Route>
+
+      {/*
+        * MY KUWICK — the staff-facing area, OUTSIDE the clinic workspace shell.
+        *
+        * Signed in, and nothing more: every route under it is authorised by
+        * identity rather than by a permission, because nobody should be able
+        * to withhold somebody's own attendance record from them. It sits
+        * outside `AppLayout` deliberately — an employee should not be shown
+        * the workspace navigation, the patient list or the module rail, since
+        * a screen that offers controls it then refuses is worse than one that
+        * never offered them.
+        */}
+      <Route element={<RequireAuth />}>
+        <Route element={<MyKuwickLayout />}>
+          <Route path="/my" element={<MyHomePage />} />
+          <Route path="/my/schedule" element={<MySchedulePage />} />
+          <Route path="/my/attendance" element={<MyAttendancePage />} />
+          <Route path="/my/leave" element={<MyLeavePage />} />
+          <Route path="/my/claims" element={<MyClaimsPage />} />
+          <Route path="/my/payslips" element={<MyPayslipsPage />} />
+          <Route path="/my/profile" element={<MyProfilePage />} />
         </Route>
       </Route>
 
