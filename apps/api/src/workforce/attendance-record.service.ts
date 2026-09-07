@@ -1,15 +1,17 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { AttendanceStatus } from '@prisma/client';
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { AttendanceCorrectionStatus, AttendanceStatus } from '@prisma/client';
 import { TENANT_SCOPED_PRISMA, TenantScopedPrismaClient } from '../core/tenant-scoped-prisma.provider';
 import { PrismaService } from '../core/prisma.service';
 import { currentTenantId } from '../core/tenant-context';
 import { actorCan, requirePermission, resolveClinicId, withAdminTx } from '../finance/admin-actor';
+import { requireActor, withTenantTx } from '../clinical/clinical-actor';
 import { recordAudit } from '../finance/admin-audit';
 import { computeAttendance, hoursOf, totalTimesheet } from './attendance-hours';
 import { AttendancePolicy, DEFAULT_ATTENDANCE_POLICY, resolveAttendancePolicy } from './attendance-policy';
 import { clinicDateKey } from '../appointment/time.util';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { ClockDto } from './dto/clock.dto';
+import { DecideCorrectionDto } from './dto/decide-correction.dto';
 
 /**
  * A date-only column value from a `YYYY-MM-DD` string.
@@ -110,14 +112,24 @@ export class AttendanceRecordService {
     return open.scheduledEnd > open.clockInAt! && now <= grace ? open : null;
   }
 
-  /** Clock in, or clock out. The same endpoint, because the record decides. */
+  /**
+   * Clock in, or clock out. The same endpoint, because the record decides.
+   *
+   * CLOCKING YOURSELF IN IS NOT A PERMISSIONED ACT. This required `hr.view`,
+   * which is the permission to open the HR module and read everybody's hours —
+   * so a nurse could not record that she had arrived, and every punch in the
+   * building had to be made by somebody with administrative access. Turning up
+   * for work is not administration. Any active member of staff may record
+   * their own arrival and departure; clocking somebody ELSE in is the
+   * supervisory act, and that still needs `hr.attendance.manage`.
+   */
   async clock(dto: ClockDto) {
-    return withAdminTx(this.rawPrisma, 'hr.view', async (tx, actor) => {
+    return withTenantTx(this.rawPrisma, async (tx) => {
+      const actor = await requireActor(tx);
       const staffId = dto.staffId ?? actor.id;
-      // Clocking somebody ELSE in is a supervisory act.
       if (staffId !== actor.id) {
         if (!actorCan(actor, 'hr.attendance.manage')) {
-          throw new BadRequestException('You can only clock yourself in and out.');
+          throw new ForbiddenException('You can only clock yourself in and out.');
         }
       }
 
@@ -228,6 +240,110 @@ export class AttendanceRecordService {
 
       return updated;
     });
+  }
+
+  /**
+   * THE QUEUE OF CORRECTIONS PEOPLE HAVE ASKED FOR.
+   *
+   * Read with `hr.view` because seeing that a request exists is not the same
+   * act as granting it, and a supervisor who can open the timesheet should be
+   * able to see what is waiting on them.
+   */
+  async correctionRequests(params: { clinicId?: string; status?: AttendanceCorrectionStatus } = {}) {
+    const actor = await requirePermission(this.rawPrisma, 'hr.view');
+    const clinicId = params.clinicId ?? actor.clinicId ?? undefined;
+    const rows = await this.prisma.attendanceCorrectionRequest.findMany({
+      where: {
+        status: params.status ?? AttendanceCorrectionStatus.PENDING,
+        ...(clinicId ? { attendanceRecord: { clinicId } } : {}),
+      },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        staff: { select: { id: true, fullName: true } },
+        attendanceRecord: {
+          select: {
+            id: true,
+            workDate: true,
+            clockInAt: true,
+            clockOutAt: true,
+            scheduledStart: true,
+            scheduledEnd: true,
+            status: true,
+          },
+        },
+      },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      staffId: row.staffId,
+      staffName: row.staff.fullName,
+      status: row.status,
+      reason: row.reason,
+      requestedClockInAt: row.requestedClockInAt,
+      requestedClockOutAt: row.requestedClockOutAt,
+      createdAt: row.createdAt,
+      record: {
+        ...row.attendanceRecord,
+        workDate: row.attendanceRecord.workDate.toISOString().slice(0, 10),
+      },
+    }));
+  }
+
+  /**
+   * Decide one. Approving APPLIES IT THROUGH `correct()`.
+   *
+   * Deliberately not a second write path into attendance: the original punch
+   * still survives beside the new one, the approver is still named on the
+   * record, and the audit trail is the one that already existed. What the
+   * request adds is who asked and why, which a manager-initiated correction
+   * never had.
+   */
+  async decideCorrection(id: string, dto: DecideCorrectionDto) {
+    const request = await withAdminTx(this.rawPrisma, 'hr.attendance.manage', async (tx, actor) => {
+      const row = await tx.attendanceCorrectionRequest.findUnique({ where: { id } });
+      if (!row) throw new NotFoundException('Correction request not found.');
+      if (row.status !== AttendanceCorrectionStatus.PENDING) {
+        throw new BadRequestException('That request has already been decided.');
+      }
+      // A correction is somebody asking for their own hours to be changed, so
+      // the same maker-checker rule as overtime applies: not your own.
+      if (row.staffId === actor.id) {
+        throw new BadRequestException('A correction has to be decided by somebody other than the person who asked.');
+      }
+      const updated = await tx.attendanceCorrectionRequest.update({
+        where: { id },
+        data: {
+          status: dto.approve ? AttendanceCorrectionStatus.APPROVED : AttendanceCorrectionStatus.REJECTED,
+          decidedByStaffId: actor.id,
+          decidedAt: new Date(),
+          decisionNote: dto.note ?? null,
+        },
+      });
+
+      await recordAudit(tx, actor, {
+        action: 'attendanceCorrection.decided',
+        entityType: 'AttendanceCorrectionRequest',
+        entityId: id,
+        before: { status: row.status },
+        after: { status: updated.status, note: dto.note ?? null },
+        reason: dto.note ?? row.reason,
+        source: 'hr.attendance',
+      });
+
+      return updated;
+    });
+
+    if (request.status !== AttendanceCorrectionStatus.APPROVED) return request;
+
+    // Applied OUTSIDE the transaction above, through the one correction path,
+    // so an approval cannot become a way of writing attendance that skips the
+    // original-punch capture and the audit record.
+    await this.correct(request.attendanceRecordId, {
+      clockInAt: request.requestedClockInAt?.toISOString(),
+      clockOutAt: request.requestedClockOutAt?.toISOString(),
+      reason: `Correction requested by the employee: ${request.reason}`,
+    });
+    return request;
   }
 
   /** Approve an overtime claim. Separate act, separate permission. */

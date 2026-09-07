@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
-import { EmploymentStatus, LeaveType } from '@prisma/client';
+import { EmploymentStatus, LeaveType, AttendanceCorrectionStatus } from '@prisma/client';
 import { EmployeeService } from './employee.service';
 import { AttendanceRecordService } from './attendance-record.service';
 import { AttendancePolicyService } from './attendance-policy.service';
@@ -10,6 +10,7 @@ import { PayrollService } from './payroll.service';
 import { UpsertEmployeeDto } from './dto/upsert-employee.dto';
 import { ClockDto } from './dto/clock.dto';
 import { SaveAttendancePolicyDto } from './dto/save-attendance-policy.dto';
+import { DecideCorrectionDto } from './dto/decide-correction.dto';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { UpsertLeavePolicyDto } from './dto/upsert-leave-policy.dto';
 import { AdjustLeaveBalanceDto } from './dto/adjust-leave-balance.dto';
@@ -545,6 +546,20 @@ export class WorkforceController {
   @Post('attendance/policy')
   saveAttendancePolicy(@Body() dto: SaveAttendancePolicyDto) {
     return this.attendancePolicies.save(dto);
+  }
+
+  /** What staff have asked to have put right, and the decision on each. */
+  @Get('attendance/corrections')
+  correctionRequests(
+    @Query('clinicId') clinicId?: string,
+    @Query('status') status?: AttendanceCorrectionStatus,
+  ) {
+    return this.attendance.correctionRequests({ clinicId, status });
+  }
+
+  @Post('attendance/corrections/:id/decide')
+  decideCorrection(@Param('id') id: string, @Body() dto: DecideCorrectionDto) {
+    return this.attendance.decideCorrection(id, dto);
   }
 
   @Get('attendance/timesheet')

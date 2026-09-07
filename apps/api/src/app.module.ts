@@ -12,6 +12,7 @@ import { FinanceModule } from './finance/finance.module';
 import { StockAdminModule } from './stock/stock-admin.module';
 import { PanelModule } from './panel/panel.module';
 import { WorkforceModule } from './workforce/workforce.module';
+import { MeModule } from './me/me.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
@@ -28,6 +29,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     StockAdminModule,
     PanelModule,
     WorkforceModule,
+    MeModule,
     AnalyticsModule,
   ],
 })

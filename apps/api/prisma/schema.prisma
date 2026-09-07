@@ -342,6 +342,7 @@ model Tenant {
   employeeProfiles           EmployeeProfile[]
   attendanceRecords          AttendanceRecord[]
   attendancePolicies         AttendancePolicy[]
+  attendanceCorrections      AttendanceCorrectionRequest[]
   leavePolicies              LeavePolicy[]
   leavePolicyEntitlements    LeavePolicyEntitlement[]
   leaveBalances              LeaveBalance[]
@@ -1075,6 +1076,8 @@ model Staff {
   directReports                EmployeeProfile[]            @relation("EmployeeManager")
   attendanceRecords            AttendanceRecord[]           @relation("AttendanceStaff")
   attendancePoliciesAuthored   AttendancePolicy[]           @relation("AttendancePolicyAuthor")
+  attendanceCorrectionsAsked   AttendanceCorrectionRequest[] @relation("AttendanceCorrectionRequester")
+  attendanceCorrectionsDecided AttendanceCorrectionRequest[] @relation("AttendanceCorrectionDecider")
   attendanceCorrections        AttendanceRecord[]           @relation("AttendanceCorrectedBy")
   overtimeApprovals            AttendanceRecord[]           @relation("AttendanceOvertimeApprover")
   leaveBalances                LeaveBalance[]               @relation("LeaveBalanceStaff")
@@ -6532,6 +6535,62 @@ enum AttendanceStatus {
 /// which is what the old attendance report did: a doctor who saw no patients
 /// was absent by that measure, and a receptionist who sees none ever was
 /// permanently absent.
+/// AN EMPLOYEE ASKING FOR A PUNCH TO BE PUT RIGHT — a request, not an edit.
+///
+/// The attendance record already carries a correction (`correctedAt`,
+/// `correctionReason`, and the original punches beside the new ones), but that
+/// is a MANAGER writing. An employee who forgot to clock out has no way to say
+/// so, and giving them the manager's write would mean the person whose pay
+/// depends on the number is also the person who sets it.
+///
+/// So this is the ask: what they say happened, why, and what a manager decided
+/// about it. Approving one applies the correction through the ordinary
+/// correction path, which keeps the original punch and names the approver — so
+/// there is still exactly one way attendance history is rewritten.
+model AttendanceCorrectionRequest {
+  id                 String  @id @default(uuid())
+  tenantId           String  @map("tenant_id")
+  attendanceRecordId String  @map("attendance_record_id")
+  /// Denormalised so "my requests" is one index and not a join through
+  /// attendance, and so the row still says whose it was if the record moves.
+  staffId            String  @map("staff_id")
+
+  /// What the employee says the punches should have been. Either may be NULL:
+  /// a forgotten clock-out is a request about one end of the day only.
+  requestedClockInAt  DateTime? @map("requested_clock_in_at")
+  requestedClockOutAt DateTime? @map("requested_clock_out_at")
+  /// Required. "Please fix" is not a reason a manager can decide on.
+  reason              String
+
+  status AttendanceCorrectionStatus @default(PENDING)
+
+  decidedByStaffId String?   @map("decided_by_staff_id")
+  decidedAt        DateTime? @map("decided_at")
+  /// Why it was refused, or any note the manager left on approval.
+  decisionNote     String?   @map("decision_note")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id])
+  attendanceRecord AttendanceRecord @relation(fields: [attendanceRecordId], references: [id], onDelete: Cascade)
+  staff            Staff            @relation("AttendanceCorrectionRequester", fields: [staffId], references: [id], onDelete: Cascade)
+  decidedBy        Staff?           @relation("AttendanceCorrectionDecider", fields: [decidedByStaffId], references: [id])
+
+  @@index([tenantId, staffId, status])
+  @@index([tenantId, status])
+  @@index([tenantId, attendanceRecordId])
+  @@map("attendance_correction_requests")
+}
+
+enum AttendanceCorrectionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  /// Withdrawn by the employee before anybody decided.
+  CANCELLED
+}
+
 /// HOW THIS CLINIC MEASURES ATTENDANCE — grace, overtime and breaks.
 ///
 /// These were five constants in `attendance-hours.ts`, which meant every
@@ -6641,6 +6700,7 @@ model AttendanceRecord {
   clinic             Clinic? @relation(fields: [clinicId], references: [id])
   correctedBy        Staff?  @relation("AttendanceCorrectedBy", fields: [correctedByStaffId], references: [id])
   overtimeApprovedBy Staff?  @relation("AttendanceOvertimeApprover", fields: [overtimeApprovedByStaffId], references: [id])
+  correctionRequests AttendanceCorrectionRequest[]
 
   @@unique([tenantId, staffId, workDate])
   @@index([tenantId, clinicId, workDate])
