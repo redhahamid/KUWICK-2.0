@@ -26,6 +26,8 @@ import {
   useRemoveShift,
   useRosterMonth,
   useSetScheduleMode,
+  WORKFORCE_CATEGORY_LABELS,
+  WorkforceCategory,
 } from '../hooks/useRoster';
 import { ShiftEditorModal } from './ShiftEditorModal';
 import { permissionHint, useCan } from '../../core/hooks/useCan';
@@ -85,8 +87,16 @@ export function RosterPage({ clinicId }: RosterPageProps) {
   // writing controls disable and say why, instead of failing after the click.
   const canManageRoster = useCan('appointment.manage_roster');
 
+  // WHICH PART OF THE WORKFORCE IS ON THE BOARD.
+  //
+  // The roster used to be doctors only, and a clinic runs on more than its
+  // doctors. Now that it holds everybody, "all of them at once" is a wall on
+  // a twelve-person board, so the filter is the first control on the toolbar
+  // and the chips carry the counts of the whole workforce whichever one is on.
+  const [category, setCategory] = useState<WorkforceCategory | undefined>(undefined);
+
   const monthKey = month.format('YYYY-MM');
-  const { data, isFetching } = useRosterMonth(clinicId, monthKey);
+  const { data, isFetching } = useRosterMonth(clinicId, monthKey, category);
   const removeShift = useRemoveShift();
   const copyMonth = useCopyRosterMonth();
   const setMode = useSetScheduleMode();
@@ -171,8 +181,12 @@ export function RosterPage({ clinicId }: RosterPageProps) {
     () => (data?.providers ?? []).filter((row) => row.scheduleMode === 'ROSTER_LINKED'),
     [data],
   );
+  // FIXED_WEEKLY is a statement about APPOINTMENT AVAILABILITY, so only
+  // somebody who takes bookings can be in this section. A receptionist is
+  // always their shifts; the API reports ROSTER_LINKED for them and `bookable`
+  // keeps the section honest if that ever changes.
   const weeklyProviders = useMemo(
-    () => (data?.providers ?? []).filter((row) => row.scheduleMode === 'FIXED_WEEKLY'),
+    () => (data?.providers ?? []).filter((row) => row.bookable && row.scheduleMode === 'FIXED_WEEKLY'),
     [data],
   );
 
@@ -226,10 +240,40 @@ export function RosterPage({ clinicId }: RosterPageProps) {
   return (
     <div className="kw-roster" data-testid="roster-page">
       <p className="kw-roster-explain">
-        <strong>How this board relates to HR:</strong> approved HR leave and clinic closures
-        appear here automatically and block booking — they are never re-entered. This board adds
-        the booking layer on top: working shifts, locums, blocks, and narrowed booking windows.
+        <strong>One roster, the whole clinic.</strong> Everybody who works here is on this board —
+        doctors, clinical staff, front desk, finance. Approved HR leave and clinic closures appear
+        automatically and are never re-entered. Shifts for staff who take appointments also become
+        booking availability; shifts for everybody else are simply their hours.
       </p>
+      {/*
+        * WHO IS ON THE BOARD. Counts come from the whole workforce whichever
+        * chip is on, so choosing "Doctors" does not make the others look empty.
+        */}
+      <div className="kw-roster-filters" role="group" aria-label="Workforce">
+        <Button
+          size="small"
+          type={category === undefined ? 'primary' : 'default'}
+          onClick={() => setCategory(undefined)}
+        >
+          Everyone{data ? ` (${Object.values(data.categoryCounts).reduce((a, b) => a + b, 0)})` : ''}
+        </Button>
+        {(Object.keys(WORKFORCE_CATEGORY_LABELS) as WorkforceCategory[]).map((key) => {
+          const count = data?.categoryCounts?.[key] ?? 0;
+          // A chip for a category nobody is in is a control that does nothing.
+          if (data && count === 0) return null;
+          return (
+            <Button
+              key={key}
+              size="small"
+              type={category === key ? 'primary' : 'default'}
+              onClick={() => setCategory(category === key ? undefined : key)}
+            >
+              {WORKFORCE_CATEGORY_LABELS[key]}
+              {data ? ` (${count})` : ''}
+            </Button>
+          );
+        })}
+      </div>
       <div className="kw-roster-toolbar">
         <Space wrap>
           <Button.Group>

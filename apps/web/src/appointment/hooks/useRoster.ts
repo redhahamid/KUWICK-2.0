@@ -26,9 +26,32 @@ export interface ScheduledModeChange {
   effectiveFrom: string;
 }
 
+/** The five-way split a roster is actually read along. Derived from the role. */
+export type WorkforceCategory = 'DOCTOR' | 'CLINICAL' | 'ADMIN' | 'MANAGEMENT' | 'OTHER';
+
+export const WORKFORCE_CATEGORY_LABELS: Record<WorkforceCategory, string> = {
+  DOCTOR: 'Doctors',
+  CLINICAL: 'Clinical',
+  ADMIN: 'Admin / front desk',
+  MANAGEMENT: 'Finance / management',
+  OTHER: 'Other',
+};
+
 export interface RosterRow {
   staffId: string;
   fullName: string;
+  /** Which part of the workforce, for the board's filter and its sections. */
+  category: WorkforceCategory;
+  role: string;
+  /**
+   * Whether appointments can be booked into this person's shifts.
+   *
+   * False for most of the roster now that it holds the whole workforce. The
+   * board uses it to decide whether the availability apparatus — scheduling
+   * mode, bookable window — belongs on the row at all: offering a receptionist
+   * a "bookable hours" field would be offering a setting that governs nothing.
+   */
+  bookable: boolean;
   /** The mode governing the first day of the viewed month (§18b — effective-dated). */
   scheduleMode: ProviderScheduleMode;
   /** The next scheduled mode change on or after that day, if one exists. */
@@ -47,6 +70,8 @@ export interface RosterMatrix {
   timeZone: string;
   dates: string[];
   closedDates: Record<string, string | null>;
+  /** Counts of the WHOLE workforce, before any filter — the chips' numbers. */
+  categoryCounts: Record<WorkforceCategory, number>;
   providers: RosterRow[];
 }
 
@@ -61,11 +86,17 @@ export interface RangeShift {
   note: string | null;
 }
 
-export function useRosterMonth(clinicId: string | undefined, month: string) {
+export function useRosterMonth(
+  clinicId: string | undefined,
+  month: string,
+  category?: WorkforceCategory,
+) {
   return useQuery({
-    queryKey: ['roster-month', clinicId, month],
+    queryKey: ['roster-month', clinicId, month, category ?? 'ALL'],
     queryFn: () =>
-      apiClient.get<RosterMatrix>(`/provider-shifts/month?clinicId=${clinicId}&month=${month}`),
+      apiClient.get<RosterMatrix>(
+        `/provider-shifts/month?clinicId=${clinicId}&month=${month}${category ? `&category=${category}` : ''}`,
+      ),
     enabled: Boolean(clinicId),
     placeholderData: (previous) => previous,
   });

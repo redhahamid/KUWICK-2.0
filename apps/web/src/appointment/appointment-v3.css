@@ -2579,6 +2579,21 @@
   gap: 10px;
 }
 
+/*
+ * WHO IS ON THE BOARD — the workforce filter.
+ *
+ * Wraps rather than scrolls: five chips at iPad-portrait width fit on two
+ * lines, and a horizontally scrolling filter row hides the option you were
+ * looking for behind an edge nobody notices.
+ */
+.kw-roster-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 2px;
+}
+
 .kw-roster-heading {
   font-size: 17px;
   font-weight: 700;

@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ProviderShiftService } from './provider-shift.service';
+import { WorkforceCategory } from '../workforce/workforce-category';
 import {
   CopyRosterDto,
   CreateProviderShiftDto,
@@ -14,8 +15,13 @@ export class ProviderShiftController {
   // Literal paths BEFORE `:id`, or Nest reads "month" as an id. The same trap
   // that made `/appointments/dashboard` silently return nothing.
   @Get('month')
-  month(@Query('clinicId') clinicId: string, @Query('month') month: string) {
-    return this.shifts.month(clinicId, month);
+  month(
+    @Query('clinicId') clinicId: string,
+    @Query('month') month: string,
+    /** All of them when omitted. The response carries the counts either way. */
+    @Query('category') category?: WorkforceCategory,
+  ) {
+    return this.shifts.month(clinicId, month, category);
   }
 
   @Get('range')

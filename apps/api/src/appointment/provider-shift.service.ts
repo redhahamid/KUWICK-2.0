@@ -15,6 +15,11 @@ import {
   UpdateProviderShiftDto,
 } from './dto/provider-shift.dto';
 import { ProviderScheduleModeService } from './provider-schedule-mode.service';
+import {
+  WorkforceCategory,
+  isBookableProvider,
+  workforceCategoryOf,
+} from '../workforce/workforce-category';
 import { clinicDateKey, parseDateOnly, parseTimeToDate, zonedWallClockToInstant } from './time.util';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -47,6 +52,19 @@ export interface RosterRow {
   /** Every change scheduled after today, in order — the plan the scheduling dialog edits. */
   upcomingChanges: { mode: string; effectiveFrom: string }[];
   calendarColor: string | null;
+  /** Which part of the workforce this person is, for the board's filter. */
+  category: WorkforceCategory;
+  role: Role;
+  /**
+   * Whether appointments can be booked into this person's shifts.
+   *
+   * FALSE for most of the roster now that it holds the whole workforce, and
+   * the board uses it to decide whether to show the availability apparatus at
+   * all: a receptionist has a real shift and no bookable window, and offering
+   * them a "bookable hours" field would be offering a setting that does
+   * nothing.
+   */
+  bookable: boolean;
   cells: Record<string, RosterCell>;
 }
 
@@ -57,7 +75,21 @@ export interface RosterMatrix {
   dates: string[];
   /** Dates the BUILDING is shut, which no roster cell can override. */
   closedDates: Record<string, string | null>;
+  /** How many of each category exist, BEFORE the filter — the chips' numbers. */
+  categoryCounts: Record<WorkforceCategory, number>;
   providers: RosterRow[];
+}
+
+function countBy(rows: RosterRow[]): Record<WorkforceCategory, number> {
+  const counts: Record<WorkforceCategory, number> = {
+    DOCTOR: 0,
+    CLINICAL: 0,
+    ADMIN: 0,
+    MANAGEMENT: 0,
+    OTHER: 0,
+  };
+  for (const row of rows) counts[row.category] += 1;
+  return counts;
 }
 
 /**
@@ -96,7 +128,7 @@ export class ProviderShiftService {
    * than one per provider per day — a 12-provider clinic over 31 days is 372
    * cells, and 372 queries is a screen that takes a minute to open.
    */
-  async month(clinicId: string, month: string): Promise<RosterMatrix> {
+  async month(clinicId: string, month: string, category?: WorkforceCategory): Promise<RosterMatrix> {
     if (!/^\d{4}-\d{2}$/.test(month)) {
       throw new BadRequestException('Month must be written as YYYY-MM.');
     }
@@ -106,16 +138,30 @@ export class ProviderShiftService {
     const last = parseDateOnly(dates[dates.length - 1]);
 
     const [providers, shifts, leave, closed] = await Promise.all([
+      // THE WHOLE WORKFORCE, not only the doctors.
+      //
+      // This read was `role: { in: [DOCTOR_RESIDENT, DOCTOR_LOCUM] }`, and the
+      // reason was sound at the time: every other active staff row rendered as
+      // a weekly-availability entry reading "No working days configured",
+      // which is noise pretending to be a roster. But hiding them meant a
+      // receptionist could not be scheduled at all, and a clinic runs on more
+      // than its doctors. The answer is to give a non-provider a row that
+      // MEANS something — shifts, no bookable window, no scheduling mode —
+      // rather than to leave them off the board.
+      //
+      // `ProviderShift` always accepted any staffId and `create()` never had a
+      // doctor guard, so nothing below this line changes: the same table, the
+      // same rows, more of the people who are in it.
       this.prisma.staff.findMany({
-        // BOOKABLE providers only — the same DOCTOR_ROLES gate the engine's
-        // assertActiveDoctor applies. Before this, every active staff row
-        // (finance, front desk) rendered as a weekly-availability entry
-        // reading "No working days configured", which is noise pretending
-        // to be a roster (found in the §36 visual review).
-        where: { clinicId, active: true, role: { in: [Role.DOCTOR_RESIDENT, Role.DOCTOR_LOCUM] } },
+        where: {
+          clinicId,
+          active: true,
+          role: { not: Role.PATIENT_PORTAL },
+        },
         select: {
           id: true,
           fullName: true,
+          role: true,
           appointmentScheduleMode: true,
           calendarColor: true,
           professionalType: true,
@@ -162,13 +208,22 @@ export class ProviderShiftService {
     for (const provider of providers) {
       const resolved = modes.get(provider.id);
       const planning = modesToday.get(provider.id);
+      const bookable = isBookableProvider(provider);
       byStaff.set(provider.id, {
         staffId: provider.id,
         fullName: provider.fullName,
-        scheduleMode: resolved?.mode ?? provider.appointmentScheduleMode,
-        modeChange: resolved?.upcoming[0] ? serialize(resolved.upcoming[0]) : null,
-        modeToday: planning?.mode ?? provider.appointmentScheduleMode,
-        upcomingChanges: (planning?.upcoming ?? []).map(serialize),
+        role: provider.role,
+        category: workforceCategoryOf(provider),
+        bookable,
+        // SCHEDULING MODE IS A BOOKING CONCEPT. FIXED_WEEKLY means "a standing
+        // pattern decides this provider's availability", which is a sentence
+        // about appointments. A receptionist has no availability to decide, so
+        // they are always their shifts and nothing else — reporting a mode for
+        // them would put a control on screen that governs nothing.
+        scheduleMode: bookable ? resolved?.mode ?? provider.appointmentScheduleMode : 'ROSTER_LINKED',
+        modeChange: bookable && resolved?.upcoming[0] ? serialize(resolved.upcoming[0]) : null,
+        modeToday: bookable ? planning?.mode ?? provider.appointmentScheduleMode : 'ROSTER_LINKED',
+        upcomingChanges: bookable ? (planning?.upcoming ?? []).map(serialize) : [],
         calendarColor: provider.calendarColor,
         cells: Object.fromEntries(
           dates.map((date) => [date, { date, shifts: [], leave: null } as RosterCell]),
@@ -220,7 +275,12 @@ export class ProviderShiftService {
       closedDates: Object.fromEntries(
         closed.map((row) => [row.date.toISOString().slice(0, 10), row.reason]),
       ),
-      providers: [...byStaff.values()],
+      // FILTERED LAST, not in the query. The counts below are what the board's
+      // filter chips show, and they have to be counts of the WHOLE workforce —
+      // a chip reading "Doctors 3" that disappears the moment you click it is
+      // a filter that has forgotten what it is filtering.
+      categoryCounts: countBy([...byStaff.values()]),
+      providers: [...byStaff.values()].filter((row) => !category || row.category === category),
     };
   }
 

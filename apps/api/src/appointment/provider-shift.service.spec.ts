@@ -74,6 +74,9 @@ function build(world: World = {}) {
             {
               id: DOC,
               fullName: 'Dr Redha',
+              // The board now selects the role, because it decides which part
+              // of the workforce a row is and whether bookings can land in it.
+              role: 'DOCTOR_RESIDENT',
               appointmentScheduleMode: 'ROSTER_LINKED',
               calendarColor: null,
               professionalType: 'MEDICAL_DOCTOR',
