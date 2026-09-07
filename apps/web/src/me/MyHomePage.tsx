@@ -67,7 +67,7 @@ export function MyHomePage() {
 
       <div className="kw-my-card">
         <div className="kw-my-card__label">Today · {clinicDayjs(`${data?.date ?? ''}T00:00:00`).format('ddd D MMM')}</div>
-        {isLoading ? null : (data?.todayShifts.length ?? 0) === 0 ? (
+        {isLoading ? null : (data?.todayShifts?.length ?? 0) === 0 ? (
           <MyEmpty title="Nothing scheduled for you today">
             {data?.nextShift
               ? `Your next shift is ${clinicDayjs(`${data.nextShift.date}T00:00:00`).format('ddd D MMM')}, ${time(data.nextShift.startsAt)}–${time(data.nextShift.endsAt)}.`

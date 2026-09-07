@@ -626,9 +626,15 @@ export interface WorkforceToday {
   late: number;
   onLeave: { staffId: string; name: string; leaveType: string }[];
   scheduled: { staffId: string; name: string; startAt: string; endAt: string }[];
+  /** Rostered, not on leave, and no punch yet — the gap a manager walks in with. */
+  notClockedIn: { staffId: string; name: string; dueAt: string; overdue: boolean }[];
+  /** Who is covering what today, by the same five-way split the roster uses. */
+  coverage: Record<string, number>;
   pendingLeaveApprovals: number;
   unapprovedOvertimeClaims: number;
   missingPunches: number;
+  pendingClaims: number;
+  pendingAttendanceCorrections: number;
 }
 
 export interface EmployeeRow {

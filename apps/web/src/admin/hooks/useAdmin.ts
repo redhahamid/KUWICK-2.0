@@ -703,6 +703,43 @@ export function useCorrectAttendance() {
   );
 }
 
+/** What staff have asked to have put right, and the decision on each. */
+export function useCorrectionRequests(clinicId?: string) {
+  return useQuery({
+    queryKey: ['admin-hr', 'corrections', clinicId],
+    queryFn: () =>
+      apiClient.get<
+        {
+          id: string;
+          staffId: string;
+          staffName: string;
+          status: string;
+          reason: string;
+          requestedClockInAt: string | null;
+          requestedClockOutAt: string | null;
+          createdAt: string;
+          record: {
+            id: string;
+            workDate: string;
+            clockInAt: string | null;
+            clockOutAt: string | null;
+            scheduledStart: string | null;
+            scheduledEnd: string | null;
+            status: string;
+          };
+        }[]
+      >(`/workforce/attendance/corrections${qs({ clinicId })}`),
+  });
+}
+
+export function useDecideCorrection() {
+  return useAdminMutation(
+    ({ id, approve, note }: { id: string; approve: boolean; note?: string }) =>
+      apiClient.post(`/workforce/attendance/corrections/${id}/decide`, { approve, note }),
+    ['admin-hr'],
+  );
+}
+
 export function useApproveOvertime() {
   return useAdminMutation(
     ({ id, minutes }: { id: string; minutes?: number }) =>

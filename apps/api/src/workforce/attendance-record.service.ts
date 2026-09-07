@@ -9,6 +9,7 @@ import { recordAudit } from '../finance/admin-audit';
 import { computeAttendance, hoursOf, totalTimesheet } from './attendance-hours';
 import { AttendancePolicy, DEFAULT_ATTENDANCE_POLICY, resolveAttendancePolicy } from './attendance-policy';
 import { clinicDateKey } from '../appointment/time.util';
+import { workforceCategoryOf } from './workforce-category';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { ClockDto } from './dto/clock.dto';
 import { DecideCorrectionDto } from './dto/decide-correction.dto';
@@ -446,30 +447,50 @@ export class AttendanceRecordService {
     const timeZone = await this.timeZoneOf(clinicId);
     const day = clinicDay(new Date(), timeZone);
 
-    const [records, onLeave, pendingLeave, unapprovedOvertime, missingPunches] = await Promise.all([
-      this.prisma.attendanceRecord.findMany({
-        where: { ...(clinicId ? { clinicId } : {}), workDate: day },
-        include: { staff: { select: { id: true, fullName: true, role: true } } },
-      }),
-      this.prisma.leaveRequest.findMany({
-        where: { status: 'APPROVED', startDate: { lte: day }, endDate: { gte: day } },
-        include: { staff: { select: { id: true, fullName: true } } },
-      }),
-      this.prisma.leaveRequest.count({ where: { status: 'PENDING' } }),
-      this.prisma.attendanceRecord.count({
-        where: { ...(clinicId ? { clinicId } : {}), overtimeMinutes: { gt: 0 }, overtimeApproved: false },
-      }),
-      this.prisma.attendanceRecord.count({
-        where: { ...(clinicId ? { clinicId } : {}), status: 'MISSING_PUNCH' },
-      }),
-    ]);
+    const [records, onLeave, pendingLeave, unapprovedOvertime, missingPunches, pendingClaims, pendingCorrections] =
+      await Promise.all([
+        this.prisma.attendanceRecord.findMany({
+          where: { ...(clinicId ? { clinicId } : {}), workDate: day },
+          include: { staff: { select: { id: true, fullName: true, role: true } } },
+        }),
+        this.prisma.leaveRequest.findMany({
+          where: { status: 'APPROVED', startDate: { lte: day }, endDate: { gte: day } },
+          include: { staff: { select: { id: true, fullName: true } } },
+        }),
+        this.prisma.leaveRequest.count({ where: { status: 'PENDING' } }),
+        this.prisma.attendanceRecord.count({
+          where: { ...(clinicId ? { clinicId } : {}), overtimeMinutes: { gt: 0 }, overtimeApproved: false },
+        }),
+        this.prisma.attendanceRecord.count({
+          where: { ...(clinicId ? { clinicId } : {}), status: 'MISSING_PUNCH' },
+        }),
+        this.prisma.staffClaim.count({ where: { status: 'SUBMITTED' } }),
+        this.prisma.attendanceCorrectionRequest.count({ where: { status: 'PENDING' } }),
+      ]);
 
     // Matched on the roster's own date, not on a UTC window over `startsAt`.
     const shifts = await this.prisma.providerShift.findMany({
       where: { shiftDate: day, ...(clinicId ? { clinicId } : {}) },
       orderBy: { startsAt: 'asc' },
-      include: { staff: { select: { id: true, fullName: true } } },
+      include: { staff: { select: { id: true, fullName: true, role: true, professionalType: true } } },
     });
+
+    // ROSTERED, AND NOT HERE. The gap between the roster and the punches is the
+    // question a manager actually walks in with, and it could not be asked
+    // before: the board reported who HAD clocked in and never who had not.
+    // Somebody on approved leave is not missing — they are accounted for.
+    const punchedIn = new Set(records.filter((row) => row.clockInAt !== null).map((row) => row.staffId));
+    const away = new Set(onLeave.map((row) => row.staffId));
+    const notClockedIn = shifts
+      .filter((shift) => !punchedIn.has(shift.staffId) && !away.has(shift.staffId))
+      .map((shift) => ({
+        staffId: shift.staffId,
+        name: shift.staff.fullName,
+        dueAt: shift.startsAt,
+        // Late only once the shift has actually started; at 07:00 nobody on an
+        // 08:00 shift is missing, they are early.
+        overdue: shift.startsAt < new Date(),
+      }));
 
     return {
       date: day.toISOString().slice(0, 10),
@@ -486,10 +507,20 @@ export class AttendanceRecordService {
         startAt: shift.startsAt,
         endAt: shift.endsAt,
       })),
-      // The three things somebody has to DO today.
+      notClockedIn,
+      // WHO IS COVERING WHAT. Derived from the role rather than stored, the
+      // same five-way split the roster is read along.
+      coverage: shifts.reduce<Record<string, number>>((counts, shift) => {
+        const key = workforceCategoryOf(shift.staff);
+        counts[key] = (counts[key] ?? 0) + 1;
+        return counts;
+      }, {}),
+      // Everything somebody has to DO today, each of which the board links to.
       pendingLeaveApprovals: pendingLeave,
       unapprovedOvertimeClaims: unapprovedOvertime,
       missingPunches,
+      pendingClaims,
+      pendingAttendanceCorrections: pendingCorrections,
     };
   }
 }

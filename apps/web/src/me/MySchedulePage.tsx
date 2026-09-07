@@ -48,7 +48,7 @@ export function MySchedulePage() {
       </div>
 
       <div className="kw-my-card kw-my-card--flush">
-        {isLoading ? null : days.size === 0 && (data?.leave.length ?? 0) === 0 ? (
+        {isLoading ? null : days.size === 0 && (data?.leave?.length ?? 0) === 0 ? (
           <MyEmpty title="No shifts published for this month">
             Shifts appear here as soon as the roster for the month is written.
           </MyEmpty>
@@ -85,7 +85,7 @@ export function MySchedulePage() {
         )}
       </div>
 
-      {(data?.leave.length ?? 0) > 0 ? (
+      {(data?.leave?.length ?? 0) > 0 ? (
         <div className="kw-my-card">
           <div className="kw-my-card__label">Approved leave this month</div>
           {data?.leave.map((row) => (

@@ -5,7 +5,8 @@ import { AdminNotice, AdminSection, AdminShell, firstError } from '../components
 import { StatStrip } from '../components/StatStrip';
 import { DataTable } from '../components/DataTable';
 import { useClinicFilter } from '../../core/hooks/useClinicFilter';
-import { useApproveOvertime, useTimesheet } from '../hooks/useAdmin';
+import { useApproveOvertime, useCorrectionRequests, useDecideCorrection, useTimesheet } from '../hooks/useAdmin';
+import { formatClinicTime } from '../../clinical/clinicTime';
 
 function hhmm(minutes: number | null | undefined): string {
   if (minutes === null || minutes === undefined) return '—';
@@ -29,6 +30,8 @@ export function TimesheetPage() {
   const [expanded, setExpanded] = useState<string | undefined>();
   const { data, isLoading, isError, error } = useTimesheet({ from: range[0], to: range[1], clinicId });
   const approveOvertime = useApproveOvertime();
+  const corrections = useCorrectionRequests(clinicId);
+  const decideCorrection = useDecideCorrection();
 
   const staff = data?.staff ?? [];
   const unapproved = staff.reduce((total, row) => total + row.unapprovedOvertimeMinutes, 0);
@@ -51,6 +54,91 @@ export function TimesheetPage() {
         />
       }
     >
+      {/*
+        * WHAT STAFF HAVE ASKED TO HAVE PUT RIGHT.
+        *
+        * First on the screen when there is any, because it is the only thing
+        * here that somebody is waiting on. Approving one applies the
+        * correction through the ordinary path — the original punch survives
+        * and the approver is named — so this is a decision, not an edit.
+        */}
+      {(corrections.data?.length ?? 0) > 0 ? (
+        <AdminSection
+          title="Attendance fixes requested"
+          description="Somebody says a punch is wrong. Nothing changes until you decide, and the original stays on the record either way."
+          padded={false}
+        >
+          <DataTable
+            rows={corrections.data}
+            loading={corrections.isLoading}
+            rowKey="id"
+            emptyText="Nothing waiting"
+            columns={[
+              { title: 'Who', dataIndex: 'staffName', key: 'staffName' },
+              {
+                title: 'Day',
+                key: 'workDate',
+                render: (_: unknown, row) => row.record.workDate,
+              },
+              {
+                title: 'Recorded',
+                key: 'recorded',
+                render: (_: unknown, row) =>
+                  `${row.record.clockInAt ? formatClinicTime(row.record.clockInAt) : '—'} → ${
+                    row.record.clockOutAt ? formatClinicTime(row.record.clockOutAt) : '—'
+                  }`,
+              },
+              {
+                title: 'Asked for',
+                key: 'asked',
+                render: (_: unknown, row) =>
+                  `${row.requestedClockInAt ? formatClinicTime(row.requestedClockInAt) : 'unchanged'} → ${
+                    row.requestedClockOutAt ? formatClinicTime(row.requestedClockOutAt) : 'unchanged'
+                  }`,
+              },
+              { title: 'Why', dataIndex: 'reason', key: 'reason' },
+              {
+                title: '',
+                key: 'decide',
+                noExport: true,
+                render: (_: unknown, row) => (
+                  <span style={{ display: 'flex', gap: 6 }}>
+                    <Button
+                      size="small"
+                      type="primary"
+                      loading={decideCorrection.isPending}
+                      onClick={async () => {
+                        try {
+                          await decideCorrection.mutateAsync({ id: row.id, approve: true });
+                          message.success(`${row.staffName}'s ${row.record.workDate} corrected.`);
+                        } catch (error) {
+                          message.error(error instanceof Error ? error.message : 'Could not apply that.');
+                        }
+                      }}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={async () => {
+                        try {
+                          await decideCorrection.mutateAsync({ id: row.id, approve: false });
+                          message.success('Refused, and the employee will see why.');
+                        } catch (error) {
+                          message.error(error instanceof Error ? error.message : 'Could not record that.');
+                        }
+                      }}
+                    >
+                      Refuse
+                    </Button>
+                  </span>
+                ),
+              },
+            ]}
+          />
+        </AdminSection>
+      ) : null}
+
       <StatStrip
         stats={[
           { label: 'Staff with records', value: staff.length },
